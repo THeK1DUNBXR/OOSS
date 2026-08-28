@@ -1,0 +1,362 @@
+/**
+ * P4 — Event Fabric.
+ *
+ * Every fact-changing action emits a durable, hash-chained, replayable event
+ * named with a closed grammar: `kz.<domain>.<entity>.<verb>`.
+ *
+ * Reads are never events. A read of confidential or regulated data produces an
+ * AUDIT_RECORD instead (CRM-FOUND-006).
+ */
+
+export type EventName = string;
+
+/** The canonical event-name grammar. Used to validate every emission. */
+export const EVENT_NAME_PATTERN = /^kz\.[a-z]{2,4}\.[a-z_]+\.[a-z_]+$/;
+
+export function isCanonicalEventName(name: string): boolean {
+  return EVENT_NAME_PATTERN.test(name);
+}
+
+/**
+ * CRM-FOUND-002 crosswalk — all 23 legacy PascalCase names mapped one-to-one to
+ * their canonical form, applied verbatim from the platform canon. An adapter
+ * dual-publishes both names during the migration window; both writes share the
+ * same event_id and correlation_id so they are recognisable as the same fact.
+ */
+export const LEGACY_EVENT_CROSSWALK: Record<string, EventName> = {
+  PersonCreated: 'kz.idn.person.created',
+  PersonMerged: 'kz.idn.person.merged',
+  OrganizationCreated: 'kz.idn.organization.created',
+  RelationshipCreated: 'kz.idn.relationship.created',
+  LeadCreated: 'kz.crm.lead.created',
+  LeadConverted: 'kz.crm.lead.converted',
+  LeadUntouched: 'kz.crm.lead.untouched_detected',
+  OpportunityCreated: 'kz.crm.opportunity.created',
+  OpportunityStageChanged: 'kz.crm.opportunity.stage_changed',
+  ActivityCreated: 'kz.crm.activity.logged',
+  TaskCreated: 'kz.wfl.task.created',
+  TaskOverdue: 'kz.wfl.task.overdue_detected',
+  MoUCreated: 'kz.crm.mou.created',
+  MoUStatusChanged: 'kz.crm.mou.status_changed',
+  MoUExpiring: 'kz.crm.mou.expiry_approaching_detected',
+  MoUExpired: 'kz.crm.mou.expired',
+  StudentEnrolled: 'kz.edu.enrollment.confirmed',
+  StudentCompleted: 'kz.edu.enrollment.completed',
+  StudentAtRisk: 'kz.edu.learner.risk_detected',
+  PaymentReceived: 'kz.fin.payment.received',
+  PaymentPending: 'kz.fin.payment.overdue_detected',
+  InstitutionInactive: 'kz.crm.institution.dormancy_detected',
+  ProposalPending: 'kz.crm.proposal.stalled_detected',
+};
+
+/** Reverse crosswalk, for the dual-publish adapter and legacy subscriber support. */
+export const CANONICAL_TO_LEGACY: Record<EventName, string> = Object.fromEntries(
+  Object.entries(LEGACY_EVENT_CROSSWALK).map(([legacy, canonical]) => [canonical, legacy]),
+);
+
+/** The complete registry of event names this platform emits. */
+export const EVENTS = {
+  // --- Identity (idn) -------------------------------------------------------
+  PERSON_CREATED: 'kz.idn.person.created',
+  PERSON_RESOLVED: 'kz.idn.person.resolved',
+  PERSON_UPDATED: 'kz.idn.person.updated',
+  PERSON_MERGED: 'kz.idn.person.merged',
+  MERGE_CANDIDATE_RAISED: 'kz.idn.merge_candidate.raised',
+  MERGE_CANDIDATE_CONFIRMED: 'kz.idn.merge_candidate.confirmed',
+  MERGE_CANDIDATE_REJECTED: 'kz.idn.merge_candidate.rejected',
+  AFFILIATION_CREATED: 'kz.idn.affiliation.created',
+  AFFILIATION_ENDED: 'kz.idn.affiliation.ended',
+  ORGANIZATION_CREATED: 'kz.idn.organization.created',
+  SESSION_CONTEXT_SWITCHED: 'kz.idn.session.context_switched',
+
+  // --- CRM: organisation specialisations ------------------------------------
+  CRM_ORGANIZATION_CREATED: 'kz.crm.organization.created',
+  CRM_ORGANIZATION_UPDATED: 'kz.crm.organization.updated',
+  ACCOUNT_ATTACHED: 'kz.crm.account.attached',
+  ACCOUNT_DETACHED: 'kz.crm.account.detached',
+  INSTITUTION_PROFILE_ATTACHED: 'kz.crm.institution_profile.attached',
+  INSTITUTION_PROFILE_DETACHED: 'kz.crm.institution_profile.detached',
+  INSTITUTION_DORMANCY_DETECTED: 'kz.crm.institution.dormancy_detected',
+
+  // --- CRM: relationship graph ----------------------------------------------
+  RELATIONSHIP_CREATED: 'kz.crm.relationship.created',
+  RELATIONSHIP_ENDED: 'kz.crm.relationship.ended',
+  RELATIONSHIP_STATUS_CHANGED: 'kz.crm.relationship.status_changed',
+  RELATIONSHIP_STRENGTH_CHANGED: 'kz.crm.relationship.strength_changed',
+
+  // --- CRM: pipeline configuration ------------------------------------------
+  PIPELINE_DEFINITION_CREATED: 'kz.crm.pipeline_definition.created',
+  PIPELINE_DEFINITION_UPDATED: 'kz.crm.pipeline_definition.updated',
+  PIPELINE_DEFINITION_RETIRED: 'kz.crm.pipeline_definition.retired',
+  PIPELINE_STAGE_CREATED: 'kz.crm.pipeline_stage.created',
+  PIPELINE_STAGE_UPDATED: 'kz.crm.pipeline_stage.updated',
+  PIPELINE_STAGE_RETIRED: 'kz.crm.pipeline_stage.retired',
+  PIPELINE_TRANSITION_CREATED: 'kz.crm.pipeline_transition.created',
+  PIPELINE_TRANSITION_UPDATED: 'kz.crm.pipeline_transition.updated',
+  PIPELINE_TRANSITION_DELETED: 'kz.crm.pipeline_transition.deleted',
+
+  // --- CRM: lead ------------------------------------------------------------
+  LEAD_CREATED: 'kz.crm.lead.created',
+  LEAD_UPDATED: 'kz.crm.lead.updated',
+  LEAD_ROUTED: 'kz.crm.lead.routed',
+  LEAD_UNROUTED: 'kz.crm.lead.unrouted',
+  LEAD_REASSIGNED: 'kz.crm.lead.reassigned',
+  LEAD_STAGE_CHANGED: 'kz.crm.lead.stage_changed',
+  LEAD_CONVERTED: 'kz.crm.lead.converted',
+  LEAD_UNTOUCHED_DETECTED: 'kz.crm.lead.untouched_detected',
+
+  // --- CRM: opportunity -----------------------------------------------------
+  OPPORTUNITY_CREATED: 'kz.crm.opportunity.created',
+  OPPORTUNITY_UPDATED: 'kz.crm.opportunity.updated',
+  OPPORTUNITY_STAGE_CHANGED: 'kz.crm.opportunity.stage_changed',
+  OPPORTUNITY_FORECAST_CATEGORY_CHANGED: 'kz.crm.opportunity.forecast_category_changed',
+  OPPORTUNITY_WON: 'kz.crm.opportunity.won',
+  OPPORTUNITY_LOST: 'kz.crm.opportunity.lost',
+  OPPORTUNITY_HANDED_OFF: 'kz.crm.opportunity.handed_off',
+  OPPORTUNITY_RENEWAL_OPENED: 'kz.crm.opportunity.renewal_opened',
+  OPPORTUNITY_STAGE_AGE_BREACHED: 'kz.crm.opportunity.stage_age_breached_detected',
+
+  // --- CRM: territory & routing ---------------------------------------------
+  TERRITORY_CREATED: 'kz.crm.territory.created',
+  TERRITORY_UPDATED: 'kz.crm.territory.updated',
+  ROUTING_RULE_CREATED: 'kz.crm.routing_rule.created',
+  ROUTING_RULE_UPDATED: 'kz.crm.routing_rule.updated',
+
+  // --- CRM: commercial catalog ----------------------------------------------
+  OFFERING_CREATED: 'kz.crm.offering.created',
+  OFFERING_UPDATED: 'kz.crm.offering.updated',
+  OFFERING_RETIRED: 'kz.crm.offering.retired',
+  PRICE_BOOK_ENTRY_PUBLISHED: 'kz.crm.price_book_entry.published',
+  PRICE_BOOK_ENTRY_SUPERSEDED: 'kz.crm.price_book_entry.superseded',
+
+  // --- PCT: proposals, quotes, contracts (crm-domain segment by bounded context)
+  PROPOSAL_CREATED: 'kz.pct.proposal.created',
+  PROPOSAL_SENT: 'kz.pct.proposal.sent',
+  PROPOSAL_RESPONDED: 'kz.pct.proposal.responded',
+  PROPOSAL_SUPERSEDED: 'kz.pct.proposal.superseded',
+  PROPOSAL_STALLED_DETECTED: 'kz.crm.proposal.stalled_detected',
+  QUOTE_CREATED: 'kz.crm.quote.created',
+  QUOTE_ISSUED: 'kz.crm.quote.issued',
+  QUOTE_DISCOUNT_BLOCKED: 'kz.crm.quote.discount_blocked',
+  QUOTE_ACCEPTED: 'kz.crm.quote.accepted',
+  CONTRACT_CREATED: 'kz.crm.contract.created',
+  CONTRACT_STATUS_CHANGED: 'kz.crm.contract.status_changed',
+  CONTRACT_SIGNED: 'kz.crm.contract.signed',
+  CONTRACT_EXPIRING: 'kz.crm.contract.expiring',
+  CONTRACT_EXPIRED: 'kz.crm.contract.expired',
+  CONTRACT_TERMINATED: 'kz.crm.contract.terminated',
+
+  // --- CRM/PCT: MoU & partner -----------------------------------------------
+  MOU_CREATED: 'kz.crm.mou.created',
+  MOU_STATUS_CHANGED: 'kz.crm.mou.status_changed',
+  MOU_EXPIRY_APPROACHING: 'kz.crm.mou.expiry_approaching_detected',
+  MOU_EXPIRED: 'kz.crm.mou.expired',
+  MOU_RENEWED: 'kz.crm.mou.renewed',
+  PARTNER_AGREEMENT_CREATED: 'kz.crm.partner_agreement.created',
+  PARTNER_AGREEMENT_STATUS_CHANGED: 'kz.crm.partner_agreement.status_changed',
+
+  // --- CRM: win/loss --------------------------------------------------------
+  WIN_LOSS_REVIEW_RECORDED: 'kz.crm.win_loss_review.recorded',
+  WIN_LOSS_REVIEW_OVERDUE: 'kz.crm.win_loss_review.overdue_detected',
+
+  // --- CRM: activity / interaction ------------------------------------------
+  ACTIVITY_LOGGED: 'kz.crm.activity.logged',
+  INTERACTION_LOGGED: 'kz.crm.interaction.logged',
+
+  // --- Workflow / tasks -----------------------------------------------------
+  TASK_CREATED: 'kz.wfl.task.created',
+  TASK_COMPLETED: 'kz.wfl.task.completed',
+  TASK_OVERDUE_DETECTED: 'kz.wfl.task.overdue_detected',
+  JOB_COMPLETED: 'kz.crm.job.completed',
+  JOB_FAILED: 'kz.crm.job.failed',
+
+  // --- Finance --------------------------------------------------------------
+  INVOICE_ISSUED: 'kz.fin.invoice.issued',
+  INVOICE_SETTLED: 'kz.fin.invoice.settled',
+  FEE_INSTALMENT_ISSUED: 'kz.fin.fee_instalment.issued',
+  PAYMENT_RECEIVED: 'kz.fin.payment.received',
+  PAYMENT_OVERDUE_DETECTED: 'kz.fin.payment.overdue_detected',
+  RECEIPT_ALLOCATED: 'kz.fin.receipt.allocated',
+  CREDIT_NOTE_ISSUED: 'kz.fin.credit_note.issued',
+
+  // --- Education ------------------------------------------------------------
+  ENROLLMENT_CONFIRMED: 'kz.edu.enrollment.confirmed',
+  ENROLLMENT_COMPLETED: 'kz.edu.enrollment.completed',
+  LEARNER_RISK_DETECTED: 'kz.edu.learner.risk_detected',
+  ATTENDANCE_RECORDED: 'kz.edu.attendance.recorded',
+
+  // --- Governance -----------------------------------------------------------
+  POLICY_VERSION_PUBLISHED: 'kz.gov.policy_version.published',
+  GRANT_CHANGED: 'kz.gov.grant.changed',
+  AUTHORITY_GRANT_EXCEEDED: 'kz.gov.authority_grant.exceeded_detected',
+  ACCESS_DENIED: 'kz.gov.access.denied',
+  DECISION_RAISED: 'kz.gov.decision.raised',
+  DECISION_DECIDED: 'kz.gov.decision.decided',
+  DECISION_DELEGATED: 'kz.gov.decision.delegated',
+  DECISION_DEFERRED: 'kz.gov.decision.deferred',
+  DECISION_EVIDENCE_REQUESTED: 'kz.gov.decision.evidence_requested',
+  APPROVAL_STEP_OPENED: 'kz.gov.approval_step.opened',
+  APPROVAL_STEP_DECIDED: 'kz.gov.approval_step.decided',
+  APPROVAL_STEP_ESCALATED: 'kz.gov.approval_step.escalated',
+
+  // --- Exceptions -----------------------------------------------------------
+  EXCEPTION_RAISED: 'kz.xcp.exception.raised',
+  EXCEPTION_ACKNOWLEDGED: 'kz.xcp.exception.acknowledged',
+  EXCEPTION_RESOLVED: 'kz.xcp.exception.resolved',
+  EXCEPTION_ESCALATED: 'kz.xcp.exception.escalated',
+
+  // --- Cross-domain health --------------------------------------------------
+  HEALTH_SCORE_COMPUTED: 'kz.xdm.health_score.computed',
+  HEALTH_BAND_CHANGED: 'kz.xdm.health_score.band_changed',
+
+  // --- Agents ---------------------------------------------------------------
+  AGENT_ACTION_PROPOSED: 'kz.agt.action.proposed',
+  AGENT_ACTION_EXECUTED: 'kz.agt.action.executed',
+  AGENT_ACTION_REJECTED: 'kz.agt.action.rejected',
+  AGENT_AUTHORITY_SHORTFALL: 'kz.agt.action.authority_shortfall_detected',
+} as const;
+
+export type KnownEventName = (typeof EVENTS)[keyof typeof EVENTS];
+
+// ---------------------------------------------------------------------------
+// The event envelope (§3.5). Every event carries the full envelope, not just a
+// payload. `tenant_id` is present without exception.
+// ---------------------------------------------------------------------------
+
+export type ActorType = 'human' | 'agent' | 'system' | 'integration';
+
+export interface EventActor {
+  actorType: ActorType;
+  partyId?: string | null;
+  accessRole?: string | null;
+  agentId?: string | null;
+  onBehalfOfPartyId?: string | null;
+}
+
+export interface EventSubject {
+  entityType: string;
+  entityId: string;
+  recordCode?: string | null;
+}
+
+export interface EventRelatedRef {
+  relation: string;
+  entityType: string;
+  entityId: string;
+}
+
+export interface EventReason {
+  reasonCode?: string | null;
+  note?: string | null;
+  decisionId?: string | null;
+  policyId?: string | null;
+  policyVersion?: number | null;
+}
+
+export interface EventSource {
+  system: string;
+  channel: string;
+  requestId?: string | null;
+  integrationId?: string | null;
+  ingestBatchId?: string | null;
+}
+
+export interface EventMateriality {
+  measure: string;
+  value: number;
+  currency?: string | null;
+}
+
+export interface EventImpact {
+  domains: string[];
+  severity?: SeverityCode | null;
+  materiality?: EventMateriality | null;
+}
+
+export interface EventOwner {
+  partyId?: string | null;
+  positionId?: string | null;
+}
+
+export interface EventIntegrity {
+  prevHash: string | null;
+  hash: string;
+}
+
+export interface EventEnvelope {
+  eventId: string;
+  eventName: EventName;
+  eventVersion: number;
+  tenantId: string;
+  occurredAt: string;
+  recordedAt: string;
+  actor: EventActor;
+  subject: EventSubject;
+  related: EventRelatedRef[];
+  previousState: Record<string, unknown> | null;
+  newState: Record<string, unknown> | null;
+  reason: EventReason | null;
+  source: EventSource;
+  impact: EventImpact;
+  owner: EventOwner | null;
+  correlationId: string;
+  causationId: string | null;
+  confidentiality: SensitivityClass;
+  retentionClass: string;
+  integrity: EventIntegrity;
+}
+
+// ---------------------------------------------------------------------------
+// Exception severity (S0–S4) and notification priority (N0–N4) are kept
+// structurally separate — a high-severity exception and an urgent notification
+// are related but independent judgments (§3.6).
+// ---------------------------------------------------------------------------
+
+export const SEVERITIES = ['S0_INFO', 'S1_ATTENTION', 'S2_WARNING', 'S3_HIGH_RISK', 'S4_CRITICAL'] as const;
+export type SeverityCode = (typeof SEVERITIES)[number];
+
+export const SEVERITY_RANK: Record<SeverityCode, number> = {
+  S0_INFO: 0,
+  S1_ATTENTION: 1,
+  S2_WARNING: 2,
+  S3_HIGH_RISK: 3,
+  S4_CRITICAL: 4,
+};
+
+export const NOTIFICATION_PRIORITIES = ['N0_AMBIENT', 'N1_LOW', 'N2_NORMAL', 'N3_HIGH', 'N4_URGENT'] as const;
+export type NotificationPriority = (typeof NOTIFICATION_PRIORITIES)[number];
+
+/** Escalation is bounded to exactly four named triggers. Nothing escalates by default outside these. */
+export const ESCALATION_TRIGGERS = ['sla_expiry', 'decline', 'authority_insufficiency', 'severity_increase'] as const;
+export type EscalationTrigger = (typeof ESCALATION_TRIGGERS)[number];
+
+// ---------------------------------------------------------------------------
+// Sensitivity classification (the WHAT axis).
+// ---------------------------------------------------------------------------
+
+export const SENSITIVITY_CLASSES = ['public', 'internal', 'restricted', 'confidential', 'regulated'] as const;
+export type SensitivityClass = (typeof SENSITIVITY_CLASSES)[number];
+
+export const SENSITIVITY_RANK: Record<SensitivityClass, number> = {
+  public: 0,
+  internal: 1,
+  restricted: 2,
+  confidential: 3,
+  regulated: 4,
+};
+
+export function maxSensitivity(classes: SensitivityClass[]): SensitivityClass {
+  if (classes.length === 0) return 'internal';
+  return classes.reduce((a, b) => (SENSITIVITY_RANK[b] > SENSITIVITY_RANK[a] ? b : a));
+}
+
+/** Closed set of withholding reason codes (§10.4.4). */
+export const WITHHOLD_REASONS = [
+  'no_permission',
+  'out_of_scope',
+  'classification_ceiling',
+  'authority_insufficient',
+  'purpose_unbound',
+  'consent_absent',
+] as const;
+export type WithholdReason = (typeof WITHHOLD_REASONS)[number];

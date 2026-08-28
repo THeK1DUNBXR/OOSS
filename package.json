@@ -1,0 +1,24 @@
+{
+  "name": "kaizen-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kaizen Unified Operating Platform — the AI-native operating system for the company",
+  "packageManager": "pnpm@9.0.0",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "pnpm -r --filter @kaizen/shared build && pnpm --filter @kaizen/api build && pnpm --filter @kaizen/web build",
+    "dev": "concurrently -n api,web -c cyan,magenta \"pnpm --filter @kaizen/api dev\" \"pnpm --filter @kaizen/web dev\"",
+    "db:push": "pnpm --filter @kaizen/api db:push",
+    "db:migrate": "pnpm --filter @kaizen/api db:migrate",
+    "db:seed": "pnpm --filter @kaizen/api seed",
+    "db:reset": "pnpm --filter @kaizen/api db:reset",
+    "test": "pnpm --filter @kaizen/api test",
+    "typecheck": "pnpm -r typecheck",
+    "jobs:run": "pnpm --filter @kaizen/api jobs:run",
+    "setup": "pnpm install && pnpm --filter @kaizen/shared build && pnpm db:push && pnpm db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2"
+  }
+}

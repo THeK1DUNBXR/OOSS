@@ -1,0 +1,23 @@
+import { Router } from 'express';
+import authRoutes from './auth.routes.js';
+import crmRoutes from './crm.routes.js';
+import pipelineRoutes from './pipeline.routes.js';
+import commercialRoutes from './commercial.routes.js';
+import financeRoutes from './finance.routes.js';
+import commandRoutes from './command.routes.js';
+import adminRoutes from './admin.routes.js';
+import educationRoutes from './education.routes.js';
+import { requireAuth } from '../lib/http.js';
+
+const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/crm', requireAuth, crmRoutes);
+router.use('/pipelines', requireAuth, pipelineRoutes);
+router.use('/commercial', requireAuth, commercialRoutes);
+router.use('/finance', requireAuth, financeRoutes);
+router.use('/command', requireAuth, commandRoutes);
+router.use('/admin', requireAuth, adminRoutes);
+router.use('/education', requireAuth, educationRoutes);
+
+export default router;
