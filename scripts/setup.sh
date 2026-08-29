@@ -47,8 +47,73 @@ if [ "${MODE}" = "docker" ]; then
   command -v docker >/dev/null || die "Docker is not installed. Install Docker, or re-run with --native to use a local PostgreSQL."
 
   # `docker compose version` answers from the CLI alone and succeeds even when
-  # the daemon is down, so ask the daemon something only it can answer.
-  docker info >/dev/null 2>&1 || die "The Docker daemon is not reachable. Start Docker Desktop (or dockerd), or re-run with --native to use a local PostgreSQL."
+  # the daemon is unreachable, so ask the daemon something only it can answer.
+  #
+  # "Installed but not picked up" is usually not a stopped daemon. The CLI
+  # resolves its endpoint from DOCKER_HOST, then the active context, and either
+  # can point somewhere the daemon is not — Docker Desktop on macOS moved its
+  # socket under ~/.docker/run, Colima and Rancher Desktop each use their own,
+  # rootless Docker uses the XDG runtime dir. So rather than reporting failure,
+  # look for the socket where each of them actually puts it.
+  find_docker() {
+    docker info >/dev/null 2>&1 && return 0
+
+    # Expanded with a default: DOCKER_HOST is normally unset, and `set -u`
+    # would abort on a bare reference.
+    local current="${DOCKER_HOST:-}"
+    current="${current#unix://}"
+
+    local candidates=(
+      "${current}"
+      "${HOME}/.docker/run/docker.sock"
+      "/var/run/docker.sock"
+      "${HOME}/.colima/default/docker.sock"
+      "${HOME}/.rd/docker.sock"
+      "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/docker.sock"
+      "${HOME}/.local/share/containers/podman/machine/podman.sock"
+    )
+    for sock in "${candidates[@]}"; do
+      [ -n "${sock}" ] && [ -S "${sock}" ] || continue
+      if DOCKER_HOST="unix://${sock}" docker info >/dev/null 2>&1; then
+        export DOCKER_HOST="unix://${sock}"
+        ok "found the Docker daemon at ${sock}"
+        warn "your shell's Docker endpoint did not point here — see the note at the end"
+        FIXED_DOCKER_HOST="${DOCKER_HOST}"
+        return 0
+      fi
+    done
+    return 1
+  }
+
+  FIXED_DOCKER_HOST=""
+  if ! find_docker; then
+    # Distinguish the causes rather than blaming a stopped daemon for all of them.
+    for sock in "/var/run/docker.sock" "${HOME}/.docker/run/docker.sock"; do
+      if [ -S "${sock}" ] && [ ! -w "${sock}" ]; then
+        die "The Docker socket at ${sock} exists but this account cannot write to it.
+  On Linux, add yourself to the docker group and start a new login session:
+
+    sudo usermod -aG docker \$USER && newgrp docker
+
+  Or re-run with --native to use a local PostgreSQL instead."
+      fi
+    done
+    die "Docker is installed but no daemon is reachable.
+
+  Checked DOCKER_HOST, the active docker context, and the usual socket paths
+  for Docker Desktop, Colima, Rancher Desktop, rootless Docker and Podman.
+
+    docker context ls        shows which endpoint the CLI is using
+    docker info              shows the daemon's own error
+
+  If Docker Desktop is running, its context is probably not the active one:
+
+    docker context use desktop-linux
+
+  Or skip Docker entirely and use a local PostgreSQL:
+
+    ./scripts/setup.sh --native"
+  fi
 
   if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"
   elif command -v docker-compose >/dev/null;  then COMPOSE="docker-compose"
@@ -139,6 +204,23 @@ fi
 
 # ---------------------------------------------------------------------------
 say "Ready"
+
+if [ -n "${FIXED_DOCKER_HOST:-}" ]; then
+  cat <<NOTE
+
+  Note: your shell's Docker endpoint did not point at your running daemon.
+  This script worked around it for itself, but your own docker commands will
+  still fail. To fix it for good, either activate the right context:
+
+    docker context ls          # find the one that is running
+    docker context use <name>
+
+  or set the endpoint in your shell profile:
+
+    export DOCKER_HOST="${FIXED_DOCKER_HOST}"
+NOTE
+fi
+
 cat <<'DONE'
 
   ./scripts/dev.sh start     start the API and web server
