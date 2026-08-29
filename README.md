@@ -13,24 +13,29 @@ and experience surface.
 
 ## Run it
 
-Requires Node 22, pnpm, and PostgreSQL 16.
-
 ```bash
-pnpm install
-cd apps/api && cp .env.example .env      # if .env is absent
-pnpm db:push                             # create the schema
-pnpm seed                                # tenant, roles, policies, demo dataset
-
-cd ../.. && ./scripts/dev.sh start       # Postgres + API + web
+git clone https://github.com/THeK1DUNBXR/OOSS.git
+cd OOSS
+./scripts/setup.sh          # PostgreSQL, dependencies, schema, demo data
+./scripts/dev.sh start      # API and web
 ```
 
-| | |
-|---|---|
-| Web | http://localhost:5173 |
-| API | http://localhost:4000 |
-| Sign in | `chairman@kaizen.co.in` / `kaizen2026` |
+Then open **http://localhost:5173** and sign in as
+`chairman@kaizen.co.in` / `kaizen2026`.
 
-`./scripts/dev.sh {start\|stop\|restart\|status\|logs}` manages both processes.
+`setup.sh` runs PostgreSQL 16 in Docker. If you would rather use a PostgreSQL
+already installed on your machine, run `./scripts/setup.sh --native` — it
+creates the role and database for you. Either way it needs **Node 22 or newer**;
+it will enable pnpm through corepack if you do not have it.
+
+Both scripts are safe to re-run. `setup.sh` checks before every step and will
+not reseed a database that already has data.
+
+```bash
+./scripts/dev.sh status     # what is up
+./scripts/dev.sh logs       # follow both logs
+./scripts/dev.sh stop
+```
 
 ### Sign in as someone else
 

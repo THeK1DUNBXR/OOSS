@@ -1,5 +1,18 @@
 # Operations
 
+## First run
+
+```bash
+./scripts/setup.sh            # Docker PostgreSQL, deps, schema, demo data
+./scripts/setup.sh --native   # or use a PostgreSQL already on this machine
+```
+
+The native path creates the `kaizen` role (`LOGIN CREATEDB`, password `kaizen`)
+and the `kaizen` database, trying the current account first and falling back to
+the `postgres` system account. It writes `apps/api/.env` from `.env.example`
+with a freshly generated `JWT_SECRET`, and skips seeding entirely if the
+database already holds a tenant — so re-running it never touches your data.
+
 ## Running
 
 ```bash

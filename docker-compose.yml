@@ -1,0 +1,22 @@
+# Postgres only. The API and web run on the host via `./scripts/dev.sh start`,
+# so you keep hot reload and a normal debugger.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kaizen-postgres
+    environment:
+      POSTGRES_USER: kaizen
+      POSTGRES_PASSWORD: kaizen
+      POSTGRES_DB: kaizen
+    ports:
+      - "5432:5432"
+    volumes:
+      - kaizen-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kaizen -d kaizen"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  kaizen-pgdata:
