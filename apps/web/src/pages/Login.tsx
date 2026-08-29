@@ -2,15 +2,16 @@ import { useState } from 'react';
 import { useSession } from '../lib/session.js';
 
 const DEMO_ACCOUNTS = [
-  { email: 'chairman@kaizen.co.in', label: 'Chairman', note: 'Command Center archetype — the full pulse, decision queue and authority controls.' },
-  { email: 'bhead@kaizen.co.in', label: 'Business Head', note: 'First approval tier. Interim catalog and territory owner.' },
-  { email: 'controller@kaizen.co.in', label: 'Finance Controller', note: 'Holds the discount-approval authority the blocked quote resolves to.' },
-  { email: 'arun@kaizen.co.in', label: 'Sales', note: 'A real but modest authority ceiling, so an over-ceiling deal opens a step.' },
-  { email: 'divya@kaizen.co.in', label: 'Telecaller', note: 'Own-scoped mutation. View and export still resolve to all.' },
-  { email: 'meera@kaizen.co.in', label: 'Education Counsellor', note: 'own_or_unowned on institutions, with the branch check only in the unowned case.' },
-  { email: 'ravi@kaizen.co.in', label: 'Trainer', note: 'Scoped to own batches by a grant resolver, not by a role check in service code.' },
-  { email: 'sysadmin@kaizen.co.in', label: 'System Administrator', note: 'Platform administration with explicitly no domain content authority.' },
-  { email: 'multi@kaizen.co.in', label: 'Three affiliations', note: 'Try the context switcher — reach never unions across contexts.' },
+  { email: 'chairman@kaizen.co.in', label: 'Chairman', note: 'Sees the whole company, and makes the calls nobody else can.' },
+  { email: 'bhead@kaizen.co.in', label: 'Business Head', note: 'Approves deals up to ₹10 lakh. Above that it goes to a director.' },
+  { email: 'controller@kaizen.co.in', label: 'Finance Controller', note: 'The only one who can sign off a discount bigger than a salesperson is allowed to give.' },
+  { email: 'arun@kaizen.co.in', label: 'Salesperson', note: 'Runs his own deals. Big ones need someone senior to approve.' },
+  { email: 'divya@kaizen.co.in', label: 'Telecaller', note: 'Can see every lead, but only change the ones assigned to her.' },
+  { email: 'meera@kaizen.co.in', label: 'Education Counsellor', note: 'Can claim any college in her branch that nobody else has taken.' },
+  { email: 'ravi@kaizen.co.in', label: 'Trainer', note: 'Sees the batches he teaches, and no others.' },
+  { email: 'latha@kaizen.co.in', label: 'Finance', note: 'Records payments — which even the chairman cannot do.' },
+  { email: 'sysadmin@kaizen.co.in', label: 'System Administrator', note: 'Runs the system, and cannot read a single customer record.' },
+  { email: 'multi@kaizen.co.in', label: 'Someone with three jobs', note: 'Switch between them in the sidebar — what he sees changes with the hat he is wearing.' },
 ];
 
 export function Login() {
@@ -65,16 +66,17 @@ export function Login() {
           </form>
 
           <p className="mt-4 text-2xs leading-relaxed text-ink-500">
-            Access derives from affiliations, never from the person record. An account holding no active affiliation
-            cannot sign in, however valid its credential.
+            What you can see comes from your job here, not from your account. Someone who has left keeps their
+            record but loses their access — the password alone is never enough.
           </p>
         </div>
 
         <div className="card p-6">
-          <h2 className="text-sm font-semibold text-ink-100">Sign in as any role</h2>
+          <h2 className="text-sm font-semibold text-ink-100">Have a look as somebody else</h2>
           <p className="mt-1 text-2xs text-ink-500">
-            Every account uses the password <span className="font-mono text-ink-300">kaizen2026</span>. The surface
-            recomposes against the role's own grants — a node you cannot reach is unrendered, never merely disabled.
+            Every account below uses the password <span className="font-mono text-ink-300">kaizen2026</span>. Sign in
+            as any of them and the whole app changes — menus you have no business seeing simply are not there, rather
+            than sitting greyed out. Try the system administrator and the finance clerk one after the other.
           </p>
 
           <div className="mt-4 space-y-1.5">

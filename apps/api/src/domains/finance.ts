@@ -443,7 +443,7 @@ export async function detectOverduePayments(): Promise<number> {
 
     await raiseException({
       code: 'EX-FIN-001',
-      label: 'Payment overdue',
+      label: 'Payment is overdue',
       severity: days > 45 ? 'S3_HIGH_RISK' : 'S2_WARNING',
       subjectType: 'invoice',
       subjectId: inv.id,

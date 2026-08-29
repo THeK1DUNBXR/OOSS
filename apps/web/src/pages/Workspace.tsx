@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { OpportunityView, LeadView } from '@kaizen/shared';
 import { api, date, money, relative, titleCase } from '../lib/api.js';
+import { SENSITIVITY_WORDS } from '../lib/words.js';
 import {
   Card,
   EmptyState,
@@ -75,8 +76,8 @@ export function Workspace() {
         title={`Good day, ${user.fullName.split(' ')[0]}`}
         subtitle={
           <span>
-            Acting as <span className="text-ink-200">{titleCase(user.roleSlug)}</span> · classification ceiling{' '}
-            <span className="text-ink-200">{user.classificationCeiling}</span>
+            Working as <span className="text-ink-200">{titleCase(user.roleSlug)}</span> · you can see up to{' '}
+            <span className="text-ink-200">{SENSITIVITY_WORDS[user.classificationCeiling] ?? user.classificationCeiling}</span>
           </span>
         }
       />
@@ -94,10 +95,10 @@ export function Workspace() {
         )}
         {can('exceptions:V') && (
           <Metric
-            label="Exceptions owned"
+            label="Problems you own"
             value={exceptions.length}
             tone={exceptions.length > 0 ? 'warn' : 'good'}
-            sub="Every exception arrives pre-owned"
+            sub="Each one is assigned to a named person, so nothing waits to be noticed"
             drillTo="/exceptions"
           />
         )}
@@ -106,14 +107,14 @@ export function Workspace() {
             label="Unrouted leads"
             value={unrouted?.total ?? 0}
             tone={(unrouted?.total ?? 0) > 0 ? 'warn' : 'good'}
-            sub="Abnormal the moment routing fails, not after a grace period"
+            sub="Counted from the moment assignment fails — there is no grace period for a lead nobody is working"
             drillTo="/crm/leads"
           />
         )}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card title="My queue" subtitle="Ranked by band before score — a large number cannot out-argue an urgent band." bodyClassName="p-0">
+        <Card title="My queue" subtitle="Most urgent first. A big number never pushes ahead of something genuinely urgent." bodyClassName="p-0">
           {tasks.length === 0 ? (
             <EmptyState message="Nothing due." />
           ) : (
@@ -145,7 +146,7 @@ export function Workspace() {
         </Card>
 
         {approvals.length > 0 && (
-          <Card title="Awaiting your approval" subtitle="Resolved to you by policy, before any notification fired." bodyClassName="p-0">
+          <Card title="Awaiting your approval" subtitle="These are yours because policy says so — not because you happened to be notified." bodyClassName="p-0">
             <ul className="divide-y divide-ink-850">
               {approvals.map((a) => (
                 <li key={a.id} className="px-4 py-2.5">
@@ -193,13 +194,13 @@ export function Workspace() {
         )}
 
         {can('exceptions:V') && exceptions.length > 0 && (
-          <Card title="Exceptions you own" bodyClassName="p-0">
+          <Card title="Problems you own" bodyClassName="p-0">
             <ul className="divide-y divide-ink-850">
               {exceptions.slice(0, 10).map((e) => (
                 <li key={e.id} className="px-4 py-2.5">
                   <div className="flex items-center gap-1.5">
                     <SeverityChip severity={e.severity} />
-                    <span className="mono">{e.code}</span>
+                    <span className="mono text-ink-600" title="Reference code, for when you need to quote this to someone">{e.code}</span>
                   </div>
                   <p className="mt-1 text-xs text-ink-100">{e.label}</p>
                   <p className="text-2xs text-ink-500">{e.subjectLabel}</p>
@@ -240,8 +241,8 @@ export function Exceptions() {
   return (
     <div>
       <PageHeader
-        title="Exceptions"
-        subtitle="A record in an actionable bad state, with a resolved owner — never a data point buried in a report someone has to notice. Escalation is bounded to four named triggers."
+        title="Problems"
+        subtitle="Things that have gone wrong and need a person to fix them. Each one is assigned to someone by name, so nothing sits in a report waiting to be noticed."
       />
 
       <Tabs
@@ -273,12 +274,12 @@ export function Exceptions() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <SeverityChip severity={e.severity} />
-                    <span className="mono">{e.code}</span>
+                    <span className="mono text-ink-600" title="Reference code, for when you need to quote this to someone">{e.code}</span>
                     <span className="chip border-ink-700 text-ink-400">{e.domain}</span>
                     <StatusChip status={e.state} tone={e.state === 'resolved' ? 'good' : e.state === 'escalated' ? 'warn' : 'neutral'} />
                     {e.slaBreached && <span className="chip border-band-critical/40 text-band-critical">SLA breached</span>}
                     {e.ownerUnresolved && (
-                      <span className="chip border-band-strained/40 text-band-strained" title="A routing defect — a measured category feeding H_OPS, not a blank field to notice.">
+                      <span className="chip border-band-strained/40 text-band-strained" title="Nobody has been assigned this. That is a gap in our routing rules, and it is counted against Operations — not just an empty field for someone to spot.">
                         owner unresolved
                       </span>
                     )}

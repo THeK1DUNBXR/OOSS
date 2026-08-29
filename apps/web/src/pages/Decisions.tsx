@@ -36,11 +36,11 @@ export function Decisions() {
     <div>
       <PageHeader
         title="Decisions"
-        subtitle="Nothing reaches this queue unless the required authority exceeds every grant below the viewer, a policy reserves it by name, or a delegation returned it unactioned. Anything else is a routing defect."
+        subtitle="Calls that genuinely need you. Something arrives here only when nobody below you can settle it, a policy names you specifically, or someone you delegated to handed it back."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Awaiting disposition" value={data.length} drillTo="/command" />
+        <Metric label="Waiting on a decision" value={data.length} drillTo="/command" />
         <Metric
           label="Analysing"
           value={analysing}
@@ -125,8 +125,8 @@ export function Decisions() {
           >
             {!calibration || calibration.sampleSize === 0 ? (
               <EmptyState
-                message="Not enough reviewed decisions to calibrate."
-                hint="A decision does not close at disposition — the loop closes with a recorded lesson and a resolved change commitment."
+                message="Not enough past decisions have been reviewed yet to say how well they went."
+                hint="Making the call is not the end. A decision is only finished once someone has written down how it turned out and what changed as a result."
               />
             ) : (
               <div className="space-y-2">

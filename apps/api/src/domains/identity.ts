@@ -420,7 +420,7 @@ export async function sweepStaleMergeCandidates(thresholdDays = 14): Promise<num
     const candidate = await prisma.person.findFirst({ where: { id: mc.candidatePersonId } });
     await raiseException({
       code: 'EX-CRM-002',
-      label: 'Merge candidate unresolved past threshold',
+      label: 'Possible duplicate person, still unconfirmed',
       severity: 'S1_ATTENTION',
       subjectType: 'merge_candidate',
       subjectId: mc.id,

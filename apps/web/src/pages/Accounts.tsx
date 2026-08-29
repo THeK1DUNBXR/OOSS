@@ -61,7 +61,7 @@ export function Accounts() {
     <div>
       <PageHeader
         title="Accounts & Institutions"
-        subtitle="One organisation row per real legal body. Account and Institution Profile are independent specialisations that may coexist — nothing in the domain says an institution cannot also be a paying client."
+        subtitle="Companies and colleges we work with. One record per real organisation. A college can also be a paying client — both sides are kept on the same record rather than duplicated."
         actions={can('organizations:C') && <button className="btn-primary" onClick={() => setCreateOpen(true)}>New organisation</button>}
       />
 
@@ -83,7 +83,7 @@ export function Accounts() {
         <Loading />
       ) : !data?.items.length ? (
         <Card>
-          <EmptyState message="No organisations match." />
+          <EmptyState message="No organisations match what you searched for." />
         </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -275,7 +275,7 @@ export function AccountDetail() {
                 <Field label="Established">{data.institutionProfile.establishedYear ?? '—'}</Field>
                 <Field label="Registry identifier">
                   {data.institutionProfile.externalIdentifier ?? (
-                    <span className="text-ink-500" title="Never fabricated — the absence of a value is safe, a wrong value is not.">
+                    <span className="text-ink-500" title="Left blank when unknown. A missing answer is safe; a made-up one is not.">
                       not recorded
                     </span>
                   )}
@@ -296,9 +296,9 @@ export function AccountDetail() {
             )
           )}
 
-          <Card title="Relationship history" subtitle="A nature change never overwrites — the prior edge gets an end date and a new one begins." bodyClassName="p-0">
+          <Card title="Relationship history" subtitle="Changing the nature of a connection does not erase the old one — it is dated and a new one starts." bodyClassName="p-0">
             {relationships.length === 0 ? (
-              <EmptyState message="No relationships recorded." hint="A relationship exists because a service recorded a real fact, never speculatively." />
+              <EmptyState message="No relationships recorded." hint="Connections appear here when something real happens — a meeting, a contract, an enrolment. Nothing is guessed." />
             ) : (
               <ul className="divide-y divide-ink-850">
                 {relationships.map((r: any) => (

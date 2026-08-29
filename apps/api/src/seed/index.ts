@@ -747,7 +747,7 @@ async function seedSurfaces() {
     nodeKey: string; label: string; icon: string; path: string; group: string;
     position: number; requiredPermission?: string; archetypes?: string[]; synonyms?: string[];
   }> = [
-    { nodeKey: 'command', label: 'Command Center', icon: 'gauge', path: '/command', group: 'main', position: 1, requiredPermission: 'health_scores:V', archetypes: ['command'], synonyms: ['pulse', 'how are we doing', 'state of kaizen'] },
+    { nodeKey: 'command', label: 'Today', icon: 'gauge', path: '/command', group: 'main', position: 1, requiredPermission: 'health_scores:V', archetypes: ['command'], synonyms: ['pulse', 'how are we doing', 'state of kaizen'] },
     { nodeKey: 'workspace', label: 'My Workspace', icon: 'home', path: '/workspace', group: 'main', position: 2, synonyms: ['my day', 'my queue', 'home'] },
     { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'crm', position: 10, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },
     { nodeKey: 'crm_pipeline', label: 'Pipeline', icon: 'columns', path: '/crm/pipeline', group: 'crm', position: 11, requiredPermission: 'opportunities:V', synonyms: ['kanban', 'board', 'deals'] },
@@ -755,8 +755,8 @@ async function seedSurfaces() {
     { nodeKey: 'crm_forecast', label: 'Forecast', icon: 'trending', path: '/crm/forecast', group: 'crm', position: 13, requiredPermission: 'opportunities:V', synonyms: ['commit', 'coverage'] },
     { nodeKey: 'crm_accounts', label: 'Accounts & Institutions', icon: 'building', path: '/crm/accounts', group: 'crm', position: 14, requiredPermission: 'organizations:V', synonyms: ['organizations', 'companies', 'colleges'] },
     { nodeKey: 'crm_people', label: 'People', icon: 'users', path: '/crm/people', group: 'crm', position: 15, requiredPermission: 'people:V', synonyms: ['contacts', 'persons'] },
-    { nodeKey: 'crm_interactions', label: 'Interactions', icon: 'message', path: '/crm/interactions', group: 'crm', position: 16, requiredPermission: 'interactions:V', synonyms: ['activity', 'timeline', 'calls'] },
-    { nodeKey: 'com_offerings', label: 'Offering Catalog', icon: 'package', path: '/commercial/offerings', group: 'commercial', position: 20, requiredPermission: 'offerings:V', synonyms: ['products', 'price book', 'catalog'] },
+    { nodeKey: 'crm_interactions', label: 'Calls & Meetings', icon: 'message', path: '/crm/interactions', group: 'crm', position: 16, requiredPermission: 'interactions:V', synonyms: ['activity', 'timeline', 'calls'] },
+    { nodeKey: 'com_offerings', label: 'What We Sell', icon: 'package', path: '/commercial/offerings', group: 'commercial', position: 20, requiredPermission: 'offerings:V', synonyms: ['products', 'price book', 'catalog'] },
     { nodeKey: 'com_quotes', label: 'Quotes', icon: 'calculator', path: '/commercial/quotes', group: 'commercial', position: 21, requiredPermission: 'quotes:V', synonyms: ['pricing', 'discount'] },
     { nodeKey: 'com_proposals', label: 'Proposals', icon: 'file', path: '/commercial/proposals', group: 'commercial', position: 22, requiredPermission: 'proposals:V' },
     { nodeKey: 'com_agreements', label: 'Agreements', icon: 'scroll', path: '/commercial/agreements', group: 'commercial', position: 23, requiredPermission: 'mous:V', synonyms: ['mou', 'contracts', 'partner agreements'] },
@@ -765,19 +765,19 @@ async function seedSurfaces() {
     { nodeKey: 'fin_invoices', label: 'Invoices', icon: 'receipt', path: '/finance/invoices', group: 'finance', position: 30, requiredPermission: 'invoices:V' },
     { nodeKey: 'fin_payments', label: 'Payments', icon: 'wallet', path: '/finance/payments', group: 'finance', position: 31, requiredPermission: 'payments:V' },
     { nodeKey: 'fin_receivables', label: 'Receivables', icon: 'coins', path: '/finance/receivables', group: 'finance', position: 32, requiredPermission: 'receivables:V' },
-    { nodeKey: 'edu_cohorts', label: 'Cohorts', icon: 'graduation', path: '/education/cohorts', group: 'delivery', position: 40, requiredPermission: 'education:V', synonyms: ['batches', 'classes'] },
-    { nodeKey: 'edu_enrollments', label: 'Enrollments', icon: 'badge', path: '/education/enrollments', group: 'delivery', position: 41, requiredPermission: 'education:V', synonyms: ['students', 'learners'] },
+    { nodeKey: 'edu_cohorts', label: 'Training Batches', icon: 'graduation', path: '/education/cohorts', group: 'delivery', position: 40, requiredPermission: 'education:V', synonyms: ['batches', 'classes'] },
+    { nodeKey: 'edu_enrollments', label: 'Learners', icon: 'badge', path: '/education/enrollments', group: 'delivery', position: 41, requiredPermission: 'education:V', synonyms: ['students', 'learners'] },
     { nodeKey: 'prj_projects', label: 'Projects', icon: 'kanban', path: '/delivery/projects', group: 'delivery', position: 42, requiredPermission: 'projects:V', synonyms: ['delivery'] },
-    { nodeKey: 'gov_exceptions', label: 'Exceptions', icon: 'alert', path: '/exceptions', group: 'governance', position: 50, requiredPermission: 'exceptions:V', synonyms: ['issues', 'attention'] },
+    { nodeKey: 'gov_exceptions', label: 'Problems', icon: 'alert', path: '/exceptions', group: 'governance', position: 50, requiredPermission: 'exceptions:V', synonyms: ['issues', 'attention'] },
     { nodeKey: 'gov_decisions', label: 'Decisions', icon: 'scale', path: '/command/decisions', group: 'governance', position: 51, requiredPermission: 'decisions:V' },
     { nodeKey: 'adm_pipelines', label: 'Pipeline Configuration', icon: 'settings', path: '/admin/pipelines', group: 'admin', position: 60, requiredPermission: 'pipeline_definitions:V' },
-    { nodeKey: 'adm_territories', label: 'Territories & Routing', icon: 'map', path: '/admin/territories', group: 'admin', position: 61, requiredPermission: 'territories:V' },
-    { nodeKey: 'adm_governance', label: 'Roles & Grants', icon: 'key', path: '/admin/governance', group: 'admin', position: 62, requiredPermission: 'grants:V' },
+    { nodeKey: 'adm_territories', label: 'Territories & Assignment', icon: 'map', path: '/admin/territories', group: 'admin', position: 61, requiredPermission: 'territories:V' },
+    { nodeKey: 'adm_governance', label: 'Who Can Do What', icon: 'key', path: '/admin/governance', group: 'admin', position: 62, requiredPermission: 'grants:V' },
     { nodeKey: 'adm_agents', label: 'AI Agents', icon: 'bot', path: '/admin/agents', group: 'admin', position: 63, requiredPermission: 'agents:V' },
-    { nodeKey: 'adm_events', label: 'Event Fabric', icon: 'activity', path: '/admin/events', group: 'admin', position: 64, requiredPermission: 'events:V' },
-    { nodeKey: 'adm_jobs', label: 'Automation', icon: 'clock', path: '/admin/jobs', group: 'admin', position: 65, requiredPermission: 'jobs:V' },
+    { nodeKey: 'adm_events', label: 'System History', icon: 'activity', path: '/admin/events', group: 'admin', position: 64, requiredPermission: 'events:V' },
+    { nodeKey: 'adm_jobs', label: 'Automatic Checks', icon: 'clock', path: '/admin/jobs', group: 'admin', position: 65, requiredPermission: 'jobs:V' },
     { nodeKey: 'adm_audit', label: 'Audit Trail', icon: 'search', path: '/admin/audit', group: 'admin', position: 66, requiredPermission: 'audit:V' },
-    { nodeKey: 'adm_platform', label: 'Platform Model', icon: 'layers', path: '/admin/platform', group: 'admin', position: 67 },
+    { nodeKey: 'adm_platform', label: 'How This Is Built', icon: 'layers', path: '/admin/platform', group: 'admin', position: 67 },
   ];
 
   for (const n of navNodes) {

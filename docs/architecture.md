@@ -286,3 +286,41 @@ within the year, generator-assigned, never caller-supplied, and rejected as an
 edit target for every role. Two tenants each start from `00001` for the same
 type and year; there is no shared counter. Sequence exhaustion raises an
 operational alert rather than rolling over silently.
+
+---
+
+## Language
+
+The platform's internal vocabulary is precise and worth keeping. `H_FIN`,
+`S3_HIGH_RISK`, `own_or_unowned` and `EX-CRM-014` each mean something exact,
+the audit trail is keyed on them, and the governance surfaces need that
+precision.
+
+None of it belongs on a screen a counsellor opens on a Tuesday. So one rule
+holds across the product:
+
+> **Plain words lead. The code stays available.**
+
+A tile is headed *Money*, not `H_FIN`. A chip reads *High risk*, not
+`S3_HIGH_RISK` — and its tooltip carries the code, for the person whose job
+needs it. A grant cell still shows `VCEA@own`, because that audience reads it
+fluently, and hovering spells it out as a sentence so nobody has to decode it
+to check it is right.
+
+Two things this rule is not:
+
+- **It is not "avoid business terms."** A salesperson knows what a lead, a
+  pipeline, a quote and a forecast are. Renaming those would make the product
+  worse for the people who use it. What gets translated is the *engineering*
+  vocabulary underneath.
+- **It is not renaming anything in the database.** `packages/shared` and the
+  schema are unchanged. The translation lives in one module,
+  `apps/web/src/lib/words.ts`, plus the labels the API attaches to what it
+  emits.
+
+Empty states say what is true rather than which threshold was not crossed:
+*"Nothing significant has changed since you last looked"*, not *"Nothing
+crossed the materiality floor in this window."* And where a score has too
+little evidence, the screen says **Nothing to measure yet** — never a zero,
+because a zero asserts that things are going badly, which is a different claim
+from not knowing.

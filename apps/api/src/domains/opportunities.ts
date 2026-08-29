@@ -542,7 +542,7 @@ export async function detectStageAgeBreaches(): Promise<number> {
 
     await raiseException({
       code: 'EX-CRM-009',
-      label: 'Stage age budget breached',
+      label: 'This deal has sat at the same stage too long',
       severity: 'S2_WARNING' as SeverityCode,
       subjectType: 'opportunity',
       subjectId: opp.id,
@@ -607,7 +607,7 @@ export async function detectChronicRecommits(periodDays = 90): Promise<number> {
   for (const opp of chronic) {
     await raiseException({
       code: 'EX-CRM-016',
-      label: 'Chronic recommit — commit past one full forecast period',
+      label: 'Committed for more than a full quarter without closing',
       severity: 'S2_WARNING',
       subjectType: 'opportunity',
       subjectId: opp.id,

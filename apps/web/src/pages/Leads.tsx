@@ -53,7 +53,7 @@ export function Leads() {
     <div>
       <PageHeader
         title="Leads"
-        subtitle="A lead with no eligible routing candidate enters an explicit unrouted state rather than defaulting to its creator or the intake service account."
+        subtitle="New enquiries, and who is looking after each one. When nobody suitable is free, a lead is marked unassigned and shown here rather than quietly parked with whoever typed it in."
         actions={
           can('leads:C') && (
             <button className="btn-primary" onClick={() => setCreateOpen(true)}>
@@ -356,7 +356,7 @@ export function LeadDetail() {
         <div className="space-y-5 lg:col-span-2">
           <Card title="Routing audit" subtitle="Every candidate considered, their per-factor scores, and why the winner won.">
             {audit.length === 0 ? (
-              <EmptyState message="No routing evaluation recorded." />
+              <EmptyState message="No record of how this was assigned." />
             ) : (
               <div className="space-y-2">
                 {audit.map((c) => (
@@ -405,7 +405,7 @@ export function LeadDetail() {
 
           <Card title="Timeline" bodyClassName="p-0">
             {data.timeline.length === 0 ? (
-              <EmptyState message="No interaction recorded yet." hint="An untouched lead raises EX-CRM-010 after the configured threshold." />
+              <EmptyState message="Nobody has logged a call or meeting yet." hint="If nobody makes contact soon, this will be flagged for follow-up automatically." />
             ) : (
               <ul className="divide-y divide-ink-850">
                 {data.timeline.map((t: any) => (

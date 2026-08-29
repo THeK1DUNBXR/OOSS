@@ -41,7 +41,7 @@ export function Cohorts() {
     <div>
       <PageHeader
         title="Cohorts"
-        subtitle="Delivery batches. The trainer narrowing is expressed as a grant scope resolver, so a second role needing the same scoping is a policy change alone."
+        subtitle="Training batches and who is running them. Trainers see the batches they teach and no others."
       />
 
       {scoped && (
@@ -56,7 +56,7 @@ export function Cohorts() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="No cohorts within your scope." /></Card>
+        <Card><EmptyState message="No training batches you can see." /></Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {data.map((c) => (
@@ -114,7 +114,7 @@ export function Enrollments() {
     <div>
       <PageHeader
         title="Enrollments"
-        subtitle="Attendance and the risk flag are recomputed from live records, never hand-maintained fields."
+        subtitle="Learners on each course. Attendance and the at-risk flag are worked out from actual records — nobody keeps them up to date by hand, so they cannot drift."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -148,7 +148,7 @@ export function Enrollments() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="No enrollments within your scope." /></Card>
+        <Card><EmptyState message="No learners you can see." /></Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
@@ -239,7 +239,7 @@ export function Projects() {
           label="Handoff pending"
           value={pending}
           tone={pending > 0 ? 'warn' : 'good'}
-          sub="A won opportunity whose delivery handoff is unaccepted raises EX-CRM-012"
+          sub="Deals that were won but which delivery has not picked up yet are flagged automatically"
           drillTo="/exceptions"
         />
         <Metric label="Active" value={data.filter((p) => p.status === 'active').length} drillTo="/delivery/projects" />

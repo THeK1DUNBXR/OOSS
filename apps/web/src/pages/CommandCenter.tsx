@@ -13,6 +13,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CommandCenterResponse, DecisionView, ExceptionView, HealthScoreView } from '@kaizen/shared';
 import { api, money, relative, titleCase } from '../lib/api.js';
+import { NOT_MEASURED, domainAsks, domainName, words } from '../lib/words.js';
 import {
   BandChip,
   Card,
@@ -43,41 +44,41 @@ export function CommandCenter() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['command-center'] }),
   });
 
-  if (isLoading) return <Loading label="Composing the surface" />;
+  if (isLoading) return <Loading label="Getting today's picture" />;
   if (error) return <ErrorBox error={error} />;
   if (!data) return null;
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Command Center"
-        subtitle="The state of Kaizen: what changed, what needs attention, what needs a decision, who owns it, and what the system already handled."
+        title="Today at Kaizen"
+        subtitle="How the business is doing, what needs you, and what the system has already handled on its own."
         actions={
           <>
             <button className="btn-ghost" onClick={() => recompute.mutate()} disabled={recompute.isPending}>
-              {recompute.isPending ? 'Recomputing…' : 'Recompute health'}
+              {recompute.isPending ? 'Refreshing…' : 'Refresh the numbers'}
             </button>
             <button className="btn-ghost" onClick={() => markSeen.mutate()} disabled={markSeen.isPending}>
-              Mark as seen
+              Mark all as read
             </button>
           </>
         }
       />
 
-      {/* The banner states the waiting count and its oldest clock as a
-          rendered fact, not a query the Chairman has to run. */}
+      {/* Stated as a fact on arrival, rather than a question someone has to
+          think to ask. */}
       <div className="flex flex-wrap items-center gap-4 rounded-lg border border-ink-800 bg-ink-900 px-4 py-3">
         <div className="flex items-baseline gap-2">
           <span className="text-2xl font-semibold tabular-nums text-ink-50">{data.banner.waitingCount}</span>
-          <span className="text-xs text-ink-400">items waiting</span>
+          <span className="text-xs text-ink-400">things waiting on someone</span>
         </div>
         {data.banner.oldestClockHours !== null && (
           <div className="flex items-baseline gap-2 border-l border-ink-800 pl-4">
             <span className="text-2xl font-semibold tabular-nums text-band-watch">{data.banner.oldestClockHours}h</span>
-            <span className="text-xs text-ink-400">oldest clock</span>
+            <span className="text-xs text-ink-400">the longest one has been waiting</span>
           </div>
         )}
-        <span className="ml-auto text-2xs text-ink-500">as of {new Date(data.asOf).toLocaleString('en-IN')}</span>
+        <span className="ml-auto text-2xs text-ink-500">Correct as of {new Date(data.asOf).toLocaleString('en-IN')}</span>
       </div>
 
       <PulseStrip pulse={data.pulse} />
@@ -108,8 +109,8 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
   return (
     <>
       <Card
-        title="Company Pulse"
-        subtitle="Ten domain health scores. A domain with insufficient inputs renders Not yet measured — never a zero."
+        title="How the business is doing"
+        subtitle="Ten areas, scored out of 100. Click any one to see what is pulling it up or down. Where there is not enough information yet, it says so rather than showing a zero — a zero would mean things are going badly, which is a different thing from not knowing."
         bodyClassName="p-3"
       >
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
@@ -123,14 +124,16 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
               }`}
             >
               <div className="flex items-start justify-between gap-1">
-                <span className="mono">{p.domainCode}</span>
+                <span className="text-xs font-medium text-ink-100" title={p.domainCode}>
+                  {domainName(p.domainCode, p.domainName)}
+                </span>
                 {p.trend && (
                   <span className={p.trend === 'up' ? 'text-band-strong' : p.trend === 'down' ? 'text-band-critical' : 'text-ink-500'}>
                     {p.trend === 'up' ? '↗' : p.trend === 'down' ? '↘' : '→'}
                   </span>
                 )}
               </div>
-              <p className="mt-0.5 truncate text-2xs text-ink-400">{p.domainName}</p>
+              <p className="mt-0.5 line-clamp-2 text-2xs text-ink-500">{domainAsks(p.domainCode)}</p>
 
               {p.state === 'measured' ? (
                 <>
@@ -139,16 +142,18 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
                     <BandChip band={p.band} />
                   </div>
                   {p.distanceToEdge !== null && (
-                    <p className="mt-1.5 text-2xs text-ink-500">{p.distanceToEdge.toFixed(1)} pts to next band down</p>
+                    <p className="mt-1.5 text-2xs text-ink-500">
+                      {p.distanceToEdge.toFixed(0)} points before this slips further
+                    </p>
                   )}
                   {p.largestNegativeContributor && (
-                    <p className="mt-0.5 truncate text-2xs text-band-strained" title={p.largestNegativeContributor}>
-                      {p.largestNegativeContributor}
+                    <p className="mt-0.5 line-clamp-2 text-2xs text-band-strained" title={p.largestNegativeContributor}>
+                      Biggest drag: {p.largestNegativeContributor.replace(/\s−[\d.]+ pts$/, '')}
                     </p>
                   )}
                 </>
               ) : (
-                <p className="mt-3 text-xs italic text-ink-500">Not yet measured</p>
+                <p className="mt-3 text-xs italic text-ink-500">{NOT_MEASURED}</p>
               )}
             </button>
           ))}
@@ -160,7 +165,7 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
           behind an aggregate. */}
       <Modal
         open={Boolean(open)}
-        title={open ? `${open.domainCode} — ${open.domainName}` : ''}
+        title={open ? domainName(open.domainCode, open.domainName) : ''}
         onClose={() => setOpen(null)}
         width="max-w-3xl"
       >
@@ -172,13 +177,15 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
                 <BandChip band={open.band} />
               </div>
               <div className="flex-1 text-xs text-ink-400">
-                <p>Severity floor: {open.severityFloor ?? 'none — a band never itself reaches S4_CRITICAL; only a named exception does.'}</p>
-                <p className="mt-1">{open.distanceToEdge?.toFixed(1)} points of room before the next band down.</p>
+                <p>{domainAsks(open.domainCode)}</p>
+                <p className="mt-1">
+                  {open.distanceToEdge?.toFixed(0)} points of room before this slips into the next band down.
+                </p>
               </div>
             </div>
 
             <div className="space-y-3">
-              <p className="section-title">Factor breakdown</p>
+              <p className="section-title">What is driving this</p>
               {open.factors.map((f) => (
                 <div key={f.factor} className="rounded-lg border border-ink-800 bg-ink-950 p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -186,8 +193,11 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
                       <p className="text-xs font-medium text-ink-100">
                         {f.label}
                         {f.quarantined && (
-                          <span className="ml-2 chip border-band-watch/40 text-band-watch" title="No downside excursion in its trailing range — a factor that cannot fall is a vanity metric.">
-                            quarantined
+                          <span
+                            className="ml-2 chip border-band-watch/40 text-band-watch"
+                            title="This measure has never gone down in the period we track. A number that can only go up is not really telling us anything, so we have stopped counting it until it is fixed."
+                          >
+                            not trustworthy
                           </span>
                         )}
                       </p>
@@ -243,15 +253,15 @@ function AttentionQueue({ items }: { items: ExceptionView[] }) {
 
   return (
     <Card
-      title="Attention Queue"
-      subtitle="Owned by or escalated to you at S3+, plus anything breaching SLA and the unowned bucket."
-      actions={<Link to="/exceptions" className="btn-ghost">All exceptions</Link>}
+      title="Needs your attention"
+      subtitle="Problems that are yours to handle, anything that has missed its deadline, and anything nobody has picked up."
+      actions={<Link to="/exceptions" className="btn-ghost">See everything</Link>}
       bodyClassName="max-h-[26rem] overflow-y-auto p-0"
     >
       {items.length === 0 ? (
         <EmptyState
-          message="Nothing owned by or escalated to you is open above S3."
-          hint="The queue shows zero items only when zero are actually open."
+          message="Nothing needs you right now."
+          hint="This is empty only when it genuinely is — nothing is being hidden from you here."
         />
       ) : (
         <ul className="divide-y divide-ink-850">
@@ -261,25 +271,32 @@ function AttentionQueue({ items }: { items: ExceptionView[] }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <SeverityChip severity={e.severity} />
-                    <span className="mono">{e.code}</span>
-                    {e.slaBreached && <span className="chip border-band-critical/50 text-band-critical">SLA breached</span>}
+                    {e.slaBreached && (
+                      <span className="chip border-band-critical/50 text-band-critical">Past its deadline</span>
+                    )}
                     {e.ownerPartyId === null && (
-                      <span className="chip border-band-strained/40 text-band-strained" title="A routing defect — itself a measured category feeding H_OPS.">
-                        unowned
+                      <span
+                        className="chip border-band-strained/40 text-band-strained"
+                        title="Nobody has been assigned this. That is itself a problem worth fixing — it means our routing rules have a gap."
+                      >
+                        Nobody assigned
                       </span>
                     )}
                     {e.escalationRung > 0 && (
-                      <span className="chip border-ink-700 text-ink-400">rung {e.escalationRung} · {titleCase(e.escalationTrigger)}</span>
+                      <span className="chip border-ink-700 text-ink-400" title={`Escalation step ${e.escalationRung} — ${titleCase(e.escalationTrigger)}`}>
+                        Escalated
+                      </span>
                     )}
                   </div>
                   <p className="mt-1 text-xs font-medium text-ink-100">{e.label}</p>
                   <p className="mt-0.5 line-clamp-2 text-2xs text-ink-400">{e.detail}</p>
                   <p className="mt-1 text-2xs text-ink-500">
-                    {e.subjectLabel} · owner {e.ownerName ?? '— unresolved'} · raised {relative(e.raisedAt)}
+                    {e.subjectLabel} · {e.ownerName ? `with ${e.ownerName}` : 'not yet assigned to anyone'} ·
+                    noticed {relative(e.raisedAt)} · <span className="mono">{e.code}</span>
                   </p>
                   {e.ranked && (
-                    <p className="mt-1 text-2xs italic text-ink-600" title="An unexplainable ordering is the same defect class as an undrillable score.">
-                      ranked {e.ranked.band.replace(/_/g, ' ')} — {e.ranked.whyRanked.join(', ')}
+                    <p className="mt-1 text-2xs italic text-ink-600" title="Why this is where it is in the list. An order nobody can explain is no better than a score nobody can check.">
+                      Near the top because: {e.ranked.whyRanked.join(', ')}
                     </p>
                   )}
                 </div>
@@ -289,7 +306,7 @@ function AttentionQueue({ items }: { items: ExceptionView[] }) {
                   </button>
                   {e.state === 'open' && (
                     <button className="btn-ghost" onClick={() => ack.mutate(e.id)} disabled={ack.isPending}>
-                      Acknowledge
+                      Got it
                     </button>
                   )}
                 </div>
@@ -312,12 +329,12 @@ function DecisionQueue({ items }: { items: DecisionView[] }) {
   return (
     <>
       <Card
-        title="Decision Queue"
-        subtitle="Nothing arrives unless the required authority exceeds every grant below you, a policy reserves it by name, or a delegation returned it unactioned."
+        title="Waiting on your decision"
+        subtitle="These have reached you because nobody below you has the authority to settle them, a policy names you specifically, or someone you handed it to has sent it back."
         bodyClassName="max-h-[26rem] overflow-y-auto p-0"
       >
         {items.length === 0 ? (
-          <EmptyState message="Nothing requires authority that exceeds every grant below you." />
+          <EmptyState message="No decisions are waiting on you." />
         ) : (
           <ul className="divide-y divide-ink-850">
             {items.map((d) => (
@@ -327,21 +344,21 @@ function DecisionQueue({ items }: { items: DecisionView[] }) {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="mono">{d.recordCode}</span>
                       {d.evidencePack.complete ? (
-                        <span className="chip border-band-strong/40 text-band-strong">decidable</span>
+                        <span className="chip border-band-strong/40 text-band-strong">Ready to decide</span>
                       ) : (
                         <span
                           className="chip border-band-watch/40 text-band-watch"
-                          title="An incomplete evidence pack renders Analysing with a visible clock, never as decidable."
+                          title="Some of the background you need is still being gathered. You can ask for it, but you should not have to decide without it."
                         >
-                          Analysing
+                          Still gathering facts
                         </span>
                       )}
-                      <span className="chip border-ink-700 text-ink-400">{d.authorityBasis.replace(/_/g, ' ')}</span>
+                      <span className="chip border-ink-700 text-ink-400">{words(d.authorityBasis)}</span>
                     </div>
                     <p className="mt-1 text-xs font-medium text-ink-100">{d.question}</p>
                     <p className="mt-0.5 text-2xs text-ink-500">
-                      {d.subjectLabel} · raised {relative(d.raisedAt)}
-                      {d.pointOfNoReturn && ` · point of no return ${new Date(d.pointOfNoReturn).toLocaleDateString('en-IN')}`}
+                      {d.subjectLabel} · came to you {relative(d.raisedAt)}
+                      {d.pointOfNoReturn && ` · too late to act after ${new Date(d.pointOfNoReturn).toLocaleDateString('en-IN')}`}
                     </p>
                   </div>
                   <button className="btn-primary shrink-0" onClick={() => setOpen(d)}>
@@ -393,7 +410,7 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
   return (
     <Modal
       open
-      title={`${decision.recordCode} — Decision`}
+      title="A decision for you"
       onClose={onClose}
       width="max-w-3xl"
       footer={
@@ -406,7 +423,7 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
             disabled={dispose.isPending || !rationale || (disposition === 'decide' && !chosenOption) || (disposition === 'defer' && !deferUntil)}
             onClick={() => dispose.mutate()}
           >
-            {dispose.isPending ? 'Recording…' : `Record ${disposition.replace(/_/g, ' ')}`}
+            {dispose.isPending ? 'Saving…' : `Save this ${words(disposition).toLowerCase()}`}
           </button>
         </>
       }
@@ -415,23 +432,24 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
         <div>
           <p className="text-sm font-medium text-ink-50">{decision.question}</p>
           <p className="mt-1 text-2xs text-ink-500">
-            {decision.subjectLabel} · {decision.authorityBasis.replace(/_/g, ' ')}
+            {decision.subjectLabel} · {words(decision.authorityBasis)}
             {decision.requiredAuthorityValue && ` · ${money(decision.requiredAuthorityValue, decision.currency ?? 'INR')}`}
           </p>
         </div>
 
         {!pack.complete && (
           <div className="rounded border border-band-watch/40 bg-band-watch/5 p-3">
-            <p className="text-xs font-medium text-band-watch">Evidence pack incomplete — Analysing</p>
+            <p className="text-xs font-medium text-band-watch">Some background is still missing</p>
             <p className="mt-1 text-2xs text-ink-400">
-              Missing: {pack.missingComponents.map((m) => m.replace(/_/g, ' ')).join(', ')}. Only
-              request-evidence is available until every mandatory component is assembled.
+              Still to come: {pack.missingComponents.map((m) => words(m).toLowerCase()).join(', ')}. Until
+              that is in, the only thing you can do here is ask for it — deciding without it would not be
+              a real decision.
             </p>
           </div>
         )}
 
         <div className="space-y-3 rounded-lg border border-ink-800 bg-ink-950 p-3">
-          <p className="section-title">Evidence pack</p>
+          <p className="section-title">What you are deciding on</p>
 
           {pack.rejectedOptions.length > 0 && (
             <div>
@@ -567,9 +585,9 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
 function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChanged']; onSeen: () => void }) {
   return (
     <Card
-      title="What Changed"
-      subtitle={`Since ${new Date(data.watermark).toLocaleString('en-IN')} · ${data.suppressedBelowMateriality} items suppressed below the materiality floor`}
-      actions={<button className="btn-ghost" onClick={onSeen}>Mark seen</button>}
+      title="What changed"
+      subtitle={`Since you last looked, ${new Date(data.watermark).toLocaleString('en-IN')}. ${data.suppressedBelowMateriality} smaller changes are not listed — they were too minor to be worth your time.`}
+      actions={<button className="btn-ghost" onClick={onSeen}>I have read this</button>}
       bodyClassName="max-h-[26rem] overflow-y-auto p-0"
     >
       {data.narrative && (
@@ -582,7 +600,7 @@ function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChange
       )}
 
       {data.items.length === 0 ? (
-        <EmptyState message="Nothing crossed the materiality floor in this window." />
+        <EmptyState message="Nothing significant has changed since you last looked." />
       ) : (
         <ul className="divide-y divide-ink-850">
           {data.items.map((d) => (
@@ -593,8 +611,8 @@ function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChange
                     <span className="text-xs font-medium text-ink-100">{d.headline}</span>
                     {d.severity && <SeverityChip severity={d.severity} />}
                     {d.newToView && (
-                      <span className="chip border-accent/40 text-accent-soft" title="Your reach widened — this is new to your view, not new in the world.">
-                        new to your view
+                      <span className="chip border-accent/40 text-accent-soft" title="This is not new — you just gained access to it. It was already there.">
+                        Newly visible to you
                       </span>
                     )}
                     {d.handledWithoutYou && (
@@ -737,7 +755,7 @@ function PeopleCapability() {
           </div>
         ))}
       </div>
-      {data.length === 0 && <EmptyState message="No org unit clears the k≥5 anonymity floor." />}
+      {data.length === 0 && <EmptyState message="No team here is large enough to show figures for without identifying individuals." />}
     </Card>
   );
 }

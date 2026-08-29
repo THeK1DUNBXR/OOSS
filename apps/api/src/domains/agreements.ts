@@ -253,7 +253,7 @@ export async function createPartnerAgreement(input: {
   if (existing) {
     await raiseException({
       code: 'EX-CRM-013',
-      label: 'Dual-channel partner conflict',
+      label: 'Two partners are chasing the same customer',
       severity: 'S2_WARNING',
       subjectType: 'partner_agreement',
       subjectId: agreement.id,
@@ -484,7 +484,7 @@ export async function runExpiryLadder(kind: 'mou' | 'contract' | 'partner_agreem
       subjectId: row.id as string,
       subjectLabel: `${row.recordCode} — ${row.title}`,
       domain: 'crm',
-      detail: `${daysToExpiry} days to expiry (${rung}-day rung). Open a renewal or let it lapse deliberately.`,
+      detail: `Expires in ${daysToExpiry} days. Start a renewal, or decide deliberately to let it lapse — either is fine, letting it drift is not.`,
       ownerPartyId: (row.ownerPartyId as string | null) ?? null,
       triggerFingerprint: `${kind}_expiry_ladder`,
       ladderRung: rung,

@@ -30,6 +30,17 @@ import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { latestPulse } from './health.js';
 
+
+/** Why an item sits where it does in the queue, in words rather than codes. */
+const SEVERITY_REASON: Record<string, string> = {
+  S0_INFO: 'it is worth knowing about',
+  S1_ATTENTION: 'it is worth a look',
+  S2_WARNING: 'it needs attention',
+  S3_HIGH_RISK: 'it is high risk',
+  S4_CRITICAL: 'it is urgent',
+};
+
+
 // ---------------------------------------------------------------------------
 // The four admission gates. Nothing arrives on this surface as a raw event —
 // only a resolved exception, a decision whose authority exceeds everyone below
@@ -288,11 +299,13 @@ export async function attentionQueue(minSeverity: SeverityCode = 'S3_HIGH_RISK')
                   ? ('my_due_items' as const)
                   : ('scored' as const),
         score: SEVERITY_RANK[r.severity as SeverityCode] * 10 + (slaBreached ? 5 : 0),
+        // Said the way a person would say it, because an ordering nobody can
+        // explain is no more use than a score nobody can check.
         whyRanked: [
-          `severity ${r.severity}`,
-          ...(slaBreached ? ['SLA breached'] : []),
-          ...(r.ownerUnresolved ? ['owner unresolved — routing defect'] : []),
-          ...(r.ownerPartyId === auth.partyId ? ['owned by you'] : []),
+          SEVERITY_REASON[r.severity as SeverityCode] ?? 'it was flagged',
+          ...(slaBreached ? ['it has missed its deadline'] : []),
+          ...(r.ownerUnresolved ? ['nobody has been assigned to it'] : []),
+          ...(r.ownerPartyId === auth.partyId ? ['it is yours'] : []),
         ],
       },
     };

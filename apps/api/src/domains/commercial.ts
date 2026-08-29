@@ -144,7 +144,7 @@ export async function detectOfferingCoverageGaps(): Promise<number> {
   for (const offering of gaps) {
     await raiseException({
       code: 'DET-CRM-OFF-01',
-      label: 'Active offering with no price book entry',
+      label: 'We are selling something with no price set',
       severity: 'S1_ATTENTION',
       subjectType: 'offering',
       subjectId: offering.id,

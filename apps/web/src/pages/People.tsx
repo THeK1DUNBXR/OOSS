@@ -49,7 +49,7 @@ export function People() {
     <div>
       <PageHeader
         title="People"
-        subtitle="One row per real human, forever. Every relationship a person holds is a separate, time-bounded affiliation — never a second identity."
+        subtitle="One record per person, kept for good. Someone can be a student, then an employee, then a client contact — that is three roles for one person, not three people."
       />
 
       <Tabs
@@ -246,7 +246,7 @@ export function PersonDetail() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
-          <Card title="Affiliations" subtitle="How this person relates to Kaizen right now. Access and visibility derive from these, never from the person record.">
+          <Card title="Affiliations" subtitle="How this person is connected to Kaizen today. What they can see and do comes from these roles, not from the person record itself.">
             {p.affiliations.length === 0 ? (
               <EmptyState message="No affiliation recorded." />
             ) : (

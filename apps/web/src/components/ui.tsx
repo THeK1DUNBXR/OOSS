@@ -14,6 +14,13 @@
 import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { SensitivityClass, SeverityCode } from '@kaizen/shared';
+import {
+  BAND_WORDS,
+  NOT_MEASURED,
+  SENSITIVITY_WORDS,
+  severityWord,
+  withheldWord,
+} from '../lib/words.js';
 
 export function Card({
   title,
@@ -55,8 +62,12 @@ const BAND_STYLE: Record<string, string> = {
 };
 
 export function BandChip({ band }: { band: string | null }) {
-  if (!band) return <span className="chip border-ink-700 bg-ink-850 text-ink-400">not measured</span>;
-  return <span className={`chip capitalize ${BAND_STYLE[band] ?? 'border-ink-700 text-ink-300'}`}>{band}</span>;
+  if (!band) return <span className="chip border-ink-700 bg-ink-850 text-ink-400">{NOT_MEASURED}</span>;
+  return (
+    <span className={`chip ${BAND_STYLE[band] ?? 'border-ink-700 text-ink-300'}`} title={band}>
+      {BAND_WORDS[band] ?? band}
+    </span>
+  );
 }
 
 const SEVERITY_STYLE: Record<string, string> = {
@@ -69,9 +80,11 @@ const SEVERITY_STYLE: Record<string, string> = {
 
 export function SeverityChip({ severity }: { severity: SeverityCode | string | null }) {
   if (!severity) return null;
+  // The code stays in the tooltip: it is what the audit trail records, and
+  // someone doing that job needs to be able to find it.
   return (
-    <span className={`chip ${SEVERITY_STYLE[severity] ?? 'border-ink-700 text-ink-300'}`}>
-      {severity.replace(/^S\d_/, '').replace('_', ' ').toLowerCase()}
+    <span className={`chip ${SEVERITY_STYLE[severity] ?? 'border-ink-700 text-ink-300'}`} title={String(severity)}>
+      {severityWord(String(severity))}
     </span>
   );
 }
@@ -85,7 +98,11 @@ const SENSITIVITY_STYLE: Record<string, string> = {
 };
 
 export function SensitivityChip({ level }: { level: SensitivityClass | string }) {
-  return <span className={`chip bg-ink-950/60 ${SENSITIVITY_STYLE[level] ?? 'border-ink-700'}`}>{level}</span>;
+  return (
+    <span className={`chip bg-ink-950/60 ${SENSITIVITY_STYLE[level] ?? 'border-ink-700'}`} title={String(level)}>
+      {SENSITIVITY_WORDS[level] ?? level}
+    </span>
+  );
 }
 
 export function StatusChip({ status, tone = 'neutral' }: { status: string; tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'accent' }) {
@@ -175,8 +192,8 @@ export function EmptyState({ message, hint }: { message: string; hint?: string }
  */
 export function Withheld({ reason }: { reason: string }) {
   return (
-    <span className="chip border-ink-700 bg-ink-850 text-ink-500" title={`Withheld: ${reason}`}>
-      withheld · {reason.replace(/_/g, ' ')}
+    <span className="chip border-ink-700 bg-ink-850 text-ink-500" title={reason}>
+      🔒 {withheldWord(reason)}
     </span>
   );
 }

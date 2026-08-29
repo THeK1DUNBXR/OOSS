@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentView, EventView, PipelineView } from '@kaizen/shared';
 import { api, date, dateTime, money, relative, titleCase } from '../lib/api.js';
+import { grantSentence, words } from '../lib/words.js';
 import {
   Card,
   ContributionBar,
@@ -44,7 +45,7 @@ export function PipelineAdmin() {
     <div>
       <PageHeader
         title="Pipeline Configuration"
-        subtitle="The pipeline vocabulary is configuration, not code. A stage, an SLA budget or an approval gate changes through data, with no deploy."
+        subtitle="The stages each kind of deal moves through, and how long each should take. Change any of it here — no developer, no release."
       />
 
       {isLoading ? (
@@ -82,7 +83,7 @@ export function PipelineAdmin() {
                 <thead>
                   <tr>
                     <th>Stage</th>
-                    <th className="text-right" title="The closed canonical ordinal shared by every pipeline.">Position</th>
+                    <th className="text-right" title="The shared scale that lets different kinds of business be compared side by side.">Position</th>
                     <th className="text-right">Probability</th>
                     <th className="text-right">SLA budget</th>
                     <th>Required fields</th>
@@ -106,7 +107,7 @@ export function PipelineAdmin() {
                         <div className="flex flex-wrap gap-1">
                           {s.isTerminal && <span className="chip border-ink-700 text-ink-400">terminal</span>}
                           {s.postAward && (
-                            <span className="chip border-band-watch/40 text-band-watch" title="Retired. No transition targets it; the board no longer offers it as a drop target.">
+                            <span className="chip border-band-watch/40 text-band-watch" title="No longer in use. Old records still show it, but nothing new can be moved here.">
                               post-award (retired)
                             </span>
                           )}
@@ -155,8 +156,8 @@ export function TerritoryAdmin() {
   return (
     <div>
       <PageHeader
-        title="Territories & Routing"
-        subtitle="Territory and vertical are hard filters — assigning outside either is an authorization error, not a preference. Only survivors are scored on the soft factors."
+        title="Territories & Assignment"
+        subtitle="How new enquiries get assigned. Region and specialism are absolute: someone outside them is never picked, however free they are. Everyone who passes both is then compared on workload, expertise and existing relationships."
       />
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -164,7 +165,7 @@ export function TerritoryAdmin() {
           {isLoading ? (
             <Loading />
           ) : territories.length === 0 ? (
-            <EmptyState message="No territories defined." />
+            <EmptyState message="No territories have been set up yet." />
           ) : (
             <ul className="divide-y divide-ink-850">
               {territories.map((t) => (
@@ -180,7 +181,7 @@ export function TerritoryAdmin() {
                   <p className="mt-0.5 text-2xs text-ink-600">
                     capacity ceiling {t.capacityCeiling} · owner position{' '}
                     <span className="font-mono">{t.ownerPositionId ?? 'unset'}</span>
-                    <span title="A position, not a named user — it survives personnel change."> ⓘ</span>
+                    <span title="A job, not a person — so this still works when someone changes role or leaves."> ⓘ</span>
                   </p>
                 </li>
               ))}
@@ -188,7 +189,7 @@ export function TerritoryAdmin() {
           )}
         </Card>
 
-        <Card title="Routing rules" subtitle="Six factors in declared order. Round-robin is a tie-break only, never a fourth scoring factor.">
+        <Card title="Routing rules" subtitle="Six things are weighed up, in this order. Taking turns is only used to break a tie.">
           {rules.map((r) => (
             <div key={r.id} className="space-y-2">
               <div className="flex items-center justify-between">
@@ -239,6 +240,27 @@ export function TerritoryAdmin() {
 // Governance: roles, grants, policies
 // ---------------------------------------------------------------------------
 
+/**
+ * Spells a matrix cell out as a sentence for its tooltip. `VCEA@own` is quick
+ * to scan once you know it and impossible to check if you do not, so the screen
+ * offers both readings rather than choosing one.
+ */
+const CELL_LETTERS: Record<string, string> = {
+  V: 'view', C: 'create', E: 'edit', D: 'delete',
+  A: 'assign', X: 'export', F: 'financial',
+};
+
+function explainCell(resource: string, cell: string): string {
+  const [letters, scope] = cell.split('@');
+  const verbs: string[] = [];
+  for (const token of letters.split(',')) {
+    const t = token.trim();
+    if (t === 'approve' || t === 'merge') { verbs.push(t); continue; }
+    for (const ch of t) if (CELL_LETTERS[ch]) verbs.push(CELL_LETTERS[ch]);
+  }
+  return `${resource} — ${grantSentence([...new Set(verbs)], scope ?? 'all')}`;
+}
+
 export function Governance() {
   const [tab, setTab] = useState<'matrix' | 'roles' | 'policies' | 'authority'>('matrix');
 
@@ -265,8 +287,8 @@ export function Governance() {
   return (
     <div>
       <PageHeader
-        title="Roles & Grants"
-        subtitle="Permissions are durable, versioned data evaluated at query time — never a compiled file that overwrites the database on every deploy."
+        title="Who Can Do What"
+        subtitle="Every cell below is a rule stored in the database and checked on every single request — so removing someone's access takes effect immediately, not at their next sign-in. Hover any cell to read it as a sentence."
       />
 
       <Tabs
@@ -288,7 +310,7 @@ export function Governance() {
                 <th className="sticky left-0 z-20 bg-ink-900">Resource</th>
                 {matrix.roles.map((r) => (
                   <th key={r} className="text-center">
-                    <span className="block max-w-16 truncate" title={r}>{r.replace(/_/g, ' ')}</span>
+                    <span className="block max-w-16 truncate" title={r}>{words(r)}</span>
                   </th>
                 ))}
               </tr>
@@ -296,15 +318,26 @@ export function Governance() {
             <tbody>
               {matrix.resources.map((res) => (
                 <tr key={res}>
-                  <td className="sticky left-0 z-10 bg-ink-900 text-2xs font-medium text-ink-200">{res}</td>
+                  <td className="sticky left-0 z-10 bg-ink-900 text-2xs font-medium text-ink-200" title={res}>
+                    {words(res)}
+                  </td>
                   {matrix.roles.map((role) => {
                     const cell = matrix.matrix[res]?.[role];
                     return (
                       <td key={role} className="text-center">
                         {cell ? (
-                          <span className="mono text-ink-200" title={`${res}:${cell}`}>{cell}</span>
+                          // The letters stay — this audience reads them fluently,
+                          // and they are what the audit trail records — but
+                          // hovering spells the cell out as a sentence, so nobody
+                          // has to decode it to check that it is right.
+                          <span className="mono text-ink-200" title={explainCell(res, cell)}>{cell}</span>
                         ) : (
-                          <span className="text-ink-700" title="Explicit absence of grant — never a placeholder row.">·</span>
+                          <span
+                            className="text-ink-700"
+                            title={`This role has no access to ${res} at all — a deliberate blank, not a missing setting.`}
+                          >
+                            ·
+                          </span>
                         )}
                       </td>
                     );
@@ -327,7 +360,7 @@ export function Governance() {
             >
               <p className="text-2xs text-ink-400">{r.description}</p>
               <dl className="mt-2">
-                <Field label="Classification ceiling">
+                <Field label="Highest sensitivity they may see">
                   <SensitivityChip level={r.classificationCeiling} />
                 </Field>
                 <Field label="Active holders">{r.holders}</Field>
@@ -455,7 +488,7 @@ export function Agents() {
     <div>
       <PageHeader
         title="AI Agents"
-        subtitle="Every agent carries its own identity and its own authority grant, and acts only through declared tools. There is no private write path around the tool declaration."
+        subtitle="The AI assistants, what each is allowed to do, and how far it can go before a person must sign off. Each can only use the tools listed against it — there is no way for one to act outside that list."
       />
 
       <Tabs
@@ -545,7 +578,7 @@ export function Agents() {
       {tab === 'actions' && (
         <Card bodyClassName="p-0">
           {actions.length === 0 ? (
-            <EmptyState message="No agent actions recorded." />
+            <EmptyState message="The assistant has not done anything yet." />
           ) : (
             <ul className="divide-y divide-ink-850">
               {actions.map((a) => (
@@ -642,8 +675,8 @@ export function Events() {
   return (
     <div>
       <PageHeader
-        title="Event Fabric"
-        subtitle="Durable, append-only, hash-chained and replayable. Reads never emit events — a read of confidential or regulated data produces an audit record instead."
+        title="System History"
+        subtitle="Everything that has happened, in order, and tamper-evident: each entry is sealed against the one before it, so a changed or deleted record shows up. Looking at data is never recorded here — that goes to the audit trail instead."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -753,8 +786,8 @@ export function Jobs() {
   return (
     <div>
       <PageHeader
-        title="Automation"
-        subtitle="A durable substrate. Every firing is keyed by (automation version, subject, trigger fingerprint, ladder rung), so a firing with an already-recorded key does not re-execute."
+        title="Automatic Checks"
+        subtitle="The checks that run on their own — chasing expiring agreements, flagging untouched leads, recomputing the scores. Each one remembers exactly what it has already done, so running twice never acts twice."
         actions={
           <>
             <button className={dryRun ? 'btn-primary' : 'btn-ghost'} onClick={() => setDryRun((v) => !v)}>
@@ -830,7 +863,7 @@ export function Jobs() {
               bodyClassName="p-0 max-h-64 overflow-y-auto"
             >
               {firingLog.length === 0 ? (
-                <EmptyState message="No firings recorded." />
+                <EmptyState message="This has not run yet." />
               ) : (
                 <ul className="divide-y divide-ink-850">
                   {firingLog.map((f) => (
@@ -878,7 +911,7 @@ export function Audit() {
     <div>
       <PageHeader
         title="Audit Trail"
-        subtitle="Append-only, with no update or delete path. Write-audit for every governed entity; read-audit for regulated fields only, naming fields but never values."
+        subtitle="Who changed what, and when. Nothing here can be edited or removed. Every change is recorded; so is every look at legally protected data — noting which fields were seen, never their contents."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -985,8 +1018,8 @@ export function PlatformModel() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Platform Model"
-        subtitle="The architecture, served as data rather than described in a document that drifts from the code."
+        title="How This Is Built"
+        subtitle="How the system is put together, read live from the running system rather than from a document that quietly goes out of date."
       />
 
       <Card title="The ten planes" subtitle="Every capability is assigned to exactly one plane; nearly every requirement touches several.">

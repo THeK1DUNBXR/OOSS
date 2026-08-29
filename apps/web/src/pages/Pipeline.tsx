@@ -116,7 +116,7 @@ export function Pipeline() {
     <div>
       <PageHeader
         title="Pipeline"
-        subtitle="Each motion carries its own stage vocabulary. Cross-motion reporting keys on the canonical ordinal, never on stage names."
+        subtitle="Your deals, laid out by how far along they are. Each kind of business has its own stages — selling to a company is not the same as admitting a student — but they line up so you can compare across them."
         actions={
           <div className="flex flex-wrap gap-1">
             {pipelines.map((p) => (

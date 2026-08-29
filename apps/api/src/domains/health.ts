@@ -36,6 +36,25 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { raiseException } from '../platform/exceptions.js';
 
+/**
+ * What each area is called on screen. The codes stay as the identifiers — the
+ * event log and the audit trail are keyed on them — but nothing a person reads
+ * should say H_EDU when it means training.
+ */
+const DOMAIN_PLAIN_NAME: Record<string, string> = {
+  H_FIN: 'Money',
+  H_COM: 'Sales',
+  H_DLV: 'Delivery',
+  H_EDU: 'Training',
+  H_PPL: 'People',
+  H_MKT: 'Marketing',
+  H_CUS: 'Customers',
+  H_OPS: 'Operations',
+  H_STR: 'Strategy',
+  H_RSK: 'Risk',
+};
+
+
 export interface FactorResult {
   factor: string;
   label: string;
@@ -131,7 +150,7 @@ export async function computeCommercialHealth(): Promise<ComputeResult> {
       value: Number(coverageValue.toFixed(2)),
       target: coverageTarget,
       higherIsBetter: true,
-      narrative: `Weighted pipeline of ${fmt(weightedPipeline)} against a ${fmt(quarterTarget)} quarter target — ${coverageValue.toFixed(2)}x coverage.`,
+      narrative: `${fmt(weightedPipeline)} of realistic pipeline against a ${fmt(quarterTarget)} target for the quarter. Three times cover is the usual comfortable level; this is ${coverageValue.toFixed(1)} times.`,
       drill: '/crm/opportunities?open=true',
     },
     {
@@ -139,7 +158,7 @@ export async function computeCommercialHealth(): Promise<ComputeResult> {
       value: medianAge,
       target: ageTarget,
       higherIsBetter: false,
-      narrative: `Median ${medianAge} days at current stage across ${openOpps.length} open opportunities.`,
+      narrative: `A typical open deal has sat at its current stage for ${medianAge} days. ${openOpps.length} deals are open.`,
       drill: '/crm/opportunities?sort=stageAge',
     },
     {
@@ -223,9 +242,9 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     const escalated = projections.filter((p) => p.dunningStage === 'escalated').length;
 
     const factors = buildFactors(domainCode, [
-      { code: 'collection_rate', label: 'Collection rate', weight: 40, value: Number(collectionRate.toFixed(1)), target: 90, higherIsBetter: true, narrative: `${fmt(collected)} collected of ${fmt(billed)} billed.`, drill: '/finance/invoices' },
-      { code: 'ar_ageing', label: 'AR ageing', weight: 35, value: Number(arShare.toFixed(1)), target: 10, higherIsBetter: false, narrative: `${fmt(overdue)} overdue across ${invoices.filter((i) => i.status === 'overdue').length} invoices.`, drill: '/finance/invoices?status=overdue' },
-      { code: 'dunning_escalations', label: 'Dunning escalations', weight: 25, value: escalated, target: 2, higherIsBetter: false, narrative: `${escalated} account${escalated === 1 ? '' : 's'} at the escalated dunning stage.`, drill: '/finance/receivables' },
+      { code: 'collection_rate', label: 'Getting paid on time', weight: 40, value: Number(collectionRate.toFixed(1)), target: 90, higherIsBetter: true, narrative: `${fmt(collected)} collected of ${fmt(billed)} billed.`, drill: '/finance/invoices' },
+      { code: 'ar_ageing', label: 'Owed to us too long', weight: 35, value: Number(arShare.toFixed(1)), target: 10, higherIsBetter: false, narrative: `${fmt(overdue)} overdue across ${invoices.filter((i) => i.status === 'overdue').length} invoices.`, drill: '/finance/invoices?status=overdue' },
+      { code: 'dunning_escalations', label: 'Customers chased hard', weight: 25, value: escalated, target: 2, higherIsBetter: false, narrative: `${escalated} customer${escalated === 1 ? ' has' : 's have'} been chased to the final stage without paying.`, drill: '/finance/receivables' },
     ]);
     return finalise(domainCode, factors);
   }
@@ -242,9 +261,9 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     const completionRate = completed + withdrawn > 0 ? (completed / (completed + withdrawn)) * 100 : 0;
 
     const factors = buildFactors(domainCode, [
-      { code: 'completion_rate', label: 'Cohort completion rate', weight: 40, value: Number(completionRate.toFixed(1)), target: 85, higherIsBetter: true, narrative: `${completed} completed against ${withdrawn} withdrawn.`, drill: '/education/enrollments' },
-      { code: 'attendance', label: 'Mean attendance', weight: 30, value: Number(avgAttendance.toFixed(1)), target: 85, higherIsBetter: true, narrative: `Mean attendance across ${active.length} active enrollments.`, drill: '/education/attendance' },
-      { code: 'learner_risk', label: 'Learners at risk', weight: 30, value: atRisk, target: Math.max(Math.round(active.length * 0.05), 1), higherIsBetter: false, narrative: `${atRisk} learner${atRisk === 1 ? '' : 's'} flagged at risk.`, drill: '/education/enrollments?atRisk=true' },
+      { code: 'completion_rate', label: 'Learners finishing', weight: 40, value: Number(completionRate.toFixed(1)), target: 85, higherIsBetter: true, narrative: `${completed} completed against ${withdrawn} withdrawn.`, drill: '/education/enrollments' },
+      { code: 'attendance', label: 'Attendance', weight: 30, value: Number(avgAttendance.toFixed(1)), target: 85, higherIsBetter: true, narrative: `Average attendance across ${active.length} learners currently enrolled.`, drill: '/education/attendance' },
+      { code: 'learner_risk', label: 'Learners falling behind', weight: 30, value: atRisk, target: Math.max(Math.round(active.length * 0.05), 1), higherIsBetter: false, narrative: `${atRisk} learner${atRisk === 1 ? ' is' : 's are'} falling behind and may not finish.`, drill: '/education/enrollments?atRisk=true' },
     ]);
     return finalise(domainCode, factors);
   }
@@ -259,9 +278,9 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     const delivered = projects.filter((p) => p.status === 'delivered').length;
 
     const factors = buildFactors(domainCode, [
-      { code: 'schedule_variance', label: 'Schedule variance', weight: 45, value: Number(avgVariance.toFixed(1)), target: 10, higherIsBetter: false, narrative: `Mean absolute schedule variance of ${avgVariance.toFixed(1)}% across ${active.length} active projects.`, drill: '/delivery/projects' },
-      { code: 'handoff_acceptance', label: 'Handoff acceptance', weight: 30, value: unaccepted, target: 0, higherIsBetter: false, narrative: `${unaccepted} won-opportunity handoff${unaccepted === 1 ? '' : 's'} not yet accepted by delivery.`, drill: '/delivery/projects?handoff=pending' },
-      { code: 'delivery_throughput', label: 'Delivery throughput', weight: 25, value: delivered, target: Math.max(Math.round(projects.length * 0.3), 1), higherIsBetter: true, narrative: `${delivered} project${delivered === 1 ? '' : 's'} delivered.`, drill: '/delivery/projects?status=delivered' },
+      { code: 'schedule_variance', label: 'Projects running late', weight: 45, value: Number(avgVariance.toFixed(1)), target: 10, higherIsBetter: false, narrative: `Across ${active.length} active projects, timelines are off by ${avgVariance.toFixed(0)}% on average.`, drill: '/delivery/projects' },
+      { code: 'handoff_acceptance', label: 'Won work delivery has picked up', weight: 30, value: unaccepted, target: 0, higherIsBetter: false, narrative: `${unaccepted} deal${unaccepted === 1 ? ' has' : 's have'} been won but not yet picked up by the delivery team.`, drill: '/delivery/projects?handoff=pending' },
+      { code: 'delivery_throughput', label: 'Work getting finished', weight: 25, value: delivered, target: Math.max(Math.round(projects.length * 0.3), 1), higherIsBetter: true, narrative: `${delivered} project${delivered === 1 ? '' : 's'} delivered.`, drill: '/delivery/projects?status=delivered' },
     ]);
     return finalise(domainCode, factors);
   }
@@ -282,9 +301,9 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     const failedJobs = jobRuns.filter((j) => j.status === 'failed').length;
 
     const factors = buildFactors(domainCode, [
-      { code: 'unowned_exceptions', label: 'Unowned exceptions (routing defect)', weight: 35, value: unowned, target: 0, higherIsBetter: false, narrative: `${unowned} open exception${unowned === 1 ? '' : 's'} failed to resolve an owner.`, drill: '/exceptions?unowned=true' },
-      { code: 'sla_breaches', label: 'SLA breaches', weight: 35, value: breached, target: Math.max(Math.round(open.length * 0.1), 1), higherIsBetter: false, narrative: `${breached} of ${open.length} open exceptions are past their SLA.`, drill: '/exceptions?breached=true' },
-      { code: 'automation_reliability', label: 'Automation reliability', weight: 30, value: failedJobs + deadLetters, target: 0, higherIsBetter: false, narrative: `${failedJobs} failed job run${failedJobs === 1 ? '' : 's'} and ${deadLetters} dead-lettered event${deadLetters === 1 ? '' : 's'}.`, drill: '/admin/jobs' },
+      { code: 'unowned_exceptions', label: 'Problems assigned to nobody', weight: 35, value: unowned, target: 0, higherIsBetter: false, narrative: `${unowned} open problem${unowned === 1 ? ' has' : 's have'} nobody assigned. Until someone owns them, nobody is working on them.`, drill: '/exceptions?unowned=true' },
+      { code: 'sla_breaches', label: 'Deadlines missed', weight: 35, value: breached, target: Math.max(Math.round(open.length * 0.1), 1), higherIsBetter: false, narrative: `${breached} of ${open.length} open exceptions are past their SLA.`, drill: '/exceptions?breached=true' },
+      { code: 'automation_reliability', label: 'Automatic checks running', weight: 30, value: failedJobs + deadLetters, target: 0, higherIsBetter: false, narrative: `${failedJobs} failed job run${failedJobs === 1 ? '' : 's'} and ${deadLetters} dead-lettered event${deadLetters === 1 ? '' : 's'}.`, drill: '/admin/jobs' },
     ]);
     return finalise(domainCode, factors);
   }
@@ -314,7 +333,7 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     const factors = buildFactors(domainCode, [
       {
         code: 'unacknowledged_severe',
-        label: 'Unacknowledged S3+ exceptions',
+        label: 'Serious problems, nobody assigned',
         weight: 40,
         value: unacknowledgedSevere,
         target: 0,
@@ -324,7 +343,7 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
       },
       {
         code: 'sla_breached',
-        label: 'Exceptions past SLA',
+        label: 'Problems left past their deadline',
         weight: 35,
         value: breached,
         target: Math.max(Math.round(exceptions.length * 0.1), 1),
@@ -334,7 +353,7 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
       },
       {
         code: 'ownership_completeness',
-        label: 'Ownership completeness',
+        label: 'Problems that have a clear owner',
         weight: 25,
         value: unowned,
         target: 0,
@@ -409,7 +428,7 @@ export async function applyFalsifiabilityCheck(domainCode: string, factors: Fact
       if (max - min < 0.5) {
         await raiseException({
           code: 'DET-XDM-001',
-          label: 'Health factor quarantined — no downside excursion',
+          label: 'A measure we have stopped trusting',
           severity: 'S1_ATTENTION',
           subjectType: 'health_factor',
           subjectId: `${domainCode}:${f.factor}`,
@@ -509,11 +528,11 @@ export async function computeAndPersistAll(): Promise<ComputeResult[]> {
       if (raisesFactorExceptions && f.factorScore < 40 && !f.quarantined) {
         await raiseException({
           code: `DET-${domain.code}-FACTOR`,
-          label: `${domain.name}: ${f.label} below threshold`,
+          label: `${DOMAIN_PLAIN_NAME[domain.code] ?? domain.name}: ${f.label.toLowerCase()} is below where it should be`,
           severity: f.factorScore < 25 ? 'S3_HIGH_RISK' : 'S2_WARNING',
           subjectType: 'health_factor',
           subjectId: `${domain.code}:${f.factor}`,
-          subjectLabel: `${domain.code} / ${f.label}`,
+          subjectLabel: `${DOMAIN_PLAIN_NAME[domain.code] ?? domain.name} — ${f.label}`,
           domain: 'xdm',
           detail: f.narrative,
           ownerPartyId: owner,

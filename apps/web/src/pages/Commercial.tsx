@@ -47,7 +47,7 @@ export function Offerings() {
     <div>
       <PageHeader
         title="Offering Catalog"
-        subtitle="A validated catalog is the precondition for Finance deriving revenue recognition from the deal rather than asking sales case by case."
+        subtitle="Everything Kaizen sells, with its prices. Keeping this straight is what lets finance work out revenue automatically instead of asking about every deal."
       />
 
       {gaps > 0 && (
@@ -208,7 +208,7 @@ export function Quotes() {
     <div>
       <PageHeader
         title="Quotes"
-        subtitle="A line resolves against a specific price book entry AND version — never the current price — which is what makes a quote reproducible after the list price moves on."
+        subtitle="Prices quoted to customers. Each line remembers the exact price it was quoted at, so a quote still adds up correctly months later even after list prices change."
       />
 
       {isLoading ? (
@@ -364,7 +364,7 @@ export function Proposals() {
                       tone={p.response === 'accepted' ? 'good' : p.response === 'rejected' ? 'bad' : 'neutral'}
                     />
                     {p.stalledNotifiedAt && (
-                      <p className="mt-0.5 text-2xs text-band-watch" title="EX-CRM-008, weekend-skipping.">stalled</p>
+                      <p className="mt-0.5 text-2xs text-band-watch" title="Flagged automatically after too long with no reply. Weekends are not counted.">stalled</p>
                     )}
                   </td>
                   <td>
@@ -508,7 +508,7 @@ export function Agreements() {
                       </span>
                     )}
                     {a.expiryNotifiedDays.length > 0 && (
-                      <span title="Ladder rungs already notified — each rung is idempotent.">
+                      <span title="Reminders already sent. Each one is only ever sent once, however many times the check runs.">
                         ladder: {a.expiryNotifiedDays.join(', ')}d
                       </span>
                     )}
@@ -545,7 +545,7 @@ export function Agreements() {
           <div className="space-y-3">
             <p className="text-xs text-ink-200">{gateResult.reason}</p>
             <dl className="rounded border border-ink-800 bg-ink-950 p-3">
-              <Field label="Resolved approver tier">
+              <Field label="Who this goes to for approval">
                 {titleCase(gateResult.resolvedApproverRole)} (tier {gateResult.resolutionTier + 1})
               </Field>
               {gateResult.selfDealingBarTripped && (
@@ -611,7 +611,7 @@ export function Approvals() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="Nothing awaiting approval." /></Card>
+        <Card><EmptyState message="Nothing is waiting for approval." /></Card>
       ) : (
         <div className="space-y-3">
           {data.map((s) => (
@@ -737,7 +737,7 @@ export function WinLoss() {
 
         <Card title="Company Memory" subtitle="Lessons distilled from completed reviews." bodyClassName="p-0">
           {lessons.length === 0 ? (
-            <EmptyState message="No lessons recorded yet." />
+            <EmptyState message="No lessons have been written down yet." />
           ) : (
             <ul className="divide-y divide-ink-850">
               {lessons.map((l) => (

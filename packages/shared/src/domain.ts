@@ -413,11 +413,11 @@ export function distanceToEdge(score: number): number {
 
 /** H_COM's factor weights (CRM-RPT-001). */
 export const H_COM_FACTORS = [
-  { code: 'pipeline_coverage', label: 'Weighted pipeline coverage', weight: 30 },
-  { code: 'stage_velocity', label: 'Median days-at-stage-band', weight: 20 },
+  { code: 'pipeline_coverage', label: 'Enough deals to hit target', weight: 30 },
+  { code: 'stage_velocity', label: 'Deals moving at a healthy pace', weight: 20 },
   { code: 'win_rate', label: 'Win rate', weight: 20 },
-  { code: 'account_concentration', label: 'Account concentration', weight: 15 },
-  { code: 'stalled_proposal_share', label: 'Stalled proposal share', weight: 15 },
+  { code: 'account_concentration', label: 'Too reliant on one customer', weight: 15 },
+  { code: 'stalled_proposal_share', label: 'Proposals sitting unanswered', weight: 15 },
 ] as const;
 
 // ---------------------------------------------------------------------------

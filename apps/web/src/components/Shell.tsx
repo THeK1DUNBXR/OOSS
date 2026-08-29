@@ -13,6 +13,8 @@ import { useQuery } from '@tanstack/react-query';
 import type { NavNodeView, NotificationView } from '@kaizen/shared';
 import { useSession } from '../lib/session.js';
 import { api, relative } from '../lib/api.js';
+import { words } from '../lib/words.js';
+import { FirstRun } from './FirstRun.js';
 
 const ICONS: Record<string, string> = {
   gauge: '◎', home: '⌂', inbox: '⇢', columns: '▤', target: '◈', trending: '↗',
@@ -23,14 +25,17 @@ const ICONS: Record<string, string> = {
   activity: '∿', clock: '◷', search: '⌕', layers: '▧',
 };
 
+// Ordinary business words are kept as they are — a salesperson knows what a
+// lead, a pipeline and a quote are, and renaming those would help nobody.
+// What gets translated is the engineering vocabulary underneath.
 const GROUP_LABELS: Record<string, string> = {
   main: '',
-  crm: 'Customer Relationship',
-  commercial: 'Commercial',
-  finance: 'Finance',
-  delivery: 'Delivery & Education',
-  governance: 'Governance',
-  admin: 'Platform',
+  crm: 'Sales & Customers',
+  commercial: 'Deals & Agreements',
+  finance: 'Money',
+  delivery: 'Delivery & Training',
+  governance: 'Oversight',
+  admin: 'System Settings',
 };
 
 export function Shell() {
@@ -134,7 +139,7 @@ export function Shell() {
               {/* The persistent "you are acting as" affordance the non-union
                   rule makes necessary. */}
               <p className="truncate text-2xs text-ink-500">
-                acting as {user.roleSlug.replace(/_/g, ' ')}
+                signed in as {words(user.roleSlug).toLowerCase()}
               </p>
             </div>
             <span className="text-ink-500">⇅</span>
@@ -209,6 +214,7 @@ export function Shell() {
         </header>
 
         <main className="flex-1 overflow-y-auto px-6 py-5">
+          <FirstRun />
           <Outlet />
         </main>
       </div>
@@ -257,7 +263,7 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
           >
             <span className="truncate capitalize">{a.roleSlug.replace(/_/g, ' ')}</span>
             <span className="flex shrink-0 items-center gap-1">
-              {a.requiresStepUp && <span title="Requires step-up re-authentication">⛨</span>}
+              {a.requiresStepUp && <span title="You will be asked to confirm your password again before this goes through">⛨</span>}
               {a.id === user.activeAffiliationId && <span className="text-accent">●</span>}
             </span>
           </button>
@@ -331,7 +337,7 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
           ref={inputRef}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search records or jump to a surface…"
+          placeholder="Search for a person, company, deal or agreement…"
           className="w-full border-b border-ink-800 bg-transparent px-4 py-3 text-sm text-ink-100 placeholder:text-ink-500 focus:outline-none"
         />
         <div className="max-h-96 overflow-y-auto p-2">

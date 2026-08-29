@@ -417,7 +417,7 @@ export async function detectUntouchedLeads(thresholdDays = 3): Promise<number> {
   for (const lead of stale) {
     await raiseException({
       code: 'EX-CRM-010',
-      label: 'Lead untouched',
+      label: 'Nobody has contacted this lead yet',
       severity: 'S1_ATTENTION',
       subjectType: 'lead',
       subjectId: lead.id,

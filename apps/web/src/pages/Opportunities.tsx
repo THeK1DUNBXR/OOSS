@@ -58,7 +58,7 @@ export function Opportunities() {
     <div>
       <PageHeader
         title="Opportunities"
-        subtitle="Stage is where the deal is. Forecast category is how confident we are. They are deliberately decoupled."
+        subtitle="Deals in progress. The stage says how far along a deal is; the forecast says how confident we are of closing it. They are two different questions, so we ask them separately."
         actions={<Link to="/crm/forecast" className="btn-ghost">Forecast roll-up</Link>}
       />
 
@@ -77,7 +77,7 @@ export function Opportunities() {
         <Loading />
       ) : items.length === 0 ? (
         <Card>
-          <EmptyState message="No opportunities match." />
+          <EmptyState message="No deals match what you searched for." />
         </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
@@ -276,7 +276,7 @@ export function OpportunityDetail() {
 
           <Card title="Timeline" bodyClassName="p-0">
             {(data.timeline ?? []).length === 0 ? (
-              <EmptyState message="Nothing logged against this opportunity." />
+              <EmptyState message="Nothing has been logged against this deal yet." />
             ) : (
               <ul className="divide-y divide-ink-850">
                 {data.timeline.map((t: any) => (
@@ -515,7 +515,7 @@ export function Forecast() {
     <div>
       <PageHeader
         title="Forecast"
-        subtitle="Per-pipeline totals, side by side. Weighted values across motions with different forecast methods are not directly comparable."
+        subtitle="What we expect to close, shown separately for each kind of business. They are not added together by default, because they are counted in different ways — adding them would give you a number that means nothing."
         actions={
           <button className={blended ? 'btn-primary' : 'btn-ghost'} onClick={() => setBlended((v) => !v)}>
             {blended ? 'Showing blended total' : 'Request blended total'}
@@ -526,12 +526,12 @@ export function Forecast() {
       {coverage && (
         <div className="mb-5 grid gap-3 sm:grid-cols-3">
           <Metric
-            label="At position 30 or later"
+            label="Past the qualifying stage"
             value={coverage.count}
             sub="Qualified or beyond, across every pipeline in one pass"
             drillTo="/crm/opportunities?open=true"
           />
-          <Metric label="Coverage value" value={money(coverage.value)} sub="Keyed on the canonical ordinal, never on stage names" drillTo="/crm/opportunities" />
+          <Metric label="Coverage value" value={money(coverage.value)} sub="Counted on the shared scale, so different kinds of business compare fairly" drillTo="/crm/opportunities" />
           <Metric
             label="Pipelines"
             value={data?.perPipeline.length ?? 0}

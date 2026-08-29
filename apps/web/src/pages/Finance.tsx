@@ -41,13 +41,13 @@ export function Invoices() {
     <div>
       <PageHeader
         title="Invoices"
-        subtitle="The obligation. Its revenue-recognition method is derived from the offering's default treatment — never asked of sales case by case."
+        subtitle="What customers owe us. How and when each invoice counts as revenue is worked out from what was sold, so nobody in sales has to decide it deal by deal."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="Invoices" value={data.length} drillTo="/finance/invoices" />
         <Metric label="Outstanding" value={money(outstanding)} tone={outstanding > 0 ? 'warn' : 'good'} drillTo="/finance/receivables" />
-        <Metric label="Overdue" value={overdue} tone={overdue > 0 ? 'bad' : 'good'} sub="Each raises EX-FIN-001 once per rung" drillTo="/exceptions" />
+        <Metric label="Overdue" value={overdue} tone={overdue > 0 ? 'bad' : 'good'} sub="Each one is chased automatically, once at each stage" drillTo="/exceptions" />
       </div>
 
       {isLoading ? (
@@ -138,7 +138,7 @@ export function Payments() {
     <div>
       <PageHeader
         title="Payments"
-        subtitle="The money-movement fact: append-only, gateway-authoritative, idempotent on the gateway reference. A correction is a new row, never an update in place."
+        subtitle="Money actually received. Nothing here is ever edited or deleted — a mistake is corrected by adding a reversing entry, so the history always shows what really happened."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -156,7 +156,7 @@ export function Payments() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="No payments recorded." /></Card>
+        <Card><EmptyState message="No payments received yet." /></Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
@@ -289,7 +289,7 @@ export function Receivables() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="Nothing outstanding." /></Card>
+        <Card><EmptyState message="Nothing is outstanding — everything billed has been paid." /></Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">

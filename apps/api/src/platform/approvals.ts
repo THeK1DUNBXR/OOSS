@@ -241,7 +241,7 @@ export async function evaluateApprovalGate(
   } else {
     await raiseException({
       code: 'EX-GOV-001',
-      label: 'Approval step could not resolve an approver',
+      label: 'Nobody could be found to approve this',
       severity: 'S3_HIGH_RISK' as SeverityCode,
       subjectType: 'approval_step',
       subjectId: step.id,
