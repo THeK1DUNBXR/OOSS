@@ -1,5 +1,11 @@
-# Postgres only. The API and web run on the host via `./scripts/dev.sh start`,
-# so you keep hot reload and a normal debugger.
+# The whole platform, in Docker.
+#
+#   docker compose up --build          everything: database, API, web
+#   docker compose up -d postgres      just the database, when you are running
+#                                      the API and web on the host via dev.sh
+#
+# The web container serves the built client and proxies /api to the API
+# container, so http://localhost:8080 is the only address you need.
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,6 +15,8 @@ services:
       POSTGRES_PASSWORD: kaizen
       POSTGRES_DB: kaizen
     ports:
+      # Published so host-side tooling — psql, Prisma Studio, the test suite —
+      # can reach it too.
       - "5432:5432"
     volumes:
       - kaizen-pgdata:/var/lib/postgresql/data
@@ -17,6 +25,45 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: kaizen-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # `postgres` is the compose service name; inside the network it resolves
+      # to the database container, not to localhost.
+      DATABASE_URL: postgresql://kaizen:kaizen@postgres:5432/kaizen?schema=public
+      # Development only. A real deployment injects a secret rather than
+      # carrying one in a file that lives in the repository.
+      JWT_SECRET: docker-development-secret-not-for-production
+      PORT: "4000"
+      NODE_ENV: production
+      JOBS_ENABLED: "true"
+      TENANT_ENFORCE_MODE: enforce
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: kaizen-web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
 
 volumes:
   kaizen-pgdata:

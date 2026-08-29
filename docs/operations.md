@@ -1,5 +1,36 @@
 # Operations
 
+## Running everything in Docker
+
+```bash
+docker compose up --build     # database, API, web
+docker compose logs -f api    # follow the schema push and seed
+docker compose down           # stop, keep the data
+docker compose down -v        # stop and discard the database volume
+```
+
+Three services. `postgres` holds a named volume, so data survives `down`.
+`api` builds from `apps/api/Dockerfile` and runs its entrypoint before serving:
+wait for the database, `prisma db push`, then seed **only if no tenant exists**
+— so a restart never overwrites your data. `web` builds the client to static
+assets, serves them with nginx, and proxies `/api` to `api:4000`; the client
+fetches a relative `/api`, so there is no build-time API URL and no CORS.
+
+Ports: web on 8080, API on 4000, PostgreSQL on 5432. The last two are published
+so host tooling — psql, Prisma Studio, the acceptance suite — can reach them
+while the stack runs.
+
+The `JWT_SECRET` in `docker-compose.yml` is a development value committed to the
+repository. A real deployment injects a secret instead.
+
+To run only the database in Docker and the rest on the host:
+
+```bash
+docker compose up -d postgres
+```
+
+which is what `scripts/setup.sh` does.
+
 ## First run
 
 ```bash

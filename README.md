@@ -13,23 +13,52 @@ and experience surface.
 
 ## Run it
 
+Two ways. Pick one.
+
+### Everything in Docker
+
+Nothing needed on your machine but Docker Desktop — no Node, no PostgreSQL.
+
 ```bash
 git clone https://github.com/THeK1DUNBXR/OOSS.git
 cd OOSS
+docker compose up --build
+```
+
+Then open **http://localhost:8080** and sign in as
+`chairman@kaizen.co.in` / `kaizen2026`.
+
+The first build takes a few minutes. The API container waits for the database,
+applies the schema and seeds the demo dataset before it accepts traffic — and
+skips the seed on every later start, so your data survives a restart. The web
+container serves the built client and proxies `/api` to the API, which is why
+port 8080 is the only one you need.
+
+```bash
+docker compose logs -f api     # watch the schema push and seed
+docker compose down            # stop, keep the data
+docker compose down -v         # stop and discard the database volume
+```
+
+### On your machine, with hot reload
+
+Better for development: the API and web run on the host, so edits reload
+immediately and a debugger attaches normally.
+
+```bash
 ./scripts/setup.sh          # PostgreSQL, dependencies, schema, demo data
 ./scripts/dev.sh start      # API and web
 ```
 
-Then open **http://localhost:5173** and sign in as
-`chairman@kaizen.co.in` / `kaizen2026`.
+Then open **http://localhost:5173**, same sign-in.
 
-`setup.sh` runs PostgreSQL 16 in Docker. If you would rather use a PostgreSQL
-already installed on your machine, run `./scripts/setup.sh --native` — it
-creates the role and database for you. Either way it needs **Node 22 or newer**;
-it will enable pnpm through corepack if you do not have it.
+`setup.sh` runs PostgreSQL 16 in Docker and everything else on the host. If you
+would rather use a PostgreSQL already installed, `./scripts/setup.sh --native`
+creates the role and database for you. Either way it needs **Node 22 or newer**,
+and will enable pnpm through corepack if you do not have it.
 
-Both scripts are safe to re-run. `setup.sh` checks before every step and will
-not reseed a database that already has data.
+Both scripts are safe to re-run: every step checks before it acts, and neither
+reseeds a database that already holds data.
 
 ```bash
 ./scripts/dev.sh status     # what is up
