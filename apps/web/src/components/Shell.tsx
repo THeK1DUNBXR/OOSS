@@ -33,6 +33,7 @@ const GROUP_LABELS: Record<string, string> = {
   crm: 'Sales & Customers',
   commercial: 'Deals & Agreements',
   finance: 'Money',
+  people: 'People',
   delivery: 'Delivery & Training',
   governance: 'Oversight',
   admin: 'System Settings',
@@ -48,7 +49,7 @@ export function Shell() {
 
   // Fixed group order, so the shell reads the way the work reads: your own
   // surface first, then the domains, then the platform underneath them.
-  const GROUP_ORDER = ['main', 'crm', 'commercial', 'finance', 'delivery', 'governance', 'admin'];
+  const GROUP_ORDER = ['main', 'crm', 'commercial', 'finance', 'people', 'delivery', 'governance', 'admin'];
 
   const grouped = useMemo(() => {
     const map = new Map<string, NavNodeView[]>();

@@ -228,6 +228,11 @@ router.get(
       panNumber: undefined,
       aadhaarReference: undefined,
       uanNumber: undefined,
+      // Whether the viewer may see pay at all, kept separate from whether
+      // there is any. A single null would conflate "withheld from you" with
+      // "this person has no pay record", and the second is a problem somebody
+      // needs to fix.
+      payVisible: money,
       currentCompensation: pay ? { amount: num(pay.amount), currency: pay.currency, effectiveFrom: pay.effectiveFrom } : null,
       availableTransitions: employmentRelationshipMachine.allowedEvents(e.status as never),
       onboardingTransitions: e.onboarding ? onboardingMachine.allowedEvents(e.onboarding.status as never) : [],

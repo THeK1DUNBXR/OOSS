@@ -19,6 +19,7 @@ import { Invoices, Payments, Receivables } from './pages/Finance.js';
 import { Cohorts, Enrollments, Projects } from './pages/Education.js';
 import { PipelineAdmin, TerritoryAdmin, Governance, Agents, Events, Jobs, Audit, PlatformModel } from './pages/Admin.js';
 import { Decisions } from './pages/Decisions.js';
+import { Employees, EmployeeDetail, Leave, Attendance, Payroll, Hiring, Skills } from './pages/PeopleOps.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -76,6 +77,14 @@ function Routed() {
         <Route path="/finance/payments" element={<Payments />} />
         <Route path="/finance/payments/:id" element={<Payments />} />
         <Route path="/finance/receivables" element={<Receivables />} />
+
+        <Route path="/people/employees" element={<Employees />} />
+        <Route path="/people/employees/:id" element={<EmployeeDetail />} />
+        <Route path="/people/leave" element={<Leave />} />
+        <Route path="/people/attendance" element={<Attendance />} />
+        <Route path="/people/payroll" element={<Payroll />} />
+        <Route path="/people/hiring" element={<Hiring />} />
+        <Route path="/people/skills" element={<Skills />} />
 
         <Route path="/education/cohorts" element={<Cohorts />} />
         <Route path="/education/enrollments" element={<Enrollments />} />
