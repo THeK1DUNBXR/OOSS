@@ -40,7 +40,7 @@
   .tabular,
   td.num,
   th.num {
-    @apply font-mono;
+    @apply whitespace-nowrap font-mono;
     font-variant-numeric: tabular-nums;
     font-stretch: 112%;
   }

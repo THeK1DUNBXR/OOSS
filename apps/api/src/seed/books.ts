@@ -235,18 +235,26 @@ export async function seedBooks() {
   // A budget for the month in progress, set at the trailing three-month
   // average — which is what a first budget usually is.
   // -------------------------------------------------------------------------
+  // Both the month in progress and the last complete one, because a variance
+  // report is only readable against a month that has finished.
   const thisPeriod = monthOf(new Date());
-  const budgetCount = await prisma.budgetLine.count({ where: { tenantId, period: thisPeriod } });
-  if (budgetCount === 0) {
+  const lastPeriod = monthOf(baselineMonth(6));
+
+  for (const period of [lastPeriod, thisPeriod]) {
+    const budgetCount = await prisma.budgetLine.count({ where: { tenantId, period } });
+    if (budgetCount > 0) continue;
+
     for (const spec of CATEGORIES) {
       if (spec.type !== 'Expense') continue;
-      const recent = spec.baseline.slice(-3);
-      const average = round2(recent.reduce((s, v) => s + v, 0) / recent.length);
+      // The three months before the one being budgeted, which is what a first
+      // budget usually is.
+      const window = period === lastPeriod ? spec.baseline.slice(3, 6) : spec.baseline.slice(-3);
+      const average = round2(window.reduce((s, v) => s + v, 0) / window.length);
       if (average <= 0) continue;
       await prisma.budgetLine.create({
         data: {
           tenantId,
-          period: thisPeriod,
+          period,
           categoryId: categories.get(spec.name)!,
           division: DIVISION_OF[spec.division] ?? 'shared',
           amount: average,

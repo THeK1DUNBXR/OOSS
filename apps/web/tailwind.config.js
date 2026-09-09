@@ -40,13 +40,27 @@ export default {
           strong: '#1a7a4c', stable: '#3d8f68', watch: '#b5570c',
           strained: '#a8481a', critical: '#ad2c22',
         },
-        // The three divisions the company actually runs. Every figure in
-        // Finance and the Command Center can be cut by these.
+        /**
+         * The three divisions the company runs, plus the shared function.
+         * Every figure in Finance and the Command Center is cut by these, so
+         * they are a categorical palette and are held to that standard rather
+         * than to taste: fixed order, never cycled, and the same hue for a
+         * division wherever it appears — a dot in a table and a bar in a
+         * chart are the same entity and must not disagree.
+         *
+         * These are validated steps, not the brand's display hues. The brand
+         * grey for Shared reads as no-hue at all (chroma 0.014, well under the
+         * 0.1 floor) and its green missed 3:1 against paper; both were re-stepped
+         * in the same families until the palette passed. The one surviving
+         * warning is green↔orange at ΔE 7.4 under protanopia, which is legal in
+         * the 6–8 band only with secondary encoding — hence the legend and
+         * direct labels on every chart that uses them.
+         */
         div: {
           software: '#2a78d6',
-          skill: '#d97a1e',
-          education: '#1baf7a',
-          shared: '#6b6b74',
+          skill: '#c2670f',
+          education: '#12805c',
+          shared: '#8f3d90',
         },
       },
       fontFamily: {

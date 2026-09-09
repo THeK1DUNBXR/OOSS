@@ -20,6 +20,8 @@ import { Cohorts, Enrollments, Projects } from './pages/Education.js';
 import { PipelineAdmin, TerritoryAdmin, Governance, Agents, Events, Jobs, Audit, PlatformModel } from './pages/Admin.js';
 import { Decisions } from './pages/Decisions.js';
 import { Employees, EmployeeDetail, Leave, Attendance, Payroll, Hiring, Skills } from './pages/PeopleOps.js';
+import { Executive } from './pages/Executive.js';
+import { Ledger, Payables, Budget, Assets } from './pages/Books.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -72,6 +74,12 @@ function Routed() {
         <Route path="/commercial/win-loss" element={<WinLoss />} />
         <Route path="/commercial/win-loss/:id" element={<WinLoss />} />
 
+        <Route path="/business" element={<Executive />} />
+
+        <Route path="/finance/ledger" element={<Ledger />} />
+        <Route path="/finance/payables" element={<Payables />} />
+        <Route path="/finance/budget" element={<Budget />} />
+        <Route path="/finance/assets" element={<Assets />} />
         <Route path="/finance/invoices" element={<Invoices />} />
         <Route path="/finance/invoices/:id" element={<Invoices />} />
         <Route path="/finance/payments" element={<Payments />} />

@@ -754,6 +754,7 @@ async function seedSurfaces() {
     position: number; requiredPermission?: string; archetypes?: string[]; synonyms?: string[];
   }> = [
     { nodeKey: 'command', label: 'Today', icon: 'gauge', path: '/command', group: 'main', position: 1, requiredPermission: 'health_scores:V', archetypes: ['command'], synonyms: ['pulse', 'how are we doing', 'state of kaizen'] },
+    { nodeKey: 'business', label: 'The Business', icon: 'trending', path: '/business', group: 'main', position: 0, requiredPermission: 'transactions:V', synonyms: ['dashboard', 'how are we doing', 'profit', 'runway', 'cash', 'by division', 'p&l'] },
     { nodeKey: 'workspace', label: 'My Workspace', icon: 'home', path: '/workspace', group: 'main', position: 2, synonyms: ['my day', 'my queue', 'home'] },
     { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'crm', position: 10, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },
     { nodeKey: 'crm_pipeline', label: 'Pipeline', icon: 'columns', path: '/crm/pipeline', group: 'crm', position: 11, requiredPermission: 'opportunities:V', synonyms: ['kanban', 'board', 'deals'] },
@@ -768,6 +769,10 @@ async function seedSurfaces() {
     { nodeKey: 'com_agreements', label: 'Agreements', icon: 'scroll', path: '/commercial/agreements', group: 'commercial', position: 23, requiredPermission: 'mous:V', synonyms: ['mou', 'contracts', 'partner agreements'] },
     { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'commercial', position: 24, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
     { nodeKey: 'com_approvals', label: 'Approvals', icon: 'shield', path: '/commercial/approvals', group: 'commercial', position: 25, requiredPermission: 'mous:V' },
+    { nodeKey: 'fin_ledger', label: 'Ledger', icon: 'coins', path: '/finance/ledger', group: 'finance', position: 28, requiredPermission: 'transactions:V', synonyms: ['transactions', 'cash book', 'spend', 'expenses'] },
+    { nodeKey: 'fin_payables', label: 'What We Owe', icon: 'receipt', path: '/finance/payables', group: 'finance', position: 29, requiredPermission: 'vendor_bills:V', synonyms: ['payables', 'supplier bills', 'vendors', 'creditors'] },
+    { nodeKey: 'fin_budget', label: 'Budget', icon: 'calculator', path: '/finance/budget', group: 'finance', position: 33, requiredPermission: 'budgets:V', synonyms: ['plan', 'variance', 'overspend'] },
+    { nodeKey: 'fin_assets', label: 'Assets & Loans', icon: 'package', path: '/finance/assets', group: 'finance', position: 34, requiredPermission: 'assets:V', synonyms: ['depreciation', 'borrowing', 'emi', 'fixed assets'] },
     { nodeKey: 'fin_invoices', label: 'Invoices', icon: 'receipt', path: '/finance/invoices', group: 'finance', position: 30, requiredPermission: 'invoices:V' },
     { nodeKey: 'fin_payments', label: 'Payments', icon: 'wallet', path: '/finance/payments', group: 'finance', position: 31, requiredPermission: 'payments:V' },
     { nodeKey: 'fin_receivables', label: 'Receivables', icon: 'coins', path: '/finance/receivables', group: 'finance', position: 32, requiredPermission: 'receivables:V' },
