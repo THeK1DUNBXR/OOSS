@@ -89,36 +89,38 @@ export function Shell() {
 
   return (
     <div className="flex h-full">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-ink-850 bg-ink-900">
-        <div className="flex items-center gap-2 border-b border-ink-850 px-4 py-3.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-accent text-sm font-bold text-white">K</div>
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="sidebar-mark">K</div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold tracking-tight text-ink-50">Kaizen</p>
-            <p className="truncate text-2xs text-ink-500">{user.tenantName}</p>
+            <p className="truncate font-display text-base font-black uppercase leading-tight tracking-tight text-white">
+              KaiERP
+            </p>
+            <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.09em] text-[#9a9aa3]">
+              {user.tenantName}
+            </p>
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2 py-3">
+        <nav className="flex flex-1 flex-col gap-px overflow-y-auto px-2.5 py-3">
           {grouped.map(([group, nodes]) => (
-            <div key={group} className="mb-4">
+            <div key={group} className="contents">
               {GROUP_LABELS[group] && (
-                <p className="mb-1 px-2 text-2xs font-semibold uppercase tracking-wider text-ink-500">
-                  {GROUP_LABELS[group]}
-                </p>
+                <p className="sidebar-group">{GROUP_LABELS[group]}</p>
               )}
               {nodes.map((node) => (
                 <NavLink
                   key={node.key}
                   to={node.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 rounded-md px-2 py-1.5 text-xs transition-colors ${
+                    `sidebar-link ${
                       isActive || location.pathname.startsWith(`${node.path}/`)
-                        ? 'bg-accent/15 font-medium text-ink-50'
-                        : 'text-ink-300 hover:bg-ink-850 hover:text-ink-100'
+                        ? 'sidebar-link-active'
+                        : ''
                     }`
                   }
                 >
-                  <span className="w-4 text-center text-ink-500">{ICONS[node.icon] ?? '·'}</span>
+                  <span className="w-[18px] text-center opacity-85">{ICONS[node.icon] ?? '·'}</span>
                   <span className="truncate">{node.label}</span>
                 </NavLink>
               ))}
@@ -126,23 +128,23 @@ export function Shell() {
           ))}
         </nav>
 
-        <div className="border-t border-ink-850 p-2">
+        <div className="sidebar-foot">
           <button
             onClick={() => setSwitcherOpen((v) => !v)}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-ink-850"
+            className="flex w-full items-center gap-2 rounded-full px-2 py-2 text-left transition-colors hover:bg-[#232326]"
           >
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink-700 text-2xs font-semibold text-ink-100">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-gold bg-gold font-display text-2xs font-black text-[#0F0F12]">
               {user.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium text-ink-100">{user.fullName}</p>
+              <p className="truncate text-xs font-semibold text-white">{user.fullName}</p>
               {/* The persistent "you are acting as" affordance the non-union
                   rule makes necessary. */}
-              <p className="truncate text-2xs text-ink-500">
+              <p className="truncate text-2xs text-[#9a9aa3]">
                 signed in as {words(user.roleSlug).toLowerCase()}
               </p>
             </div>
-            <span className="text-ink-500">⇅</span>
+            <span className="text-[#9a9aa3]">⇅</span>
           </button>
 
           {switcherOpen && (
@@ -152,31 +154,31 @@ export function Shell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-ink-850 bg-ink-900 px-5 py-2.5">
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-ink-700 bg-ink-900 px-6 py-3">
           <button
             onClick={() => setSearchOpen(true)}
-            className="flex flex-1 items-center gap-2 rounded-md border border-ink-800 bg-ink-950 px-3 py-1.5 text-left text-xs text-ink-500 hover:border-ink-700"
+            className="flex flex-1 items-center gap-2 rounded-full border-[1.5px] border-ink-700 bg-ink-950 px-4 py-2 text-left text-xs text-ink-500 hover:border-ink-100"
           >
             <span>⌕</span>
             <span className="flex-1">Search people, accounts, deals, agreements…</span>
-            <kbd className="rounded border border-ink-700 px-1 py-0.5 text-2xs text-ink-500">⌘K</kbd>
+            <kbd className="rounded-sm border border-ink-700 px-1.5 py-0.5 font-mono text-2xs text-ink-500">⌘K</kbd>
           </button>
 
           <div className="relative">
             <button
               onClick={() => setNotifOpen((v) => !v)}
-              className="relative rounded-md border border-ink-800 bg-ink-950 px-2.5 py-1.5 text-xs text-ink-300 hover:border-ink-700"
+              className="relative rounded-full border-2 border-ink-100 bg-transparent px-3 py-1.5 text-xs text-ink-100 hover:bg-ink-100 hover:text-ink-950"
             >
               ✉
               {unread > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-2xs font-semibold text-white">
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-ink-100 bg-gold px-1 font-mono text-2xs font-black text-ink-100">
                   {unread}
                 </span>
               )}
             </button>
             {notifOpen && (
-              <div className="absolute right-0 z-40 mt-2 w-96 rounded-lg border border-ink-700 bg-ink-900 shadow-2xl">
-                <div className="border-b border-ink-800 px-3 py-2 text-2xs font-semibold uppercase tracking-wide text-ink-400">
+              <div className="absolute right-0 z-40 mt-2 w-96 rounded-lg border-[3px] border-ink-100 bg-ink-900">
+                <div className="border-b-2 border-ink-100 px-3 py-2 text-2xs font-extrabold uppercase tracking-wide text-ink-500">
                   Notifications
                 </div>
                 <div className="max-h-96 overflow-y-auto">
@@ -191,12 +193,12 @@ export function Shell() {
                         setNotifOpen(false);
                         if (n.drillPath) navigate(n.drillPath);
                       }}
-                      className={`block w-full border-b border-ink-850 px-3 py-2.5 text-left hover:bg-ink-850 ${
+                      className={`block w-full border-b border-ink-700 px-3 py-2.5 text-left last:border-b-0 hover:bg-ink-850 ${
                         n.readAt ? 'opacity-60' : ''
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-medium text-ink-100">{n.title}</p>
+                        <p className="text-xs font-semibold text-ink-100">{n.title}</p>
                         <span className="shrink-0 text-2xs text-ink-500">{relative(n.createdAt)}</span>
                       </div>
                       <p className="mt-0.5 line-clamp-2 text-2xs text-ink-400">{n.body}</p>
@@ -249,27 +251,29 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div className="mt-1 rounded-md border border-ink-700 bg-ink-850 p-2">
-      <p className="mb-1.5 px-1 text-2xs text-ink-500">
+    <div className="mt-1 rounded-sm border-2 border-[#3a3a40] bg-[#18181c] p-2">
+      <p className="mb-1.5 px-1 text-2xs text-[#9a9aa3]">
         Which of your relationships are you answerable as?
       </p>
       {user.affiliations.map((a) => (
         <div key={a.id}>
           <button
             onClick={() => handle(a.id, a.requiresStepUp)}
-            className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors ${
-              a.id === user.activeAffiliationId ? 'bg-accent/15 text-ink-50' : 'text-ink-300 hover:bg-ink-800'
+            className={`flex w-full items-center justify-between gap-2 rounded-full px-2.5 py-1.5 text-left text-xs font-semibold transition-colors ${
+              a.id === user.activeAffiliationId
+                ? 'bg-gold text-[#0F0F12]'
+                : 'text-[#c9c9ce] hover:bg-[#232326] hover:text-white'
             }`}
           >
             <span className="truncate capitalize">{a.roleSlug.replace(/_/g, ' ')}</span>
             <span className="flex shrink-0 items-center gap-1">
               {a.requiresStepUp && <span title="You will be asked to confirm your password again before this goes through">⛨</span>}
-              {a.id === user.activeAffiliationId && <span className="text-accent">●</span>}
+              {a.id === user.activeAffiliationId && <span>●</span>}
             </span>
           </button>
           {stepUpFor === a.id && (
-            <div className="mt-1 space-y-1.5 rounded bg-ink-900 p-2">
-              <p className="text-2xs text-ink-400">
+            <div className="mt-1 space-y-1.5 rounded-sm bg-[#232326] p-2">
+              <p className="text-2xs text-[#9a9aa3]">
                 A privileged context requires step-up re-authentication before the switch commits.
               </p>
               <input
@@ -278,17 +282,17 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handle(a.id, true)}
                 placeholder="Password"
-                className="input py-1 text-xs"
+                className="w-full rounded-sm border-[1.5px] border-[#3a3a40] bg-[#0F0F12] px-2.5 py-1 text-xs text-white placeholder:text-[#6b6b74] focus:border-gold focus:outline-none"
                 autoFocus
               />
-              <button onClick={() => handle(a.id, true)} className="btn-primary w-full">
+              <button onClick={() => handle(a.id, true)} className="btn-gold btn-sm w-full">
                 Verify and switch
               </button>
             </div>
           )}
         </div>
       ))}
-      {error && <p className="mt-1 px-1 text-2xs text-band-critical">{error}</p>}
+      {error && <p className="mt-1 px-1 text-2xs font-semibold text-[#ff8b80]">{error}</p>}
     </div>
   );
 }
@@ -331,21 +335,21 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 p-4 pt-24" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-lg border border-ink-700 bg-ink-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-[#0F0F12]/55 p-4 pt-24" onClick={onClose}>
+      <div className="w-full max-w-2xl rounded-lg border-[3px] border-ink-100 bg-ink-900" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search for a person, company, deal or agreement…"
-          className="w-full border-b border-ink-800 bg-transparent px-4 py-3 text-sm text-ink-100 placeholder:text-ink-500 focus:outline-none"
+          className="w-full border-b-2 border-ink-100 bg-transparent px-4 py-3.5 text-sm text-ink-100 placeholder:text-ink-500 focus:outline-none"
         />
         <div className="max-h-96 overflow-y-auto p-2">
           {navMatches.length > 0 && (
             <>
-              <p className="px-2 py-1 text-2xs uppercase tracking-wide text-ink-500">Surfaces</p>
+              <p className="section-title px-2 py-1">Surfaces</p>
               {navMatches.map((n) => (
-                <button key={n.key} onClick={() => go(n.path)} className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-850">
+                <button key={n.key} onClick={() => go(n.path)} className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-850">
                   <span className="text-ink-500">{ICONS[n.icon] ?? '·'}</span>
                   {n.label}
                 </button>
@@ -354,9 +358,9 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
           )}
           {data?.results && data.results.length > 0 && (
             <>
-              <p className="px-2 py-1 text-2xs uppercase tracking-wide text-ink-500">Records</p>
+              <p className="section-title px-2 py-1">Records</p>
               {data.results.map((r) => (
-                <button key={`${r.type}:${r.id}`} onClick={() => go(r.path)} className="flex w-full items-center gap-3 rounded px-2 py-2 text-left hover:bg-ink-850">
+                <button key={`${r.type}:${r.id}`} onClick={() => go(r.path)} className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left hover:bg-ink-850">
                   <span className="mono w-28 shrink-0">{r.recordCode}</span>
                   <span className="flex-1 truncate text-xs text-ink-100">{r.label}</span>
                   <span className="shrink-0 text-2xs text-ink-500">{r.sub || r.type}</span>

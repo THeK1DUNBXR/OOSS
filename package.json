@@ -1,8 +1,8 @@
 {
-  "name": "kaizen-platform",
+  "name": "kaierp",
   "version": "1.0.0",
   "private": true,
-  "description": "Kaizen Unified Operating Platform — the AI-native operating system for the company",
+  "description": "KaiERP — the ERP platform of Kaizen Infinities: CRM, HRM, Finance and the Command Center as one system",
   "packageManager": "pnpm@9.0.0",
   "engines": { "node": ">=20" },
   "scripts": {

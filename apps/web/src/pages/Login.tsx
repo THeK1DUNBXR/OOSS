@@ -37,10 +37,14 @@ export function Login() {
       <div className="grid w-full max-w-4xl gap-6 lg:grid-cols-2">
         <div className="card p-6">
           <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded bg-accent text-base font-bold text-white">K</div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-sm border-2 border-gold bg-gold font-display text-lg font-black text-ink-100">
+              K
+            </div>
             <div>
-              <h1 className="text-lg font-semibold tracking-tight text-ink-50">Kaizen</h1>
-              <p className="text-2xs text-ink-500">Unified Operating Platform</p>
+              <h1 className="text-xl">KaiERP</h1>
+              <p className="text-2xs font-bold uppercase tracking-[0.09em] text-ink-500">
+                ERP Platform of Kaizen Infinities
+              </p>
             </div>
           </div>
 

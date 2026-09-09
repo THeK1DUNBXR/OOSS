@@ -1,13 +1,17 @@
-# Kaizen Unified Operating Platform
+# KaiERP — ERP Platform of Kaizen Infinities
 
-An AI-native, multi-tenant operating system for a company. CRM is the first
-domain to ship; Finance, Education, Projects, Commercial, Governance and the
-Command Center ship alongside it because the platform's premise is that they
-are one system, not nine that integrate.
+An AI-native, multi-tenant ERP for Kaizen Infinities. CRM, HRM and Finance are
+the three domains the company runs on; Education, Projects, Commercial,
+Governance and the Command Center ship alongside them because the platform's
+premise is that they are one system, not nine that integrate.
 
-Built from the *Kaizen Developer Handoff* — 39 numbered CRM requirements with
-PASS/FAIL acceptance criteria, plus structured briefs for every other domain
-and experience surface.
+Built from the *Kaizen Infinities Unified Operating Platform — Master
+Architecture*: 39 numbered CRM requirements with PASS/FAIL acceptance criteria,
+§14's eleven HRM lifecycle state machines, §15's finance model, and structured
+briefs for every other domain and experience surface.
+
+The interface follows the Kaizen Infinities design system — ink, paper and one
+accent, flat, with borders rather than shadows carrying hierarchy.
 
 ---
 

@@ -2,9 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The Kaizen Infinities design system.
+   Ink, paper, one accent. Flat. Borders carry hierarchy at 1px / 2px / 3px.
+   Light only — the palette is not defined twice, and `color-scheme: light`
+   below stops the browser painting form controls for a theme we do not have. */
+
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   html,
@@ -14,8 +19,34 @@
   }
 
   body {
-    @apply bg-ink-950 text-ink-100 font-sans antialiased;
+    @apply bg-ink-950 text-ink-200 font-sans antialiased;
     margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* Headings and figures share one face. Uppercase and heavy is what makes a
+     label read as a label without needing a rule under it. */
+  h1,
+  h2,
+  h3 {
+    @apply font-display font-extrabold uppercase tracking-tight text-ink-100;
+    text-wrap: balance;
+  }
+
+  /* Tabular figures, always. A column of rupee amounts that shifts width as
+     the digits change is unreadable, and every number here is money or a count. */
+  .num,
+  .tabular,
+  td.num,
+  th.num {
+    @apply font-mono;
+    font-variant-numeric: tabular-nums;
+    font-stretch: 112%;
+  }
+
+  ::selection {
+    @apply bg-gold text-ink-100;
   }
 
   ::-webkit-scrollbar {
@@ -23,29 +54,31 @@
     height: 10px;
   }
   ::-webkit-scrollbar-track {
-    background: theme('colors.ink.900');
+    @apply bg-ink-950;
   }
   ::-webkit-scrollbar-thumb {
-    background: theme('colors.ink.700');
+    @apply bg-ink-700;
     border-radius: 5px;
-    border: 2px solid theme('colors.ink.900');
+    border: 2px solid #f2f2f4;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: theme('colors.ink.600');
+    @apply bg-ink-600;
   }
 }
 
 @layer components {
+  /* A card encloses one object you are meant to read whole, so it takes the
+     heaviest border in the system. */
   .card {
-    @apply rounded-lg border border-ink-800 bg-ink-900;
+    @apply rounded-lg border-[3px] border-ink-100 bg-ink-900;
   }
 
   .card-header {
-    @apply flex items-center justify-between gap-3 border-b border-ink-800 px-4 py-3;
+    @apply flex items-center justify-between gap-3 border-b-2 border-ink-100 px-5 py-3.5;
   }
 
   .card-title {
-    @apply text-sm font-semibold tracking-tight text-ink-100;
+    @apply font-display text-[13px] font-extrabold uppercase tracking-wide text-ink-100;
   }
 
   .card-sub {
@@ -53,57 +86,169 @@
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium
-           transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-full border-2 px-4 py-2 text-[13px]
+           font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40;
   }
 
+  /* Primary is ink on paper and turns gold under the cursor — the one place
+     the accent appears on an action. */
   .btn-primary {
-    @apply btn border-accent bg-accent text-white hover:bg-accent-deep;
+    @apply btn border-ink-100 bg-ink-100 text-ink-950
+           hover:border-gold hover:bg-gold hover:text-ink-100;
+  }
+
+  .btn-gold {
+    @apply btn border-gold bg-gold text-ink-100
+           hover:border-ink-100 hover:bg-ink-100 hover:text-gold;
   }
 
   .btn-ghost {
-    @apply btn border-ink-700 bg-ink-850 text-ink-200 hover:border-ink-600 hover:bg-ink-800;
+    @apply btn border-ink-100 bg-transparent text-ink-100 hover:bg-ink-100 hover:text-ink-950;
+  }
+
+  .btn-quiet {
+    @apply btn border-transparent bg-transparent text-ink-400 hover:bg-ink-850 hover:text-ink-100;
   }
 
   .btn-danger {
-    @apply btn border-band-critical/50 bg-band-critical/10 text-band-critical hover:bg-band-critical/20;
+    @apply btn border-band-critical bg-transparent text-band-critical
+           hover:bg-band-critical hover:text-white;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1 text-xs;
   }
 
   .input {
-    @apply w-full rounded-md border border-ink-700 bg-ink-950 px-3 py-2 text-sm text-ink-100
-           placeholder:text-ink-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
+    @apply w-full rounded-sm border-[1.5px] border-ink-700 bg-ink-900 px-2.5 py-2 text-[13px] text-ink-100
+           placeholder:text-ink-500 focus:border-2 focus:border-ink-100 focus:outline-none;
   }
 
   .label {
-    @apply mb-1 block text-2xs font-medium uppercase tracking-wide text-ink-400;
+    @apply mb-1 block text-2xs font-extrabold uppercase tracking-wide text-ink-400;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs font-medium;
+    @apply inline-flex items-center gap-1 rounded-full border-[1.5px] px-2.5 py-0.5 text-2xs
+           font-extrabold uppercase tracking-wide;
+  }
+
+  .chip-gold {
+    @apply chip border-gold bg-gold text-ink-100;
+  }
+
+  .chip-neutral {
+    @apply chip border-ink-700 bg-transparent text-ink-400;
+  }
+
+  /* A KPI wears its verdict on a 4px rail down its left edge, so a wall of
+     them can be read for trouble without reading a single number. */
+  .kpi {
+    @apply relative overflow-hidden rounded-sm border-2 border-ink-100 bg-ink-900 px-4 py-4;
+  }
+
+  .kpi::before {
+    content: '';
+    @apply absolute bottom-0 left-0 top-0 w-1 bg-ink-700;
+  }
+
+  .kpi-good::before {
+    @apply bg-band-strong;
+  }
+  .kpi-warn::before {
+    @apply bg-band-watch;
+  }
+  .kpi-bad::before {
+    @apply bg-band-critical;
+  }
+
+  .kpi-label {
+    @apply text-[10px] font-extrabold uppercase tracking-[0.08em] text-ink-500;
+  }
+
+  .kpi-value {
+    @apply mt-1.5 font-mono text-[25px] font-black leading-none text-ink-100;
+    font-variant-numeric: tabular-nums;
+    font-stretch: 112%;
+  }
+
+  .kpi-sub {
+    @apply mt-1 text-[11.5px] text-ink-400;
   }
 
   .table {
-    @apply w-full border-collapse text-sm;
+    @apply w-full border-collapse text-[13px];
   }
 
+  /* The header rule is 2px and the row rules are 1px: the head is a different
+     kind of thing from a row, and the border says so without a fill. */
   .table thead th {
-    @apply sticky top-0 z-10 border-b border-ink-800 bg-ink-900 px-3 py-2 text-left text-2xs
-           font-semibold uppercase tracking-wide text-ink-400;
+    @apply sticky top-0 z-10 border-b-2 border-ink-100 bg-ink-900 px-2.5 py-2 text-left
+           text-2xs font-extrabold uppercase tracking-wide text-ink-500;
+    white-space: nowrap;
   }
 
   .table tbody td {
-    @apply border-b border-ink-850 px-3 py-2.5 align-middle text-ink-200;
+    @apply border-b border-ink-700 px-2.5 py-2.5 align-middle text-ink-200;
+  }
+
+  .table tbody tr:last-child td {
+    @apply border-b-0;
   }
 
   .table tbody tr:hover {
-    @apply bg-ink-850/60;
+    @apply bg-ink-850;
+  }
+
+  .table tr.total-row td {
+    @apply border-t-2 border-ink-100 font-extrabold text-ink-100;
   }
 
   .mono {
     @apply font-mono text-2xs tracking-tight text-ink-400;
+    font-variant-numeric: tabular-nums;
   }
 
   .section-title {
-    @apply text-xs font-semibold uppercase tracking-wider text-ink-400;
+    @apply font-display text-xs font-extrabold uppercase tracking-[0.12em] text-ink-500;
+  }
+
+  .divider {
+    @apply my-4 h-0.5 bg-ink-700;
+  }
+
+  /* The sidebar is the one dark region in a light app. It is ink so that the
+     paper beside it reads as the work and the rail reads as the frame, and it
+     is the only place gold is allowed to fill a whole element. The values are
+     literal rather than scale tokens because the `ink` scale points at paper. */
+  .sidebar {
+    @apply flex w-56 shrink-0 flex-col border-r-[3px] border-[#0F0F12] bg-[#0F0F12] text-[#c9c9ce];
+  }
+
+  .sidebar-brand {
+    @apply flex items-center gap-2.5 border-b-2 border-white/[0.18] px-[18px] py-5;
+  }
+
+  .sidebar-mark {
+    @apply flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-sm border-2 border-gold
+           bg-gold font-display text-base font-black text-[#0F0F12];
+  }
+
+  .sidebar-group {
+    @apply px-3 pb-1 pt-4 font-display text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#8b8b93];
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-2.5 rounded-full border-l-[2.5px] border-transparent px-3 py-2
+           text-[13.3px] font-semibold text-[#c9c9ce] transition-colors
+           hover:bg-[#232326] hover:text-white;
+  }
+
+  .sidebar-link-active {
+    @apply border-l-gold bg-gold font-extrabold text-[#0F0F12] hover:bg-gold hover:text-[#0F0F12];
+  }
+
+  .sidebar-foot {
+    @apply border-t-2 border-white/[0.18] p-2.5 text-[11.5px] text-[#9a9aa3];
   }
 }
