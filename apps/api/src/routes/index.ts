@@ -9,6 +9,7 @@ import adminRoutes from './admin.routes.js';
 import educationRoutes from './education.routes.js';
 import hrRoutes from './hr.routes.js';
 import booksRoutes from './books.routes.js';
+import { importsRouter } from './imports.routes.js';
 import { requireAuth } from '../lib/http.js';
 
 const router = Router();
@@ -23,5 +24,6 @@ router.use('/admin', requireAuth, adminRoutes);
 router.use('/education', requireAuth, educationRoutes);
 router.use('/hr', requireAuth, hrRoutes);
 router.use('/books', requireAuth, booksRoutes);
+router.use('/imports', requireAuth, importsRouter);
 
 export default router;

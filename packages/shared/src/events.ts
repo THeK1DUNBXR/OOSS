@@ -256,6 +256,13 @@ export const EVENTS = {
   LOAN_RECORDED: 'kz.fin.loan.recorded',
   INVOICE_TAX_PRICED: 'kz.fin.invoice.tax_priced',
   PAYROLL_POSTED_TO_BOOKS: 'kz.fin.payroll.posted',
+
+  // Imports. A figure in the books must be traceable to the file it came from,
+  // so staging, committing and reverting are all events rather than silent
+  // bulk writes.
+  IMPORT_STAGED: 'kz.fin.import.staged',
+  IMPORT_COMMITTED: 'kz.fin.import.committed',
+  IMPORT_REVERTED: 'kz.fin.import.reverted',
 } as const;
 
 /**

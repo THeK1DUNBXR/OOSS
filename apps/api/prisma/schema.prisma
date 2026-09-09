@@ -3357,3 +3357,102 @@ model Loan {
   @@index([tenantId, closedAt])
   @@map("loans")
 }
+
+// ---------------------------------------------------------------------------
+// Imports (§15.9)
+//
+// A company's history does not begin when it installs an ERP. It arrives as a
+// Tally export, a bank statement and a payroll spreadsheet, and the platform is
+// worth nothing until those are in it.
+//
+// Import is staged rather than immediate: parse, map, preview, then commit. The
+// file is a record, its rows are records, and every figure that lands in the
+// books carries the id of the row it came from — so "where did this ₹76,000
+// come from" is answerable in one join rather than by opening the original
+// spreadsheet and hoping it has not changed.
+// ---------------------------------------------------------------------------
+
+/// One uploaded file and what became of it.
+model ImportBatch {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  fileName String
+  fileSize Int
+  /// SHA-256 of the bytes. Re-uploading the same file is recognised as the
+  /// same file rather than duplicating a year of the ledger.
+  contentHash String
+
+  /// tally_ledger | bank_statement | employees | salary | attendance |
+  /// transactions | chart_of_accounts
+  kind String
+  /// xlsx | csv | tally_xml
+  sourceFormat String
+  /// What the sniffer thought it was, kept even when the user overrides it, so
+  /// a misdetection is visible rather than silently corrected.
+  detectedAs String?
+  /// The sheet or section the rows came from.
+  sourceLabel String?
+
+  /// parsed | previewed | committed | failed | reverted
+  status String @default("parsed")
+
+  /// Column-to-field mapping, editable before commit.
+  mapping Json @default("{}")
+  /// Counts by row status, plus anything the parser wants to say.
+  stats Json @default("{}")
+  /// Options the commit honours: target account, default division, date format.
+  options Json @default("{}")
+
+  errorMessage String?
+
+  createdById String?
+  committedAt DateTime?
+  revertedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  rows ImportRow[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, contentHash])
+  @@map("import_batches")
+}
+
+/// One line of the file, before and after normalisation.
+model ImportRow {
+  id       String @id @default(cuid())
+  tenantId String
+  batchId  String
+  batch    ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  /// 1-based, as the spreadsheet numbers it, so an error message names a row
+  /// the user can actually find.
+  rowNumber Int
+
+  /// Exactly what was in the file.
+  raw Json
+  /// What it became. Null until mapping runs.
+  normalised Json?
+
+  /// pending | ready | duplicate | error | committed | skipped
+  status  String  @default("pending")
+  message String?
+
+  /// What it turned into, once committed.
+  entityType String?
+  entityId   String?
+
+  /// Stable identity for this line, so re-importing an overlapping statement
+  /// recognises what it has already seen.
+  dedupeKey String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, batchId, rowNumber])
+  @@index([tenantId, dedupeKey])
+  @@index([batchId, status])
+  @@map("import_rows")
+}

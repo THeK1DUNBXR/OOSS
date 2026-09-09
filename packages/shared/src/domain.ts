@@ -354,6 +354,10 @@ export const RECORD_TYPE_CODES = [
   // The books (§15): a ledger movement, a supplier bill, a capital purchase
   // and a borrowing.
   'TXN', 'BILL', 'FA', 'LN',
+  // A staged import: a file somebody uploaded, its rows, and what became of
+  // them. A record because a figure in the books must be traceable to the
+  // statement line it came from.
+  'IMP',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 
