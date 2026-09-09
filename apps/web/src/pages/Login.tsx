@@ -1,23 +1,38 @@
 import { useState } from 'react';
 import { useSession } from '../lib/session.js';
 
-const DEMO_ACCOUNTS = [
-  { email: 'chairman@kaizen.co.in', label: 'Chairman', note: 'Sees the whole company, and makes the calls nobody else can.' },
-  { email: 'bhead@kaizen.co.in', label: 'Business Head', note: 'Approves deals up to ₹10 lakh. Above that it goes to a director.' },
-  { email: 'controller@kaizen.co.in', label: 'Finance Controller', note: 'The only one who can sign off a discount bigger than a salesperson is allowed to give.' },
-  { email: 'arun@kaizen.co.in', label: 'Salesperson', note: 'Runs his own deals. Big ones need someone senior to approve.' },
-  { email: 'divya@kaizen.co.in', label: 'Telecaller', note: 'Can see every lead, but only change the ones assigned to her.' },
-  { email: 'meera@kaizen.co.in', label: 'Education Counsellor', note: 'Can claim any college in her branch that nobody else has taken.' },
-  { email: 'ravi@kaizen.co.in', label: 'Trainer', note: 'Sees the batches he teaches, and no others.' },
-  { email: 'latha@kaizen.co.in', label: 'Finance', note: 'Records payments — which even the chairman cannot do.' },
-  { email: 'sysadmin@kaizen.co.in', label: 'System Administrator', note: 'Runs the system, and cannot read a single customer record.' },
-  { email: 'multi@kaizen.co.in', label: 'Someone with three jobs', note: 'Switch between them in the sidebar — what he sees changes with the hat he is wearing.' },
+/**
+ * Four roles, described rather than offered as demo logins.
+ *
+ * This panel used to list ten accounts you could click to sign in as, which is
+ * the right thing for a demonstration and the wrong thing for a company's own
+ * sign-in page: it published a working password beside ten real addresses. What
+ * survives is the part that was actually useful — an explanation of why the
+ * same screen shows different things to different people.
+ */
+const ROLES = [
+  {
+    label: 'Employee',
+    note: 'Their own leave, attendance, payslip and skills, plus the staff directory. No colleague’s file, and no company money.',
+  },
+  {
+    label: 'HR & Operations Manager',
+    note: 'The people function end to end, and delivery. Proposes pay and cannot approve it.',
+  },
+  {
+    label: 'Finance Head',
+    note: 'The books, and the money side of people: approves pay and payroll, and sees what the establishment costs without running it.',
+  },
+  {
+    label: 'Chairman',
+    note: 'Everything. Every screen, every record, every action — nothing in the system is hidden from this one.',
+  },
 ];
 
 export function Login() {
   const { signIn, error } = useSession();
-  const [email, setEmail] = useState('chairman@kaizen.co.in');
-  const [password, setPassword] = useState('kaizen2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
@@ -76,33 +91,25 @@ export function Login() {
         </div>
 
         <div className="card p-6">
-          <h2 className="text-sm font-semibold text-ink-100">Have a look as somebody else</h2>
-          <p className="mt-1 text-2xs text-ink-500">
-            Every account below uses the password <span className="font-mono text-ink-300">kaizen2026</span>. Sign in
-            as any of them and the whole app changes — menus you have no business seeing simply are not there, rather
-            than sitting greyed out. Try the system administrator and the finance clerk one after the other.
+          <h2 className="text-sm font-semibold text-ink-100">What you see depends on what you do here</h2>
+          <p className="mt-1 text-2xs leading-relaxed text-ink-500">
+            There are four roles, and the same screen shows different things to each. Menus you hold no grant on are
+            absent rather than greyed out, because a link you can never enable is not information.
           </p>
 
           <div className="mt-4 space-y-1.5">
-            {DEMO_ACCOUNTS.map((a) => (
-              <button
-                key={a.email}
-                onClick={() => {
-                  setEmail(a.email);
-                  setPassword('kaizen2026');
-                }}
-                className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${
-                  email === a.email ? 'border-accent bg-accent/10' : 'border-ink-800 bg-ink-950 hover:border-ink-600'
-                }`}
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs font-medium text-ink-100">{a.label}</span>
-                  <span className="mono">{a.email.split('@')[0]}</span>
-                </div>
-                <p className="mt-0.5 text-2xs leading-snug text-ink-500">{a.note}</p>
-              </button>
+            {ROLES.map((r) => (
+              <div key={r.label} className="rounded-md border border-ink-800 bg-ink-950 px-3 py-2">
+                <span className="text-xs font-medium text-ink-100">{r.label}</span>
+                <p className="mt-0.5 text-2xs leading-snug text-ink-500">{r.note}</p>
+              </div>
             ))}
           </div>
+
+          <p className="mt-4 text-2xs leading-relaxed text-ink-500">
+            Your account is created for you by whoever set the company up. If you cannot get in, they can reset it —
+            there is no self-service password here on purpose, because an ERP account is an employment fact.
+          </p>
         </div>
       </div>
     </div>

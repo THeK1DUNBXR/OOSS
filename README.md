@@ -70,39 +70,59 @@ reseeds a database that already holds data.
 ./scripts/dev.sh stop
 ```
 
-### Sign in as someone else
+### Signing in
 
-Every account uses the same password. The point of having fifteen of them is
-that the *same screen* shows different things to each — that is the five-axis
-permission model working, not a demo mode.
+`pnpm seed` creates one account — the chairman — and prints a generated password
+once. Set `OWNER_EMAIL` and `OWNER_PASSWORD` to choose them; otherwise the
+password is random and shown only on that run.
 
-| Account | Role | What is different about them |
-|---|---|---|
-| `chairman@kaizen.co.in` | chairman | Sees everything; approves at the top tier |
-| `sysadmin@kaizen.co.in` | system_admin | Platform administration and **no domain content authority at all** — no grant on people, leads, opportunities or agreements, and structurally barred from approving |
-| `bhead@kaizen.co.in` | business_head | First approval tier, ₹10L MoU ceiling |
-| `director@kaizen.co.in` | director | Second approval tier, ₹50L ceiling |
-| `controller@kaizen.co.in` | finance_controller | Discount authority above the sales ceiling |
-| `arun@kaizen.co.in` | sales | Owns deals; sees all, edits own |
-| `divya@kaizen.co.in` | telecaller | `own`-scoped: views every lead, edits only hers |
-| `meera@kaizen.co.in` | education_counsellor | `own_or_unowned` — may claim an unowned institution in her branch |
-| `ravi@kaizen.co.in` | trainer | Narrowed to his own batches by a **grant scope resolver**, not by a role check in code |
-| `latha@kaizen.co.in` | finance | Records payments and keeps the books — which the chairman cannot |
-| `hr@kaizen.co.in` | hr_ops | The people function: proposes pay and cannot approve it |
-| `multi@kaizen.co.in` | (three) | Holds three affiliations; use the context switcher in the sidebar |
+Everyone else is created inside the product. There are four roles, and the same
+screen genuinely shows different things to each:
 
-`sysadmin`, `latha` and `hr` are the three worth trying first: they show that
-authority here is not a ladder. The system administrator, with the highest
-platform privilege, cannot read a single opportunity. The chairman, at the top
-of the company, holds `payments:VXF` and cannot record a payment — because
-recording one is the finance function's, and the matrix says so. He holds
-`employees:VXF` on the same pattern, and no grant at all on
-`performance_evidence`: the most senior person in the company cannot read a
-live disciplinary case, because need-to-know is something you hold, not
-something your rank confers.
+| Role | What they hold |
+|---|---|
+| **Employee** | Their own leave, attendance, goals, skills and payslip, plus the staff and skills directories. No colleague's file, no company money. |
+| **HR & Operations Manager** | The employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and tasks. Proposes pay and cannot approve it. |
+| **Finance Head** | The books outright, and the money side of people: approves compensation and payroll and sees what the establishment costs, without running it. |
+| **Chairman** | Superadmin. Every resource, every verb, every scope — nothing is hidden or inaccessible. |
 
-`hr_ops` proposes compensation and cannot approve it, so a pay rise stays a
-two-party act.
+The HR/Finance split is the one worth understanding. `hr_ops_manager` holds
+`compensation:VCEDXF` and no `approve`; `finance_head` holds `approve` and
+neither `create` nor `edit`, so the signatory is never the author. Neither can
+move a salary alone, and nobody at all can approve their own — the bar holds
+for the chairman too.
+
+Scope is real on reads as well as writes. An employee holding `leave` at `own`
+scope gets their own ledger, not the company's. Where a read should reach
+everything the matrix says so with an explicit `V@all` cell, so the reach is
+something you read off the matrix rather than a rule you have to know about the
+evaluator.
+
+---
+
+## Bring your data in
+
+The platform ships empty on purpose: a company installing it should not have to
+identify and delete somebody else's demonstration data before their own figures
+mean anything. **Import Data**, under Set up, reads three things:
+
+- **A Tally export.** Both the Excel reports and the XML. The Excel workbook
+  carries a Balance Sheet and a Profit & Loss beside the vouchers, and between
+  them they name every ledger and say which side of the books it belongs on —
+  so the chart of accounts is read from your own statements rather than guessed
+  from ledger names.
+- **A bank statement.** CSV, in whatever dialect. Columns are found by name, the
+  preamble above the header is skipped however long it is, and day-first dates
+  are inferred from the file rather than from your locale.
+- **A spreadsheet.** A staff list, a salary sheet, an attendance grid, or a
+  plain list of transactions.
+
+Nothing is written until you have seen the preview: every row that will be
+created, every row that will not, and why. Reverting removes exactly what the
+batch created.
+
+On the reference dataset the imported figures tie back to Tally to the paisa —
+bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.07.
 
 ### What to look at
 

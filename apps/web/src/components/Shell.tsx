@@ -15,6 +15,7 @@ import { useSession } from '../lib/session.js';
 import { api, relative } from '../lib/api.js';
 import { words } from '../lib/words.js';
 import { FirstRun } from './FirstRun.js';
+import { SetupBanner } from '../pages/Start.js';
 
 const ICONS: Record<string, string> = {
   gauge: '◎', home: '⌂', inbox: '⇢', columns: '▤', target: '◈', trending: '↗',
@@ -23,6 +24,7 @@ const ICONS: Record<string, string> = {
   wallet: '▣', coins: '◉', graduation: '⌾', badge: '✦', kanban: '▥',
   alert: '⚠', scale: '⚖', settings: '⚙', map: '⊕', key: '⚿', bot: '⬢',
   activity: '∿', clock: '◷', search: '⌕', layers: '▧',
+  sparkle: '✧', lock: '⚿', list: '☰', book: '▤',
 };
 
 // Ordinary business words are kept as they are — a salesperson knows what a
@@ -30,14 +32,22 @@ const ICONS: Record<string, string> = {
 // What gets translated is the engineering vocabulary underneath.
 const GROUP_LABELS: Record<string, string> = {
   main: '',
-  crm: 'Sales & Customers',
-  commercial: 'Deals & Agreements',
-  finance: 'Money',
+  money: 'Money',
   people: 'People',
-  delivery: 'Delivery & Training',
-  governance: 'Oversight',
-  admin: 'System Settings',
+  customers: 'Customers',
+  delivery: 'Selling & Delivering',
+  setup: 'Set up',
 };
+
+/**
+ * Groups that start closed.
+ *
+ * Set-up is where you go twice a year — to import a year of books, change who
+ * can do what, or look at the audit trail — and having eleven of those entries
+ * permanently in the sidebar was most of what made this product feel heavy.
+ * It opens on click and stays open for the session.
+ */
+const COLLAPSED_BY_DEFAULT = new Set(['setup']);
 
 export function Shell() {
   const { user, nav, signOut } = useSession();
@@ -49,7 +59,9 @@ export function Shell() {
 
   // Fixed group order, so the shell reads the way the work reads: your own
   // surface first, then the domains, then the platform underneath them.
-  const GROUP_ORDER = ['main', 'crm', 'commercial', 'finance', 'people', 'delivery', 'governance', 'admin'];
+  const GROUP_ORDER = ['main', 'money', 'people', 'customers', 'delivery', 'setup'];
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const grouped = useMemo(() => {
     const map = new Map<string, NavNodeView[]>();
@@ -104,29 +116,51 @@ export function Shell() {
         </div>
 
         <nav className="flex flex-1 flex-col gap-px overflow-y-auto px-2.5 py-3">
-          {grouped.map(([group, nodes]) => (
-            <div key={group} className="contents">
-              {GROUP_LABELS[group] && (
-                <p className="sidebar-group">{GROUP_LABELS[group]}</p>
-              )}
-              {nodes.map((node) => (
-                <NavLink
-                  key={node.key}
-                  to={node.path}
-                  className={({ isActive }) =>
-                    `sidebar-link ${
-                      isActive || location.pathname.startsWith(`${node.path}/`)
-                        ? 'sidebar-link-active'
-                        : ''
-                    }`
-                  }
-                >
-                  <span className="w-[18px] text-center opacity-85">{ICONS[node.icon] ?? '·'}</span>
-                  <span className="truncate">{node.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          ))}
+          {grouped.map(([group, nodes]) => {
+            const collapsible = COLLAPSED_BY_DEFAULT.has(group);
+            // A collapsed group still opens itself when you are inside it, so
+            // navigating to a set-up screen never leaves the sidebar
+            // disagreeing with the page.
+            const holdsCurrent = nodes.some(
+              (n) => location.pathname === n.path || location.pathname.startsWith(`${n.path}/`),
+            );
+            const open = !collapsible || (openGroups[group] ?? holdsCurrent);
+
+            return (
+              <div key={group} className="contents">
+                {GROUP_LABELS[group] &&
+                  (collapsible ? (
+                    <button
+                      onClick={() => setOpenGroups((g) => ({ ...g, [group]: !open }))}
+                      className="sidebar-group flex w-full items-center justify-between hover:text-white"
+                      aria-expanded={open}
+                    >
+                      <span>{GROUP_LABELS[group]}</span>
+                      <span aria-hidden className="text-[9px] opacity-70">{open ? '▾' : '▸'}</span>
+                    </button>
+                  ) : (
+                    <p className="sidebar-group">{GROUP_LABELS[group]}</p>
+                  ))}
+                {open &&
+                  nodes.map((node) => (
+                    <NavLink
+                      key={node.key}
+                      to={node.path}
+                      className={({ isActive }) =>
+                        `sidebar-link ${
+                          isActive || location.pathname.startsWith(`${node.path}/`)
+                            ? 'sidebar-link-active'
+                            : ''
+                        }`
+                      }
+                    >
+                      <span className="w-[18px] text-center opacity-85">{ICONS[node.icon] ?? '·'}</span>
+                      <span className="truncate">{node.label}</span>
+                    </NavLink>
+                  ))}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sidebar-foot">
@@ -217,7 +251,10 @@ export function Shell() {
         </header>
 
         <main className="flex-1 overflow-y-auto px-6 py-5">
-          <FirstRun />
+          {/* Both of these are redundant on the Getting Started screen: it is
+              the orientation, at more length and without a dialog to dismiss. */}
+          {location.pathname !== '/start' && <FirstRun />}
+          {location.pathname !== '/start' && <SetupBanner />}
           <Outlet />
         </main>
       </div>

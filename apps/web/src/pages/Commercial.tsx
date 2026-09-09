@@ -23,6 +23,8 @@ import {
   StatusChip,
   Tabs,
 } from '../components/ui.js';
+import { NewButton } from '../components/forms.js';
+import { NewOffering } from '../components/createForms.js';
 import { useSession } from '../lib/session.js';
 
 // ---------------------------------------------------------------------------
@@ -30,6 +32,7 @@ import { useSession } from '../lib/session.js';
 // ---------------------------------------------------------------------------
 
 export function Offerings() {
+  const [creating, setCreating] = useState(false);
   const qc = useQueryClient();
   const { can } = useSession();
   const [priceFor, setPriceFor] = useState<OfferingView | null>(null);
@@ -45,8 +48,10 @@ export function Offerings() {
 
   return (
     <div>
+      <NewOffering open={creating} onClose={() => setCreating(false)} />
       <PageHeader
-        title="Offering Catalog"
+        actions={<NewButton label="Add an offering" onClick={() => setCreating(true)} />}
+        title="What we sell"
         subtitle="Everything Kaizen sells, with its prices. Keeping this straight is what lets finance work out revenue automatically instead of asking about every deal."
       />
 

@@ -5,11 +5,14 @@
  * against the realised assessment is a computed statistic, not an AI inference —
  * raw material the platform already collects, surfaced rather than discarded.
  */
+import { useState } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 import type { DecisionView } from '@kaizen/shared';
 import { api, date, money, relative, titleCase } from '../lib/api.js';
 import { Card, ContributionBar, EmptyState, ErrorBox, Loading, Metric, PageHeader, StatusChip } from '../components/ui.js';
+import { NewButton } from '../components/forms.js';
+import { NewDecision } from '../components/createForms.js';
 
 interface Calibration {
   buckets: Array<{ band: string; stated: number; realised: number | null; count: number }>;
@@ -18,6 +21,7 @@ interface Calibration {
 }
 
 export function Decisions() {
+  const [creating, setCreating] = useState(false);
   const { data = [], isLoading, error } = useQuery({
     queryKey: ['decisions'],
     queryFn: () => api.get<DecisionView[]>('/command/decisions'),
@@ -34,7 +38,9 @@ export function Decisions() {
 
   return (
     <div>
+      <NewDecision open={creating} onClose={() => setCreating(false)} />
       <PageHeader
+        actions={<NewButton label="Record a decision" onClick={() => setCreating(true)} />}
         title="Decisions"
         subtitle="Calls that genuinely need you. Something arrives here only when nobody below you can settle it, a policy names you specifically, or someone you delegated to handed it back."
       />

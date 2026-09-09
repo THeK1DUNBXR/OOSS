@@ -25,8 +25,11 @@ import {
   RecordCode,
   StatusChip,
 } from '../components/ui.js';
+import { NewButton } from '../components/forms.js';
+import { NewInvoice, NewPayment } from '../components/createForms.js';
 
 export function Invoices() {
+  const [creating, setCreating] = useState(false);
   const { data = [], isLoading, error } = useQuery({
     queryKey: ['invoices'],
     queryFn: () => api.get<InvoiceView[]>('/finance/invoices'),
@@ -42,7 +45,9 @@ export function Invoices() {
       <PageHeader
         title="Invoices"
         subtitle="What customers owe us. How and when each invoice counts as revenue is worked out from what was sold, so nobody in sales has to decide it deal by deal."
+        actions={<NewButton label="Raise an invoice" onClick={() => setCreating(true)} />}
       />
+      <NewInvoice open={creating} onClose={() => setCreating(false)} />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="Invoices" value={data.length} drillTo="/finance/invoices" />
@@ -122,6 +127,7 @@ export function Invoices() {
 }
 
 export function Payments() {
+  const [creating, setCreating] = useState(false);
   const qc = useQueryClient();
   const [allocating, setAllocating] = useState<PaymentView | null>(null);
 
@@ -139,7 +145,9 @@ export function Payments() {
       <PageHeader
         title="Payments"
         subtitle="Money actually received. Nothing here is ever edited or deleted — a mistake is corrected by adding a reversing entry, so the history always shows what really happened."
+        actions={<NewButton label="Record a payment" onClick={() => setCreating(true)} />}
       />
+      <NewPayment open={creating} onClose={() => setCreating(false)} />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="Payments" value={data.length} drillTo="/finance/payments" />

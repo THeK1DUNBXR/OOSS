@@ -89,7 +89,53 @@ export const api = {
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: body === undefined ? undefined : JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+
+  /**
+   * Sends a file as the request body.
+   *
+   * Not multipart. The browser can post a File object directly, the server
+   * reads the bytes with no boundary-encoding layer in between, and the name
+   * rides along in a header — which is the only other thing multipart was
+   * carrying. `Content-Type` is deliberately overridden to the file's own,
+   * because the default JSON header would be a lie about the bytes.
+   */
+  upload: async <T>(path: string, file: File, headers: Record<string, string> = {}): Promise<T> => {
+    const token = getToken();
+    const res = await fetch(`/api${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-File-Name': encodeHeader(file.name),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
+      body: file,
+    });
+
+    const text = await res.text();
+    const body = text ? JSON.parse(text) : null;
+    if (!res.ok) {
+      const err = body?.error ?? {};
+      throw new ApiClientError({
+        status: res.status,
+        code: err.code ?? 'UNKNOWN',
+        message: err.message ?? res.statusText,
+        details: err.details,
+      });
+    }
+    return body as T;
+  },
 };
+
+/**
+ * A header value has to be Latin-1, and a filename does not have to be. A
+ * spreadsheet called `Salaries – Sept.xlsx`, with an en dash, throws when it
+ * reaches `fetch` — so the non-Latin-1 characters are replaced rather than
+ * allowed to fail the upload of an otherwise perfectly good file.
+ */
+function encodeHeader(value: string): string {
+  return value.replace(/[^\x20-\x7E]/g, '_');
+}
 
 export async function login(email: string, password: string) {
   const res = await api.post<{ token: string; user: SessionUser }>('/auth/login', { email, password });

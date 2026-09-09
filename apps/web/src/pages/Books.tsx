@@ -28,6 +28,10 @@ import {
   StatusChip,
   Withheld,
 } from '../components/ui.js';
+import { NewButton } from '../components/forms.js';
+import {
+  NewAsset, NewBudgetLine, NewCategory, NewLedgerAccount, NewLoan, NewTransaction, NewVendorBill,
+} from '../components/createForms.js';
 
 const DIVISION_STYLE: Record<string, string> = {
   software: 'bg-div-software',
@@ -85,6 +89,7 @@ interface TxnRow {
 }
 
 export function Ledger() {
+  const [adding, setAdding] = useState<'txn' | 'account' | 'category' | null>(null);
   const [params, setParams] = useSearchParams();
   const [reversing, setReversing] = useState<TxnRow | null>(null);
   const [reason, setReason] = useState('');
@@ -139,7 +144,17 @@ export function Ledger() {
       <PageHeader
         title="Ledger"
         subtitle="Every movement of money, whatever raised it — a bank import, a payroll disbursement, a supplier payment or somebody typing it in. Nothing is deleted: a mistake is reversed with a second entry, and both stay."
+        actions={
+          <>
+            <button className="btn" onClick={() => setAdding('category')}>+ Category</button>
+            <button className="btn" onClick={() => setAdding('account')}>+ Account</button>
+            <NewButton label="Record money" onClick={() => setAdding('txn')} />
+          </>
+        }
       />
+      <NewTransaction open={adding === 'txn'} onClose={() => setAdding(null)} />
+      <NewLedgerAccount open={adding === 'account'} onClose={() => setAdding(null)} />
+      <NewCategory open={adding === 'category'} onClose={() => setAdding(null)} />
 
       {accounts.data && (
         <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -310,6 +325,7 @@ interface BillRow {
 }
 
 export function Payables() {
+  const [adding, setAdding] = useState<'bill' | null>(null);
   const [paying, setPaying] = useState<BillRow | null>(null);
   const [amount, setAmount] = useState('');
   const [accountId, setAccountId] = useState('');
@@ -347,7 +363,9 @@ export function Payables() {
 
   return (
     <div>
+      <NewVendorBill open={adding === 'bill'} onClose={() => setAdding(null)} />
       <PageHeader
+        actions={<NewButton label="Record a bill" onClick={() => setAdding('bill')} />}
         title="What we owe"
         subtitle="Supplier bills. The company could always see what it was owed; without this it could not see its own position."
       />
@@ -496,6 +514,7 @@ interface VarianceRow {
 }
 
 export function Budget() {
+  const [adding, setAdding] = useState(false);
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
 
   const { data, isLoading, error } = useQuery({
@@ -513,10 +532,16 @@ export function Budget() {
 
   return (
     <div>
+      <NewBudgetLine open={adding} onClose={() => setAdding(false)} period={period} />
       <PageHeader
         title="Budget"
         subtitle="What was planned against what was spent. The spend is summed from the ledger each time this loads, so an entry made late moves the variance instead of leaving a number that was true on the day somebody wrote it."
-        actions={<input type="month" className="input w-40" value={period} onChange={(e) => e.target.value && setPeriod(e.target.value)} />}
+        actions={
+          <>
+            <input type="month" className="input w-40" value={period} onChange={(e) => e.target.value && setPeriod(e.target.value)} />
+            <NewButton label="Set a budget line" onClick={() => setAdding(true)} />
+          </>
+        }
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -607,6 +632,7 @@ interface LoanRow {
 }
 
 export function Assets() {
+  const [adding, setAdding] = useState<'asset' | 'loan' | null>(null);
   const assets = useQuery({ queryKey: ['books-assets'], queryFn: () => api.get<AssetRow[]>('/books/assets'), retry: false });
   const loans = useQuery({ queryKey: ['books-loans'], queryFn: () => api.get<LoanRow[]>('/books/loans'), retry: false });
 
@@ -618,7 +644,15 @@ export function Assets() {
 
   return (
     <div>
+      <NewAsset open={adding === 'asset'} onClose={() => setAdding(null)} />
+      <NewLoan open={adding === 'loan'} onClose={() => setAdding(null)} />
       <PageHeader
+        actions={
+          <>
+            <button className="btn" onClick={() => setAdding('loan')}>+ Borrowing</button>
+            <NewButton label="Add an asset" onClick={() => setAdding('asset')} />
+          </>
+        }
         title="Assets and borrowing"
         subtitle="What the company owns and what it owes over time. Both schedules are worked out on demand rather than stored, so correcting a useful life or a rate fixes every future period at once."
       />

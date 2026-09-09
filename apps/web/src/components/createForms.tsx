@@ -1,0 +1,1206 @@
+/**
+ * The forms that were missing.
+ *
+ * Each of these fronts an endpoint that already existed, was already tested and
+ * was already unreachable — you could not raise an invoice, record a payment,
+ * add a customer or put an employee on the books from the interface. They are
+ * gathered in one file rather than scattered across their pages because they
+ * are the same shape, and keeping them together is what stops the next one
+ * being written from scratch and therefore never being written.
+ *
+ * Every one of them opens from a `+` button on the surface that lists the thing
+ * it creates, so the answer to "how do I add one of these" is always in the
+ * same place.
+ */
+
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../lib/api.js';
+import { CreateModal, MoneyInput, Row, SelectInput, TextArea, TextInput } from './forms.js';
+
+/**
+ * A list endpoint's rows, whichever shape it returns them in.
+ *
+ * The CRM endpoints answer with `{ items, total, page, pageSize }` and the
+ * books endpoints answer with a bare array. Both are defensible and the
+ * inconsistency is real; what is not acceptable is that calling `.map` on the
+ * wrong one takes the whole screen down with a white page, which is exactly
+ * what the invoice form did the first time it was opened.
+ *
+ * Unwrapping in one place means a form cannot get this wrong, and a list that
+ * has not loaded yet reads as empty rather than as a crash.
+ */
+function rowsOf<T>(data: unknown): T[] {
+  if (Array.isArray(data)) return data as T[];
+  const items = (data as { items?: unknown } | undefined)?.items;
+  return Array.isArray(items) ? (items as T[]) : [];
+}
+
+function useList<T>(key: string, path: string, enabled = true) {
+  const query = useQuery({ queryKey: [key], queryFn: () => api.get<unknown>(path), enabled });
+  return { ...query, rows: rowsOf<T>(query.data) };
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+const DIVISIONS = [
+  { value: 'software', label: 'Software' },
+  { value: 'skill', label: 'Skill Development' },
+  { value: 'education', label: 'Education' },
+  { value: 'shared', label: 'Shared' },
+];
+
+interface Named {
+  id: string;
+  name: string;
+}
+
+/** The ledger accounts money can sit in. */
+function useAccounts(enabled = true) {
+  return useList<Named & { accountType: string }>('ledger-accounts', '/books/accounts', enabled);
+}
+
+function useCategories(enabled = true) {
+  return useList<Named & { kind: string }>('ledger-categories', '/books/categories', enabled);
+}
+
+// ---------------------------------------------------------------------------
+// Money
+// ---------------------------------------------------------------------------
+
+/**
+ * A movement of money.
+ *
+ * Division is asked for rather than derived, because three businesses run
+ * inside one legal entity and a transaction with no division cannot answer the
+ * question the founder's dashboard exists to answer. The category's own
+ * default fills it in, so the usual case is one click.
+ */
+export function NewTransaction({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const accounts = useAccounts(open);
+  const categories = useCategories(open);
+
+  const [direction, setDirection] = useState<'out' | 'in'>('out');
+  const [txnDate, setTxnDate] = useState(today());
+  const [amount, setAmount] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [division, setDivision] = useState('');
+  const [counterparty, setCounterparty] = useState('');
+  const [reference, setReference] = useState('');
+  const [note, setNote] = useState('');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Record a movement of money"
+      submitLabel="Record it"
+      onClose={onClose}
+      invalidate={[['transactions'], ['cash'], ['books']]}
+      onSubmit={() =>
+        api.post('/books/transactions', {
+          txnDate,
+          direction,
+          amount: Number(amount),
+          accountId,
+          categoryId: categoryId || null,
+          division: division || null,
+          counterparty: counterparty || null,
+          reference: reference || null,
+          note: note || null,
+        })
+      }
+    >
+      <Row>
+        <SelectInput
+          label="Which way"
+          required
+          value={direction}
+          onChange={(v) => setDirection(v as 'in' | 'out')}
+          options={[
+            { value: 'out', label: 'Money out — we paid somebody' },
+            { value: 'in', label: 'Money in — somebody paid us' },
+          ]}
+        />
+        <TextInput label="Date" type="date" required value={txnDate} onChange={setTxnDate} />
+      </Row>
+      <Row>
+        <MoneyInput label="Amount" required value={amount} onChange={setAmount} />
+        <SelectInput
+          label="Account"
+          required
+          value={accountId}
+          onChange={setAccountId}
+          placeholder={accounts.rows.length ? 'Which account' : 'No accounts yet — add one first'}
+          options={accounts.rows.map((a) => ({ value: a.id, label: `${a.name} (${a.accountType})` }))}
+        />
+      </Row>
+      <Row>
+        <SelectInput
+          label="What for"
+          value={categoryId}
+          onChange={setCategoryId}
+          placeholder="Uncategorised"
+          options={categories.rows.map((c) => ({ value: c.id, label: c.name }))}
+        />
+        <SelectInput
+          label="Division"
+          hint="which business"
+          value={division}
+          onChange={setDivision}
+          placeholder="From the category"
+          options={DIVISIONS}
+        />
+      </Row>
+      <Row>
+        <TextInput label="Who" value={counterparty} onChange={setCounterparty} placeholder="Supplier or customer" />
+        <TextInput label="Reference" value={reference} onChange={setReference} placeholder="Cheque or UTR number" />
+      </Row>
+      <TextArea label="Note" value={note} onChange={setNote} rows={2} />
+    </CreateModal>
+  );
+}
+
+export function NewLedgerAccount({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [accountType, setAccountType] = useState('bank');
+  const [displayReference, setDisplayReference] = useState('');
+  const [openingBalance, setOpeningBalance] = useState('0');
+  const [openingDate, setOpeningDate] = useState(today());
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add an account"
+      submitLabel="Add it"
+      onClose={onClose}
+      invalidate={[['ledger-accounts'], ['cash']]}
+      onSubmit={() =>
+        api.post('/books/accounts', {
+          name,
+          accountType,
+          displayReference: displayReference || null,
+          openingBalance: Number(openingBalance || 0),
+          openingDate,
+          ledgerGroup: accountType === 'card' || accountType === 'loan' ? 'liability' : 'asset',
+        })
+      }
+    >
+      <TextInput
+        label="Name"
+        required
+        autoFocus
+        value={name}
+        onChange={setName}
+        placeholder="Current Account — Axis"
+      />
+      <Row>
+        <SelectInput
+          label="Kind"
+          required
+          value={accountType}
+          onChange={setAccountType}
+          options={[
+            { value: 'bank', label: 'Bank account' },
+            { value: 'cash', label: 'Cash box' },
+            { value: 'card', label: 'Credit card' },
+            { value: 'wallet', label: 'Wallet' },
+            { value: 'loan', label: 'Loan account' },
+          ]}
+        />
+        <TextInput
+          label="Last four digits"
+          hint="never the full number"
+          value={displayReference}
+          onChange={setDisplayReference}
+          placeholder="4821"
+        />
+      </Row>
+      <Row>
+        <MoneyInput label="Opening balance" value={openingBalance} onChange={setOpeningBalance} />
+        <TextInput label="As at" type="date" value={openingDate} onChange={setOpeningDate} />
+      </Row>
+    </CreateModal>
+  );
+}
+
+export function NewCategory({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [kind, setKind] = useState('expense');
+  const [behaviour, setBehaviour] = useState('variable');
+  const [defaultDivision, setDefaultDivision] = useState('shared');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add a category"
+      submitLabel="Add it"
+      onClose={onClose}
+      invalidate={[['ledger-categories']]}
+      onSubmit={() => api.post('/books/categories', { name, kind, behaviour, defaultDivision })}
+    >
+      <TextInput label="Name" required autoFocus value={name} onChange={setName} placeholder="Building Rent" />
+      <Row>
+        <SelectInput
+          label="Kind"
+          required
+          value={kind}
+          onChange={setKind}
+          options={[
+            { value: 'expense', label: 'A cost' },
+            { value: 'income', label: 'Revenue' },
+            { value: 'asset_purchase', label: 'Something we bought and keep' },
+            { value: 'tax', label: 'Tax or statutory due' },
+            { value: 'transfer', label: 'Moving our own money' },
+            { value: 'equity', label: 'Capital put in' },
+            { value: 'drawings', label: 'Capital taken out' },
+          ]}
+        />
+        <SelectInput
+          label="How it behaves"
+          hint="makes the budget forecastable"
+          value={behaviour}
+          onChange={setBehaviour}
+          options={[
+            { value: 'recurring_fixed', label: 'Same every month' },
+            { value: 'variable', label: 'Varies' },
+            { value: 'one_time', label: 'One-off' },
+            { value: 'annual', label: 'Once a year' },
+          ]}
+        />
+      </Row>
+      <SelectInput
+        label="Usually which division"
+        value={defaultDivision}
+        onChange={setDefaultDivision}
+        options={DIVISIONS}
+      />
+    </CreateModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Invoices
+// ---------------------------------------------------------------------------
+
+interface Line {
+  description: string;
+  quantity: string;
+  amount: string;
+}
+
+/**
+ * An invoice.
+ *
+ * The one the product could not raise. How the revenue is recognised is worked
+ * out from what was sold rather than asked here, which is why there is no
+ * revenue-treatment field on this form and no reason for anybody in sales to
+ * make that call deal by deal.
+ */
+export function NewInvoice({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const organizations = useList<Named>('organizations', '/crm/organizations', open);
+
+  const [organizationId, setOrganizationId] = useState('');
+  const [dueInDays, setDueInDays] = useState('30');
+  const [lines, setLines] = useState<Line[]>([{ description: '', quantity: '1', amount: '' }]);
+
+  const setLine = (i: number, patch: Partial<Line>) =>
+    setLines((ls) => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)));
+
+  const total = lines.reduce((s, l) => s + (Number(l.amount) || 0) * (Number(l.quantity) || 1), 0);
+
+  return (
+    <CreateModal
+      open={open}
+      title="Raise an invoice"
+      submitLabel="Raise it"
+      width="max-w-2xl"
+      onClose={onClose}
+      invalidate={[['invoices'], ['receivables']]}
+      onSubmit={() =>
+        api.post('/finance/invoices', {
+          organizationId: organizationId || null,
+          dueInDays: Number(dueInDays || 30),
+          lines: lines
+            .filter((l) => l.description && Number(l.amount) > 0)
+            .map((l) => ({
+              description: l.description,
+              quantity: Number(l.quantity || 1),
+              amount: Number(l.amount),
+            })),
+        })
+      }
+    >
+      <Row>
+        <SelectInput
+          label="Customer"
+          value={organizationId}
+          onChange={setOrganizationId}
+          placeholder={organizations.rows.length ? 'Choose a customer' : 'No customers yet — add one first'}
+          options={organizations.rows.map((o) => ({ value: o.id, label: o.name }))}
+        />
+        <TextInput label="Due in (days)" type="number" value={dueInDays} onChange={setDueInDays} />
+      </Row>
+
+      <div>
+        <p className="label mb-1">What they are being billed for</p>
+        <div className="flex flex-col gap-2">
+          {lines.map((line, i) => (
+            <div key={i} className="grid grid-cols-[1fr_5rem_8rem_2rem] items-end gap-2">
+              <TextInput
+                label={i === 0 ? 'Description' : ''}
+                value={line.description}
+                onChange={(v) => setLine(i, { description: v })}
+                placeholder="SAP support, September"
+              />
+              <TextInput
+                label={i === 0 ? 'Qty' : ''}
+                type="number"
+                value={line.quantity}
+                onChange={(v) => setLine(i, { quantity: v })}
+              />
+              <MoneyInput label={i === 0 ? 'Amount each' : ''} value={line.amount} onChange={(v) => setLine(i, { amount: v })} />
+              <button
+                type="button"
+                className="btn-quiet mb-1.5"
+                aria-label="Remove line"
+                onClick={() => setLines((ls) => (ls.length === 1 ? ls : ls.filter((_, k) => k !== i)))}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 flex items-center justify-between">
+          <button
+            type="button"
+            className="btn-quiet"
+            onClick={() => setLines((ls) => [...ls, { description: '', quantity: '1', amount: '' }])}
+          >
+            + Another line
+          </button>
+          <p className="text-sm text-ink-300">
+            Total <span className="font-display tabular-nums text-ink-50">₹{total.toLocaleString('en-IN')}</span>
+          </p>
+        </div>
+      </div>
+    </CreateModal>
+  );
+}
+
+export function NewVendorBill({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const categories = useCategories(open);
+  const [vendorName, setVendorName] = useState('');
+  const [billNumber, setBillNumber] = useState('');
+  const [billDate, setBillDate] = useState(today());
+  const [dueDate, setDueDate] = useState('');
+  const [subtotal, setSubtotal] = useState('');
+  const [taxAmount, setTaxAmount] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [division, setDivision] = useState('shared');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Record a bill we owe"
+      submitLabel="Record it"
+      onClose={onClose}
+      invalidate={[['vendor-bills'], ['payables']]}
+      onSubmit={() =>
+        api.post('/books/vendor-bills', {
+          vendorName,
+          billNumber: billNumber || null,
+          billDate,
+          dueDate: dueDate || null,
+          subtotal: Number(subtotal),
+          taxAmount: Number(taxAmount || 0),
+          categoryId: categoryId || null,
+          division,
+        })
+      }
+    >
+      <Row>
+        <TextInput label="Supplier" required autoFocus value={vendorName} onChange={setVendorName} />
+        <TextInput label="Their bill number" value={billNumber} onChange={setBillNumber} />
+      </Row>
+      <Row>
+        <TextInput label="Bill date" type="date" required value={billDate} onChange={setBillDate} />
+        <TextInput label="Due by" type="date" value={dueDate} onChange={setDueDate} />
+      </Row>
+      <Row>
+        <MoneyInput label="Amount before tax" required value={subtotal} onChange={setSubtotal} />
+        <MoneyInput label="Tax" value={taxAmount} onChange={setTaxAmount} />
+      </Row>
+      <Row>
+        <SelectInput
+          label="What for"
+          value={categoryId}
+          onChange={setCategoryId}
+          placeholder="Uncategorised"
+          options={categories.rows.map((c) => ({ value: c.id, label: c.name }))}
+        />
+        <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
+      </Row>
+    </CreateModal>
+  );
+}
+
+export function NewPayment({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const organizations = useList<Named>('organizations', '/crm/organizations', open);
+
+  const [amount, setAmount] = useState('');
+  const [receivedAt, setReceivedAt] = useState(today());
+  const [method, setMethod] = useState('bank_transfer');
+  const [payerOrganizationId, setPayer] = useState('');
+  const [gatewayReference, setReference] = useState('');
+  const [note, setNote] = useState('');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Record a payment received"
+      submitLabel="Record it"
+      onClose={onClose}
+      invalidate={[['payments'], ['receivables'], ['invoices']]}
+      onSubmit={() =>
+        api.post('/finance/payments', {
+          amount: Number(amount),
+          receivedAt,
+          method,
+          payerOrganizationId: payerOrganizationId || null,
+          gatewayReference: gatewayReference || null,
+          note: note || null,
+        })
+      }
+    >
+      <Row>
+        <MoneyInput label="Amount" required value={amount} onChange={setAmount} />
+        <TextInput label="Received on" type="date" required value={receivedAt} onChange={setReceivedAt} />
+      </Row>
+      <Row>
+        <SelectInput
+          label="From"
+          value={payerOrganizationId}
+          onChange={setPayer}
+          placeholder="Not linked to a customer"
+          options={organizations.rows.map((o) => ({ value: o.id, label: o.name }))}
+        />
+        <SelectInput
+          label="How"
+          value={method}
+          onChange={setMethod}
+          options={[
+            { value: 'bank_transfer', label: 'Bank transfer' },
+            { value: 'upi', label: 'UPI' },
+            { value: 'cheque', label: 'Cheque' },
+            { value: 'cash', label: 'Cash' },
+            { value: 'card', label: 'Card' },
+          ]}
+        />
+      </Row>
+      <TextInput label="Reference" value={gatewayReference} onChange={setReference} placeholder="UTR or cheque number" />
+      <TextArea
+        label="Note"
+        value={note}
+        onChange={setNote}
+        rows={2}
+        hint="which invoice it settles is matched separately"
+      />
+    </CreateModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Customers and people
+// ---------------------------------------------------------------------------
+
+export function NewOrganization({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [website, setWebsite] = useState('');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add a customer"
+      submitLabel="Add them"
+      onClose={onClose}
+      invalidate={[['organizations'], ['accounts']]}
+      onSubmit={() => api.post('/crm/organizations', { name, website: website || null })}
+    >
+      <TextInput label="Name" required autoFocus value={name} onChange={setName} />
+      <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
+      <p className="text-2xs text-ink-500">
+        Whether they are a paying account, an institution, or both, is set on their page afterwards — an
+        organisation can genuinely be both at once, so it is not asked as an either/or here.
+      </p>
+    </CreateModal>
+  );
+}
+
+export function NewContact({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [fullName, setFullName] = useState('');
+  const [primaryPhone, setPhone] = useState('');
+  const [primaryEmail, setEmail] = useState('');
+  const [notes, setNotes] = useState('');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add a contact"
+      submitLabel="Add them"
+      onClose={onClose}
+      invalidate={[['people']]}
+      onSubmit={() =>
+        api.post('/crm/people', {
+          fullName,
+          primaryPhone: primaryPhone || null,
+          primaryEmail: primaryEmail || null,
+          notes: notes || null,
+          source: 'manual',
+        })
+      }
+    >
+      <TextInput label="Name" required autoFocus value={fullName} onChange={setFullName} />
+      <Row>
+        <TextInput label="Phone" type="tel" value={primaryPhone} onChange={setPhone} />
+        <TextInput label="Email" type="email" value={primaryEmail} onChange={setEmail} />
+      </Row>
+      <TextArea label="Notes" value={notes} onChange={setNotes} rows={2} />
+      <p className="text-2xs text-ink-500">
+        If this matches somebody already on file, the platform will say so and ask rather than quietly creating a
+        second copy of the same person.
+      </p>
+    </CreateModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// What we sell, and how it is sold
+// ---------------------------------------------------------------------------
+
+const VERTICALS = [
+  { value: 'software_ai', label: 'Software & AI' },
+  { value: 'cybersecurity', label: 'Cybersecurity' },
+  { value: 'sap_enterprise', label: 'SAP / Enterprise' },
+  { value: 'corporate_training', label: 'Corporate training' },
+  { value: 'education', label: 'Education' },
+  { value: 'placement', label: 'Placement' },
+  { value: 'partnerships', label: 'Partnerships' },
+  { value: 'research', label: 'Research' },
+];
+
+export function NewOffering({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [offeringCode, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [vertical, setVertical] = useState('software_ai');
+  const [deliveryModel, setDeliveryModel] = useState('professional_services');
+  const [defaultRevenueTreatment, setRevenue] = useState('point_in_time');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add something we sell"
+      submitLabel="Add it"
+      onClose={onClose}
+      invalidate={[['offerings']]}
+      onSubmit={() =>
+        api.post('/commercial/offerings', {
+          offeringCode: offeringCode || name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 20),
+          name,
+          description: description || null,
+          vertical,
+          deliveryModel,
+          defaultRevenueTreatment,
+        })
+      }
+    >
+      <Row>
+        <TextInput label="Name" required autoFocus value={name} onChange={setName} placeholder="Managed SOC" />
+        <TextInput label="Code" hint="made from the name if left blank" value={offeringCode} onChange={setCode} />
+      </Row>
+      <TextArea label="What it is" value={description} onChange={setDescription} rows={2} />
+      <Row>
+        <SelectInput label="Which business" required value={vertical} onChange={setVertical} options={VERTICALS} />
+        <SelectInput
+          label="How it is delivered"
+          required
+          value={deliveryModel}
+          onChange={setDeliveryModel}
+          options={[
+            { value: 'professional_services', label: 'A project we deliver' },
+            { value: 'saas_subscription', label: 'A subscription' },
+            { value: 'cohort', label: 'A batch of learners' },
+            { value: 'placement_fee', label: 'A placement fee' },
+          ]}
+        />
+      </Row>
+      <SelectInput
+        label="When it counts as revenue"
+        hint="decided here once, never deal by deal"
+        required
+        value={defaultRevenueTreatment}
+        onChange={setRevenue}
+        options={[
+          { value: 'point_in_time', label: 'All at once, when delivered' },
+          { value: 'over_time_ratable', label: 'Spread across the term' },
+          { value: 'milestone_based', label: 'At each milestone' },
+        ]}
+      />
+      <p className="text-2xs text-ink-500">
+        Setting the revenue treatment on the offering is what stops anybody in sales having to decide it deal by
+        deal. A price is added afterwards, on the offering’s own page.
+      </p>
+    </CreateModal>
+  );
+}
+
+/** A call, a meeting, a note — the record of having talked to somebody. */
+export function NewInteraction({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const organizations = useList<Named>('organizations', '/crm/organizations', open);
+
+  const [interactionType, setType] = useState('call');
+  const [direction, setDirection] = useState('outbound');
+  const [occurredAt, setOccurredAt] = useState(new Date().toISOString().slice(0, 16));
+  const [subject, setSubject] = useState('');
+  const [notes, setNotes] = useState('');
+  const [entityId, setEntityId] = useState('');
+  const [durationMinutes, setDuration] = useState('');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Log a call or meeting"
+      submitLabel="Log it"
+      onClose={onClose}
+      invalidate={[['interactions']]}
+      onSubmit={() =>
+        api.post('/crm/interactions', {
+          interactionType,
+          direction,
+          occurredAt: new Date(occurredAt).toISOString(),
+          subject,
+          notes: notes || null,
+          durationMinutes: durationMinutes ? Number(durationMinutes) : null,
+          ...(entityId
+            ? {
+                contextCode: 'crm',
+                entityType: 'organization',
+                entityId,
+                displayLabel: organizations.rows.find((o) => o.id === entityId)?.name ?? null,
+              }
+            : {}),
+        })
+      }
+    >
+      <Row>
+        <SelectInput
+          label="What it was"
+          required
+          value={interactionType}
+          onChange={setType}
+          options={[
+            { value: 'call', label: 'Call' },
+            { value: 'meeting', label: 'Meeting' },
+            { value: 'email', label: 'Email' },
+            { value: 'note', label: 'Note' },
+            { value: 'site_visit', label: 'Site visit' },
+          ]}
+        />
+        <SelectInput
+          label="Which way"
+          value={direction}
+          onChange={setDirection}
+          options={[
+            { value: 'outbound', label: 'We reached out' },
+            { value: 'inbound', label: 'They reached us' },
+            { value: 'internal', label: 'Internal' },
+          ]}
+        />
+      </Row>
+      <Row>
+        <TextInput label="When" type="text" required value={occurredAt} onChange={setOccurredAt} hint="YYYY-MM-DDTHH:MM" />
+        <TextInput label="How long (minutes)" type="number" value={durationMinutes} onChange={setDuration} />
+      </Row>
+      <TextInput label="Subject" required value={subject} onChange={setSubject} placeholder="Renewal discussion" />
+      <SelectInput
+        label="Who with"
+        value={entityId}
+        onChange={setEntityId}
+        placeholder="Not linked to a customer"
+        options={organizations.rows.map((o) => ({ value: o.id, label: o.name }))}
+      />
+      <TextArea label="What was said" value={notes} onChange={setNotes} rows={3} />
+      <p className="text-2xs text-ink-500">
+        How sensitive this is gets computed from what it is attached to, not chosen here — a note against an HR
+        matter is treated as confidential whether or not anybody remembered to say so.
+      </p>
+    </CreateModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Assets, loans and the budget
+// ---------------------------------------------------------------------------
+
+export function NewAsset({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState(today());
+  const [cost, setCost] = useState('');
+  const [usefulLifeMonths, setLife] = useState('60');
+  const [salvageValue, setSalvage] = useState('0');
+  const [method, setMethod] = useState('straight_line');
+  const [division, setDivision] = useState('shared');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Record something we bought and keep"
+      submitLabel="Record it"
+      onClose={onClose}
+      invalidate={[['assets']]}
+      onSubmit={() =>
+        api.post('/books/assets', {
+          name,
+          purchaseDate,
+          cost: Number(cost),
+          salvageValue: Number(salvageValue || 0),
+          usefulLifeMonths: Number(usefulLifeMonths),
+          method,
+          division,
+        })
+      }
+    >
+      <TextInput label="What it is" required autoFocus value={name} onChange={setName} placeholder="Air conditioner" />
+      <Row>
+        <MoneyInput label="What it cost" required value={cost} onChange={setCost} />
+        <TextInput label="Bought on" type="date" required value={purchaseDate} onChange={setPurchaseDate} />
+      </Row>
+      <Row>
+        <TextInput
+          label="Useful life (months)"
+          type="number"
+          required
+          value={usefulLifeMonths}
+          onChange={setLife}
+          hint="60 is five years"
+        />
+        <MoneyInput label="Worth at the end" value={salvageValue} onChange={setSalvage} />
+      </Row>
+      <Row>
+        <SelectInput
+          label="How it depreciates"
+          value={method}
+          onChange={setMethod}
+          options={[
+            { value: 'straight_line', label: 'Straight line — the same each month' },
+            { value: 'wdv', label: 'Written down value — more at the start' },
+          ]}
+        />
+        <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
+      </Row>
+    </CreateModal>
+  );
+}
+
+export function NewLoan({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [lender, setLender] = useState('');
+  const [principal, setPrincipal] = useState('');
+  const [annualRate, setRate] = useState('');
+  const [tenureMonths, setTenure] = useState('36');
+  const [startDate, setStart] = useState(today());
+  const [division, setDivision] = useState('shared');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Record a borrowing"
+      submitLabel="Record it"
+      onClose={onClose}
+      invalidate={[['loans']]}
+      onSubmit={() =>
+        api.post('/books/loans', {
+          lender,
+          principal: Number(principal),
+          annualRate: Number(annualRate),
+          tenureMonths: Number(tenureMonths),
+          startDate,
+          division,
+        })
+      }
+    >
+      <TextInput label="Who from" required autoFocus value={lender} onChange={setLender} placeholder="Axis Bank" />
+      <Row>
+        <MoneyInput label="How much" required value={principal} onChange={setPrincipal} />
+        <TextInput label="Rate (% a year)" type="number" required value={annualRate} onChange={setRate} placeholder="11.5" />
+      </Row>
+      <Row>
+        <TextInput label="Over (months)" type="number" required value={tenureMonths} onChange={setTenure} />
+        <TextInput label="From" type="date" required value={startDate} onChange={setStart} />
+      </Row>
+      <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
+      <p className="text-2xs text-ink-500">The repayment schedule is worked out from these four numbers.</p>
+    </CreateModal>
+  );
+}
+
+export function NewBudgetLine({
+  open,
+  onClose,
+  period,
+}: {
+  open: boolean;
+  onClose: () => void;
+  period: string;
+}) {
+  const categories = useCategories(open);
+  const [categoryId, setCategoryId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [division, setDivision] = useState('shared');
+  const [note, setNote] = useState('');
+
+  return (
+    <CreateModal
+      open={open}
+      title={`Budget for ${period}`}
+      submitLabel="Set it"
+      onClose={onClose}
+      invalidate={[['budget'], ['budget-variance']]}
+      onSubmit={() =>
+        api.post('/books/budget', {
+          period,
+          categoryId,
+          amount: Number(amount),
+          division,
+          note: note || null,
+        })
+      }
+    >
+      <SelectInput
+        label="What for"
+        required
+        value={categoryId}
+        onChange={setCategoryId}
+        placeholder={categories.rows.length ? 'Choose a category' : 'No categories yet'}
+        options={categories.rows.map((c) => ({ value: c.id, label: c.name }))}
+      />
+      <Row>
+        <MoneyInput label="Planned" required value={amount} onChange={setAmount} />
+        <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
+      </Row>
+      <TextArea label="Why this number" value={note} onChange={setNote} rows={2} />
+      <p className="text-2xs text-ink-500">
+        What was actually spent is summed at the moment you look, so a late entry moves the variance without anybody
+        rebuilding the budget.
+      </p>
+    </CreateModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// People
+// ---------------------------------------------------------------------------
+
+export function NewSkill({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [halfLifeMonths, setHalfLife] = useState('24');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add a skill"
+      submitLabel="Add it"
+      onClose={onClose}
+      invalidate={[['skills']]}
+      onSubmit={() => api.post('/hr/skills', { name, halfLifeMonths: Number(halfLifeMonths) })}
+    >
+      <TextInput label="Skill" required autoFocus value={name} onChange={setName} placeholder="Kubernetes" />
+      <TextInput
+        label="Half-life (months)"
+        type="number"
+        value={halfLifeMonths}
+        onChange={setHalfLife}
+        hint="how fast it goes stale unaided"
+      />
+      <p className="text-2xs text-ink-500">
+        Confidence in a claim decays from this, worked out when you look rather than stored — so a skill nobody has
+        used for two years reads as two years old rather than as freshly verified.
+      </p>
+    </CreateModal>
+  );
+}
+
+export function NewLeaveRequest({
+  open,
+  onClose,
+  employmentRelationshipId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  employmentRelationshipId?: string;
+}) {
+  const types = useList<Named & { code: string }>('leave-types', '/hr/leave-types', open);
+  const employments = useList<{ id: string; personName?: string; recordCode: string }>(
+    'employments',
+    '/hr/employees',
+    open && !employmentRelationshipId,
+  );
+
+  const [employmentId, setEmploymentId] = useState(employmentRelationshipId ?? '');
+  const [leaveTypeId, setLeaveTypeId] = useState('');
+  const [startDate, setStart] = useState(today());
+  const [endDate, setEnd] = useState(today());
+  const [reason, setReason] = useState('');
+
+  const days =
+    Math.max(1, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86_400_000) + 1) || 1;
+
+  return (
+    <CreateModal
+      open={open}
+      title="Request leave"
+      submitLabel="Request it"
+      onClose={onClose}
+      invalidate={[['leave-requests'], ['leave-balances']]}
+      onSubmit={() =>
+        api.post('/hr/leave-requests', {
+          employmentRelationshipId: employmentRelationshipId ?? employmentId,
+          leaveTypeId,
+          startDate,
+          endDate,
+          days,
+          reason: reason || null,
+        })
+      }
+    >
+      {!employmentRelationshipId && (
+        <SelectInput
+          label="Who"
+          required
+          value={employmentId}
+          onChange={setEmploymentId}
+          placeholder="Choose an employee"
+          options={employments.rows.map((e) => ({ value: e.id, label: e.personName ?? e.recordCode }))}
+        />
+      )}
+      <SelectInput
+        label="Kind of leave"
+        required
+        value={leaveTypeId}
+        onChange={setLeaveTypeId}
+        placeholder="Choose"
+        options={types.rows.map((t) => ({ value: t.id, label: `${t.name} (${t.code})` }))}
+      />
+      <Row>
+        <TextInput label="From" type="date" required value={startDate} onChange={setStart} />
+        <TextInput label="To" type="date" required value={endDate} onChange={setEnd} />
+      </Row>
+      <TextArea label="Reason" value={reason} onChange={setReason} rows={2} />
+      <p className="text-2xs text-ink-500">
+        {days} {days === 1 ? 'day' : 'days'}. Approval places a hold on the balance rather than deducting it;
+        the deduction happens when the leave is actually taken.
+      </p>
+    </CreateModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Hiring
+// ---------------------------------------------------------------------------
+
+/**
+ * Posting a vacancy.
+ *
+ * A requisition needs a position, a position needs a job and an org unit, and a
+ * job needs a title, a family and a level. Asking somebody to create four
+ * records in the right order before they can advertise a job is why this screen
+ * had no create button at all — so the form does the chain itself, reusing what
+ * already exists and creating only what does not.
+ *
+ * The four records are still four records. They are what makes "which seats are
+ * open in Software" a question with an answer; what changes is that nobody has
+ * to know that to hire somebody.
+ */
+export function NewRequisition({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const orgUnits = useList<Named>('org-units', '/hr/org-units', open);
+  const jobs = useList<{ id: string; title: string }>('jobs', '/hr/jobs', open);
+
+  const [jobId, setJobId] = useState('');
+  const [newJobTitle, setNewJobTitle] = useState('');
+  const [orgUnitId, setOrgUnitId] = useState('');
+  const [newUnitName, setNewUnitName] = useState('');
+  const [division, setDivision] = useState('shared');
+  const [location, setLocation] = useState('Madurai');
+  const [targetStartDate, setStart] = useState('');
+
+  const creatingJob = jobId === '__new';
+  const creatingUnit = orgUnitId === '__new';
+
+  return (
+    <CreateModal
+      open={open}
+      title="Post a vacancy"
+      submitLabel="Post it"
+      onClose={onClose}
+      invalidate={[['requisitions'], ['positions'], ['jobs'], ['org-units']]}
+      onSubmit={async () => {
+        const unit = creatingUnit
+          ? await api.post<{ id: string }>('/hr/org-units', {
+              name: newUnitName,
+              unitType: 'department',
+              division,
+            })
+          : { id: orgUnitId };
+
+        const job = creatingJob
+          ? await api.post<{ id: string }>('/hr/jobs', {
+              title: newJobTitle,
+              // A staff list gives no family or level, and a job with neither
+              // makes the establishment view meaningless — so they are read out
+              // of the title and can be corrected on the job itself.
+              jobFamily: familyOf(newJobTitle),
+              jobLevel: levelOf(newJobTitle),
+            })
+          : { id: jobId };
+
+        const position = await api.post<{ id: string }>('/hr/positions', {
+          orgUnitId: unit.id,
+          jobId: job.id,
+          location,
+        });
+
+        return api.post('/hr/requisitions', {
+          positionId: position.id,
+          targetStartDate: targetStartDate || null,
+        });
+      }}
+    >
+      <SelectInput
+        label="The job"
+        required
+        value={jobId}
+        onChange={setJobId}
+        placeholder="Choose a job, or add one"
+        options={[...jobs.rows.map((j) => ({ value: j.id, label: j.title })), { value: '__new', label: '+ A job we have not hired for before' }]}
+      />
+      {creatingJob && (
+        <TextInput label="Job title" required value={newJobTitle} onChange={setNewJobTitle} placeholder="Senior Developer" />
+      )}
+
+      <SelectInput
+        label="Which team"
+        required
+        value={orgUnitId}
+        onChange={setOrgUnitId}
+        placeholder="Choose a team, or add one"
+        options={[...orgUnits.rows.map((u) => ({ value: u.id, label: u.name })), { value: '__new', label: '+ A new team' }]}
+      />
+      {creatingUnit && (
+        <Row>
+          <TextInput label="Team name" required value={newUnitName} onChange={setNewUnitName} placeholder="Cybersecurity" />
+          <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
+        </Row>
+      )}
+
+      <Row>
+        <TextInput label="Where" value={location} onChange={setLocation} />
+        <TextInput label="Wanted by" type="date" value={targetStartDate} onChange={setStart} />
+      </Row>
+      <p className="text-2xs text-ink-500">
+        This creates the seat as well as the vacancy, so the establishment shows one more chair in that team whether
+        or not anybody is sitting in it yet.
+      </p>
+    </CreateModal>
+  );
+}
+
+const familyOf = (title: string): string => {
+  const t = title.toLowerCase();
+  if (/develop|engineer|software|cyber|data/.test(t)) return 'engineering';
+  if (/train|instructor|academic|teach/.test(t)) return 'delivery';
+  if (/market|design|creative|content/.test(t)) return 'marketing';
+  if (/sales|business development|counsel/.test(t)) return 'commercial';
+  if (/hr|operation|admin|front office|keeping|account|finance/.test(t)) return 'operations';
+  return 'general';
+};
+
+const levelOf = (title: string): string => {
+  const t = title.toLowerCase();
+  if (/head|director|chief|manager|lead/.test(t)) return 'lead';
+  if (/senior|sr\.?/.test(t)) return 'senior';
+  if (/trainee|intern|junior|jr\.?|associate/.test(t)) return 'entry';
+  return 'mid';
+};
+
+// ---------------------------------------------------------------------------
+// Decisions
+// ---------------------------------------------------------------------------
+
+/**
+ * Putting a decision on the record before it is made.
+ *
+ * The point of the entity is that a decision is a thing with a question, an
+ * authority basis and a point of no return — not a status somebody sets after
+ * the fact. Recording it while it is still open is what makes the review
+ * afterwards worth anything.
+ */
+export function NewDecision({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [question, setQuestion] = useState('');
+  const [subjectLabel, setSubjectLabel] = useState('');
+  const [authorityBasis, setBasis] = useState('');
+  const [pointOfNoReturn, setPoint] = useState('');
+  const [noActionConsequence, setConsequence] = useState('');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Put a decision on the record"
+      submitLabel="Record it"
+      onClose={onClose}
+      invalidate={[['decisions']]}
+      onSubmit={() =>
+        api.post('/command/decisions', {
+          question,
+          subjectType: 'free_form',
+          subjectLabel: subjectLabel || question.slice(0, 80),
+          authorityBasis: authorityBasis || 'chairman',
+          pointOfNoReturn: pointOfNoReturn || null,
+          noActionConsequence: noActionConsequence ? { summary: noActionConsequence } : null,
+        })
+      }
+    >
+      <TextArea
+        label="The question"
+        required
+        rows={2}
+        value={question}
+        onChange={setQuestion}
+        placeholder="Do we take the Chennai office lease?"
+      />
+      <Row>
+        <TextInput label="About what" value={subjectLabel} onChange={setSubjectLabel} placeholder="Chennai office" />
+        <TextInput
+          label="Whose call"
+          value={authorityBasis}
+          onChange={setBasis}
+          placeholder="chairman"
+          hint="the role that decides"
+        />
+      </Row>
+      <TextInput
+        label="Point of no return"
+        type="date"
+        value={pointOfNoReturn}
+        onChange={setPoint}
+        hint="after this, deferring is not an option"
+      />
+      <TextArea
+        label="What happens if nobody decides"
+        value={noActionConsequence}
+        onChange={setConsequence}
+        rows={2}
+        hint="doing nothing is a choice, so it is written down as one"
+      />
+    </CreateModal>
+  );
+}

@@ -27,9 +27,12 @@ import {
   StatusChip,
   Tabs,
 } from '../components/ui.js';
+import { NewButton } from '../components/forms.js';
+import { NewContact, NewInteraction } from '../components/createForms.js';
 import { useSession } from '../lib/session.js';
 
 export function People() {
+  const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<'people' | 'merge'>('people');
   const [q, setQ] = useState('');
 
@@ -47,9 +50,11 @@ export function People() {
 
   return (
     <div>
+      <NewContact open={creating} onClose={() => setCreating(false)} />
       <PageHeader
-        title="People"
+        title="Contacts"
         subtitle="One record per person, kept for good. Someone can be a student, then an employee, then a client contact — that is three roles for one person, not three people."
+        actions={<NewButton label="Add a contact" onClick={() => setCreating(true)} />}
       />
 
       <Tabs
@@ -345,6 +350,7 @@ export function PersonDetail() {
 // ---------------------------------------------------------------------------
 
 export function Interactions() {
+  const [creating, setCreating] = useState(false);
   const { data = [], isLoading, error } = useQuery({
     queryKey: ['interactions'],
     queryFn: () => api.get<InteractionView[]>('/crm/interactions?limit=80'),
@@ -354,8 +360,10 @@ export function Interactions() {
 
   return (
     <div>
+      <NewInteraction open={creating} onClose={() => setCreating(false)} />
       <PageHeader
-        title="Interactions"
+        actions={<NewButton label="Log a call" onClick={() => setCreating(true)} />}
+        title="Calls & meetings"
         subtitle="One write, many timelines. Sensitivity is computed as the maximum classification across every reference and re-evaluated at every read — never set by the logging user."
       />
 

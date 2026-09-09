@@ -21,6 +21,8 @@ import { PipelineAdmin, TerritoryAdmin, Governance, Agents, Events, Jobs, Audit,
 import { Decisions } from './pages/Decisions.js';
 import { Employees, EmployeeDetail, Leave, Attendance, Payroll, Hiring, Skills } from './pages/PeopleOps.js';
 import { Executive } from './pages/Executive.js';
+import ImportPage from './pages/Import.js';
+import Start from './pages/Start.js';
 import { Ledger, Payables, Budget, Assets } from './pages/Books.js';
 
 const queryClient = new QueryClient({
@@ -75,6 +77,8 @@ function Routed() {
         <Route path="/commercial/win-loss/:id" element={<WinLoss />} />
 
         <Route path="/business" element={<Executive />} />
+        <Route path="/data/import" element={<ImportPage />} />
+        <Route path="/start" element={<Start />} />
 
         <Route path="/finance/ledger" element={<Ledger />} />
         <Route path="/finance/payables" element={<Payables />} />

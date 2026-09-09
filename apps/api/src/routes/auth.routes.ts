@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { buildSessionUser, login, switchContext } from '../lib/auth.js';
+import { onboardingState } from '../domains/onboarding.js';
 import { handler, requireAuth } from '../lib/http.js';
 import { ApiError } from '../platform/errors.js';
 import { prisma } from '../platform/db.js';
@@ -108,5 +109,11 @@ router.post(
     return { ok: true };
   }),
 );
+
+/**
+ * The setup checklist, computed from what actually exists rather than from
+ * anything the user has ticked.
+ */
+router.get('/onboarding', requireAuth, handler(async () => onboardingState()));
 
 export default router;

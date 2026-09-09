@@ -34,6 +34,8 @@ import {
   Tabs,
   Withheld,
 } from '../components/ui.js';
+import { NewButton } from '../components/forms.js';
+import { NewLeaveRequest, NewRequisition, NewSkill } from '../components/createForms.js';
 
 // ---------------------------------------------------------------------------
 // Shared pieces
@@ -726,6 +728,7 @@ interface LeaveRow {
 }
 
 export function Leave() {
+  const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState('open');
 
   const { data = [], isLoading, error } = useQuery({
@@ -744,7 +747,9 @@ export function Leave() {
 
   return (
     <div>
+      <NewLeaveRequest open={creating} onClose={() => setCreating(false)} />
       <PageHeader
+        actions={<NewButton label="Request leave" onClick={() => setCreating(true)} />}
         title="Leave"
         subtitle="A balance is never written directly. Approval places a hold, completion settles it, cancellation reverses it — so every balance is the sum of its own ledger and a disputed one can be recomputed rather than argued about."
       />
@@ -1208,6 +1213,7 @@ interface ApplicationRow {
 }
 
 export function Hiring() {
+  const [creating, setCreating] = useState(false);
   const qc = useQueryClient();
   const [joining, setJoining] = useState<ApplicationRow | null>(null);
   const [joinDate, setJoinDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1242,7 +1248,9 @@ export function Hiring() {
 
   return (
     <div>
+      <NewRequisition open={creating} onClose={() => setCreating(false)} />
       <PageHeader
+        actions={<NewButton label="Post a vacancy" onClick={() => setCreating(true)} />}
         title="Hiring"
         subtitle="Accepting an offer is not the same fact as turning up, and the gap between them is where a rescinded offer, a no-show and a withdrawal before the start date all live. So the two are separate states, and joining is one act that opens the employment and fills the requisition together."
       />
@@ -1430,6 +1438,7 @@ interface CapablePerson {
 }
 
 export function Skills() {
+  const [creating, setCreating] = useState(false);
   const [skillId, setSkillId] = useState('');
   const [minTier, setMinTier] = useState('assessed');
 
@@ -1452,7 +1461,9 @@ export function Skills() {
 
   return (
     <div>
+      <NewSkill open={creating} onClose={() => setCreating(false)} />
       <PageHeader
+        actions={<NewButton label="Add a skill" onClick={() => setCreating(true)} />}
         title="Skills"
         subtitle="What the company believes people can do, and how strongly. The tiers are not in name order — inferred sits below claimed, and a claim can enter at verified having never been claimed, because a certificate checked with the issuer was never somebody's self-report."
       />
