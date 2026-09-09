@@ -47,14 +47,15 @@ const TAMIL_NADU_DISTRICTS = [
 ];
 
 /**
- * Sixteen demo roles onto three.
+ * Sixteen demo roles onto four.
  *
  * The mapping is by authority, not by job title: anybody who had to reach the
- * ledger, approve something, or operate the people function becomes a
- * `finance_head`; anybody whose tests are about being narrowed to their own
- * record becomes an `employee`; the chairman stays the chairman. `divya` is
- * deliberately an employee — several tests exist precisely to prove that an
- * own-scoped principal cannot read a colleague's record.
+ * ledger or approve money becomes a `finance_head`; anybody who operated the
+ * people function or ran delivery becomes an `hr_ops_manager`; anybody whose
+ * tests are about being narrowed to their own record becomes an `employee`;
+ * the chairman stays the chairman. `divya` and `ravi` are deliberately
+ * employees — several tests exist precisely to prove that an own-scoped
+ * principal cannot read a colleague's record.
  */
 const ROLE_MAP: Record<string, string> = {
   chairman: 'chairman',
@@ -63,11 +64,11 @@ const ROLE_MAP: Record<string, string> = {
   director: 'finance_head',
   finance_controller: 'finance_head',
   finance: 'finance_head',
-  hr_ops: 'finance_head',
   sales: 'finance_head',
-  education_counsellor: 'finance_head',
-  workforce_placement: 'finance_head',
-  project_manager: 'employee',
+  hr_ops: 'hr_ops_manager',
+  education_counsellor: 'hr_ops_manager',
+  workforce_placement: 'hr_ops_manager',
+  project_manager: 'hr_ops_manager',
   marketing: 'employee',
   telecaller: 'employee',
   trainer: 'employee',

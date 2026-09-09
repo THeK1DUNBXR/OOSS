@@ -32,7 +32,7 @@ const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me';
 const TOKEN_TTL = '12h';
 
 /** Privileged contexts require step-up re-auth to commit a switch. */
-const STEP_UP_ROLES = new Set(['chairman', 'finance_head']);
+const STEP_UP_ROLES = new Set(['chairman', 'finance_head', 'hr_ops_manager']);
 
 export interface TokenPayload {
   userId: string;

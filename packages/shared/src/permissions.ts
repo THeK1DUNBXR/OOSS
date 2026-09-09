@@ -190,15 +190,20 @@ export type Resource = (typeof RESOURCES)[number];
  * variants of it in your head, and nobody could say what a given person could
  * do without reading a spreadsheet.
  *
- *   employee      own record only
- *   finance_head  the books, and the people function that pays into them
- *   chairman      superadmin — nothing hidden, nothing inaccessible
+ *   employee         own record only
+ *   hr_ops_manager   the people function and day-to-day operations
+ *   finance_head     the books, and the money side of people
+ *   chairman         superadmin — nothing hidden, nothing inaccessible
  *
- * Approval ladders that used to climb four rungs now climb one: finance_head
- * proposes and approves within its ceiling, and anything above it is the
- * chairman's.
+ * Approval ladders that used to climb four rungs now climb two: finance_head
+ * approves within its ceiling, and anything above it is the chairman's.
+ *
+ * The HR/Finance split is load-bearing rather than cosmetic. `hr_ops_manager`
+ * proposes compensation and holds no `approve`; `finance_head` approves and
+ * holds neither `create` nor `edit`. Neither can move a salary alone, and that
+ * is a property of the matrix rather than of anybody's restraint.
  */
-export const ROLE_SLUGS = ['chairman', 'finance_head', 'employee'] as const;
+export const ROLE_SLUGS = ['chairman', 'finance_head', 'hr_ops_manager', 'employee'] as const;
 
 export type RoleSlug = (typeof ROLE_SLUGS)[number];
 
@@ -311,9 +316,12 @@ export const ROLE_CLASSIFICATION_CEILING: Record<string, SensitivityClass> = {
   // Superadmin. The ceiling exists to withhold things from people; there is
   // nothing this role is meant to be withheld from.
   chairman: 'regulated',
-  // Reads statutory identifiers, compensation and disciplinary evidence. That
-  // is not seniority — it is the job.
+  // Reads statutory identifiers and compensation. That is not seniority — it
+  // is the job.
   finance_head: 'regulated',
+  // Reads statutory identifiers and disciplinary evidence, for the same
+  // reason.
+  hr_ops_manager: 'regulated',
   // An employee reads their own record, which is regulated data about them.
   // The narrowing that protects colleagues is the `@own` scope, not the
   // ceiling: a ceiling below `regulated` would hide an employee's own PAN from

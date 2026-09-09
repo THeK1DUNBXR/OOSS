@@ -456,9 +456,10 @@ async function domainOwner(domainCode: string): Promise<string | null> {
   const preferred: Record<string, string[]> = {
     H_FIN: ['finance_head', 'chairman'],
     H_COM: ['finance_head', 'chairman'],
-    H_EDU: ['finance_head', 'chairman'],
-    H_DLV: ['finance_head', 'chairman'],
-    H_OPS: ['chairman'],
+    H_EDU: ['hr_ops_manager', 'chairman'],
+    H_DLV: ['hr_ops_manager', 'chairman'],
+    H_PPL: ['hr_ops_manager', 'chairman'],
+    H_OPS: ['hr_ops_manager', 'chairman'],
     H_RSK: ['chairman'],
   };
   for (const roleSlug of preferred[domainCode] ?? ['finance_head', 'chairman']) {

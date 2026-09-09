@@ -172,6 +172,49 @@ describe('§14 — authority over people is held, not inherited from rank', () =
     expect(err.status).toBe(403);
   });
 
+  it('a pay rise needs two roles: HR proposes, Finance approves, neither does both', async () => {
+    const employment = await employmentFor('kavitha@kaizen.co.in');
+
+    // HR proposes. It holds `compensation:VCEDXF` — it can author the change
+    // and see the salary it is changing, which a proposal needs.
+    const record = await asUser('hr@kaizen.co.in', () =>
+      proposeCompensation({
+        employmentRelationshipId: employment.id,
+        revisionReason: 'annual_cycle',
+        amount: 82_000,
+        effectiveFrom: new Date(),
+      }),
+    );
+    expect(record.status).toBe('Proposed');
+
+    const { transitionCompensation } = await import('../domains/employment.js');
+    await asUser('hr@kaizen.co.in', () => transitionCompensation(record.id, 'SUBMIT'));
+
+    // And cannot sign it. The missing verb is the whole control: with one
+    // operations role holding both, the same person moved a salary alone.
+    const hrErr = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () => transitionCompensation(record.id, 'APPROVE')),
+    );
+    expect(hrErr.status).toBe(403);
+
+    // Finance signs it, and could not have authored it: `compensation` carries
+    // no create or edit on that row, so the signatory is never the author.
+    const approved = await asUser('arun@kaizen.co.in', () => transitionCompensation(record.id, 'APPROVE'));
+    expect(approved.status).toBe('Approved');
+
+    const financeErr = await expectReject(() =>
+      asUser('arun@kaizen.co.in', () =>
+        proposeCompensation({
+          employmentRelationshipId: employment.id,
+          revisionReason: 'annual_cycle',
+          amount: 99_000,
+          effectiveFrom: new Date(),
+        }),
+      ),
+    );
+    expect(financeErr.status).toBe(403);
+  });
+
   it('nobody approves their own pay rise, whatever they hold', async () => {
     // The Finance Head proposes and approves compensation — with three roles
     // there is no separate proposer. The two-party act is preserved by a bar
@@ -222,7 +265,7 @@ describe('§14 — authority over people is held, not inherited from rank', () =
 
 describe('An `own` grant binds a write to the writer', () => {
   it('will not let somebody file leave in a colleague\'s name', async () => {
-    const mine = await employmentFor('arun@kaizen.co.in');
+    const mine = await employmentFor('ravi@kaizen.co.in');
     const theirs = await employmentFor('kavitha@kaizen.co.in');
     const leaveType = await unscopedPrisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'CL' } });
 
@@ -242,7 +285,7 @@ describe('An `own` grant binds a write to the writer', () => {
     expect(err.status).toBe(403);
 
     // The same call for their own record goes through, so the grant still works.
-    const own = await asUser('arun@kaizen.co.in', () =>
+    const own = await asUser('ravi@kaizen.co.in', () =>
       createLeaveRequest({
         employmentRelationshipId: mine.id,
         leaveTypeId: leaveType.id,

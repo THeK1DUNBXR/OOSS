@@ -1,33 +1,44 @@
 /**
- * The grant matrix: three roles.
+ * The grant matrix: four roles.
  *
- * The platform previously shipped sixteen roles translated from a legacy
- * letter-matrix. Sixteen roles is a defensible model for a five-hundred person
+ * The platform previously shipped sixteen, translated from a legacy
+ * letter-matrix. Sixteen is a defensible model for a five-hundred person
  * company and an obstacle for this one — every screen had to be reasoned about
  * from sixteen angles, and nobody could answer "what can this person do"
- * without reading a spreadsheet. So there are three, and the whole model fits
+ * without reading a spreadsheet. So there are four, and the whole model fits
  * on a page:
  *
- *   employee      Own record only. Their leave, their attendance, their goals,
- *                 their skills, their payslip, their documents. They can see
- *                 who works here; they cannot see what anybody else earns.
+ *   employee            Own record only. Their leave, their attendance, their
+ *                       goals, their skills, their payslip, their documents.
+ *                       They can see who works here and what we sell; they
+ *                       cannot see what anybody else earns.
  *
- *   finance_head  The company's operating authority: the books end to end, and
- *                 the people function that pays into them. Payroll is a finance
- *                 act as much as an HR one, and with three roles there is
- *                 nobody else to run it. Cannot change the permission model
- *                 itself, register agents, or edit governance policy.
+ *   hr_ops_manager      The people function and day-to-day operations. Runs
+ *                       the employment lifecycle end to end, prepares payroll,
+ *                       holds the only routine reach into case-scoped
+ *                       evidence, and owns delivery, education and tasks.
+ *                       Proposes pay and cannot approve it.
  *
- *   chairman      Superadmin. Every resource, every verb, every scope, no
- *                 ceiling. Nothing is hidden or inaccessible.
+ *   finance_head        The books end to end, and the money side of people:
+ *                       approves compensation and payroll, and sees the
+ *                       establishment and what it costs without running it.
+ *
+ *   chairman            Superadmin. Every resource, every verb, every scope,
+ *                       no ceiling. Nothing is hidden or inaccessible.
  *
  * The chairman row is a deliberate reversal of what this file used to argue.
  * The old matrix withheld disciplinary evidence and payment entry from the
  * chairman on the principle that need-to-know is held rather than conferred by
  * rank. That is a good principle and it is not the one the company asked for:
  * the chairman here is the system's owner and is meant to be able to see and do
- * everything in it. The principle survives one rung down — an employee still
- * cannot read a colleague's file — but it no longer binds the top.
+ * everything in it. The principle survives below the top — an employee cannot
+ * read a colleague's file, and HR cannot sign off its own pay proposals.
+ *
+ * The HR/Finance split is what makes a pay rise a two-party act again.
+ * `hr_ops_manager` holds `compensation:VCED` and no `approve`; `finance_head`
+ * holds `approve` and does not propose. Neither can move somebody's salary
+ * alone, and that is a property of the matrix rather than of anybody's
+ * restraint.
  *
  * ## Cells
  *
@@ -113,13 +124,85 @@ const chairman: GrantSpec[] = ALL_RESOURCES.map((resource) => ({
 }));
 
 /**
- * Finance Head — the operating authority.
+ * HR & Operations Manager — the people function, and the running of the place.
  *
- * Holds the books outright and the people function that feeds them. The line
- * that is drawn is not seniority but kind: this role runs the company's
- * operations and does not get to rewrite the rules it operates under. Grants,
- * policies, agent registrations and the job scheduler are the chairman's,
- * because a role that can widen its own grant has no scope at all.
+ * Owns the employment lifecycle from requisition to exit, prepares payroll,
+ * and holds the only routine reach into case-scoped evidence besides the
+ * chairman. Also owns the operational surfaces that are nobody else's:
+ * projects, education, tasks and documents.
+ *
+ * Proposes compensation and cannot approve it. That single missing verb is
+ * what keeps a pay rise a two-party act, and it is the reason this role and
+ * `finance_head` are separate rows rather than one operations role.
+ */
+const hrOpsManager: GrantSpec[] = [
+  // ---- The employment lifecycle ------------------------------------------
+  { resource: 'employees', cell: 'VCEDA' },
+  { resource: 'positions', cell: 'VCEDA' },
+  { resource: 'assignments', cell: 'VCEDA' },
+  { resource: 'requisitions', cell: 'VCEDA,approve' },
+  { resource: 'applications', cell: 'VCEDA' },
+  { resource: 'leave', cell: 'VCEDA,approve' },
+  { resource: 'attendance', cell: 'VCEDA' },
+  { resource: 'capabilities', cell: 'VCEDAF,approve' },
+  { resource: 'learning', cell: 'VCEDA' },
+  { resource: 'goals', cell: 'VCEDA' },
+  { resource: 'performance_evidence', cell: 'VCE' },
+
+  // Proposes, never approves. `financial` is held because a proposal that
+  // cannot see the current salary is not a proposal.
+  { resource: 'compensation', cell: 'VCEDXF' },
+  // Prepares a run and submits it for review; the money side signs it off.
+  { resource: 'payroll', cell: 'VCEDXF' },
+
+  // ---- Operations --------------------------------------------------------
+  { resource: 'projects', cell: 'VCEDAXF' },
+  { resource: 'education', cell: 'VCEDAXF' },
+  { resource: 'tasks', cell: 'VCEDAXF' },
+  { resource: 'documents', cell: 'VCEAXF' },
+  { resource: 'activities', cell: 'VCEDAXF' },
+  { resource: 'interactions', cell: 'VCEDA' },
+  { resource: 'people', cell: 'VCEDAX,merge' },
+  { resource: 'organizations', cell: 'VCEDAX' },
+  { resource: 'institutions', cell: 'VCEDAX' },
+  { resource: 'relationships', cell: 'VCEDAX' },
+
+  // ---- Governance, read-mostly -------------------------------------------
+  { resource: 'health_scores', cell: 'V' },
+  { resource: 'exceptions', cell: 'VCE' },
+  { resource: 'decisions', cell: 'VCE' },
+  { resource: 'events', cell: 'V' },
+  { resource: 'imports', cell: 'VCEDX' },
+
+  // ---- Explicitly withheld ------------------------------------------------
+  // The books are the Finance Head's. HR sees what people cost through
+  // `compensation` and `payroll`, and nothing about the company's money
+  // beyond that.
+  { resource: 'transactions', cell: '-' },
+  { resource: 'ledger_accounts', cell: '-' },
+  { resource: 'budgets', cell: '-' },
+  { resource: 'vendor_bills', cell: '-' },
+  { resource: 'invoices', cell: '-' },
+  { resource: 'payments', cell: '-' },
+  // And the rules themselves are the chairman's.
+  { resource: 'grants', cell: '-' },
+  { resource: 'policies', cell: '-' },
+  { resource: 'agents', cell: '-' },
+  { resource: 'users', cell: '-' },
+  { resource: 'restricted_interactions', cell: '-' },
+];
+
+/**
+ * Finance Head — the books, and the money side of people.
+ *
+ * Holds the ledger outright. Over people it holds the approvals and the
+ * figures and not the operation: it signs off a compensation change and a
+ * payroll run, and sees the establishment and what it costs, without hiring,
+ * granting leave or opening a disciplinary case.
+ *
+ * Does not get to rewrite the rules it operates under. Grants, policies, agent
+ * registrations and the job scheduler are the chairman's, because a role that
+ * can widen its own grant has no scope at all.
  */
 const financeHead: GrantSpec[] = [
   // ---- Money -------------------------------------------------------------
@@ -135,28 +218,21 @@ const financeHead: GrantSpec[] = [
   { resource: 'reports', cell: 'VXF' },
   { resource: 'imports', cell: 'VCEDX' },
 
-  // ---- People ------------------------------------------------------------
-  { resource: 'employees', cell: 'VCEDAXF' },
-  { resource: 'positions', cell: 'VCEDA' },
-  { resource: 'assignments', cell: 'VCEDA' },
-  // Proposes and approves. Under three roles there is no independent second
-  // party inside the role, so a compensation change that needs one escalates
-  // to the chairman through the authority ceiling rather than the grant.
-  { resource: 'compensation', cell: 'VCEDAXF,approve' },
-  { resource: 'payroll', cell: 'VCEDAXF,approve' },
-  { resource: 'leave', cell: 'VCEDA,approve' },
-  { resource: 'attendance', cell: 'VCEDA' },
-  { resource: 'requisitions', cell: 'VCEDA,approve' },
-  { resource: 'applications', cell: 'VCEDA' },
-  // The financial verb is what reveals the confidence score behind the trust
-  // badge. The people function needs the number; a colleague sees the tier.
-  { resource: 'capabilities', cell: 'VCEDAF,approve' },
-  { resource: 'learning', cell: 'VCEDA' },
-  { resource: 'goals', cell: 'VCEDA' },
-  // The people function is the only routine reach into case-scoped evidence
-  // besides the chairman. Somebody has to be able to record and read a
-  // disciplinary note, and with three roles this is who.
-  { resource: 'performance_evidence', cell: 'VCE' },
+  // ---- The money side of people ------------------------------------------
+  // Approves what HR proposes. No `create` and no `edit`: a signatory who can
+  // also author the thing being signed is not a second party.
+  { resource: 'compensation', cell: 'VXF,approve' },
+  { resource: 'payroll', cell: 'VEXF,approve' },
+  // Sees the establishment and what it costs. Does not run it.
+  { resource: 'employees', cell: 'VXF' },
+  { resource: 'positions', cell: 'V' },
+  { resource: 'assignments', cell: 'V' },
+  // Leave and attendance feed payroll, so they are visible and not operable.
+  { resource: 'leave', cell: 'VX' },
+  { resource: 'attendance', cell: 'VX' },
+  // A live disciplinary case is HR's and the chairman's. Money is not a
+  // need-to-know.
+  { resource: 'performance_evidence', cell: '-' },
 
   // ---- Commercial --------------------------------------------------------
   { resource: 'leads', cell: 'VCEDAXF' },
@@ -194,8 +270,6 @@ const financeHead: GrantSpec[] = [
   { resource: 'pipeline_transitions', cell: 'V' },
 
   // ---- Explicitly withheld ------------------------------------------------
-  // A role that can edit the grant matrix has no scope. These are the
-  // chairman's, and their absence is the reason this role is bounded at all.
   { resource: 'grants', cell: '-' },
   { resource: 'policies', cell: '-' },
   { resource: 'agents', cell: '-' },
@@ -247,6 +321,7 @@ const employee: GrantSpec[] = [
 export const ROLE_GRANT_MATRIX: RoleGrants = {
   chairman,
   finance_head: financeHead,
+  hr_ops_manager: hrOpsManager,
   employee,
 };
 
@@ -269,7 +344,15 @@ export const ROLE_DEFINITIONS: Array<{
     slug: 'finance_head',
     name: 'Finance Head',
     description:
-      'The company’s operating authority: the books end to end, and the people function that pays into them. Cannot alter the permission model, governance policy, or agent registrations.',
+      'The books end to end, and the money side of people: approves compensation and payroll and sees what the establishment costs, without running it. Cannot alter the permission model, governance policy, or agent registrations.',
+    archetype: 'workspace',
+    classificationCeiling: 'regulated',
+  },
+  {
+    slug: 'hr_ops_manager',
+    name: 'HR & Operations Manager',
+    description:
+      'The people function and the running of the place: the employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and tasks. Proposes pay and cannot approve it.',
     archetype: 'workspace',
     classificationCeiling: 'regulated',
   },
@@ -277,8 +360,8 @@ export const ROLE_DEFINITIONS: Array<{
     slug: 'employee',
     name: 'Employee',
     description:
-      'Self-service. Own leave, attendance, goals, skills, payslip and documents, plus the staff directory. Sees no colleague’s file and no company money.',
+      'Self-service. Own leave, attendance, goals, skills, payslip and documents, plus the staff and skills directories. Sees no colleague’s file and no company money.',
     archetype: 'workspace',
-    classificationCeiling: 'internal',
+    classificationCeiling: 'regulated',
   },
 ];
