@@ -12,3 +12,6 @@ coverage/
 *.tsbuildinfo
 
 .dev/
+
+# Wrangler's local state and build cache.
+.wrangler/

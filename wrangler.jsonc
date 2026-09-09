@@ -1,0 +1,36 @@
+{
+  // The Cloudflare Worker that serves KaiERP's client.
+  //
+  // `pnpm build` produces apps/web/dist; this Worker serves it and forwards
+  // /api to whatever API_ORIGIN points at. See worker/index.ts for why the
+  // API itself is not on Workers — briefly: Prisma over TCP to PostgreSQL,
+  // an interval-based job scheduler, and Express's Node stream model.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ooss",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  // AsyncLocalStorage and the node: built-ins the client bundle does not use
+  // but the runtime shims cheaply. Harmless here, and it removes a whole class
+  // of "works locally, not on the edge" surprise if this Worker ever grows.
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "apps/web/dist",
+    "binding": "ASSETS",
+    // A deep link is a client route, not a missing file: /people/employees has
+    // to return index.html so the router can handle it.
+    "not_found_handling": "single-page-application"
+  },
+
+  "vars": {
+    // Set this on the Worker (dashboard → Settings → Variables, or
+    // `wrangler secret put` if it should not be public) to the URL of the
+    // running API. Empty means every /api call returns a 503 that says so,
+    // rather than failing in a way nobody can read.
+    "API_ORIGIN": ""
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

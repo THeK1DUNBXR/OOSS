@@ -17,10 +17,15 @@
     "test": "pnpm --filter @kaizen/api test",
     "typecheck": "pnpm -r typecheck",
     "jobs:run": "pnpm --filter @kaizen/api jobs:run",
-    "setup": "pnpm install && pnpm --filter @kaizen/shared build && pnpm db:push && pnpm db:seed"
+    "setup": "pnpm install && pnpm --filter @kaizen/shared build && pnpm db:push && pnpm db:seed",
+    "build:worker": "pnpm --filter @kaizen/shared build && pnpm --filter @kaizen/web build",
+    "deploy": "pnpm run build:worker && wrangler deploy",
+    "preview": "pnpm run build:worker && wrangler dev"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260908.1",
     "concurrently": "^9.1.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "wrangler": "^4.130.0"
   }
 }

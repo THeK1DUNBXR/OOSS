@@ -165,6 +165,43 @@ thing the founder wants to see.
 
 ---
 
+## Deploying
+
+The client deploys to Cloudflare as a Worker named **ooss**, which serves the
+built SPA and forwards `/api` to the API.
+
+```bash
+pnpm run build:worker    # builds apps/web/dist
+pnpm run deploy          # builds, then wrangler deploy
+pnpm run preview         # builds, then wrangler dev locally
+```
+
+Set **`API_ORIGIN`** on the Worker to the URL of the running API. Until it is
+set, every `/api` call returns a 503 saying exactly that, which the client
+renders — an unconfigured deployment should say what is missing rather than
+fail blankly.
+
+### Why the API is not on Cloudflare
+
+Pages and Workers are the same runtime, so this is not a Workers-versus-Pages
+question. The API cannot run on either as written:
+
+- **Prisma reaches PostgreSQL over TCP.** On Cloudflare that needs a driver
+  adapter plus a Hyperdrive binding, and Hyperdrive is created against a
+  specific database in a specific account.
+- **The job scheduler is a long-lived interval.** Cloudflare has no long-lived
+  process; the equivalent is a Cron Trigger or a Durable Object.
+- **Express 4 is built on Node's stream-based req/res**, not on `fetch`.
+
+Porting it is real work — `@prisma/adapter-pg` over Hyperdrive, a fetch-based
+router in place of Express, and the scheduler moved to Cron Triggers. Until
+that is done the API runs on any Node host with a PostgreSQL connection, and
+this Worker points at it. A Worker that deployed green and then failed on every
+request would be worse than an honest split.
+
+
+---
+
 ## Test
 
 ```bash

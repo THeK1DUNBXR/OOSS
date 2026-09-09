@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "db:push": "prisma db push --skip-generate && prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -15,7 +15,7 @@
     "jobs:run": "tsx src/jobs/runOnce.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "seed:demo": "tsx src/tests/fixtures/run.ts"
   },
   "dependencies": {
