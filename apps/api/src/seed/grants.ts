@@ -119,6 +119,12 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'learning', cell: 'VCEDA' },
     { resource: 'capabilities', cell: 'VCEDAXF,approve' },
     { resource: 'payroll', cell: 'VCEDAXF,approve' },
+    { resource: 'ledger_accounts', cell: 'VCEDAXF' },
+    { resource: 'categories', cell: 'VCEDA' },
+    { resource: 'transactions', cell: 'VCEDAXF' },
+    { resource: 'vendor_bills', cell: 'VCEDAXF' },
+    { resource: 'budgets', cell: 'VCEDAXF' },
+    { resource: 'assets', cell: 'VCEDAXF' },
   ],
 
   /**
@@ -188,6 +194,15 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     // thing seniority confers. The chairman is the clearest case: the most
     // senior person in the company cannot read a live harassment case.
     { resource: 'performance_evidence', cell: '-' },
+    // The books. Reads everything and owns the budget; records nothing. The
+    // chairman already holds `payments:VXF` and cannot record a payment — the
+    // ledger follows the same line.
+    { resource: 'ledger_accounts', cell: 'VXF' },
+    { resource: 'categories', cell: 'VCE' },
+    { resource: 'transactions', cell: 'VXF' },
+    { resource: 'vendor_bills', cell: 'VXF' },
+    { resource: 'budgets', cell: 'VCEXF,approve' },
+    { resource: 'assets', cell: 'VXF' },
   ],
 
   /**
@@ -266,6 +281,12 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'learning', cell: 'VCEDA' },
     { resource: 'capabilities', cell: 'VCEDAXF,approve' },
     { resource: 'payroll', cell: 'VCEDAXF,approve' },
+    { resource: 'ledger_accounts', cell: 'VCEDAXF' },
+    { resource: 'categories', cell: 'VCEDA' },
+    { resource: 'transactions', cell: 'VCEDAXF' },
+    { resource: 'vendor_bills', cell: 'VCEDAXF' },
+    { resource: 'budgets', cell: 'VCEDAXF' },
+    { resource: 'assets', cell: 'VCEDAXF' },
   ],
 
   // ---- Commercial leadership ----------------------------------------------
@@ -318,6 +339,11 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'goals', cell: 'VCEA' },
     { resource: 'learning', cell: 'VCA' },
     { resource: 'capabilities', cell: 'VC' },
+    // Sees the plan and the spend against it. The money verb is absent, so
+    // amounts arrive withheld — a unit head tracks their budget without the
+    // company's whole ledger coming with it.
+    { resource: 'categories', cell: 'V' },
+    { resource: 'budgets', cell: 'V' },
   ],
 
   director: [
@@ -363,6 +389,11 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'goals', cell: 'VCEA' },
     { resource: 'learning', cell: 'VCA' },
     { resource: 'capabilities', cell: 'VC' },
+    // Sees the plan and the spend against it. The money verb is absent, so
+    // amounts arrive withheld — a unit head tracks their budget without the
+    // company's whole ledger coming with it.
+    { resource: 'categories', cell: 'V' },
+    { resource: 'budgets', cell: 'V' },
   ],
 
   finance_controller: [
@@ -397,6 +428,13 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'goals', cell: 'V@own' },
     { resource: 'learning', cell: 'V@own' },
     { resource: 'capabilities', cell: 'VC@own' },
+    // Signs off the budget and the books; does not write the entries.
+    { resource: 'ledger_accounts', cell: 'VXF' },
+    { resource: 'categories', cell: 'VCE' },
+    { resource: 'transactions', cell: 'VEXF' },
+    { resource: 'vendor_bills', cell: 'VEXF,approve' },
+    { resource: 'budgets', cell: 'VCEXF,approve' },
+    { resource: 'assets', cell: 'VEXF' },
   ],
 
   // ---- The legacy ten -----------------------------------------------------
@@ -652,6 +690,14 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     // has no reach into why anyone is paid what they are paid.
     { resource: 'payroll', cell: 'VCEAXF' },
     { resource: 'employees', cell: 'V' },
+    // Keeps the books: records every movement, bill and asset. Does not set
+    // the budget it is measured against, and does not approve it.
+    { resource: 'ledger_accounts', cell: 'VCEAXF' },
+    { resource: 'categories', cell: 'VCEA' },
+    { resource: 'transactions', cell: 'VCEDAXF' },
+    { resource: 'vendor_bills', cell: 'VCEDAXF' },
+    { resource: 'budgets', cell: 'VXF' },
+    { resource: 'assets', cell: 'VCEAXF' },
   ],
 };
 

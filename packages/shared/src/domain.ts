@@ -351,6 +351,9 @@ export const RECORD_TYPE_CODES = [
   // People (§14): the seat, the leave request and the payroll run are the HR
   // records a human refers to out loud. EMP, REQ, APP and ASN are above.
   'POS', 'LVR', 'PRN',
+  // The books (§15): a ledger movement, a supplier bill, a capital purchase
+  // and a borrowing.
+  'TXN', 'BILL', 'FA', 'LN',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 
@@ -481,6 +484,11 @@ export const EXCEPTION_CODES = {
   EX_HR_003: { code: 'EX-HR-003', label: 'Active employee with no compensation in force', severity: 'S2_WARNING' },
   EX_HR_004: { code: 'EX-HR-004', label: 'Leave taken beyond entitlement', severity: 'S2_WARNING' },
   EX_HR_005: { code: 'EX-HR-005', label: 'Payroll period closed with unresolved attendance', severity: 'S2_WARNING' },
+  // The books (§15).
+  EX_FIN_002: { code: 'EX-FIN-002', label: 'Supplier bill overdue', severity: 'S2_WARNING' },
+  EX_FIN_003: { code: 'EX-FIN-003', label: 'Spending beyond budget', severity: 'S2_WARNING' },
+  EX_FIN_004: { code: 'EX-FIN-004', label: 'Cash runway below threshold', severity: 'S3_HIGH_RISK' },
+  EX_FIN_005: { code: 'EX-FIN-005', label: 'Disbursed payroll not posted to the books', severity: 'S2_WARNING' },
 } as const;
 
 export const EXCEPTION_STATES = ['open', 'acknowledged', 'resolved', 'escalated', 'suppressed'] as const;

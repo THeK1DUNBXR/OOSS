@@ -1654,6 +1654,22 @@ model Invoice {
   /// entirely, not merely nulled at render time.
   taxRegistrationReference String?
 
+  /// GST. The place of supply decides whether the tax splits into CGST+SGST
+  /// (within the state) or lands as a single IGST (across a state line), so it
+  /// is stored rather than inferred at render time — the invoice was raised
+  /// under one reading of it and reprinting must not silently change the tax.
+  placeOfSupply    String?
+  interState       Boolean @default(false)
+  customerGstin    String?
+  taxableValue     Decimal @default(0) @db.Decimal(18, 2)
+  cgstAmount       Decimal @default(0) @db.Decimal(18, 2)
+  sgstAmount       Decimal @default(0) @db.Decimal(18, 2)
+  igstAmount       Decimal @default(0) @db.Decimal(18, 2)
+  roundOff         Decimal @default(0) @db.Decimal(8, 2)
+  grandTotal       Decimal @default(0) @db.Decimal(18, 2)
+  /// Which division earns the revenue on this invoice.
+  division         String?
+
   overdueNotifiedAt DateTime?
   createdById String?
   deletedAt   DateTime?
@@ -1682,6 +1698,12 @@ model InvoiceLine {
   amount      Decimal @db.Decimal(18, 2)
   /// Derived from OFFERING.defaultRevenueTreatment — never asked of sales per deal.
   revenueMethod String
+
+  /// GST per line, because a single invoice can carry goods and services at
+  /// different rates and a single invoice-level rate would misstate both.
+  hsnSac   String?
+  gstRate  Decimal @default(0) @db.Decimal(5, 2)
+  taxAmount Decimal @default(0) @db.Decimal(18, 2)
 
   createdAt DateTime @default(now())
 
@@ -3050,4 +3072,288 @@ model Offboarding {
 
   @@index([tenantId, status])
   @@map("offboardings")
+}
+
+// ===========================================================================
+// The books (bounded context `fin`) — Canon §15.
+//
+// Invoices, payments and receipts above answer "what is owed and what came in
+// against it". They do not answer "what did the company spend, on what, in
+// which division, and is that within budget" — which is the question the
+// founder's own ledger was built to answer and the one this platform could
+// not.
+//
+// So this adds the ledger spine: accounts money sits in, categories money is
+// spent under, and one TRANSACTION table every movement lands in whatever
+// raised it — a bank import, a payroll disbursement, an invoice receipt, or
+// somebody typing it in. `division` is on the transaction rather than derived,
+// because a shared cost split across divisions is a judgement somebody makes
+// at the time and cannot be recovered from the category afterwards.
+// ===========================================================================
+
+/// Somewhere money sits: a bank account, cash in hand, a card, a loan account.
+model LedgerAccount {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name        String
+  accountType String  @default("bank") // bank | cash | card | loan | wallet
+  /// Last four digits at most. The full number is never held here.
+  displayReference String?
+  openingBalance   Decimal @default(0) @db.Decimal(18, 2)
+  openingDate      DateTime?
+  currency         String  @default("INR")
+  active           Boolean @default(true)
+  /// Ledger grouping for the balance sheet: asset | liability | equity.
+  ledgerGroup      String  @default("asset")
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  transactions Transaction[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+  @@map("ledger_accounts")
+}
+
+/// What money is earned or spent under. A shallow tree — the company's own
+/// chart, not a statutory one.
+model LedgerCategory {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name      String
+  /// income | expense | asset_purchase | transfer | tax | drawings
+  kind      String  @default("expense")
+  /// recurring_fixed | variable | one_time | annual — how it behaves, which is
+  /// what makes a cash budget forecastable rather than a guess.
+  behaviour String  @default("variable")
+  parentId  String?
+  parent    LedgerCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  LedgerCategory[] @relation("CategoryTree")
+
+  /// The division this normally lands in. Overridable per transaction.
+  defaultDivision String?
+  /// Marks a cost the company cannot defer — rent, salaries, statutory dues.
+  mustPay         Boolean @default(false)
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  transactions  Transaction[]
+  budgetLines   BudgetLine[]
+  recurringRules RecurringRule[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, kind])
+  @@map("ledger_categories")
+}
+
+/// One movement of money. Append-only in spirit: a mistake is reversed with a
+/// second row carrying `reversalOfId`, never edited away, so the history keeps
+/// showing what actually happened.
+model Transaction {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  txnDate   DateTime
+  /// in | out. Amount is always positive; the direction carries the sign.
+  direction String
+  amount    Decimal @db.Decimal(18, 2)
+  currency  String  @default("INR")
+
+  accountId String
+  account   LedgerAccount @relation(fields: [accountId], references: [id])
+  categoryId String?
+  category   LedgerCategory? @relation(fields: [categoryId], references: [id])
+
+  /// software | skill | education | shared. Set at entry, never derived, so a
+  /// split judgement survives.
+  division    String?
+  counterparty String?
+  method       String  @default("bank_transfer")
+  reference    String?
+  note         String?
+
+  /// What raised it: manual | bank_import | payroll | invoice | vendor_bill |
+  /// recurring | asset | loan. A figure can always be traced to its origin.
+  source       String  @default("manual")
+  payrollRunId String?
+  invoiceId    String?
+  vendorBillId String?
+  fixedAssetId String?
+  loanId       String?
+
+  /// Set on the row that reverses another, and on the row reversed.
+  reversalOfId String?
+  reversedById String?
+
+  /// Matched against a bank statement line.
+  reconciledAt DateTime?
+
+  createdById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, txnDate])
+  @@index([tenantId, categoryId, txnDate])
+  @@index([tenantId, division, txnDate])
+  @@index([tenantId, accountId, txnDate])
+  @@index([tenantId, source])
+  @@map("transactions")
+}
+
+/// What a supplier is owed. The other half of receivables, which the platform
+/// had without its counterpart — a company that can see what it is owed and
+/// not what it owes cannot see its position.
+model VendorBill {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  vendorName   String
+  vendorGstin  String?
+  billNumber   String?
+  billDate     DateTime
+  dueDate      DateTime?
+  categoryId   String?
+  division     String?
+
+  subtotal   Decimal @default(0) @db.Decimal(18, 2)
+  taxAmount  Decimal @default(0) @db.Decimal(18, 2)
+  total      Decimal @default(0) @db.Decimal(18, 2)
+  paidAmount Decimal @default(0) @db.Decimal(18, 2)
+  currency   String  @default("INR")
+
+  /// draft | open | part_paid | paid | cancelled
+  status String @default("open")
+  note   String?
+
+  overdueNotifiedAt DateTime?
+  createdById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status, dueDate])
+  @@index([tenantId, vendorName])
+  @@map("vendor_bills")
+}
+
+/// A budget line for one category, one period, one division. Actuals are
+/// summed from transactions rather than stored, so a late entry moves the
+/// variance instead of leaving it stale.
+model BudgetLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// YYYY-MM, or YYYY for an annual line.
+  period     String
+  categoryId String
+  category   LedgerCategory @relation(fields: [categoryId], references: [id])
+  division   String?
+  amount     Decimal @db.Decimal(18, 2)
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, period, categoryId, division])
+  @@index([tenantId, period])
+  @@map("budget_lines")
+}
+
+/// Something that happens every month whether anybody remembers it or not.
+/// Generating the transaction is deliberate rather than automatic — a rule
+/// that posts silently is how a ledger fills with entries nobody checked.
+model RecurringRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  label      String
+  categoryId String
+  category   LedgerCategory @relation(fields: [categoryId], references: [id])
+  accountId  String
+  division   String?
+  direction  String  @default("out")
+  amount     Decimal @db.Decimal(18, 2)
+  /// monthly | quarterly | annual
+  cadence    String  @default("monthly")
+  dayOfMonth Int     @default(1)
+  startDate  DateTime
+  endDate    DateTime?
+  active     Boolean @default(true)
+  /// The last period a transaction was generated for, so generating twice for
+  /// one month is impossible rather than merely unlikely.
+  lastGeneratedPeriod String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, active])
+  @@map("recurring_rules")
+}
+
+/// A capital purchase and how it is written down. The schedule is computed
+/// from these rather than stored, so changing the life corrects every future
+/// period at once instead of leaving a stale table behind.
+model FixedAsset {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name          String
+  purchaseDate  DateTime
+  cost          Decimal @db.Decimal(18, 2)
+  salvageValue  Decimal @default(0) @db.Decimal(18, 2)
+  usefulLifeMonths Int
+  /// straight_line | wdv (written-down value, which is what Indian tax uses)
+  method        String  @default("straight_line")
+  wdvRate       Decimal @default(0) @db.Decimal(6, 4)
+  division      String?
+  categoryId    String?
+  disposedAt    DateTime?
+  disposalValue Decimal? @db.Decimal(18, 2)
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, disposedAt])
+  @@map("fixed_assets")
+}
+
+/// Borrowing, with its amortisation computed rather than stored for the same
+/// reason as depreciation.
+model Loan {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  lender        String
+  principal     Decimal @db.Decimal(18, 2)
+  /// Annual nominal rate, as a percentage.
+  annualRate    Decimal @db.Decimal(6, 3)
+  tenureMonths  Int
+  startDate     DateTime
+  accountId     String?
+  division      String?
+  /// Closed early, or run to term.
+  closedAt      DateTime?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, closedAt])
+  @@map("loans")
 }

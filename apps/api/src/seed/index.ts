@@ -24,6 +24,7 @@ import { ROLE_DEFINITIONS, ROLE_GRANT_MATRIX, parseCell } from './grants.js';
 import { PIPELINE_SEEDS, RETIRED_POST_AWARD_STAGES, transitionsFor } from './pipelines.js';
 import { registerSubscribers } from '../events/handlers.js';
 import { seedHr } from './hr.js';
+import { seedBooks } from './books.js';
 import { computeAndPersistAll } from '../domains/health.js';
 import { runJobsForTenant } from '../jobs/scheduler.js';
 import { findOrCreatePerson } from '../domains/identity.js';
@@ -88,6 +89,7 @@ async function main() {
     await seedCommercialDataset(people, orgs, catalog);
     await seedEducation(people, orgs);
     await seedHr(people);
+    await seedBooks();
     await seedDecisions(people);
     await seedMergeCandidate(people);
     console.log('\ncomputing health scores…');

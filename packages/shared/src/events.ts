@@ -242,6 +242,20 @@ export const EVENTS = {
   PAYROLL_INSTRUCTION_CREATED: 'kz.hr.payroll_instruction.created',
   PAYROLL_RUN_CREATED: 'kz.hr.payroll_run.created',
   POSITION_CREATED: 'kz.org.position.created',
+
+  // --- The books (fin) ------------------------------------------------------
+  TRANSACTION_RECORDED: 'kz.fin.transaction.recorded',
+  // A reversal is its own event rather than an update, because "this was
+  // wrong and here is the correction" is a different fact from "this changed".
+  TRANSACTION_REVERSED: 'kz.fin.transaction.reversed',
+  VENDOR_BILL_RECORDED: 'kz.fin.vendor_bill.recorded',
+  VENDOR_BILL_PAID: 'kz.fin.vendor_bill.paid',
+  BUDGET_LINE_SET: 'kz.fin.budget_line.set',
+  RECURRING_GENERATED: 'kz.fin.recurring.generated',
+  FIXED_ASSET_RECORDED: 'kz.fin.fixed_asset.recorded',
+  LOAN_RECORDED: 'kz.fin.loan.recorded',
+  INVOICE_TAX_PRICED: 'kz.fin.invoice.tax_priced',
+  PAYROLL_POSTED_TO_BOOKS: 'kz.fin.payroll.posted',
 } as const;
 
 /**

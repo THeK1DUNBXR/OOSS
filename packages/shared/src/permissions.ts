@@ -161,6 +161,15 @@ export const RESOURCES = [
   'learning',
   'capabilities',
   'payroll',
+  // The books (§15). `transactions` is the ledger spine; the rest are separated
+  // because the authority genuinely differs — somebody who records a supplier
+  // bill is not thereby somebody who sets the budget.
+  'ledger_accounts',
+  'categories',
+  'transactions',
+  'vendor_bills',
+  'budgets',
+  'assets',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];
