@@ -106,6 +106,19 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'jobs', cell: 'VCE' },
     { resource: 'audit', cell: 'VX' },
     { resource: 'events', cell: 'V' },
+    { resource: 'employees', cell: 'VCEDAXF' },
+    { resource: 'positions', cell: 'VCEDA' },
+    { resource: 'requisitions', cell: 'VCEDA,approve' },
+    { resource: 'applications', cell: 'VCEDA' },
+    { resource: 'assignments', cell: 'VCEDA,approve' },
+    { resource: 'compensation', cell: 'VCEDAXF,approve' },
+    { resource: 'leave', cell: 'VCEDA,approve' },
+    { resource: 'attendance', cell: 'VCEDA' },
+    { resource: 'goals', cell: 'VCEDA' },
+    { resource: 'performance_evidence', cell: 'VCE' },
+    { resource: 'learning', cell: 'VCEDA' },
+    { resource: 'capabilities', cell: 'VCEDAXF,approve' },
+    { resource: 'payroll', cell: 'VCEDAXF,approve' },
   ],
 
   /**
@@ -153,6 +166,28 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     // Explicitly absent: `users` administration is system_admin's, not the
     // Chairman's.
     { resource: 'users', cell: 'V' },
+
+    // People. The chairman sees the company and approves at the top tier, but
+    // does not operate HR: no create on an employment, no proposing a pay
+    // change, no recording attendance. It is the same shape as `payments:VXF`
+    // — the authority to see and to sign is not the authority to do.
+    { resource: 'employees', cell: 'VXF' },
+    { resource: 'positions', cell: 'VCE' },
+    { resource: 'requisitions', cell: 'V,approve' },
+    { resource: 'applications', cell: 'V' },
+    { resource: 'assignments', cell: 'V,approve' },
+    { resource: 'compensation', cell: 'VXF,approve' },
+    { resource: 'leave', cell: 'V' },
+    { resource: 'attendance', cell: 'V' },
+    { resource: 'goals', cell: 'V' },
+    { resource: 'learning', cell: 'V' },
+    { resource: 'capabilities', cell: 'V' },
+    { resource: 'payroll', cell: 'VXF,approve' },
+    // Explicitly absent: `performance_evidence`. ICC and disciplinary records
+    // are need-to-know, and need-to-know is a grant somebody holds, not a
+    // thing seniority confers. The chairman is the clearest case: the most
+    // senior person in the company cannot read a live harassment case.
+    { resource: 'performance_evidence', cell: '-' },
   ],
 
   /**
@@ -218,6 +253,19 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'jobs', cell: 'VCE' },
     { resource: 'audit', cell: 'VX' },
     { resource: 'events', cell: 'V' },
+    { resource: 'employees', cell: 'VCEDAXF' },
+    { resource: 'positions', cell: 'VCEDA' },
+    { resource: 'requisitions', cell: 'VCEDA,approve' },
+    { resource: 'applications', cell: 'VCEDA' },
+    { resource: 'assignments', cell: 'VCEDA,approve' },
+    { resource: 'compensation', cell: 'VCEDAXF,approve' },
+    { resource: 'leave', cell: 'VCEDA,approve' },
+    { resource: 'attendance', cell: 'VCEDA' },
+    { resource: 'goals', cell: 'VCEDA' },
+    { resource: 'performance_evidence', cell: 'VCE' },
+    { resource: 'learning', cell: 'VCEDA' },
+    { resource: 'capabilities', cell: 'VCEDAXF,approve' },
+    { resource: 'payroll', cell: 'VCEDAXF,approve' },
   ],
 
   // ---- Commercial leadership ----------------------------------------------
@@ -252,6 +300,24 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'decisions', cell: 'VC,approve' },
     { resource: 'exceptions', cell: 'VCE' },
     { resource: 'events', cell: 'V' },
+    // Line authority over people: approves their leave and their moves, and
+    // sees the establishment. Never sees pay — approving a holiday and
+    // knowing a salary are different authorities.
+    //
+    // These cells already cover the manager's own records at `all` scope, so
+    // there is no second `@own` row for them: one resource, one cell. Two
+    // declarations of the same resource is drift by construction, because only
+    // the first is written and the reconciler compares against the last.
+    { resource: 'employees', cell: 'V' },
+    { resource: 'positions', cell: 'V' },
+    { resource: 'requisitions', cell: 'VCE,approve' },
+    { resource: 'applications', cell: 'VCEA' },
+    { resource: 'assignments', cell: 'V,approve' },
+    { resource: 'leave', cell: 'VC,approve' },
+    { resource: 'attendance', cell: 'VE' },
+    { resource: 'goals', cell: 'VCEA' },
+    { resource: 'learning', cell: 'VCA' },
+    { resource: 'capabilities', cell: 'VC' },
   ],
 
   director: [
@@ -279,6 +345,24 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'decisions', cell: 'VC,approve' },
     { resource: 'exceptions', cell: 'VCE' },
     { resource: 'projects', cell: 'V' },
+    // Line authority over people: approves their leave and their moves, and
+    // sees the establishment. Never sees pay — approving a holiday and
+    // knowing a salary are different authorities.
+    //
+    // These cells already cover the manager's own records at `all` scope, so
+    // there is no second `@own` row for them: one resource, one cell. Two
+    // declarations of the same resource is drift by construction, because only
+    // the first is written and the reconciler compares against the last.
+    { resource: 'employees', cell: 'V' },
+    { resource: 'positions', cell: 'V' },
+    { resource: 'requisitions', cell: 'VCE,approve' },
+    { resource: 'applications', cell: 'VCEA' },
+    { resource: 'assignments', cell: 'V,approve' },
+    { resource: 'leave', cell: 'VC,approve' },
+    { resource: 'attendance', cell: 'VE' },
+    { resource: 'goals', cell: 'VCEA' },
+    { resource: 'learning', cell: 'VCA' },
+    { resource: 'capabilities', cell: 'VC' },
   ],
 
   finance_controller: [
@@ -300,6 +384,19 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'exceptions', cell: 'VCE' },
     { resource: 'health_scores', cell: 'V' },
     { resource: 'decisions', cell: 'VC' },
+    // Approves the payroll run and pay changes, and holds the money verb on
+    // both. Does not prepare either — that is hr_ops's.
+    { resource: 'employees', cell: 'VF' },
+    { resource: 'compensation', cell: 'VXF,approve' },
+    { resource: 'payroll', cell: 'VXF,approve' },
+    // Employee self-service. Everyone can raise their own leave, read their
+    // own attendance and goals, and see anyone's capability badges — the
+    // profile rule in §14.7 makes those public by design, minus the score.
+    { resource: 'leave', cell: 'VC@own' },
+    { resource: 'attendance', cell: 'V@own' },
+    { resource: 'goals', cell: 'V@own' },
+    { resource: 'learning', cell: 'V@own' },
+    { resource: 'capabilities', cell: 'VC@own' },
   ],
 
   // ---- The legacy ten -----------------------------------------------------
@@ -327,6 +424,14 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'pipeline_transitions', cell: 'V' },
     { resource: 'exceptions', cell: 'VE' },
     { resource: 'reports', cell: 'V' },
+    // Employee self-service. Everyone can raise their own leave, read their
+    // own attendance and goals, and see anyone's capability badges — the
+    // profile rule in §14.7 makes those public by design, minus the score.
+    { resource: 'leave', cell: 'VC@own' },
+    { resource: 'attendance', cell: 'V@own' },
+    { resource: 'goals', cell: 'V@own' },
+    { resource: 'learning', cell: 'V@own' },
+    { resource: 'capabilities', cell: 'VC@own' },
   ],
 
   telecaller: [
@@ -344,6 +449,14 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'pipeline_definitions', cell: 'V' },
     { resource: 'pipeline_stages', cell: 'V' },
     { resource: 'exceptions', cell: 'VE' },
+    // Employee self-service. Everyone can raise their own leave, read their
+    // own attendance and goals, and see anyone's capability badges — the
+    // profile rule in §14.7 makes those public by design, minus the score.
+    { resource: 'leave', cell: 'VC@own' },
+    { resource: 'attendance', cell: 'V@own' },
+    { resource: 'goals', cell: 'V@own' },
+    { resource: 'learning', cell: 'V@own' },
+    { resource: 'capabilities', cell: 'VC@own' },
   ],
 
   education_counsellor: [
@@ -365,6 +478,14 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'pipeline_definitions', cell: 'V' },
     { resource: 'pipeline_stages', cell: 'V' },
     { resource: 'exceptions', cell: 'VE' },
+    // Employee self-service. Everyone can raise their own leave, read their
+    // own attendance and goals, and see anyone's capability badges — the
+    // profile rule in §14.7 makes those public by design, minus the score.
+    { resource: 'leave', cell: 'VC@own' },
+    { resource: 'attendance', cell: 'V@own' },
+    { resource: 'goals', cell: 'V@own' },
+    { resource: 'learning', cell: 'V@own' },
+    { resource: 'capabilities', cell: 'VC@own' },
   ],
 
   trainer: [
@@ -384,6 +505,14 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'partner_agreements', cell: '-' },
     { resource: 'pipeline_definitions', cell: 'V' },
     { resource: 'exceptions', cell: 'VE' },
+    // Employee self-service. Everyone can raise their own leave, read their
+    // own attendance and goals, and see anyone's capability badges — the
+    // profile rule in §14.7 makes those public by design, minus the score.
+    { resource: 'leave', cell: 'VC@own' },
+    { resource: 'attendance', cell: 'V@own' },
+    { resource: 'goals', cell: 'V@own' },
+    { resource: 'learning', cell: 'V@own' },
+    { resource: 'capabilities', cell: 'VC@own' },
   ],
 
   project_manager: [
@@ -407,6 +536,14 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'education', cell: '-' },
     { resource: 'pipeline_definitions', cell: 'V' },
     { resource: 'exceptions', cell: 'VE' },
+    // Employee self-service. Everyone can raise their own leave, read their
+    // own attendance and goals, and see anyone's capability badges — the
+    // profile rule in §14.7 makes those public by design, minus the score.
+    { resource: 'leave', cell: 'VC@own' },
+    { resource: 'attendance', cell: 'V@own' },
+    { resource: 'goals', cell: 'V@own' },
+    { resource: 'learning', cell: 'V@own' },
+    { resource: 'capabilities', cell: 'VC@own' },
   ],
 
   workforce_placement: [
@@ -426,6 +563,14 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'pipeline_definitions', cell: 'V' },
     { resource: 'pipeline_stages', cell: 'V' },
     { resource: 'exceptions', cell: 'VE' },
+    // Employee self-service. Everyone can raise their own leave, read their
+    // own attendance and goals, and see anyone's capability badges — the
+    // profile rule in §14.7 makes those public by design, minus the score.
+    { resource: 'leave', cell: 'VC@own' },
+    { resource: 'attendance', cell: 'V@own' },
+    { resource: 'goals', cell: 'V@own' },
+    { resource: 'learning', cell: 'V@own' },
+    { resource: 'capabilities', cell: 'VC@own' },
   ],
 
   marketing: [
@@ -440,6 +585,44 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'pipeline_definitions', cell: 'V' },
     { resource: 'reports', cell: 'V' },
     { resource: 'exceptions', cell: 'V' },
+    // Employee self-service. Everyone can raise their own leave, read their
+    // own attendance and goals, and see anyone's capability badges — the
+    // profile rule in §14.7 makes those public by design, minus the score.
+    { resource: 'leave', cell: 'VC@own' },
+    { resource: 'attendance', cell: 'V@own' },
+    { resource: 'goals', cell: 'V@own' },
+    { resource: 'learning', cell: 'V@own' },
+    { resource: 'capabilities', cell: 'VC@own' },
+  ],
+
+  /**
+   * The HR function. Holds the operating authority the chairman does not, and
+   * is the only role besides `admin` that reaches case-scoped evidence.
+   *
+   * It cannot approve its own compensation proposals: `compensation` carries
+   * no `approve`, which is what keeps a pay rise a two-party act.
+   */
+  hr_ops: [
+    { resource: 'people', cell: 'VCEA,merge' },
+    { resource: 'employees', cell: 'VCEDAXF' },
+    { resource: 'positions', cell: 'VCEDA' },
+    { resource: 'requisitions', cell: 'VCEDA' },
+    { resource: 'applications', cell: 'VCEDA' },
+    { resource: 'assignments', cell: 'VCEDA' },
+    // Proposes and schedules pay, but does not approve it.
+    { resource: 'compensation', cell: 'VCEAXF' },
+    { resource: 'leave', cell: 'VCEDA,approve' },
+    { resource: 'attendance', cell: 'VCEDA' },
+    { resource: 'goals', cell: 'VCEDA' },
+    { resource: 'performance_evidence', cell: 'VCE' },
+    { resource: 'learning', cell: 'VCEDA' },
+    { resource: 'capabilities', cell: 'VCEAXF,approve' },
+    // Prepares the run; the controller approves it and finance disburses.
+    { resource: 'payroll', cell: 'VCEAXF' },
+    { resource: 'documents', cell: 'VCEA' },
+    { resource: 'exceptions', cell: 'VE' },
+    { resource: 'health_scores', cell: 'V' },
+    { resource: 'reports', cell: 'VX' },
   ],
 
   finance: [
@@ -465,6 +648,10 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
     { resource: 'pipeline_definitions', cell: 'V' },
     { resource: 'exceptions', cell: 'VE' },
     { resource: 'health_scores', cell: 'V' },
+    // Disburses the run and posts it to the books. Does not approve it, and
+    // has no reach into why anyone is paid what they are paid.
+    { resource: 'payroll', cell: 'VCEAXF' },
+    { resource: 'employees', cell: 'V' },
   ],
 };
 
@@ -490,4 +677,5 @@ export const ROLE_DEFINITIONS: Array<{
   { slug: 'workforce_placement', name: 'Workforce & Placement', description: 'Employer demand and placement channel.', archetype: 'workspace', classificationCeiling: 'internal' },
   { slug: 'marketing', name: 'Marketing', description: 'Campaign targeting and demand generation.', archetype: 'workspace', classificationCeiling: 'internal' },
   { slug: 'finance', name: 'Finance', description: 'Money ledger operations.', archetype: 'workspace', classificationCeiling: 'restricted' },
+  { slug: 'hr_ops', name: 'HR Operations', description: 'The people function. Operates the employment lifecycle, prepares payroll and holds the only routine reach into case-scoped evidence — but cannot approve the pay changes it proposes.', archetype: 'workspace', classificationCeiling: 'regulated' },
 ];

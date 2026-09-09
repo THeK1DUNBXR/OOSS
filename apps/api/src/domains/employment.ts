@@ -47,7 +47,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan } from '../platform/permissions.js';
+import { assertCan, canSeeMoney } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
 
@@ -696,6 +696,11 @@ export async function transitionCompensation(id: string, event: CompensationEven
 /** The pay in force on a date — what payroll reads, and what a cost cut sums. */
 export async function currentCompensation(employmentRelationshipId: string, asOf = new Date()) {
   const auth = currentAuth();
+  // Somebody's salary, so it is gated like any other pay figure. Without this
+  // the rollups below would be a side door onto compensation for any caller
+  // that could reach an employment id.
+  await assertCan({ resource: 'compensation', verb: 'view' });
+
   return prisma.compensationRecord.findFirst({
     where: {
       tenantId: auth.tenantId,
@@ -855,9 +860,18 @@ export async function detectMissingCompensation(): Promise<number> {
   return raised;
 }
 
-/** Headcount and monthly pay cost, by division. Read by the Command Center. */
+/**
+ * Headcount and monthly pay cost, by division. Read by the Command Center.
+ *
+ * A line manager can see how many people sit in each division without being
+ * able to see what they cost, so the cost is withheld rather than the whole
+ * rollup being refused: `monthlyCost` comes back null, and the surface says
+ * so, instead of showing a zero that reads as "nobody is paid anything".
+ */
 export async function headcountByDivision(asOf = new Date()) {
   const auth = currentAuth();
+  await assertCan({ resource: 'employees', verb: 'view' });
+  const money = await canSeeMoney('compensation');
 
   const employments = await prisma.employmentRelationship.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, status: { in: ['Active', 'OnLeave', 'NoticePeriod'] } },
@@ -871,13 +885,26 @@ export async function headcountByDivision(asOf = new Date()) {
     },
   });
 
-  const rows = new Map<string, { division: string; headcount: number; monthlyCost: number }>();
+  const pay = money
+    ? await prisma.compensationRecord.findMany({
+        where: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: { in: employments.map((e) => e.id) },
+          status: 'Effective',
+          effectiveFrom: { lte: asOf },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: asOf } }],
+        },
+        select: { employmentRelationshipId: true, amount: true },
+      })
+    : [];
+  const payByEmployment = new Map(pay.map((p) => [p.employmentRelationshipId, num(p.amount) ?? 0]));
+
+  const rows = new Map<string, { division: string; headcount: number; monthlyCost: number | null }>();
   for (const employment of employments) {
     const division = employment.assignments[0]?.position.orgUnit.division ?? 'shared';
-    const pay = await currentCompensation(employment.id, asOf);
-    const row = rows.get(division) ?? { division, headcount: 0, monthlyCost: 0 };
+    const row = rows.get(division) ?? { division, headcount: 0, monthlyCost: money ? 0 : null };
     row.headcount += 1;
-    row.monthlyCost += num(pay?.amount) ?? 0;
+    if (money) row.monthlyCost = (row.monthlyCost ?? 0) + (payByEmployment.get(employment.id) ?? 0);
     rows.set(division, row);
   }
 

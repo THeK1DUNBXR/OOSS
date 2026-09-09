@@ -196,6 +196,10 @@ export const LEGACY_ROLE_SLUGS = [
 export const TARGET_ROLE_SLUGS = [
   'chairman',
   'system_admin',
+  // The HR function. Named by §14.6.4, which requires hr_ops plus an
+  // independent second verifier for a capability claim that moves pay — a rule
+  // that cannot be written without a role to name.
+  'hr_ops',
   'business_head',
   'director',
   'finance_controller',
@@ -323,4 +327,7 @@ export const ROLE_CLASSIFICATION_CEILING: Record<string, SensitivityClass> = {
   project_manager: 'internal',
   workforce_placement: 'internal',
   marketing: 'internal',
+  // HR reads statutory identifiers and disciplinary evidence, so it needs the
+  // top ceiling. That is not seniority — it is the job.
+  hr_ops: 'regulated',
 };

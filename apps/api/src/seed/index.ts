@@ -23,6 +23,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ROLE_DEFINITIONS, ROLE_GRANT_MATRIX, parseCell } from './grants.js';
 import { PIPELINE_SEEDS, RETIRED_POST_AWARD_STAGES, transitionsFor } from './pipelines.js';
 import { registerSubscribers } from '../events/handlers.js';
+import { seedHr } from './hr.js';
 import { computeAndPersistAll } from '../domains/health.js';
 import { runJobsForTenant } from '../jobs/scheduler.js';
 import { findOrCreatePerson } from '../domains/identity.js';
@@ -86,6 +87,7 @@ async function main() {
     const orgs = await seedOrganizations();
     await seedCommercialDataset(people, orgs, catalog);
     await seedEducation(people, orgs);
+    await seedHr(people);
     await seedDecisions(people);
     await seedMergeCandidate(people);
     console.log('\ncomputing health scores…');
@@ -124,6 +126,7 @@ async function main() {
   console.log('  suresh@kaizen.co.in            Workforce & Placement');
   console.log('  priya@kaizen.co.in             Marketing');
   console.log('  latha@kaizen.co.in             Finance');
+  console.log('  hr@kaizen.co.in                HR Operations — the people function');
   console.log('  multi@kaizen.co.in             Holds three affiliations — try the context switcher');
   console.log('─────────────────────────────────────────────\n');
   process.exit(0);
@@ -480,6 +483,7 @@ async function seedPeopleAndUsers(): Promise<SeededPerson[]> {
     { name: 'Suresh Kumar', email: 'suresh@kaizen.co.in', role: 'workforce_placement', branch: 'Coimbatore', phone: '9840000012', orgUnit: 'placement' },
     { name: 'Priya Balan', email: 'priya@kaizen.co.in', role: 'marketing', branch: 'Chennai', phone: '9840000013', orgUnit: 'marketing' },
     { name: 'Lakshmi Iyer', email: 'latha@kaizen.co.in', role: 'finance', branch: 'Chennai', phone: '9840000014', orgUnit: 'finance' },
+    { name: 'Bhavani Rajan', email: 'hr@kaizen.co.in', role: 'hr_ops', branch: 'Chennai', phone: '9840000016', orgUnit: 'corporate' },
     { name: 'Gopal Srinivasan', email: 'multi@kaizen.co.in', role: 'sales', branch: 'Chennai', phone: '9840000015', orgUnit: 'commercial' },
   ];
 

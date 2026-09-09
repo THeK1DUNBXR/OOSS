@@ -1,0 +1,843 @@
+/**
+ * People — the wiring, not the diagrams.
+ *
+ * `hrLifecycle.test.ts` checks the machines against §14.3 without a database.
+ * This checks what that cannot: that a transition is reachable only through a
+ * grant, that the leave ledger adds up, that a promotion cannot move money
+ * without moving the seat, and that the two visibility rules §14 actually
+ * insists on hold against the roles that would most like to bend them.
+ *
+ * Everything runs inside a real request context against a real database, so
+ * the tenant gate and the five-axis evaluator are the ones that run in
+ * production rather than stand-ins.
+ */
+
+import { beforeAll, describe, expect, it } from 'vitest';
+import { CONFIDENCE_RANK } from '@kaizen/shared';
+import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
+import {
+  hire,
+  transitionEmployment,
+  proposeCompensation,
+  proposeAssignment,
+  currentCompensation,
+  detectOverdueConfirmations,
+  detectMissingCompensation,
+  headcountByDivision,
+} from '../domains/employment.js';
+import {
+  createLeaveRequest,
+  transitionLeaveRequest,
+  leaveBalances,
+  accrueEntitlement,
+  recordAttendance,
+  lockAttendancePeriod,
+} from '../domains/leave.js';
+import { joinFromApplication, hiringFunnel } from '../domains/hiring.js';
+import { capabilitiesForParty, assertClaim, verifyClaim } from '../domains/capability.js';
+import { recordEvidence, listEvidence } from '../domains/performance.js';
+import { openPayrollRun, transitionPayrollRun, payrollCostByDivision } from '../domains/payroll.js';
+import { emittedEvents, setEventCapture } from '../platform/eventBus.js';
+
+let TENANT: string;
+
+/** The period the payroll tests own outright, and reset before using. */
+const PAYROLL_PERIOD = '2026-03';
+
+beforeAll(async () => {
+  TENANT = await tenantId();
+});
+
+async function employmentFor(email: string) {
+  const user = await unscopedPrisma.user.findFirstOrThrow({ where: { email } });
+  return unscopedPrisma.employmentRelationship.findFirstOrThrow({ where: { personId: user.personId } });
+}
+
+let fixtureSeq = 0;
+
+/**
+ * A throwaway employee for a test that moves somebody through their lifecycle.
+ *
+ * Suspending or terminating a seeded person would leave them that way, so the
+ * second run of the suite would find them already gone and fail on a
+ * transition that is now illegal. Tests that mutate state build their own
+ * subject; tests that only read use the seeded cast.
+ */
+async function makeEmployee(label: string) {
+  fixtureSeq += 1;
+  const stamp = `${Date.now()}-${fixtureSeq}`;
+  return asUser('hr@kaizen.co.in', async () => {
+    const position = await prisma.position.create({
+      data: {
+        tenantId: TENANT,
+        recordCode: await (await import('../platform/recordCode.js')).nextRecordCode('POS'),
+        jobId: (await prisma.job.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+        orgUnitId: (await prisma.orgUnit.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+        status: 'Open',
+      },
+    });
+    const person = await prisma.person.create({
+      data: {
+        tenantId: TENANT,
+        recordCode: await (await import('../platform/recordCode.js')).nextRecordCode('PER'),
+        fullName: `Fixture ${label} ${stamp}`,
+        primaryEmail: `fixture.${label}.${stamp}@example.com`,
+        source: 'test',
+      },
+    });
+    const employment = await hire({
+      personId: person.id,
+      positionId: position.id,
+      hireEffectiveDate: new Date(),
+    });
+    await transitionEmployment(employment.id, 'ACTIVATE');
+    return { employment, person, position };
+  });
+}
+
+// ===========================================================================
+// The grant, not the role
+// ===========================================================================
+
+describe('§14 — authority over people is held, not inherited from rank', () => {
+  it('the chairman can see the establishment but cannot open an employment', async () => {
+    const employments = await asUser('chairman@kaizen.co.in', () => prisma.employmentRelationship.findMany({ take: 5 }));
+    expect(employments.length).toBeGreaterThan(0);
+
+    const person = await unscopedPrisma.person.findFirstOrThrow({ where: { tenantId: TENANT, primaryEmail: 'sneha.varghese@example.com' } });
+    const position = await unscopedPrisma.position.findFirstOrThrow({ where: { tenantId: TENANT, status: 'Open' } });
+
+    // `employees` carries VXF for the chairman: see it, export it, see the
+    // money on it — and create nothing. The same shape as `payments:VXF`.
+    const err = await expectReject(() =>
+      asUser('chairman@kaizen.co.in', () =>
+        hire({ personId: person.id, positionId: position.id, hireEffectiveDate: new Date() }),
+      ),
+    );
+    expect(err.status).toBe(403);
+  });
+
+  it('the system administrator cannot read a single employment record', async () => {
+    // The highest platform privilege in the product, and no domain content
+    // authority whatsoever — including over people.
+    const err = await expectReject(() =>
+      asUser('sysadmin@kaizen.co.in', () => headcountByDivision()),
+    );
+    expect(err.status).toBe(403);
+  });
+
+  it('hr_ops proposes a pay change but cannot approve its own proposal', async () => {
+    const employment = await employmentFor('arun@kaizen.co.in');
+
+    const record = await asUser('hr@kaizen.co.in', () =>
+      proposeCompensation({
+        employmentRelationshipId: employment.id,
+        revisionReason: 'annual_cycle',
+        amount: 70_000,
+        effectiveFrom: new Date(),
+      }),
+    );
+    expect(record.status).toBe('Proposed');
+
+    // `compensation` carries no `approve` for hr_ops. A pay rise stays a
+    // two-party act however convenient it would be otherwise.
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', async () => {
+        const { transitionCompensation } = await import('../domains/employment.js');
+        await transitionCompensation(record.id, 'SUBMIT');
+        return transitionCompensation(record.id, 'APPROVE');
+      }),
+    );
+    expect(err.status).toBe(403);
+  });
+});
+
+// ===========================================================================
+// §14.5 — the promotion linkage constraint
+// ===========================================================================
+
+describe('§14.5 — a promotion moves the seat and the money together', () => {
+  it('refuses a promotion pay change that names no assignment', async () => {
+    const employment = await employmentFor('divya@kaizen.co.in');
+
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () =>
+        proposeCompensation({
+          employmentRelationshipId: employment.id,
+          revisionReason: 'promotion',
+          amount: 40_000,
+          effectiveFrom: new Date(),
+        }),
+      ),
+    );
+    // The failure mode this prevents: money moved, grade did not.
+    expect(err.status).toBe(422);
+    expect(err.message).toMatch(/assignment/i);
+  });
+
+  it('accepts one that does, and puts both under a single correlation id', async () => {
+    const employment = await employmentFor('divya@kaizen.co.in');
+    const position = await unscopedPrisma.position.findFirstOrThrow({
+      where: { tenantId: TENANT, status: 'Filled' },
+    });
+
+    const { assignment, compensation } = await asUser('hr@kaizen.co.in', async () => {
+      const assignment = await proposeAssignment({
+        employmentRelationshipId: employment.id,
+        positionId: position.id,
+        reasonCode: 'Promotion',
+        effectiveFrom: new Date(),
+      });
+      const compensation = await proposeCompensation({
+        employmentRelationshipId: employment.id,
+        revisionReason: 'promotion',
+        amount: 40_000,
+        effectiveFrom: new Date(),
+        linkedAssignmentId: assignment.id,
+      });
+      return { assignment, compensation };
+    });
+
+    const reloaded = await unscopedPrisma.assignment.findFirstOrThrow({ where: { id: assignment.id } });
+    expect(compensation.correlationId).toBeTruthy();
+    expect(reloaded.correlationId).toBe(compensation.correlationId);
+  });
+
+  it('refuses to link an assignment belonging to somebody else', async () => {
+    const mine = await employmentFor('divya@kaizen.co.in');
+    const theirs = await employmentFor('arun@kaizen.co.in');
+    const position = await unscopedPrisma.position.findFirstOrThrow({ where: { tenantId: TENANT, status: 'Filled' } });
+
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', async () => {
+        const foreign = await proposeAssignment({
+          employmentRelationshipId: theirs.id,
+          positionId: position.id,
+          reasonCode: 'Promotion',
+          effectiveFrom: new Date(),
+        });
+        return proposeCompensation({
+          employmentRelationshipId: mine.id,
+          revisionReason: 'promotion',
+          amount: 40_000,
+          effectiveFrom: new Date(),
+          linkedAssignmentId: foreign.id,
+        });
+      }),
+    );
+    expect(err.status).toBe(422);
+  });
+});
+
+// ===========================================================================
+// The leave ledger
+// ===========================================================================
+
+describe('§14.2 — a leave balance is a sum of its transactions', () => {
+  it('holds on approval, settles on completion, and never charges twice', async () => {
+    const employment = await employmentFor('kavitha@kaizen.co.in');
+    const leaveType = await unscopedPrisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'CL' } });
+
+    const before = await asUser('hr@kaizen.co.in', async () => {
+      const balances = await leaveBalances(employment.id);
+      return Number(balances.find((b) => b.leaveTypeId === leaveType.id)?.balanceDays ?? 0);
+    });
+
+    const request = await asUser('hr@kaizen.co.in', () =>
+      createLeaveRequest({
+        employmentRelationshipId: employment.id,
+        leaveTypeId: leaveType.id,
+        startDate: new Date(Date.now() + 60 * 86_400_000),
+        endDate: new Date(Date.now() + 62 * 86_400_000),
+        days: 3,
+      }),
+    );
+
+    const afterApproval = await asUser('hr@kaizen.co.in', async () => {
+      await transitionLeaveRequest(request.id, 'SUBMIT');
+      await transitionLeaveRequest(request.id, 'ROUTE_FOR_APPROVAL');
+      await transitionLeaveRequest(request.id, 'APPROVE');
+      const balances = await leaveBalances(employment.id);
+      return balances.find((b) => b.leaveTypeId === leaveType.id)!;
+    });
+
+    // Approval is what commits the days, so it is what moves the balance.
+    expect(Number(afterApproval.balanceDays)).toBe(before - 3);
+    expect(Number(afterApproval.heldDays)).toBe(3);
+
+    const afterCompletion = await asUser('hr@kaizen.co.in', async () => {
+      await transitionLeaveRequest(request.id, 'START');
+      await transitionLeaveRequest(request.id, 'COMPLETE');
+      const balances = await leaveBalances(employment.id);
+      return balances.find((b) => b.leaveTypeId === leaveType.id)!;
+    });
+
+    // Completion settles the hold. Charging again here would take six days for
+    // a three-day holiday.
+    expect(Number(afterCompletion.balanceDays)).toBe(before - 3);
+    expect(Number(afterCompletion.heldDays)).toBe(0);
+  });
+
+  it('gives the days back when an approved request is cancelled', async () => {
+    const employment = await employmentFor('ravi@kaizen.co.in');
+    const leaveType = await unscopedPrisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'SL' } });
+
+    const before = await asUser('hr@kaizen.co.in', async () => {
+      const balances = await leaveBalances(employment.id);
+      return Number(balances.find((b) => b.leaveTypeId === leaveType.id)?.balanceDays ?? 0);
+    });
+
+    const after = await asUser('hr@kaizen.co.in', async () => {
+      const request = await createLeaveRequest({
+        employmentRelationshipId: employment.id,
+        leaveTypeId: leaveType.id,
+        startDate: new Date(Date.now() + 90 * 86_400_000),
+        endDate: new Date(Date.now() + 91 * 86_400_000),
+        days: 2,
+      });
+      await transitionLeaveRequest(request.id, 'SUBMIT');
+      await transitionLeaveRequest(request.id, 'ROUTE_FOR_APPROVAL');
+      await transitionLeaveRequest(request.id, 'APPROVE');
+      await transitionLeaveRequest(request.id, 'CANCEL');
+      const balances = await leaveBalances(employment.id);
+      return balances.find((b) => b.leaveTypeId === leaveType.id)!;
+    });
+
+    expect(Number(after.balanceDays)).toBe(before);
+    expect(Number(after.heldDays)).toBe(0);
+  });
+
+  it('reconstructs every balance exactly from its ledger', async () => {
+    const balances = await unscopedPrisma.leaveBalance.findMany({ where: { tenantId: TENANT } });
+    expect(balances.length).toBeGreaterThan(0);
+
+    for (const balance of balances) {
+      const ledger = await unscopedPrisma.leaveTransaction.aggregate({
+        where: { leaveBalanceId: balance.id },
+        _sum: { amountDays: true },
+      });
+      // This is the whole promise of the ledger: the stored figure is never
+      // anything but the sum, so a disputed balance can be recomputed rather
+      // than argued about.
+      expect(Number(balance.balanceDays)).toBe(Number(ledger._sum.amountDays ?? 0));
+    }
+  });
+
+  it('refuses leave that overlaps a request already in flight', async () => {
+    const employment = await employmentFor('meera@kaizen.co.in');
+    const leaveType = await unscopedPrisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'EL' } });
+
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () =>
+        createLeaveRequest({
+          employmentRelationshipId: employment.id,
+          leaveTypeId: leaveType.id,
+          // The seeded Approved request runs day 14 to day 18.
+          startDate: new Date(Date.now() + 15 * 86_400_000),
+          endDate: new Date(Date.now() + 16 * 86_400_000),
+          days: 2,
+        }),
+      ),
+    );
+    expect(err.status).toBe(409);
+  });
+
+  it('refuses a request that ends before it starts', async () => {
+    const employment = await employmentFor('latha@kaizen.co.in');
+    const leaveType = await unscopedPrisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'CL' } });
+
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () =>
+        createLeaveRequest({
+          employmentRelationshipId: employment.id,
+          leaveTypeId: leaveType.id,
+          startDate: new Date(Date.now() + 20 * 86_400_000),
+          endDate: new Date(Date.now() + 10 * 86_400_000),
+        }),
+      ),
+    );
+    expect(err.status).toBe(422);
+  });
+});
+
+// ===========================================================================
+// Attendance and payroll
+// ===========================================================================
+
+describe('Attendance and payroll', () => {
+  it('will not overwrite a locked day', async () => {
+    const { employment } = await makeEmployee('attendance');
+    const workDate = new Date(Date.UTC(2026, 0, 15));
+
+    await asUser('hr@kaizen.co.in', async () => {
+      await recordAttendance({ employmentRelationshipId: employment.id, workDate, workedMinutes: 480 });
+      const row = await prisma.workAttendance.findFirstOrThrow({
+        where: { employmentRelationshipId: employment.id, workDate },
+      });
+      await prisma.workAttendance.update({ where: { id: row.id }, data: { status: 'Locked' } });
+    });
+
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () =>
+        recordAttendance({ employmentRelationshipId: employment.id, workDate, workedMinutes: 600 }),
+      ),
+    );
+    // Payroll has already read it, so a correction is a regularisation on a
+    // reopened record, not a silent overwrite.
+    expect(err.status).toBe(422);
+    expect(err.message).toMatch(/Locked/);
+  });
+
+  it('surfaces unresolved disputes rather than sweeping them into a period lock', async () => {
+    const disputed = await unscopedPrisma.workAttendance.findFirst({
+      where: { tenantId: TENANT, status: 'Disputed' },
+    });
+    expect(disputed).toBeTruthy();
+
+    const payPeriod = disputed!.workDate.toISOString().slice(0, 7);
+    const result = await asUser('hr@kaizen.co.in', () => lockAttendancePeriod(payPeriod));
+
+    expect(result.unresolved).toBeGreaterThan(0);
+    // The disputed day is excluded from the lock, not locked along with the rest.
+    const still = await unscopedPrisma.workAttendance.findFirstOrThrow({ where: { id: disputed!.id } });
+    expect(still.status).toBe('Disputed');
+  });
+
+  it('opens a run at the pay in force on the last day of the period, not today', async () => {
+    // The payroll tests own this period and reset it, so the suite can be run
+    // twice without the second run colliding with the first one's output.
+    const existing = await unscopedPrisma.payrollRun.findFirst({ where: { tenantId: TENANT, payPeriod: PAYROLL_PERIOD } });
+    if (existing) {
+      await unscopedPrisma.payrollInstruction.deleteMany({ where: { payrollRunId: existing.id } });
+      await unscopedPrisma.payrollRun.delete({ where: { id: existing.id } });
+    }
+
+    const payPeriod = PAYROLL_PERIOD;
+    const run = await asUser('hr@kaizen.co.in', () => openPayrollRun(payPeriod));
+    expect(run.headcount).toBeGreaterThan(0);
+
+    const instructions = await unscopedPrisma.payrollInstruction.findMany({ where: { payrollRunId: run.id } });
+    expect(instructions.length).toBe(run.headcount);
+    // Recomputing an old month must produce that month's numbers.
+    expect(instructions.every((i) => i.payPeriod === payPeriod)).toBe(true);
+  });
+
+  it('refuses to open the same period twice', async () => {
+    const err = await expectReject(() => asUser('hr@kaizen.co.in', () => openPayrollRun(PAYROLL_PERIOD)));
+    expect(err.status).toBe(409);
+  });
+
+  it('will not disburse a run nobody approved', async () => {
+    const run = await unscopedPrisma.payrollRun.findFirstOrThrow({ where: { tenantId: TENANT, payPeriod: PAYROLL_PERIOD } });
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () => transitionPayrollRun(run.id, 'DISBURSE')),
+    );
+    expect(err.status).toBe(422);
+  });
+
+  it('freezes the figures once a run is approved', async () => {
+    const run = await unscopedPrisma.payrollRun.findFirstOrThrow({ where: { tenantId: TENANT, payPeriod: PAYROLL_PERIOD } });
+
+    await asUser('hr@kaizen.co.in', () => transitionPayrollRun(run.id, 'COMPUTE'));
+    await asUser('hr@kaizen.co.in', () => transitionPayrollRun(run.id, 'SUBMIT_REVIEW'));
+    await asUser('controller@kaizen.co.in', () => transitionPayrollRun(run.id, 'APPROVE'));
+
+    const instruction = await unscopedPrisma.payrollInstruction.findFirstOrThrow({ where: { payrollRunId: run.id } });
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', async () => {
+        const { setInstructionAmounts } = await import('../domains/payroll.js');
+        return setInstructionAmounts(instruction.id, { deductions: 999 });
+      }),
+    );
+    // An approval has to be a statement about figures that still exist.
+    expect(err.status).toBe(422);
+  });
+
+  it('cuts payroll cost by division so it can be set against revenue', async () => {
+    const rows = await asUser('hr@kaizen.co.in', () => payrollCostByDivision(PAYROLL_PERIOD));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => ['software', 'skill', 'education', 'shared'].includes(r.division))).toBe(true);
+  });
+
+  it('refuses a compensation read to a viewer holding no grant on it', async () => {
+    const employment = await employmentFor('arun@kaizen.co.in');
+    // The trainer holds no grant on compensation at all, so the pay of a
+    // colleague is not reachable through an employment id.
+    const err = await expectReject(() =>
+      asUser('ravi@kaizen.co.in', () => currentCompensation(employment.id)),
+    );
+    expect(err.status).toBe(403);
+  });
+
+  it('withholds the cost from a headcount rollup rather than refusing it', async () => {
+    // A line manager may see how many people sit where without seeing what
+    // they cost. A zero there would read as "nobody is paid anything".
+    const rows = await asUser('bhead@kaizen.co.in', () => headcountByDivision());
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.monthlyCost === null)).toBe(true);
+
+    const asHr = await asUser('hr@kaizen.co.in', () => headcountByDivision());
+    expect(asHr.some((r) => (r.monthlyCost ?? 0) > 0)).toBe(true);
+  });
+});
+
+// ===========================================================================
+// §14.7 — the two visibility rules
+// ===========================================================================
+
+describe('§14.7 — need-to-know is a grant, not a rank', () => {
+  it('keeps case-scoped evidence from the chairman', async () => {
+    const employment = await employmentFor('suresh@kaizen.co.in');
+
+    await asUser('hr@kaizen.co.in', () =>
+      recordEvidence({
+        employmentRelationshipId: employment.id,
+        kind: 'corrective_note',
+        description: 'ICC matter under enquiry',
+        caseScoped: true,
+        caseRef: 'ICC-2026-004',
+      }),
+    );
+
+    const asHr = await asUser('hr@kaizen.co.in', () => listEvidence(employment.id));
+    expect(asHr.some((e) => e.caseScoped)).toBe(true);
+
+    // The most senior person in the company, and no reach into a live case.
+    const asChairman = await asUser('chairman@kaizen.co.in', () => listEvidence(employment.id));
+    expect(asChairman.some((e) => e.caseScoped)).toBe(false);
+  });
+
+  it('will not let an ordinary manager open a disciplinary record', async () => {
+    const employment = await employmentFor('suresh@kaizen.co.in');
+    const err = await expectReject(() =>
+      asUser('bhead@kaizen.co.in', () =>
+        recordEvidence({
+          employmentRelationshipId: employment.id,
+          kind: 'corrective_note',
+          description: 'Attempted case note',
+          caseScoped: true,
+        }),
+      ),
+    );
+    expect(err.status).toBe(403);
+  });
+
+  it('shows a colleague the trust badge and never the score behind it', async () => {
+    const kavitha = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'kavitha@kaizen.co.in' } });
+
+    // A peer with no financial verb on capabilities.
+    const asPeer = await asUser('ravi@kaizen.co.in', () => capabilitiesForParty(kavitha.personId));
+    expect(asPeer.length).toBeGreaterThan(0);
+    expect(asPeer.every((c) => c.tier !== undefined)).toBe(true);
+    expect(asPeer.every((c) => c.confidenceScore === undefined)).toBe(true);
+
+    // hr_ops holds it, and gets the score plus its decay.
+    const asHr = await asUser('hr@kaizen.co.in', () => capabilitiesForParty(kavitha.personId));
+    expect(asHr.some((c) => c.confidenceScore !== undefined)).toBe(true);
+    expect(asHr.some((c) => c.decayedConfidence !== undefined)).toBe(true);
+  });
+
+  it('lets somebody see the score on their own record', async () => {
+    const kavitha = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'kavitha@kaizen.co.in' } });
+    const own = await asUser('kavitha@kaizen.co.in', () => capabilitiesForParty(kavitha.personId));
+    expect(own.some((c) => c.confidenceScore !== undefined)).toBe(true);
+  });
+});
+
+// ===========================================================================
+// §14.6 — verification
+// ===========================================================================
+
+describe('§14.6 — verification is structurally two people', () => {
+  it('refuses to let anyone verify their own claim', async () => {
+    const hr = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'hr@kaizen.co.in' } });
+    const skill = await unscopedPrisma.skill.findFirstOrThrow({ where: { tenantId: TENANT } });
+
+    const claim = await asUser('hr@kaizen.co.in', () =>
+      assertClaim({ partyId: hr.personId, skillId: skill.id, tier: 'assessed' }),
+    );
+
+    const err = await expectReject(() => asUser('hr@kaizen.co.in', () => verifyClaim(claim.id, {})));
+    expect(err.status).toBe(422);
+    expect(err.message).toMatch(/own/i);
+  });
+
+  it('requires a second verifier when the claim moves pay or grade', async () => {
+    const arun = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'arun@kaizen.co.in' } });
+    const skill = await unscopedPrisma.skill.findFirstOrThrow({ where: { tenantId: TENANT } });
+
+    const claim = await asUser('hr@kaizen.co.in', () =>
+      assertClaim({ partyId: arun.personId, skillId: skill.id, tier: 'demonstrated' }),
+    );
+
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () =>
+        verifyClaim(claim.id, { feedsCompensationOrPromotionOrMobility: true }),
+      ),
+    );
+    expect(err.status).toBe(422);
+
+    const bhead = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'bhead@kaizen.co.in' } });
+    const verified = await asUser('hr@kaizen.co.in', () =>
+      verifyClaim(claim.id, {
+        feedsCompensationOrPromotionOrMobility: true,
+        secondVerifierPartyId: bhead.personId,
+      }),
+    );
+    expect(verified.tier).toBe('verified');
+    expect(verified.confidenceRank).toBe(CONFIDENCE_RANK.verified);
+  });
+
+  it('refuses to assert a claim straight into Verified', async () => {
+    const arun = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'arun@kaizen.co.in' } });
+    const skill = await unscopedPrisma.skill.findFirstOrThrow({ where: { tenantId: TENANT } });
+
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () =>
+        assertClaim({ partyId: arun.personId, skillId: skill.id, tier: 'verified' }),
+      ),
+    );
+    // Otherwise a verified claim exists that nobody verified.
+    expect(err.status).toBe(422);
+  });
+});
+
+// ===========================================================================
+// Hiring and the identity plane
+// ===========================================================================
+
+describe('Hiring joins the identity plane rather than duplicating it', () => {
+  it('turns an accepted offer into an employment on the candidate’s own Person row', async () => {
+    // Built here rather than taken from the seed: joining consumes the
+    // application, so a seeded one would only work on the first run.
+    const application = await asUser('hr@kaizen.co.in', async () => {
+      const { nextRecordCode } = await import('../platform/recordCode.js');
+      // The requisition is built here too. Joining fills it, so depending on
+      // a seeded Open one would work exactly once per database.
+      const requisition = await prisma.requisition.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('REQ'),
+          positionId: (
+            await prisma.position.create({
+              data: {
+                tenantId: TENANT,
+                recordCode: await nextRecordCode('POS'),
+                jobId: (await prisma.job.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+                orgUnitId: (await prisma.orgUnit.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+                status: 'Open',
+              },
+            })
+          ).id,
+          status: 'Open',
+        },
+      });
+      const stamp = Date.now();
+      const candidate = await prisma.person.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('PER'),
+          fullName: `Candidate ${stamp}`,
+          primaryEmail: `candidate.${stamp}@example.com`,
+          source: 'test',
+        },
+      });
+      await prisma.affiliation.create({
+        data: { tenantId: TENANT, partyId: candidate.id, affiliationType: 'candidate', status: 'active' },
+      });
+      return prisma.application.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('APP'),
+          requisitionId: requisition.id,
+          candidatePartyId: candidate.id,
+          status: 'OfferAccepted',
+        },
+      });
+    });
+
+    const employment = await asUser('hr@kaizen.co.in', () =>
+      joinFromApplication(application.id, { hireEffectiveDate: new Date() }),
+    );
+
+    // Same human, one more relationship — not a second record.
+    expect(employment.personId).toBe(application.candidatePartyId);
+
+    const affiliations = await unscopedPrisma.affiliation.findMany({
+      where: { tenantId: TENANT, partyId: application.candidatePartyId },
+    });
+    expect(affiliations.some((a) => a.affiliationType === 'candidate')).toBe(true);
+    expect(affiliations.some((a) => a.affiliationType === 'employee')).toBe(true);
+
+    // An employee affiliation carries the statutory retention floor, which is
+    // what stops the dedup resolver ever auto-merging the record away.
+    const employeeAffiliation = affiliations.find((a) => a.affiliationType === 'employee');
+    expect(employeeAffiliation?.statutoryRetentionFloor).toBe(true);
+  });
+
+  it('refuses to join an application that has not accepted an offer', async () => {
+    const application = await unscopedPrisma.application.findFirstOrThrow({
+      where: { tenantId: TENANT, status: 'Interviewing' },
+    });
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () => joinFromApplication(application.id, { hireEffectiveDate: new Date() })),
+    );
+    expect(err.status).toBe(422);
+  });
+
+  it('refuses a second live employment for the same person and entity', async () => {
+    const employment = await employmentFor('arun@kaizen.co.in');
+    const position = await unscopedPrisma.position.findFirstOrThrow({ where: { tenantId: TENANT, status: 'Open' } });
+
+    const err = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () =>
+        hire({ personId: employment.personId, positionId: position.id, hireEffectiveDate: new Date() }),
+      ),
+    );
+    expect(err.status).toBe(409);
+  });
+
+  it('counts the funnel from the state rather than a stored bucket', async () => {
+    const funnel = await asUser('hr@kaizen.co.in', () => hiringFunnel());
+    const total = Object.values(funnel.buckets).reduce((a, b) => a + b, 0);
+    const fromStates = funnel.byState.reduce((a, r) => a + r.count, 0);
+    expect(total).toBe(fromStates);
+  });
+});
+
+// ===========================================================================
+// Leaving
+// ===========================================================================
+
+describe('Leaving ends the access, because access follows the affiliation', () => {
+  it('ends the employee affiliation the moment somebody is no longer employed', async () => {
+    const { employment } = await makeEmployee('leaver');
+
+    await asUser('hr@kaizen.co.in', async () => {
+      await transitionEmployment(employment.id, 'SUBMIT_RESIGNATION', { note: 'Resigned' });
+      return transitionEmployment(employment.id, 'REACH_LAST_WORKING_DAY', {
+        separationType: 'resignation',
+        rehireEligible: true,
+      });
+    });
+
+    const reloaded = await unscopedPrisma.employmentRelationship.findFirstOrThrow({ where: { id: employment.id } });
+    expect(reloaded.status).toBe('Terminated');
+    expect(reloaded.separationType).toBe('resignation');
+
+    const affiliations = await unscopedPrisma.affiliation.findMany({
+      where: { tenantId: TENANT, partyId: employment.personId, affiliationType: 'employee' },
+    });
+    // No deprovisioning job: the record goes dark on the next query because
+    // the session resolver only ever accepts an active affiliation.
+    expect(affiliations.every((a) => a.status === 'ended')).toBe(true);
+  });
+
+  it('opens offboarding when the resignation is submitted, not on the last day', async () => {
+    const { employment } = await makeEmployee('offboarder');
+    await asUser('hr@kaizen.co.in', () =>
+      transitionEmployment(employment.id, 'SUBMIT_RESIGNATION', { note: 'Resigned' }),
+    );
+
+    const offboarding = await unscopedPrisma.offboarding.findFirstOrThrow({
+      where: { employmentRelationshipId: employment.id },
+    });
+    expect(offboarding.status).toBe('NoticePeriodActive');
+  });
+
+  it('records an abandonment as a separation with that reason, never as Alumni', async () => {
+    const { employment } = await makeEmployee('absconder');
+
+    const result = await asUser('hr@kaizen.co.in', async () => {
+      await transitionEmployment(employment.id, 'ABSENCE_BREACH', { note: 'No contact for 12 days' });
+      return transitionEmployment(employment.id, 'ABANDONMENT_CONFIRMED', { note: 'Enquiry closed' });
+    });
+
+    expect(result.status).toBe('Terminated');
+    expect(result.separationType).toBe('abandonment');
+  });
+
+  it('raises an exception on an absence breach rather than leaving it as a status', async () => {
+    const { employment } = await makeEmployee('breach');
+    await asUser('hr@kaizen.co.in', () =>
+      transitionEmployment(employment.id, 'ABSENCE_BREACH', { note: 'No contact for 12 days' }),
+    );
+
+    const exception = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { tenantId: TENANT, code: 'EX-HR-001', subjectId: employment.id },
+    });
+    // It runs a clock the company is answerable for, so it is queued for
+    // somebody rather than waiting to be noticed.
+    expect(exception).toBeTruthy();
+  });
+});
+
+// ===========================================================================
+// Detectors
+// ===========================================================================
+
+describe('Detectors find the paperwork that becomes an exposure', () => {
+  it('finds a probation nobody closed', async () => {
+    const count = await asUser('hr@kaizen.co.in', () => detectOverdueConfirmations(6));
+    expect(count).toBeGreaterThan(0);
+  });
+
+  it('finds somebody working with no pay record in force', async () => {
+    const count = await asUser('hr@kaizen.co.in', () => detectMissingCompensation());
+    // Payroll would otherwise compute a zero for them, and that only surfaces
+    // on payday.
+    expect(count).toBeGreaterThan(0);
+  });
+});
+
+// ===========================================================================
+// The event log
+// ===========================================================================
+
+describe('Every transition publishes under its own past-tense name', () => {
+  it('names the event for the transition, not "updated"', async () => {
+    const { employment } = await makeEmployee('events-suspend');
+
+    setEventCapture(true);
+    emittedEvents.length = 0;
+    await asUser('hr@kaizen.co.in', () =>
+      transitionEmployment(employment.id, 'SUSPEND', { note: 'Pending enquiry' }),
+    );
+    // `setEventCapture(false)` empties the buffer, so read it first.
+    const names = emittedEvents.map((e) => e.eventName);
+    setEventCapture(false);
+    expect(names).toContain('kz.hr.employment.suspended');
+  });
+
+  it('uses the verbs §14 quotes verbatim', async () => {
+    const { employment } = await makeEmployee('events-resign');
+
+    setEventCapture(true);
+    emittedEvents.length = 0;
+    await asUser('hr@kaizen.co.in', () => transitionEmployment(employment.id, 'SUBMIT_RESIGNATION'));
+    const names = emittedEvents.map((e) => e.eventName);
+    setEventCapture(false);
+    expect(names).toContain('kz.hr.employment.resignation_submitted');
+  });
+
+  it('keeps a case-scoped note out of the event body', async () => {
+    const { employment } = await makeEmployee('events-case');
+
+    setEventCapture(true);
+    emittedEvents.length = 0;
+    await asUser('hr@kaizen.co.in', () =>
+      recordEvidence({
+        employmentRelationshipId: employment.id,
+        kind: 'corrective_note',
+        description: 'A confidential detail that must not reach the log',
+        caseScoped: true,
+      }),
+    );
+    const event = emittedEvents.find((e) => e.eventName === 'kz.hr.performance_evidence.recorded');
+    setEventCapture(false);
+    expect(event).toBeTruthy();
+    // The event log has a wider audience than the case does.
+    expect(JSON.stringify(event)).not.toContain('confidential detail');
+    expect(event?.confidentiality).toBe('restricted');
+  });
+});
