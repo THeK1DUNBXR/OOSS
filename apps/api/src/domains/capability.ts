@@ -143,7 +143,12 @@ export async function assertClaim(input: {
   evidence?: string | null;
 }) {
   const auth = currentAuth();
-  await assertCan({ resource: 'capabilities', verb: 'create' });
+  // Bound to the party the claim is about. Reading a capability profile is
+  // deliberately open — §14.7 makes the badge public — but asserting one is
+  // not, and the `own` scope on that grant is only enforced when the record is
+  // passed. Without it anyone could plant a `demonstrated` claim on a
+  // colleague, which then surfaces them in the staffing search.
+  await assertCan({ resource: 'capabilities', verb: 'create', record: { ownerPartyId: input.partyId } });
 
   if (input.tier === 'verified') {
     throw ApiError.unprocessable(

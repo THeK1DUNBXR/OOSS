@@ -237,6 +237,8 @@ export async function createLeaveRequest(input: {
   reason?: string | null;
 }) {
   const auth = currentAuth();
+  // Coarse first, so a caller holding no grant at all is refused before the
+  // lookup and the id cannot be used as an existence oracle.
   await assertCan({ resource: 'leave', verb: 'create' });
 
   if (input.endDate < input.startDate) {
@@ -247,6 +249,13 @@ export async function createLeaveRequest(input: {
     where: { id: input.employmentRelationshipId, tenantId: auth.tenantId },
   });
   if (!employment) throw ApiError.notFound('Employment relationship');
+
+  // Then again against whose record this is. The evaluator's WHERE axis passes
+  // unconditionally when no `record` is given, so a grant held at `own` scope —
+  // which is how every workspace role holds `leave` — is only actually enforced
+  // by supplying one. Without this an employee can file leave in a colleague's
+  // name, with their own free text on it.
+  await assertCan({ resource: 'leave', verb: 'create', record: { ownerPartyId: employment.personId } });
 
   // Overlapping leave is almost always a double entry rather than an
   // intention, and catching it here is cheaper than unpicking two holds later.

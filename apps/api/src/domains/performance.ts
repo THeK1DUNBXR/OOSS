@@ -26,7 +26,7 @@ import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan, can } from '../platform/permissions.js';
+import { assertCan, can, scopeFor } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { auditRegulatedRead } from '../platform/audit.js';
 import { claimFromLearningCompletion } from './capability.js';
@@ -119,12 +119,33 @@ export async function transitionGoal(id: string, event: GoalEvent, note?: string
  * The filter is applied in the query rather than after it: a caller who cannot
  * see case-scoped evidence should not receive it and discard it, because that
  * is the shape of bug that leaks through a log line or an error message.
+ *
+ * The narrowing below is done here rather than left to the evaluator, because
+ * the evaluator deliberately resolves `view` to `all` scope — narrowing applies
+ * to mutation only, which is the platform's documented model. That is a
+ * reasonable default for a lead or a deal. It is not one for somebody's
+ * manager notes, so this surface asks the scope itself: a colleague holding
+ * `goals` at `own` sees their own record and nothing else, and reaching
+ * anybody else's takes either an all-scope grant or the case grant.
  */
 export async function listEvidence(employmentRelationshipId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'goals', verb: 'view' });
 
   const maySeeCases = await can({ resource: 'performance_evidence', verb: 'view' });
+  const scope = await scopeFor('goals', 'view');
+
+  if (scope !== 'all' && !maySeeCases) {
+    const employment = await prisma.employmentRelationship.findFirst({
+      where: { id: employmentRelationshipId, tenantId: auth.tenantId },
+      select: { personId: true },
+    });
+    // Not found rather than forbidden: whether a colleague has evidence
+    // recorded against them is itself the thing being withheld.
+    if (!employment || employment.personId !== auth.partyId) {
+      throw ApiError.notFound('Employment relationship');
+    }
+  }
 
   const rows = await prisma.performanceEvidence.findMany({
     where: {
@@ -152,15 +173,30 @@ export async function recordEvidence(input: {
 }) {
   const auth = currentAuth();
 
+  // A corrective note is case-scoped whether or not the writer said so.
+  //
+  // Left to the caller this defaulted to false, and a line manager holding
+  // `goals` but not `performance_evidence` could not have set it true even
+  // deliberately — so every manager-written corrective note landed in the
+  // widely-readable bucket by construction. Defaulting it closed means the
+  // manager can still record one and simply cannot read it back afterwards,
+  // which is the right way round: a disciplinary note is HR's record.
+  const caseScoped = input.caseScoped ?? input.kind === 'corrective_note';
+
   if (!PERFORMANCE_EVIDENCE_KINDS.includes(input.kind)) {
     throw ApiError.badRequest(
       `"${input.kind}" is not a kind of performance evidence. Expected one of: ${PERFORMANCE_EVIDENCE_KINDS.join(', ')}.`,
     );
   }
 
-  // Writing into a case needs the case grant, not merely the goals grant —
-  // otherwise anybody who could leave a manager note could open a disciplinary
-  // record against somebody.
+  // Deliberately opening a case needs the case grant, not merely the goals
+  // grant — otherwise anybody who could leave a manager note could open a
+  // disciplinary record against somebody.
+  //
+  // The gate reads what the caller asked for, not what the line above derived.
+  // Auto-scoping a corrective note is about who may *read* it afterwards; it
+  // must not also stop a line manager from writing one, which would push the
+  // record out of the system entirely and into somebody's inbox.
   await assertCan({ resource: input.caseScoped ? 'performance_evidence' : 'goals', verb: 'create' });
 
   const employment = await prisma.employmentRelationship.findFirst({
@@ -175,7 +211,7 @@ export async function recordEvidence(input: {
       kind: input.kind,
       description: input.description,
       recordedByPartyId: auth.partyId,
-      caseScoped: input.caseScoped ?? false,
+      caseScoped,
       caseRef: input.caseRef ?? null,
     },
   });

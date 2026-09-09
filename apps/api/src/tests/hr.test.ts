@@ -152,6 +152,130 @@ describe('§14 — authority over people is held, not inherited from rank', () =
   });
 });
 
+
+// ===========================================================================
+// Scope on writes
+//
+// The evaluator resolves `view` to `all` scope by design — narrowing applies
+// to mutation. But its WHERE axis also passes unconditionally when a caller
+// supplies no `record`, so a grant held at `own` is only enforced by handing
+// it one. These three cover the places that would otherwise let an employee
+// act on a colleague's record.
+// ===========================================================================
+
+describe('An `own` grant binds a write to the writer', () => {
+  it('will not let somebody file leave in a colleague\'s name', async () => {
+    const mine = await employmentFor('arun@kaizen.co.in');
+    const theirs = await employmentFor('kavitha@kaizen.co.in');
+    const leaveType = await unscopedPrisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'CL' } });
+
+    // `sales` holds leave:VC@own — create, for their own record only.
+    const err = await expectReject(() =>
+      asUser('arun@kaizen.co.in', () =>
+        createLeaveRequest({
+          employmentRelationshipId: theirs.id,
+          leaveTypeId: leaveType.id,
+          startDate: new Date(Date.now() + 300 * 86_400_000),
+          endDate: new Date(Date.now() + 301 * 86_400_000),
+          days: 2,
+          reason: 'Filed by somebody else entirely',
+        }),
+      ),
+    );
+    expect(err.status).toBe(403);
+
+    // The same call for their own record goes through, so the grant still works.
+    const own = await asUser('arun@kaizen.co.in', () =>
+      createLeaveRequest({
+        employmentRelationshipId: mine.id,
+        leaveTypeId: leaveType.id,
+        startDate: new Date(Date.now() + 300 * 86_400_000),
+        endDate: new Date(Date.now() + 301 * 86_400_000),
+        days: 2,
+      }),
+    );
+    expect(own.employmentRelationshipId).toBe(mine.id);
+  });
+
+  it('will not let somebody assert a capability claim about a colleague', async () => {
+    const ravi = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'ravi@kaizen.co.in' } });
+    const other = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'kavitha@kaizen.co.in' } });
+    const skill = await unscopedPrisma.skill.findFirstOrThrow({ where: { tenantId: TENANT } });
+
+    // Reading anyone's badges is deliberately open; planting one is not.
+    const err = await expectReject(() =>
+      asUser('ravi@kaizen.co.in', () =>
+        assertClaim({ partyId: other.personId, skillId: skill.id, tier: 'demonstrated' }),
+      ),
+    );
+    expect(err.status).toBe(403);
+
+    const own = await asUser('ravi@kaizen.co.in', () =>
+      assertClaim({ partyId: ravi.personId, skillId: skill.id, tier: 'claimed' }),
+    );
+    expect(own.partyId).toBe(ravi.personId);
+  });
+
+  it('keeps a colleague out of somebody else\'s performance evidence', async () => {
+    const theirs = await employmentFor('kavitha@kaizen.co.in');
+    const mine = await employmentFor('ravi@kaizen.co.in');
+
+    await asUser('hr@kaizen.co.in', () =>
+      recordEvidence({
+        employmentRelationshipId: theirs.id,
+        kind: 'manager_note',
+        description: 'A note about a colleague, not case-scoped',
+      }),
+    );
+
+    // `trainer` holds goals:V@own and no grant on performance_evidence.
+    const err = await expectReject(() => asUser('ravi@kaizen.co.in', () => listEvidence(theirs.id)));
+    expect(err.status).toBe(404);
+
+    // Their own record is still reachable.
+    await expect(asUser('ravi@kaizen.co.in', () => listEvidence(mine.id))).resolves.toBeDefined();
+  });
+
+  it('case-scopes a corrective note whether or not the writer said so', async () => {
+    const employment = await employmentFor('priya@kaizen.co.in');
+
+    const evidence = await asUser('hr@kaizen.co.in', () =>
+      recordEvidence({
+        employmentRelationshipId: employment.id,
+        kind: 'corrective_note',
+        description: 'Timekeeping discussed',
+      }),
+    );
+
+    // A disciplinary note left open by default is how it ends up readable by
+    // everybody who can see a goal.
+    expect(evidence.caseScoped).toBe(true);
+  });
+
+  it('still lets a line manager write a corrective note, having auto-scoped it', async () => {
+    const employment = await employmentFor('priya@kaizen.co.in');
+    // Stamped, so the assertion below matches this run's row and not one an
+    // earlier run left behind — evidence is append-only, so the table keeps
+    // every note any previous run wrote.
+    const description = `Raised in a one-to-one ${Date.now()}`;
+
+    // bhead holds goals:VCEA and no performance_evidence grant. Auto-scoping
+    // must not push the record out of the system and into somebody's inbox.
+    const evidence = await asUser('bhead@kaizen.co.in', () =>
+      recordEvidence({ employmentRelationshipId: employment.id, kind: 'corrective_note', description }),
+    );
+    expect(evidence.caseScoped).toBe(true);
+
+    // And having written it, they cannot read it back — it is HR's record now.
+    const asManager = await asUser('bhead@kaizen.co.in', () => listEvidence(employment.id));
+    expect(asManager.some((e) => e.description === description)).toBe(false);
+
+    // hr_ops can, which is the point of scoping it rather than dropping it.
+    const asHr = await asUser('hr@kaizen.co.in', () => listEvidence(employment.id));
+    expect(asHr.some((e) => e.description === description)).toBe(true);
+  });
+});
+
 // ===========================================================================
 // §14.5 — the promotion linkage constraint
 // ===========================================================================
