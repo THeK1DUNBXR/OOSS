@@ -142,6 +142,25 @@ export const RESOURCES = [
   'jobs',
   'audit',
   'events',
+  // People (hr, Canon §14). `employees` is the employment spine; the rest are
+  // separated because the authority over them genuinely differs — a manager
+  // approves leave without ever seeing pay, and hr_ops moves pay without
+  // deciding a disciplinary case.
+  'employees',
+  'positions',
+  'requisitions',
+  'applications',
+  'assignments',
+  'compensation',
+  'leave',
+  'attendance',
+  'goals',
+  // Case-scoped disciplinary and ICC evidence. Held separately from `goals`
+  // because need-to-know on a case is a grant, not a seniority.
+  'performance_evidence',
+  'learning',
+  'capabilities',
+  'payroll',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];
@@ -216,6 +235,16 @@ export const MONEY_FIELDS = [
   'weightedValue',
   'revenue',
   'ceilingValue',
+  // Pay. A colleague's salary is money like any other money, and it reaches
+  // the same masking path rather than a special case that has to be
+  // remembered at every call site.
+  'grossAmount',
+  'gross_amount',
+  'netAmount',
+  'net_amount',
+  'ctc',
+  'basicPay',
+  'monthlyRate',
 ];
 
 /**
@@ -232,6 +261,15 @@ export const REGULATED_EXCLUDED_FIELDS = [
   'guardianPhone',
   'guardianEmail',
   'nationalId',
+  // Statutory identifiers held on an employment record.
+  'panNumber',
+  'pan_number',
+  'aadhaarReference',
+  'aadhaar_reference',
+  'uanNumber',
+  'uan_number',
+  'pfAccountNumber',
+  'esiNumber',
 ];
 
 // ---------------------------------------------------------------------------

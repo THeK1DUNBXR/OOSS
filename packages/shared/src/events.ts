@@ -214,7 +214,44 @@ export const EVENTS = {
   AGENT_ACTION_EXECUTED: 'kz.agt.action.executed',
   AGENT_ACTION_REJECTED: 'kz.agt.action.rejected',
   AGENT_AUTHORITY_SHORTFALL: 'kz.agt.action.authority_shortfall_detected',
+
+  // --- People (hr) ----------------------------------------------------------
+  // Every §14.3 lifecycle transition also publishes
+  // `kz.hr.<object>.<verb_past_tense>`, built at emit time from the machine's
+  // verb map, so the log carries the transition's own name rather than a
+  // generic "updated". These are the events that exist outside a transition.
+  EMPLOYMENT_RELATIONSHIP_CREATED: 'kz.hr.employment.created',
+  EMPLOYMENT_CONFIRMATION_CHANGED: 'kz.hr.employment.confirmation_changed',
+  ONBOARDING_INITIATED: 'kz.hr.onboarding.initiated',
+  OFFBOARDING_INITIATED: 'kz.hr.offboarding.initiated',
+  REQUISITION_CREATED: 'kz.hr.requisition.created',
+  APPLICATION_CREATED: 'kz.hr.application.created',
+  ASSIGNMENT_CREATED: 'kz.hr.assignment.created',
+  COMPENSATION_RECORD_CREATED: 'kz.hr.compensation.created',
+  LEAVE_REQUEST_CREATED: 'kz.hr.leave.created',
+  LEAVE_BALANCE_POSTED: 'kz.hr.leave_balance.posted',
+  WORK_ATTENDANCE_RECORDED: 'kz.hr.work_attendance.recorded',
+  GOAL_CREATED: 'kz.hr.goal.created',
+  PERFORMANCE_EVIDENCE_RECORDED: 'kz.hr.performance_evidence.recorded',
+  LEARNING_RECORD_ENROLLED: 'kz.hr.learning_record.enrolled',
+  LEARNING_RECORD_COMPLETED: 'kz.hr.learning_record.completed',
+  CAPABILITY_CLAIM_ASSERTED: 'kz.hr.capability_claim.asserted',
+  CAPABILITY_CLAIM_VERIFIED: 'kz.hr.capability_claim.verified',
+  CAPABILITY_CLAIM_CONTRADICTED: 'kz.hr.capability_claim.contradicted',
+  CAPABILITY_CLAIM_STATE_CHANGED: 'kz.hr.capability_claim.state_changed',
+  PAYROLL_INSTRUCTION_CREATED: 'kz.hr.payroll_instruction.created',
+  PAYROLL_RUN_CREATED: 'kz.hr.payroll_run.created',
+  POSITION_CREATED: 'kz.org.position.created',
 } as const;
+
+/**
+ * The `kz.hr.*` name for a lifecycle transition. Composed rather than listed
+ * because the verb maps in `hr.ts` are the authority on the past tense, and
+ * duplicating 90-odd names here would let the two drift.
+ */
+export function hrTransitionEvent(object: string, verb: string): string {
+  return `kz.hr.${object}.${verb}`;
+}
 
 export type KnownEventName = (typeof EVENTS)[keyof typeof EVENTS];
 

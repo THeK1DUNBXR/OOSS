@@ -129,6 +129,16 @@ export const prisma = basePrisma.$extends({
 export type Db = typeof prisma;
 
 /**
+ * The client handed to an interactive transaction callback.
+ *
+ * `Prisma.TransactionClient` describes the *unextended* client, so it does not
+ * match what `$transaction` yields here — the tenant-scope guard is an
+ * extension, and it is precisely the thing a transaction must not lose. Any
+ * helper that takes a `tx` parameter should take this.
+ */
+export type DbTx = Omit<Db, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
+
+/**
  * A raw, unscoped client. Reachable only from the seed script and the
  * separately-audited platform-support path — never from request-scoped code.
  */

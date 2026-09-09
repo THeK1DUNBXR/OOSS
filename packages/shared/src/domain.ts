@@ -348,6 +348,9 @@ export const RECORD_TYPE_CODES = [
   'EXP', 'REQ', 'APP', 'CRS', 'COH', 'ENR', 'ASN', 'ASM', 'CAS', 'DEC', 'POL', 'SOP',
   'DOC', 'MTG', 'RSK', 'ISS', 'OBJ', 'KR', 'INI', 'CMP', 'EXC', 'WF', 'AG', 'PBE',
   'OFF', 'PA', 'QUO', 'PRO', 'WLR', 'INT', 'REC', 'FEE', 'TER',
+  // People (§14): the seat, the leave request and the payroll run are the HR
+  // records a human refers to out loud. EMP, REQ, APP and ASN are above.
+  'POS', 'LVR', 'PRN',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 
@@ -470,6 +473,14 @@ export const EXCEPTION_CODES = {
   EX_FIN_001: { code: 'EX-FIN-001', label: 'Payment overdue', severity: 'S2_WARNING' },
   EX_EDU_001: { code: 'EX-EDU-001', label: 'Learner at risk', severity: 'S2_WARNING' },
   DET_CRM_OFF_01: { code: 'DET-CRM-OFF-01', label: 'Active offering with no price book entry', severity: 'S1_ATTENTION' },
+  // People (§14). An absence breach is high risk because it runs a clock the
+  // company is answerable for; the other two are paperwork that becomes an
+  // exposure if it is never done.
+  EX_HR_001: { code: 'EX-HR-001', label: 'Unexplained absence breach', severity: 'S3_HIGH_RISK' },
+  EX_HR_002: { code: 'EX-HR-002', label: 'Probation confirmation overdue', severity: 'S1_ATTENTION' },
+  EX_HR_003: { code: 'EX-HR-003', label: 'Active employee with no compensation in force', severity: 'S2_WARNING' },
+  EX_HR_004: { code: 'EX-HR-004', label: 'Leave taken beyond entitlement', severity: 'S2_WARNING' },
+  EX_HR_005: { code: 'EX-HR-005', label: 'Payroll period closed with unresolved attendance', severity: 'S2_WARNING' },
 } as const;
 
 export const EXCEPTION_STATES = ['open', 'acknowledged', 'resolved', 'escalated', 'suppressed'] as const;
