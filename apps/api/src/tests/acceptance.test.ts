@@ -17,7 +17,7 @@ import {
   maxSensitivity,
   isUnrouted,
 } from '@kaizen/shared';
-import { asPrincipal, asUser, authFor, expectReject, principalFor, prisma, tenantId, unscopedPrisma } from './helpers.js';
+import { asPrincipal, asUser, authFor, expectReject, principalFor, withFixtureRole, prisma, tenantId, unscopedPrisma } from './helpers.js';
 import { computeHash, verifyChain } from '../platform/eventBus.js';
 import { nextRecordCode, nextRecordCodes, rejectRecordCodeEdit } from '../platform/recordCode.js';
 import { evaluate, applyFieldVisibility, can, holdsScopeResolver } from '../platform/permissions.js';
@@ -177,22 +177,59 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
     expect(rolesBefore).toBeGreaterThan(0);
   });
 
-  it('view and export resolve to all; narrowing applies to mutation only', async () => {
-    await asUser('divya@kaizen.co.in', async (p) => {
-      const foreign = { ownerPartyId: 'someone-else' };
-      const view = await evaluate({ resource: 'leads', verb: 'view', record: foreign });
-      const edit = await evaluate({ resource: 'leads', verb: 'edit', record: foreign });
-      expect(view.allowed).toBe(true);
-      expect(edit.allowed).toBe(false);
-      expect(edit.deniedBy).toBe('WHERE');
+  it('scope narrows every verb, reads included', async () => {
+    // This used to assert the opposite: view and export resolved to `all`
+    // whatever the grant said, and narrowing applied to mutation only. That
+    // was survivable while every role was commercial — a sales floor does want
+    // everyone to see every lead — and became a privacy hole the moment an
+    // `employee` role existed, because `leave:V@own` returning the company's
+    // leave ledger is not a narrowing.
+    await withFixtureRole(
+      { slug: 'narrow_reader', grants: [{ resource: 'leads', verbs: ['view', 'edit'], scope: 'own' }] },
+      async (p) => {
+        const foreign = { ownerPartyId: 'someone-else' };
+        const view = await evaluate({ resource: 'leads', verb: 'view', record: foreign });
+        const edit = await evaluate({ resource: 'leads', verb: 'edit', record: foreign });
+        expect(view.allowed).toBe(false);
+        expect(view.deniedBy).toBe('WHERE');
+        expect(edit.allowed).toBe(false);
 
-      const own = await evaluate({ resource: 'leads', verb: 'edit', record: { ownerPartyId: p.partyId } });
-      expect(own.allowed).toBe(true);
-    });
+        const own = await evaluate({ resource: 'leads', verb: 'view', record: { ownerPartyId: p.partyId } });
+        expect(own.allowed).toBe(true);
+      },
+    );
+  });
+
+  it('a read that should reach everything says so with an explicit cell, not a rule about verbs', async () => {
+    // "See every lead, edit your own" is two grant rows now, and the evaluator
+    // picks the widest row carrying the verb it was asked about. The reach is
+    // therefore something you can read off the matrix rather than something
+    // you have to know about the evaluator.
+    await withFixtureRole(
+      {
+        slug: 'wide_read_narrow_write',
+        grants: [
+          { resource: 'leads', verbs: ['view'], scope: 'all' },
+          { resource: 'leads', verbs: ['edit'], scope: 'own' },
+        ],
+      },
+      async (p) => {
+        const foreign = { ownerPartyId: 'someone-else' };
+        expect((await evaluate({ resource: 'leads', verb: 'view', record: foreign })).allowed).toBe(true);
+        expect((await evaluate({ resource: 'leads', verb: 'edit', record: foreign })).allowed).toBe(false);
+        expect((await evaluate({ resource: 'leads', verb: 'edit', record: { ownerPartyId: p.partyId } })).allowed).toBe(true);
+      },
+    );
   });
 
   it('own_or_unowned permits mutation on an unowned record, with the branch check only in that case', async () => {
-    await asUser('meera@kaizen.co.in', async (p) => {
+    // No shipped role carries `own_or_unowned` — it is the "claim it if nobody
+    // has" scope, which the three-role register has no use for. The mechanism
+    // is still in the evaluator and still reachable by a tenant writing its own
+    // grant row, so it is still tested, against a role built for the purpose.
+    await withFixtureRole(
+      { slug: 'claimer', branch: 'Madurai', grants: [{ resource: 'institutions', verbs: ['view', 'edit'], scope: 'own_or_unowned' }] },
+      async (p) => {
       // Unowned and same branch: permitted.
       const unowned = await evaluate({
         resource: 'institutions',
@@ -216,7 +253,8 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
         record: { ownerPartyId: 'someone-else', branch: p.branch },
       });
       expect(otherOwner.allowed).toBe(false);
-    });
+      },
+    );
   });
 
   it('an explicit absence of grant denies on the WHO axis — trainer holds nothing on mous', async () => {
@@ -228,17 +266,27 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
   });
 
   it('the WHAT axis stops a viewer whose ceiling does not clear the record classification', async () => {
-    await asUser('divya@kaizen.co.in', async () => {
+    // All three shipped roles carry a `regulated` ceiling: the chairman because
+    // nothing is withheld from it, the Finance Head because reading statutory
+    // identifiers is the job, and the employee because the record it reads is
+    // its own. The ceiling is therefore exercised against a role built with a
+    // lower one, rather than left untested because no shipped role trips it.
+    await withFixtureRole(
+      { slug: 'internal_only', classificationCeiling: 'internal', grants: [{ resource: 'leads', verbs: ['view'] }] },
+      async () => {
       const internal = await evaluate({ resource: 'leads', verb: 'view', classification: 'internal' });
       const confidential = await evaluate({ resource: 'leads', verb: 'view', classification: 'confidential' });
       expect(internal.allowed).toBe(true);
       expect(confidential.allowed).toBe(false);
       expect(confidential.deniedBy).toBe('WHAT');
-    });
+      },
+    );
   });
 
   it('a principal with no resolvable authority grant fails closed, not open', async () => {
-    await asUser('divya@kaizen.co.in', async () => {
+    await withFixtureRole(
+      { slug: 'no_ceiling', grants: [{ resource: 'leads', verbs: ['view', 'edit'] }] },
+      async () => {
       const decision = await evaluate({
         resource: 'leads',
         verb: 'edit',
@@ -246,7 +294,8 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
       });
       expect(decision.allowed).toBe(false);
       expect(decision.deniedBy).toBe('HOW_MUCH');
-    });
+      },
+    );
   });
 
   it('regulated data requires an explicit purpose binding — the WHY axis fails closed', async () => {
@@ -259,15 +308,17 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
   });
 
   it('need-to-know on a concealed interaction is conferred by a grant, not a role', async () => {
-    // The three roles that hold it are unchanged from the source material.
-    // What changed is that holding `restricted_interactions:view` is now the
-    // whole of the test, so a tenant re-points it by editing the matrix.
+    // Holding `restricted_interactions:view` is the whole of the test, so a
+    // tenant re-points need-to-know by editing the matrix rather than by
+    // changing anybody's job title. Under three roles only the chairman holds
+    // it; the Finance Head's row carries an explicit absence, which is a
+    // decision recorded rather than an omission.
     const holders: string[] = [];
     for (const email of [
       'chairman@kaizen.co.in',
-      'director@kaizen.co.in',
+      'hr@kaizen.co.in',
       'arun@kaizen.co.in',
-      'sysadmin@kaizen.co.in',
+      'ravi@kaizen.co.in',
     ]) {
       const held = await asUser(email, () => can({ resource: 'restricted_interactions', verb: 'view' }));
       if (held) holders.push(email);
@@ -276,8 +327,16 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
   });
 
   it('the supervisory role list lives in the matrix as a scope resolver, not in the timeline service', async () => {
-    const supervisory = await asUser('director@kaizen.co.in', () =>
-      holdsScopeResolver('interactions', 'view', 'management_chain'),
+    // No shipped role carries the resolver — with three roles the supervisory
+    // narrowing has nothing to express. The mechanism stays tested because it
+    // is what keeps a narrowing out of the timeline service and in the matrix,
+    // and a tenant that wants one writes the grant row.
+    const supervisory = await withFixtureRole(
+      {
+        slug: 'supervisor',
+        grants: [{ resource: 'interactions', verbs: ['view'], scopeResolver: 'management_chain' }],
+      },
+      () => holdsScopeResolver('interactions', 'view', 'management_chain'),
     );
     const individual = await asUser('arun@kaizen.co.in', () =>
       holdsScopeResolver('interactions', 'view', 'management_chain'),
@@ -476,10 +535,21 @@ describe('CRM-IDN-001 — identity resolution', () => {
   });
 
   it('a merge requires the people:merge grant, held independently of people:edit', async () => {
-    await asUser('arun@kaizen.co.in', async () => {
+    // Subjects built for this test rather than borrowed from the dataset.
+    // Taking "the two oldest people" merged whichever person happened to be
+    // created first, which after the seed split is the account every other
+    // test signs in as — so a passing assertion here quietly destroyed the
+    // rest of the suite.
+    const [a, b] = await asUser('chairman@kaizen.co.in', async () => {
+      const one = await findOrCreatePerson({ fullName: 'Merge Grant Subject A', primaryPhone: `6${Date.now().toString().slice(-9)}` });
+      const two = await findOrCreatePerson({ fullName: 'Merge Grant Subject B', primaryPhone: `5${Date.now().toString().slice(-9)}` });
+      return [one.person.id, two.person.id];
+    });
+
+    // An employee holds `people:V@all` — the staff directory — and no merge.
+    await asUser('divya@kaizen.co.in', async () => {
       const { mergePersons } = await import('../domains/identity.js');
-      const two = await prisma.person.findMany({ take: 2, orderBy: { createdAt: 'asc' } });
-      const err = await expectReject(() => mergePersons(two[0].id, two[1].id, 'attempt'));
+      const err = await expectReject(() => mergePersons(a, b, 'attempt'));
       expect(err.status).toBe(403);
     });
   });
@@ -1121,13 +1191,21 @@ describe('CRM-MOU-002 — the approval gate', () => {
   });
 
   it('holding edit alone never confers approval authority', async () => {
-    await asUser('meera@kaizen.co.in', async () => {
-      // education_counsellor holds mous:VCEA — edit but not approve.
-      const mou = await prisma.mou.findFirstOrThrow({ where: { status: 'proposed' } });
-      const err = await expectReject(() => transitionAgreement('mou', mou.id, 'approved'));
-      expect(err.status).toBe(403);
-      expect(err.message).toMatch(/distinct grant/);
-    });
+    // `approve` is a distinct verb from `edit` and is granted separately. No
+    // shipped role now holds one without the other on agreements, so the
+    // separation is asserted against a role that holds edit alone — which is
+    // the property the gate actually depends on.
+    const mou = await asUser('chairman@kaizen.co.in', () =>
+      prisma.mou.findFirstOrThrow({ where: { status: 'proposed' } }),
+    );
+    await withFixtureRole(
+      { slug: 'mou_editor', grants: [{ resource: 'mous', verbs: ['view', 'create', 'edit', 'assign'] }] },
+      async () => {
+        const err = await expectReject(() => transitionAgreement('mou', mou.id, 'approved'));
+        expect(err.status).toBe(403);
+        expect(err.message).toMatch(/distinct grant/);
+      },
+    );
   });
 
   it('the Self-Dealing Bar reroutes an owner-approver to the next tier rather than permitting it', async () => {
@@ -1158,23 +1236,28 @@ describe('CRM-MOU-002 — the approval gate', () => {
   });
 
   it('an over-ceiling value opens an approval step rather than being silently permitted', async () => {
-    await asUser('arun@kaizen.co.in', async (p) => {
-      // arun holds mou_approval up to 100,000, and no mous:approve grant.
-      const decision = await evaluate({
-        resource: 'mous',
-        verb: 'approve',
-      });
-      expect(decision.allowed).toBe(false);
-    });
+    await withFixtureRole(
+      { slug: 'mou_no_approve', grants: [{ resource: 'mous', verbs: ['view', 'edit'] }] },
+      async () => {
+        const decision = await evaluate({ resource: 'mous', verb: 'approve' });
+        expect(decision.allowed).toBe(false);
+        expect(decision.deniedBy).toBe('WHO');
+      },
+    );
   });
 
-  it('system_admin is structurally excluded from executing a privileged transition', async () => {
-    await asUser('sysadmin@kaizen.co.in', async () => {
-      const mou = await prisma.mou.findFirst({ where: { status: 'proposed' } });
-      if (!mou) return;
+  it('an employee is excluded from every approval tier by the matrix, not by a second list', async () => {
+    // The gate used to carry an `excludedRoles` list naming `system_admin`,
+    // which had to be kept in agreement with the matrix by hand. Under three
+    // roles the exclusion is structural: `employee` holds no `approve` verb on
+    // anything, so there is nothing left to keep in agreement.
+    const mou = await asUser('chairman@kaizen.co.in', () =>
+      prisma.mou.findFirst({ where: { status: 'proposed' } }),
+    );
+    if (!mou) return;
+    await asUser('ravi@kaizen.co.in', async () => {
       const err = await expectReject(() => transitionAgreement('mou', mou.id, 'approved'));
       expect(err.status).toBe(403);
-      expect(err.message).toMatch(/no domain content authority|never a valid/);
     });
   });
 
@@ -1321,13 +1404,22 @@ describe('CRM-ACT-002 — computed sensitivity classification', () => {
       return l;
     });
 
-    await asUser('divya@kaizen.co.in', async () => {
-      const { timelineFor } = await import('../domains/interactions.js');
-      const timeline = await timelineFor('lead', lead.id, { limit: 50 });
-      const found = timeline.items.find((i) => i.subject === 'Sensitive performance discussion');
-      // The entry does not appear on the viewer's timeline at all.
-      expect(found).toBeUndefined();
-    });
+    // Every shipped role reads up to `regulated`, so the ceiling is exercised
+    // against a role built with a lower one rather than left untested.
+    await withFixtureRole(
+      {
+        slug: 'timeline_internal',
+        classificationCeiling: 'internal',
+        grants: [{ resource: 'interactions', verbs: ['view'] }, { resource: 'leads', verbs: ['view'] }],
+      },
+      async () => {
+        const { timelineFor } = await import('../domains/interactions.js');
+        const timeline = await timelineFor('lead', lead.id, { limit: 50 });
+        const found = timeline.items.find((i) => i.subject === 'Sensitive performance discussion');
+        // The entry does not appear on the viewer's timeline at all.
+        expect(found).toBeUndefined();
+      },
+    );
 
     await asUser('chairman@kaizen.co.in', async () => {
       const { timelineFor } = await import('../domains/interactions.js');

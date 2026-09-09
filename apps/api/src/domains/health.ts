@@ -454,14 +454,14 @@ export async function applyFalsifiabilityCheck(domainCode: string, factors: Fact
 async function domainOwner(domainCode: string): Promise<string | null> {
   const auth = currentAuth();
   const preferred: Record<string, string[]> = {
-    H_FIN: ['finance_controller', 'business_head', 'chairman'],
-    H_COM: ['business_head', 'director', 'chairman'],
-    H_EDU: ['education_counsellor', 'business_head', 'chairman'],
-    H_DLV: ['project_manager', 'business_head', 'chairman'],
-    H_OPS: ['system_admin', 'admin', 'chairman'],
-    H_RSK: ['chairman', 'director'],
+    H_FIN: ['finance_head', 'chairman'],
+    H_COM: ['finance_head', 'chairman'],
+    H_EDU: ['finance_head', 'chairman'],
+    H_DLV: ['finance_head', 'chairman'],
+    H_OPS: ['chairman'],
+    H_RSK: ['chairman'],
   };
-  for (const roleSlug of preferred[domainCode] ?? ['business_head', 'chairman']) {
+  for (const roleSlug of preferred[domainCode] ?? ['finance_head', 'chairman']) {
     const holder = await prisma.affiliation.findFirst({
       where: { tenantId: auth.tenantId, roleSlug, status: 'active' },
       select: { partyId: true },

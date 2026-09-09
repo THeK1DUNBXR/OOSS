@@ -170,6 +170,9 @@ export const RESOURCES = [
   'vendor_bills',
   'budgets',
   'assets',
+  // Cross-cutting.
+  'tasks',
+  'imports',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];
@@ -178,47 +181,31 @@ export type Resource = (typeof RESOURCES)[number];
 // The role register.
 // ---------------------------------------------------------------------------
 
-/** The ten legacy role slugs, carried forward unchanged into the GRANT model. */
-export const LEGACY_ROLE_SLUGS = [
-  'founder',
-  'admin',
-  'sales',
-  'telecaller',
-  'education_counsellor',
-  'trainer',
-  'project_manager',
-  'workforce_placement',
-  'marketing',
-  'finance',
-] as const;
-
 /**
- * Target-state additions. `founder` splits into `chairman` (organisational and
- * commercial authority) and `system_admin` (platform administration, with
- * explicitly no domain content authority).
+ * Three roles. That is the whole register.
  *
- * `sales_ops` is deliberately absent: it is an open role-register question this
- * handoff does not resolve unilaterally. Everywhere it would naturally hold
- * pipeline/territory/catalog authoring rights, `business_head` holds them as a
- * stated interim default.
+ * The platform previously carried sixteen, translated from a legacy
+ * letter-matrix that described a much larger company. They were not wrong so
+ * much as unusable: no screen could be reasoned about without holding sixteen
+ * variants of it in your head, and nobody could say what a given person could
+ * do without reading a spreadsheet.
+ *
+ *   employee      own record only
+ *   finance_head  the books, and the people function that pays into them
+ *   chairman      superadmin — nothing hidden, nothing inaccessible
+ *
+ * Approval ladders that used to climb four rungs now climb one: finance_head
+ * proposes and approves within its ceiling, and anything above it is the
+ * chairman's.
  */
-export const TARGET_ROLE_SLUGS = [
-  'chairman',
-  'system_admin',
-  // The HR function. Named by §14.6.4, which requires hr_ops plus an
-  // independent second verifier for a capability claim that moves pay — a rule
-  // that cannot be written without a role to name.
-  'hr_ops',
-  'business_head',
-  'director',
-  'finance_controller',
-  ...LEGACY_ROLE_SLUGS,
-] as const;
+export const ROLE_SLUGS = ['chairman', 'finance_head', 'employee'] as const;
 
-export type RoleSlug = (typeof TARGET_ROLE_SLUGS)[number];
+export type RoleSlug = (typeof ROLE_SLUGS)[number];
 
-/** Roles structurally excluded from every approver_resolution tier. */
-export const APPROVAL_EXCLUDED_ROLES: RoleSlug[] = ['system_admin'];
+/** The approval ladder, in ascending order of authority. */
+export const APPROVAL_LADDER: RoleSlug[] = ['finance_head', 'chairman'];
+
+export const APPROVAL_EXCLUDED_ROLES: RoleSlug[] = [];
 
 // ---------------------------------------------------------------------------
 // Money-field masking (the pre-existing WHAT-axis control, retained and extended).
@@ -321,22 +308,15 @@ export interface PermissionDecision {
  * not an oversight.
  */
 export const ROLE_CLASSIFICATION_CEILING: Record<string, SensitivityClass> = {
-  founder: 'regulated',
+  // Superadmin. The ceiling exists to withhold things from people; there is
+  // nothing this role is meant to be withheld from.
   chairman: 'regulated',
-  admin: 'regulated',
-  system_admin: 'internal', // platform administration, explicitly no domain content authority
-  director: 'confidential',
-  business_head: 'confidential',
-  finance_controller: 'confidential',
-  finance: 'restricted',
-  sales: 'internal',
-  telecaller: 'internal',
-  education_counsellor: 'restricted',
-  trainer: 'internal',
-  project_manager: 'internal',
-  workforce_placement: 'internal',
-  marketing: 'internal',
-  // HR reads statutory identifiers and disciplinary evidence, so it needs the
-  // top ceiling. That is not seniority — it is the job.
-  hr_ops: 'regulated',
+  // Reads statutory identifiers, compensation and disciplinary evidence. That
+  // is not seniority — it is the job.
+  finance_head: 'regulated',
+  // An employee reads their own record, which is regulated data about them.
+  // The narrowing that protects colleagues is the `@own` scope, not the
+  // ceiling: a ceiling below `regulated` would hide an employee's own PAN from
+  // them, which protects nobody.
+  employee: 'regulated',
 };

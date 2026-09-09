@@ -24,7 +24,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan } from '../platform/permissions.js';
+import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { hire } from './employment.js';
 
@@ -292,7 +292,7 @@ export async function joinFromApplication(
 /** The funnel, counted by bucket rather than by raw state. */
 export async function hiringFunnel() {
   const auth = currentAuth();
-  await assertCan({ resource: 'applications', verb: 'view' });
+  await assertScopeAll('requisitions');
 
   const rows = await prisma.application.groupBy({
     by: ['status'],

@@ -346,7 +346,7 @@ export async function raiseUnroutedException(
     reasonCode: reason,
     ownerPartyId: territory?.ownerPartyId ?? null,
     accountablePositionId: territory?.ownerPositionId ?? null,
-    // Escalates to business_head if unresolved after 4 business hours.
+    // Escalates to finance_head if unresolved after 4 business hours.
     slaDueAt: new Date(Date.now() + 4 * 3_600_000),
   });
 

@@ -548,11 +548,22 @@ describe('Money is withheld, never zeroed', () => {
     expect(variance.rows.length).toBeGreaterThan(0);
   });
 
-  it('will not let the chairman record an entry', async () => {
+  it('lets the chairman record an entry, and refuses an employee outright', async () => {
     const account = await bankAccount();
-    // The same shape as `payments:VXF`: sees everything, records nothing.
+
+    // The old matrix gave the chairman `transactions:VXF` — sees everything,
+    // records nothing — so that recording money stayed the finance function's
+    // act. The three-role register makes the chairman the system's owner
+    // instead, and the separation now sits between Finance Head and Employee
+    // rather than at the top.
+    const entry = await asUser('chairman@kaizen.co.in', () =>
+      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 100, accountId: account.id, note: 'Chairman entry' }),
+    );
+    expect(entry.recordCode).toMatch(/^TXN-/);
+
+    // An employee holds no grant on the ledger at all. Not narrowed — absent.
     const err = await expectReject(() =>
-      asUser('chairman@kaizen.co.in', () =>
+      asUser('ravi@kaizen.co.in', () =>
         recordTransaction({ txnDate: new Date(), direction: 'out', amount: 100, accountId: account.id }),
       ),
     );

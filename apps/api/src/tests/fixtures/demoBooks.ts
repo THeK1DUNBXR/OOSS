@@ -13,9 +13,9 @@
  */
 
 import { round2 } from '@kaizen/shared';
-import { prisma } from '../platform/db.js';
-import { currentAuth } from '../platform/context.js';
-import { nextRecordCode } from '../platform/recordCode.js';
+import { prisma } from '../../platform/db.js';
+import { currentAuth } from '../../platform/context.js';
+import { nextRecordCode } from '../../platform/recordCode.js';
 
 /** The mock's division names, mapped onto the platform's codes. */
 const DIVISION_OF: Record<string, string> = {
@@ -96,7 +96,7 @@ function monthOf(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-export async function seedBooks() {
+export async function seedDemoBooks() {
   const tenantId = currentAuth().tenantId;
 
   // -------------------------------------------------------------------------

@@ -557,13 +557,13 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
     const grandTotal = num(quote.grandTotal) ?? 0;
     const ceiling = await resolveAuthorityCeiling(auth, 'discount_approval');
 
-    // Approver resolution is a single tier here (finance_controller+), rather
+    // Approver resolution is a single tier here (finance_head+), rather
     // than MoU's escalation ladder — structurally the same HOW MUCH pattern,
     // different resolution shape.
     const approver = await prisma.affiliation.findFirst({
       where: {
         tenantId: auth.tenantId,
-        roleSlug: { in: ['finance_controller', 'business_head', 'chairman'] },
+        roleSlug: { in: ['finance_head', 'chairman'] },
         status: 'active',
         ...(auth.partyId ? { partyId: { not: auth.partyId } } : {}),
       },
@@ -581,7 +581,7 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
         requestedValue: quote.grandTotal ?? undefined,
         currency: quote.currency,
         resolvedApproverId: approver?.partyId ?? null,
-        resolvedApproverRole: 'finance_controller',
+        resolvedApproverRole: 'finance_head',
         resolutionTier: 0,
         slaDueAt: new Date(Date.now() + 3 * 86_400_000),
       },

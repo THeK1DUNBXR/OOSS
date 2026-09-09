@@ -167,14 +167,26 @@ export async function evaluate(input: EvaluateInput): Promise<PermissionDecision
   axes.push({ axis: 'WHO', passed: true, reason: `${input.resource}:${input.verb}@${grant.scope}` });
 
   // ---- WHERE ---------------------------------------------------------------
-  // View and export always resolve to `all`; narrowing applies to mutation only.
-  const narrowingApplies = input.verb !== 'view' && input.verb !== 'export';
-  const whereOk = !narrowingApplies || !input.record ? true : checkScope(grant, input.record, auth);
+  //
+  // Scope narrows every verb, reads included.
+  //
+  // This used to exempt `view` and `export`: whatever a grant said, a read
+  // resolved to `all`. That was survivable while the roles were commercial —
+  // a sales floor genuinely does want everyone to see every lead — and it
+  // stopped being survivable the moment an `employee` role existed, because
+  // `leave:V@own` that returns the company's leave ledger is not a narrowing,
+  // it is a privacy incident with a reassuring name.
+  //
+  // Where a read genuinely should reach everything, the matrix says so with an
+  // explicit `@all` cell alongside the narrower mutation cell. The permission
+  // is then a thing you can read off the matrix rather than a rule you have to
+  // know about the evaluator.
+  const whereOk = input.record ? checkScope(grant, input.record, auth) : true;
   if (!whereOk) {
     axes.push({ axis: 'WHERE', passed: false, reason: `Record outside ${grant.scope} scope` });
     return deny(axes, 'WHERE', 'out_of_scope');
   }
-  axes.push({ axis: 'WHERE', passed: true, reason: narrowingApplies ? grant.scope : 'view/export resolve to all' });
+  axes.push({ axis: 'WHERE', passed: true, reason: grant.scope });
 
   // ---- WHAT ----------------------------------------------------------------
   const classification: SensitivityClass =
@@ -352,7 +364,7 @@ export async function scopeFor(resource: string, verb: Verb, auth?: AuthContext)
 
 /**
  * Builds a Prisma `where` fragment implementing the WHERE axis for a list
- * query. View and export resolve to `all`, so this returns `{}` for them.
+ * query.
  */
 export function scopeWhere(scope: Scope, auth: AuthContext, ownerField = 'ownerPartyId'): Record<string, unknown> {
   if (scope === 'all') return {};
@@ -363,6 +375,63 @@ export function scopeWhere(scope: Scope, auth: AuthContext, ownerField = 'ownerP
       { [ownerField]: null, ...(auth.branch ? { branch: auth.branch } : {}) },
     ],
   };
+}
+
+
+/**
+ * Asserts a grant wide enough to answer a question about everybody.
+ *
+ * An aggregate — headcount by division, the profit and loss, a budget variance
+ * — is a statement about records the caller may not individually be allowed to
+ * see. `assertCan({ verb: 'view' })` cannot catch that: with no record to
+ * narrow against it answers "may this person read this kind of thing at all",
+ * and an employee holding `employees:V@own` sails through it and receives the
+ * company's headcount.
+ *
+ * So an aggregate asks for the scope, not merely the grant. This is the
+ * counterpart to `visibilityWhere` for figures that cannot be narrowed row by
+ * row: where a list can be filtered down to what the caller may see, a total
+ * cannot be — it is either theirs to know or it is not.
+ */
+export async function assertScopeAll(resource: string, verb: Verb = 'view', auth?: AuthContext): Promise<void> {
+  const a = auth ?? currentAuth();
+  await assertCan({ resource, verb });
+  const scope = await scopeFor(resource, verb, a);
+  if (scope !== 'all') {
+    throw ApiError.forbidden(
+      `${resource}:${verb} is held at \`${scope}\` scope. This figure is drawn across every record, so it needs an all-scope grant — a narrowed one cannot produce a total that means anything.`,
+      [{ axis: 'WHERE', passed: false, reason: `aggregate needs all scope, holds ${scope}` }],
+    );
+  }
+}
+
+/**
+ * The WHERE fragment a list query needs so that what comes back matches what
+ * the evaluator would have allowed row by row.
+ *
+ * `assertCan({ verb: 'view' })` with no record can only answer "may this
+ * person read this kind of thing at all" — it has no row to narrow against. A
+ * list endpoint that stops there returns everything to anybody holding the
+ * resource, whatever scope their grant carries, and the narrowing exists only
+ * on paper. This closes that gap in one call:
+ *
+ *   const where = await visibilityWhere('leave', 'personId');
+ *   return prisma.leaveRequest.findMany({ where: { tenantId, ...where } });
+ *
+ * Returning `{}` for an `all` grant keeps the common case free.
+ */
+export async function visibilityWhere(
+  resource: string,
+  ownerField = 'ownerPartyId',
+  auth?: AuthContext,
+): Promise<Record<string, unknown>> {
+  const a = auth ?? currentAuth();
+  const scope = await scopeFor(resource, 'view', a);
+  // No grant at all: the caller should have asserted first. Returning an
+  // unsatisfiable filter rather than `{}` means a missing assertion degrades to
+  // an empty list instead of to the whole table.
+  if (scope === null) return { [ownerField]: '\u0000no-grant' };
+  return scopeWhere(scope, a, ownerField);
 }
 
 // ---------------------------------------------------------------------------

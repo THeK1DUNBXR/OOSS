@@ -11,7 +11,7 @@
  * The extension below injects `tenantId` into every read and write from
  * `ctx.auth.tenantId`. A query with no tenant context in scope throws rather
  * than running unscoped. No role bypasses this in application code, including
- * `system_admin` — a genuine cross-tenant operation goes through the explicit,
+ * the chairman included — a genuine cross-tenant operation goes through the explicit,
  * separately-audited SYSTEM_PRINCIPAL path.
  */
 

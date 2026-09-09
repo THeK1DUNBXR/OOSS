@@ -4,7 +4,9 @@
   "private": true,
   "description": "KaiERP — the ERP platform of Kaizen Infinities: CRM, HRM, Finance and the Command Center as one system",
   "packageManager": "pnpm@9.0.0",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "pnpm -r --filter @kaizen/shared build && pnpm --filter @kaizen/api build && pnpm --filter @kaizen/web build",
     "dev": "concurrently -n api,web -c cyan,magenta \"pnpm --filter @kaizen/api dev\" \"pnpm --filter @kaizen/web dev\"",

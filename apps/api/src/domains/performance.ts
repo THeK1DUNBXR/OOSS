@@ -26,10 +26,11 @@ import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan, can, scopeFor } from '../platform/permissions.js';
+import { assertCan, can, scopeFor, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { auditRegulatedRead } from '../platform/audit.js';
 import { claimFromLearningCompletion } from './capability.js';
+import { assertEmploymentVisible, employmentVisibilityWhere } from '../platform/recordScope.js';
 
 // ---------------------------------------------------------------------------
 // Goals
@@ -328,7 +329,7 @@ export async function completeLearning(id: string, input: { skillId?: string | n
 /** Compliance training that has not been completed — an audit exposure. */
 export async function outstandingCompliance() {
   const auth = currentAuth();
-  await assertCan({ resource: 'learning', verb: 'view' });
+  await assertScopeAll('learning');
 
   return prisma.learningRecord.findMany({
     where: {

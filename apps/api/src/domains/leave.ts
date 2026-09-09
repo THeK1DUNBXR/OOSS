@@ -32,6 +32,7 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
+import { assertEmploymentVisible, employmentVisibilityWhere } from '../platform/recordScope.js';
 
 // ---------------------------------------------------------------------------
 // Leave types and balances
@@ -181,7 +182,7 @@ export async function accrueEntitlement(input: {
 
 export async function leaveBalances(employmentRelationshipId: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'leave', verb: 'view' });
+  await assertEmploymentVisible('leave', employmentRelationshipId);
   return prisma.leaveBalance.findMany({
     where: { tenantId: auth.tenantId, employmentRelationshipId },
     include: { leaveType: true },
@@ -191,7 +192,15 @@ export async function leaveBalances(employmentRelationshipId: string) {
 /** The ledger behind one balance — the answer to "why is it this number". */
 export async function leaveLedger(leaveBalanceId: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'leave', verb: 'view' });
+  // The ledger is addressed by balance rather than by employment, so the
+  // balance is resolved first and the ownership question asked about that.
+  const balance = await prisma.leaveBalance.findFirst({
+    where: { id: leaveBalanceId, tenantId: auth.tenantId },
+    select: { employmentRelationshipId: true },
+  });
+  if (!balance) throw ApiError.notFound('Leave balance');
+  await assertEmploymentVisible('leave', balance.employmentRelationshipId);
+
   return prisma.leaveTransaction.findMany({
     where: { tenantId: auth.tenantId, leaveBalanceId },
     orderBy: { createdAt: 'desc' },
@@ -212,11 +221,13 @@ function dayCount(start: Date, end: Date): number {
 export async function listLeaveRequests(filter: { status?: string; employmentRelationshipId?: string } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'leave', verb: 'view' });
+  const visible = await employmentVisibilityWhere('leave');
 
   return prisma.leaveRequest.findMany({
     where: {
       tenantId: auth.tenantId,
       deletedAt: null,
+      ...visible,
       ...(filter.status ? { status: filter.status } : {}),
       ...(filter.employmentRelationshipId ? { employmentRelationshipId: filter.employmentRelationshipId } : {}),
     },
@@ -533,7 +544,7 @@ export async function transitionAttendance(id: string, event: WorkAttendanceEven
 
 export async function attendanceForPeriod(employmentRelationshipId: string, payPeriod: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'attendance', verb: 'view' });
+  await assertEmploymentVisible('attendance', employmentRelationshipId);
 
   const [year, month] = payPeriod.split('-').map(Number);
   const from = new Date(Date.UTC(year, month - 1, 1));

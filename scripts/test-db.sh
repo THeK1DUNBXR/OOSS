@@ -29,5 +29,5 @@ fi
 
 cd "${ROOT}/apps/api"
 DATABASE_URL="${URL}" npx prisma db push --skip-generate >/dev/null
-DATABASE_URL="${URL}" npx tsx src/seed/index.ts >/dev/null
+DATABASE_URL="${URL}" npx tsx src/tests/fixtures/run.ts >/dev/null
 echo "${DB} ready  ->  ${URL}"

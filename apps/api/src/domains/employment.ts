@@ -47,9 +47,10 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan, canSeeMoney } from '../platform/permissions.js';
+import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
+import { assertEmploymentVisible } from '../platform/recordScope.js';
 
 // ---------------------------------------------------------------------------
 // Org structure
@@ -663,6 +664,25 @@ export async function transitionCompensation(id: string, event: CompensationEven
   });
   if (!record) throw ApiError.notFound('Compensation record');
 
+  // The self-dealing bar, on pay.
+  //
+  // Sixteen roles kept a pay rise a two-party act by construction: hr_ops
+  // proposed and had no `approve`, so somebody else always signed. With three
+  // roles the Finance Head holds both verbs, and without this the operating
+  // authority could raise its own salary alone — the single most obvious way
+  // for an ERP's permission model to be quietly worthless.
+  //
+  // Approval of your own compensation is refused outright rather than routed,
+  // and the chairman signs instead. It is a bar, not a ceiling: no value makes
+  // it acceptable.
+  const isSelf = record.employmentRelationship.personId === auth.partyId;
+  if (isSelf && (event === 'APPROVE' || event === 'REJECT')) {
+    throw ApiError.forbidden(
+      'A compensation record about you cannot be approved by you, at any amount. Somebody else — the chairman, if nobody else holds it — has to sign this one.',
+      [{ axis: 'WHO', passed: false, reason: 'self_dealing_bar_compensation' }],
+    );
+  }
+
   const result = await transition({
     machine: compensationRecordMachine,
     eventObject: 'compensation',
@@ -696,10 +716,11 @@ export async function transitionCompensation(id: string, event: CompensationEven
 /** The pay in force on a date — what payroll reads, and what a cost cut sums. */
 export async function currentCompensation(employmentRelationshipId: string, asOf = new Date()) {
   const auth = currentAuth();
-  // Somebody's salary, so it is gated like any other pay figure. Without this
-  // the rollups below would be a side door onto compensation for any caller
-  // that could reach an employment id.
-  await assertCan({ resource: 'compensation', verb: 'view' });
+  // Somebody's salary, so it is gated like any other pay figure — and gated
+  // against the person it is about, not merely against the resource. Asserting
+  // the grant alone left an employment id as a side door onto a colleague's
+  // pay for anybody holding `compensation:V@own`.
+  await assertEmploymentVisible('compensation', employmentRelationshipId);
 
   return prisma.compensationRecord.findFirst({
     where: {
@@ -870,7 +891,7 @@ export async function detectMissingCompensation(): Promise<number> {
  */
 export async function headcountByDivision(asOf = new Date()) {
   const auth = currentAuth();
-  await assertCan({ resource: 'employees', verb: 'view' });
+  await assertScopeAll('employees');
   const money = await canSeeMoney('compensation');
 
   const employments = await prisma.employmentRelationship.findMany({

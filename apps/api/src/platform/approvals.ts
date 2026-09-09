@@ -11,11 +11,15 @@
  *   (`<resource>:approve` grant held)
  *   AND (AUTHORITY_GRANT ceiling >= subject.commercial_value OR actor is the resolved-tier approver)
  *   AND (actor.principal_id != subject.owner_id)          -- the Self-Dealing Bar
- *   AND (actor.principal_type != 'agent')
- *   AND (actor.role != 'system_admin').
+ *   AND (actor.principal_type != 'agent').
+ *
+ * The old rule carried a fifth clause excluding `system_admin`. That role is
+ * gone with the three-role register, and the exclusion it expressed is now
+ * structural: `employee` holds no `approve` verb on anything, so there is no
+ * excluded-role list left to keep in agreement with the matrix.
  */
 
-import { EVENTS, APPROVAL_EXCLUDED_ROLES, type SeverityCode } from '@kaizen/shared';
+import { EVENTS, APPROVAL_EXCLUDED_ROLES, APPROVAL_LADDER, type SeverityCode } from '@kaizen/shared';
 import { prisma } from './db.js';
 import { currentAuth } from './context.js';
 import { emit } from './eventBus.js';
@@ -42,7 +46,9 @@ export interface ApprovalPolicyContent {
 export const DEFAULT_APPROVAL_POLICY: ApprovalPolicyContent = {
   requiredPermission: 'mous:approve',
   authorityClass: 'mou_approval',
-  approverResolution: ['business_head', 'director', 'chairman'],
+  // Two rungs, not four. Finance Head approves within its ceiling; anything
+  // above it is the chairman's.
+  approverResolution: [...APPROVAL_LADDER],
   escalateToTopTierWhen: { strategicValue: 'high', termMonthsOver: 36 },
   selfDealingBar: true,
   excludedRoles: [...APPROVAL_EXCLUDED_ROLES],
@@ -107,13 +113,13 @@ export async function evaluateApprovalGate(
     );
   }
 
-  // system_admin is never a valid resolution target at any tier, and never a
-  // valid actor — the structural fix for the administrator/business-authority
-  // conflation the role split would otherwise bake in.
+  // Retained as a mechanism even though the list is empty under the
+  // three-role register: a tenant may add an excluded role to its own policy
+  // version without a code change, and the gate must honour it.
   if (auth.roleSlug && content.excludedRoles.includes(auth.roleSlug)) {
     throw ApiError.forbidden(
-      `${auth.roleSlug} holds platform-administration authority with explicitly no domain content authority, and may never execute ${action}.`,
-      [{ axis: 'WHO', passed: false, reason: 'system_admin_excluded' }],
+      `${auth.roleSlug} is excluded from every approval tier by policy, and may never execute ${action}.`,
+      [{ axis: 'WHO', passed: false, reason: 'role_excluded_by_policy' }],
     );
   }
 

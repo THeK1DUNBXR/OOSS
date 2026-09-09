@@ -13,9 +13,9 @@
  */
 
 import { CONFIDENCE_RANK, ORIGINATION_FOR_TIER } from '@kaizen/shared';
-import { prisma } from '../platform/db.js';
-import { currentAuth } from '../platform/context.js';
-import { nextRecordCode } from '../platform/recordCode.js';
+import { prisma } from '../../platform/db.js';
+import { currentAuth } from '../../platform/context.js';
+import { nextRecordCode } from '../../platform/recordCode.js';
 
 /** Mirrors the shape `seedPeopleAndUsers` returns. */
 interface SeededPerson {
@@ -43,7 +43,7 @@ function lastCompletePeriod(): string {
   return d.toISOString().slice(0, 7);
 }
 
-export async function seedHr(people: SeededPerson[]) {
+export async function seedDemoHr(people: SeededPerson[]) {
   const tenantId = currentAuth().tenantId;
   const byEmail = new Map(people.map((p) => [p.email, p]));
 

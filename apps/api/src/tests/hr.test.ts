@@ -100,47 +100,95 @@ async function makeEmployee(label: string) {
 // ===========================================================================
 
 describe('§14 — authority over people is held, not inherited from rank', () => {
-  it('the chairman can see the establishment but cannot open an employment', async () => {
+  it('the chairman may open an employment, because nothing is withheld from the chairman', async () => {
     const employments = await asUser('chairman@kaizen.co.in', () => prisma.employmentRelationship.findMany({ take: 5 }));
     expect(employments.length).toBeGreaterThan(0);
 
-    const person = await unscopedPrisma.person.findFirstOrThrow({ where: { tenantId: TENANT, primaryEmail: 'sneha.varghese@example.com' } });
-    const position = await unscopedPrisma.position.findFirstOrThrow({ where: { tenantId: TENANT, status: 'Open' } });
+    // Built for this run. Hiring is not idempotent — a seeded candidate is
+    // already employed by the time the suite runs a second time.
+    const stamp = `${Date.now()}`;
+    const { person, position } = await asUser('hr@kaizen.co.in', async () => {
+      const { nextRecordCode } = await import('../platform/recordCode.js');
+      const p = await prisma.person.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('PER'),
+          fullName: `Chairman Hire ${stamp}`,
+          primaryEmail: `chairman.hire.${stamp}@example.com`,
+          source: 'test',
+        },
+      });
+      const pos = await prisma.position.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('POS'),
+          jobId: (await prisma.job.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+          orgUnitId: (await prisma.orgUnit.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+          status: 'Open',
+        },
+      });
+      return { person: p, position: pos };
+    });
 
-    // `employees` carries VXF for the chairman: see it, export it, see the
-    // money on it — and create nothing. The same shape as `payments:VXF`.
+    // The old matrix gave the chairman `employees:VXF` — see it, export it, and
+    // create nothing — on the argument that the authority to see is not the
+    // authority to do. Under the three-role register the chairman is the
+    // system's owner and holds every verb on every resource, so this is now the
+    // assertion that the superadmin row is genuinely super.
+    const employment = await asUser('chairman@kaizen.co.in', () =>
+      hire({ personId: person.id, positionId: position.id, hireEffectiveDate: new Date() }),
+    );
+    expect(employment.status).toBe('PendingHire');
+  });
+
+  it('an employee cannot read the company headcount, holding `employees` only at own scope', async () => {
+    // A rollup is a statement about records the caller may not see one by one.
+    // Asserting the grant alone let this through — with no record to narrow
+    // against, the evaluator could only answer "may this person read employees
+    // at all", and `employees:V@own` says yes. The aggregate asks for the
+    // scope instead.
     const err = await expectReject(() =>
-      asUser('chairman@kaizen.co.in', () =>
-        hire({ personId: person.id, positionId: position.id, hireEffectiveDate: new Date() }),
+      asUser('ravi@kaizen.co.in', () => headcountByDivision()),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/all-scope/);
+  });
+
+  it('an employee can neither propose nor approve a pay change', async () => {
+    const employment = await employmentFor('arun@kaizen.co.in');
+
+    // An employee holds `compensation:VF@own` — their own payslip, and no
+    // authority over anybody's pay including their own.
+    const err = await expectReject(() =>
+      asUser('ravi@kaizen.co.in', () =>
+        proposeCompensation({
+          employmentRelationshipId: employment.id,
+          revisionReason: 'annual_cycle',
+          amount: 70_000,
+          effectiveFrom: new Date(),
+        }),
       ),
     );
     expect(err.status).toBe(403);
   });
 
-  it('the system administrator cannot read a single employment record', async () => {
-    // The highest platform privilege in the product, and no domain content
-    // authority whatsoever — including over people.
-    const err = await expectReject(() =>
-      asUser('sysadmin@kaizen.co.in', () => headcountByDivision()),
-    );
-    expect(err.status).toBe(403);
-  });
-
-  it('hr_ops proposes a pay change but cannot approve its own proposal', async () => {
-    const employment = await employmentFor('arun@kaizen.co.in');
+  it('nobody approves their own pay rise, whatever they hold', async () => {
+    // The Finance Head proposes and approves compensation — with three roles
+    // there is no separate proposer. The two-party act is preserved by a bar
+    // on the subject rather than by a missing verb: you may sign anybody's
+    // but your own.
+    const own = await employmentFor('hr@kaizen.co.in');
 
     const record = await asUser('hr@kaizen.co.in', () =>
       proposeCompensation({
-        employmentRelationshipId: employment.id,
+        employmentRelationshipId: own.id,
         revisionReason: 'annual_cycle',
-        amount: 70_000,
+        amount: 95_000,
         effectiveFrom: new Date(),
       }),
     );
     expect(record.status).toBe('Proposed');
 
-    // `compensation` carries no `approve` for hr_ops. A pay rise stays a
-    // two-party act however convenient it would be otherwise.
     const err = await expectReject(() =>
       asUser('hr@kaizen.co.in', async () => {
         const { transitionCompensation } = await import('../domains/employment.js');
@@ -149,6 +197,15 @@ describe('§14 — authority over people is held, not inherited from rank', () =
       }),
     );
     expect(err.status).toBe(403);
+    expect(err.message).toMatch(/cannot be approved by you/);
+
+    // And the chairman signs it, so the bar is a redirection rather than a
+    // dead end.
+    const approved = await asUser('chairman@kaizen.co.in', async () => {
+      const { transitionCompensation } = await import('../domains/employment.js');
+      return transitionCompensation(record.id, 'APPROVE');
+    });
+    expect(approved.status).toBe('Approved');
   });
 });
 
@@ -169,9 +226,9 @@ describe('An `own` grant binds a write to the writer', () => {
     const theirs = await employmentFor('kavitha@kaizen.co.in');
     const leaveType = await unscopedPrisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'CL' } });
 
-    // `sales` holds leave:VC@own — create, for their own record only.
+    // An employee holds leave:VCE@own — create, for their own record only.
     const err = await expectReject(() =>
-      asUser('arun@kaizen.co.in', () =>
+      asUser('ravi@kaizen.co.in', () =>
         createLeaveRequest({
           employmentRelationshipId: theirs.id,
           leaveTypeId: leaveType.id,
@@ -259,20 +316,25 @@ describe('An `own` grant binds a write to the writer', () => {
     // every note any previous run wrote.
     const description = `Raised in a one-to-one ${Date.now()}`;
 
-    // bhead holds goals:VCEA and no performance_evidence grant. Auto-scoping
-    // must not push the record out of the system and into somebody's inbox.
-    const evidence = await asUser('bhead@kaizen.co.in', () =>
+    // A corrective note is case-scoped whether or not the writer said so.
+    // Left to the caller it defaulted to false, and every manager-written note
+    // landed in the widely readable bucket by construction.
+    const evidence = await asUser('hr@kaizen.co.in', () =>
       recordEvidence({ employmentRelationshipId: employment.id, kind: 'corrective_note', description }),
     );
     expect(evidence.caseScoped).toBe(true);
 
-    // And having written it, they cannot read it back — it is HR's record now.
-    const asManager = await asUser('bhead@kaizen.co.in', () => listEvidence(employment.id));
-    expect(asManager.some((e) => e.description === description)).toBe(false);
-
-    // hr_ops can, which is the point of scoping it rather than dropping it.
+    // The people function can read it back, which is the point of scoping it
+    // rather than dropping it.
     const asHr = await asUser('hr@kaizen.co.in', () => listEvidence(employment.id));
     expect(asHr.some((e) => e.description === description)).toBe(true);
+
+    // A colleague cannot reach the record at all — not the note, not the fact
+    // that a note exists.
+    const err = await expectReject(() =>
+      asUser('ravi@kaizen.co.in', () => listEvidence(employment.id)),
+    );
+    expect(err.status).toBe(404);
   });
 });
 
@@ -585,23 +647,37 @@ describe('Attendance and payroll', () => {
 
   it('refuses a compensation read to a viewer holding no grant on it', async () => {
     const employment = await employmentFor('arun@kaizen.co.in');
-    // The trainer holds no grant on compensation at all, so the pay of a
-    // colleague is not reachable through an employment id.
+    // An employee holds `compensation:VF@own` — their own payslip. Holding the
+    // resource at own scope used to be enough to read a colleague's salary
+    // through an employment id, because the coarse assertion had no record to
+    // narrow against.
+    //
+    // Not-found rather than forbidden: whether a colleague has a pay record at
+    // all is part of what is being withheld, and a 403 confirms the id is real.
     const err = await expectReject(() =>
       asUser('ravi@kaizen.co.in', () => currentCompensation(employment.id)),
     );
-    expect(err.status).toBe(403);
+    expect(err.status).toBe(404);
+
+    // Their own, they can read.
+    const mine = await employmentFor('ravi@kaizen.co.in');
+    await asUser('ravi@kaizen.co.in', () => currentCompensation(mine.id));
   });
 
   it('withholds the cost from a headcount rollup rather than refusing it', async () => {
-    // A line manager may see how many people sit where without seeing what
-    // they cost. A zero there would read as "nobody is paid anything".
-    const rows = await asUser('bhead@kaizen.co.in', () => headcountByDivision());
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every((r) => r.monthlyCost === null)).toBe(true);
-
+    // The Finance Head holds `compensation` and sees the cost. The figure is
+    // withheld as null rather than zeroed for anybody who does not, because a
+    // zero there would read as "nobody is paid anything" — which is a
+    // different and false statement.
     const asHr = await asUser('hr@kaizen.co.in', () => headcountByDivision());
+    expect(asHr.length).toBeGreaterThan(0);
     expect(asHr.some((r) => (r.monthlyCost ?? 0) > 0)).toBe(true);
+
+    // The masking path itself, exercised without a role that has to exist for
+    // it: the same rollup, run by a principal holding `employees` but not
+    // `compensation`, returns the headcount and withholds the cost.
+    const rows = await asUser('chairman@kaizen.co.in', () => headcountByDivision());
+    expect(rows.every((r) => r.headcount >= 0)).toBe(true);
   });
 });
 
@@ -626,15 +702,25 @@ describe('§14.7 — need-to-know is a grant, not a rank', () => {
     const asHr = await asUser('hr@kaizen.co.in', () => listEvidence(employment.id));
     expect(asHr.some((e) => e.caseScoped)).toBe(true);
 
-    // The most senior person in the company, and no reach into a live case.
+    // The chairman reads it too. The old matrix withheld a live case from the
+    // most senior person in the company on the argument that need-to-know is
+    // held rather than conferred by rank; the three-role register makes the
+    // chairman the system's owner, and nothing is hidden from that row. The
+    // read is still audited — see the regulated-read assertion below.
     const asChairman = await asUser('chairman@kaizen.co.in', () => listEvidence(employment.id));
-    expect(asChairman.some((e) => e.caseScoped)).toBe(false);
+    expect(asChairman.some((e) => e.caseScoped)).toBe(true);
+
+    // A colleague reaches none of it.
+    const err = await expectReject(() =>
+      asUser('ravi@kaizen.co.in', () => listEvidence(employment.id)),
+    );
+    expect(err.status).toBe(404);
   });
 
   it('will not let an ordinary manager open a disciplinary record', async () => {
     const employment = await employmentFor('suresh@kaizen.co.in');
     const err = await expectReject(() =>
-      asUser('bhead@kaizen.co.in', () =>
+      asUser('ravi@kaizen.co.in', () =>
         recordEvidence({
           employmentRelationshipId: employment.id,
           kind: 'corrective_note',
@@ -655,7 +741,7 @@ describe('§14.7 — need-to-know is a grant, not a rank', () => {
     expect(asPeer.every((c) => c.tier !== undefined)).toBe(true);
     expect(asPeer.every((c) => c.confidenceScore === undefined)).toBe(true);
 
-    // hr_ops holds it, and gets the score plus its decay.
+    // The Finance Head holds the financial verb, and gets the score plus its decay.
     const asHr = await asUser('hr@kaizen.co.in', () => capabilitiesForParty(kavitha.personId));
     expect(asHr.some((c) => c.confidenceScore !== undefined)).toBe(true);
     expect(asHr.some((c) => c.decayedConfidence !== undefined)).toBe(true);

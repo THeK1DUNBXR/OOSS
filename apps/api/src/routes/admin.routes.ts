@@ -10,7 +10,7 @@ import {
   MODULE_REGISTER,
   PLANES,
   RESOURCES,
-  TARGET_ROLE_SLUGS,
+  ROLE_SLUGS,
   formatGrant,
 } from '@kaizen/shared';
 import { handler, str, bool, numeric } from '../lib/http.js';
@@ -37,7 +37,7 @@ router.get(
     moduleRegister: MODULE_REGISTER,
     axes: AXES,
     resources: RESOURCES,
-    roles: TARGET_ROLE_SLUGS,
+    roles: ROLE_SLUGS,
     eventCrosswalk: Object.entries(LEGACY_EVENT_CROSSWALK).map(([legacy, canonical]) => ({ legacy, canonical })),
     governedEntities: governedEntities(),
     aiTiers: AI_TIERS,

@@ -17,7 +17,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan } from '../platform/permissions.js';
+import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { currentCompensation } from './employment.js';
 
@@ -241,7 +241,7 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
 /** Monthly pay cost by division — what the Command Center cuts revenue against. */
 export async function payrollCostByDivision(payPeriod: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'payroll', verb: 'view' });
+  await assertScopeAll('payroll');
   assertPayPeriod(payPeriod);
 
   const rows = await prisma.payrollInstruction.groupBy({
@@ -262,7 +262,7 @@ export async function payrollCostByDivision(payPeriod: string) {
 /** The pay cost trend, for the executive dashboard. */
 export async function payrollTrend(months = 12) {
   const auth = currentAuth();
-  await assertCan({ resource: 'payroll', verb: 'view' });
+  await assertScopeAll('payroll');
 
   const runs = await prisma.payrollRun.findMany({
     where: { tenantId: auth.tenantId },

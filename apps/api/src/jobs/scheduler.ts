@@ -237,7 +237,7 @@ async function escalateBreachedSlas(): Promise<number> {
   for (const ex of breached) {
     // Escalation resolves the next rung's holder deterministically, before any
     // notification fires.
-    const nextTier = ['business_head', 'director', 'chairman'][Math.min(ex.escalationRung, 2)];
+    const nextTier = ['finance_head', 'chairman'][Math.min(ex.escalationRung, 1)];
     const holder = await prisma.affiliation.findFirst({
       where: { tenantId: auth.tenantId, roleSlug: nextTier, status: 'active' },
       select: { partyId: true },
@@ -251,7 +251,7 @@ async function escalateBreachedSlas(): Promise<number> {
     take: 100,
   });
   for (const step of staleApprovals) {
-    const nextTier = ['director', 'chairman'][Math.min(step.escalationRung, 1)];
+    const nextTier = ['finance_head', 'chairman'][Math.min(step.escalationRung, 1)];
     const holder = await prisma.affiliation.findFirst({
       where: { tenantId: auth.tenantId, roleSlug: nextTier, status: 'active' },
       select: { partyId: true },

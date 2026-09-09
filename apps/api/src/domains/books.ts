@@ -38,7 +38,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan, canSeeMoney } from '../platform/permissions.js';
+import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
 
 // ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ export async function createCategory(input: {
  */
 export async function accountBalances(asOf = new Date()) {
   const auth = currentAuth();
-  await assertCan({ resource: 'ledger_accounts', verb: 'view' });
+  await assertScopeAll('ledger_accounts');
 
   const accounts = await prisma.ledgerAccount.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, active: true },
@@ -455,7 +455,7 @@ export async function payVendorBill(id: string, input: { amount: number; account
 /** Supplier ageing — what is overdue and by how long. */
 export async function payablesAgeing(asOf = new Date()) {
   const auth = currentAuth();
-  await assertCan({ resource: 'vendor_bills', verb: 'view' });
+  await assertScopeAll('vendor_bills');
 
   const bills = await prisma.vendorBill.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, status: { in: ['open', 'part_paid'] } },
@@ -584,7 +584,7 @@ export async function priceInvoiceGst(
 /** The GST summary a return is prepared from. */
 export async function gstSummary(period: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'invoices', verb: 'view' });
+  await assertScopeAll('transactions');
   const { from, to } = monthRange(period);
 
   const invoices = await prisma.invoice.findMany({
@@ -670,7 +670,7 @@ export async function setBudgetLine(input: {
  */
 export async function budgetVariance(period: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'budgets', verb: 'view' });
+  await assertScopeAll('budgets');
   const { from, to } = monthRange(period);
 
   const [lines, actuals, categories] = await Promise.all([
@@ -1008,7 +1008,7 @@ export interface ProfitAndLoss {
  */
 export async function profitAndLoss(period: string): Promise<ProfitAndLoss> {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'view' });
+  await assertScopeAll('transactions');
   const { from, to } = monthRange(period);
 
   const [rows, categories] = await Promise.all([
@@ -1071,7 +1071,7 @@ export async function profitAndLoss(period: string): Promise<ProfitAndLoss> {
 /** The income and expenditure trend, month by month. */
 export async function monthlyTrend(months = 12) {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'view' });
+  await assertScopeAll('transactions');
 
   const periods = monthsBack(monthKey(new Date()), months);
   const { from } = monthRange(periods[0]);
@@ -1104,7 +1104,7 @@ export async function monthlyTrend(months = 12) {
  */
 export async function cashPosition(months = 3) {
   const auth = currentAuth();
-  await assertCan({ resource: 'ledger_accounts', verb: 'view' });
+  await assertScopeAll('ledger_accounts');
 
   const balances = await accountBalances();
   const cash = balances
@@ -1135,7 +1135,7 @@ export async function cashPosition(months = 3) {
  */
 export async function cashForecast(months = 6) {
   const auth = currentAuth();
-  await assertCan({ resource: 'transactions', verb: 'view' });
+  await assertScopeAll('transactions');
 
   const position = await cashPosition();
   const rules = await prisma.recurringRule.findMany({ where: { tenantId: auth.tenantId, active: true } });

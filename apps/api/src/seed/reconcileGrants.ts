@@ -38,16 +38,21 @@ export async function planFor(tenantId: string): Promise<Change[]> {
     if (!role) continue;
 
     const rows = await prisma.grant.findMany({ where: { tenantId, roleId: role.id } });
-    const byResource = new Map(rows.map((r) => [r.resource, r]));
+    // Keyed on resource AND scope: a resource may hold two cells, a wide read
+    // beside a narrow write. Keyed on resource alone, the reconciler compared
+    // the first row against the second cell and reported drift on a freshly
+    // seeded database.
+    const key = (resource: string, scope: string) => `${resource}@${scope}`;
+    const byCell = new Map(rows.map((r) => [key(r.resource, r.scope), r]));
     const declared = new Set<string>();
 
     for (const spec of specs) {
       const parsed = parseCell(spec.cell);
       // An explicit absence stays an absence: no row is the representation.
       if (!parsed) continue;
-      declared.add(spec.resource);
+      declared.add(key(spec.resource, parsed.scope));
 
-      const existing = byResource.get(spec.resource);
+      const existing = byCell.get(key(spec.resource, parsed.scope));
       const resolver = spec.scopeResolver ?? null;
 
       if (!existing) {
@@ -75,7 +80,7 @@ export async function planFor(tenantId: string): Promise<Change[]> {
     // A row the matrix no longer declares is a revocation, and is reported as
     // one rather than quietly left in place.
     for (const row of rows) {
-      if (!declared.has(row.resource)) {
+      if (!declared.has(key(row.resource, row.scope))) {
         changes.push({ kind: 'revoke', role: slug, resource: row.resource, id: row.id });
       }
     }

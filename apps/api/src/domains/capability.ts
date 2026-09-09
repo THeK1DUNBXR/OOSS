@@ -38,6 +38,7 @@ import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, can } from '../platform/permissions.js';
 import { auditWrite } from '../platform/audit.js';
+import { assertScopeAll } from '../platform/permissions.js';
 
 /** Domain rule violations from the shared model become 422s at the boundary. */
 function asApiError(err: unknown): never {
