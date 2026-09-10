@@ -12,6 +12,7 @@
  */
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, relative, titleCase } from '../lib/api.js';
 import {
@@ -26,8 +27,11 @@ import {
   StatusChip,
   Tabs,
 } from '../components/ui.js';
+import { NewButton } from '../components/forms.js';
+import { NewCohort, NewCourse, NewEnrollment } from '../components/createForms.js';
 
 export function Cohorts() {
+  const [adding, setAdding] = useState<'cohort' | 'course' | null>(null);
   const { data = [], isLoading, error } = useQuery({
     queryKey: ['cohorts'],
     queryFn: () => api.get<any[]>('/education/cohorts'),
@@ -39,9 +43,17 @@ export function Cohorts() {
 
   return (
     <div>
+      <NewCohort open={adding === 'cohort'} onClose={() => setAdding(null)} />
+      <NewCourse open={adding === 'course'} onClose={() => setAdding(null)} />
       <PageHeader
-        title="Cohorts"
-        subtitle="Training batches and who is running them. Trainers see the batches they teach and no others."
+        title="Training batches"
+        subtitle="Each run of a course: when it goes, who teaches it, where it happens and how full it is. Trainers see the batches they teach and no others."
+        actions={
+          <>
+            <button className="btn" onClick={() => setAdding('course')}>+ Course</button>
+            <NewButton label="Start a batch" onClick={() => setAdding('cohort')} />
+          </>
+        }
       />
 
       {scoped && (
@@ -91,6 +103,7 @@ export function Cohorts() {
 export function Enrollments() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<'all' | 'at_risk'>('all');
+  const [enrolling, setEnrolling] = useState(false);
 
   const { data = [], isLoading, error } = useQuery({
     queryKey: ['enrollments', tab],
@@ -112,13 +125,15 @@ export function Enrollments() {
 
   return (
     <div>
+      <NewEnrollment open={enrolling} onClose={() => setEnrolling(false)} />
       <PageHeader
-        title="Enrollments"
-        subtitle="Learners on each course. Attendance and the at-risk flag are worked out from actual records — nobody keeps them up to date by hand, so they cannot drift."
+        title="Students"
+        subtitle="Who is on which batch, and which college they came from. Attendance and the at-risk flag are worked out from actual records — nobody keeps them up to date by hand, so they cannot drift."
+        actions={<NewButton label="Enrol a student" onClick={() => setEnrolling(true)} />}
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Enrollments" value={data.length} drillTo="/education/enrollments" />
+        <Metric label="Students" value={data.length} drillTo="/education/enrollments" />
         <Metric label="At risk" value={atRisk} tone={atRisk > 0 ? 'warn' : 'good'} sub="Attendance below the threshold" drillTo="/exceptions" />
         <Metric
           label="Mean attendance"
@@ -148,15 +163,21 @@ export function Enrollments() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="No learners you can see." /></Card>
+        <Card>
+          <EmptyState
+            message="No students yet."
+            hint="A student joins a batch, and usually comes from a college — which is what makes the college relationship measurable."
+          />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
             <thead>
               <tr>
                 <th>Code</th>
-                <th>Learner</th>
-                <th>Cohort</th>
+                <th>Student</th>
+                <th>From</th>
+                <th>Batch</th>
                 <th className="text-right">Progress</th>
                 <th className="text-right">Attendance</th>
                 <th>Status</th>
@@ -172,6 +193,17 @@ export function Enrollments() {
                     {e.isMinor && (
                       <span className="chip border-band-critical/40 text-band-critical" title="Guardian contact is DPDP-covered and read-audited.">
                         minor
+                      </span>
+                    )}
+                  </td>
+                  <td className="text-2xs">
+                    {e.institutionName ? (
+                      <Link to={`/crm/accounts/${e.institutionId}`} className="text-ink-300 hover:text-accent-soft">
+                        {e.institutionName}
+                      </Link>
+                    ) : (
+                      <span className="text-ink-600" title="Not recruited through a college — a direct enrolment.">
+                        direct
                       </span>
                     )}
                   </td>

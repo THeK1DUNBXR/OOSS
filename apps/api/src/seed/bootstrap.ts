@@ -519,7 +519,7 @@ async function seedSurfaces() {
     { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'customers', position: 30, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },
     { nodeKey: 'crm_pipeline', label: 'Pipeline', icon: 'columns', path: '/crm/pipeline', group: 'customers', position: 31, requiredPermission: 'opportunities:V', synonyms: ['kanban', 'board', 'deals'] },
     { nodeKey: 'crm_opportunities', label: 'Deals', icon: 'target', path: '/crm/opportunities', group: 'customers', position: 32, requiredPermission: 'opportunities:V', synonyms: ['opportunities'] },
-    { nodeKey: 'crm_accounts', label: 'Customers', icon: 'building', path: '/crm/accounts', group: 'customers', position: 33, requiredPermission: 'organizations:V', synonyms: ['accounts', 'organizations', 'companies', 'colleges', 'institutions'] },
+    { nodeKey: 'crm_accounts', label: 'Companies & Colleges', icon: 'building', path: '/crm/accounts', group: 'customers', position: 33, requiredPermission: 'organizations:V', synonyms: ['accounts', 'organizations', 'companies', 'colleges', 'institutions', 'clients', 'customers'] },
     { nodeKey: 'crm_people', label: 'Contacts', icon: 'users', path: '/crm/people', group: 'customers', position: 34, requiredPermission: 'people:V', synonyms: ['persons', 'people'] },
     { nodeKey: 'crm_interactions', label: 'Calls & Meetings', icon: 'message', path: '/crm/interactions', group: 'customers', position: 35, requiredPermission: 'interactions:V', synonyms: ['activity', 'timeline', 'calls'] },
     { nodeKey: 'crm_forecast', label: 'Forecast', icon: 'trending', path: '/crm/forecast', group: 'customers', position: 36, requiredPermission: 'opportunities:V', synonyms: ['commit', 'coverage'] },
@@ -532,7 +532,7 @@ async function seedSurfaces() {
     { nodeKey: 'com_approvals', label: 'Approvals', icon: 'shield', path: '/commercial/approvals', group: 'delivery', position: 44, requiredPermission: 'mous:V', synonyms: ['sign off', 'waiting on me'] },
     { nodeKey: 'prj_projects', label: 'Projects', icon: 'kanban', path: '/delivery/projects', group: 'delivery', position: 45, requiredPermission: 'projects:V', synonyms: ['delivery', 'engagements'] },
     { nodeKey: 'edu_cohorts', label: 'Training Batches', icon: 'graduation', path: '/education/cohorts', group: 'delivery', position: 46, requiredPermission: 'education:V', synonyms: ['batches', 'classes'] },
-    { nodeKey: 'edu_enrollments', label: 'Learners', icon: 'badge', path: '/education/enrollments', group: 'delivery', position: 47, requiredPermission: 'education:V', synonyms: ['students', 'learners', 'admissions'] },
+    { nodeKey: 'edu_enrollments', label: 'Students', icon: 'badge', path: '/education/enrollments', group: 'delivery', position: 47, requiredPermission: 'education:V', synonyms: ['students', 'learners', 'admissions', 'enrolments', 'enrollments'] },
     { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'delivery', position: 48, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
 
     // ---- Set up ----------------------------------------------------------

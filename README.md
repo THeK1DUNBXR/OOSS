@@ -60,7 +60,7 @@ Better for development: the API and web run on the host, so edits reload
 immediately and a debugger attaches normally.
 
 ```bash
-./scripts/setup.sh          # PostgreSQL, dependencies, schema, demo data
+./scripts/setup.sh          # PostgreSQL, dependencies, schema, first account
 ./scripts/dev.sh start      # API and web
 ```
 
@@ -79,6 +79,26 @@ reseeds a database that already holds data.
 ./scripts/dev.sh logs       # follow both logs
 ./scripts/dev.sh stop
 ```
+
+### Starting over
+
+Emptying the company is a supported operation rather than something you do with
+`psql`. It deletes every business record — people, organisations, leads, the
+ledger, employment, enrolments, imports, events — and then rebuilds exactly what
+a fresh install has: the permission matrix, the pipelines, the navigation
+registry, the statutory leave types and one account to sign in with.
+
+```bash
+pnpm db:wipe --yes                                  # on your machine
+docker compose exec api node dist/seed/wipe.js --yes  # in the Docker stack
+```
+
+It refuses to run without `--yes`, because a command that empties a company on a
+typo is a bad command. Record numbering restarts at `00001`.
+
+Under Docker you can also throw the volume away — `docker compose down -v` —
+which has the same effect on the data and additionally discards the schema, so
+the next `up` pushes it again.
 
 ### Signing in
 
@@ -161,17 +181,12 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
 - **Sales & Customers → People** — an open merge candidate, raised by the
   resolver refusing a partial match rather than guessing.
 
-The seeded dataset deliberately contains broken records: an unrouted lead, a
-stale commit, an unpriced offering, an unaccepted delivery handoff, an
-over-ceiling quote, an overdue win/loss review, a probation nobody closed, an
-employee with no pay record in force, a disputed attendance day inside an open
-payroll period and a supplier bill ten days late. Every detector and every
-surface therefore has something real to show.
-
-The books are seeded with the company's own chart of accounts and seven real
-months, down to the ₹32,000 rent that starts in the second month. With invented
-round numbers this would show that the arithmetic runs; with these it shows the
-thing the founder wants to see.
+Every one of those surfaces starts empty, because the seed creates structure and
+not records. What fills them is your own data: import a Tally export, a bank
+statement or a spreadsheet under **Imports**, or type the first few rows in. The
+detectors that flag an unrouted lead, an unclosed probation or a late supplier
+bill are live from the first record — they have nothing to say until there is
+one.
 
 ---
 

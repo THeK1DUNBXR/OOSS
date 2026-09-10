@@ -180,6 +180,7 @@ export const EVENTS = {
   CREDIT_NOTE_ISSUED: 'kz.fin.credit_note.issued',
 
   // --- Education ------------------------------------------------------------
+  ENROLLMENT_CREATED: 'kz.edu.enrollment.created',
   ENROLLMENT_CONFIRMED: 'kz.edu.enrollment.confirmed',
   ENROLLMENT_COMPLETED: 'kz.edu.enrollment.completed',
   LEARNER_RISK_DETECTED: 'kz.edu.learner.risk_detected',

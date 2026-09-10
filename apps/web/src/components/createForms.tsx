@@ -1204,3 +1204,189 @@ export function NewDecision({ open, onClose }: { open: boolean; onClose: () => v
     </CreateModal>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Education
+// ---------------------------------------------------------------------------
+
+/**
+ * Enrolling a student.
+ *
+ * There was no way to do this at all: the platform could change a student's
+ * status and mark their attendance, but nothing could create one, so every
+ * learner had to have arrived through a seed.
+ *
+ * The college is asked for on the way in rather than added later. Recruiting
+ * out of a partner institution is the reason colleges are tracked separately
+ * from client companies, and a student whose college is unrecorded makes that
+ * relationship unmeasurable — the field exists to make "how many did this
+ * college send us, and how did they do" answerable.
+ */
+export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const cohorts = useList<{ id: string; name: string; courseName?: string }>('cohorts', '/education/cohorts', open);
+  const colleges = useList<Named & { specialisations?: Array<{ kind: string }> }>('organizations', '/crm/organizations?specialisation=institution', open);
+
+  const [cohortId, setCohortId] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [primaryPhone, setPhone] = useState('');
+  const [primaryEmail, setEmail] = useState('');
+  const [institutionId, setInstitutionId] = useState('');
+  const [isMinor, setIsMinor] = useState(false);
+  const [guardianName, setGuardianName] = useState('');
+  const [guardianPhone, setGuardianPhone] = useState('');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Enrol a student"
+      submitLabel="Enrol them"
+      onClose={onClose}
+      invalidate={[['enrollments'], ['cohorts']]}
+      onSubmit={() =>
+        api.post('/education/enrollments', {
+          cohortId,
+          fullName,
+          primaryPhone: primaryPhone || null,
+          primaryEmail: primaryEmail || null,
+          institutionId: institutionId || null,
+          isMinor,
+          guardianName: guardianName || null,
+          guardianPhone: guardianPhone || null,
+        })
+      }
+    >
+      <TextInput label="Name" required autoFocus value={fullName} onChange={setFullName} />
+      <Row>
+        <TextInput label="Phone" type="tel" value={primaryPhone} onChange={setPhone} />
+        <TextInput label="Email" type="email" value={primaryEmail} onChange={setEmail} />
+      </Row>
+      <SelectInput
+        label="Batch"
+        required
+        value={cohortId}
+        onChange={setCohortId}
+        placeholder={cohorts.rows.length ? 'Which batch' : 'No batches yet — create one first'}
+        options={cohorts.rows.map((c) => ({ value: c.id, label: c.courseName ? `${c.name} — ${c.courseName}` : c.name }))}
+      />
+      <SelectInput
+        label="Which college are they from"
+        hint="leave blank for a direct enrolment"
+        value={institutionId}
+        onChange={setInstitutionId}
+        placeholder={colleges.rows.length ? 'Not from a college' : 'No colleges on file yet'}
+        options={colleges.rows.map((c) => ({ value: c.id, label: c.name }))}
+      />
+
+      <label className="flex items-center gap-2 text-sm text-ink-200">
+        <input type="checkbox" checked={isMinor} onChange={(e) => setIsMinor(e.target.checked)} />
+        Under 18
+      </label>
+      {isMinor && (
+        <Row>
+          <TextInput label="Guardian name" value={guardianName} onChange={setGuardianName} />
+          <TextInput label="Guardian phone" required type="tel" value={guardianPhone} onChange={setGuardianPhone} />
+        </Row>
+      )}
+      {isMinor && (
+        <p className="text-2xs text-ink-500">
+          Guardian contact is regulated under the DPDP Act. It is read-audited every time somebody looks at it, and
+          withheld entirely from anybody whose clearance does not reach it.
+        </p>
+      )}
+    </CreateModal>
+  );
+}
+
+export function NewCohort({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const courses = useList<{ id: string; name: string; code: string }>('courses', '/education/courses', open);
+  const colleges = useList<Named>('organizations', '/crm/organizations?specialisation=institution', open);
+
+  const [courseId, setCourseId] = useState('');
+  const [name, setName] = useState('');
+  const [startDate, setStart] = useState(today());
+  const [endDate, setEnd] = useState('');
+  const [institutionId, setInstitutionId] = useState('');
+  const [capacity, setCapacity] = useState('30');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Start a batch"
+      submitLabel="Create it"
+      onClose={onClose}
+      invalidate={[['cohorts']]}
+      onSubmit={() =>
+        api.post('/education/cohorts', {
+          courseId,
+          name,
+          startDate,
+          endDate: endDate || null,
+          institutionId: institutionId || null,
+          capacity: Number(capacity || 30),
+        })
+      }
+    >
+      <SelectInput
+        label="Course"
+        required
+        value={courseId}
+        onChange={setCourseId}
+        placeholder={courses.rows.length ? 'Which course' : 'No courses yet — add one first'}
+        options={courses.rows.map((c) => ({ value: c.id, label: `${c.name} (${c.code})` }))}
+      />
+      <TextInput label="Batch name" required value={name} onChange={setName} placeholder="FSD — Sept 2026, Madurai" />
+      <Row>
+        <TextInput label="Starts" type="date" required value={startDate} onChange={setStart} />
+        <TextInput label="Ends" type="date" value={endDate} onChange={setEnd} />
+      </Row>
+      <Row>
+        <SelectInput
+          label="Where it runs"
+          hint="a college hosting it, if any"
+          value={institutionId}
+          onChange={setInstitutionId}
+          placeholder="Our own premises"
+          options={colleges.rows.map((c) => ({ value: c.id, label: c.name }))}
+        />
+        <TextInput label="Seats" type="number" value={capacity} onChange={setCapacity} />
+      </Row>
+      <p className="text-2xs text-ink-500">
+        Where a batch runs and where each student came from are different facts, and often different colleges — a
+        student from one college can sit a batch hosted at another.
+      </p>
+    </CreateModal>
+  );
+}
+
+export function NewCourse({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [description, setDescription] = useState('');
+  const [durationWeeks, setWeeks] = useState('');
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add a course"
+      submitLabel="Add it"
+      onClose={onClose}
+      invalidate={[['courses']]}
+      onSubmit={() =>
+        api.post('/education/courses', {
+          name,
+          code: code || name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 16),
+          description: description || null,
+          durationWeeks: durationWeeks ? Number(durationWeeks) : null,
+        })
+      }
+    >
+      <Row>
+        <TextInput label="Name" required autoFocus value={name} onChange={setName} placeholder="Full Stack Development" />
+        <TextInput label="Code" hint="made from the name if blank" value={code} onChange={setCode} placeholder="FSD" />
+      </Row>
+      <TextArea label="What it covers" value={description} onChange={setDescription} rows={2} />
+      <TextInput label="Length (weeks)" type="number" value={durationWeeks} onChange={setWeeks} />
+      <p className="text-2xs text-ink-500">A course is the syllabus. A batch is one run of it, with dates and people.</p>
+    </CreateModal>
+  );
+}

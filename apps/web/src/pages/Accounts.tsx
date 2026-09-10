@@ -1,7 +1,7 @@
 /**
- * Accounts and Institutions.
+ * Companies and colleges.
  *
- * One row per real legal body, forever. Two independent specialisations may
+ * One row per real legal body, forever. Two independent facts may
  * coexist on the same row — a single institution can also be a fee-paying
  * corporate client, which the legacy exclusive category enum could not
  * represent without forking the record.
@@ -60,9 +60,9 @@ export function Accounts() {
   return (
     <div>
       <PageHeader
-        title="Accounts & Institutions"
-        subtitle="Companies and colleges we work with. One record per real organisation. A college can also be a paying client — both sides are kept on the same record rather than duplicated."
-        actions={can('organizations:C') && <button className="btn-primary" onClick={() => setCreateOpen(true)}>New organisation</button>}
+        title="Companies & Colleges"
+        subtitle="Every organisation we deal with, one record each. What an organisation is to us — a client we invoice, a college we recruit students from, or both at once — is recorded on that one record rather than by keeping two."
+        actions={can('organizations:C') && <button className="btn-primary" onClick={() => setCreateOpen(true)}>Add an organisation</button>}
       />
 
       <div className="mb-3">
@@ -72,8 +72,8 @@ export function Accounts() {
       <Tabs
         tabs={[
           { key: 'all', label: 'All', count: data?.total },
-          { key: 'account', label: 'With Account' },
-          { key: 'institution', label: 'With Institution Profile' },
+          { key: 'account', label: 'Clients' },
+          { key: 'institution', label: 'Colleges' },
         ]}
         active={tab}
         onChange={setTab}
@@ -83,7 +83,10 @@ export function Accounts() {
         <Loading />
       ) : !data?.items.length ? (
         <Card>
-          <EmptyState message="No organisations match what you searched for." />
+          <EmptyState
+            message={q ? 'No organisations match what you searched for.' : 'No companies or colleges yet.'}
+            hint={q ? undefined : 'Add the companies you invoice and the colleges you recruit students from — an organisation can be both.'}
+          />
         </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -98,7 +101,7 @@ export function Accounts() {
 
               <div className="mt-3 flex flex-wrap gap-1">
                 {o.specialisations.length === 0 && (
-                  <span className="chip border-ink-800 text-ink-600">no specialisation attached</span>
+                  <span className="chip border-ink-800 text-ink-600">not a client or a college yet</span>
                 )}
                 {o.specialisations.map((s) => (
                   <span
@@ -106,19 +109,39 @@ export function Accounts() {
                     className={`chip ${s.viewable ? 'border-accent/40 text-accent-soft' : 'border-ink-700 text-ink-500'}`}
                     title={s.viewable ? undefined : 'Present, but its contents are not viewable under your grants.'}
                   >
-                    {s.kind === 'account' ? 'Account' : 'Institution'}
+                    {s.kind === 'account' ? 'Client' : 'College'}
                     {!s.viewable && ' ·  ⛨'}
                   </span>
                 ))}
               </div>
 
+              {/* Joined from whatever is actually known. A missing student count
+                  used to render as a bare "· students", and an absent payment
+                  term as "· undefinedd terms" — both of which read as a bug
+                  rather than as an unfilled field. */}
               {o.institutionProfile && (
                 <p className="mt-2 text-2xs text-ink-500">
-                  {titleCase(o.institutionProfile.institutionType)} · {o.institutionProfile.district} ·{' '}
-                  {o.institutionProfile.studentCount?.toLocaleString('en-IN')} students
+                  {[
+                    titleCase(o.institutionProfile.institutionType),
+                    o.institutionProfile.district,
+                    o.institutionProfile.studentCount
+                      ? `${o.institutionProfile.studentCount.toLocaleString('en-IN')} students`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || 'No detail recorded yet'}
                 </p>
               )}
-              {o.account && <p className="mt-1 text-2xs text-ink-500">Tier {o.account.tier} · {o.account.paymentTermsDays}d terms</p>}
+              {o.account && (
+                <p className="mt-1 text-2xs text-ink-500">
+                  {[
+                    o.account.tier ? `Tier ${o.account.tier}` : null,
+                    o.account.paymentTermsDays ? `${o.account.paymentTermsDays}d terms` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || 'No billing detail recorded yet'}
+                </p>
+              )}
             </Link>
           ))}
         </div>
@@ -168,8 +191,8 @@ function CreateOrgModal({ open, onClose }: { open: boolean; onClose: () => void 
           <input className="input" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
         </div>
         <p className="rounded border border-ink-800 bg-ink-950 px-3 py-2 text-2xs text-ink-500">
-          Creating an organisation requires only a name. There is no category dropdown — attaching a specialisation is
-          an explicit, separate action, never an implicit side effect.
+          A name is all that is needed. Whether they are a client, a college, or both is set afterwards on their own
+          page — deliberately a separate decision, so nobody has to guess it at the moment of typing a name.
         </p>
         {error && <p className="text-2xs text-band-critical">{error}</p>}
       </div>
@@ -227,12 +250,12 @@ export function AccountDetail() {
           <>
             {!data.account && can('organizations:C') && (
               <button className="btn-ghost" onClick={() => attachAccount.mutate()} disabled={attachAccount.isPending}>
-                Attach Account
+                Mark as a client
               </button>
             )}
             {!data.institutionProfile && can('institutions:C') && (
               <button className="btn-ghost" onClick={() => attachInstitution.mutate()} disabled={attachInstitution.isPending}>
-                Attach Institution Profile
+                Mark as a college
               </button>
             )}
           </>
@@ -242,7 +265,7 @@ export function AccountDetail() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {data.specialisations.map((s: any) => (
           <span key={s.kind} className={`chip ${s.viewable ? 'border-accent/40 text-accent-soft' : 'border-ink-700 text-ink-500'}`}>
-            {s.kind === 'account' ? 'Account' : 'Institution Profile'}
+            {s.kind === 'account' ? 'Client' : 'College'}
           </span>
         ))}
         <StatusChip status={data.computedRelationshipStatus} tone={STATUS_TONE[data.computedRelationshipStatus] ?? 'neutral'} />
@@ -265,7 +288,7 @@ export function AccountDetail() {
           )}
 
           {data.institutionProfile ? (
-            <Card title="Institution Profile" subtitle="The education/partnership specialisation, governed independently by institutions:*">
+            <Card title="As a college" subtitle="What we know about them as an institution. Read separately from the client side — someone who can see the billing terms does not automatically see this.">
               <dl className="grid grid-cols-2 gap-x-6">
                 <Field label="Type">{titleCase(data.institutionProfile.institutionType)}</Field>
                 <Field label="Management">{titleCase(data.institutionProfile.managementType)}</Field>
@@ -285,11 +308,11 @@ export function AccountDetail() {
             </Card>
           ) : (
             data.withheld?.some((w: any) => w.path === 'institutionProfile') && (
-              <Card title="Institution Profile">
+              <Card title="As a college">
                 <div className="flex items-center gap-2">
                   <Withheld reason="no_permission" />
                   <p className="text-2xs text-ink-500">
-                    The specialisation is present. Its contents require an institutions grant you do not hold.
+                    They are marked as a college. Seeing the detail needs a grant on institutions that you do not hold.
                   </p>
                 </div>
               </Card>

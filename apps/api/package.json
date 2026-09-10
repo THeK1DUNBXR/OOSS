@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
-    "seed:demo": "tsx src/tests/fixtures/run.ts"
+    "seed:demo": "tsx src/tests/fixtures/run.ts",
+    "wipe": "tsx src/seed/wipe.ts"
   },
   "dependencies": {
     "@kaizen/shared": "workspace:*",

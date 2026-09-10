@@ -34,7 +34,7 @@ which is what `scripts/setup.sh` does.
 ## First run
 
 ```bash
-./scripts/setup.sh            # Docker PostgreSQL, deps, schema, demo data
+./scripts/setup.sh            # Docker PostgreSQL, deps, schema, first account
 ./scripts/setup.sh --native   # or use a PostgreSQL already on this machine
 ```
 
@@ -75,18 +75,29 @@ Point the suite elsewhere with `TEST_DATABASE_URL`.
 ```bash
 cd apps/api
 pnpm db:push      # apply the schema
-pnpm seed         # tenant, roles, grants, policies, pipelines, catalog, demo data
+pnpm seed         # tenant, roles, grants, policies, pipelines, leave types, first account
 ```
 
 The seed is written to be re-runnable: roles and reference data upsert, and the
 grant step **short-circuits on an existing row rather than replacing it**. A
 deployment pipeline running twice does not rewrite a tenant's permission state.
 
-The dataset deliberately includes broken records — an unrouted lead, a stale
-commit, an unpriced offering, an unaccepted handoff, an over-ceiling quote, an
-overdue win/loss review, an open merge candidate. Detectors and surfaces need
-something real to act on, and a dataset where everything is fine demonstrates
-nothing.
+The seed creates structure and no records. There is no demo dataset: a tenant
+comes up empty and is filled by import or by hand, so nothing a user sees was
+invented by us.
+
+To go back to that state on a database that already holds data:
+
+```bash
+pnpm wipe --yes   # from apps/api; `pnpm db:wipe --yes` from the root
+```
+
+`src/seed/wipe.ts` truncates every table the database reports except Prisma's
+own migration bookkeeping, then re-runs the bootstrap. It asks the database
+which tables exist rather than carrying a hand-maintained list, because such a
+list is wrong the first time somebody adds a table and forgets it — and wrong
+silently, which is the worst way for a wipe to fail. `RESTART IDENTITY` puts
+record numbering back to `00001`.
 
 ## Changing the permission matrix
 

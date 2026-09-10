@@ -20,7 +20,8 @@
     "setup": "pnpm install && pnpm --filter @kaizen/shared build && pnpm db:push && pnpm db:seed",
     "build:worker": "pnpm --filter @kaizen/shared build && pnpm --filter @kaizen/web build",
     "deploy": "pnpm run build:worker && wrangler deploy",
-    "preview": "pnpm run build:worker && wrangler dev"
+    "preview": "pnpm run build:worker && wrangler dev",
+    "db:wipe": "pnpm --filter @kaizen/api wipe"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260908.1",
