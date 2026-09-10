@@ -37,9 +37,9 @@ TENANTS="$(node -e '
 ')"
 
 if [ "${TENANTS:-0}" -gt 0 ]; then
-  say "already seeded (${TENANTS} tenant(s)) — leaving the data alone"
+  say "already prepared (${TENANTS} tenant(s)) — leaving the data alone"
 else
-  say "seeding the demo dataset"
+  say "preparing the tenant (permissions, pipelines, leave types, first account)"
   node dist/seed/index.js
 fi
 

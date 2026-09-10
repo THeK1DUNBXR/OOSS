@@ -41,6 +41,14 @@ services:
       # Development only. A real deployment injects a secret rather than
       # carrying one in a file that lives in the repository.
       JWT_SECRET: docker-development-secret-not-for-production
+      # The first account, so `docker compose up` gives you credentials you can
+      # actually type. Without these the seed generates a random password and
+      # prints it once into this container's log — correct for a real install,
+      # and no way to run a local stack.
+      #
+      # Development only, for the same reason as the secret above.
+      OWNER_EMAIL: chairman@kaizen.co.in
+      OWNER_PASSWORD: kaizen2026
       PORT: "4000"
       NODE_ENV: production
       JOBS_ENABLED: "true"

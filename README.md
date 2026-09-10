@@ -32,11 +32,21 @@ docker compose up --build
 Then open **http://localhost:8080** and sign in as
 `chairman@kaizen.co.in` / `kaizen2026`.
 
+Those credentials come from `OWNER_EMAIL` and `OWNER_PASSWORD` in
+`docker-compose.yml`, which are there so a local stack has something you can
+actually type. Change them before this is anywhere but your own machine — and
+if you clear them, the seed generates a password instead and prints it once
+into the API's log, which `docker compose logs api` will show you.
+
 The first build takes a few minutes. The API container waits for the database,
-applies the schema and seeds the demo dataset before it accepts traffic — and
-skips the seed on every later start, so your data survives a restart. The web
-container serves the built client and proxies `/api` to the API, which is why
-port 8080 is the only one you need.
+applies the schema and prepares the tenant — the permission matrix, the pipeline
+definitions, statutory leave types and that one account — before it accepts
+traffic, and skips all of it on every later start, so your data survives a
+restart. There is no demo data: the company is empty until you import or type
+something in, and **Getting Started** in the sidebar walks you through it.
+
+The web container serves the built client and proxies `/api` to the API, which
+is why port 8080 is the only one you need.
 
 ```bash
 docker compose logs -f api     # watch the schema push and seed

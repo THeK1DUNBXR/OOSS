@@ -17,15 +17,19 @@ async function main() {
   console.log('Preparing the tenant…\n');
   const { owner } = await seedBootstrap();
 
+  // The seed does not know where the client is being served from — 5173 under
+  // `dev.sh`, 8080 under Docker, a domain in a real install — so it does not
+  // guess. Naming the wrong port sends somebody to a page that does not exist
+  // and makes them doubt the credentials underneath it.
   console.log('\n─────────────────────────────────────────────');
-  console.log('Ready. Sign in at http://localhost:5173');
+  console.log('Ready. Sign in as:');
   console.log(`  ${owner.email}`);
   if (owner.password) {
     console.log(`  ${owner.password}`);
-    console.log('\nThis password is shown once and is not stored anywhere else.');
-    console.log('Change it after signing in.');
+    console.log('\nThis password was generated because OWNER_PASSWORD was not set.');
+    console.log('It is shown here once and is not stored anywhere else — copy it now.');
   } else {
-    console.log('  (password unchanged — set OWNER_PASSWORD to choose one)');
+    console.log('  (the password from OWNER_PASSWORD)');
   }
   console.log('─────────────────────────────────────────────\n');
   process.exit(0);
