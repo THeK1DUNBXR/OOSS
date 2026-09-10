@@ -126,6 +126,27 @@ export async function commitImport(id: string): Promise<CommitResult> {
         case 'attendance':
           outcome = await commitAttendanceRow(data);
           break;
+        case 'template_courses':
+          outcome = await commitCourseRow(data);
+          break;
+        case 'template_batches':
+          outcome = await commitBatchRow(data);
+          break;
+        case 'template_colleges':
+          outcome = await commitCollegeRow(data);
+          break;
+        case 'template_clients':
+          outcome = await commitClientRow(data);
+          break;
+        case 'template_students':
+          outcome = await commitStudentRow(data);
+          break;
+        case 'template_contacts':
+          outcome = await commitContactRow(data);
+          break;
+        case 'template_staff':
+          outcome = await commitEmployeeRow(data);
+          break;
         default:
           throw new Error(`No commit path for an import of kind "${batch.kind}".`);
       }
@@ -336,6 +357,34 @@ const DIVISION_CODES: Record<string, { division: string; unit: string }> = {
   KM: { division: 'shared', unit: 'Marketing' },
 };
 
+/**
+ * The same divisions written out.
+ *
+ * The company's own staff export codes them off the employee-code prefix; a
+ * person filling in a template writes "Software". Both have to land in the same
+ * place, and a template row that quietly became "Shared" because the word did
+ * not match a two-letter code is exactly the kind of silent wrong this importer
+ * is supposed to avoid.
+ */
+const DIVISION_NAMES: Record<string, string> = {
+  SHARED: 'KI',
+  CORPORATE: 'KI',
+  SOFTWARE: 'KD',
+  'SOFTWARE DEVELOPMENT': 'KD',
+  EDUCATION: 'KE',
+  'SKILL DEVELOPMENT': 'KE',
+  SKILL: 'KE',
+  CYBERSECURITY: 'KCS',
+  MARKETING: 'KM',
+};
+
+/** A division cell, however it was written. */
+const divisionCodeOf = (v: unknown): string => {
+  const raw = String(v ?? '').toUpperCase().trim();
+  if (!raw) return '';
+  return DIVISION_CODES[raw] ? raw : (DIVISION_NAMES[raw] ?? raw);
+};
+
 async function ensureOrgUnit(name: string, division: string): Promise<string> {
   const auth = currentAuth();
   const existing = await prisma.orgUnit.findFirst({ where: { tenantId: auth.tenantId, name } });
@@ -390,6 +439,8 @@ async function ensureEmployment(input: {
   divisionCode: string;
   branch: string | null;
   joiningYear: string | null;
+  /** An exact date, where the source gave one rather than only a year. */
+  hireDate?: string | null;
 }): Promise<string> {
   const auth = currentAuth();
 
@@ -418,8 +469,14 @@ async function ensureEmployment(input: {
   // Indian financial year and is the least wrong assumption available; it is
   // visible on the record and editable, rather than being today's date
   // pretending to be a hire date.
+  const exact = input.hireDate ? new Date(input.hireDate) : null;
   const year = Number(input.joiningYear);
-  const hireEffectiveDate = Number.isFinite(year) && year > 1990 ? new Date(Date.UTC(year, 3, 1)) : new Date();
+  const hireEffectiveDate =
+    exact && !Number.isNaN(exact.getTime())
+      ? exact
+      : Number.isFinite(year) && year > 1990
+        ? new Date(Date.UTC(year, 3, 1))
+        : new Date();
 
   const employment = await prisma.employmentRelationship.create({
     data: {
@@ -471,26 +528,28 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
   if (matched.kind === 'ambiguous') throw new Error(matchFailure(fullName, matched));
   const existing = matched.kind === 'matched' ? candidates.find((p) => p.id === matched.id) : undefined;
 
+  // Only fields the file actually carried are written. A staff list that omits
+  // a birthday must not blank one somebody typed in.
+  const held = {
+    ...(email ? { primaryEmail: email, primaryEmailNormalised: email } : {}),
+    ...(data.dateOfBirth ? { dateOfBirth: new Date(String(data.dateOfBirth)) } : {}),
+    ...(data.bloodGroup ? { bloodGroup: String(data.bloodGroup) } : {}),
+  };
+
   const person = existing
-    ? await prisma.person.update({
-        where: { id: existing.id },
-        data: {
-          fullName,
-          ...(email ? { primaryEmail: email, primaryEmailNormalised: email } : {}),
-        },
-      })
+    ? await prisma.person.update({ where: { id: existing.id }, data: { fullName, ...held } })
     : await prisma.person.create({
         data: {
           tenantId: auth.tenantId,
           recordCode: await nextRecordCode('PER'),
           fullName,
-          ...(email ? { primaryEmail: email, primaryEmailNormalised: email } : {}),
+          ...held,
           ...(data.phone ? { primaryPhone: String(data.phone), primaryPhoneNormalised: String(data.phone) } : {}),
           source: 'import',
         },
       });
 
-  const divisionCode = String(data.division ?? '').toUpperCase();
+  const divisionCode = divisionCodeOf(data.division);
   const mapped = DIVISION_CODES[divisionCode] ?? { division: 'shared', unit: 'Corporate' };
 
   const affiliation = await prisma.affiliation.findFirst({
@@ -521,6 +580,7 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
     divisionCode,
     branch: data.branch ? String(data.branch) : null,
     joiningYear: data.joiningYear ? String(data.joiningYear) : null,
+    hireDate: data.joiningDate ? String(data.joiningDate) : null,
   });
 
   return { entityType: 'person', entityId: person.id };
@@ -701,4 +761,260 @@ export async function revertImport(id: string) {
   });
 
   return { removed };
+}
+
+// ---------------------------------------------------------------------------
+// The templates
+// ---------------------------------------------------------------------------
+
+/**
+ * These rows came from a shape this platform published, so there is far less
+ * guessing than in the ledger importers above — but the same two disciplines
+ * hold: nothing is invented to fill a blank cell, and a name that already
+ * exists is used rather than duplicated.
+ *
+ * References between templates are by name, because a person filling in a
+ * spreadsheet has names and not ids. A name that does not resolve is an error
+ * on that row naming what was not found, never a silent skip and never a
+ * newly-invented record standing in for the one they meant.
+ */
+
+const text = (v: unknown): string | null => {
+  const s = String(v ?? '').trim();
+  return s || null;
+};
+
+/** An organisation by name, for the columns that point at one. */
+async function organizationByName(name: string) {
+  const auth = currentAuth();
+  const matches = await prisma.organization.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null, name: { equals: name, mode: 'insensitive' } },
+    include: { institutionProfile: { select: { id: true } } },
+    take: 2,
+  });
+  if (matches.length > 1) {
+    throw new Error(`"${name}" matches more than one organisation on file. Rename one of them, or import this row by hand.`);
+  }
+  return matches[0] ?? null;
+}
+
+async function commitCourseRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
+  const code = text(data.code);
+  const name = text(data.name);
+  if (!code || !name) return null;
+
+  const existing = await prisma.course.findFirst({ where: { tenantId: auth.tenantId, code } });
+  if (existing) return { entityType: 'course', entityId: existing.id };
+
+  const course = await prisma.course.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode: await nextRecordCode('CRS'),
+      name,
+      code,
+      description: text(data.description),
+      durationWeeks: data.durationWeeks == null ? null : Math.round(Number(data.durationWeeks)),
+    },
+  });
+  return { entityType: 'course', entityId: course.id };
+}
+
+async function commitBatchRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
+  const courseCode = text(data.courseCode);
+  const name = text(data.name);
+  if (!courseCode || !name) return null;
+
+  const course = await prisma.course.findFirst({ where: { tenantId: auth.tenantId, code: courseCode } });
+  if (!course) {
+    throw new Error(`No course has the code "${courseCode}". Import the Courses template first, or correct the code.`);
+  }
+
+  const existing = await prisma.cohort.findFirst({ where: { tenantId: auth.tenantId, name } });
+  if (existing) return { entityType: 'cohort', entityId: existing.id };
+
+  let institutionId: string | null = null;
+  const collegeName = text(data.institutionName);
+  if (collegeName) {
+    const college = await organizationByName(collegeName);
+    if (!college) throw new Error(`"${collegeName}" is not on file. Import the Colleges template first, or correct the name.`);
+    if (!college.institutionProfile) {
+      throw new Error(`"${collegeName}" is on file but is not marked as a college, so a batch cannot run at it.`);
+    }
+    institutionId = college.id;
+  }
+
+  const cohort = await prisma.cohort.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode: await nextRecordCode('COH'),
+      courseId: course.id,
+      name,
+      startDate: new Date(String(data.startDate)),
+      endDate: data.endDate ? new Date(String(data.endDate)) : null,
+      capacity: data.capacity == null ? 30 : Math.round(Number(data.capacity)),
+      institutionId,
+    },
+  });
+  return { entityType: 'cohort', entityId: cohort.id };
+}
+
+/** Shared by the college and client templates: find the organisation, or make it. */
+async function organizationFor(name: string) {
+  const existing = await organizationByName(name);
+  if (existing) return existing;
+  const { createOrganization } = await import('../domains/organizations.js');
+  const created = await createOrganization({ name });
+  return { ...created, institutionProfile: null as { id: string } | null };
+}
+
+async function commitCollegeRow(data: Record<string, unknown>) {
+  const name = text(data.name);
+  if (!name) return null;
+
+  const org = await organizationFor(name);
+  const { attachInstitutionProfile, attachAccount } = await import('../domains/organizations.js');
+
+  if (!org.institutionProfile) {
+    await attachInstitutionProfile(org.id, {
+      institutionType: text(data.institutionType),
+      managementType: text(data.managementType),
+      district: text(data.district),
+      state: text(data.state),
+      studentCount: data.studentCount == null ? null : Math.round(Number(data.studentCount)),
+      establishedYear: data.establishedYear == null ? null : Math.round(Number(data.establishedYear)),
+    });
+  }
+
+  if (text(data.website)) {
+    await prisma.organization.update({ where: { id: org.id }, data: { website: text(data.website) } });
+  }
+
+  // A college that also buys from us. Not an either/or, which is the whole
+  // reason these are two independent facts on one row.
+  if (data.alsoAClient === true) {
+    const account = await prisma.account.findFirst({ where: { organizationId: org.id } });
+    if (!account) await attachAccount(org.id, {});
+  }
+
+  return { entityType: 'organization', entityId: org.id };
+}
+
+async function commitClientRow(data: Record<string, unknown>) {
+  const name = text(data.name);
+  if (!name) return null;
+
+  const org = await organizationFor(name);
+  const { attachAccount } = await import('../domains/organizations.js');
+
+  const account = await prisma.account.findFirst({ where: { organizationId: org.id } });
+  if (!account) {
+    await attachAccount(org.id, {
+      tier: text(data.tier)?.toLowerCase().replace(/\s+/g, '_') ?? undefined,
+      billingEmail: text(data.billingEmail),
+      billingAddress: text(data.billingAddress),
+      paymentTermsDays: data.paymentTermsDays == null ? null : Math.round(Number(data.paymentTermsDays)),
+    });
+  }
+
+  if (text(data.website)) {
+    await prisma.organization.update({ where: { id: org.id }, data: { website: text(data.website) } });
+  }
+
+  return { entityType: 'organization', entityId: org.id };
+}
+
+async function commitStudentRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
+  const cohortName = text(data.cohortName);
+  if (!cohortName) return null;
+
+  const cohort = await prisma.cohort.findFirst({ where: { tenantId: auth.tenantId, name: cohortName } });
+  if (!cohort) {
+    throw new Error(`No batch is called "${cohortName}". Import the Training batches template first, or correct the name.`);
+  }
+
+  let institutionId: string | null = null;
+  const collegeName = text(data.institutionName);
+  if (collegeName) {
+    const college = await organizationByName(collegeName);
+    if (!college) throw new Error(`"${collegeName}" is not on file. Import the Colleges template first, or correct the name.`);
+    institutionId = college.id;
+  }
+
+  // Through the same function the form calls, so an imported student and a
+  // typed one are the same act: the same college check, the same guardian rule,
+  // the same student affiliation, the same refusal to enrol somebody twice.
+  const { enrolStudent } = await import('../domains/education.js');
+  const enrollment = await enrolStudent({
+    cohortId: cohort.id,
+    fullName: text(data.fullName) ?? undefined,
+    primaryPhone: text(data.primaryPhone),
+    primaryEmail: text(data.primaryEmail),
+    institutionId,
+    isMinor: data.isMinor === true,
+    guardianName: text(data.guardianName),
+    guardianPhone: text(data.guardianPhone),
+  });
+  return { entityType: 'enrollment', entityId: enrollment.id };
+}
+
+async function commitContactRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
+  const fullName = text(data.fullName);
+  if (!fullName) return null;
+
+  const email = text(data.primaryEmail)?.toLowerCase() ?? null;
+  const phone = text(data.primaryPhone)?.replace(/\D/g, '') || null;
+
+  const existing =
+    email || phone
+      ? await prisma.person.findFirst({
+          where: {
+            tenantId: auth.tenantId,
+            deletedAt: null,
+            dedupeStatus: { not: 'merged' },
+            OR: [...(email ? [{ primaryEmailNormalised: email }] : []), ...(phone ? [{ primaryPhoneNormalised: phone }] : [])],
+          },
+        })
+      : null;
+
+  const person =
+    existing ??
+    (await prisma.person.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('PER'),
+        fullName,
+        ...(email ? { primaryEmail: email, primaryEmailNormalised: email } : {}),
+        ...(phone ? { primaryPhone: text(data.primaryPhone), primaryPhoneNormalised: phone } : {}),
+        source: 'import',
+      },
+    }));
+
+  const orgName = text(data.organizationName);
+  if (orgName) {
+    const org = await organizationByName(orgName);
+    if (!org) throw new Error(`"${orgName}" is not on file. Import the Clients or Colleges template first, or correct the name.`);
+
+    // Which kind of contact they are follows from what the organisation is to
+    // us, rather than being asked again in a column the person filling this in
+    // would have to keep consistent with the other sheet.
+    const affiliationType = org.institutionProfile ? 'institution_contact' : 'customer_contact';
+    const held = await prisma.affiliation.findFirst({
+      where: { tenantId: auth.tenantId, partyId: person.id, counterpartyId: org.id, affiliationType },
+    });
+    if (!held) {
+      const { createAffiliation } = await import('../domains/identity.js');
+      await createAffiliation({
+        partyId: person.id,
+        affiliationType,
+        counterpartyId: org.id,
+        counterpartyName: org.name,
+      });
+    }
+  }
+
+  return { entityType: 'person', entityId: person.id };
 }

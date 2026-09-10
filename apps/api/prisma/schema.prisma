@@ -90,6 +90,17 @@ model Person {
   /// {system, id} pairs. Never fabricated — absent is safe, wrong is not.
   externalIds Json @default("[]")
 
+  /// Date of birth. Held because half of HR depends on it — age at joining,
+  /// retirement, statutory minimums — and because a staff list carries it.
+  dateOfBirth DateTime?
+
+  /// Blood group, from the staff list that carries it for emergencies.
+  ///
+  /// Health data under the DPDP Act, so it is registered as `regulated` and is
+  /// structurally excluded from any projection whose viewer's ceiling does not
+  /// reach it — absent from the response shape, not present-and-null.
+  bloodGroup String?
+
   dedupeStatus String   @default("active") // active | merged | flagged_duplicate
   mergedIntoId String?
   mergedInto   Person?  @relation("PersonMerge", fields: [mergedIntoId], references: [id])

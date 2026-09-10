@@ -91,6 +91,46 @@ export const api = {
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 
   /**
+   * Downloads a file the API generates, and hands it to the browser.
+   *
+   * Not an `<a href>`, because the endpoint needs the bearer token and an
+   * anchor cannot carry one. The bytes are fetched, wrapped in an object URL,
+   * and the click is synthesised — which also means a failure surfaces as an
+   * error rather than as a downloaded file containing a JSON error message,
+   * which is what an unauthenticated anchor would have saved.
+   */
+  download: async (path: string, fallbackName: string): Promise<void> => {
+    const token = getToken();
+    const res = await fetch(`/api${path}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      const body = text ? JSON.parse(text) : null;
+      const err = body?.error ?? {};
+      throw new ApiClientError({
+        status: res.status,
+        code: err.code ?? 'UNKNOWN',
+        message: err.message ?? res.statusText,
+      });
+    }
+
+    // The server names the file; the fallback is only for the case where a
+    // proxy has eaten the header.
+    const disposition = res.headers.get('content-disposition') ?? '';
+    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+
+    const url = URL.createObjectURL(await res.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = named ?? fallbackName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  /**
    * Sends a file as the request body.
    *
    * Not multipart. The browser can post a File object directly, the server

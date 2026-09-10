@@ -72,6 +72,16 @@ const KIND_LABEL: Record<string, string> = {
   employees: 'Staff list',
   salary: 'Salary sheet',
   attendance: 'Attendance sheet',
+  // The templates this platform hands out, named the way the download button
+  // named them. A row in the history reading "template_students" is the
+  // internal key leaking onto a screen.
+  template_courses: 'Courses template',
+  template_batches: 'Training batches template',
+  template_colleges: 'Colleges template',
+  template_clients: 'Client companies template',
+  template_students: 'Students template',
+  template_contacts: 'Contacts template',
+  template_staff: 'Staff template',
   unknown: 'Not recognised',
 };
 
@@ -83,6 +93,13 @@ const KIND_EFFECT: Record<string, string> = {
   employees: 'Creates people, their seats and their employment records.',
   salary: 'Sets the pay in force for each person named. They must already be on the staff list.',
   attendance: 'Records attendance days against each person named.',
+  template_courses: 'Creates courses. A code already on file is left alone rather than duplicated.',
+  template_batches: 'Creates training batches against courses already on file.',
+  template_colleges: 'Creates organisations and marks them as colleges, so students can be recorded as coming from them.',
+  template_clients: 'Creates organisations and marks them as clients you invoice.',
+  template_students: 'Enrols people onto batches, matching anybody already on file rather than copying them.',
+  template_contacts: 'Creates people and attaches them to the company or college they are at.',
+  template_staff: 'Creates people, their seats and their employment records. Never their pay.',
   unknown: 'Nothing, until you say what it is.',
 };
 
@@ -124,7 +141,7 @@ export default function ImportPage() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Bring your data in"
-        subtitle="A Tally export, a bank statement, a staff list or a salary sheet. Nothing is written until you have looked at what it will do."
+        subtitle="A Tally export, a bank statement, a salary sheet — or one of our own templates, filled in with your courses, colleges, students or staff. Nothing is written until you have looked at what it will do."
       />
 
       <Card>
@@ -168,6 +185,8 @@ export default function ImportPage() {
         )}
       </Card>
 
+      <Templates />
+
       {staged && (
         <Preview
           staged={staged}
@@ -182,6 +201,117 @@ export default function ImportPage() {
 
       <History batches={batches} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The blank files
+// ---------------------------------------------------------------------------
+
+interface Template {
+  slug: string;
+  title: string;
+  what: string;
+  needsFirst: string | null;
+  columns: Array<{ name: string; required: boolean; note: string }>;
+  notes: string[];
+}
+
+/**
+ * Templates for the lists the company keeps itself.
+ *
+ * A Tally export and a bank statement arrive in somebody else's shape and this
+ * platform works hard to read them. Your own course list has no such excuse to
+ * be a surprise: here is the file, with the headings already on it and a sheet
+ * saying what each one wants.
+ *
+ * Shown in the order they have to be imported. Students point at a batch by
+ * name and a batch points at a course by code, so a student list uploaded first
+ * is a page of red rows saying "no batch is called that" — true, unhelpful, and
+ * avoidable by putting them in the right order on the screen.
+ */
+function Templates() {
+  const [open, setOpen] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['import-templates'],
+    queryFn: () => api.get<{ items: Template[] }>('/imports/templates'),
+  });
+
+  const grab = async (slug: string) => {
+    try {
+      setFailed(null);
+      await api.download(`/imports/templates/${slug}`, `kaizen-${slug}-template.xlsx`);
+    } catch (e) {
+      setFailed(messageOf(e));
+    }
+  };
+
+  if (isLoading || !data?.items.length) return null;
+
+  return (
+    <Card
+      title="Or start from a template"
+      subtitle="For the lists you keep yourself — courses, colleges, students, staff. Download it, fill it in, upload it back. Import them in this order: what points at something else comes after the thing it points at."
+    >
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {data.items.map((t, i) => (
+          <div key={t.slug} className="rounded-lg border border-ink-800 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-medium text-ink-100">
+                  <span className="mr-1.5 text-ink-600">{i + 1}.</span>
+                  {t.title}
+                </p>
+                <p className="mt-0.5 text-2xs text-ink-500">{t.what}</p>
+              </div>
+              <button className="btn shrink-0" onClick={() => grab(t.slug)}>
+                Download
+              </button>
+            </div>
+
+            {t.needsFirst && (
+              <p className="mt-2 text-2xs text-ink-600">
+                Needs first: <span className="text-ink-400">{t.needsFirst}</span>
+              </p>
+            )}
+
+            <button
+              type="button"
+              className="mt-2 text-2xs text-ink-500 underline decoration-ink-700 underline-offset-2 hover:text-accent-soft"
+              onClick={() => setOpen(open === t.slug ? null : t.slug)}
+            >
+              {open === t.slug ? 'Hide the columns' : `What is in it (${t.columns.length} columns)`}
+            </button>
+
+            {open === t.slug && (
+              <div className="mt-2 space-y-1.5 border-t border-ink-850 pt-2">
+                {t.columns.map((c) => (
+                  <p key={c.name} className="text-2xs">
+                    <span className="text-ink-200">{c.name}</span>
+                    {c.required && <span className="ml-1 text-band-critical">required</span>}
+                    {c.note && <span className="block text-ink-600">{c.note}</span>}
+                  </p>
+                ))}
+                {t.notes.map((n) => (
+                  <p key={n} className="text-2xs text-ink-500">
+                    {n}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {failed && <p className="mt-3 text-2xs text-band-critical">{failed}</p>}
+
+      <p className="mt-3 text-2xs text-ink-500">
+        The blank sheet has headings and no example rows on purpose. Examples live on the second sheet, where they
+        cannot be uploaded by mistake — a demonstration row left in becomes a real student.
+      </p>
+    </Card>
   );
 }
 

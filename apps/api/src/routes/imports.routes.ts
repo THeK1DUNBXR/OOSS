@@ -19,13 +19,55 @@ import {
 } from '../imports/service.js';
 import { commitImport, revertImport } from '../imports/commit.js';
 import type { ImportKind } from '../imports/detect.js';
+import { TEMPLATES, buildTemplateWorkbook, listTemplates, templateBySlug } from '../imports/templates.js';
 
 export const importsRouter = Router();
 
 const KINDS: ImportKind[] = [
   'tally_ledger', 'bank_statement', 'employees', 'salary',
   'attendance', 'transactions', 'chart_of_accounts',
+  'template_courses', 'template_batches', 'template_colleges', 'template_clients',
+  'template_students', 'template_contacts', 'template_staff',
 ];
+
+/**
+ * The blank files.
+ *
+ * Listed and downloaded without a grant check on `imports`, deliberately: a
+ * template contains no company data, and making somebody hold an import
+ * permission before they can see what the columns are is a way of ensuring the
+ * spreadsheet arrives in the wrong shape. Signing in is enough. Uploading one
+ * is where the permission belongs, and that is unchanged.
+ */
+importsRouter.get(
+  '/templates',
+  handler(async () => ({ items: listTemplates() })),
+);
+
+importsRouter.get(
+  '/templates/:slug',
+  handler(async (req, res) => {
+    const spec = templateBySlug(req.params.slug);
+    if (!spec) {
+      throw ApiError.notFound(
+        `No template called "${req.params.slug}". The ones there are: ${Object.keys(TEMPLATES).join(', ')}.`,
+      );
+    }
+    const file = buildTemplateWorkbook(spec);
+    res
+      .status(200)
+      .set({
+        'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'content-disposition': `attachment; filename="kaizen-${spec.slug}-template.xlsx"`,
+        'content-length': String(file.length),
+        // A template changes only when the platform changes, and a stale one
+        // uploads into the wrong columns. Not cached.
+        'cache-control': 'no-store',
+      })
+      .send(file);
+    return undefined;
+  }),
+);
 
 importsRouter.post(
   '/',

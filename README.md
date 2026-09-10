@@ -134,7 +134,7 @@ evaluator.
 
 The platform ships empty on purpose: a company installing it should not have to
 identify and delete somebody else's demonstration data before their own figures
-mean anything. **Import Data**, under Set up, reads three things:
+mean anything. **Import Data**, under Set up, reads four things:
 
 - **A Tally export.** Both the Excel reports and the XML. The Excel workbook
   carries a Balance Sheet and a Profit & Loss beside the vouchers, and between
@@ -146,6 +146,22 @@ mean anything. **Import Data**, under Set up, reads three things:
   are inferred from the file rather than from your locale.
 - **A spreadsheet.** A staff list, a salary sheet, an attendance grid, or a
   plain list of transactions.
+- **One of our own templates, filled in.** For the lists you keep yourself —
+  courses, training batches, colleges, client companies, students, contacts,
+  staff — the platform hands out the file instead of guessing at yours.
+  Download it from the Import page, type your rows under the headings that are
+  already there, upload it back.
+
+  Each template is an .xlsx with two sheets: **Data**, which has the headings
+  and nothing under them, and **How to fill this in**, which says what every
+  column wants and gives an example of each. The examples are deliberately not
+  in the Data sheet — a demonstration row left in by mistake becomes a real
+  student.
+
+  They are numbered in the order they have to be imported, because a student
+  points at a batch by name and a batch points at a course by code. A row
+  naming a batch that does not exist is refused and says so; it never invents
+  the batch.
 
 Nothing is written until you have seen the preview: every row that will be
 created, every row that will not, and why. Reverting removes exactly what the
@@ -183,7 +199,8 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
 
 Every one of those surfaces starts empty, because the seed creates structure and
 not records. What fills them is your own data: import a Tally export, a bank
-statement or a spreadsheet under **Imports**, or type the first few rows in. The
+statement or a filled-in template under **Imports**, or type the first few rows
+in. The
 detectors that flag an unrouted lead, an unclosed probation or a late supplier
 bill are live from the first record — they have nothing to say until there is
 one.

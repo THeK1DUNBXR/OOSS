@@ -275,6 +275,10 @@ export const REGULATED_EXCLUDED_FIELDS = [
   'uan_number',
   'pfAccountNumber',
   'esiNumber',
+  // Health data. A staff list carries a blood group for emergencies, which is
+  // a good reason to hold it and no reason at all for everyone to read it.
+  'bloodGroup',
+  'blood_group',
 ];
 
 // ---------------------------------------------------------------------------

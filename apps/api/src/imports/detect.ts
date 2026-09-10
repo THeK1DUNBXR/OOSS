@@ -13,6 +13,7 @@
  */
 
 import { isBlank, type Grid, type SheetGrid } from './parse.js';
+import { detectTemplate } from './templates.js';
 
 export type ImportKind =
   | 'tally_ledger'
@@ -22,6 +23,16 @@ export type ImportKind =
   | 'attendance'
   | 'transactions'
   | 'chart_of_accounts'
+  // The lists the platform hands out a shape for. Recognised before anything
+  // else is tried, because a file we published the headings for is not a file
+  // to sniff at.
+  | 'template_courses'
+  | 'template_batches'
+  | 'template_colleges'
+  | 'template_clients'
+  | 'template_students'
+  | 'template_contacts'
+  | 'template_staff'
   | 'unknown';
 
 export interface Detection {
@@ -70,6 +81,20 @@ const BANK_HEADERS: string[][] = [
 
 /** A CSV or a single-sheet grid. */
 export function detectGrid(grid: Grid, label?: string): Detection {
+  // One of ours, come back filled in. Checked first and with no ambiguity: the
+  // headings were written by this platform, so matching them is a fact rather
+  // than a guess, and every heuristic below is a guess.
+  const template = detectTemplate(grid);
+  if (template) {
+    return {
+      kind: template.spec.kind,
+      sheet: label,
+      headerRow: template.headerRow,
+      confidence: 'high',
+      reason: `The ${template.spec.title} template, filled in.`,
+    };
+  }
+
   const bankHeader = findHeaderRow(grid, BANK_HEADERS);
   if (bankHeader >= 0) {
     return {
@@ -179,6 +204,8 @@ export function detectWorkbook(sheets: SheetGrid[]): { primary: Detection; perSh
   }
 
   const order: ImportKind[] = [
+    'template_courses', 'template_batches', 'template_colleges', 'template_clients',
+    'template_students', 'template_contacts', 'template_staff',
     'tally_ledger', 'bank_statement', 'employees', 'salary',
     'chart_of_accounts', 'attendance', 'transactions', 'unknown',
   ];

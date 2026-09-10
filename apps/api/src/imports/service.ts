@@ -23,10 +23,11 @@ import {
 } from './detect.js';
 import {
   extractAttendance, extractBankStatement, extractEmployees, extractSalary,
-  extractTallyLedger, extractTrialBalance, type Extraction,
+  extractTallyLedger, extractTrialBalance, extractTemplate, type Extraction,
 } from './extract.js';
 import { extractTallyXml } from './tallyXml.js';
 import { buildChart, type LedgerChart } from './chart.js';
+import { templateByKind } from './templates.js';
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -242,6 +243,12 @@ export async function stageImport(input: {
 
 function extractFromGrid(grid: Grid, detection: Detection, sheetName?: string, chart?: LedgerChart): Extraction {
   const header = detection.headerRow ?? 0;
+
+  // A filled-in template is read by its own spec, so the columns the file was
+  // handed out with and the columns read back are one definition.
+  const spec = templateByKind(detection.kind);
+  if (spec) return extractTemplate(grid, spec, header);
+
   switch (detection.kind) {
     case 'tally_ledger':
       return extractTallyLedger(grid, chart);

@@ -1941,3 +1941,103 @@ describe('A college, a client and a student are three different facts', () => {
     });
   });
 });
+
+// ===========================================================================
+// Import templates — the shape the platform hands out
+// ===========================================================================
+
+describe('The import templates', () => {
+  it('no two templates share their required headings, so recognition is never a tie-break', async () => {
+    const { listTemplates } = await import('../imports/templates.js');
+    const seen = new Map<string, string>();
+    for (const t of listTemplates()) {
+      const key = t.columns.filter((c) => c.required).map((c) => c.name.toLowerCase()).sort().join('|');
+      expect(key, `${t.slug} has no required column`).not.toBe('');
+      expect(seen.get(key), `${t.slug} and ${seen.get(key)} would be told apart by a tie-break`).toBeUndefined();
+      seen.set(key, t.slug);
+    }
+  });
+
+  it('a template, filled in, is recognised as itself and read by its own columns', async () => {
+    const XLSX = await import('xlsx');
+    const { TEMPLATES, buildTemplateWorkbook } = await import('../imports/templates.js');
+    const { readWorkbook } = await import('../imports/parse.js');
+    const { detectWorkbook } = await import('../imports/detect.js');
+    const { extractTemplate } = await import('../imports/extract.js');
+
+    const spec = TEMPLATES.students;
+    const blank = buildTemplateWorkbook(spec);
+
+    // Fill the Data sheet the way somebody would.
+    const book = XLSX.read(blank, { type: 'buffer' });
+    XLSX.utils.sheet_add_aoa(
+      book.Sheets.Data,
+      [['Fill Test', '9876500001', '', 'Some Batch', 'Some College', 'No', '', '']],
+      { origin: 'A2' },
+    );
+    book.Sheets.Data['!ref'] = 'A1:H2';
+    const filled = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+    const sheets = readWorkbook(filled);
+    const detected = detectWorkbook(sheets);
+    expect(detected.primary.kind).toBe('template_students');
+
+    const data = sheets.find((s) => s.name === 'Data')!;
+    const extraction = extractTemplate(data.grid, spec, detected.primary.headerRow ?? 0);
+    // The instructions sheet must not be mistaken for data.
+    expect(extraction.rows).toHaveLength(1);
+    expect(extraction.rows[0].status).toBe('ready');
+    expect(extraction.rows[0].normalised).toMatchObject({
+      fullName: 'Fill Test',
+      primaryPhone: '9876500001',
+      cohortName: 'Some Batch',
+      institutionName: 'Some College',
+      isMinor: false,
+    });
+  });
+
+  it('the blank sheet carries headings and no rows, so nothing can be imported by forgetting to delete an example', async () => {
+    const { TEMPLATES, buildTemplateWorkbook } = await import('../imports/templates.js');
+    const { readWorkbook } = await import('../imports/parse.js');
+
+    for (const spec of Object.values(TEMPLATES)) {
+      const sheets = readWorkbook(buildTemplateWorkbook(spec));
+      const data = sheets.find((s) => s.name === 'Data');
+      expect(data, `${spec.slug} has no Data sheet`).toBeDefined();
+      expect(data!.grid[0]).toEqual(spec.columns.map((c) => c.name));
+      expect(data!.grid.filter((r) => r.some((c) => String(c).trim()))).toHaveLength(1);
+      // And the instructions are in the file rather than only on a web page
+      // the person filling this in at their desk is not looking at.
+      expect(sheets.some((s) => s.name === 'How to fill this in')).toBe(true);
+    }
+  });
+
+  it('a row pointing at something that does not exist names it, rather than inventing it', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { stageImport } = await import('../imports/service.js');
+      const { commitImport } = await import('../imports/commit.js');
+      const XLSX = await import('xlsx');
+      const { TEMPLATES, buildTemplateWorkbook } = await import('../imports/templates.js');
+
+      const spec = TEMPLATES.students;
+      const book = XLSX.read(buildTemplateWorkbook(spec), { type: 'buffer' });
+      XLSX.utils.sheet_add_aoa(
+        book.Sheets.Data,
+        [['Nowhere Student', `98765${Date.now() % 100000}`, '', 'No Such Batch At All', '', 'No', '', '']],
+        { origin: 'A2' },
+      );
+      book.Sheets.Data['!ref'] = 'A1:H2';
+
+      const staged = await stageImport({
+        fileName: 'students.xlsx',
+        buffer: XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      });
+      expect(staged.kind).toBe('template_students');
+
+      const result = await commitImport(staged.batchId);
+      expect(result.errors[0].message).toContain('No Such Batch At All');
+      // And no half-made records left behind by the attempt.
+      expect(await prisma.person.findFirst({ where: { fullName: 'Nowhere Student' } })).toBeNull();
+    });
+  });
+});
