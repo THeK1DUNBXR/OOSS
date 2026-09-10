@@ -229,6 +229,34 @@ export type AffiliationType = (typeof AFFILIATION_TYPES)[number];
  */
 export const STATUTORY_RETENTION_AFFILIATIONS: AffiliationType[] = ['employee', 'student'];
 
+/**
+ * Affiliations that make somebody another organisation's person rather than
+ * ours: a client's contact, a college's contact, a partner's or a supplier's.
+ *
+ * Grouped because the distinction between them matters when you are looking at
+ * one record and not at all when you are asking "who here is somebody else's
+ * person, as opposed to our own student or our own staff".
+ */
+export const COUNTERPARTY_AFFILIATIONS: AffiliationType[] = [
+  'customer_contact',
+  'institution_contact',
+  'partner_representative',
+  'vendor_contact',
+];
+
+/** What a person is to us, in the words the product uses on screen. */
+export const AFFILIATION_LABELS: Record<AffiliationType, string> = {
+  employee: 'Staff',
+  student: 'Student',
+  customer_contact: 'Client contact',
+  institution_contact: 'College contact',
+  partner_representative: 'Partner',
+  parent_guardian: 'Guardian',
+  alumnus: 'Alumnus',
+  candidate: 'Candidate',
+  vendor_contact: 'Supplier contact',
+};
+
 export const RELATIONSHIP_ENTITY_TYPES = ['person', 'organization', 'institution', 'project', 'contract'] as const;
 export type RelationshipEntityType = (typeof RELATIONSHIP_ENTITY_TYPES)[number];
 

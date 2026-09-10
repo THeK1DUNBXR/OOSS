@@ -20,6 +20,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { auditRegulatedRead } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
+import { enrolStudent } from '../domains/education.js';
 
 const router = Router();
 
@@ -280,108 +281,7 @@ router.post(
 router.post(
   '/enrollments',
   handler(async (req, res) => {
-    await assertCan({ resource: 'education', verb: 'create' });
-    const auth = currentAuth();
-
-    const body = z
-      .object({
-        cohortId: z.string(),
-        personId: z.string().optional(),
-        fullName: z.string().min(1).optional(),
-        primaryPhone: z.string().nullish(),
-        primaryEmail: z.string().nullish(),
-        institutionId: z.string().nullish(),
-        isMinor: z.boolean().optional(),
-        guardianName: z.string().nullish(),
-        guardianPhone: z.string().nullish(),
-        guardianEmail: z.string().nullish(),
-      })
-      .refine((b) => b.personId || b.fullName, {
-        message: 'Either an existing person, or a name to create one from.',
-      })
-      .parse(req.body);
-
-    const cohort = await prisma.cohort.findFirst({
-      where: { id: body.cohortId, tenantId: auth.tenantId },
-      include: { course: { select: { name: true } } },
-    });
-    if (!cohort) throw ApiError.notFound('Cohort');
-
-    // A student is a person like any other. Somebody who was a lead last year
-    // and is a learner now is one record with two roles, not two people, so an
-    // existing id is reused where the caller has one.
-    const person = body.personId
-      ? await prisma.person.findFirst({ where: { id: body.personId, tenantId: auth.tenantId } })
-      : await prisma.person.create({
-          data: {
-            tenantId: auth.tenantId,
-            recordCode: await nextRecordCode('PER'),
-            fullName: body.fullName!,
-            ...(body.primaryEmail
-              ? { primaryEmail: body.primaryEmail, primaryEmailNormalised: body.primaryEmail.toLowerCase() }
-              : {}),
-            ...(body.primaryPhone
-              ? { primaryPhone: body.primaryPhone, primaryPhoneNormalised: body.primaryPhone.replace(/\D/g, '') }
-              : {}),
-            source: 'enrollment',
-          },
-        });
-    if (!person) throw ApiError.notFound('Person');
-
-    if (body.institutionId) {
-      const college = await prisma.organization.findFirst({
-        where: { id: body.institutionId, tenantId: auth.tenantId, deletedAt: null },
-        include: { institutionProfile: { select: { id: true } } },
-      });
-      if (!college) throw ApiError.notFound('Organisation');
-      if (!college.institutionProfile) {
-        throw ApiError.badRequest(
-          `${college.name} is on file but is not marked as a college, so students cannot be recorded as coming from it. ` +
-            'Mark it as a college on its own page first.',
-        );
-      }
-    }
-
-    // A minor's guardian contact is DPDP-covered. Recording a minor without one
-    // is refused rather than accepted and left incomplete, because the missing
-    // field is the one that matters if anything goes wrong.
-    if (body.isMinor && !body.guardianPhone && !body.guardianEmail) {
-      throw ApiError.badRequest('A student under 18 needs a guardian phone or email on the record.');
-    }
-
-    const enrollment = await prisma.enrollment.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode: await nextRecordCode('ENR'),
-        personId: person.id,
-        cohortId: cohort.id,
-        institutionId: body.institutionId ?? null,
-        status: 'reserved',
-        isMinor: body.isMinor ?? false,
-        guardianName: body.guardianName ?? null,
-        guardianPhone: body.guardianPhone ?? null,
-        guardianEmail: body.guardianEmail ?? null,
-      },
-    });
-
-    await emit({
-      name: EVENTS.ENROLLMENT_CREATED,
-      subject: { entityType: 'enrollment', entityId: enrollment.id, recordCode: enrollment.recordCode },
-      related: [
-        { relation: 'about', entityType: 'person', entityId: person.id },
-        { relation: 'in', entityType: 'cohort', entityId: cohort.id },
-        ...(body.institutionId
-          ? [{ relation: 'recruited_from', entityType: 'organization', entityId: body.institutionId }]
-          : []),
-      ],
-      // The guardian's details are deliberately not in the event body: an event
-      // log is a wider audience than the record.
-      newState: { status: 'reserved', cohort: cohort.name, course: cohort.course.name, isMinor: enrollment.isMinor },
-      owner: { partyId: person.id },
-      confidentiality: enrollment.isMinor ? 'restricted' : 'internal',
-      impact: { domains: ['edu'] },
-    });
-
+    const enrollment = await enrolStudent(req.body);
     res.status(201).json(enrollment);
     return undefined;
   }),

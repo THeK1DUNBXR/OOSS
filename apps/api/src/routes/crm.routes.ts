@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { VERTICALS, INTERACTION_TYPES, RELATIONSHIP_TYPES } from '@kaizen/shared';
+import { VERTICALS, INTERACTION_TYPES, RELATIONSHIP_TYPES, COUNTERPARTY_AFFILIATIONS } from '@kaizen/shared';
 import { handler, parsePaging, str, bool, date, numeric } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
@@ -64,7 +64,7 @@ router.get(
     const { page, pageSize } = parsePaging(req);
     const q = str(req.query.q);
 
-    const where = {
+    const base = {
       tenantId: auth.tenantId,
       deletedAt: null,
       ...(bool(req.query.includeMerged) ? {} : { dedupeStatus: { not: 'merged' } }),
@@ -72,6 +72,22 @@ router.get(
         ? { OR: [{ fullName: { contains: q, mode: 'insensitive' as const } }, { recordCode: { contains: q, mode: 'insensitive' as const } }, { primaryEmail: { contains: q, mode: 'insensitive' as const } }] }
         : {}),
     };
+
+    // What a person is to us — student, employee, someone's contact — is not a
+    // field on the person. It is their live affiliations, which is what lets one
+    // human be a student in 2024 and an employee in 2026 without becoming two
+    // records. So the filter is an affiliation filter, and `none` — somebody we
+    // have a name for and no stated relationship with — is a real answer rather
+    // than an error state: it is exactly the list worth working through.
+    const groupWhere = (group: string | undefined): Record<string, unknown> => {
+      if (!group || group === 'all') return {};
+      if (group === 'none') return { affiliations: { none: { status: 'active' } } };
+      const types = group === 'contact' ? COUNTERPARTY_AFFILIATIONS : [group];
+      return { affiliations: { some: { status: 'active', affiliationType: { in: types } } } };
+    };
+
+    const where = { ...base, ...groupWhere(str(req.query.affiliation)) };
+    const countFor = (group: string) => prisma.person.count({ where: { ...base, ...groupWhere(group) } as never });
 
     const [items, total] = await Promise.all([
       prisma.person.findMany({
@@ -83,6 +99,12 @@ router.get(
       }),
       prisma.person.count({ where: where as never }),
     ]);
+
+    // Counted against the search term but not against the selected tab, so
+    // switching tabs never changes the numbers written on the tabs.
+    const [everyone, studentCount, employeeCount, contactCount, unaffiliatedCount] = await Promise.all(
+      ['all', 'student', 'employee', 'contact', 'none'].map(countFor),
+    );
 
     const canSeeHr = await can({ resource: 'users', verb: 'view' });
 
@@ -111,6 +133,13 @@ router.get(
         createdAt: p.createdAt.toISOString(),
       })),
       total,
+      counts: {
+        all: everyone,
+        student: studentCount,
+        employee: employeeCount,
+        contact: contactCount,
+        none: unaffiliatedCount,
+      },
       page,
       pageSize,
     };
@@ -262,6 +291,38 @@ router.post(
 // Organizations and their two independent specialisations
 // ---------------------------------------------------------------------------
 
+/**
+ * The two specialisations, as one schema each.
+ *
+ * Shared between "create it as one" and "mark an existing one as one", because
+ * those are the same fact arriving at two different moments and a second copy
+ * of the shape is a second copy to forget to update.
+ */
+const accountSchema = z.object({
+  tier: z.string().optional(),
+  billingEmail: z.string().nullish(),
+  billingAddress: z.string().nullish(),
+  paymentTermsDays: z.number().nullish(),
+  annualRevenueBand: z.string().nullish(),
+  employeeCountBand: z.string().nullish(),
+});
+
+const institutionProfileSchema = z.object({
+  institutionType: z.string().nullish(),
+  managementType: z.string().nullish(),
+  district: z.string().nullish(),
+  taluk: z.string().nullish(),
+  state: z.string().nullish(),
+  address: z.string().nullish(),
+  latitude: z.number().nullish(),
+  longitude: z.number().nullish(),
+  externalIdentifier: z.string().nullish(),
+  establishedYear: z.number().nullish(),
+  studentCount: z.number().nullish(),
+  departments: z.array(z.string()).optional(),
+  strategicPriority: z.string().nullish(),
+});
+
 router.get(
   '/organizations',
   handler(async (req) => {
@@ -327,11 +388,16 @@ router.get('/organizations/:id', handler(async (req) => assembleOrganization360(
 router.post(
   '/organizations',
   handler(async (req, res) => {
+    // The specialisation blocks are optional and independent. Sending both
+    // creates a body that is a client and a college at once, which is a real
+    // case here and not a conflict.
     const schema = z.object({
       name: z.string().min(1),
       website: z.string().nullish(),
       tags: z.array(z.string()).optional(),
       ownerPartyId: z.string().nullish(),
+      account: accountSchema.optional(),
+      institutionProfile: institutionProfileSchema.optional(),
     });
     const org = await createOrganization(schema.parse(req.body));
     res.status(201).json(org);
@@ -341,38 +407,12 @@ router.post(
 
 router.post(
   '/organizations/:id/account',
-  handler(async (req) => {
-    const schema = z.object({
-      tier: z.string().optional(),
-      billingEmail: z.string().nullish(),
-      paymentTermsDays: z.number().nullish(),
-      annualRevenueBand: z.string().nullish(),
-      employeeCountBand: z.string().nullish(),
-    });
-    return attachAccount(req.params.id, schema.parse(req.body));
-  }),
+  handler(async (req) => attachAccount(req.params.id, accountSchema.parse(req.body))),
 );
 
 router.post(
   '/organizations/:id/institution-profile',
-  handler(async (req) => {
-    const schema = z.object({
-      institutionType: z.string().nullish(),
-      managementType: z.string().nullish(),
-      district: z.string().nullish(),
-      taluk: z.string().nullish(),
-      state: z.string().nullish(),
-      address: z.string().nullish(),
-      latitude: z.number().nullish(),
-      longitude: z.number().nullish(),
-      externalIdentifier: z.string().nullish(),
-      establishedYear: z.number().nullish(),
-      studentCount: z.number().nullish(),
-      departments: z.array(z.string()).optional(),
-      strategicPriority: z.string().nullish(),
-    });
-    return attachInstitutionProfile(req.params.id, schema.parse(req.body));
-  }),
+  handler(async (req) => attachInstitutionProfile(req.params.id, institutionProfileSchema.parse(req.body))),
 );
 
 router.delete('/organizations/:id/account', handler(async (req) => detachAccount(req.params.id)));

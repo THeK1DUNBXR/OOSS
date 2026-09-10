@@ -514,29 +514,6 @@ export function NewPayment({ open, onClose }: { open: boolean; onClose: () => vo
 // Customers and people
 // ---------------------------------------------------------------------------
 
-export function NewOrganization({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [name, setName] = useState('');
-  const [website, setWebsite] = useState('');
-
-  return (
-    <CreateModal
-      open={open}
-      title="Add a customer"
-      submitLabel="Add them"
-      onClose={onClose}
-      invalidate={[['organizations'], ['accounts']]}
-      onSubmit={() => api.post('/crm/organizations', { name, website: website || null })}
-    >
-      <TextInput label="Name" required autoFocus value={name} onChange={setName} />
-      <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
-      <p className="text-2xs text-ink-500">
-        Whether they are a paying account, an institution, or both, is set on their page afterwards — an
-        organisation can genuinely be both at once, so it is not asked as an either/or here.
-      </p>
-    </CreateModal>
-  );
-}
-
 export function NewContact({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [fullName, setFullName] = useState('');
   const [primaryPhone, setPhone] = useState('');
@@ -570,6 +547,291 @@ export function NewContact({ open, onClose }: { open: boolean; onClose: () => vo
         If this matches somebody already on file, the platform will say so and ask rather than quietly creating a
         second copy of the same person.
       </p>
+    </CreateModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Organisations, and what they are to us
+// ---------------------------------------------------------------------------
+
+/**
+ * A company, a college, or both.
+ *
+ * The old form asked for a name and then sent you to the record's own page to
+ * press "Mark as a college", which filled in an institution type and a state
+ * nobody had typed. Two things wrong with that: the person adding a college
+ * knows it is a college while they are typing its name, and a product that
+ * writes "Engineering college, Tamil Nadu" because nothing was asked is
+ * inventing data in a system whose whole discipline is that absent is safe and
+ * wrong is not.
+ *
+ * So the question is asked here, first, in one word — and the fields that
+ * follow are the ones that answer actually needs. "Not sure yet" is a real
+ * option, because sometimes you have a name off a business card and nothing
+ * else, and forcing a guess would be the same bug in a different place.
+ */
+
+const INSTITUTION_TYPES = [
+  { value: 'engineering_college', label: 'Engineering college' },
+  { value: 'arts_science_college', label: 'Arts & science college' },
+  { value: 'polytechnic', label: 'Polytechnic' },
+  { value: 'university', label: 'University' },
+  { value: 'school', label: 'School' },
+  { value: 'iti', label: 'ITI' },
+  { value: 'other', label: 'Other' },
+];
+
+const MANAGEMENT_TYPES = [
+  { value: 'government', label: 'Government' },
+  { value: 'aided', label: 'Aided' },
+  { value: 'self_financing', label: 'Self-financing' },
+  { value: 'autonomous', label: 'Autonomous' },
+  { value: 'private', label: 'Private' },
+];
+
+const TIERS = [
+  { value: 'strategic', label: 'Strategic' },
+  { value: 'key', label: 'Key' },
+  { value: 'standard', label: 'Standard' },
+];
+
+type OrgKind = 'client' | 'college' | 'both' | 'unknown';
+
+const ORG_KINDS: Array<{ value: OrgKind; label: string; hint: string }> = [
+  { value: 'client', label: 'A client', hint: 'We invoice them' },
+  { value: 'college', label: 'A college', hint: 'We recruit students from them' },
+  { value: 'both', label: 'Both', hint: 'They buy from us and send us students' },
+  { value: 'unknown', label: 'Not sure yet', hint: 'Just the name for now' },
+];
+
+/** The client-side fields, shared between creating one and marking one. */
+function ClientFields(p: {
+  tier: string;
+  setTier: (v: string) => void;
+  billingEmail: string;
+  setBillingEmail: (v: string) => void;
+  paymentTermsDays: string;
+  setPaymentTermsDays: (v: string) => void;
+}) {
+  return (
+    <Row>
+      <SelectInput label="Tier" value={p.tier} onChange={p.setTier} placeholder="Not set" options={TIERS} />
+      <TextInput
+        label="Payment terms"
+        type="number"
+        hint="days"
+        value={p.paymentTermsDays}
+        onChange={p.setPaymentTermsDays}
+        placeholder="30"
+      />
+      <TextInput label="Billing email" type="email" value={p.billingEmail} onChange={p.setBillingEmail} />
+    </Row>
+  );
+}
+
+/** The college-side fields, shared between creating one and marking one. */
+function CollegeFields(p: {
+  institutionType: string;
+  setInstitutionType: (v: string) => void;
+  managementType: string;
+  setManagementType: (v: string) => void;
+  district: string;
+  setDistrict: (v: string) => void;
+  state: string;
+  setState: (v: string) => void;
+  studentCount: string;
+  setStudentCount: (v: string) => void;
+}) {
+  return (
+    <>
+      <Row>
+        <SelectInput
+          label="Kind of institution"
+          value={p.institutionType}
+          onChange={p.setInstitutionType}
+          placeholder="Not recorded"
+          options={INSTITUTION_TYPES}
+        />
+        <SelectInput
+          label="Management"
+          value={p.managementType}
+          onChange={p.setManagementType}
+          placeholder="Not recorded"
+          options={MANAGEMENT_TYPES}
+        />
+      </Row>
+      <Row>
+        <TextInput label="District" value={p.district} onChange={p.setDistrict} />
+        <TextInput label="State" value={p.state} onChange={p.setState} />
+      </Row>
+      <TextInput
+        label="Students on campus"
+        type="number"
+        hint="roughly, if known — leave blank rather than guessing"
+        value={p.studentCount}
+        onChange={p.setStudentCount}
+      />
+    </>
+  );
+}
+
+function useSpecialisationFields() {
+  const [tier, setTier] = useState('');
+  const [billingEmail, setBillingEmail] = useState('');
+  const [paymentTermsDays, setPaymentTermsDays] = useState('');
+  const [institutionType, setInstitutionType] = useState('');
+  const [managementType, setManagementType] = useState('');
+  const [district, setDistrict] = useState('');
+  const [state, setState] = useState('');
+  const [studentCount, setStudentCount] = useState('');
+
+  // Only what was actually typed is sent. A blank field is left out of the
+  // payload entirely rather than sent as an empty string, so "not recorded"
+  // stays distinguishable from "recorded as nothing".
+  const account = () => ({
+    ...(tier ? { tier } : {}),
+    ...(billingEmail ? { billingEmail } : {}),
+    ...(paymentTermsDays ? { paymentTermsDays: Number(paymentTermsDays) } : {}),
+  });
+
+  const institutionProfile = () => ({
+    ...(institutionType ? { institutionType } : {}),
+    ...(managementType ? { managementType } : {}),
+    ...(district ? { district } : {}),
+    ...(state ? { state } : {}),
+    ...(studentCount ? { studentCount: Number(studentCount) } : {}),
+  });
+
+  return {
+    account,
+    institutionProfile,
+    clientProps: { tier, setTier, billingEmail, setBillingEmail, paymentTermsDays, setPaymentTermsDays },
+    collegeProps: {
+      institutionType, setInstitutionType,
+      managementType, setManagementType,
+      district, setDistrict,
+      state, setState,
+      studentCount, setStudentCount,
+    },
+  };
+}
+
+export function NewOrganization({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [kind, setKind] = useState<OrgKind>('client');
+  const [name, setName] = useState('');
+  const [website, setWebsite] = useState('');
+  const f = useSpecialisationFields();
+
+  const isClient = kind === 'client' || kind === 'both';
+  const isCollege = kind === 'college' || kind === 'both';
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add a company or a college"
+      submitLabel="Add them"
+      onClose={onClose}
+      invalidate={[['organizations']]}
+      onSubmit={() =>
+        api.post('/crm/organizations', {
+          name,
+          website: website || null,
+          ...(isClient ? { account: f.account() } : {}),
+          ...(isCollege ? { institutionProfile: f.institutionProfile() } : {}),
+        })
+      }
+    >
+      <div>
+        <p className="label">What are they to us?</p>
+        <div className="mt-1 grid gap-2 sm:grid-cols-4">
+          {ORG_KINDS.map((k) => (
+            <button
+              key={k.value}
+              type="button"
+              onClick={() => setKind(k.value)}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                kind === k.value ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
+              }`}
+            >
+              <span className={`block text-xs font-medium ${kind === k.value ? 'text-accent-soft' : 'text-ink-200'}`}>
+                {k.label}
+              </span>
+              <span className="block text-2xs text-ink-500">{k.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <TextInput label="Name" required autoFocus value={name} onChange={setName} />
+      <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
+
+      {isClient && (
+        <fieldset className="rounded-lg border border-ink-800 p-3">
+          <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">As a client</legend>
+          <ClientFields {...f.clientProps} />
+        </fieldset>
+      )}
+      {isCollege && (
+        <fieldset className="space-y-3 rounded-lg border border-ink-800 p-3">
+          <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">As a college</legend>
+          <CollegeFields {...f.collegeProps} />
+        </fieldset>
+      )}
+      {kind === 'unknown' && (
+        <p className="rounded border border-ink-800 bg-ink-950 px-3 py-2 text-2xs text-ink-500">
+          Saved as a name and nothing else. You can mark them as a client or a college later from their own page,
+          which is the same decision made at a moment when you know the answer.
+        </p>
+      )}
+      {isCollege && (
+        <p className="text-2xs text-ink-500">
+          Being marked as a college is what lets students be recorded as having come from here — which is the whole
+          point of keeping colleges separately from the companies we invoice.
+        </p>
+      )}
+    </CreateModal>
+  );
+}
+
+/** The same fields again, for a body already on file. */
+export function MarkAsClient({
+  open, organizationId, name, onClose,
+}: { open: boolean; organizationId: string; name: string; onClose: () => void }) {
+  const f = useSpecialisationFields();
+  return (
+    <CreateModal
+      open={open}
+      title={`Mark ${name} as a client`}
+      submitLabel="Mark them"
+      onClose={onClose}
+      invalidate={[['organization', organizationId], ['organizations']]}
+      onSubmit={() => api.post(`/crm/organizations/${organizationId}/account`, f.account())}
+    >
+      <p className="text-2xs text-ink-500">A client is somebody we invoice. Everything below is optional.</p>
+      <ClientFields {...f.clientProps} />
+    </CreateModal>
+  );
+}
+
+export function MarkAsCollege({
+  open, organizationId, name, onClose,
+}: { open: boolean; organizationId: string; name: string; onClose: () => void }) {
+  const f = useSpecialisationFields();
+  return (
+    <CreateModal
+      open={open}
+      title={`Mark ${name} as a college`}
+      submitLabel="Mark them"
+      onClose={onClose}
+      invalidate={[['organization', organizationId], ['organizations']]}
+      onSubmit={() => api.post(`/crm/organizations/${organizationId}/institution-profile`, f.institutionProfile())}
+    >
+      <p className="text-2xs text-ink-500">
+        A college is somewhere we recruit students from. Everything below is optional — record what you know and
+        leave the rest blank.
+      </p>
+      <CollegeFields {...f.collegeProps} />
     </CreateModal>
   );
 }
@@ -1222,11 +1484,31 @@ export function NewDecision({ open, onClose }: { open: boolean; onClose: () => v
  * relationship unmeasurable — the field exists to make "how many did this
  * college send us, and how did they do" answerable.
  */
+/**
+ * Enrolling somebody.
+ *
+ * "Somebody new" and "somebody already on file" are asked as two different
+ * things, because they are. The endpoint has always accepted a person id and
+ * the form never offered one, so enrolling a contact who was already in the
+ * system typed their name in again and created a second human — in a product
+ * whose Contacts page promises one record per person, kept for good.
+ *
+ * A student is not a separate kind of record from a contact. Enrolling is what
+ * gives an existing person a student affiliation; that is the distinction, and
+ * it is a relationship rather than a table.
+ */
 export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cohorts = useList<{ id: string; name: string; courseName?: string }>('cohorts', '/education/cohorts', open);
   const colleges = useList<Named & { specialisations?: Array<{ kind: string }> }>('organizations', '/crm/organizations?specialisation=institution', open);
+  const people = useList<{ id: string; fullName: string; recordCode: string; primaryPhone?: string | null }>(
+    'people-picker',
+    '/crm/people?pageSize=200',
+    open,
+  );
 
+  const [who, setWho] = useState<'new' | 'existing'>('new');
   const [cohortId, setCohortId] = useState('');
+  const [personId, setPersonId] = useState('');
   const [fullName, setFullName] = useState('');
   const [primaryPhone, setPhone] = useState('');
   const [primaryEmail, setEmail] = useState('');
@@ -1241,13 +1523,17 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
       title="Enrol a student"
       submitLabel="Enrol them"
       onClose={onClose}
-      invalidate={[['enrollments'], ['cohorts']]}
+      invalidate={[['enrollments'], ['cohorts'], ['people']]}
       onSubmit={() =>
         api.post('/education/enrollments', {
           cohortId,
-          fullName,
-          primaryPhone: primaryPhone || null,
-          primaryEmail: primaryEmail || null,
+          ...(who === 'existing'
+            ? { personId }
+            : {
+                fullName,
+                primaryPhone: primaryPhone || null,
+                primaryEmail: primaryEmail || null,
+              }),
           institutionId: institutionId || null,
           isMinor,
           guardianName: guardianName || null,
@@ -1255,11 +1541,53 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
         })
       }
     >
-      <TextInput label="Name" required autoFocus value={fullName} onChange={setFullName} />
-      <Row>
-        <TextInput label="Phone" type="tel" value={primaryPhone} onChange={setPhone} />
-        <TextInput label="Email" type="email" value={primaryEmail} onChange={setEmail} />
-      </Row>
+      <div className="flex gap-2">
+        {(
+          [
+            ['new', 'Somebody new'],
+            ['existing', 'Somebody already on file'],
+          ] as Array<['new' | 'existing', string]>
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setWho(value)}
+            className={`chip transition-colors ${
+              who === value ? 'border-accent/60 text-accent-soft' : 'border-ink-800 text-ink-500 hover:border-ink-600'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {who === 'existing' ? (
+        <SelectInput
+          label="Which person"
+          required
+          value={personId}
+          onChange={setPersonId}
+          placeholder={people.rows.length ? 'Search the contacts already on file' : 'Nobody on file yet'}
+          options={people.rows.map((pp) => ({
+            value: pp.id,
+            label: pp.primaryPhone ? `${pp.fullName} — ${pp.primaryPhone}` : pp.fullName,
+          }))}
+          hint="they keep their record and gain a student role on it"
+        />
+      ) : (
+        <>
+          <TextInput label="Name" required autoFocus value={fullName} onChange={setFullName} />
+          <Row>
+            <TextInput label="Phone" type="tel" value={primaryPhone} onChange={setPhone} />
+            <TextInput label="Email" type="email" value={primaryEmail} onChange={setEmail} />
+          </Row>
+          <p className="text-2xs text-ink-500">
+            A phone or an email is matched against everybody already on file. If it belongs to somebody we know, the
+            enrolment lands on their record instead of creating a second one — and where the match is uncertain it is
+            raised for a person to decide rather than guessed.
+          </p>
+        </>
+      )}
       <SelectInput
         label="Batch"
         required

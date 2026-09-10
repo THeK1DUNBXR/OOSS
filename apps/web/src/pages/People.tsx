@@ -31,14 +31,49 @@ import { NewButton } from '../components/forms.js';
 import { NewContact, NewInteraction } from '../components/createForms.js';
 import { useSession } from '../lib/session.js';
 
+/**
+ * What a person is to us, as one word.
+ *
+ * Not a field on the person — their live affiliations, which is the whole
+ * reason one human can be a student in 2024 and staff in 2026 without becoming
+ * two records. Shown because a list where a student, an employee and somebody's
+ * name off a business card render identically is a list you cannot act on.
+ */
+const ROLE_LABELS: Record<string, string> = {
+  employee: 'Staff',
+  student: 'Student',
+  customer_contact: 'Client contact',
+  institution_contact: 'College contact',
+  partner_representative: 'Partner',
+  parent_guardian: 'Guardian',
+  alumnus: 'Alumnus',
+  candidate: 'Candidate',
+  vendor_contact: 'Supplier contact',
+};
+
+const ROLE_TONE: Record<string, string> = {
+  student: 'border-accent/40 text-accent-soft',
+  employee: 'border-band-good/40 text-band-good',
+};
+
+type PeopleGroup = 'all' | 'student' | 'employee' | 'contact' | 'none';
+
+interface PeopleResponse {
+  items: PersonView[];
+  total: number;
+  counts: Record<PeopleGroup, number>;
+}
+
 export function People() {
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<'people' | 'merge'>('people');
+  const [group, setGroup] = useState<PeopleGroup>('all');
   const [q, setQ] = useState('');
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['people', q],
-    queryFn: () => api.get<{ items: PersonView[]; total: number }>(`/crm/people?q=${encodeURIComponent(q)}`),
+    queryKey: ['people', q, group],
+    queryFn: () =>
+      api.get<PeopleResponse>(`/crm/people?q=${encodeURIComponent(q)}&affiliation=${group}`),
   });
 
   const { data: candidates = [] } = useQuery({
@@ -68,15 +103,47 @@ export function People() {
 
       {tab === 'people' && (
         <>
-          <div className="mb-3">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <input className="input max-w-sm" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, record code or email…" />
+            {/* Counted against the search but not against the selected group, so
+                pressing a group never changes the numbers on the groups. */}
+            {(
+              [
+                ['all', 'Everyone'],
+                ['student', 'Students'],
+                ['employee', 'Staff'],
+                ['contact', 'Their people'],
+                ['none', 'No stated role'],
+              ] as Array<[PeopleGroup, string]>
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setGroup(key)}
+                className={`chip transition-colors ${
+                  group === key ? 'border-accent/60 text-accent-soft' : 'border-ink-800 text-ink-500 hover:border-ink-600'
+                }`}
+              >
+                {label}
+                {data?.counts?.[key] !== undefined && <span className="ml-1 tabular-nums text-ink-600">{data.counts[key]}</span>}
+              </button>
+            ))}
           </div>
 
           {isLoading ? (
             <Loading />
           ) : !data?.items.length ? (
             <Card>
-              <EmptyState message="No people match." />
+              <EmptyState
+                message={group === 'all' ? 'No people match.' : 'Nobody here yet.'}
+                hint={
+                  group === 'student'
+                    ? 'Somebody becomes a student by being enrolled on a batch, not by being added here.'
+                    : group === 'employee'
+                      ? 'Somebody becomes staff by being put on the books under People, not by being added here.'
+                      : undefined
+                }
+              />
             </Card>
           ) : (
             <Card bodyClassName="p-0 overflow-x-auto">
@@ -86,7 +153,7 @@ export function People() {
                     <th>Code</th>
                     <th>Name</th>
                     <th>Reachable at</th>
-                    <th>Affiliations</th>
+                    <th>To us</th>
                     <th>Status</th>
                   </tr>
                 </thead>
@@ -107,10 +174,19 @@ export function People() {
                       </td>
                       <td>
                         <div className="flex flex-wrap gap-1">
-                          {p.affiliations.length === 0 && <span className="text-2xs text-ink-600">none</span>}
+                          {p.affiliations.length === 0 && (
+                            <span className="text-2xs text-ink-600" title="On file with no stated relationship to us. Not an error — somebody has to be added before they are anything.">
+                              nothing stated
+                            </span>
+                          )}
                           {p.affiliations.map((a) => (
-                            <span key={a.id} className="chip border-ink-700 text-ink-400">
-                              {titleCase(a.affiliationType)}
+                            <span
+                              key={a.id}
+                              className={`chip ${ROLE_TONE[a.affiliationType] ?? 'border-ink-700 text-ink-400'}`}
+                              title={a.counterpartyName ? `via ${a.counterpartyName}` : undefined}
+                            >
+                              {ROLE_LABELS[a.affiliationType] ?? titleCase(a.affiliationType)}
+                              {a.counterpartyName && <span className="ml-1 text-ink-500">· {a.counterpartyName}</span>}
                             </span>
                           ))}
                         </div>

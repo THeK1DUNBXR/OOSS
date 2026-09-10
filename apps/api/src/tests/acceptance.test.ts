@@ -1771,3 +1771,173 @@ describe('Finance — obligation, movement and allocation are three distinct fac
     });
   });
 });
+
+// ===========================================================================
+// Institution / organisation / student — three things, kept distinct
+// ===========================================================================
+
+describe('A college, a client and a student are three different facts', () => {
+  /**
+   * A phone number nobody else in this database has.
+   *
+   * `Date.now()` truncated to ten digits is not one: the leading digits of a
+   * millisecond timestamp only change every hundred seconds, so two subjects
+   * created in the same test run get the same number and the second resolves
+   * onto the first — which is the resolver working correctly and the fixture
+   * lying. The suite has to pass twice against one database, so the counter
+   * is mixed with the low digits of the clock rather than the high ones.
+   */
+  let seq = 0;
+  const aPhone = () => `9${String(Date.now()).slice(-6)}${String((seq += 1)).padStart(3, '0')}`;
+
+  /** A college and a batch to enrol onto, built fresh so nothing else can move them. */
+  async function aCollegeAndABatch(tag: string) {
+    const { createOrganization } = await import('../domains/organizations.js');
+    const college = await createOrganization({
+      name: `${tag} College of Engineering`,
+      institutionProfile: { institutionType: 'engineering_college', district: 'Madurai' },
+    });
+    const course = await prisma.course.create({
+      data: { tenantId: TENANT, recordCode: await nextRecordCode('CRS'), name: `${tag} Course`, code: `${tag}-C` },
+    });
+    const cohort = await prisma.cohort.create({
+      data: {
+        tenantId: TENANT,
+        recordCode: await nextRecordCode('COH'),
+        courseId: course.id,
+        name: `${tag} Batch`,
+        startDate: new Date(),
+        capacity: 30,
+      },
+    });
+    return { college, cohort };
+  }
+
+  it('an organisation can be created as a college in one act, with only what was typed stored', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createOrganization } = await import('../domains/organizations.js');
+      const org = await createOrganization({
+        name: `One Step College ${Date.now()}`,
+        institutionProfile: { institutionType: 'polytechnic', district: 'Salem' },
+      });
+      const profile = await prisma.institutionProfile.findFirstOrThrow({ where: { organizationId: org.id } });
+      expect(profile.institutionType).toBe('polytechnic');
+      expect(profile.district).toBe('Salem');
+      // Nothing was invented to fill the fields nobody typed.
+      expect(profile.state).toBeNull();
+      expect(profile.studentCount).toBeNull();
+      // And being a college did not make them a client.
+      expect(await prisma.account.findFirst({ where: { organizationId: org.id } })).toBeNull();
+    });
+  });
+
+  it('being enrolled is what makes somebody a student, and it names the college', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { enrolStudent } = await import('../domains/education.js');
+      const { college, cohort } = await aCollegeAndABatch(`AFF${Date.now()}`);
+
+      const enrollment = await enrolStudent({
+        cohortId: cohort.id,
+        fullName: 'Affiliation Subject',
+        primaryPhone: aPhone(),
+        institutionId: college.id,
+      });
+
+      const affiliation = await prisma.affiliation.findFirstOrThrow({
+        where: { partyId: enrollment.personId, affiliationType: 'student' },
+      });
+      expect(affiliation.counterpartyId).toBe(college.id);
+      expect(affiliation.status).toBe('active');
+      // Student affiliations carry the statutory retention floor, so a dedup
+      // match against one never auto-merges.
+      expect(affiliation.statutoryRetentionFloor).toBe(true);
+    });
+  });
+
+  it('a company that is not marked as a college cannot be where a student came from', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createOrganization } = await import('../domains/organizations.js');
+      const { enrolStudent } = await import('../domains/education.js');
+      const { cohort } = await aCollegeAndABatch(`NC${Date.now()}`);
+      const plain = await createOrganization({ name: `Not A College ${Date.now()}` });
+
+      const err = await expectReject(() =>
+        enrolStudent({ cohortId: cohort.id, fullName: 'Refused Origin', institutionId: plain.id }),
+      );
+      expect(err.message).toMatch(/not marked as a college/);
+    });
+  });
+
+  it('a refused enrolment leaves no person behind', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { enrolStudent } = await import('../domains/education.js');
+      const { cohort } = await aCollegeAndABatch(`GH${Date.now()}`);
+      const name = `Ghost ${Date.now()}`;
+
+      // A minor with no guardian contact is refused. The person must not have
+      // been created on the way to the refusal: an error message is not a
+      // reason for a stranger to appear in the directory.
+      await expectReject(() => enrolStudent({ cohortId: cohort.id, fullName: name, isMinor: true }));
+      expect(await prisma.person.findFirst({ where: { fullName: name } })).toBeNull();
+    });
+  });
+
+  it('a returning student is the same person, not a second one, and raises no merge candidate', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { enrolStudent } = await import('../domains/education.js');
+      const tag = `RET${Date.now()}`;
+      const { cohort: first } = await aCollegeAndABatch(tag);
+      const { cohort: second } = await aCollegeAndABatch(`${tag}B`);
+      const phone = aPhone();
+
+      const before = await prisma.mergeCandidate.count();
+      const one = await enrolStudent({ cohortId: first.id, fullName: 'Returning Student', primaryPhone: phone });
+      const two = await enrolStudent({ cohortId: second.id, fullName: 'Returning Student', primaryPhone: phone });
+
+      expect(two.personId).toBe(one.personId);
+      // Enrolling somebody a second time is not a merge of two records, so it
+      // must not fill a queue a human has to drain.
+      expect(await prisma.mergeCandidate.count()).toBe(before);
+      // Nor a second badge saying the same thing.
+      expect(
+        await prisma.affiliation.count({ where: { partyId: one.personId, affiliationType: 'student' } }),
+      ).toBe(1);
+    });
+  });
+
+  it('the same person on the same batch twice is refused, naming the enrolment they already have', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { enrolStudent } = await import('../domains/education.js');
+      const { cohort } = await aCollegeAndABatch(`DUP${Date.now()}`);
+      const phone = aPhone();
+
+      const first = await enrolStudent({ cohortId: cohort.id, fullName: 'Twice Over', primaryPhone: phone });
+      const err = await expectReject(() =>
+        enrolStudent({ cohortId: cohort.id, fullName: 'Twice Over', primaryPhone: phone }),
+      );
+      expect(err.status).toBe(409);
+      expect(err.message).toContain(first.recordCode);
+    });
+  });
+
+  it('a college shows the students it sent; a body that is not a college has no such list', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { assembleOrganization360, createOrganization } = await import('../domains/organizations.js');
+      const { enrolStudent } = await import('../domains/education.js');
+      const { college, cohort } = await aCollegeAndABatch(`SENT${Date.now()}`);
+      await enrolStudent({
+        cohortId: cohort.id,
+        fullName: 'Sent From Here',
+        primaryPhone: aPhone(),
+        institutionId: college.id,
+      });
+
+      const view = await assembleOrganization360(college.id);
+      expect(view.students?.map((s) => s.personName)).toContain('Sent From Here');
+
+      const plain = await createOrganization({ name: `No Students ${Date.now()}` });
+      // Absent rather than empty: "none" and "not a college" are different answers.
+      expect((await assembleOrganization360(plain.id)).students).toBeNull();
+    });
+  });
+});

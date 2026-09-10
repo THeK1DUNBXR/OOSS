@@ -12,7 +12,7 @@
 
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { OrganizationView } from '@kaizen/shared';
 import { api, date, relative, titleCase } from '../lib/api.js';
 import {
@@ -28,6 +28,7 @@ import {
   Tabs,
   Withheld,
 } from '../components/ui.js';
+import { MarkAsClient, MarkAsCollege, NewOrganization } from '../components/createForms.js';
 import { useSession } from '../lib/session.js';
 
 const STATUS_TONE: Record<string, 'neutral' | 'good' | 'accent' | 'warn'> = {
@@ -62,7 +63,7 @@ export function Accounts() {
       <PageHeader
         title="Companies & Colleges"
         subtitle="Every organisation we deal with, one record each. What an organisation is to us — a client we invoice, a college we recruit students from, or both at once — is recorded on that one record rather than by keeping two."
-        actions={can('organizations:C') && <button className="btn-primary" onClick={() => setCreateOpen(true)}>Add an organisation</button>}
+        actions={can('organizations:C') && <button className="btn-primary" onClick={() => setCreateOpen(true)}>Add a company or college</button>}
       />
 
       <div className="mb-3">
@@ -147,64 +148,15 @@ export function Accounts() {
         </div>
       )}
 
-      <CreateOrgModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <NewOrganization open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
-  );
-}
-
-function CreateOrgModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [name, setName] = useState('');
-  const [website, setWebsite] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const create = useMutation({
-    mutationFn: () => api.post('/crm/organizations', { name, website: website || null }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['organizations'] });
-      onClose();
-      setName('');
-      setWebsite('');
-    },
-    onError: (err) => setError(err instanceof Error ? err.message : 'Creation failed'),
-  });
-
-  return (
-    <Modal
-      open={open}
-      title="New organisation"
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={() => create.mutate()} disabled={!name || create.isPending}>Create</button>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <div>
-          <label className="label">Name</label>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Website</label>
-          <input className="input" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
-        </div>
-        <p className="rounded border border-ink-800 bg-ink-950 px-3 py-2 text-2xs text-ink-500">
-          A name is all that is needed. Whether they are a client, a college, or both is set afterwards on their own
-          page — deliberately a separate decision, so nobody has to guess it at the moment of typing a name.
-        </p>
-        {error && <p className="text-2xs text-band-critical">{error}</p>}
-      </div>
-    </Modal>
   );
 }
 
 export function AccountDetail() {
   const { id } = useParams<{ id: string }>();
-  const qc = useQueryClient();
   const { can } = useSession();
-  const [attach, setAttach] = useState<'account' | 'institution' | null>(null);
+  const [marking, setMarking] = useState<'client' | 'college' | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['organization', id],
@@ -216,23 +168,6 @@ export function AccountDetail() {
     queryKey: ['relationships', 'organization', id],
     queryFn: () => api.get<any[]>(`/crm/relationships?entityType=organization&entityId=${id}&fullHistory=true`),
     enabled: Boolean(id),
-  });
-
-  const attachAccount = useMutation({
-    mutationFn: () => api.post(`/crm/organizations/${id}/account`, { tier: 'standard', paymentTermsDays: 30 }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['organization', id] });
-      setAttach(null);
-    },
-  });
-
-  const attachInstitution = useMutation({
-    mutationFn: () =>
-      api.post(`/crm/organizations/${id}/institution-profile`, { institutionType: 'engineering_college', state: 'Tamil Nadu' }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['organization', id] });
-      setAttach(null);
-    },
   });
 
   if (isLoading) return <Loading />;
@@ -249,17 +184,26 @@ export function AccountDetail() {
         actions={
           <>
             {!data.account && can('organizations:C') && (
-              <button className="btn-ghost" onClick={() => attachAccount.mutate()} disabled={attachAccount.isPending}>
-                Mark as a client
-              </button>
+              <button className="btn-ghost" onClick={() => setMarking('client')}>Mark as a client</button>
             )}
             {!data.institutionProfile && can('institutions:C') && (
-              <button className="btn-ghost" onClick={() => attachInstitution.mutate()} disabled={attachInstitution.isPending}>
-                Mark as a college
-              </button>
+              <button className="btn-ghost" onClick={() => setMarking('college')}>Mark as a college</button>
             )}
           </>
         }
+      />
+
+      <MarkAsClient
+        open={marking === 'client'}
+        organizationId={id!}
+        name={org.name}
+        onClose={() => setMarking(null)}
+      />
+      <MarkAsCollege
+        open={marking === 'college'}
+        organizationId={id!}
+        name={org.name}
+        onClose={() => setMarking(null)}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -317,6 +261,43 @@ export function AccountDetail() {
                 </div>
               </Card>
             )
+          )}
+
+          {/* A college's page used to describe the college and say nothing about
+              what the relationship has produced, which is the only reason to
+              keep colleges apart from the companies we invoice. `students` is
+              absent — not empty — when the viewer holds no grant on education,
+              because "none" and "not for you" are different answers. */}
+          {data.students && (
+            <Card
+              title="Students from here"
+              subtitle="Everyone recorded as having come to us from this college."
+              bodyClassName="p-0"
+              actions={<span className="chip border-ink-700 text-ink-400">{data.students.length}</span>}
+            >
+              {data.students.length === 0 ? (
+                <div className="p-4">
+                  <EmptyState
+                    message="No students from this college yet."
+                    hint="Enrol one from Students and name this college as where they came from."
+                  />
+                </div>
+              ) : (
+                <ul className="divide-y divide-ink-850">
+                  {data.students.map((st: any) => (
+                    <li key={st.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <div>
+                        <p className="text-xs text-ink-200">{st.personName ?? '—'}</p>
+                        <p className="text-2xs text-ink-500">
+                          <span className="mono">{st.recordCode}</span> · {st.cohortName}
+                        </p>
+                      </div>
+                      <StatusChip status={st.status} tone={st.status === 'completed' ? 'good' : 'neutral'} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
           )}
 
           <Card title="Relationship history" subtitle="Changing the nature of a connection does not erase the old one — it is dated and a new one starts." bodyClassName="p-0">

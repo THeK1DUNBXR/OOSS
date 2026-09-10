@@ -28,6 +28,19 @@ export interface OrganizationInput {
   tags?: string[];
   ownerPartyId?: string | null;
   locations?: unknown[];
+  /**
+   * What this body is to us, declared at the moment of creation.
+   *
+   * Both are optional and independent — a college that also buys training
+   * carries both, and a body we have only just heard of carries neither. They
+   * are here rather than only on their own endpoints because a person adding a
+   * college knows it is a college while they are typing its name, and making
+   * them save, navigate and press a second button taught them nothing except
+   * that the product has an internal model. Each still goes through its own
+   * attach function, so each still requires its own grant.
+   */
+  account?: AccountInput;
+  institutionProfile?: InstitutionProfileInput;
 }
 
 /** Creating an ORGANIZATION requires only a name. It carries no `category` field. */
@@ -55,6 +68,12 @@ export async function createOrganization(input: OrganizationInput) {
     subject: { entityType: 'organization', entityId: org.id, recordCode },
     newState: { name: org.name },
   });
+
+  // Attached through the same functions the standalone endpoints call, so the
+  // grant checks, the audit record and the event are identical whether the
+  // specialisation arrives now or a month later.
+  if (input.account) await attachAccount(org.id, input.account);
+  if (input.institutionProfile) await attachInstitutionProfile(org.id, input.institutionProfile);
 
   return org;
 }
@@ -236,10 +255,51 @@ export async function assembleOrganization360(organizationId: string) {
 
   const computedStatus = await computeRelationshipStatus(organizationId);
 
+  // Students recruited out of this college.
+  //
+  // A college's page used to say what we knew *about* the college and nothing
+  // about what the relationship has actually produced, which is the only reason
+  // the relationship exists. Absent for a body that is not a college, and for a
+  // viewer without a grant on education — an empty list and "you may not see
+  // this" are different answers, so the key is absent rather than empty.
+  let students: Array<{
+    id: string;
+    recordCode: string;
+    personName: string | null;
+    cohortName: string;
+    status: string;
+    enrolledAt: string | null;
+  }> | null = null;
+
+  if (org.institutionProfile && (await can({ resource: 'education', verb: 'view' }))) {
+    const enrollments = await prisma.enrollment.findMany({
+      where: { tenantId: org.tenantId, institutionId: organizationId },
+      include: { cohort: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    const people = enrollments.length
+      ? await prisma.person.findMany({
+          where: { id: { in: [...new Set(enrollments.map((e) => e.personId))] } },
+          select: { id: true, fullName: true },
+        })
+      : [];
+    const byId = new Map(people.map((pp) => [pp.id, pp.fullName]));
+    students = enrollments.map((e) => ({
+      id: e.id,
+      recordCode: e.recordCode,
+      personName: byId.get(e.personId) ?? null,
+      cohortName: e.cohort.name,
+      status: e.status,
+      enrolledAt: e.enrolledAt?.toISOString() ?? null,
+    }));
+  }
+
   return {
     organization: org,
     account: org.account,
     institutionProfile,
+    students,
     specialisations: [
       ...(org.account ? [{ kind: 'account' as const, present: true as const, viewable: true }] : []),
       ...(org.institutionProfile

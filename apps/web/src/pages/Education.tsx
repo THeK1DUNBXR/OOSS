@@ -119,6 +119,10 @@ export function Enrollments() {
   if (error) return <ErrorBox error={error} />;
 
   const atRisk = data.filter((e) => e.atRisk).length;
+  // One person on two batches is two enrolments and one student. Counting rows
+  // and calling the answer "students" overstates the number of humans, which is
+  // the figure anybody reading this page is actually after.
+  const studentCount = new Set(data.map((e) => e.personId)).size;
   // Present only when the viewer's ceiling clears `regulated`; structurally
   // absent from the payload otherwise.
   const seesRegulated = data.some((e) => 'guardianPhone' in e);
@@ -133,7 +137,12 @@ export function Enrollments() {
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Students" value={data.length} drillTo="/education/enrollments" />
+        <Metric
+          label="Students"
+          value={studentCount}
+          sub={data.length === studentCount ? undefined : `on ${data.length} enrolments`}
+          drillTo="/education/enrollments"
+        />
         <Metric label="At risk" value={atRisk} tone={atRisk > 0 ? 'warn' : 'good'} sub="Attendance below the threshold" drillTo="/exceptions" />
         <Metric
           label="Mean attendance"
@@ -144,7 +153,7 @@ export function Enrollments() {
 
       <Tabs
         tabs={[
-          { key: 'all', label: 'All', count: data.length },
+          { key: 'all', label: 'All enrolments', count: data.length },
           { key: 'at_risk', label: 'At risk', count: atRisk },
         ]}
         active={tab}
