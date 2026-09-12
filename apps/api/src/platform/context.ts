@@ -43,7 +43,6 @@ export interface RequestContext {
    * instead of blocking it. Used for the one-release warn-mode bake before the
    * enforce-mode flip.
    */
-  tenantWarnMode: boolean;
   startedAt: number;
   /** Collected during a request and flushed after the response is sent. */
   deferredEffects: Array<() => Promise<void>>;
@@ -91,7 +90,6 @@ export function newRequestContext(partial: Partial<RequestContext> = {}): Reques
     correlationId: partial.correlationId ?? ulid(),
     causationId: partial.causationId ?? null,
     auth: partial.auth ?? null,
-    tenantWarnMode: partial.tenantWarnMode ?? process.env.TENANT_ENFORCE_MODE === 'warn',
     startedAt: Date.now(),
     deferredEffects: partial.deferredEffects ?? [],
   };

@@ -17,6 +17,7 @@
 
 import { EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../platform/db.js';
+import { config } from '../platform/config.js';
 import { asSystem, currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { detectUntouchedLeads } from '../domains/leads.js';
@@ -472,7 +473,7 @@ let timer: NodeJS.Timeout | null = null;
  * execution can never diverge.
  */
 export function startScheduler(intervalMs = 3_600_000): void {
-  if (process.env.JOBS_ENABLED !== 'true' || process.env.NODE_ENV === 'test') return;
+  if (!config.JOBS_ENABLED || config.NODE_ENV === 'test') return;
   if (timer) return;
 
   const tick = async () => {

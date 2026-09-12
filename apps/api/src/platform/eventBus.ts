@@ -25,6 +25,7 @@ import {
   type SeverityCode,
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from './db.js';
+import { config } from './config.js';
 import { getContext, currentAuth, requireContext } from './context.js';
 
 const MAX_ATTEMPTS = 3;
@@ -59,7 +60,7 @@ const registry = new Map<string, Registration[]>();
 
 /** Test hook: every event emitted in-process, in order. */
 export const emittedEvents: EventEnvelope[] = [];
-let captureEvents = process.env.NODE_ENV === 'test';
+let captureEvents = config.NODE_ENV === 'test';
 
 export function setEventCapture(on: boolean) {
   captureEvents = on;

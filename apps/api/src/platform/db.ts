@@ -17,6 +17,7 @@
 
 import { Prisma, PrismaClient } from '@prisma/client';
 import { getContext, maybeTenantId } from './context.js';
+import { config } from './config.js';
 
 /** Models that legitimately have no tenant key. */
 const TENANT_EXEMPT_MODELS = new Set<string>(['Tenant']);
@@ -48,7 +49,6 @@ export class TenantScopeError extends Error {
 }
 
 /** Records unscoped queries during warn mode so unmigrated code paths surface. */
-export const tenantWarnLog: Array<{ model: string; operation: string; at: string }> = [];
 
 function scopeWhere(where: unknown, tenantId: string): Record<string, unknown> {
   const base = (where && typeof where === 'object' ? (where as Record<string, unknown>) : {}) ?? {};
@@ -65,7 +65,7 @@ function applyTenantToData(data: unknown, tenantId: string): unknown {
 }
 
 const basePrisma = new PrismaClient({
-  log: process.env.PRISMA_LOG === 'query' ? ['query', 'warn', 'error'] : ['warn', 'error'],
+  log: config.PRISMA_LOG === 'query' ? ['query', 'warn', 'error'] : ['warn', 'error'],
 });
 
 export const prisma = basePrisma.$extends({
@@ -78,15 +78,11 @@ export const prisma = basePrisma.$extends({
         const tenantId = maybeTenantId();
         const ctx = getContext();
 
-        if (!tenantId) {
-          if (ctx?.tenantWarnMode) {
-            // Warn mode: log the query we would have rejected, but let it run —
-            // one release cycle to surface unmigrated code paths.
-            tenantWarnLog.push({ model, operation, at: new Date().toISOString() });
-            return query(args);
-          }
-          throw new TenantScopeError(model, operation);
-        }
+        // No tenant in scope is always a refusal. There used to be a warn
+        // mode here, switched on by an environment variable, that logged the
+        // query and ran it unscoped — an off switch on the one gate that stops
+        // a tenant reading another tenant's rows. It is gone.
+        if (!tenantId) throw new TenantScopeError(model, operation);
 
         const next = { ...(args as Record<string, any>) };
 
