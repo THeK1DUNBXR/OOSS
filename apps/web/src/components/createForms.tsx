@@ -15,6 +15,23 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  DELIVERY_LOCATIONS,
+  DELIVERY_LOCATION_LABELS,
+  FUNDING_FRAMEWORKS,
+  FUNDING_FRAMEWORK_LABELS,
+  FUNDING_SOURCES,
+  FUNDING_SOURCE_LABELS,
+  INSTITUTION_ENGAGEMENTS,
+  INSTITUTION_ENGAGEMENT_HINTS,
+  INSTITUTION_ENGAGEMENT_LABELS,
+  ORGANIZATION_ROLES,
+  ORGANIZATION_ROLE_HINTS,
+  ORGANIZATION_ROLE_LABELS,
+  type FundingSource,
+  type InstitutionEngagement,
+  type OrganizationRole,
+} from '@kaizen/shared';
 import { api } from '../lib/api.js';
 import { CreateModal, MoneyInput, Row, SelectInput, TextArea, TextInput } from './forms.js';
 
@@ -617,7 +634,12 @@ export function NewInstitution({ open, onClose }: { open: boolean; onClose: () =
   const [name, setName] = useState('');
   const [website, setWebsite] = useState('');
   const [billed, setBilled] = useState(false);
+  const [engagements, setEngagements] = useState<InstitutionEngagement[]>([]);
+  const [accreditation, setAccreditation] = useState('');
   const f = useBodyFields();
+
+  const toggle = (e: InstitutionEngagement) =>
+    setEngagements((prev) => (prev.includes(e) ? prev.filter((x) => x !== e) : [...prev, e]));
 
   return (
     <CreateModal
@@ -630,7 +652,7 @@ export function NewInstitution({ open, onClose }: { open: boolean; onClose: () =
         api.post('/crm/institutions', {
           name,
           website: website || null,
-          institutionProfile: f.institutionProfile(),
+          institutionProfile: { ...f.institutionProfile(), engagements, accreditation: accreditation || null },
           ...(billed ? { account: f.account() } : {}),
         })
       }
@@ -642,6 +664,41 @@ export function NewInstitution({ open, onClose }: { open: boolean; onClose: () =
       <TextInput label="Name" required autoFocus value={name} onChange={setName} />
       <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
       <SchoolFields {...f.schoolProps} />
+      <TextInput
+        label="Accreditation"
+        value={accreditation}
+        onChange={setAccreditation}
+        placeholder="NAAC A+, NBA, autonomous…"
+      />
+
+      {/* A college is not one relationship. Which of the five depths this
+          partnership actually runs at is the thing a partnership recorded only
+          as "active" never says. */}
+      <fieldset className="rounded-lg border border-ink-800 p-3">
+        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">What we do with them</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {INSTITUTION_ENGAGEMENTS.map((e) => (
+            <button
+              key={e}
+              type="button"
+              onClick={() => toggle(e)}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                engagements.includes(e) ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
+              }`}
+            >
+              <span
+                className={`block text-xs font-medium ${
+                  engagements.includes(e) ? 'text-accent-soft' : 'text-ink-200'
+                }`}
+              >
+                {INSTITUTION_ENGAGEMENT_LABELS[e]}
+              </span>
+              <span className="block text-2xs text-ink-500">{INSTITUTION_ENGAGEMENT_HINTS[e]}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 px-1 text-2xs text-ink-500">As many as are true. None yet is a fine answer.</p>
+      </fieldset>
 
       {/* Billing is not what makes a body one kind or the other: a polytechnic
           that buys a staff programme is invoiced like anyone else and stays a
@@ -667,7 +724,11 @@ export function NewOrganization({ open, onClose }: { open: boolean; onClose: () 
   const [name, setName] = useState('');
   const [website, setWebsite] = useState('');
   const [billed, setBilled] = useState(true);
+  const [roles, setRoles] = useState<OrganizationRole[]>(['client']);
   const f = useBodyFields();
+
+  const toggle = (r: OrganizationRole) =>
+    setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
 
   return (
     <CreateModal
@@ -680,6 +741,7 @@ export function NewOrganization({ open, onClose }: { open: boolean; onClose: () 
         api.post('/crm/organizations', {
           name,
           website: website || null,
+          roles,
           ...(billed ? { account: f.account() } : {}),
         })
       }
@@ -690,6 +752,32 @@ export function NewOrganization({ open, onClose }: { open: boolean; onClose: () 
       </p>
       <TextInput label="Name" required autoFocus value={name} onChange={setName} />
       <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
+
+      {/* What they do with us, which is a different question from what they are
+          — and not exclusive. A manufacturer that funds a CSR cohort and hires
+          out of it is both, and recording one loses the half somebody is about
+          to ask about. */}
+      <fieldset className="rounded-lg border border-ink-800 p-3">
+        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">What they are to us</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {ORGANIZATION_ROLES.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => toggle(r)}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                roles.includes(r) ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
+              }`}
+            >
+              <span className={`block text-xs font-medium ${roles.includes(r) ? 'text-accent-soft' : 'text-ink-200'}`}>
+                {ORGANIZATION_ROLE_LABELS[r]}
+              </span>
+              <span className="block text-2xs text-ink-500">{ORGANIZATION_ROLE_HINTS[r]}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 px-1 text-2xs text-ink-500">As many as are true.</p>
+      </fieldset>
 
       <label className="flex items-start gap-2 rounded-lg border border-ink-800 p-3">
         <input type="checkbox" className="mt-0.5" checked={billed} onChange={(e) => setBilled(e.target.checked)} />
@@ -772,11 +860,25 @@ export function NewStudent({ open, onClose }: { open: boolean; onClose: () => vo
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [address, setAddress] = useState('');
   const [status, setStatus] = useState('prospective');
+  const [funding, setFunding] = useState<FundingSource>('self');
+  const [sponsorId, setSponsor] = useState('');
+  const [fundingFramework, setFramework] = useState('');
+  const [deliveryLocation, setLocation] = useState('');
 
   const { data: institutions } = useQuery({
     queryKey: ['institutions', 'picker'],
     queryFn: () => api.get<{ items: Array<{ id: string; name: string }> }>('/crm/institutions?pageSize=100'),
     enabled: open,
+    retry: false,
+  });
+
+  // Only bodies that fund cohorts are offered as sponsors, so the list is short
+  // and the right one is in it.
+  const { data: sponsors } = useQuery({
+    queryKey: ['organizations', 'sponsors'],
+    queryFn: () =>
+      api.get<{ items: Array<{ id: string; name: string }> }>('/crm/organizations?pageSize=100&role=sponsor'),
+    enabled: open && funding === 'sponsor',
     retry: false,
   });
 
@@ -797,6 +899,10 @@ export function NewStudent({ open, onClose }: { open: boolean; onClose: () => vo
           placeOfSupply: placeOfSupply || null,
           address: address || null,
           status,
+          funding,
+          sponsorId: funding === 'sponsor' ? sponsorId || null : null,
+          fundingFramework: funding === 'scheme' ? fundingFramework || null : null,
+          deliveryLocation: deliveryLocation || null,
         })
       }
     >
@@ -817,21 +923,92 @@ export function NewStudent({ open, onClose }: { open: boolean; onClose: () => vo
         />
         <SelectInput label="Where they are up to" value={status} onChange={setStatus} options={STUDENT_STATUSES} />
       </Row>
-      <SelectInput
-        label="College they came from"
-        value={institutionId}
-        onChange={setInstitution}
-        placeholder="None — they came to us directly"
-        options={(institutions?.items ?? []).map((i) => ({ value: i.id, label: i.name }))}
-      />
       <Row>
-        <TextInput label="State" value={placeOfSupply} onChange={setPlaceOfSupply} placeholder="33 — Tamil Nadu" />
-        <TextInput label="Address" value={address} onChange={setAddress} />
+        <SelectInput
+          label="College they came from"
+          value={institutionId}
+          onChange={setInstitution}
+          placeholder="None — they came to us directly"
+          options={(institutions?.items ?? []).map((i) => ({ value: i.id, label: i.name }))}
+        />
+        <SelectInput
+          label="Where they are taught"
+          value={deliveryLocation}
+          onChange={setLocation}
+          placeholder="Not decided"
+          options={DELIVERY_LOCATIONS.map((l) => ({ value: l, label: DELIVERY_LOCATION_LABELS[l] }))}
+        />
       </Row>
-      <p className="text-2xs text-ink-500">
-        The state decides how the tax on their invoice splits, so it is entered once here rather than on every
-        invoice.
-      </p>
+
+      {/* Who is paying. The most consequential answer on the form: a learner on
+          a funded cohort owes nothing, and an invoice raised to them is a
+          document that should never have existed. */}
+      <fieldset className="space-y-3 rounded-lg border border-ink-800 p-3">
+        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Who is paying</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {FUNDING_SOURCES.map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFunding(f)}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                funding === f ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
+              }`}
+            >
+              <span className={`block text-xs font-medium ${funding === f ? 'text-accent-soft' : 'text-ink-200'}`}>
+                {FUNDING_SOURCE_LABELS[f]}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {funding === 'sponsor' && (
+          <SelectInput
+            label="The organisation paying"
+            required
+            value={sponsorId}
+            onChange={setSponsor}
+            placeholder={
+              sponsors?.items?.length ? 'Choose the sponsor' : 'No organisation is marked as funding cohorts yet'
+            }
+            options={(sponsors?.items ?? []).map((o) => ({ value: o.id, label: o.name }))}
+          />
+        )}
+        {funding === 'scheme' && (
+          <SelectInput
+            label="Under which framework"
+            required
+            value={fundingFramework}
+            onChange={setFramework}
+            placeholder="Choose the scheme"
+            options={FUNDING_FRAMEWORKS.map((f) => ({ value: f, label: FUNDING_FRAMEWORK_LABELS[f] }))}
+          />
+        )}
+        {funding === 'institution' && (
+          <p className="text-2xs text-ink-500">
+            Their college pays. Name it above — it is the same field as where they came from.
+          </p>
+        )}
+        {funding !== 'self' && (
+          <p className="text-2xs text-ink-500">
+            No invoice will be addressed to them. The fee is billed to whoever is paying, naming the learners it
+            covers.
+          </p>
+        )}
+      </fieldset>
+
+      {funding === 'self' && (
+        <>
+          <Row>
+            <TextInput label="State" value={placeOfSupply} onChange={setPlaceOfSupply} placeholder="33 — Tamil Nadu" />
+            <TextInput label="Address" value={address} onChange={setAddress} />
+          </Row>
+          <p className="text-2xs text-ink-500">
+            The state decides how the tax on their invoice splits, so it is entered once here rather than on every
+            invoice.
+          </p>
+        </>
+      )}
     </CreateModal>
   );
 }

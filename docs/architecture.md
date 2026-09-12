@@ -115,6 +115,42 @@ So:
   asks for a reason and refuses while learners name the row as where they came
   from.
 
+### What each is to Kaizen
+
+The vocabulary is taken from how the company describes its own work — one
+engineering organisation, three divisions, and the five stakeholder types Skill
+Development names: government, CSR sponsors, institutions, employers, learners.
+
+**A student is very often not the person paying.** Skill Development delivers
+"programmes commissioned by a scheme or a sponsor, delivered to cohorts", and a
+beneficiary of a funded cohort owes nothing — while the learner beside them, who
+walked in off the street, pays their own fee. Nothing about the course
+distinguishes them, so `StudentProfile.funding` does: `self`, `sponsor`,
+`scheme` or `institution`, with the payer named. It is the most consequential
+field on the record, because the platform bills people: `createInvoice` refuses
+to address an invoice to a funded learner and says who to bill instead. A scheme
+must name its framework — Naan Mudhalvan, Vetri Nichayam, a TNSDC or NSDC-linked
+programme, CSR — because each has its own reporting expectation and "funded" on
+its own reports as nothing.
+
+**An organisation does several things at once.** `roles` is a set, not a choice:
+`client` buys from us, `sponsor` funds somebody else's learners, `employer`
+takes people at the end of a cohort, `government` is a department or state skill
+agency appointing partners. A manufacturer that funds a CSR cohort and hires out
+of it is both, and the best relationships are. This is the opposite call from
+institution-versus-organisation: what a body *is* is one exclusive thing, what it
+*does with us* is several, and flattening the second into the first is what
+produced a list nobody could read.
+
+**An institution is a partnership at a stated depth.** The six engagements come
+from For Educators: academic alignment, faculty development, student capability,
+research and innovation, a centre of excellence, institutional technology. A
+college is not one relationship — "we run their faculty development" and "we
+built their admissions portal" are different engagements with different people,
+different money and different divisions — and a partnership recorded only as
+"active" says which of them is true to nobody. Accreditation sits beside them,
+because their outcome reporting is a thing the company helps with.
+
 ---
 
 ## P2 — Pipeline as data

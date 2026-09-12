@@ -764,6 +764,107 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
     });
   });
 
+  it('a sponsored learner names who is paying, or is refused', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createStudent } = await import('../domains/students.js');
+      const { createOrganization } = await import('../domains/organizations.js');
+      const tag = Date.now();
+
+      // "Sponsored" with nobody named is the row that later gets billed to the
+      // learner by mistake, so it does not get written.
+      const err = await expectReject(async () =>
+        createStudent({ fullName: `Unpaid ${tag}`, primaryPhone: `89${String(tag).slice(-8)}`, funding: 'sponsor' }),
+      );
+      expect(err.status).toBe(400);
+      expect(err.message).toMatch(/needs the organisation that is paying/i);
+
+      // A college cannot be a sponsor: a college paying for its own students is
+      // its own thing, and the two are reported differently.
+      const college = await createOrganization({ kind: 'institution', name: `Paying College ${tag}` });
+      const wrong = await expectReject(async () =>
+        createStudent({
+          fullName: `Miscoded ${tag}`,
+          primaryPhone: `88${String(tag).slice(-8)}`,
+          funding: 'sponsor',
+          sponsorId: college.id,
+        }),
+      );
+      expect(wrong.status).toBe(400);
+
+      // A scheme without its framework reports as nothing, so it is refused too.
+      const noFramework = await expectReject(async () =>
+        createStudent({ fullName: `Schemeless ${tag}`, primaryPhone: `87${String(tag).slice(-8)}`, funding: 'scheme' }),
+      );
+      expect(noFramework.status).toBe(400);
+      expect(noFramework.message).toMatch(/Naan Mudhalvan/);
+    });
+  });
+
+  it('a funded learner is not billable, and the invoice says who to bill instead', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createStudent } = await import('../domains/students.js');
+      const { createOrganization } = await import('../domains/organizations.js');
+      const { createInvoice } = await import('../domains/invoicing.js');
+      const tag = Date.now();
+
+      const sponsor = await createOrganization({
+        kind: 'organization',
+        name: `Schedule VII Foundation ${tag}`,
+        roles: ['sponsor'],
+      });
+      const learner = await createStudent({
+        fullName: `Funded Beneficiary ${tag}`,
+        primaryPhone: `86${String(tag).slice(-8)}`,
+        funding: 'sponsor',
+        sponsorId: sponsor.id,
+      });
+      expect(learner.billable).toBe(false);
+
+      // The whole point of recording it: no tax invoice reaches a beneficiary
+      // of a funded cohort.
+      const err = await expectReject(async () =>
+        createInvoice({
+          personId: learner.personId,
+          lines: [{ description: 'A course', unitPrice: 10_000, gstRate: 18, hsnSac: '999293' }],
+        }),
+      );
+      expect(err.status).toBe(400);
+      expect(err.message).toContain(`Schedule VII Foundation ${tag}`);
+
+      // And the sponsor is billable in their place.
+      const invoice = await createInvoice({
+        organizationId: sponsor.id,
+        placeOfSupply: '33',
+        lines: [{ description: `Cohort fee — ${learner.fullName}`, unitPrice: 10_000, gstRate: 18, hsnSac: '999293' }],
+      });
+      expect(invoice.organizationId).toBe(sponsor.id);
+    });
+  });
+
+  it('a body does several things at once, and a college is described differently', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createOrganization, setOrganizationRoles } = await import('../domains/organizations.js');
+      const tag = Date.now();
+
+      // Funds a CSR cohort and hires out of it. Both, not one.
+      const firm = await createOrganization({
+        kind: 'organization',
+        name: `Both Industries ${tag}`,
+        roles: ['sponsor', 'employer'],
+      });
+      expect(firm.roles.sort()).toEqual(['employer', 'sponsor']);
+
+      const widened = await setOrganizationRoles(firm.id, ['sponsor', 'employer', 'client']);
+      expect(widened.roles).toContain('client');
+
+      // A college is described by its engagements instead.
+      const refused = await expectReject(async () =>
+        createOrganization({ kind: 'institution', name: `Roled College ${tag}`, roles: ['client'] }),
+      );
+      expect(refused.status).toBe(400);
+    });
+  });
+
   it('detaching a specialisation that would orphan an open opportunity is blocked with a count, not a silent cascade', async () => {
     await asUser('chairman@kaizen.co.in', async () => {
       // Asked for as one query, so the org is chosen for holding *both* facts

@@ -307,6 +307,19 @@ model Organization {
   /// and an institution carries it the same way an organisation does.
   kind String @default("organization")
 
+  /// What this body *does with us*, which is a different question from what it
+  /// is, and not exclusive: a manufacturer can fund a CSR cohort and hire out
+  /// of it, and the best relationships are both.
+  ///
+  /// `client` buys from us — software, or training for its own staff.
+  /// `sponsor` funds somebody else's learners.
+  /// `employer` takes people at the end of a cohort.
+  /// `government` is a department or state skill agency appointing partners.
+  ///
+  /// Empty on an institution, whose engagements are recorded on its own profile
+  /// in the vocabulary colleges are actually described in.
+  roles String[] @default([])
+
   name        String
   website     String?
   parentOrgId String?
@@ -332,6 +345,8 @@ model Organization {
   sentStudents       Enrollment[]        @relation("EnrollmentInstitution")
   /// And the learners whose own record names it as where they came from.
   students           StudentProfile[]    @relation("StudentInstitution")
+  /// The learners whose fees this body is paying.
+  sponsoredStudents  StudentProfile[]    @relation("StudentSponsor")
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, name])
@@ -409,6 +424,21 @@ model InstitutionProfile {
   departments        String[] @default([])
   strategicPriority  String?
 
+  /// Which of the five depths this partnership actually runs at — academic
+  /// alignment, faculty development, student capability, research and
+  /// innovation, a centre of excellence, institutional technology.
+  ///
+  /// A college is not one relationship. "We run their faculty development" and
+  /// "we built their admissions portal" are different engagements with
+  /// different people and different money, and a partnership recorded only as
+  /// "active" says which of them is true to nobody.
+  engagements String[] @default([])
+
+  /// NAAC grade, NBA accreditation, an autonomous status — whatever the
+  /// institution leads with. Their outcome and accreditation reporting is a
+  /// thing we help with, so knowing where they stand is part of the record.
+  accreditation String?
+
   attachedById String?
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
@@ -453,6 +483,31 @@ model StudentProfile {
   /// rather than being set by hand wherever it can be.
   status String @default("prospective")
 
+  /// Who is actually paying for their place: `self`, `sponsor`, `scheme` or
+  /// `institution`.
+  ///
+  /// The most consequential fact on this record, because the platform bills
+  /// people. A beneficiary of a funded cohort owes nothing, and an invoice
+  /// raised to them is a document that should never have existed — while the
+  /// learner sitting next to them, who walked in and paid, gets one. The two sit
+  /// in the same classroom, so this belongs on the learner and not on the course.
+  funding String @default("self")
+
+  /// The body paying, when somebody else is. An organisation for a CSR or
+  /// employer sponsor; the institution they came from when the college is
+  /// paying. Checked against `funding` on the way in.
+  sponsorId String?
+  sponsor   Organization? @relation("StudentSponsor", fields: [sponsorId], references: [id])
+
+  /// Which framework the money comes under — Naan Mudhalvan, Vetri Nichayam, a
+  /// TNSDC or NSDC-linked scheme, CSR. Each has its own documentation standard
+  /// and reporting expectation, so "which of our learners are on this scheme"
+  /// has to be answerable from a field rather than from a note.
+  fundingFramework String?
+
+  /// Madurai, Coimbatore, online, or on their own campus.
+  deliveryLocation String?
+
   address String?
 
   /// Where the supply is made to, for the tax split, and a registration on the
@@ -471,6 +526,9 @@ model StudentProfile {
   @@unique([tenantId, registrationNumber])
   @@index([tenantId, status])
   @@index([tenantId, institutionId])
+  @@index([tenantId, funding])
+  @@index([tenantId, sponsorId])
+  @@index([tenantId, fundingFramework])
   @@map("student_profiles")
 }
 

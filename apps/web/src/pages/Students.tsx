@@ -15,6 +15,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import {
+  FUNDING_FRAMEWORK_LABELS,
+  FUNDING_SOURCE_LABELS,
+  DELIVERY_LOCATION_LABELS,
+  type FundingFramework,
+  type FundingSource,
+  type DeliveryLocation,
+} from '@kaizen/shared';
 import { api, date } from '../lib/api.js';
 import {
   Card,
@@ -43,8 +51,25 @@ interface StudentRow {
   placeOfSupply: string | null;
   gstin: string | null;
   institution: { id: string; name: string; recordCode: string } | null;
+  funding: string;
+  fundingFramework: string | null;
+  sponsor: { id: string; name: string; recordCode: string } | null;
+  deliveryLocation: string | null;
+  billable: boolean;
   enrolmentCount: number;
   createdAt: string;
+}
+
+/** Who is paying, in one phrase, for a card that has one line for it. */
+function payer(s: StudentRow): string {
+  if (s.funding === 'sponsor') return s.sponsor ? `Sponsored by ${s.sponsor.name}` : 'Sponsored';
+  if (s.funding === 'institution') return s.institution ? `Paid by ${s.institution.name}` : 'Paid by their college';
+  if (s.funding === 'scheme') {
+    return s.fundingFramework
+      ? FUNDING_FRAMEWORK_LABELS[s.fundingFramework as FundingFramework] ?? 'Funded under a scheme'
+      : 'Funded under a scheme';
+  }
+  return 'Paying their own fee';
 }
 
 const STATUS_TONE: Record<string, 'neutral' | 'good' | 'accent' | 'warn'> = {
@@ -64,6 +89,7 @@ const STATUS_LABEL: Record<string, string> = {
 export function Students() {
   const { can } = useSession();
   const [tab, setTab] = useState<'all' | 'active' | 'prospective' | 'alumni'>('all');
+  const [funding, setFunding] = useState('');
   const [q, setQ] = useState('');
   // `?new=1` opens the form on arrival, so a button elsewhere saying "Add a
   // student" adds one rather than landing somebody on a list.
@@ -79,10 +105,11 @@ export function Students() {
 
   const params = new URLSearchParams();
   if (tab !== 'all') params.set('status', tab);
+  if (funding) params.set('funding', funding);
   if (q) params.set('q', q);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['students', tab, q],
+    queryKey: ['students', tab, funding, q],
     queryFn: () => api.get<{ items: StudentRow[]; total: number }>(`/crm/students?${params}`),
   });
 
@@ -102,13 +129,23 @@ export function Students() {
         }
       />
 
-      <div className="mb-3">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           className="input max-w-sm"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search by name, registration number or phone…"
         />
+        {/* "Which of our learners are sponsored" and "who is on Naan Mudhalvan"
+            are questions a scheme owner asks, so they are asked here. */}
+        <select className="input max-w-xs" value={funding} onChange={(e) => setFunding(e.target.value)}>
+          <option value="">However they are funded</option>
+          {(['self', 'sponsor', 'scheme', 'institution'] as FundingSource[]).map((f) => (
+            <option key={f} value={f}>
+              {FUNDING_SOURCE_LABELS[f]}
+            </option>
+          ))}
+        </select>
       </div>
 
       <Tabs
@@ -155,9 +192,12 @@ export function Students() {
               </p>
               <p className="mt-1 text-2xs text-ink-500">
                 {s.institution ? `From ${s.institution.name}` : 'Came to us directly'}
+                {s.deliveryLocation &&
+                  ` · ${DELIVERY_LOCATION_LABELS[s.deliveryLocation as DeliveryLocation] ?? s.deliveryLocation}`}
                 {s.enrolmentCount > 0 &&
                   ` · ${s.enrolmentCount} course${s.enrolmentCount === 1 ? '' : 's'}`}
               </p>
+              <p className={`mt-1 text-2xs ${s.billable ? 'text-ink-500' : 'text-accent-soft'}`}>{payer(s)}</p>
             </Link>
           ))}
         </div>
@@ -205,6 +245,7 @@ export function StudentDetail() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="chip border-accent/40 text-accent-soft">Student</span>
         <StatusChip status={STATUS_LABEL[data.status] ?? data.status} tone={STATUS_TONE[data.status] ?? 'neutral'} />
+        {!data.billable && <span className="chip border-ink-700 text-ink-400">{payer(data)}</span>}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -269,15 +310,31 @@ export function StudentDetail() {
           </Card>
 
           <Card
-            title="How they are billed"
-            subtitle="Entered once here rather than on every invoice: the state decides how the tax splits."
+            title="Who pays for their place"
+            subtitle={
+              data.billable
+                ? 'They do, so invoices are addressed to them. The state decides how the tax splits and is entered once here.'
+                : 'Somebody else does, so no invoice is addressed to them — the fee is billed to whoever is paying, naming the learners it covers.'
+            }
           >
             <dl>
-              <Field label="State">{data.placeOfSupply ?? '—'}</Field>
-              <Field label="Address">{data.address ?? '—'}</Field>
-              <Field label="GSTIN">
-                {data.gstin ?? <span className="text-ink-500">None — billed as an individual</span>}
-              </Field>
+              <Field label="Funded by">{payer(data)}</Field>
+              {data.funding === 'sponsor' && data.sponsor && (
+                <Field label="The sponsor">
+                  <Link to={`/crm/organizations/${data.sponsor.id}`} className="hover:text-accent-soft">
+                    {data.sponsor.name}
+                  </Link>
+                </Field>
+              )}
+              {data.billable && (
+                <>
+                  <Field label="State">{data.placeOfSupply ?? '—'}</Field>
+                  <Field label="Address">{data.address ?? '—'}</Field>
+                  <Field label="GSTIN">
+                    {data.gstin ?? <span className="text-ink-500">None — billed as an individual</span>}
+                  </Field>
+                </>
+              )}
             </dl>
           </Card>
         </div>

@@ -21,7 +21,13 @@
  * addressed to — and never again as a kind of record.
  */
 
-import { EVENTS } from '@kaizen/shared';
+import {
+  EVENTS,
+  FUNDING_FRAMEWORKS,
+  FUNDING_SOURCES,
+  type FundingFramework,
+  type FundingSource,
+} from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -44,6 +50,14 @@ export interface StudentInput {
   placeOfSupply?: string | null;
   gstin?: string | null;
   status?: StudentStatus;
+  /** Who is paying: self | sponsor | scheme | institution. */
+  funding?: FundingSource;
+  /** The body paying, when it is not them. */
+  sponsorId?: string | null;
+  /** The framework the money comes under, when it is a scheme. */
+  fundingFramework?: FundingFramework | null;
+  /** Madurai, Coimbatore, online, or on their own campus. */
+  deliveryLocation?: string | null;
   notes?: string | null;
 }
 
@@ -61,8 +75,87 @@ export interface StudentView {
   placeOfSupply: string | null;
   gstin: string | null;
   institution: { id: string; name: string; recordCode: string } | null;
+  funding: string;
+  fundingFramework: string | null;
+  sponsor: { id: string; name: string; recordCode: string } | null;
+  deliveryLocation: string | null;
+  /**
+   * Whether an invoice may be addressed to this learner at all.
+   *
+   * False for anyone whose place is funded by somebody else. It is stated here
+   * rather than worked out at each call site, because there are three of them
+   * and the consequence of getting it wrong is a tax invoice sent to a
+   * fifteen-year-old on a state scheme.
+   */
+  billable: boolean;
   enrolmentCount: number;
   createdAt: string;
+}
+
+/**
+ * The funding answer has to hold together.
+ *
+ * Each source implies who the payer is, and the combinations that do not
+ * describe anything real are refused here rather than discovered when somebody
+ * tries to invoice a scheme. "Sponsored" with nobody named is the common one,
+ * and it is exactly the row that later gets billed to the learner by mistake.
+ */
+async function assertFundingCoherent(
+  funding: FundingSource,
+  sponsorId: string | null,
+  fundingFramework: string | null,
+  institutionId: string | null,
+): Promise<void> {
+  if (!FUNDING_SOURCES.includes(funding)) {
+    throw ApiError.badRequest(`"${funding}" is not one of the ways a place is paid for.`);
+  }
+  if (fundingFramework && !(FUNDING_FRAMEWORKS as readonly string[]).includes(fundingFramework)) {
+    throw ApiError.badRequest(`"${fundingFramework}" is not a framework this platform knows about.`);
+  }
+
+  if (funding === 'self') {
+    if (sponsorId) {
+      throw ApiError.badRequest(
+        'Somebody paying their own fee has no sponsor. Either they are sponsored, or they are not.',
+      );
+    }
+    return;
+  }
+
+  if (funding === 'sponsor') {
+    if (!sponsorId) {
+      throw ApiError.badRequest(
+        'A sponsored learner needs the organisation that is paying. Without it the fee has nowhere to be invoiced, and it ends up on the learner.',
+      );
+    }
+    const sponsor = await prisma.organization.findFirst({
+      where: { id: sponsorId, deletedAt: null },
+      select: { kind: true, name: true, roles: true },
+    });
+    if (!sponsor) throw ApiError.notFound('Sponsor');
+    if (sponsor.kind !== 'organization') {
+      throw ApiError.badRequest(
+        `${sponsor.name} is a school or college. A college paying for its own students is "paid by their college" rather than a sponsorship — the two are reported differently.`,
+      );
+    }
+    return;
+  }
+
+  if (funding === 'institution') {
+    if (!institutionId) {
+      throw ApiError.badRequest(
+        'A learner whose college is paying has to name the college. It is the same field as where they came from.',
+      );
+    }
+    return;
+  }
+
+  // A scheme.
+  if (!fundingFramework) {
+    throw ApiError.badRequest(
+      'A learner funded under a scheme needs the framework named — Naan Mudhalvan, Vetri Nichayam, a TNSDC or NSDC-linked programme, CSR. Each reports differently, and "funded" on its own reports as nothing.',
+    );
+  }
 }
 
 async function assertInstitution(institutionId: string): Promise<void> {
@@ -134,6 +227,14 @@ export async function attachStudentProfile(personId: string, input: StudentInput
   if (input.institutionId) await assertInstitution(input.institutionId);
   await assertRegistrationFree(input.registrationNumber ?? null, null);
 
+  const funding = input.funding ?? 'self';
+  await assertFundingCoherent(
+    funding,
+    input.sponsorId ?? null,
+    input.fundingFramework ?? null,
+    input.institutionId ?? null,
+  );
+
   const profile = await prisma.studentProfile.create({
     data: {
       tenantId: auth.tenantId,
@@ -141,6 +242,10 @@ export async function attachStudentProfile(personId: string, input: StudentInput
       registrationNumber: input.registrationNumber ?? null,
       institutionId: input.institutionId ?? null,
       status: input.status ?? 'prospective',
+      funding,
+      sponsorId: input.sponsorId ?? null,
+      fundingFramework: input.fundingFramework ?? null,
+      deliveryLocation: input.deliveryLocation ?? null,
       address: input.address ?? null,
       placeOfSupply: input.placeOfSupply ?? null,
       gstin: input.gstin ?? null,
@@ -175,7 +280,23 @@ export async function updateStudent(id: string, input: Partial<StudentInput>): P
     await assertRegistrationFree(input.registrationNumber ?? null, id);
   }
 
-  const before = { status: profile.status, registrationNumber: profile.registrationNumber };
+  // Funding is checked against what the record will say afterwards, not against
+  // what was sent: changing the source alone must not leave a sponsored learner
+  // with nobody paying.
+  const next = {
+    funding: (input.funding ?? profile.funding) as FundingSource,
+    sponsorId: input.sponsorId !== undefined ? input.sponsorId : profile.sponsorId,
+    fundingFramework:
+      input.fundingFramework !== undefined ? input.fundingFramework : profile.fundingFramework,
+    institutionId: input.institutionId !== undefined ? input.institutionId : profile.institutionId,
+  };
+  await assertFundingCoherent(next.funding, next.sponsorId, next.fundingFramework, next.institutionId);
+
+  const before = {
+    status: profile.status,
+    registrationNumber: profile.registrationNumber,
+    funding: profile.funding,
+  };
 
   await prisma.studentProfile.update({
     where: { id },
@@ -183,6 +304,10 @@ export async function updateStudent(id: string, input: Partial<StudentInput>): P
       ...(input.registrationNumber !== undefined ? { registrationNumber: input.registrationNumber } : {}),
       ...(input.institutionId !== undefined ? { institutionId: input.institutionId } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.funding !== undefined ? { funding: input.funding } : {}),
+      ...(input.sponsorId !== undefined ? { sponsorId: input.sponsorId } : {}),
+      ...(input.fundingFramework !== undefined ? { fundingFramework: input.fundingFramework } : {}),
+      ...(input.deliveryLocation !== undefined ? { deliveryLocation: input.deliveryLocation } : {}),
       ...(input.address !== undefined ? { address: input.address } : {}),
       ...(input.placeOfSupply !== undefined ? { placeOfSupply: input.placeOfSupply } : {}),
       ...(input.gstin !== undefined ? { gstin: input.gstin } : {}),
@@ -214,7 +339,7 @@ export async function updateStudent(id: string, input: Partial<StudentInput>): P
     subjectType: 'student_profile',
     subjectId: id,
     before,
-    after: { status: after!.status, registrationNumber: after!.registrationNumber },
+    after: { status: after!.status, registrationNumber: after!.registrationNumber, funding: after!.funding },
   });
   return after!;
 }
@@ -223,6 +348,10 @@ export interface StudentQuery {
   q?: string;
   status?: string;
   institutionId?: string;
+  /** "Which of our learners are sponsored", asked straight. */
+  funding?: string;
+  sponsorId?: string;
+  fundingFramework?: string;
   page?: number;
   pageSize?: number;
 }
@@ -243,6 +372,9 @@ export async function listStudents(query: StudentQuery = {}): Promise<{
     deletedAt: null,
     ...(query.status ? { status: query.status } : {}),
     ...(query.institutionId ? { institutionId: query.institutionId } : {}),
+    ...(query.funding ? { funding: query.funding } : {}),
+    ...(query.sponsorId ? { sponsorId: query.sponsorId } : {}),
+    ...(query.fundingFramework ? { fundingFramework: query.fundingFramework } : {}),
     ...(query.q
       ? {
           OR: [
@@ -261,7 +393,7 @@ export async function listStudents(query: StudentQuery = {}): Promise<{
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: { person: true, institution: true },
+      include: { person: true, institution: true, sponsor: true },
     }),
     prisma.studentProfile.count({ where: where as never }),
   ]);
@@ -273,7 +405,7 @@ export async function listStudents(query: StudentQuery = {}): Promise<{
 export async function loadStudent(id: string): Promise<StudentView | null> {
   const row = await prisma.studentProfile.findFirst({
     where: { id, deletedAt: null },
-    include: { person: true, institution: true },
+    include: { person: true, institution: true, sponsor: true },
   });
   if (!row) return null;
   const counts = await enrolmentCounts([row.personId]);
@@ -284,7 +416,7 @@ export async function loadStudent(id: string): Promise<StudentView | null> {
 export async function studentOf(personId: string): Promise<StudentView | null> {
   const row = await prisma.studentProfile.findFirst({
     where: { personId, deletedAt: null },
-    include: { person: true, institution: true },
+    include: { person: true, institution: true, sponsor: true },
   });
   if (!row) return null;
   const counts = await enrolmentCounts([personId]);
@@ -306,13 +438,22 @@ type Row = {
   personId: string;
   registrationNumber: string | null;
   status: string;
+  funding: string;
+  fundingFramework: string | null;
+  deliveryLocation: string | null;
   address: string | null;
   placeOfSupply: string | null;
   gstin: string | null;
   createdAt: Date;
   person: { recordCode: string; fullName: string; primaryPhone: string | null; primaryEmail: string | null };
   institution: { id: string; name: string; recordCode: string } | null;
+  sponsor: { id: string; name: string; recordCode: string } | null;
 };
+
+/** Somebody else is paying, so no invoice is addressed to them. */
+export function isBillable(funding: string): boolean {
+  return funding === 'self';
+}
 
 function toView(row: Row, enrolmentCount: number): StudentView {
   return {
@@ -330,6 +471,13 @@ function toView(row: Row, enrolmentCount: number): StudentView {
     institution: row.institution
       ? { id: row.institution.id, name: row.institution.name, recordCode: row.institution.recordCode }
       : null,
+    funding: row.funding,
+    fundingFramework: row.fundingFramework,
+    sponsor: row.sponsor
+      ? { id: row.sponsor.id, name: row.sponsor.name, recordCode: row.sponsor.recordCode }
+      : null,
+    deliveryLocation: row.deliveryLocation,
+    billable: isBillable(row.funding),
     enrolmentCount,
     createdAt: row.createdAt.toISOString(),
   };

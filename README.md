@@ -117,12 +117,12 @@ already exists keeps its password.
 Everyone else is created inside the product. The same screen genuinely shows
 different things to each of the four:
 
-| Role | Who | What they hold |
+| Role | Signs in as | What they hold |
 |---|---|---|
-| **Employee** | — | Their own leave, attendance, goals, skills and payslip, plus the staff and skills directories — and they raise invoices for what they sell, seeing the ones they raised and no others. No colleague's file. |
-| **Operations Head** | Kasthurika | The employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and the course catalogue. Proposes pay and cannot approve it. |
-| **Finance Head** | Narayanan | The books outright, the GST returns, and the money side of people: approves compensation and payroll and sees what the establishment costs, without running it. |
-| **Chairman** | Rishikesh | Superadmin. Every resource, every verb, every scope — nothing is hidden or inaccessible. |
+| **Employee** | employee@ | Their own leave, attendance, goals, skills and payslip, plus the staff and skills directories — and they raise invoices for what they sell, seeing the ones they raised and no others. No colleague's file. |
+| **Operations Head** | operations@ | The employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and the course catalogue. Proposes pay and cannot approve it. |
+| **Finance Head** | finance@ | The books outright, the GST returns, and the money side of people: approves compensation and payroll and sees what the establishment costs, without running it. |
+| **Chairman** | chairman@ | Superadmin. Every resource, every verb, every scope — nothing is hidden or inaccessible. |
 
 The HR/Finance split is the one worth understanding. `hr_ops_manager` holds
 `compensation:VCEDXF` and no `approve`; `finance_head` holds `approve` and
@@ -258,6 +258,17 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   for them. Billing detail sits on any of the three, because being invoiced is
   not an identity: a polytechnic that buys a staff programme is invoiced like
   anyone else and stays a college.
+
+  Each carries what the company actually deals in. A student records **who is
+  paying** — themselves, a sponsor, a scheme, or their college — because a
+  beneficiary of a funded cohort owes nothing and no invoice is addressed to
+  them; a scheme names its framework, Naan Mudhalvan or Vetri Nichayam or a
+  TNSDC or NSDC-linked programme or CSR, since each reports differently. An
+  organisation records **what it does with us** — buys, funds cohorts, hires our
+  learners, or is a department appointing partners — and several at once, which
+  is what a good relationship looks like. A college records **which of the six
+  engagements** the partnership runs at, from academic alignment to the
+  admissions portal we built for them.
 - **A student's own page** — their day-by-day record: attendance, weekly
   scores, the questions they asked, the feedback they gave and anything that
   went wrong, merged into one timeline. A query and a complaint stay open until
@@ -321,7 +332,7 @@ request would be worse than an honest split.
 
 ```bash
 ./scripts/test-db.sh          # provision the suite's own database
-cd apps/api && pnpm test      # 360 tests
+cd apps/api && pnpm test      # 363 tests
 ```
 
 The suite runs against a real PostgreSQL database, inside real request
@@ -374,7 +385,7 @@ docs               architecture, acceptance map, operations
 ```
 
 114 Prisma models, 26 domain services plus five for People and one for the
-books, 360 tests and four in a browser.
+books, 363 tests and four in a browser.
 
 The HR lifecycle machines and the finance arithmetic live in `packages/shared`
 rather than in the API, and that placement is the point: a surface rendering a

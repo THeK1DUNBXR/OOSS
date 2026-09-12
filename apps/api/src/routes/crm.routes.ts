@@ -1,6 +1,16 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
-import { VERTICALS, INTERACTION_TYPES, RELATIONSHIP_TYPES, COUNTERPARTY_AFFILIATIONS } from '@kaizen/shared';
+import {
+  VERTICALS,
+  INTERACTION_TYPES,
+  RELATIONSHIP_TYPES,
+  COUNTERPARTY_AFFILIATIONS,
+  DELIVERY_LOCATIONS,
+  FUNDING_FRAMEWORKS,
+  FUNDING_SOURCES,
+  INSTITUTION_ENGAGEMENTS,
+  ORGANIZATION_ROLES,
+} from '@kaizen/shared';
 import { handler, parsePaging, str, bool, date, numeric } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
@@ -22,6 +32,7 @@ import {
   assembleOrganization360,
   computeRelationshipStatus,
   reclassifyOrganization,
+  setOrganizationRoles,
 } from '../domains/organizations.js';
 import {
   createStudent,
@@ -323,6 +334,9 @@ const accountSchema = z.object({
 });
 
 const institutionProfileSchema = z.object({
+  /** Which of the five depths this partnership runs at. */
+  engagements: z.array(z.enum(INSTITUTION_ENGAGEMENTS)).optional(),
+  accreditation: z.string().nullish(),
   institutionType: z.string().nullish(),
   managementType: z.string().nullish(),
   district: z.string().nullish(),
@@ -352,6 +366,7 @@ async function listBodies(req: Request, kind: 'institution' | 'organization') {
   const { page, pageSize } = parsePaging(req);
   const q = str(req.query.q);
   const billing = str(req.query.billing);
+  const role = str(req.query.role);
 
   const where = {
     tenantId: auth.tenantId,
@@ -369,6 +384,8 @@ async function listBodies(req: Request, kind: 'institution' | 'organization') {
     // not about what the body is.
     ...(billing === 'yes' ? { account: { isNot: null } } : {}),
     ...(billing === 'no' ? { account: { is: null } } : {}),
+    // "Which of these sponsor cohorts", "which of them hire our learners".
+    ...(role ? { roles: { has: role } } : {}),
   };
 
   const [items, total] = await Promise.all([
@@ -390,6 +407,7 @@ async function listBodies(req: Request, kind: 'institution' | 'organization') {
         id: o.id,
         recordCode: o.recordCode,
         kind: o.kind,
+        roles: o.roles,
         name: o.name,
         website: o.website,
         tags: o.tags,
@@ -418,6 +436,8 @@ router.get('/institutions/:id', handler(async (req) => assembleOrganization360(r
 const bodySchema = z.object({
   name: z.string().min(1),
   website: z.string().nullish(),
+  /** What this body does with us — not exclusive, and not what it *is*. */
+  roles: z.array(z.enum(ORGANIZATION_ROLES)).optional(),
   tags: z.array(z.string()).optional(),
   ownerPartyId: z.string().nullish(),
   account: accountSchema.optional(),
@@ -439,6 +459,15 @@ router.post(
     const org = await createOrganization({ ...bodySchema.parse(req.body), kind: 'institution' });
     res.status(201).json(org);
     return undefined;
+  }),
+);
+
+/** What a body does with us. An ordinary edit, unlike changing what it is. */
+router.put(
+  '/organizations/:id/roles',
+  handler(async (req) => {
+    const schema = z.object({ roles: z.array(z.enum(ORGANIZATION_ROLES)) });
+    return setOrganizationRoles(req.params.id, schema.parse(req.body).roles);
   }),
 );
 
@@ -483,6 +512,13 @@ const studentSchema = z.object({
   placeOfSupply: z.string().nullish(),
   gstin: z.string().nullish(),
   status: z.enum(STUDENT_STATUSES).optional(),
+  // Who is paying, and under what. Checked against each other in the service:
+  // "sponsored" with nobody named is the row that later gets billed to the
+  // learner by mistake.
+  funding: z.enum(FUNDING_SOURCES).optional(),
+  sponsorId: z.string().nullish(),
+  fundingFramework: z.enum(FUNDING_FRAMEWORKS).nullish(),
+  deliveryLocation: z.enum(DELIVERY_LOCATIONS).nullish(),
   notes: z.string().nullish(),
 });
 
@@ -493,6 +529,9 @@ router.get(
       q: str(req.query.q),
       status: str(req.query.status),
       institutionId: str(req.query.institutionId),
+      funding: str(req.query.funding),
+      sponsorId: str(req.query.sponsorId),
+      fundingFramework: str(req.query.fundingFramework),
       ...parsePaging(req),
     }),
   ),

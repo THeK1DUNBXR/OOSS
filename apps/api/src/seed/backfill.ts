@@ -120,9 +120,49 @@ function statusFromEnrolment(status: string, enrolledAt: Date | null): string {
   return enrolledAt ? 'active' : 'prospective';
 }
 
-export async function runBackfills(): Promise<{ organizationKinds: number; studentProfiles: number }> {
+/**
+ * Take the baked-in personal names back off the founding accounts.
+ *
+ * The seed used to create its four accounts under the names of the people who
+ * then held those posts. A seeded account is a post and not a human: whoever
+ * holds it changes, and a name in a seed script is wrong the first time
+ * somebody else takes the job. They are designations now.
+ *
+ * Only the three names the seed itself wrote are replaced, and only where the
+ * row still carries one of them — a name somebody has since typed in on
+ * purpose is theirs and is left alone.
+ */
+const SEEDED_NAMES: Array<{ email: string; was: string; now: string }> = [
+  { email: 'chairman@', was: 'Rishikesh', now: 'Chairman' },
+  { email: 'operations@', was: 'Kasthurika', now: 'Operations Head' },
+  { email: 'finance@', was: 'Narayanan', now: 'Finance Head' },
+];
+
+export async function backfillDesignations(): Promise<number> {
+  let renamed = 0;
+  for (const spec of SEEDED_NAMES) {
+    const users = await unscopedPrisma.user.findMany({
+      where: { email: { startsWith: spec.email } },
+      select: { personId: true },
+    });
+    if (users.length === 0) continue;
+    const { count } = await unscopedPrisma.person.updateMany({
+      where: { id: { in: users.map((u) => u.personId) }, fullName: spec.was },
+      data: { fullName: spec.now },
+    });
+    renamed += count;
+  }
+  return renamed;
+}
+
+export async function runBackfills(): Promise<{
+  organizationKinds: number;
+  studentProfiles: number;
+  designations: number;
+}> {
   return {
     organizationKinds: await backfillOrganizationKinds(),
     studentProfiles: await backfillStudentProfiles(),
+    designations: await backfillDesignations(),
   };
 }

@@ -25,7 +25,12 @@
  * and now govern two separated lists rather than two facets of one.
  */
 
-import { EVENTS, type ComputedRelationshipStatus } from '@kaizen/shared';
+import {
+  EVENTS,
+  ORGANIZATION_ROLES,
+  type ComputedRelationshipStatus,
+  type OrganizationRole,
+} from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -38,6 +43,16 @@ export const ORGANIZATION_KINDS = ['institution', 'organization'] as const;
 export type OrganizationKind = (typeof ORGANIZATION_KINDS)[number];
 
 export interface OrganizationInput {
+  /**
+   * What this body does with us: client, sponsor, employer, government. Several
+   * at once is normal and correct — a manufacturer that funds a CSR cohort and
+   * hires out of it is both, and recording only one of those loses the half
+   * somebody is about to ask about.
+   *
+   * An institution's equivalent is its engagements, in the vocabulary colleges
+   * are actually described in.
+   */
+  roles?: OrganizationRole[];
   /**
    * Which of the two this is. Required, and not changeable afterwards by
    * accident — see `reclassifyOrganization`, which exists for the case where it
@@ -85,12 +100,20 @@ export async function createOrganization(input: OrganizationInput) {
     );
   }
 
+  const roles = (input.roles ?? []).filter((r) => ORGANIZATION_ROLES.includes(r));
+  if (kind === 'institution' && roles.length > 0) {
+    throw ApiError.badRequest(
+      'A school or college is described by its engagements — academic alignment, faculty development, student capability and the rest — not by these. Leave them off.',
+    );
+  }
+
   const recordCode = await nextRecordCode('ORG');
   const org = await prisma.organization.create({
     data: {
       tenantId: auth.tenantId,
       recordCode,
       kind,
+      roles,
       name: input.name,
       website: input.website ?? null,
       parentOrgId: input.parentOrgId ?? null,
@@ -104,7 +127,7 @@ export async function createOrganization(input: OrganizationInput) {
     action: 'create',
     subjectType: 'organization',
     subjectId: org.id,
-    after: { name: org.name, kind: org.kind },
+    after: { name: org.name, kind: org.kind, roles: org.roles },
   });
   await emit({
     name: EVENTS.CRM_ORGANIZATION_CREATED,
@@ -119,6 +142,36 @@ export async function createOrganization(input: OrganizationInput) {
   if (input.institutionProfile) await attachInstitutionProfile(org.id, input.institutionProfile);
 
   return org;
+}
+
+/**
+ * What a body does with us, changed.
+ *
+ * Separate from `reclassifyOrganization` because it is an ordinary edit: a
+ * client that starts sponsoring a cohort has not become a different body, and
+ * making somebody give a reason for saying so would mean they stop saying so.
+ */
+export async function setOrganizationRoles(id: string, roles: OrganizationRole[]) {
+  const org = await prisma.organization.findFirst({ where: { id, deletedAt: null } });
+  if (!org) throw ApiError.notFound('Organization');
+  await assertCan({ resource: resourceFor(org.kind), verb: 'edit' });
+
+  if (org.kind === 'institution') {
+    throw ApiError.badRequest(
+      'A school or college is described by its engagements rather than by these.',
+    );
+  }
+  const clean = [...new Set(roles.filter((r) => ORGANIZATION_ROLES.includes(r)))];
+
+  const updated = await prisma.organization.update({ where: { id }, data: { roles: clean } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'organization',
+    subjectId: id,
+    before: { roles: org.roles },
+    after: { roles: clean },
+  });
+  return updated;
 }
 
 /**
@@ -225,6 +278,9 @@ export async function attachAccount(organizationId: string, input: AccountInput)
 }
 
 export interface InstitutionProfileInput {
+  /** Which of the five depths the partnership runs at. */
+  engagements?: string[];
+  accreditation?: string | null;
   institutionType?: string | null;
   managementType?: string | null;
   address?: string | null;
@@ -279,6 +335,8 @@ export async function attachInstitutionProfile(organizationId: string, input: In
       studentCount: input.studentCount ?? null,
       departments: input.departments ?? [],
       strategicPriority: input.strategicPriority ?? null,
+      engagements: input.engagements ?? [],
+      accreditation: input.accreditation ?? null,
       attachedById: auth.partyId,
     },
   });

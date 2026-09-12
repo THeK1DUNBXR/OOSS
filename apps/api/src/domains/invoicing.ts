@@ -299,7 +299,7 @@ async function resolveCustomer(input: InvoiceInput): Promise<ResolvedCustomer> {
 
   const person = await prisma.person.findFirst({
     where: { id: input.personId!, tenantId: auth.tenantId, deletedAt: null },
-    include: { studentProfile: true },
+    include: { studentProfile: { include: { sponsor: true, institution: true } } },
   });
   if (!person) throw ApiError.notFound('Person');
 
@@ -310,6 +310,28 @@ async function resolveCustomer(input: InvoiceInput): Promise<ResolvedCustomer> {
   // but the address, the state and any registration come from that record when
   // it exists, which is where they belong and where they are entered once.
   const student = person.studentProfile;
+
+  // Except where somebody else is paying.
+  //
+  // Skill Development delivers cohorts commissioned by a scheme or a sponsor,
+  // and a beneficiary of a funded cohort owes nothing. They sit in the same
+  // classroom as a learner who walked in and paid, so nothing about the course
+  // distinguishes them — only this. An invoice addressed to them is a document
+  // that should never have existed, and it is refused here rather than
+  // discovered when it is in their hands.
+  if (student && student.funding !== 'self') {
+    const payer =
+      student.funding === 'sponsor'
+        ? (student.sponsor?.name ?? 'their sponsor')
+        : student.funding === 'institution'
+          ? (student.institution?.name ?? 'their college')
+          : `the ${student.fundingFramework?.replace(/_/g, ' ') ?? 'scheme'} framework`;
+    throw ApiError.badRequest(
+      `${person.fullName}'s place is paid for by ${payer}, so no invoice is addressed to them. Bill ${
+        student.funding === 'scheme' ? 'the sponsoring body' : payer
+      } instead, naming the learners the fee covers.`,
+    );
+  }
   return {
     kind: 'student',
     accountId: null,

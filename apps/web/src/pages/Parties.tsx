@@ -18,6 +18,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import {
+  INSTITUTION_ENGAGEMENT_LABELS,
+  ORGANIZATION_ROLE_LABELS,
+  ORGANIZATION_ROLES,
+  type InstitutionEngagement,
+  type OrganizationRole,
+} from '@kaizen/shared';
 import { api, date, relative, titleCase } from '../lib/api.js';
 import {
   Card,
@@ -48,6 +55,7 @@ interface BodyRow {
   id: string;
   recordCode: string;
   kind: string;
+  roles: string[];
   name: string;
   website: string | null;
   billed: boolean;
@@ -56,6 +64,8 @@ interface BodyRow {
     institutionType: string | null;
     district: string | null;
     studentCount: number | null;
+    engagements: string[];
+    accreditation: string | null;
   } | null;
   computedRelationshipStatus: string;
 }
@@ -88,6 +98,7 @@ function BodyList({
 }) {
   const { can } = useSession();
   const [tab, setTab] = useState<'all' | 'billed' | 'unbilled'>('all');
+  const [role, setRole] = useState('');
   const [q, setQ] = useState('');
   // `?new=1` opens the form on arrival, so a button elsewhere that says "Add a
   // student" adds one rather than landing somebody on a list. The parameter is
@@ -107,10 +118,11 @@ function BodyList({
   const params = new URLSearchParams();
   if (tab === 'billed') params.set('billing', 'yes');
   if (tab === 'unbilled') params.set('billing', 'no');
+  if (role) params.set('role', role);
   if (q) params.set('q', q);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: [endpoint, tab, q],
+    queryKey: [endpoint, tab, role, q],
     queryFn: () => api.get<{ items: BodyRow[]; total: number }>(`/crm/${endpoint}?${params}`),
   });
 
@@ -130,13 +142,25 @@ function BodyList({
         }
       />
 
-      <div className="mb-3">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           className="input max-w-sm"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search by name or record code…"
         />
+        {/* "Which of these sponsor cohorts", "which of them hire our learners" —
+            asked of what a body does, which is not what it is. */}
+        {kind === 'organization' && (
+          <select className="input max-w-xs" value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value="">Whatever they are to us</option>
+            {ORGANIZATION_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {ORGANIZATION_ROLE_LABELS[r]}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Not a kind filter — the kind is the screen. This asks a question about
@@ -179,9 +203,24 @@ function BodyList({
               {o.website && <p className="truncate text-2xs text-ink-500">{o.website.replace('https://', '')}</p>}
 
               <div className="mt-3 flex flex-wrap gap-1">
-                <span className="chip border-accent/40 text-accent-soft">
-                  {kind === 'institution' ? 'School or college' : 'Organisation'}
-                </span>
+                {kind === 'institution'
+                  ? (o.institutionProfile?.engagements ?? []).map((e) => (
+                      <span key={e} className="chip border-accent/40 text-accent-soft">
+                        {INSTITUTION_ENGAGEMENT_LABELS[e as InstitutionEngagement] ?? e}
+                      </span>
+                    ))
+                  : (o.roles ?? []).map((r) => (
+                      <span key={r} className="chip border-accent/40 text-accent-soft">
+                        {ORGANIZATION_ROLE_LABELS[r as OrganizationRole] ?? r}
+                      </span>
+                    ))}
+                {(kind === 'institution'
+                  ? (o.institutionProfile?.engagements ?? []).length === 0
+                  : (o.roles ?? []).length === 0) && (
+                  <span className="chip border-ink-800 text-ink-600">
+                    {kind === 'institution' ? 'no engagement recorded yet' : 'nothing recorded yet'}
+                  </span>
+                )}
                 {o.billed && <span className="chip border-ink-700 text-ink-400">We invoice them</span>}
               </div>
 
@@ -314,6 +353,17 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
         <span className="chip border-accent/40 text-accent-soft">
           {org.kind === 'institution' ? 'School or college' : 'Organisation'}
         </span>
+        {org.kind === 'institution'
+          ? (data.institutionProfile?.engagements ?? []).map((e: string) => (
+              <span key={e} className="chip border-accent/40 text-accent-soft">
+                {INSTITUTION_ENGAGEMENT_LABELS[e as InstitutionEngagement] ?? e}
+              </span>
+            ))
+          : (org.roles ?? []).map((r: string) => (
+              <span key={r} className="chip border-accent/40 text-accent-soft">
+                {ORGANIZATION_ROLE_LABELS[r as OrganizationRole] ?? r}
+              </span>
+            ))}
         {data.account && <span className="chip border-ink-700 text-ink-400">We invoice them</span>}
         <StatusChip status={data.computedRelationshipStatus} tone={STATUS_TONE[data.computedRelationshipStatus] ?? 'neutral'} />
         <span className="text-2xs text-ink-500" title="Computed at query time from live aggregations — never stored, because a stored value drifts from its evidence.">
@@ -351,6 +401,7 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
                   )}
                 </Field>
                 <Field label="Strategic priority">{titleCase(data.institutionProfile.strategicPriority)}</Field>
+                <Field label="Accreditation">{data.institutionProfile.accreditation ?? '—'}</Field>
               </dl>
             </Card>
           ) : (

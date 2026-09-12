@@ -705,6 +705,14 @@ interface FoundingAccount {
   /** Env prefix for the three overrides: `_EMAIL`, `_NAME`, `_PASSWORD`. */
   env: string;
   defaultLocalPart: string;
+  /**
+   * The designation, not a person.
+   *
+   * A seeded account is a post rather than a human: whoever holds it changes,
+   * and a name baked into the seed is wrong the first time somebody else takes
+   * the job. `<PREFIX>_NAME` sets the real one at install time, and the person
+   * can edit it afterwards from their own record.
+   */
   defaultName: string;
   /** What this account is for, printed beside it at the end of the seed. */
   holds: string;
@@ -715,21 +723,21 @@ const FOUNDING_ACCOUNTS: FoundingAccount[] = [
     roleSlug: 'chairman',
     env: 'OWNER',
     defaultLocalPart: 'chairman',
-    defaultName: 'Rishikesh',
+    defaultName: 'Chairman',
     holds: 'superadmin — every resource, every verb, every scope',
   },
   {
     roleSlug: 'hr_ops_manager',
     env: 'OPERATIONS',
     defaultLocalPart: 'operations',
-    defaultName: 'Kasthurika',
+    defaultName: 'Operations Head',
     holds: 'the people function, delivery, education and the course catalogue',
   },
   {
     roleSlug: 'finance_head',
     env: 'FINANCE',
     defaultLocalPart: 'finance',
-    defaultName: 'Narayanan',
+    defaultName: 'Finance Head',
     holds: 'the books, the GST returns, and the money side of people',
   },
   {
@@ -881,6 +889,9 @@ export async function seedBootstrap(): Promise<{
   }
   if (backfilled.studentProfiles > 0) {
     console.log(`  ${backfilled.studentProfiles} enrolled learner(s) given a student record`);
+  }
+  if (backfilled.designations > 0) {
+    console.log(`  ${backfilled.designations} founding account(s) now named by designation`);
   }
 
   // `owner` is kept as its own field because it is what every caller printing
