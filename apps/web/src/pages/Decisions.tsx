@@ -42,7 +42,7 @@ export function Decisions() {
       <PageHeader
         actions={<NewButton label="Record a decision" onClick={() => setCreating(true)} />}
         title="Decisions"
-        subtitle="Calls that genuinely need you. Something arrives here only when nobody below you can settle it, a policy names you specifically, or someone you delegated to handed it back."
+        subtitle="Calls that need you."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -127,12 +127,12 @@ export function Decisions() {
         <div className="space-y-5">
           <Card
             title="Your decisions, calibrated"
-            subtitle="Stated confidence against realised outcome. A computed statistic, not an inference."
+            subtitle="Stated confidence against what actually happened."
           >
             {!calibration || calibration.sampleSize === 0 ? (
               <EmptyState
-                message="Not enough past decisions have been reviewed yet to say how well they went."
-                hint="Making the call is not the end. A decision is only finished once someone has written down how it turned out and what changed as a result."
+                message="Not enough reviewed decisions yet."
+                hint="A decision is finished when somebody records how it turned out."
               />
             ) : (
               <div className="space-y-2">
@@ -167,10 +167,6 @@ export function Decisions() {
                 </li>
               ))}
             </ol>
-            <p className="mt-3 text-2xs italic text-ink-500">
-              An incomplete pack renders Analysing with a visible clock, never as decidable. Request-evidence holds the
-              item's queue position and clock rather than dropping it to a parking lot.
-            </p>
           </Card>
         </div>
       </div>

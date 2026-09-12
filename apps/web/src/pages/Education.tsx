@@ -47,7 +47,7 @@ export function Cohorts() {
       <NewCourse open={adding === 'course'} onClose={() => setAdding(null)} />
       <PageHeader
         title="Training batches"
-        subtitle="Each run of a course: when it goes, who teaches it, where it happens and how full it is. Trainers see the batches they teach and no others."
+        subtitle="Each run of a course: dates, trainer, place, and how full it is."
         actions={
           <>
             <button className="btn" onClick={() => setAdding('course')}>+ Course</button>
@@ -132,7 +132,7 @@ export function Enrollments() {
       <NewEnrollment open={enrolling} onClose={() => setEnrolling(false)} />
       <PageHeader
         title="Enrolments"
-        subtitle="Who is on which batch, and which college they came from. Open one for that learner's day-by-day record: attendance, weekly scores, the questions they asked, the feedback they gave and anything that went wrong. The people themselves are under Customers."
+        subtitle="Who is on which batch. Open one for that learner's day-by-day record."
         actions={<NewButton label="Enrol a student" onClick={() => setEnrolling(true)} />}
       />
 
@@ -175,7 +175,7 @@ export function Enrollments() {
         <Card>
           <EmptyState
             message="No students yet."
-            hint="A student joins a batch, and usually comes from a college — which is what makes the college relationship measurable."
+            hint="A student joins a batch, and usually comes from a college."
           />
         </Card>
       ) : (
@@ -276,7 +276,7 @@ export function Projects() {
     <div>
       <PageHeader
         title="Projects"
-        subtitle="Post-award delivery state lives here, not in a repurposed opportunity stage. This is the record a project manager actually needs."
+        subtitle="Work that has been won, and is being delivered."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">

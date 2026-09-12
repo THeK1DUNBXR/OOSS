@@ -52,7 +52,7 @@ export function Offerings() {
       <PageHeader
         actions={<NewButton label="Add an offering" onClick={() => setCreating(true)} />}
         title="What we sell"
-        subtitle="Everything Kaizen sells, with its prices. Keeping this straight is what lets finance work out revenue automatically instead of asking about every deal."
+        subtitle="Everything we sell, and what it costs."
       />
 
       {gaps > 0 && (
@@ -84,7 +84,7 @@ export function Offerings() {
               <dl className="mt-3 grid grid-cols-2 gap-x-4">
                 <Field label="Delivery model">{titleCase(o.deliveryModel)}</Field>
                 <Field label="Revenue treatment">
-                  <span title="The field Finance reads to derive recognition without a manual sales conversation per deal.">
+                  <span title="Finance reads this to work out revenue, so nobody has to ask.">
                     {titleCase(o.defaultRevenueTreatment)}
                   </span>
                 </Field>
@@ -163,8 +163,7 @@ function NewPriceModal({ offering, onClose }: { offering: OfferingView | null; o
     >
       <div className="space-y-3">
         <p className="rounded border border-ink-800 bg-ink-950 px-3 py-2 text-2xs text-ink-500">
-          Repricing never mutates an existing entry. This creates a new version and flips the prior row to superseded,
-          so a quote built against the old price stays reproducible six months later.
+          A new price supersedes the old one. Past quotes keep theirs.
         </p>
         <div>
           <label className="label">Unit price (INR)</label>
@@ -182,7 +181,7 @@ function NewPriceModal({ offering, onClose }: { offering: OfferingView | null; o
           <div>
             <label className="label">Max discount %</label>
             <input className="input" type="number" min={0} max={100} value={maxDiscountPct} onChange={(e) => setMaxDiscountPct(e.target.value)} />
-            <p className="mt-1 text-2xs text-ink-500">Required, deliberately set. There is no default ceiling.</p>
+            <p className="mt-1 text-2xs text-ink-500">Required. There is no default.</p>
           </div>
         </div>
         {error && <p className="text-2xs text-band-critical">{error}</p>}
@@ -213,7 +212,7 @@ export function Quotes() {
     <div>
       <PageHeader
         title="Quotes"
-        subtitle="Prices quoted to customers. Each line remembers the exact price it was quoted at, so a quote still adds up correctly months later even after list prices change."
+        subtitle="Prices quoted to customers. Each line keeps the price it was quoted at."
       />
 
       {isLoading ? (
@@ -251,8 +250,7 @@ export function Quotes() {
                 <div className="mb-3 rounded border border-band-critical/40 bg-band-critical/5 px-3 py-2">
                   <p className="text-xs text-band-critical">Issue blocked — {q.blockedReason}</p>
                   <p className="mt-1 text-2xs text-ink-400">
-                    The whole quote blocks; there is no partial issue with some lines through and some blocked. An
-                    approval step is open against the resolved authority holder.
+                    The whole quote is held until it is approved.
                   </p>
                 </div>
               )}
@@ -334,7 +332,7 @@ export function Proposals() {
     <div>
       <PageHeader
         title="Proposals"
-        subtitle="A proposal is a real entity with a lifecycle, not a stage value plus two timestamps. An opportunity cannot enter the offered stage with nothing proposed."
+        subtitle="What has been proposed, and where each one stands."
       />
 
       {isLoading ? (
@@ -436,7 +434,7 @@ export function Agreements() {
     <div>
       <PageHeader
         title="Agreements"
-        subtitle="MoU, Contract and Partner Agreement share a design pattern because the business facts differ: a coverage instrument may carry zero value; a contract is always a priced commitment."
+        subtitle="MoUs, contracts and partner agreements."
       />
 
       <Tabs
@@ -562,10 +560,6 @@ export function Agreements() {
                 </Field>
               )}
             </dl>
-            <p className="text-2xs text-ink-500">
-              An approval step is open and the resolved holder has been notified. system_admin is never a valid
-              resolution target at any tier, and no AI principal may execute this transition at any grant size.
-            </p>
             <Link to="/commercial/approvals" className="btn-ghost" onClick={() => setGateResult(null)}>
               Open the approval queue
             </Link>
@@ -604,7 +598,7 @@ export function Approvals() {
     <div>
       <PageHeader
         title="Approvals"
-        subtitle="Approval routes to whoever holds authority at decision time, not at block time. The Self-Dealing Bar is unconditional: a requester may never approve their own step."
+        subtitle="Approvals go to whoever holds the authority. Nobody approves their own."
       />
 
       {error && (
@@ -688,7 +682,7 @@ export function WinLoss() {
     <div>
       <PageHeader
         title="Win / Loss Review"
-        subtitle="A structured post-mortem capturing named competitor, real decision-maker and real lost stage — feeding Company Memory's lesson distillation."
+        subtitle="Why deals were won or lost."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">

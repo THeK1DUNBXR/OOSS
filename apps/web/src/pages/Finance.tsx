@@ -70,7 +70,7 @@ export function Invoices() {
     <div>
       <PageHeader
         title="Invoices"
-        subtitle="What customers owe us. Tax is priced from the lines when the invoice is raised, and a tax invoice is final once issued — instalments against it are receipts, and a final invoice naming them is raised when the instalments are done."
+        subtitle="What customers owe us."
         actions={<NewButton label="Raise an invoice" onClick={() => setCreating(true)} />}
       />
       <InvoiceEditor open={creating} onClose={() => setCreating(false)} />
@@ -117,7 +117,7 @@ export function Invoices() {
         <Card>
           <EmptyState
             message={tab === 'drafts' ? 'No drafts.' : tab === 'open' ? 'Nothing is outstanding.' : 'No invoices.'}
-            hint="An invoice can be raised for a company or for a person — a student paying for a course is not a company, and used to need one invented for them."
+            hint="Bill a student, an institution or an organisation."
           />
         </Card>
       ) : (
@@ -131,7 +131,7 @@ export function Invoices() {
                   {!inv.recordCode && (
                     <span
                       className="chip border-ink-700 text-ink-500"
-                      title="A draft takes no invoice number: the tax series has to stay consecutive, so the number is allocated when it is issued."
+                      title="A draft has no number. Numbers are given out when an invoice is issued, so the series stays consecutive."
                     >
                       no number yet
                     </span>
@@ -257,8 +257,8 @@ export function Invoices() {
 
               <p className="mt-2 text-2xs text-ink-600">
                 {inv.editable
-                  ? 'A draft. Its lines and its tax can still be changed; once issued, the correction to it is a credit note.'
-                  : 'Final. What it says about payment is what was true when it was handed over — each instalment since has its own receipt, and only the sum of those receipts determines what has actually been paid.'}
+                  ? 'A draft. Lines and tax can still be changed. Once issued, corrections need a credit note.'
+                  : 'Final. Payments made since are recorded as receipts, not changes to this invoice.'}
               </p>
             </Card>
           ))}
@@ -286,7 +286,7 @@ export function Payments() {
     <div>
       <PageHeader
         title="Payments"
-        subtitle="Money actually received. Nothing here is ever edited or deleted — a mistake is corrected by adding a reversing entry, so the history always shows what really happened."
+        subtitle="Money received. Corrections are added, never written over."
         actions={<NewButton label="Record a payment" onClick={() => setCreating(true)} />}
       />
       <NewPayment open={creating} onClose={() => setCreating(false)} />
@@ -411,10 +411,6 @@ function AllocateModal({ payment, onClose }: { payment: PaymentView | null; onCl
           <label className="label">Amount</label>
           <input className="input" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
-        <p className="rounded border border-ink-800 bg-ink-950 px-3 py-2 text-2xs text-ink-500">
-          A receipt is the allocation join. Partial payment across several obligations is representable because the
-          join is many-to-many rather than a status on one row.
-        </p>
         {error && <p className="text-2xs text-band-critical">{error}</p>}
       </div>
     </Modal>
@@ -433,7 +429,7 @@ export function Receivables() {
     <div>
       <PageHeader
         title="Receivables"
-        subtitle="A disposable, event-hydrated projection. CRM holds no authoritative money state — this is safe to rebuild, discard or re-hydrate at any time."
+        subtitle="What is owed, and how late it is."
       />
 
       {isLoading ? (

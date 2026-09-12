@@ -115,7 +115,7 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runStaleCommitJob',
-    label: 'AU-CRM-010 stale close-date demotion',
+    label: 'Move deals down when their close date goes stale',
     automationClass: 'threshold_response',
     cron: '0 5 * * *',
     run: async () => {

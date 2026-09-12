@@ -143,7 +143,7 @@ export function Ledger() {
     <div>
       <PageHeader
         title="Ledger"
-        subtitle="Every movement of money, whatever raised it — a bank import, a payroll disbursement, a supplier payment or somebody typing it in. Nothing is deleted: a mistake is reversed with a second entry, and both stay."
+        subtitle="Every movement of money. Nothing is deleted; corrections are new entries."
         actions={
           <>
             <button className="btn" onClick={() => setAdding('category')}>+ Category</button>
@@ -367,7 +367,7 @@ export function Payables() {
       <PageHeader
         actions={<NewButton label="Record a bill" onClick={() => setAdding('bill')} />}
         title="What we owe"
-        subtitle="Supplier bills. The company could always see what it was owed; without this it could not see its own position."
+        subtitle="Supplier bills, and what is still to pay."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -535,7 +535,7 @@ export function Budget() {
       <NewBudgetLine open={adding} onClose={() => setAdding(false)} period={period} />
       <PageHeader
         title="Budget"
-        subtitle="What was planned against what was spent. The spend is summed from the ledger each time this loads, so an entry made late moves the variance instead of leaving a number that was true on the day somebody wrote it."
+        subtitle="What was planned against what was spent."
         actions={
           <>
             <input type="month" className="input w-40" value={period} onChange={(e) => e.target.value && setPeriod(e.target.value)} />
@@ -654,7 +654,7 @@ export function Assets() {
           </>
         }
         title="Assets and borrowing"
-        subtitle="What the company owns and what it owes over time. Both schedules are worked out on demand rather than stored, so correcting a useful life or a rate fixes every future period at once."
+        subtitle="What the company owns, and what it owes."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">

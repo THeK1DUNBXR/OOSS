@@ -357,9 +357,7 @@ export function InvoiceEditor({
         </div>
       </div>
       <p className="text-2xs text-ink-500">
-        Three different parties, and the invoice says which. A student who walks in and pays for a course is billed in
-        their own name — it used to mean inventing a company for them, which put a fake customer in the list every
-        time.
+        The invoice says which of the three it is for.
       </p>
 
       {billTo === 'student' ? (
@@ -531,8 +529,8 @@ export function InvoiceEditor({
         </dl>
         <p className="mt-2 text-2xs text-ink-600">
           {interState
-            ? 'Across a state line, so a single IGST rather than a halved pair. They are different taxes collected by different governments, not a presentation choice.'
-            : 'Within the state, so the tax is halved into CGST and SGST. Computed per line, because one invoice can carry an 18% service and a 5% good.'}
+            ? 'Across a state line, so one IGST instead of a CGST/SGST pair.'
+            : 'Within the state, so the tax splits into CGST and SGST. Worked out line by line.'}
         </p>
       </div>
 
@@ -545,8 +543,7 @@ export function InvoiceEditor({
           </label>
           {!issueNow && (
             <p className="text-2xs text-ink-500">
-              Saved as a draft, which is the only state whose lines can still be changed. An issued invoice is a document
-              the customer holds; the correction to one is a credit note.
+              A draft can still be changed. An issued invoice is corrected by a credit note.
             </p>
           )}
 
@@ -592,8 +589,7 @@ export function InvoiceEditor({
                     : 'Nothing collected now, so the invoice will read Payable on credit with its due date.'}
               </p>
               <p className="mt-1 text-2xs text-ink-600">
-                This is the last thing the invoice will say about payment. Instalments after today are receipts, issued
-                from the invoice's own page, and a final invoice naming them all is raised when the instalments are done.
+                The last thing this invoice says about payment. Later instalments are receipts.
               </p>
             </div>
           )}
@@ -732,9 +728,7 @@ export function CollectPayment({
           : 'This clears the invoice, and the receipt will say so.'}
       </p>
       <p className="text-2xs text-ink-600">
-        Nothing here edits the invoice. A payment is recorded, a receipt is issued against it with its own number and
-        time, and what has been paid is the sum of the receipts. Once the instalments are done, raise a final invoice from
-        the invoice's own page — it names every receipt.
+        The invoice is not changed. A receipt is issued for what is paid.
       </p>
     </CreateModal>
   );

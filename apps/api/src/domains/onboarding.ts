@@ -72,8 +72,7 @@ export async function onboardingState(): Promise<OnboardingState> {
     {
       key: 'books',
       title: 'Bring your books in',
-      why:
-        'A Tally export, or a bank statement. Until the platform knows what has actually happened, every figure it shows you is about nothing.',
+      why: 'A Tally export or a bank statement. Every figure on every screen comes from this.',
       done: transactions > 0,
       count: transactions,
       path: '/data/import',
@@ -83,8 +82,7 @@ export async function onboardingState(): Promise<OnboardingState> {
     {
       key: 'accounts',
       title: 'Check your accounts',
-      why:
-        'The bank accounts and cash boxes money sits in. An import creates these from the names in your file; look at them once and correct anything it got wrong.',
+      why: 'The bank accounts and cash boxes money sits in. An import creates these \u2014 check them once.',
       done: accounts > 0,
       count: accounts,
       path: '/finance/ledger',
@@ -94,8 +92,7 @@ export async function onboardingState(): Promise<OnboardingState> {
     {
       key: 'people',
       title: 'Put your team on the books',
-      why:
-        'Leave, attendance, payroll and skills all hang off an employment record, so nothing in People works until the people are there.',
+      why: 'Leave, attendance, payroll and skills all need an employment record first.',
       done: employees > 0,
       count: employees,
       path: '/data/import',
@@ -105,8 +102,7 @@ export async function onboardingState(): Promise<OnboardingState> {
     {
       key: 'students',
       title: 'Add your students',
-      why:
-        'The learners you teach. One record each — their registration number, where they came from, and what they are on. A student is billed in their own name, so this is also who most of your invoices are addressed to.',
+      why: 'The learners you teach. One record each, and most invoices are addressed to them.',
       done: students > 0,
       count: students,
       path: '/crm/students',
@@ -117,8 +113,7 @@ export async function onboardingState(): Promise<OnboardingState> {
     {
       key: 'institutions',
       title: 'Add the institutions you work with',
-      why:
-        'Where learners come to you from. A student names theirs, and the college\u2019s own page then answers how many it has sent and how they did.',
+      why: 'The colleges learners come to you from. Each one then shows how many it sent and how they did.',
       done: institutions > 0,
       count: institutions,
       path: '/crm/institutions',
@@ -130,7 +125,7 @@ export async function onboardingState(): Promise<OnboardingState> {
     {
       key: 'invoice',
       title: 'Raise an invoice',
-      why: 'The other half of the money picture: what you are owed, beside what you have spent.',
+      why: 'What you are owed, beside what you have spent.',
       done: invoices > 0,
       count: invoices,
       path: '/finance/invoices',
@@ -141,8 +136,7 @@ export async function onboardingState(): Promise<OnboardingState> {
     {
       key: 'team',
       title: 'Give your colleagues accounts',
-      why:
-        'Everyone signs in as themselves. An employee sees their own leave and payslip and nobody else’s; the Finance Head sees the books; HR runs the people function.',
+      why: 'Everyone signs in as themselves and sees only what their job needs.',
       done: users > 1,
       count: users,
       path: '/admin/governance',

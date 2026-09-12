@@ -320,7 +320,7 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
           {stepUpFor === a.id && (
             <div className="mt-1 space-y-1.5 rounded-sm bg-[#232326] p-2">
               <p className="text-2xs text-[#9a9aa3]">
-                A privileged context requires step-up re-authentication before the switch commits.
+                This one asks for your password again.
               </p>
               <input
                 type="password"

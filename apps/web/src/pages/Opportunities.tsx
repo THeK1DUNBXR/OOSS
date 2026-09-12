@@ -58,7 +58,7 @@ export function Opportunities() {
     <div>
       <PageHeader
         title="Opportunities"
-        subtitle="Deals in progress. The stage says how far along a deal is; the forecast says how confident we are of closing it. They are two different questions, so we ask them separately."
+        subtitle="Deals in progress: how far along, and how likely."
         actions={<Link to="/crm/forecast" className="btn-ghost">Forecast roll-up</Link>}
       />
 
@@ -197,7 +197,7 @@ export function OpportunityDetail() {
                 disabled={advance.isPending || (s.pipelinePosition === 90 && !data.wonGateSatisfied)}
                 title={
                   s.pipelinePosition === 90 && !data.wonGateSatisfied
-                    ? 'Blocked at the point of action: a contract or MoU reference is required before won. A document reference proves nothing about signature.'
+                    ? 'A contract or MoU reference is needed before this can be marked won.'
                     : undefined
                 }
               >
@@ -246,7 +246,7 @@ export function OpportunityDetail() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
-          <Card title="Stage path" subtitle="A stage transition is a validated edge traversal, not a value any caller can set.">
+          <Card title="Stage path" subtitle="Stages move one step at a time.">
             <div className="flex flex-wrap items-center gap-1.5">
               {stages
                 .filter((s: any) => !s.postAward)
@@ -314,7 +314,7 @@ export function OpportunityDetail() {
             </dl>
           </Card>
 
-          <Card title="Commercial instruments" subtitle="CRM holds foreign keys. Every instrument is authored in its own module.">
+          <Card title="Commercial instruments" subtitle="The agreements behind this deal.">
             <dl>
               <Field label="Proposal">
                 {data.proposal ? (
@@ -358,7 +358,7 @@ export function OpportunityDetail() {
           </Card>
 
           {data.receivables && (
-            <Card title="Receivables" subtitle="A disposable, event-hydrated projection. CRM holds no authoritative money state.">
+            <Card title="Receivables" subtitle="What is owed on this deal.">
               <dl>
                 <Field label="Outstanding">{money(data.receivables.amountOutstanding ? Number(data.receivables.amountOutstanding) : null)}</Field>
                 <Field label="Dunning stage">{data.receivables.dunningStage ?? 'none'}</Field>
@@ -457,11 +457,9 @@ function ForecastModal({
         </div>
 
         <div className="space-y-1.5 rounded border border-ink-800 bg-ink-950 p-3 text-2xs text-ink-500">
-          <p>· best_case requires pipeline position 20 or later — a bare identified deal cannot be best case.</p>
-          <p>· commit requires an expected close date inside the current period, not flagged stale.</p>
-          <p>· commit on an enterprise or institution deal requires the stage's qualification fields populated.</p>
-          <p>· demotion needs no gate — under-committing is never the risk — but always needs a reason.</p>
-          <p>· closure is stage-driven and category-derived, never the reverse.</p>
+          <p>· Best case needs the deal past the early stages.</p>
+          <p>· Commit needs a close date in this period, and the qualification fields filled in on a big deal.</p>
+          <p>· Moving a deal down is always allowed, but needs a reason.</p>
         </div>
 
         <div>
@@ -515,7 +513,7 @@ export function Forecast() {
     <div>
       <PageHeader
         title="Forecast"
-        subtitle="What we expect to close, shown separately for each kind of business. They are not added together by default, because they are counted in different ways — adding them would give you a number that means nothing."
+        subtitle="What we expect to close, by kind of business."
         actions={
           <button className={blended ? 'btn-primary' : 'btn-ghost'} onClick={() => setBlended((v) => !v)}>
             {blended ? 'Showing blended total' : 'Request blended total'}
@@ -588,13 +586,7 @@ export function Forecast() {
             </div>
             {p.forecastMethod === 'manual_commit' && (
               <p className="mt-2 text-2xs italic text-ink-500">
-                Only explicitly committed deals count. Stage-weighted probability is a poor proxy for a
-                fee-on-confirmed-placement motion.
-              </p>
-            )}
-            {p.forecastMethod === 'milestone_based' && (
-              <p className="mt-2 text-2xs italic text-ink-500">
-                Conversion-rate-by-volume, not per-deal probability — enrolled is a near-binary outcome.
+                Only committed deals count.
               </p>
             )}
           </Card>

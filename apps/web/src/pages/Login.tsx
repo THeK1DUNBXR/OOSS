@@ -11,22 +11,10 @@ import { useSession } from '../lib/session.js';
  * same screen shows different things to different people.
  */
 const ROLES = [
-  {
-    label: 'Employee',
-    note: 'Their own leave, attendance, payslip and skills, plus the staff directory — and they raise invoices for what they sell, seeing the ones they raised and no others.',
-  },
-  {
-    label: 'Operations Head',
-    note: 'The people function end to end, delivery, education and the course catalogue. Proposes pay and cannot approve it.',
-  },
-  {
-    label: 'Finance Head',
-    note: 'The books and the GST returns, and the money side of people: approves pay and payroll, and sees what the establishment costs without running it.',
-  },
-  {
-    label: 'Chairman',
-    note: 'Everything. Every screen, every record, every action — nothing in the system is hidden from this one.',
-  },
+  { label: 'Employee', note: 'Their own leave, attendance and payslips, the staff directory, and the invoices they raise.' },
+  { label: 'Operations Head', note: 'People, delivery and the course catalogue. Proposes pay but cannot approve it.' },
+  { label: 'Finance Head', note: 'The books, GST returns, and approving pay and payroll.' },
+  { label: 'Chairman', note: 'Everything.' },
 ];
 
 export function Login() {
@@ -85,16 +73,14 @@ export function Login() {
           </form>
 
           <p className="mt-4 text-2xs leading-relaxed text-ink-500">
-            What you can see comes from your job here, not from your account. Someone who has left keeps their
-            record but loses their access — the password alone is never enough.
+            What you can see comes from your job, not your account.
           </p>
         </div>
 
         <div className="card p-6">
           <h2 className="text-sm font-semibold text-ink-100">What you see depends on what you do here</h2>
           <p className="mt-1 text-2xs leading-relaxed text-ink-500">
-            There are four roles, and the same screen shows different things to each. Menus you hold no grant on are
-            absent rather than greyed out, because a link you can never enable is not information.
+            Four roles. Each sees what their job needs.
           </p>
 
           <div className="mt-4 space-y-1.5">
@@ -107,8 +93,7 @@ export function Login() {
           </div>
 
           <p className="mt-4 text-2xs leading-relaxed text-ink-500">
-            Your account is created for you by whoever set the company up. If you cannot get in, they can reset it —
-            there is no self-service password here on purpose, because an ERP account is an employment fact.
+            Your account is created for you. Ask them to reset it if you cannot get in.
           </p>
         </div>
       </div>

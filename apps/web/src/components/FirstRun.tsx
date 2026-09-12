@@ -22,28 +22,23 @@ function alreadySeen(): boolean {
 const POINTS: Array<{ heading: string; body: string }> = [
   {
     heading: 'Start with the first screen in the sidebar',
-    body:
-      'It is built around what needs you today — your work, anything overdue, and anything the system has already handled without asking. If you only ever open one screen, open that one.',
+    body: 'It shows what needs you today: your work, anything overdue, and anything already handled for you.',
   },
   {
     heading: 'Every number opens up',
-    body:
-      'Click a score and it breaks into the things driving it. Click one of those and you reach the actual records. No figure here is something you have to take on trust.',
+    body: 'Click a figure to see what it is made of, and again to reach the records behind it.',
   },
   {
-    heading: '“Nothing to measure yet” is not zero',
-    body:
-      'Where there is not enough information, the system says so rather than showing a zero. A zero would tell you things are going badly, which is different from not knowing.',
+    heading: '\u201CNothing to measure yet\u201D is not zero',
+    body: 'When there is too little information, it says so instead of showing a zero.',
   },
   {
     heading: 'You see what your job needs',
-    body:
-      'Menus and figures differ from person to person. Something you cannot act on is simply absent rather than greyed out — so what you see is what you can actually do.',
+    body: 'Anything you cannot use is absent rather than greyed out.',
   },
   {
     heading: 'Nothing is quietly deleted',
-    body:
-      'Corrections are added rather than written over. A payment entered by mistake is reversed with a new entry, so the history always shows what really happened.',
+    body: 'A mistake is corrected by a new entry, so the history still shows what happened.',
   },
 ];
 

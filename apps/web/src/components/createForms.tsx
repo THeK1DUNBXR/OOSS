@@ -466,8 +466,7 @@ export function NewContact({ open, onClose }: { open: boolean; onClose: () => vo
       </Row>
       <TextArea label="Notes" value={notes} onChange={setNotes} rows={2} />
       <p className="text-2xs text-ink-500">
-        If this matches somebody already on file, the platform will say so and ask rather than quietly creating a
-        second copy of the same person.
+        If this matches somebody on file, you will be asked first.
       </p>
     </CreateModal>
   );
@@ -747,9 +746,7 @@ export function NewOrganization({ open, onClose }: { open: boolean; onClose: () 
       }
     >
       <p className="text-2xs text-ink-500">
-        A business, a trust or a foundation — somebody who buys corporate training, sponsors a cohort or hires our
-        learners. Schools and colleges are recorded separately, under Institutions, because they are a different
-        relationship.
+        A business, trust or foundation. Schools and colleges go under Institutions.
       </p>
       <TextInput label="Name" required autoFocus value={name} onChange={setName} />
       <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
@@ -832,7 +829,7 @@ export function AddSchoolDetails({
       onSubmit={() => api.post(`/crm/institutions/${organizationId}/school-details`, f.institutionProfile())}
     >
       <p className="text-2xs text-ink-500">
-        Everything below is optional — record what you know and leave the rest blank.
+        All optional.
       </p>
       <SchoolFields {...f.schoolProps} />
     </CreateModal>
@@ -913,7 +910,7 @@ export function NewStudent({ open, onClose }: { open: boolean; onClose: () => vo
         <TextInput label="Email" value={primaryEmail} onChange={setEmail} />
       </Row>
       <p className="text-2xs text-ink-500">
-        One of the two is needed: it is how somebody already on file is recognised rather than entered twice.
+        One of the two is needed, so somebody already on file is recognised.
       </p>
       <Row>
         <TextInput
@@ -987,13 +984,12 @@ export function NewStudent({ open, onClose }: { open: boolean; onClose: () => vo
         )}
         {funding === 'institution' && (
           <p className="text-2xs text-ink-500">
-            Their college pays. Name it above — it is the same field as where they came from.
+            Their college pays — name it above.
           </p>
         )}
         {funding !== 'self' && (
           <p className="text-2xs text-ink-500">
-            No invoice will be addressed to them. The fee is billed to whoever is paying, naming the learners it
-            covers.
+            No invoice goes to them. The fee is billed to whoever pays.
           </p>
         )}
       </fieldset>
@@ -1005,8 +1001,7 @@ export function NewStudent({ open, onClose }: { open: boolean; onClose: () => vo
             <TextInput label="Address" value={address} onChange={setAddress} />
           </Row>
           <p className="text-2xs text-ink-500">
-            The state decides how the tax on their invoice splits, so it is entered once here rather than on every
-            invoice.
+            The state decides how their tax splits.
           </p>
         </>
       )}
@@ -1088,8 +1083,7 @@ export function NewOffering({ open, onClose }: { open: boolean; onClose: () => v
         ]}
       />
       <p className="text-2xs text-ink-500">
-        Setting the revenue treatment on the offering is what stops anybody in sales having to decide it deal by
-        deal. A price is added afterwards, on the offering’s own page.
+        Set once here, so nobody decides it deal by deal.
       </p>
     </CreateModal>
   );
@@ -1172,8 +1166,7 @@ export function NewInteraction({ open, onClose }: { open: boolean; onClose: () =
       />
       <TextArea label="What was said" value={notes} onChange={setNotes} rows={3} />
       <p className="text-2xs text-ink-500">
-        How sensitive this is gets computed from what it is attached to, not chosen here — a note against an HR
-        matter is treated as confidential whether or not anybody remembered to say so.
+        Sensitivity follows what it is attached to.
       </p>
     </CreateModal>
   );
@@ -1330,8 +1323,7 @@ export function NewBudgetLine({
       </Row>
       <TextArea label="Why this number" value={note} onChange={setNote} rows={2} />
       <p className="text-2xs text-ink-500">
-        What was actually spent is summed at the moment you look, so a late entry moves the variance without anybody
-        rebuilding the budget.
+        Spend is summed when you look, so a late entry moves the variance.
       </p>
     </CreateModal>
   );
@@ -1363,8 +1355,7 @@ export function NewSkill({ open, onClose }: { open: boolean; onClose: () => void
         hint="how fast it goes stale unaided"
       />
       <p className="text-2xs text-ink-500">
-        Confidence in a claim decays from this, worked out when you look rather than stored — so a skill nobody has
-        used for two years reads as two years old rather than as freshly verified.
+        Confidence fades from this date.
       </p>
     </CreateModal>
   );
@@ -1760,9 +1751,7 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
             <TextInput label="Email" type="email" value={primaryEmail} onChange={setEmail} />
           </Row>
           <p className="text-2xs text-ink-500">
-            A phone or an email is matched against everybody already on file. If it belongs to somebody we know, the
-            enrolment lands on their record instead of creating a second one — and where the match is uncertain it is
-            raised for a person to decide rather than guessed.
+            A phone or email is matched against people already on file.
           </p>
         </>
       )}
@@ -1795,8 +1784,7 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
       )}
       {isMinor && (
         <p className="text-2xs text-ink-500">
-          Guardian contact is regulated under the DPDP Act. It is read-audited every time somebody looks at it, and
-          withheld entirely from anybody whose clearance does not reach it.
+          Guardian contact is protected. Every look at it is recorded.
         </p>
       )}
     </CreateModal>
@@ -1857,8 +1845,7 @@ export function NewCohort({ open, onClose }: { open: boolean; onClose: () => voi
         <TextInput label="Seats" type="number" value={capacity} onChange={setCapacity} />
       </Row>
       <p className="text-2xs text-ink-500">
-        Where a batch runs and where each student came from are different facts, and often different colleges — a
-        student from one college can sit a batch hosted at another.
+        Where the batch runs and where the student came from are different.
       </p>
     </CreateModal>
   );

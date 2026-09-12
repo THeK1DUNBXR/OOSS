@@ -222,7 +222,7 @@ async function buildNarrative(items: DeltaItem[], since: Date) {
     }),
   ]);
 
-  const reconciliationLine = `${openWhenLeft} S3+ open when you left, ${stillOpen} the same, ${resolvedSince} resolved, ${newSince} new.`;
+  const reconciliationLine = `${openWhenLeft} serious problems open when you left, ${stillOpen} still open, ${resolvedSince} resolved, ${newSince} new.`;
 
   const bySeverity = items.filter((i) => i.severity && SEVERITY_RANK[i.severity] >= SEVERITY_RANK.S3_HIGH_RISK);
   const byValue = items.filter((i) => i.materiality && i.materiality > 0).sort((a, b) => (b.materiality ?? 0) - (a.materiality ?? 0));
@@ -236,7 +236,7 @@ async function buildNarrative(items: DeltaItem[], since: Date) {
   }
   const handled = items.filter((i) => i.handledWithoutYou).length;
   if (handled) claims.push(`${handled} item${handled === 1 ? '' : 's'} ${handled === 1 ? 'was' : 'were'} handled without you.`);
-  if (claims.length === 0) claims.push('Nothing crossed the materiality floor in this window.');
+  if (claims.length === 0) claims.push('Nothing big enough to report happened in this window.');
 
   return { reconciliationLine, body: claims.join(' ') };
 }
@@ -458,7 +458,7 @@ export async function peopleAndCapability() {
         singlePointsOfFailure: null,
         withheld: true,
         withheldReason: 'classification_ceiling' as const,
-        note: `Population below the k>=${K} anonymity floor. Withheld regardless of who is asking.`,
+        note: `Fewer than ${K} people, so showing this would identify them. Withheld from everybody.`,
       };
     }
     // A role held by exactly one person in a unit is a single point of failure —

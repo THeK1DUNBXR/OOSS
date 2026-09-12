@@ -161,7 +161,7 @@ function Transitions({
         <label className="label">Why</label>
         <textarea className="input" rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
         <p className="mt-1.5 text-2xs text-ink-500">
-          This is kept with the record and published on the event, so the decision stays answerable later.
+          Kept with the record.
         </p>
       </Modal>
     </>
@@ -244,7 +244,7 @@ export function Employees() {
     <div>
       <PageHeader
         title="Employees"
-        subtitle="Everyone the company employs, and where each of them stands. Somebody who has left keeps their record and loses their access, because access follows the affiliation rather than the row."
+        subtitle="Everyone the company employs, and where each stands."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -483,7 +483,7 @@ export function EmployeeDetail() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          <Card title="Where they sit" subtitle="Effective-dated. A move supersedes the previous row rather than replacing it, so last March stays answerable.">
+          <Card title="Where they sit" subtitle="Dated, so last March stays answerable.">
             <table className="table">
               <thead>
                 <tr>
@@ -519,18 +519,18 @@ export function EmployeeDetail() {
 
           <Card
             title="Pay"
-            subtitle="Every revision, with what it was for. A promotion carries the assignment that promoted them — money and grade move together or not at all."
+            subtitle="Every pay revision, and what it was for."
           >
             {compensation.length === 0 ? (
               data.payVisible ? (
                 <EmptyState
                   message="No pay has ever been recorded for this person."
-                  hint="A payroll run would compute nothing for them. This is picked up as an exception rather than left to surface on payday."
+                  hint="Nobody should be on the books with no pay in force."
                 />
               ) : (
                 <EmptyState
                   message="Pay is not yours to see."
-                  hint="Compensation is a separate grant. Reaching somebody's record does not carry reaching what they are paid."
+                  hint="Seeing somebody's record does not include their pay."
                 />
               )
             ) : (
@@ -658,7 +658,7 @@ export function EmployeeDetail() {
 
           <Card
             title="Skills"
-            subtitle="The badge is the claim's standing. The score behind it is withheld from colleagues by design."
+            subtitle="The badge is the standing. The score is not shown to colleagues."
           >
             {capabilities.length === 0 ? (
               <EmptyState message="No claims recorded." />
@@ -751,7 +751,7 @@ export function Leave() {
       <PageHeader
         actions={<NewButton label="Request leave" onClick={() => setCreating(true)} />}
         title="Leave"
-        subtitle="A balance is never written directly. Approval places a hold, completion settles it, cancellation reverses it — so every balance is the sum of its own ledger and a disputed one can be recomputed rather than argued about."
+        subtitle="Balances follow from holds, settlements and reversals."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -885,7 +885,7 @@ export function Attendance() {
     <div>
       <PageHeader
         title="Attendance"
-        subtitle="Payroll reads locked days, so a period cannot be closed over a dispute — the disputed days are left out of the lock and raised instead."
+        subtitle="Disputed days are left out of the lock and raised instead."
         actions={
           <>
             <input
@@ -1046,7 +1046,7 @@ export function Payroll() {
     <div>
       <PageHeader
         title="Payroll"
-        subtitle="This system instructs payroll; it does not compute it. What it owns is the instruction per person per period, the run that settles them, and the trail joining the two — which is the part an auditor asks about two years later."
+        subtitle="What each person is to be paid, and the run that settles it."
         actions={
           <>
             <input type="month" className="input w-40" value={newPeriod} onChange={(e) => setNewPeriod(e.target.value)} />
@@ -1072,7 +1072,7 @@ export function Payroll() {
         <Loading />
       ) : data.length === 0 ? (
         <Card>
-          <EmptyState message="No payroll runs yet." hint="Opening one drafts an instruction for everyone on the books in that period." />
+          <EmptyState message="No payroll runs yet." hint="Opening a run drafts an instruction for everyone on the books." />
         </Card>
       ) : (
         <Card bodyClassName="p-0" className="mb-4">
@@ -1128,7 +1128,7 @@ export function Payroll() {
       {detail && (
         <Card
           title={`${detail.recordCode} — ${detail.payPeriod}`}
-          subtitle="One instruction per person. Somebody with no pay in force is listed at zero rather than dropped, because an employee missing from a run is invisible and a zero beside their name is not."
+          subtitle="One instruction per person. Nobody is dropped from the list."
         >
           <div className="overflow-x-auto">
             <table className="table">
@@ -1252,7 +1252,7 @@ export function Hiring() {
       <PageHeader
         actions={<NewButton label="Post a vacancy" onClick={() => setCreating(true)} />}
         title="Hiring"
-        subtitle="Accepting an offer is not the same fact as turning up, and the gap between them is where a rescinded offer, a no-show and a withdrawal before the start date all live. So the two are separate states, and joining is one act that opens the employment and fills the requisition together."
+        subtitle="Offers accepted, and who has actually started."
       />
 
       {funnel && (
@@ -1410,8 +1410,7 @@ export function Hiring() {
         <label className="label">First day</label>
         <input type="date" className="input" value={joinDate} onChange={(e) => setJoinDate(e.target.value)} />
         <p className="mt-2 text-2xs leading-relaxed text-ink-500">
-          This opens the employment relationship, its onboarding and the employee affiliation on the candidate's own
-          record — the same person, one more relationship, not a second entry. It also fills the requisition.
+          This opens their employment record and their onboarding.
         </p>
         {join.error && <div className="mt-3"><ErrorBox error={join.error} /></div>}
       </Modal>
@@ -1465,7 +1464,7 @@ export function Skills() {
       <PageHeader
         actions={<NewButton label="Add a skill" onClick={() => setCreating(true)} />}
         title="Skills"
-        subtitle="What the company believes people can do, and how strongly. The tiers are not in name order — inferred sits below claimed, and a claim can enter at verified having never been claimed, because a certificate checked with the issuer was never somebody's self-report."
+        subtitle="What people can do, and how well established it is."
       />
 
       <Card title="Who can do this" className="mb-4">
@@ -1505,7 +1504,7 @@ export function Skills() {
         <Card>
           <EmptyState
             message="Nobody at that standing."
-            hint="Try a lower tier. Somebody having done the training is an assessed claim, not a demonstrated one."
+            hint="Try a lower tier: training is a claim, not a demonstration."
           />
         </Card>
       ) : (

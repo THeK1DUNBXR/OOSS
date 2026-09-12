@@ -45,7 +45,7 @@ export function PipelineAdmin() {
     <div>
       <PageHeader
         title="Pipeline Configuration"
-        subtitle="The stages each kind of deal moves through, and how long each should take. Change any of it here — no developer, no release."
+        subtitle="The stages each kind of deal moves through, and how long each should take."
       />
 
       {isLoading ? (
@@ -157,7 +157,7 @@ export function TerritoryAdmin() {
     <div>
       <PageHeader
         title="Territories & Assignment"
-        subtitle="How new enquiries get assigned. Region and specialism are absolute: someone outside them is never picked, however free they are. Everyone who passes both is then compared on workload, expertise and existing relationships."
+        subtitle="How new enquiries get assigned."
       />
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -189,7 +189,7 @@ export function TerritoryAdmin() {
           )}
         </Card>
 
-        <Card title="Routing rules" subtitle="Six things are weighed up, in this order. Taking turns is only used to break a tie.">
+        <Card title="Routing rules" subtitle="Six things are weighed, in this order. Ties are broken by taking turns.">
           {rules.map((r) => (
             <div key={r.id} className="space-y-2">
               <div className="flex items-center justify-between">
@@ -288,7 +288,7 @@ export function Governance() {
     <div>
       <PageHeader
         title="Who Can Do What"
-        subtitle="Every cell below is a rule stored in the database and checked on every single request — so removing someone's access takes effect immediately, not at their next sign-in. Hover any cell to read it as a sentence."
+        subtitle="Who can do what. Changes take effect immediately."
       />
 
       <Tabs
@@ -399,8 +399,7 @@ export function Governance() {
                 </div>
               ))}
               <p className="mt-2 text-2xs italic text-ink-500">
-                Immutable once snapshotted, so a past decision stays re-explainable against the rule in force at
-                decision time.
+                Kept as it was, so a past decision stays explainable.
               </p>
             </Card>
           ))}
@@ -488,7 +487,7 @@ export function Agents() {
     <div>
       <PageHeader
         title="AI Agents"
-        subtitle="The AI assistants, what each is allowed to do, and how far it can go before a person must sign off. Each can only use the tools listed against it — there is no way for one to act outside that list."
+        subtitle="The AI assistants, what each may do, and when a person must sign off."
       />
 
       <Tabs
@@ -561,7 +560,7 @@ export function Agents() {
           )}
 
           {platform?.hardProhibitions && (
-            <Card className="mt-5 border-band-critical/30" title="Hard prohibitions" subtitle="Apply platform-wide, regardless of any authority grant a future policy might attempt to issue.">
+            <Card className="mt-5 border-band-critical/30" title="Hard prohibitions" subtitle="Platform-wide. No grant overrides them.">
               <ul className="space-y-2">
                 {platform.hardProhibitions.map((p: any) => (
                   <li key={p.code}>
@@ -676,7 +675,7 @@ export function Events() {
     <div>
       <PageHeader
         title="System History"
-        subtitle="Everything that has happened, in order, and tamper-evident: each entry is sealed against the one before it, so a changed or deleted record shows up. Looking at data is never recorded here — that goes to the audit trail instead."
+        subtitle="Everything that has happened, in order. Sealed, so a change shows up."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -718,7 +717,7 @@ export function Events() {
                 <th>Actor</th>
                 <th>Recorded</th>
                 <th>Confidentiality</th>
-                <th title="prev_hash must match the predecessor's hash. A break is alerted on per tenant, never merely logged.">Chain</th>
+                <th title="Each entry is linked to the one before it. A break raises an alert.">Chain</th>
               </tr>
             </thead>
             <tbody>
@@ -742,7 +741,7 @@ export function Events() {
                     {e.chainValid ? (
                       <span className="text-band-strong" title={e.hash.slice(0, 16)}>✓</span>
                     ) : (
-                      <span className="text-band-critical" title="prev_hash does not match the predecessor">✕</span>
+                      <span className="text-band-critical" title="This entry does not link back to the one before it">✕</span>
                     )}
                   </td>
                 </tr>
@@ -787,7 +786,7 @@ export function Jobs() {
     <div>
       <PageHeader
         title="Automatic Checks"
-        subtitle="The checks that run on their own — chasing expiring agreements, flagging untouched leads, recomputing the scores. Each one remembers exactly what it has already done, so running twice never acts twice."
+        subtitle="The checks that run on their own, and when each last ran."
         actions={
           <>
             <button className={dryRun ? 'btn-primary' : 'btn-ghost'} onClick={() => setDryRun((v) => !v)}>
@@ -911,7 +910,7 @@ export function Audit() {
     <div>
       <PageHeader
         title="Audit Trail"
-        subtitle="Who changed what, and when. Nothing here can be edited or removed. Every change is recorded; so is every look at legally protected data — noting which fields were seen, never their contents."
+        subtitle="Who changed what, and when. Nothing here can be edited or removed."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -919,7 +918,7 @@ export function Audit() {
         <Metric
           label="Regulated reads"
           value={reads}
-          sub="Only the regulated tier is read-audited, preserving the performance-driven design for the common case"
+          sub="Only regulated records log who read them"
           drillTo="/admin/audit"
         />
         <Metric
@@ -1019,10 +1018,10 @@ export function PlatformModel() {
     <div className="space-y-5">
       <PageHeader
         title="How This Is Built"
-        subtitle="How the system is put together, read live from the running system rather than from a document that quietly goes out of date."
+        subtitle="How the system is put together, read from the running system."
       />
 
-      <Card title="The ten planes" subtitle="Every capability is assigned to exactly one plane; nearly every requirement touches several.">
+      <Card title="The ten planes" subtitle="Each capability belongs to one plane.">
         <div className="grid gap-2 md:grid-cols-2">
           {data.planes.map((p: any) => (
             <div key={p.code} className="rounded border border-ink-800 bg-ink-950 p-3">
@@ -1082,7 +1081,7 @@ export function PlatformModel() {
         </Card>
 
         <div className="space-y-5">
-          <Card title="Thresholds" subtitle="Every constant the corpus flags as unvalidated ships as a tunable row from day one." bodyClassName="p-0 max-h-64 overflow-y-auto">
+          <Card title="Thresholds" subtitle="Every threshold is a row you can change." bodyClassName="p-0 max-h-64 overflow-y-auto">
             <ul className="divide-y divide-ink-850">
               {thresholds.map((t) => (
                 <li key={t.id} className="px-4 py-2">
@@ -1100,7 +1099,7 @@ export function PlatformModel() {
 
           <Card
             title="Sensitivity registrations"
-            subtitle="An entity type with no registration defaults to confidential, not internal — defaulting to internal means every new column ships readable."
+            subtitle="Anything unregistered is treated as confidential."
             bodyClassName="p-0 max-h-64 overflow-y-auto"
           >
             <table className="table">
@@ -1125,7 +1124,7 @@ export function PlatformModel() {
         </div>
       </div>
 
-      <Card title="The five axes" subtitle="All five must evaluate true. Evaluated at query time, never cached at login.">
+      <Card title="The five axes" subtitle="All five must pass, on every request.">
         <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
           {data.axes.map((a: any) => (
             <div key={a.code} className="rounded border border-ink-800 bg-ink-950 p-3">
@@ -1134,11 +1133,6 @@ export function PlatformModel() {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-2xs text-ink-500">
-          Tenant scoping is not one of the five. It is the gate a request clears before any axis is evaluated, and it
-          fails with a 404 rather than a 403 — a deliberately weaker information leak than confirming a record exists
-          in another tenant.
-        </p>
       </Card>
     </div>
   );

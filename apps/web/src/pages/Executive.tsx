@@ -347,7 +347,7 @@ export function Executive() {
     <div>
       <PageHeader
         title="The business"
-        subtitle="Three businesses inside one company. Every figure here can be cut by division, because a consolidated total hides which of them is paying for the others."
+        subtitle="Three divisions in one company. Every figure can be cut by division."
         actions={
           <>
             <label className="label sr-only" htmlFor="exec-period">
@@ -424,7 +424,7 @@ export function Executive() {
       {/* --- income, cost and the line between them ----------------------- */}
       <Card
         title="Income against cost"
-        subtitle="Funding is excluded. Capital put in is money in the bank but not revenue, and counting it here would make the month it landed the best the company ever had."
+        subtitle="Funding is excluded: money put in is not revenue."
         className="mb-4"
       >
         {trend.isError ? (
@@ -654,7 +654,7 @@ export function Executive() {
         {/* --- against the plan ------------------------------------------ */}
         <Card
           title={`Against the plan — ${monthLabel(period)}`}
-          subtitle="Actuals are summed from the ledger every time this is read, so an entry made late moves the variance rather than leaving a figure that was true on the day."
+          subtitle="Summed from the ledger each time, so a late entry moves the variance."
         >
           {budget.isError ? (
             <EmptyState message="Not yours to see." />

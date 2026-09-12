@@ -216,7 +216,7 @@ export function ErrorBox({ error }: { error: unknown }) {
       <p className="text-sm font-medium text-band-critical">{message}</p>
       {axes && (
         <div className="mt-3 space-y-1">
-          <p className="text-2xs uppercase tracking-wide text-ink-400">Five-axis evaluation</p>
+          <p className="text-2xs uppercase tracking-wide text-ink-400">Why this was refused</p>
           {axes.map((a) => (
             <div key={a.axis} className="flex items-center gap-2 text-2xs">
               <span className={`w-16 font-mono ${a.passed ? 'text-band-strong' : 'text-band-critical'}`}>{a.axis}</span>

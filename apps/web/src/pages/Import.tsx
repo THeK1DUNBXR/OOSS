@@ -95,12 +95,11 @@ const KIND_EFFECT: Record<string, string> = {
   salary: 'Sets the pay in force for each person named. They must already be on the staff list.',
   attendance: 'Records attendance days against each person named.',
   student_register:
-    'Creates the courses named, a rolling intake for each, and enrols every student onto theirs under the registration ' +
-    'number the register already gives them. The fees, discounts and instalment columns are read and reported and not ' +
-    'written: course prices stay as they are, and nothing is billed.',
+    'Creates the courses named and enrols each student, keeping the registration number from the register. ' +
+    'Fees and instalments are reported but not saved \u2014 nothing is billed.',
   template_courses: 'Creates courses. A code already on file is left alone rather than duplicated.',
   template_batches: 'Creates training batches against courses already on file.',
-  template_colleges: 'Creates organisations and marks them as colleges, so students can be recorded as coming from them.',
+  template_colleges: 'Creates colleges, so students can be recorded as coming from them.',
   template_clients: 'Creates organisations and marks them as clients you invoice.',
   template_students: 'Enrols people onto batches, matching anybody already on file rather than copying them.',
   template_contacts: 'Creates people and attaches them to the company or college they are at.',
@@ -146,7 +145,7 @@ export default function ImportPage() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Bring your data in"
-        subtitle="A Tally export, a bank statement, a salary sheet — or one of our own templates, filled in with your courses, colleges, students or staff. Nothing is written until you have looked at what it will do."
+        subtitle="A Tally export, a bank statement, a salary sheet, or one of our templates."
       />
 
       <Card>
@@ -177,9 +176,7 @@ export default function ImportPage() {
             onChange={(e) => take(e.target.files?.[0])}
           />
           <p className="mt-2 max-w-lg text-2xs text-ink-500">
-            Excel, CSV or a Tally XML export, up to 25MB. Tally’s own Excel export is read straight through —
-            it carries the vouchers and the statements that say what each ledger is, so the chart of accounts
-            comes from your books rather than from a guess.
+            Excel, CSV or a Tally XML export, up to 25MB.
           </p>
         </div>
 
@@ -258,7 +255,7 @@ function Templates() {
   return (
     <Card
       title="Or start from a template"
-      subtitle="For the lists you keep yourself — courses, colleges, students, staff. Download it, fill it in, upload it back. Import them in this order: what points at something else comes after the thing it points at."
+      subtitle="Download it, fill it in, upload it back. Import what points at nothing first."
     >
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {data.items.map((t, i) => (
@@ -313,8 +310,7 @@ function Templates() {
       {failed && <p className="mt-3 text-2xs text-band-critical">{failed}</p>}
 
       <p className="mt-3 text-2xs text-ink-500">
-        The blank sheet has headings and no example rows on purpose. Examples live on the second sheet, where they
-        cannot be uploaded by mistake — a demonstration row left in becomes a real student.
+        Examples are on the second sheet, so they cannot be uploaded by mistake.
       </p>
     </Card>
   );
@@ -743,7 +739,7 @@ function History({ batches }: { batches: ReturnType<typeof useQuery<Batch[]>> })
   const data = batches.data ?? [];
 
   return (
-    <Card title="What has been brought in" subtitle="Every figure in the books can be traced back to the file it came from.">
+    <Card title="What has been brought in" subtitle="Every figure traces back to the file it came from.">
       {data.length === 0 ? (
         <EmptyState
           message="Nothing imported yet."

@@ -183,7 +183,7 @@ export function StudentTimeline() {
       {/* ---- Mark today, and the four things that can be recorded ---------- */}
       <Card
         title="Record something"
-        subtitle="Attendance for today, or anything that is not attendance. A query and an issue open and stay open; feedback and a note are complete as written."
+        subtitle="Attendance, or anything else worth recording."
       >
         <div className="flex flex-wrap gap-2">
           {['present', 'late', 'absent', 'excused'].map((status) => (
@@ -253,7 +253,7 @@ export function StudentTimeline() {
       <Card
         className="mt-4"
         title="Fees"
-        subtitle="Whether they are turning up and whether they have paid are asked together, so they are on one page."
+        subtitle="Attendance and money, on one page."
         actions={
           <button className="btn-primary" onClick={() => setBilling(true)}>
             Raise a fee invoice
@@ -261,7 +261,7 @@ export function StudentTimeline() {
         }
       >
         {data.invoices.length === 0 ? (
-          <EmptyState message="Nothing invoiced yet." hint="A course fee can be billed in full or taken as instalments — the invoice says which." />
+          <EmptyState message="Nothing invoiced yet." hint="A fee can be billed in full, or in instalments." />
         ) : (
           <table className="table">
             <thead>
@@ -316,7 +316,7 @@ export function StudentTimeline() {
         <Card>
           <EmptyState
             message="Nothing recorded yet."
-            hint="Mark attendance, record a score, or write down what they asked. All three land here in order."
+            hint="Mark attendance, record a score, or note what they asked."
           />
         </Card>
       ) : (
@@ -461,8 +461,8 @@ function LogEntry({
       </Row>
       <p className="text-2xs text-ink-500">
         {needsClosure
-          ? 'This opens and stays open until somebody closes it. A high-severity issue is also raised into the attention queue, so it is not left on a page somebody has to think to open.'
-          : 'Complete as recorded — there is nothing to do about it, so it does not open.'}
+          ? 'Stays open until somebody closes it. Serious ones also appear in the attention queue.'
+          : 'Nothing to do about this one.'}
       </p>
     </CreateModal>
   );
@@ -494,9 +494,7 @@ function RecordProgress({ enrollmentId, onClose }: { enrollmentId: string; onClo
       </Row>
       <TextArea label="Note" value={note} onChange={setNote} rows={2} />
       <p className="text-2xs text-ink-500">
-        One row per student per day, so correcting a score is a correction rather than a second row disagreeing with the
-        first. The enrolment's headline progress is the mean of the scores recorded — never a field anybody keeps up to
-        date by hand.
+        One row per student per day. Progress is the mean of the scores.
       </p>
     </CreateModal>
   );
@@ -532,7 +530,7 @@ export function LearnerQueue() {
     <div>
       <PageHeader
         title="Student queries and issues"
-        subtitle="What students have asked and what has gone wrong for them, still open. A complaint nobody closed is work, and work that is not countable does not get done."
+        subtitle="Open questions and problems."
       />
 
       {error && (
@@ -551,7 +549,7 @@ export function LearnerQueue() {
         <Loading />
       ) : data.length === 0 ? (
         <Card>
-          <EmptyState message="Nothing open." hint="Every question a student asked has an answer and every problem has been closed." />
+          <EmptyState message="Nothing open." hint="Nothing open." />
         </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">

@@ -107,24 +107,22 @@ export function BuildFootnote() {
             already suspects it, and the point is the person who does not. */}
         {bundleStale && (
           <span className="text-band-critical">
-            — this page is build {WEB.sequence} and the server is {apiStamp!.sequence}. Reload with a hard refresh;
-            if it persists, the bundle being served is out of date.
+            — this page is build {WEB.sequence}, the server is {apiStamp!.sequence}. Reload.
           </span>
         )}
         {seedStale && (
           <span className="text-band-watch">
-            — seeded data is {data!.seedBehindBy} build{data!.seedBehindBy === 1 ? '' : 's'} behind. Permissions,
-            navigation and their wording come from the seed, so run it again if something there looks old.
+            — set-up data is {data!.seedBehindBy} build{data!.seedBehindBy === 1 ? '' : 's'} behind. Run{' '}
+            <span className="mono">pnpm db:seed</span>.
           </span>
         )}
         {neverSeeded && (
-          <span className="text-band-watch">— no seed has been recorded against this company.</span>
+          <span className="text-band-watch">— this company has never been set up. Run pnpm db:seed.</span>
         )}
         {grantsPending > 0 && (
           <span className="text-band-watch">
-            — {grantsPending} permission change{grantsPending === 1 ? '' : 's'} in the matrix{' '}
-            {grantsPending === 1 ? 'is' : 'are'} not applied here. New resources are granted on deploy; changing or
-            removing an existing one is deliberate — run <span className="mono">pnpm grants:reconcile --apply</span>.
+            — {grantsPending} permission change{grantsPending === 1 ? '' : 's'} waiting. Run{' '}
+            <span className="mono">pnpm grants:reconcile --apply</span>.
           </span>
         )}
       </p>

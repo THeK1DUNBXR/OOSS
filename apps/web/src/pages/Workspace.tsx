@@ -107,14 +107,14 @@ export function Workspace() {
             label="Unrouted leads"
             value={unrouted?.total ?? 0}
             tone={(unrouted?.total ?? 0) > 0 ? 'warn' : 'good'}
-            sub="Counted from the moment assignment fails — there is no grace period for a lead nobody is working"
+            sub="Counted from the moment assignment fails"
             drillTo="/crm/leads"
           />
         )}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card title="My queue" subtitle="Most urgent first. A big number never pushes ahead of something genuinely urgent." bodyClassName="p-0">
+        <Card title="My queue" subtitle="Most urgent first." bodyClassName="p-0">
           {tasks.length === 0 ? (
             <EmptyState message="Nothing due." />
           ) : (
@@ -146,7 +146,7 @@ export function Workspace() {
         </Card>
 
         {approvals.length > 0 && (
-          <Card title="Awaiting your approval" subtitle="These are yours because policy says so — not because you happened to be notified." bodyClassName="p-0">
+          <Card title="Awaiting your approval" subtitle="Yours because policy says so." bodyClassName="p-0">
             <ul className="divide-y divide-ink-850">
               {approvals.map((a) => (
                 <li key={a.id} className="px-4 py-2.5">
@@ -242,7 +242,7 @@ export function Exceptions() {
     <div>
       <PageHeader
         title="Problems"
-        subtitle="Things that have gone wrong and need a person to fix them. Each one is assigned to someone by name, so nothing sits in a report waiting to be noticed."
+        subtitle="Things that need a person to fix them, each assigned by name."
       />
 
       <Tabs
@@ -263,7 +263,7 @@ export function Exceptions() {
         <Card>
           <EmptyState
             message={tab === 'unowned' ? 'Every open exception has a resolved owner.' : 'Nothing open.'}
-            hint="The queue shows zero items only when zero are actually open."
+            hint="Nothing waiting."
           />
         </Card>
       ) : (
@@ -279,7 +279,7 @@ export function Exceptions() {
                     <StatusChip status={e.state} tone={e.state === 'resolved' ? 'good' : e.state === 'escalated' ? 'warn' : 'neutral'} />
                     {e.slaBreached && <span className="chip border-band-critical/40 text-band-critical">SLA breached</span>}
                     {e.ownerUnresolved && (
-                      <span className="chip border-band-strained/40 text-band-strained" title="Nobody has been assigned this. That is a gap in our routing rules, and it is counted against Operations — not just an empty field for someone to spot.">
+                      <span className="chip border-band-strained/40 text-band-strained" title="Nobody has been assigned this. It counts as a gap in our routing rules.">
                         owner unresolved
                       </span>
                     )}
