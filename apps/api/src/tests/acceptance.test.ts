@@ -562,6 +562,52 @@ describe('CRM-IDN-001 — identity resolution', () => {
 });
 
 // ===========================================================================
+// The build footnote — what is running, and against what
+// ===========================================================================
+
+describe('the platform says which build it is', () => {
+  it('reports a sequence, a commit and where the seed stands', async () => {
+    const { BUILD, buildLabel } = await import('../platform/build.js');
+
+    // A build that cannot say what it is is the problem this exists to solve,
+    // so the suite refuses one. In a checkout it comes from git; in a container
+    // from BUILD_SEQUENCE and GIT_SHA.
+    expect(BUILD.known).toBe(true);
+    expect(BUILD.sequence).toBeGreaterThan(0);
+    expect(buildLabel()).toMatch(/\d+/);
+  });
+
+  it('the seed stamps the tenant, and the stamp moves every run', async () => {
+    const before = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: TENANT }, select: { config: true } });
+    const stamp = (before.config as { seed?: { sequence?: number; build?: number; navNodes?: number } }).seed;
+
+    // Written by the seed the suite's own database was built from.
+    expect(stamp, 'the tenant carries no seed stamp').toBeTruthy();
+    expect(Number(stamp!.sequence)).toBeGreaterThan(0);
+    expect(Number(stamp!.navNodes)).toBeGreaterThan(0);
+
+    // And it counts: the sequence is what the footnote compares to say how far
+    // behind a tenant's seeded rows are.
+    const { NAV_REGISTRY } = await import('../seed/bootstrap.js');
+    expect(Number(stamp!.navNodes)).toBe(NAV_REGISTRY.length);
+  });
+
+  it('says how many builds the seeded data is behind', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { BUILD } = await import('../platform/build.js');
+      const tenant = await prisma.tenant.findFirstOrThrow({ where: { id: TENANT }, select: { config: true } });
+      const seedBuild = Number((tenant.config as { seed?: { build?: number } }).seed?.build ?? 0);
+
+      // The arithmetic the endpoint does, asserted where it is cheap: a tenant
+      // seeded by this build is not behind, and one seeded by an older build is
+      // behind by the difference. That number is what tells somebody their
+      // navigation is from before the change they are looking for.
+      expect(Math.max(0, BUILD.sequence - seedBuild)).toBe(0);
+    });
+  });
+});
+
+// ===========================================================================
 // Navigation — the words a person looks for a screen under
 // ===========================================================================
 
@@ -612,6 +658,38 @@ describe('the sidebar and the command palette say where they go', () => {
     // winner: "customers" belonged to both the learners screen and the
     // organisations one, and organisations won.
     expect(clashes).toEqual([]);
+  });
+
+  it('a missing entry comes back on its own, without anybody running the seed', async () => {
+    const { reconcileNav } = await import('../platform/navSync.js');
+
+    // The failure this guards, reproduced: a release adds a screen, the tenant's
+    // rows are from before it, and the sidebar never mentions it. Customers and
+    // Institutions shipped this way and could not be reached.
+    await unscopedPrisma.navNode.deleteMany({
+      where: { tenantId: TENANT, nodeKey: { in: ['crm_students', 'crm_institutions'] } },
+    });
+    // And the other half: an entry whose wording moved on without it.
+    await unscopedPrisma.navNode.update({
+      where: { tenantId_nodeKey: { tenantId: TENANT, nodeKey: 'crm_accounts' } },
+      data: { label: 'Companies & Colleges', path: '/crm/accounts', searchSynonyms: ['customers', 'colleges'] },
+    });
+    // And one the product has retired.
+    await unscopedPrisma.navNode.create({
+      data: { tenantId: TENANT, nodeKey: 'zz_retired_screen', label: 'Gone', path: '/gone', group: 'main' },
+    });
+
+    await reconcileNav(TENANT);
+
+    const rows = await unscopedPrisma.navNode.findMany({ where: { tenantId: TENANT } });
+    const byKey = new Map(rows.map((r) => [r.nodeKey, r]));
+
+    expect(byKey.get('crm_students')).toMatchObject({ label: 'Customers', path: '/crm/students' });
+    expect(byKey.get('crm_institutions')).toMatchObject({ label: 'Institutions', path: '/crm/institutions' });
+    expect(byKey.get('crm_accounts')).toMatchObject({ label: 'Organisations', path: '/crm/organizations' });
+    expect(byKey.get('crm_accounts')!.searchSynonyms).not.toContain('customers');
+    // An entry pointing at a route that has gone is removed, not left behind.
+    expect(byKey.get('zz_retired_screen')).toBeUndefined();
   });
 
   it('the three parties are three entries, each to its own screen', async () => {

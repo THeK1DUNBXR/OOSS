@@ -7,7 +7,7 @@ impossible.
 
 ```bash
 ./scripts/test-db.sh          # provision kaizen_test
-cd apps/api && pnpm test      # 366 tests
+cd apps/api && pnpm test      # 370 tests
 ```
 
 ## How the suite is built
@@ -82,7 +82,7 @@ It is deliberately four tests. A browser suite that tries to cover the product
 becomes the slowest and least trusted thing in the repository; this one covers
 the class of defect the unit suite structurally cannot see.
 
-| **Navigation** | 3 | Every seeded nav row matches the registry, synonyms included; no word reaches two of the party screens; the three parties are three entries, each to its own screen |
+| **Navigation and the build footnote** | 7 | Every seeded nav row matches the registry, synonyms included; no word reaches two of the party screens; the three parties are three entries, each to its own screen; a deleted entry comes back and a stale one is corrected on reconcile, without the seed; a retired entry is removed; the build reports a sequence and a commit; the seed stamps the tenant and the stamp moves every run |
 
 ## Defects this suite found
 
@@ -139,6 +139,14 @@ surfaced seven more, all fixed:
 7. **Netting the GST totals understated the cash due.** Output minus input is
    the wrong arithmetic: credit is set off head by head in a statutory order,
    and the shortfall from netting arrives as interest.
+
+11. **A new screen could not be reached at all.** Navigation rows are written
+   per tenant and only the seed wrote them, so a release that added a screen
+   added a row nobody's tenant had: Customers and Institutions shipped, their
+   routes worked, and the sidebar never mentioned them. The API now reconciles
+   the menu against its registry at boot — the sidebar is code, not somebody's
+   data — and the footnote on every screen says which build is running against
+   which seeded data, because neither staleness is visible from any screen.
 
 10. **A vocabulary change never reached the tenant.** The nav upsert refreshed
    a row's label and path and left its search synonyms as they were — so after

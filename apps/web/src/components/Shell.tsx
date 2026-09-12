@@ -15,6 +15,7 @@ import { useSession } from '../lib/session.js';
 import { api, relative } from '../lib/api.js';
 import { words } from '../lib/words.js';
 import { FirstRun } from './FirstRun.js';
+import { BuildFootnote } from './BuildFootnote.js';
 import { SetupBanner } from '../pages/Start.js';
 
 const ICONS: Record<string, string> = {
@@ -258,6 +259,11 @@ export function Shell() {
           {location.pathname !== '/start' && <FirstRun />}
           {location.pathname !== '/start' && <SetupBanner />}
           <Outlet />
+          {/* Under everything, on every screen: which build this is, which the
+              server is, and how old the seeded data is. Small enough to ignore
+              and there when somebody is trying to work out why a change they
+              made is not showing. */}
+          <BuildFootnote />
         </main>
       </div>
 
