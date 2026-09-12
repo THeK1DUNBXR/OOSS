@@ -16,9 +16,15 @@
  *
  * Money flows CRM → Finance via one event, and Finance → CRM via a read-only
  * projection. This edge is engineered to be acyclic by design.
+ *
+ * The obligation side — raising an invoice, pricing its tax, editing a draft,
+ * collecting at a counter, printing the document — lives in `invoicing.ts`. The
+ * split is by direction of dependency rather than by taste: invoices know
+ * nothing about payments, payments know about invoices, and keeping the arrow
+ * pointing one way is what stops the two files becoming one.
  */
 
-import { EVENTS, type RevenueTreatment } from '@kaizen/shared';
+import { EVENTS, round2 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -27,93 +33,30 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
+import { rehydrateReceivablesFor, totalsOf } from './invoicing.js';
+
+/**
+ * Raising an invoice, editing a draft, collecting at a counter and printing the
+ * document all live in `invoicing.ts`. Re-exported here so that "the finance
+ * domain" remains one import for callers who do not care which file a function
+ * sits in.
+ */
+export {
+  createInvoice,
+  updateInvoice,
+  issueInvoiceDraft,
+  voidInvoice,
+  collectInvoicePayment,
+  declarePaymentTerms,
+  invoiceDocument,
+  invoiceSummary,
+  totalsOf,
+  assertPeriodOpen,
+} from './invoicing.js';
 
 // ---------------------------------------------------------------------------
 // Obligation
 // ---------------------------------------------------------------------------
-
-export interface InvoiceLineInput {
-  offeringId?: string | null;
-  description: string;
-  quantity?: number;
-  amount: number;
-}
-
-/**
- * Created from a signed contract's billing terms. Finance derives the revenue
- * recognition method from OFFERING.defaultRevenueTreatment — never by asking
- * sales case by case.
- */
-export async function issueInvoice(input: {
-  accountId?: string | null;
-  organizationId?: string | null;
-  contractId?: string | null;
-  opportunityId?: string | null;
-  currency?: string;
-  dueInDays?: number;
-  lines: InvoiceLineInput[];
-}) {
-  const auth = currentAuth();
-  await assertCan({ resource: 'invoices', verb: 'create' });
-  if (input.lines.length === 0) throw ApiError.badRequest('An invoice requires at least one line.');
-
-  const recordCode = await nextRecordCode('INV');
-  const issuedDate = new Date();
-  const dueDate = new Date(issuedDate.getTime() + (input.dueInDays ?? 30) * 86_400_000);
-
-  const invoice = await prisma.invoice.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      accountId: input.accountId ?? null,
-      organizationId: input.organizationId ?? null,
-      contractId: input.contractId ?? null,
-      opportunityId: input.opportunityId ?? null,
-      status: 'issued',
-      currency: input.currency ?? 'INR',
-      issuedDate,
-      dueDate,
-      createdById: auth.partyId,
-    },
-  });
-
-  for (const line of input.lines) {
-    const revenueMethod = await revenueMethodFor(line.offeringId ?? null);
-    await prisma.invoiceLine.create({
-      data: {
-        tenantId: auth.tenantId,
-        invoiceId: invoice.id,
-        offeringId: line.offeringId ?? null,
-        description: line.description,
-        quantity: line.quantity ?? 1,
-        amount: line.amount,
-        revenueMethod,
-      },
-    });
-  }
-
-  await auditWrite({ action: 'create', subjectType: 'invoice', subjectId: invoice.id, after: { recordCode } });
-  await emit({
-    name: EVENTS.INVOICE_ISSUED,
-    subject: { entityType: 'invoice', entityId: invoice.id, recordCode },
-    related: input.contractId ? [{ relation: 'bills', entityType: 'contract', entityId: input.contractId }] : [],
-    newState: { total: input.lines.reduce((s, l) => s + l.amount, 0), dueDate },
-    impact: { domains: ['fin'] },
-    confidentiality: 'confidential',
-  });
-
-  await rehydrateReceivables(input.accountId ?? input.organizationId ?? null, 'account');
-  return invoice;
-}
-
-async function revenueMethodFor(offeringId: string | null): Promise<RevenueTreatment> {
-  if (!offeringId) return 'point_in_time';
-  const offering = await prisma.offering.findFirst({
-    where: { id: offeringId },
-    select: { defaultRevenueTreatment: true },
-  });
-  return (offering?.defaultRevenueTreatment as RevenueTreatment) ?? 'point_in_time';
-}
 
 /** The parallel obligation entity for the education motion — a sibling, not a variant. */
 export async function issueFeeInstalments(
@@ -185,6 +128,10 @@ export async function recordPayment(input: {
       method: input.method ?? 'bank_transfer',
       payerOrganizationId: input.payerOrganizationId ?? null,
       payerPersonId: input.payerPersonId ?? null,
+      // Null for a gateway webhook, which has no human behind it; the party for
+      // money somebody took. It is also the narrowing that lets an employee hold
+      // `payments@own` and see their own collections rather than the company's.
+      recordedById: auth.partyId,
       note: input.note ?? null,
     },
   });
@@ -296,9 +243,14 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
       include: { lines: true, receipts: true },
     });
     if (!invoice) return;
-    const total = invoice.lines.reduce((s, l) => s + (num(l.amount) ?? 0), 0);
-    const allocated = invoice.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0);
-    const status = allocated >= total - 0.001 ? 'settled' : allocated > 0 ? 'part_paid' : invoice.status;
+    // `totalsOf` reads the priced grand total where there is one and falls back
+    // to the sum of the lines where there is not, which is the one reading of
+    // "what is this invoice for" that every surface shares. Summing the lines
+    // here independently is how a tax-inclusive invoice came to read as settled
+    // when only the pre-tax value had been paid.
+    const { payable, allocated, creditNoted } = totalsOf(invoice);
+    const status =
+      allocated + creditNoted >= payable - 0.001 ? 'settled' : allocated > 0 ? 'part_paid' : invoice.status;
     if (status !== invoice.status) {
       await prisma.invoice.update({ where: { id: invoiceId }, data: { status } });
       if (status === 'settled') {
@@ -363,56 +315,11 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
 // rebuild, discard, or re-hydrate at any time.
 // ---------------------------------------------------------------------------
 
-export async function rehydrateReceivables(subjectId: string | null, subjectType: 'account' | 'opportunity') {
-  if (!subjectId) return null;
-  const auth = currentAuth();
-
-  const invoices = await prisma.invoice.findMany({
-    where: {
-      tenantId: auth.tenantId,
-      deletedAt: null,
-      status: { in: ['issued', 'part_paid', 'overdue'] },
-      ...(subjectType === 'account' ? { OR: [{ accountId: subjectId }, { organizationId: subjectId }] } : { opportunityId: subjectId }),
-    },
-    include: { lines: true, receipts: true },
-  });
-
-  let outstanding = 0;
-  let nextDue: Date | null = null;
-  for (const inv of invoices) {
-    const total = inv.lines.reduce((s, l) => s + (num(l.amount) ?? 0), 0);
-    const allocated = inv.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0);
-    outstanding += Math.max(total - allocated, 0);
-    if (inv.dueDate && (!nextDue || inv.dueDate < nextDue)) nextDue = inv.dueDate;
-  }
-
-  const overdueDays = nextDue ? Math.floor((Date.now() - nextDue.getTime()) / 86_400_000) : 0;
-  const dunningStage = overdueDays <= 0 ? null : overdueDays < 15 ? 'reminder' : overdueDays < 45 ? 'chase' : 'escalated';
-
-  const label =
-    subjectType === 'account'
-      ? (await prisma.organization.findFirst({ where: { id: subjectId }, select: { name: true } }))?.name ?? subjectId
-      : subjectId;
-
-  return prisma.receivablesProjection.upsert({
-    where: { tenantId_subjectType_subjectId: { tenantId: auth.tenantId, subjectType, subjectId } },
-    create: {
-      tenantId: auth.tenantId,
-      subjectType,
-      subjectId,
-      subjectLabel: label,
-      amountOutstanding: outstanding,
-      nextDueDate: nextDue,
-      dunningStage,
-    },
-    update: {
-      subjectLabel: label,
-      amountOutstanding: outstanding,
-      nextDueDate: nextDue,
-      dunningStage,
-      hydratedAt: new Date(),
-    },
-  });
+export async function rehydrateReceivables(
+  subjectId: string | null,
+  subjectType: 'account' | 'opportunity',
+) {
+  return rehydrateReceivablesFor(subjectId, subjectType);
 }
 
 /**
@@ -436,9 +343,7 @@ export async function detectOverduePayments(): Promise<number> {
   });
 
   for (const inv of overdue) {
-    const total = inv.lines.reduce((s, l) => s + (num(l.amount) ?? 0), 0);
-    const allocated = inv.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0);
-    const outstanding = total - allocated;
+    const { outstanding } = totalsOf(inv);
     const days = Math.floor((now.getTime() - inv.dueDate!.getTime()) / 86_400_000);
 
     await raiseException({
@@ -467,16 +372,4 @@ export async function detectOverduePayments(): Promise<number> {
   }
 
   return overdue.length;
-}
-
-export async function invoiceSummary(invoiceId: string) {
-  const invoice = await prisma.invoice.findFirst({
-    where: { id: invoiceId },
-    include: { lines: true, receipts: true },
-  });
-  if (!invoice) throw ApiError.notFound('Invoice');
-
-  const total = invoice.lines.reduce((s, l) => s + (num(l.amount) ?? 0), 0);
-  const allocated = invoice.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0);
-  return { invoice, total, allocated, outstanding: total - allocated };
 }

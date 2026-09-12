@@ -85,6 +85,15 @@ registerGovernedEntities('crm', [
 registerGovernedEntities('pct', ['contract', 'partner_agreement', 'proposal', 'quote']);
 registerGovernedEntities('gov', ['policy', 'policy_version', 'grant', 'authority_grant', 'decision', 'delegation']);
 registerGovernedEntities('fin', ['invoice', 'receipt', 'credit_note', 'fee_instalment']);
+// Added with invoicing and the returns: the company's own registration, which
+// every invoice is printed from, and a filed return, which is a statement to
+// the government. Both are things somebody will one day have to prove who
+// changed and when.
+registerGovernedEntities('fin', ['company_profile', 'gst_filing', 'invoice_line']);
+// The catalogue is a price list, so a change to it is a change to what
+// customers are charged; and a student's timeline carries complaints, which is
+// the last place an untraceable edit belongs.
+registerGovernedEntities('edu', ['course', 'cohort', 'learner_log']);
 
 /** Fields dropped from every diff — noise, never signal. */
 const NOISE_FIELDS = new Set(['updatedAt', 'createdAt', 'id', 'tenantId', '__v']);

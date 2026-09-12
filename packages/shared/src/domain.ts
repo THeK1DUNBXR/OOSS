@@ -356,6 +356,62 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export const FEE_INSTALMENT_STATUSES = ['scheduled', 'issued', 'part_paid', 'settled', 'waived', 'overdue'] as const;
 
+/**
+ * What the invoice says about payment when it is handed over.
+ *
+ * This is a declaration printed on the document, not a derived status. A
+ * customer paying an instalment at a counter is told two numbers — the whole
+ * amount and the amount they are handing over today — and the invoice has to
+ * say which it is, because "₹5,000" on a ₹11,800 bill is a receipt for a part
+ * payment or a wrong total depending on one word.
+ *
+ * `credit` is the third case and the honest name for it: nothing collected at
+ * issue, payable by the due date.
+ */
+export const PAYMENT_TYPES = ['full', 'part', 'credit'] as const;
+export type PaymentType = (typeof PAYMENT_TYPES)[number];
+
+export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
+  full: 'Full payment',
+  part: 'Part payment',
+  credit: 'Payable on credit',
+};
+
+/** How the money changes hands. Printed on the invoice. */
+export const PAYMENT_MODES = ['cash', 'upi', 'bank_transfer', 'cheque', 'card', 'netbanking', 'other'] as const;
+export type PaymentMode = (typeof PAYMENT_MODES)[number];
+
+export const PAYMENT_MODE_LABELS: Record<PaymentMode, string> = {
+  cash: 'Cash',
+  upi: 'UPI',
+  bank_transfer: 'Bank transfer',
+  cheque: 'Cheque',
+  card: 'Card',
+  netbanking: 'Net banking',
+  other: 'Other',
+};
+
+/**
+ * The returns this platform prepares.
+ *
+ * GSTR-1 is the statement of outward supplies, invoice by invoice. GSTR-3B is
+ * the monthly summary the tax is actually paid from. They are prepared from the
+ * same books and are not the same document: a discrepancy between them is
+ * exactly the thing a notice asks about, so both are computed and stored rather
+ * than one being derived from the other at render time.
+ */
+export const GST_RETURN_TYPES = ['GSTR1', 'GSTR3B'] as const;
+export type GstReturnType = (typeof GST_RETURN_TYPES)[number];
+
+export const GST_RETURN_LABELS: Record<GstReturnType, string> = {
+  GSTR1: 'GSTR-1 — outward supplies',
+  GSTR3B: 'GSTR-3B — monthly summary and payment',
+};
+
+/** prepared → filed. `superseded` is a preparation replaced before filing. */
+export const GST_FILING_STATUSES = ['prepared', 'filed', 'superseded'] as const;
+export type GstFilingStatus = (typeof GST_FILING_STATUSES)[number];
+
 // ---------------------------------------------------------------------------
 // Education
 // ---------------------------------------------------------------------------
@@ -364,6 +420,42 @@ export const ENROLLMENT_STATUSES = ['reserved', 'confirmed', 'active', 'complete
 export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number];
 
 export const ATTENDANCE_STATUSES = ['present', 'absent', 'late', 'excused'] as const;
+
+/**
+ * What a day on a student's timeline can be, besides attendance and a score.
+ *
+ * Four kinds rather than one note field, because a question nobody has answered
+ * and a problem nobody has closed are work, and work has to be countable. A
+ * note is the fallback for whatever is neither.
+ */
+export const LEARNER_LOG_KINDS = ['query', 'feedback', 'issue', 'note'] as const;
+export type LearnerLogKind = (typeof LEARNER_LOG_KINDS)[number];
+
+export const LEARNER_LOG_LABELS: Record<LearnerLogKind, string> = {
+  query: 'Query',
+  feedback: 'Feedback',
+  issue: 'Issue',
+  note: 'Note',
+};
+
+/**
+ * Feedback and a note are closed the moment they are recorded — there is
+ * nothing to do about them. A query and an issue open, and stay open until
+ * somebody says otherwise.
+ */
+export const LEARNER_LOG_KINDS_NEEDING_CLOSURE: LearnerLogKind[] = ['query', 'issue'];
+
+export const LEARNER_LOG_STATUSES = ['open', 'in_progress', 'resolved'] as const;
+export type LearnerLogStatus = (typeof LEARNER_LOG_STATUSES)[number];
+
+export const LEARNER_LOG_SEVERITIES = ['low', 'medium', 'high'] as const;
+export type LearnerLogSeverity = (typeof LEARNER_LOG_SEVERITIES)[number];
+
+/** The kinds a merged learner timeline is made of. */
+export const LEARNER_TIMELINE_KINDS = [
+  'attendance', 'progress', 'query', 'feedback', 'issue', 'note', 'invoice', 'enrollment',
+] as const;
+export type LearnerTimelineKind = (typeof LEARNER_TIMELINE_KINDS)[number];
 
 // ---------------------------------------------------------------------------
 // Record codes (CRM-FOUND-007).
@@ -386,6 +478,9 @@ export const RECORD_TYPE_CODES = [
   // them. A record because a figure in the books must be traceable to the
   // statement line it came from.
   'IMP',
+  // A prepared or filed GST return. A record because a filed return is a
+  // statement to the government that somebody has to be able to refer to.
+  'GST',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 
@@ -521,6 +616,16 @@ export const EXCEPTION_CODES = {
   EX_FIN_003: { code: 'EX-FIN-003', label: 'Spending beyond budget', severity: 'S2_WARNING' },
   EX_FIN_004: { code: 'EX-FIN-004', label: 'Cash runway below threshold', severity: 'S3_HIGH_RISK' },
   EX_FIN_005: { code: 'EX-FIN-005', label: 'Disbursed payroll not posted to the books', severity: 'S2_WARNING' },
+  // A GST return that has not been prepared with the deadline in sight. The
+  // eleventh for GSTR-1 and the twentieth for GSTR-3B are statutory, and the
+  // penalty is per day, so a return nobody has looked at is an exposure rather
+  // than a task.
+  EX_FIN_006: { code: 'EX-FIN-006', label: 'GST return not filed for a closed month', severity: 'S3_HIGH_RISK' },
+  // A student's complaint. Held at the same rung as an absence breach because
+  // the thing that makes it serious is the same: a clock is running and somebody
+  // outside the company is waiting.
+  EX_EDU_002: { code: 'EX-EDU-002', label: 'Learner issue raised', severity: 'S3_HIGH_RISK' },
+  EX_EDU_003: { code: 'EX-EDU-003', label: 'Learner query unanswered', severity: 'S2_WARNING' },
 } as const;
 
 export const EXCEPTION_STATES = ['open', 'acknowledged', 'resolved', 'escalated', 'suppressed'] as const;

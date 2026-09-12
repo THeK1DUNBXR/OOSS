@@ -10,7 +10,16 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { EVENTS, ATTENDANCE_STATUSES } from '@kaizen/shared';
+import {
+  EVENTS,
+  ATTENDANCE_STATUSES,
+  DIVISIONS,
+  LEARNER_LOG_KINDS,
+  LEARNER_LOG_SEVERITIES,
+  type Division,
+  type LearnerLogKind,
+  type LearnerLogSeverity,
+} from '@kaizen/shared';
 import { handler, str, bool, numeric } from '../lib/http.js';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
@@ -21,6 +30,20 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { auditRegulatedRead } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
 import { enrolStudent } from '../domains/education.js';
+import {
+  listCourses,
+  createCourse,
+  updateCourse,
+  retireCourse,
+  assignCourse,
+} from '../domains/courses.js';
+import {
+  recordLearnerLog,
+  resolveLearnerLog,
+  recordDailyProgress,
+  learnerTimeline,
+  openLearnerItems,
+} from '../domains/learnerTimeline.js';
 
 const router = Router();
 
@@ -45,17 +68,20 @@ async function cohortScopeFilter(): Promise<Record<string, unknown>> {
   return {};
 }
 
+/**
+ * The catalogue.
+ *
+ * `?includeRetired=true` for the maintenance screen; the default is what is
+ * being sold, which is what every picker wants. Held behind `courses` rather
+ * than `education`, so an employee raising an invoice can read the price list
+ * without reading a class register.
+ *
+ * There used to be two handlers registered on this path with different filters
+ * and different shapes, the second unreachable. One now.
+ */
 router.get(
   '/courses',
-  handler(async () => {
-    await assertCan({ resource: 'education', verb: 'view' });
-    const auth = currentAuth();
-    return prisma.course.findMany({
-      where: { tenantId: auth.tenantId },
-      include: { cohorts: { select: { id: true, name: true, status: true, startDate: true } } },
-      orderBy: { name: 'asc' },
-    });
-  }),
+  handler(async (req) => listCourses({ includeRetired: bool(req.query.includeRetired) })),
 );
 
 router.get(
@@ -168,48 +194,79 @@ router.get(
   }),
 );
 
-/** The courses on offer, so a batch has something to be a batch of. */
-router.get(
-  '/courses',
-  handler(async () => {
-    await assertCan({ resource: 'education', verb: 'view' });
-    const auth = currentAuth();
-    return prisma.course.findMany({
-      where: { tenantId: auth.tenantId, active: true },
-      orderBy: { name: 'asc' },
-      include: { _count: { select: { cohorts: true } } },
-    });
-  }),
-);
+const courseBodySchema = z.object({
+  name: z.string().min(1),
+  code: z.string().min(1),
+  description: z.string().nullish(),
+  durationWeeks: z.number().int().positive().nullish(),
+  /// A course is a price list as much as a syllabus: the fee, the tax it
+  /// attracts and the SAC it is classified under all live here, so whoever
+  /// raises the invoice does not have to know any of them.
+  feeAmount: z.number().nonnegative().nullish(),
+  gstRate: z.number().min(0).max(100).nullish(),
+  hsnSac: z.string().nullish(),
+  division: z.enum(DIVISIONS as unknown as [Division, ...Division[]]).nullish(),
+});
 
 router.post(
   '/courses',
   handler(async (req, res) => {
-    await assertCan({ resource: 'education', verb: 'create' });
-    const auth = currentAuth();
+    const course = await createCourse(courseBodySchema.parse(req.body));
+    res.status(201).json(course);
+    return undefined;
+  }),
+);
+
+/**
+ * Edits a course.
+ *
+ * A catalogue is edited constantly — a fee goes up, a programme lengthens, a
+ * course stops being sold — and one that could only be appended to filled up
+ * with rows nobody dared touch. The code is editable too, with a clash check:
+ * nothing references a course by code, so a corrected code corrects every screen
+ * rather than orphaning history.
+ */
+router.patch(
+  '/courses/:id',
+  handler(async (req) =>
+    updateCourse(req.params.id, courseBodySchema.partial().extend({ active: z.boolean().optional() }).parse(req.body)),
+  ),
+);
+
+/**
+ * Stops a course being sold. Never a delete: students hold enrolments on courses
+ * withdrawn years ago and their record has to keep reading correctly.
+ */
+router.post('/courses/:id/retire', handler(async (req) => retireCourse(req.params.id)));
+
+/**
+ * Puts a customer on a course.
+ *
+ * The endpoint the customer form calls, at creation or afterwards, so "add a
+ * customer and assign them a course" is one action. With no batch named the
+ * course's rolling intake is used — which is a real batch, created on first use,
+ * because a walk-in genuinely has none and inventing one per person would report
+ * sixty batches of one.
+ */
+router.post(
+  '/courses/:id/assign',
+  handler(async (req, res) => {
     const body = z
       .object({
-        name: z.string().min(1),
-        code: z.string().min(1),
-        description: z.string().nullish(),
-        durationWeeks: z.number().int().positive().nullish(),
+        cohortId: z.string().nullish(),
+        personId: z.string().nullish(),
+        fullName: z.string().nullish(),
+        primaryPhone: z.string().nullish(),
+        primaryEmail: z.string().nullish(),
+        institutionId: z.string().nullish(),
+        isMinor: z.boolean().optional(),
+        guardianName: z.string().nullish(),
+        guardianPhone: z.string().nullish(),
+        guardianEmail: z.string().nullish(),
       })
       .parse(req.body);
-
-    const clash = await prisma.course.findFirst({ where: { tenantId: auth.tenantId, code: body.code } });
-    if (clash) throw ApiError.conflict(`A course with the code ${body.code} already exists: ${clash.name}.`);
-
-    const course = await prisma.course.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode: await nextRecordCode('CRS'),
-        name: body.name,
-        code: body.code,
-        description: body.description ?? null,
-        durationWeeks: body.durationWeeks ?? null,
-      },
-    });
-    res.status(201).json(course);
+    const enrollment = await assignCourse({ ...body, courseId: req.params.id });
+    res.status(201).json(enrollment);
     return undefined;
   }),
 );
@@ -431,6 +488,104 @@ router.get(
       take: numeric(req.query.limit) ?? 200,
     });
   }),
+);
+
+// ---------------------------------------------------------------------------
+// The student's timeline
+// ---------------------------------------------------------------------------
+//
+// Attendance, daily progress and the four kinds of log entry, merged on the
+// server into one chronological record. Merged there rather than in the browser
+// because two clients would merge differently and "what happened on the 14th"
+// would depend on which screen you asked.
+
+router.get(
+  '/enrollments/:id/timeline',
+  handler(async (req) =>
+    learnerTimeline(req.params.id, {
+      limit: numeric(req.query.limit),
+      kinds: str(req.query.kinds)?.split(',').filter(Boolean),
+    }),
+  ),
+);
+
+const learnerLogSchema = z.object({
+  kind: z.enum(LEARNER_LOG_KINDS as unknown as [LearnerLogKind, ...LearnerLogKind[]]),
+  title: z.string().min(1),
+  detail: z.string().nullish(),
+  entryDate: z.string().nullish(),
+  severity: z.enum(LEARNER_LOG_SEVERITIES as unknown as [LearnerLogSeverity, ...LearnerLogSeverity[]]).nullish(),
+  rating: z.number().int().min(1).max(5).nullish(),
+});
+
+/**
+ * A query, a piece of feedback, an issue or a note, on a day.
+ *
+ * Queries and issues open and stay open; feedback and notes are complete as
+ * written. That difference is the point: a complaint nobody closed is work, and
+ * work that is not countable does not get done.
+ */
+router.post(
+  '/enrollments/:id/log',
+  handler(async (req, res) => {
+    const body = learnerLogSchema.parse(req.body);
+    const log = await recordLearnerLog(req.params.id, {
+      ...body,
+      entryDate: body.entryDate ? new Date(body.entryDate) : undefined,
+      severity: body.severity ?? null,
+      rating: body.rating ?? null,
+    });
+    res.status(201).json(log);
+    return undefined;
+  }),
+);
+
+router.post(
+  '/learner-log/:id/resolve',
+  handler(async (req) => {
+    const body = z
+      .object({
+        status: z.enum(['in_progress', 'resolved']).optional(),
+        resolutionNote: z.string().nullish(),
+      })
+      .parse(req.body ?? {});
+    return resolveLearnerLog(req.params.id, body);
+  }),
+);
+
+/**
+ * A day's progress. DAILY_PROGRESS has been in the schema since the beginning
+ * with nothing writing to it, which is the same as not existing.
+ */
+router.post(
+  '/enrollments/:id/progress',
+  handler(async (req) => {
+    const body = z
+      .object({
+        progressDate: z.string().nullish(),
+        score: z.number().int().min(0).max(100).nullish(),
+        note: z.string().nullish(),
+      })
+      .parse(req.body);
+    return recordDailyProgress(req.params.id, {
+      progressDate: body.progressDate ? new Date(body.progressDate) : undefined,
+      score: body.score ?? null,
+      note: body.note ?? null,
+    });
+  }),
+);
+
+/**
+ * Everything open across every student the viewer can see.
+ *
+ * The counterpart to the per-student timeline: an unanswered query is only work
+ * if it can be found without already knowing which student to look at.
+ */
+router.get(
+  '/learner-log/open',
+  handler(async (req) =>
+    openLearnerItems({ kind: str(req.query.kind), severity: str(req.query.severity) }),
+  ),
 );
 
 // ---------------------------------------------------------------------------

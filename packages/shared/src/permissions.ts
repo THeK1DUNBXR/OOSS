@@ -170,6 +170,21 @@ export const RESOURCES = [
   'vendor_bills',
   'budgets',
   'assets',
+  // Filing a return is not keeping the books. It is a statement to the
+  // government under the company's own registration, it closes the period it
+  // covers, and it is the one act in the books that somebody outside the company
+  // will later ask about by name — so who may do it is a separate question from
+  // who may post a journal.
+  'gst_filings',
+  // The company's own registration, address and bank details. Every invoice is
+  // printed from them and every return is filed under them, which makes editing
+  // them a different authority again from using them.
+  'company_profile',
+  // The course catalogue — a syllabus and a price list in one record. Held
+  // apart from `education`, which is the students and the batches: an employee
+  // who raises an invoice for a course needs to read the catalogue and has no
+  // business reading a class register.
+  'courses',
   // Cross-cutting.
   'tasks',
   'imports',

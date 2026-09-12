@@ -194,6 +194,306 @@ export function isInterState(supplierGstin: string | null, customerGstin: string
 export const GST_RATES = [0, 5, 12, 18, 28] as const;
 
 // ---------------------------------------------------------------------------
+// Registrations and places of supply
+// ---------------------------------------------------------------------------
+
+/**
+ * The state codes a GSTIN begins with, and a place of supply is named by.
+ *
+ * Held as codes rather than names because that is what the tax is decided from:
+ * two GSTINs whose first two digits differ are an inter-state supply, whatever
+ * anybody calls the states. A return also wants the code and the name together,
+ * in `07-Delhi` form, which is the one place the name is load-bearing.
+ */
+export const GST_STATE_CODES: Record<string, string> = {
+  '01': 'Jammu and Kashmir',
+  '02': 'Himachal Pradesh',
+  '03': 'Punjab',
+  '04': 'Chandigarh',
+  '05': 'Uttarakhand',
+  '06': 'Haryana',
+  '07': 'Delhi',
+  '08': 'Rajasthan',
+  '09': 'Uttar Pradesh',
+  '10': 'Bihar',
+  '11': 'Sikkim',
+  '12': 'Arunachal Pradesh',
+  '13': 'Nagaland',
+  '14': 'Manipur',
+  '15': 'Mizoram',
+  '16': 'Tripura',
+  '17': 'Meghalaya',
+  '18': 'Assam',
+  '19': 'West Bengal',
+  '20': 'Jharkhand',
+  '21': 'Odisha',
+  '22': 'Chhattisgarh',
+  '23': 'Madhya Pradesh',
+  '24': 'Gujarat',
+  '25': 'Daman and Diu',
+  '26': 'Dadra and Nagar Haveli and Daman and Diu',
+  '27': 'Maharashtra',
+  '28': 'Andhra Pradesh (old)',
+  '29': 'Karnataka',
+  '30': 'Goa',
+  '31': 'Lakshadweep',
+  '32': 'Kerala',
+  '33': 'Tamil Nadu',
+  '34': 'Puducherry',
+  '35': 'Andaman and Nicobar Islands',
+  '36': 'Telangana',
+  '37': 'Andhra Pradesh',
+  '38': 'Ladakh',
+  '96': 'Other Country',
+  '97': 'Other Territory',
+};
+
+export function stateNameFor(code: string | null | undefined): string | null {
+  if (!code) return null;
+  return GST_STATE_CODES[code.padStart(2, '0')] ?? null;
+}
+
+/** `07-Delhi`, which is the form a return wants a place of supply in. */
+export function placeOfSupplyLabel(code: string | null | undefined): string | null {
+  if (!code) return null;
+  const padded = code.padStart(2, '0');
+  const name = GST_STATE_CODES[padded];
+  return name ? `${padded}-${name}` : padded;
+}
+
+export function stateCodeOf(gstin: string | null | undefined): string | null {
+  if (!gstin || gstin.length < 2) return null;
+  const code = gstin.slice(0, 2);
+  return GST_STATE_CODES[code] ? code : null;
+}
+
+const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[Z]{1}[0-9A-Z]{1}$/;
+const GSTIN_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+/**
+ * Whether a GSTIN is a GSTIN.
+ *
+ * Shape, a real state code, and the check digit — all three, because the first
+ * two alone accept a typo in the middle of the PAN, and a return filed against a
+ * mistyped customer registration is rejected by the portal weeks later with
+ * nothing to say which invoice caused it. Validating at entry is the difference
+ * between a corrected field and a reconciliation.
+ */
+export function isValidGstin(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const gstin = value.trim().toUpperCase();
+  if (gstin.length !== 15) return false;
+  if (!GSTIN_PATTERN.test(gstin)) return false;
+  if (!GST_STATE_CODES[gstin.slice(0, 2)]) return false;
+  return gstinCheckDigit(gstin.slice(0, 14)) === gstin[14];
+}
+
+/**
+ * The check digit for the first fourteen characters.
+ *
+ * The published algorithm: each character's value is multiplied by an
+ * alternating factor of 1 and 2, the product is folded back into base 36, the
+ * folded digits are summed, and the check character is what takes that sum to a
+ * multiple of 36.
+ */
+export function gstinCheckDigit(first14: string): string | null {
+  if (first14.length !== 14) return null;
+  let sum = 0;
+  for (let i = 0; i < 14; i += 1) {
+    const value = GSTIN_ALPHABET.indexOf(first14[i]);
+    if (value < 0) return null;
+    const product = value * (i % 2 === 0 ? 1 : 2);
+    sum += Math.floor(product / 36) + (product % 36);
+  }
+  return GSTIN_ALPHABET[(36 - (sum % 36)) % 36];
+}
+
+/**
+ * Which GSTR-1 table a supply belongs in.
+ *
+ * A registered customer is B2B and is reported invoice by invoice with their
+ * GSTIN; an unregistered one is B2C and is reported as a rate-wise total. That
+ * is not a presentation difference — it decides whether the customer can claim
+ * the credit, so getting it from the presence of a validated GSTIN rather than
+ * from a tick box is the point.
+ */
+export function supplyTypeOf(customerGstin: string | null | undefined): 'b2b' | 'b2c' {
+  return isValidGstin(customerGstin) ? 'b2b' : 'b2c';
+}
+
+// ---------------------------------------------------------------------------
+// What is actually paid
+// ---------------------------------------------------------------------------
+
+export interface GstHeads {
+  cgst: number;
+  sgst: number;
+  igst: number;
+}
+
+export interface GstSetOff {
+  /** Credit used against each head. */
+  utilised: GstHeads;
+  /** What is left to pay in cash, after credit. */
+  payable: GstHeads;
+  /** Credit still unused, carried to the next period. */
+  carriedForward: GstHeads;
+  totalPayable: number;
+  totalUtilised: number;
+}
+
+/**
+ * Sets input credit off against output tax, in the statutory order, and says
+ * what is left to pay in cash.
+ *
+ * The order matters and is not intuitive: IGST credit must be used against IGST
+ * first, and only then may spill over to CGST and SGST; CGST credit may only be
+ * used against CGST, and SGST credit only against SGST. Netting the totals
+ * instead — which is what a single "output minus input" figure does — produces a
+ * number that is too small whenever the mix differs, and the shortfall is
+ * discovered as interest.
+ */
+export function setOffInputCredit(output: GstHeads, credit: GstHeads): GstSetOff {
+  const out = { cgst: round2(output.cgst), sgst: round2(output.sgst), igst: round2(output.igst) };
+  const cr = { cgst: round2(credit.cgst), sgst: round2(credit.sgst), igst: round2(credit.igst) };
+  const utilised: GstHeads = { cgst: 0, sgst: 0, igst: 0 };
+
+  // IGST credit: against IGST first, then CGST, then SGST.
+  let igstCredit = cr.igst;
+  const igstAgainstIgst = Math.min(out.igst, igstCredit);
+  out.igst = round2(out.igst - igstAgainstIgst);
+  igstCredit = round2(igstCredit - igstAgainstIgst);
+
+  const igstAgainstCgst = Math.min(out.cgst, igstCredit);
+  out.cgst = round2(out.cgst - igstAgainstCgst);
+  igstCredit = round2(igstCredit - igstAgainstCgst);
+
+  const igstAgainstSgst = Math.min(out.sgst, igstCredit);
+  out.sgst = round2(out.sgst - igstAgainstSgst);
+  igstCredit = round2(igstCredit - igstAgainstSgst);
+
+  utilised.igst = round2(igstAgainstIgst + igstAgainstCgst + igstAgainstSgst);
+
+  // CGST credit against CGST only; SGST credit against SGST only.
+  const cgstUsed = Math.min(out.cgst, cr.cgst);
+  out.cgst = round2(out.cgst - cgstUsed);
+  utilised.cgst = cgstUsed;
+
+  const sgstUsed = Math.min(out.sgst, cr.sgst);
+  out.sgst = round2(out.sgst - sgstUsed);
+  utilised.sgst = sgstUsed;
+
+  const carriedForward: GstHeads = {
+    cgst: round2(cr.cgst - cgstUsed),
+    sgst: round2(cr.sgst - sgstUsed),
+    igst: round2(igstCredit),
+  };
+
+  return {
+    utilised,
+    payable: out,
+    carriedForward,
+    totalPayable: round2(out.cgst + out.sgst + out.igst),
+    totalUtilised: round2(utilised.cgst + utilised.sgst + utilised.igst),
+  };
+}
+
+/**
+ * What is still owed on an obligation, and whether a stated payment settles it.
+ *
+ * One function because the same three numbers are asked for by the invoice
+ * document, the receivables projection, the overdue detector and the counter
+ * where somebody is taking a part payment — and four independently written
+ * subtractions is how a screen comes to disagree with a ledger.
+ */
+export function outstandingOf(payable: number, allocated: number, creditNoted = 0): number {
+  return round2(Math.max(payable - allocated - creditNoted, 0));
+}
+
+/**
+ * Which of the three things the document should say, given what is being
+ * collected now against the whole.
+ *
+ * Derived rather than asked, because a clerk choosing "full payment" and typing
+ * a smaller figure produces a document that contradicts itself, and the customer
+ * is the one who finds out.
+ */
+export function paymentTypeFor(payable: number, payingNow: number): 'full' | 'part' | 'credit' {
+  const now = round2(payingNow);
+  if (now <= 0) return 'credit';
+  if (now >= round2(payable) - 0.001) return 'full';
+  return 'part';
+}
+
+/**
+ * What an invoice is actually payable for.
+ *
+ * `grandTotal` is the figure the document was raised at, tax and rounding
+ * included, and it is the right answer whenever it is set. It is zero on rows
+ * raised before tax was priced at creation, and for those the sum of the lines
+ * is the only figure there is — so the fallback is not defensive, it is the
+ * correct reading of an older invoice, and it keeps a seven-month-old ledger
+ * from restating itself the day this code ships.
+ */
+export function invoicePayable(grandTotal: number | null | undefined, lineTotal: number): number {
+  return grandTotal && grandTotal > 0 ? round2(grandTotal) : round2(lineTotal);
+}
+
+// ---------------------------------------------------------------------------
+// Rupees, in words
+// ---------------------------------------------------------------------------
+
+const ONES = [
+  '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+  'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen',
+  'Eighteen', 'Nineteen',
+];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+function twoDigits(n: number): string {
+  if (n < 20) return ONES[n];
+  const t = TENS[Math.floor(n / 10)];
+  const o = ONES[n % 10];
+  return o ? `${t} ${o}` : t;
+}
+
+/**
+ * A number in the Indian system: crore, lakh, thousand, hundred.
+ *
+ * Not a formatting nicety. An invoice carries the amount in words because that
+ * is what settles a dispute about a smudged digit, and the grouping is lakhs and
+ * crores rather than millions — "Eleven Thousand Eight Hundred" is what a
+ * customer here reads, and a western grouping of the same number reads as a
+ * mistake.
+ */
+export function amountInWords(value: number): string {
+  const rounded = round2(Math.abs(value));
+  const rupees = Math.floor(rounded);
+  const paise = Math.round((rounded - rupees) * 100);
+
+  const parts: string[] = [];
+  const push = (n: number, label: string) => {
+    if (n > 0) parts.push(`${twoDigits(n)} ${label}`);
+  };
+
+  push(Math.floor(rupees / 10_000_000), 'Crore');
+  push(Math.floor((rupees % 10_000_000) / 100_000), 'Lakh');
+  push(Math.floor((rupees % 100_000) / 1_000), 'Thousand');
+  push(Math.floor((rupees % 1_000) / 100), 'Hundred');
+
+  const last = rupees % 100;
+  if (last > 0) {
+    if (parts.length > 0) parts.push('and');
+    parts.push(twoDigits(last));
+  }
+
+  const sign = value < 0 ? 'Minus ' : '';
+  const whole = parts.length ? parts.join(' ') : 'Zero';
+  const paisePart = paise > 0 ? ` and ${twoDigits(paise)} Paise` : '';
+  return `${sign}Rupees ${whole}${paisePart} Only`;
+}
+
+// ---------------------------------------------------------------------------
 // Depreciation
 // ---------------------------------------------------------------------------
 
