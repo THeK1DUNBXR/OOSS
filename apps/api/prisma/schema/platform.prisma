@@ -691,3 +691,47 @@ model Threshold {
   @@unique([tenantId, thresholdKey])
   @@map("thresholds")
 }
+
+/// One tenant's claim on one scheduled occurrence of one job.
+///
+/// The scheduler used to fire every job on a single hourly `setInterval`,
+/// ignoring the `cron` each job declares: daily ladders ran 24 times a day and
+/// the one job asking to run every thirty minutes ran half as often. And
+/// `claimFiring` — the guard whose own comment says it "makes two substrate
+/// instances firing the same job concurrently safe" — was never called by
+/// anything.
+///
+/// A row here IS the claim. `@@unique([tenantId, jobName, scheduledFor])` means
+/// a second instance's insert fails rather than racing, so two processes cannot
+/// both run the 06:00 firing. `leaseUntil` is what makes a crash recoverable:
+/// a claim whose lease has expired without finishing is taken by the next
+/// scheduler to look, rather than being stuck forever because the worker
+/// holding it died.
+model JobClaim {
+  id       String @id @default(cuid())
+  tenantId String
+
+  jobName String
+  /// The occurrence being claimed, derived from the job's cron. Not "now" —
+  /// two instances ticking a second apart must compute the same value.
+  scheduledFor DateTime
+
+  status    String    @default("claimed") // claimed | completed | failed | dead
+  attempt   Int       @default(1)
+  claimedAt DateTime  @default(now())
+  /// Extended by the heartbeat while the job runs; a claim past this with no
+  /// finish is abandoned and may be retaken.
+  leaseUntil   DateTime
+  heartbeatAt  DateTime?
+  finishedAt   DateTime?
+  durationMs   Int?
+  lastError    String?
+  /// Set when retries are exhausted. This is the dead-letter row: it is not
+  /// deleted and it is not retried, so a job that keeps failing is visible
+  /// rather than silently absent.
+  deadAt DateTime?
+
+  @@unique([tenantId, jobName, scheduledFor])
+  @@index([tenantId, status, scheduledFor])
+  @@map("job_claims")
+}
