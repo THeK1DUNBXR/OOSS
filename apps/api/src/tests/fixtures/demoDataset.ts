@@ -938,6 +938,12 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
           paymentId: payment.id,
           invoiceId: invoice.id,
           allocatedAmount: collected,
+          allocatedAt: new Date(closedAt.getTime() + 12 * 86_400_000),
+          // A receipt carries its own copy of the position, because it is a
+          // document: "this much, of that much, leaving this".
+          subjectTotal: gst.grandTotal,
+          balanceAfter: round2(gst.grandTotal - collected),
+          paymentMode: 'bank_transfer',
         },
       });
       await prisma.invoice.update({
@@ -1452,6 +1458,8 @@ async function seedStudentBillingAndTimelines() {
     // Three rows because the invoice has three things it can say about payment
     // and a screen that has only ever rendered one of them is a screen nobody
     // has read.
+    // What the invoice itself says is what was handed over on the day, and it is
+    // never restated afterwards.
     const collected = index === 0 ? 20_000 : index === 1 ? gst.grandTotal : 0;
     const paymentType = collected === 0 ? 'credit' : collected >= gst.grandTotal ? 'full' : 'part';
     const mode = index === 0 ? 'cash' : index === 1 ? 'upi' : null;
@@ -1461,7 +1469,7 @@ async function seedStudentBillingAndTimelines() {
         tenantId,
         recordCode: await nextRecordCode('INV'),
         personId: enrollment.personId,
-        status: collected === 0 ? 'issued' : collected >= gst.grandTotal ? 'settled' : 'part_paid',
+        status: 'issued',
         currency: 'INR',
         issuedDate: issuedAt,
         dueDate: new Date(issuedAt.getTime() + 30 * 86_400_000),
@@ -1498,27 +1506,94 @@ async function seedStudentBillingAndTimelines() {
     });
     invoices += 1;
 
-    if (collected > 0) {
+    // Every instalment issues its own numbered receipt. The first student pays
+    // twice — ₹20,000 in cash on the day and ₹15,000 by UPI a fortnight later —
+    // so the dataset carries the case the whole redesign is about: a tax invoice
+    // that never changed, two receipts that each say where the account stood, and
+    // a final invoice naming both.
+    const instalments =
+      index === 0
+        ? [
+            { amount: 20_000, mode: 'cash', days: 0, reference: null as string | null },
+            { amount: 15_000, mode: 'upi', days: 14, reference: 'UPI/402398120041' },
+          ]
+        : collected > 0
+          ? [{ amount: collected, mode: mode ?? 'cash', days: 0, reference: 'UPI/402311887654' as string | null }]
+          : [];
+
+    let received = 0;
+    const receiptCodes: string[] = [];
+    const receiptRows: Array<Record<string, unknown>> = [];
+
+    for (const [n, instalment] of instalments.entries()) {
+      const at = new Date(issuedAt.getTime() + instalment.days * 86_400_000);
       const payment = await prisma.payment.create({
         data: {
           tenantId,
           recordCode: await nextRecordCode('PAY'),
-          amount: collected,
+          amount: instalment.amount,
           currency: 'INR',
-          gatewayReference: `${invoice.recordCode}/${mode}`,
-          receivedAt: issuedAt,
+          gatewayReference: `${invoice.recordCode}/${instalment.mode}/${n + 1}`,
+          receivedAt: at,
           status: 'received',
-          method: mode ?? 'cash',
+          method: instalment.mode,
           payerPersonId: enrollment.personId,
         },
       });
+      received = round2(received + instalment.amount);
+      const balanceAfter = round2(Math.max(gst.grandTotal - received, 0));
+      const receiptCode = await nextRecordCode('REC');
       await prisma.receipt.create({
         data: {
           tenantId,
-          recordCode: await nextRecordCode('REC'),
+          recordCode: receiptCode,
           paymentId: payment.id,
           invoiceId: invoice.id,
-          allocatedAmount: collected,
+          allocatedAmount: instalment.amount,
+          allocatedAt: at,
+          subjectTotal: gst.grandTotal,
+          balanceAfter,
+          paymentMode: instalment.mode,
+          paymentReference: instalment.reference,
+        },
+      });
+      receiptCodes.push(receiptCode);
+      receiptRows.push({
+        number: n + 1,
+        recordCode: receiptCode,
+        issuedAt: at.toISOString(),
+        amount: instalment.amount,
+        mode: instalment.mode,
+        reference: instalment.reference,
+        paymentCode: payment.recordCode,
+        balanceAfter,
+      });
+    }
+
+    if (instalments.length > 0) {
+      await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: { status: received >= gst.grandTotal - 0.001 ? 'settled' : 'part_paid' },
+      });
+    }
+
+    // The statement the employee raises once the instalments are in, naming the
+    // receipts it consolidates.
+    if (instalments.length > 1) {
+      await prisma.finalInvoice.create({
+        data: {
+          tenantId,
+          recordCode: await nextRecordCode('FNL'),
+          invoiceId: invoice.id,
+          issuedAt: new Date(issuedAt.getTime() + 15 * 86_400_000),
+          totalPayable: gst.grandTotal,
+          totalReceived: received,
+          balance: round2(Math.max(gst.grandTotal - received, 0)),
+          settled: received >= gst.grandTotal - 0.001,
+          receiptCodes,
+          receiptCount: receiptCodes.length,
+          snapshot: { receipts: receiptRows, supersedes: [] },
+          note: 'Statement of instalments received against the course fee.',
         },
       });
     }
@@ -1610,7 +1685,9 @@ async function seedStudentBillingAndTimelines() {
     }
   }
 
-  console.log(`  ${invoices} student fee invoices (one part paid in cash), ${logs} timeline entries, attendance and weekly scores`);
+  console.log(
+    `  ${invoices} student fee invoices (one part paid across two receipts, with a final invoice), ${logs} timeline entries, attendance and weekly scores`,
+  );
 }
 
 // ---------------------------------------------------------------------------

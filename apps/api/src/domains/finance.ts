@@ -206,6 +206,22 @@ export async function allocatePayment(input: {
     );
   }
 
+  // The position this allocation leaves the subject in, snapshotted onto the
+  // receipt. A receipt is a document as well as a join row, and the document has
+  // to keep saying what was owed when it was written — so the figures are stored
+  // here rather than recomputed at print time.
+  const subject = input.invoiceId
+    ? await prisma.invoice.findFirst({
+        where: { id: input.invoiceId },
+        include: { lines: true, receipts: true },
+      })
+    : null;
+  const subjectTotals = subject ? totalsOf(subject) : null;
+  const subjectTotal = subjectTotals?.payable ?? 0;
+  const balanceAfter = subjectTotals
+    ? round2(Math.max(subjectTotal - subjectTotals.allocated - input.amount - subjectTotals.creditNoted, 0))
+    : 0;
+
   const recordCode = await nextRecordCode('REC');
   const receipt = await prisma.receipt.create({
     data: {
@@ -216,7 +232,23 @@ export async function allocatePayment(input: {
       feeInstalmentId: input.feeInstalmentId ?? null,
       allocatedAmount: input.amount,
       allocatedById: auth.partyId,
+      subjectTotal,
+      balanceAfter,
+      paymentMode: payment.method,
+      paymentReference: payment.gatewayReference,
     },
+  });
+
+  await emit({
+    name: EVENTS.RECEIPT_ISSUED,
+    subject: { entityType: 'receipt', entityId: receipt.id, recordCode },
+    related: [
+      { relation: 'from', entityType: 'payment', entityId: input.paymentId },
+      ...(input.invoiceId ? [{ relation: 'against', entityType: 'invoice', entityId: input.invoiceId }] : []),
+    ],
+    newState: { amount: input.amount, subjectTotal, balanceAfter },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
   });
 
   await emit({

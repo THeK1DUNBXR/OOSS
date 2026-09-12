@@ -132,7 +132,7 @@ export function Enrollments() {
       <NewEnrollment open={enrolling} onClose={() => setEnrolling(false)} />
       <PageHeader
         title="Students"
-        subtitle="Who is on which batch, and which college they came from. Attendance and the at-risk flag are worked out from actual records — nobody keeps them up to date by hand, so they cannot drift."
+        subtitle="Who is on which batch, and which college they came from. Open a student for their day-by-day record: attendance, weekly scores, the questions they asked, the feedback they gave and anything that went wrong."
         actions={<NewButton label="Enrol a student" onClick={() => setEnrolling(true)} />}
       />
 
@@ -198,7 +198,9 @@ export function Enrollments() {
                 <tr key={e.id}>
                   <td><RecordCode code={e.recordCode} /></td>
                   <td>
-                    <p className="text-xs text-ink-100">{e.personName ?? '—'}</p>
+                    <Link to={`/education/enrollments/${e.id}`} className="text-xs text-ink-100 hover:text-accent-soft">
+                      {e.personName ?? '—'}
+                    </Link>
                     {e.isMinor && (
                       <span className="chip border-band-critical/40 text-band-critical" title="Guardian contact is DPDP-covered and read-audited.">
                         minor
@@ -229,7 +231,10 @@ export function Enrollments() {
                     />
                     {e.atRisk && <p className="mt-0.5 text-2xs text-band-watch">at risk</p>}
                   </td>
-                  <td>
+                  <td className="whitespace-nowrap">
+                    <Link className="btn-ghost" to={`/education/enrollments/${e.id}`}>
+                      Timeline
+                    </Link>
                     {e.status === 'reserved' && (
                       <button className="btn-ghost" onClick={() => setStatus.mutate({ id: e.id, status: 'confirmed' })}>
                         Confirm

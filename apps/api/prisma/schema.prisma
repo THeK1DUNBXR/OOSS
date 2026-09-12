@@ -1757,27 +1757,29 @@ model Invoice {
   /// invoice put a fake company in the accounts list every time.
   personId String?
 
-  /// What the document says about payment at the moment it is handed over.
+  /// What the document said about payment at the moment it was handed over.
   ///
-  /// `full` — the whole invoice is being settled now.
-  /// `part` — an instalment is being taken now and a balance remains.
-  /// `credit` — nothing is collected at issue; it is payable by the due date.
+  /// `full` — the whole invoice was settled at issue.
+  /// `part` — an instalment was taken at issue and a balance remained.
+  /// `credit` — nothing was collected at issue; payable by the due date.
   ///
-  /// This is a statement printed on the invoice, not a derived status: the
-  /// customer is told what they are paying today, and `status` continues to
-  /// follow from the receipts actually allocated. The two agreeing is a
-  /// property worth checking rather than one to assume.
+  /// Fixed at issue and never restated. A tax invoice is a final document: the
+  /// copy the customer holds must still read the same in three years, so a
+  /// payment that arrives next week does not rewrite it. Later instalments are
+  /// receipts, which are their own documents — that is what RECEIPT is for, and
+  /// `status` continues to follow from the receipts actually allocated.
   paymentType String @default("credit")
 
-  /// The second of the two figures the document shows: the total payable, and
-  /// the amount payable now. On a full payment they are the same number and it
-  /// is still printed twice, because a customer reading an invoice should not
-  /// have to work out which of the two they are looking at.
+  /// The second figure the invoice prints: the total payable, and the amount
+  /// payable now. On a full payment they are the same number and it is still
+  /// printed twice, because a customer reading an invoice should not have to
+  /// work out which of the two they are looking at. Fixed at issue, like the
+  /// declaration above.
   amountPayableNow Decimal @default(0) @db.Decimal(18, 2)
 
-  /// How the money changes hands, and the reference it leaves behind. Printed,
-  /// because "paid by UPI, ref 402…" is what turns the invoice into the
-  /// customer's own receipt for it.
+  /// How the money changed hands at issue, and the reference it left behind.
+  /// Printed, because "paid by UPI, ref 402…" is what makes the invoice also
+  /// the customer's proof of what they handed over on the day.
   paymentMode      String?
   paymentReference String?
 
@@ -1795,8 +1797,9 @@ model Invoice {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  lines    InvoiceLine[]
-  receipts Receipt[]
+  lines          InvoiceLine[]
+  receipts       Receipt[]
+  finalInvoices  FinalInvoice[]
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, status, dueDate])
@@ -1941,12 +1944,90 @@ model Receipt {
   allocatedAt     DateTime @default(now())
   allocatedById   String?
 
+  /// The position of this allocation against its subject, as it stood when the
+  /// receipt was written.
+  ///
+  /// A receipt is the document a part payment produces, and it is the document
+  /// that has to carry the two figures: what the invoice is for, and what is
+  /// being handed over now. Both are snapshotted rather than recomputed,
+  /// because a receipt is a receipt — the piece of paper saying "₹20,000 of
+  /// ₹70,800, ₹50,800 still owed" must keep saying that after the next
+  /// instalment lands.
+  subjectTotal    Decimal @default(0) @db.Decimal(18, 2)
+  balanceAfter    Decimal @default(0) @db.Decimal(18, 2)
+  /// How this instalment was paid. Copied from the payment so a reprint does
+  /// not depend on the payment row still reading the same way.
+  paymentMode     String?
+  paymentReference String?
+  note            String?
+
   createdAt DateTime @default(now())
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, paymentId])
   @@index([tenantId, invoiceId])
+  @@index([tenantId, allocatedAt])
   @@map("receipts")
+}
+
+/// The document raised once the instalments are done.
+///
+/// A tax invoice is final: it is raised once, states the whole obligation, and
+/// must still read the same in three years. Each instalment against it is a
+/// receipt, which is its own numbered document. Neither of those, on its own,
+/// answers the question a customer asks at the end — "what did I owe, what have
+/// I paid, and against which receipts" — because the invoice predates the
+/// payments and each receipt only knows about itself.
+///
+/// So this is that answer, raised deliberately by whoever is at the counter
+/// rather than rendered on the fly: it has its own number and its own date, it
+/// names every receipt it consolidates, and the figures are snapshotted, because
+/// a document handed to a customer cannot restate itself the next time it is
+/// opened.
+///
+/// Raising a second one after a further instalment supersedes the first rather
+/// than replacing it. Both were true when they were handed over.
+model FinalInvoice {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  issuedAt   DateTime @default(now())
+  issuedById String?
+
+  /// The figures as they stood when it was raised.
+  totalPayable  Decimal @default(0) @db.Decimal(18, 2)
+  totalReceived Decimal @default(0) @db.Decimal(18, 2)
+  creditNoted   Decimal @default(0) @db.Decimal(18, 2)
+  balance       Decimal @default(0) @db.Decimal(18, 2)
+  /// True when nothing was left owing at the moment it was raised.
+  settled       Boolean @default(false)
+
+  /// The receipt numbers it consolidates, in the order they were issued. Held
+  /// as codes as well as in the snapshot because "which receipts does this
+  /// cover" is asked of the row itself, from a list, without opening the JSON.
+  receiptCodes String[] @default([])
+  receiptCount Int      @default(0)
+
+  /// Every receipt row as it stood: number, date, amount, mode, reference. A
+  /// reprint reads this rather than the live receipts, so a later instalment
+  /// cannot change what an already-issued statement says.
+  snapshot Json
+
+  /// The later statement that replaced this one.
+  supersededById String?
+  status         String  @default("issued") // issued | superseded
+  note           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, invoiceId, status])
+  @@map("final_invoices")
 }
 
 /// The only permitted correction to an issued invoice line — an

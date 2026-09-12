@@ -11,8 +11,17 @@
  */
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { InvoiceView, PaymentView, ReceivablesSummary } from '@kaizen/shared';
+import {
+  PAYMENT_MODE_LABELS,
+  PAYMENT_TYPE_LABELS,
+  type InvoiceView,
+  type PaymentMode,
+  type PaymentType,
+  type PaymentView,
+  type ReceivablesSummary,
+} from '@kaizen/shared';
 import { api, date, money, moneyExact, relative, titleCase } from '../lib/api.js';
 import {
   Card,
@@ -24,50 +33,105 @@ import {
   PageHeader,
   RecordCode,
   StatusChip,
+  Tabs,
 } from '../components/ui.js';
-import { NewButton } from '../components/forms.js';
-import { NewInvoice, NewPayment } from '../components/createForms.js';
+import { NewButton, messageOf } from '../components/forms.js';
+import { NewPayment } from '../components/createForms.js';
+import { CollectPayment, InvoiceEditor } from '../components/invoiceEditor.js';
 
 export function Invoices() {
+  const qc = useQueryClient();
+  const [tab, setTab] = useState<'open' | 'drafts' | 'all'>('open');
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<InvoiceView | null>(null);
+  const [collecting, setCollecting] = useState<InvoiceView | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
   const { data = [], isLoading, error } = useQuery({
     queryKey: ['invoices'],
     queryFn: () => api.get<InvoiceView[]>('/finance/invoices'),
+  });
+
+  const issue = useMutation({
+    mutationFn: (id: string) => api.post(`/finance/invoices/${id}/issue`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['invoices'] }),
+    onError: (e) => setActionError(messageOf(e)),
   });
 
   if (error) return <ErrorBox error={error} />;
 
   const outstanding = data.reduce((s, i) => s + (i.outstanding ?? 0), 0);
   const overdue = data.filter((i) => i.daysOverdue !== null).length;
+  const drafts = data.filter((i) => i.status === 'draft');
+  const open = data.filter((i) => (i.outstanding ?? 0) > 0 && i.status !== 'draft' && i.status !== 'void');
+  const shown = tab === 'drafts' ? drafts : tab === 'open' ? open : data;
 
   return (
     <div>
       <PageHeader
         title="Invoices"
-        subtitle="What customers owe us. How and when each invoice counts as revenue is worked out from what was sold, so nobody in sales has to decide it deal by deal."
+        subtitle="What customers owe us. Tax is priced from the lines when the invoice is raised, and a tax invoice is final once issued — instalments against it are receipts, and a final invoice naming them is raised when the instalments are done."
         actions={<NewButton label="Raise an invoice" onClick={() => setCreating(true)} />}
       />
-      <NewInvoice open={creating} onClose={() => setCreating(false)} />
+      <InvoiceEditor open={creating} onClose={() => setCreating(false)} />
+      <InvoiceEditor open={Boolean(editing)} invoice={editing} onClose={() => setEditing(null)} />
+      {collecting && <CollectPayment invoice={collecting} onClose={() => setCollecting(null)} />}
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+      {actionError && (
+        <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {actionError}
+        </p>
+      )}
+
+      <div className="mb-5 grid gap-3 sm:grid-cols-4">
         <Metric label="Invoices" value={data.length} drillTo="/finance/invoices" />
-        <Metric label="Outstanding" value={money(outstanding)} tone={outstanding > 0 ? 'warn' : 'good'} drillTo="/finance/receivables" />
-        <Metric label="Overdue" value={overdue} tone={overdue > 0 ? 'bad' : 'good'} sub="Each one is chased automatically, once at each stage" drillTo="/exceptions" />
+        <Metric label="Drafts" value={drafts.length} sub="The only state whose lines can still be changed" />
+        <Metric
+          label="Outstanding"
+          value={money(outstanding)}
+          tone={outstanding > 0 ? 'warn' : 'good'}
+          drillTo="/finance/receivables"
+        />
+        <Metric
+          label="Overdue"
+          value={overdue}
+          tone={overdue > 0 ? 'bad' : 'good'}
+          sub="Each one is chased automatically, once at each stage"
+          drillTo="/exceptions"
+        />
       </div>
+
+      <Tabs
+        tabs={[
+          { key: 'open', label: 'Owed to us', count: open.length },
+          { key: 'drafts', label: 'Drafts', count: drafts.length },
+          { key: 'all', label: 'Everything', count: data.length },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
 
       {isLoading ? (
         <Loading />
-      ) : data.length === 0 ? (
-        <Card><EmptyState message="No invoices." /></Card>
+      ) : shown.length === 0 ? (
+        <Card>
+          <EmptyState
+            message={tab === 'drafts' ? 'No drafts.' : tab === 'open' ? 'Nothing is outstanding.' : 'No invoices.'}
+            hint="An invoice can be raised for a company or for a person — a student paying for a course is not a company, and used to need one invented for them."
+          />
+        </Card>
       ) : (
         <div className="space-y-3">
-          {data.map((inv) => (
+          {shown.map((inv) => (
             <Card
               key={inv.id}
               title={<RecordCode code={inv.recordCode} />}
               subtitle={
                 <span>
-                  {inv.accountName ?? '—'} · issued {date(inv.issuedDate)} · due {date(inv.dueDate)}
+                  {inv.customerName ?? '—'}
+                  {inv.customerGstin ? <span className="mono text-ink-500"> · {inv.customerGstin}</span> : null}
+                  {' · '}
+                  {inv.issuedDate ? `issued ${date(inv.issuedDate)}` : 'not issued'} · due {date(inv.dueDate)}
                 </span>
               }
               actions={
@@ -75,6 +139,20 @@ export function Invoices() {
                   {inv.daysOverdue !== null && (
                     <span className="chip border-band-critical/40 text-band-critical">{inv.daysOverdue}d overdue</span>
                   )}
+                  {/* What the document says, which is a different fact from the
+                      status: the status follows the receipts, this is what the
+                      customer was told. */}
+                  <span
+                    className={`chip ${
+                      inv.paymentType === 'part'
+                        ? 'border-band-watch/40 text-band-watch'
+                        : inv.paymentType === 'full'
+                          ? 'border-band-strong/40 text-band-strong'
+                          : 'border-ink-700 text-ink-400'
+                    }`}
+                  >
+                    {PAYMENT_TYPE_LABELS[inv.paymentType as PaymentType] ?? inv.paymentType}
+                  </span>
                   <StatusChip
                     status={inv.status}
                     tone={inv.status === 'settled' ? 'good' : inv.status === 'overdue' ? 'bad' : 'neutral'}
@@ -86,7 +164,10 @@ export function Invoices() {
                 <thead>
                   <tr>
                     <th>Line</th>
-                    <th>Revenue method</th>
+                    <th>HSN/SAC</th>
+                    <th className="text-right">Qty</th>
+                    <th className="text-right">Rate</th>
+                    <th className="text-right">GST</th>
                     <th className="text-right">Amount</th>
                   </tr>
                 </thead>
@@ -95,28 +176,77 @@ export function Invoices() {
                     <tr key={l.id}>
                       <td className="text-xs">
                         {l.description}
-                        {l.offeringName && <p className="text-2xs text-ink-500">{l.offeringName}</p>}
+                        {(l.courseName || l.offeringName) && (
+                          <p className="text-2xs text-ink-500">{l.courseName ?? l.offeringName}</p>
+                        )}
                       </td>
-                      <td className="text-2xs text-ink-400">{titleCase(l.revenueMethod)}</td>
+                      <td className="mono text-2xs text-ink-500">{l.hsnSac ?? '—'}</td>
+                      <td className="text-right tabular-nums text-2xs text-ink-400">{l.quantity}</td>
+                      <td className="text-right tabular-nums text-2xs text-ink-400">{moneyExact(l.unitPrice, inv.currency)}</td>
+                      <td className="text-right tabular-nums text-2xs text-ink-400">{l.gstRate ?? 0}%</td>
                       <td className="text-right tabular-nums text-xs">{moneyExact(l.amount, inv.currency)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
-              <div className="mt-3 flex flex-wrap justify-end gap-6 border-t border-ink-800 pt-3 text-xs">
+              <div className="mt-3 flex flex-wrap justify-end gap-5 border-t border-ink-800 pt-3 text-xs">
                 <span className="text-ink-400">
-                  Total <span className="ml-1 tabular-nums text-ink-200">{moneyExact(inv.total, inv.currency)}</span>
+                  Taxable <span className="ml-1 tabular-nums text-ink-200">{moneyExact(inv.taxableValue, inv.currency)}</span>
                 </span>
                 <span className="text-ink-400">
-                  Allocated <span className="ml-1 tabular-nums text-ink-200">{moneyExact(inv.allocated, inv.currency)}</span>
+                  {inv.interState ? 'IGST' : 'CGST + SGST'}{' '}
+                  <span className="ml-1 tabular-nums text-ink-200">{moneyExact(inv.taxAmount, inv.currency)}</span>
                 </span>
-                <span className={inv.outstanding && inv.outstanding > 0 ? 'font-medium text-band-watch' : 'font-medium text-band-strong'}>
+                {/* The two figures, on the list as well as on the document. */}
+                <span className="font-medium text-ink-100">
+                  Total payable <span className="ml-1 tabular-nums">{moneyExact(inv.total, inv.currency)}</span>
+                </span>
+                {inv.paymentType !== 'credit' && (
+                  <span className="text-accent-soft">
+                    Paid at issue <span className="ml-1 tabular-nums">{moneyExact(inv.amountPayableNow, inv.currency)}</span>
+                    {inv.paymentMode && (
+                      <span className="ml-1 text-ink-500">
+                        by {PAYMENT_MODE_LABELS[inv.paymentMode as PaymentMode] ?? inv.paymentMode}
+                      </span>
+                    )}
+                  </span>
+                )}
+                <span className={(inv.outstanding ?? 0) > 0 ? 'font-medium text-band-watch' : 'font-medium text-band-strong'}>
                   Outstanding <span className="ml-1 tabular-nums">{moneyExact(inv.outstanding, inv.currency)}</span>
                 </span>
               </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-800 pt-3">
+                <Link className="btn" to={`/finance/invoices/${inv.id}/document`}>
+                  Open the document
+                </Link>
+                {inv.editable && (
+                  <>
+                    <button className="btn" onClick={() => setEditing(inv)}>
+                      Correct it
+                    </button>
+                    <button className="btn-primary" onClick={() => issue.mutate(inv.id)} disabled={issue.isPending}>
+                      Issue it
+                    </button>
+                  </>
+                )}
+                {!inv.editable && (inv.outstanding ?? 0) > 0 && inv.status !== 'void' && (
+                  <button className="btn-primary" onClick={() => setCollecting(inv)}>
+                    Receipt an instalment
+                  </button>
+                )}
+                {inv.gstFilingId && (
+                  <span className="chip border-ink-700 text-ink-500" title="Reported in a filed GSTR-1. The period is closed and this invoice can no longer be changed.">
+                    reported
+                  </span>
+                )}
+              </div>
+
               <p className="mt-2 text-2xs text-ink-600">
-                Only the sum of allocated receipts determines what has actually been paid against this obligation.
+                {inv.editable
+                  ? 'A draft. Its lines and its tax can still be changed; once issued, the correction to it is a credit note.'
+                  : 'Final. What it says about payment is what was true when it was handed over — each instalment since has its own receipt, and only the sum of those receipts determines what has actually been paid.'}
               </p>
             </Card>
           ))}

@@ -481,6 +481,9 @@ export const RECORD_TYPE_CODES = [
   // A prepared or filed GST return. A record because a filed return is a
   // statement to the government that somebody has to be able to refer to.
   'GST',
+  // The final invoice raised once the instalments against a tax invoice are
+  // done: its own number, because a customer refers to it by one.
+  'FNL',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

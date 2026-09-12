@@ -185,8 +185,15 @@ export const EVENTS = {
   INVOICE_UPDATED: 'kz.fin.invoice.updated',
   INVOICE_VOIDED: 'kz.fin.invoice.voided',
   /// Money taken at the counter against an invoice, in one act: the payment,
-  /// the receipt that allocates it, and what the document says about it.
+  /// the receipt that allocates it, and the receipt document the customer gets.
   INVOICE_PAYMENT_COLLECTED: 'kz.fin.invoice.payment_collected',
+  /// The receipt is its own document, so issuing one is its own event. A part
+  /// payment produces a receipt and never an edit to the tax invoice.
+  RECEIPT_ISSUED: 'kz.fin.receipt.issued',
+  /// The statement raised once the instalments are done, naming the receipts it
+  /// consolidates.
+  FINAL_INVOICE_RAISED: 'kz.fin.final_invoice.raised',
+  FINAL_INVOICE_SUPERSEDED: 'kz.fin.final_invoice.superseded',
 
   // --- Education ------------------------------------------------------------
   ENROLLMENT_CREATED: 'kz.edu.enrollment.created',

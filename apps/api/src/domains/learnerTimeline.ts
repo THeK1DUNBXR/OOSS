@@ -143,8 +143,11 @@ export async function recordLearnerLog(enrollmentId: string, input: LearnerLogIn
       domain: 'edu',
       detail: `${log.title} — on ${enrollment.cohort.course.name}, ${enrollment.cohort.name}.`,
       ownerPartyId: enrollment.cohort.trainerPartyId,
-      // Per issue rather than per student: two different complaints are two
-      // pieces of work, and collapsing them would silence the second.
+      // The fingerprint makes re-recording the same issue idempotent. A second,
+      // different complaint on the same student escalates the open exception
+      // rather than opening another — which is the ladder's own behaviour and the
+      // right one here: a student with two live complaints is one thing somebody
+      // has to go and deal with, not two queue entries.
       triggerFingerprint: `learner_issue:${log.id}`,
       ladderRung: 1,
     });

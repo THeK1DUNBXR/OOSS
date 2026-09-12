@@ -23,13 +23,16 @@
  * is two different documents with one number, and the answer to it is a credit
  * note.
  *
- * **The document says what is being paid now.** Part payment was representable in
- * the ledger — RECEIPT is a many-to-many join and always was — and was not
- * representable on the invoice, which is the copy the customer keeps. So the
- * invoice carries the declaration: the total payable, the amount payable now, the
- * balance, and how the money changed hands. All four are printed, including on a
- * full payment where two of them are the same number, because a customer should
- * not have to work out which figure they are looking at.
+ * **A tax invoice is final, and part payments are receipts.** The invoice states
+ * the whole obligation and what was handed over at the moment it was issued —
+ * total payable, amount payable now, the mode — and then never changes again. The
+ * copy the customer holds has to still read the same in three years, so an
+ * instalment that arrives next week does not rewrite it. Each instalment issues a
+ * RECEIPT instead, which is its own numbered document carrying its own time, the
+ * invoice it is against, the amount, the mode and the balance left. Once the
+ * instalments are done somebody raises a FINAL_INVOICE: one statement naming
+ * every receipt number, the total payable and what is left. Three documents,
+ * because there are three different things a customer needs to be handed.
  *
  * **Whoever is at the counter raises it.** Employees hold `invoices:VCEF@own`, so
  * a walk-in can be enrolled and handed a tax invoice by the person in front of
@@ -525,7 +528,7 @@ export async function createInvoice(input: InvoiceInput) {
   });
 
   if (payingNow > 0) {
-    await collectInvoicePayment(invoice.id, input.payment!);
+    await collectInvoicePayment(invoice.id, input.payment!, { atIssue: true });
   }
 
   await rehydrateReceivablesFor(invoice.organizationId ?? invoice.accountId);
@@ -704,7 +707,7 @@ export async function issueInvoiceDraft(
   });
 
   if (options.payment && options.payment.amount > 0) {
-    await collectInvoicePayment(invoiceId, options.payment);
+    await collectInvoicePayment(invoiceId, options.payment, { atIssue: true });
   }
 
   await rehydrateReceivablesFor(issued.organizationId ?? issued.accountId);
@@ -762,18 +765,29 @@ export async function voidInvoice(invoiceId: string, reason: string) {
 // ---------------------------------------------------------------------------
 
 /**
- * Takes a payment against an invoice, and says so on the invoice.
+ * Takes a payment against an invoice and issues the receipt for it.
  *
  * One call, because at a counter it is one act: the money arrives, a receipt
- * allocates it, and the document the customer walks away with has to state what
- * they paid and how. Doing it in three calls is what left the ledger correct and
- * the invoice silent about the instalment it was handed over with.
+ * allocates it, and the customer walks away holding a document for what they
+ * handed over. Doing it in three calls is what left the ledger correct and the
+ * customer with nothing.
  *
- * The three writes are the same three the general path makes — PAYMENT, RECEIPT,
- * and the invoice's own status — so nothing here is a shortcut around the model.
- * What is added is the declaration, which is the part the customer reads.
+ * What it does **not** do is restate the invoice. An issued tax invoice is final:
+ * its declaration — full, part or credit, the amount payable now, the mode — is
+ * what was true when it was handed over, and a payment arriving afterwards is a
+ * new fact with its own document rather than an edit to an old one. The only
+ * thing on the invoice that moves is `status`, which has always followed the
+ * receipts and is not part of what is printed.
+ *
+ * `atIssue` is the one exception and is set only by the two paths that issue an
+ * invoice: money taken as the document is handed over *is* what the document
+ * says about payment.
  */
-export async function collectInvoicePayment(invoiceId: string, input: CollectedPaymentInput) {
+export async function collectInvoicePayment(
+  invoiceId: string,
+  input: CollectedPaymentInput,
+  options: { atIssue?: boolean } = {},
+) {
   const auth = currentAuth();
   const invoice = await loadForWrite(invoiceId, 'edit');
   await assertCan({ resource: 'payments', verb: 'create' });
@@ -822,6 +836,9 @@ export async function collectInvoicePayment(invoiceId: string, input: CollectedP
 
   const paymentCode = await nextRecordCode('PAY');
   const receiptCode = await nextRecordCode('REC');
+  const allocated = round2(totals.allocated + amount);
+  const balanceAfter = round2(Math.max(totals.payable - allocated - totals.creditNoted, 0));
+  const settled = allocated + totals.creditNoted >= totals.payable - 0.001;
 
   const result = await prisma.$transaction(async (tx) => {
     const payment = await tx.payment.create({
@@ -840,6 +857,11 @@ export async function collectInvoicePayment(invoiceId: string, input: CollectedP
         note: input.note ?? `Collected against ${invoice.recordCode}`,
       },
     });
+
+    // The receipt carries its own copy of the position: what the invoice was
+    // for, and what was left after this instalment. Snapshotted rather than
+    // recomputed, because a receipt saying "₹20,000 of ₹70,800, ₹50,800 still
+    // owed" has to keep saying that after the next instalment lands.
     const receipt = await tx.receipt.create({
       data: {
         tenantId: auth.tenantId,
@@ -847,26 +869,35 @@ export async function collectInvoicePayment(invoiceId: string, input: CollectedP
         paymentId: payment.id,
         invoiceId: invoice.id,
         allocatedAmount: amount,
+        allocatedAt: receivedAt,
         allocatedById: auth.partyId,
+        subjectTotal: totals.payable,
+        balanceAfter,
+        paymentMode: input.mode,
+        paymentReference: input.reference?.trim() || null,
+        note: input.note ?? null,
       },
     });
-
-    const allocated = round2(totals.allocated + amount);
-    const settled = allocated >= totals.payable - 0.001;
 
     const updated = await tx.invoice.update({
       where: { id: invoice.id },
       data: {
+        // `status` follows the receipts and is not part of the printed invoice.
         status: settled ? 'settled' : 'part_paid',
-        // The declaration on the document: what was taken now, and what that
-        // makes this — full, part, or (never, here) credit.
-        paymentType: paymentTypeFor(totals.payable, allocated),
-        amountPayableNow: amount,
-        paymentMode: input.mode,
-        paymentReference: input.reference?.trim() || null,
+        // The declaration is written only when the money is taken as the
+        // document is handed over. Afterwards the invoice is final and this
+        // instalment's own receipt is what states it.
+        ...(options.atIssue
+          ? {
+              paymentType: paymentTypeFor(totals.payable, amount),
+              amountPayableNow: amount,
+              paymentMode: input.mode,
+              paymentReference: input.reference?.trim() || null,
+            }
+          : {}),
       },
     });
-    return { payment, receipt, invoice: updated, allocated, settled };
+    return { payment, receipt, invoice: updated };
   });
 
   await auditWrite({
@@ -875,21 +906,45 @@ export async function collectInvoicePayment(invoiceId: string, input: CollectedP
     subjectId: result.payment.id,
     after: { recordCode: paymentCode, amount, mode: input.mode, against: invoice.recordCode },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'receipt',
+    subjectId: result.receipt.id,
+    after: { recordCode: receiptCode, amount, against: invoice.recordCode, balanceAfter },
+  });
+
+  await emit({
+    name: EVENTS.RECEIPT_ISSUED,
+    subject: { entityType: 'receipt', entityId: result.receipt.id, recordCode: receiptCode },
+    related: [
+      { relation: 'against', entityType: 'invoice', entityId: invoice.id },
+      { relation: 'from', entityType: 'payment', entityId: result.payment.id },
+    ],
+    newState: { amount, mode: input.mode, subjectTotal: totals.payable, balanceAfter, settled },
+    impact: {
+      domains: ['fin'],
+      materiality: { measure: 'payment_amount', value: amount, currency: invoice.currency },
+    },
+    confidentiality: 'confidential',
+  });
 
   await emit({
     name: EVENTS.INVOICE_PAYMENT_COLLECTED,
     subject: { entityType: 'invoice', entityId: invoice.id, recordCode: invoice.recordCode },
     related: [
       { relation: 'paid_by', entityType: 'payment', entityId: result.payment.id },
-      { relation: 'allocated_by', entityType: 'receipt', entityId: result.receipt.id },
+      { relation: 'receipted_by', entityType: 'receipt', entityId: result.receipt.id },
     ],
     newState: {
       amount,
       mode: input.mode,
-      paymentType: result.invoice.paymentType,
-      allocated: result.allocated,
-      outstanding: round2(totals.payable - result.allocated),
-      settled: result.settled,
+      receipt: receiptCode,
+      allocated,
+      outstanding: balanceAfter,
+      settled,
+      // The invoice itself was not restated unless this was the payment it was
+      // handed over with.
+      declarationWritten: Boolean(options.atIssue),
     },
     impact: {
       domains: ['fin'],
@@ -898,11 +953,11 @@ export async function collectInvoicePayment(invoiceId: string, input: CollectedP
     confidentiality: 'confidential',
   });
 
-  if (result.settled) {
+  if (settled) {
     await emit({
       name: EVENTS.INVOICE_SETTLED,
       subject: { entityType: 'invoice', entityId: invoice.id, recordCode: invoice.recordCode },
-      newState: { status: 'settled', allocated: result.allocated },
+      newState: { status: 'settled', allocated },
       impact: { domains: ['fin'] },
     });
   }
@@ -912,27 +967,40 @@ export async function collectInvoicePayment(invoiceId: string, input: CollectedP
     payment: result.payment,
     receipt: result.receipt,
     invoice: result.invoice,
-    totals: {
-      payable: totals.payable,
-      allocated: result.allocated,
-      outstanding: round2(Math.max(totals.payable - result.allocated - totals.creditNoted, 0)),
-    },
+    totals: { payable: totals.payable, allocated, outstanding: balanceAfter },
+    /**
+     * Whether the instalments are done, which is when somebody raises the final
+     * invoice. Returned so the surface can offer it at the moment it becomes the
+     * obvious next thing to do, rather than making it something you have to know
+     * to go and look for.
+     */
+    readyForFinalInvoice: settled,
   };
 }
 
 /**
- * States how an invoice is being paid without money moving now.
+ * States what the invoice will ask for now, before it is issued.
  *
- * The counter case where somebody pays half in cash today and the rest by
- * transfer next week: the document has to say "part payment, ₹5,000 now" even
- * before the transfer lands, or the copy the customer keeps does not match what
- * was agreed.
+ * The counter case where somebody will pay half in cash on collection and the
+ * rest by transfer next week: the document has to say "part payment, ₹5,000 now"
+ * even before the transfer lands, or the copy the customer keeps does not match
+ * what was agreed.
+ *
+ * Drafts only. Once the invoice is issued it is final — the declaration on it is
+ * what was true on the day, and a later instalment is a receipt rather than an
+ * amendment to a document somebody is already holding.
  */
 export async function declarePaymentTerms(
   invoiceId: string,
   input: { amountPayableNow: number; paymentMode?: string | null; paymentReference?: string | null },
 ) {
   const invoice = await loadForWrite(invoiceId, 'edit');
+  if (invoice.status !== 'draft') {
+    throw ApiError.unprocessable(
+      `${invoice.recordCode} is ${invoice.status}. A tax invoice is final once issued: what it says about payment is what was true when the customer was handed it. Take the instalment instead — it issues its own receipt — and raise a final invoice when the instalments are done.`,
+      { status: invoice.status },
+    );
+  }
   const totals = totalsOf(invoice);
   const now = round2(input.amountPayableNow);
 
@@ -988,8 +1056,15 @@ async function loadForWrite(invoiceId: string, verb: 'edit' | 'delete') {
   return invoice;
 }
 
-/** Readable by anyone who may see the invoice, with the same scope narrowing. */
-async function loadForRead(invoiceId: string) {
+/**
+ * Readable by anyone who may see the invoice, with the same scope narrowing.
+ *
+ * Exported because the receipt and the final invoice are documents *about* an
+ * invoice: whether somebody may read them is the same question as whether they
+ * may read the invoice, and asking it twice in two files is how the two answers
+ * come to differ.
+ */
+export async function loadInvoiceForRead(invoiceId: string) {
   const auth = currentAuth();
   const invoice = await prisma.invoice.findFirst({
     where: { id: invoiceId, tenantId: auth.tenantId, deletedAt: null },
@@ -1006,7 +1081,7 @@ async function loadForRead(invoiceId: string) {
 }
 
 export async function invoiceSummary(invoiceId: string) {
-  const invoice = await loadForRead(invoiceId);
+  const invoice = await loadInvoiceForRead(invoiceId);
   const creditNotes = await prisma.creditNote.findMany({ where: { invoiceId } });
   const totals = totalsOf({ ...invoice, creditNotes });
   return { invoice, ...totals, total: totals.payable };
@@ -1021,9 +1096,17 @@ export async function invoiceSummary(invoiceId: string) {
  * client renders it and computes nothing — a screen that recomputes a total is a
  * screen that can disagree with the ledger, and the version the customer holds
  * is the one that has to be right.
+ *
+ * Two blocks, and the split matters. `totals` is what the tax invoice says, fixed
+ * at issue: the whole obligation and the amount payable then. `position` is where
+ * the account stands today, which is a different fact and belongs beside the
+ * document rather than on it — an issued invoice is final, and printing today's
+ * balance on it would make a reprint disagree with the copy in the customer's
+ * file. The instalments since are receipts, listed here by number, each its own
+ * document.
  */
 export async function invoiceDocument(invoiceId: string) {
-  const invoice = await loadForRead(invoiceId);
+  const invoice = await loadInvoiceForRead(invoiceId);
   const profile = await companyProfile();
   const creditNotes = await prisma.creditNote.findMany({ where: { invoiceId } });
   const totals = totalsOf({ ...invoice, creditNotes });
@@ -1051,11 +1134,22 @@ export async function invoiceDocument(invoiceId: string) {
     : [];
   const courseMap = new Map(courses.map((c) => [c.id, c]));
 
-  const declaredNow = num(invoice.amountPayableNow) ?? 0;
-  // What is actually being asked for now. The declaration is what the document
-  // says; where nothing has been declared, the honest figure is everything still
-  // outstanding, which is what a credit invoice is asking for.
-  const payableNow = declaredNow > 0 ? round2(declaredNow) : totals.outstanding;
+  // What the invoice says, fixed at issue. On a credit invoice nothing was
+  // collected and the whole amount was payable then, which is what is printed —
+  // never today's balance, because the document is final.
+  const declaredNow = round2(num(invoice.amountPayableNow) ?? 0);
+  const payableNow = invoice.paymentType === 'credit' ? totals.payable : declaredNow;
+
+  const receipts = await prisma.receipt.findMany({
+    where: { invoiceId, tenantId: invoice.tenantId },
+    include: { payment: { select: { method: true, gatewayReference: true, recordCode: true } } },
+    orderBy: { allocatedAt: 'asc' },
+  });
+
+  const statements = await prisma.finalInvoice.findMany({
+    where: { invoiceId, tenantId: invoice.tenantId },
+    orderBy: { issuedAt: 'desc' },
+  });
 
   return {
     id: invoice.id,
@@ -1139,34 +1233,68 @@ export async function invoiceDocument(invoiceId: string) {
       roundOff: num(invoice.roundOff) ?? 0,
     },
 
-    // The two figures, side by side, which is the whole reason this projection
-    // exists. `totalPayable` is the obligation; `amountPayableNow` is what is
-    // being asked for today. On a full payment they are equal and both are still
-    // printed.
+    /**
+     * What the tax invoice says. Both figures, side by side, and both printed
+     * even on a full payment where they are the same number — a customer should
+     * not have to work out which of the two they are looking at. Fixed at issue.
+     */
     totals: {
       totalPayable: totals.payable,
       amountPayableNow: payableNow,
-      alreadyPaid: totals.allocated,
-      creditNoted: totals.creditNoted,
-      balanceAfterThisPayment: round2(Math.max(totals.outstanding - payableNow, 0)),
-      outstanding: totals.outstanding,
+      balanceAtIssue: round2(Math.max(totals.payable - payableNow, 0)),
       inWords: amountInWords(totals.payable),
       payableNowInWords: amountInWords(payableNow),
     },
 
+    /** What the invoice said about payment on the day. Never restated. */
     payment: {
       type: invoice.paymentType,
       mode: invoice.paymentMode,
       reference: invoice.paymentReference,
       isPartPayment: invoice.paymentType === 'part',
-      receipts: invoice.receipts.map((r) => ({
-        recordCode: r.recordCode,
-        amount: num(r.allocatedAmount) ?? 0,
-        at: r.allocatedAt.toISOString(),
-        mode: r.payment.method,
-        reference: r.payment.gatewayReference,
-      })),
     },
+
+    /**
+     * Where the account stands today. Deliberately separate from `totals` and
+     * deliberately not printed on the tax invoice: it moves, and the document
+     * does not.
+     */
+    position: {
+      received: totals.allocated,
+      creditNoted: totals.creditNoted,
+      outstanding: totals.outstanding,
+      settled: totals.outstanding <= 0.001,
+      instalments: receipts.length,
+      /** True once there is something for a final invoice to consolidate. */
+      canRaiseFinalInvoice: receipts.length > 0 && invoice.status !== 'draft' && invoice.status !== 'void',
+    },
+
+    /**
+     * The instalments since, each a numbered document of its own. Part payments
+     * live here rather than on the invoice.
+     */
+    receipts: receipts.map((r, i) => ({
+      id: r.id,
+      number: i + 1,
+      recordCode: r.recordCode,
+      issuedAt: r.allocatedAt.toISOString(),
+      amount: num(r.allocatedAmount) ?? 0,
+      mode: r.paymentMode ?? r.payment.method,
+      reference: r.paymentReference ?? r.payment.gatewayReference,
+      balanceAfter: num(r.balanceAfter) ?? 0,
+    })),
+
+    /** Final invoices raised against it, newest first. */
+    statements: statements.map((f) => ({
+      id: f.id,
+      recordCode: f.recordCode,
+      issuedAt: f.issuedAt.toISOString(),
+      totalReceived: num(f.totalReceived) ?? 0,
+      balance: num(f.balance) ?? 0,
+      settled: f.settled,
+      status: f.status,
+      receiptCount: f.receiptCount,
+    })),
 
     creditNotes: creditNotes.map((c) => ({
       recordCode: c.recordCode,

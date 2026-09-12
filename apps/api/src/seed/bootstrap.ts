@@ -501,11 +501,14 @@ async function seedSurfaces() {
     // ---- Money -----------------------------------------------------------
     { nodeKey: 'fin_ledger', label: 'Ledger', icon: 'coins', path: '/finance/ledger', group: 'money', position: 10, requiredPermission: 'transactions:V', synonyms: ['transactions', 'cash book', 'spend', 'expenses', 'bank'] },
     { nodeKey: 'fin_invoices', label: 'Invoices', icon: 'receipt', path: '/finance/invoices', group: 'money', position: 11, requiredPermission: 'invoices:V', synonyms: ['bill a customer', 'raise an invoice', 'sales invoice'] },
-    { nodeKey: 'fin_payments', label: 'Payments In', icon: 'wallet', path: '/finance/payments', group: 'money', position: 12, requiredPermission: 'payments:V', synonyms: ['receipts', 'money received', 'collections'] },
-    { nodeKey: 'fin_payables', label: 'Bills To Pay', icon: 'receipt', path: '/finance/payables', group: 'money', position: 13, requiredPermission: 'vendor_bills:V', synonyms: ['payables', 'supplier bills', 'vendors', 'creditors', 'what we owe'] },
-    { nodeKey: 'fin_receivables', label: 'Owed To Us', icon: 'coins', path: '/finance/receivables', group: 'money', position: 14, requiredPermission: 'receivables:V', synonyms: ['receivables', 'debtors', 'outstanding'] },
-    { nodeKey: 'fin_budget', label: 'Budget', icon: 'calculator', path: '/finance/budget', group: 'money', position: 15, requiredPermission: 'budgets:V', synonyms: ['plan', 'variance', 'overspend'] },
-    { nodeKey: 'fin_assets', label: 'Assets & Loans', icon: 'package', path: '/finance/assets', group: 'money', position: 16, requiredPermission: 'assets:V', synonyms: ['depreciation', 'borrowing', 'emi', 'fixed assets'] },
+    { nodeKey: 'fin_receipts', label: 'Receipts', icon: 'receipt', path: '/finance/receipts', group: 'money', position: 12, requiredPermission: 'payments:V', synonyms: ['part payment', 'instalment', 'acknowledgement', 'money received'] },
+    { nodeKey: 'fin_final_invoices', label: 'Final Invoices', icon: 'file', path: '/finance/final-invoices', group: 'money', position: 13, requiredPermission: 'invoices:V', synonyms: ['statement', 'settlement', 'closing invoice', 'instalments'] },
+    { nodeKey: 'fin_payments', label: 'Payments In', icon: 'wallet', path: '/finance/payments', group: 'money', position: 14, requiredPermission: 'payments:V', synonyms: ['money received', 'collections', 'bank credits'] },
+    { nodeKey: 'fin_payables', label: 'Bills To Pay', icon: 'receipt', path: '/finance/payables', group: 'money', position: 15, requiredPermission: 'vendor_bills:V', synonyms: ['payables', 'supplier bills', 'vendors', 'creditors', 'what we owe'] },
+    { nodeKey: 'fin_receivables', label: 'Owed To Us', icon: 'coins', path: '/finance/receivables', group: 'money', position: 16, requiredPermission: 'receivables:V', synonyms: ['receivables', 'debtors', 'outstanding'] },
+    { nodeKey: 'fin_gst', label: 'GST Returns', icon: 'scale', path: '/finance/gst', group: 'money', position: 17, requiredPermission: 'gst_filings:V', synonyms: ['gstr1', 'gstr-1', 'gstr3b', 'gstr-3b', 'filing', 'return', 'tax', 'itc', 'input credit'] },
+    { nodeKey: 'fin_budget', label: 'Budget', icon: 'calculator', path: '/finance/budget', group: 'money', position: 18, requiredPermission: 'budgets:V', synonyms: ['plan', 'variance', 'overspend'] },
+    { nodeKey: 'fin_assets', label: 'Assets & Loans', icon: 'package', path: '/finance/assets', group: 'money', position: 19, requiredPermission: 'assets:V', synonyms: ['depreciation', 'borrowing', 'emi', 'fixed assets'] },
 
     // ---- People ----------------------------------------------------------
     { nodeKey: 'hr_people', label: 'Employees', icon: 'users', path: '/people/employees', group: 'people', position: 20, requiredPermission: 'employees:V', synonyms: ['staff', 'team', 'headcount', 'who works here', 'directory'] },
@@ -531,9 +534,11 @@ async function seedSurfaces() {
     { nodeKey: 'com_agreements', label: 'Agreements', icon: 'scroll', path: '/commercial/agreements', group: 'delivery', position: 43, requiredPermission: 'mous:V', synonyms: ['mou', 'contracts', 'partner agreements'] },
     { nodeKey: 'com_approvals', label: 'Approvals', icon: 'shield', path: '/commercial/approvals', group: 'delivery', position: 44, requiredPermission: 'mous:V', synonyms: ['sign off', 'waiting on me'] },
     { nodeKey: 'prj_projects', label: 'Projects', icon: 'kanban', path: '/delivery/projects', group: 'delivery', position: 45, requiredPermission: 'projects:V', synonyms: ['delivery', 'engagements'] },
-    { nodeKey: 'edu_cohorts', label: 'Training Batches', icon: 'graduation', path: '/education/cohorts', group: 'delivery', position: 46, requiredPermission: 'education:V', synonyms: ['batches', 'classes'] },
-    { nodeKey: 'edu_enrollments', label: 'Students', icon: 'badge', path: '/education/enrollments', group: 'delivery', position: 47, requiredPermission: 'education:V', synonyms: ['students', 'learners', 'admissions', 'enrolments', 'enrollments'] },
-    { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'delivery', position: 48, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
+    { nodeKey: 'edu_courses', label: 'Courses', icon: 'book', path: '/education/courses', group: 'delivery', position: 46, requiredPermission: 'courses:V', synonyms: ['catalogue', 'course list', 'syllabus', 'fees', 'price list', 'what we teach'] },
+    { nodeKey: 'edu_cohorts', label: 'Training Batches', icon: 'graduation', path: '/education/cohorts', group: 'delivery', position: 47, requiredPermission: 'education:V', synonyms: ['batches', 'classes'] },
+    { nodeKey: 'edu_enrollments', label: 'Students', icon: 'badge', path: '/education/enrollments', group: 'delivery', position: 48, requiredPermission: 'education:V', synonyms: ['students', 'learners', 'admissions', 'enrolments', 'enrollments', 'attendance', 'timeline'] },
+    { nodeKey: 'edu_queries', label: 'Student Queries', icon: 'message', path: '/education/queries', group: 'delivery', position: 49, requiredPermission: 'education:V', synonyms: ['complaints', 'issues', 'feedback', 'questions', 'grievance'] },
+    { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'delivery', position: 50, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
 
     // ---- Set up ----------------------------------------------------------
     { nodeKey: 'data_import', label: 'Import Data', icon: 'inbox', path: '/data/import', group: 'setup', position: 50, requiredPermission: 'imports:V', synonyms: ['tally', 'bank statement', 'excel', 'csv', 'upload', 'migrate', 'bring data in'] },
@@ -546,6 +551,7 @@ async function seedSurfaces() {
     { nodeKey: 'adm_jobs', label: 'Automatic Checks', icon: 'clock', path: '/admin/jobs', group: 'setup', position: 57, requiredPermission: 'jobs:V' },
     { nodeKey: 'adm_events', label: 'System History', icon: 'list', path: '/admin/events', group: 'setup', position: 58, requiredPermission: 'events:V' },
     { nodeKey: 'adm_audit', label: 'Audit Trail', icon: 'lock', path: '/admin/audit', group: 'setup', position: 59, requiredPermission: 'audit:V' },
+    { nodeKey: 'fin_company', label: 'Company Details', icon: 'building', path: '/finance/company', group: 'setup', position: 49, requiredPermission: 'company_profile:V', synonyms: ['gstin', 'registration', 'pan', 'bank details', 'invoice footer', 'legal name', 'address'] },
     { nodeKey: 'adm_platform', label: 'How This Is Built', icon: 'book', path: '/admin/platform', group: 'setup', position: 60 },
   ];
 

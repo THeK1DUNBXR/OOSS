@@ -24,6 +24,13 @@ import {
   invoiceSummary,
   totalsOf,
 } from '../domains/invoicing.js';
+import {
+  listReceipts,
+  receiptDocument,
+  raiseFinalInvoice,
+  listFinalInvoices,
+  finalInvoiceDocument,
+} from '../domains/receipts.js';
 
 const router = Router();
 
@@ -267,17 +274,62 @@ router.post(
 );
 
 /**
- * Takes money against an invoice and says so on it.
+ * Takes money against an invoice and issues the receipt for it.
  *
- * One call because at a counter it is one act: the payment, the receipt that
- * allocates it, and the declaration the customer reads. Part payment is the
- * ordinary case here rather than the exception.
+ * One call because at a counter it is one act: the payment, the allocation, and
+ * the document the customer walks away with. It does not touch the tax invoice
+ * beyond its status — an issued invoice is final, and an instalment is a receipt
+ * rather than an amendment to a document somebody is already holding.
  */
 router.post(
   '/invoices/:id/collect',
   handler(async (req) => {
     const body = collectedPaymentSchema.parse(req.body);
     return collectInvoicePayment(req.params.id, collected(body)!);
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Receipts — where the part payments are
+// ---------------------------------------------------------------------------
+
+router.get(
+  '/receipts',
+  handler(async (req) =>
+    listReceipts({ invoiceId: str(req.query.invoiceId), limit: numeric(req.query.limit) }),
+  ),
+);
+
+/**
+ * A receipt as a document: its own number and time, the invoice it is against,
+ * the amount, the mode, and the balance left after it.
+ */
+router.get('/receipts/:id/document', handler(async (req) => receiptDocument(req.params.id)));
+
+// ---------------------------------------------------------------------------
+// The final invoice
+// ---------------------------------------------------------------------------
+//
+// Raised once the instalments against a tax invoice are done. It names every
+// receipt it consolidates, the total payable and what is left — the question
+// neither the invoice nor any single receipt can answer on its own.
+
+router.get(
+  '/final-invoices',
+  handler(async (req) =>
+    listFinalInvoices({ invoiceId: str(req.query.invoiceId), limit: numeric(req.query.limit) }),
+  ),
+);
+
+router.get('/final-invoices/:id/document', handler(async (req) => finalInvoiceDocument(req.params.id)));
+
+router.post(
+  '/invoices/:id/final-invoice',
+  handler(async (req, res) => {
+    const body = z.object({ note: z.string().nullish() }).parse(req.body ?? {});
+    const final = await raiseFinalInvoice(req.params.id, { note: body.note ?? null });
+    res.status(201).json(final);
+    return undefined;
   }),
 );
 
@@ -358,10 +410,12 @@ router.get(
         unallocated: money ? amount - allocated : null,
         receipts: p.receipts.map((r) => ({
           id: r.id,
+          recordCode: r.recordCode,
           invoiceId: r.invoiceId,
           feeInstalmentId: r.feeInstalmentId,
           allocatedAmount: money ? num(r.allocatedAmount) : null,
           allocatedAt: r.allocatedAt.toISOString(),
+          balanceAfter: money ? num(r.balanceAfter) : null,
         })),
         // bankAccountReference is regulated: structurally excluded from this
         // projection entirely, not merely nulled.
