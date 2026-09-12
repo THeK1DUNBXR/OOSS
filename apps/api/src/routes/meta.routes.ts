@@ -15,8 +15,9 @@ import { Router } from 'express';
 import { handler } from '../lib/http.js';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
-import { BUILD, STARTED_AT, buildLabel } from '../platform/build.js';
+import { BUILD, STARTED_AT, buildLabel, buildsBehind } from '../platform/build.js';
 import { NAV_REGISTRY } from '../seed/bootstrap.js';
+import { planFor } from '../seed/reconcileGrants.js';
 
 const router = Router();
 
@@ -43,7 +44,7 @@ router.get(
     // Has the seed run since this build was deployed? The one that catches a
     // vocabulary change that never reached the tenant.
     const seedBuild = Number(seed?.build ?? 0);
-    const behind = BUILD.sequence > 0 && seedBuild > 0 ? BUILD.sequence - seedBuild : 0;
+    const behind = buildsBehind(BUILD.sequence, seedBuild);
 
     return {
       api: { ...BUILD, label: buildLabel(), startedAt: STARTED_AT },
@@ -61,11 +62,43 @@ router.get(
        * is current; anything else means the seeded rows — grants, navigation,
        * vocabulary — may be from an older shape than the code reading them.
        */
-      seedBehindBy: behind > 0 ? behind : 0,
+      seedBehindBy: behind,
       /** What a current seed would write, so a mismatch in the count shows. */
       expected: { navNodes: NAV_REGISTRY.length },
+
+      /**
+       * Permission changes the declared matrix wants and this tenant has not
+       * had applied.
+       *
+       * Boot fills in resources a role has never had a row for, which is what
+       * makes a newly shipped screen usable. It deliberately does not change or
+       * revoke an existing grant — that stays a governed act — so anything left
+       * here is waiting for somebody to run the reconciler on purpose. Reported
+       * rather than silent: a permission that is not what the matrix says is
+       * invisible until the day it matters.
+       */
+      grants: await pendingGrantChanges(auth.tenantId),
     };
   }),
 );
+
+async function pendingGrantChanges(tenantId: string): Promise<{
+  pending: number;
+  changed: number;
+  revoked: number;
+}> {
+  try {
+    const plan = await planFor(tenantId);
+    return {
+      pending: plan.length,
+      changed: plan.filter((c) => c.kind === 'update').length,
+      revoked: plan.filter((c) => c.kind === 'revoke').length,
+    };
+  } catch {
+    // A diagnostic that cannot be computed must not take the screen down with
+    // it: the footnote simply has nothing to say about grants.
+    return { pending: 0, changed: 0, revoked: 0 };
+  }
+}
 
 export default router;

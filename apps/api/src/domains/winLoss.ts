@@ -106,10 +106,10 @@ export async function completeWinLossReview(id: string, input: WinLossInput) {
   await assertCan({ resource: 'win_loss_reviews', verb: 'edit', record: { ownerPartyId: review.completedById } });
 
   if (input.lostReason === 'other' && !input.lostReasonOtherText) {
-    throw ApiError.unprocessable("lost_reason_other_text is required when lost_reason is 'other'.");
+    throw ApiError.unprocessable("Say what the other reason was.");
   }
   if (review.mandatory && !input.lesson) {
-    throw ApiError.unprocessable('A lesson is mandatory on a review that met the mandatoriness gate.');
+    throw ApiError.unprocessable('This review needs a lesson recorded.');
   }
 
   const updated = await prisma.winLossReview.update({

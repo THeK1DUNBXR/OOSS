@@ -7,7 +7,7 @@ impossible.
 
 ```bash
 ./scripts/test-db.sh          # provision kaizen_test
-cd apps/api && pnpm test      # 370 tests
+cd apps/api && pnpm test      # 372 tests
 ```
 
 ## How the suite is built
@@ -82,7 +82,7 @@ It is deliberately four tests. A browser suite that tries to cover the product
 becomes the slowest and least trusted thing in the repository; this one covers
 the class of defect the unit suite structurally cannot see.
 
-| **Navigation and the build footnote** | 7 | Every seeded nav row matches the registry, synonyms included; no word reaches two of the party screens; the three parties are three entries, each to its own screen; a deleted entry comes back and a stale one is corrected on reconcile, without the seed; a retired entry is removed; the build reports a sequence and a commit; the seed stamps the tenant and the stamp moves every run |
+| **Navigation, permissions and the build footnote** | 9 | Every seeded nav row matches the registry, synonyms included; no word reaches two of the party screens; the three parties are three entries, each to its own screen; a deleted entry comes back and a stale one is corrected on reconcile, without the seed; a retired entry is removed; the build reports a sequence and a commit; the seed stamps the tenant and the stamp moves every run; a resource the tenant never had a row for is granted at boot with the matrix's own cell, and an existing grant is never touched however far it has drifted — that is left for the reconciler and reported |
 
 ## Defects this suite found
 
@@ -139,6 +139,15 @@ surfaced seven more, all fixed:
 7. **Netting the GST totals understated the cash due.** Output minus input is
    the wrong arithmetic: credit is set off head by head in a statutory order,
    and the shortfall from netting arrives as interest.
+
+12. **A new resource could not be used at all.** Permissions are durable rows
+   and the seed deliberately never rewrites one, which is right — but it left a
+   release that adds a whole new resource giving every existing tenant no row
+   for it, so nobody could press the button on the screen that shipped with it.
+   The symptom is a missing button, which is the least diagnosable thing in the
+   product. Boot now fills in a resource a role has never had a row for, and
+   only that; changing or revoking an existing grant stays governed, and what is
+   waiting is counted in the footnote.
 
 11. **A new screen could not be reached at all.** Navigation rows are written
    per tenant and only the seed wrote them, so a release that added a screen

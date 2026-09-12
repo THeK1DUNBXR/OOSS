@@ -266,7 +266,7 @@ export function FinalInvoices() {
     <div>
       <PageHeader
         title="Final invoices"
-        subtitle="The statement raised once the instalments against a tax invoice are done: the total payable, every part payment, and the receipt numbers they were issued under."
+        subtitle="Raised once the instalments are done: what was billed, and every receipt."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -285,7 +285,7 @@ export function FinalInvoices() {
         <Card>
           <EmptyState
             message="None raised yet."
-            hint="Open an invoice that has been paid in instalments and raise one from there — it names the receipts it consolidates."
+            hint="Open a part-paid invoice and raise one from there."
           />
         </Card>
       ) : (
@@ -337,8 +337,7 @@ export function FinalInvoices() {
       )}
 
       <p className="mt-3 text-2xs text-ink-600">
-        Raising a second statement after a further instalment supersedes the first rather than replacing it. Both were
-        true when they were handed over.
+        A later statement supersedes this one. Both stay on file.
       </p>
     </div>
   );

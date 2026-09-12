@@ -64,7 +64,7 @@ export function Courses() {
     <div>
       <PageHeader
         title="Courses"
-        subtitle="What we teach and what it costs. A course carries its fee, its tax rate and its SAC, so raising an invoice for one does not mean knowing the price list."
+        subtitle="What we teach, and what each course costs."
         actions={<NewButton label="Add a course" onClick={() => setCreating(true)} />}
       />
 
@@ -109,7 +109,7 @@ export function Courses() {
         <Card>
           <EmptyState
             message="No courses yet."
-            hint="A course is the syllabus and the price. A batch is one run of it, with dates and people."
+            hint="A course is the syllabus and the price. A batch is one run of it."
           />
         </Card>
       ) : (
@@ -166,8 +166,7 @@ export function Courses() {
       )}
 
       <p className="mt-4 text-2xs text-ink-600">
-        Retiring a course is never a delete: students hold enrolments on courses withdrawn years ago and their record has
-        to keep reading correctly. A retired course stops being billable and disappears from the pickers.
+        Retiring keeps old enrolments readable, and stops the course being billable.
       </p>
     </div>
   );
@@ -261,9 +260,7 @@ function CourseForm({
         hint="999293 is commercial training and coaching"
       />
       <p className="text-2xs text-ink-500">
-        These three are why an employee can raise a correct tax invoice for a course without knowing the price list or
-        the tax code. A fee change applies from now on — invoices already raised keep their own copy of the price, which
-        is what reprinting an old one shows.
+        Fee, rate and code fill the invoice in. A change applies from now on.
       </p>
     </CreateModal>
   );

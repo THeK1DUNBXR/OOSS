@@ -168,7 +168,7 @@ export const UNROUTED_WORDS: Record<string, string> = {
   no_matching_rule:
     'No routing rule covers this combination yet — someone needs to add one, or assign this by hand.',
   no_eligible_candidate:
-    'A rule matched, but nobody who qualifies is available right now. Assign it by hand or free up capacity.',
+    'A rule matched, but nobody suitable is free. Assign it by hand.',
 };
 
 // ---------------------------------------------------------------------------

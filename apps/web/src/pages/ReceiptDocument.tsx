@@ -199,7 +199,7 @@ export function Receipts() {
     <div>
       <PageHeader
         title="Receipts"
-        subtitle="What has actually been received, instalment by instalment. A tax invoice is final and states the whole amount; each payment against it is acknowledged here, with its own number and the balance it left."
+        subtitle="What has been received, instalment by instalment."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -219,7 +219,7 @@ export function Receipts() {
         <Card>
           <EmptyState
             message="Nothing received yet."
-            hint="Take a payment against an invoice and the receipt for it appears here, ready to hand over."
+            hint="Take a payment against an invoice and its receipt appears here."
           />
         </Card>
       ) : (

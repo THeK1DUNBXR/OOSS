@@ -52,7 +52,7 @@ export function CommandCenter() {
     <div className="space-y-5">
       <PageHeader
         title="Today at Kaizen"
-        subtitle="How the business is doing, what needs you, and what the system has already handled on its own."
+        subtitle="How the business is doing, and what needs you."
         actions={
           <>
             <button className="btn-ghost" onClick={() => recompute.mutate()} disabled={recompute.isPending}>
@@ -110,7 +110,7 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
     <>
       <Card
         title="How the business is doing"
-        subtitle="Ten areas, scored out of 100. Click any one to see what is pulling it up or down. Where there is not enough information yet, it says so rather than showing a zero — a zero would mean things are going badly, which is a different thing from not knowing."
+        subtitle="Ten areas, scored out of 100. Click one to see what is moving it."
         bodyClassName="p-3"
       >
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
@@ -195,7 +195,7 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
                         {f.quarantined && (
                           <span
                             className="ml-2 chip border-band-watch/40 text-band-watch"
-                            title="This measure has never gone down in the period we track. A number that can only go up is not really telling us anything, so we have stopped counting it until it is fixed."
+                            title="This has never gone down, so it is not telling us anything. Not counted until it is fixed."
                           >
                             not trustworthy
                           </span>
@@ -254,14 +254,14 @@ function AttentionQueue({ items }: { items: ExceptionView[] }) {
   return (
     <Card
       title="Needs your attention"
-      subtitle="Problems that are yours to handle, anything that has missed its deadline, and anything nobody has picked up."
+      subtitle="Yours to handle, overdue, or unclaimed."
       actions={<Link to="/exceptions" className="btn-ghost">See everything</Link>}
       bodyClassName="max-h-[26rem] overflow-y-auto p-0"
     >
       {items.length === 0 ? (
         <EmptyState
           message="Nothing needs you right now."
-          hint="This is empty only when it genuinely is — nothing is being hidden from you here."
+          hint="Nothing is waiting on you."
         />
       ) : (
         <ul className="divide-y divide-ink-850">
@@ -277,7 +277,7 @@ function AttentionQueue({ items }: { items: ExceptionView[] }) {
                     {e.ownerPartyId === null && (
                       <span
                         className="chip border-band-strained/40 text-band-strained"
-                        title="Nobody has been assigned this. That is itself a problem worth fixing — it means our routing rules have a gap."
+                        title="Nobody has been assigned this. Our routing rules have a gap."
                       >
                         Nobody assigned
                       </span>
@@ -295,7 +295,7 @@ function AttentionQueue({ items }: { items: ExceptionView[] }) {
                     noticed {relative(e.raisedAt)} · <span className="mono">{e.code}</span>
                   </p>
                   {e.ranked && (
-                    <p className="mt-1 text-2xs italic text-ink-600" title="Why this is where it is in the list. An order nobody can explain is no better than a score nobody can check.">
+                    <p className="mt-1 text-2xs italic text-ink-600" title="Why this is where it is in the list.">
                       Near the top because: {e.ranked.whyRanked.join(', ')}
                     </p>
                   )}
@@ -330,7 +330,7 @@ function DecisionQueue({ items }: { items: DecisionView[] }) {
     <>
       <Card
         title="Waiting on your decision"
-        subtitle="These have reached you because nobody below you has the authority to settle them, a policy names you specifically, or someone you handed it to has sent it back."
+        subtitle="Nobody below you can settle these."
         bodyClassName="max-h-[26rem] overflow-y-auto p-0"
       >
         {items.length === 0 ? (
@@ -348,7 +348,7 @@ function DecisionQueue({ items }: { items: DecisionView[] }) {
                       ) : (
                         <span
                           className="chip border-band-watch/40 text-band-watch"
-                          title="Some of the background you need is still being gathered. You can ask for it, but you should not have to decide without it."
+                          title="Some background is still being gathered. You can decide now, but you do not have to."
                         >
                           Still gathering facts
                         </span>
@@ -568,11 +568,6 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
 
         {error && <p className="text-2xs text-band-critical">{error}</p>}
 
-        <p className="text-2xs italic text-ink-500">
-          Decide, Delegate, Defer and Request-evidence are exclusively human acts. There is no AI disposition
-          authority on this surface. A decision does not close at disposition — a review date is armed on Decided,
-          and the loop closes only with a recorded lesson and a resolved change commitment.
-        </p>
       </div>
     </Modal>
   );
@@ -644,7 +639,7 @@ function LiveAndHandled({ data }: { data: CommandCenterResponse['liveAndHandled'
   return (
     <Card
       title="Live & Handled"
-      subtitle="One row per automation class. Nothing individual is shown unless it failed."
+      subtitle="One row per kind of automation. Failures are listed on their own."
       bodyClassName="max-h-[26rem] overflow-y-auto p-0"
     >
       <table className="table">
@@ -654,7 +649,7 @@ function LiveAndHandled({ data }: { data: CommandCenterResponse['liveAndHandled'
             <th className="text-right">Runs</th>
             <th className="text-right">Success</th>
             <th className="text-right">Exceptions</th>
-            <th className="text-right" title="What an agent proposed but lacked authority to take — the leading indicator of over- and under-granting.">
+            <th className="text-right" title="What an agent wanted to do but was not allowed to.">
               Shortfall
             </th>
           </tr>
@@ -728,7 +723,7 @@ function PeopleCapability() {
   return (
     <Card
       title="People & Capability"
-      subtitle="Unit-level capacity, coverage and single points of failure. Individual attrition or flight-risk scoring is categorically prohibited — not deferred."
+      subtitle="Capacity, coverage and single points of failure, by team."
     >
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {data.map((u) => (
@@ -755,7 +750,7 @@ function PeopleCapability() {
           </div>
         ))}
       </div>
-      {data.length === 0 && <EmptyState message="No team here is large enough to show figures for without identifying individuals." />}
+      {data.length === 0 && <EmptyState message="Too few people to show without identifying them." />}
     </Card>
   );
 }

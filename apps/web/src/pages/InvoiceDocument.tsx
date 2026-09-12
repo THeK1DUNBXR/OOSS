@@ -66,7 +66,7 @@ export function InvoiceDocument() {
       title={d.label}
       subtitle={
         d.status === 'draft'
-          ? 'A draft. It has no issue date and no invoice number yet — the tax series has to stay consecutive, so a number is allocated when it is issued and not before.'
+          ? 'A draft. It gets its date and number when you issue it.'
           : `Issued ${date(d.issuedDate)}${d.raisedBy ? ` by ${d.raisedBy}` : ''}${
               d.draftReference ? ` (drafted as ${d.draftReference})` : ''
             }. Final: what it says does not change.`
@@ -164,8 +164,7 @@ export function InvoiceDocument() {
               )}
               {!d.position.canRaiseFinalInvoice && d.status !== 'draft' && (
                 <p className="text-2xs text-ink-500">
-                  Nothing has been received yet, so there are no receipts to consolidate — the tax invoice is still the
-                  only document there is.
+                  Nothing received yet.
                 </p>
               )}
             </div>

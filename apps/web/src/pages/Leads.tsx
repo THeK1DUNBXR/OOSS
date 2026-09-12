@@ -53,7 +53,7 @@ export function Leads() {
     <div>
       <PageHeader
         title="Leads"
-        subtitle="New enquiries, and who is looking after each one. When nobody suitable is free, a lead is marked unassigned and shown here rather than quietly parked with whoever typed it in."
+        subtitle="New enquiries, and who is looking after each."
         actions={
           can('leads:C') && (
             <button className="btn-primary" onClick={() => setCreateOpen(true)}>
@@ -79,7 +79,7 @@ export function Leads() {
         <Card>
           <EmptyState
             message={tab === 'unrouted' ? 'Every open lead has a resolved owner.' : 'No leads match.'}
-            hint={tab === 'unrouted' ? 'The unrouted predicate is lead_status = open AND owner_party_id IS NULL — one source of truth.' : undefined}
+            hint={tab === 'unrouted' ? 'Leads that are still open with nobody assigned.' : undefined}
           />
         </Card>
       ) : (
@@ -214,8 +214,7 @@ function CreateLeadModal({ open, onClose }: { open: boolean; onClose: () => void
 
         <div className="rounded-lg border border-ink-800 bg-ink-950 p-3">
           <p className="mb-2 text-2xs text-ink-400">
-            Contact details resolve through the one sanctioned identity path. A submission from an existing person
-            must not fork identity — at least one of phone or email is required.
+            A phone or an email is needed, so an existing person is recognised.
           </p>
           <div className="space-y-2">
             <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" />
@@ -262,9 +261,7 @@ function CreateLeadModal({ open, onClose }: { open: boolean; onClose: () => void
 
         {/* No Owner field. Ownership is routing-determined. */}
         <p className="rounded border border-ink-800 bg-ink-950 px-3 py-2 text-2xs text-ink-500">
-          There is no owner field. The routing engine evaluates territory and vertical as hard filters, then scores
-          capacity, capability and relationship strength. If no candidate survives, the lead lands unrouted and the
-          territory owner is notified immediately.
+          Nobody outside the territory or specialism is picked. The rest are scored.
         </p>
 
         {error && <p className="text-2xs text-band-critical">{error}</p>}
@@ -354,7 +351,7 @@ export function LeadDetail() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
-          <Card title="Routing audit" subtitle="Every candidate considered, their per-factor scores, and why the winner won.">
+          <Card title="Routing audit" subtitle="Who was considered, and why the winner won.">
             {audit.length === 0 ? (
               <EmptyState message="No record of how this was assigned." />
             ) : (
@@ -369,7 +366,7 @@ export function LeadDetail() {
                         {c.candidateName}
                         {c.won && <span className="ml-2 chip border-accent/40 text-accent-soft">winner</span>}
                         {c.tieBreakApplied && (
-                          <span className="ml-1 chip border-ink-700 text-ink-400" title="Round-robin breaks ties only within the configured margin — never a fourth scoring factor.">
+                          <span className="ml-1 chip border-ink-700 text-ink-400" title="Used only to break a tie between equally good matches.">
                             tie-break
                           </span>
                         )}
@@ -405,7 +402,7 @@ export function LeadDetail() {
 
           <Card title="Timeline" bodyClassName="p-0">
             {data.timeline.length === 0 ? (
-              <EmptyState message="Nobody has logged a call or meeting yet." hint="If nobody makes contact soon, this will be flagged for follow-up automatically." />
+              <EmptyState message="Nobody has logged a call or meeting yet." hint="Untouched leads are flagged automatically." />
             ) : (
               <ul className="divide-y divide-ink-850">
                 {data.timeline.map((t: any) => (
@@ -439,7 +436,7 @@ export function LeadDetail() {
             </dl>
           </Card>
 
-          <Card title="Lead score" subtitle="Rule-based, transparent and reversible. Every contribution is disclosed.">
+          <Card title="Lead score" subtitle="Every factor is shown.">
             <p className="text-3xl font-semibold tabular-nums text-ink-50">{lead.score}</p>
             <ul className="mt-2 space-y-0.5">
               {(lead.scoreReasons ?? []).map((r: string, i: number) => (

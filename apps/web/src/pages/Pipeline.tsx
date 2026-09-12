@@ -116,7 +116,7 @@ export function Pipeline() {
     <div>
       <PageHeader
         title="Pipeline"
-        subtitle="Your deals, laid out by how far along they are. Each kind of business has its own stages — selling to a company is not the same as admitting a student — but they line up so you can compare across them."
+        subtitle="Your deals, by how far along they are."
         actions={
           <div className="flex flex-wrap gap-1">
             {pipelines.map((p) => (
@@ -142,10 +142,6 @@ export function Pipeline() {
               <span className="text-ink-400">{titleCase(board.pipeline.defaultForecastMethod)}</span>
             </p>
           </div>
-          <p className="ml-auto max-w-md text-2xs text-ink-500">
-            Weighted value is reported per pipeline. Blending across motions with different forecast methods is
-            available only on explicit request.
-          </p>
         </div>
       )}
 
@@ -256,7 +252,7 @@ export function Pipeline() {
                       <div className="mt-2 flex flex-wrap items-center gap-1">
                         {c.score !== undefined && <span className="chip border-ink-700 text-ink-400">score {c.score}</span>}
                         {c.unrouted && (
-                          <span className="chip border-band-strained/40 text-band-strained" title="lead_status = open AND owner_party_id IS NULL">
+                          <span className="chip border-band-strained/40 text-band-strained" title="Still open, and nobody owns it">
                             unrouted
                           </span>
                         )}

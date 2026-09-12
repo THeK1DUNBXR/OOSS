@@ -50,18 +50,18 @@ const TENANT_NAME = process.env.TENANT_NAME ?? 'Kaizen Infinities';
 async function seedThresholds() {
   const tenantId = (await currentTenant()).id;
   const rows = [
-    { thresholdKey: 'command_center.materiality_floor', value: 100_000, unit: 'currency', description: 'Below this, a delta item does not earn a place on the Command Center.' },
-    { thresholdKey: 'command_center.narrative_window_hours', value: 72, unit: 'hours', description: 'Past this absence, the surface leads with the NARRATIVE object instead of an item list. Flagged as unvalidated — instrument actual return behaviour before trusting it.' },
-    { thresholdKey: 'command_center.absence_reset_days', value: 14, unit: 'days', description: 'Beyond this, the watermark resets rather than producing an unreadable delta.' },
-    { thresholdKey: 'win_loss_review.value_threshold', value: 500_000, unit: 'currency', description: 'The value half of the mandatoriness OR gate.' },
-    { thresholdKey: 'merge_candidate.stale_days', value: 14, unit: 'days', description: 'An unresolved merge candidate older than this raises EX-CRM-002.' },
-    { thresholdKey: 'lead.untouched_days', value: 3, unit: 'days', description: 'No recorded interaction in this window raises EX-CRM-010.' },
-    { thresholdKey: 'proposal.stalled_business_days', value: 5, unit: 'days', description: 'Weekend-skipping chase threshold for EX-CRM-008.' },
-    { thresholdKey: 'h_com.quarter_target', value: 20_000_000, unit: 'currency', description: 'The commercial target the pipeline-coverage factor scores against.' },
-    { thresholdKey: 'people.k_anonymity_floor', value: 5, unit: 'count', description: 'Any people-domain figure over fewer than this many persons renders WITHHELD, regardless of who is asking.' },
-    { thresholdKey: 'routing.tie_break_margin_points', value: 5, unit: 'points', description: 'Round-robin breaks ties only within this margin of the top soft-factor score.' },
-    { thresholdKey: 'approval.escalation_grace_business_days', value: 3, unit: 'days', description: 'AU-CRM-015: an unresolved approval step bumps a tier after this window.' },
-    { thresholdKey: 'document.record_of_record_ttl_seconds', value: 60, unit: 'seconds', description: 'A leaked long-lived link to a signed contract is a materially different risk than a leaked scanned ID-proof link.' },
+    { thresholdKey: 'command_center.materiality_floor', value: 100_000, unit: 'currency', description: 'Changes smaller than this are not worth reporting.' },
+    { thresholdKey: 'command_center.narrative_window_hours', value: 72, unit: 'hours', description: 'After being away this long, you get a summary of what happened instead of a list.' },
+    { thresholdKey: 'command_center.absence_reset_days', value: 14, unit: 'days', description: 'After being away this long, "what changed" starts fresh.' },
+    { thresholdKey: 'win_loss_review.value_threshold', value: 500_000, unit: 'currency', description: 'A deal worth more than this always needs a win/loss review.' },
+    { thresholdKey: 'merge_candidate.stale_days', value: 14, unit: 'days', description: 'A possible duplicate left this long is raised as a problem.' },
+    { thresholdKey: 'lead.untouched_days', value: 3, unit: 'days', description: 'A lead with no contact for this long is raised as a problem.' },
+    { thresholdKey: 'proposal.stalled_business_days', value: 5, unit: 'days', description: 'A proposal with no movement for this many working days is chased.' },
+    { thresholdKey: 'h_com.quarter_target', value: 20_000_000, unit: 'currency', description: 'The sales target the pipeline is scored against.' },
+    { thresholdKey: 'people.k_anonymity_floor', value: 5, unit: 'count', description: 'A people figure covering fewer than this many is withheld, so nobody is identifiable.' },
+    { thresholdKey: 'routing.tie_break_margin_points', value: 5, unit: 'points', description: 'Scores this close count as a tie, and are shared out in turn.' },
+    { thresholdKey: 'approval.escalation_grace_business_days', value: 3, unit: 'days', description: 'An approval left this long moves up to the next person.' },
+    { thresholdKey: 'document.record_of_record_ttl_seconds', value: 60, unit: 'seconds', description: 'How long a link to a sensitive document stays valid.' },
   ];
 
   for (const r of rows) {
@@ -226,7 +226,7 @@ async function seedGovernance() {
       tenantId,
       policyCode: 'POL-PLATFORM-BASE',
       name: 'Platform base permission policy',
-      description: 'The five-axis evaluation rule set every GRANT is issued under. Version 1 is a faithful, behaviour-preserving translation of the legacy 14x10 letter matrix.',
+      description: 'The rules every permission in the system is granted under.',
       kind: 'permission',
     },
     update: {},
@@ -585,13 +585,13 @@ async function seedSurfaces() {
   // Every widget declares all seven mandatory fields. A non-empty actions[] is
   // enforced at publish time.
   const widgets = [
-    { widgetKey: 'pulse_strip', title: 'Company Pulse', dataSource: 'health.latestPulse', requiredPermission: 'health_scores:V', severityRelevance: 'S1_ATTENTION', actions: [{ label: 'Open factor breakdown', path: '/command/health/:domainCode' }], drillTarget: '/command/health', mobileBehaviour: 'keep', emptyState: 'Not yet measured — no domain has sufficient inputs.' },
-    { widgetKey: 'attention_queue', title: 'Attention Queue', dataSource: 'commandCenter.attentionQueue', requiredPermission: 'exceptions:V', severityRelevance: 'S3_HIGH_RISK', actions: [{ label: 'Acknowledge', path: '/exceptions/:id/acknowledge' }, { label: 'Resolve', path: '/exceptions/:id/resolve' }], drillTarget: '/exceptions', mobileBehaviour: 'keep', emptyState: 'Nothing owned by or escalated to you is open above S3.' },
-    { widgetKey: 'decision_queue', title: 'Decision Queue', dataSource: 'decisions.decisionQueue', requiredPermission: 'decisions:V', severityRelevance: 'S2_WARNING', actions: [{ label: 'Decide', path: '/command/decisions/:id' }, { label: 'Delegate', path: '/command/decisions/:id' }, { label: 'Defer', path: '/command/decisions/:id' }, { label: 'Request evidence', path: '/command/decisions/:id' }], drillTarget: '/command/decisions', mobileBehaviour: 'keep', emptyState: 'Nothing requires authority that exceeds every grant below you.' },
-    { widgetKey: 'what_changed', title: 'What Changed', dataSource: 'commandCenter.whatChanged', requiredPermission: 'events:V', severityRelevance: 'S1_ATTENTION', actions: [{ label: 'Open source event', path: '/admin/events' }], drillTarget: '/admin/events', mobileBehaviour: 'drill_only', emptyState: 'Nothing crossed the materiality floor since you last looked.' },
-    { widgetKey: 'live_and_handled', title: 'Live & Handled', dataSource: 'commandCenter.liveAndHandled', requiredPermission: 'jobs:V', severityRelevance: 'S0_INFO', actions: [{ label: 'Inspect authority', path: '/admin/agents' }], drillTarget: '/admin/jobs', mobileBehaviour: 'shed', emptyState: 'Nothing ran. An automation class that normally fires and suddenly does not is itself a signal.' },
-    { widgetKey: 'forecast_band', title: 'Forecast', dataSource: 'opportunities.forecastRollup', requiredPermission: 'opportunities:V', severityRelevance: 'S2_WARNING', actions: [{ label: 'Open the model', path: '/crm/forecast' }, { label: 'Set a review date', path: '/command/decisions' }], drillTarget: '/crm/forecast', mobileBehaviour: 'shed', emptyState: 'No forecast with a recorded backtest error. Rendering UNAVAILABLE rather than a confident guess.' },
-    { widgetKey: 'people_capability', title: 'People & Capability', dataSource: 'commandCenter.peopleAndCapability', requiredPermission: 'health_scores:V', severityRelevance: 'S1_ATTENTION', actions: [{ label: 'Review unit coverage', path: '/command' }], drillTarget: '/command', mobileBehaviour: 'drill_only', emptyState: 'No org unit clears the k>=5 anonymity floor.' },
+    { widgetKey: 'pulse_strip', title: 'Company Pulse', dataSource: 'health.latestPulse', requiredPermission: 'health_scores:V', severityRelevance: 'S1_ATTENTION', actions: [{ label: 'Open factor breakdown', path: '/command/health/:domainCode' }], drillTarget: '/command/health', mobileBehaviour: 'keep', emptyState: 'Not measured yet — not enough information in any area.' },
+    { widgetKey: 'attention_queue', title: 'Attention Queue', dataSource: 'commandCenter.attentionQueue', requiredPermission: 'exceptions:V', severityRelevance: 'S3_HIGH_RISK', actions: [{ label: 'Acknowledge', path: '/exceptions/:id/acknowledge' }, { label: 'Resolve', path: '/exceptions/:id/resolve' }], drillTarget: '/exceptions', mobileBehaviour: 'keep', emptyState: 'Nothing serious is open for you.' },
+    { widgetKey: 'decision_queue', title: 'Decision Queue', dataSource: 'decisions.decisionQueue', requiredPermission: 'decisions:V', severityRelevance: 'S2_WARNING', actions: [{ label: 'Decide', path: '/command/decisions/:id' }, { label: 'Delegate', path: '/command/decisions/:id' }, { label: 'Defer', path: '/command/decisions/:id' }, { label: 'Request evidence', path: '/command/decisions/:id' }], drillTarget: '/command/decisions', mobileBehaviour: 'keep', emptyState: 'Nothing needs a decision only you can make.' },
+    { widgetKey: 'what_changed', title: 'What Changed', dataSource: 'commandCenter.whatChanged', requiredPermission: 'events:V', severityRelevance: 'S1_ATTENTION', actions: [{ label: 'Open source event', path: '/admin/events' }], drillTarget: '/admin/events', mobileBehaviour: 'drill_only', emptyState: 'Nothing big enough to report since you last looked.' },
+    { widgetKey: 'live_and_handled', title: 'Live & Handled', dataSource: 'commandCenter.liveAndHandled', requiredPermission: 'jobs:V', severityRelevance: 'S0_INFO', actions: [{ label: 'Inspect authority', path: '/admin/agents' }], drillTarget: '/admin/jobs', mobileBehaviour: 'shed', emptyState: 'Nothing ran. Worth a look if something normally does.' },
+    { widgetKey: 'forecast_band', title: 'Forecast', dataSource: 'opportunities.forecastRollup', requiredPermission: 'opportunities:V', severityRelevance: 'S2_WARNING', actions: [{ label: 'Open the model', path: '/crm/forecast' }, { label: 'Set a review date', path: '/command/decisions' }], drillTarget: '/crm/forecast', mobileBehaviour: 'shed', emptyState: 'No forecast we have checked for accuracy yet, so none is shown.' },
+    { widgetKey: 'people_capability', title: 'People & Capability', dataSource: 'commandCenter.peopleAndCapability', requiredPermission: 'health_scores:V', severityRelevance: 'S1_ATTENTION', actions: [{ label: 'Review unit coverage', path: '/command' }], drillTarget: '/command', mobileBehaviour: 'drill_only', emptyState: 'Every team is too small to show without identifying people.' },
     { widgetKey: 'my_queue', title: 'My Queue', dataSource: 'crm.tasks', requiredPermission: 'interactions:V', severityRelevance: 'S1_ATTENTION', actions: [{ label: 'Complete', path: '/workspace' }], drillTarget: '/workspace', mobileBehaviour: 'keep', emptyState: 'Nothing due.' },
     { widgetKey: 'my_pipeline', title: 'My Pipeline', dataSource: 'crm.opportunities', requiredPermission: 'opportunities:V', severityRelevance: 'S1_ATTENTION', actions: [{ label: 'Open board', path: '/crm/pipeline' }], drillTarget: '/crm/pipeline', mobileBehaviour: 'keep', emptyState: 'No open opportunities assigned to you.' },
     { widgetKey: 'unrouted_leads', title: 'Unrouted Leads', dataSource: 'crm.leads?unrouted=true', requiredPermission: 'leads:V', severityRelevance: 'S2_WARNING', actions: [{ label: 'Assign', path: '/crm/leads' }], drillTarget: '/crm/leads?unrouted=true', mobileBehaviour: 'keep', emptyState: 'Every open lead has a resolved owner.', noActionFallback: 'Route to the territory owner with a 4-business-hour SLA.' },

@@ -262,11 +262,11 @@ export function Institutions() {
     <BodyList
       kind="institution"
       title="Institutions"
-      subtitle="The schools, colleges and polytechnics we work with. Where our learners come from, what the partnership actually runs at, and how many each has sent us."
+      subtitle="The schools and colleges our learners come from."
       addLabel="Add a school or college"
       permission="institutions:C"
       emptyMessage="No schools or colleges yet."
-      emptyHint="Add the ones that send you learners. A customer's record then names where they studied, and this page answers how many came from there."
+      emptyHint="A customer's record names the college they came from."
       renderForm={(open, onClose) => <NewInstitution open={open} onClose={onClose} />}
     />
   );
@@ -277,11 +277,11 @@ export function Organizations() {
     <BodyList
       kind="organization"
       title="Organisations"
-      subtitle="The businesses, trusts and foundations we deal with: the ones that buy corporate training, sponsor a cohort, or hire our learners. Schools and colleges are under Institutions, and the learners themselves under Customers."
+      subtitle="Businesses, trusts and foundations we deal with."
       addLabel="Add an organisation"
       permission="organizations:C"
       emptyMessage="No organisations yet."
-      emptyHint="Add the businesses you train for, the bodies that sponsor cohorts and the employers that hire your learners. Schools and colleges live under Institutions."
+      emptyHint="Schools and colleges live under Institutions."
       renderForm={(open, onClose) => <NewOrganization open={open} onClose={onClose} />}
     />
   );
@@ -366,7 +366,7 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
             ))}
         {data.account && <span className="chip border-ink-700 text-ink-400">We invoice them</span>}
         <StatusChip status={data.computedRelationshipStatus} tone={STATUS_TONE[data.computedRelationshipStatus] ?? 'neutral'} />
-        <span className="text-2xs text-ink-500" title="Computed at query time from live aggregations — never stored, because a stored value drifts from its evidence.">
+        <span className="text-2xs text-ink-500" title="Worked out when you ask for it, never stored.">
           computed at query time
         </span>
       </div>
@@ -374,7 +374,7 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           {data.account && (
-            <Card title="How we bill them" subtitle="Terms, where the invoice goes, and the registration the tax is charged under. Either kind of body may have this — being invoiced is not what makes one a business.">
+            <Card title="How we bill them" subtitle="Terms, where the invoice goes, and the GSTIN.">
               <dl className="grid grid-cols-2 gap-x-6">
                 <Field label="Tier">{titleCase(data.account.tier)}</Field>
                 <Field label="Payment terms">{data.account.paymentTermsDays} days</Field>
@@ -385,7 +385,7 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
           )}
 
           {data.institutionProfile ? (
-            <Card title="What kind of place it is" subtitle="Read separately from the billing side — somebody who can see the payment terms does not automatically see this.">
+            <Card title="What kind of place it is" subtitle="Type, management, district and accreditation.">
               <dl className="grid grid-cols-2 gap-x-6">
                 <Field label="Type">{titleCase(data.institutionProfile.institutionType)}</Field>
                 <Field label="Management">{titleCase(data.institutionProfile.managementType)}</Field>
@@ -454,9 +454,9 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
             </Card>
           )}
 
-          <Card title="Relationship history" subtitle="Changing the nature of a connection does not erase the old one — it is dated and a new one starts." bodyClassName="p-0">
+          <Card title="Relationship history" subtitle="Past connections are kept, not written over." bodyClassName="p-0">
             {relationships.length === 0 ? (
-              <EmptyState message="No relationships recorded." hint="Connections appear here when something real happens — a meeting, a contract, an enrolment. Nothing is guessed." />
+              <EmptyState message="No relationships recorded." hint="Connections appear when something happens — a meeting, a contract, an enrolment." />
             ) : (
               <ul className="divide-y divide-ink-850">
                 {relationships.map((r: any) => (
@@ -488,7 +488,7 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
               <Field label="Created">{date(org.createdAt)}</Field>
               {org.legacyCategory && (
                 <Field label="Legacy category">
-                  <span className="text-ink-500" title="Retained transitionally for backward-compatible reporting only. Services test specialisation existence, never this field.">
+                  <span className="text-ink-500" title="Kept for older reports only. Nothing depends on it.">
                     {org.legacyCategory}
                   </span>
                 </Field>

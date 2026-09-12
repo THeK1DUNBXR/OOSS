@@ -96,6 +96,20 @@ export const BUILD: BuildStamp = resolve();
 /** When this process started. A restart is a thing people need to see. */
 export const STARTED_AT = new Date().toISOString();
 
+/**
+ * How far behind a stamped thing is, in builds.
+ *
+ * Zero when it is current, when either side is unknown, or when the stamp is
+ * somehow ahead — a negative answer would be a number nobody can act on, and
+ * "ahead" happens routinely on a developer's machine between a commit and the
+ * next seed.
+ */
+export function buildsBehind(current: number, stamped: number): number {
+  if (!Number.isFinite(current) || !Number.isFinite(stamped)) return 0;
+  if (current <= 0 || stamped <= 0) return 0;
+  return Math.max(0, current - stamped);
+}
+
 /** `148 · 7ab59ff`, or `unknown build` when it could not be resolved. */
 export function buildLabel(stamp: BuildStamp = BUILD): string {
   if (!stamp.known) return 'unknown build';

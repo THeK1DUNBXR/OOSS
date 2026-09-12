@@ -13,6 +13,7 @@
     "db:push": "pnpm --filter @kaizen/api db:push",
     "db:migrate": "pnpm --filter @kaizen/api db:migrate",
     "db:seed": "pnpm --filter @kaizen/api seed",
+    "grants:reconcile": "pnpm --filter @kaizen/api grants:reconcile",
     "db:reset": "pnpm --filter @kaizen/api db:reset",
     "test": "pnpm --filter @kaizen/api test",
     "test:e2e": "pnpm --filter @kaizen/e2e test",

@@ -593,17 +593,22 @@ describe('the platform says which build it is', () => {
   });
 
   it('says how many builds the seeded data is behind', async () => {
-    await asUser('chairman@kaizen.co.in', async () => {
-      const { BUILD } = await import('../platform/build.js');
-      const tenant = await prisma.tenant.findFirstOrThrow({ where: { id: TENANT }, select: { config: true } });
-      const seedBuild = Number((tenant.config as { seed?: { build?: number } }).seed?.build ?? 0);
+    const { buildsBehind } = await import('../platform/build.js');
 
-      // The arithmetic the endpoint does, asserted where it is cheap: a tenant
-      // seeded by this build is not behind, and one seeded by an older build is
-      // behind by the difference. That number is what tells somebody their
-      // navigation is from before the change they are looking for.
-      expect(Math.max(0, BUILD.sequence - seedBuild)).toBe(0);
-    });
+    // The number that tells somebody their navigation, or their permissions,
+    // are from before the change they are looking for.
+    expect(buildsBehind(148, 142)).toBe(6);
+    expect(buildsBehind(148, 148)).toBe(0);
+
+    // Never a negative: between a commit and the next seed a developer's
+    // database is legitimately "ahead", and a footnote reading -1 is a number
+    // nobody can act on.
+    expect(buildsBehind(142, 148)).toBe(0);
+
+    // And silent where either side is unknown, rather than reporting the whole
+    // history as the gap.
+    expect(buildsBehind(0, 148)).toBe(0);
+    expect(buildsBehind(148, 0)).toBe(0);
   });
 });
 
@@ -658,6 +663,53 @@ describe('the sidebar and the command palette say where they go', () => {
     // winner: "customers" belonged to both the learners screen and the
     // organisations one, and organisations won.
     expect(clashes).toEqual([]);
+  });
+
+  it('a resource the tenant never had a row for is granted on deploy', async () => {
+    const { addMissingGrants } = await import('../platform/grantSync.js');
+
+    // The failure, reproduced: a release adds a whole new resource, every
+    // existing tenant has no row for it, and the button to use the screen that
+    // shipped with it is simply absent. "I can add institutions and
+    // organisations but not customers" was exactly this.
+    await unscopedPrisma.grant.deleteMany({ where: { tenantId: TENANT, resource: 'students' } });
+    expect(await unscopedPrisma.grant.count({ where: { tenantId: TENANT, resource: 'students' } })).toBe(0);
+
+    const added = await addMissingGrants(TENANT);
+
+    expect(added.some((a) => a.role === 'chairman' && a.resource === 'students')).toBe(true);
+    expect(added.some((a) => a.role === 'employee' && a.resource === 'students')).toBe(true);
+    // And the employee's cell is the narrow one the matrix declares, not the
+    // chairman's: filling a gap is not the same as widening anybody.
+    const employee = added.find((a) => a.role === 'employee' && a.resource === 'students');
+    expect(employee!.verbs.sort()).toEqual(['create', 'view']);
+  });
+
+  it('an existing grant is never touched, however far it has drifted', async () => {
+    const { addMissingGrants } = await import('../platform/grantSync.js');
+
+    // Somebody narrowed a role's grant on purpose. Boot must leave it alone:
+    // changing or revoking a permission stays a deliberate act through the
+    // reconciler, which reports before it writes.
+    const role = await unscopedPrisma.accessRole.findFirstOrThrow({ where: { tenantId: TENANT, slug: 'employee' } });
+    const grant = await unscopedPrisma.grant.findFirstOrThrow({
+      where: { tenantId: TENANT, roleId: role.id, resource: 'invoices' },
+    });
+    await unscopedPrisma.grant.update({ where: { id: grant.id }, data: { verbs: ['view'] } });
+
+    const added = await addMissingGrants(TENANT);
+    expect(added.some((a) => a.resource === 'invoices')).toBe(false);
+
+    const after = await unscopedPrisma.grant.findFirstOrThrow({ where: { id: grant.id } });
+    expect(after.verbs).toEqual(['view']);
+
+    // Left for the reconciler, and reported rather than silent.
+    const { planFor } = await import('../seed/reconcileGrants.js');
+    const plan = await asUser('chairman@kaizen.co.in', () => planFor(TENANT));
+    expect(plan.some((c) => c.kind === 'update' && c.resource === 'invoices')).toBe(true);
+
+    // Put it back, so the suite passes twice against the same database.
+    await unscopedPrisma.grant.update({ where: { id: grant.id }, data: { verbs: grant.verbs } });
   });
 
   it('a missing entry comes back on its own, without anybody running the seed', async () => {

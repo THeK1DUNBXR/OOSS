@@ -53,7 +53,7 @@ export default function Start() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Getting started"
-        subtitle="What to set up, in the order that makes each step useful, and how the parts work once they are."
+        subtitle="What to set up, in order, and how each part works."
       />
       <Checklist state={state} />
       <Walkthroughs />
@@ -72,7 +72,7 @@ function Checklist({ state }: { state: ReturnType<typeof useQuery<State>> }) {
       <Card title="Set up">
         <EmptyState
           message="Nothing here needs setting up by you."
-          hint="Setting the company up is the Chairman's and the Finance Head's job. Your own screens are ready to use."
+          hint="Setting the company up is somebody else's job. Your screens are ready."
         />
       </Card>
     );
@@ -156,57 +156,49 @@ const TOPICS: Topic[] = [
   {
     key: 'import',
     title: 'Bringing your data in',
-    blurb: 'Tally, a bank statement, or a spreadsheet — and how to undo it if it goes wrong.',
+    blurb: 'Tally, a bank statement or a spreadsheet — and how to undo it.',
     sections: [
       {
-        heading: 'Drop the file in and read what it says',
-        body:
-          'The file is inspected and what it appears to be is shown as a claim you can correct — "a Tally ledger report, 66 accounts, each with dated vouchers beneath it". You are not asked to classify your own export before seeing anything, because most people exporting from Tally do not know whether they produced a Day Book or a Ledger Voucher report, and it does not matter: the platform can tell.',
+        heading: 'Drop the file in',
+        body: 'The file is read and what it looks like is shown back to you. Correct it if it is wrong. You do not have to know what kind of export you made.',
         link: { to: '/data/import', label: 'Open Import' },
       },
       {
-        heading: 'Nothing is written until you say so',
-        body:
-          'The preview shows every row that will be created and every row that will not, with the reason. Rows already brought in on an earlier file are marked as duplicates and left alone, so re-importing a statement that overlaps last month’s does not double anything.',
+        heading: 'Nothing is saved until you say so',
+        body: 'The preview lists every row that will be created and every row that will be skipped, with the reason. Rows already brought in are marked as duplicates.',
       },
       {
-        heading: 'A Tally export carries its own chart of accounts',
-        body:
-          'Alongside the vouchers, a Tally workbook holds a Balance Sheet and a Profit & Loss, and between them they name every ledger and say which side of the books it belongs on. The platform reads that rather than guessing from names — which is how it knows "Bank Charges" is a cost and not a bank account, and why the imported figures tie back to Tally exactly.',
+        heading: 'A Tally file names its own accounts',
+        body: 'The Balance Sheet and P&L in the workbook say which side of the books each ledger belongs on, so the figures tie back to Tally exactly.',
       },
       {
         heading: 'Undo removes exactly what it added',
-        body:
-          'Every row records what it created. Reverting an import deletes those records and nothing else, so a first attempt at a year of books is a decision you can take back in one click rather than a weekend of manual correction.',
+        body: 'Every row remembers the import that created it. Reverting deletes those rows and nothing else.',
       },
     ],
   },
   {
     key: 'money',
     title: 'The books',
-    blurb: 'Where money sits, what it was for, and why nothing here is ever edited.',
+    blurb: 'Where money sits, what it was for, and why nothing is edited.',
     sections: [
       {
         heading: 'An account is where money sits; a category is what it was for',
-        body:
-          'Tally keeps both in one flat list of "ledgers". Here they are separate, because they answer different questions: the account tells you whether you can pay the rent, and the category tells you what you are spending it on.',
+        body: 'Tally keeps both in one list. Here they are separate: the account says whether you can pay the rent, the category says what you spend on.',
         link: { to: '/finance/ledger', label: 'Open the Ledger' },
       },
       {
-        heading: 'A mistake is reversed, never edited',
-        body:
-          'A transaction has no edit control — only Reverse, which posts the opposite entry and leaves both rows on screen with the reversed one struck through. That is not bureaucracy: a bank line already matched against the original keeps matching it, and the history keeps showing what really happened.',
+        heading: 'A mistake is reversed, not edited',
+        body: 'Reverse posts the opposite entry and leaves both rows on screen. The history keeps showing what really happened.',
       },
       {
         heading: 'Every cost carries a division',
-        body:
-          'Three businesses run inside one legal entity, and a consolidated total hides which of them is paying for the others. A transaction with no division cannot answer the question the dashboard exists to answer, so the category suggests one and you can override it per entry.',
+        body: 'Three businesses share one company. Without a division the dashboard cannot say which one is paying. The category suggests one; you can change it.',
         link: { to: '/business', label: 'See the division view' },
       },
       {
         heading: 'Capital is not revenue',
-        body:
-          'Money the founders put in moves the bank balance and is not trading performance. It counts in the cash position and is excluded from the profit and loss — otherwise the month the funding landed would read as the best month the company ever had.',
+        body: 'Founder money moves the bank balance but stays out of the profit and loss.',
       },
     ],
   },
@@ -216,54 +208,46 @@ const TOPICS: Topic[] = [
     blurb: 'Why leave balances are never typed in, and what a pay rise takes.',
     sections: [
       {
-        heading: 'A person, a seat, and the relationship between them',
-        body:
-          'Somebody on the staff list is a person. The job they do is a position. The employment relationship joins the two, and leave, attendance, payroll and skills all hang off it. That is why importing a staff list creates all three rather than just a list of names.',
+        heading: 'A person, a seat, and the job they hold',
+        body: 'The person is one record, the position another, and employment joins them. Leave, attendance, payroll and skills hang off the join.',
         link: { to: '/people/employees', label: 'Open Employees' },
       },
       {
-        heading: 'A leave balance is never written directly',
-        body:
-          'Approval places a hold, completion settles it, cancellation reverses it, and the balance is the sum of its own ledger. That is what makes "why is it 8.5 and not 11" a question with an answer you can read off the screen.',
+        heading: 'A leave balance is never typed in',
+        body: 'Approval holds days, completion settles them, cancellation gives them back. The balance is the sum. So "why 8.5 and not 11" has an answer on screen.',
         link: { to: '/people/leave', label: 'Open Leave' },
       },
       {
         heading: 'A pay rise takes two people',
-        body:
-          'HR proposes compensation and holds no approval. Finance approves and can neither create nor edit the proposal, so the signatory is never the author. Neither can move a salary alone, and nobody at all can approve their own — not even the Chairman.',
+        body: 'HR proposes and cannot approve. Finance approves and cannot propose. Nobody approves their own.',
       },
       {
-        heading: 'Buttons come from the state machine',
-        body:
-          'Every record shows only the transitions its lifecycle actually allows from where it stands, computed by the same machine the API enforces against. A payroll run sitting at Computed offers "Submit review" and nothing else, because that is the only arrow out of Computed — so a button can never offer something that will be refused.',
+        heading: 'Buttons match the record',
+        body: 'A record only offers the steps it can actually take next, so a button never fails when you press it.',
       },
     ],
   },
   {
     key: 'access',
     title: 'Who can see what',
-    blurb: 'Four roles, and why the same screen shows different things to different people.',
+    blurb: 'Four roles, and why a screen differs from person to person.',
     sections: [
       {
-        heading: 'Four roles, and that is the whole model',
-        body:
-          'Employee sees their own record and the staff directory, and raises invoices for what they sell. Operations Head runs the people function, delivery and the course catalogue. Finance Head holds the books, files the GST returns and approves the money side of people. Chairman is superadmin — every resource, every verb, nothing hidden.',
+        heading: 'Four roles',
+        body: 'Employee: their own record, the staff directory, and invoices they raise. Operations Head: people, delivery and courses. Finance Head: the books, GST and pay approvals. Chairman: everything.',
         link: { to: '/admin/governance', label: 'See the matrix' },
       },
       {
-        heading: 'Scope is real, including on reads',
-        body:
-          'An employee holding leave "at own scope" gets their own leave ledger, not the company’s — the narrowing applies to reading as much as to writing. Where a read genuinely should reach everything, the matrix says so explicitly rather than relying on a rule you would have to know about.',
+        heading: 'Scope applies to reading too',
+        body: 'Leave "at own scope" shows your leave, not the company\u2019s.',
       },
       {
-        heading: 'A total needs a grant wide enough to produce it',
-        body:
-          'A headcount or a profit figure is a statement about records you may not be allowed to see one by one. Those need an all-scope grant, because a narrowed one cannot produce a total that means anything.',
+        heading: 'A total needs wide enough access',
+        body: 'Headcount and profit are statements about records you may not be able to open one by one, so they need company-wide access.',
       },
       {
-        heading: 'Navigation is a projection of your grants',
-        body:
-          'Screens you hold no grant on are absent from the sidebar rather than greyed out. If you cannot see the Ledger, it is not there — which is a clearer statement than a disabled link you can never enable.',
+        heading: 'The menu follows your access',
+        body: 'A screen you cannot use is absent rather than greyed out.',
       },
     ],
   },

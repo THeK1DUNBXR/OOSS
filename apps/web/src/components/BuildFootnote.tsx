@@ -42,6 +42,7 @@ interface VersionReport {
   } | null;
   seedBehindBy: number;
   expected: { navNodes: number };
+  grants: { pending: number; changed: number; revoked: number };
 }
 
 /** Baked in by Vite at build time. See `vite.config.ts`. */
@@ -72,6 +73,11 @@ export function BuildFootnote() {
     WEB.known && apiStamp?.known && WEB.sequence > 0 && apiStamp.sequence > 0 && WEB.sequence !== apiStamp.sequence;
   const seedStale = (data?.seedBehindBy ?? 0) > 0;
   const neverSeeded = Boolean(data) && !seed;
+  // Boot fills in resources nobody had a row for; changing or revoking an
+  // existing grant stays deliberate, so what is left here is waiting on
+  // somebody. A missing permission shows up as a button that is not there,
+  // which is the least diagnosable symptom in the product.
+  const grantsPending = data?.grants?.pending ?? 0;
 
   const parts = [
     `web ${WEB.known ? WEB.sequence || WEB.commit : '—'}`,
@@ -101,18 +107,23 @@ export function BuildFootnote() {
             already suspects it, and the point is the person who does not. */}
         {bundleStale && (
           <span className="text-band-critical">
-            — this page is build {WEB.sequence} and the server is {apiStamp!.sequence}. Reload with a hard refresh;
-            if it persists, the bundle being served is out of date.
+            — this page is build {WEB.sequence}, the server is {apiStamp!.sequence}. Reload.
           </span>
         )}
         {seedStale && (
           <span className="text-band-watch">
-            — seeded data is {data!.seedBehindBy} build{data!.seedBehindBy === 1 ? '' : 's'} behind. Permissions,
-            navigation and their wording come from the seed, so run it again if something there looks old.
+            — set-up data is {data!.seedBehindBy} build{data!.seedBehindBy === 1 ? '' : 's'} behind. Run{' '}
+            <span className="mono">pnpm db:seed</span>.
           </span>
         )}
         {neverSeeded && (
-          <span className="text-band-watch">— no seed has been recorded against this company.</span>
+          <span className="text-band-watch">— this company has never been set up. Run pnpm db:seed.</span>
+        )}
+        {grantsPending > 0 && (
+          <span className="text-band-watch">
+            — {grantsPending} permission change{grantsPending === 1 ? '' : 's'} waiting. Run{' '}
+            <span className="mono">pnpm grants:reconcile --apply</span>.
+          </span>
         )}
       </p>
     </footer>

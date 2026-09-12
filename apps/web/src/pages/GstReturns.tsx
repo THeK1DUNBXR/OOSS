@@ -120,7 +120,7 @@ export function GstReturns() {
     <div>
       <PageHeader
         title="GST returns"
-        subtitle="GSTR-1 and GSTR-3B, computed from the books rather than typed into a spreadsheet. Preparing one snapshots the figures; filing it records the portal's acknowledgement and closes the month."
+        subtitle="GSTR-1 and GSTR-3B, computed from the books."
         actions={
           <select className="input max-w-[10rem]" value={period} onChange={(e) => setPeriod(e.target.value)}>
             {recentPeriods().map((p) => (
@@ -179,8 +179,7 @@ export function GstReturns() {
             ))}
           </ul>
           <p className="mt-2 text-2xs text-band-critical/70">
-            A return can still be prepared with these on it — preparing is arithmetic. It cannot be recorded as filed,
-            because that closes the month, and a closed month on a return that never went through is the worst of both.
+            These can be prepared, but not filed.
           </p>
         </div>
       )}
@@ -225,7 +224,7 @@ export function GstReturns() {
         <Card>
           <EmptyState
             message="Nothing prepared yet."
-            hint="A prepared return is a snapshot of the figures as they stood. It is what makes a filed return re-readable after the books have moved on."
+            hint="A prepared return keeps the figures as they stood."
           />
         </Card>
       ) : (
@@ -286,8 +285,7 @@ export function GstReturns() {
       )}
 
       <p className="mt-3 text-2xs text-ink-600">
-        This platform prepares returns; it does not transmit them. The JSON is the offline utility's file, and marking a
-        return filed records the acknowledgement the portal gave back.
+        Returns are prepared here and filed on the portal.
       </p>
 
       <MarkFiled filing={filing} onClose={() => setFiling(null)} />
@@ -357,7 +355,7 @@ function Gstr1View({ data }: { data: any }) {
 
       <Card
         title="B2B — registered customers"
-        subtitle="Reported invoice by invoice with their GSTIN, because that is what lets them claim the tax back."
+        subtitle="Registered customers, invoice by invoice."
         bodyClassName="p-0 overflow-x-auto"
       >
         {data.b2b.length === 0 ? (
@@ -400,7 +398,7 @@ function Gstr1View({ data }: { data: any }) {
 
       <Card
         title="B2CL — large inter-state sales to unregistered customers"
-        subtitle="Above ₹2.5 lakh and across a state line: reported invoice by invoice, because the destination state's share of the IGST is settled from this."
+        subtitle="Above ₹2.5 lakh and across a state line, invoice by invoice."
         bodyClassName="p-0 overflow-x-auto"
       >
         {data.b2cl.length === 0 ? (
@@ -437,7 +435,7 @@ function Gstr1View({ data }: { data: any }) {
 
       <Card
         title="B2CS — unregistered customers"
-        subtitle="A rate-wise total rather than a list of invoices. An invoice carrying two rates lands in two rows."
+        subtitle="Unregistered customers, totalled by rate."
         bodyClassName="p-0 overflow-x-auto"
       >
         {data.b2cs.length === 0 ? (
@@ -472,7 +470,7 @@ function Gstr1View({ data }: { data: any }) {
 
       <Card
         title="HSN / SAC summary"
-        subtitle="What was supplied, regardless of to whom. The portal requires a code on every line."
+        subtitle="What was supplied, by HSN or SAC code."
         bodyClassName="p-0 overflow-x-auto"
       >
         {data.hsn.length === 0 ? (
@@ -513,7 +511,7 @@ function Gstr1View({ data }: { data: any }) {
 
       <Card
         title="Document summary"
-        subtitle="The number range issued and how many of them were cancelled. A gap in an invoice series that the return does not explain is what an audit asks about."
+        subtitle="The numbers issued, and how many were cancelled."
       >
         <dl className="grid grid-cols-2 gap-x-6 sm:grid-cols-5">
           <Field label="From">{data.documentSummary.from ?? '—'}</Field>
@@ -525,7 +523,7 @@ function Gstr1View({ data }: { data: any }) {
       </Card>
 
       {data.creditNotes.length > 0 && (
-        <Card title="Credit notes" subtitle="Raised this month, reducing what was supplied. Their own table, never a negative invoice.">
+        <Card title="Credit notes" subtitle="Credit and debit notes raised this month.">
           <table className="table">
             <thead>
               <tr>
@@ -580,7 +578,7 @@ function Gstr3bView({ data }: { data: any }) {
 
       <Card
         title="3.1(a) — outward taxable supplies"
-        subtitle="From the same invoices GSTR-1 reports, so the two agree by construction. A discrepancy between them is exactly what a notice asks about."
+        subtitle="From the same invoices as GSTR-1, so the two agree."
       >
         <dl className="grid grid-cols-2 gap-x-6 sm:grid-cols-4">
           <Field label="Taxable value">{rupees(data.outwardSupplies.taxableValue)}</Field>
@@ -595,7 +593,7 @@ function Gstr3bView({ data }: { data: any }) {
 
       <Card
         title="4(A) — input tax credit available"
-        subtitle="From supplier bills in the period, split across the heads the way the supply was: a bill from within the state carried CGST and SGST, and claiming it as IGST credit would be wrong in a way the set-off then compounds."
+        subtitle="Input tax from supplier bills this period."
       >
         <dl className="grid grid-cols-2 gap-x-6 sm:grid-cols-4">
           <Field label="IGST">{rupees(data.inputTaxCredit.igst)}</Field>
@@ -607,15 +605,14 @@ function Gstr3bView({ data }: { data: any }) {
         </dl>
         {data.inputTaxCredit.notClaimable > 0 && (
           <p className="mt-2 text-2xs text-ink-500">
-            Tax on bills from suppliers with no GSTIN on file. It was paid and it cannot be claimed — adding their
-            registrations, where they have one, moves it into the credit above.
+            Suppliers with no GSTIN on file. This tax cannot be claimed.
           </p>
         )}
       </Card>
 
       <Card
         title="3.2 — inter-state supplies to unregistered persons"
-        subtitle="Of the supplies above, where they went. The destination state's share of the IGST is settled from this table, so a supply missing from it is money that never reaches the state it was collected for."
+        subtitle="Where the supplies above went."
         bodyClassName="p-0 overflow-x-auto"
       >
         {data.interStateToUnregistered.length === 0 ? (
@@ -646,7 +643,7 @@ function Gstr3bView({ data }: { data: any }) {
 
       <Card
         title="3.1(b)–(e) — everything else supplied"
-        subtitle="Reported as zero and reported nonetheless: the portal asks for every row, and a company that starts exporting needs the row to exist before it has a figure in it."
+        subtitle="Nil, exempt and non-GST supplies."
       >
         <dl className="grid grid-cols-2 gap-x-6 sm:grid-cols-4">
           <Field label="Zero rated">{rupees(data.otherOutwardSupplies.zeroRated.taxableValue)}</Field>
@@ -659,7 +656,7 @@ function Gstr3bView({ data }: { data: any }) {
 
       <Card
         title="6.1 — payment of tax"
-        subtitle="Credit is set off head by head in the statutory order: IGST credit against IGST first and only then against CGST and SGST; CGST credit against CGST alone. Netting the totals instead produces a figure that is too small whenever the mix differs, and the shortfall arrives as interest."
+        subtitle="Credit is set off head by head, in the statutory order."
         bodyClassName="p-0 overflow-x-auto"
       >
         <table className="table">
@@ -743,7 +740,7 @@ export function CompanyDetails() {
     <div>
       <PageHeader
         title="Company details"
-        subtitle="Who the company is, on paper. An invoice without the supplier's legal name, address and GSTIN is not a tax invoice, and a return is filed under a registration — so these are not settings, they are part of every document the company issues."
+        subtitle="Who the company is on paper. Every document carries it."
         actions={
           <button className="btn-primary" onClick={() => save.mutate()} disabled={save.isPending}>
             {save.isPending ? 'Saving…' : 'Save'}
@@ -805,7 +802,7 @@ export function CompanyDetails() {
 
         <Card
           title="How customers pay"
-          subtitle="Printed in the invoice footer, on purpose: an invoice a customer cannot pay from is half a document."
+          subtitle="Printed in the invoice footer."
         >
           <div className="flex flex-col gap-3">
             <TextInput label="Bank" value={value('bankName')} onChange={set('bankName')} />
@@ -817,7 +814,7 @@ export function CompanyDetails() {
           </div>
         </Card>
 
-        <Card title="Invoice wording" subtitle="The terms and the footnote every invoice carries, and the default credit period.">
+        <Card title="Invoice wording" subtitle="Terms, footnote, and the default credit period.">
           <div className="flex flex-col gap-3">
             <TextArea label="Terms" value={value('invoiceTerms')} onChange={set('invoiceTerms')} rows={3} />
             <TextArea label="Footnote" value={value('invoiceNotes')} onChange={set('invoiceNotes')} rows={2} />
@@ -832,8 +829,7 @@ export function CompanyDetails() {
       </div>
 
       <p className="mt-4 text-2xs text-ink-600">
-        Changing these does not restate an invoice already issued: an invoice carries its own copy of the tax it was
-        raised under, so reprinting an old one shows what the customer was actually charged.
+        An invoice already issued keeps the tax it was raised under.
       </p>
     </div>
   );
@@ -877,7 +873,7 @@ function DocumentSeries({ profile }: { profile: any }) {
     <Card
       className="mb-4"
       title="Document numbering"
-      subtitle="Every document a customer is handed is numbered in the company's own series, per financial year: the short code, the series letter, the year, and a sequence that restarts each April."
+      subtitle="KIPL/I/26-27/001 — code, series, financial year, number."
     >
       {failure && <p className="mb-3 text-xs text-band-critical">{failure}</p>}
 
@@ -963,8 +959,7 @@ function SeriesStart({ series, onClose }: { series: any; onClose: () => void }) 
       </p>
       <TextInput label="Next number" type="number" required value={next} onChange={setNext} />
       <p className="text-2xs text-ink-500">
-        For a company that has already issued some of this year's documents by hand: without this, the platform starts
-        again at 001 and puts two documents into the world with one number. A series only moves forwards.
+        Set this if you have already issued documents by hand this year. It only moves forward.
       </p>
     </CreateModal>
   );

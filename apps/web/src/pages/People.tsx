@@ -88,7 +88,7 @@ export function People() {
       <NewContact open={creating} onClose={() => setCreating(false)} />
       <PageHeader
         title="Contacts"
-        subtitle="One record per person, kept for good. Someone can be a student, then an employee, then a client contact — that is three roles for one person, not three people."
+        subtitle="One record per person. Roles change; the person does not."
         actions={<NewButton label="Add a contact" onClick={() => setCreating(true)} />}
       />
 
@@ -175,7 +175,7 @@ export function People() {
                       <td>
                         <div className="flex flex-wrap gap-1">
                           {p.affiliations.length === 0 && (
-                            <span className="text-2xs text-ink-600" title="On file with no stated relationship to us. Not an error — somebody has to be added before they are anything.">
+                            <span className="text-2xs text-ink-600" title="On file, with no stated relationship to us yet.">
                               nothing stated
                             </span>
                           )}
@@ -227,7 +227,7 @@ function MergeQueue({ candidates }: { candidates: any[] }) {
       <Card>
         <EmptyState
           message="No open merge candidates."
-          hint="The queue shows zero items only when zero are actually open — it is drained by human action, never auto-expired."
+          hint="Nothing waiting."
         />
       </Card>
     );
@@ -268,7 +268,7 @@ function MergeQueue({ candidates }: { candidates: any[] }) {
                     </div>
                     {c.candidate?.statutoryRetentionFloor && (
                       <p className="mt-1.5 text-2xs text-band-critical">
-                        Holds an affiliation with a statutory retention floor — this never auto-merges, regardless of confidence.
+                        Never merged automatically, whatever the confidence.
                       </p>
                     )}
                   </div>
@@ -287,7 +287,7 @@ function MergeQueue({ candidates }: { candidates: any[] }) {
                   className="btn-primary"
                   disabled={!can('people:merge') || resolve.isPending}
                   onClick={() => resolve.mutate({ id: c.id, disposition: 'confirm' })}
-                  title={can('people:merge') ? undefined : 'Confirming a merge requires the people:merge grant, held independently of people:edit.'}
+                  title={can('people:merge') ? undefined : 'You are not allowed to merge people.'}
                 >
                   Same person
                 </button>
@@ -327,9 +327,9 @@ export function PersonDetail() {
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
-          <Card title="Affiliations" subtitle="How this person is connected to Kaizen today. What they can see and do comes from these roles, not from the person record itself.">
+          <Card title="Affiliations" subtitle="How they are connected to us today.">
             {p.affiliations.length === 0 ? (
-              <EmptyState message="No affiliation recorded." />
+              <EmptyState message="No roles recorded." />
             ) : (
               <div className="space-y-2">
                 {p.affiliations.map((a: any) => (
@@ -440,7 +440,7 @@ export function Interactions() {
       <PageHeader
         actions={<NewButton label="Log a call" onClick={() => setCreating(true)} />}
         title="Calls & meetings"
-        subtitle="One write, many timelines. Sensitivity is computed as the maximum classification across every reference and re-evaluated at every read — never set by the logging user."
+        subtitle="Calls, meetings and notes, on every record they touch."
       />
 
       {isLoading ? (

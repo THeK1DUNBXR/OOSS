@@ -119,7 +119,7 @@ export function Students() {
     <div>
       <PageHeader
         title="Customers"
-        subtitle="The students who take our courses — one record per learner, with their registration number, where they came from, who is paying and what they are on. Colleges are under Institutions; the businesses that sponsor or hire are under Organisations."
+        subtitle="The learners who take our courses."
         actions={
           can('students:C') && (
             <button className="btn-primary" onClick={() => setCreateOpen(true)}>
@@ -168,7 +168,7 @@ export function Students() {
             hint={
               q
                 ? undefined
-                : 'Add the learners you are teaching. A student can then be enrolled on a course and invoiced in their own name, without inventing a company for them.'
+                : 'Add a student to enrol them on a course and invoice them by name.'
             }
           />
         </Card>
@@ -252,21 +252,21 @@ export function StudentDetail() {
         <div className="space-y-5 lg:col-span-2">
           <Card
             title="Courses"
-            subtitle="Every place they have held on a course. The day-by-day record — attendance, progress, queries — is on the enrolment itself."
+            subtitle="Every course they have held a place on."
             bodyClassName="p-0"
           >
             {enrolments.error ? (
               <div className="p-4">
                 <EmptyState
                   message="Their courses are not visible to you."
-                  hint="Reading the class register needs a grant on education. Raising an invoice does not, which is why you can see the rest of this page."
+                  hint="Seeing the class register needs a grant on education."
                 />
               </div>
             ) : !enrolments.data?.length ? (
               <div className="p-4">
                 <EmptyState
                   message="Not enrolled on anything yet."
-                  hint="Enrol them from Courses, then their attendance and progress appear against that place."
+                  hint="Enrol them from Courses."
                 />
               </div>
             ) : (
@@ -313,8 +313,8 @@ export function StudentDetail() {
             title="Who pays for their place"
             subtitle={
               data.billable
-                ? 'They do, so invoices are addressed to them. The state decides how the tax splits and is entered once here.'
-                : 'Somebody else does, so no invoice is addressed to them — the fee is billed to whoever is paying, naming the learners it covers.'
+                ? 'Invoices go to them. The state entered here decides how the tax splits.'
+                : 'Somebody else pays, so the invoice goes to them and names the learners it covers.'
             }
           >
             <dl>
