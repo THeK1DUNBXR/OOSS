@@ -17,6 +17,7 @@
  */
 
 import { EVENTS, isValidGstin, stateCodeOf, stateNameFor } from '@kaizen/shared';
+import { prefixFrom, type YearFormat } from '../platform/documentNumber.js';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
@@ -47,6 +48,8 @@ export interface CompanyProfileInput {
   invoiceTerms?: string | null;
   invoiceNotes?: string | null;
   defaultDueDays?: number;
+  documentPrefix?: string | null;
+  documentYearFormat?: YearFormat;
 }
 
 /**
@@ -116,6 +119,10 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
       ...(input.invoiceTerms !== undefined ? { invoiceTerms: input.invoiceTerms } : {}),
       ...(input.invoiceNotes !== undefined ? { invoiceNotes: input.invoiceNotes } : {}),
       ...(input.defaultDueDays !== undefined ? { defaultDueDays: input.defaultDueDays } : {}),
+      ...(input.documentPrefix !== undefined
+        ? { documentPrefix: input.documentPrefix?.trim().toUpperCase() || null }
+        : {}),
+      ...(input.documentYearFormat !== undefined ? { documentYearFormat: input.documentYearFormat } : {}),
     },
   });
 
@@ -138,6 +145,31 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
   });
 
   return updated;
+}
+
+/**
+ * The short code every customer-facing document number begins with.
+ *
+ * One function, because an invoice numbered `KIPL/I/…` and a receipt numbered
+ * `KI/R/…` would be two companies as far as a customer is concerned.
+ */
+export async function documentPrefix(): Promise<string> {
+  return prefixFrom(await companyProfile());
+}
+
+/**
+ * Everything a document number is built from, in one read.
+ *
+ * Two values that have to agree — the prefix and how the year is written — and
+ * fetching them separately is how an invoice and the receipt against it come to
+ * disagree about which year it is.
+ */
+export async function documentNumbering(): Promise<{ prefix: string; yearFormat: YearFormat }> {
+  const profile = await companyProfile();
+  return {
+    prefix: prefixFrom(profile),
+    yearFormat: (profile.documentYearFormat as YearFormat) ?? 'short',
+  };
 }
 
 /**

@@ -44,6 +44,19 @@ import { seedDemoBooks } from './demoBooks.js';
 const PASSWORD = 'kaizen2026';
 
 /**
+ * The demo company's own document numbering, written out rather than generated.
+ *
+ * The fixture writes rows straight to the database, so it cannot call the
+ * allocator without taking numbers the product would then skip. These match what
+ * the allocator produces — `KIPL/I/26-27/001` — so a demo tenant's documents and
+ * the ones raised afterwards read as one series.
+ */
+const DOC_PREFIX = 'KIPL';
+const DOC_YEAR = '26-27';
+const docNumber = (series: 'I' | 'R' | 'F', n: number) =>
+  `${DOC_PREFIX}/${series}/${DOC_YEAR}/${String(n).padStart(3, '0')}`;
+
+/**
  * The demo company's own registration.
  *
  * A real GSTIN shape with a check digit that agrees with the rest of it, because
@@ -875,7 +888,7 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
     const invoice = await prisma.invoice.create({
       data: {
         tenantId,
-        recordCode: await nextRecordCode('INV'),
+        recordCode: docNumber('I', i + 1),
         organizationId: org.id,
         contractId: contract.id,
         opportunityId: opp.id,
@@ -934,7 +947,7 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
       await prisma.receipt.create({
         data: {
           tenantId,
-          recordCode: await nextRecordCode('REC'),
+          recordCode: docNumber('R', i + 1),
           paymentId: payment.id,
           invoiceId: invoice.id,
           allocatedAmount: collected,
@@ -1407,6 +1420,10 @@ async function seedCompanyProfile() {
       bankIfsc: 'SBIN0001234',
       bankBranch: 'Tambaram, Chennai',
       upiId: 'kaizeninfinities@sbi',
+      documentPrefix: 'KIPL',
+      // `KIPL/I/26-27/001` is exactly the sixteen characters the portal accepts;
+      // the full year would make it eighteen and GSTR-1 would reject it.
+      documentYearFormat: 'short',
       invoiceTerms:
         'Payable within the stated credit period. Interest at 18% per annum on amounts outstanding beyond the due date.',
       invoiceNotes: 'This is a computer-generated invoice. Subject to Chennai jurisdiction.',
@@ -1443,6 +1460,8 @@ async function seedStudentBillingAndTimelines() {
 
   let invoices = 0;
   let logs = 0;
+  // The commercial invoices above took receipts 001–002.
+  let receiptCounter = 2;
 
   for (const [index, enrollment] of enrollments.entries()) {
     const course = enrollment.cohort.course;
@@ -1467,7 +1486,8 @@ async function seedStudentBillingAndTimelines() {
     const invoice = await prisma.invoice.create({
       data: {
         tenantId,
-        recordCode: await nextRecordCode('INV'),
+        // Continuing the same series the commercial invoices above started.
+        recordCode: docNumber('I', 4 + index),
         personId: enrollment.personId,
         status: 'issued',
         currency: 'INR',
@@ -1542,7 +1562,8 @@ async function seedStudentBillingAndTimelines() {
       });
       received = round2(received + instalment.amount);
       const balanceAfter = round2(Math.max(gst.grandTotal - received, 0));
-      const receiptCode = await nextRecordCode('REC');
+      receiptCounter += 1;
+      const receiptCode = docNumber('R', receiptCounter);
       await prisma.receipt.create({
         data: {
           tenantId,
@@ -1583,7 +1604,7 @@ async function seedStudentBillingAndTimelines() {
       await prisma.finalInvoice.create({
         data: {
           tenantId,
-          recordCode: await nextRecordCode('FNL'),
+          recordCode: docNumber('F', 1),
           invoiceId: invoice.id,
           issuedAt: new Date(issuedAt.getTime() + 15 * 86_400_000),
           totalPayable: gst.grandTotal,
@@ -1688,6 +1709,31 @@ async function seedStudentBillingAndTimelines() {
   console.log(
     `  ${invoices} student fee invoices (one part paid across two receipts, with a final invoice), ${logs} timeline entries, attendance and weekly scores`,
   );
+}
+
+/**
+ * Moves each document series past what the fixture wrote by hand.
+ *
+ * The allocator is the only thing that may hand out a number in the product, and
+ * it counts from its own row. A fixture that writes `KIPL/I/26-27/007` without
+ * telling it would have the next real invoice come out as 001 — two documents,
+ * one number, which is the whole thing the series exists to prevent.
+ */
+async function advanceDocumentSeries() {
+  const tenantId = (await currentTenant()).id;
+  const counts: Array<[string, number]> = [
+    ['DOC:I', await prisma.invoice.count({ where: { tenantId, recordCode: { not: null } } })],
+    ['DOC:R', await prisma.receipt.count({ where: { tenantId } })],
+    ['DOC:F', await prisma.finalInvoice.count({ where: { tenantId } })],
+  ];
+
+  for (const [entityType, used] of counts) {
+    await prisma.recordSequence.upsert({
+      where: { tenantId_entityType_year: { tenantId, entityType, year: 2026 } },
+      create: { tenantId, entityType, year: 2026, nextSequence: used + 1 },
+      update: { nextSequence: used + 1 },
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1838,6 +1884,10 @@ export async function seedDemoDataset(): Promise<string> {
     await seedCompanyProfile();
     await seedEducation(people, orgs);
     await seedStudentBillingAndTimelines();
+    // The fixture writes document numbers directly, so the allocator has to be
+    // told where they got to. Without this the first invoice raised in the
+    // product would take a number a demo invoice already holds.
+    await advanceDocumentSeries();
     await seedDemoHr(people);
     await seedDemoBooks();
     await seedDecisions(people);

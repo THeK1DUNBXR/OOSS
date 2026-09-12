@@ -114,6 +114,29 @@ model CompanyProfile {
   invoiceNotes   String?
   defaultDueDays Int     @default(30)
 
+  /// The company's own short code, which every customer-facing document number
+  /// begins with: `KIPL/I/2026-27/001`.
+  ///
+  /// Defaulted from the initials of the legal name on first use, because that is
+  /// what a company's own numbering almost always is, and editable because
+  /// sometimes it is not. The letter in the middle says which series — `I` for a
+  /// tax invoice, `R` for a receipt, `F` for a final invoice — and the year is
+  /// the financial year, which is when each series restarts.
+  documentPrefix String?
+
+  /// How the financial year is written in a document number: `short` gives
+  /// `26-27`, `full` gives `2026-27`.
+  ///
+  /// It exists because of a hard limit somebody has to be told about. The portal
+  /// accepts a tax invoice number of at most sixteen characters, and
+  /// `KIPL/I/2026-27/001` is eighteen — a number that reads perfectly on paper
+  /// and is rejected by GSTR-1. `KIPL/I/26-27/001` is exactly sixteen, which is
+  /// why `short` is the default: a default that cannot be filed is not a
+  /// default. `full` stays available for a company with a shorter prefix, or one
+  /// that would rather match its existing paper series and accept the
+  /// consequence — which the returns screen states rather than discovers.
+  documentYearFormat String @default("short")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1717,9 +1740,28 @@ model Note {
 // ===========================================================================
 
 model Invoice {
-  id         String @id @default(cuid())
-  tenantId   String
-  recordCode String
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// The tax invoice number, allocated when the invoice is issued and not before.
+  ///
+  /// A tax invoice series has to be consecutive: the return reports the range
+  /// issued and the count cancelled within it, and a number that was allocated
+  /// to a draft somebody abandoned is a gap nothing explains. So a draft carries
+  /// none, and gets one at the moment it becomes a document.
+  ///
+  /// This is the one record code in the platform that is not allocated at
+  /// creation, and the reason is that a draft is not the record the code names.
+  /// Everything else about it holds: generator-assigned, never caller-supplied,
+  /// immutable once set.
+  recordCode String?
+
+  /// What to call a draft.
+  ///
+  /// From its own series, so it is obvious on sight that `DRF-2026-00004` is not
+  /// an invoice number and cannot be quoted to a customer as one. Kept after the
+  /// invoice is issued, so "which draft became INV-2026-00019" stays answerable.
+  draftReference String?
 
   accountId      String?
   organizationId String?
@@ -1802,6 +1844,7 @@ model Invoice {
   finalInvoices  FinalInvoice[]
 
   @@unique([tenantId, recordCode])
+  @@unique([tenantId, draftReference])
   @@index([tenantId, status, dueDate])
   @@index([tenantId, accountId])
   @@index([tenantId, personId])
@@ -1823,6 +1866,17 @@ model InvoiceLine {
   /// facts about the course, so an employee raising the invoice picks the
   /// course and does not have to know any of them.
   courseId      String?
+  /// The student's place on that course.
+  ///
+  /// The line already names the course and the invoice already names the
+  /// person; this is the two of them together, which is the thing actually
+  /// being billed. Without it, a student on two courses has two enrolments and
+  /// two fee invoices that can only be matched up by reading the descriptions —
+  /// and "has this enrolment been paid for" has no answer at all.
+  ///
+  /// Checked on the way in: the enrolment has to belong to the person the
+  /// invoice is addressed to, and to the course the line names.
+  enrollmentId  String?
   description   String
   quantity      Int     @default(1)
   /// The price of one of whatever this line is.
@@ -1848,6 +1902,8 @@ model InvoiceLine {
   createdAt DateTime @default(now())
 
   @@index([tenantId, invoiceId])
+  @@index([tenantId, enrollmentId])
+  @@index([tenantId, courseId])
   @@map("invoice_lines")
 }
 

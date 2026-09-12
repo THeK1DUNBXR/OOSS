@@ -148,8 +148,24 @@ export function StudentTimeline() {
       )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Metric label="Attendance" value={`${e.attendancePct}%`} tone={e.atRisk ? 'bad' : 'good'} sub={`${data.counts.present} of ${data.counts.sessions} sessions`} />
-        <Metric label="Progress" value={`${e.progressPct}%`} sub="mean of the scores recorded" />
+        {/* A percentage with no sessions behind it is a number that reads as a
+            measurement and is not one — the same reason a health score reads
+            "not yet measured" rather than zero. */}
+        <Metric
+          label="Attendance"
+          value={data.counts.sessions === 0 ? '—' : `${e.attendancePct}%`}
+          tone={data.counts.sessions === 0 ? undefined : e.atRisk ? 'bad' : 'good'}
+          sub={
+            data.counts.sessions === 0
+              ? 'no sessions recorded yet'
+              : `${data.counts.present} of ${data.counts.sessions} sessions`
+          }
+        />
+        <Metric
+          label="Progress"
+          value={data.days.some((d) => d.entries.some((x) => x.kind === 'progress')) ? `${e.progressPct}%` : '—'}
+          sub="mean of the scores recorded"
+        />
         <Metric
           label="Open queries"
           value={data.counts.openQueries}
@@ -319,9 +335,12 @@ export function StudentTimeline() {
 
       {logging && <LogEntry enrollmentId={id!} kind={logging} onClose={() => setLogging(null)} />}
       {scoring && <RecordProgress enrollmentId={id!} onClose={() => setScoring(false)} />}
+      {/* The enrolment travels with it, so the fee is tied to this student's place
+          on this course rather than to a description that happens to name it. */}
       <InvoiceEditor
         open={billing}
         personId={data.student?.id ?? null}
+        enrollmentId={e.id}
         onClose={() => setBilling(false)}
       />
     </div>

@@ -125,7 +125,19 @@ export function Invoices() {
           {shown.map((inv) => (
             <Card
               key={inv.id}
-              title={<RecordCode code={inv.recordCode} />}
+              title={
+                <span className="flex items-baseline gap-2">
+                  <RecordCode code={inv.label} />
+                  {!inv.recordCode && (
+                    <span
+                      className="chip border-ink-700 text-ink-500"
+                      title="A draft takes no invoice number: the tax series has to stay consecutive, so the number is allocated when it is issued."
+                    >
+                      no number yet
+                    </span>
+                  )}
+                </span>
+              }
               subtitle={
                 <span>
                   {inv.customerName ?? '—'}

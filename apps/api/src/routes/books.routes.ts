@@ -41,10 +41,12 @@ import {
   markReturnFiled,
   listFilings,
   filingDetail,
+  filingBlockers,
   periodStatus,
   exportFilingJson,
 } from '../domains/gstReturns.js';
-import { companyProfile, updateCompanyProfile } from '../domains/companyProfile.js';
+import { companyProfile, documentNumbering, updateCompanyProfile } from '../domains/companyProfile.js';
+import { DOCUMENT_SERIES, peekNextNumbers, setNextNumber, type DocumentSeries } from '../platform/documentNumber.js';
 
 const router = Router();
 
@@ -362,6 +364,15 @@ router.get(
 
 router.get('/gst/filings/:id', handler(async (req) => filingDetail(req.params.id)));
 
+/**
+ * What stands between this prepared return and a filed one.
+ *
+ * Read from the snapshot, so it answers for the return as prepared rather than
+ * for the books as they stand now — which is the only reading that means
+ * anything to somebody about to file.
+ */
+router.get('/gst/filings/:id/blockers', handler(async (req) => filingBlockers(req.params.id)));
+
 /** The return in the offline utility's shape, for upload to the portal. */
 router.get('/gst/filings/:id/export', handler(async (req) => exportFilingJson(req.params.id)));
 
@@ -418,6 +429,39 @@ router.get(
   }),
 );
 
+/**
+ * Where each document series stands.
+ *
+ * A company adopting this platform mid-year has already issued fifteen receipts
+ * by hand, and starting again at 001 would put two documents into the world with
+ * one number. So the next number in each series is visible, and settable
+ * forwards.
+ */
+router.get(
+  '/company-profile/series',
+  handler(async () => {
+    await assertCan({ resource: 'company_profile', verb: 'view' });
+    const { prefix, yearFormat } = await documentNumbering();
+    return peekNextNumbers(prefix, new Date(), yearFormat);
+  }),
+);
+
+router.post(
+  '/company-profile/series',
+  handler(async (req) => {
+    await assertCan({ resource: 'company_profile', verb: 'edit' });
+    const body = z
+      .object({
+        series: z.enum(Object.values(DOCUMENT_SERIES) as [DocumentSeries, ...DocumentSeries[]]),
+        nextNumber: z.number().int().positive(),
+      })
+      .parse(req.body);
+    await setNextNumber(body.series, body.nextNumber);
+    const { prefix, yearFormat } = await documentNumbering();
+    return peekNextNumbers(prefix, new Date(), yearFormat);
+  }),
+);
+
 router.patch(
   '/company-profile',
   handler(async (req) => {
@@ -445,6 +489,8 @@ router.patch(
         invoiceTerms: z.string().nullish(),
         invoiceNotes: z.string().nullish(),
         defaultDueDays: z.number().int().positive().max(365).optional(),
+        documentPrefix: z.string().max(8).nullish(),
+        documentYearFormat: z.enum(['short', 'full']).optional(),
       })
       .parse(req.body);
     return updateCompanyProfile(body);

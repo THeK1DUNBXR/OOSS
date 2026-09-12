@@ -32,8 +32,9 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan, visibilityWhere } from '../platform/permissions.js';
-import { loadInvoiceForRead, totalsOf } from './invoicing.js';
-import { companyProfile } from './companyProfile.js';
+import { invoiceLabel, loadInvoiceForRead, totalsOf } from './invoicing.js';
+import { companyProfile, documentNumbering } from './companyProfile.js';
+import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
 
 // ---------------------------------------------------------------------------
 // Receipts
@@ -59,7 +60,9 @@ export async function listReceipts(filter: { invoiceId?: string; limit?: number 
     },
     include: {
       payment: true,
-      invoice: { select: { id: true, recordCode: true, organizationId: true, personId: true, currency: true } },
+      invoice: {
+        select: { id: true, recordCode: true, draftReference: true, organizationId: true, personId: true, currency: true },
+      },
     },
     orderBy: { allocatedAt: 'desc' },
     take: filter.limit ?? 200,
@@ -84,7 +87,7 @@ export async function listReceipts(filter: { invoiceId?: string; limit?: number 
     /** The time the receipt was issued, which is the fact a receipt exists to fix. */
     issuedAt: r.allocatedAt.toISOString(),
     invoiceId: r.invoiceId,
-    invoiceCode: r.invoice?.recordCode ?? null,
+    invoiceCode: r.invoice ? invoiceLabel(r.invoice) : null,
     feeInstalmentId: r.feeInstalmentId,
     customerName: nameOf.get(r.invoice?.organizationId ?? r.invoice?.personId ?? '') ?? null,
     amount: num(r.allocatedAmount) ?? 0,
@@ -169,7 +172,7 @@ export async function receiptDocument(receiptId: string) {
     /** The invoice number this receipt is against, which is what ties the two. */
     invoice: {
       id: invoice.id,
-      recordCode: invoice.recordCode,
+      recordCode: invoiceLabel(invoice),
       issuedDate: invoice.issuedDate?.toISOString() ?? null,
       dueDate: invoice.dueDate?.toISOString() ?? null,
       status: invoice.status,
@@ -231,7 +234,11 @@ export async function receiptDocument(receiptId: string) {
       isThisOne: r.id === receipt.id,
     })),
 
-    footnote: profile.invoiceNotes,
+    // Deliberately not the invoice footnote. A company's is usually worded for
+    // an invoice — "this is a computer-generated invoice" — and printing it at
+    // the bottom of a receipt says the wrong thing about the document somebody
+    // is holding.
+    footnote: null as string | null,
   };
 }
 
@@ -262,11 +269,11 @@ export async function raiseFinalInvoice(invoiceId: string, input: { note?: strin
   const invoice = await loadInvoiceForRead(invoiceId);
   if (invoice.status === 'draft') {
     throw ApiError.unprocessable(
-      `${invoice.recordCode} is still a draft, so there is nothing to finalise. Issue it, take the instalments, and raise this when they are done.`,
+      `${invoiceLabel(invoice)} is still a draft, so there is nothing to finalise — it does not have an invoice number yet. Issue it, take the instalments, and raise this when they are done.`,
     );
   }
   if (invoice.status === 'void') {
-    throw ApiError.unprocessable(`${invoice.recordCode} is void.`);
+    throw ApiError.unprocessable(`${invoiceLabel(invoice)} is void.`);
   }
 
   const receipts = await prisma.receipt.findMany({
@@ -276,7 +283,7 @@ export async function raiseFinalInvoice(invoiceId: string, input: { note?: strin
   });
   if (receipts.length === 0) {
     throw ApiError.unprocessable(
-      `Nothing has been received against ${invoice.recordCode}, so there are no receipts to consolidate. The tax invoice is already the only document there is.`,
+      `Nothing has been received against ${invoiceLabel(invoice)}, so there are no receipts to consolidate. The tax invoice is already the only document there is.`,
     );
   }
 
@@ -303,7 +310,13 @@ export async function raiseFinalInvoice(invoiceId: string, input: { note?: strin
     where: { tenantId: auth.tenantId, invoiceId, status: 'issued' },
   });
 
-  const recordCode = await nextRecordCode('FNL');
+  const numbering = await documentNumbering();
+  const recordCode = await nextDocumentNumber(
+    DOCUMENT_SERIES.finalInvoice,
+    numbering.prefix,
+    new Date(),
+    numbering.yearFormat,
+  );
   const final = await prisma.finalInvoice.create({
     data: {
       tenantId: auth.tenantId,
@@ -339,7 +352,7 @@ export async function raiseFinalInvoice(invoiceId: string, input: { note?: strin
     action: 'create',
     subjectType: 'final_invoice',
     subjectId: final.id,
-    after: { recordCode, against: invoice.recordCode, totalReceived, balance, receipts: rows.length },
+    after: { recordCode, against: invoiceLabel(invoice), totalReceived, balance, receipts: rows.length },
   });
   await emit({
     name: EVENTS.FINAL_INVOICE_RAISED,
@@ -372,7 +385,7 @@ export async function listFinalInvoices(filter: { invoiceId?: string; limit?: nu
       // about one: whoever may read the invoice may read its statements.
       invoice: scope,
     },
-    include: { invoice: { select: { recordCode: true, currency: true } } },
+    include: { invoice: { select: { recordCode: true, draftReference: true, currency: true } } },
     orderBy: { issuedAt: 'desc' },
     take: filter.limit ?? 100,
   });
@@ -381,7 +394,7 @@ export async function listFinalInvoices(filter: { invoiceId?: string; limit?: nu
     id: f.id,
     recordCode: f.recordCode,
     invoiceId: f.invoiceId,
-    invoiceCode: f.invoice.recordCode,
+    invoiceCode: f.invoice.recordCode ?? f.invoice.draftReference ?? f.invoiceId,
     currency: f.invoice.currency,
     issuedAt: f.issuedAt.toISOString(),
     totalPayable: num(f.totalPayable) ?? 0,
@@ -486,7 +499,7 @@ export async function finalInvoiceDocument(finalInvoiceId: string) {
     /** The tax invoice this finalises, named by number as a customer would. */
     invoice: {
       id: invoice.id,
-      recordCode: invoice.recordCode,
+      recordCode: invoiceLabel(invoice),
       issuedDate: invoice.issuedDate?.toISOString() ?? null,
       dueDate: invoice.dueDate?.toISOString() ?? null,
       placeOfSupply: invoice.placeOfSupply,

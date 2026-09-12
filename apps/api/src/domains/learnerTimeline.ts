@@ -486,7 +486,7 @@ export async function learnerTimeline(
     days: groupByDay(entries),
     invoices: invoices.map((inv) => ({
       id: inv.id,
-      recordCode: inv.recordCode,
+      recordCode: inv.recordCode ?? inv.draftReference ?? inv.id,
       status: inv.status,
       issuedDate: inv.issuedDate?.toISOString() ?? null,
       payable: num(inv.grandTotal) || inv.lines.reduce((s, l) => s + (num(l.amount) ?? 0), 0),

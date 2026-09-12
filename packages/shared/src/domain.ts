@@ -484,6 +484,10 @@ export const RECORD_TYPE_CODES = [
   // The final invoice raised once the instalments against a tax invoice are
   // done: its own number, because a customer refers to it by one.
   'FNL',
+  // A draft invoice, before it has an invoice number. Its own series so that a
+  // draft reference can never be mistaken for a tax invoice number — the tax
+  // series has to stay consecutive, which means a draft cannot take one.
+  'DRF',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

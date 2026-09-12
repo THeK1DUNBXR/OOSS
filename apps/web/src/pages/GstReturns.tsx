@@ -106,7 +106,10 @@ export function GstReturns() {
 
   const current = tab === 'GSTR1' ? gstr1 : gstr3b;
   const computed = current.data;
-  const warnings: string[] = computed?.warnings ?? [];
+  const checks: Array<{ severity: string; code: string; message: string; invoices?: string[] }> =
+    computed?.checks ?? [];
+  const blocking = checks.filter((c) => c.severity === 'blocking');
+  const advisories = checks.filter((c) => c.severity !== 'blocking');
   const preparedForPeriod = (filings.data ?? []).filter(
     (f) => f.period === period && f.returnType === tab && f.status === 'prepared',
   );
@@ -154,15 +157,41 @@ export function GstReturns() {
         onChange={setTab}
       />
 
-      {warnings.length > 0 && (
+      {/* Above the figures on purpose. A line with no HSN is accepted by the
+          books and rejected by the portal, and the filing deadline is the worst
+          possible moment to find that out. */}
+      {blocking.length > 0 && (
         <div className="mb-4 rounded-lg border border-band-critical/40 bg-band-critical/5 px-4 py-3">
           <p className="mb-1 text-2xs font-semibold uppercase tracking-wider text-band-critical">
-            What would make this return wrong
+            The portal would reject this — {blocking.length} to fix
           </p>
+          <ul className="space-y-2">
+            {blocking.map((c) => (
+              <li key={c.code} className="text-xs text-band-critical">
+                {c.message}
+                {c.invoices && c.invoices.length > 0 && (
+                  <p className="mono mt-0.5 text-2xs text-band-critical/70">
+                    {c.invoices.slice(0, 8).join(', ')}
+                    {c.invoices.length > 8 ? ` and ${c.invoices.length - 8} more` : ''}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-2xs text-band-critical/70">
+            A return can still be prepared with these on it — preparing is arithmetic. It cannot be recorded as filed,
+            because that closes the month, and a closed month on a return that never went through is the worst of both.
+          </p>
+        </div>
+      )}
+
+      {advisories.length > 0 && (
+        <div className="mb-4 rounded-lg border border-band-watch/40 bg-band-watch/5 px-4 py-3">
+          <p className="mb-1 text-2xs font-semibold uppercase tracking-wider text-band-watch">Worth a look</p>
           <ul className="list-disc space-y-1 pl-4">
-            {warnings.map((w) => (
-              <li key={w} className="text-xs text-band-critical">
-                {w}
+            {advisories.map((c) => (
+              <li key={c.code} className="text-xs text-band-watch">
+                {c.message}
               </li>
             ))}
           </ul>
@@ -370,6 +399,43 @@ function Gstr1View({ data }: { data: any }) {
       </Card>
 
       <Card
+        title="B2CL — large inter-state sales to unregistered customers"
+        subtitle="Above ₹2.5 lakh and across a state line: reported invoice by invoice, because the destination state's share of the IGST is settled from this."
+        bodyClassName="p-0 overflow-x-auto"
+      >
+        {data.b2cl.length === 0 ? (
+          <div className="p-4">
+            <EmptyState message="None this month." />
+          </div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Invoice</th>
+                <th>Customer</th>
+                <th>Place of supply</th>
+                <th className="text-right">Taxable</th>
+                <th className="text-right">IGST</th>
+                <th className="text-right">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.b2cl.map((row: any) => (
+                <tr key={row.invoiceId}>
+                  <td className="mono text-2xs">{row.invoiceNumber}</td>
+                  <td className="text-xs text-ink-100">{row.customerName}</td>
+                  <td className="text-2xs text-ink-400">{row.placeOfSupply ?? '—'}</td>
+                  <td className="text-right tabular-nums text-xs">{rupees(row.taxableValue)}</td>
+                  <td className="text-right tabular-nums text-2xs text-ink-400">{rupees(row.igst)}</td>
+                  <td className="text-right tabular-nums text-xs">{rupees(row.invoiceValue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      <Card
         title="B2CS — unregistered customers"
         subtitle="A rate-wise total rather than a list of invoices. An invoice carrying two rates lands in two rows."
         bodyClassName="p-0 overflow-x-auto"
@@ -548,6 +614,50 @@ function Gstr3bView({ data }: { data: any }) {
       </Card>
 
       <Card
+        title="3.2 — inter-state supplies to unregistered persons"
+        subtitle="Of the supplies above, where they went. The destination state's share of the IGST is settled from this table, so a supply missing from it is money that never reaches the state it was collected for."
+        bodyClassName="p-0 overflow-x-auto"
+      >
+        {data.interStateToUnregistered.length === 0 ? (
+          <div className="p-4">
+            <EmptyState message="No inter-state supplies to unregistered customers this month." />
+          </div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Place of supply</th>
+                <th className="text-right">Taxable</th>
+                <th className="text-right">IGST</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.interStateToUnregistered.map((row: any) => (
+                <tr key={row.placeOfSupply}>
+                  <td className="text-xs text-ink-100">{row.placeOfSupply}</td>
+                  <td className="text-right tabular-nums text-xs">{rupees(row.taxableValue)}</td>
+                  <td className="text-right tabular-nums text-xs">{rupees(row.igst)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      <Card
+        title="3.1(b)–(e) — everything else supplied"
+        subtitle="Reported as zero and reported nonetheless: the portal asks for every row, and a company that starts exporting needs the row to exist before it has a figure in it."
+      >
+        <dl className="grid grid-cols-2 gap-x-6 sm:grid-cols-4">
+          <Field label="Zero rated">{rupees(data.otherOutwardSupplies.zeroRated.taxableValue)}</Field>
+          <Field label="Nil rated &amp; exempt">{rupees(data.otherOutwardSupplies.nilRatedAndExempt.taxableValue)}</Field>
+          <Field label="Non-GST">{rupees(data.otherOutwardSupplies.nonGst.taxableValue)}</Field>
+          <Field label="Reverse charge">{rupees(data.otherOutwardSupplies.reverseCharge.taxableValue)}</Field>
+        </dl>
+        <p className="mt-2 text-2xs text-ink-500">{data.otherOutwardSupplies.note}</p>
+      </Card>
+
+      <Card
         title="6.1 — payment of tax"
         subtitle="Credit is set off head by head in the statutory order: IGST credit against IGST first and only then against CGST and SGST; CGST credit against CGST alone. Netting the totals instead produces a figure that is too small whenever the mix differs, and the shortfall arrives as interest."
         bodyClassName="p-0 overflow-x-auto"
@@ -656,6 +766,8 @@ export function CompanyDetails() {
         </div>
       )}
 
+      <DocumentSeries profile={data} />
+
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Identity" subtitle="As registered. The legal name is what appears on the invoice.">
           <div className="flex flex-col gap-3">
@@ -724,6 +836,137 @@ export function CompanyDetails() {
         raised under, so reprinting an old one shows what the customer was actually charged.
       </p>
     </div>
+  );
+}
+
+/**
+ * The document numbering, and where each series stands.
+ *
+ * Two things nobody should have to find out the hard way. The first is the
+ * sixteen-character limit: the portal refuses a longer tax invoice number, and
+ * `KIPL/I/2026-27/001` is eighteen. It is shown here, with its length, before the
+ * first invoice is raised — not at the filing deadline.
+ *
+ * The second is where a series starts. A company adopting this mid-year has
+ * already issued fifteen receipts by hand, and starting again at 001 would put
+ * two documents into the world with one number.
+ */
+function DocumentSeries({ profile }: { profile: any }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState<any | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const { data: series = [] } = useQuery({
+    queryKey: ['document-series'],
+    queryFn: () => api.get<any[]>('/books/company-profile/series'),
+  });
+
+  const setYearFormat = useMutation({
+    mutationFn: (documentYearFormat: string) => api.patch('/books/company-profile', { documentYearFormat }),
+    onSuccess: () => {
+      setFailure(null);
+      qc.invalidateQueries({ queryKey: ['company-profile'] });
+      qc.invalidateQueries({ queryKey: ['document-series'] });
+    },
+    onError: (e: unknown) => setFailure((e as Error).message),
+  });
+
+  const tooLong = series.filter((s) => s.tooLongForThePortal);
+
+  return (
+    <Card
+      className="mb-4"
+      title="Document numbering"
+      subtitle="Every document a customer is handed is numbered in the company's own series, per financial year: the short code, the series letter, the year, and a sequence that restarts each April."
+    >
+      {failure && <p className="mb-3 text-xs text-band-critical">{failure}</p>}
+
+      {tooLong.length > 0 && (
+        <div className="mb-3 rounded border border-band-critical/40 bg-band-critical/5 px-3 py-2">
+          <p className="text-xs text-band-critical">
+            A tax invoice number may be at most sixteen characters, and {tooLong[0].example} is {tooLong[0].length}.
+            GSTR-1 would reject every invoice raised under it. Shorten the prefix, or write the year as {' '}
+            {profile.documentYearFormat === 'full' ? '26-27' : '2026-27'}.
+          </p>
+        </div>
+      )}
+
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Series</th>
+            <th>Next number</th>
+            <th className="text-right">Length</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {series.map((s) => (
+            <tr key={s.series}>
+              <td className="text-xs text-ink-100">{s.label}</td>
+              <td className="mono text-xs">{s.example}</td>
+              <td
+                className={`text-right tabular-nums text-2xs ${s.tooLongForThePortal ? 'text-band-critical' : 'text-ink-500'}`}
+              >
+                {s.length}
+                {s.series === 'I' ? ' / 16' : ''}
+              </td>
+              <td>
+                <button className="btn-ghost" onClick={() => setEditing(s)}>
+                  Start from…
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-800 pt-3">
+        <span className="label">Year written as</span>
+        {(['short', 'full'] as const).map((format) => (
+          <button
+            key={format}
+            className={`chip transition-colors ${
+              (profile.documentYearFormat ?? 'short') === format
+                ? 'border-accent/60 text-accent-soft'
+                : 'border-ink-800 text-ink-500 hover:border-ink-600'
+            }`}
+            onClick={() => setYearFormat.mutate(format)}
+          >
+            {format === 'short' ? '26-27' : '2026-27'}
+          </button>
+        ))}
+        <span className="text-2xs text-ink-600">
+          The short form exists because of the sixteen-character limit, not because it reads better.
+        </span>
+      </div>
+
+      {editing && <SeriesStart series={editing} onClose={() => setEditing(null)} />}
+    </Card>
+  );
+}
+
+function SeriesStart({ series, onClose }: { series: any; onClose: () => void }) {
+  const [next, setNext] = useState(String(series.nextNumber));
+
+  return (
+    <CreateModal
+      open
+      title={`Start the ${series.label.toLowerCase()} series from…`}
+      submitLabel="Set it"
+      onClose={onClose}
+      invalidate={[['document-series']]}
+      onSubmit={() => api.post('/books/company-profile/series', { series: series.series, nextNumber: Number(next) })}
+    >
+      <p className="text-xs text-ink-300">
+        The next one would be <span className="mono text-ink-100">{series.example}</span>.
+      </p>
+      <TextInput label="Next number" type="number" required value={next} onChange={setNext} />
+      <p className="text-2xs text-ink-500">
+        For a company that has already issued some of this year's documents by hand: without this, the platform starts
+        again at 001 and puts two documents into the world with one number. A series only moves forwards.
+      </p>
+    </CreateModal>
   );
 }
 

@@ -674,7 +674,11 @@ export interface WinLossReviewView {
 
 export interface InvoiceView {
   id: string;
-  recordCode: string;
+  /** The tax invoice number. Null while it is a draft — a draft takes no number. */
+  recordCode: string | null;
+  draftReference: string | null;
+  /** The number where there is one, the draft reference where there is not. */
+  label: string;
   accountId: string | null;
   accountName: string | null;
   /** An individual customer — a student, a walk-in. */
@@ -717,6 +721,8 @@ export interface InvoiceLineView {
   offeringName: string | null;
   courseId: string | null;
   courseName: string | null;
+  /** The enrolment this fee is for: the student on that course. */
+  enrollmentId: string | null;
   description: string;
   quantity: number;
   unitPrice: number | null;
@@ -736,7 +742,10 @@ export interface InvoiceLineView {
  */
 export interface InvoiceDocumentView {
   id: string;
-  recordCode: string;
+  recordCode: string | null;
+  draftReference: string | null;
+  /** What to call it in a sentence, whichever of the two it has. */
+  label: string;
   status: string;
   currency: string;
   issuedDate: string | null;
@@ -957,6 +966,7 @@ export interface ReceiptDocumentView {
     isThisOne: boolean;
   }>;
 
+  /** Never the invoice footnote: a receipt is not an invoice, and says so. */
   footnote: string | null;
 }
 

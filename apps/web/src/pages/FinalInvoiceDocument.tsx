@@ -120,7 +120,9 @@ export function FinalInvoiceDocument() {
               <td>{i + 1}</td>
               <td>
                 {line.description}
-                {line.courseName && <span className="doc-muted"> · {line.courseName}</span>}
+                {line.courseName && !line.description.includes(line.courseName) && (
+                  <span className="doc-muted"> · {line.courseName}</span>
+                )}
               </td>
               <td>{line.hsnSac ?? '—'}</td>
               <td className="num">{line.quantity}</td>

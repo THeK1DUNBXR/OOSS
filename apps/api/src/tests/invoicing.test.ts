@@ -865,7 +865,75 @@ describe('GSTR-1 reports a registered customer by invoice and an unregistered on
       expect(gstr1.totals.tax).toBe(2700);
       expect(gstr1.hsn.map((h) => h.hsnSac).sort()).toEqual(['998314', '999293']);
       expect(gstr1.documentSummary.reported).toBe(2);
-      expect(gstr1.warnings).toEqual([]);
+      // Nothing the portal would reject.
+      expect(gstr1.checks.filter((c) => c.severity === 'blocking')).toEqual([]);
+    });
+  });
+
+  it('numbers an issued invoice in the company’s own series, and a draft not at all', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const draft = await createInvoice({
+        organizationId: await anAccount(),
+        issue: false,
+        lines: [{ description: 'Unissued', unitPrice: 100 }],
+      });
+      // A draft takes no invoice number: the tax series has to stay consecutive,
+      // and a number on a draft nobody issued is a gap nothing explains.
+      expect(draft.recordCode).toBeNull();
+      expect(draft.draftReference).toMatch(/^DRF-/);
+
+      const issued = await issueInvoiceDraft(draft.id);
+      expect(issued.recordCode).toMatch(/^KIPL\/I\/\d{2}-\d{2}\/\d{3,}$/);
+      // And it still fits what the portal accepts.
+      expect(issued.recordCode!.length).toBeLessThanOrEqual(16);
+      // The draft reference is kept, so which draft became which invoice stays
+      // answerable.
+      expect(issued.draftReference).toBe(draft.draftReference);
+    });
+  });
+
+  it('numbers a receipt in the same series, under its own letter', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const invoice = await createInvoice({
+        organizationId: await anAccount(),
+        placeOfSupply: '33',
+        lines: [{ description: 'Numbered', unitPrice: 1000, gstRate: 0 }],
+        payment: { amount: 400, mode: 'cash', reference: `CASH-${stamp()}` },
+      });
+      const receipt = await prisma.receipt.findFirstOrThrow({ where: { invoiceId: invoice.id } });
+      expect(receipt.recordCode).toMatch(/^KIPL\/R\/\d{2}-\d{2}\/\d{3,}$/);
+
+      const final = await raiseFinalInvoice(invoice.id);
+      expect(final.recordCode).toMatch(/^KIPL\/F\/\d{2}-\d{2}\/\d{3,}$/);
+    });
+  });
+
+  it('refuses to file a return the portal would reject, and says which invoices', async () => {
+    const period = await openPeriod();
+    await asUser('latha@kaizen.co.in', async () => {
+      // An invoice with no HSN on its line: accepted by the books, rejected by
+      // the portal.
+      const bad = await createInvoice({
+        organizationId: await anAccount(),
+        placeOfSupply: '33',
+        issuedDate: firstDayOf(period),
+        lines: [{ description: 'No code', unitPrice: 1000, gstRate: 18 }],
+      });
+
+      const { filing, blocking } = await prepareReturn('GSTR1', period);
+      // Preparing is arithmetic and is allowed to produce a return that could
+      // not be filed — seeing the blockers is the reason to prepare it.
+      expect(filing.status).toBe('prepared');
+      expect(blocking.map((c) => c.code)).toContain('MISSING_HSN');
+      expect(blocking.find((c) => c.code === 'MISSING_HSN')?.invoices).toContain(bad.recordCode);
+
+      const refused = await expectReject(() => markReturnFiled(filing.id, { arn: `AA33${stamp()}` }));
+      expect(refused.message).toMatch(/HSN/);
+
+      // Recording it as filed would have closed the month, and a closed month on
+      // a return that never went through is the worst of both.
+      const state = await periodStatus(period);
+      expect(state.closed).toBe(false);
     });
   });
 
@@ -879,7 +947,7 @@ describe('GSTR-1 reports a registered customer by invoice and an unregistered on
         lines: [{ description: 'No code', unitPrice: 1000, gstRate: 18 }],
       });
       const gstr1 = await computeGstr1(period);
-      expect(gstr1.warnings.join(' ')).toMatch(/HSN\/SAC/);
+      expect(gstr1.checks.some((c) => c.code === 'MISSING_HSN' && c.severity === 'blocking')).toBe(true);
       expect(gstr1.hsn.some((h) => h.hsnSac === 'UNCLASSIFIED')).toBe(true);
     });
   });
@@ -945,6 +1013,7 @@ describe('filing a return closes its month', () => {
     await asUser('latha@kaizen.co.in', async () => {
       const billed = await createInvoice({
         organizationId: await anAccount(),
+        customerGstin: '33AAACS9101K1ZI',
         placeOfSupply: '33',
         issuedDate,
         lines: [{ description: 'Reported', unitPrice: 10_000, gstRate: 18, hsnSac: '998314' }],

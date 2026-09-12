@@ -47,6 +47,8 @@ const paymentModeEnum = z.enum(PAYMENT_MODES as unknown as [PaymentMode, ...Paym
 const lineSchema = z.object({
   offeringId: z.string().nullish(),
   courseId: z.string().nullish(),
+  /** The student's place on the course — what is actually being billed. */
+  enrollmentId: z.string().nullish(),
   description: z.string().nullish(),
   quantity: z.number().int().positive().optional(),
   unitPrice: z.number().nonnegative().nullish(),
@@ -135,6 +137,9 @@ router.get(
       return {
         id: inv.id,
         recordCode: inv.recordCode,
+        draftReference: inv.draftReference,
+        /** The number where there is one, the draft reference where there is not. */
+        label: inv.recordCode ?? inv.draftReference ?? inv.id,
         accountId: inv.accountId ?? inv.organizationId,
         accountName: inv.organizationId ? (orgMap.get(inv.organizationId) ?? null) : null,
         personId: inv.personId,
@@ -174,6 +179,7 @@ router.get(
           offeringName: l.offeringId ? (offeringMap.get(l.offeringId) ?? null) : null,
           courseId: l.courseId,
           courseName: l.courseId ? (courseMap.get(l.courseId) ?? null) : null,
+          enrollmentId: l.enrollmentId,
           description: l.description,
           quantity: l.quantity,
           unitPrice: money ? num(l.unitPrice) : null,

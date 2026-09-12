@@ -23,6 +23,17 @@
  * is two different documents with one number, and the answer to it is a credit
  * note.
  *
+ * **A draft has no invoice number.** The tax series has to be consecutive — the
+ * return reports the range issued and the count cancelled within it — and a
+ * number sitting on a draft somebody abandoned is a gap nothing explains. So a
+ * draft carries a reference from its own series, obviously not an invoice
+ * number, and the invoice number is allocated at the moment the document exists.
+ *
+ * **A fee line names the enrolment, not just the course.** The invoice says who,
+ * the line says which course, and the enrolment is the two together — which is
+ * the thing actually being billed. Without it a student on two courses has two
+ * fee invoices that can only be told apart by reading the descriptions.
+ *
  * **A tax invoice is final, and part payments are receipts.** The invoice states
  * the whole obligation and what was handed over at the moment it was issued —
  * total payable, amount payable now, the mode — and then never changes again. The
@@ -68,7 +79,8 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
-import { companyProfile, supplyingParty } from './companyProfile.js';
+import { companyProfile, documentNumbering, supplyingParty } from './companyProfile.js';
+import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
 
 // ---------------------------------------------------------------------------
 // Input
@@ -78,6 +90,11 @@ export interface InvoiceLineInput {
   offeringId?: string | null;
   /** A course from the catalogue. Its price, tax rate and SAC fill the line. */
   courseId?: string | null;
+  /**
+   * The student's place on that course. Naming it fills the course in, so
+   * billing a fee is one choice rather than two that have to agree.
+   */
+  enrollmentId?: string | null;
   description?: string | null;
   quantity?: number;
   /** Price of one, before tax. Defaults to the course fee when a course is named. */
@@ -124,6 +141,18 @@ export interface InvoiceInput {
   issue?: boolean;
   /** Money taken across the counter as the invoice is handed over. */
   payment?: CollectedPaymentInput | null;
+}
+
+/**
+ * What to call an invoice in a sentence.
+ *
+ * An issued one has an invoice number; a draft has a draft reference and must
+ * never be described by a number it does not have. One function, because a
+ * refusal message reading "undefined is still a draft" is the kind of thing
+ * nobody notices until a customer is looking at it.
+ */
+export function invoiceLabel(invoice: { recordCode?: string | null; draftReference?: string | null }): string {
+  return invoice.recordCode ?? invoice.draftReference ?? 'this draft';
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +349,7 @@ async function resolveTaxReading(
 interface PricedLine {
   offeringId: string | null;
   courseId: string | null;
+  enrollmentId: string | null;
   description: string;
   quantity: number;
   unitPrice: number;
@@ -338,7 +368,7 @@ interface PricedLine {
  * to know the price list or the tax code to raise an invoice. Anything given
  * explicitly still wins, because a negotiated price is a real thing.
  */
-async function priceLines(lines: InvoiceLineInput[]): Promise<PricedLine[]> {
+async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer): Promise<PricedLine[]> {
   const auth = currentAuth();
   if (lines.length === 0) throw ApiError.badRequest('An invoice needs at least one line.');
 
@@ -349,10 +379,36 @@ async function priceLines(lines: InvoiceLineInput[]): Promise<PricedLine[]> {
     let gstRate = line.gstRate ?? null;
     let hsnSac = line.hsnSac ?? null;
     let revenueMethod: RevenueTreatment = 'point_in_time';
+    let courseId = line.courseId ?? null;
+    let enrollmentId: string | null = null;
 
-    if (line.courseId) {
+    // The enrolment is the student on the course, which is the thing being
+    // billed. Naming it fills the course in and is checked against the customer:
+    // an invoice to one person carrying another person's enrolment would look
+    // right on the page and be wrong in every report that joins the two.
+    if (line.enrollmentId) {
+      const enrollment = await prisma.enrollment.findFirst({
+        where: { id: line.enrollmentId, tenantId: auth.tenantId },
+        include: { cohort: { select: { courseId: true, name: true } } },
+      });
+      if (!enrollment) throw ApiError.notFound('Enrollment');
+      if (customer.personId && enrollment.personId !== customer.personId) {
+        throw ApiError.badRequest(
+          `That enrolment belongs to somebody else. An invoice bills one customer, and a fee line has to be for their own place on the course.`,
+        );
+      }
+      if (courseId && courseId !== enrollment.cohort.courseId) {
+        throw ApiError.badRequest(
+          `The course on this line is not the course that enrolment is on (${enrollment.cohort.name}).`,
+        );
+      }
+      courseId = enrollment.cohort.courseId;
+      enrollmentId = enrollment.id;
+    }
+
+    if (courseId) {
       const course = await prisma.course.findFirst({
-        where: { id: line.courseId, tenantId: auth.tenantId },
+        where: { id: courseId, tenantId: auth.tenantId },
       });
       if (!course) throw ApiError.notFound('Course');
       if (!course.active) {
@@ -396,7 +452,8 @@ async function priceLines(lines: InvoiceLineInput[]): Promise<PricedLine[]> {
 
     out.push({
       offeringId: line.offeringId ?? null,
-      courseId: line.courseId ?? null,
+      courseId,
+      enrollmentId,
       description,
       quantity,
       unitPrice: round2(unitPrice),
@@ -433,7 +490,7 @@ export async function createInvoice(input: InvoiceInput) {
   await assertCan({ resource: 'invoices', verb: 'create' });
 
   const customer = await resolveCustomer(input);
-  const priced = await priceLines(input.lines);
+  const priced = await priceLines(input.lines, customer);
   const tax = await resolveTaxReading(input, customer);
   const gst = computeGst(gstInputOf(priced), tax.interState);
 
@@ -471,12 +528,24 @@ export async function createInvoice(input: InvoiceInput) {
     throw ApiError.badRequest('Say how the money was taken — cash, UPI, bank transfer, cheque or card. It is printed on the invoice.');
   }
 
-  const recordCode = await nextRecordCode('INV');
+  // The invoice number is allocated only when the document exists, and it is the
+  // company's own series — `KIPL/I/2026-27/001` — because that is the number the
+  // customer quotes back and the number GSTR-1 reports. A draft gets a reference
+  // from the platform's own series instead: the tax series has to be
+  // consecutive, and a number sitting on a draft nobody issued is a gap the
+  // return cannot explain.
+  const numbering = await documentNumbering();
+  const recordCode = issue
+    ? await nextDocumentNumber(DOCUMENT_SERIES.invoice, numbering.prefix, issuedDate, numbering.yearFormat)
+    : null;
+  const draftReference = await nextRecordCode('DRF');
+
   const invoice = await prisma.$transaction(async (tx) => {
     const created = await tx.invoice.create({
       data: {
         tenantId: auth.tenantId,
         recordCode,
+        draftReference,
         accountId: customer.accountId,
         organizationId: customer.organizationId,
         personId: customer.personId,
@@ -512,12 +581,18 @@ export async function createInvoice(input: InvoiceInput) {
     action: 'create',
     subjectType: 'invoice',
     subjectId: invoice.id,
-    after: { recordCode, payable: gst.grandTotal, status: invoice.status, customer: customer.name },
+    after: {
+      recordCode,
+      draftReference,
+      payable: gst.grandTotal,
+      status: invoice.status,
+      customer: customer.name,
+    },
   });
 
   await emit({
     name: issue ? EVENTS.INVOICE_ISSUED : EVENTS.INVOICE_DRAFTED,
-    subject: { entityType: 'invoice', entityId: invoice.id, recordCode },
+    subject: { entityType: 'invoice', entityId: invoice.id, recordCode: recordCode ?? draftReference },
     related: input.contractId
       ? [{ relation: 'bills', entityType: 'contract', entityId: input.contractId }]
       : [],
@@ -553,6 +628,7 @@ async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
         invoiceId,
         offeringId: line.offeringId,
         courseId: line.courseId,
+        enrollmentId: line.enrollmentId,
         description: line.description,
         quantity: line.quantity,
         unitPrice: line.unitPrice,
@@ -590,7 +666,7 @@ export async function updateInvoice(
 
   if (existing.status !== 'draft') {
     throw ApiError.unprocessable(
-      `${existing.recordCode} is ${existing.status}. An issued invoice is a document the customer holds — changing its lines or its tax would make two different invoices with one number. The correction is a credit note.`,
+      `${invoiceLabel(existing)} is ${existing.status}. An issued invoice is a document the customer holds — changing its lines or its tax would make two different invoices with one number. The correction is a credit note.`,
       { status: existing.status },
     );
   }
@@ -612,12 +688,14 @@ export async function updateInvoice(
       existing.lines.map((l) => ({
         offeringId: l.offeringId,
         courseId: l.courseId,
+        enrollmentId: l.enrollmentId,
         description: l.description,
         quantity: l.quantity,
         unitPrice: num(l.unitPrice) || num(l.amount) || 0,
         gstRate: num(l.gstRate),
         hsnSac: l.hsnSac,
       })),
+    customer,
   );
   const tax = await resolveTaxReading({ ...input, lines: [] }, customer);
   const gst = computeGst(gstInputOf(priced), tax.interState);
@@ -663,7 +741,7 @@ export async function updateInvoice(
   });
   await emit({
     name: EVENTS.INVOICE_UPDATED,
-    subject: { entityType: 'invoice', entityId: invoiceId, recordCode: existing.recordCode },
+    subject: { entityType: 'invoice', entityId: invoiceId, recordCode: invoiceLabel(existing) },
     previousState: before,
     newState: { payable: gst.grandTotal, lines: priced.length },
     impact: { domains: ['fin'] },
@@ -683,31 +761,41 @@ export async function issueInvoiceDraft(
 ) {
   const existing = await loadForWrite(invoiceId, 'edit');
   if (existing.status !== 'draft') {
-    throw ApiError.unprocessable(`${existing.recordCode} is already ${existing.status}.`);
+    throw ApiError.unprocessable(`${invoiceLabel(existing)} is already ${existing.status}.`);
   }
   if (existing.lines.length === 0) {
-    throw ApiError.unprocessable(`${existing.recordCode} has no lines. An invoice for nothing is not a document.`);
+    throw ApiError.unprocessable(
+      `${invoiceLabel(existing)} has no lines. An invoice for nothing is not a document.`,
+    );
   }
 
   const issuedDate = options.issuedDate ?? new Date();
   await assertPeriodOpen(issuedDate, 'This invoice');
 
+  // Here is where the invoice number is allocated, and nowhere else: at the
+  // moment the draft becomes a document. Allocating it inside the same update
+  // as the status means the two cannot come apart.
+  const numbering = await documentNumbering();
+  const recordCode =
+    existing.recordCode ??
+    (await nextDocumentNumber(DOCUMENT_SERIES.invoice, numbering.prefix, issuedDate, numbering.yearFormat));
+
   const issued = await prisma.invoice.update({
     where: { id: invoiceId },
-    data: { status: 'issued', issuedDate },
+    data: { status: 'issued', issuedDate, recordCode },
   });
 
   await auditWrite({
     action: 'update',
     subjectType: 'invoice',
     subjectId: invoiceId,
-    before: { status: 'draft' },
-    after: { status: 'issued', issuedDate },
+    before: { status: 'draft', recordCode: existing.recordCode },
+    after: { status: 'issued', issuedDate, recordCode },
   });
   await emit({
     name: EVENTS.INVOICE_ISSUED,
-    subject: { entityType: 'invoice', entityId: invoiceId, recordCode: issued.recordCode },
-    newState: { total: num(issued.grandTotal), dueDate: issued.dueDate },
+    subject: { entityType: 'invoice', entityId: invoiceId, recordCode },
+    newState: { total: num(issued.grandTotal), dueDate: issued.dueDate, from: existing.draftReference },
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
@@ -736,7 +824,7 @@ export async function voidInvoice(invoiceId: string, reason: string) {
 
   if (totals.allocated > 0) {
     throw ApiError.unprocessable(
-      `${existing.recordCode} has ₹${totals.allocated.toFixed(2)} allocated against it and cannot be voided. Reverse the payment and raise a credit note — the money moved, and the books have to keep saying so.`,
+      `${invoiceLabel(existing)} has ₹${totals.allocated.toFixed(2)} allocated against it and cannot be voided. Reverse the payment and raise a credit note — the money moved, and the books have to keep saying so.`,
     );
   }
   if (existing.status === 'void') return existing;
@@ -756,7 +844,7 @@ export async function voidInvoice(invoiceId: string, reason: string) {
   });
   await emit({
     name: EVENTS.INVOICE_VOIDED,
-    subject: { entityType: 'invoice', entityId: invoiceId, recordCode: existing.recordCode },
+    subject: { entityType: 'invoice', entityId: invoiceId, recordCode: invoiceLabel(existing) },
     newState: { status: 'void', reason },
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
@@ -800,11 +888,11 @@ export async function collectInvoicePayment(
 
   if (invoice.status === 'draft') {
     throw ApiError.unprocessable(
-      `${invoice.recordCode} is still a draft. Issue it before taking money against it, so the customer has a document for what they paid.`,
+      `${invoiceLabel(invoice)} is still a draft, and has no invoice number yet. Issue it before taking money against it, so the customer has a document for what they paid.`,
     );
   }
   if (invoice.status === 'void') {
-    throw ApiError.unprocessable(`${invoice.recordCode} is void. Nothing can be collected against it.`);
+    throw ApiError.unprocessable(`${invoiceLabel(invoice)} is void. Nothing can be collected against it.`);
   }
 
   const totals = totalsOf(invoice);
@@ -812,7 +900,7 @@ export async function collectInvoicePayment(
   if (amount <= 0) throw ApiError.badRequest('A payment has to be for something.');
   if (amount > totals.outstanding + 0.001) {
     throw ApiError.unprocessable(
-      `₹${amount.toFixed(2)} is more than the ₹${totals.outstanding.toFixed(2)} still outstanding on ${invoice.recordCode}. ` +
+      `₹${amount.toFixed(2)} is more than the ₹${totals.outstanding.toFixed(2)} still outstanding on ${invoiceLabel(invoice)}. ` +
         'Take the balance, or record the excess as a payment on its own and allocate it to the next invoice.',
       { outstanding: totals.outstanding, offered: amount },
     );
@@ -827,7 +915,7 @@ export async function collectInvoicePayment(
   // idempotency constraint on PAYMENT mean something for cash as well as for
   // a webhook.
   const gatewayReference =
-    input.reference?.trim() || `${invoice.recordCode}/${input.mode}/${receivedAt.toISOString()}`;
+    input.reference?.trim() || `${invoiceLabel(invoice)}/${input.mode}/${receivedAt.toISOString()}`;
 
   const clash = await prisma.payment.findFirst({
     where: { tenantId: auth.tenantId, gatewayReference },
@@ -841,7 +929,16 @@ export async function collectInvoicePayment(
   }
 
   const paymentCode = await nextRecordCode('PAY');
-  const receiptCode = await nextRecordCode('REC');
+  // The receipt is a document the customer is handed, so it is numbered in the
+  // company's series. The payment behind it is an internal fact and keeps a
+  // record code.
+  const numbering = await documentNumbering();
+  const receiptCode = await nextDocumentNumber(
+    DOCUMENT_SERIES.receipt,
+    numbering.prefix,
+    receivedAt,
+    numbering.yearFormat,
+  );
   const allocated = round2(totals.allocated + amount);
   const balanceAfter = round2(Math.max(totals.payable - allocated - totals.creditNoted, 0));
   const settled = allocated + totals.creditNoted >= totals.payable - 0.001;
@@ -860,7 +957,7 @@ export async function collectInvoicePayment(
         payerOrganizationId: invoice.organizationId,
         payerPersonId: invoice.personId,
         recordedById: auth.partyId,
-        note: input.note ?? `Collected against ${invoice.recordCode}`,
+        note: input.note ?? `Collected against ${invoiceLabel(invoice)}`,
       },
     });
 
@@ -911,13 +1008,13 @@ export async function collectInvoicePayment(
     action: 'create',
     subjectType: 'payment',
     subjectId: result.payment.id,
-    after: { recordCode: paymentCode, amount, mode: input.mode, against: invoice.recordCode },
+    after: { recordCode: paymentCode, amount, mode: input.mode, against: invoiceLabel(invoice) },
   });
   await auditWrite({
     action: 'create',
     subjectType: 'receipt',
     subjectId: result.receipt.id,
-    after: { recordCode: receiptCode, amount, against: invoice.recordCode, balanceAfter },
+    after: { recordCode: receiptCode, amount, against: invoiceLabel(invoice), balanceAfter },
   });
 
   await emit({
@@ -937,7 +1034,7 @@ export async function collectInvoicePayment(
 
   await emit({
     name: EVENTS.INVOICE_PAYMENT_COLLECTED,
-    subject: { entityType: 'invoice', entityId: invoice.id, recordCode: invoice.recordCode },
+    subject: { entityType: 'invoice', entityId: invoice.id, recordCode: invoiceLabel(invoice) },
     related: [
       { relation: 'paid_by', entityType: 'payment', entityId: result.payment.id },
       { relation: 'receipted_by', entityType: 'receipt', entityId: result.receipt.id },
@@ -963,7 +1060,7 @@ export async function collectInvoicePayment(
   if (settled) {
     await emit({
       name: EVENTS.INVOICE_SETTLED,
-      subject: { entityType: 'invoice', entityId: invoice.id, recordCode: invoice.recordCode },
+      subject: { entityType: 'invoice', entityId: invoice.id, recordCode: invoiceLabel(invoice) },
       newState: { status: 'settled', allocated },
       impact: { domains: ['fin'] },
     });
@@ -1004,7 +1101,7 @@ export async function declarePaymentTerms(
   const invoice = await loadForWrite(invoiceId, 'edit');
   if (invoice.status !== 'draft') {
     throw ApiError.unprocessable(
-      `${invoice.recordCode} is ${invoice.status}. A tax invoice is final once issued: what it says about payment is what was true when the customer was handed it. Take the instalment instead — it issues its own receipt — and raise a final invoice when the instalments are done.`,
+      `${invoiceLabel(invoice)} is ${invoice.status}. A tax invoice is final once issued: what it says about payment is what was true when the customer was handed it. Take the instalment instead — it issues its own receipt — and raise a final invoice when the instalments are done.`,
       { status: invoice.status },
     );
   }
@@ -1160,7 +1257,10 @@ export async function invoiceDocument(invoiceId: string) {
 
   return {
     id: invoice.id,
+    /** Null while it is a draft: the number is allocated when it is issued. */
     recordCode: invoice.recordCode,
+    draftReference: invoice.draftReference,
+    label: invoiceLabel(invoice),
     status: invoice.status,
     currency: invoice.currency,
     issuedDate: invoice.issuedDate?.toISOString() ?? null,

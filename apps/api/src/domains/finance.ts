@@ -33,7 +33,7 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
-import { rehydrateReceivablesFor, totalsOf } from './invoicing.js';
+import { invoiceLabel, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
 
 /**
  * Raising an invoice, editing a draft, collecting at a counter and printing the
@@ -222,7 +222,18 @@ export async function allocatePayment(input: {
     ? round2(Math.max(subjectTotal - subjectTotals.allocated - input.amount - subjectTotals.creditNoted, 0))
     : 0;
 
-  const recordCode = await nextRecordCode('REC');
+  // The company's own receipt series, the same one the counter path uses: a
+  // customer holding two receipts from one company should not find them numbered
+  // by two different schemes.
+  const { documentNumbering } = await import('./companyProfile.js');
+  const { DOCUMENT_SERIES, nextDocumentNumber } = await import('../platform/documentNumber.js');
+  const numbering = await documentNumbering();
+  const recordCode = await nextDocumentNumber(
+    DOCUMENT_SERIES.receipt,
+    numbering.prefix,
+    new Date(),
+    numbering.yearFormat,
+  );
   const receipt = await prisma.receipt.create({
     data: {
       tenantId: auth.tenantId,
@@ -288,7 +299,7 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
       if (status === 'settled') {
         await emit({
           name: EVENTS.INVOICE_SETTLED,
-          subject: { entityType: 'invoice', entityId: invoiceId, recordCode: invoice.recordCode },
+          subject: { entityType: 'invoice', entityId: invoiceId, recordCode: invoiceLabel(invoice) },
           newState: { status, allocated },
           impact: { domains: ['fin'] },
         });
@@ -384,7 +395,7 @@ export async function detectOverduePayments(): Promise<number> {
       severity: days > 45 ? 'S3_HIGH_RISK' : 'S2_WARNING',
       subjectType: 'invoice',
       subjectId: inv.id,
-      subjectLabel: inv.recordCode,
+      subjectLabel: invoiceLabel(inv),
       domain: 'fin',
       detail: `${outstanding.toFixed(2)} ${inv.currency} outstanding, ${days} days past due.`,
       ownerPartyId: inv.createdById,
@@ -396,7 +407,7 @@ export async function detectOverduePayments(): Promise<number> {
     await prisma.invoice.update({ where: { id: inv.id }, data: { status: 'overdue', overdueNotifiedAt: now } });
     await emit({
       name: EVENTS.PAYMENT_OVERDUE_DETECTED,
-      subject: { entityType: 'invoice', entityId: inv.id, recordCode: inv.recordCode },
+      subject: { entityType: 'invoice', entityId: inv.id, recordCode: invoiceLabel(inv) },
       newState: { outstanding, daysOverdue: days },
       impact: { domains: ['fin', 'crm'], severity: 'S2_WARNING' },
       confidentiality: 'confidential',

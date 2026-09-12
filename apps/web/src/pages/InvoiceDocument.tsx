@@ -63,11 +63,13 @@ export function InvoiceDocument() {
     <Sheet
       backTo="/finance/invoices"
       backLabel="Invoices"
-      title={d.recordCode}
+      title={d.label}
       subtitle={
         d.status === 'draft'
-          ? 'A draft. It has no issue date and is not a document yet — the watermark says so on the sheet.'
-          : `Issued ${date(d.issuedDate)}${d.raisedBy ? ` by ${d.raisedBy}` : ''}. Final: what it says does not change.`
+          ? 'A draft. It has no issue date and no invoice number yet — the tax series has to stay consecutive, so a number is allocated when it is issued and not before.'
+          : `Issued ${date(d.issuedDate)}${d.raisedBy ? ` by ${d.raisedBy}` : ''}${
+              d.draftReference ? ` (drafted as ${d.draftReference})` : ''
+            }. Final: what it says does not change.`
       }
       watermark={d.status === 'draft' ? 'DRAFT' : d.status === 'void' ? 'VOID' : null}
       aside={
@@ -175,7 +177,7 @@ export function InvoiceDocument() {
         supplier={d.supplier}
         docType="Tax Invoice"
         meta={[
-          ['Invoice no.', d.recordCode],
+          ['Invoice no.', d.recordCode ?? 'not yet issued'],
           ['Date', date(d.issuedDate)],
           ['Due', date(d.dueDate)],
           ['Place of supply', d.placeOfSupply ?? '—'],
@@ -217,7 +219,12 @@ export function InvoiceDocument() {
               <td>{i + 1}</td>
               <td>
                 {line.description}
-                {line.courseCode && <span className="doc-muted"> · {line.courseCode}</span>}
+                {/* Only where the description does not already say it: a line
+                    reading "Full Stack Development (FSD-24) — course fee" does
+                    not want "· Full Stack Development" after it. */}
+                {line.courseCode && !line.description.includes(line.courseCode) && (
+                  <span className="doc-muted"> · {line.courseCode}</span>
+                )}
               </td>
               <td>{line.hsnSac ?? '—'}</td>
               <td className="num">{line.quantity}</td>

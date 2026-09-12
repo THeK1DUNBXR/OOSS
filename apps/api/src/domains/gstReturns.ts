@@ -36,6 +36,7 @@
 import {
   EVENTS,
   GST_RETURN_TYPES,
+  isValidGstin,
   monthRange,
   placeOfSupplyLabel,
   round2,
@@ -53,6 +54,25 @@ import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { assertRegistered, supplyingParty } from './companyProfile.js';
 
 const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * The threshold above which an inter-state supply to an unregistered customer is
+ * reported invoice by invoice rather than as a rate-wise total.
+ *
+ * Two and a half lakh, and it is a real line rather than a convention: a B2CL
+ * supply reported in the B2CS table is a return the portal accepts and a figure
+ * the destination state never sees, which is what the table exists for.
+ */
+const B2CL_THRESHOLD = 250_000;
+
+/** What the portal will reject, and what is merely worth knowing. */
+export interface FilingCheck {
+  severity: 'blocking' | 'warning';
+  code: string;
+  message: string;
+  /** The invoices it is about, so the fix is one click from the finding. */
+  invoices?: string[];
+}
 
 function assertPeriodShape(period: string): string {
   if (!PERIOD_PATTERN.test(period)) {
@@ -135,6 +155,10 @@ export async function computeGstr1(period: string) {
 
   const live = invoices.filter((i) => i.status !== 'void');
   const cancelled = invoices.filter((i) => i.status === 'void');
+  // A draft has no number and is not a supply, so it is already excluded by the
+  // status filter; this is the belt to that braces, because a numberless row in
+  // a document summary would be reported as a gap in the series.
+  const numbered = live.filter((i) => Boolean(i.recordCode));
 
   const orgIds = [...new Set(live.map((i) => i.organizationId).filter(Boolean) as string[])];
   const personIds = [...new Set(live.map((i) => i.personId).filter(Boolean) as string[])];
@@ -150,7 +174,16 @@ export async function computeGstr1(period: string) {
   ]);
 
   const b2b: Gstr1B2bInvoice[] = [];
+  /**
+   * Inter-state, unregistered, above two and a half lakh: reported invoice by
+   * invoice so the destination state can see it. Below the line it is a
+   * rate-wise total in B2CS, and putting a B2CL supply there is a return the
+   * portal accepts and a figure the destination state never gets.
+   */
+  const b2cl: Gstr1B2bInvoice[] = [];
   const b2cRates = new Map<string, Gstr1RateLine>();
+  /** Supplies at 0%: reported, and reported separately from taxable ones. */
+  let nilRatedValue = 0;
   const hsn = new Map<string, Gstr1HsnLine>();
   const creditNoteRows: Array<{ recordCode: string; invoiceNumber: string; amount: number; reason: string; issuedAt: string }> = [];
 
@@ -174,9 +207,29 @@ export async function computeGstr1(period: string) {
     if (supplyTypeOf(inv.customerGstin) === 'b2b') {
       b2b.push({
         invoiceId: inv.id,
-        invoiceNumber: inv.recordCode,
+        // A return only ever reports issued invoices, and an issued invoice has a
+        // number by definition — the number is what issuing allocates.
+        invoiceNumber: inv.recordCode!,
         issuedDate: inv.issuedDate!.toISOString().slice(0, 10),
         customerGstin: inv.customerGstin!,
+        customerName: nameOf.get(inv.organizationId ?? inv.personId ?? '') ?? '—',
+        placeOfSupply: placeOfSupplyLabel(inv.placeOfSupply),
+        reverseCharge: 'N',
+        invoiceValue: num(inv.grandTotal) ?? 0,
+        taxableValue: invTaxable,
+        cgst: invCgst,
+        sgst: invSgst,
+        igst: invIgst,
+        rates: [...new Set(inv.lines.map((l) => num(l.gstRate) ?? 0))].sort((a, b) => a - b),
+      });
+    } else if (inv.interState && (num(inv.grandTotal) ?? 0) > B2CL_THRESHOLD) {
+      // Large, inter-state and unregistered: its own table, invoice by invoice,
+      // with the place of supply on the face of it.
+      b2cl.push({
+        invoiceId: inv.id,
+        invoiceNumber: inv.recordCode!,
+        issuedDate: inv.issuedDate!.toISOString().slice(0, 10),
+        customerGstin: '',
         customerName: nameOf.get(inv.organizationId ?? inv.personId ?? '') ?? '—',
         placeOfSupply: placeOfSupplyLabel(inv.placeOfSupply),
         reverseCharge: 'N',
@@ -212,6 +265,13 @@ export async function computeGstr1(period: string) {
         }
         b2cRates.set(key, bucket);
       }
+    }
+
+    // Nil-rated supplies are reported, and reported apart from taxable ones: a
+    // zero-rate line folded into the taxable total is a figure that does not
+    // reconcile with 3.1 of the 3B.
+    for (const line of inv.lines) {
+      if ((num(line.gstRate) ?? 0) === 0) nilRatedValue = round2(nilRatedValue + (num(line.amount) ?? 0));
     }
 
     // The HSN/SAC summary. Every line contributes, B2B and B2C alike, because
@@ -276,14 +336,16 @@ export async function computeGstr1(period: string) {
     gstin: us.gstin,
     supplierLegalName: us.legalName,
     b2b,
+    b2cl,
     b2cs: [...b2cRates.values()].sort((a, b) => a.gstRate - b.gstRate),
+    nil: { nilRated: nilRatedValue, exempted: 0, nonGst: 0 },
     hsn: [...hsn.values()].sort((a, b) => a.hsnSac.localeCompare(b.hsnSac) || a.gstRate - b.gstRate),
     creditNotes: creditNoteRows,
     documentSummary: {
-      from: invoices[0]?.recordCode ?? null,
-      to: invoices[invoices.length - 1]?.recordCode ?? null,
-      issued: invoices.length,
-      reported: live.length,
+      from: numbered[0]?.recordCode ?? null,
+      to: numbered[numbered.length - 1]?.recordCode ?? null,
+      issued: invoices.filter((i) => Boolean(i.recordCode)).length,
+      reported: numbered.length,
       cancelled: cancelled.length,
     },
     totals: {
@@ -296,24 +358,149 @@ export async function computeGstr1(period: string) {
       invoiceValue: round2(live.reduce((s, i) => s + (num(i.grandTotal) ?? 0), 0)),
       creditNoted: round2(creditNoteRows.reduce((s, c) => s + c.amount, 0)),
     },
+
     /**
-     * What would make this return wrong if it were filed as it stands. Surfaced
-     * rather than swallowed: a line with no HSN is accepted by the books and
-     * rejected by the portal, and finding that out at the filing deadline is the
-     * worst possible moment.
+     * Everything that would make this return wrong, before it is filed.
+     *
+     * Split into what the portal will reject and what is merely worth a look,
+     * because they call for different things: one has to be fixed and the other
+     * has to be seen. Each finding names the invoices behind it, so the fix is
+     * one click from the finding rather than a hunt through a month of them.
+     *
+     * This is the part that makes invoicing and filing one system rather than
+     * two. Every check here is about something the invoice screen could have got
+     * right — a missing SAC, a customer registration that does not validate, a
+     * place of supply nobody set — and finding it at the filing deadline is the
+     * worst possible moment to find it.
      */
-    warnings: [
-      ...(us.gstin ? [] : ['The company profile carries no GSTIN. A return cannot be filed without one.']),
-      ...(unclassified.length
-        ? [
-            `${unclassified.length} line group${unclassified.length === 1 ? '' : 's'} carry no HSN/SAC code. The portal requires one on every line; set it on the course or offering being billed.`,
-          ]
-        : []),
-      ...(live.some((i) => !i.placeOfSupply)
-        ? ['Some invoices have no place of supply, so the tax on them could not be attributed to a state.']
-        : []),
-    ],
+    checks: checks(),
+    /** The blocking ones as plain sentences, for callers that want a summary. */
+    get warnings(): string[] {
+      return this.checks.map((c: FilingCheck) => c.message);
+    },
   };
+
+  function checks(): FilingCheck[] {
+    const out: FilingCheck[] = [];
+    /** `1 invoice carries` and `3 invoices carry`, without three spellings of it. */
+    const count = (n: number, verb: string, verbPlural: string) =>
+      `${n} invoice${n === 1 ? '' : 's'} ${n === 1 ? verb : verbPlural}`;
+
+    if (!us.gstin) {
+      out.push({
+        severity: 'blocking',
+        code: 'NO_GSTIN',
+        message: 'The company profile carries no GSTIN. A return is filed under a registration, so there is nothing to file this one under.',
+      });
+    }
+
+    const noHsn = live.filter((i) => i.lines.some((l) => !l.hsnSac?.trim()));
+    if (noHsn.length) {
+      out.push({
+        severity: 'blocking',
+        code: 'MISSING_HSN',
+        message:
+          `${count(noHsn.length, 'carries', 'carry')} a line with no HSN/SAC code. The portal requires one on every line — set it on the course or offering being billed and it fills itself in from then on.`,
+        invoices: noHsn.map((i) => i.recordCode!).filter(Boolean),
+      });
+    }
+
+    const noPos = live.filter((i) => !i.placeOfSupply);
+    if (noPos.length) {
+      out.push({
+        severity: 'blocking',
+        code: 'MISSING_PLACE_OF_SUPPLY',
+        message:
+          `${count(noPos.length, 'has', 'have')} no place of supply, so the tax on it cannot be attributed to a state.`,
+        invoices: noPos.map((i) => i.recordCode!).filter(Boolean),
+      });
+    }
+
+    // A GSTIN that does not validate is the expensive one: the portal takes the
+    // return, the customer's credit never appears, and they ring up in March.
+    const badGstin = live.filter((i) => i.customerGstin && !isValidGstin(i.customerGstin));
+    if (badGstin.length) {
+      out.push({
+        severity: 'blocking',
+        code: 'INVALID_CUSTOMER_GSTIN',
+        message:
+          `${count(badGstin.length, 'carries', 'carry')} a customer GSTIN that fails its own check digit. Reported as it stands, the customer never receives the credit and finds out months later.`,
+        invoices: badGstin.map((i) => i.recordCode!).filter(Boolean),
+      });
+    }
+
+    // The portal takes at most sixteen characters for an invoice number.
+    const tooLong = live.filter((i) => (i.recordCode?.length ?? 0) > 16);
+    if (tooLong.length) {
+      out.push({
+        severity: 'blocking',
+        code: 'INVOICE_NUMBER_TOO_LONG',
+        message:
+          `${tooLong.length} invoice number${tooLong.length === 1 ? ' is' : 's are'} longer than the sixteen characters the portal accepts. Shorten the document prefix, or write the year as 26-27, under Company details — before the next one is raised.`,
+        invoices: tooLong.map((i) => i.recordCode!).filter(Boolean),
+      });
+    }
+
+    // Tax that does not follow from the taxable value and the rate on the lines.
+    const inconsistent = live.filter((i) => {
+      const lineTax = round2(i.lines.reduce((sum, l) => sum + ((num(l.amount) ?? 0) * (num(l.gstRate) ?? 0)) / 100, 0));
+      const stored = round2((num(i.cgstAmount) ?? 0) + (num(i.sgstAmount) ?? 0) + (num(i.igstAmount) ?? 0));
+      return Math.abs(lineTax - stored) > 1;
+    });
+    if (inconsistent.length) {
+      out.push({
+        severity: 'blocking',
+        code: 'TAX_DOES_NOT_RECONCILE',
+        message:
+          `${count(inconsistent.length, 'carries', 'carry')} a tax total that does not follow from its own lines. Reporting it would put a figure in the return that the books cannot explain.`,
+        invoices: inconsistent.map((i) => i.recordCode!).filter(Boolean),
+      });
+    }
+
+    // Both taxes at once, or neither where there should be one.
+    const splitWrong = live.filter((i) => {
+      const intra = (num(i.cgstAmount) ?? 0) + (num(i.sgstAmount) ?? 0) > 0;
+      const inter = (num(i.igstAmount) ?? 0) > 0;
+      return (intra && inter) || (i.interState && intra) || (!i.interState && inter);
+    });
+    if (splitWrong.length) {
+      out.push({
+        severity: 'blocking',
+        code: 'WRONG_TAX_HEADS',
+        message:
+          `${count(splitWrong.length, 'carries', 'carry')} the wrong pair of taxes for where the supply was made. CGST+SGST and IGST are different taxes collected by different governments, and an invoice showing both is wrong rather than untidy.`,
+        invoices: splitWrong.map((i) => i.recordCode!).filter(Boolean),
+      });
+    }
+
+    if (unclassified.length) {
+      out.push({
+        severity: 'warning',
+        code: 'UNCLASSIFIED_HSN',
+        message: `${unclassified.length} line group${unclassified.length === 1 ? ' is' : 's are'} summarised as UNCLASSIFIED in the HSN table.`,
+      });
+    }
+
+    const b2bNoName = b2b.filter((i) => i.customerName === '—');
+    if (b2bNoName.length) {
+      out.push({
+        severity: 'warning',
+        code: 'B2B_WITHOUT_NAME',
+        message: `${b2bNoName.length} B2B invoice${b2bNoName.length === 1 ? '' : 's'} could not be matched to a customer name.`,
+        invoices: b2bNoName.map((i) => i.invoiceNumber),
+      });
+    }
+
+    if (live.length === 0) {
+      out.push({
+        severity: 'warning',
+        code: 'NIL_RETURN',
+        message: 'No outward supplies in this period. This would be filed as a nil return, which is still a return that has to be filed.',
+      });
+    }
+
+    return out;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +538,9 @@ export async function computeGstr3b(period: string) {
       igstAmount: true,
       interState: true,
       customerGstin: true,
+      placeOfSupply: true,
       grandTotal: true,
+      lines: { select: { amount: true, gstRate: true } },
     },
   });
 
@@ -364,6 +553,23 @@ export async function computeGstr3b(period: string) {
     }),
     { taxableValue: 0, cgst: 0, sgst: 0, igst: 0 },
   );
+
+  // Table 3.2: inter-state supplies to unregistered persons, by destination
+  // state. The state's share of the IGST is settled from this, so a supply
+  // missing from it is money that never reaches the state it was collected for.
+  const interState = new Map<string, { taxableValue: number; igst: number }>();
+  let nilRated = 0;
+  for (const inv of invoices) {
+    if (inv.interState && supplyTypeOf(inv.customerGstin) === 'b2c' && inv.placeOfSupply) {
+      const row = interState.get(inv.placeOfSupply) ?? { taxableValue: 0, igst: 0 };
+      row.taxableValue = round2(row.taxableValue + (num(inv.taxableValue) ?? 0));
+      row.igst = round2(row.igst + (num(inv.igstAmount) ?? 0));
+      interState.set(inv.placeOfSupply, row);
+    }
+    for (const line of inv.lines) {
+      if ((num(line.gstRate) ?? 0) === 0) nilRated = round2(nilRated + (num(line.amount) ?? 0));
+    }
+  }
 
   const bills = await prisma.vendorBill.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, billDate: { gte: from, lt: to } },
@@ -400,6 +606,10 @@ export async function computeGstr3b(period: string) {
     credit,
   );
 
+  // The same month's GSTR-1, so the two can be checked against each other rather
+  // than hoped about.
+  const gstr1Tax = round2(output.cgst + output.sgst + output.igst);
+
   return {
     returnType: 'GSTR3B' as const,
     period,
@@ -418,6 +628,41 @@ export async function computeGstr3b(period: string) {
       invoiceValue: round2(invoices.reduce((s, i) => s + (num(i.grandTotal) ?? 0), 0)),
       b2bCount: invoices.filter((i) => supplyTypeOf(i.customerGstin) === 'b2b').length,
     },
+
+    /**
+     * The rest of table 3.1, reported as zero and reported nonetheless.
+     *
+     * A 3B that omits them is not a shorter 3B, it is an incomplete one: the
+     * portal asks for every row, and a company that starts exporting or selling
+     * an exempt supply needs the row to exist before it has a figure in it. They
+     * are zero here because this platform has no way to mark a supply zero-rated
+     * or exempt yet — which is stated rather than implied, so nobody reads a zero
+     * as a measurement.
+     */
+    otherOutwardSupplies: {
+      zeroRated: { taxableValue: 0, igst: 0 },
+      /** Nil-rated: a 0% line is a nil-rated supply, and those this platform can see. */
+      nilRatedAndExempt: { taxableValue: nilRated },
+      nonGst: { taxableValue: 0 },
+      reverseCharge: { taxableValue: 0, cgst: 0, sgst: 0, igst: 0 },
+      note:
+        'Zero-rated, exempt and non-GST supplies read zero because nothing in this platform can yet mark a supply as ' +
+        'one. They are not measured, rather than measured at nothing.',
+    },
+
+    /**
+     * 3.2 — of the supplies in 3.1, those made inter-state to unregistered
+     * persons, broken down by the state they went to. The destination state's
+     * share of the IGST is settled from this table, so a supply missing from it
+     * is money that does not reach the state it was collected for.
+     */
+    interStateToUnregistered: [...interState.entries()]
+      .map(([code, row]) => ({
+        placeOfSupply: placeOfSupplyLabel(code),
+        taxableValue: row.taxableValue,
+        igst: row.igst,
+      }))
+      .sort((a, b) => (a.placeOfSupply ?? '').localeCompare(b.placeOfSupply ?? '')),
 
     /** 4(A) — input tax credit available, from supplier bills in the period. */
     inputTaxCredit: {
@@ -440,15 +685,62 @@ export async function computeGstr3b(period: string) {
       creditCarriedForward: setOff.carriedForward,
     },
 
-    warnings: [
-      ...(us.gstin ? [] : ['The company profile carries no GSTIN. A return cannot be filed without one.']),
+    checks: [
+      ...(us.gstin
+        ? []
+        : [
+            {
+              severity: 'blocking' as const,
+              code: 'NO_GSTIN',
+              message: 'The company profile carries no GSTIN. A return is filed under a registration.',
+            },
+          ]),
       ...(us.stateCode
         ? []
-        : ['Without our own state code, a supplier bill cannot be classed as intra-state or inter-state, so the credit split below is a guess.']),
-      ...(unregisteredInputs > 0
-        ? [`₹${unregisteredInputs.toFixed(2)} of tax on bills from suppliers with no GSTIN on file is not claimable as credit. Add their GSTINs if they are registered.`]
+        : [
+            {
+              severity: 'blocking' as const,
+              code: 'NO_STATE_CODE',
+              message:
+                'Without our own state code a supplier bill cannot be classed as intra-state or inter-state, so the credit split below is a guess rather than a figure.',
+            },
+          ]),
+      // The two returns are computed from the same invoices, so they agree by
+      // construction — and a discrepancy between them is exactly what a notice
+      // asks about, so it is checked rather than assumed.
+      ...(Math.abs(round2(output.cgst + output.sgst + output.igst) - gstr1Tax) > 1
+        ? [
+            {
+              severity: 'blocking' as const,
+              code: 'DOES_NOT_MATCH_GSTR1',
+              message:
+                `The output tax here (${round2(output.cgst + output.sgst + output.igst)}) does not match GSTR-1 for the same month (${gstr1Tax}). ` +
+                'The two are computed from the same invoices, so a difference means one of them was prepared against different books.',
+            },
+          ]
         : []),
-    ],
+      ...(unregisteredInputs > 0
+        ? [
+            {
+              severity: 'warning' as const,
+              code: 'UNCLAIMABLE_INPUT_TAX',
+              message: `₹${unregisteredInputs.toFixed(2)} of tax on bills from suppliers with no GSTIN on file is not claimable as credit. Add their registrations if they have one.`,
+            },
+          ]
+        : []),
+      ...(setOff.totalPayable > 0
+        ? [
+            {
+              severity: 'warning' as const,
+              code: 'CASH_DUE',
+              message: `₹${setOff.totalPayable.toFixed(2)} is payable in cash after credit. The return is not filed until the challan is paid.`,
+            },
+          ]
+        : []),
+    ] as FilingCheck[],
+    get warnings(): string[] {
+      return this.checks.map((c: FilingCheck) => c.message);
+    },
   };
 }
 
@@ -487,6 +779,13 @@ export async function prepareReturn(returnType: GstReturnType, period: string, n
   }
 
   const computed = await computeReturn(returnType, period);
+
+  // Prepared with the findings on it rather than despite them. Preparing is
+  // arithmetic and is allowed to produce a return that could not be filed — that
+  // is what preparing is for, and seeing the blockers is the reason to do it.
+  // They bite at filing.
+  const blocking = (computed.checks as FilingCheck[]).filter((c) => c.severity === 'blocking');
+
   const totals =
     computed.returnType === 'GSTR1'
       ? {
@@ -556,7 +855,13 @@ export async function prepareReturn(returnType: GstReturnType, period: string, n
   await emit({
     name: EVENTS.GST_RETURN_PREPARED,
     subject: { entityType: 'gst_filing', entityId: filing.id, recordCode },
-    newState: { returnType, period, netPayable: totals.netPayable, warnings: computed.warnings.length },
+    newState: {
+      returnType,
+      period,
+      netPayable: totals.netPayable,
+      blocking: blocking.length,
+      advisories: (computed.checks as FilingCheck[]).length - blocking.length,
+    },
     impact: {
       domains: ['fin'],
       materiality: { measure: 'gst_net_payable', value: totals.netPayable, currency: 'INR' },
@@ -564,7 +869,20 @@ export async function prepareReturn(returnType: GstReturnType, period: string, n
     confidentiality: 'confidential',
   });
 
-  return { filing, computed };
+  return { filing, computed, blocking };
+}
+
+/**
+ * Everything standing between a prepared return and a filed one.
+ *
+ * Read from the snapshot, so it answers for the return as prepared rather than
+ * for the books as they stand now — which is the only reading that means
+ * anything to somebody about to file.
+ */
+export async function filingBlockers(filingId: string): Promise<FilingCheck[]> {
+  const filing = await filingDetail(filingId);
+  const snapshot = filing.snapshot as { checks?: FilingCheck[] };
+  return (snapshot.checks ?? []).filter((c) => c.severity === 'blocking');
 }
 
 /**
@@ -596,6 +914,20 @@ export async function markReturnFiled(filingId: string, input: { arn: string; fi
   const arn = input.arn.trim();
   if (arn.length < 6) {
     throw ApiError.badRequest('The ARN is the portal’s acknowledgement number for the filing. A return with no ARN was not filed.');
+  }
+
+  // The checks as they stood when the return was prepared. A return the portal
+  // would reject is not recorded as filed, because recording it closes the
+  // period — and a closed period on a return that never went through is the
+  // worst of both: the books refuse corrections and the government has nothing.
+  const snapshot = filing.snapshot as { checks?: FilingCheck[] };
+  const blocking = (snapshot.checks ?? []).filter((c) => c.severity === 'blocking');
+  if (blocking.length) {
+    throw ApiError.unprocessable(
+      `${filing.recordCode} has ${blocking.length} thing${blocking.length === 1 ? '' : 's'} on it the portal would reject: ` +
+        `${blocking.map((c) => c.message).join(' ')} Fix ${blocking.length === 1 ? 'it' : 'them'} on the invoices, prepare the return again, and file that one.`,
+      { blocking },
+    );
   }
 
   const filed = await prisma.gstFiling.update({
@@ -746,6 +1078,20 @@ export async function exportFilingJson(filingId: string) {
           },
         ],
       })),
+      b2cl: snap.b2cl.map((i) => ({
+        pos: i.placeOfSupply?.slice(0, 2) ?? null,
+        inv: [
+          {
+            inum: i.invoiceNumber,
+            idt: i.issuedDate.split('-').reverse().join('-'),
+            val: i.invoiceValue,
+            itms: i.rates.map((rate, index) => ({
+              num: index + 1,
+              itm_det: { rt: rate, txval: i.taxableValue, iamt: i.igst },
+            })),
+          },
+        ],
+      })),
       b2cs: snap.b2cs.map((r) => ({
         sply_ty: r.igst > 0 ? 'INTER' : 'INTRA',
         rt: r.gstRate,
@@ -754,6 +1100,16 @@ export async function exportFilingJson(filingId: string) {
         camt: r.cgst,
         samt: r.sgst,
       })),
+      nil: {
+        inv: [
+          {
+            sply_ty: 'INTRB2C',
+            expt_amt: snap.nil.exempted,
+            nil_amt: snap.nil.nilRated,
+            ngsup_amt: snap.nil.nonGst,
+          },
+        ],
+      },
       hsn: {
         data: snap.hsn.map((h, index) => ({
           num: index + 1,
@@ -799,6 +1155,28 @@ export async function exportFilingJson(filingId: string) {
         samt: snap.outwardSupplies.sgst,
         csamt: 0,
       },
+      osup_zero: {
+        txval: snap.otherOutwardSupplies.zeroRated.taxableValue,
+        iamt: snap.otherOutwardSupplies.zeroRated.igst,
+        csamt: 0,
+      },
+      osup_nil_exmp: { txval: snap.otherOutwardSupplies.nilRatedAndExempt.taxableValue },
+      osup_nongst: { txval: snap.otherOutwardSupplies.nonGst.taxableValue },
+      isup_rev: {
+        txval: snap.otherOutwardSupplies.reverseCharge.taxableValue,
+        iamt: snap.otherOutwardSupplies.reverseCharge.igst,
+        camt: snap.otherOutwardSupplies.reverseCharge.cgst,
+        samt: snap.otherOutwardSupplies.reverseCharge.sgst,
+        csamt: 0,
+      },
+    },
+    /** 3.2 — of the above, what went inter-state to unregistered persons. */
+    inter_sup: {
+      unreg_details: snap.interStateToUnregistered.map((r) => ({
+        pos: r.placeOfSupply?.slice(0, 2) ?? null,
+        txval: r.taxableValue,
+        iamt: r.igst,
+      })),
     },
     itc_elg: {
       itc_avl: [

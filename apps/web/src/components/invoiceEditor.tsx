@@ -66,6 +66,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 interface EditorLine {
   courseId: string;
+  /** The student's place on the course — what a fee line actually bills. */
+  enrollmentId: string;
   description: string;
   quantity: string;
   unitPrice: string;
@@ -73,12 +75,21 @@ interface EditorLine {
   hsnSac: string;
 }
 
-const emptyLine: EditorLine = { courseId: '', description: '', quantity: '1', unitPrice: '', gstRate: '18', hsnSac: '' };
+const emptyLine: EditorLine = {
+  courseId: '',
+  enrollmentId: '',
+  description: '',
+  quantity: '1',
+  unitPrice: '',
+  gstRate: '18',
+  hsnSac: '',
+};
 
 function linesFrom(invoice: InvoiceView | null): EditorLine[] {
   if (!invoice || invoice.lines.length === 0) return [{ ...emptyLine }];
   return invoice.lines.map((l) => ({
     courseId: l.courseId ?? '',
+    enrollmentId: l.enrollmentId ?? '',
     description: l.description,
     quantity: String(l.quantity ?? 1),
     unitPrice: String(l.unitPrice ?? l.amount ?? ''),
@@ -93,12 +104,15 @@ export function InvoiceEditor({
   invoice,
   /** Pre-selects a person, for billing a student from their own page. */
   personId: initialPersonId,
+  /** Pre-selects the enrolment being billed, from that same page. */
+  enrollmentId: initialEnrollmentId,
 }: {
   open: boolean;
   onClose: () => void;
   /** A draft being corrected. Absent when raising a new one. */
   invoice?: InvoiceView | null;
   personId?: string | null;
+  enrollmentId?: string | null;
 }) {
   const editing = Boolean(invoice);
   const organizations = useList<Named>('organizations', '/crm/organizations', open);
@@ -138,6 +152,22 @@ export function InvoiceEditor({
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<EditorLine[]>(linesFrom(invoice ?? null));
 
+  /**
+   * The enrolments of whoever is being billed.
+   *
+   * Choosing one fills the course, the fee and the SAC, and ties the fee to the
+   * student's actual place on the course — so "has this enrolment been paid for"
+   * has an answer rather than a guess read off the description.
+   */
+  const enrolments = useList<{
+    id: string;
+    recordCode: string;
+    personId: string;
+    courseName: string;
+    cohortName: string;
+    status: string;
+  }>('enrollments-for-billing', '/education/enrollments?limit=200', open && billTo === 'person');
+
   const [issueNow, setIssueNow] = useState(true);
   const [payingNow, setPayingNow] = useState('');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
@@ -148,6 +178,10 @@ export function InvoiceEditor({
   useEffect(() => {
     if (!open) return;
     setLines(linesFrom(invoice ?? null));
+    if (!invoice && initialEnrollmentId) {
+      // Filled once the enrolment list has loaded, by the effect below.
+      setLines([{ ...emptyLine, enrollmentId: initialEnrollmentId }]);
+    }
     setBillTo(invoice?.personId || initialPersonId ? 'person' : 'organization');
     setOrganizationId(invoice?.accountId ?? '');
     setPersonId(invoice?.personId ?? initialPersonId ?? '');
@@ -156,7 +190,24 @@ export function InvoiceEditor({
     setDueDate(invoice?.dueDate ? invoice.dueDate.slice(0, 10) : '');
     setDivision(invoice?.division ?? '');
     setPayingNow('');
-  }, [open, invoice, initialPersonId]);
+  }, [open, invoice, initialPersonId, initialEnrollmentId]);
+
+  /**
+   * Fill the pre-selected enrolment's line once the catalogue has arrived.
+   *
+   * Separate from the reset above because the price comes from the course and
+   * the course list is a second request: filling it in the same tick would set
+   * the description and leave the fee blank.
+   */
+  useEffect(() => {
+    if (!open || invoice || !initialEnrollmentId) return;
+    if (!enrolments.rows.length || !courses.rows.length) return;
+    setLines((current) =>
+      current.length === 1 && current[0].enrollmentId === initialEnrollmentId && !current[0].unitPrice
+        ? [fillFromEnrolment(current[0], initialEnrollmentId, enrolments.rows, courses.rows)]
+        : current,
+    );
+  }, [open, invoice, initialEnrollmentId, enrolments.rows, courses.rows]);
 
   const setLine = (i: number, patch: Partial<EditorLine>) =>
     setLines((ls) => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)));
@@ -165,17 +216,31 @@ export function InvoiceEditor({
   const pickCourse = (i: number, courseId: string) => {
     const course = courses.rows.find((c) => c.id === courseId);
     if (!course) {
-      setLine(i, { courseId: '' });
+      setLine(i, { courseId: '', enrollmentId: '' });
       return;
     }
     setLine(i, {
       courseId,
+      enrollmentId: '',
       description: `${course.name} (${course.code})`,
       unitPrice: course.feeAmount !== null ? String(course.feeAmount) : '',
       gstRate: String(course.gstRate ?? 18),
       hsnSac: course.hsnSac ?? '',
     });
   };
+
+  /** Choosing an enrolment fills the course, and then the course fills the rest. */
+  const pickEnrolment = (i: number, enrollmentId: string) => {
+    if (!enrolments.rows.find((e) => e.id === enrollmentId)) {
+      setLine(i, { enrollmentId: '' });
+      return;
+    }
+    setLines((ls) =>
+      ls.map((l, k) => (k === i ? fillFromEnrolment(l, enrollmentId, enrolments.rows, courses.rows) : l)),
+    );
+  };
+
+  const theirEnrolments = enrolments.rows.filter((e) => e.personId === personId);
 
   /**
    * The tax reading, from the two registrations where both exist and from the
@@ -215,6 +280,7 @@ export function InvoiceEditor({
       .filter((l) => (l.description.trim() || l.courseId) && Number(l.unitPrice) > 0)
       .map((l) => ({
         courseId: l.courseId || null,
+        enrollmentId: l.enrollmentId || null,
         description: l.description.trim() || null,
         quantity: Number(l.quantity || 1),
         unitPrice: Number(l.unitPrice),
@@ -243,7 +309,7 @@ export function InvoiceEditor({
   return (
     <CreateModal
       open={open}
-      title={editing ? `Correct ${invoice!.recordCode}` : 'Raise an invoice'}
+      title={editing ? `Correct ${invoice!.label}` : 'Raise an invoice'}
       submitLabel={editing ? 'Save the draft' : issueNow ? 'Issue it' : 'Save as draft'}
       width="max-w-4xl"
       onClose={onClose}
@@ -342,6 +408,19 @@ export function InvoiceEditor({
         <div className="flex flex-col gap-3">
           {lines.map((line, i) => (
             <div key={i} className="rounded border border-ink-800 bg-ink-950/60 p-3">
+              {billTo === 'person' && theirEnrolments.length > 0 && (
+                <SelectInput
+                  label="Which enrolment"
+                  value={line.enrollmentId}
+                  onChange={(v) => pickEnrolment(i, v)}
+                  placeholder="Not a course fee"
+                  options={theirEnrolments.map((e) => ({
+                    value: e.id,
+                    label: `${e.courseName} — ${e.cohortName} (${e.recordCode})`,
+                  }))}
+                  hint="ties the fee to their place on the course"
+                />
+              )}
               <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                 <SelectInput
                   label="Course"
@@ -496,6 +575,27 @@ export function InvoiceEditor({
   );
 }
 
+/** One place that turns an enrolment into a priced fee line. */
+function fillFromEnrolment(
+  line: EditorLine,
+  enrollmentId: string,
+  enrolments: Array<{ id: string; courseName: string }>,
+  courses: CourseView[],
+): EditorLine {
+  const enrolment = enrolments.find((e) => e.id === enrollmentId);
+  if (!enrolment) return { ...line, enrollmentId: '' };
+  const course = courses.find((c) => c.name === enrolment.courseName);
+  return {
+    ...line,
+    enrollmentId,
+    courseId: course?.id ?? '',
+    description: course ? `${course.name} (${course.code}) — course fee` : `${enrolment.courseName} — course fee`,
+    unitPrice: course?.feeAmount != null ? String(course.feeAmount) : line.unitPrice,
+    gstRate: String(course?.gstRate ?? 18),
+    hsnSac: course?.hsnSac ?? line.hsnSac,
+  };
+}
+
 function Figure({
   label,
   value,
@@ -559,7 +659,7 @@ export function CollectPayment({
   return (
     <CreateModal
       open
-      title={`Receipt an instalment against ${invoice.recordCode}`}
+      title={`Receipt an instalment against ${invoice.label}`}
       submitLabel="Issue the receipt"
       onClose={onClose}
       invalidate={[
