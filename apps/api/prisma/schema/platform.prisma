@@ -194,6 +194,20 @@ model EventRecord {
   @@index([tenantId, eventName, occurredAt])
   @@index([tenantId, subjectEntityType, subjectEntityId])
   @@index([tenantId, correlationId])
+    /// Two events cannot share a predecessor.
+  ///
+  /// The chain used to be built by reading the head with an unlocked
+  /// `findFirst` and inserting afterwards, outside any transaction. Two
+  /// concurrent emits in one tenant both read head H and both wrote
+  /// `prevHash: H`, forking the chain — and `verifyChain` then reported it
+  /// permanently broken with no way back. Tamper-evidence was the entire point
+  /// of the design and it did not survive two requests arriving together.
+  ///
+  /// This is the real fix: the second writer's insert fails loudly and retries
+  /// against the new head instead of silently forking. NULL is exempt in
+  /// Postgres, so the genesis event of a tenant is not covered — that is one
+  /// row, written once, and the serializable transaction covers it.
+  @@unique([tenantId, prevHash])
   @@map("event_records")
 }
 
