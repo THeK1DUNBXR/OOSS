@@ -19,7 +19,7 @@
  *   - the governance policy and the three-role grant matrix
  *   - pipeline definitions, the navigation registry, agent registrations
  *   - statutory leave types
- *   - one account: the chairman, who then invites everybody else
+ *   - four accounts, one per role, from which everybody else is invited
  *
  * None of that is data about the company. It is the shape of the box the
  * company's data goes in, and a tenant without it cannot function.
@@ -674,22 +674,88 @@ async function seedLeaveTypes() {
 }
 
 // ---------------------------------------------------------------------------
-// The first account
+// The founding accounts
 // ---------------------------------------------------------------------------
 
 /**
- * One account, holding the chairman role, from which every other account is
- * created inside the product.
+ * The four people the company runs on, one per role.
  *
- * The password comes from the environment or is generated and printed once. It
- * is never a constant in this file: a known default password in a seed script
- * is a known default password in production, and "it is only the demo one" has
- * never once been true by the time it mattered.
+ * This used to create one account — the chairman — on the principle that
+ * everybody else is invited from inside the product. That principle is still
+ * right for the fifth person onwards and was wrong for the first four: the
+ * matrix's whole point is that a pay rise takes two parties and the books are
+ * not the people function, and a tenant with one superadmin account cannot
+ * demonstrate any of it. Somebody signing in for the first time had to create
+ * three colleagues before the product behaved the way it is designed to.
+ *
+ * So the four named role-holders are seeded, and every one of them gets its own
+ * generated password, printed once. A known default password in a seed script is
+ * a known default password in production, and "it is only the demo one" has never
+ * been true by the time it mattered.
+ *
+ * Names and addresses are overridable per account, so a different company does
+ * not inherit these ones. `OWNER_*` stays the chairman's, unchanged, because
+ * that is what existing installs and `docker-compose.yml` already set.
  */
-async function seedOwner(): Promise<{ email: string; password: string | null }> {
+interface FoundingAccount {
+  roleSlug: string;
+  /** Env prefix for the three overrides: `_EMAIL`, `_NAME`, `_PASSWORD`. */
+  env: string;
+  defaultLocalPart: string;
+  defaultName: string;
+  /** What this account is for, printed beside it at the end of the seed. */
+  holds: string;
+}
+
+const FOUNDING_ACCOUNTS: FoundingAccount[] = [
+  {
+    roleSlug: 'chairman',
+    env: 'OWNER',
+    defaultLocalPart: 'chairman',
+    defaultName: 'Rishikesh',
+    holds: 'superadmin — every resource, every verb, every scope',
+  },
+  {
+    roleSlug: 'hr_ops_manager',
+    env: 'OPERATIONS',
+    defaultLocalPart: 'operations',
+    defaultName: 'Kasthurika',
+    holds: 'the people function, delivery, education and the course catalogue',
+  },
+  {
+    roleSlug: 'finance_head',
+    env: 'FINANCE',
+    defaultLocalPart: 'finance',
+    defaultName: 'Narayanan',
+    holds: 'the books, the GST returns, and the money side of people',
+  },
+  {
+    roleSlug: 'employee',
+    env: 'EMPLOYEE',
+    defaultLocalPart: 'employee',
+    defaultName: 'Employee',
+    holds: 'their own record, and raising invoices at the counter',
+  },
+];
+
+const EMAIL_DOMAIN = process.env.SEED_EMAIL_DOMAIN ?? 'kaizen.co.in';
+
+export interface SeededAccount {
+  roleSlug: string;
+  name: string;
+  email: string;
+  holds: string;
+  /** Null when the password came from the environment, or the account already existed. */
+  password: string | null;
+  created: boolean;
+}
+
+async function seedAccount(spec: FoundingAccount): Promise<SeededAccount> {
   const tenantId = (await currentTenant()).id;
-  const email = (process.env.OWNER_EMAIL ?? 'chairman@kaizen.co.in').toLowerCase();
-  const fullName = process.env.OWNER_NAME ?? 'Chairman';
+  const email = (
+    process.env[`${spec.env}_EMAIL`] ?? `${spec.defaultLocalPart}@${EMAIL_DOMAIN}`
+  ).toLowerCase();
+  const fullName = process.env[`${spec.env}_NAME`] ?? spec.defaultName;
 
   const existingUser = await prisma.user.findFirst({ where: { tenantId, email } });
 
@@ -712,7 +778,7 @@ async function seedOwner(): Promise<{ email: string; password: string | null }> 
   // account that can authenticate and then resolves to no affiliation, which
   // presents as a login that succeeds and a session with no authority at all.
   const affiliation = await prisma.affiliation.findFirst({
-    where: { tenantId, partyId: person.id, roleSlug: 'chairman' },
+    where: { tenantId, partyId: person.id, roleSlug: spec.roleSlug },
   });
   if (!affiliation) {
     await prisma.affiliation.create({
@@ -721,7 +787,7 @@ async function seedOwner(): Promise<{ email: string; password: string | null }> 
         partyId: person.id,
         affiliationType: 'employee',
         counterpartyName: TENANT_NAME,
-        roleSlug: 'chairman',
+        roleSlug: spec.roleSlug,
         primaryFlag: true,
         status: 'active',
         // An employee affiliation carries a statutory retention floor: a dedup
@@ -732,22 +798,40 @@ async function seedOwner(): Promise<{ email: string; password: string | null }> 
   }
 
   if (existingUser) {
-    console.log(`  owner ${email} already exists — password left untouched`);
-    return { email, password: null };
+    console.log(`  ${spec.roleSlug} ${email} already exists — password left untouched`);
+    return { roleSlug: spec.roleSlug, name: fullName, email, holds: spec.holds, password: null, created: false };
   }
 
-  const password = process.env.OWNER_PASSWORD ?? randomUUID().replace(/-/g, '').slice(0, 16);
+  const fromEnv = process.env[`${spec.env}_PASSWORD`];
+  const password = fromEnv ?? randomUUID().replace(/-/g, '').slice(0, 16);
   await prisma.user.create({
     data: { tenantId, personId: person.id, email, passwordHash: await hashPassword(password) },
   });
 
-  console.log(`  owner ${email} created`);
-  return { email, password: process.env.OWNER_PASSWORD ? null : password };
+  console.log(`  ${spec.roleSlug} ${email} created`);
+  return {
+    roleSlug: spec.roleSlug,
+    name: fullName,
+    email,
+    holds: spec.holds,
+    password: fromEnv ? null : password,
+    created: true,
+  };
+}
+
+async function seedFoundingAccounts(): Promise<SeededAccount[]> {
+  const out: SeededAccount[] = [];
+  for (const spec of FOUNDING_ACCOUNTS) out.push(await seedAccount(spec));
+  return out;
 }
 
 // ---------------------------------------------------------------------------
 
-export async function seedBootstrap(): Promise<{ tenantId: string; owner: { email: string; password: string | null } }> {
+export async function seedBootstrap(): Promise<{
+  tenantId: string;
+  owner: { email: string; password: string | null };
+  accounts: SeededAccount[];
+}> {
   const tenant = await unscopedPrisma.tenant.upsert({
     where: { slug: TENANT_SLUG },
     create: {
@@ -773,7 +857,7 @@ export async function seedBootstrap(): Promise<{ tenantId: string; owner: { emai
 
   registerSubscribers();
 
-  let owner: { email: string; password: string | null } = { email: '', password: null };
+  let accounts: SeededAccount[] = [];
   await asSystem(tenant.id, async () => {
     await seedThresholds();
     await seedSensitivityRegistrations();
@@ -783,8 +867,16 @@ export async function seedBootstrap(): Promise<{ tenantId: string; owner: { emai
     await seedSurfaces();
     await seedAgents();
     await seedLeaveTypes();
-    owner = await seedOwner();
+    accounts = await seedFoundingAccounts();
   });
 
-  return { tenantId: tenant.id, owner };
+  // `owner` is kept as its own field because it is what every caller printing
+  // sign-in details actually wants, and because removing it would break them for
+  // no gain. It is the chairman's row of `accounts`.
+  const chairman = accounts.find((a) => a.roleSlug === 'chairman');
+  return {
+    tenantId: tenant.id,
+    owner: { email: chairman?.email ?? '', password: chairman?.password ?? null },
+    accounts,
+  };
 }

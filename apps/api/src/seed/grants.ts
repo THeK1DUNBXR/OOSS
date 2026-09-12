@@ -10,14 +10,16 @@
  *
  *   employee            Own record only. Their leave, their attendance, their
  *                       goals, their skills, their payslip, their documents.
- *                       They can see who works here and what we sell; they
+ *                       They can see who works here and what we sell, and they
+ *                       raise invoices at the counter for what they sell; they
  *                       cannot see what anybody else earns.
  *
- *   hr_ops_manager      The people function and day-to-day operations. Runs
- *                       the employment lifecycle end to end, prepares payroll,
- *                       holds the only routine reach into case-scoped
- *                       evidence, and owns delivery, education and tasks.
- *                       Proposes pay and cannot approve it.
+ *   hr_ops_manager      Operations Head. The people function and day-to-day
+ *                       operations: runs the employment lifecycle end to end,
+ *                       prepares payroll, holds the only routine reach into
+ *                       case-scoped evidence, and owns delivery, education and
+ *                       the course catalogue. Proposes pay and cannot approve
+ *                       it.
  *
  *   finance_head        The books end to end, and the money side of people:
  *                       approves compensation and payroll, and sees the
@@ -126,7 +128,7 @@ const chairman: GrantSpec[] = ALL_RESOURCES.map((resource) => ({
 }));
 
 /**
- * HR & Operations Manager — the people function, and the running of the place.
+ * Operations Head — the people function, and the running of the place.
  *
  * Owns the employment lifecycle from requisition to exit, prepares payroll,
  * and holds the only routine reach into case-scoped evidence besides the
@@ -398,7 +400,7 @@ export const ROLE_DEFINITIONS: Array<{
   },
   {
     slug: 'hr_ops_manager',
-    name: 'HR & Operations Manager',
+    name: 'Operations Head',
     description:
       'The people function and the running of the place: the employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and tasks. Proposes pay and cannot approve it.',
     archetype: 'workspace',

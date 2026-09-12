@@ -20,7 +20,7 @@ import {
 } from '@kaizen/shared';
 import { handler, str, date, numeric } from '../lib/http.js';
 import { num } from '../platform/db.js';
-import { canSeeMoney } from '../platform/permissions.js';
+import { assertCan, canSeeMoney } from '../platform/permissions.js';
 import {
   listAccounts, createAccount, accountBalances,
   listCategories, createCategory,
@@ -401,7 +401,22 @@ router.post(
 // Every invoice is printed from this and every return is filed under it, which
 // is why it is here rather than buried in an admin screen about something else.
 
-router.get('/company-profile', handler(async () => companyProfile()));
+/**
+ * Gated here rather than inside `companyProfile()`, and the split is deliberate.
+ *
+ * The function is read internally by every invoice, receipt and statement, for
+ * any viewer who may see the document — so it cannot assert `company_profile:view`
+ * itself without making the supplier block on an invoice depend on a grant about
+ * settings. The endpoint is a different thing: it hands over the whole row, bank
+ * account number included, and that is a grant question.
+ */
+router.get(
+  '/company-profile',
+  handler(async () => {
+    await assertCan({ resource: 'company_profile', verb: 'view' });
+    return companyProfile();
+  }),
+);
 
 router.patch(
   '/company-profile',

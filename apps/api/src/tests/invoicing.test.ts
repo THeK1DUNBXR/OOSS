@@ -31,6 +31,7 @@ import {
   supplyTypeOf,
 } from '@kaizen/shared';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma, withFixtureRole } from './helpers.js';
+import { num } from '../platform/db.js';
 import {
   collectInvoicePayment,
   createInvoice,
@@ -1406,5 +1407,217 @@ describe('computeGst, on the arithmetic this all rests on', () => {
     const gst = computeGst([{ taxableValue: 999.5, gstRate: 18 }], false);
     expect(gst.grandTotal).toBe(Math.round(gst.total));
     expect(round2(gst.total + gst.roundOff)).toBe(gst.grandTotal);
+  });
+});
+
+// ===========================================================================
+// The company's own student register
+// ===========================================================================
+
+describe('the student register reads what a company already keeps', () => {
+  /** The register's own headings, verbatim, including the American spelling. */
+  const HEADER = [
+    'NAME', 'REGISTRATION NUMBER', 'CONTACT', 'MAIL-ID', 'COURSE', 'ACTUAL FEES', 'Excluding GST', 'GST',
+    'Discount of Rs', 'DISCOUNT', 'Including GST', 'REGISTRATION DATE', 'COURSE START DATE', 'COURSE END DATE',
+    'IST INSTALLMENT', 'DATE', 'Receipt NUMBER', '2ND INSTALLMENT', 'DATE', 'Receipt NUMBER',
+    '3RD  INSTALLMENT', 'DATE', 'Receipt NUMBER',
+  ];
+
+  function grid(...rows: string[][]) {
+    return [HEADER, ...rows];
+  }
+
+  it('recognises the register rather than reading it as a bank statement', async () => {
+    const { detectGrid } = await import('../imports/detect.js');
+    const detection = detectGrid(
+      grid(['Balaji', 'KI-2026/07-FS/1101', '6385469666', '', 'Full Stack Development', '24000', '15000', '2700', '6300', '26.25%', '17700', '7/8/26', '7/8/26', '9/9/26', '10000', '7/8/26', 'KIPL/R/2026-27/002', '', '', '', '', '', '']),
+    );
+    // A register carries a date column and an amount column, which is all the
+    // bank sniffer needs — so it has to be recognised first.
+    expect(detection.kind).toBe('student_register');
+    expect(detection.confidence).toBe('high');
+  });
+
+  it('reads the instalments, their dates and their receipt numbers', async () => {
+    const { extractStudentRegister } = await import('../imports/extract.js');
+    const out = extractStudentRegister(
+      grid(
+        [
+          'Balaji', 'KI-2026/07-FS/1101', '6385469666', '', 'Full Stack Development',
+          '24000', '15000', '2700', '6300', '26.25%', '17700',
+          '7/8/26', '7/8/26', '9/9/26',
+          '10000', '7/8/26', 'KIPL/R/2026-27/002',
+          '7700', '8/5/26', 'KIPL/R/2026-27/007',
+          '', '', '',
+        ],
+        // The second row is what settles how the first one reads: `6/29/26` can
+        // only be a month followed by a day, so the whole file is month-first and
+        // Balaji registered in July rather than in August. That inference is the
+        // reason this register imports with the right dates, so the row that
+        // makes it possible belongs in the test.
+        [
+          'V.Swetha', 'KI-2026/07-FS/1102', '7305133996', '', 'C.C++ & Java',
+          '24000', '15000', '2700', '6300', '26.25%', '17700',
+          '7/13/26', '6/29/26', '10/31/26',
+          '2000', '7/13/26', 'KIPL/R/2026-27/001',
+          '', '', '', '', '', '',
+        ],
+      ),
+      0,
+    );
+
+    expect(out.rows).toHaveLength(2);
+    const row = out.rows[0];
+    expect(row.status).toBe('ready');
+    const n = row.normalised as Record<string, unknown>;
+    expect(n.fullName).toBe('Balaji');
+    expect(n.registrationNumber).toBe('KI-2026/07-FS/1101');
+    expect(n.primaryPhone).toBe('6385469666');
+    expect(n.courseName).toBe('Full Stack Development');
+    expect(n.total).toBe(17_700);
+    expect(n.received).toBe(17_700);
+    expect(String(n.registeredOn).slice(0, 10)).toBe('2026-07-08');
+
+    const instalments = n.instalments as Array<Record<string, unknown>>;
+    expect(instalments).toHaveLength(2);
+    expect(instalments[0]).toMatchObject({ amount: 10_000, receiptNumber: 'KIPL/R/2026-27/002' });
+    expect(instalments[1]).toMatchObject({ amount: 7700, receiptNumber: 'KIPL/R/2026-27/007' });
+    expect(row.message).toBeUndefined();
+
+    // And the row that settled it reads the way it has to.
+    const second = out.rows[1].normalised as Record<string, unknown>;
+    expect(String(second.startsOn).slice(0, 10)).toBe('2026-06-29');
+  });
+
+  it('says so when the register does not add up, and imports the row anyway', async () => {
+    const { extractStudentRegister } = await import('../imports/extract.js');
+    const out = extractStudentRegister(
+      grid(
+        // The taxable value plus GST does not come to the total.
+        ['Vaishnavi', 'KI-2026/09-SAP/1107', '8754238004', '', 'SAP-MM module', '32999', '38939', '7009.02', '0', '0.00%', '38939', '9/3/26', '9/3/26', '11/13/26', '38939', '9/7/26', 'KIPL/R/2026-27/013', '', '', '', '', '', ''],
+        // The instalments come to a rupee more than is owed.
+        ['M.Ravichandran', 'KI-2026/08-TLY/1105', '9342462210', '', 'Basic Microsoft & Tally with Gst', '12999', '6779', '1220', '5000', '38.46%', '7999', '8/12/26', '8/12/26', '11/12/26', '3500', '8/12/26', 'KIPL/R/2026-27/004', '4500', '9/7/26', 'KIPL/R/2026-27/011', '', '', ''],
+      ),
+      0,
+    );
+
+    expect(out.rows).toHaveLength(2);
+    // Both import. The note is about the register, not about what is written —
+    // refusing the row would lose a real student over a spreadsheet error.
+    expect(out.rows.every((r) => r.status === 'ready')).toBe(true);
+    expect(out.rows[0].message).toMatch(/not the 38939/);
+    expect(out.rows[1].message).toMatch(/1 more than the 7999/);
+  });
+
+  it('does not mistake the trailing rows of a spreadsheet for students', async () => {
+    const { extractStudentRegister } = await import('../imports/extract.js');
+    const blank = HEADER.map(() => '');
+    blank[8] = '0'; // the stray zero a formula leaves in the discount column
+    const out = extractStudentRegister(grid(blank, blank), 0);
+    expect(out.rows).toHaveLength(0);
+  });
+
+  it('refuses a row with a student and no course, and says which', async () => {
+    const { extractStudentRegister } = await import('../imports/extract.js');
+    const out = extractStudentRegister(
+      grid(['Nobody', '', '', '', '', '', '', '', '', '', '9999', '', '', '', '', '', '', '', '', '', '', '', '']),
+      0,
+    );
+    expect(out.rows[0].status).toBe('error');
+    expect(out.rows[0].message).toMatch(/no course/);
+  });
+
+  it('dedupes on the registration number, so a corrected file does not import twice', async () => {
+    const { extractStudentRegister } = await import('../imports/extract.js');
+    const row = (fee: string) => [
+      'Balaji', 'KI-2026/07-FS/1101', '6385469666', '', 'Full Stack Development', '24000', '15000', '2700', '6300',
+      '26.25%', fee, '7/8/26', '7/8/26', '9/9/26', '10000', '7/8/26', 'KIPL/R/2026-27/002', '', '', '', '', '', '',
+    ];
+    const first = extractStudentRegister(grid(row('17700')), 0);
+    const corrected = extractStudentRegister(grid(row('17701')), 0);
+    // The fee changed and the student did not. The same enrolment, not a second.
+    expect(corrected.rows[0].dedupeKey).toBe(first.rows[0].dedupeKey);
+  });
+
+  it('enrols the students and leaves the course prices alone', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { commitImport } = await import('../imports/commit.js');
+      const { stageImport } = await import('../imports/service.js');
+      const XLSX = await import('xlsx');
+
+      const tag = stamp();
+      const sheet = XLSX.utils.aoa_to_sheet(
+        grid(
+          ['Register Student One', `KI-TEST/${tag}/1`, `98${tag.slice(-8)}`, '', `Register Course ${tag}`, '24000', '15000', '2700', '6300', '26.25%', '17700', '7/8/26', '7/8/26', '9/9/26', '10000', '7/8/26', `KIPL/T/${tag}/1`, '', '', '', '', '', ''],
+          ['Register Student Two', `KI-TEST/${tag}/2`, `97${tag.slice(-8)}`, '', `Register Course ${tag}`, '24000', '15000', '2700', '6300', '26.25%', '17700', '7/9/26', '7/9/26', '9/9/26', '2000', '7/9/26', `KIPL/T/${tag}/2`, '', '', '', '', '', ''],
+        ),
+      );
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, sheet, 'Sheet1');
+      const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer);
+
+      const staged = await stageImport({ fileName: `register-${tag}.xlsx`, buffer });
+      expect(staged.kind).toBe('student_register');
+      expect(staged.stats.ready).toBe(2);
+      // The preview says what it is not going to do.
+      expect(staged.notes.join(' ')).toMatch(/writes the enrolment only/);
+      expect(staged.notes.join(' ')).toMatch(/Read and not written/);
+
+      const result = await commitImport(staged.batchId);
+      expect(result.created.enrollment).toBe(2);
+
+      // Two students, on one rolling intake of one new course.
+      const course = await prisma.course.findFirstOrThrow({ where: { name: `Register Course ${tag}` } });
+      // Unpriced on purpose: a discounted figure from one student's row is not
+      // what the course sells for.
+      expect(course.feeAmount).toBeNull();
+
+      const cohorts = await prisma.cohort.findMany({ where: { courseId: course.id } });
+      expect(cohorts).toHaveLength(1);
+      expect(cohorts[0].name).toContain('rolling');
+
+      const enrolments = await prisma.enrollment.findMany({ where: { cohortId: cohorts[0].id } });
+      expect(enrolments).toHaveLength(2);
+      expect(enrolments.map((e) => e.legacyReference).sort()).toEqual([
+        `KI-TEST/${tag}/1`,
+        `KI-TEST/${tag}/2`,
+      ]);
+      expect(enrolments.every((e) => e.status === 'active')).toBe(true);
+      expect(enrolments.every((e) => e.enrolledAt !== null)).toBe(true);
+
+      // And nothing was billed.
+      const people = enrolments.map((e) => e.personId);
+      const invoices = await prisma.invoice.findMany({ where: { personId: { in: people } } });
+      expect(invoices).toHaveLength(0);
+    });
+  });
+
+  it('leaves an existing course’s price exactly as it was', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { commitImport } = await import('../imports/commit.js');
+      const { stageImport } = await import('../imports/service.js');
+      const XLSX = await import('xlsx');
+
+      const priced = await prisma.course.findFirstOrThrow({ where: { feeAmount: { not: null }, active: true } });
+      const feeBefore = num(priced.feeAmount);
+      const tag = stamp();
+
+      const sheet = XLSX.utils.aoa_to_sheet(
+        grid([
+          'Register Student Three', `KI-TEST/${tag}/3`, `96${tag.slice(-8)}`, '', priced.name,
+          '99999', '11111', '2000', '0', '0%', '13111', '7/8/26', '7/8/26', '9/9/26',
+          '1000', '7/8/26', `KIPL/T/${tag}/3`, '', '', '', '', '', '',
+        ]),
+      );
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, sheet, 'Sheet1');
+      const buffer = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer);
+
+      const staged = await stageImport({ fileName: `register-existing-${tag}.xlsx`, buffer });
+      await commitImport(staged.batchId);
+
+      const after = await prisma.course.findFirstOrThrow({ where: { id: priced.id } });
+      expect(num(after.feeAmount)).toBe(feeBefore);
+    });
   });
 });

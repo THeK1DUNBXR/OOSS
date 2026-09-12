@@ -141,6 +141,9 @@ export async function commitImport(id: string): Promise<CommitResult> {
         case 'template_students':
           outcome = await commitStudentRow(data);
           break;
+        case 'student_register':
+          outcome = await commitStudentRegisterRow(data);
+          break;
         case 'template_contacts':
           outcome = await commitContactRow(data);
           break;
@@ -732,6 +735,17 @@ export async function revertImport(id: string) {
           // deleting one is not the platform's call anyway.
           await prisma.person.update({ where: { id: row.entityId }, data: { deletedAt: new Date() } });
           break;
+        case 'enrollment':
+          // Withdrawn rather than deleted, and the person is left alone. An
+          // enrolment that has had attendance marked or a fee receipted against
+          // it is a record of something that happened; reverting the import that
+          // created it does not unhappen any of that. The student stays on file,
+          // because they may have been on file before this import ran.
+          await prisma.enrollment.update({
+            where: { id: row.entityId },
+            data: { status: 'withdrawn' },
+          });
+          break;
         default:
           continue;
       }
@@ -958,6 +972,148 @@ async function commitStudentRow(data: Record<string, unknown>) {
     guardianPhone: text(data.guardianPhone),
   });
   return { entityType: 'enrollment', entityId: enrollment.id };
+}
+
+/**
+ * A row of the company's own student register.
+ *
+ * Four writes, in this order, and nothing else: the course, a batch of it, the
+ * person, and their enrolment. The registration number the register already gave
+ * them rides onto the enrolment as its `legacyReference`, so "KI-2026/07-FS/1101"
+ * keeps working as a way to find somebody after the import.
+ *
+ * **The money on the row is not written.** The fee, the discount, the GST and the
+ * instalments are read, checked against each other and reported in the preview,
+ * and then left there. Two reasons. A course's price belongs to the course and is
+ * set deliberately — nine rows quoting nine discounted figures are not a price
+ * list, and writing the first one onto the catalogue would make the next person
+ * who bills that course quote a discount somebody negotiated once. And the
+ * payments in this register were receipted outside this platform: inventing
+ * invoices and receipts to match would produce documents the customer never
+ * received, numbered by us, in a ledger that then disagrees with the counterfoils
+ * they are holding. Raising them is a decision, and it is made in the product
+ * with its own audit trail.
+ *
+ * So a course that is new arrives with no fee against it, which is the honest
+ * state for a course nobody has priced yet, and the Courses screen says so.
+ */
+async function commitStudentRegisterRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
+  const fullName = text(data.fullName);
+  const courseName = text(data.courseName);
+  if (!fullName || !courseName) return null;
+
+  // ---- The course ---------------------------------------------------------
+  //
+  // Matched on the name as written, then on a canonical form of it, so
+  // "C.C++ & Java" and "C C++ and Java" are one course rather than two. Created
+  // with no fee, no rate and no SAC: those are the catalogue's to set.
+  let course = await prisma.course.findFirst({ where: { tenantId: auth.tenantId, name: courseName } });
+  if (!course) {
+    const canonical = canonicalCourseName(courseName);
+    const candidates = await prisma.course.findMany({ where: { tenantId: auth.tenantId } });
+    course = candidates.find((c) => canonicalCourseName(c.name) === canonical) ?? null;
+  }
+  if (!course) {
+    course = await prisma.course.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('CRS'),
+        name: courseName,
+        code: courseCodeFor(courseName),
+        // Deliberately unpriced. A discounted figure from one student's row is
+        // not what this course sells for.
+        feeAmount: null,
+        division: 'education',
+      },
+    });
+  }
+
+  // ---- The batch ----------------------------------------------------------
+  //
+  // The register carries a start and an end date per student rather than per
+  // batch, because students join a rolling programme whenever they join. So the
+  // batch is the course's rolling intake — one per course, created on first use —
+  // and the student's own dates go on their enrolment. Making a batch per
+  // distinct date pair would report nine batches of one.
+  const batchName = `${course.name} — rolling`;
+  let cohort = await prisma.cohort.findFirst({ where: { tenantId: auth.tenantId, courseId: course.id, name: batchName } });
+  const startsOn = data.startsOn ? new Date(String(data.startsOn)) : null;
+  if (!cohort) {
+    cohort = await prisma.cohort.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('COH'),
+        courseId: course.id,
+        name: batchName,
+        startDate: startsOn ?? new Date(),
+        endDate: null,
+        capacity: 9_999,
+        status: 'active',
+      },
+    });
+  } else if (startsOn && startsOn < cohort.startDate) {
+    // A rolling intake starts when its earliest student did.
+    await prisma.cohort.update({ where: { id: cohort.id }, data: { startDate: startsOn } });
+  }
+
+  // ---- The student and the enrolment --------------------------------------
+  //
+  // Through the same function the form calls, so an imported student and a typed
+  // one are the same act: the same phone-and-email matching, the same refusal to
+  // enrol somebody twice, the same student affiliation.
+  const { enrolStudent } = await import('../domains/education.js');
+  const enrollment = await enrolStudent({
+    cohortId: cohort.id,
+    fullName,
+    primaryPhone: text(data.primaryPhone),
+    primaryEmail: text(data.primaryEmail),
+  });
+
+  // The register's own identifiers and dates, which the enrolment is the right
+  // place for: they are facts about this student's run of the course, not about
+  // the batch.
+  const registrationNumber = text(data.registrationNumber);
+  const enrolledAt = data.registeredOn ? new Date(String(data.registeredOn)) : (startsOn ?? null);
+  await prisma.enrollment.update({
+    where: { id: enrollment.id },
+    data: {
+      ...(registrationNumber ? { legacyReference: registrationNumber } : {}),
+      status: 'active',
+      ...(enrolledAt ? { enrolledAt } : {}),
+    },
+  });
+
+  return { entityType: 'enrollment', entityId: enrollment.id };
+}
+
+/** "C.C++ & Java" and "C C++ and Java" are the same course. */
+function canonicalCourseName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9+]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * A code for a course that arrived without one.
+ *
+ * Initials of the words, which is what the register's own registration numbers
+ * use — `KI-2026/07-FS/1101` for Full Stack — so the generated code reads the way
+ * the company already refers to the course. Truncated to sixteen characters,
+ * because a tax invoice number has a length limit and this ends up beside one.
+ */
+function courseCodeFor(name: string): string {
+  const initials = name
+    .replace(/&/g, ' ')
+    .split(/[^A-Za-z0-9+]+/)
+    .filter(Boolean)
+    .map((w) => (/^[0-9+]/.test(w) ? w : w[0]))
+    .join('')
+    .toUpperCase();
+  return (initials || name.replace(/[^A-Za-z0-9]/g, '')).slice(0, 16);
 }
 
 async function commitContactRow(data: Record<string, unknown>) {

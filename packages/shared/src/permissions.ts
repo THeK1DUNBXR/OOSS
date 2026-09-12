@@ -205,9 +205,9 @@ export type Resource = (typeof RESOURCES)[number];
  * variants of it in your head, and nobody could say what a given person could
  * do without reading a spreadsheet.
  *
- *   employee         own record only
- *   hr_ops_manager   the people function and day-to-day operations
- *   finance_head     the books, and the money side of people
+ *   employee         own record, and raising invoices at the counter
+ *   hr_ops_manager   Operations Head — the people function, delivery, education
+ *   finance_head     the books, the GST returns, and the money side of people
  *   chairman         superadmin — nothing hidden, nothing inaccessible
  *
  * Approval ladders that used to climb four rungs now climb two: finance_head

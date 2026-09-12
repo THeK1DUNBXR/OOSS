@@ -109,10 +109,20 @@ export function InvoiceEditor({
   );
   const courses = useList<CourseView>('courses', '/education/courses', open);
   const states = useList<{ code: string; name: string }>('gst-states', '/books/gst/states', open);
+  /**
+   * Our own state code, for the preview's inter-state reading.
+   *
+   * An employee raising an invoice cannot read the company profile endpoint —
+   * it carries the bank account number — so this is allowed to fail. The
+   * preview then shows the intra-state pair, and the server still prices the
+   * invoice from the profile it can read: the document is right either way, and
+   * only the preview is less sure of itself.
+   */
   const { data: profile } = useQuery({
     queryKey: ['company-profile'],
     queryFn: () => api.get<{ stateCode: string | null; gstin: string | null; defaultDueDays: number }>('/books/company-profile'),
     enabled: open,
+    retry: false,
   });
 
   const [billTo, setBillTo] = useState<'organization' | 'person'>(

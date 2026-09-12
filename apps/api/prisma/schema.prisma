@@ -1961,12 +1961,24 @@ model Receipt {
   paymentReference String?
   note            String?
 
+  /// The number this receipt was issued under before it reached this platform —
+  /// `KIPL/R/2026-27/002` and the like.
+  ///
+  /// `recordCode` is generator-assigned and immutable, which is right: a
+  /// gapless per-tenant series is the point of it. But a receipt the customer
+  /// is already holding has a number on it, and "find me the receipt for that
+  /// twenty thousand" is asked with that number and no other. So it is carried
+  /// rather than overwritten, the same way an enrolment carries the
+  /// certificate reference it arrived with.
+  legacyReference String?
+
   createdAt DateTime @default(now())
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, paymentId])
   @@index([tenantId, invoiceId])
   @@index([tenantId, allocatedAt])
+  @@index([tenantId, legacyReference])
   @@map("receipts")
 }
 

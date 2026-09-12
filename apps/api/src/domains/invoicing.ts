@@ -93,6 +93,12 @@ export interface CollectedPaymentInput {
   reference?: string | null;
   receivedAt?: Date;
   note?: string | null;
+  /**
+   * The number this receipt already carried — from an imported register, or a
+   * counterfoil the customer is holding. Kept beside the generated record code
+   * rather than instead of it.
+   */
+  legacyReference?: string | null;
 }
 
 export interface InvoiceInput {
@@ -875,6 +881,7 @@ export async function collectInvoicePayment(
         balanceAfter,
         paymentMode: input.mode,
         paymentReference: input.reference?.trim() || null,
+        legacyReference: input.legacyReference?.trim() || null,
         note: input.note ?? null,
       },
     });
