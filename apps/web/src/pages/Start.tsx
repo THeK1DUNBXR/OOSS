@@ -239,7 +239,7 @@ const TOPICS: Topic[] = [
       {
         heading: 'Four roles, and that is the whole model',
         body:
-          'Employee sees their own record and the staff directory. HR & Operations Manager runs the people function and delivery. Finance Head holds the books and approves the money side of people. Chairman is superadmin — every resource, every verb, nothing hidden.',
+          'Employee sees their own record and the staff directory, and raises invoices for what they sell. Operations Head runs the people function, delivery and the course catalogue. Finance Head holds the books, files the GST returns and approves the money side of people. Chairman is superadmin — every resource, every verb, nothing hidden.',
         link: { to: '/admin/governance', label: 'See the matrix' },
       },
       {

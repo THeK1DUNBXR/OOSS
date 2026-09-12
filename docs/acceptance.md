@@ -7,7 +7,7 @@ impossible.
 
 ```bash
 ./scripts/test-db.sh          # provision kaizen_test
-cd apps/api && pnpm test      # 110 tests
+cd apps/api && pnpm test      # 351 tests
 ```
 
 ## How the suite is built
@@ -50,6 +50,11 @@ dataset is a demonstration, not a scratchpad.
 | **CRM-RPT-001/002** Health scores | 4 | Insufficient inputs report not-yet-measured, never zero; every factor carries a drill path; the retired `pipeline_value`/`pipeline_count` metrics are no longer written; a band never itself reaches S4 — only a named exception does |
 | **Decisions** | 3 | An incomplete evidence pack is not decidable; deferring past the point of no return is refused outright; a decision arms a review date rather than closing at disposition |
 | **Finance** | 5 | A payment is idempotent on its gateway reference; a correction is a new row; over-allocation is refused; only allocated receipts determine what is paid; the revenue method derives from the offering |
+| **Invoicing** | 24 | Tax is priced per line at creation and quantity is multiplied by; the split halves within a state and does not across one; an invoice bills a person without an organisation being invented; a draft is editable and an issued invoice is not; a draft carries no invoice number and gets one at issue, in the company's own series; an issued invoice is never restated by a later payment; over-collection and a repeated payment reference are refused; the document prints both totals and keeps today's balance off the sheet |
+| **Receipts and the final invoice** | 9 | Every instalment issues a numbered receipt carrying its own time, the invoice it is against, the amount, the mode and the balance it left; those figures are snapshotted, so a reprint says what it said; a final invoice names every receipt it consolidates, prints the balance rather than refusing to exist while one remains, and supersedes an earlier statement rather than replacing it |
+| **GST returns** | 12 | A GSTIN is validated on shape, state code and check digit; credit is set off head by head in the statutory order rather than netted; a registered customer is reported invoice by invoice and an unregistered one rate-wise; a draft is not a supply and a void invoice is reported as cancelled; the 3B agrees with the GSTR-1 by construction; a return the portal would reject cannot be recorded as filed; filing closes the month and a preparation supersedes an earlier one |
+| **The catalogue and the student record** | 15 | A course is edited and retired, never deleted, and a retired one cannot be billed; a fee, rate and SAC flow from the course onto an invoice line; a course assigned with no batch named uses its rolling intake; a query and an issue open and stay open while feedback and a note close as written; attendance, progress and the log merge into one timeline on the server; a trainer reaches the batches they teach and no others |
+| **The student register import** | 8 | The register is recognised before the bank sniffer; instalments, their dates and their receipt numbers are read; dates are inferred month-first or day-first from the file; a row that does not add up is reported and still imports; the commit writes the enrolment and leaves course prices exactly as they were |
 
 ## Defects this suite found
 
@@ -78,3 +83,38 @@ the implementation, all fixed:
 
 The first three would have shipped as wrong behaviour. The last three would
 have shipped as a permission model that quietly did not mean what it said.
+
+## Defects the invoicing work found
+
+Building the invoicing, the returns and the register importer over the top
+surfaced seven more, all fixed:
+
+1. **Quantity was stored and never multiplied by.** `InvoiceLine` carried a
+   quantity and an amount, and every total summed the amounts. Three seats at
+   ₹20,000 invoiced as ₹20,000, on screen and in the ledger.
+2. **The GST fields were unreachable.** `Invoice` carried the whole split and
+   the only function that could fill it refused to run on anything but a draft
+   — and nothing created a draft. Every invoice the platform had ever raised
+   carried zero tax.
+3. **There was no supplier registration anywhere in the model.** An invoice
+   without the supplier's legal name, address and GSTIN is not a tax invoice,
+   and a return is filed *under* a GSTIN. The old summary produced six totals
+   with no registration attached to them.
+4. **Settlement was decided on the pre-tax value.** `settleIfFullyPaid` summed
+   the lines, so a ₹1,18,000 invoice read as settled when ₹1,00,000 had been
+   paid.
+5. **Two handlers were registered on `GET /education/courses`**, with different
+   filters and different response shapes. The second was unreachable.
+6. **`DAILY_PROGRESS` had no endpoint.** It had been in the schema since the
+   beginning with nothing reading or writing it, which is the same as not
+   existing.
+7. **Netting the GST totals understated the cash due.** Output minus input is
+   the wrong arithmetic: credit is set off head by head in a statutory order,
+   and the shortfall from netting arrives as interest.
+
+And one the spreadsheet found rather than the code: the invoice number the
+company asked for, `KIPL/I/2026-27/001`, is eighteen characters. The portal
+accepts sixteen. `KIPL/I/26-27/001` is exactly sixteen, which is why the short
+year is the default — and the Company details screen prints the length beside
+the next number so this is seen before the first invoice rather than at the
+filing deadline.

@@ -16,7 +16,13 @@ import { Accounts, AccountDetail } from './pages/Accounts.js';
 import { People, PersonDetail, Interactions } from './pages/People.js';
 import { Offerings, Quotes, Proposals, Agreements, Approvals, WinLoss } from './pages/Commercial.js';
 import { Invoices, Payments, Receivables } from './pages/Finance.js';
+import { InvoiceDocument } from './pages/InvoiceDocument.js';
+import { ReceiptDocument, Receipts } from './pages/ReceiptDocument.js';
+import { FinalInvoiceDocument, FinalInvoices } from './pages/FinalInvoiceDocument.js';
+import { CompanyDetails, GstReturns } from './pages/GstReturns.js';
 import { Cohorts, Enrollments, Projects } from './pages/Education.js';
+import { Courses } from './pages/Courses.js';
+import { LearnerQueue, StudentTimeline } from './pages/StudentTimeline.js';
 import { PipelineAdmin, TerritoryAdmin, Governance, Agents, Events, Jobs, Audit, PlatformModel } from './pages/Admin.js';
 import { Decisions } from './pages/Decisions.js';
 import { Employees, EmployeeDetail, Leave, Attendance, Payroll, Hiring, Skills } from './pages/PeopleOps.js';
@@ -85,10 +91,19 @@ function Routed() {
         <Route path="/finance/budget" element={<Budget />} />
         <Route path="/finance/assets" element={<Assets />} />
         <Route path="/finance/invoices" element={<Invoices />} />
+        {/* The document route sits above the detail route: a printable invoice is
+            a different surface from the list, not a modal over it. */}
+        <Route path="/finance/invoices/:id/document" element={<InvoiceDocument />} />
         <Route path="/finance/invoices/:id" element={<Invoices />} />
+        <Route path="/finance/receipts" element={<Receipts />} />
+        <Route path="/finance/receipts/:id" element={<ReceiptDocument />} />
+        <Route path="/finance/final-invoices" element={<FinalInvoices />} />
+        <Route path="/finance/final-invoices/:id" element={<FinalInvoiceDocument />} />
         <Route path="/finance/payments" element={<Payments />} />
         <Route path="/finance/payments/:id" element={<Payments />} />
         <Route path="/finance/receivables" element={<Receivables />} />
+        <Route path="/finance/gst" element={<GstReturns />} />
+        <Route path="/finance/company" element={<CompanyDetails />} />
 
         <Route path="/people/employees" element={<Employees />} />
         <Route path="/people/employees/:id" element={<EmployeeDetail />} />
@@ -98,9 +113,11 @@ function Routed() {
         <Route path="/people/hiring" element={<Hiring />} />
         <Route path="/people/skills" element={<Skills />} />
 
+        <Route path="/education/courses" element={<Courses />} />
         <Route path="/education/cohorts" element={<Cohorts />} />
         <Route path="/education/enrollments" element={<Enrollments />} />
-        <Route path="/education/enrollments/:id" element={<Enrollments />} />
+        <Route path="/education/enrollments/:id" element={<StudentTimeline />} />
+        <Route path="/education/queries" element={<LearnerQueue />} />
         <Route path="/delivery/projects" element={<Projects />} />
         <Route path="/delivery/projects/:id" element={<Projects />} />
 

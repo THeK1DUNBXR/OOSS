@@ -674,19 +674,547 @@ export interface WinLossReviewView {
 
 export interface InvoiceView {
   id: string;
-  recordCode: string;
+  /** The tax invoice number. Null while it is a draft — a draft takes no number. */
+  recordCode: string | null;
+  draftReference: string | null;
+  /** The number where there is one, the draft reference where there is not. */
+  label: string;
   accountId: string | null;
   accountName: string | null;
+  /** An individual customer — a student, a walk-in. */
+  personId: string | null;
+  personName: string | null;
+  /** Whichever of the two is the customer, resolved once on the server. */
+  customerName: string | null;
   contractId: string | null;
   status: string;
   currency: string;
   issuedDate: string | null;
   dueDate: string | null;
   total: number | null;
+  taxableValue: number | null;
+  taxAmount: number | null;
   allocated: number | null;
   outstanding: number | null;
   daysOverdue: number | null;
-  lines: { id: string; offeringName: string | null; description: string; amount: number | null; revenueMethod: string }[];
+  /**
+   * What the document says about payment, which is a different fact from
+   * `status`: the status follows the receipts, and this is the declaration the
+   * customer was handed.
+   */
+  paymentType: string;
+  amountPayableNow: number | null;
+  paymentMode: string | null;
+  paymentReference: string | null;
+  interState: boolean;
+  placeOfSupply: string | null;
+  customerGstin: string | null;
+  division: string | null;
+  /** True only while it is a draft. An issued invoice is corrected by a credit note. */
+  editable: boolean;
+  gstFilingId: string | null;
+  lines: InvoiceLineView[];
+}
+
+export interface InvoiceLineView {
+  id: string;
+  offeringName: string | null;
+  courseId: string | null;
+  courseName: string | null;
+  /** The enrolment this fee is for: the student on that course. */
+  enrollmentId: string | null;
+  description: string;
+  quantity: number;
+  unitPrice: number | null;
+  amount: number | null;
+  gstRate: number | null;
+  taxAmount: number | null;
+  hsnSac: string | null;
+  revenueMethod: string;
+}
+
+/**
+ * The invoice as a printable document.
+ *
+ * Everything resolved on the server, including both totals and the amount in
+ * words. The client renders and computes nothing: a screen that recomputes a
+ * total is a screen that can disagree with the copy the customer is holding.
+ */
+export interface InvoiceDocumentView {
+  id: string;
+  recordCode: string | null;
+  draftReference: string | null;
+  /** What to call it in a sentence, whichever of the two it has. */
+  label: string;
+  status: string;
+  currency: string;
+  issuedDate: string | null;
+  dueDate: string | null;
+  notes: string | null;
+  division: string | null;
+  raisedBy: string | null;
+
+  supplier: {
+    legalName: string;
+    tradeName: string | null;
+    gstin: string | null;
+    stateCode: string | null;
+    stateName: string | null;
+    pan: string | null;
+    cin: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    pincode: string | null;
+    email: string | null;
+    phone: string | null;
+    website: string | null;
+    bank: {
+      name: string | null;
+      accountName: string | null;
+      accountNumber: string | null;
+      ifsc: string | null;
+      branch: string | null;
+      upiId: string | null;
+    } | null;
+    terms: string | null;
+    footnote: string | null;
+  };
+
+  customer: {
+    kind: 'person' | 'organization';
+    name: string;
+    recordCode: string | null;
+    gstin: string | null;
+    /** B2B or B2C, from whether the registration is real — it decides who can claim the tax. */
+    supplyType: 'b2b' | 'b2c';
+    address: string | null;
+    email: string | null;
+    phone: string | null;
+  };
+
+  placeOfSupply: string | null;
+  interState: boolean;
+  /** Which pair of taxes this invoice carries. Not cosmetic: they are different taxes. */
+  taxHeads: readonly string[];
+
+  lines: Array<{
+    id: string;
+    description: string;
+    courseName: string | null;
+    courseCode: string | null;
+    hsnSac: string | null;
+    quantity: number;
+    unitPrice: number;
+    amount: number;
+    gstRate: number;
+    taxAmount: number;
+    revenueMethod: string;
+  }>;
+
+  tax: { taxableValue: number; cgst: number; sgst: number; igst: number; roundOff: number };
+
+  /**
+   * What the tax invoice says, fixed at issue. Both figures, side by side, and
+   * both printed even when they are equal.
+   */
+  totals: {
+    totalPayable: number;
+    amountPayableNow: number;
+    balanceAtIssue: number;
+    inWords: string;
+    payableNowInWords: string;
+  };
+
+  /** What the invoice said about payment on the day. Never restated. */
+  payment: {
+    type: string;
+    mode: string | null;
+    reference: string | null;
+    isPartPayment: boolean;
+  };
+
+  /**
+   * Where the account stands today. Separate from `totals` and not printed on the
+   * tax invoice: it moves, and the document does not.
+   */
+  position: {
+    received: number;
+    creditNoted: number;
+    outstanding: number;
+    settled: boolean;
+    instalments: number;
+    canRaiseFinalInvoice: boolean;
+  };
+
+  /** The instalments since, each its own numbered document. */
+  receipts: Array<{
+    id: string;
+    number: number;
+    recordCode: string;
+    issuedAt: string;
+    amount: number;
+    mode: string | null;
+    reference: string | null;
+    balanceAfter: number;
+  }>;
+
+  /** Final invoices raised against it, newest first. */
+  statements: Array<{
+    id: string;
+    recordCode: string;
+    issuedAt: string;
+    totalReceived: number;
+    balance: number;
+    settled: boolean;
+    status: string;
+    receiptCount: number;
+  }>;
+
+  creditNotes: Array<{ recordCode: string; amount: number; reason: string; issuedAt: string }>;
+}
+
+/** A receipt in a list. Part payments live here rather than on the invoice. */
+export interface ReceiptView {
+  id: string;
+  recordCode: string;
+  /** When the receipt was issued, which is the fact a receipt exists to fix. */
+  issuedAt: string;
+  invoiceId: string | null;
+  invoiceCode: string | null;
+  feeInstalmentId: string | null;
+  customerName: string | null;
+  amount: number;
+  currency: string;
+  subjectTotal: number;
+  balanceAfter: number;
+  paymentMode: string | null;
+  paymentReference: string | null;
+  paymentCode: string;
+  note: string | null;
+  settledIt: boolean;
+}
+
+/**
+ * A receipt as a printable document.
+ *
+ * The two figures — what the invoice is for, and what is being handed over now —
+ * are snapshotted, so a reprint shows the position as it was when the customer
+ * was given it.
+ */
+export interface ReceiptDocumentView {
+  id: string;
+  recordCode: string;
+  issuedAt: string;
+  issuedBy: string | null;
+  currency: string;
+
+  invoice: {
+    id: string;
+    recordCode: string;
+    issuedDate: string | null;
+    dueDate: string | null;
+    status: string;
+  };
+
+  supplier: {
+    legalName: string;
+    tradeName: string | null;
+    gstin: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    pincode: string | null;
+    phone: string | null;
+    email: string | null;
+  };
+
+  customer: {
+    kind: 'person' | 'organization';
+    name: string;
+    recordCode: string | null;
+    gstin: string | null;
+    address: string | null;
+    phone: string | null;
+    email: string | null;
+  };
+
+  payment: {
+    amount: number;
+    mode: string;
+    reference: string | null;
+    paymentCode: string;
+    note: string | null;
+  };
+
+  position: {
+    totalPayable: number;
+    amountReceivedNow: number;
+    receivedToDate: number;
+    balanceAfter: number;
+    isPartPayment: boolean;
+    instalmentNumber: number;
+    instalmentsSoFar: number;
+  };
+
+  sequence: Array<{
+    number: number;
+    recordCode: string;
+    issuedAt: string;
+    amount: number;
+    mode: string | null;
+    isThisOne: boolean;
+  }>;
+
+  /** Never the invoice footnote: a receipt is not an invoice, and says so. */
+  footnote: string | null;
+}
+
+export interface FinalInvoiceView {
+  id: string;
+  recordCode: string;
+  invoiceId: string;
+  invoiceCode: string;
+  currency: string;
+  issuedAt: string;
+  totalPayable: number;
+  totalReceived: number;
+  creditNoted: number;
+  balance: number;
+  settled: boolean;
+  receiptCodes: string[];
+  receiptCount: number;
+  status: string;
+  note: string | null;
+}
+
+/**
+ * The statement raised once the instalments are done: the total payable, every
+ * part payment, and the receipt numbers they were issued under.
+ */
+export interface FinalInvoiceDocumentView {
+  id: string;
+  recordCode: string;
+  issuedAt: string;
+  issuedBy: string | null;
+  status: string;
+  currency: string;
+  note: string | null;
+  supersedes: string[];
+
+  supplier: {
+    legalName: string;
+    tradeName: string | null;
+    gstin: string | null;
+    stateName: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    city: string | null;
+    pincode: string | null;
+    phone: string | null;
+    email: string | null;
+    terms: string | null;
+    footnote: string | null;
+  };
+
+  customer: {
+    kind: 'person' | 'organization';
+    name: string;
+    recordCode: string | null;
+    gstin: string | null;
+    address: string | null;
+    phone: string | null;
+    email: string | null;
+  };
+
+  invoice: {
+    id: string;
+    recordCode: string;
+    issuedDate: string | null;
+    dueDate: string | null;
+    placeOfSupply: string | null;
+    interState: boolean;
+    taxableValue: number;
+    cgst: number;
+    sgst: number;
+    igst: number;
+    roundOff: number;
+    lines: Array<{
+      description: string;
+      courseName: string | null;
+      hsnSac: string | null;
+      quantity: number;
+      unitPrice: number;
+      amount: number;
+      gstRate: number;
+      taxAmount: number;
+    }>;
+  };
+
+  receipts: Array<{
+    number: number;
+    recordCode: string;
+    issuedAt: string;
+    amount: number;
+    mode: string | null;
+    reference: string | null;
+    balanceAfter: number;
+  }>;
+
+  totals: {
+    totalPayable: number;
+    totalReceived: number;
+    creditNoted: number;
+    balance: number;
+    settled: boolean;
+    instalments: number;
+  };
+}
+
+export interface GstFilingView {
+  id: string;
+  recordCode: string;
+  returnType: string;
+  period: string;
+  gstin: string | null;
+  status: string;
+  taxableValue: number | null;
+  cgstAmount: number | null;
+  sgstAmount: number | null;
+  igstAmount: number | null;
+  inputTaxCredit: number | null;
+  netPayable: number | null;
+  invoiceCount: number;
+  preparedAt: string;
+  /** The portal's acknowledgement. A return with no ARN was not filed. */
+  arn: string | null;
+  filedAt: string | null;
+  note: string | null;
+}
+
+export interface CourseView {
+  id: string;
+  recordCode: string;
+  name: string;
+  code: string;
+  description: string | null;
+  durationWeeks: number | null;
+  /** Before tax. A course is a price list as much as a syllabus. */
+  feeAmount: number | null;
+  gstRate: number | null;
+  hsnSac: string | null;
+  division: string | null;
+  active: boolean;
+  feeWithTax: number | null;
+  batchCount: number;
+  enrolledCount: number;
+  cohorts: Array<{
+    id: string;
+    name: string;
+    status: string;
+    startDate: string;
+    endDate: string | null;
+    capacity: number;
+    enrolledCount: number;
+  }>;
+}
+
+/** One thing that happened to a student on a day. */
+export interface TimelineEntryView {
+  id: string;
+  kind: string;
+  at: string;
+  day: string;
+  title: string;
+  detail: string | null;
+  status: string | null;
+  severity: string | null;
+  rating: number | null;
+  score: number | null;
+  recordedById: string | null;
+  recordedBy: string | null;
+  resolvedAt: string | null;
+  resolutionNote: string | null;
+}
+
+export interface LearnerTimelineView {
+  enrollment: {
+    id: string;
+    recordCode: string;
+    status: string;
+    progressPct: number;
+    attendancePct: number;
+    atRisk: boolean;
+    isMinor: boolean;
+    enrolledAt: string | null;
+    completedAt: string | null;
+    cohortId: string;
+    cohortName: string;
+    courseName: string;
+    courseCode: string;
+  };
+  student: { id: string; name: string; recordCode: string; phone: string | null; email: string | null } | null;
+  counts: {
+    entries: number;
+    sessions: number;
+    present: number;
+    queries: number;
+    feedback: number;
+    issues: number;
+    openQueries: number;
+    openIssues: number;
+    meanRating: number | null;
+  };
+  /** Everything still open, first, because it is the part that is work. */
+  open: Array<{
+    id: string;
+    kind: string;
+    title: string;
+    severity: string | null;
+    status: string;
+    raisedOn: string;
+    ageDays: number;
+  }>;
+  entries: TimelineEntryView[];
+  /** Grouped by day, which is how a student's record is read. */
+  days: Array<{ day: string; entries: TimelineEntryView[] }>;
+  invoices: Array<{
+    id: string;
+    recordCode: string;
+    status: string;
+    issuedDate: string | null;
+    payable: number;
+    allocated: number;
+    paymentType: string;
+    paymentMode: string | null;
+  }>;
+}
+
+export interface CompanyProfileView {
+  id: string;
+  legalName: string;
+  tradeName: string | null;
+  gstin: string | null;
+  stateCode: string | null;
+  stateName: string | null;
+  pan: string | null;
+  cin: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  pincode: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  bankName: string | null;
+  bankAccountName: string | null;
+  bankAccountNumber: string | null;
+  bankIfsc: string | null;
+  bankBranch: string | null;
+  upiId: string | null;
+  invoiceTerms: string | null;
+  invoiceNotes: string | null;
+  defaultDueDays: number;
 }
 
 export interface PaymentView {
@@ -697,9 +1225,20 @@ export interface PaymentView {
   gatewayReference: string;
   receivedAt: string;
   status: string;
+  method: string;
+  /** Who took the money. Null for a gateway webhook, which has no human behind it. */
+  recordedById: string | null;
   allocated: number | null;
   unallocated: number | null;
-  receipts: { id: string; invoiceId: string | null; feeInstalmentId: string | null; allocatedAmount: number | null; allocatedAt: string }[];
+  receipts: {
+    id: string;
+    recordCode: string;
+    invoiceId: string | null;
+    feeInstalmentId: string | null;
+    allocatedAmount: number | null;
+    allocatedAt: string;
+    balanceAfter: number | null;
+  }[];
 }
 
 export interface ReceivablesSummary {

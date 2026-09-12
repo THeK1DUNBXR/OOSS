@@ -10,14 +10,16 @@
  *
  *   employee            Own record only. Their leave, their attendance, their
  *                       goals, their skills, their payslip, their documents.
- *                       They can see who works here and what we sell; they
+ *                       They can see who works here and what we sell, and they
+ *                       raise invoices at the counter for what they sell; they
  *                       cannot see what anybody else earns.
  *
- *   hr_ops_manager      The people function and day-to-day operations. Runs
- *                       the employment lifecycle end to end, prepares payroll,
- *                       holds the only routine reach into case-scoped
- *                       evidence, and owns delivery, education and tasks.
- *                       Proposes pay and cannot approve it.
+ *   hr_ops_manager      Operations Head. The people function and day-to-day
+ *                       operations: runs the employment lifecycle end to end,
+ *                       prepares payroll, holds the only routine reach into
+ *                       case-scoped evidence, and owns delivery, education and
+ *                       the course catalogue. Proposes pay and cannot approve
+ *                       it.
  *
  *   finance_head        The books end to end, and the money side of people:
  *                       approves compensation and payroll, and sees the
@@ -102,9 +104,11 @@ export function parseCell(cell: string): { verbs: Verb[]; scope: Scope } | null 
  */
 export const ALL_RESOURCES = [
   'activities', 'agents', 'applications', 'assets', 'assignments', 'attendance',
-  'audit', 'budgets', 'capabilities', 'categories', 'compensation', 'contracts',
+  'audit', 'budgets', 'capabilities', 'categories', 'company_profile',
+  'compensation', 'contracts', 'courses',
   'decisions', 'documents', 'education', 'employees', 'events', 'exceptions',
-  'goals', 'grants', 'health_scores', 'imports', 'institutions', 'interactions',
+  'goals', 'grants', 'gst_filings', 'health_scores', 'imports', 'institutions',
+  'interactions',
   'invoices', 'jobs', 'leads', 'learning', 'leave', 'ledger_accounts', 'mous',
   'offerings', 'opportunities', 'organizations', 'partner_agreements',
   'payments', 'payroll', 'people', 'performance_evidence', 'pipeline_definitions',
@@ -124,7 +128,7 @@ const chairman: GrantSpec[] = ALL_RESOURCES.map((resource) => ({
 }));
 
 /**
- * HR & Operations Manager — the people function, and the running of the place.
+ * Operations Head — the people function, and the running of the place.
  *
  * Owns the employment lifecycle from requisition to exit, prepares payroll,
  * and holds the only routine reach into case-scoped evidence besides the
@@ -158,6 +162,9 @@ const hrOpsManager: GrantSpec[] = [
   // ---- Operations --------------------------------------------------------
   { resource: 'projects', cell: 'VCEDAXF' },
   { resource: 'education', cell: 'VCEDAXF' },
+  // The catalogue is theirs: they run the training business, so the courses on
+  // offer, how long they run and what they cost are theirs to maintain.
+  { resource: 'courses', cell: 'VCEDAXF' },
   { resource: 'tasks', cell: 'VCEDAXF' },
   { resource: 'documents', cell: 'VCEAXF' },
   { resource: 'activities', cell: 'VCEDAXF' },
@@ -184,6 +191,10 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'vendor_bills', cell: '-' },
   { resource: 'invoices', cell: '-' },
   { resource: 'payments', cell: '-' },
+  // A return is filed under the company's registration by whoever answers for
+  // the company's money. That is not this role.
+  { resource: 'gst_filings', cell: '-' },
+  { resource: 'company_profile', cell: 'V' },
   // And the rules themselves are the chairman's.
   { resource: 'grants', cell: '-' },
   { resource: 'policies', cell: '-' },
@@ -215,6 +226,11 @@ const financeHead: GrantSpec[] = [
   { resource: 'invoices', cell: 'VCEDAXF' },
   { resource: 'payments', cell: 'VCEDAXF' },
   { resource: 'receivables', cell: 'VCEDAXF' },
+  // Prepares and files the returns, and maintains the registration they are
+  // filed under. `approve` is held because filing is the irreversible half —
+  // preparing a return is arithmetic, filing it closes the period.
+  { resource: 'gst_filings', cell: 'VCEDAXF,approve' },
+  { resource: 'company_profile', cell: 'VEXF' },
   { resource: 'reports', cell: 'VXF' },
   { resource: 'imports', cell: 'VCEDX' },
 
@@ -256,6 +272,7 @@ const financeHead: GrantSpec[] = [
   { resource: 'win_loss_reviews', cell: 'VCEDAXF' },
   { resource: 'projects', cell: 'VCEDAXF' },
   { resource: 'education', cell: 'VCEDAXF' },
+  { resource: 'courses', cell: 'VCEDAXF' },
 
   // ---- Governance, read-mostly -------------------------------------------
   { resource: 'health_scores', cell: 'V' },
@@ -309,6 +326,33 @@ const employee: GrantSpec[] = [
   { resource: 'people', cell: 'V@all' },
   { resource: 'offerings', cell: 'V@all' },
 
+  // ---- Billing a customer at the counter ---------------------------------
+  //
+  // An employee raises invoices. This is the row that says so, and it is a
+  // deliberate widening of a matrix that previously kept every employee out of
+  // the money entirely.
+  //
+  // The reasoning: somebody has to be able to take a walk-in through a course
+  // enrolment and hand them a tax invoice, and routing that through the finance
+  // head means either the finance head sits at the counter or the customer
+  // waits. The narrowing that makes it safe is `@own` and it is real — an
+  // employee sees the invoices they raised and the payments they collected, and
+  // no others. `F` is held at the same scope because an invoice you cannot see
+  // the amounts on is not an invoice you can raise.
+  //
+  // `edit` is held so a mistake can be corrected before the document goes out;
+  // the service refuses it once the invoice is issued, where the only correction
+  // is a credit note. Nothing here confers `delete`: an employee cannot make an
+  // invoice they raised disappear.
+  { resource: 'invoices', cell: 'VCEF@own' },
+  { resource: 'payments', cell: 'VCF@own' },
+  // The catalogue and the customer list, so there is something to bill and
+  // somebody to bill it to. Both are read-only and both are company-wide facts
+  // rather than confidences — what we sell and who we sell it to is not
+  // withheld from the people doing the selling.
+  { resource: 'courses', cell: 'V@all' },
+  { resource: 'organizations', cell: 'V@all' },
+
   // Deliberately absent. An employee has no reason to reach the ledger, the
   // pipeline, or anybody else's file, and every one of these would be a
   // privacy incident rather than a feature.
@@ -316,6 +360,12 @@ const employee: GrantSpec[] = [
   { resource: 'payroll', cell: '-' },
   { resource: 'performance_evidence', cell: '-' },
   { resource: 'grants', cell: '-' },
+  // Raising an invoice is not filing a return, and reading the class register
+  // is not raising an invoice. Both stay out.
+  { resource: 'gst_filings', cell: '-' },
+  { resource: 'company_profile', cell: '-' },
+  { resource: 'education', cell: '-' },
+  { resource: 'receivables', cell: '-' },
 ];
 
 export const ROLE_GRANT_MATRIX: RoleGrants = {
@@ -350,7 +400,7 @@ export const ROLE_DEFINITIONS: Array<{
   },
   {
     slug: 'hr_ops_manager',
-    name: 'HR & Operations Manager',
+    name: 'Operations Head',
     description:
       'The people function and the running of the place: the employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and tasks. Proposes pay and cannot approve it.',
     archetype: 'workspace',

@@ -13,15 +13,15 @@ import { useSession } from '../lib/session.js';
 const ROLES = [
   {
     label: 'Employee',
-    note: 'Their own leave, attendance, payslip and skills, plus the staff directory. No colleague’s file, and no company money.',
+    note: 'Their own leave, attendance, payslip and skills, plus the staff directory — and they raise invoices for what they sell, seeing the ones they raised and no others.',
   },
   {
-    label: 'HR & Operations Manager',
-    note: 'The people function end to end, and delivery. Proposes pay and cannot approve it.',
+    label: 'Operations Head',
+    note: 'The people function end to end, delivery, education and the course catalogue. Proposes pay and cannot approve it.',
   },
   {
     label: 'Finance Head',
-    note: 'The books, and the money side of people: approves pay and payroll, and sees what the establishment costs without running it.',
+    note: 'The books and the GST returns, and the money side of people: approves pay and payroll, and sees what the establishment costs without running it.',
   },
   {
     label: 'Chairman',

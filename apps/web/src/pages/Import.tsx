@@ -72,6 +72,7 @@ const KIND_LABEL: Record<string, string> = {
   employees: 'Staff list',
   salary: 'Salary sheet',
   attendance: 'Attendance sheet',
+  student_register: 'Student register',
   // The templates this platform hands out, named the way the download button
   // named them. A row in the history reading "template_students" is the
   // internal key leaking onto a screen.
@@ -93,6 +94,10 @@ const KIND_EFFECT: Record<string, string> = {
   employees: 'Creates people, their seats and their employment records.',
   salary: 'Sets the pay in force for each person named. They must already be on the staff list.',
   attendance: 'Records attendance days against each person named.',
+  student_register:
+    'Creates the courses named, a rolling intake for each, and enrols every student onto theirs under the registration ' +
+    'number the register already gives them. The fees, discounts and instalment columns are read and reported and not ' +
+    'written: course prices stay as they are, and nothing is billed.',
   template_courses: 'Creates courses. A code already on file is left alone rather than duplicated.',
   template_batches: 'Creates training batches against courses already on file.',
   template_colleges: 'Creates organisations and marks them as colleges, so students can be recorded as coming from them.',
@@ -627,6 +632,29 @@ function columnsFor(kind: string): Column[] {
         { key: 'designation', label: 'Designation', render: (s) => text(s.designation) },
         { key: 'division', label: 'Division', render: (s) => text(s.division) },
         { key: 'code', label: 'Employee code', render: (s) => text(s.employeeCode) },
+      ];
+    case 'student_register':
+      // The fee and what has been received are shown even though neither is
+      // written. They are what a person checks the preview against — a row whose
+      // figures do not add up is the row worth looking at, and hiding the money
+      // because the import does not write it would hide the reason it is flagged.
+      return [
+        { key: 'name', label: 'Student', render: (s) => text(s.fullName) },
+        { key: 'registration', label: 'Registration no.', render: (s) => text(s.registrationNumber) },
+        { key: 'course', label: 'Course', render: (s) => text(s.courseName) },
+        { key: 'starts', label: 'Starts', render: (s) => shortDate(s.startsOn) },
+        { key: 'fee', label: 'Fee (not imported)', align: 'right', render: (s) => amountText(s.total) },
+        { key: 'received', label: 'Received (not imported)', align: 'right', render: (s) => amountText(s.received) },
+        {
+          key: 'instalments',
+          label: 'Receipts',
+          render: (s) =>
+            Array.isArray(s.instalments) && s.instalments.length
+              ? (s.instalments as Array<{ receiptNumber?: string | null }>)
+                  .map((r) => r.receiptNumber ?? '—')
+                  .join(', ')
+              : '—',
+        },
       ];
     case 'salary':
       return [

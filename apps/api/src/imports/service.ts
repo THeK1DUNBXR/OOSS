@@ -22,7 +22,8 @@ import {
   type Detection, type ImportKind,
 } from './detect.js';
 import {
-  extractAttendance, extractBankStatement, extractEmployees, extractSalary,
+  extractAttendance,
+  extractStudentRegister, extractBankStatement, extractEmployees, extractSalary,
   extractTallyLedger, extractTrialBalance, extractTemplate, type Extraction,
 } from './extract.js';
 import { extractTallyXml } from './tallyXml.js';
@@ -264,6 +265,8 @@ function extractFromGrid(grid: Grid, detection: Detection, sheetName?: string, c
       return extractAttendance(grid, header, sheetName);
     case 'transactions':
       return extractBankStatement(grid, header);
+    case 'student_register':
+      return extractStudentRegister(grid, header);
     default:
       // An unrecognised grid is still worth staging: the ledger importer copes
       // with anything shaped like a Tally report, and the bank importer with

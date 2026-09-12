@@ -277,6 +277,36 @@ becomes impossible:
 - **Allocation** — Receipt. An N:N join saying which movement settled which
   obligation. Only the sum of allocated receipts determines what has been paid.
 
+A fourth fact was added with the documents: **statement** — FinalInvoice, the
+consolidation raised when the instalments against an invoice are done. It is not
+an obligation (nothing new is owed), not a movement and not an allocation; it is
+a summary somebody hands over, with its own number and date, and its figures are
+snapshotted because a statement that restates itself is not a statement.
+
+### A tax invoice is final
+
+The rule that decides most of the invoicing design. An issued invoice states the
+whole obligation and what was handed over on the day, and then never changes: the
+copy in the customer's file has to still read the same in three years. A payment
+arriving next week is a new fact with its own document, not an amendment to an
+old one.
+
+So the surfaces split what the invoice *says* from where the account *stands*.
+The printed sheet carries only the figures fixed at issue; the live position, the
+receipts and the statements sit in the application chrome, which does not print.
+
+### Two kinds of number
+
+Record codes identify a row to the platform. **Document numbers** are what a
+customer quotes back, and they are the company's own:
+`KIPL/I/26-27/001` — short code, series letter, financial year, sequence.
+
+The difference matters in one place and matters a lot. A document number is
+allocated when the document exists, not when the row is created: a draft carries
+a record code and no invoice number, because the tax series has to be consecutive
+and a number on a draft nobody issued is a gap the return cannot explain. See
+[invoicing.md](invoicing.md).
+
 ---
 
 ## Record codes
@@ -286,6 +316,11 @@ within the year, generator-assigned, never caller-supplied, and rejected as an
 edit target for every role. Two tenants each start from `00001` for the same
 type and year; there is no shared counter. Sequence exhaustion raises an
 operational alert rather than rolling over silently.
+
+The one exception is the tax invoice, and it is a deliberate one: its code is
+allocated at issue rather than at creation, and it is a document number rather
+than a record code. Everything else about the scheme holds — generator-assigned,
+never caller-supplied, immutable once set.
 
 ---
 

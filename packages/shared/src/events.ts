@@ -178,6 +178,22 @@ export const EVENTS = {
   PAYMENT_OVERDUE_DETECTED: 'kz.fin.payment.overdue_detected',
   RECEIPT_ALLOCATED: 'kz.fin.receipt.allocated',
   CREDIT_NOTE_ISSUED: 'kz.fin.credit_note.issued',
+  /// A draft's lines or tax were changed before it was issued. Separate from
+  /// `issued`, because "somebody corrected this before it went out" and "this
+  /// went out" are different facts about the same document.
+  INVOICE_DRAFTED: 'kz.fin.invoice.drafted',
+  INVOICE_UPDATED: 'kz.fin.invoice.updated',
+  INVOICE_VOIDED: 'kz.fin.invoice.voided',
+  /// Money taken at the counter against an invoice, in one act: the payment,
+  /// the receipt that allocates it, and the receipt document the customer gets.
+  INVOICE_PAYMENT_COLLECTED: 'kz.fin.invoice.payment_collected',
+  /// The receipt is its own document, so issuing one is its own event. A part
+  /// payment produces a receipt and never an edit to the tax invoice.
+  RECEIPT_ISSUED: 'kz.fin.receipt.issued',
+  /// The statement raised once the instalments are done, naming the receipts it
+  /// consolidates.
+  FINAL_INVOICE_RAISED: 'kz.fin.final_invoice.raised',
+  FINAL_INVOICE_SUPERSEDED: 'kz.fin.final_invoice.superseded',
 
   // --- Education ------------------------------------------------------------
   ENROLLMENT_CREATED: 'kz.edu.enrollment.created',
@@ -185,6 +201,15 @@ export const EVENTS = {
   ENROLLMENT_COMPLETED: 'kz.edu.enrollment.completed',
   LEARNER_RISK_DETECTED: 'kz.edu.learner.risk_detected',
   ATTENDANCE_RECORDED: 'kz.edu.attendance.recorded',
+  PROGRESS_RECORDED: 'kz.edu.progress.recorded',
+  /// The course catalogue, which is a price list as much as a syllabus.
+  COURSE_CREATED: 'kz.edu.course.created',
+  COURSE_UPDATED: 'kz.edu.course.updated',
+  COURSE_RETIRED: 'kz.edu.course.retired',
+  /// A day on a student's timeline that is neither attendance nor a score: a
+  /// question, a piece of feedback, a problem, a note.
+  LEARNER_LOG_RECORDED: 'kz.edu.learner_log.recorded',
+  LEARNER_LOG_RESOLVED: 'kz.edu.learner_log.resolved',
 
   // --- Governance -----------------------------------------------------------
   POLICY_VERSION_PUBLISHED: 'kz.gov.policy_version.published',
@@ -257,6 +282,17 @@ export const EVENTS = {
   LOAN_RECORDED: 'kz.fin.loan.recorded',
   INVOICE_TAX_PRICED: 'kz.fin.invoice.tax_priced',
   PAYROLL_POSTED_TO_BOOKS: 'kz.fin.payroll.posted',
+
+  // GST returns. Preparing one and filing it are separate events because they
+  // are separate acts with different consequences: the first is arithmetic, the
+  // second closes the period and is the one a notice will ask about.
+  GST_RETURN_PREPARED: 'kz.fin.gst_return.prepared',
+  GST_RETURN_FILED: 'kz.fin.gst_return.filed',
+  GST_RETURN_SUPERSEDED: 'kz.fin.gst_return.superseded',
+
+  // The company's own registration details, which every invoice is printed
+  // from and every return is filed under.
+  COMPANY_PROFILE_UPDATED: 'kz.fin.company_profile.updated',
 
   // Imports. A figure in the books must be traceable to the file it came from,
   // so staging, committing and reverting are all events rather than silent

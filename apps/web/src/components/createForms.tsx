@@ -283,110 +283,15 @@ export function NewCategory({ open, onClose }: { open: boolean; onClose: () => v
 // Invoices
 // ---------------------------------------------------------------------------
 
-interface Line {
-  description: string;
-  quantity: string;
-  amount: string;
-}
-
 /**
- * An invoice.
+ * The invoice form used to live here and now lives in `invoiceEditor.tsx`.
  *
- * The one the product could not raise. How the revenue is recognised is worked
- * out from what was sold rather than asked here, which is why there is no
- * revenue-treatment field on this form and no reason for anybody in sales to
- * make that call deal by deal.
+ * It outgrew this file the moment an invoice could be edited as well as created,
+ * carry tax priced per line, bill a person rather than only a company, and state
+ * what is being paid at the counter. Keeping it beside the twenty-line forms
+ * would have meant one of them was six hundred lines and the "these are all the
+ * same shape" premise of this file was no longer true.
  */
-export function NewInvoice({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const organizations = useList<Named>('organizations', '/crm/organizations', open);
-
-  const [organizationId, setOrganizationId] = useState('');
-  const [dueInDays, setDueInDays] = useState('30');
-  const [lines, setLines] = useState<Line[]>([{ description: '', quantity: '1', amount: '' }]);
-
-  const setLine = (i: number, patch: Partial<Line>) =>
-    setLines((ls) => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)));
-
-  const total = lines.reduce((s, l) => s + (Number(l.amount) || 0) * (Number(l.quantity) || 1), 0);
-
-  return (
-    <CreateModal
-      open={open}
-      title="Raise an invoice"
-      submitLabel="Raise it"
-      width="max-w-2xl"
-      onClose={onClose}
-      invalidate={[['invoices'], ['receivables']]}
-      onSubmit={() =>
-        api.post('/finance/invoices', {
-          organizationId: organizationId || null,
-          dueInDays: Number(dueInDays || 30),
-          lines: lines
-            .filter((l) => l.description && Number(l.amount) > 0)
-            .map((l) => ({
-              description: l.description,
-              quantity: Number(l.quantity || 1),
-              amount: Number(l.amount),
-            })),
-        })
-      }
-    >
-      <Row>
-        <SelectInput
-          label="Customer"
-          value={organizationId}
-          onChange={setOrganizationId}
-          placeholder={organizations.rows.length ? 'Choose a customer' : 'No customers yet — add one first'}
-          options={organizations.rows.map((o) => ({ value: o.id, label: o.name }))}
-        />
-        <TextInput label="Due in (days)" type="number" value={dueInDays} onChange={setDueInDays} />
-      </Row>
-
-      <div>
-        <p className="label mb-1">What they are being billed for</p>
-        <div className="flex flex-col gap-2">
-          {lines.map((line, i) => (
-            <div key={i} className="grid grid-cols-[1fr_5rem_8rem_2rem] items-end gap-2">
-              <TextInput
-                label={i === 0 ? 'Description' : ''}
-                value={line.description}
-                onChange={(v) => setLine(i, { description: v })}
-                placeholder="SAP support, September"
-              />
-              <TextInput
-                label={i === 0 ? 'Qty' : ''}
-                type="number"
-                value={line.quantity}
-                onChange={(v) => setLine(i, { quantity: v })}
-              />
-              <MoneyInput label={i === 0 ? 'Amount each' : ''} value={line.amount} onChange={(v) => setLine(i, { amount: v })} />
-              <button
-                type="button"
-                className="btn-quiet mb-1.5"
-                aria-label="Remove line"
-                onClick={() => setLines((ls) => (ls.length === 1 ? ls : ls.filter((_, k) => k !== i)))}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-        <div className="mt-2 flex items-center justify-between">
-          <button
-            type="button"
-            className="btn-quiet"
-            onClick={() => setLines((ls) => [...ls, { description: '', quantity: '1', amount: '' }])}
-          >
-            + Another line
-          </button>
-          <p className="text-sm text-ink-300">
-            Total <span className="font-display tabular-nums text-ink-50">₹{total.toLocaleString('en-IN')}</span>
-          </p>
-        </div>
-      </div>
-    </CreateModal>
-  );
-}
 
 export function NewVendorBill({ open, onClose }: { open: boolean; onClose: () => void }) {
   const categories = useCategories(open);

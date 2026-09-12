@@ -16,7 +16,7 @@
 import { EVENTS, type EventEnvelope } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { subscribe, wouldLoop } from '../platform/eventBus.js';
-import { issueInvoice, rehydrateReceivables, issueFeeInstalments } from '../domains/finance.js';
+import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../domains/finance.js';
 import { ensureWinLossReview } from '../domains/winLoss.js';
 import { computeSensitivity } from '../domains/interactions.js';
 
@@ -46,20 +46,24 @@ export function registerSubscribers(): void {
       ? await prisma.opportunity.findFirst({ where: { id: contract.opportunityId } })
       : null;
 
-    await issueInvoice({
+    await createInvoice({
       accountId: contract.accountId,
       organizationId: contract.organizationId,
       contractId: contract.id,
       opportunityId: contract.opportunityId,
       currency: contract.currency,
       dueInDays: 30,
+      // The contract value is the line's own price, and the tax on it is priced
+      // from the place of supply at creation rather than left at zero for
+      // somebody to remember later.
       lines: [
         {
           offeringId: opportunity?.offeringId ?? null,
           description: `${contract.recordCode} — ${contract.title}`,
-          amount: num(contract.commercialValue) ?? 0,
+          unitPrice: num(contract.commercialValue) ?? 0,
         },
       ],
+      issue: true,
     });
   });
 

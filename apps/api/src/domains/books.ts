@@ -541,7 +541,7 @@ export async function priceInvoiceGst(
   if (!invoice) throw ApiError.notFound('Invoice');
   if (invoice.status !== 'draft') {
     throw ApiError.unprocessable(
-      `Invoice ${invoice.recordCode} is ${invoice.status}. Tax is fixed once an invoice is issued — ` +
+      `Invoice ${invoice.recordCode ?? invoice.draftReference ?? 'draft'} is ${invoice.status}. Tax is fixed once an invoice is issued — ` +
         'a correction is a credit note.',
     );
   }

@@ -24,6 +24,8 @@
 import { randomUUID } from 'node:crypto';
 import {
   EVENTS,
+  computeGst,
+  round2,
   type DeliveryModel,
   type RevenueTreatment,
   type Vertical,
@@ -40,6 +42,37 @@ import { seedDemoHr } from './demoHr.js';
 import { seedDemoBooks } from './demoBooks.js';
 
 const PASSWORD = 'kaizen2026';
+
+/**
+ * The demo company's own document numbering, written out rather than generated.
+ *
+ * The fixture writes rows straight to the database, so it cannot call the
+ * allocator without taking numbers the product would then skip. These match what
+ * the allocator produces — `KIPL/I/26-27/001` — so a demo tenant's documents and
+ * the ones raised afterwards read as one series.
+ */
+const DOC_PREFIX = 'KIPL';
+const DOC_YEAR = '26-27';
+const docNumber = (series: 'I' | 'R' | 'F', n: number) =>
+  `${DOC_PREFIX}/${series}/${DOC_YEAR}/${String(n).padStart(3, '0')}`;
+
+/**
+ * The demo company's own registration.
+ *
+ * A real GSTIN shape with a check digit that agrees with the rest of it, because
+ * the validator refuses anything else and a fixture that cannot be entered
+ * through the product is a fixture that proves nothing. 33 is Tamil Nadu, which
+ * is where the rest of this dataset lives — so a Chennai customer is intra-state
+ * and carries CGST+SGST, and a Bengaluru one is inter-state and carries IGST.
+ */
+const DEMO_GSTIN = '33AABCK1234H1Z2';
+const DEMO_STATE_CODE = '33';
+
+/** A customer registration in Karnataka, so one demo invoice is inter-state. */
+const KARNATAKA_GSTIN = '29AABCT1332L1ZA';
+
+/** Training is a service: SAC 999293, "commercial training and coaching". */
+const TRAINING_SAC = '999293';
 
 const TAMIL_NADU_DISTRICTS = [
   'Chennai', 'Coimbatore', 'Madurai', 'Tiruchirappalli', 'Salem', 'Tirunelveli',
@@ -434,13 +467,16 @@ async function seedOrganizations(): Promise<SeededOrg[]> {
   const tenantId = (await currentTenant()).id;
 
   const orgs: Array<{
-    name: string; website: string; account?: { tier: string; terms: number };
+    name: string; website: string; account?: { tier: string; terms: number; gstin?: string; placeOfSupply?: string };
     institution?: { type: string; management: string; district: string; students: number; aishe: string | null };
     district: string;
   }> = [
-    { name: 'Sundaram Textiles Ltd', website: 'https://sundaramtextiles.example', account: { tier: 'strategic', terms: 45 }, district: 'Coimbatore' },
-    { name: 'Meridian Financial Services', website: 'https://meridianfs.example', account: { tier: 'key', terms: 30 }, district: 'Chennai' },
-    { name: 'Cauvery Logistics', website: 'https://cauverylogistics.example', account: { tier: 'standard', terms: 30 }, district: 'Tiruchirappalli' },
+    // The registration and the place of supply sit on the account, because they
+    // do not change from sale to sale and retyping them per invoice is how a
+    // digit goes missing and the wrong pair of taxes is charged.
+    { name: 'Sundaram Textiles Ltd', website: 'https://sundaramtextiles.example', account: { tier: 'strategic', terms: 45, gstin: '33AAACS9101K1ZI', placeOfSupply: '33' }, district: 'Coimbatore' },
+    { name: 'Meridian Financial Services', website: 'https://meridianfs.example', account: { tier: 'key', terms: 30, gstin: '33AABCM2345P1ZD', placeOfSupply: '33' }, district: 'Chennai' },
+    { name: 'Cauvery Logistics', website: 'https://cauverylogistics.example', account: { tier: 'standard', terms: 30, placeOfSupply: '33' }, district: 'Tiruchirappalli' },
     { name: 'Nexa Healthcare Systems', website: 'https://nexahealth.example', account: { tier: 'key', terms: 60 }, district: 'Chennai' },
     { name: 'Vaigai Power Solutions', website: 'https://vaigaipower.example', account: { tier: 'standard', terms: 30 }, district: 'Madurai' },
     {
@@ -489,6 +525,9 @@ async function seedOrganizations(): Promise<SeededOrg[]> {
             tier: o.account.tier,
             paymentTermsDays: o.account.terms,
             billingEmail: `accounts@${o.website.replace('https://', '')}`,
+            billingAddress: `${o.district}, Tamil Nadu`,
+            gstin: o.account.gstin ?? null,
+            placeOfSupply: o.account.placeOfSupply ?? null,
           },
         });
       }
@@ -839,10 +878,17 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
 
     // Money: the signed contract's invoice, with partial allocation, so the
     // receipt join has real work to do.
+    // Tax priced from the line at creation, the way the product now does it.
+    // The third won deal is billed to a Karnataka registration so that one demo
+    // invoice is inter-state and carries IGST rather than CGST+SGST — the GST
+    // return has both tables to fill, and a screen that only ever renders one of
+    // them has never been looked at.
+    const interState = i === 2;
+    const gst = computeGst([{ taxableValue: w.value, gstRate: 18 }], interState);
     const invoice = await prisma.invoice.create({
       data: {
         tenantId,
-        recordCode: await nextRecordCode('INV'),
+        recordCode: docNumber('I', i + 1),
         organizationId: org.id,
         contractId: contract.id,
         opportunityId: opp.id,
@@ -850,6 +896,17 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
         currency: 'INR',
         issuedDate: closedAt,
         dueDate: new Date(closedAt.getTime() + 30 * 86_400_000),
+        placeOfSupply: interState ? '29' : DEMO_STATE_CODE,
+        interState,
+        customerGstin: interState ? KARNATAKA_GSTIN : null,
+        taxableValue: gst.taxableValue,
+        cgstAmount: gst.cgst,
+        sgstAmount: gst.sgst,
+        igstAmount: gst.igst,
+        roundOff: gst.roundOff,
+        grandTotal: gst.grandTotal,
+        division: 'software',
+        paymentType: 'credit',
       },
     });
     await prisma.invoiceLine.create({
@@ -858,17 +915,27 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
         invoiceId: invoice.id,
         offeringId: catalog[0].id,
         description: `${contract.recordCode} — ${w.title}`,
+        quantity: 1,
+        unitPrice: w.value,
         amount: w.value,
+        gstRate: 18,
+        taxAmount: round2((w.value * 18) / 100),
+        hsnSac: '998314',
         revenueMethod: 'milestone_based',
       },
     });
 
     if (i < 2) {
+      // Allocated against the tax-inclusive total, not the pre-tax value: an
+      // invoice for ₹1,18,000 is not settled by ₹1,00,000, and a fixture that
+      // said otherwise would have every screen reading "settled" over a
+      // ₹18,000 balance.
+      const collected = i === 0 ? gst.grandTotal : round2(gst.grandTotal * 0.4);
       const payment = await prisma.payment.create({
         data: {
           tenantId,
           recordCode: await nextRecordCode('PAY'),
-          amount: i === 0 ? w.value : w.value * 0.4,
+          amount: collected,
           currency: 'INR',
           gatewayReference: `TXN-${randomUUID().slice(0, 12).toUpperCase()}`,
           receivedAt: new Date(closedAt.getTime() + 12 * 86_400_000),
@@ -880,13 +947,29 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
       await prisma.receipt.create({
         data: {
           tenantId,
-          recordCode: await nextRecordCode('REC'),
+          recordCode: docNumber('R', i + 1),
           paymentId: payment.id,
           invoiceId: invoice.id,
-          allocatedAmount: i === 0 ? w.value : w.value * 0.4,
+          allocatedAmount: collected,
+          allocatedAt: new Date(closedAt.getTime() + 12 * 86_400_000),
+          // A receipt carries its own copy of the position, because it is a
+          // document: "this much, of that much, leaving this".
+          subjectTotal: gst.grandTotal,
+          balanceAfter: round2(gst.grandTotal - collected),
+          paymentMode: 'bank_transfer',
         },
       });
-      await prisma.invoice.update({ where: { id: invoice.id }, data: { status: i === 0 ? 'settled' : 'part_paid' } });
+      await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: {
+          status: i === 0 ? 'settled' : 'part_paid',
+          // What the document said when it was handed over, which is the fact
+          // the customer's copy carries.
+          paymentType: i === 0 ? 'full' : 'part',
+          amountPayableNow: collected,
+          paymentMode: 'bank_transfer',
+        },
+      });
     }
 
     await prisma.receivablesProjection.upsert({
@@ -1195,9 +1278,11 @@ async function seedEducation(people: SeededPerson[], orgs: SeededOrg[]) {
   const trainer = people.find((p) => p.roleSlug === 'trainer')!;
   const institution = orgs.find((o) => o.hasInstitution)!;
 
+  // A course carries its fee, its rate and its SAC, which is what lets somebody
+  // at a counter raise a correct tax invoice by naming what was sold.
   const courses = [
-    { name: 'Full Stack Development', code: 'FSD-24', weeks: 24 },
-    { name: 'Applied Data Science', code: 'ADS-20', weeks: 20 },
+    { name: 'Full Stack Development', code: 'FSD-24', weeks: 24, fee: 60_000 },
+    { name: 'Applied Data Science', code: 'ADS-20', weeks: 20, fee: 75_000 },
   ];
 
   const learnerNames = [
@@ -1215,6 +1300,10 @@ async function seedEducation(people: SeededPerson[], orgs: SeededOrg[]) {
         code: c.code,
         description: `${c.weeks}-week cohort programme with placement support.`,
         durationWeeks: c.weeks,
+        feeAmount: c.fee,
+        gstRate: 18,
+        hsnSac: TRAINING_SAC,
+        division: 'education',
       },
     });
 
@@ -1288,6 +1377,363 @@ async function seedEducation(people: SeededPerson[], orgs: SeededOrg[]) {
   }
 
   console.log(`  ${courses.length} courses, 2 cohorts, 12 enrollments (one minor with regulated guardian contact)`);
+}
+
+// ---------------------------------------------------------------------------
+// The company's own registration
+// ---------------------------------------------------------------------------
+
+/**
+ * Who the demo company is, on paper.
+ *
+ * Without this an invoice is a letter about money and a GST return is a
+ * spreadsheet: the supplier's legal name, address and GSTIN are what make a
+ * document a tax invoice, and a return is filed under a registration. The bank
+ * details are here because an invoice a customer cannot pay from is half a
+ * document.
+ */
+async function seedCompanyProfile() {
+  const tenantId = (await currentTenant()).id;
+  const existing = await prisma.companyProfile.findFirst({ where: { tenantId } });
+  if (existing) return existing;
+
+  return prisma.companyProfile.create({
+    data: {
+      tenantId,
+      legalName: 'Kaizen Infinities Private Limited',
+      tradeName: 'Kaizen Infinities',
+      gstin: DEMO_GSTIN,
+      stateCode: DEMO_STATE_CODE,
+      stateName: 'Tamil Nadu',
+      pan: 'AABCK1234H',
+      cin: 'U72900TN2019PTC131234',
+      addressLine1: 'No. 12, Second Floor, Gandhi Road',
+      addressLine2: 'Tambaram',
+      city: 'Chennai',
+      pincode: '600045',
+      email: 'accounts@kaizeninfinities.example',
+      phone: '+91 44 4000 1234',
+      website: 'https://kaizeninfinities.example',
+      bankName: 'State Bank of India',
+      bankAccountName: 'Kaizen Infinities Private Limited',
+      bankAccountNumber: '40123456789',
+      bankIfsc: 'SBIN0001234',
+      bankBranch: 'Tambaram, Chennai',
+      upiId: 'kaizeninfinities@sbi',
+      documentPrefix: 'KIPL',
+      // `KIPL/I/26-27/001` is exactly the sixteen characters the portal accepts;
+      // the full year would make it eighteen and GSTR-1 would reject it.
+      documentYearFormat: 'short',
+      invoiceTerms:
+        'Payable within the stated credit period. Interest at 18% per annum on amounts outstanding beyond the due date.',
+      invoiceNotes: 'This is a computer-generated invoice. Subject to Chennai jurisdiction.',
+      defaultDueDays: 30,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Billing a student, and the day-by-day record of what happened to them
+// ---------------------------------------------------------------------------
+
+/**
+ * The education counter, as it actually works.
+ *
+ * Two things the dataset could not previously show. The first is an invoice
+ * addressed to a person rather than to a company, paid in part: a student hands
+ * over ₹20,000 of a ₹70,800 course fee in cash, and the document says so — total
+ * payable, amount payable now, balance, mode of payment. The second is a
+ * timeline: attendance is only one of the things that happens to a learner, and
+ * the queries, the feedback and the complaints were previously nowhere.
+ */
+async function seedStudentBillingAndTimelines() {
+  const tenantId = (await currentTenant()).id;
+  if (await prisma.learnerLog.count({ where: { tenantId } })) return;
+
+  const enrollments = await prisma.enrollment.findMany({
+    where: { tenantId },
+    include: { cohort: { include: { course: true } } },
+    orderBy: { recordCode: 'asc' },
+    take: 4,
+  });
+  if (enrollments.length === 0) return;
+
+  let invoices = 0;
+  let logs = 0;
+  // The commercial invoices above took receipts 001–002.
+  let receiptCounter = 2;
+
+  for (const [index, enrollment] of enrollments.entries()) {
+    const course = enrollment.cohort.course;
+    const fee = Number((course.feeAmount ?? 60_000).toString());
+    const rate = Number((course.gstRate ?? 18).toString());
+    // A student is an unregistered buyer in their own state: CGST and SGST, and
+    // no customer GSTIN to report them under. That is the B2C case, and it is
+    // the common one for this division.
+    const gst = computeGst([{ taxableValue: fee, gstRate: rate }], false);
+    const issuedAt = new Date(Date.now() - (50 - index * 6) * 86_400_000);
+
+    // The first student pays in part, the second in full, the third not at all.
+    // Three rows because the invoice has three things it can say about payment
+    // and a screen that has only ever rendered one of them is a screen nobody
+    // has read.
+    // What the invoice itself says is what was handed over on the day, and it is
+    // never restated afterwards.
+    const collected = index === 0 ? 20_000 : index === 1 ? gst.grandTotal : 0;
+    const paymentType = collected === 0 ? 'credit' : collected >= gst.grandTotal ? 'full' : 'part';
+    const mode = index === 0 ? 'cash' : index === 1 ? 'upi' : null;
+
+    const invoice = await prisma.invoice.create({
+      data: {
+        tenantId,
+        // Continuing the same series the commercial invoices above started.
+        recordCode: docNumber('I', 4 + index),
+        personId: enrollment.personId,
+        status: 'issued',
+        currency: 'INR',
+        issuedDate: issuedAt,
+        dueDate: new Date(issuedAt.getTime() + 30 * 86_400_000),
+        placeOfSupply: DEMO_STATE_CODE,
+        interState: false,
+        taxableValue: gst.taxableValue,
+        cgstAmount: gst.cgst,
+        sgstAmount: gst.sgst,
+        igstAmount: gst.igst,
+        roundOff: gst.roundOff,
+        grandTotal: gst.grandTotal,
+        division: 'education',
+        paymentType,
+        amountPayableNow: collected,
+        paymentMode: mode,
+        paymentReference: index === 1 ? 'UPI/402311887654' : null,
+        notes: `${course.name} — ${enrollment.cohort.name}. Enrolment ${enrollment.recordCode}.`,
+      },
+    });
+    await prisma.invoiceLine.create({
+      data: {
+        tenantId,
+        invoiceId: invoice.id,
+        courseId: course.id,
+        description: `${course.name} (${course.code}) — course fee`,
+        quantity: 1,
+        unitPrice: fee,
+        amount: fee,
+        gstRate: rate,
+        taxAmount: round2((fee * rate) / 100),
+        hsnSac: course.hsnSac ?? TRAINING_SAC,
+        revenueMethod: 'over_time_ratable',
+      },
+    });
+    invoices += 1;
+
+    // Every instalment issues its own numbered receipt. The first student pays
+    // twice — ₹20,000 in cash on the day and ₹15,000 by UPI a fortnight later —
+    // so the dataset carries the case the whole redesign is about: a tax invoice
+    // that never changed, two receipts that each say where the account stood, and
+    // a final invoice naming both.
+    const instalments =
+      index === 0
+        ? [
+            { amount: 20_000, mode: 'cash', days: 0, reference: null as string | null },
+            { amount: 15_000, mode: 'upi', days: 14, reference: 'UPI/402398120041' },
+          ]
+        : collected > 0
+          ? [{ amount: collected, mode: mode ?? 'cash', days: 0, reference: 'UPI/402311887654' as string | null }]
+          : [];
+
+    let received = 0;
+    const receiptCodes: string[] = [];
+    const receiptRows: Array<Record<string, unknown>> = [];
+
+    for (const [n, instalment] of instalments.entries()) {
+      const at = new Date(issuedAt.getTime() + instalment.days * 86_400_000);
+      const payment = await prisma.payment.create({
+        data: {
+          tenantId,
+          recordCode: await nextRecordCode('PAY'),
+          amount: instalment.amount,
+          currency: 'INR',
+          gatewayReference: `${invoice.recordCode}/${instalment.mode}/${n + 1}`,
+          receivedAt: at,
+          status: 'received',
+          method: instalment.mode,
+          payerPersonId: enrollment.personId,
+        },
+      });
+      received = round2(received + instalment.amount);
+      const balanceAfter = round2(Math.max(gst.grandTotal - received, 0));
+      receiptCounter += 1;
+      const receiptCode = docNumber('R', receiptCounter);
+      await prisma.receipt.create({
+        data: {
+          tenantId,
+          recordCode: receiptCode,
+          paymentId: payment.id,
+          invoiceId: invoice.id,
+          allocatedAmount: instalment.amount,
+          allocatedAt: at,
+          subjectTotal: gst.grandTotal,
+          balanceAfter,
+          paymentMode: instalment.mode,
+          paymentReference: instalment.reference,
+        },
+      });
+      receiptCodes.push(receiptCode);
+      receiptRows.push({
+        number: n + 1,
+        recordCode: receiptCode,
+        issuedAt: at.toISOString(),
+        amount: instalment.amount,
+        mode: instalment.mode,
+        reference: instalment.reference,
+        paymentCode: payment.recordCode,
+        balanceAfter,
+      });
+    }
+
+    if (instalments.length > 0) {
+      await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: { status: received >= gst.grandTotal - 0.001 ? 'settled' : 'part_paid' },
+      });
+    }
+
+    // The statement the employee raises once the instalments are in, naming the
+    // receipts it consolidates.
+    if (instalments.length > 1) {
+      await prisma.finalInvoice.create({
+        data: {
+          tenantId,
+          recordCode: docNumber('F', 1),
+          invoiceId: invoice.id,
+          issuedAt: new Date(issuedAt.getTime() + 15 * 86_400_000),
+          totalPayable: gst.grandTotal,
+          totalReceived: received,
+          balance: round2(Math.max(gst.grandTotal - received, 0)),
+          settled: received >= gst.grandTotal - 0.001,
+          receiptCodes,
+          receiptCount: receiptCodes.length,
+          snapshot: { receipts: receiptRows, supersedes: [] },
+          note: 'Statement of instalments received against the course fee.',
+        },
+      });
+    }
+
+    // The timeline. Deliberately including an unanswered query and an open
+    // complaint, because a detector that has never had an open item to find is a
+    // detector nobody has watched work.
+    const timeline: Array<{
+      kind: string; title: string; detail: string; severity: string | null; rating: number | null;
+      status: string; days: number;
+    }> = [
+      {
+        kind: 'feedback', title: 'Found the first module well paced',
+        detail: 'Said the lab exercises were the useful part and asked for more of them.',
+        severity: null, rating: 5, status: 'resolved', days: 30,
+      },
+      {
+        kind: 'query', title: 'Asked whether the certificate names the college',
+        detail: 'Wants to know what the certificate says before the placement drive.',
+        severity: 'low', rating: null, status: index === 0 ? 'open' : 'resolved', days: 12,
+      },
+      {
+        kind: 'issue', title: 'Cannot access the lab environment from home',
+        detail: 'Logs in and the container fails to start. Reported twice.',
+        severity: index === 0 ? 'high' : 'medium', rating: null,
+        status: index === 0 ? 'open' : 'resolved', days: 5,
+      },
+      {
+        kind: 'note', title: 'Working evenings, may miss Friday sessions',
+        detail: 'Flagged by the trainer so the absence is not read as disengagement.',
+        severity: null, rating: null, status: 'resolved', days: 20,
+      },
+    ];
+
+    for (const entry of timeline.slice(0, index === 0 ? 4 : 2)) {
+      const at = new Date(Date.now() - entry.days * 86_400_000);
+      await prisma.learnerLog.create({
+        data: {
+          tenantId,
+          enrollmentId: enrollment.id,
+          entryDate: at,
+          kind: entry.kind,
+          title: entry.title,
+          detail: entry.detail,
+          severity: entry.severity,
+          rating: entry.rating,
+          status: entry.status,
+          resolvedAt: entry.status === 'resolved' ? at : null,
+          recordedById: enrollment.cohort.trainerPartyId,
+        },
+      });
+      logs += 1;
+    }
+
+    // Daily progress, which the schema has carried since the beginning with
+    // nothing ever writing to it.
+    for (let d = 1; d <= 6; d += 1) {
+      const day = new Date(Date.now() - d * 7 * 86_400_000);
+      await prisma.dailyProgress.create({
+        data: {
+          tenantId,
+          enrollmentId: enrollment.id,
+          progressDate: new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate())),
+          score: 55 + ((index * 5 + d * 7) % 40),
+          note: d === 1 ? 'Weekly assessment.' : null,
+          recordedById: enrollment.cohort.trainerPartyId,
+        },
+      });
+    }
+
+    // Attendance for the last three weeks, so the timeline has sessions in it
+    // and the attendance percentage is computed from records rather than typed.
+    for (let d = 1; d <= 15; d += 1) {
+      const day = new Date(Date.now() - d * 2 * 86_400_000);
+      const sessionDate = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
+      const status = d % 7 === 0 ? 'absent' : d % 5 === 0 ? 'late' : 'present';
+      await prisma.attendance.upsert({
+        where: { enrollmentId_sessionDate: { enrollmentId: enrollment.id, sessionDate } },
+        create: {
+          tenantId,
+          enrollmentId: enrollment.id,
+          sessionDate,
+          status,
+          note: status === 'absent' ? 'No message received.' : null,
+          recordedById: enrollment.cohort.trainerPartyId,
+        },
+        update: {},
+      });
+    }
+  }
+
+  console.log(
+    `  ${invoices} student fee invoices (one part paid across two receipts, with a final invoice), ${logs} timeline entries, attendance and weekly scores`,
+  );
+}
+
+/**
+ * Moves each document series past what the fixture wrote by hand.
+ *
+ * The allocator is the only thing that may hand out a number in the product, and
+ * it counts from its own row. A fixture that writes `KIPL/I/26-27/007` without
+ * telling it would have the next real invoice come out as 001 — two documents,
+ * one number, which is the whole thing the series exists to prevent.
+ */
+async function advanceDocumentSeries() {
+  const tenantId = (await currentTenant()).id;
+  const counts: Array<[string, number]> = [
+    ['DOC:I', await prisma.invoice.count({ where: { tenantId, recordCode: { not: null } } })],
+    ['DOC:R', await prisma.receipt.count({ where: { tenantId } })],
+    ['DOC:F', await prisma.finalInvoice.count({ where: { tenantId } })],
+  ];
+
+  for (const [entityType, used] of counts) {
+    await prisma.recordSequence.upsert({
+      where: { tenantId_entityType_year: { tenantId, entityType, year: 2026 } },
+      create: { tenantId, entityType, year: 2026, nextSequence: used + 1 },
+      update: { nextSequence: used + 1 },
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1435,7 +1881,13 @@ export async function seedDemoDataset(): Promise<string> {
     await seedTerritoriesAndRouting(people);
     const orgs = await seedOrganizations();
     await seedCommercialDataset(people, orgs, catalog);
+    await seedCompanyProfile();
     await seedEducation(people, orgs);
+    await seedStudentBillingAndTimelines();
+    // The fixture writes document numbers directly, so the allocator has to be
+    // told where they got to. Without this the first invoice raised in the
+    // product would take a number a demo invoice already holds.
+    await advanceDocumentSeries();
     await seedDemoHr(people);
     await seedDemoBooks();
     await seedDecisions(people);

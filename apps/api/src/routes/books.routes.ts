@@ -9,10 +9,18 @@
 
 import { Router } from 'express';
 import { z } from 'zod';
-import { DIVISIONS, GST_RATES, monthKey, type Division } from '@kaizen/shared';
+import {
+  DIVISIONS,
+  GST_RATES,
+  GST_RETURN_TYPES,
+  GST_STATE_CODES,
+  monthKey,
+  type Division,
+  type GstReturnType,
+} from '@kaizen/shared';
 import { handler, str, date, numeric } from '../lib/http.js';
 import { num } from '../platform/db.js';
-import { canSeeMoney } from '../platform/permissions.js';
+import { assertCan, canSeeMoney } from '../platform/permissions.js';
 import {
   listAccounts, createAccount, accountBalances,
   listCategories, createCategory,
@@ -26,6 +34,19 @@ import {
   profitAndLoss, monthlyTrend, cashPosition, cashForecast,
   postPayrollToBooks,
 } from '../domains/books.js';
+import {
+  computeGstr1,
+  computeGstr3b,
+  prepareReturn,
+  markReturnFiled,
+  listFilings,
+  filingDetail,
+  filingBlockers,
+  periodStatus,
+  exportFilingJson,
+} from '../domains/gstReturns.js';
+import { companyProfile, documentNumbering, updateCompanyProfile } from '../domains/companyProfile.js';
+import { DOCUMENT_SERIES, peekNextNumbers, setNextNumber, type DocumentSeries } from '../platform/documentNumber.js';
 
 const router = Router();
 
@@ -278,6 +299,203 @@ router.get(
 );
 
 router.get('/gst/rates', handler(async () => GST_RATES));
+
+/** The state codes a place of supply is named by, for the pickers. */
+router.get(
+  '/gst/states',
+  handler(async () =>
+    Object.entries(GST_STATE_CODES).map(([code, name]) => ({ code, name })),
+  ),
+);
+
+// ---------------------------------------------------------------------------
+// GST returns
+// ---------------------------------------------------------------------------
+//
+// Computing a return, preparing it (which snapshots the figures) and recording
+// that it was filed are three endpoints because they are three acts. The
+// platform prepares returns and does not transmit them: `POST /file` records the
+// portal's acknowledgement, and a return with no ARN was not filed.
+
+const returnTypeEnum = z.enum(GST_RETURN_TYPES as unknown as [GstReturnType, ...GstReturnType[]]);
+
+/** GSTR-1: outward supplies, invoice by invoice for B2B and rate-wise for B2C. */
+router.get(
+  '/gst/gstr1',
+  handler(async (req) => computeGstr1(periodOf(req.query.period))),
+);
+
+/** GSTR-3B: the monthly summary, the credit set-off and what is paid in cash. */
+router.get(
+  '/gst/gstr3b',
+  handler(async (req) => computeGstr3b(periodOf(req.query.period))),
+);
+
+router.get(
+  '/gst/filings',
+  handler(async (req) => {
+    const rows = await listFilings({
+      returnType: str(req.query.returnType),
+      period: str(req.query.period),
+      status: str(req.query.status),
+    });
+    const money = await canSeeMoney('invoices');
+    return rows.map((f) => ({
+      id: f.id,
+      recordCode: f.recordCode,
+      returnType: f.returnType,
+      period: f.period,
+      gstin: f.gstin,
+      status: f.status,
+      taxableValue: amount(num(f.taxableValue), money),
+      cgstAmount: amount(num(f.cgstAmount), money),
+      sgstAmount: amount(num(f.sgstAmount), money),
+      igstAmount: amount(num(f.igstAmount), money),
+      inputTaxCredit: amount(num(f.inputTaxCredit), money),
+      netPayable: amount(num(f.netPayable), money),
+      invoiceCount: f.invoiceCount,
+      preparedAt: f.preparedAt.toISOString(),
+      arn: f.arn,
+      filedAt: f.filedAt?.toISOString() ?? null,
+      note: f.note,
+    }));
+  }),
+);
+
+router.get('/gst/filings/:id', handler(async (req) => filingDetail(req.params.id)));
+
+/**
+ * What stands between this prepared return and a filed one.
+ *
+ * Read from the snapshot, so it answers for the return as prepared rather than
+ * for the books as they stand now — which is the only reading that means
+ * anything to somebody about to file.
+ */
+router.get('/gst/filings/:id/blockers', handler(async (req) => filingBlockers(req.params.id)));
+
+/** The return in the offline utility's shape, for upload to the portal. */
+router.get('/gst/filings/:id/export', handler(async (req) => exportFilingJson(req.params.id)));
+
+/** Whether a month is closed, and by which filing. */
+router.get('/gst/period', handler(async (req) => periodStatus(periodOf(req.query.period))));
+
+router.post(
+  '/gst/filings',
+  handler(async (req, res) => {
+    const body = z
+      .object({ returnType: returnTypeEnum, period: period, note: z.string().nullish() })
+      .parse(req.body);
+    const result = await prepareReturn(body.returnType, body.period, body.note);
+    res.status(201).json(result);
+    return undefined;
+  }),
+);
+
+router.post(
+  '/gst/filings/:id/file',
+  handler(async (req) => {
+    const body = z
+      .object({ arn: z.string().min(6), filedAt: z.string().nullish(), note: z.string().nullish() })
+      .parse(req.body);
+    return markReturnFiled(req.params.id, {
+      arn: body.arn,
+      filedAt: body.filedAt ? new Date(body.filedAt) : undefined,
+      note: body.note ?? null,
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// The company's own registration
+// ---------------------------------------------------------------------------
+//
+// Every invoice is printed from this and every return is filed under it, which
+// is why it is here rather than buried in an admin screen about something else.
+
+/**
+ * Gated here rather than inside `companyProfile()`, and the split is deliberate.
+ *
+ * The function is read internally by every invoice, receipt and statement, for
+ * any viewer who may see the document — so it cannot assert `company_profile:view`
+ * itself without making the supplier block on an invoice depend on a grant about
+ * settings. The endpoint is a different thing: it hands over the whole row, bank
+ * account number included, and that is a grant question.
+ */
+router.get(
+  '/company-profile',
+  handler(async () => {
+    await assertCan({ resource: 'company_profile', verb: 'view' });
+    return companyProfile();
+  }),
+);
+
+/**
+ * Where each document series stands.
+ *
+ * A company adopting this platform mid-year has already issued fifteen receipts
+ * by hand, and starting again at 001 would put two documents into the world with
+ * one number. So the next number in each series is visible, and settable
+ * forwards.
+ */
+router.get(
+  '/company-profile/series',
+  handler(async () => {
+    await assertCan({ resource: 'company_profile', verb: 'view' });
+    const { prefix, yearFormat } = await documentNumbering();
+    return peekNextNumbers(prefix, new Date(), yearFormat);
+  }),
+);
+
+router.post(
+  '/company-profile/series',
+  handler(async (req) => {
+    await assertCan({ resource: 'company_profile', verb: 'edit' });
+    const body = z
+      .object({
+        series: z.enum(Object.values(DOCUMENT_SERIES) as [DocumentSeries, ...DocumentSeries[]]),
+        nextNumber: z.number().int().positive(),
+      })
+      .parse(req.body);
+    await setNextNumber(body.series, body.nextNumber);
+    const { prefix, yearFormat } = await documentNumbering();
+    return peekNextNumbers(prefix, new Date(), yearFormat);
+  }),
+);
+
+router.patch(
+  '/company-profile',
+  handler(async (req) => {
+    const body = z
+      .object({
+        legalName: z.string().min(1).optional(),
+        tradeName: z.string().nullish(),
+        gstin: z.string().nullish(),
+        stateCode: z.string().length(2).nullish(),
+        pan: z.string().nullish(),
+        cin: z.string().nullish(),
+        addressLine1: z.string().nullish(),
+        addressLine2: z.string().nullish(),
+        city: z.string().nullish(),
+        pincode: z.string().nullish(),
+        email: z.string().nullish(),
+        phone: z.string().nullish(),
+        website: z.string().nullish(),
+        bankName: z.string().nullish(),
+        bankAccountName: z.string().nullish(),
+        bankAccountNumber: z.string().nullish(),
+        bankIfsc: z.string().nullish(),
+        bankBranch: z.string().nullish(),
+        upiId: z.string().nullish(),
+        invoiceTerms: z.string().nullish(),
+        invoiceNotes: z.string().nullish(),
+        defaultDueDays: z.number().int().positive().max(365).optional(),
+        documentPrefix: z.string().max(8).nullish(),
+        documentYearFormat: z.enum(['short', 'full']).optional(),
+      })
+      .parse(req.body);
+    return updateCompanyProfile(body);
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // Budget

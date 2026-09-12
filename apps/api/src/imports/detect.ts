@@ -23,6 +23,11 @@ export type ImportKind =
   | 'attendance'
   | 'transactions'
   | 'chart_of_accounts'
+  // The company's own student register: one row per student carrying the whole
+  // commercial story — course, fee, discount, GST, dates, and the instalments
+  // with the receipt numbers they were issued under. Not a template we handed
+  // out; a list they already keep, which is the only list an import is for.
+  | 'student_register'
   // The lists the platform hands out a shape for. Recognised before anything
   // else is tried, because a file we published the headings for is not a file
   // to sniff at.
@@ -70,6 +75,20 @@ export function findHeaderRow(grid: Grid, needles: string[][], limit = 40): numb
   return -1;
 }
 
+/**
+ * The student register's own headings.
+ *
+ * Matched on three words together rather than on any one of them: a name column
+ * and a course column could be half a dozen things, and a registration number
+ * beside an instalment is only ever this. Two spellings of "instalment" because
+ * the register uses the American one and somebody will eventually fix it.
+ */
+const STUDENT_REGISTER_HEADERS: string[][] = [
+  ['registration number', 'course', 'installment'],
+  ['registration number', 'course', 'instalment'],
+  ['name', 'course', 'including gst', 'receipt number'],
+];
+
 const BANK_HEADERS: string[][] = [
   ['transaction date', 'particulars'],
   ['date', 'narration'],
@@ -92,6 +111,21 @@ export function detectGrid(grid: Grid, label?: string): Detection {
       headerRow: template.headerRow,
       confidence: 'high',
       reason: `The ${template.spec.title} template, filled in.`,
+    };
+  }
+
+  // Before the bank sniffer, because a register carries a date column and an
+  // amount column and would otherwise be read as a statement.
+  const registerHeader = findHeaderRow(grid, STUDENT_REGISTER_HEADERS);
+  if (registerHeader >= 0) {
+    return {
+      kind: 'student_register',
+      sheet: label,
+      headerRow: registerHeader,
+      confidence: 'high',
+      reason:
+        `Row ${registerHeader + 1} names a registration number, a course and an instalment with a receipt number — ` +
+        'a student register rather than a statement.',
     };
   }
 
