@@ -133,6 +133,14 @@ model CompanyProfile {
 /// writes one. Reads never emit events — a read of confidential or regulated
 /// data produces an AUDIT_RECORD instead.
 model EventRecord {
+  /// Append order, and the only unambiguous way to find the chain head.
+  ///
+  /// The head used to be read with `orderBy: { recordedAt: 'desc' }`. Under a
+  /// burst, several records share a millisecond, so that ordering is arbitrary
+  /// and the "head" could be a record that already had a successor — the next
+  /// writer then chained onto the wrong one and collided. A sequence is
+  /// monotonic by construction.
+  seq BigInt @default(autoincrement())
   id       String @id @default(cuid())
   tenantId String
 
