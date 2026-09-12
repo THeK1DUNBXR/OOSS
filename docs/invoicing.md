@@ -166,6 +166,17 @@ behind this, and a "File now" button that only wrote a row would be worse than
 the honest split. The JSON download is the offline utility's file, in the shape
 the portal accepts, and `File` records what came back.
 
+### Every amount collected is gross
+
+A price quoted to a student, a receipt written against it and a figure in the
+company's own register all include the tax. The total governs: the taxable value
+and the GST are what come back out of it, never the other way round, and a
+part payment is a part of the gross. The register import reads the file the same
+way — where a row's "Excluding GST" and "GST" cells do not come to the
+"Including GST" total, it is the split that is wrong, and the preview says so and
+derives the split from the total rather than asking the reader which cell to
+trust.
+
 ### The arithmetic worth knowing about
 
 Input credit is set off **head by head, in the statutory order**: IGST credit

@@ -1562,7 +1562,8 @@ describe('the student register reads what a company already keeps', () => {
     const { extractStudentRegister } = await import('../imports/extract.js');
     const out = extractStudentRegister(
       grid(
-        // The taxable value plus GST does not come to the total.
+        // The taxable value plus GST does not come to the total: the GST was
+        // struck on the gross figure and the "Excluding GST" cell holds it too.
         ['Vaishnavi', 'KI-2026/09-SAP/1107', '8754238004', '', 'SAP-MM module', '32999', '38939', '7009.02', '0', '0.00%', '38939', '9/3/26', '9/3/26', '11/13/26', '38939', '9/7/26', 'KIPL/R/2026-27/013', '', '', '', '', '', ''],
         // The instalments come to a rupee more than is owed.
         ['M.Ravichandran', 'KI-2026/08-TLY/1105', '9342462210', '', 'Basic Microsoft & Tally with Gst', '12999', '6779', '1220', '5000', '38.46%', '7999', '8/12/26', '8/12/26', '11/12/26', '3500', '8/12/26', 'KIPL/R/2026-27/004', '4500', '9/7/26', 'KIPL/R/2026-27/011', '', '', ''],
@@ -1575,6 +1576,14 @@ describe('the student register reads what a company already keeps', () => {
     // refusing the row would lose a real student over a spreadsheet error.
     expect(out.rows.every((r) => r.status === 'ready')).toBe(true);
     expect(out.rows[0].message).toMatch(/not the 38939/);
+    // Every amount in the register is tax-inclusive, so the total is the fee and
+    // the split comes back out of it at the rate the row implies.
+    expect(out.rows[0].message).toMatch(/tax-inclusive/);
+    const vaishnavi = out.rows[0].normalised as Record<string, unknown>;
+    expect(vaishnavi.total).toBe(38939);
+    expect(vaishnavi.taxable).toBe(32999.15);
+    expect(vaishnavi.gst).toBe(5939.85);
+    expect(vaishnavi.gstRate).toBe(18);
     expect(out.rows[1].message).toMatch(/1 more than the 7999/);
   });
 
