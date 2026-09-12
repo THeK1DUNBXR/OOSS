@@ -1,0 +1,6 @@
+dist
+node_modules
+.wrangler
+docs/plan/MAP.md
+apps/api/prisma/schema
+pnpm-lock.yaml

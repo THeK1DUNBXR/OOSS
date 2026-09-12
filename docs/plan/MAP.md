@@ -124,7 +124,7 @@
 
 **`apps/api/src/imports/matchName.ts`** (110 lines) — Candidate:16 · MatchResult:21 · normaliseName:44 · matchPerson:81 · matchFailure:104
 
-**`apps/api/src/imports/parse.ts`** (247 lines) — Grid:13 · parseCsv:27 · SheetGrid:83 · readWorkbook:97 · toAmount:122 · toDate:163 · inferDayFirst:221 · nonEmpty:240 · isBlank:244
+**`apps/api/src/imports/parse.ts`** (250 lines) — Grid:13 · parseCsv:27 · SheetGrid:83 · readWorkbook:97 · toAmount:122 · toDate:166 · inferDayFirst:224 · nonEmpty:243 · isBlank:247
 
 **`apps/api/src/imports/service.ts`** (341 lines) — MAX_UPLOAD_BYTES:33 · StageResult:35 · stageImport:57 · listImports:283 · getImport:293 · importRows:301 · setImportOptions:316 · setRowStatus:331
 
@@ -242,4 +242,4 @@
 
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
-- `pnpm-lock.yaml` (5153 lines)
+- `pnpm-lock.yaml` (5964 lines)
