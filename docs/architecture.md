@@ -82,11 +82,16 @@ the audit trail survives the merge.
 Three kinds of body, separated because they are read, billed, reported and
 worked differently:
 
-| | What it is | Stored as | Grant family |
+| On screen | What it is | Stored as | Grant family |
 |---|---|---|---|
-| **Student** | somebody who takes a course | `Person` + `StudentProfile` | `students` |
-| **Institution** | a school, college or polytechnic | `Organization` `kind='institution'` + `InstitutionProfile` | `institutions` |
-| **Organisation** | a trust, a foundation, a business | `Organization` `kind='organization'` + billing | `organizations` |
+| **Customers** | somebody who takes a course | `Person` + `StudentProfile` | `students` |
+| **Institutions** | a school, college or polytechnic | `Organization` `kind='institution'` + `InstitutionProfile` | `institutions` |
+| **Organisations** | a trust, a foundation, a business | `Organization` `kind='organization'` + billing | `organizations` |
+
+The screen names are the company's own: a *customer* here is a learner who buys
+a course — from its own phrase, "Customer (Student)" — and the two bodies are
+named for what they are. The code keeps `student`, because that is what the
+record is and what the invoice calls it; the label is what a person looks for.
 
 The kind is **exclusive and enforced**. Institutions and organisations used to
 be optional specialisations that could sit on one row at once, on the reasoning

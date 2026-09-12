@@ -562,6 +562,75 @@ describe('CRM-IDN-001 — identity resolution', () => {
 });
 
 // ===========================================================================
+// Navigation — the words a person looks for a screen under
+// ===========================================================================
+
+describe('the sidebar and the command palette say where they go', () => {
+  it('every seeded row matches the registry, synonyms included', async () => {
+    const { NAV_REGISTRY } = await import('../seed/bootstrap.js');
+    const rows = await unscopedPrisma.navNode.findMany({ where: { tenantId: TENANT } });
+    const byKey = new Map(rows.map((r) => [r.nodeKey, r]));
+
+    for (const spec of NAV_REGISTRY) {
+      const row = byKey.get(spec.nodeKey);
+      expect(row, `no nav row for ${spec.nodeKey}`).toBeTruthy();
+      expect(row!.label).toBe(spec.label);
+      expect(row!.path).toBe(spec.path);
+      expect(row!.group).toBe(spec.group);
+      // The one that went stale: the upsert updated the label and the path and
+      // left the synonyms as they were, so the palette went on routing a word
+      // that had moved to another screen.
+      expect([...row!.searchSynonyms].sort()).toEqual([...(spec.synonyms ?? [])].sort());
+    }
+  });
+
+  it('no word sends somebody to the wrong party', async () => {
+    const { NAV_REGISTRY } = await import('../seed/bootstrap.js');
+
+    // Scoped to the four screens that hold parties. Elsewhere a shared word can
+    // be honest — "problems" really does mean both the attention queue and the
+    // exception list — but a learner, a college, a business and a contact are
+    // four different things, and a word that reaches two of them lands somebody
+    // in the wrong file.
+    // `edu_enrollments` is in the list because it is about learners too: it was
+    // also called "Students", and a word that reaches both sends somebody
+    // looking for a person's file into the attendance list.
+    const partyKeys = ['crm_students', 'crm_institutions', 'crm_accounts', 'crm_people', 'edu_enrollments'];
+    const owner = new Map<string, string>();
+    const clashes: string[] = [];
+
+    for (const spec of NAV_REGISTRY.filter((n) => partyKeys.includes(n.nodeKey))) {
+      // The label is searched too, so it counts as a word this screen owns.
+      for (const word of [spec.label.toLowerCase(), ...(spec.synonyms ?? []).map((x) => x.toLowerCase())]) {
+        const held = owner.get(word);
+        if (held && held !== spec.nodeKey) clashes.push(`"${word}" → ${held} and ${spec.nodeKey}`);
+        owner.set(word, spec.nodeKey);
+      }
+    }
+
+    // The palette takes the first match, so a shared word silently picks a
+    // winner: "customers" belonged to both the learners screen and the
+    // organisations one, and organisations won.
+    expect(clashes).toEqual([]);
+  });
+
+  it('the three parties are three entries, each to its own screen', async () => {
+    const { NAV_REGISTRY } = await import('../seed/bootstrap.js');
+    const at = (key: string) => NAV_REGISTRY.find((n) => n.nodeKey === key);
+
+    expect(at('crm_students')).toMatchObject({ label: 'Customers', path: '/crm/students' });
+    expect(at('crm_institutions')).toMatchObject({ label: 'Institutions', path: '/crm/institutions' });
+    expect(at('crm_accounts')).toMatchObject({ label: 'Organisations', path: '/crm/organizations' });
+
+    // The words that sent somebody to the wrong one.
+    expect(at('crm_students')!.synonyms).toContain('students');
+    expect(at('crm_institutions')!.synonyms).toContain('colleges');
+    expect(at('crm_accounts')!.synonyms).not.toContain('colleges');
+    expect(at('crm_accounts')!.synonyms).not.toContain('customer');
+  });
+});
+
+// ===========================================================================
 // CRM-IDN-002/003 — the three party types
 // ===========================================================================
 

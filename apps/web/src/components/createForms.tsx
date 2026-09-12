@@ -747,8 +747,9 @@ export function NewOrganization({ open, onClose }: { open: boolean; onClose: () 
       }
     >
       <p className="text-2xs text-ink-500">
-        A trust, a foundation or a business. Schools and colleges are recorded separately, under Schools &amp;
-        Colleges, because they are a different relationship.
+        A business, a trust or a foundation — somebody who buys corporate training, sponsors a cohort or hires our
+        learners. Schools and colleges are recorded separately, under Institutions, because they are a different
+        relationship.
       </p>
       <TextInput label="Name" required autoFocus value={name} onChange={setName} />
       <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
