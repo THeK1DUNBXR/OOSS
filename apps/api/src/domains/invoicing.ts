@@ -120,8 +120,10 @@ export interface CollectedPaymentInput {
 
 export interface InvoiceInput {
   accountId?: string | null;
+  /** An institution or an organisation, by id. Which of the two it is comes
+   *  from the row rather than from the caller. */
   organizationId?: string | null;
-  /** An individual customer — a student, a walk-in. */
+  /** A student, by the id of the person they are. */
   personId?: string | null;
   contractId?: string | null;
   opportunityId?: string | null;
@@ -236,9 +238,19 @@ export async function assertPeriodOpen(date: Date, what: string): Promise<void> 
 
 // ---------------------------------------------------------------------------
 // Resolving the customer, the tax reading and the lines
+//
+// "Customer" is a role on this document, not a kind of record. Three different
+// parties can hold it — a student, an institution, an organisation — and which
+// one it is says what the invoice is for and how the return reports it. It is
+// the one place in the platform where the three meet, and they meet as one
+// field: who this obligation is owed by.
 // ---------------------------------------------------------------------------
 
+export const CUSTOMER_KINDS = ['student', 'institution', 'organization'] as const;
+export type CustomerKind = (typeof CUSTOMER_KINDS)[number];
+
 interface ResolvedCustomer {
+  kind: CustomerKind;
   accountId: string | null;
   organizationId: string | null;
   personId: string | null;
@@ -255,14 +267,14 @@ async function resolveCustomer(input: InvoiceInput): Promise<ResolvedCustomer> {
 
   if (!orgId && !input.personId) {
     throw ApiError.badRequest(
-      'An invoice needs a customer: either an organisation, or a person for somebody buying in their own name.',
+      'An invoice needs a customer: a student, an institution, or an organisation.',
     );
   }
   // Both would be ambiguous about whose obligation it is, which is the one
   // question an invoice exists to answer.
   if (orgId && input.personId) {
     throw ApiError.badRequest(
-      'An invoice is addressed to one customer. Name the organisation or the person, not both — a contact at a company is billed through the company.',
+      'An invoice is addressed to one customer. Name the student, the institution or the organisation — one of the three, not two. A contact at a company is billed through the company.',
     );
   }
 
@@ -273,6 +285,7 @@ async function resolveCustomer(input: InvoiceInput): Promise<ResolvedCustomer> {
     });
     if (!org) throw ApiError.notFound('Organisation');
     return {
+      kind: org.kind === 'institution' ? 'institution' : 'organization',
       accountId: org.account?.id ? orgId : null,
       organizationId: org.id,
       personId: null,
@@ -286,16 +299,26 @@ async function resolveCustomer(input: InvoiceInput): Promise<ResolvedCustomer> {
 
   const person = await prisma.person.findFirst({
     where: { id: input.personId!, tenantId: auth.tenantId, deletedAt: null },
+    include: { studentProfile: true },
   });
   if (!person) throw ApiError.notFound('Person');
+
+  // A person billed in their own name is a student here: it is a training
+  // business, and the walk-in who pays for a course is a learner. Where they do
+  // not yet have a student record the invoice still goes out — refusing to bill
+  // somebody until their paperwork is tidy is not a rule any counter can keep —
+  // but the address, the state and any registration come from that record when
+  // it exists, which is where they belong and where they are entered once.
+  const student = person.studentProfile;
   return {
+    kind: 'student',
     accountId: null,
     organizationId: null,
     personId: person.id,
     name: person.fullName,
-    gstin: input.customerGstin ?? null,
-    placeOfSupply: input.placeOfSupply ?? null,
-    billingAddress: null,
+    gstin: input.customerGstin ?? student?.gstin ?? null,
+    placeOfSupply: input.placeOfSupply ?? student?.placeOfSupply ?? null,
+    billingAddress: student?.address ?? null,
     billingEmail: person.primaryEmail ?? null,
   };
 }
@@ -1224,7 +1247,13 @@ export async function invoiceDocument(invoiceId: string) {
   const person = invoice.personId
     ? await prisma.person.findFirst({
         where: { id: invoice.personId },
-        select: { fullName: true, recordCode: true, primaryEmail: true, primaryPhone: true },
+        select: {
+          fullName: true,
+          recordCode: true,
+          primaryEmail: true,
+          primaryPhone: true,
+          studentProfile: { select: { registrationNumber: true, address: true } },
+        },
       })
     : null;
 
@@ -1301,14 +1330,22 @@ export async function invoiceDocument(invoiceId: string) {
     },
 
     customer: {
-      kind: invoice.personId ? ('person' as const) : ('organization' as const),
+      // Which of the three this document is addressed to. It is printed, because
+      // "Student" over a name and "Institution" over a college's name are
+      // different documents to anybody filing them, and because an invoice that
+      // does not say who it is to is the thing this product used to produce.
+      kind: invoice.personId ? ('student' as const) : org?.kind === 'institution' ? ('institution' as const) : ('organization' as const),
+      kindLabel: invoice.personId ? 'Student' : org?.kind === 'institution' ? 'Institution' : 'Organisation',
       name: org?.name ?? person?.fullName ?? '—',
       recordCode: org?.recordCode ?? person?.recordCode ?? null,
+      /// The learner's own registration number, where they have one. It is what
+      /// they and the company both quote, so it belongs on the document.
+      registrationNumber: person?.studentProfile?.registrationNumber ?? null,
       gstin: invoice.customerGstin,
       // B2B or B2C, from whether the registration is real rather than from a
       // tick box: it decides whether the customer can claim this tax back.
       supplyType: supplyTypeOf(invoice.customerGstin),
-      address: org?.account?.billingAddress ?? null,
+      address: org?.account?.billingAddress ?? person?.studentProfile?.address ?? null,
       email: org?.account?.billingEmail ?? person?.primaryEmail ?? null,
       phone: person?.primaryPhone ?? null,
     },

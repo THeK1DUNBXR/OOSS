@@ -115,7 +115,7 @@ export const ALL_RESOURCES = [
   'pipeline_stages', 'pipeline_transitions', 'policies', 'positions',
   'price_book_entries', 'projects', 'proposals', 'quotes', 'receivables',
   'relationships', 'reports', 'requisitions', 'restricted_interactions',
-  'routing_rules', 'tasks', 'territories', 'transactions', 'users',
+  'routing_rules', 'students', 'tasks', 'territories', 'transactions', 'users',
   'vendor_bills', 'win_loss_reviews',
 ] as const;
 
@@ -170,6 +170,7 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'activities', cell: 'VCEDAXF' },
   { resource: 'interactions', cell: 'VCEDA' },
   { resource: 'people', cell: 'VCEDAX,merge' },
+  { resource: 'students', cell: 'VCEDAX' },
   { resource: 'organizations', cell: 'VCEDAX' },
   { resource: 'institutions', cell: 'VCEDAX' },
   { resource: 'relationships', cell: 'VCEDAX' },
@@ -255,6 +256,7 @@ const financeHead: GrantSpec[] = [
   { resource: 'opportunities', cell: 'VCEDAXF,approve' },
   { resource: 'organizations', cell: 'VCEDAXF' },
   { resource: 'institutions', cell: 'VCEDAXF' },
+  { resource: 'students', cell: 'VCEDAXF' },
   { resource: 'people', cell: 'VCEDAXF,merge' },
   { resource: 'relationships', cell: 'VCEDAXF' },
   { resource: 'interactions', cell: 'VCEDAXF' },
@@ -346,12 +348,19 @@ const employee: GrantSpec[] = [
   // invoice they raised disappear.
   { resource: 'invoices', cell: 'VCEF@own' },
   { resource: 'payments', cell: 'VCF@own' },
-  // The catalogue and the customer list, so there is something to bill and
-  // somebody to bill it to. Both are read-only and both are company-wide facts
-  // rather than confidences — what we sell and who we sell it to is not
-  // withheld from the people doing the selling.
+  // The catalogue, and the three kinds of party an invoice can be addressed to,
+  // so there is something to bill and somebody to bill it to. What we sell and
+  // who we sell it to are company-wide facts rather than confidences, and are
+  // not withheld from the people doing the selling.
   { resource: 'courses', cell: 'V@all' },
   { resource: 'organizations', cell: 'V@all' },
+  { resource: 'institutions', cell: 'V@all' },
+
+  // Students, with create: the counter job is taking a walk-in through an
+  // enrolment and handing them an invoice, and that starts by writing down who
+  // they are. Correcting a learner's record afterwards is Operations' work, so
+  // `edit` is not here.
+  { resource: 'students', cell: 'VC@all' },
 
   // Deliberately absent. An employee has no reason to reach the ledger, the
   // pipeline, or anybody else's file, and every one of these would be a

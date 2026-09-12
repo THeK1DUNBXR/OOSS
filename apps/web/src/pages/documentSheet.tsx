@@ -133,6 +133,10 @@ export function CustomerBlock({
 }: {
   customer: {
     name: string;
+    /** Which of the three this is: a student, an institution, an organisation. */
+    kindLabel?: string | null;
+    /** A learner's own registration number, which both sides quote. */
+    registrationNumber?: string | null;
     gstin: string | null;
     address: string | null;
     phone: string | null;
@@ -144,8 +148,15 @@ export function CustomerBlock({
   return (
     <section className="doc-parties">
       <div>
-        <p className="doc-label">{heading}</p>
+        {/* What is being billed, not only who. "Student" over a name and
+            "Institution" over a college's are different documents to anybody
+            filing them. */}
+        <p className="doc-label">
+          {heading}
+          {customer.kindLabel ? ` · ${customer.kindLabel}` : ''}
+        </p>
         <p className="doc-party-name">{customer.name}</p>
+        {customer.registrationNumber && <p className="doc-muted">Registration {customer.registrationNumber}</p>}
         {customer.address && <p className="doc-muted">{customer.address}</p>}
         <p className="doc-muted">{[customer.phone, customer.email].filter(Boolean).join(' · ')}</p>
         <p className="doc-ids">{customer.gstin ? <><strong>GSTIN</strong> {customer.gstin}</> : 'Unregistered customer'}</p>

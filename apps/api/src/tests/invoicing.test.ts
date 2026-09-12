@@ -677,6 +677,69 @@ describe('the final invoice names the receipts it consolidates', () => {
 // The document
 // ===========================================================================
 
+describe('the invoice says which of the three it is addressed to', () => {
+  it('names a student, an institution and an organisation as what each is', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const { createOrganization } = await import('../domains/organizations.js');
+      const { createStudent } = await import('../domains/students.js');
+      const tag = stamp();
+
+      const college = await createOrganization({ kind: 'institution', name: `Billed Polytechnic ${tag}` });
+      const firm = await createOrganization({ kind: 'organization', name: `Billed Traders ${tag}` });
+      const student = await createStudent({
+        fullName: `Billed Learner ${tag}`,
+        primaryPhone: `92${tag.slice(-8)}`,
+        registrationNumber: `KI-BILL/${tag}`,
+      });
+
+      const line = [{ description: 'A course', unitPrice: 10_000, gstRate: 18, hsnSac: '999293' }];
+      const forStudent = await createInvoice({ personId: student.personId, placeOfSupply: '33', lines: line });
+      const forCollege = await createInvoice({ organizationId: college.id, placeOfSupply: '33', lines: line });
+      const forFirm = await createInvoice({ organizationId: firm.id, placeOfSupply: '33', lines: line });
+
+      const [a, b, c] = await Promise.all([
+        invoiceDocument(forStudent.id),
+        invoiceDocument(forCollege.id),
+        invoiceDocument(forFirm.id),
+      ]);
+
+      expect(a.customer.kind).toBe('student');
+      expect(a.customer.kindLabel).toBe('Student');
+      // The learner's own number, which is what they and the company both quote.
+      expect(a.customer.registrationNumber).toBe(`KI-BILL/${tag}`);
+
+      expect(b.customer.kind).toBe('institution');
+      expect(b.customer.kindLabel).toBe('Institution');
+      expect(c.customer.kind).toBe('organization');
+      expect(c.customer.kindLabel).toBe('Organisation');
+    });
+  });
+
+  it('takes the student\u2019s state from their own record rather than asking again', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const { createStudent } = await import('../domains/students.js');
+      const tag = stamp();
+      const student = await createStudent({
+        fullName: `Kerala Learner ${tag}`,
+        primaryPhone: `91${tag.slice(-8)}`,
+        // Ours is Tamil Nadu, so this one is an inter-state supply and carries
+        // IGST rather than the CGST/SGST pair.
+        placeOfSupply: '32',
+      });
+
+      const invoice = await createInvoice({
+        personId: student.personId,
+        lines: [{ description: 'A course', unitPrice: 10_000, gstRate: 18, hsnSac: '999293' }],
+      });
+
+      expect(invoice.placeOfSupply).toBe('32');
+      expect(invoice.interState).toBe(true);
+      expect(Number(invoice.igstAmount)).toBe(1_800);
+      expect(Number(invoice.cgstAmount)).toBe(0);
+    });
+  });
+});
+
 describe('the invoice document separates what it says from where the account stands', () => {
   it('prints the declaration made at issue, and keeps today’s balance beside it', async () => {
     await asUser('latha@kaizen.co.in', async () => {

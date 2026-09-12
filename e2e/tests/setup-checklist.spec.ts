@@ -4,7 +4,7 @@
  *
  * The bug these were written for: the banner was a single link wrapped around
  * the whole strip, so its button — labelled with the step's own action, "Add a
- * customer" — went to the checklist the strip was already summarising. Nothing
+ * student" — went to the checklist the strip was already summarising. Nothing
  * threw, nothing logged, every unit test passed; the button simply did not do
  * what it said. That is the shape of defect this file exists to catch, so the
  * assertions are about the promise a label makes and whether the link under it
@@ -101,8 +101,8 @@ test.describe('the setup banner', () => {
   }
 
   test('the words lead to the checklist and the button does the job', async ({ page, request }) => {
-    const step = await nextStep(request, 'customers');
-    await withUnfinishedSetup(page, 'customers');
+    const step = await nextStep(request, 'students');
+    await withUnfinishedSetup(page, 'students');
     await page.goto('/command');
 
     const banner = page.getByRole('link', { name: new RegExp(`Next: ${step.title}`) });
@@ -119,13 +119,13 @@ test.describe('the setup banner', () => {
     await expect.poll(() => pathOf(page.url())).toBe(pathOf(destinationOf(step)));
   });
 
-  test('"Add a customer" arrives with the form open', async ({ page }) => {
-    await withUnfinishedSetup(page, 'customers');
+  test('"Add a student" arrives with the form open', async ({ page }) => {
+    await withUnfinishedSetup(page, 'students');
     await page.goto('/command');
-    await page.getByRole('link', { name: 'Add a customer', exact: true }).click();
+    await page.getByRole('link', { name: 'Add a student', exact: true }).click();
 
-    // Landing on a list of the customers you already have is not adding one.
-    await expect(page.getByRole('heading', { name: /add a company or a college/i })).toBeVisible();
+    // Landing on a list of the students you already have is not adding one.
+    await expect(page.getByRole('heading', { name: /add a student/i })).toBeVisible();
 
     // And the parameter that opened it is spent: a reload should not reopen the
     // form, and Back should return to the list rather than to the same screen.

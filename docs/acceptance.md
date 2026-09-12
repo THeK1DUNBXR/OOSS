@@ -7,7 +7,7 @@ impossible.
 
 ```bash
 ./scripts/test-db.sh          # provision kaizen_test
-cd apps/api && pnpm test      # 351 tests
+cd apps/api && pnpm test      # 360 tests
 ```
 
 ## How the suite is built
@@ -36,7 +36,7 @@ dataset is a demonstration, not a scratchpad.
 | **CRM-FOUND-006** Audit and field visibility | 2 | Money fields are masked with a named reason; regulated fields are structurally excluded from the response shape |
 | **CRM-FOUND-007** Record codes | 5 | Correct format at creation; gapless and strictly increasing under 100-way concurrency; batch allocation contiguous; per-tenant counters with no sharing; `record_code` rejected as an edit target |
 | **CRM-IDN-001** Identity resolution | 7 | Neither phone nor email is refused; an exact in-scope match resolves silently; a statutory-retention-floor match never auto-merges; a raised candidate is queued; a merged row never matches and is never deleted; `people:merge` is held independently of `people:edit`; phone normalisation |
-| **CRM-IDN-002** Specialisations | 7 | Account and institution profile coexist; no validation rejects the second; attaching requires `institutions:create`; detaching that would orphan an open opportunity is blocked with a count; detaching what nothing references succeeds; a viewer without the grant sees the badge and not the contents; relationship status is never stored |
+| **CRM-IDN-002** The three parties | 12 | A body is an institution or an organisation and never both; a college we also invoice stays a college; school details are refused on an organisation at creation and at attach; neither list contains the other; reclassifying needs a reason and is refused once learners point at the college; a student is a third thing, in neither list; a student's origin must be an institution; a registration number belongs to one learner and the clash names whose; somebody already on file becomes a student rather than a second person; an employee can take one on at the counter and cannot rewrite one after; attaching requires `institutions:create`; detaching that would orphan an open opportunity is blocked with a count |
 | **CRM-IDN-004** Relationship graph | 3 | A nature change supersedes rather than mutates; status and strength update in place — the deliberate exception; current-view and full-history traversals differ correctly |
 | **CRM-LEAD-001/002** Pipeline as data | 9 | The canonical ordinal is a closed eight-value set; an off-set stage is a 422; all five pipelines seed with entry and both terminals; every graph reaches a terminal; a transition-less stage write is rejected by name; one ordinal spans differing labels; SLA budgets differ per motion; post-award stages are unreachable; retiring a live stage is blocked with a count |
 | **CRM-LEAD-003/005** Routing | 5 | One unrouted predicate; no eligible candidate lands unrouted rather than defaulting to the creator; every candidate considered is recorded; a hard-filter failure is never soft-scored; the two unrouted causes carry different reason codes |
@@ -50,7 +50,7 @@ dataset is a demonstration, not a scratchpad.
 | **CRM-RPT-001/002** Health scores | 4 | Insufficient inputs report not-yet-measured, never zero; every factor carries a drill path; the retired `pipeline_value`/`pipeline_count` metrics are no longer written; a band never itself reaches S4 — only a named exception does |
 | **Decisions** | 3 | An incomplete evidence pack is not decidable; deferring past the point of no return is refused outright; a decision arms a review date rather than closing at disposition |
 | **Finance** | 5 | A payment is idempotent on its gateway reference; a correction is a new row; over-allocation is refused; only allocated receipts determine what is paid; the revenue method derives from the offering |
-| **Invoicing** | 24 | Tax is priced per line at creation and quantity is multiplied by; the split halves within a state and does not across one; an invoice bills a person without an organisation being invented; a draft is editable and an issued invoice is not; a draft carries no invoice number and gets one at issue, in the company's own series; an issued invoice is never restated by a later payment; over-collection and a repeated payment reference are refused; the document prints both totals and keeps today's balance off the sheet |
+| **Invoicing** | 26 | Tax is priced per line at creation and quantity is multiplied by; the split halves within a state and does not across one; an invoice bills a person without an organisation being invented; a draft is editable and an issued invoice is not; a draft carries no invoice number and gets one at issue, in the company's own series; an issued invoice is never restated by a later payment; over-collection and a repeated payment reference are refused; the document prints both totals and keeps today's balance off the sheet; it names which of the three it is addressed to and carries the learner's own registration number; a student's state comes from their record rather than being asked for again |
 | **Receipts and the final invoice** | 9 | Every instalment issues a numbered receipt carrying its own time, the invoice it is against, the amount, the mode and the balance it left; those figures are snapshotted, so a reprint says what it said; a final invoice names every receipt it consolidates, prints the balance rather than refusing to exist while one remains, and supersedes an earlier statement rather than replacing it |
 | **GST returns** | 12 | A GSTIN is validated on shape, state code and check digit; credit is set off head by head in the statutory order rather than netted; a registered customer is reported invoice by invoice and an unregistered one rate-wise; a draft is not a supply and a void invoice is reported as cancelled; the 3B agrees with the GSTR-1 by construction; a return the portal would reject cannot be recorded as filed; filing closes the month and a preparation supersedes an earlier one |
 | **The catalogue and the student record** | 15 | A course is edited and retired, never deleted, and a retired one cannot be billed; a fee, rate and SAC flow from the course onto an invoice line; a course assigned with no batch named uses its rolling intake; a query and an issue open and stay open while feedback and a note close as written; attendance, progress and the log merge into one timeline on the server; a trainer reaches the batches they teach and no others |
@@ -137,6 +137,13 @@ surfaced seven more, all fixed:
 7. **Netting the GST totals understated the cash due.** Output minus input is
    the wrong arithmetic: credit is set off head by head in a statutory order,
    and the shortfall from netting arrives as interest.
+
+9. **Everything was a customer.** A learner, a polytechnic and a manufacturer
+   were one list, one word and one screen — "Companies & Colleges" — so neither
+   "how many students do we have" nor "which colleges do we work with" had a
+   screen that answered it, and billing a walk-in meant inventing a company for
+   them. Three party types now, separated in the model, the API, the permission
+   families and the navigation.
 
 8. **The setup banner's button went to the setup banner's checklist.** The
    whole strip was one link to Getting Started, so the button inside it —

@@ -132,6 +132,8 @@ router.get(
       where: {
         tenantId: auth.tenantId,
         ...(str(req.query.cohortId) ? { cohortId: str(req.query.cohortId) } : {}),
+        // "What has this student taken", asked from their own record.
+        ...(str(req.query.personId) ? { personId: str(req.query.personId) } : {}),
         ...(str(req.query.status) ? { status: str(req.query.status) } : {}),
         ...(bool(req.query.atRisk) ? { atRisk: true } : {}),
         ...(Object.keys(cohortFilter).length ? { cohort: cohortFilter } : {}),

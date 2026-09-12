@@ -1,19 +1,23 @@
 /**
- * Companies and colleges.
+ * The two kinds of body the company deals with, on two screens.
  *
- * One row per real legal body, forever. Two independent facts may
- * coexist on the same row — a single institution can also be a fee-paying
- * corporate client, which the legacy exclusive category enum could not
- * represent without forking the record.
+ * They used to be one screen called "Companies & Colleges", on the reasoning
+ * that a body might be both and keeping two records of one legal entity is how
+ * a CRM starts lying to you. The reasoning held about billing and failed about
+ * identity: the list answered neither "which colleges do we work with" nor "who
+ * are our corporate clients", and a polytechnic sat between two manufacturers.
  *
- * The specialisation badge shows presence; its contents are gated separately.
- * The fact of a specialisation is not itself sensitive — only what is inside it.
+ * So `Institutions` lists schools and colleges, `Organizations` lists trusts,
+ * foundations and businesses, and neither contains the other. Billing detail
+ * belongs to both, because being invoiced is not an identity. The third party
+ * type, the student, is a person and has its own screen.
+ *
+ * `BodyDetail` serves both: one record, shown according to what it is.
  */
 
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import type { OrganizationView } from '@kaizen/shared';
 import { api, date, relative, titleCase } from '../lib/api.js';
 import {
   Card,
@@ -21,14 +25,13 @@ import {
   ErrorBox,
   Field,
   Loading,
-  Modal,
   PageHeader,
   RecordCode,
   StatusChip,
   Tabs,
   Withheld,
 } from '../components/ui.js';
-import { MarkAsClient, MarkAsCollege, NewOrganization } from '../components/createForms.js';
+import { AddBillingDetails, AddSchoolDetails, NewInstitution, NewOrganization } from '../components/createForms.js';
 import { useSession } from '../lib/session.js';
 
 const STATUS_TONE: Record<string, 'neutral' | 'good' | 'accent' | 'warn'> = {
@@ -41,14 +44,55 @@ const STATUS_TONE: Record<string, 'neutral' | 'good' | 'accent' | 'warn'> = {
   none: 'neutral',
 };
 
-export function Accounts() {
+interface BodyRow {
+  id: string;
+  recordCode: string;
+  kind: string;
+  name: string;
+  website: string | null;
+  billed: boolean;
+  account: { tier: string | null; paymentTermsDays: number | null } | null;
+  institutionProfile: {
+    institutionType: string | null;
+    district: string | null;
+    studentCount: number | null;
+  } | null;
+  computedRelationshipStatus: string;
+}
+
+/**
+ * One list, told what it is listing.
+ *
+ * The kind is not a filter this component chooses — it comes from the route and
+ * from the endpoint, so there is no view of the screen in which the two are
+ * mixed back together.
+ */
+function BodyList({
+  kind,
+  title,
+  subtitle,
+  addLabel,
+  permission,
+  emptyMessage,
+  emptyHint,
+  renderForm,
+}: {
+  kind: 'institution' | 'organization';
+  title: string;
+  subtitle: string;
+  addLabel: string;
+  permission: string;
+  emptyMessage: string;
+  emptyHint: string;
+  renderForm: (open: boolean, onClose: () => void) => React.ReactNode;
+}) {
   const { can } = useSession();
-  const [tab, setTab] = useState<'all' | 'account' | 'institution'>('all');
+  const [tab, setTab] = useState<'all' | 'billed' | 'unbilled'>('all');
   const [q, setQ] = useState('');
   // `?new=1` opens the form on arrival, so a button elsewhere that says "Add a
-  // customer" adds a customer rather than landing somebody on a list. The
-  // parameter is cleared as the form opens: a reload should not reopen it, and
-  // the back button should come back to the list.
+  // student" adds one rather than landing somebody on a list. The parameter is
+  // cleared as the form opens: a reload should not reopen it, and Back should
+  // return to the list.
   const [search, setSearch] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(() => search.get('new') === '1');
   useEffect(() => {
@@ -59,13 +103,15 @@ export function Accounts() {
     setSearch(rest, { replace: true });
   }, [search, setSearch]);
 
+  const endpoint = kind === 'institution' ? 'institutions' : 'organizations';
   const params = new URLSearchParams();
-  if (tab !== 'all') params.set('specialisation', tab);
+  if (tab === 'billed') params.set('billing', 'yes');
+  if (tab === 'unbilled') params.set('billing', 'no');
   if (q) params.set('q', q);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['organizations', tab, q],
-    queryFn: () => api.get<{ items: OrganizationView[]; total: number }>(`/crm/organizations?${params}`),
+    queryKey: [endpoint, tab, q],
+    queryFn: () => api.get<{ items: BodyRow[]; total: number }>(`/crm/${endpoint}?${params}`),
   });
 
   if (error) return <ErrorBox error={error} />;
@@ -73,20 +119,33 @@ export function Accounts() {
   return (
     <div>
       <PageHeader
-        title="Companies & Colleges"
-        subtitle="Every organisation we deal with, one record each. What an organisation is to us — a client we invoice, a college we recruit students from, or both at once — is recorded on that one record rather than by keeping two."
-        actions={can('organizations:C') && <button className="btn-primary" onClick={() => setCreateOpen(true)}>Add a company or college</button>}
+        title={title}
+        subtitle={subtitle}
+        actions={
+          can(permission) && (
+            <button className="btn-primary" onClick={() => setCreateOpen(true)}>
+              {addLabel}
+            </button>
+          )
+        }
       />
 
       <div className="mb-3">
-        <input className="input max-w-sm" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or record code…" />
+        <input
+          className="input max-w-sm"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by name or record code…"
+        />
       </div>
 
+      {/* Not a kind filter — the kind is the screen. This asks a question about
+          money: which of these do we actually invoice. */}
       <Tabs
         tabs={[
           { key: 'all', label: 'All', count: data?.total },
-          { key: 'account', label: 'Clients' },
-          { key: 'institution', label: 'Colleges' },
+          { key: 'billed', label: 'We invoice them' },
+          { key: 'unbilled', label: 'We do not' },
         ]}
         active={tab}
         onChange={setTab}
@@ -97,41 +156,35 @@ export function Accounts() {
       ) : !data?.items.length ? (
         <Card>
           <EmptyState
-            message={q ? 'No organisations match what you searched for.' : 'No companies or colleges yet.'}
-            hint={q ? undefined : 'Add the companies you invoice and the colleges you recruit students from — an organisation can be both.'}
+            message={q ? 'Nothing matches what you searched for.' : emptyMessage}
+            hint={q ? undefined : emptyHint}
           />
         </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {data.items.map((o) => (
-            <Link key={o.id} to={`/crm/accounts/${o.id}`} className="card block p-4 transition-colors hover:border-ink-600">
+            <Link
+              key={o.id}
+              to={`/crm/${endpoint}/${o.id}`}
+              className="card block p-4 transition-colors hover:border-ink-600"
+            >
               <div className="flex items-start justify-between gap-2">
                 <RecordCode code={o.recordCode} />
-                <StatusChip status={o.computedRelationshipStatus} tone={STATUS_TONE[o.computedRelationshipStatus] ?? 'neutral'} />
+                <StatusChip
+                  status={o.computedRelationshipStatus}
+                  tone={STATUS_TONE[o.computedRelationshipStatus] ?? 'neutral'}
+                />
               </div>
               <p className="mt-1.5 text-sm font-medium text-ink-100">{o.name}</p>
               {o.website && <p className="truncate text-2xs text-ink-500">{o.website.replace('https://', '')}</p>}
 
               <div className="mt-3 flex flex-wrap gap-1">
-                {o.specialisations.length === 0 && (
-                  <span className="chip border-ink-800 text-ink-600">not a client or a college yet</span>
-                )}
-                {o.specialisations.map((s) => (
-                  <span
-                    key={s.kind}
-                    className={`chip ${s.viewable ? 'border-accent/40 text-accent-soft' : 'border-ink-700 text-ink-500'}`}
-                    title={s.viewable ? undefined : 'Present, but its contents are not viewable under your grants.'}
-                  >
-                    {s.kind === 'account' ? 'Client' : 'College'}
-                    {!s.viewable && ' ·  ⛨'}
-                  </span>
-                ))}
+                <span className="chip border-accent/40 text-accent-soft">
+                  {kind === 'institution' ? 'School or college' : 'Organisation'}
+                </span>
+                {o.billed && <span className="chip border-ink-700 text-ink-400">We invoice them</span>}
               </div>
 
-              {/* Joined from whatever is actually known. A missing student count
-                  used to render as a bare "· students", and an absent payment
-                  term as "· undefinedd terms" — both of which read as a bug
-                  rather than as an unfilled field. */}
               {o.institutionProfile && (
                 <p className="mt-2 text-2xs text-ink-500">
                   {[
@@ -160,19 +213,57 @@ export function Accounts() {
         </div>
       )}
 
-      <NewOrganization open={createOpen} onClose={() => setCreateOpen(false)} />
+      {renderForm(createOpen, () => setCreateOpen(false))}
     </div>
   );
 }
 
-export function AccountDetail() {
+export function Institutions() {
+  return (
+    <BodyList
+      kind="institution"
+      title="Schools & Colleges"
+      subtitle="Where our learners come from. One record per school, college or polytechnic — what it is, and how many it has sent us."
+      addLabel="Add a school or college"
+      permission="institutions:C"
+      emptyMessage="No schools or colleges yet."
+      emptyHint="Add the ones that send you students. A student's record then names where they studied, and this page answers how many came from there."
+      renderForm={(open, onClose) => <NewInstitution open={open} onClose={onClose} />}
+    />
+  );
+}
+
+export function Organizations() {
+  return (
+    <BodyList
+      kind="organization"
+      title="Organisations"
+      subtitle="Trusts, foundations and businesses. The bodies that buy training, sponsor a cohort or take our graduates — kept apart from schools and colleges, which are a different relationship."
+      addLabel="Add an organisation"
+      permission="organizations:C"
+      emptyMessage="No organisations yet."
+      emptyHint="Add the trusts, foundations and businesses you deal with. Schools and colleges live under Schools & Colleges."
+      renderForm={(open, onClose) => <NewOrganization open={open} onClose={onClose} />}
+    />
+  );
+}
+
+/**
+ * One body, shown according to what it is.
+ *
+ * Served from both routes because it is one record either way; what changes is
+ * which panels are on it and what the buttons offer. A school's page leads with
+ * the learners it has sent; an organisation's leads with how it is billed.
+ */
+export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
   const { id } = useParams<{ id: string }>();
   const { can } = useSession();
-  const [marking, setMarking] = useState<'client' | 'college' | null>(null);
+  const [adding, setAdding] = useState<'billing' | 'school' | null>(null);
+  const endpoint = kind === 'institution' ? 'institutions' : 'organizations';
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['organization', id],
-    queryFn: () => api.get<any>(`/crm/organizations/${id}`),
+    queryFn: () => api.get<any>(`/crm/${endpoint}/${id}`),
     enabled: Boolean(id),
   });
 
@@ -195,35 +286,35 @@ export function AccountDetail() {
         subtitle={<span className="mono">{org.recordCode}</span>}
         actions={
           <>
-            {!data.account && can('organizations:C') && (
-              <button className="btn-ghost" onClick={() => setMarking('client')}>Mark as a client</button>
+            {!data.account && can(`${endpoint}:C`) && (
+              <button className="btn-ghost" onClick={() => setAdding('billing')}>How we bill them</button>
             )}
-            {!data.institutionProfile && can('institutions:C') && (
-              <button className="btn-ghost" onClick={() => setMarking('college')}>Mark as a college</button>
+            {kind === 'institution' && !data.institutionProfile && can('institutions:C') && (
+              <button className="btn-ghost" onClick={() => setAdding('school')}>What kind of place it is</button>
             )}
           </>
         }
       />
 
-      <MarkAsClient
-        open={marking === 'client'}
+      <AddBillingDetails
+        open={adding === 'billing'}
         organizationId={id!}
         name={org.name}
-        onClose={() => setMarking(null)}
+        queryKey={endpoint}
+        onClose={() => setAdding(null)}
       />
-      <MarkAsCollege
-        open={marking === 'college'}
+      <AddSchoolDetails
+        open={adding === 'school'}
         organizationId={id!}
         name={org.name}
-        onClose={() => setMarking(null)}
+        onClose={() => setAdding(null)}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {data.specialisations.map((s: any) => (
-          <span key={s.kind} className={`chip ${s.viewable ? 'border-accent/40 text-accent-soft' : 'border-ink-700 text-ink-500'}`}>
-            {s.kind === 'account' ? 'Client' : 'College'}
-          </span>
-        ))}
+        <span className="chip border-accent/40 text-accent-soft">
+          {org.kind === 'institution' ? 'School or college' : 'Organisation'}
+        </span>
+        {data.account && <span className="chip border-ink-700 text-ink-400">We invoice them</span>}
         <StatusChip status={data.computedRelationshipStatus} tone={STATUS_TONE[data.computedRelationshipStatus] ?? 'neutral'} />
         <span className="text-2xs text-ink-500" title="Computed at query time from live aggregations — never stored, because a stored value drifts from its evidence.">
           computed at query time
@@ -233,7 +324,7 @@ export function AccountDetail() {
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           {data.account && (
-            <Card title="Account" subtitle="The CRM commercial-relationship specialisation, governed by organizations:*">
+            <Card title="How we bill them" subtitle="Terms, where the invoice goes, and the registration the tax is charged under. Either kind of body may have this — being invoiced is not what makes one a business.">
               <dl className="grid grid-cols-2 gap-x-6">
                 <Field label="Tier">{titleCase(data.account.tier)}</Field>
                 <Field label="Payment terms">{data.account.paymentTermsDays} days</Field>
@@ -244,7 +335,7 @@ export function AccountDetail() {
           )}
 
           {data.institutionProfile ? (
-            <Card title="As a college" subtitle="What we know about them as an institution. Read separately from the client side — someone who can see the billing terms does not automatically see this.">
+            <Card title="What kind of place it is" subtitle="Read separately from the billing side — somebody who can see the payment terms does not automatically see this.">
               <dl className="grid grid-cols-2 gap-x-6">
                 <Field label="Type">{titleCase(data.institutionProfile.institutionType)}</Field>
                 <Field label="Management">{titleCase(data.institutionProfile.managementType)}</Field>
@@ -264,11 +355,11 @@ export function AccountDetail() {
             </Card>
           ) : (
             data.withheld?.some((w: any) => w.path === 'institutionProfile') && (
-              <Card title="As a college">
+              <Card title="What kind of place it is">
                 <div className="flex items-center gap-2">
                   <Withheld reason="no_permission" />
                   <p className="text-2xs text-ink-500">
-                    They are marked as a college. Seeing the detail needs a grant on institutions that you do not hold.
+                    Seeing this detail needs a grant on institutions that you do not hold.
                   </p>
                 </div>
               </Card>
@@ -291,7 +382,7 @@ export function AccountDetail() {
                 <div className="p-4">
                   <EmptyState
                     message="No students from this college yet."
-                    hint="Enrol one from Students and name this college as where they came from."
+                    hint="Add one under Students and name this college as where they came from."
                   />
                 </div>
               ) : (
@@ -340,7 +431,7 @@ export function AccountDetail() {
         </div>
 
         <div className="space-y-5">
-          <Card title="Organisation">
+          <Card title={org.kind === 'institution' ? 'The institution' : 'The organisation'}>
             <dl>
               <Field label="Website">{org.website ?? '—'}</Field>
               <Field label="Created">{date(org.createdAt)}</Field>

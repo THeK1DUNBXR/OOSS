@@ -209,7 +209,7 @@ export function Enrollments() {
                   </td>
                   <td className="text-2xs">
                     {e.institutionName ? (
-                      <Link to={`/crm/accounts/${e.institutionId}`} className="text-ink-300 hover:text-accent-soft">
+                      <Link to={`/crm/institutions/${e.institutionId}`} className="text-ink-300 hover:text-accent-soft">
                         {e.institutionName}
                       </Link>
                     ) : (

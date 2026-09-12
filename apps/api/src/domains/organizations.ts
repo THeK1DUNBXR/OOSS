@@ -1,15 +1,28 @@
 /**
- * Organization and its two independent specialisations (CRM-IDN-002/003).
+ * The two bodies the company deals with, and what is true of each.
  *
- * One row per real legal body, forever — the same discipline as PERSON. The
- * exclusivity invariant is gone: nothing about the domain says an institution
- * cannot also be a paying corporate client, a placement employer, or a vendor.
- * Both specialisations may exist on the same row simultaneously, and a third
- * may exist alongside them without conflict.
+ * One row per real legal body, forever — the same discipline as PERSON. What
+ * changed is that a row now says which of the two it is, and cannot be both:
  *
- * `institutions:*` and `organizations:*` remain two independent grant families.
- * Nothing here collapses them as a side effect of the data becoming more
- * closely related.
+ *   `institution`  a school or a college. Sends us learners. Has a district, a
+ *                  management type, an AISHE code, a head of department.
+ *   `organization` a trust, a foundation or a business. Buys training, sponsors
+ *                  a cohort, takes our graduates. Has payment terms and a GSTIN.
+ *
+ * They used to be optional specialisations that could sit on one row together,
+ * on the reasoning that a college might also buy training and keeping two
+ * records of one legal body is how a CRM starts lying to you. That reasoning
+ * was sound about *billing* and wrong about *identity*: the visible result was
+ * a single list called "Companies & Colleges" that answered neither "which
+ * colleges do we work with" nor "who are our corporate clients", and a product
+ * in which a learner, a polytechnic and a manufacturer were all "customers".
+ *
+ * So the kind is exclusive and enforced, and billing detail — the Account — is
+ * available on either, because being invoiced is not an identity. The third
+ * party type, the student, is a PERSON and lives in `students.ts`.
+ *
+ * `institutions:*` and `organizations:*` remain two independent grant families,
+ * and now govern two separated lists rather than two facets of one.
  */
 
 import { EVENTS, type ComputedRelationshipStatus } from '@kaizen/shared';
@@ -21,7 +34,16 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan, can } from '../platform/permissions.js';
 
+export const ORGANIZATION_KINDS = ['institution', 'organization'] as const;
+export type OrganizationKind = (typeof ORGANIZATION_KINDS)[number];
+
 export interface OrganizationInput {
+  /**
+   * Which of the two this is. Required, and not changeable afterwards by
+   * accident — see `reclassifyOrganization`, which exists for the case where it
+   * was written down wrong and asks for a reason.
+   */
+  kind: OrganizationKind;
   name: string;
   website?: string | null;
   parentOrgId?: string | null;
@@ -29,30 +51,46 @@ export interface OrganizationInput {
   ownerPartyId?: string | null;
   locations?: unknown[];
   /**
-   * What this body is to us, declared at the moment of creation.
-   *
-   * Both are optional and independent — a college that also buys training
-   * carries both, and a body we have only just heard of carries neither. They
-   * are here rather than only on their own endpoints because a person adding a
-   * college knows it is a college while they are typing its name, and making
-   * them save, navigate and press a second button taught them nothing except
-   * that the product has an internal model. Each still goes through its own
-   * attach function, so each still requires its own grant.
+   * Billing detail. Either kind may carry it: a polytechnic that buys a staff
+   * programme is invoiced exactly like a manufacturer.
    */
   account?: AccountInput;
+  /**
+   * What kind of school or college it is. An institution only — sending this
+   * for an organisation is refused rather than ignored, because silently
+   * dropping half of what somebody typed is worse than telling them.
+   */
   institutionProfile?: InstitutionProfileInput;
 }
 
-/** Creating an ORGANIZATION requires only a name. It carries no `category` field. */
+/** The grant family that governs a body of this kind. */
+export function resourceFor(kind: string): 'institutions' | 'organizations' {
+  return kind === 'institution' ? 'institutions' : 'organizations';
+}
+
 export async function createOrganization(input: OrganizationInput) {
   const auth = currentAuth();
-  await assertCan({ resource: 'organizations', verb: 'create' });
+  const kind: OrganizationKind = input.kind ?? 'organization';
+  if (!ORGANIZATION_KINDS.includes(kind)) {
+    throw ApiError.badRequest(`A body is either an institution or an organisation, not "${kind}".`);
+  }
+  // A college is created under `institutions:create` and a business under
+  // `organizations:create`. Somebody who may record colleges is not thereby
+  // allowed to open corporate accounts.
+  await assertCan({ resource: resourceFor(kind), verb: 'create' });
+
+  if (kind !== 'institution' && input.institutionProfile) {
+    throw ApiError.badRequest(
+      'School and college details belong to an institution. Record this as an institution, or leave those details off.',
+    );
+  }
 
   const recordCode = await nextRecordCode('ORG');
   const org = await prisma.organization.create({
     data: {
       tenantId: auth.tenantId,
       recordCode,
+      kind,
       name: input.name,
       website: input.website ?? null,
       parentOrgId: input.parentOrgId ?? null,
@@ -62,20 +100,72 @@ export async function createOrganization(input: OrganizationInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'organization', subjectId: org.id, after: { name: org.name } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'organization',
+    subjectId: org.id,
+    after: { name: org.name, kind: org.kind },
+  });
   await emit({
     name: EVENTS.CRM_ORGANIZATION_CREATED,
     subject: { entityType: 'organization', entityId: org.id, recordCode },
-    newState: { name: org.name },
+    newState: { name: org.name, kind: org.kind },
   });
 
   // Attached through the same functions the standalone endpoints call, so the
   // grant checks, the audit record and the event are identical whether the
-  // specialisation arrives now or a month later.
+  // detail arrives now or a month later.
   if (input.account) await attachAccount(org.id, input.account);
   if (input.institutionProfile) await attachInstitutionProfile(org.id, input.institutionProfile);
 
   return org;
+}
+
+/**
+ * It was written down as the wrong kind.
+ *
+ * Not an edit like any other: everything downstream reads the kind, so it asks
+ * for a reason and refuses where the row has already grown detail that belongs
+ * to what it currently is. A college with students against it is not quietly
+ * turned into a supplier.
+ */
+export async function reclassifyOrganization(id: string, kind: OrganizationKind, reason: string) {
+  const org = await prisma.organization.findFirst({ where: { id, deletedAt: null } });
+  if (!org) throw ApiError.notFound('Organization');
+  if (org.kind === kind) return org;
+  if (!reason || reason.trim().length < 5) {
+    throw ApiError.badRequest('Changing what a body is needs a reason, so the audit trail says why.');
+  }
+
+  // Both sides of the change, because it is both a removal and an addition.
+  await assertCan({ resource: resourceFor(org.kind), verb: 'edit' });
+  await assertCan({ resource: resourceFor(kind), verb: 'create' });
+
+  if (org.kind === 'institution') {
+    const [sent, students] = await Promise.all([
+      prisma.enrollment.count({ where: { institutionId: id } }),
+      prisma.studentProfile.count({ where: { institutionId: id, deletedAt: null } }),
+    ]);
+    const attached = sent + students;
+    if (attached > 0) {
+      throw ApiError.conflict(
+        `Cannot reclassify: ${attached} student record${attached === 1 ? '' : 's'} name this as the college they came from.`,
+        { blockingCount: attached },
+      );
+    }
+    const profile = await prisma.institutionProfile.findFirst({ where: { organizationId: id } });
+    if (profile) await prisma.institutionProfile.delete({ where: { id: profile.id } });
+  }
+
+  const updated = await prisma.organization.update({ where: { id }, data: { kind } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'organization',
+    subjectId: id,
+    before: { kind: org.kind },
+    after: { kind, reason },
+  });
+  return updated;
 }
 
 export interface AccountInput {
@@ -89,21 +179,24 @@ export interface AccountInput {
 }
 
 /**
- * Attaching an ACCOUNT is a distinct operation from attaching an
- * INSTITUTION_PROFILE. No validation rule anywhere rejects attaching a second
- * specialisation because a first is already present.
+ * Give a body billing detail: terms, where the invoice goes, the registration
+ * the tax is charged under.
  *
- * Attaching an Account requires `organizations:create`, never `institutions:*`.
+ * Either kind may have it. A college that buys a staff programme is invoiced
+ * like anyone else, and refusing it payment terms because it is a college was
+ * the sort of rule that makes people keep a second record in a spreadsheet.
+ * The grant checked is the one for what the body *is*, so recording colleges
+ * does not let somebody open corporate accounts and the reverse.
  */
 export async function attachAccount(organizationId: string, input: AccountInput) {
   const auth = currentAuth();
-  await assertCan({ resource: 'organizations', verb: 'create' });
 
   const org = await prisma.organization.findFirst({ where: { id: organizationId } });
   if (!org) throw ApiError.notFound('Organization');
+  await assertCan({ resource: resourceFor(org.kind), verb: 'create' });
 
   const existing = await prisma.account.findFirst({ where: { organizationId } });
-  if (existing) throw ApiError.conflict('This organization already carries an Account specialisation.');
+  if (existing) throw ApiError.conflict('This body already has billing details.');
 
   const account = await prisma.account.create({
     data: {
@@ -147,16 +240,26 @@ export interface InstitutionProfileInput {
   strategicPriority?: string | null;
 }
 
-/** Attaching an InstitutionProfile requires `institutions:create`, never `organizations:*`. */
+/**
+ * School and college detail: what kind it is, who runs it, where it is, its
+ * AISHE or UDISE+ code.
+ *
+ * Institutions only. Requires `institutions:create`, never `organizations:*`.
+ */
 export async function attachInstitutionProfile(organizationId: string, input: InstitutionProfileInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'institutions', verb: 'create' });
 
   const org = await prisma.organization.findFirst({ where: { id: organizationId } });
   if (!org) throw ApiError.notFound('Organization');
+  if (org.kind !== 'institution') {
+    throw ApiError.badRequest(
+      `${org.name} is recorded as an organisation, not a school or a college, so it cannot carry institution details. Reclassify it first if that is wrong.`,
+    );
+  }
 
   const existing = await prisma.institutionProfile.findFirst({ where: { organizationId } });
-  if (existing) throw ApiError.conflict('This organization already carries an InstitutionProfile specialisation.');
+  if (existing) throw ApiError.conflict('This institution already has its school or college details.');
 
   const profile = await prisma.institutionProfile.create({
     data: {
@@ -201,20 +304,22 @@ export async function attachInstitutionProfile(organizationId: string, input: In
  * error, never a silent cascade-delete.
  */
 export async function detachAccount(organizationId: string) {
-  await assertCan({ resource: 'organizations', verb: 'delete' });
+  const org = await prisma.organization.findFirst({ where: { id: organizationId } });
+  if (!org) throw ApiError.notFound('Organization');
+  await assertCan({ resource: resourceFor(org.kind), verb: 'delete' });
 
   const openOpps = await prisma.opportunity.count({
     where: { organizationId, deletedAt: null, outcome: null },
   });
   if (openOpps > 0) {
     throw ApiError.conflict(
-      `Cannot detach the Account specialisation: ${openOpps} open opportunit${openOpps === 1 ? 'y' : 'ies'} reference it. Close or reassign them first.`,
+      `Cannot remove the billing details: ${openOpps} open opportunit${openOpps === 1 ? 'y' : 'ies'} reference them. Close or reassign them first.`,
       { blockingCount: openOpps },
     );
   }
 
   const account = await prisma.account.findFirst({ where: { organizationId } });
-  if (!account) throw ApiError.notFound('Account specialisation');
+  if (!account) throw ApiError.notFound('Billing details');
 
   await prisma.account.delete({ where: { id: account.id } });
   await emit({
@@ -226,11 +331,15 @@ export async function detachAccount(organizationId: string) {
 }
 
 /**
- * Assembles the 360 view. Each specialisation resolves through its own grant
- * family, evaluated independently, per field. A viewer holding `organizations:V`
- * but no `institutions` grant sees the Institution badge (the fact of the
- * specialisation is not itself sensitive) with its contents withheld under a
- * `no_permission` reason code — never a merged or ambiguous response.
+ * Assembles the 360 view of one body, whichever kind it is.
+ *
+ * The grant checked to open it at all is the one for its kind, so a viewer who
+ * may see colleges and not corporate accounts gets a 404 on a business rather
+ * than a partial record of one. Within an institution, its school detail
+ * resolves through `institutions` independently, per field: a viewer without
+ * that grant sees the badge — the fact of it is not itself sensitive — with the
+ * contents withheld under a `no_permission` reason code, never merged or
+ * ambiguous.
  */
 export async function assembleOrganization360(organizationId: string) {
   const org = await prisma.organization.findFirst({
@@ -239,12 +348,15 @@ export async function assembleOrganization360(organizationId: string) {
   });
   if (!org) throw ApiError.notFound('Organization');
 
-  const [canSeeOrg, canSeeInstitution] = await Promise.all([
-    can({ resource: 'organizations', verb: 'view' }),
+  const [canSeeKind, canSeeInstitution] = await Promise.all([
+    can({ resource: resourceFor(org.kind), verb: 'view' }),
     can({ resource: 'institutions', verb: 'view' }),
   ]);
 
-  if (!canSeeOrg) throw ApiError.forbidden('organizations:view is not held.');
+  // A body of a kind you hold no grant on is not yours to know about, so this
+  // reads as "no such record" rather than as "there is one and you may not see
+  // it" — the same answer a cross-tenant id gets.
+  if (!canSeeKind) throw ApiError.notFound(org.kind === 'institution' ? 'Institution' : 'Organization');
 
   const withheld: Array<{ path: string; reason: 'no_permission' }> = [];
   let institutionProfile = org.institutionProfile;
@@ -271,7 +383,7 @@ export async function assembleOrganization360(organizationId: string) {
     enrolledAt: string | null;
   }> | null = null;
 
-  if (org.institutionProfile && (await can({ resource: 'education', verb: 'view' }))) {
+  if (org.kind === 'institution' && (await can({ resource: 'education', verb: 'view' }))) {
     const enrollments = await prisma.enrollment.findMany({
       where: { tenantId: org.tenantId, institutionId: organizationId },
       include: { cohort: { select: { name: true } } },
@@ -297,6 +409,7 @@ export async function assembleOrganization360(organizationId: string) {
 
   return {
     organization: org,
+    kind: org.kind,
     account: org.account,
     institutionProfile,
     students,

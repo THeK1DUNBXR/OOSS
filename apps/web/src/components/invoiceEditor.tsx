@@ -115,10 +115,11 @@ export function InvoiceEditor({
   enrollmentId?: string | null;
 }) {
   const editing = Boolean(invoice);
-  const organizations = useList<Named>('organizations', '/crm/organizations', open);
-  const people = useList<{ id: string; fullName: string; primaryPhone?: string | null }>(
-    'people-picker',
-    '/crm/people?pageSize=200',
+  const organizations = useList<Named>('organizations', '/crm/organizations?pageSize=200', open);
+  const institutions = useList<Named>('institutions', '/crm/institutions?pageSize=200', open);
+  const students = useList<{ id: string; personId: string; fullName: string; registrationNumber: string | null; primaryPhone: string | null }>(
+    'students-picker',
+    '/crm/students?pageSize=200',
     open,
   );
   const courses = useList<CourseView>('courses', '/education/courses', open);
@@ -139,8 +140,17 @@ export function InvoiceEditor({
     retry: false,
   });
 
-  const [billTo, setBillTo] = useState<'organization' | 'person'>(
-    invoice?.personId || initialPersonId ? 'person' : 'organization',
+  /**
+   * Which of the three this invoice is for.
+   *
+   * "Customer" is the role, not the record: a student, a college and a business
+   * are three different parties and the document says which one it is
+   * addressed to. The server stores a person id or an organisation id and reads
+   * the kind off the row, so this choice is about what the picker offers rather
+   * than about a field being sent.
+   */
+  const [billTo, setBillTo] = useState<'student' | 'institution' | 'organization'>(
+    invoice?.personId || initialPersonId ? 'student' : 'organization',
   );
   const [organizationId, setOrganizationId] = useState(invoice?.accountId ?? '');
   const [personId, setPersonId] = useState(invoice?.personId ?? initialPersonId ?? '');
@@ -166,7 +176,7 @@ export function InvoiceEditor({
     courseName: string;
     cohortName: string;
     status: string;
-  }>('enrollments-for-billing', '/education/enrollments?limit=200', open && billTo === 'person');
+  }>('enrollments-for-billing', '/education/enrollments?limit=200', open && billTo === 'student');
 
   const [issueNow, setIssueNow] = useState(true);
   const [payingNow, setPayingNow] = useState('');
@@ -182,7 +192,7 @@ export function InvoiceEditor({
       // Filled once the enrolment list has loaded, by the effect below.
       setLines([{ ...emptyLine, enrollmentId: initialEnrollmentId }]);
     }
-    setBillTo(invoice?.personId || initialPersonId ? 'person' : 'organization');
+    setBillTo(invoice?.personId || initialPersonId ? 'student' : 'organization');
     setOrganizationId(invoice?.accountId ?? '');
     setPersonId(invoice?.personId ?? initialPersonId ?? '');
     setCustomerGstin(invoice?.customerGstin ?? '');
@@ -270,7 +280,7 @@ export function InvoiceEditor({
   const balance = round2(Math.max(gst.grandTotal - collected, 0));
 
   const payload = () => ({
-    ...(billTo === 'organization' ? { organizationId: organizationId || null } : { personId: personId || null }),
+    ...(billTo === 'student' ? { personId: personId || null } : { organizationId: organizationId || null }),
     customerGstin: customerGstin.trim() || null,
     placeOfSupply: placeOfSupply || null,
     ...(dueDate ? { dueDate } : { dueInDays: Number(dueInDays || profile?.defaultDueDays || 30) }),
@@ -317,50 +327,70 @@ export function InvoiceEditor({
       onSubmit={submit}
     >
       {/* ---- Who is being billed ------------------------------------------ */}
-      <div className="flex gap-2">
-        {(
-          [
-            ['organization', 'A company'],
-            ['person', 'A person'],
-          ] as Array<['organization' | 'person', string]>
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setBillTo(value)}
-            className={`chip transition-colors ${
-              billTo === value ? 'border-accent/60 text-accent-soft' : 'border-ink-800 text-ink-500 hover:border-ink-600'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      <div>
+        <p className="label">Who is this for?</p>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {(
+            [
+              ['student', 'A student'],
+              ['institution', 'A school or college'],
+              ['organization', 'An organisation'],
+            ] as Array<[typeof billTo, string]>
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setBillTo(value);
+                // The two id fields are separate on purpose: switching between
+                // them must not leave the previous choice behind to be sent.
+                if (value === 'student') setOrganizationId('');
+                else setPersonId('');
+              }}
+              className={`chip transition-colors ${
+                billTo === value ? 'border-accent/60 text-accent-soft' : 'border-ink-800 text-ink-500 hover:border-ink-600'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
       <p className="text-2xs text-ink-500">
-        A student who walks in and pays for a course is a person, not a company. Billing them used to mean inventing an
-        organisation for them, which put a fake customer in the accounts list every time.
+        Three different parties, and the invoice says which. A student who walks in and pays for a course is billed in
+        their own name — it used to mean inventing a company for them, which put a fake customer in the list every
+        time.
       </p>
 
-      {billTo === 'organization' ? (
+      {billTo === 'student' ? (
         <SelectInput
-          label="Customer"
-          required
-          value={organizationId}
-          onChange={setOrganizationId}
-          placeholder={organizations.rows.length ? 'Choose a customer' : 'No customers yet — add one first'}
-          options={organizations.rows.map((o) => ({ value: o.id, label: o.name }))}
-        />
-      ) : (
-        <SelectInput
-          label="Customer"
+          label="Student"
           required
           value={personId}
           onChange={setPersonId}
-          placeholder={people.rows.length ? 'Choose a person' : 'Nobody on file yet'}
-          options={people.rows.map((p) => ({
-            value: p.id,
-            label: p.primaryPhone ? `${p.fullName} — ${p.primaryPhone}` : p.fullName,
+          placeholder={students.rows.length ? 'Choose a student' : 'No students yet — add one first'}
+          options={students.rows.map((p) => ({
+            value: p.personId,
+            label: [p.fullName, p.registrationNumber ?? p.primaryPhone].filter(Boolean).join(' — '),
           }))}
+        />
+      ) : billTo === 'institution' ? (
+        <SelectInput
+          label="School or college"
+          required
+          value={organizationId}
+          onChange={setOrganizationId}
+          placeholder={institutions.rows.length ? 'Choose one' : 'None on file yet'}
+          options={institutions.rows.map((o) => ({ value: o.id, label: o.name }))}
+        />
+      ) : (
+        <SelectInput
+          label="Organisation"
+          required
+          value={organizationId}
+          onChange={setOrganizationId}
+          placeholder={organizations.rows.length ? 'Choose one' : 'None on file yet'}
+          options={organizations.rows.map((o) => ({ value: o.id, label: o.name }))}
         />
       )}
 
@@ -408,7 +438,7 @@ export function InvoiceEditor({
         <div className="flex flex-col gap-3">
           {lines.map((line, i) => (
             <div key={i} className="rounded border border-ink-800 bg-ink-950/60 p-3">
-              {billTo === 'person' && theirEnrolments.length > 0 && (
+              {billTo === 'student' && theirEnrolments.length > 0 && (
                 <SelectInput
                   label="Which enrolment"
                   value={line.enrollmentId}

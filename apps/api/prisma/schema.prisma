@@ -198,10 +198,11 @@ model Person {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  affiliations Affiliation[]
-  users        User[]
-  leads        Lead[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  affiliations   Affiliation[]
+  users          User[]
+  leads          Lead[]
+  studentProfile StudentProfile?
 
   /// A candidate and an employee are the same Person row. Being hired adds an
   /// employment relationship and an affiliation; it never creates a second human.
@@ -289,6 +290,23 @@ model Organization {
   tenantId   String
   recordCode String
 
+  /// What this body *is*: `institution` — a school or a college — or
+  /// `organization` — a trust, a foundation or a business.
+  ///
+  /// Exclusive, and enforced. The two used to be specialisations that could sit
+  /// on one row at once, on the reasoning that a college might also buy
+  /// training and keeping two records of one legal body is how a CRM starts
+  /// lying to you. In practice it meant every list mixed schools with firms,
+  /// every screen had to say "companies & colleges", and the word "customer"
+  /// ended up covering a fifteen-year-old learner, a government polytechnic and
+  /// a manufacturing company — three parties with nothing in common except that
+  /// money sometimes moves. They are separated here because they are read,
+  /// billed, reported and worked differently.
+  ///
+  /// A college we also invoice is still one row: billing detail is not identity,
+  /// and an institution carries it the same way an organisation does.
+  kind String @default("organization")
+
   name        String
   website     String?
   parentOrgId String?
@@ -312,15 +330,24 @@ model Organization {
   opportunities      Opportunity[]
   /// Students recruited out of this organisation, when it is a college.
   sentStudents       Enrollment[]        @relation("EnrollmentInstitution")
+  /// And the learners whose own record names it as where they came from.
+  students           StudentProfile[]    @relation("StudentInstitution")
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, name])
+  @@index([tenantId, kind, name])
   @@map("organizations")
 }
 
-/// The CRM commercial-relationship specialisation. Independent of
-/// InstitutionProfile — both may exist on the same Organization simultaneously,
-/// with no cross-specialisation exclusivity check anywhere in validation.
+/// How an organisation is billed: terms, the address the invoice goes to, and
+/// the registration the tax is charged under.
+///
+/// It hangs off either kind, because being invoiced is not what makes a body a
+/// business. A polytechnic that buys a staff training programme is billed
+/// exactly like a manufacturer, and the difference between them belongs in
+/// `Organization.kind` and in InstitutionProfile, not in whether they are
+/// allowed to have payment terms. A student's equivalent lives on
+/// StudentProfile, for the same reason and with the same fields.
 model Account {
   id       String @id @default(cuid())
   tenantId String
@@ -328,11 +355,11 @@ model Account {
   organizationId String       @unique
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  tier              String  @default("standard") // strategic | key | standard | long_tail
-  ownerPartyId      String?
-  billingEmail      String?
-  billingAddress    String?
-  paymentTermsDays  Int?
+  tier             String  @default("standard") // strategic | key | standard | long_tail
+  ownerPartyId     String?
+  billingEmail     String?
+  billingAddress   String?
+  paymentTermsDays Int?
 
   /// The customer's registration, and the state the supply is made to.
   ///
@@ -342,8 +369,8 @@ model Account {
   /// gets one digit out. The invoice still stores its own copy, because the
   /// tax was charged under one reading of them and reprinting must not restate
   /// it if the account is later corrected.
-  gstin         String?
-  placeOfSupply String?
+  gstin             String?
+  placeOfSupply     String?
   annualRevenueBand String?
   employeeCountBand String?
 
@@ -390,6 +417,61 @@ model InstitutionProfile {
   @@index([tenantId, district, institutionType])
   @@index([tenantId, externalIdentifier])
   @@map("institution_profiles")
+}
+
+/// The learner specialisation on a PERSON: somebody who buys and takes a course.
+///
+/// A student is a person, and the platform already has exactly one row per real
+/// human — the merge and dedupe machinery, the employment history and the
+/// contact graph all hang off it, and a second table of students would mean a
+/// second row for the graduate you later hire. So a student is a PERSON wearing
+/// this profile, the same shape institutions and billing already use.
+///
+/// What it is *not* is a kind of organisation. A student who walks in and pays
+/// for a course is the customer on that invoice; a college that sends thirty
+/// students is a different party doing a different thing, and putting both
+/// under one "customer" list made it impossible to answer either "how many
+/// learners do we have" or "which colleges do we work with".
+model StudentProfile {
+  id       String @id @default(cuid())
+  tenantId String
+
+  personId String @unique
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  /// The company's own registration number for this student — `KI-2026/09-SAP/1107`
+  /// and the like. Theirs, not ours: it arrives on the register and is quoted
+  /// back at us, so it is stored as given and not reissued.
+  registrationNumber String?
+
+  /// The college or school they came from, where they came from one. Null for
+  /// somebody who walked in off the street, which is most of them.
+  institutionId String?
+  institution   Organization? @relation("StudentInstitution", fields: [institutionId], references: [id])
+
+  /// prospective | active | alumni | withdrawn. Follows from their enrolments
+  /// rather than being set by hand wherever it can be.
+  status String @default("prospective")
+
+  address String?
+
+  /// Where the supply is made to, for the tax split, and a registration on the
+  /// rare student who has one — a proprietor putting their own training through
+  /// the firm. The same two fields Account carries, for the same reason: they do
+  /// not change from sale to sale, and retyping them is how the wrong tax gets
+  /// charged.
+  placeOfSupply String?
+  gstin         String?
+
+  attachedById String?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([tenantId, registrationNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, institutionId])
+  @@map("student_profiles")
 }
 
 // ===========================================================================
@@ -1839,9 +1921,9 @@ model Invoice {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  lines          InvoiceLine[]
-  receipts       Receipt[]
-  finalInvoices  FinalInvoice[]
+  lines         InvoiceLine[]
+  receipts      Receipt[]
+  finalInvoices FinalInvoice[]
 
   @@unique([tenantId, recordCode])
   @@unique([tenantId, draftReference])
@@ -2009,13 +2091,13 @@ model Receipt {
   /// because a receipt is a receipt — the piece of paper saying "₹20,000 of
   /// ₹70,800, ₹50,800 still owed" must keep saying that after the next
   /// instalment lands.
-  subjectTotal    Decimal @default(0) @db.Decimal(18, 2)
-  balanceAfter    Decimal @default(0) @db.Decimal(18, 2)
+  subjectTotal     Decimal @default(0) @db.Decimal(18, 2)
+  balanceAfter     Decimal @default(0) @db.Decimal(18, 2)
   /// How this instalment was paid. Copied from the payment so a reprint does
   /// not depend on the payment row still reading the same way.
-  paymentMode     String?
+  paymentMode      String?
   paymentReference String?
-  note            String?
+  note             String?
 
   /// The number this receipt was issued under before it reached this platform —
   /// `KIPL/R/2026-27/002` and the like.
@@ -2139,11 +2221,11 @@ model GstFiling {
   /// GSTR1 — outward supplies. GSTR3B — the monthly summary and the payment.
   returnType String
   /// The tax period, `YYYY-MM`.
-  period String
+  period     String
   /// The registration it is filed under, copied from the company profile at
   /// preparation, because a company that changes registration must not have its
   /// history reattributed.
-  gstin String?
+  gstin      String?
 
   /// prepared | filed | superseded
   status String @default("prepared")
@@ -2164,11 +2246,11 @@ model GstFiling {
 
   invoiceCount Int @default(0)
 
-  preparedById String?
-  preparedAt   DateTime @default(now())
-  arn          String?
-  filedAt      DateTime?
-  filedById    String?
+  preparedById   String?
+  preparedAt     DateTime  @default(now())
+  arn            String?
+  filedAt        DateTime?
+  filedById      String?
   /// The later preparation that replaced this one, where a prepared return was
   /// recomputed before filing. Prepared returns are superseded rather than
   /// deleted, so "what did we think the liability was last week" stays

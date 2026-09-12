@@ -249,7 +249,16 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
 - **Courses** — the catalogue, and a price list as much as a syllabus. A course
   carries its fee, its tax rate and its SAC, so raising an invoice for one means
   choosing what was sold rather than knowing the price list.
-- **Students** — open one for their day-by-day record: attendance, weekly
+- **Students, Schools & Colleges, Organisations** — three lists, because they
+  are three different parties. A learner who takes a course, a college that
+  sends learners, a trust or business that buys training. They used to be one
+  screen called "Companies & Colleges" and one word, *customer*, which meant
+  neither "how many students do we have" nor "which colleges do we work with"
+  had anywhere to be answered, and billing a walk-in meant inventing a company
+  for them. Billing detail sits on any of the three, because being invoiced is
+  not an identity: a polytechnic that buys a staff programme is invoiced like
+  anyone else and stays a college.
+- **A student's own page** — their day-by-day record: attendance, weekly
   scores, the questions they asked, the feedback they gave and anything that
   went wrong, merged into one timeline. A query and a complaint stay open until
   somebody closes them, and what they have been invoiced is on the same page as
@@ -258,8 +267,8 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   reporting across them on a canonical ordinal rather than on stage names.
 - **Governance (Admin)** — the live grant matrix, policy versions, the event
   chain, agent registrations and their action tiers.
-- **Sales & Customers → People** — an open merge candidate, raised by the
-  resolver refusing a partial match rather than guessing.
+- **Contacts** — an open merge candidate, raised by the resolver refusing a
+  partial match rather than guessing.
 
 Every one of those surfaces starts empty, because the seed creates structure and
 not records. What fills them is your own data: import a Tally export, a bank
@@ -312,7 +321,7 @@ request would be worse than an honest split.
 
 ```bash
 ./scripts/test-db.sh          # provision the suite's own database
-cd apps/api && pnpm test      # 351 tests
+cd apps/api && pnpm test      # 360 tests
 ```
 
 The suite runs against a real PostgreSQL database, inside real request
@@ -365,7 +374,7 @@ docs               architecture, acceptance map, operations
 ```
 
 114 Prisma models, 26 domain services plus five for People and one for the
-books, 351 tests and four in a browser.
+books, 360 tests and four in a browser.
 
 The HR lifecycle machines and the finance arithmetic live in `packages/shared`
 rather than in the API, and that placement is the point: a surface rendering a
