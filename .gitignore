@@ -15,3 +15,7 @@ coverage/
 
 # Wrangler's local state and build cache.
 .wrangler/
+
+# What a browser run leaves behind: traces, screenshots, the HTML report.
+e2e/test-results/
+e2e/playwright-report/

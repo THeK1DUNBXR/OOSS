@@ -30,6 +30,8 @@ interface Step {
   done: boolean;
   count: number;
   path: string;
+  /** Where the step is actually performed, when that is not just the screen. */
+  doPath?: string;
   action: string;
   optional?: boolean;
 }
@@ -123,7 +125,13 @@ function Checklist({ state }: { state: ReturnType<typeof useQuery<State>> }) {
               <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-ink-400">{step.why}</p>
             </div>
 
-            <Link to={step.path} className={step === next ? 'btn-primary' : 'btn'}>
+            {/* Done: open the screen and look. Not done: go where the thing
+                is actually done, which for a screen whose action is a dialog
+                means opening the dialog too. */}
+            <Link
+              to={step.done ? step.path : (step.doPath ?? step.path)}
+              className={step === next ? 'btn-primary' : 'btn'}
+            >
               {step.done ? 'Open' : step.action}
             </Link>
           </li>
@@ -314,6 +322,13 @@ function Walkthroughs() {
  * It disappears on its own once the required steps are done, rather than
  * needing to be dismissed — a banner you have to close is a banner that was
  * not sure whether it was still true.
+ *
+ * There are two destinations here and therefore two links. The words say where
+ * you are in the setup, so they lead to the checklist; the button is named
+ * after one particular job — "Add a customer" — so it goes and does that job.
+ * They used to be one link around the whole banner, which meant the button
+ * took you to the checklist you were already being shown a line of, and the
+ * first thing a new company pressed was the first thing that did not work.
  */
 export function SetupBanner() {
   const { data } = useQuery({
@@ -327,19 +342,18 @@ export function SetupBanner() {
   if (!next) return null;
 
   return (
-    <Link
-      to="/start"
-      className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border-l-2 border-accent bg-accent/5 px-4 py-3 transition-colors hover:bg-accent/10"
-    >
-      <span className="min-w-0">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border-l-2 border-accent bg-accent/5 px-4 py-3">
+      <Link to="/start" className="min-w-0 transition-opacity hover:opacity-80">
         <span className="block text-sm font-semibold text-ink-100">
           Next: {next.title}
         </span>
         <span className="block text-xs text-ink-400">
           {data.done} of {data.total} set up. {next.why}
         </span>
-      </span>
-      <span className="btn-primary shrink-0">{next.action}</span>
-    </Link>
+      </Link>
+      <Link to={next.doPath ?? next.path} className="btn-primary shrink-0">
+        {next.action}
+      </Link>
+    </div>
   );
 }

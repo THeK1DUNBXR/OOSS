@@ -34,7 +34,9 @@ const GROUP_LABELS: Record<string, string> = {
   main: '',
   money: 'Money',
   people: 'People',
-  customers: 'Customers',
+  // Not "Customers": a student, a college and a business are three different
+  // parties, and only one of them is buying anything on any given day.
+  customers: 'Who We Deal With',
   delivery: 'Selling & Delivering',
   setup: 'Set up',
 };

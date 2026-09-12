@@ -166,6 +166,25 @@ behind this, and a "File now" button that only wrote a row would be worse than
 the honest split. The JSON download is the offline utility's file, in the shape
 the portal accepts, and `File` records what came back.
 
+### Who the invoice is to
+
+Three parties can hold the customer role, and the document says which:
+
+| | Addressed as | Where the tax detail comes from |
+|---|---|---|
+| **Student** | their own name, with their registration number | their student record |
+| **Institution** | the school or college | its billing details |
+| **Organisation** | the trust, foundation or business | its billing details |
+
+"Customer" is that role and nothing else — it is not a kind of record, and there
+is no list of customers anywhere in the product. A student billed in their own
+name needs no company invented for them, which is what the old model required
+and what put a fake organisation in the accounts list every time somebody walked
+in off the street. The state the supply is made to is entered once on the party
+and copied onto the invoice at issue, so the split — CGST+SGST within the state,
+IGST across it — does not depend on somebody retyping two digits correctly at a
+counter.
+
 ### Every amount collected is gross
 
 A price quoted to a student, a receipt written against it and a figure in the

@@ -562,37 +562,306 @@ describe('CRM-IDN-001 — identity resolution', () => {
 });
 
 // ===========================================================================
-// CRM-IDN-002/003 — Organization specialisations
+// CRM-IDN-002/003 — the three party types
 // ===========================================================================
 
-describe('CRM-IDN-002 — organisation specialisations are independent', () => {
-  it('an organisation can carry both an account and an institution profile simultaneously', async () => {
+describe('CRM-IDN-002 — a body is an institution or an organisation, never both', () => {
+  it('a college we also invoice stays a college: billing is not an identity', async () => {
     await asUser('chairman@kaizen.co.in', async () => {
-      const both = await prisma.organization.findFirst({
-        where: { account: { isNot: null }, institutionProfile: { isNot: null } },
-        include: { account: true, institutionProfile: true },
+      const { createOrganization } = await import('../domains/organizations.js');
+      const college = await createOrganization({
+        kind: 'institution',
+        name: `Billed College ${Date.now()}`,
+        institutionProfile: { institutionType: 'polytechnic', district: 'Erode' },
       });
-      expect(both).not.toBeNull();
-      expect(both!.account).not.toBeNull();
-      expect(both!.institutionProfile).not.toBeNull();
+      // Payment terms on a polytechnic that buys a staff programme. Refusing
+      // this is what makes somebody keep a second record in a spreadsheet.
+      await expect(attachAccount(college.id, { tier: 'standard', paymentTermsDays: 45 })).resolves.toBeTruthy();
+
+      const after = await prisma.organization.findFirstOrThrow({ where: { id: college.id } });
+      expect(after.kind).toBe('institution');
     });
   });
 
-  it('no validation rejects a second specialisation because a first is present', async () => {
+  it('school details are refused on an organisation, rather than quietly dropped', async () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const { createOrganization } = await import('../domains/organizations.js');
-      const org = await createOrganization({ name: `Dual Specialisation ${Date.now()}` });
-      await attachAccount(org.id, { tier: 'standard' });
-      await expect(attachInstitutionProfile(org.id, { institutionType: 'polytechnic' })).resolves.toBeTruthy();
+      const firm = await createOrganization({ kind: 'organization', name: `Not A School ${Date.now()}` });
+
+      const err = await expectReject(async () =>
+        attachInstitutionProfile(firm.id, { institutionType: 'polytechnic' }),
+      );
+      expect(err.status).toBe(400);
+      expect(err.message).toMatch(/not a school or a college/i);
+
+      // And the same refusal at creation, so the two routes agree.
+      const atCreate = await expectReject(async () =>
+        createOrganization({
+          kind: 'organization',
+          name: `Also Not A School ${Date.now()}`,
+          institutionProfile: { institutionType: 'polytechnic' },
+        }),
+      );
+      expect(atCreate.status).toBe(400);
+    });
+  });
+
+  it('the two lists do not contain each other', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createOrganization } = await import('../domains/organizations.js');
+      const tag = Date.now();
+      const college = await createOrganization({ kind: 'institution', name: `Split College ${tag}` });
+      const firm = await createOrganization({ kind: 'organization', name: `Split Traders ${tag}` });
+
+      const institutions = await prisma.organization.findMany({ where: { kind: 'institution' }, select: { id: true } });
+      const organizations = await prisma.organization.findMany({ where: { kind: 'organization' }, select: { id: true } });
+
+      expect(institutions.map((o) => o.id)).toContain(college.id);
+      expect(institutions.map((o) => o.id)).not.toContain(firm.id);
+      expect(organizations.map((o) => o.id)).toContain(firm.id);
+      expect(organizations.map((o) => o.id)).not.toContain(college.id);
+    });
+  });
+
+  it('reclassifying needs a reason, and is refused once learners point at the college', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createOrganization, reclassifyOrganization } = await import('../domains/organizations.js');
+      const college = await createOrganization({ kind: 'institution', name: `Mistyped ${Date.now()}` });
+
+      const noReason = await expectReject(async () => reclassifyOrganization(college.id, 'organization', ''));
+      expect(noReason.status).toBe(400);
+
+      // With a reason, and nothing hanging off it, the correction goes through.
+      const fixed = await reclassifyOrganization(college.id, 'organization', 'Entered as a college by mistake; it is a trust.');
+      expect(fixed.kind).toBe('organization');
+
+      // But a college that has actually sent us learners is not turned into a
+      // supplier on somebody's say-so.
+      const real = await createOrganization({ kind: 'institution', name: `Has Learners ${Date.now()}` });
+      const person = await prisma.person.create({
+        data: { tenantId: TENANT, recordCode: `PER-TEST-${Date.now()}`, fullName: 'Sent By Them' },
+      });
+      await prisma.studentProfile.create({
+        data: { tenantId: TENANT, personId: person.id, institutionId: real.id, status: 'active' },
+      });
+      const blocked = await expectReject(async () =>
+        reclassifyOrganization(real.id, 'organization', 'Changed my mind about this one.'),
+      );
+      expect(blocked.status).toBe(409);
+      expect(blocked.message).toMatch(/student record/i);
     });
   });
 
   it('attaching an institution profile requires institutions:create, never organizations:*', async () => {
     await asUser('priya@kaizen.co.in', async () => {
       // marketing holds organizations:VC but no institutions grant.
-      const org = await prisma.organization.findFirstOrThrow({ where: { institutionProfile: null } });
+      const org = await prisma.organization.findFirstOrThrow({
+        where: { kind: 'institution', institutionProfile: null },
+      });
       const err = await expectReject(() => attachInstitutionProfile(org.id, { institutionType: 'school' }));
       expect(err.status).toBe(403);
+    });
+  });
+
+  it('a student is a third thing, in neither list', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createStudent, listStudents } = await import('../domains/students.js');
+      const tag = Date.now();
+      const student = await createStudent({
+        fullName: `Ilakkiya ${tag}`,
+        primaryPhone: `98${String(tag).slice(-8)}`,
+        registrationNumber: `KI-TEST/${tag}`,
+      });
+
+      expect(student.recordCode).toMatch(/^PER-/);
+      const listed = await listStudents({ q: `Ilakkiya ${tag}` });
+      expect(listed.items.map((i) => i.id)).toContain(student.id);
+
+      // And nowhere among the bodies: a learner is not a small organisation.
+      const bodies = await prisma.organization.findMany({ where: { name: { contains: `Ilakkiya ${tag}` } } });
+      expect(bodies).toHaveLength(0);
+    });
+  });
+
+  it('a student comes from an institution, and an organisation is refused as one', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createOrganization } = await import('../domains/organizations.js');
+      const { createStudent } = await import('../domains/students.js');
+      const tag = Date.now();
+      const firm = await createOrganization({ kind: 'organization', name: `Sender Traders ${tag}` });
+
+      const err = await expectReject(async () =>
+        createStudent({
+          fullName: `Wrong Origin ${tag}`,
+          primaryPhone: `97${String(tag).slice(-8)}`,
+          institutionId: firm.id,
+        }),
+      );
+      expect(err.status).toBe(400);
+      expect(err.message).toMatch(/not a school or a college/i);
+    });
+  });
+
+  it('a registration number belongs to one learner, and the second one is told whose it is', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createStudent } = await import('../domains/students.js');
+      const tag = Date.now();
+      const number = `KI-DUP/${tag}`;
+      const first = await createStudent({
+        fullName: `First Holder ${tag}`,
+        primaryPhone: `96${String(tag).slice(-8)}`,
+        registrationNumber: number,
+      });
+
+      const err = await expectReject(async () =>
+        createStudent({
+          fullName: `Second Holder ${tag}`,
+          primaryPhone: `95${String(tag).slice(-8)}`,
+          registrationNumber: number,
+        }),
+      );
+      expect(err.status).toBe(409);
+      // Named, because "already exists" leaves somebody hunting for the row.
+      expect(err.message).toContain(first.fullName);
+    });
+  });
+
+  it('somebody already on file becomes a student rather than a second person', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createStudent } = await import('../domains/students.js');
+      const tag = Date.now();
+      const phone = `94${String(tag).slice(-8)}`;
+      const contact = await prisma.person.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: `PER-TEST-C${tag}`,
+          fullName: `Already Known ${tag}`,
+          primaryPhone: phone,
+          primaryPhoneNormalised: phone,
+        },
+      });
+
+      const student = await createStudent({ fullName: `Already Known ${tag}`, primaryPhone: phone });
+      expect(student.personId).toBe(contact.id);
+
+      const people = await prisma.person.count({ where: { primaryPhoneNormalised: phone, deletedAt: null } });
+      expect(people).toBe(1);
+    });
+  });
+
+  it('an employee can take a student on at the counter, and cannot rewrite one afterwards', async () => {
+    const tag = Date.now();
+    const created = await asUser('employee@kaizen.co.in', async () => {
+      const { createStudent } = await import('../domains/students.js');
+      return createStudent({ fullName: `Walk In ${tag}`, primaryPhone: `93${String(tag).slice(-8)}` });
+    });
+    expect(created.fullName).toBe(`Walk In ${tag}`);
+
+    await asUser('employee@kaizen.co.in', async () => {
+      const { updateStudent } = await import('../domains/students.js');
+      const err = await expectReject(async () => updateStudent(created.id, { status: 'alumni' }));
+      expect(err.status).toBe(403);
+    });
+  });
+
+  it('a sponsored learner names who is paying, or is refused', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createStudent } = await import('../domains/students.js');
+      const { createOrganization } = await import('../domains/organizations.js');
+      const tag = Date.now();
+
+      // "Sponsored" with nobody named is the row that later gets billed to the
+      // learner by mistake, so it does not get written.
+      const err = await expectReject(async () =>
+        createStudent({ fullName: `Unpaid ${tag}`, primaryPhone: `89${String(tag).slice(-8)}`, funding: 'sponsor' }),
+      );
+      expect(err.status).toBe(400);
+      expect(err.message).toMatch(/needs the organisation that is paying/i);
+
+      // A college cannot be a sponsor: a college paying for its own students is
+      // its own thing, and the two are reported differently.
+      const college = await createOrganization({ kind: 'institution', name: `Paying College ${tag}` });
+      const wrong = await expectReject(async () =>
+        createStudent({
+          fullName: `Miscoded ${tag}`,
+          primaryPhone: `88${String(tag).slice(-8)}`,
+          funding: 'sponsor',
+          sponsorId: college.id,
+        }),
+      );
+      expect(wrong.status).toBe(400);
+
+      // A scheme without its framework reports as nothing, so it is refused too.
+      const noFramework = await expectReject(async () =>
+        createStudent({ fullName: `Schemeless ${tag}`, primaryPhone: `87${String(tag).slice(-8)}`, funding: 'scheme' }),
+      );
+      expect(noFramework.status).toBe(400);
+      expect(noFramework.message).toMatch(/Naan Mudhalvan/);
+    });
+  });
+
+  it('a funded learner is not billable, and the invoice says who to bill instead', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createStudent } = await import('../domains/students.js');
+      const { createOrganization } = await import('../domains/organizations.js');
+      const { createInvoice } = await import('../domains/invoicing.js');
+      const tag = Date.now();
+
+      const sponsor = await createOrganization({
+        kind: 'organization',
+        name: `Schedule VII Foundation ${tag}`,
+        roles: ['sponsor'],
+      });
+      const learner = await createStudent({
+        fullName: `Funded Beneficiary ${tag}`,
+        primaryPhone: `86${String(tag).slice(-8)}`,
+        funding: 'sponsor',
+        sponsorId: sponsor.id,
+      });
+      expect(learner.billable).toBe(false);
+
+      // The whole point of recording it: no tax invoice reaches a beneficiary
+      // of a funded cohort.
+      const err = await expectReject(async () =>
+        createInvoice({
+          personId: learner.personId,
+          lines: [{ description: 'A course', unitPrice: 10_000, gstRate: 18, hsnSac: '999293' }],
+        }),
+      );
+      expect(err.status).toBe(400);
+      expect(err.message).toContain(`Schedule VII Foundation ${tag}`);
+
+      // And the sponsor is billable in their place.
+      const invoice = await createInvoice({
+        organizationId: sponsor.id,
+        placeOfSupply: '33',
+        lines: [{ description: `Cohort fee — ${learner.fullName}`, unitPrice: 10_000, gstRate: 18, hsnSac: '999293' }],
+      });
+      expect(invoice.organizationId).toBe(sponsor.id);
+    });
+  });
+
+  it('a body does several things at once, and a college is described differently', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { createOrganization, setOrganizationRoles } = await import('../domains/organizations.js');
+      const tag = Date.now();
+
+      // Funds a CSR cohort and hires out of it. Both, not one.
+      const firm = await createOrganization({
+        kind: 'organization',
+        name: `Both Industries ${tag}`,
+        roles: ['sponsor', 'employer'],
+      });
+      expect(firm.roles.sort()).toEqual(['employer', 'sponsor']);
+
+      const widened = await setOrganizationRoles(firm.id, ['sponsor', 'employer', 'client']);
+      expect(widened.roles).toContain('client');
+
+      // A college is described by its engagements instead.
+      const refused = await expectReject(async () =>
+        createOrganization({ kind: 'institution', name: `Roled College ${tag}`, roles: ['client'] }),
+      );
+      expect(refused.status).toBe(400);
     });
   });
 
@@ -616,7 +885,7 @@ describe('CRM-IDN-002 — organisation specialisations are independent', () => {
   it('detaching a specialisation nothing references succeeds, so the block is about the references and not the detach', async () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const { createOrganization } = await import('../domains/organizations.js');
-      const org = await createOrganization({ name: `Detachable ${Date.now()}` });
+      const org = await createOrganization({ kind: 'organization', name: `Detachable ${Date.now()}` });
       await attachAccount(org.id, { tier: 'standard' });
       await expect(detachAccount(org.id)).resolves.toEqual({ detached: true });
       expect(await prisma.account.count({ where: { organizationId: org.id } })).toBe(0);
@@ -1794,6 +2063,7 @@ describe('A college, a client and a student are three different facts', () => {
   async function aCollegeAndABatch(tag: string) {
     const { createOrganization } = await import('../domains/organizations.js');
     const college = await createOrganization({
+      kind: 'institution',
       name: `${tag} College of Engineering`,
       institutionProfile: { institutionType: 'engineering_college', district: 'Madurai' },
     });
@@ -1813,10 +2083,11 @@ describe('A college, a client and a student are three different facts', () => {
     return { college, cohort };
   }
 
-  it('an organisation can be created as a college in one act, with only what was typed stored', async () => {
+  it('an institution can be created with its school details in one act, with only what was typed stored', async () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const { createOrganization } = await import('../domains/organizations.js');
       const org = await createOrganization({
+        kind: 'institution',
         name: `One Step College ${Date.now()}`,
         institutionProfile: { institutionType: 'polytechnic', district: 'Salem' },
       });
@@ -1859,7 +2130,7 @@ describe('A college, a client and a student are three different facts', () => {
       const { createOrganization } = await import('../domains/organizations.js');
       const { enrolStudent } = await import('../domains/education.js');
       const { cohort } = await aCollegeAndABatch(`NC${Date.now()}`);
-      const plain = await createOrganization({ name: `Not A College ${Date.now()}` });
+      const plain = await createOrganization({ kind: 'organization', name: `Not A College ${Date.now()}` });
 
       const err = await expectReject(() =>
         enrolStudent({ cohortId: cohort.id, fullName: 'Refused Origin', institutionId: plain.id }),
@@ -1935,7 +2206,7 @@ describe('A college, a client and a student are three different facts', () => {
       const view = await assembleOrganization360(college.id);
       expect(view.students?.map((s) => s.personName)).toContain('Sent From Here');
 
-      const plain = await createOrganization({ name: `No Students ${Date.now()}` });
+      const plain = await createOrganization({ kind: 'organization', name: `No Students ${Date.now()}` });
       // Absent rather than empty: "none" and "not a college" are different answers.
       expect((await assembleOrganization360(plain.id)).students).toBeNull();
     });

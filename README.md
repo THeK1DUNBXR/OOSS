@@ -117,12 +117,12 @@ already exists keeps its password.
 Everyone else is created inside the product. The same screen genuinely shows
 different things to each of the four:
 
-| Role | Who | What they hold |
+| Role | Signs in as | What they hold |
 |---|---|---|
-| **Employee** | — | Their own leave, attendance, goals, skills and payslip, plus the staff and skills directories — and they raise invoices for what they sell, seeing the ones they raised and no others. No colleague's file. |
-| **Operations Head** | Kasthurika | The employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and the course catalogue. Proposes pay and cannot approve it. |
-| **Finance Head** | Narayanan | The books outright, the GST returns, and the money side of people: approves compensation and payroll and sees what the establishment costs, without running it. |
-| **Chairman** | Rishikesh | Superadmin. Every resource, every verb, every scope — nothing is hidden or inaccessible. |
+| **Employee** | employee@ | Their own leave, attendance, goals, skills and payslip, plus the staff and skills directories — and they raise invoices for what they sell, seeing the ones they raised and no others. No colleague's file. |
+| **Operations Head** | operations@ | The employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and the course catalogue. Proposes pay and cannot approve it. |
+| **Finance Head** | finance@ | The books outright, the GST returns, and the money side of people: approves compensation and payroll and sees what the establishment costs, without running it. |
+| **Chairman** | chairman@ | Superadmin. Every resource, every verb, every scope — nothing is hidden or inaccessible. |
 
 The HR/Finance split is the one worth understanding. `hr_ops_manager` holds
 `compensation:VCEDXF` and no `approve`; `finance_head` holds `approve` and
@@ -249,7 +249,27 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
 - **Courses** — the catalogue, and a price list as much as a syllabus. A course
   carries its fee, its tax rate and its SAC, so raising an invoice for one means
   choosing what was sold rather than knowing the price list.
-- **Students** — open one for their day-by-day record: attendance, weekly
+- **Students, Schools & Colleges, Organisations** — three lists, because they
+  are three different parties. A learner who takes a course, a college that
+  sends learners, a trust or business that buys training. They used to be one
+  screen called "Companies & Colleges" and one word, *customer*, which meant
+  neither "how many students do we have" nor "which colleges do we work with"
+  had anywhere to be answered, and billing a walk-in meant inventing a company
+  for them. Billing detail sits on any of the three, because being invoiced is
+  not an identity: a polytechnic that buys a staff programme is invoiced like
+  anyone else and stays a college.
+
+  Each carries what the company actually deals in. A student records **who is
+  paying** — themselves, a sponsor, a scheme, or their college — because a
+  beneficiary of a funded cohort owes nothing and no invoice is addressed to
+  them; a scheme names its framework, Naan Mudhalvan or Vetri Nichayam or a
+  TNSDC or NSDC-linked programme or CSR, since each reports differently. An
+  organisation records **what it does with us** — buys, funds cohorts, hires our
+  learners, or is a department appointing partners — and several at once, which
+  is what a good relationship looks like. A college records **which of the six
+  engagements** the partnership runs at, from academic alignment to the
+  admissions portal we built for them.
+- **A student's own page** — their day-by-day record: attendance, weekly
   scores, the questions they asked, the feedback they gave and anything that
   went wrong, merged into one timeline. A query and a complaint stay open until
   somebody closes them, and what they have been invoiced is on the same page as
@@ -258,8 +278,8 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   reporting across them on a canonical ordinal rather than on stage names.
 - **Governance (Admin)** — the live grant matrix, policy versions, the event
   chain, agent registrations and their action tiers.
-- **Sales & Customers → People** — an open merge candidate, raised by the
-  resolver refusing a partial match rather than guessing.
+- **Contacts** — an open merge candidate, raised by the resolver refusing a
+  partial match rather than guessing.
 
 Every one of those surfaces starts empty, because the seed creates structure and
 not records. What fills them is your own data: import a Tally export, a bank
@@ -312,7 +332,7 @@ request would be worse than an honest split.
 
 ```bash
 ./scripts/test-db.sh          # provision the suite's own database
-cd apps/api && pnpm test      # 351 tests
+cd apps/api && pnpm test      # 363 tests
 ```
 
 The suite runs against a real PostgreSQL database, inside real request
@@ -324,6 +344,21 @@ rather than a scratchpad.
 
 Each test names the requirement it verifies. See
 [docs/acceptance.md](docs/acceptance.md) for the requirement-to-test map.
+
+A second, small suite drives a real browser against a running stack, for the
+one thing the first cannot see — a button whose label promises one thing and
+whose link does another:
+
+```bash
+pnpm --filter @kaizen/api dev            # :4000
+pnpm --filter @kaizen/web dev            # :5173
+E2E_EMAIL=… E2E_PASSWORD=… pnpm test:e2e
+```
+
+It signs in as a real account and holds the getting-started checklist and its
+banner to what their own buttons say. Four tests, on purpose: a browser suite
+that tries to cover the product becomes the slowest and least trusted thing in
+the repository.
 
 The lifecycle machines and the finance arithmetic are tested without a database
 at all, because they are pure: whether Absconded can reach Alumni, and whether
@@ -344,12 +379,13 @@ apps/api           Express + Prisma. platform/ is the kernel; domains/ are
                    services; jobs/ is the durable scheduler; agents/ is the
                    AI layer
 apps/web           React + Vite + Tailwind. One shell, twenty-four surfaces
+e2e                the browser suite: what a signed-in person can press
 scripts            dev.sh (run), test-db.sh (provision the test database)
 docs               architecture, acceptance map, operations
 ```
 
 114 Prisma models, 26 domain services plus five for People and one for the
-books, and 351 tests.
+books, 363 tests and four in a browser.
 
 The HR lifecycle machines and the finance arithmetic live in `packages/shared`
 rather than in the API, and that placement is the point: a surface rendering a

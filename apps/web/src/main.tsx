@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import { SessionProvider, useSession } from './lib/session.js';
@@ -12,7 +12,8 @@ import { Workspace, Exceptions } from './pages/Workspace.js';
 import { Pipeline } from './pages/Pipeline.js';
 import { Leads, LeadDetail } from './pages/Leads.js';
 import { Opportunities, OpportunityDetail, Forecast } from './pages/Opportunities.js';
-import { Accounts, AccountDetail } from './pages/Accounts.js';
+import { Institutions, Organizations, BodyDetail } from './pages/Parties.js';
+import { Students, StudentDetail } from './pages/Students.js';
 import { People, PersonDetail, Interactions } from './pages/People.js';
 import { Offerings, Quotes, Proposals, Agreements, Approvals, WinLoss } from './pages/Commercial.js';
 import { Invoices, Payments, Receivables } from './pages/Finance.js';
@@ -36,6 +37,15 @@ const queryClient = new QueryClient({
     queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 15_000 },
   },
 });
+
+/**
+ * An old `/crm/accounts/:id` link. The record is the same row, so it resolves to
+ * whichever of the two screens now owns it rather than guessing.
+ */
+function LegacyAccountLink() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/crm/organizations/${id}`} replace />;
+}
 
 function Routed() {
   const { user, loading } = useSession();
@@ -62,8 +72,17 @@ function Routed() {
         <Route path="/crm/opportunities" element={<Opportunities />} />
         <Route path="/crm/opportunities/:id" element={<OpportunityDetail />} />
         <Route path="/crm/forecast" element={<Forecast />} />
-        <Route path="/crm/accounts" element={<Accounts />} />
-        <Route path="/crm/accounts/:id" element={<AccountDetail />} />
+        {/* Three party types, three routes. `/crm/accounts` is kept pointing at
+            organisations because links to it exist in the wild — bookmarks,
+            notification drill paths — and a dead link teaches nobody anything. */}
+        <Route path="/crm/students" element={<Students />} />
+        <Route path="/crm/students/:id" element={<StudentDetail />} />
+        <Route path="/crm/institutions" element={<Institutions />} />
+        <Route path="/crm/institutions/:id" element={<BodyDetail kind="institution" />} />
+        <Route path="/crm/organizations" element={<Organizations />} />
+        <Route path="/crm/organizations/:id" element={<BodyDetail kind="organization" />} />
+        <Route path="/crm/accounts" element={<Navigate to="/crm/organizations" replace />} />
+        <Route path="/crm/accounts/:id" element={<LegacyAccountLink />} />
         <Route path="/crm/people" element={<People />} />
         <Route path="/crm/people/:id" element={<PersonDetail />} />
         <Route path="/crm/interactions" element={<Interactions />} />

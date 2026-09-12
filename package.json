@@ -15,6 +15,7 @@
     "db:seed": "pnpm --filter @kaizen/api seed",
     "db:reset": "pnpm --filter @kaizen/api db:reset",
     "test": "pnpm --filter @kaizen/api test",
+    "test:e2e": "pnpm --filter @kaizen/e2e test",
     "typecheck": "pnpm -r typecheck",
     "jobs:run": "pnpm --filter @kaizen/api jobs:run",
     "setup": "pnpm install && pnpm --filter @kaizen/shared build && pnpm db:push && pnpm db:seed",

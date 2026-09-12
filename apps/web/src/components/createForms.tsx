@@ -15,6 +15,23 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  DELIVERY_LOCATIONS,
+  DELIVERY_LOCATION_LABELS,
+  FUNDING_FRAMEWORKS,
+  FUNDING_FRAMEWORK_LABELS,
+  FUNDING_SOURCES,
+  FUNDING_SOURCE_LABELS,
+  INSTITUTION_ENGAGEMENTS,
+  INSTITUTION_ENGAGEMENT_HINTS,
+  INSTITUTION_ENGAGEMENT_LABELS,
+  ORGANIZATION_ROLES,
+  ORGANIZATION_ROLE_HINTS,
+  ORGANIZATION_ROLE_LABELS,
+  type FundingSource,
+  type InstitutionEngagement,
+  type OrganizationRole,
+} from '@kaizen/shared';
 import { api } from '../lib/api.js';
 import { CreateModal, MoneyInput, Row, SelectInput, TextArea, TextInput } from './forms.js';
 
@@ -501,17 +518,8 @@ const TIERS = [
   { value: 'standard', label: 'Standard' },
 ];
 
-type OrgKind = 'client' | 'college' | 'both' | 'unknown';
-
-const ORG_KINDS: Array<{ value: OrgKind; label: string; hint: string }> = [
-  { value: 'client', label: 'A client', hint: 'We invoice them' },
-  { value: 'college', label: 'A college', hint: 'We recruit students from them' },
-  { value: 'both', label: 'Both', hint: 'They buy from us and send us students' },
-  { value: 'unknown', label: 'Not sure yet', hint: 'Just the name for now' },
-];
-
-/** The client-side fields, shared between creating one and marking one. */
-function ClientFields(p: {
+/** Billing detail. Either kind of body may carry it, so this is shared by both. */
+function BillingFields(p: {
   tier: string;
   setTier: (v: string) => void;
   billingEmail: string;
@@ -536,7 +544,7 @@ function ClientFields(p: {
 }
 
 /** The college-side fields, shared between creating one and marking one. */
-function CollegeFields(p: {
+function SchoolFields(p: {
   institutionType: string;
   setInstitutionType: (v: string) => void;
   managementType: string;
@@ -581,7 +589,7 @@ function CollegeFields(p: {
   );
 }
 
-function useSpecialisationFields() {
+function useBodyFields() {
   const [tier, setTier] = useState('');
   const [billingEmail, setBillingEmail] = useState('');
   const [paymentTermsDays, setPaymentTermsDays] = useState('');
@@ -611,8 +619,8 @@ function useSpecialisationFields() {
   return {
     account,
     institutionProfile,
-    clientProps: { tier, setTier, billingEmail, setBillingEmail, paymentTermsDays, setPaymentTermsDays },
-    collegeProps: {
+    billingProps: { tier, setTier, billingEmail, setBillingEmail, paymentTermsDays, setPaymentTermsDays },
+    schoolProps: {
       institutionType, setInstitutionType,
       managementType, setManagementType,
       district, setDistrict,
@@ -622,121 +630,385 @@ function useSpecialisationFields() {
   };
 }
 
-export function NewOrganization({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [kind, setKind] = useState<OrgKind>('client');
+export function NewInstitution({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [name, setName] = useState('');
   const [website, setWebsite] = useState('');
-  const f = useSpecialisationFields();
+  const [billed, setBilled] = useState(false);
+  const [engagements, setEngagements] = useState<InstitutionEngagement[]>([]);
+  const [accreditation, setAccreditation] = useState('');
+  const f = useBodyFields();
 
-  const isClient = kind === 'client' || kind === 'both';
-  const isCollege = kind === 'college' || kind === 'both';
+  const toggle = (e: InstitutionEngagement) =>
+    setEngagements((prev) => (prev.includes(e) ? prev.filter((x) => x !== e) : [...prev, e]));
 
   return (
     <CreateModal
       open={open}
-      title="Add a company or a college"
-      submitLabel="Add them"
+      title="Add a school or a college"
+      submitLabel="Add it"
+      onClose={onClose}
+      invalidate={[['institutions']]}
+      onSubmit={() =>
+        api.post('/crm/institutions', {
+          name,
+          website: website || null,
+          institutionProfile: { ...f.institutionProfile(), engagements, accreditation: accreditation || null },
+          ...(billed ? { account: f.account() } : {}),
+        })
+      }
+    >
+      <p className="text-2xs text-ink-500">
+        Somewhere learners come to us from. Students name it as where they studied, and its page then answers how
+        many it has sent and how they did.
+      </p>
+      <TextInput label="Name" required autoFocus value={name} onChange={setName} />
+      <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
+      <SchoolFields {...f.schoolProps} />
+      <TextInput
+        label="Accreditation"
+        value={accreditation}
+        onChange={setAccreditation}
+        placeholder="NAAC A+, NBA, autonomous…"
+      />
+
+      {/* A college is not one relationship. Which of the five depths this
+          partnership actually runs at is the thing a partnership recorded only
+          as "active" never says. */}
+      <fieldset className="rounded-lg border border-ink-800 p-3">
+        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">What we do with them</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {INSTITUTION_ENGAGEMENTS.map((e) => (
+            <button
+              key={e}
+              type="button"
+              onClick={() => toggle(e)}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                engagements.includes(e) ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
+              }`}
+            >
+              <span
+                className={`block text-xs font-medium ${
+                  engagements.includes(e) ? 'text-accent-soft' : 'text-ink-200'
+                }`}
+              >
+                {INSTITUTION_ENGAGEMENT_LABELS[e]}
+              </span>
+              <span className="block text-2xs text-ink-500">{INSTITUTION_ENGAGEMENT_HINTS[e]}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 px-1 text-2xs text-ink-500">As many as are true. None yet is a fine answer.</p>
+      </fieldset>
+
+      {/* Billing is not what makes a body one kind or the other: a polytechnic
+          that buys a staff programme is invoiced like anyone else and stays a
+          college. */}
+      <label className="flex items-start gap-2 rounded-lg border border-ink-800 p-3">
+        <input type="checkbox" className="mt-0.5" checked={billed} onChange={(e) => setBilled(e.target.checked)} />
+        <span>
+          <span className="block text-xs text-ink-200">We invoice them too</span>
+          <span className="block text-2xs text-ink-500">Payment terms and a billing address. It stays a college.</span>
+        </span>
+      </label>
+      {billed && (
+        <fieldset className="rounded-lg border border-ink-800 p-3">
+          <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Billing</legend>
+          <BillingFields {...f.billingProps} />
+        </fieldset>
+      )}
+    </CreateModal>
+  );
+}
+
+export function NewOrganization({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [website, setWebsite] = useState('');
+  const [billed, setBilled] = useState(true);
+  const [roles, setRoles] = useState<OrganizationRole[]>(['client']);
+  const f = useBodyFields();
+
+  const toggle = (r: OrganizationRole) =>
+    setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add an organisation"
+      submitLabel="Add it"
       onClose={onClose}
       invalidate={[['organizations']]}
       onSubmit={() =>
         api.post('/crm/organizations', {
           name,
           website: website || null,
-          ...(isClient ? { account: f.account() } : {}),
-          ...(isCollege ? { institutionProfile: f.institutionProfile() } : {}),
+          roles,
+          ...(billed ? { account: f.account() } : {}),
         })
       }
     >
-      <div>
-        <p className="label">What are they to us?</p>
-        <div className="mt-1 grid gap-2 sm:grid-cols-4">
-          {ORG_KINDS.map((k) => (
-            <button
-              key={k.value}
-              type="button"
-              onClick={() => setKind(k.value)}
-              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                kind === k.value ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
-              }`}
-            >
-              <span className={`block text-xs font-medium ${kind === k.value ? 'text-accent-soft' : 'text-ink-200'}`}>
-                {k.label}
-              </span>
-              <span className="block text-2xs text-ink-500">{k.hint}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
+      <p className="text-2xs text-ink-500">
+        A trust, a foundation or a business. Schools and colleges are recorded separately, under Schools &amp;
+        Colleges, because they are a different relationship.
+      </p>
       <TextInput label="Name" required autoFocus value={name} onChange={setName} />
       <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
 
-      {isClient && (
+      {/* What they do with us, which is a different question from what they are
+          — and not exclusive. A manufacturer that funds a CSR cohort and hires
+          out of it is both, and recording one loses the half somebody is about
+          to ask about. */}
+      <fieldset className="rounded-lg border border-ink-800 p-3">
+        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">What they are to us</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {ORGANIZATION_ROLES.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => toggle(r)}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                roles.includes(r) ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
+              }`}
+            >
+              <span className={`block text-xs font-medium ${roles.includes(r) ? 'text-accent-soft' : 'text-ink-200'}`}>
+                {ORGANIZATION_ROLE_LABELS[r]}
+              </span>
+              <span className="block text-2xs text-ink-500">{ORGANIZATION_ROLE_HINTS[r]}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 px-1 text-2xs text-ink-500">As many as are true.</p>
+      </fieldset>
+
+      <label className="flex items-start gap-2 rounded-lg border border-ink-800 p-3">
+        <input type="checkbox" className="mt-0.5" checked={billed} onChange={(e) => setBilled(e.target.checked)} />
+        <span>
+          <span className="block text-xs text-ink-200">We invoice them</span>
+          <span className="block text-2xs text-ink-500">Payment terms and a billing address. Add it later if you would rather.</span>
+        </span>
+      </label>
+      {billed && (
         <fieldset className="rounded-lg border border-ink-800 p-3">
-          <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">As a client</legend>
-          <ClientFields {...f.clientProps} />
+          <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Billing</legend>
+          <BillingFields {...f.billingProps} />
         </fieldset>
-      )}
-      {isCollege && (
-        <fieldset className="space-y-3 rounded-lg border border-ink-800 p-3">
-          <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">As a college</legend>
-          <CollegeFields {...f.collegeProps} />
-        </fieldset>
-      )}
-      {kind === 'unknown' && (
-        <p className="rounded border border-ink-800 bg-ink-950 px-3 py-2 text-2xs text-ink-500">
-          Saved as a name and nothing else. You can mark them as a client or a college later from their own page,
-          which is the same decision made at a moment when you know the answer.
-        </p>
-      )}
-      {isCollege && (
-        <p className="text-2xs text-ink-500">
-          Being marked as a college is what lets students be recorded as having come from here — which is the whole
-          point of keeping colleges separately from the companies we invoice.
-        </p>
       )}
     </CreateModal>
   );
 }
 
-/** The same fields again, for a body already on file. */
-export function MarkAsClient({
-  open, organizationId, name, onClose,
-}: { open: boolean; organizationId: string; name: string; onClose: () => void }) {
-  const f = useSpecialisationFields();
+/** Billing detail for a body already on file, of either kind. */
+export function AddBillingDetails({
+  open, organizationId, name, onClose, queryKey,
+}: { open: boolean; organizationId: string; name: string; onClose: () => void; queryKey: string }) {
+  const f = useBodyFields();
   return (
     <CreateModal
       open={open}
-      title={`Mark ${name} as a client`}
-      submitLabel="Mark them"
+      title={`How we bill ${name}`}
+      submitLabel="Save"
       onClose={onClose}
-      invalidate={[['organization', organizationId], ['organizations']]}
+      invalidate={[['organization', organizationId], [queryKey]]}
       onSubmit={() => api.post(`/crm/organizations/${organizationId}/account`, f.account())}
     >
-      <p className="text-2xs text-ink-500">A client is somebody we invoice. Everything below is optional.</p>
-      <ClientFields {...f.clientProps} />
+      <p className="text-2xs text-ink-500">Everything below is optional.</p>
+      <BillingFields {...f.billingProps} />
     </CreateModal>
   );
 }
 
-export function MarkAsCollege({
+/** School and college detail for an institution already on file. */
+export function AddSchoolDetails({
   open, organizationId, name, onClose,
 }: { open: boolean; organizationId: string; name: string; onClose: () => void }) {
-  const f = useSpecialisationFields();
+  const f = useBodyFields();
   return (
     <CreateModal
       open={open}
-      title={`Mark ${name} as a college`}
-      submitLabel="Mark them"
+      title={`What kind of place ${name} is`}
+      submitLabel="Save"
       onClose={onClose}
-      invalidate={[['organization', organizationId], ['organizations']]}
-      onSubmit={() => api.post(`/crm/organizations/${organizationId}/institution-profile`, f.institutionProfile())}
+      invalidate={[['organization', organizationId], ['institutions']]}
+      onSubmit={() => api.post(`/crm/institutions/${organizationId}/school-details`, f.institutionProfile())}
     >
       <p className="text-2xs text-ink-500">
-        A college is somewhere we recruit students from. Everything below is optional — record what you know and
-        leave the rest blank.
+        Everything below is optional — record what you know and leave the rest blank.
       </p>
-      <CollegeFields {...f.collegeProps} />
+      <SchoolFields {...f.schoolProps} />
+    </CreateModal>
+  );
+}
+
+const STUDENT_STATUSES = [
+  { value: 'prospective', label: 'Enquiring' },
+  { value: 'active', label: 'On a course' },
+  { value: 'alumni', label: 'Finished' },
+  { value: 'withdrawn', label: 'Left' },
+];
+
+/**
+ * A student: an individual who takes a course and is billed in their own name.
+ *
+ * Not an organisation with one person in it, which is what the product used to
+ * make somebody type in order to raise a walk-in's invoice.
+ */
+export function NewStudent({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [fullName, setFullName] = useState('');
+  const [primaryPhone, setPhone] = useState('');
+  const [primaryEmail, setEmail] = useState('');
+  const [registrationNumber, setRegistration] = useState('');
+  const [institutionId, setInstitution] = useState('');
+  const [placeOfSupply, setPlaceOfSupply] = useState('');
+  const [address, setAddress] = useState('');
+  const [status, setStatus] = useState('prospective');
+  const [funding, setFunding] = useState<FundingSource>('self');
+  const [sponsorId, setSponsor] = useState('');
+  const [fundingFramework, setFramework] = useState('');
+  const [deliveryLocation, setLocation] = useState('');
+
+  const { data: institutions } = useQuery({
+    queryKey: ['institutions', 'picker'],
+    queryFn: () => api.get<{ items: Array<{ id: string; name: string }> }>('/crm/institutions?pageSize=100'),
+    enabled: open,
+    retry: false,
+  });
+
+  // Only bodies that fund cohorts are offered as sponsors, so the list is short
+  // and the right one is in it.
+  const { data: sponsors } = useQuery({
+    queryKey: ['organizations', 'sponsors'],
+    queryFn: () =>
+      api.get<{ items: Array<{ id: string; name: string }> }>('/crm/organizations?pageSize=100&role=sponsor'),
+    enabled: open && funding === 'sponsor',
+    retry: false,
+  });
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add a student"
+      submitLabel="Add them"
+      onClose={onClose}
+      invalidate={[['students']]}
+      onSubmit={() =>
+        api.post('/crm/students', {
+          fullName,
+          primaryPhone: primaryPhone || null,
+          primaryEmail: primaryEmail || null,
+          registrationNumber: registrationNumber || null,
+          institutionId: institutionId || null,
+          placeOfSupply: placeOfSupply || null,
+          address: address || null,
+          status,
+          funding,
+          sponsorId: funding === 'sponsor' ? sponsorId || null : null,
+          fundingFramework: funding === 'scheme' ? fundingFramework || null : null,
+          deliveryLocation: deliveryLocation || null,
+        })
+      }
+    >
+      <TextInput label="Name" required autoFocus value={fullName} onChange={setFullName} />
+      <Row>
+        <TextInput label="Phone" value={primaryPhone} onChange={setPhone} placeholder="10 digits" />
+        <TextInput label="Email" value={primaryEmail} onChange={setEmail} />
+      </Row>
+      <p className="text-2xs text-ink-500">
+        One of the two is needed: it is how somebody already on file is recognised rather than entered twice.
+      </p>
+      <Row>
+        <TextInput
+          label="Registration number"
+          value={registrationNumber}
+          onChange={setRegistration}
+          placeholder="KI-2026/09-SAP/1107"
+        />
+        <SelectInput label="Where they are up to" value={status} onChange={setStatus} options={STUDENT_STATUSES} />
+      </Row>
+      <Row>
+        <SelectInput
+          label="College they came from"
+          value={institutionId}
+          onChange={setInstitution}
+          placeholder="None — they came to us directly"
+          options={(institutions?.items ?? []).map((i) => ({ value: i.id, label: i.name }))}
+        />
+        <SelectInput
+          label="Where they are taught"
+          value={deliveryLocation}
+          onChange={setLocation}
+          placeholder="Not decided"
+          options={DELIVERY_LOCATIONS.map((l) => ({ value: l, label: DELIVERY_LOCATION_LABELS[l] }))}
+        />
+      </Row>
+
+      {/* Who is paying. The most consequential answer on the form: a learner on
+          a funded cohort owes nothing, and an invoice raised to them is a
+          document that should never have existed. */}
+      <fieldset className="space-y-3 rounded-lg border border-ink-800 p-3">
+        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Who is paying</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {FUNDING_SOURCES.map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setFunding(f)}
+              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                funding === f ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
+              }`}
+            >
+              <span className={`block text-xs font-medium ${funding === f ? 'text-accent-soft' : 'text-ink-200'}`}>
+                {FUNDING_SOURCE_LABELS[f]}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {funding === 'sponsor' && (
+          <SelectInput
+            label="The organisation paying"
+            required
+            value={sponsorId}
+            onChange={setSponsor}
+            placeholder={
+              sponsors?.items?.length ? 'Choose the sponsor' : 'No organisation is marked as funding cohorts yet'
+            }
+            options={(sponsors?.items ?? []).map((o) => ({ value: o.id, label: o.name }))}
+          />
+        )}
+        {funding === 'scheme' && (
+          <SelectInput
+            label="Under which framework"
+            required
+            value={fundingFramework}
+            onChange={setFramework}
+            placeholder="Choose the scheme"
+            options={FUNDING_FRAMEWORKS.map((f) => ({ value: f, label: FUNDING_FRAMEWORK_LABELS[f] }))}
+          />
+        )}
+        {funding === 'institution' && (
+          <p className="text-2xs text-ink-500">
+            Their college pays. Name it above — it is the same field as where they came from.
+          </p>
+        )}
+        {funding !== 'self' && (
+          <p className="text-2xs text-ink-500">
+            No invoice will be addressed to them. The fee is billed to whoever is paying, naming the learners it
+            covers.
+          </p>
+        )}
+      </fieldset>
+
+      {funding === 'self' && (
+        <>
+          <Row>
+            <TextInput label="State" value={placeOfSupply} onChange={setPlaceOfSupply} placeholder="33 — Tamil Nadu" />
+            <TextInput label="Address" value={address} onChange={setAddress} />
+          </Row>
+          <p className="text-2xs text-ink-500">
+            The state decides how the tax on their invoice splits, so it is entered once here rather than on every
+            invoice.
+          </p>
+        </>
+      )}
     </CreateModal>
   );
 }
@@ -1404,7 +1676,7 @@ export function NewDecision({ open, onClose }: { open: boolean; onClose: () => v
  */
 export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cohorts = useList<{ id: string; name: string; courseName?: string }>('cohorts', '/education/cohorts', open);
-  const colleges = useList<Named & { specialisations?: Array<{ kind: string }> }>('organizations', '/crm/organizations?specialisation=institution', open);
+  const colleges = useList<Named>('institutions', '/crm/institutions?pageSize=200', open);
   const people = useList<{ id: string; fullName: string; recordCode: string; primaryPhone?: string | null }>(
     'people-picker',
     '/crm/people?pageSize=200',
@@ -1532,7 +1804,7 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
 
 export function NewCohort({ open, onClose }: { open: boolean; onClose: () => void }) {
   const courses = useList<{ id: string; name: string; code: string }>('courses', '/education/courses', open);
-  const colleges = useList<Named>('organizations', '/crm/organizations?specialisation=institution', open);
+  const colleges = useList<Named>('institutions', '/crm/institutions?pageSize=200', open);
 
   const [courseId, setCourseId] = useState('');
   const [name, setName] = useState('');

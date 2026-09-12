@@ -37,6 +37,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ROLE_DEFINITIONS, ROLE_GRANT_MATRIX, parseCell } from './grants.js';
 import { PIPELINE_SEEDS, RETIRED_POST_AWARD_STAGES, transitionsFor } from './pipelines.js';
 import { registerSubscribers } from '../events/handlers.js';
+import { runBackfills } from './backfill.js';
 
 export const TENANT_SLUG = process.env.TENANT_SLUG ?? 'kaizen';
 const TENANT_NAME = process.env.TENANT_NAME ?? 'Kaizen Infinities';
@@ -522,10 +523,12 @@ async function seedSurfaces() {
     { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'customers', position: 30, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },
     { nodeKey: 'crm_pipeline', label: 'Pipeline', icon: 'columns', path: '/crm/pipeline', group: 'customers', position: 31, requiredPermission: 'opportunities:V', synonyms: ['kanban', 'board', 'deals'] },
     { nodeKey: 'crm_opportunities', label: 'Deals', icon: 'target', path: '/crm/opportunities', group: 'customers', position: 32, requiredPermission: 'opportunities:V', synonyms: ['opportunities'] },
-    { nodeKey: 'crm_accounts', label: 'Companies & Colleges', icon: 'building', path: '/crm/accounts', group: 'customers', position: 33, requiredPermission: 'organizations:V', synonyms: ['accounts', 'organizations', 'companies', 'colleges', 'institutions', 'clients', 'customers'] },
-    { nodeKey: 'crm_people', label: 'Contacts', icon: 'users', path: '/crm/people', group: 'customers', position: 34, requiredPermission: 'people:V', synonyms: ['persons', 'people'] },
-    { nodeKey: 'crm_interactions', label: 'Calls & Meetings', icon: 'message', path: '/crm/interactions', group: 'customers', position: 35, requiredPermission: 'interactions:V', synonyms: ['activity', 'timeline', 'calls'] },
-    { nodeKey: 'crm_forecast', label: 'Forecast', icon: 'trending', path: '/crm/forecast', group: 'customers', position: 36, requiredPermission: 'opportunities:V', synonyms: ['commit', 'coverage'] },
+    { nodeKey: 'crm_students', label: 'Students', icon: 'users', path: '/crm/students', group: 'customers', position: 33, requiredPermission: 'students:V', synonyms: ['learners', 'trainees', 'candidates', 'customers'] },
+    { nodeKey: 'crm_institutions', label: 'Schools & Colleges', icon: 'building', path: '/crm/institutions', group: 'customers', position: 34, requiredPermission: 'institutions:V', synonyms: ['institutions', 'colleges', 'schools', 'polytechnics', 'universities'] },
+    { nodeKey: 'crm_accounts', label: 'Organisations', icon: 'building', path: '/crm/organizations', group: 'customers', position: 35, requiredPermission: 'organizations:V', synonyms: ['accounts', 'organizations', 'companies', 'businesses', 'trusts', 'foundations', 'clients'] },
+    { nodeKey: 'crm_people', label: 'Contacts', icon: 'users', path: '/crm/people', group: 'customers', position: 36, requiredPermission: 'people:V', synonyms: ['persons', 'people'] },
+    { nodeKey: 'crm_interactions', label: 'Calls & Meetings', icon: 'message', path: '/crm/interactions', group: 'customers', position: 37, requiredPermission: 'interactions:V', synonyms: ['activity', 'timeline', 'calls'] },
+    { nodeKey: 'crm_forecast', label: 'Forecast', icon: 'trending', path: '/crm/forecast', group: 'customers', position: 38, requiredPermission: 'opportunities:V', synonyms: ['commit', 'coverage'] },
 
     // ---- Selling and delivering -------------------------------------------
     { nodeKey: 'com_offerings', label: 'What We Sell', icon: 'package', path: '/commercial/offerings', group: 'delivery', position: 40, requiredPermission: 'offerings:V', synonyms: ['products', 'price book', 'catalog', 'services'] },
@@ -702,6 +705,14 @@ interface FoundingAccount {
   /** Env prefix for the three overrides: `_EMAIL`, `_NAME`, `_PASSWORD`. */
   env: string;
   defaultLocalPart: string;
+  /**
+   * The designation, not a person.
+   *
+   * A seeded account is a post rather than a human: whoever holds it changes,
+   * and a name baked into the seed is wrong the first time somebody else takes
+   * the job. `<PREFIX>_NAME` sets the real one at install time, and the person
+   * can edit it afterwards from their own record.
+   */
   defaultName: string;
   /** What this account is for, printed beside it at the end of the seed. */
   holds: string;
@@ -712,21 +723,21 @@ const FOUNDING_ACCOUNTS: FoundingAccount[] = [
     roleSlug: 'chairman',
     env: 'OWNER',
     defaultLocalPart: 'chairman',
-    defaultName: 'Rishikesh',
+    defaultName: 'Chairman',
     holds: 'superadmin — every resource, every verb, every scope',
   },
   {
     roleSlug: 'hr_ops_manager',
     env: 'OPERATIONS',
     defaultLocalPart: 'operations',
-    defaultName: 'Kasthurika',
+    defaultName: 'Operations Head',
     holds: 'the people function, delivery, education and the course catalogue',
   },
   {
     roleSlug: 'finance_head',
     env: 'FINANCE',
     defaultLocalPart: 'finance',
-    defaultName: 'Narayanan',
+    defaultName: 'Finance Head',
     holds: 'the books, the GST returns, and the money side of people',
   },
   {
@@ -869,6 +880,19 @@ export async function seedBootstrap(): Promise<{
     await seedLeaveTypes();
     accounts = await seedFoundingAccounts();
   });
+
+  // Rows written under an older shape, brought up to the current one. Safe to
+  // re-run: each backfill changes only what still carries the old shape.
+  const backfilled = await runBackfills();
+  if (backfilled.organizationKinds > 0) {
+    console.log(`  ${backfilled.organizationKinds} organisation(s) recognised as institutions`);
+  }
+  if (backfilled.studentProfiles > 0) {
+    console.log(`  ${backfilled.studentProfiles} enrolled learner(s) given a student record`);
+  }
+  if (backfilled.designations > 0) {
+    console.log(`  ${backfilled.designations} founding account(s) now named by designation`);
+  }
 
   // `owner` is kept as its own field because it is what every caller printing
   // sign-in details actually wants, and because removing it would break them for

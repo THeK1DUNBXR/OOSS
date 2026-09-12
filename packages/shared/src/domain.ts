@@ -31,6 +31,139 @@ export const VERTICAL_LABELS: Record<Vertical, string> = {
   other: 'Other',
 };
 
+// ---------------------------------------------------------------------------
+// The three parties, as Kaizen actually meets them
+//
+// One engineering organisation, three divisions — Software Engineering, Skill
+// Development, Education — and the same body can reach it through more than
+// one. The vocabulary below is taken from how the company describes its own
+// work rather than from a generic CRM: a college is an MoU partner at one of
+// five depths, a business may be a sponsor and an employer at once, and a
+// learner is very often not the person paying for their own course.
+// ---------------------------------------------------------------------------
+
+/**
+ * Who is actually paying for a learner's place.
+ *
+ * The single most consequential fact about a student here, because the platform
+ * bills people. Skill Development delivers "programmes commissioned by a scheme
+ * or a sponsor, delivered to cohorts" — a beneficiary of a funded cohort owes
+ * nothing, and an invoice raised to them is a document that should never have
+ * existed. Education's own learners pay their own fees. Both sit in the same
+ * classroom, so the distinction has to be on the learner and not on the course.
+ */
+export const FUNDING_SOURCES = ['self', 'sponsor', 'scheme', 'institution'] as const;
+export type FundingSource = (typeof FUNDING_SOURCES)[number];
+
+export const FUNDING_SOURCE_LABELS: Record<FundingSource, string> = {
+  self: 'Paying their own fee',
+  sponsor: 'Sponsored by an organisation',
+  scheme: 'Funded under a scheme',
+  institution: 'Paid by their college',
+};
+
+/**
+ * The funding frameworks Skill Development delivers into.
+ *
+ * Each has its own documentation standard, assessment model and reporting
+ * expectation, which is why the framework is recorded rather than a free-text
+ * note: "which of our learners are Naan Mudhalvan" is a question the scheme
+ * owner asks, and it cannot be answered from a text field somebody typed.
+ */
+export const FUNDING_FRAMEWORKS = [
+  'naan_mudhalvan',
+  'vetri_nichayam',
+  'tnsdc_other',
+  'nsdc_linked',
+  'csr',
+  'institution_funded',
+  'other',
+] as const;
+export type FundingFramework = (typeof FUNDING_FRAMEWORKS)[number];
+
+export const FUNDING_FRAMEWORK_LABELS: Record<FundingFramework, string> = {
+  naan_mudhalvan: 'Naan Mudhalvan',
+  vetri_nichayam: 'Vetri Nichayam',
+  tnsdc_other: 'Other TNSDC programme',
+  nsdc_linked: 'NSDC-linked scheme',
+  csr: 'CSR-funded',
+  institution_funded: 'Institution-funded',
+  other: 'Another framework',
+};
+
+/**
+ * What an organisation is to Kaizen. Not exclusive: a manufacturer can sponsor
+ * a CSR cohort and hire out of it, and most of the good relationships are both.
+ *
+ * This is the opposite call from institution-versus-organisation, which is one
+ * exclusive identity. What a body *is* is one thing; what it *does with us* is
+ * several, and flattening the second into the first is what produced a single
+ * list nobody could read.
+ */
+export const ORGANIZATION_ROLES = ['client', 'sponsor', 'employer', 'government'] as const;
+export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
+
+export const ORGANIZATION_ROLE_LABELS: Record<OrganizationRole, string> = {
+  client: 'Buys from us',
+  sponsor: 'Funds cohorts',
+  employer: 'Hires our learners',
+  government: 'Scheme or department',
+};
+
+export const ORGANIZATION_ROLE_HINTS: Record<OrganizationRole, string> = {
+  client: 'Software, or training for their own staff.',
+  sponsor: 'CSR or another budget paying for somebody else\u2019s learners.',
+  employer: 'Takes people at the end of a cohort, or re-skills the ones they have.',
+  government: 'A department or state skill agency appointing partners under a scheme.',
+};
+
+/**
+ * The five depths of an institutional engagement, from For Educators.
+ *
+ * A college is not one relationship. "We run their faculty development" and
+ * "we built their admissions portal" are different engagements with different
+ * people, different money and different divisions, and a partnership that is
+ * only ever recorded as "active" tells nobody which of them is true.
+ */
+export const INSTITUTION_ENGAGEMENTS = [
+  'academic_alignment',
+  'faculty_development',
+  'student_capability',
+  'research_innovation',
+  'centre_of_excellence',
+  'institutional_technology',
+] as const;
+export type InstitutionEngagement = (typeof INSTITUTION_ENGAGEMENTS)[number];
+
+export const INSTITUTION_ENGAGEMENT_LABELS: Record<InstitutionEngagement, string> = {
+  academic_alignment: 'Academic alignment',
+  faculty_development: 'Faculty development',
+  student_capability: 'Student capability',
+  research_innovation: 'Research & innovation',
+  centre_of_excellence: 'Centre of excellence',
+  institutional_technology: 'Institutional technology',
+};
+
+export const INSTITUTION_ENGAGEMENT_HINTS: Record<InstitutionEngagement, string> = {
+  academic_alignment: 'Curriculum enrichment, technical electives, project-based learning.',
+  faculty_development: 'Workshops, masterclasses and bootcamps for their staff.',
+  student_capability: 'Our programmes delivered on their campus, with industry exposure.',
+  research_innovation: 'Applied research, proofs of concept, publications, patents.',
+  centre_of_excellence: 'Institution-led, joint or extended.',
+  institutional_technology: 'Portals, student-lifecycle workflows, dashboards \u2014 built by Software Engineering.',
+};
+
+/** Where a learner is taught. Two offices and online. */
+export const DELIVERY_LOCATIONS = ['madurai', 'coimbatore', 'online', 'on_campus'] as const;
+export type DeliveryLocation = (typeof DELIVERY_LOCATIONS)[number];
+
+export const DELIVERY_LOCATION_LABELS: Record<DeliveryLocation, string> = {
+  madurai: 'Madurai',
+  coimbatore: 'Coimbatore',
+  online: 'Online',
+  on_campus: 'On their campus',
+};
+
 export const COMMERCIAL_MOTIONS = [
   'enterprise_direct',
   'institution_partnership',

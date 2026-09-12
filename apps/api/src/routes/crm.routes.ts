@@ -1,6 +1,16 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
-import { VERTICALS, INTERACTION_TYPES, RELATIONSHIP_TYPES, COUNTERPARTY_AFFILIATIONS } from '@kaizen/shared';
+import {
+  VERTICALS,
+  INTERACTION_TYPES,
+  RELATIONSHIP_TYPES,
+  COUNTERPARTY_AFFILIATIONS,
+  DELIVERY_LOCATIONS,
+  FUNDING_FRAMEWORKS,
+  FUNDING_SOURCES,
+  INSTITUTION_ENGAGEMENTS,
+  ORGANIZATION_ROLES,
+} from '@kaizen/shared';
 import { handler, parsePaging, str, bool, date, numeric } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
@@ -21,7 +31,17 @@ import {
   detachAccount,
   assembleOrganization360,
   computeRelationshipStatus,
+  reclassifyOrganization,
+  setOrganizationRoles,
 } from '../domains/organizations.js';
+import {
+  createStudent,
+  listStudents,
+  loadStudent,
+  updateStudent,
+  attachStudentProfile,
+  STUDENT_STATUSES,
+} from '../domains/students.js';
 import { createRelationship, refineRelationship, supersedeRelationship, traverse, resolveEdge } from '../domains/relationships.js';
 import {
   createLead,
@@ -288,15 +308,21 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
-// Organizations and their two independent specialisations
+// The two kinds of body: institutions, and organisations
+//
+// One storage model, two endpoints, because they are two different things to
+// the business and were never usefully browsed together. `/institutions`
+// returns schools and colleges; `/organizations` returns trusts, foundations
+// and businesses; neither returns the other. The third party type, the student,
+// is a person and lives under `/students`.
 // ---------------------------------------------------------------------------
 
 /**
- * The two specialisations, as one schema each.
+ * The two detail blocks, as one schema each.
  *
- * Shared between "create it as one" and "mark an existing one as one", because
- * those are the same fact arriving at two different moments and a second copy
- * of the shape is a second copy to forget to update.
+ * Shared between "create it with these" and "add these later", because those
+ * are the same fact arriving at two different moments and a second copy of the
+ * shape is a second copy to forget to update.
  */
 const accountSchema = z.object({
   tier: z.string().optional(),
@@ -308,6 +334,9 @@ const accountSchema = z.object({
 });
 
 const institutionProfileSchema = z.object({
+  /** Which of the five depths this partnership runs at. */
+  engagements: z.array(z.enum(INSTITUTION_ENGAGEMENTS)).optional(),
+  accreditation: z.string().nullish(),
   institutionType: z.string().nullish(),
   managementType: z.string().nullish(),
   district: z.string().nullish(),
@@ -323,99 +352,229 @@ const institutionProfileSchema = z.object({
   strategicPriority: z.string().nullish(),
 });
 
-router.get(
-  '/organizations',
-  handler(async (req) => {
-    await assertCan({ resource: 'organizations', verb: 'view' });
-    const auth = currentAuth();
-    const { page, pageSize } = parsePaging(req);
-    const q = str(req.query.q);
-    const specialisation = str(req.query.specialisation);
+/**
+ * One list builder, two lists.
+ *
+ * The kind is not a filter the caller may widen: it comes from the route, and
+ * the grant checked is the one that governs that kind. Asking `/organizations`
+ * for institutions is not possible, which is the point — the separation is in
+ * the API and not merely in what the screen happens to request.
+ */
+async function listBodies(req: Request, kind: 'institution' | 'organization') {
+  await assertCan({ resource: kind === 'institution' ? 'institutions' : 'organizations', verb: 'view' });
+  const auth = currentAuth();
+  const { page, pageSize } = parsePaging(req);
+  const q = str(req.query.q);
+  const billing = str(req.query.billing);
+  const role = str(req.query.role);
 
-    const where = {
-      tenantId: auth.tenantId,
-      deletedAt: null,
-      ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { recordCode: { contains: q, mode: 'insensitive' as const } }] } : {}),
-      // Tests specialisation existence, never a category enum.
-      ...(specialisation === 'account' ? { account: { isNot: null } } : {}),
-      ...(specialisation === 'institution' ? { institutionProfile: { isNot: null } } : {}),
-    };
-
-    const [items, total] = await Promise.all([
-      prisma.organization.findMany({
-        where: where as never,
-        orderBy: { name: 'asc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: { account: true, institutionProfile: true },
-      }),
-      prisma.organization.count({ where: where as never }),
-    ]);
-
-    const canSeeInstitution = await can({ resource: 'institutions', verb: 'view' });
-
-    return {
-      items: await Promise.all(
-        items.map(async (o) => ({
-          id: o.id,
-          recordCode: o.recordCode,
-          name: o.name,
-          website: o.website,
-          tags: o.tags,
-          ownerPartyId: o.ownerPartyId,
-          legacyCategory: o.legacyCategory,
-          specialisations: [
-            ...(o.account ? [{ kind: 'account' as const, present: true as const, viewable: true }] : []),
-            ...(o.institutionProfile ? [{ kind: 'institution_profile' as const, present: true as const, viewable: canSeeInstitution }] : []),
+  const where = {
+    tenantId: auth.tenantId,
+    kind,
+    deletedAt: null,
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' as const } },
+            { recordCode: { contains: q, mode: 'insensitive' as const } },
           ],
-          account: o.account,
-          // The fact of the specialisation is not itself sensitive; its
-          // contents are.
-          institutionProfile: canSeeInstitution ? o.institutionProfile : null,
-          computedRelationshipStatus: await computeRelationshipStatus(o.id),
-          createdAt: o.createdAt.toISOString(),
-        })),
-      ),
-      total,
-      page,
-      pageSize,
-    };
-  }),
-);
+        }
+      : {}),
+    // "Which of these do we actually invoice" — a question about billing detail,
+    // not about what the body is.
+    ...(billing === 'yes' ? { account: { isNot: null } } : {}),
+    ...(billing === 'no' ? { account: { is: null } } : {}),
+    // "Which of these sponsor cohorts", "which of them hire our learners".
+    ...(role ? { roles: { has: role } } : {}),
+  };
+
+  const [items, total] = await Promise.all([
+    prisma.organization.findMany({
+      where: where as never,
+      orderBy: { name: 'asc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: { account: true, institutionProfile: true },
+    }),
+    prisma.organization.count({ where: where as never }),
+  ]);
+
+  const canSeeInstitution = await can({ resource: 'institutions', verb: 'view' });
+
+  return {
+    items: await Promise.all(
+      items.map(async (o) => ({
+        id: o.id,
+        recordCode: o.recordCode,
+        kind: o.kind,
+        roles: o.roles,
+        name: o.name,
+        website: o.website,
+        tags: o.tags,
+        ownerPartyId: o.ownerPartyId,
+        legacyCategory: o.legacyCategory,
+        billed: o.account !== null,
+        account: o.account,
+        // The fact of the detail is not itself sensitive; its contents are.
+        institutionProfile: canSeeInstitution ? o.institutionProfile : null,
+        computedRelationshipStatus: await computeRelationshipStatus(o.id),
+        createdAt: o.createdAt.toISOString(),
+      })),
+    ),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+router.get('/organizations', handler(async (req) => listBodies(req, 'organization')));
+router.get('/institutions', handler(async (req) => listBodies(req, 'institution')));
 
 router.get('/organizations/:id', handler(async (req) => assembleOrganization360(req.params.id)));
+router.get('/institutions/:id', handler(async (req) => assembleOrganization360(req.params.id)));
+
+const bodySchema = z.object({
+  name: z.string().min(1),
+  website: z.string().nullish(),
+  /** What this body does with us — not exclusive, and not what it *is*. */
+  roles: z.array(z.enum(ORGANIZATION_ROLES)).optional(),
+  tags: z.array(z.string()).optional(),
+  ownerPartyId: z.string().nullish(),
+  account: accountSchema.optional(),
+  institutionProfile: institutionProfileSchema.optional(),
+});
 
 router.post(
   '/organizations',
   handler(async (req, res) => {
-    // The specialisation blocks are optional and independent. Sending both
-    // creates a body that is a client and a college at once, which is a real
-    // case here and not a conflict.
-    const schema = z.object({
-      name: z.string().min(1),
-      website: z.string().nullish(),
-      tags: z.array(z.string()).optional(),
-      ownerPartyId: z.string().nullish(),
-      account: accountSchema.optional(),
-      institutionProfile: institutionProfileSchema.optional(),
-    });
-    const org = await createOrganization(schema.parse(req.body));
+    const org = await createOrganization({ ...bodySchema.parse(req.body), kind: 'organization' });
     res.status(201).json(org);
     return undefined;
   }),
 );
 
 router.post(
+  '/institutions',
+  handler(async (req, res) => {
+    const org = await createOrganization({ ...bodySchema.parse(req.body), kind: 'institution' });
+    res.status(201).json(org);
+    return undefined;
+  }),
+);
+
+/** What a body does with us. An ordinary edit, unlike changing what it is. */
+router.put(
+  '/organizations/:id/roles',
+  handler(async (req) => {
+    const schema = z.object({ roles: z.array(z.enum(ORGANIZATION_ROLES)) });
+    return setOrganizationRoles(req.params.id, schema.parse(req.body).roles);
+  }),
+);
+
+/** It was written down as the wrong kind. Needs a reason, and refuses where the row has grown into what it is. */
+router.post(
+  '/organizations/:id/reclassify',
+  handler(async (req) => {
+    const schema = z.object({ kind: z.enum(['institution', 'organization']), reason: z.string().min(5) });
+    const input = schema.parse(req.body);
+    return reclassifyOrganization(req.params.id, input.kind, input.reason);
+  }),
+);
+
+/** Billing detail, on either kind. */
+router.post(
   '/organizations/:id/account',
   handler(async (req) => attachAccount(req.params.id, accountSchema.parse(req.body))),
 );
 
 router.post(
-  '/organizations/:id/institution-profile',
+  '/institutions/:id/school-details',
   handler(async (req) => attachInstitutionProfile(req.params.id, institutionProfileSchema.parse(req.body))),
 );
 
 router.delete('/organizations/:id/account', handler(async (req) => detachAccount(req.params.id)));
+
+// ---------------------------------------------------------------------------
+// Students
+//
+// The third party type, and the one the education business actually sells to.
+// A student is a person carrying a student record; these endpoints are about
+// that record, and `/people` remains about the human underneath it.
+// ---------------------------------------------------------------------------
+
+const studentSchema = z.object({
+  fullName: z.string().min(1),
+  primaryPhone: z.string().nullish(),
+  primaryEmail: z.string().nullish(),
+  registrationNumber: z.string().nullish(),
+  institutionId: z.string().nullish(),
+  address: z.string().nullish(),
+  placeOfSupply: z.string().nullish(),
+  gstin: z.string().nullish(),
+  status: z.enum(STUDENT_STATUSES).optional(),
+  // Who is paying, and under what. Checked against each other in the service:
+  // "sponsored" with nobody named is the row that later gets billed to the
+  // learner by mistake.
+  funding: z.enum(FUNDING_SOURCES).optional(),
+  sponsorId: z.string().nullish(),
+  fundingFramework: z.enum(FUNDING_FRAMEWORKS).nullish(),
+  deliveryLocation: z.enum(DELIVERY_LOCATIONS).nullish(),
+  notes: z.string().nullish(),
+});
+
+router.get(
+  '/students',
+  handler(async (req) =>
+    listStudents({
+      q: str(req.query.q),
+      status: str(req.query.status),
+      institutionId: str(req.query.institutionId),
+      funding: str(req.query.funding),
+      sponsorId: str(req.query.sponsorId),
+      fundingFramework: str(req.query.fundingFramework),
+      ...parsePaging(req),
+    }),
+  ),
+);
+
+router.get(
+  '/students/:id',
+  handler(async (req) => {
+    await assertCan({ resource: 'students', verb: 'view' });
+    const student = await loadStudent(req.params.id);
+    if (!student) throw ApiError.notFound('Student');
+    return student;
+  }),
+);
+
+router.post(
+  '/students',
+  handler(async (req, res) => {
+    const schema = studentSchema.extend({
+      forceCreate: z.boolean().optional(),
+      overrideReason: z.string().optional(),
+    });
+    const { forceCreate, overrideReason, ...input } = schema.parse(req.body);
+    const student = await createStudent(input, { forceCreate, overrideReason });
+    res.status(201).json(student);
+    return undefined;
+  }),
+);
+
+/** Somebody already on file becomes a student — a contact, an alumnus coming back. */
+router.post(
+  '/people/:id/student-record',
+  handler(async (req, res) => {
+    const student = await attachStudentProfile(req.params.id, studentSchema.parse(req.body));
+    res.status(201).json(student);
+    return undefined;
+  }),
+);
+
+router.patch(
+  '/students/:id',
+  handler(async (req) => updateStudent(req.params.id, studentSchema.partial().parse(req.body))),
+);
 
 // ---------------------------------------------------------------------------
 // Relationships

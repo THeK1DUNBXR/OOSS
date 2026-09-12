@@ -292,7 +292,7 @@ export function AssignCourse({
   });
   const colleges = useQuery({
     queryKey: ['colleges'],
-    queryFn: () => api.get<any>('/crm/organizations?specialisation=institution'),
+    queryFn: () => api.get<any>('/crm/institutions?pageSize=200'),
   });
 
   const rows = <T,>(data: unknown): T[] =>

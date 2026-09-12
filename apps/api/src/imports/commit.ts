@@ -740,7 +740,9 @@ export async function revertImport(id: string) {
           // enrolment that has had attendance marked or a fee receipted against
           // it is a record of something that happened; reverting the import that
           // created it does not unhappen any of that. The student stays on file,
-          // because they may have been on file before this import ran.
+          // because they may have been on file before this import ran — and
+          // their student record with them, for the same reason: it is a fact
+          // about a person, not about this batch.
           await prisma.enrollment.update({
             where: { id: row.entityId },
             data: { status: 'withdrawn' },
@@ -874,12 +876,21 @@ async function commitBatchRow(data: Record<string, unknown>) {
   return { entityType: 'cohort', entityId: cohort.id };
 }
 
-/** Shared by the college and client templates: find the organisation, or make it. */
-async function organizationFor(name: string) {
+/**
+ * Shared by the college and client templates: find the body, or make it as the
+ * kind the template is for.
+ *
+ * A name already on file is used as it stands even if it was recorded as the
+ * other kind — an import does not get to decide that the college somebody
+ * entered by hand is really a supplier. The row is returned as it is and the
+ * caller's kind-specific work refuses on its own terms, which is where the
+ * error message can actually say what happened.
+ */
+async function organizationFor(name: string, kind: 'institution' | 'organization') {
   const existing = await organizationByName(name);
   if (existing) return existing;
   const { createOrganization } = await import('../domains/organizations.js');
-  const created = await createOrganization({ name });
+  const created = await createOrganization({ name, kind });
   return { ...created, institutionProfile: null as { id: string } | null };
 }
 
@@ -887,7 +898,7 @@ async function commitCollegeRow(data: Record<string, unknown>) {
   const name = text(data.name);
   if (!name) return null;
 
-  const org = await organizationFor(name);
+  const org = await organizationFor(name, 'institution');
   const { attachInstitutionProfile, attachAccount } = await import('../domains/organizations.js');
 
   if (!org.institutionProfile) {
@@ -905,8 +916,8 @@ async function commitCollegeRow(data: Record<string, unknown>) {
     await prisma.organization.update({ where: { id: org.id }, data: { website: text(data.website) } });
   }
 
-  // A college that also buys from us. Not an either/or, which is the whole
-  // reason these are two independent facts on one row.
+  // A college that also buys from us. It stays a college: billing detail is not
+  // an identity, and the column says the money moves, not what the body is.
   if (data.alsoAClient === true) {
     const account = await prisma.account.findFirst({ where: { organizationId: org.id } });
     if (!account) await attachAccount(org.id, {});
@@ -919,7 +930,7 @@ async function commitClientRow(data: Record<string, unknown>) {
   const name = text(data.name);
   if (!name) return null;
 
-  const org = await organizationFor(name);
+  const org = await organizationFor(name, 'organization');
   const { attachAccount } = await import('../domains/organizations.js');
 
   const account = await prisma.account.findFirst({ where: { organizationId: org.id } });
@@ -1083,6 +1094,44 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
       ...(enrolledAt ? { enrolledAt } : {}),
     },
   });
+
+  // The student record itself.
+  //
+  // An enrolment says somebody holds a place on a course; it does not make them
+  // a learner the company can find, list or bill. The register is a list of
+  // students, so importing it produces students — with the registration number
+  // in its own field rather than only as the enrolment's legacy reference.
+  //
+  // Nothing about money is written, here or anywhere in this import: the fees
+  // and the receipts in the file stay in the file until somebody asks for them.
+  const existingStudent = await prisma.studentProfile.findFirst({
+    where: { personId: enrollment.personId, deletedAt: null },
+  });
+  if (!existingStudent) {
+    // A registration number already in use means the same learner reached this
+    // row twice under two different people, which is a matter for whoever reads
+    // the preview. The student is still created, without it, rather than the
+    // row failing.
+    const numberFree =
+      !registrationNumber ||
+      !(await prisma.studentProfile.findFirst({ where: { registrationNumber } }));
+    await prisma.studentProfile.create({
+      data: {
+        tenantId: auth.tenantId,
+        personId: enrollment.personId,
+        registrationNumber: numberFree ? registrationNumber : null,
+        status: 'active',
+      },
+    });
+  } else if (registrationNumber && !existingStudent.registrationNumber) {
+    const taken = await prisma.studentProfile.findFirst({ where: { registrationNumber } });
+    if (!taken) {
+      await prisma.studentProfile.update({
+        where: { id: existingStudent.id },
+        data: { registrationNumber },
+      });
+    }
+  }
 
   return { entityType: 'enrollment', entityId: enrollment.id };
 }

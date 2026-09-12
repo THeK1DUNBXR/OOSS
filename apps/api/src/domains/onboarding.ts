@@ -29,6 +29,15 @@ export interface OnboardingStep {
   count: number;
   /** Where to go to do it. */
   path: string;
+  /**
+   * Where the step is actually *performed*, when that differs from the screen
+   * it lives on. Adding a customer happens in a dialog on the organisations
+   * screen, so the button that says "Add a customer" opens that dialog rather
+   * than dropping somebody on a list and leaving them to find it. Used only
+   * while the step is undone; once it is done the plain screen is what you
+   * want to look at.
+   */
+  doPath?: string;
   action: string;
   /** Hidden entirely from somebody who could not do it anyway. */
   permission: string;
@@ -48,11 +57,12 @@ export async function onboardingState(): Promise<OnboardingState> {
   const auth = currentAuth();
   const tenantId = auth.tenantId;
 
-  const [accounts, transactions, employees, organizations, invoices, users, imports] = await Promise.all([
+  const [accounts, transactions, employees, students, institutions, invoices, users, imports] = await Promise.all([
     prisma.ledgerAccount.count({ where: { tenantId, deletedAt: null } }),
     prisma.transaction.count({ where: { tenantId, deletedAt: null } }),
     prisma.employmentRelationship.count({ where: { tenantId, deletedAt: null } }),
-    prisma.organization.count({ where: { tenantId, deletedAt: null } }),
+    prisma.studentProfile.count({ where: { tenantId, deletedAt: null } }),
+    prisma.organization.count({ where: { tenantId, kind: 'institution', deletedAt: null } }),
     prisma.invoice.count({ where: { tenantId } }),
     prisma.user.count({ where: { tenantId } }),
     prisma.importBatch.count({ where: { tenantId, status: 'committed' } }),
@@ -93,14 +103,29 @@ export async function onboardingState(): Promise<OnboardingState> {
       permission: 'employees:C',
     },
     {
-      key: 'customers',
-      title: 'Add who you sell to',
-      why: 'One record per real organisation, whether they are a client, a college, or both.',
-      done: organizations > 0,
-      count: organizations,
-      path: '/crm/accounts',
-      action: 'Add a customer',
-      permission: 'organizations:C',
+      key: 'students',
+      title: 'Add your students',
+      why:
+        'The learners you teach. One record each — their registration number, where they came from, and what they are on. A student is billed in their own name, so this is also who most of your invoices are addressed to.',
+      done: students > 0,
+      count: students,
+      path: '/crm/students',
+      doPath: '/crm/students?new=1',
+      action: 'Add a student',
+      permission: 'students:C',
+    },
+    {
+      key: 'institutions',
+      title: 'Add the schools and colleges you work with',
+      why:
+        'Where learners come to you from. A student names theirs, and the college\u2019s own page then answers how many it has sent and how they did.',
+      done: institutions > 0,
+      count: institutions,
+      path: '/crm/institutions',
+      doPath: '/crm/institutions?new=1',
+      action: 'Add a college',
+      permission: 'institutions:C',
+      optional: true,
     },
     {
       key: 'invoice',

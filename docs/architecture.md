@@ -75,6 +75,84 @@ the audit trail survives the merge.
 
 ---
 
+## The three parties
+
+`apps/api/src/domains/students.ts`, `organizations.ts`
+
+Three kinds of body, separated because they are read, billed, reported and
+worked differently:
+
+| | What it is | Stored as | Grant family |
+|---|---|---|---|
+| **Student** | somebody who takes a course | `Person` + `StudentProfile` | `students` |
+| **Institution** | a school, college or polytechnic | `Organization` `kind='institution'` + `InstitutionProfile` | `institutions` |
+| **Organisation** | a trust, a foundation, a business | `Organization` `kind='organization'` + billing | `organizations` |
+
+The kind is **exclusive and enforced**. Institutions and organisations used to
+be optional specialisations that could sit on one row at once, on the reasoning
+that a college might also buy training and keeping two records of one legal body
+is how a CRM starts lying to you. That reasoning was right about billing and
+wrong about identity: the product ended up with a single list called "Companies
+& Colleges" that answered neither "which colleges do we work with" nor "who are
+our corporate clients", and with one word — *customer* — covering a fifteen-year-old
+learner, a government polytechnic and a manufacturer.
+
+So:
+
+- **Billing detail is not an identity.** A college that buys a staff programme
+  carries payment terms and a GSTIN like anyone else and stays a college. The
+  `Account` row is available on either kind; a student's equivalent fields live
+  on their own record.
+- **A student is a person, not a small organisation.** One row per human, so the
+  graduate hired next year is the same row and their history does not restart.
+  `findOrCreatePerson` still governs creation, so taking on a learner who is
+  already a contact attaches a profile rather than forking them.
+- **"Customer" is a role on a document, not a kind of record.** It exists on an
+  invoice — which of the three this obligation is owed by — and nowhere else.
+  The document prints which, because *Student* over a name and *Institution*
+  over a college's name are different documents to whoever files them.
+- **Getting the kind wrong is correctable, not editable.** `reclassifyOrganization`
+  asks for a reason and refuses while learners name the row as where they came
+  from.
+
+### What each is to Kaizen
+
+The vocabulary is taken from how the company describes its own work — one
+engineering organisation, three divisions, and the five stakeholder types Skill
+Development names: government, CSR sponsors, institutions, employers, learners.
+
+**A student is very often not the person paying.** Skill Development delivers
+"programmes commissioned by a scheme or a sponsor, delivered to cohorts", and a
+beneficiary of a funded cohort owes nothing — while the learner beside them, who
+walked in off the street, pays their own fee. Nothing about the course
+distinguishes them, so `StudentProfile.funding` does: `self`, `sponsor`,
+`scheme` or `institution`, with the payer named. It is the most consequential
+field on the record, because the platform bills people: `createInvoice` refuses
+to address an invoice to a funded learner and says who to bill instead. A scheme
+must name its framework — Naan Mudhalvan, Vetri Nichayam, a TNSDC or NSDC-linked
+programme, CSR — because each has its own reporting expectation and "funded" on
+its own reports as nothing.
+
+**An organisation does several things at once.** `roles` is a set, not a choice:
+`client` buys from us, `sponsor` funds somebody else's learners, `employer`
+takes people at the end of a cohort, `government` is a department or state skill
+agency appointing partners. A manufacturer that funds a CSR cohort and hires out
+of it is both, and the best relationships are. This is the opposite call from
+institution-versus-organisation: what a body *is* is one exclusive thing, what it
+*does with us* is several, and flattening the second into the first is what
+produced a list nobody could read.
+
+**An institution is a partnership at a stated depth.** The six engagements come
+from For Educators: academic alignment, faculty development, student capability,
+research and innovation, a centre of excellence, institutional technology. A
+college is not one relationship — "we run their faculty development" and "we
+built their admissions portal" are different engagements with different people,
+different money and different divisions — and a partnership recorded only as
+"active" says which of them is true to nobody. Accreditation sits beside them,
+because their outcome reporting is a thing the company helps with.
+
+---
+
 ## P2 — Pipeline as data
 
 `apps/api/src/domains/pipelines.ts`, `apps/api/src/seed/pipelines.ts`
