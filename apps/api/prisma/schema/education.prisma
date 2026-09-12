@@ -24,6 +24,11 @@ model Course {
   /// head — should not have to know the price list or the tax code.
   feeAmount Decimal? @db.Decimal(18, 2)
   gstRate   Decimal  @default(18) @db.Decimal(5, 2)
+  /// How the fee is split into instalments, as `[{ share, dueInDays }]`.
+  /// Absent means the course-wide default. The schedule used to be a
+  /// hardcoded 40/30/30 on a hardcoded 60,000 in an event handler, which
+  /// billed every enrolment the same regardless of what it was for.
+  feePlan Json?
   hsnSac    String?
   /// Which division earns what this course brings in.
   division  String   @default("education")

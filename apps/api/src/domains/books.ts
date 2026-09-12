@@ -40,6 +40,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
+import { auditWrite } from '../platform/audit.js';
 
 // ---------------------------------------------------------------------------
 // Accounts and categories
@@ -64,7 +65,7 @@ export async function createAccount(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'ledger_accounts', verb: 'create' });
-  return prisma.ledgerAccount.create({
+  const account = await prisma.ledgerAccount.create({
     data: {
       tenantId: auth.tenantId,
       name: input.name,
@@ -75,6 +76,13 @@ export async function createAccount(input: {
       ledgerGroup: input.ledgerGroup ?? (input.accountType === 'loan' ? 'liability' : 'asset'),
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'ledger_account',
+    subjectId: account.id,
+    after: { name: account.name, accountType: account.accountType, openingBalance: input.openingBalance ?? 0 },
+  });
+  return account;
 }
 
 export async function listCategories() {
@@ -96,7 +104,7 @@ export async function createCategory(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'categories', verb: 'create' });
-  return prisma.ledgerCategory.create({
+  const category = await prisma.ledgerCategory.create({
     data: {
       tenantId: auth.tenantId,
       name: input.name,
@@ -107,6 +115,13 @@ export async function createCategory(input: {
       mustPay: input.mustPay ?? false,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'ledger_category',
+    subjectId: category.id,
+    after: { name: category.name, kind: category.kind, mustPay: category.mustPay },
+  });
+  return category;
 }
 
 /**
@@ -242,6 +257,12 @@ export async function recordTransaction(input: TransactionInput) {
     impact: { domains: ['fin'] },
   });
 
+  await auditWrite({
+    action: 'create',
+    subjectType: 'transaction',
+    subjectId: txn.id,
+    after: { recordCode: txn.recordCode, amount: input.amount, direction: input.direction, accountId: input.accountId },
+  });
   return txn;
 }
 
@@ -290,6 +311,13 @@ export async function reverseTransaction(id: string, reason: string) {
       },
     });
     await tx.transaction.update({ where: { id: original.id }, data: { reversedById: created.id } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'transaction',
+      subjectId: original.id,
+      before: { status: 'posted', reversedById: null },
+      after: { status: 'reversed', reversedById: created.id, reason },
+    });
     return created;
   });
 
@@ -393,6 +421,13 @@ export async function recordVendorBill(input: {
     },
   });
 
+  await auditWrite({
+    action: 'create',
+    subjectType: 'vendor_bill',
+    subjectId: bill.id,
+    after: { recordCode, vendorName: input.vendorName, total, dueDate: input.dueDate },
+  });
+
   await emit({
     name: EVENTS.VENDOR_BILL_RECORDED,
     subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode },
@@ -449,6 +484,13 @@ export async function payVendorBill(id: string, input: { amount: number; account
     data: { paidAmount: paid, status },
   });
 
+  await auditWrite({
+    action: 'update',
+    subjectType: 'vendor_bill',
+    subjectId: id,
+    before: { status: bill.status, paidAmount: num(bill.paidAmount) ?? 0 },
+    after: { status: updated.status, paidAmount: num(updated.paidAmount) ?? 0, paidVia: txn.id },
+  });
   return { bill: updated, transaction: txn };
 }
 
