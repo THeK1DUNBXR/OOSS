@@ -355,13 +355,25 @@ match what shipped — a new screen appears, a renamed one is renamed, a retired
 one goes. It used to happen only in the seed, and twice a release shipped
 screens that could not be reached because nobody knew that step existed.
 
+**A new resource is granted on deploy, and nothing else is.** The same gap shows
+up in permissions: a release that adds a whole resource leaves every existing
+tenant with no grant row for it, so the screen that shipped with it has no
+button — "I can add institutions and organisations but not customers" was
+exactly that. At boot, a role with *no row at all* for a resource the matrix
+declares gets the row the matrix declares. An existing grant is never changed,
+widened, narrowed or removed: that stays a deliberate act through
+`pnpm grants:reconcile --apply`, which prints the diff before it writes, and
+anything waiting there is counted in the footnote. Every automatic addition is
+logged by name and emits `kz.gov.grant.changed`. Set `GRANT_AUTOSYNC=off` to
+keep the strict manual posture.
+
 ---
 
 ## Test
 
 ```bash
 ./scripts/test-db.sh          # provision the suite's own database
-cd apps/api && pnpm test      # 370 tests
+cd apps/api && pnpm test      # 372 tests
 ```
 
 The suite runs against a real PostgreSQL database, inside real request
@@ -414,7 +426,7 @@ docs               architecture, acceptance map, operations
 ```
 
 114 Prisma models, 26 domain services plus five for People and one for the
-books, 370 tests and four in a browser.
+books, 372 tests and four in a browser.
 
 The HR lifecycle machines and the finance arithmetic live in `packages/shared`
 rather than in the API, and that placement is the point: a surface rendering a

@@ -7,6 +7,7 @@ import { registerSubscribers } from './events/handlers.js';
 import { prisma } from './platform/db.js';
 import { BUILD, STARTED_AT, buildLabel } from './platform/build.js';
 import { reconcileNavForAllTenants } from './platform/navSync.js';
+import { addMissingGrantsForAllTenants } from './platform/grantSync.js';
 
 export function createApp() {
   const app = express();
@@ -64,6 +65,21 @@ if (process.env.NODE_ENV !== 'test') {
     })
     .catch((error: unknown) => {
       console.error('Navigation could not be reconciled at boot:', error);
+    });
+
+  // And the other half of the same problem: a release that adds a whole new
+  // resource leaves every existing tenant with no grant row for it, so nobody
+  // can use the screen that shipped with it. Only resources a role has never
+  // had a row for are filled in — changing or revoking an existing grant stays
+  // a deliberate act through `reconcileGrants --apply`.
+  void addMissingGrantsForAllTenants()
+    .then(({ tenants, added }) => {
+      if (added.length > 0) {
+        console.log(`Grants: ${added.length} new resource(s) granted across ${tenants} tenant(s)`);
+      }
+    })
+    .catch((error: unknown) => {
+      console.error('Grants could not be brought up to the matrix at boot:', error);
     });
 
   app.listen(port, () => {

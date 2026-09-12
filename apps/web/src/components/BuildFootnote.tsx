@@ -42,6 +42,7 @@ interface VersionReport {
   } | null;
   seedBehindBy: number;
   expected: { navNodes: number };
+  grants: { pending: number; changed: number; revoked: number };
 }
 
 /** Baked in by Vite at build time. See `vite.config.ts`. */
@@ -72,6 +73,11 @@ export function BuildFootnote() {
     WEB.known && apiStamp?.known && WEB.sequence > 0 && apiStamp.sequence > 0 && WEB.sequence !== apiStamp.sequence;
   const seedStale = (data?.seedBehindBy ?? 0) > 0;
   const neverSeeded = Boolean(data) && !seed;
+  // Boot fills in resources nobody had a row for; changing or revoking an
+  // existing grant stays deliberate, so what is left here is waiting on
+  // somebody. A missing permission shows up as a button that is not there,
+  // which is the least diagnosable symptom in the product.
+  const grantsPending = data?.grants?.pending ?? 0;
 
   const parts = [
     `web ${WEB.known ? WEB.sequence || WEB.commit : '—'}`,
@@ -113,6 +119,13 @@ export function BuildFootnote() {
         )}
         {neverSeeded && (
           <span className="text-band-watch">— no seed has been recorded against this company.</span>
+        )}
+        {grantsPending > 0 && (
+          <span className="text-band-watch">
+            — {grantsPending} permission change{grantsPending === 1 ? '' : 's'} in the matrix{' '}
+            {grantsPending === 1 ? 'is' : 'are'} not applied here. New resources are granted on deploy; changing or
+            removing an existing one is deliberate — run <span className="mono">pnpm grants:reconcile --apply</span>.
+          </span>
         )}
       </p>
     </footer>
