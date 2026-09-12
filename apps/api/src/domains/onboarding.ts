@@ -29,6 +29,15 @@ export interface OnboardingStep {
   count: number;
   /** Where to go to do it. */
   path: string;
+  /**
+   * Where the step is actually *performed*, when that differs from the screen
+   * it lives on. Adding a customer happens in a dialog on the organisations
+   * screen, so the button that says "Add a customer" opens that dialog rather
+   * than dropping somebody on a list and leaving them to find it. Used only
+   * while the step is undone; once it is done the plain screen is what you
+   * want to look at.
+   */
+  doPath?: string;
   action: string;
   /** Hidden entirely from somebody who could not do it anyway. */
   permission: string;
@@ -99,6 +108,7 @@ export async function onboardingState(): Promise<OnboardingState> {
       done: organizations > 0,
       count: organizations,
       path: '/crm/accounts',
+      doPath: '/crm/accounts?new=1',
       action: 'Add a customer',
       permission: 'organizations:C',
     },

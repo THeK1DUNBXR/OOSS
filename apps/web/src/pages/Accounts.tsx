@@ -10,8 +10,8 @@
  * The fact of a specialisation is not itself sensitive — only what is inside it.
  */
 
-import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { OrganizationView } from '@kaizen/shared';
 import { api, date, relative, titleCase } from '../lib/api.js';
@@ -45,7 +45,19 @@ export function Accounts() {
   const { can } = useSession();
   const [tab, setTab] = useState<'all' | 'account' | 'institution'>('all');
   const [q, setQ] = useState('');
-  const [createOpen, setCreateOpen] = useState(false);
+  // `?new=1` opens the form on arrival, so a button elsewhere that says "Add a
+  // customer" adds a customer rather than landing somebody on a list. The
+  // parameter is cleared as the form opens: a reload should not reopen it, and
+  // the back button should come back to the list.
+  const [search, setSearch] = useSearchParams();
+  const [createOpen, setCreateOpen] = useState(() => search.get('new') === '1');
+  useEffect(() => {
+    if (search.get('new') !== '1') return;
+    setCreateOpen(true);
+    const rest = new URLSearchParams(search);
+    rest.delete('new');
+    setSearch(rest, { replace: true });
+  }, [search, setSearch]);
 
   const params = new URLSearchParams();
   if (tab !== 'all') params.set('specialisation', tab);
