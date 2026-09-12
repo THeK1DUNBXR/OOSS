@@ -38,6 +38,7 @@ import { ROLE_DEFINITIONS, ROLE_GRANT_MATRIX, parseCell } from './grants.js';
 import { PIPELINE_SEEDS, RETIRED_POST_AWARD_STAGES, transitionsFor } from './pipelines.js';
 import { registerSubscribers } from '../events/handlers.js';
 import { runBackfills } from './backfill.js';
+import { BUILD } from '../platform/build.js';
 
 export const TENANT_SLUG = process.env.TENANT_SLUG ?? 'kaizen';
 const TENANT_NAME = process.env.TENANT_NAME ?? 'Kaizen Infinities';
@@ -576,52 +577,10 @@ async function seedAgents() {
 async function seedSurfaces() {
   const tenantId = (await currentTenant()).id;
 
-  // Navigation.
-  //
-  // This was forty-two entries across nine groups, which is a defensible shape
-  // for a platform and an obstacle for a company of twelve people: nobody could
-  // find anything, and the reason nobody could find anything is that the
-  // grouping followed the architecture rather than the work.
-  //
-  // Six groups now, named for what a person is doing rather than for which
-  // bounded context owns the table. `Set up` is last and collapsed by default,
-  // because it is where you go twice a year.
-  const navNodes = NAV_REGISTRY;
-
-  for (const n of navNodes) {
-    await prisma.navNode.upsert({
-      where: { tenantId_nodeKey: { tenantId, nodeKey: n.nodeKey } },
-      create: {
-        tenantId,
-        nodeKey: n.nodeKey,
-        label: n.label,
-        icon: n.icon,
-        path: n.path,
-        group: n.group,
-        position: n.position,
-        requiredPermission: n.requiredPermission ?? null,
-        eligibleArchetypes: n.archetypes ?? [],
-        searchSynonyms: n.synonyms ?? [],
-      },
-      // Everything, not only the label and the path.
-      //
-      // The synonyms were left out of this update, and that is how "customers"
-      // went on opening Organisations long after the word had been moved to the
-      // students screen: the registry said one thing and the row a tenant
-      // actually searches against still said the other. A vocabulary change
-      // that does not reach an existing tenant is not a vocabulary change.
-      update: {
-        label: n.label,
-        icon: n.icon,
-        path: n.path,
-        group: n.group,
-        position: n.position,
-        requiredPermission: n.requiredPermission ?? null,
-        eligibleArchetypes: n.archetypes ?? [],
-        searchSynonyms: n.synonyms ?? [],
-      },
-    });
-  }
+  // Navigation, written through the same function the API runs at boot — one
+  // implementation of "make the menu match the code" rather than two that drift.
+  const { reconcileNav } = await import('../platform/navSync.js');
+  await reconcileNav(tenantId);
 
   // Every widget declares all seven mandatory fields. A non-empty actions[] is
   // enforced at publish time.
@@ -681,7 +640,7 @@ async function seedSurfaces() {
     }
   }
 
-  console.log(`  ${navNodes.length} nav nodes, ${widgets.length} widgets, ${templates.length} surface templates`);
+  console.log(`  ${NAV_REGISTRY.length} nav nodes, ${widgets.length} widgets, ${templates.length} surface templates`);
 }
 
 // ---------------------------------------------------------------------------
@@ -929,6 +888,32 @@ export async function seedBootstrap(): Promise<{
   // Rows written under an older shape, brought up to the current one. Safe to
   // re-run: each backfill changes only what still carries the old shape.
   const backfilled = await runBackfills();
+
+  // Stamp the tenant with the seed that just ran.
+  //
+  // The third of the three things that can be stale independently, and the one
+  // nothing on screen reveals: the API and the web bundle can both be current
+  // while a tenant's seeded rows — the grant matrix, the navigation, its
+  // vocabulary — are from three deploys ago. "Customers" went on opening
+  // Organisations for exactly that reason. The sequence increments on every
+  // run, so the footnote can say how far behind the data is rather than only
+  // when it was last touched.
+  const previous = (tenant.config as { seed?: { sequence?: number } } | null)?.seed;
+  await unscopedPrisma.tenant.update({
+    where: { id: tenant.id },
+    data: {
+      config: {
+        ...((tenant.config as object) ?? {}),
+        seed: {
+          sequence: (Number(previous?.sequence) || 0) + 1,
+          at: new Date().toISOString(),
+          build: BUILD.sequence,
+          commit: BUILD.commit,
+          navNodes: NAV_REGISTRY.length,
+        },
+      } as never,
+    },
+  });
   if (backfilled.organizationKinds > 0) {
     console.log(`  ${backfilled.organizationKinds} organisation(s) recognised as institutions`);
   }

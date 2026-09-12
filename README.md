@@ -330,11 +330,38 @@ request would be worse than an honest split.
 
 ---
 
+## Which build am I looking at
+
+Every screen carries a footnote:
+
+```
+web 148 · api 148 · data #12
+```
+
+Three sequences, because three things go stale independently — the web bundle,
+the API, and the tenant's seeded rows. A sequence is the count of commits behind
+a build, so 148 is plainly later than 147 where two commit hashes are just two
+strings; hovering gives the hash, the build time and when the data was last
+seeded. Where two disagree the footnote says so in words rather than leaving
+somebody to notice two numbers differ.
+
+`curl /health` carries the same build, for checking a deploy landed without
+signing in. A build step should set `BUILD_SEQUENCE`, `GIT_SHA` and `BUILT_AT`;
+from a checkout they come from git with nothing to set.
+
+**The sidebar is code, not data.** The API reconciles the navigation against its
+own registry at boot, for every tenant, so a deploy is enough to make the menu
+match what shipped — a new screen appears, a renamed one is renamed, a retired
+one goes. It used to happen only in the seed, and twice a release shipped
+screens that could not be reached because nobody knew that step existed.
+
+---
+
 ## Test
 
 ```bash
 ./scripts/test-db.sh          # provision the suite's own database
-cd apps/api && pnpm test      # 366 tests
+cd apps/api && pnpm test      # 370 tests
 ```
 
 The suite runs against a real PostgreSQL database, inside real request
@@ -387,7 +414,7 @@ docs               architecture, acceptance map, operations
 ```
 
 114 Prisma models, 26 domain services plus five for People and one for the
-books, 366 tests and four in a browser.
+books, 370 tests and four in a browser.
 
 The HR lifecycle machines and the finance arithmetic live in `packages/shared`
 rather than in the API, and that placement is the point: a surface rendering a
