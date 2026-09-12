@@ -131,14 +131,14 @@ export function Enrollments() {
     <div>
       <NewEnrollment open={enrolling} onClose={() => setEnrolling(false)} />
       <PageHeader
-        title="Students"
-        subtitle="Who is on which batch, and which college they came from. Open a student for their day-by-day record: attendance, weekly scores, the questions they asked, the feedback they gave and anything that went wrong."
+        title="Enrolments"
+        subtitle="Who is on which batch, and which college they came from. Open one for that learner's day-by-day record: attendance, weekly scores, the questions they asked, the feedback they gave and anything that went wrong. The people themselves are under Customers."
         actions={<NewButton label="Enrol a student" onClick={() => setEnrolling(true)} />}
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric
-          label="Students"
+          label="Learners"
           value={studentCount}
           sub={data.length === studentCount ? undefined : `on ${data.length} enrolments`}
           drillTo="/education/enrollments"

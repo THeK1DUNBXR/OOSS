@@ -116,7 +116,7 @@ export async function onboardingState(): Promise<OnboardingState> {
     },
     {
       key: 'institutions',
-      title: 'Add the schools and colleges you work with',
+      title: 'Add the institutions you work with',
       why:
         'Where learners come to you from. A student names theirs, and the college\u2019s own page then answers how many it has sent and how they did.',
       done: institutions > 0,

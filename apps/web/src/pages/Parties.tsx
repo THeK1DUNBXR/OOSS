@@ -261,12 +261,12 @@ export function Institutions() {
   return (
     <BodyList
       kind="institution"
-      title="Schools & Colleges"
-      subtitle="Where our learners come from. One record per school, college or polytechnic — what it is, and how many it has sent us."
+      title="Institutions"
+      subtitle="The schools, colleges and polytechnics we work with. Where our learners come from, what the partnership actually runs at, and how many each has sent us."
       addLabel="Add a school or college"
       permission="institutions:C"
       emptyMessage="No schools or colleges yet."
-      emptyHint="Add the ones that send you students. A student's record then names where they studied, and this page answers how many came from there."
+      emptyHint="Add the ones that send you learners. A customer's record then names where they studied, and this page answers how many came from there."
       renderForm={(open, onClose) => <NewInstitution open={open} onClose={onClose} />}
     />
   );
@@ -277,11 +277,11 @@ export function Organizations() {
     <BodyList
       kind="organization"
       title="Organisations"
-      subtitle="Trusts, foundations and businesses. The bodies that buy training, sponsor a cohort or take our graduates — kept apart from schools and colleges, which are a different relationship."
+      subtitle="The businesses, trusts and foundations we deal with: the ones that buy corporate training, sponsor a cohort, or hire our learners. Schools and colleges are under Institutions, and the learners themselves under Customers."
       addLabel="Add an organisation"
       permission="organizations:C"
       emptyMessage="No organisations yet."
-      emptyHint="Add the trusts, foundations and businesses you deal with. Schools and colleges live under Schools & Colleges."
+      emptyHint="Add the businesses you train for, the bodies that sponsor cohorts and the employers that hire your learners. Schools and colleges live under Institutions."
       renderForm={(open, onClose) => <NewOrganization open={open} onClose={onClose} />}
     />
   );

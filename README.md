@@ -249,9 +249,11 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
 - **Courses** — the catalogue, and a price list as much as a syllabus. A course
   carries its fee, its tax rate and its SAC, so raising an invoice for one means
   choosing what was sold rather than knowing the price list.
-- **Students, Schools & Colleges, Organisations** — three lists, because they
-  are three different parties. A learner who takes a course, a college that
-  sends learners, a trust or business that buys training. They used to be one
+- **Customers, Institutions, Organisations** — three lists, because they are
+  three different parties. **Customers** are the learners who take our courses;
+  **Institutions** are the schools and colleges they come from; **Organisations**
+  are the businesses, trusts and foundations that buy corporate training,
+  sponsor a cohort or hire our learners. They used to be one
   screen called "Companies & Colleges" and one word, *customer*, which meant
   neither "how many students do we have" nor "which colleges do we work with"
   had anywhere to be answered, and billing a walk-in meant inventing a company
@@ -332,7 +334,7 @@ request would be worse than an honest split.
 
 ```bash
 ./scripts/test-db.sh          # provision the suite's own database
-cd apps/api && pnpm test      # 363 tests
+cd apps/api && pnpm test      # 366 tests
 ```
 
 The suite runs against a real PostgreSQL database, inside real request
@@ -385,7 +387,7 @@ docs               architecture, acceptance map, operations
 ```
 
 114 Prisma models, 26 domain services plus five for People and one for the
-books, 363 tests and four in a browser.
+books, 366 tests and four in a browser.
 
 The HR lifecycle machines and the finance arithmetic live in `packages/shared`
 rather than in the API, and that placement is the point: a surface rendering a

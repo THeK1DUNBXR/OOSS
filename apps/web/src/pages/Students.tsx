@@ -118,8 +118,8 @@ export function Students() {
   return (
     <div>
       <PageHeader
-        title="Students"
-        subtitle="Everyone who takes a course with us. One record per learner — their registration number, where they came from, and what they are on."
+        title="Customers"
+        subtitle="The students who take our courses — one record per learner, with their registration number, where they came from, who is paying and what they are on. Colleges are under Institutions; the businesses that sponsor or hire are under Organisations."
         actions={
           can('students:C') && (
             <button className="btn-primary" onClick={() => setCreateOpen(true)}>

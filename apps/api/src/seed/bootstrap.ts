@@ -74,6 +74,103 @@ async function seedThresholds() {
 }
 
 /**
+ * The navigation registry: every surface a person can reach, and the words they
+ * might look for it under.
+ *
+ * Module-level and exported so the suite can hold the seeded rows to it. The
+ * synonyms in particular are load-bearing — the command palette routes a typed
+ * phrase through them — and they went stale once already, which is how
+ * "customers" went on opening Organisations after the word had moved to the
+ * learners screen.
+ */
+export interface NavNodeSpec {
+  nodeKey: string;
+  label: string;
+  icon: string;
+  path: string;
+  group: string;
+  position: number;
+  requiredPermission?: string;
+  archetypes?: string[];
+  synonyms?: string[];
+}
+
+export const NAV_REGISTRY: NavNodeSpec[] = [
+  // ---- Start here ------------------------------------------------------
+  { nodeKey: 'business', label: 'The Business', icon: 'trending', path: '/business', group: 'main', position: 0, requiredPermission: 'transactions:V', synonyms: ['dashboard', 'how are we doing', 'profit', 'runway', 'cash', 'by division', 'p&l'] },
+  { nodeKey: 'command', label: 'Needs Attention', icon: 'gauge', path: '/command', group: 'main', position: 1, requiredPermission: 'health_scores:V', synonyms: ['pulse', 'today', 'command centre', 'state of kaizen', 'problems'] },
+  { nodeKey: 'workspace', label: 'My Work', icon: 'home', path: '/workspace', group: 'main', position: 2, synonyms: ['my day', 'my queue', 'home', 'workspace'] },
+  { nodeKey: 'start', label: 'Getting Started', icon: 'book', path: '/start', group: 'main', position: 3, synonyms: ['setup', 'help', 'tutorial', 'how do i', 'guide', 'onboarding'] },
+
+  // ---- Money -----------------------------------------------------------
+  { nodeKey: 'fin_ledger', label: 'Ledger', icon: 'coins', path: '/finance/ledger', group: 'money', position: 10, requiredPermission: 'transactions:V', synonyms: ['transactions', 'cash book', 'spend', 'expenses', 'bank'] },
+  { nodeKey: 'fin_invoices', label: 'Invoices', icon: 'receipt', path: '/finance/invoices', group: 'money', position: 11, requiredPermission: 'invoices:V', synonyms: ['bill a customer', 'raise an invoice', 'sales invoice'] },
+  { nodeKey: 'fin_receipts', label: 'Receipts', icon: 'receipt', path: '/finance/receipts', group: 'money', position: 12, requiredPermission: 'payments:V', synonyms: ['part payment', 'instalment', 'acknowledgement', 'money received'] },
+  { nodeKey: 'fin_final_invoices', label: 'Final Invoices', icon: 'file', path: '/finance/final-invoices', group: 'money', position: 13, requiredPermission: 'invoices:V', synonyms: ['statement', 'settlement', 'closing invoice', 'instalments'] },
+  { nodeKey: 'fin_payments', label: 'Payments In', icon: 'wallet', path: '/finance/payments', group: 'money', position: 14, requiredPermission: 'payments:V', synonyms: ['money received', 'collections', 'bank credits'] },
+  { nodeKey: 'fin_payables', label: 'Bills To Pay', icon: 'receipt', path: '/finance/payables', group: 'money', position: 15, requiredPermission: 'vendor_bills:V', synonyms: ['payables', 'supplier bills', 'vendors', 'creditors', 'what we owe'] },
+  { nodeKey: 'fin_receivables', label: 'Owed To Us', icon: 'coins', path: '/finance/receivables', group: 'money', position: 16, requiredPermission: 'receivables:V', synonyms: ['receivables', 'debtors', 'outstanding'] },
+  { nodeKey: 'fin_gst', label: 'GST Returns', icon: 'scale', path: '/finance/gst', group: 'money', position: 17, requiredPermission: 'gst_filings:V', synonyms: ['gstr1', 'gstr-1', 'gstr3b', 'gstr-3b', 'filing', 'return', 'tax', 'itc', 'input credit'] },
+  { nodeKey: 'fin_budget', label: 'Budget', icon: 'calculator', path: '/finance/budget', group: 'money', position: 18, requiredPermission: 'budgets:V', synonyms: ['plan', 'variance', 'overspend'] },
+  { nodeKey: 'fin_assets', label: 'Assets & Loans', icon: 'package', path: '/finance/assets', group: 'money', position: 19, requiredPermission: 'assets:V', synonyms: ['depreciation', 'borrowing', 'emi', 'fixed assets'] },
+
+  // ---- People ----------------------------------------------------------
+  { nodeKey: 'hr_people', label: 'Employees', icon: 'users', path: '/people/employees', group: 'people', position: 20, requiredPermission: 'employees:V', synonyms: ['staff', 'team', 'headcount', 'who works here', 'directory'] },
+  { nodeKey: 'hr_leave', label: 'Leave', icon: 'clock', path: '/people/leave', group: 'people', position: 21, requiredPermission: 'leave:V', synonyms: ['holiday', 'time off', 'absence', 'casual leave'] },
+  { nodeKey: 'hr_attendance', label: 'Attendance', icon: 'clipboard', path: '/people/attendance', group: 'people', position: 22, requiredPermission: 'attendance:V', synonyms: ['timesheet', 'punch', 'hours', 'present'] },
+  { nodeKey: 'hr_payroll', label: 'Payroll', icon: 'wallet', path: '/people/payroll', group: 'people', position: 23, requiredPermission: 'payroll:V', synonyms: ['salary', 'pay run', 'wages', 'payslip'] },
+  { nodeKey: 'hr_hiring', label: 'Hiring', icon: 'inbox', path: '/people/hiring', group: 'people', position: 24, requiredPermission: 'requisitions:V', synonyms: ['recruitment', 'vacancies', 'candidates', 'applications'] },
+  { nodeKey: 'hr_capabilities', label: 'Skills', icon: 'badge', path: '/people/skills', group: 'people', position: 25, requiredPermission: 'capabilities:V', synonyms: ['capability', 'who can do', 'expertise'] },
+
+  // ---- Customers -------------------------------------------------------
+  { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'customers', position: 30, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },
+  { nodeKey: 'crm_pipeline', label: 'Pipeline', icon: 'columns', path: '/crm/pipeline', group: 'customers', position: 31, requiredPermission: 'opportunities:V', synonyms: ['kanban', 'board', 'deals'] },
+  { nodeKey: 'crm_opportunities', label: 'Deals', icon: 'target', path: '/crm/opportunities', group: 'customers', position: 32, requiredPermission: 'opportunities:V', synonyms: ['opportunities'] },
+  // The three parties, each under the word the company uses for it. A customer
+  // here is a learner who buys a course — the company's own phrase, from
+  // "Customer (Student)" — and the two bodies are named for what they are.
+  // Each synonym list belongs to exactly one of them: sharing "colleges"
+  // between two entries is how a search for it lands on the wrong screen.
+  { nodeKey: 'crm_students', label: 'Customers', icon: 'users', path: '/crm/students', group: 'customers', position: 33, requiredPermission: 'students:V', synonyms: ['students', 'learners', 'trainees', 'candidates', 'customer', 'admissions'] },
+  { nodeKey: 'crm_institutions', label: 'Institutions', icon: 'building', path: '/crm/institutions', group: 'customers', position: 34, requiredPermission: 'institutions:V', synonyms: ['colleges', 'schools', 'polytechnics', 'universities', 'campus', 'mou'] },
+  { nodeKey: 'crm_accounts', label: 'Organisations', icon: 'building', path: '/crm/organizations', group: 'customers', position: 35, requiredPermission: 'organizations:V', synonyms: ['accounts', 'organizations', 'companies', 'businesses', 'trusts', 'foundations', 'clients', 'employers', 'sponsors', 'corporate training'] },
+  { nodeKey: 'crm_people', label: 'Contacts', icon: 'users', path: '/crm/people', group: 'customers', position: 36, requiredPermission: 'people:V', synonyms: ['persons', 'people'] },
+  { nodeKey: 'crm_interactions', label: 'Calls & Meetings', icon: 'message', path: '/crm/interactions', group: 'customers', position: 37, requiredPermission: 'interactions:V', synonyms: ['activity', 'timeline', 'calls'] },
+  { nodeKey: 'crm_forecast', label: 'Forecast', icon: 'trending', path: '/crm/forecast', group: 'customers', position: 38, requiredPermission: 'opportunities:V', synonyms: ['commit', 'coverage'] },
+
+  // ---- Selling and delivering -------------------------------------------
+  { nodeKey: 'com_offerings', label: 'What We Sell', icon: 'package', path: '/commercial/offerings', group: 'delivery', position: 40, requiredPermission: 'offerings:V', synonyms: ['products', 'price book', 'catalog', 'services'] },
+  { nodeKey: 'com_quotes', label: 'Quotes', icon: 'calculator', path: '/commercial/quotes', group: 'delivery', position: 41, requiredPermission: 'quotes:V', synonyms: ['pricing', 'discount'] },
+  { nodeKey: 'com_proposals', label: 'Proposals', icon: 'file', path: '/commercial/proposals', group: 'delivery', position: 42, requiredPermission: 'proposals:V' },
+  { nodeKey: 'com_agreements', label: 'Agreements', icon: 'scroll', path: '/commercial/agreements', group: 'delivery', position: 43, requiredPermission: 'mous:V', synonyms: ['mou', 'contracts', 'partner agreements'] },
+  { nodeKey: 'com_approvals', label: 'Approvals', icon: 'shield', path: '/commercial/approvals', group: 'delivery', position: 44, requiredPermission: 'mous:V', synonyms: ['sign off', 'waiting on me'] },
+  { nodeKey: 'prj_projects', label: 'Projects', icon: 'kanban', path: '/delivery/projects', group: 'delivery', position: 45, requiredPermission: 'projects:V', synonyms: ['delivery', 'engagements'] },
+  { nodeKey: 'edu_courses', label: 'Courses', icon: 'book', path: '/education/courses', group: 'delivery', position: 46, requiredPermission: 'courses:V', synonyms: ['catalogue', 'course list', 'syllabus', 'fees', 'price list', 'what we teach'] },
+  { nodeKey: 'edu_cohorts', label: 'Training Batches', icon: 'graduation', path: '/education/cohorts', group: 'delivery', position: 47, requiredPermission: 'education:V', synonyms: ['batches', 'classes'] },
+  // Not "Students": that is the person, and it lives under Customers. This is
+  // their place on a course — the class register, and the day-by-day record
+  // hanging off it. Two screens both called Students is how somebody looking
+  // for a learner's file ends up in the attendance list.
+  { nodeKey: 'edu_enrollments', label: 'Enrolments', icon: 'badge', path: '/education/enrollments', group: 'delivery', position: 48, requiredPermission: 'education:V', synonyms: ['enrollments', 'class register', 'who is on a course', 'attendance', 'progress', 'timeline'] },
+  { nodeKey: 'edu_queries', label: 'Student Queries', icon: 'message', path: '/education/queries', group: 'delivery', position: 49, requiredPermission: 'education:V', synonyms: ['complaints', 'issues', 'feedback', 'questions', 'grievance'] },
+  { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'delivery', position: 50, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
+
+  // ---- Set up ----------------------------------------------------------
+  { nodeKey: 'data_import', label: 'Import Data', icon: 'inbox', path: '/data/import', group: 'setup', position: 50, requiredPermission: 'imports:V', synonyms: ['tally', 'bank statement', 'excel', 'csv', 'upload', 'migrate', 'bring data in'] },
+  { nodeKey: 'gov_decisions', label: 'Decisions', icon: 'scale', path: '/command/decisions', group: 'setup', position: 51, requiredPermission: 'decisions:V' },
+  { nodeKey: 'gov_exceptions', label: 'Problems', icon: 'alert', path: '/exceptions', group: 'setup', position: 52, requiredPermission: 'exceptions:V', synonyms: ['issues', 'attention', 'exceptions'] },
+  { nodeKey: 'adm_governance', label: 'Who Can Do What', icon: 'shield', path: '/admin/governance', group: 'setup', position: 53, requiredPermission: 'grants:V', synonyms: ['permissions', 'roles', 'grants', 'access'] },
+  { nodeKey: 'adm_pipelines', label: 'Pipeline Setup', icon: 'settings', path: '/admin/pipelines', group: 'setup', position: 54, requiredPermission: 'pipeline_definitions:V' },
+  { nodeKey: 'adm_territories', label: 'Territories', icon: 'map', path: '/admin/territories', group: 'setup', position: 55, requiredPermission: 'territories:V' },
+  { nodeKey: 'adm_agents', label: 'AI Agents', icon: 'sparkle', path: '/admin/agents', group: 'setup', position: 56, requiredPermission: 'agents:V' },
+  { nodeKey: 'adm_jobs', label: 'Automatic Checks', icon: 'clock', path: '/admin/jobs', group: 'setup', position: 57, requiredPermission: 'jobs:V' },
+  { nodeKey: 'adm_events', label: 'System History', icon: 'list', path: '/admin/events', group: 'setup', position: 58, requiredPermission: 'events:V' },
+  { nodeKey: 'adm_audit', label: 'Audit Trail', icon: 'lock', path: '/admin/audit', group: 'setup', position: 59, requiredPermission: 'audit:V' },
+  { nodeKey: 'fin_company', label: 'Company Details', icon: 'building', path: '/finance/company', group: 'setup', position: 49, requiredPermission: 'company_profile:V', synonyms: ['gstin', 'registration', 'pan', 'bank details', 'invoice footer', 'legal name', 'address'] },
+  { nodeKey: 'adm_platform', label: 'How This Is Built', icon: 'book', path: '/admin/platform', group: 'setup', position: 60 },
+];
+
+/**
  * Each context registers the sensitivity of its own entity types. Anything NOT
  * registered defaults to `confidential` and raises S1_ATTENTION — defaulting to
  * internal means every new column ships readable.
@@ -489,75 +586,7 @@ async function seedSurfaces() {
   // Six groups now, named for what a person is doing rather than for which
   // bounded context owns the table. `Set up` is last and collapsed by default,
   // because it is where you go twice a year.
-  const navNodes: Array<{
-    nodeKey: string; label: string; icon: string; path: string; group: string;
-    position: number; requiredPermission?: string; archetypes?: string[]; synonyms?: string[];
-  }> = [
-    // ---- Start here ------------------------------------------------------
-    { nodeKey: 'business', label: 'The Business', icon: 'trending', path: '/business', group: 'main', position: 0, requiredPermission: 'transactions:V', synonyms: ['dashboard', 'how are we doing', 'profit', 'runway', 'cash', 'by division', 'p&l'] },
-    { nodeKey: 'command', label: 'Needs Attention', icon: 'gauge', path: '/command', group: 'main', position: 1, requiredPermission: 'health_scores:V', synonyms: ['pulse', 'today', 'command centre', 'state of kaizen', 'problems'] },
-    { nodeKey: 'workspace', label: 'My Work', icon: 'home', path: '/workspace', group: 'main', position: 2, synonyms: ['my day', 'my queue', 'home', 'workspace'] },
-    { nodeKey: 'start', label: 'Getting Started', icon: 'book', path: '/start', group: 'main', position: 3, synonyms: ['setup', 'help', 'tutorial', 'how do i', 'guide', 'onboarding'] },
-
-    // ---- Money -----------------------------------------------------------
-    { nodeKey: 'fin_ledger', label: 'Ledger', icon: 'coins', path: '/finance/ledger', group: 'money', position: 10, requiredPermission: 'transactions:V', synonyms: ['transactions', 'cash book', 'spend', 'expenses', 'bank'] },
-    { nodeKey: 'fin_invoices', label: 'Invoices', icon: 'receipt', path: '/finance/invoices', group: 'money', position: 11, requiredPermission: 'invoices:V', synonyms: ['bill a customer', 'raise an invoice', 'sales invoice'] },
-    { nodeKey: 'fin_receipts', label: 'Receipts', icon: 'receipt', path: '/finance/receipts', group: 'money', position: 12, requiredPermission: 'payments:V', synonyms: ['part payment', 'instalment', 'acknowledgement', 'money received'] },
-    { nodeKey: 'fin_final_invoices', label: 'Final Invoices', icon: 'file', path: '/finance/final-invoices', group: 'money', position: 13, requiredPermission: 'invoices:V', synonyms: ['statement', 'settlement', 'closing invoice', 'instalments'] },
-    { nodeKey: 'fin_payments', label: 'Payments In', icon: 'wallet', path: '/finance/payments', group: 'money', position: 14, requiredPermission: 'payments:V', synonyms: ['money received', 'collections', 'bank credits'] },
-    { nodeKey: 'fin_payables', label: 'Bills To Pay', icon: 'receipt', path: '/finance/payables', group: 'money', position: 15, requiredPermission: 'vendor_bills:V', synonyms: ['payables', 'supplier bills', 'vendors', 'creditors', 'what we owe'] },
-    { nodeKey: 'fin_receivables', label: 'Owed To Us', icon: 'coins', path: '/finance/receivables', group: 'money', position: 16, requiredPermission: 'receivables:V', synonyms: ['receivables', 'debtors', 'outstanding'] },
-    { nodeKey: 'fin_gst', label: 'GST Returns', icon: 'scale', path: '/finance/gst', group: 'money', position: 17, requiredPermission: 'gst_filings:V', synonyms: ['gstr1', 'gstr-1', 'gstr3b', 'gstr-3b', 'filing', 'return', 'tax', 'itc', 'input credit'] },
-    { nodeKey: 'fin_budget', label: 'Budget', icon: 'calculator', path: '/finance/budget', group: 'money', position: 18, requiredPermission: 'budgets:V', synonyms: ['plan', 'variance', 'overspend'] },
-    { nodeKey: 'fin_assets', label: 'Assets & Loans', icon: 'package', path: '/finance/assets', group: 'money', position: 19, requiredPermission: 'assets:V', synonyms: ['depreciation', 'borrowing', 'emi', 'fixed assets'] },
-
-    // ---- People ----------------------------------------------------------
-    { nodeKey: 'hr_people', label: 'Employees', icon: 'users', path: '/people/employees', group: 'people', position: 20, requiredPermission: 'employees:V', synonyms: ['staff', 'team', 'headcount', 'who works here', 'directory'] },
-    { nodeKey: 'hr_leave', label: 'Leave', icon: 'clock', path: '/people/leave', group: 'people', position: 21, requiredPermission: 'leave:V', synonyms: ['holiday', 'time off', 'absence', 'casual leave'] },
-    { nodeKey: 'hr_attendance', label: 'Attendance', icon: 'clipboard', path: '/people/attendance', group: 'people', position: 22, requiredPermission: 'attendance:V', synonyms: ['timesheet', 'punch', 'hours', 'present'] },
-    { nodeKey: 'hr_payroll', label: 'Payroll', icon: 'wallet', path: '/people/payroll', group: 'people', position: 23, requiredPermission: 'payroll:V', synonyms: ['salary', 'pay run', 'wages', 'payslip'] },
-    { nodeKey: 'hr_hiring', label: 'Hiring', icon: 'inbox', path: '/people/hiring', group: 'people', position: 24, requiredPermission: 'requisitions:V', synonyms: ['recruitment', 'vacancies', 'candidates', 'applications'] },
-    { nodeKey: 'hr_capabilities', label: 'Skills', icon: 'badge', path: '/people/skills', group: 'people', position: 25, requiredPermission: 'capabilities:V', synonyms: ['capability', 'who can do', 'expertise'] },
-
-    // ---- Customers -------------------------------------------------------
-    { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'customers', position: 30, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },
-    { nodeKey: 'crm_pipeline', label: 'Pipeline', icon: 'columns', path: '/crm/pipeline', group: 'customers', position: 31, requiredPermission: 'opportunities:V', synonyms: ['kanban', 'board', 'deals'] },
-    { nodeKey: 'crm_opportunities', label: 'Deals', icon: 'target', path: '/crm/opportunities', group: 'customers', position: 32, requiredPermission: 'opportunities:V', synonyms: ['opportunities'] },
-    { nodeKey: 'crm_students', label: 'Students', icon: 'users', path: '/crm/students', group: 'customers', position: 33, requiredPermission: 'students:V', synonyms: ['learners', 'trainees', 'candidates', 'customers'] },
-    { nodeKey: 'crm_institutions', label: 'Schools & Colleges', icon: 'building', path: '/crm/institutions', group: 'customers', position: 34, requiredPermission: 'institutions:V', synonyms: ['institutions', 'colleges', 'schools', 'polytechnics', 'universities'] },
-    { nodeKey: 'crm_accounts', label: 'Organisations', icon: 'building', path: '/crm/organizations', group: 'customers', position: 35, requiredPermission: 'organizations:V', synonyms: ['accounts', 'organizations', 'companies', 'businesses', 'trusts', 'foundations', 'clients'] },
-    { nodeKey: 'crm_people', label: 'Contacts', icon: 'users', path: '/crm/people', group: 'customers', position: 36, requiredPermission: 'people:V', synonyms: ['persons', 'people'] },
-    { nodeKey: 'crm_interactions', label: 'Calls & Meetings', icon: 'message', path: '/crm/interactions', group: 'customers', position: 37, requiredPermission: 'interactions:V', synonyms: ['activity', 'timeline', 'calls'] },
-    { nodeKey: 'crm_forecast', label: 'Forecast', icon: 'trending', path: '/crm/forecast', group: 'customers', position: 38, requiredPermission: 'opportunities:V', synonyms: ['commit', 'coverage'] },
-
-    // ---- Selling and delivering -------------------------------------------
-    { nodeKey: 'com_offerings', label: 'What We Sell', icon: 'package', path: '/commercial/offerings', group: 'delivery', position: 40, requiredPermission: 'offerings:V', synonyms: ['products', 'price book', 'catalog', 'services'] },
-    { nodeKey: 'com_quotes', label: 'Quotes', icon: 'calculator', path: '/commercial/quotes', group: 'delivery', position: 41, requiredPermission: 'quotes:V', synonyms: ['pricing', 'discount'] },
-    { nodeKey: 'com_proposals', label: 'Proposals', icon: 'file', path: '/commercial/proposals', group: 'delivery', position: 42, requiredPermission: 'proposals:V' },
-    { nodeKey: 'com_agreements', label: 'Agreements', icon: 'scroll', path: '/commercial/agreements', group: 'delivery', position: 43, requiredPermission: 'mous:V', synonyms: ['mou', 'contracts', 'partner agreements'] },
-    { nodeKey: 'com_approvals', label: 'Approvals', icon: 'shield', path: '/commercial/approvals', group: 'delivery', position: 44, requiredPermission: 'mous:V', synonyms: ['sign off', 'waiting on me'] },
-    { nodeKey: 'prj_projects', label: 'Projects', icon: 'kanban', path: '/delivery/projects', group: 'delivery', position: 45, requiredPermission: 'projects:V', synonyms: ['delivery', 'engagements'] },
-    { nodeKey: 'edu_courses', label: 'Courses', icon: 'book', path: '/education/courses', group: 'delivery', position: 46, requiredPermission: 'courses:V', synonyms: ['catalogue', 'course list', 'syllabus', 'fees', 'price list', 'what we teach'] },
-    { nodeKey: 'edu_cohorts', label: 'Training Batches', icon: 'graduation', path: '/education/cohorts', group: 'delivery', position: 47, requiredPermission: 'education:V', synonyms: ['batches', 'classes'] },
-    { nodeKey: 'edu_enrollments', label: 'Students', icon: 'badge', path: '/education/enrollments', group: 'delivery', position: 48, requiredPermission: 'education:V', synonyms: ['students', 'learners', 'admissions', 'enrolments', 'enrollments', 'attendance', 'timeline'] },
-    { nodeKey: 'edu_queries', label: 'Student Queries', icon: 'message', path: '/education/queries', group: 'delivery', position: 49, requiredPermission: 'education:V', synonyms: ['complaints', 'issues', 'feedback', 'questions', 'grievance'] },
-    { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'delivery', position: 50, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
-
-    // ---- Set up ----------------------------------------------------------
-    { nodeKey: 'data_import', label: 'Import Data', icon: 'inbox', path: '/data/import', group: 'setup', position: 50, requiredPermission: 'imports:V', synonyms: ['tally', 'bank statement', 'excel', 'csv', 'upload', 'migrate', 'bring data in'] },
-    { nodeKey: 'gov_decisions', label: 'Decisions', icon: 'scale', path: '/command/decisions', group: 'setup', position: 51, requiredPermission: 'decisions:V' },
-    { nodeKey: 'gov_exceptions', label: 'Problems', icon: 'alert', path: '/exceptions', group: 'setup', position: 52, requiredPermission: 'exceptions:V', synonyms: ['issues', 'attention', 'exceptions'] },
-    { nodeKey: 'adm_governance', label: 'Who Can Do What', icon: 'shield', path: '/admin/governance', group: 'setup', position: 53, requiredPermission: 'grants:V', synonyms: ['permissions', 'roles', 'grants', 'access'] },
-    { nodeKey: 'adm_pipelines', label: 'Pipeline Setup', icon: 'settings', path: '/admin/pipelines', group: 'setup', position: 54, requiredPermission: 'pipeline_definitions:V' },
-    { nodeKey: 'adm_territories', label: 'Territories', icon: 'map', path: '/admin/territories', group: 'setup', position: 55, requiredPermission: 'territories:V' },
-    { nodeKey: 'adm_agents', label: 'AI Agents', icon: 'sparkle', path: '/admin/agents', group: 'setup', position: 56, requiredPermission: 'agents:V' },
-    { nodeKey: 'adm_jobs', label: 'Automatic Checks', icon: 'clock', path: '/admin/jobs', group: 'setup', position: 57, requiredPermission: 'jobs:V' },
-    { nodeKey: 'adm_events', label: 'System History', icon: 'list', path: '/admin/events', group: 'setup', position: 58, requiredPermission: 'events:V' },
-    { nodeKey: 'adm_audit', label: 'Audit Trail', icon: 'lock', path: '/admin/audit', group: 'setup', position: 59, requiredPermission: 'audit:V' },
-    { nodeKey: 'fin_company', label: 'Company Details', icon: 'building', path: '/finance/company', group: 'setup', position: 49, requiredPermission: 'company_profile:V', synonyms: ['gstin', 'registration', 'pan', 'bank details', 'invoice footer', 'legal name', 'address'] },
-    { nodeKey: 'adm_platform', label: 'How This Is Built', icon: 'book', path: '/admin/platform', group: 'setup', position: 60 },
-  ];
-
+  const navNodes = NAV_REGISTRY;
 
   for (const n of navNodes) {
     await prisma.navNode.upsert({
@@ -574,7 +603,23 @@ async function seedSurfaces() {
         eligibleArchetypes: n.archetypes ?? [],
         searchSynonyms: n.synonyms ?? [],
       },
-      update: { label: n.label, path: n.path, position: n.position, requiredPermission: n.requiredPermission ?? null },
+      // Everything, not only the label and the path.
+      //
+      // The synonyms were left out of this update, and that is how "customers"
+      // went on opening Organisations long after the word had been moved to the
+      // students screen: the registry said one thing and the row a tenant
+      // actually searches against still said the other. A vocabulary change
+      // that does not reach an existing tenant is not a vocabulary change.
+      update: {
+        label: n.label,
+        icon: n.icon,
+        path: n.path,
+        group: n.group,
+        position: n.position,
+        requiredPermission: n.requiredPermission ?? null,
+        eligibleArchetypes: n.archetypes ?? [],
+        searchSynonyms: n.synonyms ?? [],
+      },
     });
   }
 

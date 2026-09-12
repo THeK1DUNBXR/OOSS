@@ -7,7 +7,7 @@ impossible.
 
 ```bash
 ./scripts/test-db.sh          # provision kaizen_test
-cd apps/api && pnpm test      # 363 tests
+cd apps/api && pnpm test      # 366 tests
 ```
 
 ## How the suite is built
@@ -82,6 +82,8 @@ It is deliberately four tests. A browser suite that tries to cover the product
 becomes the slowest and least trusted thing in the repository; this one covers
 the class of defect the unit suite structurally cannot see.
 
+| **Navigation** | 3 | Every seeded nav row matches the registry, synonyms included; no word reaches two of the party screens; the three parties are three entries, each to its own screen |
+
 ## Defects this suite found
 
 Writing the tests against the Handoff's own criteria surfaced six real bugs in
@@ -137,6 +139,14 @@ surfaced seven more, all fixed:
 7. **Netting the GST totals understated the cash due.** Output minus input is
    the wrong arithmetic: credit is set off head by head in a statutory order,
    and the shortfall from netting arrives as interest.
+
+10. **A vocabulary change never reached the tenant.** The nav upsert refreshed
+   a row's label and path and left its search synonyms as they were — so after
+   the three parties were separated, "customers" went on opening Organisations,
+   and so did "colleges" and "institutions". Typing the word for a thing and
+   arriving at a different thing is the whole of what navigation is for. The
+   upsert now writes every field, the registry is exported so the suite can hold
+   the rows to it, and no word reaches two party screens.
 
 9. **Everything was a customer.** A learner, a polytechnic and a manufacturer
    were one list, one word and one screen — "Companies & Colleges" — so neither
