@@ -325,6 +325,21 @@ rather than a scratchpad.
 Each test names the requirement it verifies. See
 [docs/acceptance.md](docs/acceptance.md) for the requirement-to-test map.
 
+A second, small suite drives a real browser against a running stack, for the
+one thing the first cannot see — a button whose label promises one thing and
+whose link does another:
+
+```bash
+pnpm --filter @kaizen/api dev            # :4000
+pnpm --filter @kaizen/web dev            # :5173
+E2E_EMAIL=… E2E_PASSWORD=… pnpm test:e2e
+```
+
+It signs in as a real account and holds the getting-started checklist and its
+banner to what their own buttons say. Four tests, on purpose: a browser suite
+that tries to cover the product becomes the slowest and least trusted thing in
+the repository.
+
 The lifecycle machines and the finance arithmetic are tested without a database
 at all, because they are pure: whether Absconded can reach Alumni, and whether
 GST halves within a state, are wrong on their own terms and need no persistence
@@ -344,12 +359,13 @@ apps/api           Express + Prisma. platform/ is the kernel; domains/ are
                    services; jobs/ is the durable scheduler; agents/ is the
                    AI layer
 apps/web           React + Vite + Tailwind. One shell, twenty-four surfaces
+e2e                the browser suite: what a signed-in person can press
 scripts            dev.sh (run), test-db.sh (provision the test database)
 docs               architecture, acceptance map, operations
 ```
 
 114 Prisma models, 26 domain services plus five for People and one for the
-books, and 351 tests.
+books, 351 tests and four in a browser.
 
 The HR lifecycle machines and the finance arithmetic live in `packages/shared`
 rather than in the API, and that placement is the point: a surface rendering a

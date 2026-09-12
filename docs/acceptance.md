@@ -56,6 +56,32 @@ dataset is a demonstration, not a scratchpad.
 | **The catalogue and the student record** | 15 | A course is edited and retired, never deleted, and a retired one cannot be billed; a fee, rate and SAC flow from the course onto an invoice line; a course assigned with no batch named uses its rolling intake; a query and an issue open and stay open while feedback and a note close as written; attendance, progress and the log merge into one timeline on the server; a trainer reaches the batches they teach and no others |
 | **The student register import** | 8 | The register is recognised before the bank sniffer; instalments, their dates and their receipt numbers are read; dates are inferred month-first or day-first from the file; a row that does not add up is reported and still imports; the commit writes the enrolment and leaves course prices exactly as they were |
 
+## The browser suite
+
+The unit suite runs the server. It cannot see a button whose label promises one
+thing and whose link does another — nothing throws, nothing logs, and every
+assertion about the data underneath still passes. So there is a second, small
+suite that drives a real browser against a running stack:
+
+```bash
+pnpm --filter @kaizen/api dev            # :4000
+pnpm --filter @kaizen/web dev            # :5173
+E2E_EMAIL=… E2E_PASSWORD=… pnpm test:e2e
+```
+
+It signs in as a real account through the form, reads the getting-started
+checklist from the API, and holds the screen to it: every step's button says
+either its own action or "Open", and points where that word promises — an undone
+step at the place the job is done, a done step at the screen. Then it presses
+each one and checks where it lands, because an unrouted path does not fail
+loudly here; the client's catch-all returns it quietly to the landing screen.
+The setup banner gets the same treatment, in the state a company is actually in
+on its first day.
+
+It is deliberately four tests. A browser suite that tries to cover the product
+becomes the slowest and least trusted thing in the repository; this one covers
+the class of defect the unit suite structurally cannot see.
+
 ## Defects this suite found
 
 Writing the tests against the Handoff's own criteria surfaced six real bugs in
@@ -111,6 +137,13 @@ surfaced seven more, all fixed:
 7. **Netting the GST totals understated the cash due.** Output minus input is
    the wrong arithmetic: credit is set off head by head in a statutory order,
    and the shortfall from netting arrives as interest.
+
+8. **The setup banner's button went to the setup banner's checklist.** The
+   whole strip was one link to Getting Started, so the button inside it —
+   labelled with the step's own action, "Add a customer" — led back to the list
+   of things to do rather than doing one. It is the first button a new company
+   presses. Nothing failed; it simply did not work, which is why the browser
+   suite above now exists.
 
 And one the spreadsheet found rather than the code: the invoice number the
 company asked for, `KIPL/I/2026-27/001`, is eighteen characters. The portal
