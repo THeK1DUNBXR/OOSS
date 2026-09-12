@@ -1,0 +1,478 @@
+//
+// Invoicing, receipts, payments, GST returns and the company’s own
+// registration — what a customer is billed and what they paid.
+//
+
+// ===========================================================================
+// Finance (fin-owned)
+// ===========================================================================
+
+model Invoice {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// The tax invoice number, allocated when the invoice is issued and not before.
+  ///
+  /// A tax invoice series has to be consecutive: the return reports the range
+  /// issued and the count cancelled within it, and a number that was allocated
+  /// to a draft somebody abandoned is a gap nothing explains. So a draft carries
+  /// none, and gets one at the moment it becomes a document.
+  ///
+  /// This is the one record code in the platform that is not allocated at
+  /// creation, and the reason is that a draft is not the record the code names.
+  /// Everything else about it holds: generator-assigned, never caller-supplied,
+  /// immutable once set.
+  recordCode String?
+
+  /// What to call a draft.
+  ///
+  /// From its own series, so it is obvious on sight that `DRF-2026-00004` is not
+  /// an invoice number and cannot be quoted to a customer as one. Kept after the
+  /// invoice is issued, so "which draft became INV-2026-00019" stays answerable.
+  draftReference String?
+
+  accountId      String?
+  organizationId String?
+  contractId     String?
+  opportunityId  String?
+
+  status     String    @default("draft")
+  currency   String    @default("INR")
+  issuedDate DateTime?
+  dueDate    DateTime?
+
+  /// Regulated — structurally excluded from CRM's receivables projection
+  /// entirely, not merely nulled at render time.
+  taxRegistrationReference String?
+
+  /// GST. The place of supply decides whether the tax splits into CGST+SGST
+  /// (within the state) or lands as a single IGST (across a state line), so it
+  /// is stored rather than inferred at render time — the invoice was raised
+  /// under one reading of it and reprinting must not silently change the tax.
+  placeOfSupply String?
+  interState    Boolean @default(false)
+  customerGstin String?
+  taxableValue  Decimal @default(0) @db.Decimal(18, 2)
+  cgstAmount    Decimal @default(0) @db.Decimal(18, 2)
+  sgstAmount    Decimal @default(0) @db.Decimal(18, 2)
+  igstAmount    Decimal @default(0) @db.Decimal(18, 2)
+  roundOff      Decimal @default(0) @db.Decimal(8, 2)
+  grandTotal    Decimal @default(0) @db.Decimal(18, 2)
+  /// Which division earns the revenue on this invoice.
+  division      String?
+
+  /// An individual customer. The education motion bills people at least as
+  /// often as it bills companies — somebody who walks in and pays for a course
+  /// is not an organisation, and forcing one into existence to raise their
+  /// invoice put a fake company in the accounts list every time.
+  personId String?
+
+  /// What the document said about payment at the moment it was handed over.
+  ///
+  /// `full` — the whole invoice was settled at issue.
+  /// `part` — an instalment was taken at issue and a balance remained.
+  /// `credit` — nothing was collected at issue; payable by the due date.
+  ///
+  /// Fixed at issue and never restated. A tax invoice is a final document: the
+  /// copy the customer holds must still read the same in three years, so a
+  /// payment that arrives next week does not rewrite it. Later instalments are
+  /// receipts, which are their own documents — that is what RECEIPT is for, and
+  /// `status` continues to follow from the receipts actually allocated.
+  paymentType String @default("credit")
+
+  /// The second figure the invoice prints: the total payable, and the amount
+  /// payable now. On a full payment they are the same number and it is still
+  /// printed twice, because a customer reading an invoice should not have to
+  /// work out which of the two they are looking at. Fixed at issue, like the
+  /// declaration above.
+  amountPayableNow Decimal @default(0) @db.Decimal(18, 2)
+
+  /// How the money changed hands at issue, and the reference it left behind.
+  /// Printed, because "paid by UPI, ref 402…" is what makes the invoice also
+  /// the customer's proof of what they handed over on the day.
+  paymentMode      String?
+  paymentReference String?
+
+  /// Free text printed under the lines — what the invoice is for in the
+  /// customer's own words, delivery notes, anything the lines cannot say.
+  notes String?
+
+  /// The return this invoice's tax was reported in. Set when a GSTR-1 is filed,
+  /// and what makes a filed period refuse further edits.
+  gstFilingId String?
+
+  overdueNotifiedAt DateTime?
+  createdById       String?
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  lines         InvoiceLine[]
+  receipts      Receipt[]
+  finalInvoices FinalInvoice[]
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, draftReference])
+  @@index([tenantId, status, dueDate])
+  @@index([tenantId, accountId])
+  @@index([tenantId, personId])
+  @@index([tenantId, createdById])
+  @@index([tenantId, gstFilingId])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  offeringId    String?
+  /// The course being billed, where this line is education revenue. What a
+  /// course costs, the tax it attracts and the SAC it is classified under are
+  /// facts about the course, so an employee raising the invoice picks the
+  /// course and does not have to know any of them.
+  courseId      String?
+  /// The student's place on that course.
+  ///
+  /// The line already names the course and the invoice already names the
+  /// person; this is the two of them together, which is the thing actually
+  /// being billed. Without it, a student on two courses has two enrolments and
+  /// two fee invoices that can only be matched up by reading the descriptions —
+  /// and "has this enrolment been paid for" has no answer at all.
+  ///
+  /// Checked on the way in: the enrolment has to belong to the person the
+  /// invoice is addressed to, and to the course the line names.
+  enrollmentId  String?
+  description   String
+  quantity      Int     @default(1)
+  /// The price of one of whatever this line is.
+  ///
+  /// `amount` is the extended value — unitPrice x quantity. They are both
+  /// stored because the line previously carried one figure and a quantity that
+  /// nothing multiplied by: an invoice for three seats at 20,000 totalled
+  /// 20,000, on screen and in the ledger.
+  unitPrice     Decimal @default(0) @db.Decimal(18, 2)
+  amount        Decimal @db.Decimal(18, 2)
+  /// The order the lines were entered in, so an edited invoice does not
+  /// reshuffle itself on reload.
+  position      Int     @default(0)
+  /// Derived from OFFERING.defaultRevenueTreatment — never asked of sales per deal.
+  revenueMethod String
+
+  /// GST per line, because a single invoice can carry goods and services at
+  /// different rates and a single invoice-level rate would misstate both.
+  hsnSac    String?
+  gstRate   Decimal @default(0) @db.Decimal(5, 2)
+  taxAmount Decimal @default(0) @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, enrollmentId])
+  @@index([tenantId, courseId])
+  @@map("invoice_lines")
+}
+
+/// The parallel obligation entity for the education motion — a sibling
+/// structure to Invoice, not a variant of it.
+model FeeInstalment {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  enrollmentId String
+  feePlanId    String?
+  amount       Decimal  @db.Decimal(18, 2)
+  currency     String   @default("INR")
+  dueDate      DateTime
+  status       String   @default("scheduled")
+
+  overdueNotifiedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  receipts Receipt[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status, dueDate])
+  @@map("fee_instalments")
+}
+
+/// The money-movement fact — append-only, gateway-authoritative, idempotent on
+/// gatewayReference. Never updated in place; corrections are new rows. May
+/// exist before its resolving obligation is even issued.
+model Payment {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  amount           Decimal  @db.Decimal(18, 2)
+  currency         String   @default("INR")
+  gatewayReference String
+  receivedAt       DateTime
+  status           String   @default("received")
+  method           String   @default("bank_transfer")
+
+  /// Regulated — never included in CRM's receivables projection at all.
+  bankAccountReference String?
+
+  payerOrganizationId String?
+  payerPersonId       String?
+  reversalOfPaymentId String?
+  note                String?
+
+  /// Who took the money.
+  ///
+  /// A gateway webhook has no human behind it and leaves this null; a hundred
+  /// rupees handed across a counter does, and "who collected this" is both the
+  /// first question asked when a receipt is disputed and the narrowing that lets
+  /// an employee hold `payments@own` without seeing the company's collections.
+  recordedById String?
+
+  /// The idempotency marker CRM-FIN-001 adds so the overdue-notification job
+  /// stops re-notifying the same pending payment on every hourly tick.
+  pendingLastNotifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  receipts Receipt[]
+
+  @@unique([tenantId, gatewayReference])
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, receivedAt])
+  @@index([tenantId, status])
+  @@index([tenantId, recordedById])
+  @@map("payments")
+}
+
+/// The allocation join — many-to-many between Payment and
+/// Invoice/FeeInstalment. Only the sum of a subject's allocated amounts
+/// determines what has actually been paid against it. This is what finally
+/// makes partial payments and credit notes representable.
+model Receipt {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  invoiceId       String?
+  invoice         Invoice?       @relation(fields: [invoiceId], references: [id])
+  feeInstalmentId String?
+  feeInstalment   FeeInstalment? @relation(fields: [feeInstalmentId], references: [id])
+
+  allocatedAmount Decimal  @db.Decimal(18, 2)
+  allocatedAt     DateTime @default(now())
+  allocatedById   String?
+
+  /// The position of this allocation against its subject, as it stood when the
+  /// receipt was written.
+  ///
+  /// A receipt is the document a part payment produces, and it is the document
+  /// that has to carry the two figures: what the invoice is for, and what is
+  /// being handed over now. Both are snapshotted rather than recomputed,
+  /// because a receipt is a receipt — the piece of paper saying "₹20,000 of
+  /// ₹70,800, ₹50,800 still owed" must keep saying that after the next
+  /// instalment lands.
+  subjectTotal     Decimal @default(0) @db.Decimal(18, 2)
+  balanceAfter     Decimal @default(0) @db.Decimal(18, 2)
+  /// How this instalment was paid. Copied from the payment so a reprint does
+  /// not depend on the payment row still reading the same way.
+  paymentMode      String?
+  paymentReference String?
+  note             String?
+
+  /// The number this receipt was issued under before it reached this platform —
+  /// `KIPL/R/2026-27/002` and the like.
+  ///
+  /// `recordCode` is generator-assigned and immutable, which is right: a
+  /// gapless per-tenant series is the point of it. But a receipt the customer
+  /// is already holding has a number on it, and "find me the receipt for that
+  /// twenty thousand" is asked with that number and no other. So it is carried
+  /// rather than overwritten, the same way an enrolment carries the
+  /// certificate reference it arrived with.
+  legacyReference String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, paymentId])
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, allocatedAt])
+  @@index([tenantId, legacyReference])
+  @@map("receipts")
+}
+
+/// The document raised once the instalments are done.
+///
+/// A tax invoice is final: it is raised once, states the whole obligation, and
+/// must still read the same in three years. Each instalment against it is a
+/// receipt, which is its own numbered document. Neither of those, on its own,
+/// answers the question a customer asks at the end — "what did I owe, what have
+/// I paid, and against which receipts" — because the invoice predates the
+/// payments and each receipt only knows about itself.
+///
+/// So this is that answer, raised deliberately by whoever is at the counter
+/// rather than rendered on the fly: it has its own number and its own date, it
+/// names every receipt it consolidates, and the figures are snapshotted, because
+/// a document handed to a customer cannot restate itself the next time it is
+/// opened.
+///
+/// Raising a second one after a further instalment supersedes the first rather
+/// than replacing it. Both were true when they were handed over.
+model FinalInvoice {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  issuedAt   DateTime @default(now())
+  issuedById String?
+
+  /// The figures as they stood when it was raised.
+  totalPayable  Decimal @default(0) @db.Decimal(18, 2)
+  totalReceived Decimal @default(0) @db.Decimal(18, 2)
+  creditNoted   Decimal @default(0) @db.Decimal(18, 2)
+  balance       Decimal @default(0) @db.Decimal(18, 2)
+  /// True when nothing was left owing at the moment it was raised.
+  settled       Boolean @default(false)
+
+  /// The receipt numbers it consolidates, in the order they were issued. Held
+  /// as codes as well as in the snapshot because "which receipts does this
+  /// cover" is asked of the row itself, from a list, without opening the JSON.
+  receiptCodes String[] @default([])
+  receiptCount Int      @default(0)
+
+  /// Every receipt row as it stood: number, date, amount, mode, reference. A
+  /// reprint reads this rather than the live receipts, so a later instalment
+  /// cannot change what an already-issued statement says.
+  snapshot Json
+
+  /// The later statement that replaced this one.
+  supersededById String?
+  status         String  @default("issued") // issued | superseded
+  note           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, invoiceId, status])
+  @@map("final_invoices")
+}
+
+/// The only permitted correction to an issued invoice line — an
+/// obligation-reducing fact, structurally distinct from a payment-side reversal
+/// so the two are never re-conflated the way a `refunded` status conflated them.
+model CreditNote {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  invoiceId  String
+  amount     Decimal  @db.Decimal(18, 2)
+  currency   String   @default("INR")
+  reason     String
+  issuedAt   DateTime @default(now())
+  issuedById String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, invoiceId])
+  @@map("credit_notes")
+}
+
+/// A GST return, prepared and then filed.
+///
+/// Two facts make this a record rather than a report. The first is that a
+/// return is a snapshot: what was filed on the 11th is what was filed, and a
+/// back-dated invoice must not silently restate it — so the figures are stored
+/// as they stood, beside the query that produced them. The second is that
+/// filing closes the period: once GSTR-1 for August is filed, an August invoice
+/// cannot be edited, and the thing that knows that is this row.
+///
+/// `arn` is the portal's acknowledgement. A return with no ARN was prepared and
+/// not filed, whatever anybody remembers about it.
+model GstFiling {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// GSTR1 — outward supplies. GSTR3B — the monthly summary and the payment.
+  returnType String
+  /// The tax period, `YYYY-MM`.
+  period     String
+  /// The registration it is filed under, copied from the company profile at
+  /// preparation, because a company that changes registration must not have its
+  /// history reattributed.
+  gstin      String?
+
+  /// prepared | filed | superseded
+  status String @default("prepared")
+
+  /// The whole computed return as it stood when prepared: sections, invoice
+  /// references, HSN summary. Stored so a filed return can be re-read and
+  /// re-exported without recomputing it from books that have moved on.
+  snapshot Json
+
+  taxableValue   Decimal @default(0) @db.Decimal(18, 2)
+  cgstAmount     Decimal @default(0) @db.Decimal(18, 2)
+  sgstAmount     Decimal @default(0) @db.Decimal(18, 2)
+  igstAmount     Decimal @default(0) @db.Decimal(18, 2)
+  /// GSTR-3B only: the credit claimed on inward supplies, and what is left to
+  /// pay in cash after it.
+  inputTaxCredit Decimal @default(0) @db.Decimal(18, 2)
+  netPayable     Decimal @default(0) @db.Decimal(18, 2)
+
+  invoiceCount Int @default(0)
+
+  preparedById   String?
+  preparedAt     DateTime  @default(now())
+  arn            String?
+  filedAt        DateTime?
+  filedById      String?
+  /// The later preparation that replaced this one, where a prepared return was
+  /// recomputed before filing. Prepared returns are superseded rather than
+  /// deleted, so "what did we think the liability was last week" stays
+  /// answerable.
+  supersededById String?
+  note           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, returnType, period, status])
+  @@index([tenantId, period])
+  @@map("gst_filings")
+}
+
+/// A lightweight, disposable receivables summary per account/opportunity,
+/// hydrated from Finance's event payloads. Explicitly non-authoritative — safe
+/// to rebuild, discard or re-hydrate at any time, since CRM holds no
+/// authoritative money state post-migration.
+model ReceivablesProjection {
+  id       String @id @default(cuid())
+  tenantId String
+
+  subjectType  String
+  subjectId    String
+  subjectLabel String?
+
+  amountOutstanding Decimal?  @db.Decimal(18, 2)
+  currency          String    @default("INR")
+  nextDueDate       DateTime?
+  dunningStage      String?
+
+  hydratedAt DateTime @default(now())
+
+  @@unique([tenantId, subjectType, subjectId])
+  @@index([tenantId, dunningStage])
+  @@map("receivables_projections")
+}

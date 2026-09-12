@@ -1,0 +1,22 @@
+// Kaizen Unified Operating Platform — data model.
+//
+// Two structural facts hold across every model and are not restated per entity:
+//
+//   1. `tenantId` is present on every row from creation (CRM-FOUND-001). Every
+//      compound index is tenant-leading, so a cross-tenant scan is never
+//      index-eligible. Every previously-global unique constraint is
+//      tenant-scoped.
+//   2. Every entity carrying a human-readable identifier uses the unified
+//      record-code scheme <TYPE>-<YYYY>-<NNNNN> (CRM-FOUND-007), generated per
+//      tenant per type, gapless within a year, immutable after creation.
+//
+// Soft delete is `deletedAt`, never a hard delete, on every governed entity.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

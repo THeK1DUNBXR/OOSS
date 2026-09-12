@@ -1,0 +1,693 @@
+//
+// Tenancy, the event fabric, audit, automation, agents and surfaces.
+// The substrate every other context sits on.
+//
+
+// ===========================================================================
+// P0 — Tenancy & Trust Fabric
+// ===========================================================================
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  status    String   @default("active") // active | suspended | archived
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// The explicit bootstrap authority set — who may create the first POLICY or
+  /// GRANT for a new tenant. Owned by SYS, it breaks the circularity of the
+  /// permission system needing permission to create itself.
+  config Json @default("{}")
+
+  users           User[]
+  people          Person[]
+  organizations   Organization[]
+  events          EventRecord[]
+  recordSequences RecordSequence[]
+
+  @@map("tenants")
+}
+
+/// Per-tenant, per-type, per-year sequence backing the record-code generator.
+/// Gapless within the year; an atomic increment guarantees no two records
+/// receive the same sequence under concurrency.
+model RecordSequence {
+  id           String @id @default(cuid())
+  tenantId     String
+  entityType   String
+  year         Int
+  nextSequence Int    @default(1)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, entityType, year])
+  @@map("record_sequences")
+}
+
+/// Who the company is, on paper.
+///
+/// A tax invoice is not a list of lines with a total: it is a statement by one
+/// registered person to another, and it is invalid without the supplier's legal
+/// name, address and GSTIN on it. A GST return is filed *under* a GSTIN. None
+/// of that was anywhere in the model — the invoice screen could total a sale
+/// and could not produce a document anybody could lawfully hand over, and the
+/// GST summary was a set of figures with no registration attached.
+///
+/// One row per tenant. The bank details are here because an invoice a customer
+/// cannot pay from is half a document; they are printed by design rather than
+/// leaked, which is why they are named for what they are rather than hidden
+/// behind the regulated `bankAccountReference` exclusion.
+model CompanyProfile {
+  id       String @id @default(cuid())
+  tenantId String @unique
+
+  legalName String
+  tradeName String?
+
+  /// The registration outward supplies are made under and returns are filed
+  /// against. `stateCode` is its first two digits, held separately so a place
+  /// of supply can be compared against it without re-parsing a GSTIN every
+  /// time — and so a tenant that has not registered yet is representable.
+  gstin     String?
+  stateCode String?
+  stateName String?
+  pan       String?
+  cin       String?
+
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  pincode      String?
+  email        String?
+  phone        String?
+  website      String?
+
+  bankName          String?
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  bankBranch        String?
+  upiId             String?
+
+  /// Printed under every invoice. Terms are the conditions of the sale; notes
+  /// are whatever this company always wants to say.
+  invoiceTerms   String?
+  invoiceNotes   String?
+  defaultDueDays Int     @default(30)
+
+  /// The company's own short code, which every customer-facing document number
+  /// begins with: `KIPL/I/2026-27/001`.
+  ///
+  /// Defaulted from the initials of the legal name on first use, because that is
+  /// what a company's own numbering almost always is, and editable because
+  /// sometimes it is not. The letter in the middle says which series — `I` for a
+  /// tax invoice, `R` for a receipt, `F` for a final invoice — and the year is
+  /// the financial year, which is when each series restarts.
+  documentPrefix String?
+
+  /// How the financial year is written in a document number: `short` gives
+  /// `26-27`, `full` gives `2026-27`.
+  ///
+  /// It exists because of a hard limit somebody has to be told about. The portal
+  /// accepts a tax invoice number of at most sixteen characters, and
+  /// `KIPL/I/2026-27/001` is eighteen — a number that reads perfectly on paper
+  /// and is rejected by GSTR-1. `KIPL/I/26-27/001` is exactly sixteen, which is
+  /// why `short` is the default: a default that cannot be filed is not a
+  /// default. `full` stays available for a company with a shorter prefix, or one
+  /// that would rather match its existing paper series and accept the
+  /// consequence — which the returns screen states rather than discovers.
+  documentYearFormat String @default("short")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("company_profiles")
+}
+
+// ===========================================================================
+// P4 — Event Fabric
+// ===========================================================================
+
+/// Durable, append-only, hash-chained, replayable. Every fact-changing action
+/// writes one. Reads never emit events — a read of confidential or regulated
+/// data produces an AUDIT_RECORD instead.
+model EventRecord {
+  id       String @id @default(cuid())
+  tenantId String
+
+  eventId      String
+  eventName    String
+  eventVersion Int    @default(1)
+
+  occurredAt DateTime
+  recordedAt DateTime @default(now())
+
+  actorType         String
+  actorPartyId      String?
+  actorAccessRole   String?
+  actorAgentId      String?
+  onBehalfOfPartyId String?
+
+  subjectEntityType String
+  subjectEntityId   String
+  subjectRecordCode String?
+
+  related           Json     @default("[]")
+  previousState     Json?
+  newState          Json?
+  reason            Json?
+  source            Json     @default("{}")
+  impactDomains     String[] @default([])
+  impactSeverity    String?
+  impactMateriality Json?
+  ownerPartyId      String?
+  ownerPositionId   String?
+
+  correlationId String
+  causationId   String?
+
+  confidentiality String @default("internal")
+  retentionClass  String @default("standard")
+
+  /// The hash-chain linkage that makes the log tamper-evident and replayable.
+  /// A chain-continuity failure alerts per tenant, never merely logs.
+  prevHash String?
+  hash     String
+
+  /// Set during the dual-publish migration window so both names are
+  /// recognisable as the same fact.
+  legacyName String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, eventId, eventName])
+  @@index([tenantId, recordedAt])
+  @@index([tenantId, eventName, occurredAt])
+  @@index([tenantId, subjectEntityType, subjectEntityId])
+  @@index([tenantId, correlationId])
+  @@map("event_records")
+}
+
+/// A handler's third failure writes here rather than only logging, so a process
+/// restart does not lose an in-flight retry.
+model EventDeadLetter {
+  id       String @id @default(cuid())
+  tenantId String
+
+  eventRecordId String
+  eventName     String
+  subscriberKey String
+  attempts      Int    @default(0)
+  lastError     String
+  payload       Json
+
+  state      String    @default("dead") // pending | dead | replayed
+  createdAt  DateTime  @default(now())
+  replayedAt DateTime?
+
+  @@index([tenantId, state, createdAt])
+  @@map("event_dead_letters")
+}
+
+// ===========================================================================
+// Audit
+// ===========================================================================
+
+/// Append-only, no update or delete path. Write-audit for every governed
+/// entity; read-audit for regulated fields only, preserving the original
+/// performance-driven design for the common case.
+model AuditRecord {
+  id       String @id @default(cuid())
+  tenantId String
+
+  action      String // create | update | delete | merge | export | login | permission_change | read
+  subjectType String
+  subjectId   String
+
+  actorType    String  @default("human")
+  actorId      String?
+  actorLabel   String?
+  actorAgentId String?
+
+  /// Changed keys only — noise fields dropped.
+  diff       Json?
+  /// Populated only on regulated-field reads. Names only, never values.
+  fieldsRead String[] @default([])
+  meta       Json?
+
+  timestamp DateTime @default(now())
+
+  @@index([tenantId, subjectType, subjectId, timestamp])
+  @@index([tenantId, actorId, timestamp])
+  @@index([tenantId, timestamp])
+  @@map("audit_records")
+}
+
+// ===========================================================================
+// Exception engine (xcp) & notifications
+// ===========================================================================
+
+/// A record in an actionable bad state. An accountable owner is always resolved
+/// BEFORE any notification fires. Escalation is bounded to exactly four named
+/// triggers.
+model ExceptionRecord {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  code     String
+  label    String
+  severity String
+  state    String @default("open")
+
+  subjectType  String
+  subjectId    String
+  subjectLabel String?
+  domain       String  @default("crm")
+  detail       String?
+  reasonCode   String?
+
+  ownerPartyId          String?
+  accountablePositionId String?
+  /// Set when the routing engine failed to resolve an owner — itself a
+  /// first-class, measured category feeding H_OPS, never a blank assignee.
+  ownerUnresolved       Boolean @default(false)
+
+  raisedAt         DateTime  @default(now())
+  acknowledgedAt   DateTime?
+  acknowledgedById String?
+  resolvedAt       DateTime?
+  resolvedById     String?
+  resolutionNote   String?
+
+  slaDueAt           DateTime?
+  escalatedAt        DateTime?
+  escalationRung     Int       @default(0)
+  escalationTrigger  String?
+  escalatedToPartyId String?
+
+  /// (automationVersionId, subjectRef, triggerFingerprint, ladderRung)
+  triggerFingerprint String?
+  ladderRung         Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, state, severity, raisedAt])
+  @@index([tenantId, ownerPartyId, state])
+  @@index([tenantId, subjectType, subjectId])
+  @@map("exception_records")
+}
+
+model Notification {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recipientPartyId String
+  priority         String  @default("N2_NORMAL")
+  channel          String  @default("in_app")
+  title            String
+  body             String
+  severity         String?
+
+  subjectType String?
+  subjectId   String?
+  drillPath   String?
+
+  readAt       DateTime?
+  dispatchedAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([tenantId, recipientPartyId, readAt])
+  @@index([tenantId, createdAt])
+  @@map("notifications")
+}
+
+// ===========================================================================
+// P5 — Automation substrate
+// ===========================================================================
+
+model AutomationDefinition {
+  id       String @id @default(cuid())
+  tenantId String
+
+  jobName               String
+  label                 String
+  automationClass       String
+  cronExpression        String  @default("0 * * * *")
+  enabled               Boolean @default(true)
+  /// In-flight firings keep their original definition version; new firings pick
+  /// up the new one. No in-flight migration.
+  version               Int     @default(1)
+  accountablePositionId String?
+  config                Json    @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runs JobRun[]
+
+  @@unique([tenantId, jobName])
+  @@map("automation_definitions")
+}
+
+model JobRun {
+  id       String @id @default(cuid())
+  tenantId String
+
+  definitionId        String
+  definition          AutomationDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  automationVersionId String
+
+  jobName           String
+  startedAt         DateTime  @default(now())
+  finishedAt        DateTime?
+  status            String    @default("running") // running | completed | failed
+  processed         Int       @default(0)
+  notified          Int       @default(0)
+  skippedIdempotent Int       @default(0)
+  errors            String[]  @default([])
+  dryRun            Boolean   @default(false)
+
+  @@index([tenantId, jobName, startedAt])
+  @@map("job_runs")
+}
+
+/// A firing with an already-recorded idempotency key does not re-execute. This
+/// is a substrate-level guard IN ADDITION to each job's own per-record marker
+/// fields, not a replacement for them.
+model JobFiringLog {
+  id       String @id @default(cuid())
+  tenantId String
+
+  automationVersionId String
+  subjectRef          String
+  triggerFingerprint  String
+  ladderRung          Int    @default(0)
+
+  jobRunId String?
+  firedAt  DateTime @default(now())
+  outcome  String   @default("executed") // executed | skipped | failed
+
+  @@unique([automationVersionId, subjectRef, triggerFingerprint, ladderRung])
+  @@index([tenantId, firedAt])
+  @@map("job_firing_logs")
+}
+
+// ===========================================================================
+// P6 — Agent principals
+// ===========================================================================
+
+/// Every agent carries its own identity — never a shared service account, never
+/// a role — and acts only through declared TOOLs.
+model AgentPrincipal {
+  id       String @id @default(cuid())
+  tenantId String
+
+  agentKey      String
+  name          String
+  purpose       String
+  /// The agent's ceiling tier. An individual action may classify lower but
+  /// never higher.
+  tier          String
+  declaredTools String[] @default([])
+  status        String   @default("active") // active | paused | revoked
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  actions AgentAction[]
+
+  @@unique([tenantId, agentKey])
+  @@map("agent_principals")
+}
+
+model AgentAction {
+  id       String @id @default(cuid())
+  tenantId String
+
+  agentId String
+  agent   AgentPrincipal @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  tool   String
+  action String
+  tier   String
+
+  subjectType String
+  subjectId   String
+  proposal    Json
+  rationale   String
+
+  state         String  @default("proposed") // proposed | accepted | rejected | executed | blocked
+  blockedReason String?
+
+  /// When acting for a person, the agent carries this rather than assuming a role.
+  onBehalfOfPartyId String?
+  humanActorId      String?
+  decidedAt         DateTime?
+
+  proposedAt DateTime @default(now())
+
+  @@index([tenantId, agentId, proposedAt])
+  @@index([tenantId, state])
+  @@map("agent_actions")
+}
+
+// ===========================================================================
+// Analytics, health, memory
+// ===========================================================================
+
+model KpiReading {
+  id       String @id @default(cuid())
+  tenantId String
+
+  domainCode String
+  metric     String
+  dimensions Json     @default("{}")
+  value      Float
+  target     Float?
+  asOf       DateTime
+  computedAt DateTime @default(now())
+
+  @@index([tenantId, domainCode, metric, asOf])
+  @@map("kpi_readings")
+}
+
+model HealthScore {
+  id       String @id @default(cuid())
+  tenantId String
+
+  domainCode      String
+  asOf            DateTime
+  score           Float?
+  band            String?
+  /// {factor, weight, value, target, factorScore, contribution, quarantined}
+  factors         Json     @default("[]")
+  /// A domain with insufficient inputs renders "not yet measured", never a zero.
+  state           String   @default("measured")
+  policyVersionId String?
+
+  computedAt DateTime @default(now())
+
+  @@unique([tenantId, domainCode, asOf])
+  @@index([tenantId, domainCode, asOf])
+  @@map("health_scores")
+}
+
+/// The flat (date, metric, dimensions, value) upsert model — a deliberately
+/// minimal design preserved as-is. `pipeline_value`/`pipeline_count` stop being
+/// written; historical rows are retained, never deleted, as a point-in-time
+/// record of the old formula.
+model DailyMetric {
+  id       String @id @default(cuid())
+  tenantId String
+
+  date       DateTime
+  metric     String
+  dimensions Json     @default("{}")
+  value      Float
+  computedAt DateTime @default(now())
+
+  /// Set on the two retired metrics so a reader knows the formula was defective.
+  retired Boolean @default(false)
+
+  @@index([tenantId, date, metric])
+  @@map("daily_metrics")
+}
+
+/// P8 — a lesson distilled from a win/loss review or a decision review.
+model Lesson {
+  id       String @id @default(cuid())
+  tenantId String
+
+  sourceType String
+  sourceId   String
+  title      String
+  body       String
+  domain     String   @default("crm")
+  tags       String[] @default([])
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, domain, createdAt])
+  @@map("lessons")
+}
+
+/// P8 — the AI-authored prose the Command Center leads with past the narrative
+/// window. Every claim resolves to an admitted delta item.
+model Narrative {
+  id       String @id @default(cuid())
+  tenantId String
+
+  forUserId          String
+  windowFrom         DateTime
+  windowTo           DateTime
+  reconciliationLine String
+  body               String
+  /// The delta item ids every claim resolves to.
+  claimRefs          String[] @default([])
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, forUserId, createdAt])
+  @@map("narratives")
+}
+
+// ===========================================================================
+// P9 — Surface composition
+// ===========================================================================
+
+model SurfaceTemplate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  templateKey   String
+  name          String
+  archetype     String
+  eligibleRoles String[] @default([])
+  navGroup      String   @default("main")
+  version       Int      @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bindings WidgetBinding[]
+
+  @@unique([tenantId, templateKey])
+  @@map("surface_templates")
+}
+
+/// Seven mandatory declarations on every widget: data source, permission,
+/// severity relevance, actions, drill target, mobile behaviour, empty state.
+/// A non-empty actions[] is enforced at publish time — no dead metrics.
+model WidgetDefinition {
+  id       String @id @default(cuid())
+  tenantId String
+
+  widgetKey          String
+  title              String
+  dataSource         String
+  requiredPermission String
+  severityRelevance  String  @default("S0_INFO")
+  actions            Json    @default("[]")
+  drillTarget        String
+  mobileBehaviour    String  @default("keep") // keep | drill_only | shed
+  emptyState         String
+  /// A routing target for an item nobody can act on, with an SLA — never omission.
+  noActionFallback   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bindings WidgetBinding[]
+
+  @@unique([tenantId, widgetKey])
+  @@map("widget_definitions")
+}
+
+model WidgetBinding {
+  id       String @id @default(cuid())
+  tenantId String
+
+  templateId String
+  template   SurfaceTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  widgetId   String
+  widget     WidgetDefinition @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+
+  position              Int    @default(0)
+  /// movable | removable | locked
+  personalisationPolicy String @default("movable")
+  config                Json   @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@unique([templateId, widgetId])
+  @@index([tenantId, templateId, position])
+  @@map("widget_bindings")
+}
+
+/// Unreachable nodes are unrendered, never merely disabled. Badge counts obey
+/// the same five-axis filter as content — a badge number is never a permission leak.
+model NavNode {
+  id       String @id @default(cuid())
+  tenantId String
+
+  nodeKey            String
+  label              String
+  icon               String   @default("circle")
+  path               String
+  group              String   @default("main")
+  parentKey          String?
+  position           Int      @default(0)
+  requiredPermission String?
+  eligibleArchetypes String[] @default([])
+  searchSynonyms     String[] @default([])
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, nodeKey])
+  @@index([tenantId, group, position])
+  @@map("nav_nodes")
+}
+
+/// Persisted so an auditor's "why wasn't X on his screen on 14 March" is
+/// answerable without re-derivation. `withheld[]` uses the closed reason-code set.
+model SurfaceComposition {
+  id       String @id @default(cuid())
+  tenantId String
+
+  userId          String
+  affiliationId   String
+  templateKey     String
+  templateVersion Int
+  policyVersionId String?
+
+  widgets  Json @default("[]")
+  withheld Json @default("[]")
+
+  composedAt DateTime @default(now())
+
+  @@index([tenantId, userId, composedAt])
+  @@map("surface_compositions")
+}
+
+/// Tunable without a code change — every constant the corpus flags as
+/// unvalidated ships as a row here from day one.
+model Threshold {
+  id       String @id @default(cuid())
+  tenantId String
+
+  thresholdKey String
+  value        Float
+  unit         String  @default("count")
+  description  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, thresholdKey])
+  @@map("thresholds")
+}

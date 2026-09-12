@@ -1,0 +1,205 @@
+//
+// Courses, cohorts, enrolments and the learner record.
+//
+
+// ===========================================================================
+// Education (edu)
+// ===========================================================================
+
+model Course {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name          String
+  code          String
+  description   String?
+  durationWeeks Int?
+  offeringId    String?
+  active        Boolean @default(true)
+
+  /// What the course sells for before tax, the tax it attracts, and the SAC it
+  /// is classified under. Held on the course because whoever is raising the
+  /// invoice — increasingly an employee at a counter rather than the finance
+  /// head — should not have to know the price list or the tax code.
+  feeAmount Decimal? @db.Decimal(18, 2)
+  gstRate   Decimal  @default(18) @db.Decimal(5, 2)
+  hsnSac    String?
+  /// Which division earns what this course brings in.
+  division  String   @default("education")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cohorts Cohort[]
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, code])
+  @@map("courses")
+}
+
+model Cohort {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  name           String
+  startDate      DateTime
+  endDate        DateTime?
+  trainerPartyId String?
+  institutionId  String?
+  capacity       Int       @default(30)
+  status         String    @default("planned")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enrollments Enrollment[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, trainerPartyId])
+  @@map("cohorts")
+}
+
+model Enrollment {
+  id              String  @id @default(cuid())
+  tenantId        String
+  recordCode      String
+  legacyReference String?
+
+  personId String
+  cohortId String
+  cohort   Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+
+  /// The college this student came from, where they came from one.
+  ///
+  /// The whole reason the platform models colleges separately from client
+  /// companies is that students are recruited out of them — so "how many did
+  /// this college send us, and how did they do" is the question the
+  /// relationship exists to answer. Without this edge it was unanswerable, and
+  /// an institution profile was a record with nothing hanging off it.
+  ///
+  /// Nullable on purpose: somebody who walks in and pays for a course has no
+  /// college, and requiring one would mean inventing it.
+  institutionId String?
+  institution   Organization? @relation("EnrollmentInstitution", fields: [institutionId], references: [id])
+
+  opportunityId String?
+
+  status           String    @default("reserved")
+  enrolledAt       DateTime?
+  completedAt      DateTime?
+  progressPct      Int       @default(0)
+  attendancePct    Int       @default(100)
+  atRisk           Boolean   @default(false)
+  atRiskNotifiedAt DateTime?
+
+  /// Regulated (DPDP-covered) — read-audited, never masked-but-present.
+  guardianName  String?
+  guardianPhone String?
+  guardianEmail String?
+  isMinor       Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendance    Attendance[]
+  dailyProgress DailyProgress[]
+  logs          LearnerLog[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, cohortId, status])
+  @@index([tenantId, personId])
+  @@index([tenantId, institutionId])
+  @@map("enrollments")
+}
+
+/// An explicit collection name is set on all three education operational models
+/// as defence-in-depth, so a future model rename can never silently change the
+/// live collection out from under a migration.
+model Attendance {
+  id       String @id @default(cuid())
+  tenantId String
+
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  sessionDate  DateTime
+  status       String
+  recordedById String?
+  note         String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([enrollmentId, sessionDate])
+  @@index([tenantId, sessionDate])
+  @@map("attendances")
+}
+
+model DailyProgress {
+  id       String @id @default(cuid())
+  tenantId String
+
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  progressDate DateTime
+  score        Int?
+  note         String?
+  recordedById String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, enrollmentId, progressDate])
+  @@map("daily_progresses")
+}
+
+/// Everything else that happens to a student on a day.
+///
+/// Attendance says whether they turned up and daily progress says how they did.
+/// Neither can hold the question they asked, the complaint they made or the
+/// praise they gave, and those were being lost — which is the same as saying
+/// nobody could answer "what has gone on with this student" from the system.
+///
+/// Four kinds, deliberately not one free-text note field: a question that is
+/// still unanswered and a problem that is still open are work, and work has to
+/// be countable. A note is the fallback for everything that is neither.
+model LearnerLog {
+  id       String @id @default(cuid())
+  tenantId String
+
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  /// The day it happened, which is not always the day it was typed in.
+  entryDate DateTime
+
+  /// query | feedback | issue | note
+  kind   String
+  title  String
+  detail String?
+
+  /// low | medium | high — on a query or an issue, how much it matters.
+  severity String?
+  /// Feedback carries a 1-5 rating where somebody gave one.
+  rating   Int?
+
+  /// open | in_progress | resolved. A note and a piece of feedback are closed
+  /// the moment they are recorded; a query and an issue are not.
+  status         String    @default("open")
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolutionNote String?
+
+  recordedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, enrollmentId, entryDate])
+  @@index([tenantId, kind, status])
+  @@map("learner_logs")
+}

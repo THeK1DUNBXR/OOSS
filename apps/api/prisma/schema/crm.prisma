@@ -1,0 +1,950 @@
+//
+// The commercial graph: relationships, pipeline, leads, opportunities,
+// the catalogue, contracts, interactions, documents and projects.
+//
+
+// ===========================================================================
+// P3 — Relationship Graph
+// ===========================================================================
+
+/// A first-class polymorphic edge. History is preserved by never overwriting a
+/// Relationship in place when its nature changes — a new role or employer
+/// produces a NEW row with its own startDate, and the prior one gets an endDate.
+/// `status` and `strength` alone may be updated in place: refinements of the
+/// same ongoing relationship, not nature changes.
+model Relationship {
+  id       String @id @default(cuid())
+  tenantId String
+
+  fromType String
+  fromId   String
+  toType   String
+  toId     String
+
+  relationshipType String
+  role             String?
+  status           String  @default("active") // active | inactive | ended
+  strength         String  @default("moderate") // weak | moderate | strong
+  ownerPartyId     String?
+
+  startDate DateTime  @default(now())
+  endDate   DateTime?
+  notes     String?
+
+  supersededById String?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantId, fromType, fromId])
+  @@index([tenantId, toType, toId])
+  @@index([tenantId, relationshipType, status])
+  @@map("relationships")
+}
+
+// ===========================================================================
+// Pipeline as data (CRM-LEAD-001/002)
+// ===========================================================================
+
+model PipelineDefinition {
+  id       String @id @default(cuid())
+  tenantId String
+
+  pipelineCode          String
+  name                  String
+  commercialMotion      String
+  appliesToVerticals    String[] @default([])
+  appliesToAccountKind  String   @default("any")
+  defaultForecastMethod String   @default("weighted_stage")
+  requiresAwardArtefact String   @default("none")
+  isDefault             Boolean  @default(false)
+
+  /// A tenant may additionally require manager-level grant for commit
+  /// promotion above a value threshold — a configurable toggle, not a fixed rule.
+  commitApprovalThreshold Decimal? @db.Decimal(18, 2)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  stages        PipelineStage[]
+  transitions   PipelineTransition[]
+  leads         Lead[]
+  opportunities Opportunity[]
+
+  @@unique([tenantId, pipelineCode])
+  @@index([tenantId, effectiveFrom])
+  @@map("pipeline_definitions")
+}
+
+model PipelineStage {
+  id       String @id @default(cuid())
+  tenantId String
+
+  pipelineId String
+  pipeline   PipelineDefinition @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  /// Immutable once referenced by a live record: a rename retires the old key
+  /// and creates a new one, so historical stage_changed events stay
+  /// interpretable without a rename-history join.
+  stageKey String
+  label    String
+  sequence Int
+
+  defaultProbability Int @default(0)
+  /// One of the closed eight canonical values {0,10,20,30,40,50,60,90}.
+  pipelinePosition   Int
+
+  isOpen     Boolean @default(true)
+  isTerminal Boolean @default(false)
+  /// Retired post-award states: no transition may target one after cutover.
+  postAward  Boolean @default(false)
+
+  /// null means no SLA clock on this stage.
+  stageAgeBudgetDays Int?
+  requiredFields     String[] @default([])
+  entryPredicate     Json     @default("{}")
+  exitPredicate      Json     @default("{}")
+
+  retiredAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([pipelineId, stageKey])
+  @@unique([pipelineId, sequence])
+  @@index([tenantId, pipelineId, pipelinePosition])
+  @@map("pipeline_stages")
+}
+
+/// The permitted moves between stages — a directed graph the platform enforces,
+/// not a value any caller can set.
+model PipelineTransition {
+  id       String @id @default(cuid())
+  tenantId String
+
+  pipelineId String
+  pipeline   PipelineDefinition @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  /// null = the initial creation transition.
+  fromStageKey String?
+  toStageKey   String
+
+  requiresApproval   Boolean @default(false)
+  /// A grant path evaluated under the five-axis formula, never a role-slug string.
+  requiredPermission String  @default("opportunities:edit")
+  emitsEvent         String  @default("kz.crm.opportunity.stage_changed")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([pipelineId, fromStageKey, toStageKey])
+  @@index([tenantId, pipelineId])
+  @@map("pipeline_transitions")
+}
+
+// ===========================================================================
+// Territory & routing
+// ===========================================================================
+
+model Territory {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name                 String
+  geoAreaRef           String[] @default([]) // district list or polygon reference
+  appliesToVerticals   String[] @default([])
+  appliesToAccountKind String   @default("any")
+  /// A position, not a named user — survives personnel change.
+  ownerPositionId      String?
+  ownerPartyId         String?
+  capacityCeiling      Int      @default(50)
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads Lead[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, active])
+  @@map("territories")
+}
+
+model RoutingRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name     String
+  active   Boolean @default(true)
+  priority Int     @default(100)
+
+  /// Six factors in declared, tenant-configurable order. Hard filters run
+  /// first: assigning outside territory or grant is an authorization error,
+  /// not a preference, so a candidate failing either is never scored at all.
+  factorWeights        Json @default("{\"capacity\":30,\"capability\":25,\"relationship_strength\":30,\"round_robin\":15}")
+  /// Round-robin breaks ties only among candidates within this margin of top score.
+  tieBreakMarginPoints Int  @default(5)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, active, priority])
+  @@map("routing_rules")
+}
+
+/// Every routing evaluation is logged with the full candidate set considered,
+/// their per-factor scores, and the winner — so a disputed assignment is fully
+/// reconstructable, matching the transparency discipline applied to lead scoring.
+model RoutingAudit {
+  id       String @id @default(cuid())
+  tenantId String
+
+  leadId         String
+  territoryId    String?
+  evaluatedAt    DateTime @default(now())
+  candidates     Json
+  winnerPartyId  String?
+  unroutedReason String?
+
+  @@index([tenantId, leadId])
+  @@map("routing_audits")
+}
+
+/// Feeds the routing engine's Capability factor. Never auto-asserted at
+/// `verified` tier — an AI may propose a claim for a human to confirm.
+/// Held by anyone the company knows — employees, students, candidates,
+/// trainers, alumni — which is why it hangs off `partyId` and not off an
+/// employment relationship.
+model CapabilityClaim {
+  id       String @id @default(cuid())
+  tenantId String
+
+  partyId    String
+  offeringId String?
+  vertical   String?
+  skillId    String?
+  skill      Skill?  @relation(fields: [skillId], references: [id])
+
+  /// inferred | claimed | assessed | demonstrated | verified. The names are
+  /// not the confidence order, which is why the rank is stored beside them
+  /// rather than derived from enum position.
+  tier                    String   @default("claimed")
+  confidenceRank          Int      @default(2)
+  confidenceScore         Decimal  @default(0.5) @db.Decimal(4, 3)
+  claimedProficiencyLevel Int?
+  /// active | contradicted | retracted | revoked | superseded
+  state                   String   @default("active")
+  source                  String   @default("self_report_or_cv_parse")
+  /// Decay is computed from this at read time against the skill's half-life.
+  lastEvidencedAt         DateTime @default(now())
+
+  /// Free-text evidence from before the Evidence table existed; new evidence
+  /// is a row, not a string.
+  evidence     String?
+  assertedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evidenceRecords    Evidence[]
+  verificationEvents VerificationEvent[]
+
+  @@index([tenantId, partyId])
+  @@index([tenantId, skillId, tier])
+  @@index([tenantId, state])
+  @@map("capability_claims")
+}
+
+// ===========================================================================
+// Lead & Opportunity
+// ===========================================================================
+
+model Lead {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  title String
+
+  personId       String?
+  person         Person?       @relation(fields: [personId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  vertical          String
+  offeringId        String?
+  offering          Offering? @relation(fields: [offeringId], references: [id])
+  /// Preserved verbatim, never silently discarded, through the catalog migration.
+  legacyProductText String?
+
+  pipelineId          String
+  pipeline            PipelineDefinition @relation(fields: [pipelineId], references: [id])
+  stageKey            String
+  stageEnteredAt      DateTime           @default(now())
+  legacyStage         String?
+  legacyVerticalStage String?
+
+  leadStatus String @default("open")
+
+  /// Routing-assigned, never creator-set. `open` + null owner is the canonical
+  /// `unrouted` predicate — one source of truth, not a separate boolean flag.
+  ownerPartyId   String?
+  territoryId    String?
+  territory      Territory? @relation(fields: [territoryId], references: [id])
+  unroutedReason String?
+  routedAt       DateTime?
+
+  score        Int      @default(0)
+  scoreReasons String[] @default([])
+
+  source         String   @default("manual")
+  sourceDetail   String?
+  estimatedValue Decimal? @db.Decimal(18, 2)
+  currency       String   @default("INR")
+
+  lastInteractionAt      DateTime?
+  untouchedNotifiedAt    DateTime?
+  convertedOpportunityId String?
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, leadStatus, ownerPartyId])
+  @@index([tenantId, pipelineId, stageKey])
+  @@index([tenantId, createdAt])
+  @@map("leads")
+}
+
+model Opportunity {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  title String
+
+  accountId              String?
+  organizationId         String?
+  organization           Organization? @relation(fields: [organizationId], references: [id])
+  primaryContactPersonId String?
+  leadId                 String?
+
+  vertical          String
+  offeringId        String?
+  offering          Offering? @relation(fields: [offeringId], references: [id])
+  legacyProductText String?
+
+  pipelineId     String
+  pipeline       PipelineDefinition @relation(fields: [pipelineId], references: [id])
+  stageKey       String
+  stageEnteredAt DateTime           @default(now())
+  legacyStage    String?
+
+  /// Second state-machine field, deliberately decoupled from stageKey: a deal
+  /// can sit in negotiating for weeks without ever being confidently committable.
+  forecastCategory             String    @default("pipeline")
+  forecastCategoryChangedAt    DateTime?
+  forecastCategoryChangeReason String?
+
+  expectedValue     Decimal?  @db.Decimal(18, 2)
+  currency          String    @default("INR")
+  expectedCloseDate DateTime?
+
+  ownerPartyId   String?
+  strategicValue String?
+
+  /// Gates the `proposed` stage transition.
+  proposalId                String?
+  /// Denormalised read model, event-sourced from PCT. Never written directly
+  /// by CRM service code.
+  proposalSentAt            DateTime?
+  proposalPendingNotifiedAt DateTime?
+  quoteId                   String?
+  /// The won-gate reads contractId OR mouId in the service layer, never a
+  /// document reference — a document's existence proves nothing about signature.
+  contractId                String?
+  mouId                     String?
+  /// The PL-RENEWAL chain. A renewal never re-opens the original opportunity.
+  parentContractId          String?
+
+  outcome            String?
+  lostReason         String?
+  closedAt           DateTime?
+  stageAgeNotifiedAt DateTime?
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, pipelineId, stageKey])
+  @@index([tenantId, forecastCategory])
+  @@index([tenantId, ownerPartyId])
+  @@index([tenantId, expectedCloseDate])
+  @@map("opportunities")
+}
+
+// ===========================================================================
+// Commercial catalog
+// ===========================================================================
+
+model Offering {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  offeringCode            String
+  name                    String
+  description             String?
+  vertical                String
+  deliveryModel           String
+  /// The field Finance reads to derive revenue recognition without a manual
+  /// sales conversation per deal.
+  defaultRevenueTreatment String
+  status                  String   @default("draft")
+  owningBusinessUnit      String?
+  legacyProductStrings    String[] @default([])
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  createdById   String?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  priceBookEntries PriceBookEntry[]
+  leads            Lead[]
+  opportunities    Opportunity[]
+
+  @@unique([tenantId, offeringCode])
+  @@index([tenantId, status, vertical])
+  @@map("offerings")
+}
+
+/// Repricing never mutates an existing entry — it creates a new version and
+/// flips the prior row to `superseded`, preserving the exact price a quote was
+/// built against even after the list price moves on.
+model PriceBookEntry {
+  id       String @id @default(cuid())
+  tenantId String
+
+  offeringId String
+  offering   Offering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+
+  priceBookId   String @default("standard")
+  priceBookName String @default("Standard List")
+
+  currency         String
+  unitPrice        Decimal @db.Decimal(18, 2)
+  billingFrequency String
+  minQuantity      Int     @default(1)
+  /// Required, non-nullable, deliberately set — the ceiling the discount
+  /// authority gate compares against. Never defaults to 100.
+  maxDiscountPct   Int
+
+  status  String @default("active") // active | superseded
+  version Int    @default(1)
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  quoteLines QuoteLine[]
+
+  @@unique([offeringId, priceBookId, version])
+  @@index([tenantId, offeringId, status])
+  @@index([tenantId, priceBookId, currency])
+  @@map("price_book_entries")
+}
+
+// ===========================================================================
+// PCT — proposals, quotes, contracts, MoU, partner agreements
+// ===========================================================================
+
+model Proposal {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  opportunityId String
+  quoteId       String?
+  title         String
+
+  totalValue Decimal? @db.Decimal(18, 2)
+  currency   String   @default("INR")
+  documentId String?
+
+  sentAt      DateTime?
+  validUntil  DateTime?
+  response    String    @default("pending")
+  respondedAt DateTime?
+
+  stalledNotifiedAt DateTime?
+  ownerPartyId      String?
+  createdById       String?
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, opportunityId])
+  @@index([tenantId, response, sentAt])
+  @@map("proposals")
+}
+
+model Quote {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  opportunityId String
+  version       Int    @default(1)
+  status        String @default("draft")
+
+  subtotal      Decimal? @db.Decimal(18, 2)
+  discountTotal Decimal? @db.Decimal(18, 2)
+  grandTotal    Decimal? @db.Decimal(18, 2)
+  currency      String   @default("INR")
+
+  issuedAt   DateTime?
+  validUntil DateTime?
+
+  /// Set when AU-CRM-011 blocks issue: the whole quote blocks, never a partial
+  /// issue with some lines through.
+  blockedReason  String?
+  approvalStepId String?
+
+  ownerPartyId String?
+  createdById  String?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  lines QuoteLine[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, opportunityId, version])
+  @@map("quotes")
+}
+
+model QuoteLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  quoteId String @map("quote_id")
+  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  /// A line always resolves against a specific entry AND version, never
+  /// "the current price for this offering" — this is what makes a quote
+  /// reproducible six months after issue.
+  priceBookEntryId      String
+  priceBookEntry        PriceBookEntry @relation(fields: [priceBookEntryId], references: [id])
+  priceBookEntryVersion Int
+
+  quantity       Int      @default(1)
+  listUnitPrice  Decimal  @db.Decimal(18, 2)
+  discountPct    Int      @default(0)
+  discountAmount Decimal? @db.Decimal(18, 2)
+  lineTotal      Decimal? @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, quoteId])
+  @@map("quote_lines")
+}
+
+/// MoU and Contract are deliberately NOT a supertype/subtype pair. They share a
+/// design pattern because the underlying business facts differ: an MoU is a
+/// coverage instrument that may carry zero commercial value; a contract is
+/// always a priced commitment.
+model Mou {
+  id              String  @id @default(cuid())
+  tenantId        String
+  recordCode      String
+  /// The pre-migration KAIZEN-YYYY-NNN value, preserved verbatim.
+  legacyReference String?
+
+  title          String
+  organizationId String?
+  institutionId  String?
+  opportunityId  String?
+  ownerPartyId   String?
+  documentId     String?
+
+  scope    String?
+  vertical String?
+
+  status String @default("proposed")
+
+  /// May legitimately be zero — an MoU is a coverage instrument.
+  commercialValue Decimal? @db.Decimal(18, 2)
+  currency        String   @default("INR")
+  strategicValue  String?
+  termMonths      Int?
+
+  startDate  DateTime?
+  endDate    DateTime?
+  signedDate DateTime?
+
+  renewedFromId      String?
+  /// Idempotency marker for the escalation ladder — the rung already notified.
+  expiryNotifiedDays Int[]   @default([])
+
+  approvedById String?
+  approvedAt   DateTime?
+  signedById   String?
+
+  notes       String?
+  createdById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status, endDate])
+  @@index([tenantId, organizationId])
+  @@map("mous")
+}
+
+model Contract {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  title          String
+  organizationId String?
+  accountId      String?
+  institutionId  String?
+  opportunityId  String?
+  quoteId        String?
+  ownerPartyId   String?
+  documentId     String?
+
+  status String @default("proposed")
+
+  /// Required, must be > 0 — unlike MoU, an unpriced contract is a modelling error.
+  commercialValue Decimal @db.Decimal(18, 2)
+  currency        String  @default("INR")
+  strategicValue  String?
+  termMonths      Int?
+
+  startDate  DateTime?
+  endDate    DateTime?
+  signedDate DateTime?
+
+  renewedFromId      String?
+  /// Wider than MoU's 90/60/30/7: a priced commitment needs longer renewal lead time.
+  expiryNotifiedDays Int[]   @default([])
+
+  terminatedAt      DateTime?
+  terminationReason String?
+
+  approvedById String?
+  approvedAt   DateTime?
+  signedById   String?
+
+  createdById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status, endDate])
+  @@index([tenantId, opportunityId])
+  @@map("contracts")
+}
+
+/// Modelled deliberately on MoU's exact shape rather than invented fresh.
+/// Creation is blocked without an existing or atomically-created `partner_of`
+/// relationship edge. Explicitly not a commission engine.
+model PartnerAgreement {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  title                 String
+  partnerOrganizationId String
+  relationshipId        String?
+  agreementType         String
+  scope                 String?
+  territoryScope        String?
+  /// A pointer only — commission calculation is deferred, out of scope.
+  commercialTermsRef    String?
+
+  status String @default("proposed")
+
+  commercialValue Decimal? @db.Decimal(18, 2)
+  currency        String   @default("INR")
+  strategicValue  String?
+  termMonths      Int?
+
+  startDate  DateTime?
+  endDate    DateTime?
+  signedDate DateTime?
+
+  renewedFromId      String?
+  expiryNotifiedDays Int[]   @default([])
+
+  ownerPartyId String?
+  documentId   String?
+  approvedById String?
+  approvedAt   DateTime?
+
+  createdById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status, endDate])
+  @@index([tenantId, partnerOrganizationId])
+  @@map("partner_agreements")
+}
+
+/// A structured post-mortem, mandatory above a value OR strategic threshold —
+/// an OR, not an AND — capturing named competitor, real decision-maker, and
+/// real lost stage, feeding Company Memory's LESSON distillation.
+model WinLossReview {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  subjectType  String // opportunity | mou
+  subjectId    String
+  subjectLabel String?
+
+  outcome               String
+  competitorName        String?
+  decisionMakerPersonId String?
+  realLostStage         String?
+  lostReason            String?
+  lostReasonOtherText   String?
+  lesson                String?
+
+  /// Frozen at terminal-state entry: an edit to the live subject's
+  /// strategic_value afterward never retroactively changes `mandatory`.
+  mandatory               Boolean  @default(false)
+  mandatoryBasis          String   @default("not_mandatory")
+  strategicValueSnapshot  String?
+  commercialValueSnapshot Decimal? @db.Decimal(18, 2)
+  thresholdUsedSnapshot   Decimal? @db.Decimal(18, 2)
+
+  completedById     String?
+  completedAt       DateTime?
+  dueAt             DateTime?
+  overdueNotifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, subjectType, subjectId])
+  @@index([tenantId, mandatory, completedAt])
+  @@map("win_loss_reviews")
+}
+
+// ===========================================================================
+// Interaction (the universal join table)
+// ===========================================================================
+
+/// The polymorphic successor to Activity — one write, many timelines,
+/// extensible past CRM's own entity types to any domain without CRM code being
+/// touched again.
+model Interaction {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// Immutable post-creation.
+  interactionType String
+  direction       String   @default("outbound")
+  /// Immutable post-creation.
+  occurredAt      DateTime
+
+  actorPartyId        String?
+  participantPartyIds String[] @default([])
+
+  durationMinutes Int?
+  subject         String?
+  notes           String?
+  outcome         String?
+
+  /// An array of {contextCode, entityType, entityId} triples, minimum length 1.
+  /// Replaces the seven fixed foreign keys. Each element may carry a
+  /// denormalised, non-authoritative displayLabel/recordCode for render
+  /// performance — never authoritative for permission decisions.
+  relatedReferences Json
+
+  /// Computed as the maximum classification across every related reference,
+  /// re-evaluated at every read. Never set by the logging user. Persisted
+  /// denormalised for indexing and reporting only.
+  sensitivityClass String @default("internal")
+
+  nextAction            String?
+  nextActionDue         DateTime?
+  attachmentDocumentIds String[]  @default([])
+  messageIds            String[]  @default([])
+
+  createdById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, occurredAt])
+  @@index([tenantId, sensitivityClass])
+  @@index([tenantId, actorPartyId])
+  @@map("interactions")
+}
+
+/// Each context registers the sensitivity of its own entity types. An
+/// entity_type with no registration defaults to `confidential`, not `internal`,
+/// and raises S1_ATTENTION — defaulting to internal means every new column
+/// ships readable.
+model SensitivityRegistration {
+  id       String @id @default(cuid())
+  tenantId String
+
+  contextCode      String
+  entityType       String
+  sensitivityClass String
+  registeredById   String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, contextCode, entityType])
+  @@map("sensitivity_registrations")
+}
+
+model Task {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  title       String
+  description String?
+  status      String  @default("open") // open | in_progress | done | cancelled
+  priority    String  @default("normal")
+
+  assigneePartyId String?
+  ownerPartyId    String?
+  dueAt           DateTime?
+  completedAt     DateTime?
+
+  relatedInteractionId String?
+  relatedType          String?
+  relatedId            String?
+
+  escalatedAt       DateTime?
+  overdueNotifiedAt DateTime?
+
+  createdById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, assigneePartyId, status])
+  @@index([tenantId, dueAt, status])
+  @@map("tasks")
+}
+
+// ===========================================================================
+// Documents
+// ===========================================================================
+
+/// File metadata only — binaries live in object storage, never in the database.
+/// A re-upload creates a new row with an incremented version under the same
+/// documentGroupId; it never overwrites the storage object.
+model Document {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  filename   String
+  storageKey String
+  mimeType   String
+  size       Int
+
+  attachedToType String
+  attachedToId   String
+
+  version         Int    @default(1)
+  documentGroupId String
+
+  /// Drives per-kind signed-URL TTL, replacing the fixed 300-second constant.
+  documentKind     String  @default("file_artefact")
+  label            String?
+  sensitivityClass String  @default("internal")
+
+  uploadedById String?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, attachedToType, attachedToId])
+  @@index([tenantId, documentGroupId, version])
+  @@map("documents")
+}
+
+model Note {
+  id       String @id @default(cuid())
+  tenantId String
+
+  body           String
+  attachedToType String
+  attachedToId   String
+  authorPartyId  String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId, attachedToType, attachedToId])
+  @@map("notes")
+}
+
+// ===========================================================================
+// Projects (prj) — the record a project manager actually needs, post-award
+// ===========================================================================
+
+model Project {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name           String
+  organizationId String?
+  opportunityId  String?
+  contractId     String?
+  managerPartyId String?
+
+  status              String    @default("planned") // planned | active | on_hold | delivered | closed
+  startDate           DateTime?
+  targetEndDate       DateTime?
+  actualEndDate       DateTime?
+  healthBand          String    @default("stable")
+  scheduleVariancePct Int       @default(0)
+
+  /// Set when a won-opportunity handoff has not yet been accepted (EX-CRM-012).
+  handoffAcceptedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@map("projects")
+}

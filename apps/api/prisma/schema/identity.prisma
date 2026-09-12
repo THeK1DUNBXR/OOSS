@@ -1,0 +1,704 @@
+//
+// Who a principal is, and what they may do: people as parties, user
+// accounts, roles, policies and grants.
+//
+
+// ===========================================================================
+// P1 — Party & Identity
+// ===========================================================================
+
+/// One PERSON row per real human, forever. PERSON itself never records a role
+/// or a relationship — that is what AFFILIATION and RELATIONSHIP are for.
+///
+/// Phone/email indexes are deliberately NOT unique: a 409-with-candidates from
+/// the dedup service is the mechanism, not a driver-level duplicate-key error.
+model Person {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  fullName                   String
+  primaryPhone               String?
+  primaryEmail               String?
+  primaryPhoneNormalised     String?
+  primaryEmailNormalised     String?
+  additionalPhones           String[] @default([])
+  additionalEmails           String[] @default([])
+  additionalPhonesNormalised String[] @default([])
+  additionalEmailsNormalised String[] @default([])
+
+  /// {system, id} pairs. Never fabricated — absent is safe, wrong is not.
+  externalIds Json @default("[]")
+
+  /// Date of birth. Held because half of HR depends on it — age at joining,
+  /// retirement, statutory minimums — and because a staff list carries it.
+  dateOfBirth DateTime?
+
+  /// Blood group, from the staff list that carries it for emergencies.
+  ///
+  /// Health data under the DPDP Act, so it is registered as `regulated` and is
+  /// structurally excluded from any projection whose viewer's ceiling does not
+  /// reach it — absent from the response shape, not present-and-null.
+  bloodGroup String?
+
+  dedupeStatus String   @default("active") // active | merged | flagged_duplicate
+  mergedIntoId String?
+  mergedInto   Person?  @relation("PersonMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom   Person[] @relation("PersonMerge")
+
+  /// Field-level sensitivity classification consulted by both the write-audit
+  /// path and the regulated-field read-audit path.
+  fieldClassifications Json @default("{}")
+
+  notes       String?
+  createdById String?
+  updatedById String?
+  source      String    @default("manual")
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  affiliations   Affiliation[]
+  users          User[]
+  leads          Lead[]
+  studentProfile StudentProfile?
+
+  /// A candidate and an employee are the same Person row. Being hired adds an
+  /// employment relationship and an affiliation; it never creates a second human.
+  employmentRelationships EmploymentRelationship[]
+  candidateApplications   Application[]            @relation("ApplicationCandidate")
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, primaryPhoneNormalised])
+  @@index([tenantId, primaryEmailNormalised])
+  @@index([tenantId, dedupeStatus])
+  @@index([tenantId, fullName])
+  @@map("people")
+}
+
+/// A time-bounded record of HOW a PERSON relates to Kaizen right now. A person
+/// can hold multiple active affiliations simultaneously. Access and visibility
+/// derive from Affiliations, never from PERSON directly.
+model Affiliation {
+  id       String @id @default(cuid())
+  tenantId String
+
+  partyId          String
+  party            Person  @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  counterpartyId   String?
+  counterpartyName String?
+  affiliationType  String // employee | student | customer_contact | ...
+
+  /// The ACCESS_ROLE this affiliation carries. Never a permission itself —
+  /// a GRANT references a role and a POLICY_VERSION.
+  roleSlug String?
+
+  status             String    @default("active") // active | suspended | ended
+  primaryFlag        Boolean   @default(false)
+  specialisationId   String?
+  effectiveFrom      DateTime  @default(now())
+  effectiveTo        DateTime?
+  priorAffiliationId String?
+
+  /// Employee/student affiliations carry a statutory retention floor: a dedup
+  /// match against one never auto-merges, regardless of confidence.
+  statutoryRetentionFloor Boolean @default(false)
+
+  orgUnitId  String?
+  branch     String?
+  positionId String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId, partyId, status])
+  @@index([tenantId, affiliationType, status])
+  @@map("affiliations")
+}
+
+/// Raised whenever a dedup match is ambiguous, cross-scope, or hits a statutory
+/// retention floor. Drained by human action, never auto-expired.
+model MergeCandidate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  incomingPayload   Json
+  candidatePersonId String
+  confidence        Float
+  matchedOn         String[] @default([])
+  raisedReason      String // cross_scope | ambiguous | statutory_retention_floor
+  state             String   @default("open") // open | confirmed | rejected | deferred
+
+  resolvedById   String?
+  resolvedAt     DateTime?
+  resolutionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, state, createdAt])
+  @@map("merge_candidates")
+}
+
+/// The single Party-model specialisation for any legal or institutional body —
+/// one row per real legal body, forever. `category` as an exclusive gate is
+/// removed; `legacyCategory` survives transitionally for reporting only.
+model Organization {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// What this body *is*: `institution` — a school or a college — or
+  /// `organization` — a trust, a foundation or a business.
+  ///
+  /// Exclusive, and enforced. The two used to be specialisations that could sit
+  /// on one row at once, on the reasoning that a college might also buy
+  /// training and keeping two records of one legal body is how a CRM starts
+  /// lying to you. In practice it meant every list mixed schools with firms,
+  /// every screen had to say "companies & colleges", and the word "customer"
+  /// ended up covering a fifteen-year-old learner, a government polytechnic and
+  /// a manufacturing company — three parties with nothing in common except that
+  /// money sometimes moves. They are separated here because they are read,
+  /// billed, reported and worked differently.
+  ///
+  /// A college we also invoice is still one row: billing detail is not identity,
+  /// and an institution carries it the same way an organisation does.
+  kind String @default("organization")
+
+  /// What this body *does with us*, which is a different question from what it
+  /// is, and not exclusive: a manufacturer can fund a CSR cohort and hire out
+  /// of it, and the best relationships are both.
+  ///
+  /// `client` buys from us — software, or training for its own staff.
+  /// `sponsor` funds somebody else's learners.
+  /// `employer` takes people at the end of a cohort.
+  /// `government` is a department or state skill agency appointing partners.
+  ///
+  /// Empty on an institution, whose engagements are recorded on its own profile
+  /// in the vocabulary colleges are actually described in.
+  roles String[] @default([])
+
+  name        String
+  website     String?
+  parentOrgId String?
+  parentOrg   Organization?  @relation("OrgHierarchy", fields: [parentOrgId], references: [id])
+  children    Organization[] @relation("OrgHierarchy")
+
+  locations    Json     @default("[]")
+  tags         String[] @default([])
+  ownerPartyId String?
+
+  legacyCategory String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account            Account?
+  institutionProfile InstitutionProfile?
+  leads              Lead[]
+  opportunities      Opportunity[]
+  /// Students recruited out of this organisation, when it is a college.
+  sentStudents       Enrollment[]        @relation("EnrollmentInstitution")
+  /// And the learners whose own record names it as where they came from.
+  students           StudentProfile[]    @relation("StudentInstitution")
+  /// The learners whose fees this body is paying.
+  sponsoredStudents  StudentProfile[]    @relation("StudentSponsor")
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, name])
+  @@index([tenantId, kind, name])
+  @@map("organizations")
+}
+
+/// How an organisation is billed: terms, the address the invoice goes to, and
+/// the registration the tax is charged under.
+///
+/// It hangs off either kind, because being invoiced is not what makes a body a
+/// business. A polytechnic that buys a staff training programme is billed
+/// exactly like a manufacturer, and the difference between them belongs in
+/// `Organization.kind` and in InstitutionProfile, not in whether they are
+/// allowed to have payment terms. A student's equivalent lives on
+/// StudentProfile, for the same reason and with the same fields.
+model Account {
+  id       String @id @default(cuid())
+  tenantId String
+
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  tier             String  @default("standard") // strategic | key | standard | long_tail
+  ownerPartyId     String?
+  billingEmail     String?
+  billingAddress   String?
+  paymentTermsDays Int?
+
+  /// The customer's registration, and the state the supply is made to.
+  ///
+  /// Both belong to the account rather than to each invoice: they do not change
+  /// from sale to sale, and the GST split — CGST+SGST within the state, IGST
+  /// across it — is wrong rather than untidy when somebody retypes them and
+  /// gets one digit out. The invoice still stores its own copy, because the
+  /// tax was charged under one reading of them and reprinting must not restate
+  /// it if the account is later corrected.
+  gstin             String?
+  placeOfSupply     String?
+  annualRevenueBand String?
+  employeeCountBand String?
+
+  attachedById String?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([tenantId, tier])
+  @@map("accounts")
+}
+
+/// The education/institutional-partnership specialisation. Formerly the
+/// conditionally-null `institution_details` sub-document; now a sibling
+/// specialisation governed by its own `institutions:*` grant family.
+model InstitutionProfile {
+  id       String @id @default(cuid())
+  tenantId String
+
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  institutionType String?
+  managementType  String?
+  address         String?
+  district        String?
+  taluk           String?
+  state           String?
+  latitude        Float?
+  longitude       Float?
+
+  /// AISHE/UDISE+ — never fabricated; left null instead.
+  externalIdentifier String?
+  establishedYear    Int?
+  studentCount       Int?
+  departments        String[] @default([])
+  strategicPriority  String?
+
+  /// Which of the five depths this partnership actually runs at — academic
+  /// alignment, faculty development, student capability, research and
+  /// innovation, a centre of excellence, institutional technology.
+  ///
+  /// A college is not one relationship. "We run their faculty development" and
+  /// "we built their admissions portal" are different engagements with
+  /// different people and different money, and a partnership recorded only as
+  /// "active" says which of them is true to nobody.
+  engagements String[] @default([])
+
+  /// NAAC grade, NBA accreditation, an autonomous status — whatever the
+  /// institution leads with. Their outcome and accreditation reporting is a
+  /// thing we help with, so knowing where they stand is part of the record.
+  accreditation String?
+
+  attachedById String?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([tenantId, district, institutionType])
+  @@index([tenantId, externalIdentifier])
+  @@map("institution_profiles")
+}
+
+/// The learner specialisation on a PERSON: somebody who buys and takes a course.
+///
+/// A student is a person, and the platform already has exactly one row per real
+/// human — the merge and dedupe machinery, the employment history and the
+/// contact graph all hang off it, and a second table of students would mean a
+/// second row for the graduate you later hire. So a student is a PERSON wearing
+/// this profile, the same shape institutions and billing already use.
+///
+/// What it is *not* is a kind of organisation. A student who walks in and pays
+/// for a course is the customer on that invoice; a college that sends thirty
+/// students is a different party doing a different thing, and putting both
+/// under one "customer" list made it impossible to answer either "how many
+/// learners do we have" or "which colleges do we work with".
+model StudentProfile {
+  id       String @id @default(cuid())
+  tenantId String
+
+  personId String @unique
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  /// The company's own registration number for this student — `KI-2026/09-SAP/1107`
+  /// and the like. Theirs, not ours: it arrives on the register and is quoted
+  /// back at us, so it is stored as given and not reissued.
+  registrationNumber String?
+
+  /// The college or school they came from, where they came from one. Null for
+  /// somebody who walked in off the street, which is most of them.
+  institutionId String?
+  institution   Organization? @relation("StudentInstitution", fields: [institutionId], references: [id])
+
+  /// prospective | active | alumni | withdrawn. Follows from their enrolments
+  /// rather than being set by hand wherever it can be.
+  status String @default("prospective")
+
+  /// Who is actually paying for their place: `self`, `sponsor`, `scheme` or
+  /// `institution`.
+  ///
+  /// The most consequential fact on this record, because the platform bills
+  /// people. A beneficiary of a funded cohort owes nothing, and an invoice
+  /// raised to them is a document that should never have existed — while the
+  /// learner sitting next to them, who walked in and paid, gets one. The two sit
+  /// in the same classroom, so this belongs on the learner and not on the course.
+  funding String @default("self")
+
+  /// The body paying, when somebody else is. An organisation for a CSR or
+  /// employer sponsor; the institution they came from when the college is
+  /// paying. Checked against `funding` on the way in.
+  sponsorId String?
+  sponsor   Organization? @relation("StudentSponsor", fields: [sponsorId], references: [id])
+
+  /// Which framework the money comes under — Naan Mudhalvan, Vetri Nichayam, a
+  /// TNSDC or NSDC-linked scheme, CSR. Each has its own documentation standard
+  /// and reporting expectation, so "which of our learners are on this scheme"
+  /// has to be answerable from a field rather than from a note.
+  fundingFramework String?
+
+  /// Madurai, Coimbatore, online, or on their own campus.
+  deliveryLocation String?
+
+  address String?
+
+  /// Where the supply is made to, for the tax split, and a registration on the
+  /// rare student who has one — a proprietor putting their own training through
+  /// the firm. The same two fields Account carries, for the same reason: they do
+  /// not change from sale to sale, and retyping them is how the wrong tax gets
+  /// charged.
+  placeOfSupply String?
+  gstin         String?
+
+  attachedById String?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([tenantId, registrationNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, institutionId])
+  @@index([tenantId, funding])
+  @@index([tenantId, sponsorId])
+  @@index([tenantId, fundingFramework])
+  @@map("student_profiles")
+}
+
+// ===========================================================================
+// P7 — Governance: policies, grants, roles, decisions
+// ===========================================================================
+
+/// Retained as the ACCESS_ROLE reference. It stops being the terminus of the
+/// permission chain — a GRANT references a Role AND a POLICY_VERSION.
+model AccessRole {
+  id       String @id @default(cuid())
+  tenantId String
+
+  slug                  String
+  name                  String
+  description           String?
+  archetype             String   @default("workspace") // command | workspace | portal | console
+  /// The WHAT-axis ceiling this role may read up to.
+  classificationCeiling String   @default("internal")
+  isSystem              Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  grants Grant[]
+
+  @@unique([tenantId, slug])
+  @@map("access_roles")
+}
+
+/// A named, versioned rule set. POLICY_VERSION is an immutable snapshot
+/// referenced by any decision that relied on it, so a past decision stays
+/// re-explainable against the rule in force at decision time.
+model Policy {
+  id       String @id @default(cuid())
+  tenantId String
+
+  policyCode       String // POL-CRM-MOU-APPROVAL
+  name             String
+  description      String?
+  kind             String  @default("permission") // permission | approval_gate | threshold
+  currentVersionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions PolicyVersion[]
+
+  @@unique([tenantId, policyCode])
+  @@map("policies")
+}
+
+model PolicyVersion {
+  id       String @id @default(cuid())
+  tenantId String
+
+  policyId String
+  policy   Policy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  version  Int
+
+  /// The rule content: required_permission, authority_test,
+  /// approver_resolution, the Self-Dealing Bar clause, applies_to.
+  content Json
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  authoredById  String?
+  createdAt     DateTime  @default(now())
+
+  grants Grant[]
+
+  @@unique([policyId, version])
+  @@index([tenantId, effectiveFrom])
+  @@map("policy_versions")
+}
+
+/// The durable record of "this role or principal may take this action on this
+/// resource", replacing the disposable roles-collection projection the legacy
+/// migration overwrote on every deploy.
+model Grant {
+  id       String @id @default(cuid())
+  tenantId String
+
+  principalType String      @default("role") // role | individual | agent
+  roleId        String?
+  role          AccessRole? @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  principalId   String?
+
+  policyVersionId String?
+  policyVersion   PolicyVersion? @relation(fields: [policyVersionId], references: [id])
+
+  resource String
+  verbs    String[] // view | create | edit | delete | assign | export | financial | approve | merge
+  scope    String   @default("all") // own | own_or_unowned | all
+
+  /// Extra scope resolvers beyond own/own_or_unowned — e.g. `batch_member`,
+  /// which expresses "trainer scoped to own batch" as data rather than as six
+  /// hard-coded role-slug comparisons in service code.
+  scopeResolver String?
+  conditions    Json    @default("{}")
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, roleId, resource])
+  @@index([tenantId, principalId, resource])
+  @@map("grants")
+}
+
+/// The HOW MUCH axis — a value, count, or risk-class limit bound to a principal,
+/// human or agent. A principal with no resolvable AUTHORITY_GRANT defaults to
+/// "no elevated authority": fail-closed, not fail-open.
+model AuthorityGrant {
+  id       String @id @default(cuid())
+  tenantId String
+
+  principalType  String // human | agent
+  principalId    String
+  principalLabel String?
+
+  authorityClass   String // mou_approval | contract_approval | discount_approval | agent_draft
+  ceilingValue     Decimal? @db.Decimal(18, 2)
+  currency         String?
+  countCeiling     Int?
+  countWindow      String?
+  riskClassCeiling String?
+
+  status        String    @default("active") // active | paused | revoked
+  grantedById   String?
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+  revokedAt     DateTime?
+  revokedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, principalId, authorityClass])
+  @@map("authority_grants")
+}
+
+/// An approval gate instance opened by a privileged transition or an
+/// over-ceiling action.
+model ApprovalStep {
+  id       String @id @default(cuid())
+  tenantId String
+
+  policyId      String?
+  policyVersion Int?
+  subjectType   String
+  subjectId     String
+  subjectLabel  String?
+  action        String // mou.approve | contract.sign | quote.issue
+
+  requestedById  String
+  requestedAt    DateTime @default(now())
+  requestedValue Decimal? @db.Decimal(18, 2)
+  currency       String?
+
+  /// Resolved deterministically, before any notification fires.
+  resolvedApproverId    String?
+  resolvedApproverRole  String?
+  resolutionTier        Int     @default(0)
+  /// Set when the Self-Dealing Bar rerouted resolution to the next tier.
+  selfDealingBarTripped Boolean @default(false)
+
+  state        String    @default("open") // open | approved | declined | escalated | withdrawn
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+
+  slaDueAt       DateTime?
+  escalatedAt    DateTime?
+  escalationRung Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, state, slaDueAt])
+  @@index([tenantId, resolvedApproverId, state])
+  @@map("approval_steps")
+}
+
+/// A governance decision routed to a principal whose authority genuinely
+/// exceeds every grant below them on the escalation path.
+model Decision {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  question     String
+  state        String  @default("Raised")
+  subjectType  String
+  subjectId    String
+  subjectLabel String?
+
+  authorityBasis         String
+  requiredAuthorityValue Decimal? @db.Decimal(18, 2)
+  currency               String?
+  routedToPartyId        String?
+  routedToRole           String?
+
+  /// The seven mandatory components, assembled before routing, never after.
+  evidencePack     Json    @default("{}")
+  evidenceComplete Boolean @default(false)
+
+  /// Recorded before the outcome is known — the raw material for the
+  /// decision-quality calibration widget.
+  confidence Float?
+
+  chosenOption      String?
+  rationale         String?
+  rationaleAudioRef String?
+  decidedById       String?
+  decidedAt         DateTime?
+
+  deferUntil               DateTime?
+  pointOfNoReturn          DateTime?
+  reviewDueOn              DateTime?
+  outcomeAssessment        String?
+  varianceBand             String?
+  changeCommitment         String?
+  changeCommitmentResolved Boolean   @default(false)
+
+  raisedAt  DateTime  @default(now())
+  slaDueAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  delegations Delegation[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, state, raisedAt])
+  @@index([tenantId, routedToPartyId, state])
+  @@map("decisions")
+}
+
+/// Bounded, named, dated. No sub-delegation.
+model Delegation {
+  id       String @id @default(cuid())
+  tenantId String
+
+  decisionId String?
+  decision   Decision? @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  fromPartyId String
+  toPartyId   String
+  scope       String
+  reason      String
+
+  effectiveFrom      DateTime  @default(now())
+  returnDueOn        DateTime
+  returnedAt         DateTime?
+  returnedUnactioned Boolean   @default(false)
+  state              String    @default("active") // active | returned | expired
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, toPartyId, state])
+  @@map("delegations")
+}
+
+// ===========================================================================
+// Users & sessions
+// ===========================================================================
+
+model User {
+  id       String @id @default(cuid())
+  tenantId String
+
+  personId String
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  email        String
+  passwordHash String
+  status       String  @default("active") // active | invited | suspended
+  branch       String?
+
+  /// Server-side carriage. Never client-trusted.
+  activeAffiliationId String?
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@index([tenantId, personId])
+  @@map("users")
+}
+
+/// Watermark-relative delta state. `reachSignature` — a hash over resolved
+/// scope, policy version and consent state — lets the delta engine distinguish
+/// "forty exceptions just appeared because your portfolio widened" from "forty
+/// things just broke".
+model AttentionWatermark {
+  id       String @id @default(cuid())
+  tenantId String
+
+  userId         String
+  affiliationId  String
+  lastSeenAt     DateTime @default(now())
+  reachSignature String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, userId, affiliationId])
+  @@map("attention_watermarks")
+}

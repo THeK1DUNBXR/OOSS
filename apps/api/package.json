@@ -15,6 +15,11 @@
     "grants:reconcile": "tsx src/seed/reconcileGrants.ts",
     "jobs:run": "tsx src/jobs/runOnce.ts",
     "test": "vitest run",
+    "test:quick": "vitest run --reporter=dot --bail=1",
+    "test:books": "vitest run src/tests/books.test.ts",
+    "test:invoicing": "vitest run src/tests/invoicing.test.ts",
+    "test:hr": "vitest run src/tests/hr.test.ts src/tests/hrLifecycle.test.ts",
+    "test:acceptance": "vitest run src/tests/acceptance.test.ts",
     "test:watch": "vitest",
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "seed:demo": "tsx src/tests/fixtures/run.ts",
@@ -42,5 +47,8 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "prisma": {
+    "schema": "prisma/schema"
   }
 }

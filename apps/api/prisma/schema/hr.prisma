@@ -1,0 +1,619 @@
+//
+// People as employees: positions, employment, leave, attendance,
+// payroll, hiring and skills.
+//
+
+// ===========================================================================
+// People (bounded context `hr`, plane P2) — Canon §14.
+//
+// The standalone HRM build carried its own stub PERSON, AFFILIATION,
+// ORGANIZATION_UNIT and POSITION because it had no identity plane to read
+// from. Here it does: PERSON and AFFILIATION above are the real ones, so the
+// stubs are gone and an EMPLOYMENT_RELATIONSHIP points at the same Person row
+// a lead, a student or a contact points at. That is the merge — one human,
+// one record, however many relationships they hold with the company.
+//
+// Everything below carries `tenantId` and, where a human refers to it out
+// loud, a generator-assigned `recordCode`.
+// ===========================================================================
+
+/// Internal org structure. Distinct from `Organization`, which is a company we
+/// deal with — this is a unit inside our own.
+model OrgUnit {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name     String
+  unitType String    @default("team") // company | division | department | team
+  /// Which of the three divisions this unit's cost and revenue land in.
+  division String? // software | skill | education | shared
+  parentId String?
+  parent   OrgUnit?  @relation("OrgUnitTree", fields: [parentId], references: [id])
+  children OrgUnit[] @relation("OrgUnitTree")
+
+  headPositionId String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  positions Position[]
+
+  @@index([tenantId, parentId])
+  @@map("org_units")
+}
+
+/// The role shape, independent of who holds it or where it sits.
+model Job {
+  id       String @id @default(cuid())
+  tenantId String
+
+  title     String
+  jobFamily String
+  jobLevel  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  positions Position[]
+
+  @@index([tenantId, jobFamily])
+  @@map("jobs")
+}
+
+/// A seat. Owned by the org context; HR consumes it. Its lead flag is an
+/// attribute of the seat, never an access role — reporting lines and
+/// permissions are decided separately and by different people.
+model Position {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  orgUnitId String
+  orgUnit   OrgUnit @relation(fields: [orgUnitId], references: [id])
+  jobId     String
+  job       Job     @relation(fields: [jobId], references: [id])
+
+  location            String  @default("Head Office")
+  reportingPositionId String?
+  isLeadPosition      Boolean @default(false)
+  status              String  @default("Requested") // R1
+  budgetLineId        String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  requisitions Requisition[]
+  assignments  Assignment[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, orgUnitId])
+  @@map("positions")
+}
+
+/// The employment spine. One row per employment of one person by one legal
+/// entity; a rehire is a second row, not an edit of the first.
+model EmploymentRelationship {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  personId String
+  person   Person @relation(fields: [personId], references: [id])
+
+  legalEntity            String    @default("Kaizen Infinities Pvt Ltd")
+  hireEffectiveDate      DateTime
+  status                 String    @default("PendingHire") // Diagram 14.1
+  confirmationState      String    @default("not_applicable")
+  separationType         String?
+  separationDate         DateTime?
+  noticePeriodDays       Int       @default(30)
+  /// Null until a separation is recorded — "we have not decided" is a
+  /// different fact from "no".
+  rehireEligible         Boolean?
+  rehireIneligibleReason String?
+
+  /// Statutory identifiers, classified `regulated` and structurally excluded
+  /// from projections rather than masked.
+  panNumber        String?
+  aadhaarReference String?
+  uanNumber        String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  assignments         Assignment[]
+  compensationRecords CompensationRecord[]
+  leaveBalances       LeaveBalance[]
+  leaveRequests       LeaveRequest[]
+  workAttendances     WorkAttendance[]
+  goals               Goal[]
+  performanceEvidence PerformanceEvidence[]
+  learningRecords     LearningRecord[]
+  payrollInstructions PayrollInstruction[]
+  onboarding          Onboarding?
+  offboarding         Offboarding?
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, personId])
+  @@map("employment_relationships")
+}
+
+model Requisition {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  positionId String
+  position   Position @relation(fields: [positionId], references: [id])
+
+  budgetLineId    String?
+  raisedByPartyId String?
+  targetStartDate DateTime?
+  status          String    @default("Draft") // R5
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  applications Application[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@map("requisitions")
+}
+
+model Application {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  requisitionId    String
+  requisition      Requisition @relation(fields: [requisitionId], references: [id])
+  /// The candidate is a Person from the identity plane — the same row they
+  /// keep if they are hired, so a hire is a new affiliation, not a new human.
+  candidatePartyId String
+  candidate        Person      @relation("ApplicationCandidate", fields: [candidatePartyId], references: [id])
+
+  status           String  @default("Applied") // R3
+  rejectionReason  String?
+  screeningOutcome String?
+  assessmentState  String?
+  holdFlag         Boolean @default(false)
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, requisitionId])
+  @@map("applications")
+}
+
+/// Where somebody sits, effective-dated. `requestStatus` is the change
+/// request's lifecycle (R4); `rowStatus` is the temporal row status every
+/// effective-dated entity carries. They are different facts.
+model Assignment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+  positionId               String
+  position                 Position               @relation(fields: [positionId], references: [id])
+  managerPositionId        String?
+
+  reasonCode    String
+  requestStatus String  @default("Draft")
+  rowStatus     String  @default("Effective")
+  /// Shared with the compensation record when a promotion moves both.
+  correlationId String?
+  decisionId    String?
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  compensationRecords CompensationRecord[]
+
+  @@index([tenantId, employmentRelationshipId, rowStatus])
+  @@index([tenantId, positionId])
+  @@map("assignments")
+}
+
+model CompensationRecord {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+  /// Mandatory when `revisionReason` is a promotion [Canon §14.5].
+  linkedAssignmentId       String?
+  linkedAssignment         Assignment?            @relation(fields: [linkedAssignmentId], references: [id])
+
+  revisionReason String
+  amount         Decimal  @db.Decimal(14, 2)
+  currency       String   @default("INR")
+  /// Monthly gross broken out, so payroll does not re-derive it every run.
+  basicPay       Decimal? @db.Decimal(14, 2)
+  status         String   @default("Proposed") // R2
+  correlationId  String?
+  decisionId     String?
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId, status])
+  @@map("compensation_records")
+}
+
+// --- Time and absence ------------------------------------------------------
+
+model LeaveType {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code                     String
+  name                     String
+  /// Whether taking it moves the employment relationship into OnLeave.
+  employmentStateAffecting Boolean @default(false)
+  statutory                Boolean @default(false)
+  annualEntitlementDays    Decimal @default(0) @db.Decimal(6, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leaveBalances LeaveBalance[]
+  leaveRequests LeaveRequest[]
+
+  @@unique([tenantId, code])
+  @@map("leave_types")
+}
+
+/// `balanceDays` is a cached projection of the transaction ledger below. It is
+/// never written directly by a service — only recomputed from transactions —
+/// which is what makes a balance reconstructable and a dispute answerable.
+model LeaveBalance {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+  leaveTypeId              String
+  leaveType                LeaveType              @relation(fields: [leaveTypeId], references: [id])
+
+  balanceDays Decimal @default(0) @db.Decimal(6, 2)
+  heldDays    Decimal @default(0) @db.Decimal(6, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions LeaveTransaction[]
+
+  @@unique([employmentRelationshipId, leaveTypeId])
+  @@index([tenantId])
+  @@map("leave_balances")
+}
+
+/// Append-only. Every movement of a balance is a row here.
+model LeaveTransaction {
+  id       String @id @default(cuid())
+  tenantId String
+
+  leaveBalanceId String
+  leaveBalance   LeaveBalance @relation(fields: [leaveBalanceId], references: [id])
+  leaveRequestId String?
+
+  txnType     String
+  /// Signed: a hold and a deduction are negative, a reversal and an accrual
+  /// positive. Summing the column reproduces the balance exactly.
+  amountDays  Decimal @db.Decimal(6, 2)
+  note        String?
+  createdById String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, leaveBalanceId, createdAt])
+  @@map("leave_transactions")
+}
+
+model LeaveRequest {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  employmentRelationshipId String
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+  leaveTypeId              String
+  leaveType                LeaveType              @relation(fields: [leaveTypeId], references: [id])
+
+  startDate   DateTime
+  endDate     DateTime
+  days        Decimal   @db.Decimal(6, 2)
+  reason      String?
+  status      String    @default("Draft") // Diagram 14.2
+  decidedById String?
+  decidedAt   DateTime?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, employmentRelationshipId, startDate])
+  @@map("leave_requests")
+}
+
+model WorkAttendance {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+
+  workDate        DateTime
+  workedMinutes   Int      @default(0)
+  overtimeMinutes Int      @default(0)
+  status          String   @default("Recorded")
+  missingPunch    Boolean  @default(false)
+  note            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employmentRelationshipId, workDate])
+  @@index([tenantId, workDate])
+  @@map("work_attendances")
+}
+
+// --- Performance and growth ------------------------------------------------
+
+model Goal {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+
+  keyResultRef String?
+  description  String
+  status       String    @default("Draft")
+  periodLabel  String?
+  dueAt        DateTime?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId, employmentRelationshipId, status])
+  @@map("goals")
+}
+
+/// Append-only. There is deliberately no PERFORMANCE_REVIEW entity: a review
+/// is a reading of this evidence, not a record that replaces it.
+model PerformanceEvidence {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+
+  kind              String
+  description       String
+  recordedByPartyId String?
+  /// ICC and disciplinary evidence. Visible only to principals holding a
+  /// grant on `performance_evidence` — not to the line manager by default,
+  /// and not to the chairman by seniority.
+  caseScoped        Boolean @default(false)
+  caseRef           String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, employmentRelationshipId, createdAt])
+  @@index([tenantId, caseScoped])
+  @@map("performance_evidence")
+}
+
+model LearningActivity {
+  id       String @id @default(cuid())
+  tenantId String
+
+  title        String
+  isCompliance Boolean @default(false)
+  cost         Decimal @default(0) @db.Decimal(10, 2)
+  /// Optional link to the Education catalogue, so an internally-delivered
+  /// course is one course rather than two records of the same thing.
+  courseId     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  learningRecords LearningRecord[]
+
+  @@index([tenantId])
+  @@map("learning_activities")
+}
+
+model LearningRecord {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+  learningActivityId       String
+  learningActivity         LearningActivity       @relation(fields: [learningActivityId], references: [id])
+
+  status      String    @default("Enrolled")
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("learning_records")
+}
+
+// --- Capability Intelligence (§14.6) ---------------------------------------
+
+model Skill {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name             String
+  /// Decay is computed from this at query time, never stored as a decaying
+  /// scalar — otherwise every claim would need rewriting nightly and would
+  /// still be stale in between.
+  halfLifeMonths   Int    @default(24)
+  proficiencyScale Json   @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  capabilityClaims CapabilityClaim[]
+
+  @@unique([tenantId, name])
+  @@map("skills")
+}
+
+model Evidence {
+  id       String @id @default(cuid())
+  tenantId String
+
+  capabilityClaimId String
+  capabilityClaim   CapabilityClaim @relation(fields: [capabilityClaimId], references: [id])
+
+  description String
+  sourceRef   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, capabilityClaimId])
+  @@map("capability_evidence")
+}
+
+model VerificationEvent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  capabilityClaimId String
+  capabilityClaim   CapabilityClaim @relation(fields: [capabilityClaimId], references: [id])
+
+  verifierPartyId       String
+  /// The two-person rule for a verified claim that moves pay, grade or
+  /// posting. Null is legitimate for a claim with no such consequence.
+  secondVerifierPartyId String?
+  note                  String?
+  verifiedAt            DateTime @default(now())
+
+  @@index([tenantId, capabilityClaimId])
+  @@map("verification_events")
+}
+
+// --- Money out -------------------------------------------------------------
+
+/// The only aggregate the payroll interface owns. Computing pay is not this
+/// system's job; instructing it and holding the audit trail is.
+model PayrollInstruction {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+  payrollRunId             String?
+  payrollRun               PayrollRun?            @relation(fields: [payrollRunId], references: [id])
+
+  payPeriod   String // YYYY-MM
+  status      String  @default("Draft")
+  grossAmount Decimal @default(0) @db.Decimal(14, 2)
+  deductions  Decimal @default(0) @db.Decimal(14, 2)
+  netAmount   Decimal @default(0) @db.Decimal(14, 2)
+  currency    String  @default("INR")
+  /// Which division carries the cost, so payroll lands in the same division
+  /// cut as revenue does.
+  division    String?
+  /// Set when the disbursement is posted to the books.
+  paymentId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employmentRelationshipId, payPeriod])
+  @@index([tenantId, payPeriod, status])
+  @@map("payroll_instructions")
+}
+
+/// The settlement container for a period, not the computation engine.
+model PayrollRun {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  payPeriod  String
+  status     String  @default("Draft")
+  grossTotal Decimal @default(0) @db.Decimal(16, 2)
+  netTotal   Decimal @default(0) @db.Decimal(16, 2)
+  headcount  Int     @default(0)
+
+  approvedById String?
+  approvedAt   DateTime?
+  disbursedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  instructions PayrollInstruction[]
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, payPeriod])
+  @@map("payroll_runs")
+}
+
+// --- Onboarding / offboarding ----------------------------------------------
+
+model Onboarding {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String                 @unique
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+
+  status        String  @default("Initiated")
+  checklist     Json    @default("[]")
+  blockedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@map("onboardings")
+}
+
+model Offboarding {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String                 @unique
+  employmentRelationship   EmploymentRelationship @relation(fields: [employmentRelationshipId], references: [id])
+
+  status           String   @default("Initiated")
+  checklist        Json     @default("[]")
+  disputeReason    String?
+  settlementAmount Decimal? @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@map("offboardings")
+}
