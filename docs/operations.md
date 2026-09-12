@@ -149,3 +149,47 @@ that runs twice does not act twice.
 `TENANT_ENFORCE_MODE=warn` is a migration aid, not a configuration. Running it
 in production means a service that forgets a tenant predicate returns another
 tenant's rows.
+
+
+---
+
+## Setting the company up to invoice
+
+Three things, in order, before the first invoice is raised. All of them live
+under **Company details**, in the Set up group.
+
+1. **The registration.** The legal name, the address and the GSTIN. An invoice
+   without them is a letter about money rather than a tax invoice, and a return
+   is filed *under* a GSTIN. The GSTIN is validated on shape, state code and
+   check digit, because a mistyped registration is rejected by the portal weeks
+   later with nothing to say which field caused it.
+
+2. **The document numbering.** The short code every number begins with —
+   `KIPL` — and whether the financial year is written `26-27` or `2026-27`. The
+   screen prints the next number in each series with its length beside it,
+   because the portal accepts a tax invoice number of at most sixteen characters
+   and `KIPL/I/2026-27/001` is eighteen.
+
+3. **Where each series starts.** A company adopting the platform part-way
+   through a year has already issued some of this year's documents by hand.
+   *Start from…* moves a series forwards so the platform does not re-issue a
+   number that is already on a document somebody is holding. It only ever moves
+   forwards.
+
+### Filing a return
+
+```
+Compute  →  Prepare  →  (fix what it found)  →  Prepare again  →  File
+```
+
+Computing is free and repeatable. Preparing snapshots the figures with their
+findings on them, and supersedes any earlier preparation for the same month.
+Filing records the portal's ARN and **closes the month**: an invoice dated inside
+it can no longer be edited or voided.
+
+Filing refuses while any blocking check stands. That is the point of it — a
+closed month on a return that never went through is the worst of both. Fix the
+invoices the finding names, prepare again, and file that one.
+
+The platform prepares returns and does not transmit them. The JSON download is
+the offline utility's file; `File` records what the portal gave back.

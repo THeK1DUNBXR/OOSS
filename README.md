@@ -40,7 +40,7 @@ into the API's log, which `docker compose logs api` will show you.
 
 The first build takes a few minutes. The API container waits for the database,
 applies the schema and prepares the tenant — the permission matrix, the pipeline
-definitions, statutory leave types and that one account — before it accepts
+definitions, statutory leave types and the four accounts — before it accepts
 traffic, and skips all of it on every later start, so your data survives a
 restart. There is no demo data: the company is empty until you import or type
 something in, and **Getting Started** in the sidebar walks you through it.
@@ -86,7 +86,7 @@ Emptying the company is a supported operation rather than something you do with
 `psql`. It deletes every business record — people, organisations, leads, the
 ledger, employment, enrolments, imports, events — and then rebuilds exactly what
 a fresh install has: the permission matrix, the pipelines, the navigation
-registry, the statutory leave types and one account to sign in with.
+registry, the statutory leave types and the four accounts to sign in with.
 
 ```bash
 pnpm db:wipe --yes                                  # on your machine
@@ -102,25 +102,40 @@ the next `up` pushes it again.
 
 ### Signing in
 
-`pnpm seed` creates one account — the chairman — and prints a generated password
-once. Set `OWNER_EMAIL` and `OWNER_PASSWORD` to choose them; otherwise the
-password is random and shown only on that run.
+`pnpm seed` creates four accounts, one per role, and prints a generated password
+for each — once. Four rather than one because the matrix's point is that
+authority is divided: a pay rise takes two parties and the books are not the
+people function, and a tenant with a single superadmin cannot demonstrate any of
+it. Whoever signed in first used to have to create three colleagues before the
+product behaved the way it is designed to.
 
-Everyone else is created inside the product. There are four roles, and the same
-screen genuinely shows different things to each:
+Every name, address and password is overridable, so another company does not
+inherit these ones: `OWNER_*`, `OPERATIONS_*`, `FINANCE_*` and `EMPLOYEE_*`, each
+with `_EMAIL`, `_NAME` and `_PASSWORD`, plus `SEED_EMAIL_DOMAIN`. An account that
+already exists keeps its password.
 
-| Role | What they hold |
-|---|---|
-| **Employee** | Their own leave, attendance, goals, skills and payslip, plus the staff and skills directories. No colleague's file, no company money. |
-| **HR & Operations Manager** | The employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and tasks. Proposes pay and cannot approve it. |
-| **Finance Head** | The books outright, and the money side of people: approves compensation and payroll and sees what the establishment costs, without running it. |
-| **Chairman** | Superadmin. Every resource, every verb, every scope — nothing is hidden or inaccessible. |
+Everyone else is created inside the product. The same screen genuinely shows
+different things to each of the four:
+
+| Role | Who | What they hold |
+|---|---|---|
+| **Employee** | — | Their own leave, attendance, goals, skills and payslip, plus the staff and skills directories — and they raise invoices for what they sell, seeing the ones they raised and no others. No colleague's file. |
+| **Operations Head** | Kasthurika | The employment lifecycle end to end, payroll preparation, disciplinary records, projects, education and the course catalogue. Proposes pay and cannot approve it. |
+| **Finance Head** | Narayanan | The books outright, the GST returns, and the money side of people: approves compensation and payroll and sees what the establishment costs, without running it. |
+| **Chairman** | Rishikesh | Superadmin. Every resource, every verb, every scope — nothing is hidden or inaccessible. |
 
 The HR/Finance split is the one worth understanding. `hr_ops_manager` holds
 `compensation:VCEDXF` and no `approve`; `finance_head` holds `approve` and
 neither `create` nor `edit`, so the signatory is never the author. Neither can
 move a salary alone, and nobody at all can approve their own — the bar holds
 for the chairman too.
+
+The employee row is the other one. An employee holds `invoices:VCEF@own`: they
+raise a tax invoice for what they sell, take the payment, hand over the receipt
+— and see the invoices they raised and nobody else's. Somebody has to be able
+to take a walk-in through a course enrolment and give them a document, and
+routing that through the finance head means either the finance head sits at the
+counter or the customer waits.
 
 Scope is real on reads as well as writes. An employee holding `leave` at `own`
 scope gets their own ledger, not the company's. Where a read should reach
@@ -134,7 +149,7 @@ evaluator.
 
 The platform ships empty on purpose: a company installing it should not have to
 identify and delete somebody else's demonstration data before their own figures
-mean anything. **Import Data**, under Set up, reads four things:
+mean anything. **Import Data**, under Set up, reads five things:
 
 - **A Tally export.** Both the Excel reports and the XML. The Excel workbook
   carries a Balance Sheet and a Profit & Loss beside the vouchers, and between
@@ -146,6 +161,26 @@ mean anything. **Import Data**, under Set up, reads four things:
   are inferred from the file rather than from your locale.
 - **A spreadsheet.** A staff list, a salary sheet, an attendance grid, or a
   plain list of transactions.
+- **Your student register.** The list a training business already keeps: student,
+  registration number, contact, course, the fee and the discount off it, the
+  registration and course dates, and the instalments with the receipt numbers
+  they were issued under. It is recognised before the bank sniffer, because a
+  register carries a date column and an amount column and would otherwise read
+  as a statement.
+
+  What it writes is the enrolment and only that: the course, a rolling intake for
+  it, the student, and their place on it under the registration number the
+  register already gives them. The money columns are read, checked and reported,
+  and not written. A course's price belongs to the course and is set
+  deliberately — a dozen rows quoting a dozen discounted figures are not a price
+  list — and the payments in a register were receipted outside this platform, so
+  inventing invoices to match would produce documents the customer never
+  received.
+
+  It does not reconcile the rows for you either. Where the taxable value plus GST
+  does not come to the total, or the instalments come to a rupee more than is
+  owed, the preview says which row and by how much, and the enrolment still
+  imports: losing a real student over a spreadsheet error is the worse trade.
 - **One of our own templates, filled in.** For the lists you keep yourself —
   courses, training batches, colleges, client companies, students, contacts,
   staff — the platform hands out the file instead of guessing at yours.
@@ -190,6 +225,35 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
 - **Ledger** — every movement of money, whatever raised it. A transaction has
   no edit control, only *Reverse*, which posts the opposite entry and leaves
   both rows visible.
+- **Invoices** — a tax invoice, priced per line when it is raised and final once
+  it is issued. The document prints two figures side by side — what the whole
+  thing costs and what is being paid now — and says which of *full payment*,
+  *part payment* or *payable on credit* it is, and how the money changed hands.
+  A draft carries no invoice number: the tax series has to be consecutive, so
+  the number is allocated at the moment the document exists.
+- **Receipts** — where the part payments live. Every instalment against an
+  invoice produces its own numbered document: the time it was issued, the
+  invoice it is against, the amount, the mode, and the balance it left. Those
+  figures are snapshotted, so reprinting the first receipt six months later
+  still shows the balance as it stood on the day.
+- **Final Invoices** — the statement raised when the instalments are done. It
+  names every receipt it consolidates, restates what was billed so it stands on
+  its own, and prints the total payable against the total received. Raising a
+  second one after a further instalment supersedes the first rather than
+  replacing it: both were true when they were handed over.
+- **GST Returns** — GSTR-1 and GSTR-3B computed from the books, with everything
+  the portal would reject listed above the figures and naming the invoices
+  behind it. Preparing snapshots the return; filing records the portal's ARN and
+  closes the month, so an invoice already reported can no longer be edited. A
+  return that would be rejected cannot be recorded as filed.
+- **Courses** — the catalogue, and a price list as much as a syllabus. A course
+  carries its fee, its tax rate and its SAC, so raising an invoice for one means
+  choosing what was sold rather than knowing the price list.
+- **Students** — open one for their day-by-day record: attendance, weekly
+  scores, the questions they asked, the feedback they gave and anything that
+  went wrong, merged into one timeline. A query and a complaint stay open until
+  somebody closes them, and what they have been invoiced is on the same page as
+  whether they are turning up.
 - **Pipeline** — five commercial motions, each with its own stage vocabulary,
   reporting across them on a canonical ordinal rather than on stage names.
 - **Governance (Admin)** — the live grant matrix, policy versions, the event
@@ -248,7 +312,7 @@ request would be worse than an honest split.
 
 ```bash
 ./scripts/test-db.sh          # provision the suite's own database
-cd apps/api && pnpm test      # 252 tests
+cd apps/api && pnpm test      # 351 tests
 ```
 
 The suite runs against a real PostgreSQL database, inside real request
@@ -284,8 +348,8 @@ scripts            dev.sh (run), test-db.sh (provision the test database)
 docs               architecture, acceptance map, operations
 ```
 
-108 Prisma models, 16 domain services plus five for People and one for the
-books, and 252 tests.
+114 Prisma models, 26 domain services plus five for People and one for the
+books, and 351 tests.
 
 The HR lifecycle machines and the finance arithmetic live in `packages/shared`
 rather than in the API, and that placement is the point: a surface rendering a
@@ -302,5 +366,7 @@ of keeping its own copy of the diagram.
   decisions behind them
 - [docs/acceptance.md](docs/acceptance.md) — every requirement and the test
   that proves it
+- [docs/invoicing.md](docs/invoicing.md) — the three documents, the numbering,
+  and what invoicing owes the GST returns
 - [docs/operations.md](docs/operations.md) — running, seeding, changing the
   permission matrix
