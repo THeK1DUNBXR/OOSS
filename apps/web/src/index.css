@@ -3,7 +3,8 @@
 @tailwind utilities;
 
 /* The Kaizen Infinities design system.
-   Ink, paper, one accent. Flat. Borders carry hierarchy at 1px / 2px / 3px.
+   Ink, paper, one accent. Fluent, Apple-esque, minimalist — depth (real,
+   soft, dual-layer shadows) carries hierarchy instead of border weight.
    Light only — the palette is not defined twice, and `color-scheme: light`
    below stops the browser painting form controls for a theme we do not have. */
 
@@ -25,12 +26,16 @@
     line-height: 1.5;
   }
 
-  /* Headings and figures share one face. Uppercase and heavy is what makes a
-     label read as a label without needing a rule under it. */
+  /* Headings share the display face but read as sentences, not posters:
+     size and weight carry hierarchy, the way macOS and Notion set a page
+     title — never a caps-lock block needing a rule under it. Small,
+     tracked, uppercase labels still exist (.section-title, .kpi-label,
+     .sidebar-group) for the grouped-list convention Apple's own Settings
+     uses; that exception lives on those classes, not on headings. */
   h1,
   h2,
   h3 {
-    @apply font-display font-extrabold uppercase tracking-tight text-ink-100;
+    @apply font-display font-bold tracking-tight text-ink-100;
     text-wrap: balance;
   }
 
@@ -67,18 +72,22 @@
 }
 
 @layer components {
-  /* A card encloses one object you are meant to read whole, so it takes the
-     heaviest border in the system. */
+  /* A card encloses one object you are meant to read whole. It used to say
+     so with a 3px border; now it says so by sitting a clear step off the
+     page, on a soft dual-layer shadow, with only a whisper hairline for
+     edge crispness at close range. */
   .card {
-    @apply rounded-lg border-[3px] border-ink-100 bg-ink-900;
+    @apply rounded-lg border border-ink-800 bg-ink-900 shadow-raised;
   }
 
   .card-header {
-    @apply flex items-center justify-between gap-3 border-b-2 border-ink-100 px-5 py-3.5;
+    @apply flex items-center justify-between gap-3 border-b border-ink-800 px-5 py-3.5;
   }
 
+  /* Sentence case, medium weight — a content heading, the way Notion or
+     macOS titles a panel, not a poster kicker. */
   .card-title {
-    @apply font-display text-[13px] font-extrabold uppercase tracking-wide text-ink-100;
+    @apply font-display text-[14px] font-semibold text-ink-100;
   }
 
   .card-sub {
@@ -86,33 +95,36 @@
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-full border-2 px-4 py-2 text-[13px]
-           font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-[13px]
+           font-semibold transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40;
   }
 
   /* Primary is ink on paper and turns gold under the cursor — the one place
-     the accent appears on an action. */
+     the accent appears on an action. Depth, not a border, marks it as the
+     thing to press: it lifts on hover instead of swapping a hard edge. */
   .btn-primary {
-    @apply btn border-ink-100 bg-ink-100 text-ink-950
-           hover:border-gold hover:bg-gold hover:text-ink-100;
+    @apply btn bg-ink-100 text-ink-950 shadow-raised
+           hover:-translate-y-px hover:bg-gold hover:text-ink-100 hover:shadow-floating
+           active:translate-y-0 active:shadow-soft;
   }
 
   .btn-gold {
-    @apply btn border-gold bg-gold text-ink-100
-           hover:border-ink-100 hover:bg-ink-100 hover:text-gold;
+    @apply btn bg-gold text-ink-100 shadow-raised
+           hover:-translate-y-px hover:bg-ink-100 hover:text-gold hover:shadow-floating
+           active:translate-y-0 active:shadow-soft;
   }
 
+  /* Apple's "plain" button: no chrome at rest, a soft tinted fill on touch. */
   .btn-ghost {
-    @apply btn border-ink-100 bg-transparent text-ink-100 hover:bg-ink-100 hover:text-ink-950;
+    @apply btn bg-transparent text-ink-100 hover:bg-ink-100/[0.06] active:bg-ink-100/10;
   }
 
   .btn-quiet {
-    @apply btn border-transparent bg-transparent text-ink-400 hover:bg-ink-850 hover:text-ink-100;
+    @apply btn bg-transparent text-ink-400 hover:bg-ink-850 hover:text-ink-100;
   }
 
   .btn-danger {
-    @apply btn border-band-critical bg-transparent text-band-critical
-           hover:bg-band-critical hover:text-white;
+    @apply btn bg-transparent text-band-critical hover:bg-band-critical/10 active:bg-band-critical/15;
   }
 
   .btn-sm {
@@ -120,50 +132,52 @@
   }
 
   .input {
-    @apply w-full rounded-sm border-[1.5px] border-ink-700 bg-ink-900 px-2.5 py-2 text-[13px] text-ink-100
-           placeholder:text-ink-500 focus:border-2 focus:border-ink-100 focus:outline-none;
+    @apply w-full rounded-md border border-ink-700 bg-ink-900 px-2.5 py-2 text-[13px] text-ink-100
+           shadow-soft transition-shadow placeholder:text-ink-500
+           focus:border-ink-500 focus:shadow-raised focus:outline-none focus:ring-2 focus:ring-accent/10;
   }
 
   .label {
-    @apply mb-1 block text-2xs font-extrabold uppercase tracking-wide text-ink-400;
+    @apply mb-1 block text-2xs font-semibold uppercase tracking-wide text-ink-400;
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full border-[1.5px] px-2.5 py-0.5 text-2xs
-           font-extrabold uppercase tracking-wide;
+    @apply inline-flex items-center gap-1 rounded-full border border-ink-700/70 px-2.5 py-0.5 text-2xs font-semibold;
   }
 
   .chip-gold {
-    @apply chip border-gold bg-gold text-ink-100;
+    @apply chip border-transparent bg-gold text-ink-100;
   }
 
   .chip-neutral {
-    @apply chip border-ink-700 bg-transparent text-ink-400;
+    @apply chip border-transparent bg-ink-850 text-ink-400;
   }
 
-  /* A KPI wears its verdict on a 4px rail down its left edge, so a wall of
-     them can be read for trouble without reading a single number. */
+  /* A KPI used to wear its verdict on a hard 4px rail. Now it wears a soft
+     tinted status dot in the corner — the same information, read as a
+     material detail instead of a stripe — and depth (not a 2px border)
+     lifts the tile off the page. */
   .kpi {
-    @apply relative overflow-hidden rounded-sm border-2 border-ink-100 bg-ink-900 px-4 py-4;
+    @apply relative overflow-hidden rounded-md border border-ink-800 bg-ink-900 px-4 py-4 shadow-raised;
   }
 
   .kpi::before {
     content: '';
-    @apply absolute bottom-0 left-0 top-0 w-1 bg-ink-700;
+    @apply absolute right-3 top-3 h-2 w-2 rounded-full bg-ink-700;
   }
 
   .kpi-good::before {
-    @apply bg-band-strong;
+    @apply bg-band-strong shadow-[0_0_0_3px_theme(colors.band.strong/15%)];
   }
   .kpi-warn::before {
-    @apply bg-band-watch;
+    @apply bg-band-watch shadow-[0_0_0_3px_theme(colors.band.watch/15%)];
   }
   .kpi-bad::before {
-    @apply bg-band-critical;
+    @apply bg-band-critical shadow-[0_0_0_3px_theme(colors.band.critical/15%)];
   }
 
   .kpi-label {
-    @apply text-[10px] font-extrabold uppercase tracking-[0.08em] text-ink-500;
+    @apply text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500;
   }
 
   .kpi-value {
@@ -180,16 +194,18 @@
     @apply w-full border-collapse text-[13px];
   }
 
-  /* The header rule is 2px and the row rules are 1px: the head is a different
-     kind of thing from a row, and the border says so without a fill. */
+  /* Rows stay flat and on-ground — the data itself never lifts, only the
+     card it lives in does. The header keeps a slightly firmer rule than
+     the rows: a different kind of thing, said with weight, not a border
+     ladder. */
   .table thead th {
-    @apply sticky top-0 z-10 border-b-2 border-ink-100 bg-ink-900 px-2.5 py-2 text-left
-           text-2xs font-extrabold uppercase tracking-wide text-ink-500;
+    @apply sticky top-0 z-10 border-b border-ink-700 bg-ink-900 px-2.5 py-2 text-left
+           text-2xs font-semibold uppercase tracking-wide text-ink-500;
     white-space: nowrap;
   }
 
   .table tbody td {
-    @apply border-b border-ink-700 px-2.5 py-2.5 align-middle text-ink-200;
+    @apply border-b border-ink-800 px-2.5 py-2.5 align-middle text-ink-200;
   }
 
   .table tbody tr:last-child td {
@@ -201,7 +217,7 @@
   }
 
   .table tr.total-row td {
-    @apply border-t-2 border-ink-100 font-extrabold text-ink-100;
+    @apply border-t border-ink-700 font-bold text-ink-100;
   }
 
   .mono {
@@ -210,45 +226,59 @@
   }
 
   .section-title {
-    @apply font-display text-xs font-extrabold uppercase tracking-[0.12em] text-ink-500;
+    @apply font-display text-xs font-semibold uppercase tracking-[0.12em] text-ink-500;
   }
 
   .divider {
-    @apply my-4 h-0.5 bg-ink-700;
+    @apply my-4 h-px bg-ink-800;
+  }
+
+  /* Glass: reserved for chrome that genuinely floats over content, where a
+     blur has something behind it to blur — modals, dropdowns, the command
+     palette, popovers. Translucent surface, backdrop blur, a floating
+     shadow instead of a hard outline. */
+  .glass {
+    @apply border border-white/10 bg-ink-900/85 shadow-glass backdrop-blur-glass;
   }
 
   /* The sidebar is the one dark region in a light app. It is ink so that the
      paper beside it reads as the work and the rail reads as the frame, and it
-     is the only place gold is allowed to fill a whole element. The values are
-     literal rather than scale tokens because the `ink` scale points at paper. */
+     is the only place gold is allowed to fill a whole element. A soft shadow
+     on its own trailing edge separates it from the canvas instead of a hard
+     3px rule. The values are literal rather than scale tokens because the
+     `ink` scale points at paper. */
   .sidebar {
-    @apply flex w-56 shrink-0 flex-col border-r-[3px] border-[#0F0F12] bg-[#0F0F12] text-[#c9c9ce];
+    @apply relative flex w-56 shrink-0 flex-col bg-[#0F0F12] text-[#c9c9ce]
+           shadow-[6px_0_24px_-8px_rgba(15,15,18,0.35)];
   }
 
   .sidebar-brand {
-    @apply flex items-center gap-2.5 border-b-2 border-white/[0.18] px-[18px] py-5;
+    @apply flex items-center gap-2.5 border-b border-white/[0.08] px-[18px] py-5;
   }
 
   .sidebar-mark {
-    @apply flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-sm border-2 border-gold
-           bg-gold font-display text-base font-black text-[#0F0F12];
+    @apply flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-md
+           bg-gold font-display text-base font-black text-[#0F0F12] shadow-[0_2px_8px_rgba(255,194,14,0.35)];
   }
 
   .sidebar-group {
-    @apply px-3 pb-1 pt-4 font-display text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#8b8b93];
+    @apply px-3 pb-1 pt-4 font-display text-[10px] font-bold uppercase tracking-[0.12em] text-[#8b8b93];
   }
 
+  /* The active row's full gold fill already carries the state; no separate
+     colored rail on top of it. */
   .sidebar-link {
-    @apply flex items-center gap-2.5 rounded-full border-l-[2.5px] border-transparent px-3 py-2
+    @apply flex items-center gap-2.5 rounded-full px-3 py-2
            text-[13.3px] font-semibold text-[#c9c9ce] transition-colors
            hover:bg-[#232326] hover:text-white;
   }
 
   .sidebar-link-active {
-    @apply border-l-gold bg-gold font-extrabold text-[#0F0F12] hover:bg-gold hover:text-[#0F0F12];
+    @apply bg-gold font-bold text-[#0F0F12] shadow-[0_2px_10px_rgba(255,194,14,0.25)]
+           hover:bg-gold hover:text-[#0F0F12];
   }
 
   .sidebar-foot {
-    @apply border-t-2 border-white/[0.18] p-2.5 text-[11.5px] text-[#9a9aa3];
+    @apply border-t border-white/[0.08] p-2.5 text-[11.5px] text-[#9a9aa3];
   }
 }

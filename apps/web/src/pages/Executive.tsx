@@ -236,8 +236,8 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   if (!active || !payload?.length) return null;
   const rows = payload as Array<{ name?: string; value?: number; color?: string; dataKey?: string }>;
   return (
-    <div className="rounded-sm border-2 border-ink-100 bg-ink-900 px-3 py-2">
-      {label !== undefined && <p className="mb-1 text-2xs font-extrabold uppercase tracking-wide">{String(label)}</p>}
+    <div className="rounded-md border border-ink-800 bg-ink-900 px-3 py-2 shadow-floating">
+      {label !== undefined && <p className="mb-1 text-2xs font-semibold uppercase tracking-wide">{String(label)}</p>}
       {rows.map((r) => (
         <div key={r.dataKey ?? r.name} className="flex items-center gap-2 text-xs">
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: r.color }} />
@@ -478,7 +478,7 @@ export function Executive() {
             </p>
 
             <details className="mt-3">
-              <summary className="cursor-pointer text-2xs font-extrabold uppercase tracking-wide text-ink-500">
+              <summary className="cursor-pointer text-2xs font-semibold uppercase tracking-wide text-ink-500">
                 Show the figures
               </summary>
               <div className="mt-2 overflow-x-auto">

@@ -902,7 +902,7 @@ export function Attendance() {
       />
 
       {lock.data && (
-        <div className="mb-4 rounded-sm border-2 border-ink-100 bg-gold-soft px-4 py-3 text-xs">
+        <div className="mb-4 rounded-md border border-gold/30 bg-gold-soft px-4 py-3 text-xs shadow-raised">
           Locked {lock.data.locked} {lock.data.locked === 1 ? 'day' : 'days'}.
           {lock.data.unresolved > 0 && (
             <>

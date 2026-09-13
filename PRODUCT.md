@@ -114,6 +114,19 @@ could not truthfully copy without the same discipline:
 
 ## Brand Commitments
 
+- **Visual direction (standing preference, confirmed 2026-09-13):** the
+  flat, border-only-hierarchy system is being replaced with a fluent,
+  Apple-esque, minimalist depth language — real soft shadows and
+  translucent/glass chrome carry hierarchy instead of border weight. Craft
+  bar: **Apple's own system apps / macOS** (Settings, Mail, Notes,
+  Big Sur/Sonoma-era vibrancy) and **Notion / Craft** (soft cards, warm
+  neutral ground, calm content-first minimalism) — played straight, at
+  their fidelity, not as a mood reference. This is the canon/standing-exit
+  path (a named, well-known design language), not an invented world.
+  Applies uniformly, including the densest screens (KPI walls, ledger and
+  invoice tables) — depth is not chrome-only; tabular numbers stay crisp
+  within it. Division and status categorical colors (§ Capabilities and
+  Constraints) are unaffected — they encode data, not aesthetics.
 - Product name: **KaiERP**. Company: **Kaizen Infinities** (legal entity
   KIPL, seen in document numbering: `KIPL/I/26-27/001`).
 - Three internal divisions are a fixed, named part of the brand and are

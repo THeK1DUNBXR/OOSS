@@ -192,10 +192,10 @@ export function Shell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-ink-700 bg-ink-900 px-6 py-3">
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-ink-800 bg-ink-900/85 px-6 py-3 shadow-soft backdrop-blur-glass">
           <button
             onClick={() => setSearchOpen(true)}
-            className="flex flex-1 items-center gap-2 rounded-full border-[1.5px] border-ink-700 bg-ink-950 px-4 py-2 text-left text-xs text-ink-500 hover:border-ink-100"
+            className="flex flex-1 items-center gap-2 rounded-full bg-ink-950 px-4 py-2 text-left text-xs text-ink-500 shadow-soft hover:shadow-raised"
           >
             <span>⌕</span>
             <span className="flex-1">Search people, accounts, deals, agreements…</span>
@@ -205,7 +205,7 @@ export function Shell() {
           <div className="relative">
             <button
               onClick={() => setNotifOpen((v) => !v)}
-              className="relative rounded-full border-2 border-ink-100 bg-transparent px-3 py-1.5 text-xs text-ink-100 hover:bg-ink-100 hover:text-ink-950"
+              className="relative rounded-full bg-ink-100 px-3 py-1.5 text-xs text-ink-950 shadow-raised hover:bg-gold hover:text-ink-100 hover:shadow-floating"
             >
               ✉
               {unread > 0 && (
@@ -215,8 +215,8 @@ export function Shell() {
               )}
             </button>
             {notifOpen && (
-              <div className="absolute right-0 z-40 mt-2 w-96 rounded-lg border-[3px] border-ink-100 bg-ink-900">
-                <div className="border-b-2 border-ink-100 px-3 py-2 text-2xs font-extrabold uppercase tracking-wide text-ink-500">
+              <div className="glass absolute right-0 z-40 mt-2 w-96 rounded-lg">
+                <div className="border-b border-ink-800 px-3 py-2 text-2xs font-semibold uppercase tracking-wide text-ink-500">
                   Notifications
                 </div>
                 <div className="max-h-96 overflow-y-auto">
@@ -231,7 +231,7 @@ export function Shell() {
                         setNotifOpen(false);
                         if (n.drillPath) navigate(n.drillPath);
                       }}
-                      className={`block w-full border-b border-ink-700 px-3 py-2.5 text-left last:border-b-0 hover:bg-ink-850 ${
+                      className={`block w-full border-b border-ink-800 px-3 py-2.5 text-left last:border-b-0 hover:bg-ink-850 ${
                         n.readAt ? 'opacity-60' : ''
                       }`}
                     >
@@ -297,7 +297,7 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div className="mt-1 rounded-sm border-2 border-[#3a3a40] bg-[#18181c] p-2">
+    <div className="mt-1 rounded-md bg-[#18181c] p-2 shadow-floating">
       <p className="mb-1.5 px-1 text-2xs text-[#9a9aa3]">
         Which of your relationships are you answerable as?
       </p>
@@ -381,14 +381,14 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-[#0F0F12]/55 p-4 pt-24" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-lg border-[3px] border-ink-100 bg-ink-900" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-ink-100/40 p-4 pt-24 backdrop-blur-sm" onClick={onClose}>
+      <div className="glass w-full max-w-2xl rounded-lg" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search for a person, company, deal or agreement…"
-          className="w-full border-b-2 border-ink-100 bg-transparent px-4 py-3.5 text-sm text-ink-100 placeholder:text-ink-500 focus:outline-none"
+          className="w-full border-b border-white/10 bg-transparent px-4 py-3.5 text-sm text-ink-100 placeholder:text-ink-500 focus:outline-none"
         />
         <div className="max-h-96 overflow-y-auto p-2">
           {navMatches.length > 0 && (
