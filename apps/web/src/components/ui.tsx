@@ -13,6 +13,7 @@
 
 import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
+import { Lock, X } from 'lucide-react';
 import type { SensitivityClass, SeverityCode } from '@kaizen/shared';
 import {
   BAND_WORDS,
@@ -193,7 +194,8 @@ export function EmptyState({ message, hint }: { message: string; hint?: string }
 export function Withheld({ reason }: { reason: string }) {
   return (
     <span className="chip border-ink-700 bg-ink-850 text-ink-500" title={reason}>
-      🔒 {withheldWord(reason)}
+      <Lock className="h-2.5 w-2.5" strokeWidth={2} aria-hidden />
+      {withheldWord(reason)}
     </span>
   );
 }
@@ -309,7 +311,7 @@ export function Modal({
         <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <h2 className="text-sm font-semibold text-ink-50">{title}</h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-100" aria-label="Close">
-            ✕
+            <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
           </button>
         </header>
         <div className="max-h-[65vh] overflow-y-auto p-4">{children}</div>

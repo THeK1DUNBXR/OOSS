@@ -154,26 +154,12 @@
   }
 
   /* A KPI used to wear its verdict on a hard 4px rail. Now it wears a soft
-     tinted status dot in the corner — the same information, read as a
-     material detail instead of a stripe — and depth (not a 2px border)
-     lifts the tile off the page. */
+     tinted status chip in the corner (an icon in a tinted circle, rendered
+     by the consuming component — see KpiStatus in Executive.tsx) — the same
+     information, read as a material detail instead of a stripe — and depth
+     (not a 2px border) lifts the tile off the page. */
   .kpi {
     @apply relative overflow-hidden rounded-md border border-ink-800 bg-ink-900 px-4 py-4 shadow-raised;
-  }
-
-  .kpi::before {
-    content: '';
-    @apply absolute right-3 top-3 h-2 w-2 rounded-full bg-ink-700;
-  }
-
-  .kpi-good::before {
-    @apply bg-band-strong shadow-[0_0_0_3px_theme(colors.band.strong/15%)];
-  }
-  .kpi-warn::before {
-    @apply bg-band-watch shadow-[0_0_0_3px_theme(colors.band.watch/15%)];
-  }
-  .kpi-bad::before {
-    @apply bg-band-critical shadow-[0_0_0_3px_theme(colors.band.critical/15%)];
   }
 
   .kpi-label {
@@ -243,13 +229,17 @@
 
   /* The sidebar is the one dark region in a light app. It is ink so that the
      paper beside it reads as the work and the rail reads as the frame, and it
-     is the only place gold is allowed to fill a whole element. A soft shadow
-     on its own trailing edge separates it from the canvas instead of a hard
-     3px rule. The values are literal rather than scale tokens because the
+     is the only place gold is allowed to fill a whole element. Vibrancy, not
+     a solid fill: a translucent tint over backdrop-blur, the same material as
+     `.glass`, at higher opacity so its own text keeps its contrast — on the
+     mobile drawer this sits over real page content and blurs it; on desktop
+     it still reads as a softer, layered dark rather than a flat block. A soft
+     shadow on its own trailing edge separates it from the canvas instead of a
+     hard 3px rule. The values are literal rather than scale tokens because the
      `ink` scale points at paper. */
   .sidebar {
-    @apply relative flex w-56 shrink-0 flex-col bg-[#0F0F12] text-[#c9c9ce]
-           shadow-[6px_0_24px_-8px_rgba(15,15,18,0.35)];
+    @apply relative flex h-full w-56 shrink-0 flex-col bg-[#0F0F12]/92 text-[#c9c9ce]
+           shadow-[6px_0_24px_-8px_rgba(15,15,18,0.35)] backdrop-blur-glass;
   }
 
   .sidebar-brand {

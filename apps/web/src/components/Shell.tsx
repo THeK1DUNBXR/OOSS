@@ -11,6 +11,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { NavNodeView, NotificationView } from '@kaizen/shared';
+import {
+  Activity, AlertTriangle, Award, Bell, Book, Building2, Calculator, ChevronDown,
+  ChevronRight, ChevronsUpDown, Circle, Clipboard, Clock, Coins, Columns3, File,
+  FileText, Gauge, GraduationCap, Home, Inbox, Kanban, Key, Layers, Lock, Map as MapIcon,
+  Menu, Package, Receipt, Scale, ScrollText, Search, Settings, Shield, ShieldCheck,
+  Sparkles, Target, TrendingUp, Users, Wallet, X, type LucideIcon,
+} from 'lucide-react';
 import { useSession } from '../lib/session.js';
 import { api, relative } from '../lib/api.js';
 import { words } from '../lib/words.js';
@@ -18,15 +25,21 @@ import { FirstRun } from './FirstRun.js';
 import { BuildFootnote } from './BuildFootnote.js';
 import { SetupBanner } from '../pages/Start.js';
 
-const ICONS: Record<string, string> = {
-  gauge: '◎', home: '⌂', inbox: '⇢', columns: '▤', target: '◈', trending: '↗',
-  building: '⌗', users: '⧉', message: '✉', package: '❑', calculator: '∑',
-  file: '▭', scroll: '≡', clipboard: '✓', shield: '⛨', receipt: '⌸',
-  wallet: '▣', coins: '◉', graduation: '⌾', badge: '✦', kanban: '▥',
-  alert: '⚠', scale: '⚖', settings: '⚙', map: '⊕', key: '⚿', bot: '⬢',
-  activity: '∿', clock: '◷', search: '⌕', layers: '▧',
-  sparkle: '✧', lock: '⚿', list: '☰', book: '▤',
+/** One consistent stroke and weight — a real icon system, not a dingbat per row. */
+const ICONS: Record<string, LucideIcon> = {
+  gauge: Gauge, home: Home, inbox: Inbox, columns: Columns3, target: Target, trending: TrendingUp,
+  building: Building2, users: Users, message: Bell, package: Package, calculator: Calculator,
+  file: File, scroll: ScrollText, clipboard: Clipboard, shield: Shield, receipt: Receipt,
+  wallet: Wallet, coins: Coins, graduation: GraduationCap, badge: Award, kanban: Kanban,
+  alert: AlertTriangle, scale: Scale, settings: Settings, map: MapIcon, key: Key, bot: Circle,
+  activity: Activity, clock: Clock, search: Search, layers: Layers,
+  sparkle: Sparkles, lock: Lock, list: FileText, book: Book,
 };
+
+function NavIcon({ icon, className = 'h-[18px] w-[18px]' }: { icon: string; className?: string }) {
+  const Cmp = ICONS[icon];
+  return Cmp ? <Cmp className={className} strokeWidth={1.75} aria-hidden /> : <Circle className={className} strokeWidth={1.75} aria-hidden />;
+}
 
 // Ordinary business words are kept as they are — a salesperson knows what a
 // lead, a pipeline and a quote are, and renaming those would help nobody.
@@ -59,22 +72,11 @@ export function Shell() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  // Fixed group order, so the shell reads the way the work reads: your own
-  // surface first, then the domains, then the platform underneath them.
-  const GROUP_ORDER = ['main', 'money', 'people', 'customers', 'delivery', 'setup'];
-
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, NavNodeView[]>();
-    for (const node of nav) {
-      map.set(node.group, [...(map.get(node.group) ?? []), node]);
-    }
-    return [...map.entries()].sort(
-      (a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0]),
-    );
-  }, [nav]);
+  // Closing the mobile drawer on every navigation, so a tapped link does not
+  // leave the overlay sitting over the next screen.
+  useEffect(() => setMobileNavOpen(false), [location.pathname]);
 
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],
@@ -105,109 +107,62 @@ export function Shell() {
 
   return (
     <div className="flex h-full">
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <div className="sidebar-mark">K</div>
-          <div className="min-w-0">
-            <p className="truncate font-display text-base font-black uppercase leading-tight tracking-tight text-white">
-              KaiERP
-            </p>
-            <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.09em] text-[#9a9aa3]">
-              {user.tenantName}
-            </p>
+      {/* Desktop: the sidebar sits in flow. Mobile: it collapses behind a
+          hamburger and opens as a glass drawer over the content, which is
+          also the one place on this shell where the vibrancy material has
+          real content behind it to blur. */}
+      <div className="hidden shrink-0 md:flex">
+        <SidebarNav
+          user={user}
+          nav={nav}
+          location={location}
+          switcherOpen={switcherOpen}
+          onToggleSwitcher={() => setSwitcherOpen((v) => !v)}
+          onCloseSwitcher={() => setSwitcherOpen(false)}
+        />
+      </div>
+
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-40 flex md:hidden">
+          <div className="fixed inset-0 bg-ink-100/40 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
+          <div className="relative">
+            <SidebarNav
+              user={user}
+              nav={nav}
+              location={location}
+              switcherOpen={switcherOpen}
+              onToggleSwitcher={() => setSwitcherOpen((v) => !v)}
+              onCloseSwitcher={() => setSwitcherOpen(false)}
+            />
           </div>
         </div>
-
-        <nav className="flex flex-1 flex-col gap-px overflow-y-auto px-2.5 py-3">
-          {grouped.map(([group, nodes]) => {
-            const collapsible = COLLAPSED_BY_DEFAULT.has(group);
-            // A collapsed group still opens itself when you are inside it, so
-            // navigating to a set-up screen never leaves the sidebar
-            // disagreeing with the page.
-            const holdsCurrent = nodes.some(
-              (n) => location.pathname === n.path || location.pathname.startsWith(`${n.path}/`),
-            );
-            const open = !collapsible || (openGroups[group] ?? holdsCurrent);
-
-            return (
-              <div key={group} className="contents">
-                {GROUP_LABELS[group] &&
-                  (collapsible ? (
-                    <button
-                      onClick={() => setOpenGroups((g) => ({ ...g, [group]: !open }))}
-                      className="sidebar-group flex w-full items-center justify-between hover:text-white"
-                      aria-expanded={open}
-                    >
-                      <span>{GROUP_LABELS[group]}</span>
-                      <span aria-hidden className="text-[9px] opacity-70">{open ? '▾' : '▸'}</span>
-                    </button>
-                  ) : (
-                    <p className="sidebar-group">{GROUP_LABELS[group]}</p>
-                  ))}
-                {open &&
-                  nodes.map((node) => (
-                    <NavLink
-                      key={node.key}
-                      to={node.path}
-                      className={({ isActive }) =>
-                        `sidebar-link ${
-                          isActive || location.pathname.startsWith(`${node.path}/`)
-                            ? 'sidebar-link-active'
-                            : ''
-                        }`
-                      }
-                    >
-                      <span className="w-[18px] text-center opacity-85">{ICONS[node.icon] ?? '·'}</span>
-                      <span className="truncate">{node.label}</span>
-                    </NavLink>
-                  ))}
-              </div>
-            );
-          })}
-        </nav>
-
-        <div className="sidebar-foot">
-          <button
-            onClick={() => setSwitcherOpen((v) => !v)}
-            className="flex w-full items-center gap-2 rounded-full px-2 py-2 text-left transition-colors hover:bg-[#232326]"
-          >
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-gold bg-gold font-display text-2xs font-black text-[#0F0F12]">
-              {user.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold text-white">{user.fullName}</p>
-              {/* The persistent "you are acting as" affordance the non-union
-                  rule makes necessary. */}
-              <p className="truncate text-2xs text-[#9a9aa3]">
-                signed in as {words(user.roleSlug).toLowerCase()}
-              </p>
-            </div>
-            <span className="text-[#9a9aa3]">⇅</span>
-          </button>
-
-          {switcherOpen && (
-            <ContextSwitcher onDone={() => setSwitcherOpen(false)} />
-          )}
-        </div>
-      </aside>
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-ink-800 bg-ink-900/85 px-6 py-3 shadow-soft backdrop-blur-glass">
           <button
+            onClick={() => setMobileNavOpen(true)}
+            className="rounded-full p-2 text-ink-500 hover:bg-ink-850 hover:text-ink-100 md:hidden"
+            aria-label="Open navigation"
+          >
+            <Menu className="h-4 w-4" strokeWidth={1.75} aria-hidden />
+          </button>
+          <button
             onClick={() => setSearchOpen(true)}
             className="flex flex-1 items-center gap-2 rounded-full bg-ink-950 px-4 py-2 text-left text-xs text-ink-500 shadow-soft hover:shadow-raised"
           >
-            <span>⌕</span>
+            <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
             <span className="flex-1">Search people, accounts, deals, agreements…</span>
-            <kbd className="rounded-sm border border-ink-700 px-1.5 py-0.5 font-mono text-2xs text-ink-500">⌘K</kbd>
+            <kbd className="hidden rounded-sm border border-ink-700 px-1.5 py-0.5 font-mono text-2xs text-ink-500 sm:inline-flex">⌘K</kbd>
           </button>
 
           <div className="relative">
             <button
               onClick={() => setNotifOpen((v) => !v)}
               className="relative rounded-full bg-ink-100 px-3 py-1.5 text-xs text-ink-950 shadow-raised hover:bg-gold hover:text-ink-100 hover:shadow-floating"
+              aria-label="Notifications"
             >
-              ✉
+              <Bell className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
               {unread > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-ink-100 bg-gold px-1 font-mono text-2xs font-black text-ink-100">
                   {unread}
@@ -272,6 +227,132 @@ export function Shell() {
   );
 }
 
+// Fixed group order, so the shell reads the way the work reads: your own
+// surface first, then the domains, then the platform underneath them.
+const GROUP_ORDER = ['main', 'money', 'people', 'customers', 'delivery', 'setup'];
+
+/** The sidebar's content, shared between its desktop in-flow rendering and
+ *  its mobile drawer overlay — one nav, two placements. */
+function SidebarNav({
+  user,
+  nav,
+  location,
+  switcherOpen,
+  onToggleSwitcher,
+  onCloseSwitcher,
+}: {
+  user: NonNullable<ReturnType<typeof useSession>['user']>;
+  nav: NavNodeView[];
+  location: ReturnType<typeof useLocation>;
+  switcherOpen: boolean;
+  onToggleSwitcher: () => void;
+  onCloseSwitcher: () => void;
+}) {
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, NavNodeView[]>();
+    for (const node of nav) {
+      map.set(node.group, [...(map.get(node.group) ?? []), node]);
+    }
+    return [...map.entries()].sort(
+      (a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0]),
+    );
+  }, [nav]);
+
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-brand">
+        <div className="sidebar-mark">K</div>
+        <div className="min-w-0">
+          <p className="truncate font-display text-base font-black uppercase leading-tight tracking-tight text-white">
+            KaiERP
+          </p>
+          <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.09em] text-[#9a9aa3]">
+            {user.tenantName}
+          </p>
+        </div>
+      </div>
+
+      <nav className="flex flex-1 flex-col gap-px overflow-y-auto px-2.5 py-3">
+        {grouped.map(([group, nodes]) => {
+          const collapsible = COLLAPSED_BY_DEFAULT.has(group);
+          // A collapsed group still opens itself when you are inside it, so
+          // navigating to a set-up screen never leaves the sidebar
+          // disagreeing with the page.
+          const holdsCurrent = nodes.some(
+            (n) => location.pathname === n.path || location.pathname.startsWith(`${n.path}/`),
+          );
+          const open = !collapsible || (openGroups[group] ?? holdsCurrent);
+
+          return (
+            <div key={group} className="contents">
+              {GROUP_LABELS[group] &&
+                (collapsible ? (
+                  <button
+                    onClick={() => setOpenGroups((g) => ({ ...g, [group]: !open }))}
+                    className="sidebar-group flex w-full items-center justify-between hover:text-white"
+                    aria-expanded={open}
+                  >
+                    <span>{GROUP_LABELS[group]}</span>
+                    {open ? (
+                      <ChevronDown className="h-3 w-3 opacity-70" strokeWidth={2} aria-hidden />
+                    ) : (
+                      <ChevronRight className="h-3 w-3 opacity-70" strokeWidth={2} aria-hidden />
+                    )}
+                  </button>
+                ) : (
+                  <p className="sidebar-group">{GROUP_LABELS[group]}</p>
+                ))}
+              {open &&
+                nodes.map((node) => (
+                  <NavLink
+                    key={node.key}
+                    to={node.path}
+                    className={({ isActive }) =>
+                      `sidebar-link ${
+                        isActive || location.pathname.startsWith(`${node.path}/`)
+                          ? 'sidebar-link-active'
+                          : ''
+                      }`
+                    }
+                  >
+                    <span className="flex w-[18px] shrink-0 items-center justify-center opacity-85">
+                      <NavIcon icon={node.icon} />
+                    </span>
+                    <span className="truncate">{node.label}</span>
+                  </NavLink>
+                ))}
+            </div>
+          );
+        })}
+      </nav>
+
+      <div className="sidebar-foot">
+        <button
+          onClick={onToggleSwitcher}
+          className="flex w-full items-center gap-2 rounded-full px-2 py-2 text-left transition-colors hover:bg-[#232326]"
+        >
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-gold bg-gold font-display text-2xs font-black text-[#0F0F12]">
+            {user.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-white">{user.fullName}</p>
+            {/* The persistent "you are acting as" affordance the non-union
+                rule makes necessary. */}
+            <p className="truncate text-2xs text-[#9a9aa3]">
+              signed in as {words(user.roleSlug).toLowerCase()}
+            </p>
+          </div>
+          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-[#9a9aa3]" strokeWidth={1.75} aria-hidden />
+        </button>
+
+        {switcherOpen && <ContextSwitcher onDone={onCloseSwitcher} />}
+      </div>
+    </aside>
+  );
+}
+
 function ContextSwitcher({ onDone }: { onDone: () => void }) {
   const { user, switchTo } = useSession();
   const [stepUpFor, setStepUpFor] = useState<string | null>(null);
@@ -313,8 +394,12 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
           >
             <span className="truncate capitalize">{a.roleSlug.replace(/_/g, ' ')}</span>
             <span className="flex shrink-0 items-center gap-1">
-              {a.requiresStepUp && <span title="You will be asked to confirm your password again before this goes through">⛨</span>}
-              {a.id === user.activeAffiliationId && <span>●</span>}
+              {a.requiresStepUp && (
+                <span title="You will be asked to confirm your password again before this goes through">
+                  <ShieldCheck className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />
+                </span>
+              )}
+              {a.id === user.activeAffiliationId && <Circle className="h-2 w-2 fill-current" aria-hidden />}
             </span>
           </button>
           {stepUpFor === a.id && (
@@ -396,7 +481,9 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
               <p className="section-title px-2 py-1">Surfaces</p>
               {navMatches.map((n) => (
                 <button key={n.key} onClick={() => go(n.path)} className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-850">
-                  <span className="text-ink-500">{ICONS[n.icon] ?? '·'}</span>
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink-500">
+                    <NavIcon icon={n.icon} className="h-4 w-4" />
+                  </span>
                   {n.label}
                 </button>
               ))}
