@@ -238,7 +238,7 @@
      hard 3px rule. The values are literal rather than scale tokens because the
      `ink` scale points at paper. */
   .sidebar {
-    @apply relative flex h-full w-56 shrink-0 flex-col bg-[#0F0F12]/92 text-[#c9c9ce]
+    @apply relative flex h-full w-56 shrink-0 flex-col bg-[rgba(15,15,18,0.92)] text-[#c9c9ce]
            shadow-[6px_0_24px_-8px_rgba(15,15,18,0.35)] backdrop-blur-glass;
   }
 
