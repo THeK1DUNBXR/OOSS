@@ -19,3 +19,14 @@ coverage/
 # What a browser run leaves behind: traces, screenshots, the HTML report.
 e2e/test-results/
 e2e/playwright-report/
+
+# Impeccable design-workflow scratch output: review screenshots, comp mocks
+# and build state are one run's evidence, not durable design record. The
+# durable parts (surface briefs under .impeccable/surfaces/, DESIGN.md) stay
+# tracked.
+.impeccable/review/
+.impeccable/mocks/
+.impeccable/build/
+**/.impeccable/review/
+**/.impeccable/mocks/
+**/.impeccable/build/
