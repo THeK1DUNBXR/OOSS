@@ -403,11 +403,15 @@ export async function submitPublicForm(
 
     await prisma.marketingForm.update({ where: { id: form.id }, data: { submissionCount: { increment: 1 } } });
 
+    // No personId yet — findOrCreatePerson runs a moment later, inside
+    // convertSubmission. The submission's own record code anchors the
+    // touchpoint until then (and always, if conversion never happens).
     await recordTouchpoint({
       campaignId,
       channelKey: 'website',
       touchKind: 'form',
       utm,
+      sourceRef: submission.recordCode,
     });
 
     await emit({

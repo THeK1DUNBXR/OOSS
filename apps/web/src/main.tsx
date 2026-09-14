@@ -82,6 +82,11 @@ import { MarketingEvents, MarketingEventDetail } from './pages/marketing/Marketi
 import { Assets as MarketingAssets } from './pages/marketing/Assets.js';
 import { Social as MarketingSocial } from './pages/marketing/Social.js';
 import { Referrals as MarketingReferrals } from './pages/marketing/Referrals.js';
+import { Audiences as MarketingAudiences } from './pages/marketing/Audiences.js';
+import { Consent as MarketingConsent } from './pages/marketing/Consent.js';
+import { Templates as MarketingTemplates } from './pages/marketing/Templates.js';
+import { Sends as MarketingSends, SendDetail as MarketingSendDetail } from './pages/marketing/Sends.js';
+import { Journeys as MarketingJourneys } from './pages/marketing/Journeys.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -294,6 +299,12 @@ function Routed() {
           <Route path="assets" element={<MarketingAssets />} />
           <Route path="social" element={<MarketingSocial />} />
           <Route path="referrals" element={<MarketingReferrals />} />
+          <Route path="audiences" element={<MarketingAudiences />} />
+          <Route path="consent" element={<MarketingConsent />} />
+          <Route path="templates" element={<MarketingTemplates />} />
+          <Route path="sends" element={<MarketingSends />} />
+          <Route path="sends/:id" element={<MarketingSendDetail />} />
+          <Route path="journeys" element={<MarketingJourneys />} />
         </Route>
         {/* end marketing */}
 

@@ -119,7 +119,7 @@ describe('MKT-CAP-002 — a converted submission creates or finds a Person via f
     const email = `lead-${Date.now()}@example.com`;
     const result = await submitPublicForm(
       form.publicToken,
-      { fullName: 'Priya Sharma', email, phone: '9876543210' },
+      { fullName: 'Priya Sharma', email, phone: `9${String(Date.now()).slice(-9)}` },
       { ip: '10.0.0.1', utm: { campaign: campaign.utmCampaign, source: 'newsletter', medium: 'email' } },
     );
     expect(result.ok).toBe(true);
@@ -290,7 +290,7 @@ describe('MKT-CAP-007 — lead score is the sum of active rule matches, CRM reas
     const lead = await asUser(FINANCE, () =>
       createLead({
         title: 'Referral enquiry',
-        person: { fullName: 'Referral Person', primaryEmail: `ref-${Date.now()}@example.com`, primaryPhone: '9000000000' },
+        person: { fullName: 'Referral Person', primaryEmail: `ref-${Date.now()}@example.com`, primaryPhone: `9${String(Date.now()).slice(-9)}` },
         vertical: 'education',
         source: 'referral',
       }),
