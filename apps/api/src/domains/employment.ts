@@ -230,6 +230,10 @@ export function redactRegulatedEmploymentFields<
     panNumber?: unknown;
     aadhaarReference?: unknown;
     uanNumber?: unknown;
+    esicNumber?: unknown;
+    bankAccountNumber?: unknown;
+    bankIfsc?: unknown;
+    bankAccountName?: unknown;
     person: { bloodGroup?: unknown };
   },
 >(employment: T): T {
@@ -238,6 +242,12 @@ export function redactRegulatedEmploymentFields<
     panNumber: undefined,
     aadhaarReference: undefined,
     uanNumber: undefined,
+    // The compliance fields added with the plan: the ESIC number and the bank
+    // account payroll is paid into carry the same weight as the PAN.
+    esicNumber: undefined,
+    bankAccountNumber: undefined,
+    bankIfsc: undefined,
+    bankAccountName: undefined,
     person: { ...employment.person, bloodGroup: undefined },
   };
 }
