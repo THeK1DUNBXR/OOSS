@@ -1,0 +1,182 @@
+// Technology — assets and devices (docs/plan/cio.md, workstream A).
+//
+// `FixedAsset` (main.prisma) is the books' capital register: cost, salvage,
+// useful life, depreciation, disposal. It says nothing about who is holding
+// the thing, its serial number, its warranty, or where it physically sits.
+// `ItAsset` is that half — the IT register — linked to `FixedAsset` by a bare
+// `fixedAssetId` when the item was capitalised, never duplicating the money
+// the books already hold (Principle 8).
+//
+// Status runs the lifecycle `in_stock -> assigned -> in_repair -> retired ->
+// disposed` through `platform/lifecycle.ts` (see `itAssetMachine` in
+// `packages/shared/src/it/assets.ts`). `ItAssetAssignment` is the append-only
+// hand-over/return log (Principle 5): assigning writes a new row, returning
+// closes it — an earlier row is never edited. `ItAssetEvent` is the
+// append-only history of everything else worth noting against an asset:
+// a repair, an audit sighting, a free-text note, or a transition.
+
+/// The IT half of an asset: everything the books don't track. `holderPartyId`
+/// is the CURRENT holder only — history lives in `ItAssetAssignment`, never
+/// edited in place here.
+model ItAsset {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  /// The asset tag stuck on the machine — how a person refers to it out loud.
+  tag String
+
+  /// laptop | desktop | phone | monitor | peripheral | network | server | other
+  kind String
+
+  make   String?
+  model  String?
+  serial String?
+
+  purchaseDate DateTime?
+  purchaseCost Decimal?  @db.Decimal(18, 2)
+  warrantyEnd  DateTime?
+
+  /// The supplier's name as typed in. `vendorId` is a bare id into workstream
+  /// C's `ItVendor` when a vendor master exists for them — never a Prisma
+  /// relation across files (Principle: cross-workstream references are bare
+  /// ids).
+  supplierName String?
+  vendorId     String?
+
+  location String?
+  division String?
+
+  /// The capital register row this asset was purchased as, when it was
+  /// capitalised. Bare id into `FixedAsset` (main.prisma) — book value is
+  /// read from there, never duplicated here.
+  fixedAssetId String?
+
+  /// in_stock | assigned | in_repair | retired | disposed — see
+  /// `itAssetMachine` in `packages/shared/src/it/assets.ts`.
+  status String @default("in_stock")
+
+  /// new | good | fair | poor | damaged — the asset's condition as currently
+  /// on file. Also captured per hand-over on `ItAssetAssignment`.
+  condition String?
+  notes     String?
+
+  /// The party currently holding this asset, denormalised for fast lookup and
+  /// for the WHERE-axis scope resolver (an employee's `it_assets:V@own` grant
+  /// narrows list queries against this field). The authoritative history is
+  /// `ItAssetAssignment`; this is only ever set by `assignAsset`/`returnAsset`
+  /// and the lifecycle transitions, never edited directly.
+  holderPartyId String?
+
+  /// Set when the asset enters `in_repair`, cleared on leaving it. Read by the
+  /// in-repair-too-long detector — a dated threshold, not a constant.
+  inRepairSince DateTime?
+
+  /// Every warranty ladder rung already notified (e.g. `[90, 30, 7, 0]`), so
+  /// the daily job never re-notifies a rung already fired — idempotence
+  /// carried on the row, the same shape the compliance calendar's
+  /// `notifiedRungs` uses.
+  warrantyNotifiedRungs Int[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments ItAssetAssignment[]
+  events      ItAssetEvent[]
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, tag])
+  @@index([tenantId, status])
+  @@index([tenantId, kind])
+  @@index([tenantId, holderPartyId])
+  @@index([tenantId, warrantyEnd])
+  @@map("it_assets")
+}
+
+/// Append-only hand-over/return log (Principle 5). A new assignment is a new
+/// row; returning an asset sets `returnedAt`/`conditionIn`/`acknowledgedAt` on
+/// the SAME open row (the one hand-over it closes) and never touches an
+/// earlier, already-closed row.
+model ItAssetAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  assetId String
+  asset   ItAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  /// The person the asset was handed to.
+  partyId String
+
+  assignedAt   DateTime  @default(now())
+  assignedById String?
+  conditionOut String?
+
+  /// Null while the hand-over is open (the asset is still with this holder).
+  returnedAt     DateTime?
+  conditionIn    String?
+  /// When the holder acknowledged the return (or, for a hand-over, when they
+  /// acknowledged receiving it) — a distinct timestamp from when the record
+  /// was written, since acknowledgement can lag the paperwork.
+  acknowledgedAt DateTime?
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, assetId])
+  @@index([tenantId, partyId])
+  @@index([tenantId, returnedAt])
+  @@map("it_asset_assignments")
+}
+
+/// Append-only history: a repair, an audit sighting, a free-text note, or the
+/// record of a lifecycle transition. Never edited or deleted once written.
+model ItAssetEvent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  assetId String
+  asset   ItAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  /// repair | audit | note | transition
+  kind   String
+  detail String
+
+  actorPartyId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, assetId])
+  @@index([tenantId, kind])
+  @@map("it_asset_events")
+}
+
+/// The dated table behind the warranty ladder and the in-repair-too-long
+/// detector (Principle 4: service targets are data, not constants). Upserted
+/// by the seed under a stable `code`; the row with the latest `effectiveFrom`
+/// at or before now is the one in force.
+model ItAssetThreshold {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code          String   @default("DEFAULT")
+  effectiveFrom DateTime @default(now())
+
+  /// Days-before-warranty-end ladder, descending, e.g. `[90, 30, 7, 0]` — the
+  /// last value is the "expired" rung (`daysLeft <= 0`).
+  warrantyRungs Int[] @default([90, 30, 7, 0])
+
+  /// An asset in `in_repair` longer than this many days raises an exception.
+  repairDaysThreshold Int @default(14)
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code, effectiveFrom])
+  @@index([tenantId, code, effectiveFrom])
+  @@map("it_asset_thresholds")
+}
