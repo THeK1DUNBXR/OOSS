@@ -2,8 +2,9 @@
 
 An AI-native, multi-tenant ERP for Kaizen Infinities. CRM, HRM and Finance are
 the three domains the company runs on; Education, Projects, Commercial,
-Governance and the Command Center ship alongside them because the platform's
-premise is that they are one system, not nine that integrate.
+Governance, Technology (the CIO office) and the Command Center ship alongside
+them because the platform's premise is that they are one system, not nine
+that integrate.
 
 Built from the *Kaizen Infinities Unified Operating Platform — Master
 Architecture*: 39 numbered CRM requirements with PASS/FAIL acceptance criteria,
@@ -280,6 +281,19 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   reporting across them on a canonical ordinal rather than on stage names.
 - **Governance (Admin)** — the live grant matrix, policy versions, the event
   chain, agent registrations and their action tiers.
+- **Technology** — the CIO's office: every laptop and licence, every vendor
+  and contract, every ticket, incident and change, every risk, policy and
+  access review, the technology portfolio and its budget, and the continuity
+  plan behind each system. The same separations as everywhere else: the
+  Operations Head runs the desk and proposes a change or a renewal, the
+  Finance Head signs the licence, vendor contract and budget spend, and the
+  chairman publishes policy and approves the change the Operations Head
+  raised — an engineer's own change goes to someone else, and nobody
+  reviews their own access. A tenant with nothing recorded yet reads
+  *Nothing to measure yet*, never a zero. It does not discover devices on
+  the network, meter a SaaS login, page anyone, or scan for
+  vulnerabilities — every figure here is typed in or computed from what was
+  typed in.
 - **Contacts** — an open merge candidate, raised by the resolver refusing a
   partial match rather than guessing.
 
@@ -451,3 +465,7 @@ of keeping its own copy of the diagram.
   GST, income tax and TDS, books and audit, payroll statutory, labour law,
   data protection, corporate and security, and the calendar that runs them;
   what each workstream built is in [docs/compliance/](docs/compliance/)
+- [docs/plan/cio.md](docs/plan/cio.md) — the Technology plan: assets, software
+  and licences, vendors and contracts, the service desk, incidents and
+  changes, security and governance, the portfolio and budget, and continuity;
+  what each workstream built is in [docs/it/](docs/it/)
