@@ -757,6 +757,10 @@ export interface InvoiceDocumentView {
   notes: string | null;
   division: string | null;
   raisedBy: string | null;
+  /** tax_invoice | bill_of_supply (docs/plan/compliance.md, workstream B). */
+  invoiceType: string;
+  /** Rule 46(p): tax on this supply is payable by the recipient. */
+  reverseCharge: boolean;
 
   supplier: {
     legalName: string;

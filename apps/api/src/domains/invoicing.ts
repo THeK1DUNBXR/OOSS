@@ -118,6 +118,13 @@ export interface InvoiceLineInput {
   /** Percentage. Defaults to the course's rate, else 0. */
   gstRate?: number | null;
   hsnSac?: string | null;
+  /**
+   * taxable | nil | exempt | non_gst (docs/plan/compliance.md, workstream B).
+   * Defaults to `taxable`, or to `exempt` when the line bills a course
+   * carrying an active `CourseGstExemption` and nothing else was said.
+   */
+  supplyType?: string | null;
+  exemptionNotification?: string | null;
 }
 
 export interface CollectedPaymentInput {
@@ -431,6 +438,8 @@ interface PricedLine {
   hsnSac: string | null;
   revenueMethod: RevenueTreatment;
   position: number;
+  supplyType: string;
+  exemptionNotification: string | null;
 }
 
 /**
@@ -601,6 +610,30 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
     const grossAmount = round2(round2(unitPrice) * quantity);
     const { discountAmount, discountPercent } = resolveDiscount(grossAmount, line, description);
 
+    // Supply classification (docs/plan/compliance.md, workstream B). A course
+    // carrying an active exemption defaults its line to `exempt` — but only
+    // when nothing was said explicitly, because an exemption asserted for the
+    // course is not automatically the right reading of every fee against it
+    // (an add-on billed alongside, say).
+    let supplyType = (line.supplyType?.trim() || null) as string | null;
+    let exemptionNotification = line.exemptionNotification?.trim() || null;
+    if (!supplyType && courseId) {
+      const exemption = await prisma.courseGstExemption.findFirst({
+        where: { tenantId: auth.tenantId, courseId, active: true },
+      });
+      if (exemption) {
+        supplyType = 'exempt';
+        exemptionNotification = exemption.notification;
+      }
+    }
+    supplyType = supplyType ?? 'taxable';
+    const nonTaxable = supplyType === 'nil' || supplyType === 'exempt' || supplyType === 'non_gst';
+    if (nonTaxable) {
+      gstRate = 0;
+    } else {
+      exemptionNotification = null;
+    }
+
     out.push({
       offeringId: line.offeringId ?? null,
       courseId,
@@ -619,6 +652,8 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       hsnSac,
       revenueMethod,
       position,
+      supplyType,
+      exemptionNotification,
     });
   }
   return out;
@@ -733,6 +768,15 @@ export async function createInvoice(input: InvoiceInput) {
     return created;
   });
 
+  // GST classification rules and e-invoicing readiness attach here too
+  // (workstream B) — `createInvoice` with `issue: true` raises and issues in
+  // one act, and the hook `issueInvoiceDraft` runs at its own issue point has
+  // to run here as well, or a document created this way never sees it.
+  if (issue) {
+    const freshLines = await prisma.invoiceLine.findMany({ where: { invoiceId: invoice.id } });
+    await runHooks('invoice.before_issue', { invoice, lines: freshLines, issuedDate });
+  }
+
   await auditWrite({
     action: 'create',
     subjectType: 'invoice',
@@ -799,6 +843,8 @@ async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
         hsnSac: line.hsnSac,
         position: line.position,
         revenueMethod: line.revenueMethod,
+        supplyType: line.supplyType,
+        exemptionNotification: line.exemptionNotification,
       },
     });
   }
@@ -855,6 +901,8 @@ export async function updateInvoice(
         discountAmount: num(l.discountAmount) || null,
         gstRate: num(l.gstRate),
         hsnSac: l.hsnSac,
+        supplyType: l.supplyType,
+        exemptionNotification: l.exemptionNotification,
       })),
     customer,
   );
@@ -1439,6 +1487,13 @@ export async function invoiceDocument(invoiceId: string) {
     notes: invoice.notes,
     division: invoice.division,
     raisedBy: raisedBy?.fullName ?? null,
+    // ---- Compliance (workstream B) ----
+    /** tax_invoice | bill_of_supply — Rule 49: a bill of supply carries no tax. */
+    invoiceType: invoice.invoiceType,
+    /** Rule 46(p): printed when tax on this supply is payable by the recipient. */
+    reverseCharge: invoice.reverseCharge,
+    irn: invoice.irn,
+    signedQrCode: invoice.signedQrCode,
 
     supplier: {
       legalName: profile.legalName,
@@ -1522,6 +1577,8 @@ export async function invoiceDocument(invoiceId: string) {
       discountPercent: num(l.discountPercent) ?? 0,
       gstRate: num(l.gstRate) ?? 0,
       taxAmount: num(l.taxAmount) ?? 0,
+      supplyType: l.supplyType,
+      exemptionNotification: l.exemptionNotification,
       revenueMethod: l.revenueMethod,
     })),
 

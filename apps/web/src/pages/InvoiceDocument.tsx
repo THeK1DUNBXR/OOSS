@@ -183,12 +183,18 @@ export function InvoiceDocument() {
     >
       <SupplierBlock
         supplier={d.supplier}
-        docType="Tax Invoice"
+        // Rule 49: a bill of supply carries no tax on its face — a document
+        // that reads "Tax Invoice" while carrying none is the wrong document,
+        // not a cosmetic slip.
+        docType={d.invoiceType === 'bill_of_supply' ? 'Bill of Supply' : 'Tax Invoice'}
         meta={[
           ['Invoice no.', d.recordCode ?? 'not yet issued'],
           ['Date', date(d.issuedDate)],
           ['Due', date(d.dueDate)],
           ['Place of supply', d.placeOfSupply ?? '—'],
+          // Rule 46(p): printed whenever tax on this supply is payable by the
+          // recipient rather than by us.
+          ...(d.reverseCharge ? ([['Tax payable', 'Reverse charge (recipient)']] as [string, string][]) : []),
         ]}
       />
 

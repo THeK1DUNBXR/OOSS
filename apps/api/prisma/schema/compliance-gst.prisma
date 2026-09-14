@@ -1,0 +1,192 @@
+// Compliance workstream B — GST completion (docs/plan/compliance.md).
+//
+// New models only. Prisma reads every file under prisma/schema; the fields
+// this workstream needed on existing models were added to main.prisma
+// already (Invoice.invoiceType/reverseCharge/irn.../InvoiceLine.supplyType,
+// VendorBill.rcmApplicable/rcmTaxAmount, CompanyProfile.compositionScheme/
+// eInvoicingApplicable). Everything below is genuinely new.
+
+/// A course the institution has decided is exempt under a specific
+/// notification (Notification 12/2017-CT(R) entry 66, or another named one).
+/// Course itself belongs to another workstream, so the exemption is kept here,
+/// keyed by courseId, rather than as a field on it. A course with no row here
+/// is taxable, the default and the common case: exemption is a fact someone
+/// asserts, never inferred from a course's name or division.
+model CourseGstExemption {
+  id       String @id @default(cuid())
+  tenantId String
+
+  courseId     String
+  notification String  @default("12/2017-CT(R) entry 66")
+  active       Boolean @default(true)
+  note         String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  @@unique([tenantId, courseId])
+  @@map("course_gst_exemptions")
+}
+
+/// The self-invoice a registered person issues under Sec 31(3)(f) when tax is
+/// paid on an inward supply under reverse charge — the obligation GSTR-3B's
+/// `isup_rev` block and 3.1(d) report. Its own gapless series (kept on this
+/// model rather than borrowing VendorBill's `recordCode`, because a self
+/// invoice is a distinct document, not a restatement of the bill).
+model RcmSelfInvoice {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// A VendorBill id. Not a Prisma relation: VendorBill lives in main.prisma,
+  /// which this workstream does not edit, and a relation needs a field on
+  /// both sides. Joined by id where needed instead.
+  billId String
+  number String
+
+  /// The month the tax is payable in — `YYYY-MM`, the vendor bill's own date's
+  /// month unless corrected. What ties this row to a GSTR-3B period.
+  period String
+
+  taxableValue Decimal @db.Decimal(18, 2)
+  cgstAmount   Decimal @default(0) @db.Decimal(18, 2)
+  sgstAmount   Decimal @default(0) @db.Decimal(18, 2)
+  igstAmount   Decimal @default(0) @db.Decimal(18, 2)
+
+  createdAt   DateTime @default(now())
+  createdById String?
+
+  @@unique([tenantId, number])
+  @@index([tenantId, billId])
+  @@index([tenantId, period])
+  @@map("rcm_self_invoices")
+}
+
+/// The reason a credit note was issued, from the constant list in
+/// `@kaizen/shared`. CreditNote (finance.ts's domain) carries a free-text
+/// `reason` already; this adds the structured code GSTR-1's CDNR/CDNUR tables
+/// actually want, without touching main.prisma.
+model CreditNoteReason {
+  id           String @id @default(cuid())
+  tenantId     String
+  creditNoteId String @unique
+
+  reasonCode String
+
+  createdAt DateTime @default(now())
+
+  @@map("credit_note_reasons")
+}
+
+/// A debit note (Sec 34): the correction that raises what was billed, mirroring
+/// CreditNote but on its own document series ('D') with a mandatory reason.
+model DebitNote {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  invoiceId  String
+  amount     Decimal  @db.Decimal(18, 2)
+  currency   String   @default("INR")
+  /// rate_difference | quantity_shortfall | post_supply_price_revision | other
+  reasonCode String
+  note       String?
+  issuedAt   DateTime @default(now())
+  issuedById String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, invoiceId])
+  @@map("debit_notes")
+}
+
+/// The e-invoicing provider boundary's stored configuration. Credentials
+/// themselves live wherever secrets are actually held (out of scope here, per
+/// the platform's posture on secrets management) — this row is a reference to
+/// that, plus which provider is wired in and whether it is switched on.
+model EInvoiceConfig {
+  id       String @id @default(cuid())
+  tenantId String @unique
+
+  provider          String
+  credentialsRef    String?
+  active            Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("einvoice_configs")
+}
+
+/// One upload of the GSTR-2B offline JSON for a period, kept verbatim so a
+/// reconciliation can always be re-run against what the portal actually said,
+/// not a summary of it.
+model Gstr2bImport {
+  id       String @id @default(cuid())
+  tenantId String
+
+  period String
+  /// The b2b document rows from the offline JSON, as given.
+  rows Json
+
+  importedAt   DateTime @default(now())
+  importedById String?
+
+  @@unique([tenantId, period])
+  @@map("gstr2b_imports")
+}
+
+/// One vendor bill's reconciliation outcome against a GSTR-2B import — matched
+/// on the vendor's GSTIN and the bill number, which is what Rule 36(4) keys
+/// the credit to.
+model Gstr2bMatch {
+  id       String @id @default(cuid())
+  tenantId String
+
+  period       String
+  /// A VendorBill id, not a Prisma relation (see RcmSelfInvoice.billId).
+  vendorBillId String?
+
+  /// matched | missing_in_2b | missing_in_books | mismatch
+  status String
+  /// 2B value less books value, positive where the portal shows more than the
+  /// books claim.
+  difference Decimal @default(0) @db.Decimal(18, 2)
+  ctin       String?
+  inum       String?
+
+  matchedAt DateTime @default(now())
+
+  @@index([tenantId, period])
+  @@index([tenantId, vendorBillId])
+  @@map("gstr2b_matches")
+}
+
+/// The dated late-fee/interest rate table (Sec 47, Sec 50) — a statutory
+/// figure is data, never a constant in domain code.
+model GstRateTable {
+  id       String @id @default(cuid())
+  tenantId String
+
+  effectiveFrom DateTime
+
+  lateFeePerDayCgst Decimal @db.Decimal(8, 2)
+  lateFeePerDaySgst Decimal @db.Decimal(8, 2)
+  /// The ceiling on the late fee for a single return, per the notification in
+  /// force (varies by return type and by nil/non-nil; kept as one cap here,
+  /// the platform's simplification, stated in docs/compliance/gst.md).
+  cap Decimal @db.Decimal(10, 2)
+  /// Annualised, simple interest on the net cash tax liability (Sec 50(1)).
+  interestPct Decimal @db.Decimal(5, 2)
+  /// The day of the following month each return type is due by — also a
+  /// notified figure, not a constant: GSTR-1 the 11th, GSTR-3B the 20th, as
+  /// notified today.
+  gstr1DueDay Int @default(11)
+  gstr3bDueDay Int @default(20)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, effectiveFrom])
+  @@map("gst_rate_tables")
+}
