@@ -481,11 +481,17 @@ export async function removeTimesheetEntry(id: string) {
   const entry = await prisma.timesheetEntry.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!entry) throw ApiError.notFound('Timesheet entry');
   const timesheet = await prisma.timesheet.findFirst({ where: { id: entry.timesheetId, tenantId: auth.tenantId } });
-  if (timesheet && timesheet.status !== 'draft' && timesheet.status !== 'rejected') {
+  if (!timesheet) throw ApiError.notFound('Timesheet entry');
+  // `assertCan` alone only checks the WHO axis — an own-scoped caller holding
+  // `timesheets:edit`@own could otherwise delete a colleague's entry just by
+  // knowing its id (alert-scope.md). The WHERE axis has to be checked against
+  // the entry's OWN timesheet, not the caller's.
+  await assertEmploymentVisible('timesheets', timesheet.employmentRelationshipId, 'edit');
+  if (timesheet.status !== 'draft' && timesheet.status !== 'rejected') {
     throw ApiError.unprocessable(`This timesheet is ${timesheet.status} — it cannot be edited further.`);
   }
   await prisma.timesheetEntry.delete({ where: { id } });
-  if (timesheet) await recomputeTimesheetTotal(auth.tenantId, timesheet.id);
+  await recomputeTimesheetTotal(auth.tenantId, timesheet.id);
   return { deleted: true };
 }
 

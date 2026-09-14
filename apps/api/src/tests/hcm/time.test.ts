@@ -21,6 +21,7 @@ import {
   recordClockEvent,
   deriveAttendanceFromClockEvents,
   addTimesheetEntry,
+  removeTimesheetEntry,
   submitTimesheet,
   approveTimesheet,
   getTimesheet,

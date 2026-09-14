@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { asUser, prisma, tenantId } from '../helpers.js';
+import { engagementEnps } from '../../domains/hcm/analytics.js';
 
 describe('debug', () => {
   it('debug enps', async () => {
@@ -18,11 +19,9 @@ describe('debug', () => {
           status: 'open',
         },
       });
-      const found = await (prisma as any).pulseSurvey.findMany({ where: { tenantId: TENANT }, select: { id: true, questions: true } });
-      console.log('SURVEYS', JSON.stringify(found));
-      const resp = await prisma.surveyResponse.create({ data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-a`, answers: [{ questionId: 'q1', value: 9 }] } });
-      const foundResp = await (prisma as any).surveyResponse.findMany({ where: { tenantId: TENANT, surveyId: { in: [survey.id] } }, select: { surveyId: true, answers: true } });
-      console.log('RESPONSES', JSON.stringify(foundResp));
+      await prisma.surveyResponse.create({ data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-a`, answers: [{ questionId: 'q1', value: 9 }] } });
+      const result = await engagementEnps();
+      console.log('RESULT', JSON.stringify(result));
       expect(true).toBe(true);
     });
   });
