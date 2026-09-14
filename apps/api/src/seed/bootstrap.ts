@@ -367,7 +367,7 @@ async function seedGovernance() {
 
   // The three approval-gate instances. Specified alongside their entities at
   // build time, never retrofitted — instantiate, do not re-derive.
-  const gates = [
+  const gates: Array<{ code: string; name: string; requiredPermission: string; authorityClass: string; approverResolution?: string[] }> = [
     {
       code: 'POL-CRM-MOU-APPROVAL',
       name: 'MoU privileged-transition approval',
@@ -387,35 +387,44 @@ async function seedGovernance() {
       authorityClass: 'partner_approval',
     },
     // Technology (docs/plan/cio.md): five more instances of the same shape.
+    // Each names the roles that actually hold `approve` under the four-role
+    // register, so a within-tier approval is permitted directly and the
+    // self-dealing bar reroutes to the chairman; the CRM gates above keep the
+    // chain they shipped with.
     {
       code: 'POL-IT-LICENCE-APPROVAL',
       name: 'Licence renewal approval',
       requiredPermission: 'it_licences:approve',
       authorityClass: 'it_licence_approval',
+      approverResolution: ['finance_head', 'chairman'],
     },
     {
       code: 'POL-IT-VENDOR-CONTRACT-APPROVAL',
       name: 'Vendor contract approval',
       requiredPermission: 'it_vendor_contracts:approve',
       authorityClass: 'it_contract_approval',
+      approverResolution: ['finance_head', 'chairman'],
     },
     {
       code: 'POL-IT-CHANGE-APPROVAL',
       name: 'Change approval (normal and emergency changes)',
       requiredPermission: 'it_changes:approve',
       authorityClass: 'it_change_approval',
+      approverResolution: ['hr_ops_manager', 'chairman'],
     },
     {
       code: 'POL-IT-POLICY-PUBLISH',
       name: 'Technology policy publication',
       requiredPermission: 'it_policies:approve',
       authorityClass: 'it_policy_publish',
+      approverResolution: ['chairman'],
     },
     {
       code: 'POL-IT-INITIATIVE-APPROVAL',
       name: 'Technology initiative funding approval',
       requiredPermission: 'it_initiatives:approve',
       authorityClass: 'it_initiative_approval',
+      approverResolution: ['finance_head', 'chairman'],
     },
   ];
 
@@ -436,7 +445,7 @@ async function seedGovernance() {
         content: {
           requiredPermission: gate.requiredPermission,
           authorityClass: gate.authorityClass,
-          approverResolution: ['business_head', 'director', 'chairman'],
+          approverResolution: gate.approverResolution ?? ['business_head', 'director', 'chairman'],
           // An OR gate, deliberately: a zero-value high-strategic academic MoU
           // escalates to the top tier as readily as a high-value commercial one.
           escalateToTopTierWhen: { strategicValue: 'high', termMonthsOver: 36 },
