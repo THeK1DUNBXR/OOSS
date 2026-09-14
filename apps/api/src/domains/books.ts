@@ -40,6 +40,22 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
+import { runHooks } from '../platform/hooks.js';
+import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
+
+// The audit-trail proviso to Companies (Accounts) Rules 2014, Rule 3(1): the
+// software must record every change to these in a trail that cannot be
+// disabled (docs/plan/compliance.md, D — CMP-AUD-001). Registered at module
+// load so it is in force before any of the writes below run.
+registerGovernedEntities('fin', [
+  'transaction',
+  'vendor_bill',
+  'fixed_asset',
+  'loan',
+  'ledger_account',
+  'ledger_category',
+  'budget_line',
+]);
 
 /**
  * True when `candidateTenantId` is somewhere in the caller's own group —
@@ -86,7 +102,7 @@ export async function createAccount(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'ledger_accounts', verb: 'create' });
-  return prisma.ledgerAccount.create({
+  const account = await prisma.ledgerAccount.create({
     data: {
       tenantId: auth.tenantId,
       name: input.name,
@@ -97,6 +113,13 @@ export async function createAccount(input: {
       ledgerGroup: input.ledgerGroup ?? (input.accountType === 'loan' ? 'liability' : 'asset'),
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'ledger_account',
+    subjectId: account.id,
+    after: { name: account.name, accountType: account.accountType, ledgerGroup: account.ledgerGroup, openingBalance: num(account.openingBalance) },
+  });
+  return account;
 }
 
 export async function listCategories() {
@@ -118,7 +141,7 @@ export async function createCategory(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'categories', verb: 'create' });
-  return prisma.ledgerCategory.create({
+  const category = await prisma.ledgerCategory.create({
     data: {
       tenantId: auth.tenantId,
       name: input.name,
@@ -129,6 +152,13 @@ export async function createCategory(input: {
       mustPay: input.mustPay ?? false,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'ledger_category',
+    subjectId: category.id,
+    after: { name: category.name, kind: category.kind, parentId: category.parentId },
+  });
+  return category;
 }
 
 /**
@@ -234,6 +264,8 @@ export async function groupCounterpartyOptions(): Promise<Array<{ tenantId: stri
 export async function recordTransaction(input: TransactionInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'transactions', verb: 'create' });
+  // A closed accounting period vetoes the entry here (docs/plan/compliance.md, D).
+  await runHooks('transaction.before_record', { txnDate: input.txnDate, source: input.source ?? 'manual' });
 
   if (input.amount <= 0) {
     // The direction carries the sign, so a negative amount would be a second,
@@ -287,6 +319,13 @@ export async function recordTransaction(input: TransactionInput) {
       intercompanyTenantId: input.intercompanyTenantId ?? null,
       createdById: auth.partyId,
     },
+  });
+
+  await auditWrite({
+    action: 'create',
+    subjectType: 'transaction',
+    subjectId: txn.id,
+    after: { recordCode, direction: input.direction, amount: input.amount, accountId: input.accountId, categoryId: input.categoryId ?? null, txnDate: input.txnDate },
   });
 
   await emit({
@@ -352,6 +391,20 @@ export async function reverseTransaction(id: string, reason: string) {
     });
     await tx.transaction.update({ where: { id: original.id }, data: { reversedById: created.id } });
     return created;
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'transaction',
+    subjectId: original.id,
+    before: { reversedById: null },
+    after: { reversedById: reversal.id },
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'transaction',
+    subjectId: reversal.id,
+    after: { recordCode, reversalOfId: original.id, amount: num(original.amount), direction: reversal.direction, reason },
   });
 
   await emit({
@@ -454,6 +507,13 @@ export async function recordVendorBill(input: {
     },
   });
 
+  await auditWrite({
+    action: 'create',
+    subjectType: 'vendor_bill',
+    subjectId: bill.id,
+    after: { recordCode, vendorName: input.vendorName, total, billDate: input.billDate },
+  });
+
   await emit({
     name: EVENTS.VENDOR_BILL_RECORDED,
     subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode },
@@ -479,6 +539,8 @@ export async function payVendorBill(id: string, input: { amount: number; account
   const bill = await prisma.vendorBill.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!bill) throw ApiError.notFound('Vendor bill');
   if (bill.status === 'cancelled') throw ApiError.unprocessable('This bill was cancelled.');
+  // TDS not yet deducted, or an MSME term breached, vetoes the payment here (workstream C).
+  await runHooks('vendor_bill.before_pay', { bill, amount: input.amount });
 
   const outstanding = round2((num(bill.total) ?? 0) - (num(bill.paidAmount) ?? 0));
   if (input.amount > outstanding + 0.005) {
@@ -508,6 +570,14 @@ export async function payVendorBill(id: string, input: { amount: number; account
   const updated = await prisma.vendorBill.update({
     where: { id },
     data: { paidAmount: paid, status },
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'vendor_bill',
+    subjectId: bill.id,
+    before: { paidAmount: num(bill.paidAmount), status: bill.status },
+    after: { paidAmount: paid, status },
   });
 
   return { bill: updated, transaction: txn };
@@ -701,7 +771,11 @@ export async function setBudgetLine(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'budgets', verb: 'create' });
 
-  return prisma.budgetLine.upsert({
+  const existing = await prisma.budgetLine.findFirst({
+    where: { tenantId: auth.tenantId, period: input.period, categoryId: input.categoryId, division: input.division ?? '' },
+  });
+
+  const line = await prisma.budgetLine.upsert({
     where: {
       tenantId_period_categoryId_division: {
         tenantId: auth.tenantId,
@@ -720,6 +794,16 @@ export async function setBudgetLine(input: {
     },
     update: { amount: input.amount, note: input.note ?? null },
   });
+
+  await auditWrite({
+    action: existing ? 'update' : 'create',
+    subjectType: 'budget_line',
+    subjectId: line.id,
+    before: existing ? { amount: num(existing.amount) } : null,
+    after: { period: input.period, categoryId: input.categoryId, amount: input.amount },
+  });
+
+  return line;
 }
 
 /**
@@ -882,6 +966,13 @@ export async function createAsset(input: {
     });
   }
 
+  await auditWrite({
+    action: 'create',
+    subjectType: 'fixed_asset',
+    subjectId: asset.id,
+    after: { recordCode, name: input.name, cost: input.cost, purchaseDate: input.purchaseDate, method: asset.method },
+  });
+
   return asset;
 }
 
@@ -949,7 +1040,7 @@ export async function createLoan(input: {
   await assertCan({ resource: 'assets', verb: 'create' });
 
   const recordCode = await nextRecordCode('LN');
-  return prisma.loan.create({
+  const loan = await prisma.loan.create({
     data: {
       tenantId: auth.tenantId,
       recordCode,
@@ -962,6 +1053,13 @@ export async function createLoan(input: {
       division: input.division ?? null,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'loan',
+    subjectId: loan.id,
+    after: { recordCode, lender: input.lender, principal: input.principal, startDate: input.startDate },
+  });
+  return loan;
 }
 
 export async function loanSchedule(id: string) {

@@ -282,7 +282,7 @@ buy-back, split, bonus, forfeiture, cancellation), each with a `reversalOfId`
 like `Transaction`. Holdings and the cap table are computed from them, as
 leave balances are from the leave ledger. A `ShareCertificate` is issued
 against a range of distinctive numbers and is a document: numbered from a
-new `C` series (`KIPL/C/26-27/001`), fixed at issue, printed from the same
+new `S` series (`KIPL/S/26-27/001`), fixed at issue, printed from the same
 sheet chassis as an invoice, superseded (never edited) on transfer or split.
 
 ### 3.6 The register references the books; it never posts to them

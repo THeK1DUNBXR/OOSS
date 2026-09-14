@@ -205,3 +205,20 @@ Translucent fill (`ink-900/85` or the sidebar's own tint) + `backdrop-blur-glass
 - **Don't** apply `backdrop-blur`/translucency to a static, non-floating panel — that is decoration, not the glass material this system defines.
 - **Don't** reintroduce a colored border-left/top rail as a status indicator — use a tinted icon chip instead.
 - **Don't** revert to the pre-redesign 1.5–3px border ladder for hierarchy; borders that remain are always 1px, drawn from the hairline/border tokens.
+
+## Named exception: the course-invoice screens
+
+`apps/web/src/pages/kaizenInvoice/*` (New Invoice, Invoice History, the
+Fee & Add-on Master tab on Courses, and the printed course ledger) is a
+deliberate, scoped departure from every rule above: black/gold/navy,
+Archivo Black headings, thick 1.5–3px hairline-and-hard-border hierarchy,
+pill tags, no glass or soft shadow anywhere. The brief for that feature was
+pixel fidelity to a specific existing reference tool the business already
+uses (its own black/gold identity, not this app's), not house-style
+consistency — so its CSS (`kaizenInvoice/style.ts`) is a self-contained
+stylesheet scoped under `.ki-app` / `#ki-print-root`, never the shared
+`ink-*` tokens or `.card`/`.btn-primary`/etc. classes this file describes.
+Do not "fix" it to match the rest of the app, and do not use it as a
+precedent for a border-only-hierarchy component anywhere else — it is one
+named, intentional exception, not a second design language available for
+general use.

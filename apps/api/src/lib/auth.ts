@@ -17,6 +17,7 @@ import bcrypt from 'bcryptjs';
 import {
   ROLE_CLASSIFICATION_CEILING,
   EVENTS,
+  validatePassword,
   type AffiliationSummary,
   type SessionUser,
   type SurfaceArchetype,
@@ -31,13 +32,65 @@ import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
 import { resolveGrants } from '../platform/permissions.js';
 import { formatGrant } from '@kaizen/shared';
+import { generateTotpSecret, otpauthUri, verifyTotp } from '../domains/compliance/corporate/totp.js';
+import { createChainedAuditRecord } from '../platform/audit.js';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me';
 const TOKEN_TTL = '12h';
+const MFA_CHALLENGE_TTL = '5m';
 const SELECTION_TOKEN_TTL = '5m';
+
+/**
+ * Known placeholder values that must never reach a real deploy — one lifted
+ * straight from this file's own former default, one from `.env.example`, one
+ * from `docker-compose.yml`.
+ */
+const FALLBACK_JWT_SECRETS = new Set([
+  'dev-secret-change-me',
+  'change-me-in-production',
+  'docker-development-secret-not-for-production',
+]);
+
+/**
+ * CMP-COR-001: the API refuses to start with `JWT_SECRET` unset or equal to a
+ * known fallback value. `NODE_ENV=test`/`development` is the one exception —
+ * logged loudly rather than silently tolerated, because "it works on my
+ * machine" is exactly how a fallback secret reaches production.
+ *
+ * Exported so a test can call it directly with a constructed `env`, rather
+ * than only indirectly through process exit.
+ */
+export function assertProductionSecrets(env: NodeJS.ProcessEnv = process.env): void {
+  const secret = env.JWT_SECRET;
+  const insecure = !secret || FALLBACK_JWT_SECRETS.has(secret);
+  if (!insecure) return;
+
+  const reason = !secret ? 'JWT_SECRET is not set.' : `JWT_SECRET is set to a known placeholder value.`;
+  const nodeEnv = env.NODE_ENV;
+
+  if (nodeEnv === 'test' || nodeEnv === 'development') {
+    console.warn(
+      `[security] ${reason} Continuing because NODE_ENV=${nodeEnv}. This must never be true when NODE_ENV=production.`,
+    );
+    return;
+  }
+
+  throw new Error(
+    `${reason} Refusing to start outside test/development. Set a real JWT_SECRET (NODE_ENV is currently ${nodeEnv ?? 'unset'}).`,
+  );
+}
+
+// Not called at module load: this file is imported by one-off scripts (the
+// fixture seeder, `npm run jobs:run`) that have no reason to set NODE_ENV,
+// and those must keep working. `server.ts` calls this explicitly, once,
+// right before it opens a socket — that is the actual point "the API
+// starts" means, and where CMP-COR-001 is enforced.
 
 /** Privileged contexts require step-up re-auth to commit a switch. */
 const STEP_UP_ROLES = new Set(['chairman', 'finance_head', 'hr_ops_manager']);
+
+const MAX_FAILED_LOGINS = 5;
+const LOCKOUT_MINUTES = 15;
 
 export interface TokenPayload {
   userId: string;
@@ -67,6 +120,31 @@ export function verifyToken(token: string): TokenPayload {
   } catch {
     throw ApiError.unauthorized('Session token is invalid or expired.');
   }
+}
+
+export interface MfaChallengePayload {
+  userId: string;
+  tenantId: string;
+  affiliationId: string;
+  mfaChallenge: true;
+}
+
+function signMfaChallenge(payload: Omit<MfaChallengePayload, 'mfaChallenge'>): string {
+  return jwt.sign({ ...payload, mfaChallenge: true }, JWT_SECRET, { expiresIn: MFA_CHALLENGE_TTL });
+}
+
+function verifyMfaChallenge(token: string): MfaChallengePayload {
+  let payload: unknown;
+  try {
+    payload = jwt.verify(token, JWT_SECRET);
+  } catch {
+    throw ApiError.unauthorized('MFA challenge is invalid or expired. Sign in again.');
+  }
+  const p = payload as Partial<MfaChallengePayload>;
+  if (!p.mfaChallenge || !p.userId || !p.tenantId || !p.affiliationId) {
+    throw ApiError.unauthorized('MFA challenge is invalid or expired. Sign in again.');
+  }
+  return p as MfaChallengePayload;
 }
 
 function signSelectionToken(principalId: string): string {
@@ -162,30 +240,143 @@ export interface EntitySelectionResult {
   selectionToken: string;
 }
 
+/**
+ * The password-policy floor (CMP-COR-001 supporting rule): at least twelve
+ * characters, never the account's own email, never on the small blocklist.
+ * Called wherever a password is set or reset — `changePassword` here, and any
+ * future admin-reset endpoint — never left to the caller to remember.
+ */
+export function assertPasswordAllowed(password: string, email?: string | null): void {
+  const check = validatePassword(password, email);
+  if (!check.valid) {
+    throw ApiError.unprocessable(`Password does not meet the policy: ${check.reasons.join(' ')}`);
+  }
+}
+
+/** Finishes a login: audits it, resets the failure counters, issues the real token. */
+async function completeLogin(
+  user: { id: string; tenantId: string; personId: string },
+  active: { id: string; roleSlug: string | null },
+  stepUp: boolean,
+) {
+  await unscopedPrisma.user.update({
+    where: { id: user.id },
+    data: {
+      lastLoginAt: new Date(),
+      activeAffiliationId: active.id,
+      failedLoginCount: 0,
+      lockedUntil: null,
+    },
+  });
+
+  await asSystem(user.tenantId, async () => {
+    // Through the chained writer, so a sign-in is a link in the audit chain
+    // rather than a row that breaks it.
+    await createChainedAuditRecord({
+      tenantId: user.tenantId,
+      action: 'login',
+      subjectType: 'user',
+      subjectId: user.id,
+      actorType: 'human',
+      actorId: user.personId,
+      actorLabel: active.roleSlug,
+    });
+  });
+
+  const token = signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp });
+  return { token, user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp) };
+}
+
+export interface LoginResult {
+  token: string;
+  user: SessionUser;
+}
+
+export interface MfaRequiredResult {
+  mfaRequired: true;
+  challengeToken: string;
+}
+
+/**
+ * Account lockout (CMP-COR-001 supporting rule): five wrong passwords lock
+ * the account for fifteen minutes, reset on the next success. A locked
+ * account gets the same wording whether the lock is fresh or was already in
+ * force — the count itself is not exposed, so a caller cannot use it to
+ * enumerate how close an account is to locking.
+ *
+ * The credential lives on the `Principal` (one email, one password, however
+ * many entities); the lock and the second factor live on each per-tenant
+ * `User`, because a lock is a fact about an account someone is attacking and
+ * MFA is enrolled per entity. A wrong password therefore counts against every
+ * user the principal holds, and a lock on any of them refuses the sign-in.
+ *
+ * Order: lock → password → entity selection → MFA → session. A principal
+ * holding affiliations in several entities gets the entity list and a
+ * selection token instead of a session; `switchEntity` finishes it, and runs
+ * the same MFA gate for the chosen entity.
+ */
 export async function login(
   email: string,
   password: string,
   tenantSlug?: string,
-): Promise<{ token: string; user: SessionUser } | EntitySelectionResult> {
+): Promise<LoginResult | MfaRequiredResult | EntitySelectionResult> {
   // Login runs before a tenant is resolved, so it uses the unscoped client
   // deliberately and narrowly — the only place that is legitimate.
-  const principal = await unscopedPrisma.principal.findFirst({
-    where: { email: email.toLowerCase(), status: 'active' },
-  });
+  const lower = email.toLowerCase();
+  let principal = await unscopedPrisma.principal.findFirst({ where: { email: lower, status: 'active' } });
 
-  if (!principal || !(await bcrypt.compare(password, principal.passwordHash))) {
-    throw ApiError.unauthorized('Email or password is incorrect.');
+  // A `User` still carrying the deprecated `passwordHash` (created before the
+  // principal existed, or by a fixture that writes the hash directly) is
+  // walked onto a principal here, at its first sign-in, rather than refused
+  // until someone re-runs the seed. The hash is copied, never re-derived.
+  if (!principal) {
+    const unmigrated = await unscopedPrisma.user.findFirst({
+      where: { email: lower, principalId: null, passwordHash: { not: null }, status: 'active' },
+    });
+    if (unmigrated?.passwordHash) {
+      principal = await unscopedPrisma.principal.create({ data: { email: lower, passwordHash: unmigrated.passwordHash } });
+      await unscopedPrisma.user.updateMany({
+        where: { email: lower, principalId: null },
+        data: { principalId: principal.id, passwordHash: null },
+      });
+    }
   }
 
-  const users = await unscopedPrisma.user.findMany({
-    where: {
-      principalId: principal.id,
-      status: 'active',
-      tenant: { status: 'active' },
-      ...(tenantSlug ? { tenant: { slug: tenantSlug } } : {}),
-    },
-    include: { tenant: true, person: true },
-  });
+  const users = principal
+    ? await unscopedPrisma.user.findMany({
+        where: {
+          principalId: principal.id,
+          status: 'active',
+          tenant: { status: 'active' },
+          ...(tenantSlug ? { tenant: { slug: tenantSlug } } : {}),
+        },
+        include: { tenant: true, person: true },
+      })
+    : [];
+
+  const now = new Date();
+  const locked = users.find((u) => u.lockedUntil && u.lockedUntil > now);
+  if (locked?.lockedUntil) {
+    throw ApiError.unauthorized(
+      `This account is locked after repeated failed sign-ins. Try again after ${locked.lockedUntil.toISOString()}.`,
+    );
+  }
+
+  const passwordOk = principal ? await bcrypt.compare(password, principal.passwordHash) : false;
+  if (!principal || !passwordOk) {
+    for (const user of users) {
+      const failedLoginCount = user.failedLoginCount + 1;
+      const lockOut = failedLoginCount >= MAX_FAILED_LOGINS;
+      await unscopedPrisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginCount: lockOut ? 0 : failedLoginCount,
+          lockedUntil: lockOut ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : user.lockedUntil,
+        },
+      });
+    }
+    throw ApiError.unauthorized('Email or password is incorrect.');
+  }
 
   // At least one active affiliation, in the tenant(s) considered.
   const candidates: typeof users = [];
@@ -197,19 +388,10 @@ export async function login(
   }
 
   if (candidates.length === 0) {
-    // A `User` row still carrying the deprecated `passwordHash` (not yet
-    // walked onto a principal by the backfill) matches by email but never by
-    // `principalId`, so it silently drops out of `users` above — refused
-    // here with the reason named, rather than the generic "no affiliation"
-    // a genuinely affiliation-less account gets.
-    const unmigrated = await unscopedPrisma.user.findFirst({
-      where: { email: email.toLowerCase(), principalId: null, ...(tenantSlug ? { tenant: { slug: tenantSlug } } : {}) },
-    });
-    if (unmigrated) {
-      throw ApiError.forbidden('This account has no principal yet — the seed has not backfilled it. Run the seed, then sign in again.');
-    }
     throw ApiError.forbidden('This account holds no active affiliation. Access derives from affiliations, never from the person record.');
   }
+
+  await unscopedPrisma.principal.update({ where: { id: principal.id }, data: { lastLoginAt: new Date() } });
 
   if (candidates.length > 1) {
     return {
@@ -218,11 +400,25 @@ export async function login(
     };
   }
 
-  const user = candidates[0];
+  return issueSessionFor(candidates[0], false);
+}
+
+/**
+ * The last step every sign-in path shares — the single-entity login, the
+ * entity picker and the in-session switch: pick the affiliation, run the MFA
+ * gate, and only then issue a session.
+ */
+async function issueSessionFor(
+  user: { id: string; tenantId: string; personId: string; activeAffiliationId: string | null; mfaEnabledAt: Date | null },
+  stepUp: boolean,
+): Promise<LoginResult | MfaRequiredResult> {
   const affiliations = await unscopedPrisma.affiliation.findMany({
     where: { tenantId: user.tenantId, partyId: user.personId, status: 'active' },
     orderBy: [{ primaryFlag: 'desc' }, { createdAt: 'asc' }],
   });
+  if (affiliations.length === 0) {
+    throw ApiError.forbidden('This account holds no active affiliation. Access derives from affiliations, never from the person record.');
+  }
 
   // Selection order: exactly one active -> silent; primary_flag; most recently
   // used; otherwise show the switcher. The highest-privilege context is
@@ -232,34 +428,80 @@ export async function login(
     affiliations.find((a) => a.primaryFlag) ??
     affiliations[0];
 
-  await unscopedPrisma.user.update({
-    where: { id: user.id },
-    data: { lastLoginAt: new Date(), activeAffiliationId: active.id },
-  });
-  await unscopedPrisma.principal.update({ where: { id: principal.id }, data: { lastLoginAt: new Date() } });
+  // MFA: a user who has enrolled a second factor never gets a working session
+  // from a password alone. The challenge token carries no authority of its
+  // own — `verifyMfaChallenge` is the only thing that accepts it, and only at
+  // `/auth/mfa/verify`.
+  if (user.mfaEnabledAt) {
+    return { mfaRequired: true, challengeToken: signMfaChallenge({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id }) };
+  }
 
-  await asSystem(user.tenantId, async () => {
-    await prisma.auditRecord.create({
-      data: {
-        tenantId: user.tenantId,
-        action: 'login',
-        subjectType: 'user',
-        subjectId: user.id,
-        actorType: 'human',
-        actorId: user.personId,
-        actorLabel: active.roleSlug,
-      },
-    });
-  });
+  return completeLogin(user, active, stepUp);
+}
 
-  const token = signToken({
-    userId: user.id,
-    tenantId: user.tenantId,
-    affiliationId: active.id,
-    stepUp: false,
-  });
+/** Completes a login begun with `login()` once the second factor checks out. */
+export async function verifyMfaAndLogin(challengeToken: string, code: string): Promise<LoginResult> {
+  const payload = verifyMfaChallenge(challengeToken);
+  const user = await unscopedPrisma.user.findFirst({ where: { id: payload.userId, status: 'active' } });
+  if (!user || !user.mfaSecret) throw ApiError.unauthorized('MFA challenge is invalid or expired. Sign in again.');
 
-  return { token, user: await buildSessionUser(user.id, user.tenantId, active.id, false) };
+  if (!verifyTotp(user.mfaSecret, code)) {
+    throw ApiError.unauthorized('That code is not correct. Codes are valid for about thirty seconds — check the app is still showing a current one.');
+  }
+
+  const affiliation = await unscopedPrisma.affiliation.findFirst({
+    where: { id: payload.affiliationId, tenantId: payload.tenantId, status: 'active' },
+  });
+  if (!affiliation) throw ApiError.forbidden('That affiliation is no longer active.');
+
+  // A completed MFA challenge is the platform's step-up mechanism for this
+  // session: `stepUp: true` is what a gated approve action checks for.
+  return completeLogin(user, affiliation, true);
+}
+
+/**
+ * Enrolment, in two steps: request a secret (returned once — the server
+ * keeps only the secret, never the plaintext response), then confirm a code
+ * generated from it before `mfaEnabledAt` is set. Enrolling does not itself
+ * require MFA — it is how a user gets one.
+ */
+export async function enrolMfa(userId: string, email: string): Promise<{ secret: string; otpauthUri: string }> {
+  const secret = generateTotpSecret();
+  await unscopedPrisma.user.update({ where: { id: userId }, data: { mfaSecret: secret } });
+  return { secret, otpauthUri: otpauthUri(secret, email) };
+}
+
+export async function confirmMfa(userId: string, code: string): Promise<void> {
+  const user = await unscopedPrisma.user.findFirstOrThrow({ where: { id: userId } });
+  if (!user.mfaSecret) {
+    throw ApiError.unprocessable('No MFA enrolment is in progress. Call /auth/mfa/enrol first.');
+  }
+  if (!verifyTotp(user.mfaSecret, code)) {
+    throw ApiError.unprocessable('That code did not match. Scan the QR code again and try the current one.');
+  }
+  await unscopedPrisma.user.update({ where: { id: userId }, data: { mfaEnabledAt: new Date() } });
+}
+
+/**
+ * Self-service password change. Validated against the policy floor and
+ * re-hashed; `passwordChangedAt` is stamped so a "when did this last change"
+ * question never depends on the audit log alone.
+ */
+export async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  const user = await unscopedPrisma.user.findFirstOrThrow({ where: { id: userId } });
+  if (!user.principalId) throw ApiError.unauthorized('This account has no principal.');
+  const principal = await unscopedPrisma.principal.findFirstOrThrow({ where: { id: user.principalId } });
+  if (!(await bcrypt.compare(currentPassword, principal.passwordHash))) {
+    throw ApiError.unauthorized('Current password is incorrect.');
+  }
+  assertPasswordAllowed(newPassword, principal.email);
+  await unscopedPrisma.principal.update({
+    where: { id: principal.id },
+    data: { passwordHash: await hashPassword(newPassword) },
+  });
+  // The credential is one thing across entities, so the "last changed" stamp
+  // lands on every user of the principal, not only the one that asked.
+  await unscopedPrisma.user.updateMany({ where: { principalId: principal.id }, data: { passwordChangedAt: new Date() } });
 }
 
 /** `GET /auth/entities` — the same list `login()` would have offered, for a principal already holding a normal token. */
@@ -317,55 +559,35 @@ export async function switchEntity(
   });
   if (affiliations.length === 0) throw ApiError.notFound('Entity');
 
-  const active = affiliations.find((a) => a.id === target.activeAffiliationId) ?? affiliations.find((a) => a.primaryFlag) ?? affiliations[0];
-
-  await unscopedPrisma.user.update({
-    where: { id: target.id },
-    data: { lastLoginAt: new Date(), activeAffiliationId: active.id },
-  });
-
-  await asSystem(target.tenantId, async () => {
-    await prisma.auditRecord.create({
-      data: {
-        tenantId: target.tenantId,
-        action: 'login',
-        subjectType: 'user',
-        subjectId: target.id,
-        actorType: 'human',
-        actorId: target.personId,
-        actorLabel: active.roleSlug,
-        diff: { via: 'switch-entity' },
-      },
-    });
-    await emit({
-      name: EVENTS.ENTITY_SWITCHED,
-      subject: { entityType: 'user', entityId: target.id },
-      newState: { fromTenantId: caller.sourceTenantId ?? null, toTenantId: target.tenantId },
-    });
-  });
-
   // A caller who arrived with a normal token (not merely the selection token)
   // is leaving a tenant, and that side gets its own record — the register of
   // who was in a given tenant's data does not have a gap for the seconds
   // spent in another one.
   if (caller.sourceTenantId && caller.sourceUserId && caller.sourceTenantId !== target.tenantId) {
     await asSystem(caller.sourceTenantId, async () => {
-      await prisma.auditRecord.create({
-        data: {
-          tenantId: caller.sourceTenantId!,
-          action: 'switch_entity',
-          subjectType: 'user',
-          subjectId: caller.sourceUserId!,
-          actorType: 'human',
-          actorId: target.personId,
-          diff: { via: 'switch-entity', toTenantId: target.tenantId },
-        },
+      await createChainedAuditRecord({
+        tenantId: caller.sourceTenantId!,
+        action: 'switch_entity',
+        subjectType: 'user',
+        subjectId: caller.sourceUserId!,
+        actorType: 'human',
+        actorId: target.personId,
+        diff: { via: 'switch-entity', toTenantId: target.tenantId },
       });
     });
   }
 
-  const token = signToken({ userId: target.id, tenantId: target.tenantId, affiliationId: active.id, stepUp: false });
-  return { token, user: await buildSessionUser(target.id, target.tenantId, active.id, false) };
+  const issued = await issueSessionFor(target, false);
+  if ('mfaRequired' in issued) return issued;
+
+  await asSystem(target.tenantId, async () => {
+    await emit({
+      name: EVENTS.ENTITY_SWITCHED,
+      subject: { entityType: 'user', entityId: target.id },
+      newState: { fromTenantId: caller.sourceTenantId ?? null, toTenantId: target.tenantId },
+    });
+  });
+  return issued;
 }
 
 export async function buildSessionUser(

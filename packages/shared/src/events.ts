@@ -390,6 +390,13 @@ export const EVENTS = {
 
   // --- Filings, demat, FEMA (eqt), phase 6a ---------------------------------
   FILING_RECORDED: 'kz.eqt.filing.recorded',
+  // Compliance calendar (docs/plan/compliance.md, workstream A). Generating a
+  // period's obligations, marking one filed and waiving one are three separate
+  // facts — generation is arithmetic, filing is the acknowledgement a portal
+  // gave back, and a waiver is a deliberate decision not to file at all.
+  COMPLIANCE_OBLIGATIONS_GENERATED: 'kz.cmp.obligation.generated',
+  COMPLIANCE_OBLIGATION_FILED: 'kz.cmp.obligation.filed',
+  COMPLIANCE_OBLIGATION_WAIVED: 'kz.cmp.obligation.waived',
 } as const;
 
 /**

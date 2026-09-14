@@ -81,7 +81,18 @@ export const prisma = basePrisma.$extends({
   name: 'tenantScope',
   query: {
     $allModels: {
-      async $allOperations({ model, operation, args, query }) {
+      // Typed loosely on purpose: with this many models the generated union
+      // of every model's every operation exceeds what the compiler will
+      // represent (TS2590). The gate reads only the model name and the
+      // where/data shapes, which the loose type still carries.
+      async $allOperations({ model, operation, args, query }: {
+        model: string;
+        operation: string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        args: any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        query: (args: any) => Promise<unknown>;
+      }) {
         if (!model || TENANT_EXEMPT_MODELS.has(model)) return query(args);
 
         const tenantId = maybeTenantId();

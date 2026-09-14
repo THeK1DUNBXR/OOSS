@@ -648,6 +648,10 @@ export const RECORD_TYPE_CODES = [
   // The filing log (equity-portal plan §6 phase 6a): one row per statutory
   // form owed or filed — MGT-1/2, PAS-3, SH-4, PAS-6, FC-GPR, FC-TRS, FLA.
   'FIL',
+  // Data protection (workstream G): a data-principal request and a breach
+  // register entry, each a case a data principal or the company refers to by
+  // number.
+  'DPR', 'BRC',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

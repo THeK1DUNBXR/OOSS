@@ -856,7 +856,7 @@ export async function issueCertificateFor(input: {
   const holder = await prisma.holder.findFirstOrThrow({ where: { id: input.holderId } });
   const view = await holderView(holder);
   const prefix = await documentPrefix();
-  const certificateNumber = await nextDocumentNumber(DOCUMENT_SERIES.certificate, prefix, input.issuedOn);
+  const certificateNumber = await nextDocumentNumber(DOCUMENT_SERIES.shareCertificate, prefix, input.issuedOn);
 
   const cert = await prisma.shareCertificate.create({
     data: {
@@ -1470,11 +1470,11 @@ export async function holdingsFor(holderIdOrMe: string) {
 
 export async function certificate(id: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'certificates', verb: 'view' });
+  await assertCan({ resource: 'share_certificates', verb: 'view' });
   const row = await prisma.shareCertificate.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Certificate');
 
-  const scope = await scopeFor('certificates', 'view');
+  const scope = await scopeFor('share_certificates', 'view');
   if (scope !== 'all') {
     const holderRow = await prisma.holder.findFirst({ where: { id: row.holderId } });
     if (!holderRow || !(await isOwnHolder(holderRow))) throw ApiError.notFound('Certificate');
@@ -1504,11 +1504,11 @@ export async function certificate(id: string) {
  */
 export async function certificateDocument(id: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'certificates', verb: 'view' });
+  await assertCan({ resource: 'share_certificates', verb: 'view' });
   const row = await prisma.shareCertificate.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Certificate');
 
-  const scope = await scopeFor('certificates', 'view');
+  const scope = await scopeFor('share_certificates', 'view');
   if (scope !== 'all') {
     const holderRow = await prisma.holder.findFirst({ where: { id: row.holderId } });
     if (!holderRow || !(await isOwnHolder(holderRow))) throw ApiError.notFound('Certificate');
@@ -1542,8 +1542,8 @@ export async function certificateDocument(id: string) {
 
 export async function listCertificates() {
   const auth = currentAuth();
-  await assertCan({ resource: 'certificates', verb: 'view' });
-  const scope = await scopeFor('certificates', 'view');
+  await assertCan({ resource: 'share_certificates', verb: 'view' });
+  const scope = await scopeFor('share_certificates', 'view');
   const rows = await prisma.shareCertificate.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { issuedOn: 'desc' } });
   if (scope === 'all') return rows.map(certView);
   const own: typeof rows = [];

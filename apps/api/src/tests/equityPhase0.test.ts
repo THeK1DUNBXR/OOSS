@@ -18,7 +18,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { asPrincipal, asUser, authFor, expectReject, principalFor, tenantId, unscopedPrisma } from './helpers.js';
 
 const NEW_RESOURCES = [
-  'cap_table', 'share_classes', 'holders', 'share_ledger', 'certificates',
+  'cap_table', 'share_classes', 'holders', 'share_ledger', 'share_certificates',
   'valuations', 'entity_documents', 'board_meetings', 'resolutions',
   'board_documents', 'compliance', 'group', 'holdings',
 ] as const;
@@ -113,6 +113,7 @@ describe('EQT-IDN-001 — one principal, two tenants, two users, one password', 
     const inHolding = await login(email, first.password!, 'kaizen');
     const inSub = await login(email, first.password!, subSlug);
     if ('entities' in inHolding || 'entities' in inSub) throw new Error('Expected a single-entity login.');
+    if ('mfaRequired' in inHolding || 'mfaRequired' in inSub) throw new Error('Expected no second factor on the seeded accounts.');
     expect(inHolding.user.principalId).toBe(inSub.user.principalId);
     expect(inHolding.user.tenantId).toBe(HOLDING);
     expect(inSub.user.tenantId).toBe(subTenantId);
@@ -153,6 +154,7 @@ describe('EQT-IDN-003 — ending the director affiliation makes the next request
 
     // Reachable while active.
     const ok = await switchEntity({ principalId: principal.id }, subTenantId);
+    if ('mfaRequired' in ok) throw new Error('Expected no second factor on the fixture account.');
     expect(ok.user.tenantId).toBe(subTenantId);
 
     // Ended — no separate deprovisioning step, the very next request refuses it.

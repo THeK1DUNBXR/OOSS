@@ -4,8 +4,7 @@
  * given and shows withheld reason codes where the server named them.
  */
 
-import type { LoginResult, SessionUser } from '@kaizen/shared';
-import { loginNeedsEntitySelection } from '@kaizen/shared';
+import type { EntitySelectionResponse, SessionUser } from '@kaizen/shared';
 
 const TOKEN_KEY = 'kaizen.token';
 
@@ -202,36 +201,44 @@ function encodeHeader(value: string): string {
   return value.replace(/[^\x20-\x7E]/g, '_');
 }
 
+/** A session, or one of the two half-way states a sign-in can stop at. */
+export type MfaRequired = { mfaRequired: true; challengeToken: string };
+export type SessionIssued = { token: string; user: SessionUser };
+export type LoginOutcome = SessionIssued | MfaRequired | EntitySelectionResponse;
+
+function storeIfSession<T extends SessionIssued | MfaRequired | EntitySelectionResponse>(res: T): T {
+  if ('token' in res) setToken(res.token);
+  return res;
+}
+
 /**
- * A principal with one entity gets a token straight back; one with several
- * gets the entity list and a short-lived selection token instead — no token
- * is stored until one of those is exchanged for a session, by `chooseEntity`
- * or `switchEntity` below.
+ * A principal with one entity and no second factor gets a token straight
+ * back. One with several entities gets the entity list and a short-lived
+ * selection token; one whose account has a second factor gets a challenge.
+ * No token is stored until a session is actually issued.
  */
-export async function login(email: string, password: string): Promise<LoginResult> {
-  const res = await api.post<LoginResult>('/auth/login', { email, password });
-  if (!loginNeedsEntitySelection(res)) setToken(res.token);
+export async function login(email: string, password: string): Promise<LoginOutcome> {
+  return storeIfSession(await api.post<LoginOutcome>('/auth/login', { email, password }));
+}
+
+/** Completes a login that stopped at `{ mfaRequired: true }`. */
+export async function verifyMfa(challengeToken: string, code: string) {
+  const res = await api.post<SessionIssued>('/auth/mfa/verify', { challengeToken, code });
+  setToken(res.token);
   return res;
 }
 
 /** Completes the entity picker shown at sign-in, authorised by the
- *  selection token `login()` returned rather than a session token. */
-export async function chooseEntity(tenantId: string, selectionToken: string) {
-  const res = await api.postWithToken<{ token: string; user: SessionUser }>(
-    '/auth/switch-entity',
-    { tenantId },
-    selectionToken,
-  );
-  setToken(res.token);
-  return res;
+ *  selection token `login()` returned rather than a session token. The
+ *  chosen entity's account may itself ask for a second factor. */
+export async function chooseEntity(tenantId: string, selectionToken: string): Promise<SessionIssued | MfaRequired> {
+  return storeIfSession(await api.postWithToken<SessionIssued | MfaRequired>('/auth/switch-entity', { tenantId }, selectionToken));
 }
 
 /** Moves an already-signed-in principal into another entity they hold an
  *  active affiliation in — the in-session counterpart to `chooseEntity`. */
-export async function switchEntity(tenantId: string) {
-  const res = await api.post<{ token: string; user: SessionUser }>('/auth/switch-entity', { tenantId });
-  setToken(res.token);
-  return res;
+export async function switchEntity(tenantId: string): Promise<SessionIssued | MfaRequired> {
+  return storeIfSession(await api.post<SessionIssued | MfaRequired>('/auth/switch-entity', { tenantId }));
 }
 
 export async function switchContext(affiliationId: string, stepUpPassword?: string) {

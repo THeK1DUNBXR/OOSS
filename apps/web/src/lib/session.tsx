@@ -8,7 +8,6 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { EntitySelectionResponse, NavNodeView, SessionUser, Verb } from '@kaizen/shared';
-import { loginNeedsEntitySelection } from '@kaizen/shared';
 import {
   api,
   chooseEntity as apiChooseEntity,
@@ -19,6 +18,7 @@ import {
   setToken,
   switchContext as apiSwitch,
   switchEntity as apiSwitchEntity,
+  verifyMfa as apiVerifyMfa,
 } from './api.js';
 
 interface SessionState {
@@ -32,8 +32,12 @@ interface SessionState {
   /** Set by `signIn` when the principal holds more than one entity: the
    *  picker renders in place of the form until `chooseEntity` resolves it. */
   pendingSelection: EntitySelectionResponse | null;
+  /** Set once a sign-in (or an entity choice) gets `{ mfaRequired: true }`
+   *  back — the login screen shows the code prompt while this is non-null. */
+  mfaChallengeToken: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   chooseEntity: (tenantId: string) => Promise<void>;
+  verifyMfa: (code: string) => Promise<void>;
   signOut: () => void;
   switchTo: (affiliationId: string, stepUpPassword?: string) => Promise<void>;
   switchEntity: (tenantId: string) => Promise<void>;
@@ -60,6 +64,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingSelection, setPendingSelection] = useState<EntitySelectionResponse | null>(null);
+  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
 
   const loadNav = useCallback(async () => {
     try {
@@ -95,12 +100,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       setError(null);
       setNotice(null);
+      setMfaChallengeToken(null);
       try {
         const res = await apiLogin(email, password);
-        if (loginNeedsEntitySelection(res)) {
+        if ('entities' in res) {
           // No token exists yet — the picker below decides which entity the
           // session is actually for.
           setPendingSelection(res);
+          return;
+        }
+        if ('mfaRequired' in res) {
+          setMfaChallengeToken(res.challengeToken);
           return;
         }
         setUser(res.user);
@@ -114,15 +124,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   /** Completes sign-in once the picker shown for `pendingSelection` names an
-   *  entity. */
+   *  entity. The chosen entity's account may still ask for its code. */
   const chooseEntity = useCallback(
     async (tenantId: string) => {
       if (!pendingSelection) throw new Error('No entity selection in progress.');
       setError(null);
       try {
         const res = await apiChooseEntity(tenantId, pendingSelection.selectionToken);
-        setUser(res.user);
         setPendingSelection(null);
+        if ('mfaRequired' in res) {
+          setMfaChallengeToken(res.challengeToken);
+          return;
+        }
+        setUser(res.user);
         await loadNav();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not open that entity');
@@ -130,6 +144,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     },
     [pendingSelection, loadNav],
+  );
+
+  const verifyMfa = useCallback(
+    async (code: string) => {
+      if (!mfaChallengeToken) throw new Error('No sign-in is waiting for a code.');
+      setError(null);
+      try {
+        const res = await apiVerifyMfa(mfaChallengeToken, code);
+        setMfaChallengeToken(null);
+        setUser(res.user);
+        await loadNav();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'That code is not correct.');
+        throw err;
+      }
+    },
+    [mfaChallengeToken, loadNav],
   );
 
   const signOut = useCallback(() => {
@@ -174,6 +205,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const switchEntity = useCallback(
     async (tenantId: string) => {
       const res = await apiSwitchEntity(tenantId);
+      if ('mfaRequired' in res) {
+        // The chosen entity's account has a second factor: the current session
+        // is dropped and the code prompt takes over, exactly as at sign-in.
+        setToken(null);
+        setUser(null);
+        setNav([]);
+        setMfaChallengeToken(res.challengeToken);
+        return;
+      }
       setUser(res.user);
       await loadNav();
     },
@@ -204,34 +244,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<SessionState>(
     () => ({
-      user,
-      nav,
-      loading,
-      error,
-      notice,
-      pendingSelection,
-      signIn,
-      chooseEntity,
-      signOut,
-      switchTo,
-      switchEntity,
-      can,
-      refresh,
+      user, nav, loading, error, notice, pendingSelection, mfaChallengeToken,
+      signIn, chooseEntity, verifyMfa, signOut, switchTo, switchEntity, can, refresh,
     }),
     [
-      user,
-      nav,
-      loading,
-      error,
-      notice,
-      pendingSelection,
-      signIn,
-      chooseEntity,
-      signOut,
-      switchTo,
-      switchEntity,
-      can,
-      refresh,
+      user, nav, loading, error, notice, pendingSelection, mfaChallengeToken,
+      signIn, chooseEntity, verifyMfa, signOut, switchTo, switchEntity, can, refresh,
     ],
   );
 

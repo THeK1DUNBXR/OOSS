@@ -41,6 +41,8 @@ import { People, PersonDetail, Interactions } from './pages/People.js';
 import { Offerings, Quotes, Proposals, Agreements, Approvals, WinLoss } from './pages/Commercial.js';
 import { Invoices, Payments, Receivables } from './pages/Finance.js';
 import { InvoiceDocument } from './pages/InvoiceDocument.js';
+import { NewInvoice } from './pages/kaizenInvoice/NewInvoice.js';
+import { InvoiceHistory } from './pages/kaizenInvoice/InvoiceHistory.js';
 import { ReceiptDocument, Receipts } from './pages/ReceiptDocument.js';
 import { FinalInvoiceDocument, FinalInvoices } from './pages/FinalInvoiceDocument.js';
 import { CompanyDetails, GstReturns } from './pages/GstReturns.js';
@@ -58,6 +60,14 @@ import { Board as EquityBoard } from './pages/board/Board.js';
 import { MeetingDetail } from './pages/board/MeetingDetail.js';
 import { Resolutions, ResolutionDetail } from './pages/board/Resolutions.js';
 import { Compliance as EquityCompliance } from './pages/board/Compliance.js';
+import { ComplianceCalendar } from './pages/compliance/Calendar.js';
+import { ComplianceGst } from './pages/compliance/Gst.js';
+import { ComplianceTax } from './pages/compliance/Tax.js';
+import { ComplianceBooks } from './pages/compliance/Books.js';
+import { CompliancePayroll } from './pages/compliance/Payroll.js';
+import { ComplianceLabour } from './pages/compliance/Labour.js';
+import { CompliancePrivacy } from './pages/compliance/Privacy.js';
+import { ComplianceCorporate } from './pages/compliance/Corporate.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -189,6 +199,8 @@ function Routed() {
         <Route path="/finance/budget" element={<Budget />} />
         <Route path="/finance/assets" element={<Assets />} />
         <Route path="/finance/invoices" element={<Invoices />} />
+        <Route path="/finance/invoices/new" element={<NewInvoice />} />
+        <Route path="/finance/invoices/history" element={<InvoiceHistory />} />
         {/* The document route sits above the detail route: a printable invoice is
             a different surface from the list, not a modal over it. */}
         <Route path="/finance/invoices/:id/document" element={<InvoiceDocument />} />
@@ -224,6 +236,23 @@ function Routed() {
         <Route path="/education/queries" element={<LearnerQueue />} />
         <Route path="/delivery/projects" element={<Projects />} />
         <Route path="/delivery/projects/:id" element={<Projects />} />
+
+        <Route path="/compliance/calendar" element={<ComplianceCalendar />} />
+        <Route path="/compliance/calendar/:id" element={<ComplianceCalendar />} />
+        <Route path="/compliance/gst" element={<ComplianceGst />} />
+        <Route path="/compliance/gst/:id" element={<ComplianceGst />} />
+        <Route path="/compliance/tax" element={<ComplianceTax />} />
+        <Route path="/compliance/tax/:id" element={<ComplianceTax />} />
+        <Route path="/compliance/books" element={<ComplianceBooks />} />
+        <Route path="/compliance/books/:id" element={<ComplianceBooks />} />
+        <Route path="/compliance/payroll" element={<CompliancePayroll />} />
+        <Route path="/compliance/payroll/:id" element={<CompliancePayroll />} />
+        <Route path="/compliance/labour" element={<ComplianceLabour />} />
+        <Route path="/compliance/labour/:id" element={<ComplianceLabour />} />
+        <Route path="/compliance/privacy" element={<CompliancePrivacy />} />
+        <Route path="/compliance/privacy/:id" element={<CompliancePrivacy />} />
+        <Route path="/compliance/corporate" element={<ComplianceCorporate />} />
+        <Route path="/compliance/corporate/:id" element={<ComplianceCorporate />} />
 
         <Route path="/admin/pipelines" element={<PipelineAdmin />} />
         <Route path="/admin/territories" element={<TerritoryAdmin />} />

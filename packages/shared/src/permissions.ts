@@ -194,7 +194,7 @@ export const RESOURCES = [
   'share_classes',
   'holders',
   'share_ledger',
-  'certificates',
+  'share_certificates',
   'valuations',
   'entity_documents',
   'board_meetings',

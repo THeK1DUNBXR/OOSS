@@ -59,6 +59,7 @@ import {
   EVENTS,
   amountInWords,
   computeGst,
+  computePaymentSchedule,
   invoicePayable,
   isInterState,
   isValidGstin,
@@ -81,6 +82,7 @@ import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { companyProfile, documentNumbering, supplyingParty } from './companyProfile.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
+import { runHooks } from '../platform/hooks.js';
 
 // ---------------------------------------------------------------------------
 // Input
@@ -90,6 +92,11 @@ export interface InvoiceLineInput {
   offeringId?: string | null;
   /** A course from the catalogue. Its price, tax rate and SAC fill the line. */
   courseId?: string | null;
+  /**
+   * A catalogue add-on of that course — a certification exam, a kit. Its
+   * price, tax rate and SAC fill the line the same way a course's do.
+   */
+  courseAddonId?: string | null;
   /**
    * The student's place on that course. Naming it fills the course in, so
    * billing a fee is one choice rather than two that have to agree.
@@ -111,6 +118,13 @@ export interface InvoiceLineInput {
   /** Percentage. Defaults to the course's rate, else 0. */
   gstRate?: number | null;
   hsnSac?: string | null;
+  /**
+   * taxable | nil | exempt | non_gst (docs/plan/compliance.md, workstream B).
+   * Defaults to `taxable`, or to `exempt` when the line bills a course
+   * carrying an active `CourseGstExemption` and nothing else was said.
+   */
+  supplyType?: string | null;
+  exemptionNotification?: string | null;
 }
 
 export interface CollectedPaymentInput {
@@ -140,6 +154,12 @@ export interface InvoiceInput {
   issuedDate?: Date;
   dueDate?: Date;
   dueInDays?: number;
+  /**
+   * When the student enrolled — only meaningful for a course-sale invoice.
+   * Printed as a payment-due schedule on the document; stored so a reprint
+   * shows the same schedule the original did.
+   */
+  enrollmentDate?: Date | null;
   /** State code of the place of supply. Defaults from the customer, then from us. */
   placeOfSupply?: string | null;
   customerGstin?: string | null;
@@ -403,6 +423,7 @@ async function resolveTaxReading(
 interface PricedLine {
   offeringId: string | null;
   courseId: string | null;
+  courseAddonId: string | null;
   enrollmentId: string | null;
   description: string;
   quantity: number;
@@ -417,6 +438,8 @@ interface PricedLine {
   hsnSac: string | null;
   revenueMethod: RevenueTreatment;
   position: number;
+  supplyType: string;
+  exemptionNotification: string | null;
 }
 
 /**
@@ -487,6 +510,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
     let hsnSac = line.hsnSac ?? null;
     let revenueMethod: RevenueTreatment = 'point_in_time';
     let courseId = line.courseId ?? null;
+    let courseAddonId = line.courseAddonId ?? null;
     let enrollmentId: string | null = null;
 
     // The enrolment is the student on the course, which is the thing being
@@ -513,6 +537,26 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       enrollmentId = enrollment.id;
     }
 
+    // A catalogue add-on — priced, taxed and classified the same way a course
+    // is, so naming one is also one choice rather than knowing its price list.
+    if (courseAddonId) {
+      const addon = await prisma.courseAddon.findFirst({
+        where: { id: courseAddonId, tenantId: auth.tenantId },
+      });
+      if (!addon) throw ApiError.notFound('Course add-on');
+      if (!addon.active) {
+        throw ApiError.unprocessable(`"${addon.name}" is retired and cannot be billed.`);
+      }
+      if (courseId && courseId !== addon.courseId) {
+        throw ApiError.badRequest(`"${addon.name}" is not an add-on of the course named on this line.`);
+      }
+      courseId = addon.courseId;
+      description = description || addon.name;
+      if (unitPrice === null) unitPrice = num(addon.price);
+      if (gstRate === null) gstRate = num(addon.gstRate);
+      hsnSac = hsnSac ?? addon.hsnSac;
+    }
+
     if (courseId) {
       const course = await prisma.course.findFirst({
         where: { id: courseId, tenantId: auth.tenantId },
@@ -531,6 +575,9 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       // property, not a question for whoever raises the invoice.
       revenueMethod = 'over_time_ratable';
     }
+    // An add-on is a one-time extra, not something delivered over the course's
+    // own run — recognised when sold, whichever course it rides along with.
+    if (courseAddonId) revenueMethod = 'point_in_time';
 
     if (line.offeringId) {
       const offering = await prisma.offering.findFirst({
@@ -563,9 +610,34 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
     const grossAmount = round2(round2(unitPrice) * quantity);
     const { discountAmount, discountPercent } = resolveDiscount(grossAmount, line, description);
 
+    // Supply classification (docs/plan/compliance.md, workstream B). A course
+    // carrying an active exemption defaults its line to `exempt` — but only
+    // when nothing was said explicitly, because an exemption asserted for the
+    // course is not automatically the right reading of every fee against it
+    // (an add-on billed alongside, say).
+    let supplyType = (line.supplyType?.trim() || null) as string | null;
+    let exemptionNotification = line.exemptionNotification?.trim() || null;
+    if (!supplyType && courseId) {
+      const exemption = await prisma.courseGstExemption.findFirst({
+        where: { tenantId: auth.tenantId, courseId, active: true },
+      });
+      if (exemption) {
+        supplyType = 'exempt';
+        exemptionNotification = exemption.notification;
+      }
+    }
+    supplyType = supplyType ?? 'taxable';
+    const nonTaxable = supplyType === 'nil' || supplyType === 'exempt' || supplyType === 'non_gst';
+    if (nonTaxable) {
+      gstRate = 0;
+    } else {
+      exemptionNotification = null;
+    }
+
     out.push({
       offeringId: line.offeringId ?? null,
       courseId,
+      courseAddonId,
       enrollmentId,
       description,
       quantity,
@@ -580,6 +652,8 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       hsnSac,
       revenueMethod,
       position,
+      supplyType,
+      exemptionNotification,
     });
   }
   return out;
@@ -671,6 +745,7 @@ export async function createInvoice(input: InvoiceInput) {
         currency: input.currency ?? 'INR',
         issuedDate: issue ? issuedDate : null,
         dueDate,
+        enrollmentDate: input.enrollmentDate ?? null,
         placeOfSupply: tax.placeOfSupply,
         interState: tax.interState,
         customerGstin: tax.customerGstin,
@@ -692,6 +767,15 @@ export async function createInvoice(input: InvoiceInput) {
     await writeLines(tx, created.id, priced);
     return created;
   });
+
+  // GST classification rules and e-invoicing readiness attach here too
+  // (workstream B) — `createInvoice` with `issue: true` raises and issues in
+  // one act, and the hook `issueInvoiceDraft` runs at its own issue point has
+  // to run here as well, or a document created this way never sees it.
+  if (issue) {
+    const freshLines = await prisma.invoiceLine.findMany({ where: { invoiceId: invoice.id } });
+    await runHooks('invoice.before_issue', { invoice, lines: freshLines, issuedDate });
+  }
 
   await auditWrite({
     action: 'create',
@@ -744,6 +828,7 @@ async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
         invoiceId,
         offeringId: line.offeringId,
         courseId: line.courseId,
+        courseAddonId: line.courseAddonId,
         enrollmentId: line.enrollmentId,
         description: line.description,
         quantity: line.quantity,
@@ -758,6 +843,8 @@ async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
         hsnSac: line.hsnSac,
         position: line.position,
         revenueMethod: line.revenueMethod,
+        supplyType: line.supplyType,
+        exemptionNotification: line.exemptionNotification,
       },
     });
   }
@@ -806,6 +893,7 @@ export async function updateInvoice(
       existing.lines.map((l) => ({
         offeringId: l.offeringId,
         courseId: l.courseId,
+        courseAddonId: l.courseAddonId,
         enrollmentId: l.enrollmentId,
         description: l.description,
         quantity: l.quantity,
@@ -813,6 +901,8 @@ export async function updateInvoice(
         discountAmount: num(l.discountAmount) || null,
         gstRate: num(l.gstRate),
         hsnSac: l.hsnSac,
+        supplyType: l.supplyType,
+        exemptionNotification: l.exemptionNotification,
       })),
     customer,
   );
@@ -835,6 +925,7 @@ export async function updateInvoice(
         organizationId: customer.organizationId,
         personId: customer.personId,
         ...(input.dueDate ? { dueDate: input.dueDate } : {}),
+        ...(input.enrollmentDate !== undefined ? { enrollmentDate: input.enrollmentDate } : {}),
         ...(input.currency ? { currency: input.currency } : {}),
         ...(input.division !== undefined ? { division: input.division } : {}),
         ...(input.notes !== undefined ? { notes: input.notes } : {}),
@@ -890,6 +981,8 @@ export async function issueInvoiceDraft(
 
   const issuedDate = options.issuedDate ?? new Date();
   await assertPeriodOpen(issuedDate, 'This invoice');
+  // GST classification rules and e-invoicing readiness attach here (workstream B).
+  await runHooks('invoice.before_issue', { invoice: existing, lines: existing.lines, issuedDate });
 
   // Here is where the invoice number is allocated, and nowhere else: at the
   // moment the draft becomes a document. Allocating it inside the same update
@@ -1390,9 +1483,17 @@ export async function invoiceDocument(invoiceId: string) {
     currency: invoice.currency,
     issuedDate: invoice.issuedDate?.toISOString() ?? null,
     dueDate: invoice.dueDate?.toISOString() ?? null,
+    enrollmentDate: invoice.enrollmentDate?.toISOString() ?? null,
     notes: invoice.notes,
     division: invoice.division,
     raisedBy: raisedBy?.fullName ?? null,
+    // ---- Compliance (workstream B) ----
+    /** tax_invoice | bill_of_supply — Rule 49: a bill of supply carries no tax. */
+    invoiceType: invoice.invoiceType,
+    /** Rule 46(p): printed when tax on this supply is payable by the recipient. */
+    reverseCharge: invoice.reverseCharge,
+    irn: invoice.irn,
+    signedQrCode: invoice.signedQrCode,
 
     supplier: {
       legalName: profile.legalName,
@@ -1456,6 +1557,11 @@ export async function invoiceDocument(invoiceId: string) {
       description: l.description,
       courseName: l.courseId ? (courseMap.get(l.courseId)?.name ?? null) : null,
       courseCode: l.courseId ? (courseMap.get(l.courseId)?.code ?? null) : null,
+      // The add-on's own name, where this line is one. Read from the line's
+      // own description rather than a live join to CourseAddon: an add-on can
+      // be edited or removed from the catalogue later, and a printed document
+      // must keep reading the way it did the day it was issued.
+      addonName: l.courseAddonId ? l.description : null,
       hsnSac: l.hsnSac,
       quantity: l.quantity,
       unitPrice: num(l.unitPrice) || round2((num(l.amount) ?? 0) / Math.max(l.quantity, 1)),
@@ -1471,6 +1577,8 @@ export async function invoiceDocument(invoiceId: string) {
       discountPercent: num(l.discountPercent) ?? 0,
       gstRate: num(l.gstRate) ?? 0,
       taxAmount: num(l.taxAmount) ?? 0,
+      supplyType: l.supplyType,
+      exemptionNotification: l.exemptionNotification,
       revenueMethod: l.revenueMethod,
     })),
 
@@ -1481,6 +1589,44 @@ export async function invoiceDocument(invoiceId: string) {
       igst: num(invoice.igstAmount) ?? 0,
       roundOff: num(invoice.roundOff) ?? 0,
     },
+
+    // The Kaizen course-ledger view: present only where an enrollment date was
+    // given, i.e. a course-sale invoice. Every figure here is read off `lines`
+    // above (never a second computation), so the printed ledger table can show
+    // the monthly fee, the tenure, the effective-monthly-after-discount and a
+    // per-line CGST/SGST/IGST split without the client working any of it out
+    // itself — each row's tax split is computed on that row's own tax alone,
+    // the same way the figures on either side of it were.
+    ledger: invoice.enrollmentDate
+      ? {
+          schedule: computePaymentSchedule(invoice.enrollmentDate.toISOString().slice(0, 10)),
+          rows: invoice.lines.map((l) => {
+            const isCourseRow = !l.courseAddonId;
+            const unitPrice = num(l.unitPrice) || round2((num(l.amount) ?? 0) / Math.max(l.quantity, 1));
+            const discountPercent = num(l.discountPercent) ?? 0;
+            const taxAmount = num(l.taxAmount) ?? 0;
+            const amount = num(l.amount) ?? 0;
+            return {
+              lineId: l.id,
+              hsnSac: l.hsnSac,
+              courseName: isCourseRow ? (l.courseId ? (courseMap.get(l.courseId)?.name ?? l.description) : l.description) : null,
+              addonName: isCourseRow ? null : l.description,
+              monthlyFee: unitPrice,
+              tenureMonths: l.quantity,
+              subtotal: round2(unitPrice * l.quantity),
+              discountPercent,
+              discountAmount: num(l.discountAmount) ?? 0,
+              effectiveMonthly: round2(unitPrice * (1 - discountPercent / 100)),
+              taxable: amount,
+              cgst: invoice.interState ? 0 : round2(taxAmount / 2),
+              sgst: invoice.interState ? 0 : round2(taxAmount / 2),
+              igst: invoice.interState ? taxAmount : 0,
+              total: round2(amount + taxAmount),
+              isCourseRow,
+            };
+          }),
+        }
+      : null,
 
     /**
      * What the tax invoice says. Both figures, side by side, and both printed

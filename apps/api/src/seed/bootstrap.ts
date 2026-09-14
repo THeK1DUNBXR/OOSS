@@ -29,6 +29,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { seedCompliance } from './compliance/index.js';
 import { AI_TOUCHPOINTS, EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../platform/db.js';
 import { asSystem } from '../platform/context.js';
@@ -125,14 +126,16 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   // ---- Money -----------------------------------------------------------
   { nodeKey: 'fin_ledger', label: 'Ledger', icon: 'coins', path: '/finance/ledger', group: 'money', position: 10, requiredPermission: 'transactions:V', synonyms: ['transactions', 'cash book', 'spend', 'expenses', 'bank'] },
   { nodeKey: 'fin_invoices', label: 'Invoices', icon: 'receipt', path: '/finance/invoices', group: 'money', position: 11, requiredPermission: 'invoices:V', synonyms: ['bill a customer', 'raise an invoice', 'sales invoice'] },
-  { nodeKey: 'fin_receipts', label: 'Receipts', icon: 'receipt', path: '/finance/receipts', group: 'money', position: 12, requiredPermission: 'payments:V', synonyms: ['part payment', 'instalment', 'acknowledgement', 'money received'] },
-  { nodeKey: 'fin_final_invoices', label: 'Final Invoices', icon: 'file', path: '/finance/final-invoices', group: 'money', position: 13, requiredPermission: 'invoices:V', synonyms: ['statement', 'settlement', 'closing invoice', 'instalments'] },
-  { nodeKey: 'fin_payments', label: 'Payments In', icon: 'wallet', path: '/finance/payments', group: 'money', position: 14, requiredPermission: 'payments:V', synonyms: ['money received', 'collections', 'bank credits'] },
-  { nodeKey: 'fin_payables', label: 'Bills To Pay', icon: 'receipt', path: '/finance/payables', group: 'money', position: 15, requiredPermission: 'vendor_bills:V', synonyms: ['payables', 'supplier bills', 'vendors', 'creditors', 'what we owe'] },
-  { nodeKey: 'fin_receivables', label: 'Owed To Us', icon: 'coins', path: '/finance/receivables', group: 'money', position: 16, requiredPermission: 'receivables:V', synonyms: ['receivables', 'debtors', 'outstanding'] },
-  { nodeKey: 'fin_gst', label: 'GST Returns', icon: 'scale', path: '/finance/gst', group: 'money', position: 17, requiredPermission: 'gst_filings:V', synonyms: ['gstr1', 'gstr-1', 'gstr3b', 'gstr-3b', 'filing', 'return', 'tax', 'itc', 'input credit'] },
-  { nodeKey: 'fin_budget', label: 'Budget', icon: 'calculator', path: '/finance/budget', group: 'money', position: 18, requiredPermission: 'budgets:V', synonyms: ['plan', 'variance', 'overspend'] },
-  { nodeKey: 'fin_assets', label: 'Assets & Loans', icon: 'package', path: '/finance/assets', group: 'money', position: 19, requiredPermission: 'assets:V', synonyms: ['depreciation', 'borrowing', 'emi', 'fixed assets'] },
+  { nodeKey: 'fin_new_invoice', label: 'New Invoice', icon: 'receipt', path: '/finance/invoices/new', group: 'money', position: 12, requiredPermission: 'invoices:C', synonyms: ['raise an invoice', 'course invoice', 'bill a student', 'counter sale', 'enrol and bill'] },
+  { nodeKey: 'fin_invoice_history', label: 'Invoice History', icon: 'receipt', path: '/finance/invoices/history', group: 'money', position: 13, requiredPermission: 'invoices:V', synonyms: ['course invoices', 'reprint an invoice', 'search invoices'] },
+  { nodeKey: 'fin_receipts', label: 'Receipts', icon: 'receipt', path: '/finance/receipts', group: 'money', position: 14, requiredPermission: 'payments:V', synonyms: ['part payment', 'instalment', 'acknowledgement', 'money received'] },
+  { nodeKey: 'fin_final_invoices', label: 'Final Invoices', icon: 'file', path: '/finance/final-invoices', group: 'money', position: 15, requiredPermission: 'invoices:V', synonyms: ['statement', 'settlement', 'closing invoice', 'instalments'] },
+  { nodeKey: 'fin_payments', label: 'Payments In', icon: 'wallet', path: '/finance/payments', group: 'money', position: 16, requiredPermission: 'payments:V', synonyms: ['money received', 'collections', 'bank credits'] },
+  { nodeKey: 'fin_payables', label: 'Bills To Pay', icon: 'receipt', path: '/finance/payables', group: 'money', position: 17, requiredPermission: 'vendor_bills:V', synonyms: ['payables', 'supplier bills', 'vendors', 'creditors', 'what we owe'] },
+  { nodeKey: 'fin_receivables', label: 'Owed To Us', icon: 'coins', path: '/finance/receivables', group: 'money', position: 18, requiredPermission: 'receivables:V', synonyms: ['receivables', 'debtors', 'outstanding'] },
+  { nodeKey: 'fin_gst', label: 'GST Returns', icon: 'scale', path: '/finance/gst', group: 'money', position: 19, requiredPermission: 'gst_filings:V', synonyms: ['gstr1', 'gstr-1', 'gstr3b', 'gstr-3b', 'filing', 'return', 'tax', 'itc', 'input credit'] },
+  { nodeKey: 'fin_budget', label: 'Budget', icon: 'calculator', path: '/finance/budget', group: 'money', position: 20, requiredPermission: 'budgets:V', synonyms: ['plan', 'variance', 'overspend'] },
+  { nodeKey: 'fin_assets', label: 'Assets & Loans', icon: 'package', path: '/finance/assets', group: 'money', position: 21, requiredPermission: 'assets:V', synonyms: ['depreciation', 'borrowing', 'emi', 'fixed assets'] },
 
   // ---- People ----------------------------------------------------------
   { nodeKey: 'hr_people', label: 'Employees', icon: 'users', path: '/people/employees', group: 'people', position: 20, requiredPermission: 'employees:V', synonyms: ['staff', 'team', 'headcount', 'who works here', 'directory'] },
@@ -180,6 +183,16 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'delivery', position: 50, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
 
   // ---- Set up ----------------------------------------------------------
+  // ---- Compliance (docs/plan/compliance.md) --------------------------------
+  { nodeKey: 'cmp_calendar', label: 'Compliance Calendar', icon: 'clock', path: '/compliance/calendar', group: 'compliance', position: 40, requiredPermission: 'compliance_obligations:V', synonyms: ['due dates', 'filings', 'deadlines', 'obligations', 'gstr due', 'tds due', 'pf due'] },
+  { nodeKey: 'cmp_gst', label: 'GST Compliance', icon: 'scale', path: '/compliance/gst', group: 'compliance', position: 41, requiredPermission: 'gst_filings:V', synonyms: ['reverse charge', 'e-invoice', 'irn', 'debit note', 'gstr-2b', 'itc reconciliation', 'exempt supply'] },
+  { nodeKey: 'cmp_tax', label: 'Income Tax & TDS', icon: 'calculator', path: '/compliance/tax', group: 'compliance', position: 42, requiredPermission: 'tds:V', synonyms: ['tds', 'tan', 'challan', '26q', '24q', 'form 16', 'advance tax', 'msme', '43b(h)'] },
+  { nodeKey: 'cmp_books', label: 'Audit & Periods', icon: 'clipboard', path: '/compliance/books', group: 'compliance', position: 43, requiredPermission: 'accounting_periods:V', synonyms: ['period close', 'lock period', 'audit trail', 'trial balance', 'schedule iii', 'depreciation schedule', 'tally export'] },
+  { nodeKey: 'cmp_payroll', label: 'Payroll Statutory', icon: 'wallet', path: '/compliance/payroll', group: 'compliance', position: 44, requiredPermission: 'payslips:V', synonyms: ['pf', 'esi', 'professional tax', 'payslip', 'ecr', 'gratuity', 'bonus', 'ctc'] },
+  { nodeKey: 'cmp_labour', label: 'Labour & Conduct', icon: 'users', path: '/compliance/labour', group: 'compliance', position: 45, requiredPermission: 'holidays:V', synonyms: ['holidays', 'posh', 'internal committee', 'disciplinary', 'appointment letter', 'relieving letter', 'muster roll', 'registers'] },
+  { nodeKey: 'cmp_privacy', label: 'Data Protection', icon: 'badge', path: '/compliance/privacy', group: 'compliance', position: 46, requiredPermission: 'consents:V', synonyms: ['dpdp', 'consent', 'privacy notice', 'erasure', 'breach', 'data request', 'guardian consent'] },
+  { nodeKey: 'cmp_corporate', label: 'Corporate & Security', icon: 'building', path: '/compliance/corporate', group: 'compliance', position: 47, requiredPermission: 'corporate_registers:V', synonyms: ['board resolution', 'register of members', 'directors', 'mca', 'aoc-4', 'mgt-7', 'refund', 'certificate', 'mfa', 'stamp duty', 'e-sign', 'firc'] },
+
   { nodeKey: 'data_import', label: 'Import Data', icon: 'inbox', path: '/data/import', group: 'setup', position: 50, requiredPermission: 'imports:V', synonyms: ['tally', 'bank statement', 'excel', 'csv', 'upload', 'migrate', 'bring data in'] },
   { nodeKey: 'gov_decisions', label: 'Decisions', icon: 'scale', path: '/command/decisions', group: 'setup', position: 51, requiredPermission: 'decisions:V' },
   { nodeKey: 'gov_exceptions', label: 'Problems', icon: 'alert', path: '/exceptions', group: 'setup', position: 52, requiredPermission: 'exceptions:V', synonyms: ['issues', 'attention', 'exceptions'] },
@@ -211,7 +224,7 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   // opening the portal host sees none of these, and a portal role opening the
   // ERP host still sees only these (§3.1).
   { nodeKey: 'portal_holdings', label: 'Holdings', icon: 'coins', path: '/portal/holdings', group: 'portal', position: 70, requiredPermission: 'holdings:V', archetypes: ['portal'], synonyms: ['shares', 'my shares', 'cap table', 'ownership'] },
-  { nodeKey: 'portal_certificates', label: 'Certificates', icon: 'file', path: '/portal/certificates', group: 'portal', position: 71, requiredPermission: 'certificates:V', archetypes: ['portal'], synonyms: ['share certificate'] },
+  { nodeKey: 'portal_certificates', label: 'Certificates', icon: 'file', path: '/portal/certificates', group: 'portal', position: 71, requiredPermission: 'share_certificates:V', archetypes: ['portal'], synonyms: ['share certificate'] },
   { nodeKey: 'portal_documents', label: 'Documents', icon: 'file', path: '/portal/documents', group: 'portal', position: 72, requiredPermission: 'entity_documents:V', archetypes: ['portal'] },
   { nodeKey: 'portal_board', label: 'Board', icon: 'shield', path: '/portal/board', group: 'portal', position: 73, requiredPermission: 'board_meetings:V', archetypes: ['portal'], synonyms: ['meetings', 'resolutions', 'minutes'] },
   { nodeKey: 'portal_entities', label: 'Entities', icon: 'building', path: '/portal/entities', group: 'portal', position: 74, requiredPermission: 'group:V', archetypes: ['portal'], synonyms: ['group', 'subsidiaries', 'structure chart'] },
@@ -999,6 +1012,7 @@ export async function seedBootstrap(opts: SeedBootstrapOptions = {}): Promise<{
     await seedSurfaces();
     await seedAgents();
     await seedLeaveTypes();
+    await seedCompliance();
     accounts = await seedFoundingAccounts();
   });
 

@@ -35,6 +35,7 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { findOrCreatePerson, normalisePhone, normaliseEmail } from './identity.js';
+import { requireGuardianConsentForMinor } from './compliance/privacy.js';
 
 export const STUDENT_STATUSES = ['prospective', 'active', 'alumni', 'withdrawn'] as const;
 export type StudentStatus = (typeof STUDENT_STATUSES)[number];
@@ -59,6 +60,9 @@ export interface StudentInput {
   /** Madurai, Coimbatore, online, or on their own campus. */
   deliveryLocation?: string | null;
   notes?: string | null;
+  /** Required when the person's date of birth makes them a minor (CMP-DPD-003). */
+  guardianName?: string | null;
+  guardianPhone?: string | null;
 }
 
 /** What a student looks like everywhere they are listed or billed. */
@@ -235,6 +239,16 @@ export async function attachStudentProfile(personId: string, input: StudentInput
     input.institutionId ?? null,
   );
 
+  // DPDP: a minor cannot be enrolled without a named guardian and a recorded
+  // guardian consent (CMP-DPD-003). `null` when the person is not (measurably)
+  // a minor — nothing to gate, nothing to stamp.
+  const guardianConsentId = await requireGuardianConsentForMinor({
+    personId,
+    dateOfBirth: person.dateOfBirth,
+    guardianName: input.guardianName,
+    guardianPhone: input.guardianPhone,
+  });
+
   const profile = await prisma.studentProfile.create({
     data: {
       tenantId: auth.tenantId,
@@ -250,6 +264,9 @@ export async function attachStudentProfile(personId: string, input: StudentInput
       placeOfSupply: input.placeOfSupply ?? null,
       gstin: input.gstin ?? null,
       attachedById: auth.partyId,
+      guardianName: input.guardianName ?? null,
+      guardianPhone: input.guardianPhone ?? null,
+      guardianConsentId,
     },
   });
 

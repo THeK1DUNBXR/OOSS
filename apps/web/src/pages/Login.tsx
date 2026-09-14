@@ -32,26 +32,34 @@ function roleWords(slugs: string[]): string {
 }
 
 export function Login() {
-  const { signIn, error, notice, pendingSelection, chooseEntity } = useSession();
+  const { signIn, verifyMfa, mfaChallengeToken, error, notice, pendingSelection, chooseEntity } = useSession();
 
+  // Three screens, in the order a sign-in passes through them: the entity
+  // picker when the principal holds several, the code prompt when the chosen
+  // entity's account has a second factor, otherwise the form.
   if (pendingSelection) {
     return <EntityPicker entities={pendingSelection.entities} onChoose={chooseEntity} error={error} />;
   }
 
-  return <SignInForm signIn={signIn} error={error} notice={notice} />;
+  return <SignInForm signIn={signIn} verifyMfa={verifyMfa} mfaChallengeToken={mfaChallengeToken} error={error} notice={notice} />;
 }
 
 function SignInForm({
   signIn,
+  verifyMfa,
+  mfaChallengeToken,
   error,
   notice,
 }: {
   signIn: (email: string, password: string) => Promise<void>;
+  verifyMfa: (code: string) => Promise<void>;
+  mfaChallengeToken: string | null;
   error: string | null;
   notice: string | null;
 }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const emailId = useId();
   const passwordId = useId();
@@ -67,6 +75,48 @@ function SignInForm({
       setBusy(false);
     }
   };
+
+  const submitCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await verifyMfa(code);
+    } catch {
+      /* surfaced via session error */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (mfaChallengeToken) {
+    return (
+      <div className="flex min-h-full items-center justify-center p-6">
+        <div className="card w-full max-w-sm p-6">
+          <h1 className="text-xl">Enter your code</h1>
+          <p className="mt-1 text-2xs leading-relaxed text-ink-500">
+            This account has a second factor. Enter the six-digit code from your authenticator app.
+          </p>
+          <form onSubmit={submitCode} className="mt-4 space-y-3">
+            <div>
+              <label className="label">Code</label>
+              <input
+                className="input"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                inputMode="numeric"
+                autoFocus
+                maxLength={6}
+              />
+            </div>
+            {error && <p className="text-2xs text-band-critical">{error}</p>}
+            <button className="btn-primary w-full py-2" disabled={busy || code.length !== 6}>
+              {busy ? 'Verifying…' : 'Verify'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full items-center justify-center p-6">

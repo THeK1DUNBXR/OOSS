@@ -33,6 +33,7 @@ import { checkDematRequirements, runPas6HalfYearly, runFlaReturn } from '../doma
 import { computeAndPersistAll } from '../domains/health.js';
 import { runBoardComplianceJob } from '../domains/board.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
+import { COMPLIANCE_JOBS } from './compliance/index.js';
 
 export interface JobResult {
   processed: number;
@@ -251,6 +252,7 @@ export const ALL_JOBS: JobDefinition[] = [
     cron: '0 2 * * *',
     run: async () => counted(await runBoardComplianceJob()),
   },
+  ...COMPLIANCE_JOBS,
 ];
 
 // ---------------------------------------------------------------------------

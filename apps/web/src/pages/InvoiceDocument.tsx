@@ -30,6 +30,7 @@ import { api, date, money } from '../lib/api.js';
 import { Card, ErrorBox, Loading } from '../components/ui.js';
 import { messageOf } from '../components/forms.js';
 import { CustomerBlock, Sheet, Signature, SupplierBlock, rupees } from './documentSheet.js';
+import { KaizenInvoiceDocument } from './kaizenInvoice/KaizenInvoiceDocument.js';
 
 export function InvoiceDocument() {
   const { id } = useParams<{ id: string }>();
@@ -54,6 +55,11 @@ export function InvoiceDocument() {
 
   if (loadError) return <ErrorBox error={loadError} />;
   if (isLoading || !data) return <Loading label="Preparing the invoice" />;
+
+  // A course-sale invoice (raised with an enrollment date) prints as the
+  // Kaizen course ledger, not this generic tax-invoice layout — same
+  // underlying document, a different printed shape.
+  if (data.ledger) return <KaizenInvoiceDocument doc={data} />;
 
   const d = data;
   const paymentLabel = PAYMENT_TYPE_LABELS[d.payment.type as PaymentType] ?? d.payment.type;
@@ -177,12 +183,18 @@ export function InvoiceDocument() {
     >
       <SupplierBlock
         supplier={d.supplier}
-        docType="Tax Invoice"
+        // Rule 49: a bill of supply carries no tax on its face — a document
+        // that reads "Tax Invoice" while carrying none is the wrong document,
+        // not a cosmetic slip.
+        docType={d.invoiceType === 'bill_of_supply' ? 'Bill of Supply' : 'Tax Invoice'}
         meta={[
           ['Invoice no.', d.recordCode ?? 'not yet issued'],
           ['Date', date(d.issuedDate)],
           ['Due', date(d.dueDate)],
           ['Place of supply', d.placeOfSupply ?? '—'],
+          // Rule 46(p): printed whenever tax on this supply is payable by the
+          // recipient rather than by us.
+          ...(d.reverseCharge ? ([['Tax payable', 'Reverse charge (recipient)']] as [string, string][]) : []),
         ]}
       />
 

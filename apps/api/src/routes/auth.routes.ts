@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { buildSessionUser, entitiesForToken, identifySwitchCaller, login, switchContext, switchEntity } from '../lib/auth.js';
+import {
+  buildSessionUser, changePassword, confirmMfa, enrolMfa, entitiesForToken, identifySwitchCaller, login, switchContext, switchEntity, verifyMfaAndLogin,
+} from '../lib/auth.js';
 import { onboardingState } from '../domains/onboarding.js';
 import { handler, requireAuth } from '../lib/http.js';
 import { ApiError } from '../platform/errors.js';
@@ -8,6 +10,7 @@ import { prisma, unscopedPrisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { navigationFor, surfaceCompositionFor } from '../domains/surfaces.js';
 import { createOrResetSignIn } from '../domains/signIns.js';
+import { loginRateLimit } from '../domains/compliance/corporate/rateLimit.js';
 
 const router = Router();
 
@@ -19,9 +22,56 @@ const loginSchema = z.object({
 
 router.post(
   '/login',
+  loginRateLimit,
   handler(async (req) => {
     const input = loginSchema.parse(req.body);
     return login(input.email, input.password, input.tenantSlug);
+  }),
+);
+
+/** Step two of a login for a user with `mfaEnabledAt` set — see `lib/auth.ts`. */
+router.post(
+  '/mfa/verify',
+  handler(async (req) => {
+    const schema = z.object({ challengeToken: z.string(), code: z.string() });
+    const input = schema.parse(req.body);
+    return verifyMfaAndLogin(input.challengeToken, input.code);
+  }),
+);
+
+/** Requests a fresh TOTP secret. Returned once — the server keeps the secret, not this response. */
+router.post(
+  '/mfa/enrol',
+  requireAuth,
+  handler(async (req) => {
+    const auth = req.ctx!.auth!;
+    const user = await prisma.user.findFirstOrThrow({ where: { id: auth.userId! } });
+    return enrolMfa(auth.userId!, user.email);
+  }),
+);
+
+/** Confirms enrolment with a code generated from the secret `mfa/enrol` returned. */
+router.post(
+  '/mfa/confirm',
+  requireAuth,
+  handler(async (req) => {
+    const schema = z.object({ code: z.string() });
+    const input = schema.parse(req.body);
+    const auth = req.ctx!.auth!;
+    await confirmMfa(auth.userId!, input.code);
+    return { ok: true };
+  }),
+);
+
+router.post(
+  '/change-password',
+  requireAuth,
+  handler(async (req) => {
+    const schema = z.object({ currentPassword: z.string(), newPassword: z.string() });
+    const input = schema.parse(req.body);
+    const auth = req.ctx!.auth!;
+    await changePassword(auth.userId!, input.currentPassword, input.newPassword);
+    return { ok: true };
   }),
 );
 

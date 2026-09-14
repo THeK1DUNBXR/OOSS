@@ -8,6 +8,7 @@ impossible.
 ```bash
 ./scripts/test-db.sh          # provision kaizen_test
 cd apps/api && pnpm test      # 415 tests
+cd apps/api && pnpm test      # 541 tests
 ```
 
 ## How the suite is built
@@ -64,6 +65,7 @@ dataset is a demonstration, not a scratchpad.
 | **EQT-FIL** Equity portal — Phase 6a filings, demat, FEMA | 10 | The MGT-1 export lists every equity/preference class's members in statutory column order, with a fully-recorded holder's fields intact and a bare holder's left blank rather than guessed; the PAS-3 allottee list covers exactly a round's own effective allotments, not one struck outside it; SH-4 data prices stamp duty at 0.015% of consideration for a demat-to-demat leg and names the state rate as not recorded for a physical one; becoming a holding or subsidiary with a physical register raises `EX-EQT-004` exactly once across two runs; a company recorded fully `demat` refuses `proposeAllotment` to a holder with no `dematAccount` on file (Rule 9B) and allows it once one is set; the PAS-6 half-yearly job raises `EX-EQT-010` exactly once per half-year and every class's demat + physical count equals its issued count; an allotment to a repatriable non-resident raises `EX-EQT-006` due 30 days out and a non-repatriable holder's allotment raises nothing (Schedule IV); a transfer between a repatriable non-resident and a resident raises `EX-EQT-007` due 60 days out; a price below a registered-valuer certificate is refused by name for a non-resident allottee, and with no certificate on record the allotment proceeds with a `femaPricingNote` and `EX-EQT-009` raised once; recording a filing resolves the exception it names and the yearly FLA sweep raises `EX-EQT-008` once for a repatriable non-resident holding still on the register at 31 March |
 | **EQT-SPN** Equity portal — Phase 6b spinning a division out into a subsidiary | 9 | Preview writes nothing and reports every education-tagged transaction, employment relationship, course, cohort, enrolment and organisation it would carry, and every shared or invoice-linked transaction it would refuse, by name; the same preview is reachable through `GET /group/spin-out/preview` gated on `group:create` and never reads past the `Tenant` row of another tenant; a shared-division transaction is named in the refused bucket and never appears carried; commit copies the carried rows into the subsidiary under a fresh `spinOutBatchId` and marks every source row `migratedToTenantId` without editing its amount, date or status; the opening allotment records the holding as an `entity` holder via `heldByTenantId`, allots a named co-holder alongside it, and issues certificates once two signatories are on the subsidiary's company profile; the subsidiary's ledger accounts open at `openingBalance: 0` with a note that the balance is to be set from the transfer of funds; a scoped read as the holding tenant of the subsidiary's own copy of a carried transaction returns null, and the source row's `migratedToTenantId` is the only trace of what happened; revert removes exactly what the batch created and clears the sources' `migratedToTenantId`, and refuses once the subsidiary carries a row the batch did not create |
 | **EQT-FIL** Equity portal — Phase 6c group-dependent statutory exports (AOC-1, BEN) | 5 | The AOC-1 export's Part A carries each subsidiary's share capital (snapshot cap table × face value) and the parent's issued/fully-diluted % from the structure edge, and reads `not published` — never `0` — for reserves and profit after tax, which the books carry nowhere; a tenant with no subsidiary snapshots gets a 200 with an empty Part A and the stated note; a person whose look-through into a subsidiary reaches ten percent (direct in the subsidiary plus their own direct stake in the holding times the holding's own stake in the subsidiary) appears as a BEN candidate with the one-hop chain and the direct/indirect split, reusing `groupHolders()`'s own look-through arithmetic rather than recomputing it; a subsidiary whose own register carries the holding as an entity holder at ten percent or more names that company under BEN-2 and lists no individuals, entirely from its own cap table with no cross-tenant read; `EX-EQT-011` is raised once per candidate (unique on holder key) across a repeated computation and is resolved by `recordFiling('BEN-2')` naming that holder key; a source grep confirms `domains/group.ts`'s AOC-1/BEN sections call no `unscopedPrisma` |
+| **Course-sale invoicing** | 15 | A course's tenure-based fee plans and add-ons replace wholesale on edit, the same as its flat fee; two fee plans cannot name the same tenure; a course line billed as quantity=tenure prices through the ordinary gross/discount/tax arithmetic with no special case, and an add-on split across the tenure comes to its full price before discount; an add-on not belonging to the course, or a retired one, is refused; the printed ledger is absent with no enrollment date and present with one, naming the payment-due schedule and, per line, the monthly fee, tenure, effective-monthly-after-discount and a CGST/SGST/IGST split that lands wholly on IGST inter-state and splits evenly intra-state; the schedule itself — due three days after enrolling, then the 1st of the month, pushed a further month inside the fourteen-day rule — is right with no database |
 
 ## The browser suite
 
@@ -194,3 +196,24 @@ accepts sixteen. `KIPL/I/26-27/001` is exactly sixteen, which is why the short
 year is the default — and the Company details screen prints the length beside
 the next number so this is seen before the first invoice rather than at the
 filing deadline.
+
+## Compliance
+
+The compliance workstreams (`docs/plan/compliance.md`) each carry their own
+requirement IDs and the test file that pins them, in `src/tests/compliance/`:
+
+| Workstream | Requirements | Tests | Notes |
+|---|---|---|---|
+| A. Calendar | CMP-CAL-001 … 003 | `calendar.test.ts` | [docs/compliance/calendar.md](compliance/calendar.md) |
+| B. GST | CMP-GST-001 … 004 | `gst.test.ts` | [docs/compliance/gst.md](compliance/gst.md) |
+| C. Income tax and TDS | CMP-TDS-001 … 003 | `tax.test.ts` | [docs/compliance/tax.md](compliance/tax.md) |
+| D. Books and audit | CMP-AUD-001 … 003 | `books.test.ts` | [docs/compliance/books.md](compliance/books.md) |
+| E. Payroll statutory | CMP-PAY-001 … 005 | `payroll.test.ts` | [docs/compliance/payroll.md](compliance/payroll.md) |
+| F. Labour and conduct | CMP-LAB-001 … 004 | `labour.test.ts` | [docs/compliance/labour.md](compliance/labour.md) |
+| G. Data protection | CMP-DPD-001 … 004 | `privacy.test.ts` | [docs/compliance/privacy.md](compliance/privacy.md) |
+| H. Corporate and security | CMP-COR-001 … 004 | `corporate.test.ts` | [docs/compliance/corporate.md](compliance/corporate.md) |
+
+Two things the suite pins that the plan did not name: every `AuditRecord` is a
+link in a per-tenant hash chain, verified by recomputing each row from its
+stored content; and the register exports, the payslip, the debit note, the
+refund and the certificate are documents that are final once issued.

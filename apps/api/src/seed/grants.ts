@@ -120,13 +120,22 @@ export const ALL_RESOURCES = [
   // Equity & board (phase 0 declares them; §3.4 fills in the cells; phase 1
   // ships the screens). Kept in lockstep with RESOURCES in
   // `@kaizen/shared/permissions.ts` — a test asserts the two lists agree.
-  'cap_table', 'share_classes', 'holders', 'share_ledger', 'certificates',
+  'cap_table', 'share_classes', 'holders', 'share_ledger', 'share_certificates',
   'valuations', 'entity_documents', 'board_meetings', 'resolutions',
   'board_documents', 'compliance', 'group', 'holdings',
   // Rounds, instruments, valuations, scenarios (phase 4).
   'rounds',
   // ESOP (phase 5).
   'esop_plans', 'option_grants',
+  // Compliance (docs/plan/compliance.md), one group per workstream.
+  'compliance_obligations',                                   // A
+  'debit_notes', 'einvoicing',                                // B
+  'tds', 'tax_filings',                                       // C
+  'accounting_periods',                                       // D
+  'rate_tables', 'payslips', 'salary_structures',             // E
+  'holidays', 'posh_cases', 'disciplinary_cases', 'hr_letters', 'statutory_registers', // F
+  'consents', 'data_requests', 'breaches', 'privacy_notices', // G
+  'board_resolutions', 'corporate_registers', 'refunds', 'certificates', 'security_settings', // H
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */
@@ -219,7 +228,7 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'share_classes', cell: '-' },
   { resource: 'holders', cell: '-' },
   { resource: 'share_ledger', cell: '-' },
-  { resource: 'certificates', cell: '-' },
+  { resource: 'share_certificates', cell: '-' },
   { resource: 'valuations', cell: '-' },
   { resource: 'entity_documents', cell: '-' },
   { resource: 'board_meetings', cell: '-' },
@@ -236,6 +245,33 @@ const hrOpsManager: GrantSpec[] = [
   // create or close a scheme, and never approves its own proposal.
   { resource: 'esop_plans', cell: 'V@all' },
   { resource: 'option_grants', cell: 'VC@all' },
+  // ---- Compliance ---------------------------------------------------------
+  // Sees the calendar; the money-side obligations are filed by Finance.
+  { resource: 'compliance_obligations', cell: 'V' },
+  { resource: 'debit_notes', cell: '-' },
+  { resource: 'einvoicing', cell: '-' },
+  { resource: 'tds', cell: '-' },
+  { resource: 'tax_filings', cell: '-' },
+  { resource: 'accounting_periods', cell: '-' },
+  { resource: 'rate_tables', cell: 'V' },
+  // Prepares payslips and salary structures; Finance approves them, as with payroll.
+  { resource: 'payslips', cell: 'VCEX' },
+  { resource: 'salary_structures', cell: 'VCEDXF' },
+  { resource: 'holidays', cell: 'VCED' },
+  // POSH and disciplinary cases are the people function's and the chairman's.
+  { resource: 'posh_cases', cell: 'VCE' },
+  { resource: 'disciplinary_cases', cell: 'VCE' },
+  { resource: 'hr_letters', cell: 'VCEX' },
+  { resource: 'statutory_registers', cell: 'VX' },
+  { resource: 'consents', cell: 'VCE' },
+  { resource: 'data_requests', cell: 'VCE' },
+  { resource: 'breaches', cell: 'VCE' },
+  { resource: 'privacy_notices', cell: 'V' },
+  { resource: 'board_resolutions', cell: '-' },
+  { resource: 'corporate_registers', cell: 'V' },
+  { resource: 'refunds', cell: '-' },
+  { resource: 'certificates', cell: 'VCEX' },
+  { resource: 'security_settings', cell: '-' },
 ];
 
 /**
@@ -355,6 +391,32 @@ const financeHead: GrantSpec[] = [
   // grant, so the approver is never also the proposer by construction.
   { resource: 'option_grants', cell: 'V,approve@all' },
   { resource: 'esop_plans', cell: 'V,approve@all' },
+  // ---- Compliance ---------------------------------------------------------
+  // Owns the calendar and files what is money: `approve` is the filing itself.
+  { resource: 'compliance_obligations', cell: 'VCEDX,approve' },
+  { resource: 'debit_notes', cell: 'VCEDAXF' },
+  { resource: 'einvoicing', cell: 'VCEXF' },
+  { resource: 'tds', cell: 'VCEDXF,approve' },
+  { resource: 'tax_filings', cell: 'VCEDXF,approve' },
+  { resource: 'accounting_periods', cell: 'VCE,approve' },
+  { resource: 'rate_tables', cell: 'VCEX' },
+  // Approves what HR prepares. No `create`: the signatory does not author.
+  { resource: 'payslips', cell: 'VXF,approve' },
+  { resource: 'salary_structures', cell: 'VXF,approve' },
+  { resource: 'holidays', cell: 'V' },
+  { resource: 'posh_cases', cell: '-' },
+  { resource: 'disciplinary_cases', cell: '-' },
+  { resource: 'hr_letters', cell: '-' },
+  { resource: 'statutory_registers', cell: 'VX' },
+  { resource: 'consents', cell: 'V' },
+  { resource: 'data_requests', cell: 'V' },
+  { resource: 'breaches', cell: 'VCE' },
+  { resource: 'privacy_notices', cell: 'V' },
+  { resource: 'board_resolutions', cell: 'V' },
+  { resource: 'corporate_registers', cell: 'VX' },
+  { resource: 'refunds', cell: 'VCEDAXF,approve' },
+  { resource: 'certificates', cell: 'V' },
+  { resource: 'security_settings', cell: '-' },
 ];
 
 /**
@@ -388,6 +450,14 @@ const employee: GrantSpec[] = [
   // find out who your colleagues are is not a nicer place to work.
   { resource: 'people', cell: 'V@all' },
   { resource: 'offerings', cell: 'V@all' },
+
+  // ---- Compliance: their own payslip, consents and requests; the holiday list. ----
+  { resource: 'payslips', cell: 'VF@own' },
+  { resource: 'consents', cell: 'V@own' },
+  { resource: 'data_requests', cell: 'VC@own' },
+  { resource: 'hr_letters', cell: 'V@own' },
+  { resource: 'holidays', cell: 'V@all' },
+  { resource: 'privacy_notices', cell: 'V@all' },
 
   // ---- Billing a customer at the counter ---------------------------------
   //
@@ -433,8 +503,18 @@ const employee: GrantSpec[] = [
   // Raising an invoice is not filing a return, and reading the class register
   // is not raising an invoice. Both stay out.
   { resource: 'gst_filings', cell: '-' },
-  { resource: 'company_profile', cell: '-' },
-  { resource: 'education', cell: '-' },
+  // View only — not the settings screen, just enough to print the supplier
+  // block (legal name, GSTIN, address) on the invoice they are about to hand
+  // over. An issued invoice already carries all of this, so an employee could
+  // always see it after the fact; this just lets them see it before, while
+  // they are still filling the form in.
+  { resource: 'company_profile', cell: 'V' },
+  // Create only, not view: putting a walk-in on a course is how a counter
+  // enrolment and its invoice come to exist at all — `enrolStudent`, which
+  // `courses:assign` and the counter's own invoice flow both call, checks
+  // exactly this. The class register itself (attendance, progress, another
+  // trainer's batch) stays out, which is what `view` would open.
+  { resource: 'education', cell: 'C' },
   { resource: 'receivables', cell: '-' },
 
   // The register and the board are somebody else's employment relationship,
@@ -443,7 +523,7 @@ const employee: GrantSpec[] = [
   { resource: 'share_classes', cell: '-' },
   { resource: 'holders', cell: '-' },
   { resource: 'share_ledger', cell: '-' },
-  { resource: 'certificates', cell: '-' },
+  { resource: 'share_certificates', cell: '-' },
   { resource: 'valuations', cell: '-' },
   { resource: 'entity_documents', cell: '-' },
   { resource: 'board_meetings', cell: '-' },
@@ -476,7 +556,7 @@ const employee: GrantSpec[] = [
 
 const shareholder: GrantSpec[] = [
   { resource: 'holdings', cell: 'V@own' },
-  { resource: 'certificates', cell: 'V@own' },
+  { resource: 'share_certificates', cell: 'V@own' },
   // A shareholder-facing document set is company-wide once granted — the
   // narrowing that matters is `entity_documents.audience`, not tenancy — so
   // this is `@all` on purpose, the same shape `courses:V@all` already takes
@@ -518,7 +598,7 @@ const companySecretary: GrantSpec[] = [
   { resource: 'holders', cell: 'VCE@all' },
   // The ledger is append-only: `create` proposes a transaction, never `edit`.
   { resource: 'share_ledger', cell: 'VC@all' },
-  { resource: 'certificates', cell: 'VC@all' },
+  { resource: 'share_certificates', cell: 'VC@all' },
   { resource: 'board_meetings', cell: 'VCE@all' },
   { resource: 'resolutions', cell: 'VCE@all' },
   // `X` (export) added in phase 6a: MGT-1/MGT-2/PAS-3 are downloads.
