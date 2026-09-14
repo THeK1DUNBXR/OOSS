@@ -237,9 +237,17 @@
      shadow on its own trailing edge separates it from the canvas instead of a
      hard 3px rule. The values are literal rather than scale tokens because the
      `ink` scale points at paper. */
+  /* Bolder pass: every other floating surface in this system (.glass — the
+     modal, the dropdowns, the mobile drawer) commits to the full weight of
+     `shadow-glass`. The sidebar carries the same material but, sitting
+     in-flow with nothing behind it to blur, had been the one surface still
+     wearing a soft, barely-there edge — quietly opting out of the system's
+     own strongest depth statement instead of the confidently floating panel
+     it actually is. Same alpha and blur the glass token uses, shaped to a
+     side panel's own geometry (one edge, not four). */
   .sidebar {
     @apply relative flex h-full w-56 shrink-0 flex-col bg-[rgba(15,15,18,0.92)] text-[#c9c9ce]
-           shadow-[6px_0_24px_-8px_rgba(15,15,18,0.35)] backdrop-blur-glass;
+           shadow-[10px_0_20px_rgba(15,15,18,0.10),28px_0_60px_-12px_rgba(15,15,18,0.4)] backdrop-blur-glass;
   }
 
   .sidebar-brand {
@@ -248,7 +256,7 @@
 
   .sidebar-mark {
     @apply flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-md
-           bg-gold font-display text-base font-black text-[#0F0F12] shadow-[0_2px_8px_rgba(255,194,14,0.35)];
+           bg-gold font-display text-base font-black text-[#0F0F12] shadow-[0_4px_16px_rgba(255,194,14,0.5)];
   }
 
   .sidebar-group {
@@ -256,16 +264,26 @@
   }
 
   /* The active row's full gold fill already carries the state; no separate
-     colored rail on top of it. */
+     colored rail on top of it. Its icon is the one exception to the muted
+     stroke every other row wears (below) — full opacity, not 85%, so the
+     row that says "you are here" is unmistakably the peak of the list. */
   .sidebar-link {
     @apply flex items-center gap-2.5 rounded-full px-3 py-2
            text-[13.3px] font-semibold text-[#c9c9ce] transition-colors
            hover:bg-[#232326] hover:text-white;
   }
 
+  .sidebar-link-icon {
+    @apply opacity-85;
+  }
+
   .sidebar-link-active {
-    @apply bg-gold font-bold text-[#0F0F12] shadow-[0_2px_10px_rgba(255,194,14,0.25)]
+    @apply bg-gold font-bold text-[#0F0F12] shadow-[0_4px_20px_rgba(255,194,14,0.45)]
            hover:bg-gold hover:text-[#0F0F12];
+  }
+
+  .sidebar-link-active .sidebar-link-icon {
+    @apply opacity-100;
   }
 
   .sidebar-foot {

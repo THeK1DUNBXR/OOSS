@@ -317,7 +317,7 @@ function SidebarNav({
                       }`
                     }
                   >
-                    <span className="flex w-[18px] shrink-0 items-center justify-center opacity-85">
+                    <span className="sidebar-link-icon flex w-[18px] shrink-0 items-center justify-center">
                       <NavIcon icon={node.icon} />
                     </span>
                     <span className="truncate">{node.label}</span>

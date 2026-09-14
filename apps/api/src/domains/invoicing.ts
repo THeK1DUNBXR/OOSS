@@ -97,8 +97,17 @@ export interface InvoiceLineInput {
   enrollmentId?: string | null;
   description?: string | null;
   quantity?: number;
-  /** Price of one, before tax. Defaults to the course fee when a course is named. */
+  /** Price of one, before tax and before any discount. Defaults to the course fee when a course is named. */
   unitPrice?: number | null;
+  /**
+   * The discount on this line, as rupees or as a percentage of
+   * `unitPrice x quantity` — give either one, never both. Whichever is given
+   * decides the other: a discount amount derives its own percentage, and a
+   * percentage derives its own amount, so the two printed on the invoice can
+   * never disagree with each other. Absent or zero means no discount.
+   */
+  discountAmount?: number | null;
+  discountPercent?: number | null;
   /** Percentage. Defaults to the course's rate, else 0. */
   gstRate?: number | null;
   hsnSac?: string | null;
@@ -398,11 +407,64 @@ interface PricedLine {
   description: string;
   quantity: number;
   unitPrice: number;
+  /** unitPrice x quantity, before the discount. Not stored — recovered at read time from unitPrice and quantity. */
+  grossAmount: number;
+  /** grossAmount less the discount. The taxable value: what GST is computed on. */
   amount: number;
+  discountAmount: number;
+  discountPercent: number;
   gstRate: number;
   hsnSac: string | null;
   revenueMethod: RevenueTreatment;
   position: number;
+}
+
+/**
+ * Resolves a line's discount from whichever side of it the caller gave.
+ *
+ * A discount is one fact wearing two units, and the counter should be able to
+ * type either: "knock ₹2,000 off" or "give them 10% off". Whichever arrives,
+ * the other is derived from it against the line's own gross value, so the
+ * amount and the percentage printed on the invoice can never disagree with
+ * each other — there is exactly one number here, not two that happen to
+ * usually match.
+ */
+function resolveDiscount(
+  gross: number,
+  input: { discountAmount?: number | null; discountPercent?: number | null },
+  description: string,
+): { discountAmount: number; discountPercent: number } {
+  const hasAmount = input.discountAmount !== null && input.discountAmount !== undefined;
+  const hasPercent = input.discountPercent !== null && input.discountPercent !== undefined;
+
+  if (hasAmount && hasPercent) {
+    throw ApiError.badRequest(
+      `"${description}" was given both a discount amount and a discount percentage. Give one — the other is worked out from it.`,
+    );
+  }
+
+  if (hasAmount) {
+    const discountAmount = round2(input.discountAmount!);
+    if (discountAmount < 0) throw ApiError.badRequest(`The discount on "${description}" cannot be negative.`);
+    if (discountAmount > gross + 0.001) {
+      throw ApiError.badRequest(
+        `The discount on "${description}" (₹${discountAmount.toFixed(2)}) is more than its fee of ₹${gross.toFixed(2)}.`,
+      );
+    }
+    const discountPercent = gross > 0 ? round2((discountAmount / gross) * 100) : 0;
+    return { discountAmount, discountPercent };
+  }
+
+  if (hasPercent) {
+    const discountPercent = round2(input.discountPercent!);
+    if (discountPercent < 0 || discountPercent > 100) {
+      throw ApiError.badRequest(`The discount on "${description}" has to be a percentage between 0 and 100.`);
+    }
+    const discountAmount = round2((gross * discountPercent) / 100);
+    return { discountAmount, discountPercent };
+  }
+
+  return { discountAmount: 0, discountPercent: 0 };
 }
 
 /**
@@ -495,6 +557,12 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       throw ApiError.badRequest(`Quantity on "${description}" must be a whole number of one or more.`);
     }
 
+    // The extended value, before any discount. The line used to carry one
+    // figure and a quantity that nothing multiplied by, which is how three
+    // seats billed as one.
+    const grossAmount = round2(round2(unitPrice) * quantity);
+    const { discountAmount, discountPercent } = resolveDiscount(grossAmount, line, description);
+
     out.push({
       offeringId: line.offeringId ?? null,
       courseId,
@@ -502,9 +570,12 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       description,
       quantity,
       unitPrice: round2(unitPrice),
-      // The extended value. The line used to carry one figure and a quantity
-      // that nothing multiplied by, which is how three seats billed as one.
-      amount: round2(round2(unitPrice) * quantity),
+      grossAmount,
+      // The taxable value: the gross fee less the discount. This, not the
+      // gross figure, is what GST is computed on and what the customer owes.
+      amount: round2(grossAmount - discountAmount),
+      discountAmount,
+      discountPercent,
       gstRate: round2(gstRate ?? 0),
       hsnSac,
       revenueMethod,
@@ -678,6 +749,8 @@ async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
         quantity: line.quantity,
         unitPrice: line.unitPrice,
         amount: line.amount,
+        discountAmount: line.discountAmount,
+        discountPercent: line.discountPercent,
         gstRate: line.gstRate,
         // Per line, because an invoice carrying an 18% service and a 5% good
         // cannot be described by one rate.
@@ -737,6 +810,7 @@ export async function updateInvoice(
         description: l.description,
         quantity: l.quantity,
         unitPrice: num(l.unitPrice) || num(l.amount) || 0,
+        discountAmount: num(l.discountAmount) || null,
         gstRate: num(l.gstRate),
         hsnSac: l.hsnSac,
       })),
@@ -1385,7 +1459,16 @@ export async function invoiceDocument(invoiceId: string) {
       hsnSac: l.hsnSac,
       quantity: l.quantity,
       unitPrice: num(l.unitPrice) || round2((num(l.amount) ?? 0) / Math.max(l.quantity, 1)),
+      // The taxable value, after the line's own discount — what tax is charged
+      // on and what this line is actually billed at.
       amount: num(l.amount) ?? 0,
+      // What it cost before the discount. Recovered as amount + discount
+      // rather than unitPrice x quantity, so the three figures printed on the
+      // invoice — fee, discount, payable — always add up on rows raised
+      // before this column existed too (discountAmount defaults to 0 there).
+      grossAmount: round2((num(l.amount) ?? 0) + (num(l.discountAmount) ?? 0)),
+      discountAmount: num(l.discountAmount) ?? 0,
+      discountPercent: num(l.discountPercent) ?? 0,
       gstRate: num(l.gstRate) ?? 0,
       taxAmount: num(l.taxAmount) ?? 0,
       revenueMethod: l.revenueMethod,

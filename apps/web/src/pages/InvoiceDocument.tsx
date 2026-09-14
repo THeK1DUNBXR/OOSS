@@ -58,6 +58,9 @@ export function InvoiceDocument() {
   const d = data;
   const paymentLabel = PAYMENT_TYPE_LABELS[d.payment.type as PaymentType] ?? d.payment.type;
   const modeLabel = d.payment.mode ? (PAYMENT_MODE_LABELS[d.payment.mode as PaymentMode] ?? d.payment.mode) : null;
+  // A discount column is only worth the ink when at least one line actually
+  // carries one — an invoice with none should not print a column of dashes.
+  const hasDiscount = d.lines.some((l) => l.discountAmount > 0);
 
   return (
     <Sheet
@@ -207,6 +210,12 @@ export function InvoiceDocument() {
             <th>HSN/SAC</th>
             <th className="num">Qty</th>
             <th className="num">Rate</th>
+            {hasDiscount && (
+              <>
+                <th className="num">Course fee</th>
+                <th className="num">Discount</th>
+              </>
+            )}
             <th className="num">Amount</th>
             <th className="num">GST %</th>
             <th className="num">Tax</th>
@@ -228,6 +237,16 @@ export function InvoiceDocument() {
               <td>{line.hsnSac ?? '—'}</td>
               <td className="num">{line.quantity}</td>
               <td className="num">{rupees(line.unitPrice)}</td>
+              {hasDiscount && (
+                <>
+                  <td className="num">{rupees(line.grossAmount)}</td>
+                  <td className="num">
+                    {line.discountAmount > 0
+                      ? `${rupees(line.discountAmount)} (${line.discountPercent}%)`
+                      : '—'}
+                  </td>
+                </>
+              )}
               <td className="num">{rupees(line.amount)}</td>
               <td className="num">{line.gstRate}%</td>
               <td className="num">{rupees(line.taxAmount)}</td>

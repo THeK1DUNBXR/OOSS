@@ -55,6 +55,7 @@ import {
   listOrgUnits, createOrgUnit, listJobs, createJob,
   listPositions, createPosition, transitionPosition,
   listEmployments, getEmployment, hire, transitionEmployment, setConfirmationState,
+  updateEmployeeProfile, redactRegulatedEmploymentFields,
   proposeAssignment, transitionAssignment,
   proposeCompensation, transitionCompensation, currentCompensation,
   transitionOnboarding, transitionOffboarding,
@@ -220,14 +221,7 @@ router.get(
     const pay = money ? await currentCompensation(e.id) : null;
 
     return {
-      ...e,
-      // Statutory identifiers are `regulated` and are structurally excluded
-      // from the projection rather than nulled — a null still announces that
-      // something is being withheld about this person.
-      person: { ...e.person, nationalId: undefined },
-      panNumber: undefined,
-      aadhaarReference: undefined,
-      uanNumber: undefined,
+      ...redactRegulatedEmploymentFields(e),
       // Whether the viewer may see pay at all, kept separate from whether
       // there is any. A single null would conflate "withheld from you" with
       // "this person has no pay record", and the second is a problem somebody
@@ -238,6 +232,27 @@ router.get(
       onboardingTransitions: e.onboarding ? onboardingMachine.allowedEvents(e.onboarding.status as never) : [],
       offboardingTransitions: e.offboarding ? offboardingMachine.allowedEvents(e.offboarding.status as never) : [],
     };
+  }),
+);
+
+/**
+ * A correction to what the staff-list import wrote for this person — their
+ * name, phone, email, date of birth. Everything else on the employment
+ * itself moves through its own transition endpoint below, or is regulated
+ * and never reaches here at all.
+ */
+router.patch(
+  '/employees/:id',
+  handler(async (req) => {
+    const body = z
+      .object({
+        fullName: z.string().min(1).optional(),
+        primaryPhone: z.string().nullish(),
+        primaryEmail: z.string().nullish(),
+        dateOfBirth: z.string().nullish(),
+      })
+      .parse(req.body);
+    return updateEmployeeProfile(req.params.id, body);
   }),
 );
 

@@ -24,6 +24,9 @@ import {
   detectOverdueConfirmations,
   detectMissingCompensation,
   headcountByDivision,
+  updateEmployeeProfile,
+  getEmployment,
+  redactRegulatedEmploymentFields,
 } from '../domains/employment.js';
 import {
   createLeaveRequest,
@@ -252,6 +255,80 @@ describe('§14 — authority over people is held, not inherited from rank', () =
   });
 });
 
+// ===========================================================================
+// Import correction — the plain identity fields a staff-list import writes
+// and sometimes gets wrong: name, phone, email, date of birth. Nothing else
+// on the employment moves through this path; separation, confirmation and
+// pay each keep their own action.
+// ===========================================================================
+
+describe('updateEmployeeProfile corrects what a staff-list import writes on the person underneath', () => {
+  it('an edit lands on the person, refuses a viewer without employees:edit, and a bad id 404s', async () => {
+    const { employment } = await makeEmployee('profile-edit');
+
+    await asUser('hr@kaizen.co.in', async () => {
+      const updated = await updateEmployeeProfile(employment.id, {
+        fullName: 'Corrected Name',
+        primaryPhone: '9876543210',
+        primaryEmail: 'corrected@example.com',
+        dateOfBirth: '1995-06-15',
+      });
+      expect(updated.person.fullName).toBe('Corrected Name');
+      expect(updated.person.primaryPhone).toBe('9876543210');
+      expect(updated.person.primaryEmail).toBe('corrected@example.com');
+
+      const person = await prisma.person.findFirstOrThrow({ where: { id: employment.personId } });
+      expect(person.fullName).toBe('Corrected Name');
+      expect(person.primaryPhoneNormalised).toBe('9876543210');
+      expect(person.dateOfBirth?.toISOString().slice(0, 10)).toBe('1995-06-15');
+    });
+
+    // ravi holds `employees:VE@own` — self-service only, and this is somebody
+    // else's record.
+    const err = await expectReject(() =>
+      asUser('ravi@kaizen.co.in', () => updateEmployeeProfile(employment.id, { fullName: 'Should not land' })),
+    );
+    expect(err.status).toBe(403);
+
+    const missing = await expectReject(() =>
+      asUser('hr@kaizen.co.in', () => updateEmployeeProfile('does-not-exist', { fullName: 'Nobody home' })),
+    );
+    expect(missing.status).toBe(404);
+  });
+});
+
+describe('the employee-detail projection never carries a regulated field to the wire', () => {
+  it('drops bloodGroup, panNumber, aadhaarReference and uanNumber from the response shape', async () => {
+    const { employment, person } = await makeEmployee('regulated-fields');
+    await unscopedPrisma.person.update({ where: { id: person.id }, data: { bloodGroup: 'O+' } });
+    await unscopedPrisma.employmentRelationship.update({
+      where: { id: employment.id },
+      data: { panNumber: 'ABCDE1234F', aadhaarReference: 'AADHAAR-REF', uanNumber: 'UAN-123' },
+    });
+
+    const raw = await asUser('hr@kaizen.co.in', () => getEmployment(employment.id));
+    // The domain read itself still carries the regulated values — redaction
+    // is the response layer's job, not the read's.
+    expect(raw.person.bloodGroup).toBe('O+');
+
+    const redacted = redactRegulatedEmploymentFields(raw);
+    expect(redacted.person.bloodGroup).toBeUndefined();
+    expect(redacted.panNumber).toBeUndefined();
+    expect(redacted.aadhaarReference).toBeUndefined();
+    expect(redacted.uanNumber).toBeUndefined();
+
+    // The property assignments above only guarantee an `undefined` value;
+    // what actually reaches a caller is whatever JSON.stringify keeps, which
+    // is what Express serializes a response through. Round-trip it the same
+    // way to prove the keys are genuinely absent from the wire, not merely
+    // nulled — the same distinction §14 draws for every other regulated field.
+    const wire = JSON.parse(JSON.stringify(redacted));
+    expect('bloodGroup' in wire.person).toBe(false);
+    expect('panNumber' in wire).toBe(false);
+    expect('aadhaarReference' in wire).toBe(false);
+    expect('uanNumber' in wire).toBe(false);
+  });
+});
 
 // ===========================================================================
 // Scope on writes

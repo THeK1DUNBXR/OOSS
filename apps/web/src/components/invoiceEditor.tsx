@@ -71,6 +71,13 @@ interface EditorLine {
   description: string;
   quantity: string;
   unitPrice: string;
+  /**
+   * The two faces of one discount, kept in step with each other as either is
+   * typed — never both sent to the server, which would be an instruction that
+   * disagrees with itself about which figure is the true one.
+   */
+  discountPercent: string;
+  discountAmount: string;
   gstRate: string;
   hsnSac: string;
 }
@@ -81,6 +88,8 @@ const emptyLine: EditorLine = {
   description: '',
   quantity: '1',
   unitPrice: '',
+  discountPercent: '',
+  discountAmount: '',
   gstRate: '18',
   hsnSac: '',
 };
@@ -92,10 +101,19 @@ function linesFrom(invoice: InvoiceView | null): EditorLine[] {
     enrollmentId: l.enrollmentId ?? '',
     description: l.description,
     quantity: String(l.quantity ?? 1),
-    unitPrice: String(l.unitPrice ?? l.amount ?? ''),
+    // The fee before the discount, which is what the counter re-opens a draft
+    // to see and adjust — not the already-discounted amount the server stores.
+    unitPrice: String(l.unitPrice ?? round2(((l.amount ?? 0) + (l.discountAmount ?? 0)) / Math.max(l.quantity ?? 1, 1)) ?? ''),
+    discountPercent: l.discountPercent ? String(l.discountPercent) : '',
+    discountAmount: l.discountAmount ? String(l.discountAmount) : '',
     gstRate: String(l.gstRate ?? 0),
     hsnSac: l.hsnSac ?? '',
   }));
+}
+
+/** unitPrice x quantity, before any discount. */
+function grossOf(line: EditorLine): number {
+  return round2(Number(line.unitPrice || 0) * Number(line.quantity || 1));
 }
 
 export function InvoiceEditor({
@@ -222,6 +240,57 @@ export function InvoiceEditor({
   const setLine = (i: number, patch: Partial<EditorLine>) =>
     setLines((ls) => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)));
 
+  /**
+   * Typing a discount percentage derives its rupee amount off the line's own
+   * gross fee. Typing a rupee amount derives its percentage the same way.
+   * Whichever the counter typed last is the one they meant; the other field
+   * is always what falls out of it against the current fee, never a second
+   * value that could drift from the first.
+   */
+  const setDiscountPercent = (i: number, value: string) =>
+    setLines((ls) =>
+      ls.map((l, k) => {
+        if (k !== i) return l;
+        const gross = grossOf(l);
+        const pct = Math.max(0, Math.min(100, Number(value || 0)));
+        const amount = gross > 0 ? round2((gross * pct) / 100) : 0;
+        return { ...l, discountPercent: value, discountAmount: value === '' ? '' : String(amount) };
+      }),
+    );
+
+  const setDiscountAmount = (i: number, value: string) =>
+    setLines((ls) =>
+      ls.map((l, k) => {
+        if (k !== i) return l;
+        const gross = grossOf(l);
+        const amount = Math.max(0, Math.min(gross, Number(value || 0)));
+        const pct = gross > 0 ? round2((amount / gross) * 100) : 0;
+        return { ...l, discountAmount: value, discountPercent: value === '' ? '' : String(pct) };
+      }),
+    );
+
+  /**
+   * Editing the fee or the quantity moves the gross the discount is a share
+   * of. A stored rupee discount would then be a stale figure that no longer
+   * says what it claims to; re-deriving it from the last percentage the
+   * counter set keeps the two telling the same story as the fee changes under
+   * them. A line with no percentage entered yet (a bare rupee discount typed
+   * before ever touching the fee) is left as it is — there is no percentage
+   * to re-derive it from.
+   */
+  const setLineAndRepriceDiscount = (i: number, patch: Partial<EditorLine>) =>
+    setLines((ls) =>
+      ls.map((l, k) => {
+        if (k !== i) return l;
+        const next = { ...l, ...patch };
+        if (!next.discountPercent) return next;
+        const gross = grossOf(next);
+        const pct = Math.max(0, Math.min(100, Number(next.discountPercent || 0)));
+        next.discountAmount = gross > 0 ? String(round2((gross * pct) / 100)) : '0';
+        return next;
+      }),
+    );
+
   /** Choosing a course fills the line from the catalogue. */
   const pickCourse = (i: number, courseId: string) => {
     const course = courses.rows.find((c) => c.id === courseId);
@@ -234,6 +303,11 @@ export function InvoiceEditor({
       enrollmentId: '',
       description: `${course.name} (${course.code})`,
       unitPrice: course.feeAmount !== null ? String(course.feeAmount) : '',
+      // A discount is a share of a specific fee. Naming a different course
+      // means a different fee, and carrying the old discount forward would
+      // either overstate a small one or exceed the size of a large one.
+      discountPercent: '',
+      discountAmount: '',
       gstRate: String(course.gstRate ?? 18),
       hsnSac: course.hsnSac ?? '',
     });
@@ -267,7 +341,9 @@ export function InvoiceEditor({
         lines
           .filter((l) => Number(l.unitPrice) > 0)
           .map((l) => ({
-            taxableValue: round2(Number(l.unitPrice || 0) * Number(l.quantity || 1)),
+            // Taxed on what the fee actually is after its own discount, not on
+            // the pre-discount figure — the same reading the server prices from.
+            taxableValue: round2(grossOf(l) - Number(l.discountAmount || 0)),
             gstRate: Number(l.gstRate || 0),
           })),
         interState,
@@ -294,6 +370,11 @@ export function InvoiceEditor({
         description: l.description.trim() || null,
         quantity: Number(l.quantity || 1),
         unitPrice: Number(l.unitPrice),
+        // Sent as a rupee amount only, never alongside a percentage: the two
+        // are kept in step with each other client-side already, and the
+        // server refuses a line given both as an instruction that disagrees
+        // with itself about which figure is the true one.
+        discountAmount: Number(l.discountAmount || 0),
         gstRate: Number(l.gstRate || 0),
         hsnSac: l.hsnSac.trim() || null,
       })),
@@ -477,8 +558,17 @@ export function InvoiceEditor({
                 placeholder="SAP support, September"
               />
               <div className="mt-2 grid gap-2 sm:grid-cols-4">
-                <TextInput label="Qty" type="number" value={line.quantity} onChange={(v) => setLine(i, { quantity: v })} />
-                <MoneyInput label="Price each" value={line.unitPrice} onChange={(v) => setLine(i, { unitPrice: v })} />
+                <TextInput
+                  label="Qty"
+                  type="number"
+                  value={line.quantity}
+                  onChange={(v) => setLineAndRepriceDiscount(i, { quantity: v })}
+                />
+                <MoneyInput
+                  label="Price each"
+                  value={line.unitPrice}
+                  onChange={(v) => setLineAndRepriceDiscount(i, { unitPrice: v })}
+                />
                 <SelectInput
                   label="GST %"
                   value={line.gstRate}
@@ -493,11 +583,46 @@ export function InvoiceEditor({
                   hint="the return needs it"
                 />
               </div>
+              {/* The discount, either way round: type a percentage and the rupee
+                  figure follows it, or type the rupee figure and the percentage
+                  follows that — always the same one discount, never two that
+                  could disagree. */}
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <TextInput
+                  label="Discount %"
+                  type="number"
+                  value={line.discountPercent}
+                  onChange={(v) => setDiscountPercent(i, v)}
+                  placeholder="0"
+                />
+                <MoneyInput
+                  label="Discount amount"
+                  value={line.discountAmount}
+                  onChange={(v) => setDiscountAmount(i, v)}
+                  hint="either field — the other follows it"
+                />
+              </div>
               <p className="mt-1 text-right text-2xs text-ink-500">
-                Line total{' '}
-                <span className="tabular-nums text-ink-200">
-                  ₹{round2(Number(line.unitPrice || 0) * Number(line.quantity || 1)).toLocaleString('en-IN')}
-                </span>
+                {Number(line.discountAmount || 0) > 0 ? (
+                  <>
+                    Course fee{' '}
+                    <span className="tabular-nums text-ink-400 line-through">
+                      ₹{grossOf(line).toLocaleString('en-IN')}
+                    </span>{' '}
+                    − discount{' '}
+                    <span className="tabular-nums text-ink-400">
+                      ₹{Number(line.discountAmount || 0).toLocaleString('en-IN')}
+                    </span>{' '}
+                    = payable{' '}
+                    <span className="tabular-nums text-ink-200">
+                      ₹{round2(grossOf(line) - Number(line.discountAmount || 0)).toLocaleString('en-IN')}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Line total <span className="tabular-nums text-ink-200">₹{grossOf(line).toLocaleString('en-IN')}</span>
+                  </>
+                )}
               </p>
             </div>
           ))}

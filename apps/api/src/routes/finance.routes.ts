@@ -52,6 +52,9 @@ const lineSchema = z.object({
   description: z.string().nullish(),
   quantity: z.number().int().positive().optional(),
   unitPrice: z.number().nonnegative().nullish(),
+  /** Give one, never both — the other is derived from it. */
+  discountAmount: z.number().nonnegative().nullish(),
+  discountPercent: z.number().min(0).max(100).nullish(),
   gstRate: z.number().min(0).max(100).nullish(),
   hsnSac: z.string().nullish(),
 });
@@ -184,6 +187,8 @@ router.get(
           quantity: l.quantity,
           unitPrice: money ? num(l.unitPrice) : null,
           amount: money ? num(l.amount) : null,
+          discountAmount: money ? num(l.discountAmount) : null,
+          discountPercent: money ? num(l.discountPercent) : null,
           gstRate: num(l.gstRate),
           taxAmount: money ? num(l.taxAmount) : null,
           hsnSac: l.hsnSac,

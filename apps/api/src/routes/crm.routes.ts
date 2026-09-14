@@ -33,6 +33,9 @@ import {
   computeRelationshipStatus,
   reclassifyOrganization,
   setOrganizationRoles,
+  updateOrganization,
+  updateAccount,
+  updateInstitutionProfile,
 } from '../domains/organizations.js';
 import {
   createStudent,
@@ -462,6 +465,25 @@ router.post(
   }),
 );
 
+/**
+ * A plain correction to a body's own fields. Not `roles` (its own `PUT
+ * .../roles`) and not `kind` (`POST .../reclassify`) — both live below. Both
+ * routes resolve to the same function because `updateOrganization` checks the
+ * grant for the row's actual kind, exactly like the two GET routes above
+ * already share `assembleOrganization360`: calling the wrong path on the
+ * wrong kind still resolves correctly.
+ */
+const bodyUpdateSchema = bodySchema.partial().pick({ name: true, website: true, tags: true, ownerPartyId: true });
+
+router.patch(
+  '/organizations/:id',
+  handler(async (req) => updateOrganization(req.params.id, bodyUpdateSchema.parse(req.body))),
+);
+router.patch(
+  '/institutions/:id',
+  handler(async (req) => updateOrganization(req.params.id, bodyUpdateSchema.parse(req.body))),
+);
+
 /** What a body does with us. An ordinary edit, unlike changing what it is. */
 router.put(
   '/organizations/:id/roles',
@@ -487,9 +509,21 @@ router.post(
   handler(async (req) => attachAccount(req.params.id, accountSchema.parse(req.body))),
 );
 
+/** A correction to billing detail already on file — attach one first if there is none yet. */
+router.patch(
+  '/organizations/:id/account',
+  handler(async (req) => updateAccount(req.params.id, accountSchema.partial().parse(req.body))),
+);
+
 router.post(
   '/institutions/:id/school-details',
   handler(async (req) => attachInstitutionProfile(req.params.id, institutionProfileSchema.parse(req.body))),
+);
+
+/** A correction to school or college detail already on file — attach it first if there is none yet. */
+router.patch(
+  '/institutions/:id/school-details',
+  handler(async (req) => updateInstitutionProfile(req.params.id, institutionProfileSchema.partial().parse(req.body))),
 );
 
 router.delete('/organizations/:id/account', handler(async (req) => detachAccount(req.params.id)));

@@ -335,6 +335,116 @@ describe('an invoice is priced when it is raised', () => {
   });
 });
 
+describe('a line discount goes either way, and tax follows what it actually cost', () => {
+  it('takes a rupee discount off the fee and taxes what is left', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const invoice = await createInvoice({
+        organizationId: await anAccount(),
+        placeOfSupply: '33',
+        lines: [{ description: 'Course fee', unitPrice: 60_000, gstRate: 18, discountAmount: 6_000 }],
+      });
+
+      const line = invoice.lines[0];
+      expect(Number(line.amount.toString())).toBe(54_000);
+      expect(Number(line.discountAmount.toString())).toBe(6_000);
+      // 6,000 of 60,000 — worked out from the amount, not asked for separately.
+      expect(Number(line.discountPercent.toString())).toBe(10);
+      expect(Number(invoice.taxableValue.toString())).toBe(54_000);
+      // 18% of 54,000, halved: 4,860 each side, not 5,400 — the discount has
+      // to actually reach the tax, or the customer is charged GST on money
+      // they were never billed.
+      expect(Number(invoice.cgstAmount.toString())).toBe(4_860);
+      expect(Number(invoice.sgstAmount.toString())).toBe(4_860);
+    });
+  });
+
+  it('takes a percentage off the fee and works out the same rupee figure', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const invoice = await createInvoice({
+        organizationId: await anAccount(),
+        placeOfSupply: '33',
+        lines: [{ description: 'Course fee', unitPrice: 50_000, gstRate: 18, discountPercent: 20 }],
+      });
+
+      const line = invoice.lines[0];
+      expect(Number(line.discountAmount.toString())).toBe(10_000);
+      expect(Number(line.discountPercent.toString())).toBe(20);
+      expect(Number(line.amount.toString())).toBe(40_000);
+      expect(Number(invoice.taxableValue.toString())).toBe(40_000);
+    });
+  });
+
+  it('refuses a line given both a discount amount and a discount percentage', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const err = await expectReject(async () =>
+        createInvoice({
+          organizationId: await anAccount(),
+          lines: [
+            { description: 'x', unitPrice: 1_000, discountAmount: 100, discountPercent: 10 },
+          ],
+        }),
+      );
+      expect(err.message).toMatch(/both a discount amount and a discount percentage/);
+    });
+  });
+
+  it('refuses a discount bigger than the fee it is off', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const err = await expectReject(async () =>
+        createInvoice({
+          organizationId: await anAccount(),
+          lines: [{ description: 'x', unitPrice: 1_000, discountAmount: 1_500 }],
+        }),
+      );
+      expect(err.message).toMatch(/more than its fee/);
+    });
+  });
+
+  it('refuses a discount percentage outside 0 to 100', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const err = await expectReject(async () =>
+        createInvoice({
+          organizationId: await anAccount(),
+          lines: [{ description: 'x', unitPrice: 1_000, discountPercent: 150 }],
+        }),
+      );
+      expect(err.message).toMatch(/between 0 and 100/);
+    });
+  });
+
+  it('prints the fee before the discount, the discount, and what it was actually billed at', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const invoice = await createInvoice({
+        organizationId: await anAccount(),
+        placeOfSupply: '33',
+        lines: [{ description: 'Course fee', unitPrice: 60_000, gstRate: 18, discountAmount: 6_000 }],
+      });
+      const doc = await invoiceDocument(invoice.id);
+      const line = doc.lines[0];
+      expect(line.grossAmount).toBe(60_000);
+      expect(line.discountAmount).toBe(6_000);
+      expect(line.discountPercent).toBe(10);
+      expect(line.amount).toBe(54_000);
+      // The gross and the discount always reconcile to what was billed, on
+      // this document and on any invoice raised before the column existed.
+      expect(round2(line.grossAmount - line.discountAmount)).toBe(line.amount);
+    });
+  });
+
+  it('has no discount at all when none is given, on an ordinary line', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const invoice = await createInvoice({
+        organizationId: await anAccount(),
+        lines: [{ description: 'No discount', unitPrice: 1_000, gstRate: 18 }],
+      });
+      const line = invoice.lines[0];
+      expect(Number(line.discountAmount.toString())).toBe(0);
+      expect(Number(line.discountPercent.toString())).toBe(0);
+      expect(Number(line.amount.toString())).toBe(1_000);
+    });
+  });
+});
+
 describe('a draft is editable and an issued tax invoice is not', () => {
   it('reprices the whole invoice when a draft is rewritten', async () => {
     await asUser('latha@kaizen.co.in', async () => {

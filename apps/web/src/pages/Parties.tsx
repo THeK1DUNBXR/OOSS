@@ -15,7 +15,7 @@
  * `BodyDetail` serves both: one record, shown according to what it is.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -298,6 +298,7 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
   const { id } = useParams<{ id: string }>();
   const { can } = useSession();
   const [adding, setAdding] = useState<'billing' | 'school' | null>(null);
+  const [editingBase, setEditingBase] = useState(false);
   const endpoint = kind === 'institution' ? 'institutions' : 'organizations';
 
   const { data, isLoading, error } = useQuery({
@@ -312,11 +313,22 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
     enabled: Boolean(id),
   });
 
+  const org = data?.organization;
+
+  // A fresh object every render would reset whatever somebody is mid-typing
+  // in the edit form each time this page re-renders for an unrelated reason,
+  // so this is only rebuilt when the record itself actually changes.
+  const institutionForEdit = useMemo(
+    () =>
+      org
+        ? { id: org.id, name: org.name, website: org.website, institutionProfile: data?.institutionProfile ?? null }
+        : null,
+    [org, data?.institutionProfile],
+  );
+
   if (isLoading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   if (!data) return null;
-
-  const org = data.organization;
 
   return (
     <div>
@@ -325,27 +337,44 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
         subtitle={<span className="mono">{org.recordCode}</span>}
         actions={
           <>
+            {can(`${endpoint}:E`) && (
+              <button className="btn-ghost" onClick={() => setEditingBase(true)}>Edit</button>
+            )}
             {!data.account && can(`${endpoint}:C`) && (
               <button className="btn-ghost" onClick={() => setAdding('billing')}>How we bill them</button>
+            )}
+            {data.account && can(`${endpoint}:E`) && (
+              <button className="btn-ghost" onClick={() => setAdding('billing')}>Edit billing</button>
             )}
             {kind === 'institution' && !data.institutionProfile && can('institutions:C') && (
               <button className="btn-ghost" onClick={() => setAdding('school')}>What kind of place it is</button>
             )}
+            {kind === 'institution' && data.institutionProfile && can('institutions:E') && (
+              <button className="btn-ghost" onClick={() => setAdding('school')}>Edit school details</button>
+            )}
           </>
         }
       />
+
+      {kind === 'institution' ? (
+        <NewInstitution open={editingBase} onClose={() => setEditingBase(false)} institution={institutionForEdit} />
+      ) : (
+        <NewOrganization open={editingBase} onClose={() => setEditingBase(false)} organization={org} />
+      )}
 
       <AddBillingDetails
         open={adding === 'billing'}
         organizationId={id!}
         name={org.name}
         queryKey={endpoint}
+        existing={data.account}
         onClose={() => setAdding(null)}
       />
       <AddSchoolDetails
         open={adding === 'school'}
         organizationId={id!}
         name={org.name}
+        existing={data.institutionProfile}
         onClose={() => setAdding(null)}
       />
 

@@ -47,10 +47,12 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
+import { auditWrite } from '../platform/audit.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
 import { assertEmploymentVisible } from '../platform/recordScope.js';
+import { normalisePhone, normaliseEmail } from './identity.js';
 
 // ---------------------------------------------------------------------------
 // Org structure
@@ -212,6 +214,32 @@ export async function getEmployment(id: string) {
   });
   if (!employment) throw ApiError.notFound('Employment relationship');
   return employment;
+}
+
+/**
+ * Strips every field classified `regulated` from an employment record before
+ * it reaches a response: the statutory identifiers on the employment itself
+ * (PAN, Aadhaar, UAN) and, on the person underneath, `bloodGroup` — health
+ * data under the DPDP Act. Structurally excluded rather than nulled, per the
+ * schema's own documentation for these fields: a null still announces that
+ * something is being withheld, and the exclusion contract calls for absence
+ * from the response shape entirely.
+ */
+export function redactRegulatedEmploymentFields<
+  T extends {
+    panNumber?: unknown;
+    aadhaarReference?: unknown;
+    uanNumber?: unknown;
+    person: { bloodGroup?: unknown };
+  },
+>(employment: T): T {
+  return {
+    ...employment,
+    panNumber: undefined,
+    aadhaarReference: undefined,
+    uanNumber: undefined,
+    person: { ...employment.person, bloodGroup: undefined },
+  };
 }
 
 /**
@@ -481,6 +509,71 @@ export async function setConfirmationState(id: string, state: string, note?: str
   });
 
   return updated;
+}
+
+export interface EmployeeProfileInput {
+  fullName?: string;
+  primaryPhone?: string | null;
+  primaryEmail?: string | null;
+  dateOfBirth?: string | null;
+}
+
+/**
+ * The underlying person's plain identity fields — name, phone, email, date of
+ * birth. Deliberately narrow: everything else on `EmploymentRelationship` is
+ * governed by its own lifecycle transition (`transitionEmployment`,
+ * `setConfirmationState`) or is `regulated` and structurally excluded from
+ * every projection (PAN, Aadhaar, UAN; `Person.bloodGroup`). This is the
+ * correction path for exactly what a staff-list import writes and sometimes
+ * gets wrong, and nothing more.
+ */
+export async function updateEmployeeProfile(employmentId: string, input: EmployeeProfileInput) {
+  const auth = currentAuth();
+  // Coarse first, so a caller holding no grant at all is refused before the
+  // lookup and the id cannot be used as an existence oracle.
+  await assertCan({ resource: 'employees', verb: 'edit' });
+
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { id: employmentId, tenantId: auth.tenantId },
+    include: { person: true },
+  });
+  if (!employment) throw ApiError.notFound('Employment relationship');
+
+  // Then again against whose record this is. `employees:edit` is held at
+  // `@own` by the employee role, and the WHERE axis only narrows a scope when
+  // a record is actually supplied — without this, self-service would let
+  // anybody rewrite a colleague's name, phone or email.
+  await assertCan({ resource: 'employees', verb: 'edit', record: { ownerPartyId: employment.personId } });
+
+  const before = {
+    fullName: employment.person.fullName,
+    primaryPhone: employment.person.primaryPhone,
+    primaryEmail: employment.person.primaryEmail,
+  };
+
+  const updated = await prisma.person.update({
+    where: { id: employment.personId },
+    data: {
+      ...(input.fullName !== undefined ? { fullName: input.fullName } : {}),
+      ...(input.primaryPhone !== undefined
+        ? { primaryPhone: input.primaryPhone, primaryPhoneNormalised: normalisePhone(input.primaryPhone) }
+        : {}),
+      ...(input.primaryEmail !== undefined
+        ? { primaryEmail: input.primaryEmail, primaryEmailNormalised: normaliseEmail(input.primaryEmail) }
+        : {}),
+      ...(input.dateOfBirth !== undefined ? { dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : null } : {}),
+    },
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'person',
+    subjectId: employment.personId,
+    before,
+    after: { fullName: updated.fullName, primaryPhone: updated.primaryPhone, primaryEmail: updated.primaryEmail },
+  });
+
+  return getEmployment(employmentId);
 }
 
 // ---------------------------------------------------------------------------
