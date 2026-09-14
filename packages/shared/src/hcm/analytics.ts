@@ -184,3 +184,41 @@ export function distribution<T, B extends string>(values: T[], buckets: readonly
   for (const v of values) out[bucketOf(v)] += 1;
   return out;
 }
+
+/** As a list of `{ bucket, count }` in bucket order, rather than a keyed record — the shape a bar chart wants. */
+export function distributionList<T, B extends string>(values: T[], buckets: readonly B[], bucketOf: (v: T) => B): Array<{ bucket: B; count: number }> {
+  const byBucket = distribution(values, buckets, bucketOf);
+  return buckets.map((bucket) => ({ bucket, count: byBucket[bucket] }));
+}
+
+// ---------------------------------------------------------------------------
+// Compa-ratio buckets (WS7 `PayGrade` vs. an employment's current CTC)
+// ---------------------------------------------------------------------------
+
+export const COMP_RATIO_BUCKETS = ['<80%', '80-95%', '95-110%', '110-120%', '>120%'] as const;
+export type CompRatioBucket = (typeof COMP_RATIO_BUCKETS)[number];
+
+/** `ratio` is current CTC ÷ grade midpoint, e.g. 0.95 for 95%. */
+export function compRatioBucket(ratio: number): CompRatioBucket {
+  const pct = ratio * 100;
+  if (pct < 80) return '<80%';
+  if (pct < 95) return '80-95%';
+  if (pct < 110) return '95-110%';
+  if (pct < 120) return '110-120%';
+  return '>120%';
+}
+
+// ---------------------------------------------------------------------------
+// Open-case SLA buckets (WS9 `HrCase`)
+// ---------------------------------------------------------------------------
+
+export const SLA_BUCKETS = ['Breached', 'Due today', 'Due this week', 'On track'] as const;
+export type SlaBucket = (typeof SLA_BUCKETS)[number];
+
+/** `daysToDue` is calendar days until an open case's SLA deadline — negative once it has passed. */
+export function slaBucket(daysToDue: number): SlaBucket {
+  if (daysToDue < 0) return 'Breached';
+  if (daysToDue < 1) return 'Due today';
+  if (daysToDue < 7) return 'Due this week';
+  return 'On track';
+}

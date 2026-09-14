@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, dateTime, money, relative } from '../../lib/api.js';
+import { useSession } from '../../lib/session.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
 import { CreateModal, messageOf, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 
@@ -210,6 +211,7 @@ interface PayItem {
 }
 
 function PayItemsTab() {
+  const { can } = useSession();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ code: '', name: '', kind: 'earning' as string, glAccountCode: '', taxable: true, statutoryBasis: false });
@@ -224,7 +226,7 @@ function PayItemsTab() {
     <Card
       title="Pay items"
       subtitle="The components pay is built from — earnings, deductions, reimbursements and employer contributions — each with the GL code it costs to."
-      actions={<NewButton label="Add pay item" onClick={() => setOpen(true)} />}
+      actions={can('pay_items:create') && <NewButton label="Add pay item" onClick={() => setOpen(true)} />}
     >
       {items.isLoading && <Loading />}
       {items.error && <ErrorBox error={items.error} />}
@@ -250,9 +252,11 @@ function PayItemsTab() {
                 <td className="tabular-nums text-2xs">{i.glAccountCode}</td>
                 <td>{i.taxable ? 'Yes' : 'No'}</td>
                 <td className="text-right">
-                  <button className="btn text-2xs" onClick={() => toggle.mutate({ id: i.id, active: !i.active })}>
-                    {i.active ? 'Deactivate' : 'Activate'}
-                  </button>
+                  {can('pay_items:edit') && (
+                    <button className="btn text-2xs" onClick={() => toggle.mutate({ id: i.id, active: !i.active })}>
+                      {i.active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -297,7 +301,8 @@ interface AdHocLine {
   employmentRelationshipId: string;
   payItemId: string;
   payPeriod: string;
-  amount: number;
+  amount: number | null;
+  moneyWithheldReason?: string | null;
   reason: string;
   status: string;
 }
@@ -305,6 +310,7 @@ interface AdHocLine {
 const ADHOC_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { Proposed: 'warn', Approved: 'good', Rejected: 'bad', Applied: 'neutral' };
 
 function AdHocTab() {
+  const { can } = useSession();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ employmentRelationshipId: '', payItemId: '', payPeriod: '', amount: '', reason: '' });
@@ -322,7 +328,7 @@ function AdHocTab() {
     <Card
       title="Ad-hoc pay"
       subtitle="A one-off addition or deduction for a period — proposed by one person, approved by another. Once approved, applying it into a run's figures is a separate step under People → Payroll."
-      actions={<NewButton label="Propose a line" onClick={() => setOpen(true)} />}
+      actions={can('adhoc_pay:create') && <NewButton label="Propose a line" onClick={() => setOpen(true)} />}
     >
       {lines.isLoading && <Loading />}
       {lines.error && <ErrorBox error={lines.error} />}
@@ -347,7 +353,7 @@ function AdHocTab() {
                 <td>{l.reason}</td>
                 <td><StatusChip status={l.status} tone={ADHOC_TONE[l.status] ?? 'neutral'} /></td>
                 <td className="text-right">
-                  {l.status === 'Proposed' && (
+                  {l.status === 'Proposed' && can('adhoc_pay:approve') && (
                     <div className="flex justify-end gap-1">
                       <button
                         className="btn text-2xs"
@@ -411,7 +417,8 @@ interface ArrearRow {
   id: string;
   employmentRelationshipId: string;
   fromPeriod: string;
-  amount: number;
+  amount: number | null;
+  moneyWithheldReason?: string | null;
   reason: string;
   status: string;
   paidInPayPeriod: string | null;
@@ -420,6 +427,7 @@ interface ArrearRow {
 const ARREAR_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { Proposed: 'warn', Approved: 'good', Rejected: 'bad', Paid: 'neutral' };
 
 function ArrearsTab() {
+  const { can } = useSession();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ employmentRelationshipId: '', fromPeriod: '', amount: '', reason: '' });
@@ -440,7 +448,7 @@ function ArrearsTab() {
     <Card
       title="Arrears"
       subtitle="A pay adjustment owed for a past period — a delayed increment, a corrected shortfall. Approved the same way as ad-hoc pay; marked paid once a run has actually carried it."
-      actions={<NewButton label="Propose an arrear" onClick={() => setOpen(true)} />}
+      actions={can('arrears:create') && <NewButton label="Propose an arrear" onClick={() => setOpen(true)} />}
     >
       {rows.isLoading && <Loading />}
       {rows.error && <ErrorBox error={rows.error} />}
@@ -467,7 +475,7 @@ function ArrearsTab() {
                 <td><StatusChip status={a.status} tone={ARREAR_TONE[a.status] ?? 'neutral'} /></td>
                 <td>{a.paidInPayPeriod ?? '—'}</td>
                 <td className="text-right">
-                  {a.status === 'Proposed' && (
+                  {a.status === 'Proposed' && can('arrears:approve') && (
                     <div className="flex justify-end gap-1">
                       <button className="btn text-2xs" onClick={() => decide.mutate({ id: a.id, approve: true }, { onError: (e) => setDecideError(messageOf(e)) })}>
                         Approve
@@ -477,7 +485,7 @@ function ArrearsTab() {
                       </button>
                     </div>
                   )}
-                  {a.status === 'Approved' && (
+                  {a.status === 'Approved' && can('arrears:edit') && (
                     <div className="flex justify-end gap-1">
                       <input
                         className="input w-24 text-2xs"
@@ -539,6 +547,7 @@ interface ReconRow {
 }
 
 function ReconciliationTab() {
+  const { can } = useSession();
   const qc = useQueryClient();
   const [runId, setRunId] = useState('');
   const [previousRunId, setPreviousRunId] = useState('');
@@ -559,9 +568,11 @@ function ReconciliationTab() {
       <div className="mb-4 flex flex-wrap items-end gap-3 border-b border-ink-800 pb-4">
         <div className="w-64"><RunPicker value={runId} onChange={setRunId} onlyApproved /></div>
         <div className="w-64"><RunPicker value={previousRunId} onChange={setPreviousRunId} /></div>
-        <button className="btn-primary" disabled={!runId || generate.isPending} onClick={() => generate.mutate()}>
-          {generate.isPending ? 'Comparing…' : 'Run reconciliation'}
-        </button>
+        {can('payroll_reconciliations:create') && (
+          <button className="btn-primary" disabled={!runId || generate.isPending} onClick={() => generate.mutate()}>
+            {generate.isPending ? 'Comparing…' : 'Run reconciliation'}
+          </button>
+        )}
       </div>
       {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
 
@@ -614,9 +625,10 @@ interface JournalRow {
   id: string;
   payrollRunId: string;
   payPeriod: string;
-  lines: Array<{ ledgerAccountCode: string; label: string; costCentre: string; debit: number; credit: number }>;
-  totalDebit: number;
-  totalCredit: number;
+  lines: Array<{ ledgerAccountCode: string; label: string; costCentre: string; debit: number | null; credit: number | null }>;
+  totalDebit: number | null;
+  totalCredit: number | null;
+  moneyWithheldReason?: string | null;
   status: string;
   transactionId: string | null;
 }
@@ -627,7 +639,10 @@ interface LedgerAccount {
   accountType: string;
 }
 
+const CASH_ACCOUNT_TYPES = ['bank', 'cash', 'wallet'];
+
 function JournalTab() {
+  const { can } = useSession();
   const qc = useQueryClient();
   const [runId, setRunId] = useState('');
   const [accountId, setAccountId] = useState('');
@@ -635,6 +650,7 @@ function JournalTab() {
 
   const journals = useQuery({ queryKey: ['payrollops-journals'], queryFn: () => api.get<JournalRow[]>('/hcm/payrollops/journals') });
   const accounts = useQuery({ queryKey: ['ledger-accounts-for-payroll'], queryFn: () => api.get<LedgerAccount[]>('/books/accounts') });
+  const cashAccounts = (accounts.data ?? []).filter((a) => CASH_ACCOUNT_TYPES.includes(a.accountType));
 
   const generate = useMutation({
     mutationFn: () => api.post('/hcm/payrollops/journals/generate', { payrollRunId: runId }),
@@ -654,9 +670,11 @@ function JournalTab() {
     >
       <div className="mb-4 flex flex-wrap items-end gap-3 border-b border-ink-800 pb-4">
         <div className="w-64"><RunPicker value={runId} onChange={setRunId} onlyApproved /></div>
-        <button className="btn-primary" disabled={!runId || generate.isPending} onClick={() => generate.mutate()}>
-          {generate.isPending ? 'Preparing…' : 'Generate / rebuild journal'}
-        </button>
+        {can('payroll_journals:create') && (
+          <button className="btn-primary" disabled={!runId || generate.isPending} onClick={() => generate.mutate()}>
+            {generate.isPending ? 'Preparing…' : 'Generate / rebuild journal'}
+          </button>
+        )}
       </div>
       {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
 
@@ -685,8 +703,8 @@ function JournalTab() {
                     <tr key={idx}>
                       <td className="text-2xs">{l.label} <span className="text-ink-500">({l.ledgerAccountCode})</span></td>
                       <td>{l.costCentre}</td>
-                      <td className="text-right tabular-nums">{l.debit > 0 ? money(l.debit) : ''}</td>
-                      <td className="text-right tabular-nums">{l.credit > 0 ? money(l.credit) : ''}</td>
+                      <td className="text-right tabular-nums">{l.debit !== null && l.debit > 0 ? money(l.debit) : l.debit === null ? <StatusChip status="withheld" /> : ''}</td>
+                      <td className="text-right tabular-nums">{l.credit !== null && l.credit > 0 ? money(l.credit) : l.credit === null ? <StatusChip status="withheld" /> : ''}</td>
                     </tr>
                   ))}
                   <tr className="font-medium">

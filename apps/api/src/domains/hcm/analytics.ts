@@ -23,20 +23,28 @@ import {
   absenteeismRate,
   annualizedAttritionRate,
   averageTimeToHireDays,
+  compaRatio,
+  compRatioBucket,
+  COMP_RATIO_BUCKETS,
+  computeEnps,
   dailyRateFromBasic,
   distribution,
+  distributionList,
   isEarlyAttrition,
+  daysToSlaDue,
   measured,
   monthKey,
   notMeasured,
   hiringOfferAcceptanceRate,
+  slaBucket,
+  SLA_BUCKETS,
   spanOfControlStats,
   tenureBucket,
   TENURE_BUCKETS,
   trailingMonths,
   type Metric,
 } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma, num, Prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { assertCan, assertScopeAll, canSeeMoney } from '../../platform/permissions.js';
 import { auditExport } from '../../platform/audit.js';
@@ -468,41 +476,201 @@ export async function genderRatio(): Promise<Metric<Record<string, number>>> {
 }
 
 /**
- * Reads a compensation-workstream pay-grade/band model if one has landed by
- * that name; this workstream does not yet know the shape a compa-ratio would
- * need from it (grade, midpoint), so either way the honest answer today is
- * "not measured" — the probe just distinguishes the two reasons in the log.
+ * WS1's `Grade` (an employment's actual org-level rung, via `GradeAssignment`)
+ * and WS7's `PayGrade` (the money side) are deliberately unlinked tables —
+ * neither carries a foreign key to the other. The only field they share is
+ * `level`, so that is the bridge: an employment's current grade level is read
+ * from `GradeAssignment` → `Grade.level`, matched to whichever `PayGrade`
+ * sits at that same level for this tenant. A level that more than one
+ * `PayGrade` claims cannot be resolved this way and is dropped rather than
+ * guessed at. `null` (not `[]`) on any table this bridge needs being absent.
+ */
+async function currentGradeLevelByEmployment(tenantId: string): Promise<Map<string, number> | null> {
+  const gradeAssignments = await readOptionalModel(
+    'gradeAssignment',
+    (model) => model.findMany({ where: { tenantId, effectiveTo: null } }) as Promise<Array<{ employmentRelationshipId: string; gradeId: string }>>,
+  );
+  if (gradeAssignments === null) return null;
+  if (gradeAssignments.length === 0) return new Map();
+
+  const grades = await readOptionalModel(
+    'grade',
+    (model) => model.findMany({ where: { tenantId, id: { in: [...new Set(gradeAssignments.map((g) => g.gradeId))] } } }) as Promise<Array<{ id: string; level: number }>>,
+  );
+  if (grades === null) return null;
+
+  const levelByGradeId = new Map(grades.map((g) => [g.id, g.level]));
+  const out = new Map<string, number>();
+  for (const ga of gradeAssignments) {
+    const level = levelByGradeId.get(ga.gradeId);
+    if (level !== undefined) out.set(ga.employmentRelationshipId, level);
+  }
+  return out;
+}
+
+/**
+ * Compa-ratio (current CTC ÷ grade midpoint), bucketed across everyone whose
+ * current grade resolves to exactly one `PayGrade` at that level. Withheld
+ * without `compensation:financial` — a compa-ratio is a money figure by
+ * another name, and this dashboard is not a back door around that grant.
  */
 export async function compRatioDistribution(): Promise<Metric<Array<{ bucket: string; count: number }>>> {
+  const auth = currentAuth();
   await assertAnalyticsView();
-  const landed = (await readOptionalModel('payGrade', (model) => model.findMany({ take: 1 }) as Promise<unknown[]>)) !== null;
-  return notMeasured(
-    landed
-      ? 'A pay-grade table has landed, but this workstream has not been updated to read its grade/midpoint shape yet.'
-      : 'No pay-grade/band table is available yet (compensation workstream) to compute a compa-ratio against.',
+  const money = await canSeeMoney('compensation');
+  if (!money) {
+    return notMeasured('Compa-ratio compares pay against a grade midpoint — withheld without the compensation:financial grant.');
+  }
+
+  const payGrades = await readOptionalModel(
+    'payGrade',
+    (model) => model.findMany({ where: { tenantId: auth.tenantId } }) as Promise<Array<{ id: string; level: number; midPay: Prisma.Decimal | number }>>,
   );
+  if (payGrades === null) {
+    return notMeasured('No pay-grade table is available yet (compensation workstream) to compute a compa-ratio against.');
+  }
+  if (payGrades.length === 0) {
+    return notMeasured('No pay grades have been defined yet.');
+  }
+
+  const midPayByLevel = new Map<number, number>();
+  const ambiguousLevels = new Set<number>();
+  for (const pg of payGrades) {
+    if (midPayByLevel.has(pg.level)) ambiguousLevels.add(pg.level);
+    else midPayByLevel.set(pg.level, num(pg.midPay) ?? 0);
+  }
+  for (const level of ambiguousLevels) midPayByLevel.delete(level);
+
+  const levelByEmployment = await currentGradeLevelByEmployment(auth.tenantId);
+  if (levelByEmployment === null) {
+    return notMeasured("No grade-assignment table is available yet (workforce workstream) to know each employee's grade.");
+  }
+  if (levelByEmployment.size === 0) {
+    return notMeasured('No employee carries a current grade assignment yet.');
+  }
+
+  const employmentIds = [...levelByEmployment.keys()];
+  const comp = await prisma.compensationRecord.findMany({
+    where: { tenantId: auth.tenantId, employmentRelationshipId: { in: employmentIds }, status: 'Effective' },
+    orderBy: { effectiveFrom: 'desc' },
+    select: { employmentRelationshipId: true, amount: true },
+  });
+  const ctcByEmployment = new Map<string, number>();
+  for (const c of comp) {
+    if (ctcByEmployment.has(c.employmentRelationshipId)) continue;
+    ctcByEmployment.set(c.employmentRelationshipId, num(c.amount) ?? 0);
+  }
+
+  const ratios: number[] = [];
+  for (const [employmentId, level] of levelByEmployment) {
+    const ctc = ctcByEmployment.get(employmentId);
+    const midPay = midPayByLevel.get(level);
+    if (ctc === undefined || midPay === undefined) continue;
+    const ratio = compaRatio(ctc, midPay);
+    if (ratio !== null) ratios.push(ratio);
+  }
+
+  if (ratios.length === 0) {
+    return notMeasured("No employee both has a current compensation record and a grade level that matches exactly one pay grade.");
+  }
+  return measured(distributionList(ratios, COMP_RATIO_BUCKETS, compRatioBucket));
 }
 
-/** Reads an engagement-workstream survey-response model if one has landed; otherwise not measured. */
+/**
+ * eNPS across every `enps`-type question answered in any pulse survey this
+ * tenant has run, using the shared platform's standard NPS math
+ * (`computeEnps`). Not money, so no `financial` verb applies here.
+ */
 export async function engagementEnps(): Promise<Metric<number>> {
+  const auth = currentAuth();
   await assertAnalyticsView();
-  const landed = (await readOptionalModel('surveyResponse', (model) => model.findMany({ take: 1 }) as Promise<unknown[]>)) !== null;
-  return notMeasured(
-    landed
-      ? 'A survey-response table has landed, but this workstream has not been updated to read its shape yet.'
-      : 'No survey-response table is available yet (engagement workstream) to compute eNPS from.',
+
+  const surveys = await readOptionalModel(
+    'pulseSurvey',
+    (model) =>
+      model.findMany({
+        where: { tenantId: auth.tenantId },
+        select: { id: true, questions: true },
+      }) as Promise<Array<{ id: string; questions: unknown }>>,
   );
+  if (surveys === null) {
+    return notMeasured('No survey table is available yet (engagement workstream) to compute eNPS from.');
+  }
+  if (surveys.length === 0) {
+    return notMeasured('No pulse surveys have been run yet.');
+  }
+
+  const enpsQuestionIdsBySurvey = new Map<string, Set<string>>();
+  for (const s of surveys) {
+    const questions = Array.isArray(s.questions) ? (s.questions as Array<{ id?: unknown; type?: unknown }>) : [];
+    const ids = new Set(questions.filter((q) => q.type === 'enps' && typeof q.id === 'string').map((q) => q.id as string));
+    if (ids.size > 0) enpsQuestionIdsBySurvey.set(s.id, ids);
+  }
+  if (enpsQuestionIdsBySurvey.size === 0) {
+    return notMeasured('No survey question of type "enps" has been authored yet.');
+  }
+
+  const responses = await readOptionalModel(
+    'surveyResponse',
+    (model) =>
+      model.findMany({
+        where: { tenantId: auth.tenantId, surveyId: { in: [...enpsQuestionIdsBySurvey.keys()] } },
+        select: { surveyId: true, answers: true },
+      }) as Promise<Array<{ surveyId: string; answers: unknown }>>,
+  );
+  if (responses === null) {
+    return notMeasured('No survey-response table is available yet (engagement workstream) to compute eNPS from.');
+  }
+
+  const scores: number[] = [];
+  for (const r of responses) {
+    const ids = enpsQuestionIdsBySurvey.get(r.surveyId);
+    if (!ids) continue;
+    const answers = Array.isArray(r.answers) ? (r.answers as Array<{ questionId?: unknown; value?: unknown }>) : [];
+    for (const a of answers) {
+      if (typeof a.questionId === 'string' && ids.has(a.questionId)) {
+        const n = Number(a.value);
+        if (!Number.isNaN(n)) scores.push(n);
+      }
+    }
+  }
+
+  if (scores.length === 0) {
+    return notMeasured('No response has answered an eNPS question yet.');
+  }
+  const { score } = computeEnps(scores);
+  return score === null ? notMeasured('No response has answered an eNPS question yet.') : measured(score);
 }
 
-/** Reads an engagement/cases-workstream HrCase model if one has landed; otherwise not measured. */
+/**
+ * Open (non-terminal) `HrCase` rows bucketed by how close they are to
+ * breaching their SLA — a confidential/grievance case is excluded from this
+ * aggregate the same way it is excluded from the general case queue in
+ * `domains/hcm/engagement.ts`, so a headline count never hints at how many
+ * grievances are open.
+ */
 export async function openCasesBySla(): Promise<Metric<Array<{ bucket: string; count: number }>>> {
+  const auth = currentAuth();
   await assertAnalyticsView();
-  const landed = (await readOptionalModel('hrCase', (model) => model.findMany({ take: 1 }) as Promise<unknown[]>)) !== null;
-  return notMeasured(
-    landed
-      ? 'An HR case table has landed, but this workstream has not been updated to read its shape yet.'
-      : 'No HR case table is available yet (engagement/cases workstream) to report SLA status from.',
+
+  const cases = await readOptionalModel(
+    'hrCase',
+    (model) =>
+      model.findMany({
+        where: { tenantId: auth.tenantId, confidential: false, status: { notIn: ['resolved', 'closed'] } },
+        select: { status: true, slaDueAt: true },
+      }) as Promise<Array<{ status: string; slaDueAt: Date }>>,
   );
+  if (cases === null) {
+    return notMeasured('No HR case table is available yet (engagement workstream) to report SLA status from.');
+  }
+  if (cases.length === 0) {
+    return notMeasured('No open, non-confidential HR case is on record right now.');
+  }
+
+  const now = new Date();
+  const days = cases.map((c) => daysToSlaDue(c.slaDueAt, now));
+  return measured(distributionList(days, SLA_BUCKETS, slaBucket));
 }
 
 // ---------------------------------------------------------------------------

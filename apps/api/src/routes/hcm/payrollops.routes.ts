@@ -9,7 +9,7 @@ import {
   listAdHocPayLines, createAdHocPayLine, approveAdHocPayLine, rejectAdHocPayLine,
   listArrears, createArrear, approveArrear, rejectArrear, markArrearPaid,
   listPayrollJournals, getPayrollJournal, generatePayrollJournal, postPayrollJournal,
-  listBankAdvices, getBankAdvice, generateBankAdvice,
+  listBankAdvices, getBankAdvice, generateBankAdvice, downloadBankAdvice,
   listPayrollReconciliations, getPayrollReconciliation, generatePayrollReconciliation,
   listPayrollCalendar, upsertPayrollCalendarEntry,
   listPayrollQueries, createPayrollQuery, respondToPayrollQuery, closePayrollQuery,
@@ -144,6 +144,17 @@ router.post(
   handler(async (req) => {
     const body = z.object({ payrollRunId: z.string() }).parse(req.body);
     return generateBankAdvice(body.payrollRunId);
+  }),
+);
+// The raw NEFT CSV with full account numbers — `export`-gated and audited,
+// never the JSON `view` above (which masks the account number to last 4).
+router.get(
+  '/bank-advices/:id/download',
+  handler(async (req, res) => {
+    const { filename, csv } = await downloadBankAdvice(req.params.id);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/"/g, '')}"`);
+    res.send(csv);
   }),
 );
 

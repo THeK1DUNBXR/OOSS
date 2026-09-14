@@ -418,6 +418,12 @@ export async function postPayrollJournal(id: string, accountId: string) {
   const run = await prisma.payrollRun.findFirst({ where: { id: journal.payrollRunId, tenantId: auth.tenantId } });
   if (!run) throw ApiError.notFound('Payroll run');
 
+  const account = await prisma.ledgerAccount.findFirst({ where: { id: accountId, tenantId: auth.tenantId, deletedAt: null } });
+  if (!account) throw ApiError.notFound('Account');
+  if (!CASH_ACCOUNT_TYPES.includes(account.accountType)) {
+    throw ApiError.unprocessable(`Net pay must be disbursed from a bank, cash or wallet account; "${account.name}" is a ${account.accountType} account.`);
+  }
+
   // The cash leg is the net pay payable, not the journal's total credit —
   // that total also carries the statutory/other deductions payable, which
   // moves the company's money to a different payee on a different day, not
@@ -604,10 +610,23 @@ export async function generateBankAdvice(payrollRunId: string) {
 // Reconciliation
 // ---------------------------------------------------------------------------
 
+/** Masks a reconciliation's money — each delta's net figures — while leaving `unexplained`/`note`/`deltaPct` (a ratio, not money) visible either way. */
+function maskReconciliation<T extends { deltas: unknown }>(row: T, visible: boolean) {
+  const deltas = (row.deltas as Array<Record<string, unknown>>).map((d) => ({
+    ...d,
+    previousNet: visible ? d.previousNet : null,
+    currentNet: visible ? d.currentNet : null,
+    delta: visible ? d.delta : null,
+  }));
+  return { ...row, deltas, moneyWithheldReason: visible ? null : 'no_permission' };
+}
+
 export async function listPayrollReconciliations() {
   const auth = currentAuth();
   await assertCan({ resource: 'payroll_reconciliations', verb: 'view' });
-  return prisma.payrollReconciliation.findMany({ where: { tenantId: auth.tenantId }, orderBy: { generatedAt: 'desc' }, take: 36 });
+  const visible = await canSeeMoney('payroll_reconciliations');
+  const rows = await prisma.payrollReconciliation.findMany({ where: { tenantId: auth.tenantId }, orderBy: { generatedAt: 'desc' }, take: 36 });
+  return rows.map((r) => maskReconciliation(r, visible));
 }
 
 export async function getPayrollReconciliation(id: string) {
@@ -615,7 +634,8 @@ export async function getPayrollReconciliation(id: string) {
   await assertCan({ resource: 'payroll_reconciliations', verb: 'view' });
   const row = await prisma.payrollReconciliation.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Payroll reconciliation');
-  return row;
+  const visible = await canSeeMoney('payroll_reconciliations');
+  return maskReconciliation(row, visible);
 }
 
 /**
