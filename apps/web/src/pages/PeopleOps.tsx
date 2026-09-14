@@ -35,7 +35,7 @@ import {
   Withheld,
 } from '../components/ui.js';
 import { NewButton } from '../components/forms.js';
-import { NewLeaveRequest, NewRequisition, NewSkill } from '../components/createForms.js';
+import { EditEmployeeProfile, NewLeaveRequest, NewRequisition, NewSkill } from '../components/createForms.js';
 
 // ---------------------------------------------------------------------------
 // Shared pieces
@@ -388,7 +388,7 @@ interface EmployeeDetailView {
   legalEntity: string;
   noticePeriodDays: number;
   separationType: string | null;
-  person: { fullName: string; primaryEmail: string | null; primaryPhone: string | null };
+  person: { fullName: string; primaryEmail: string | null; primaryPhone: string | null; dateOfBirth: string | null };
   assignments: Array<{
     id: string;
     rowStatus: string;
@@ -442,6 +442,7 @@ const TIER_TONE: Record<string, 'good' | 'warn' | 'bad' | 'neutral'> = {
 
 export function EmployeeDetail() {
   const { id = '' } = useParams();
+  const [editOpen, setEditOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['hr-employee', id],
@@ -478,8 +479,16 @@ export function EmployeeDetail() {
             {data.legalEntity}
           </>
         }
-        actions={<StatusChip status={data.status} tone={tone(data.status)} />}
+        actions={
+          <>
+            <button className="btn-ghost" onClick={() => setEditOpen(true)}>
+              Edit
+            </button>
+            <StatusChip status={data.status} tone={tone(data.status)} />
+          </>
+        }
       />
+      <EditEmployeeProfile open={editOpen} onClose={() => setEditOpen(false)} employmentId={data.id} person={data.person} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">

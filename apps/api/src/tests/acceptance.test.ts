@@ -22,7 +22,14 @@ import { computeHash, verifyChain } from '../platform/eventBus.js';
 import { nextRecordCode, nextRecordCodes, rejectRecordCodeEdit } from '../platform/recordCode.js';
 import { evaluate, applyFieldVisibility, can, holdsScopeResolver } from '../platform/permissions.js';
 import { findOrCreatePerson, normalisePhone } from '../domains/identity.js';
-import { attachAccount, attachInstitutionProfile, detachAccount } from '../domains/organizations.js';
+import {
+  attachAccount,
+  attachInstitutionProfile,
+  detachAccount,
+  updateOrganization,
+  updateAccount,
+  updateInstitutionProfile,
+} from '../domains/organizations.js';
 import { createRelationship, refineRelationship, supersedeRelationship } from '../domains/relationships.js';
 import { validateTransition, assertPipelineUsable, assertGraphReachable } from '../domains/pipelines.js';
 import { advanceStage, changeForecastCategory, forecastRollup, coverageByPosition } from '../domains/opportunities.js';
@@ -1141,6 +1148,97 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
     const names = columns.map((c) => c.column_name);
     expect(names).not.toContain('computedRelationshipStatus');
     expect(names).not.toContain('relationship_status');
+  });
+
+  // -------------------------------------------------------------------------
+  // Import correction — a record created wrong by a bulk import (or typed
+  // wrong by hand) needs a plain way back, not just a way in.
+  // -------------------------------------------------------------------------
+
+  it('updateOrganization corrects the record, refuses a viewer without organizations:edit, and a bad id 404s', async () => {
+    const tag = Date.now();
+    const org = await asUser('chairman@kaizen.co.in', async () => {
+      const { createOrganization } = await import('../domains/organizations.js');
+      return createOrganization({ kind: 'organization', name: `Before Correction ${tag}`, roles: ['client'] });
+    });
+
+    await asUser('chairman@kaizen.co.in', async () => {
+      const updated = await updateOrganization(org.id, { name: `Corrected ${tag}`, website: 'https://corrected.example' });
+      expect(updated.name).toBe(`Corrected ${tag}`);
+      expect(updated.website).toBe('https://corrected.example');
+      // Not this function's to change: kind is `reclassifyOrganization`'s and
+      // roles are `setOrganizationRoles`'s.
+      expect(updated.kind).toBe('organization');
+      expect(updated.roles).toEqual(['client']);
+    });
+
+    const err = await expectReject(() =>
+      asUser('employee@kaizen.co.in', () => updateOrganization(org.id, { name: 'Should not land' })),
+    );
+    expect(err.status).toBe(403);
+
+    const missing = await expectReject(() =>
+      asUser('chairman@kaizen.co.in', () => updateOrganization('does-not-exist', { name: 'Nobody home' })),
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  it('updateAccount corrects billing detail already on file, refuses a viewer without edit, and 404s where there is none yet', async () => {
+    const tag = Date.now();
+    const org = await asUser('chairman@kaizen.co.in', async () => {
+      const { createOrganization } = await import('../domains/organizations.js');
+      return createOrganization({ kind: 'organization', name: `Billed Correction ${tag}` });
+    });
+
+    // Attaching one first is `attachAccount`'s job; this is the correction
+    // path and does not stand in for it.
+    const beforeAttach = await expectReject(() =>
+      asUser('chairman@kaizen.co.in', () => updateAccount(org.id, { tier: 'strategic' })),
+    );
+    expect(beforeAttach.status).toBe(404);
+    expect(beforeAttach.message).toMatch(/Billing details/i);
+
+    await asUser('chairman@kaizen.co.in', async () => {
+      await attachAccount(org.id, { tier: 'standard', paymentTermsDays: 30 });
+      const updated = await updateAccount(org.id, { tier: 'strategic', paymentTermsDays: 45 });
+      expect(updated.tier).toBe('strategic');
+      expect(updated.paymentTermsDays).toBe(45);
+    });
+
+    const err = await expectReject(() =>
+      asUser('employee@kaizen.co.in', () => updateAccount(org.id, { tier: 'standard' })),
+    );
+    expect(err.status).toBe(403);
+  });
+
+  it('updateInstitutionProfile corrects school detail already on file, needs institutions:edit, and 404s where there is none yet', async () => {
+    const tag = Date.now();
+    const college = await asUser('chairman@kaizen.co.in', async () => {
+      const { createOrganization } = await import('../domains/organizations.js');
+      return createOrganization({ kind: 'institution', name: `School Correction ${tag}` });
+    });
+
+    const beforeAttach = await expectReject(() =>
+      asUser('chairman@kaizen.co.in', () => updateInstitutionProfile(college.id, { district: 'Erode' })),
+    );
+    expect(beforeAttach.status).toBe(404);
+    expect(beforeAttach.message).toMatch(/School or college details/i);
+
+    await asUser('chairman@kaizen.co.in', async () => {
+      await attachInstitutionProfile(college.id, { institutionType: 'polytechnic', district: 'Salem' });
+      const updated = await updateInstitutionProfile(college.id, {
+        district: 'Erode',
+        institutionType: 'engineering_college',
+      });
+      expect(updated.district).toBe('Erode');
+      expect(updated.institutionType).toBe('engineering_college');
+    });
+
+    // employee holds no institutions grant at all beyond `V@all`.
+    const err = await expectReject(() =>
+      asUser('employee@kaizen.co.in', () => updateInstitutionProfile(college.id, { district: 'Nowhere' })),
+    );
+    expect(err.status).toBe(403);
   });
 });
 

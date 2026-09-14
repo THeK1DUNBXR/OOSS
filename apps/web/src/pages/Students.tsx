@@ -210,6 +210,8 @@ export function Students() {
 
 export function StudentDetail() {
   const { id } = useParams<{ id: string }>();
+  const { can } = useSession();
+  const [editOpen, setEditOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['student', id],
@@ -240,7 +242,18 @@ export function StudentDetail() {
 
   return (
     <div>
-      <PageHeader title={data.fullName} subtitle={<span className="mono">{data.recordCode}</span>} />
+      <PageHeader
+        title={data.fullName}
+        subtitle={<span className="mono">{data.recordCode}</span>}
+        actions={
+          can('students:E') && (
+            <button className="btn-ghost" onClick={() => setEditOpen(true)}>
+              Edit
+            </button>
+          )
+        }
+      />
+      <NewStudent open={editOpen} onClose={() => setEditOpen(false)} student={data} />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="chip border-accent/40 text-accent-soft">Student</span>

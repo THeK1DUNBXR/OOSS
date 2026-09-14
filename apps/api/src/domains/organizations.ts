@@ -145,6 +145,46 @@ export async function createOrganization(input: OrganizationInput) {
 }
 
 /**
+ * A plain correction to a body's own fields — the name was mistyped, the
+ * website changed, a tag needs adding.
+ *
+ * Deliberately narrow: `kind` is `reclassifyOrganization`'s job and `roles`
+ * is `setOrganizationRoles`'s, both of which carry their own rules and their
+ * own callers. Leaving them out of this input type means an ordinary edit can
+ * never smuggle either past them.
+ */
+export async function updateOrganization(
+  id: string,
+  input: Partial<Pick<OrganizationInput, 'name' | 'website' | 'tags' | 'ownerPartyId'>>,
+) {
+  const org = await prisma.organization.findFirst({ where: { id, deletedAt: null } });
+  if (!org) throw ApiError.notFound('Organization');
+  await assertCan({ resource: resourceFor(org.kind), verb: 'edit' });
+
+  const before = { name: org.name, website: org.website, tags: org.tags, ownerPartyId: org.ownerPartyId };
+
+  const updated = await prisma.organization.update({
+    where: { id },
+    data: {
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.website !== undefined ? { website: input.website } : {}),
+      ...(input.tags !== undefined ? { tags: input.tags } : {}),
+      ...(input.ownerPartyId !== undefined ? { ownerPartyId: input.ownerPartyId } : {}),
+    },
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'organization',
+    subjectId: id,
+    before,
+    after: { name: updated.name, website: updated.website, tags: updated.tags, ownerPartyId: updated.ownerPartyId },
+  });
+
+  return updated;
+}
+
+/**
  * What a body does with us, changed.
  *
  * Separate from `reclassifyOrganization` because it is an ordinary edit: a
@@ -277,6 +317,46 @@ export async function attachAccount(organizationId: string, input: AccountInput)
   return account;
 }
 
+/**
+ * A correction to billing detail already on file — the terms changed, the
+ * billing email was wrong. Mirrors `attachAccount` but updates the row rather
+ * than creating a second one; where there is no row yet, the caller is told
+ * to attach one first rather than having this quietly create it.
+ */
+export async function updateAccount(organizationId: string, input: Partial<AccountInput>) {
+  const org = await prisma.organization.findFirst({ where: { id: organizationId } });
+  if (!org) throw ApiError.notFound('Organization');
+  await assertCan({ resource: resourceFor(org.kind), verb: 'edit' });
+
+  const existing = await prisma.account.findFirst({ where: { organizationId } });
+  if (!existing) throw ApiError.notFound('Billing details');
+
+  const before = { tier: existing.tier, billingEmail: existing.billingEmail, paymentTermsDays: existing.paymentTermsDays };
+
+  const updated = await prisma.account.update({
+    where: { id: existing.id },
+    data: {
+      ...(input.tier !== undefined ? { tier: input.tier } : {}),
+      ...(input.ownerPartyId !== undefined ? { ownerPartyId: input.ownerPartyId } : {}),
+      ...(input.billingEmail !== undefined ? { billingEmail: input.billingEmail } : {}),
+      ...(input.billingAddress !== undefined ? { billingAddress: input.billingAddress } : {}),
+      ...(input.paymentTermsDays !== undefined ? { paymentTermsDays: input.paymentTermsDays } : {}),
+      ...(input.annualRevenueBand !== undefined ? { annualRevenueBand: input.annualRevenueBand } : {}),
+      ...(input.employeeCountBand !== undefined ? { employeeCountBand: input.employeeCountBand } : {}),
+    },
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'account',
+    subjectId: existing.id,
+    before,
+    after: { tier: updated.tier, billingEmail: updated.billingEmail, paymentTermsDays: updated.paymentTermsDays },
+  });
+
+  return updated;
+}
+
 export interface InstitutionProfileInput {
   /** Which of the five depths the partnership runs at. */
   engagements?: string[];
@@ -355,6 +435,66 @@ export async function attachInstitutionProfile(organizationId: string, input: In
   });
 
   return profile;
+}
+
+/**
+ * A correction to school or college detail already on file. Mirrors
+ * `attachInstitutionProfile` but updates the existing row rather than
+ * creating one — where there is no profile yet, the caller is told to attach
+ * one first (`POST /institutions/:id/school-details`) rather than having this
+ * quietly create it with whatever subset of fields happened to be sent.
+ *
+ * Checks `institutions:edit`, not `institutions:create`: this is the
+ * correction path, and holding the grant to attach a school's details for
+ * the first time does not by itself mean holding the grant to change them
+ * afterwards.
+ */
+export async function updateInstitutionProfile(organizationId: string, input: Partial<InstitutionProfileInput>) {
+  await assertCan({ resource: 'institutions', verb: 'edit' });
+
+  const org = await prisma.organization.findFirst({ where: { id: organizationId } });
+  if (!org) throw ApiError.notFound('Organization');
+  if (org.kind !== 'institution') {
+    throw ApiError.badRequest(
+      `${org.name} is recorded as an organisation, not a school or a college, so it cannot carry institution details.`,
+    );
+  }
+
+  const existing = await prisma.institutionProfile.findFirst({ where: { organizationId } });
+  if (!existing) throw ApiError.notFound('School or college details');
+
+  const before = { institutionType: existing.institutionType, district: existing.district };
+
+  const updated = await prisma.institutionProfile.update({
+    where: { id: existing.id },
+    data: {
+      ...(input.institutionType !== undefined ? { institutionType: input.institutionType } : {}),
+      ...(input.managementType !== undefined ? { managementType: input.managementType } : {}),
+      ...(input.address !== undefined ? { address: input.address } : {}),
+      ...(input.district !== undefined ? { district: input.district } : {}),
+      ...(input.taluk !== undefined ? { taluk: input.taluk } : {}),
+      ...(input.state !== undefined ? { state: input.state } : {}),
+      ...(input.latitude !== undefined ? { latitude: input.latitude } : {}),
+      ...(input.longitude !== undefined ? { longitude: input.longitude } : {}),
+      ...(input.externalIdentifier !== undefined ? { externalIdentifier: input.externalIdentifier } : {}),
+      ...(input.establishedYear !== undefined ? { establishedYear: input.establishedYear } : {}),
+      ...(input.studentCount !== undefined ? { studentCount: input.studentCount } : {}),
+      ...(input.departments !== undefined ? { departments: input.departments } : {}),
+      ...(input.strategicPriority !== undefined ? { strategicPriority: input.strategicPriority } : {}),
+      ...(input.engagements !== undefined ? { engagements: input.engagements } : {}),
+      ...(input.accreditation !== undefined ? { accreditation: input.accreditation } : {}),
+    },
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'institution_profile',
+    subjectId: existing.id,
+    before,
+    after: { institutionType: updated.institutionType, district: updated.district },
+  });
+
+  return updated;
 }
 
 /**

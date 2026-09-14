@@ -55,6 +55,7 @@ import {
   listOrgUnits, createOrgUnit, listJobs, createJob,
   listPositions, createPosition, transitionPosition,
   listEmployments, getEmployment, hire, transitionEmployment, setConfirmationState,
+  updateEmployeeProfile,
   proposeAssignment, transitionAssignment,
   proposeCompensation, transitionCompensation, currentCompensation,
   transitionOnboarding, transitionOffboarding,
@@ -238,6 +239,27 @@ router.get(
       onboardingTransitions: e.onboarding ? onboardingMachine.allowedEvents(e.onboarding.status as never) : [],
       offboardingTransitions: e.offboarding ? offboardingMachine.allowedEvents(e.offboarding.status as never) : [],
     };
+  }),
+);
+
+/**
+ * A correction to what the staff-list import wrote for this person — their
+ * name, phone, email, date of birth. Everything else on the employment
+ * itself moves through its own transition endpoint below, or is regulated
+ * and never reaches here at all.
+ */
+router.patch(
+  '/employees/:id',
+  handler(async (req) => {
+    const body = z
+      .object({
+        fullName: z.string().min(1).optional(),
+        primaryPhone: z.string().nullish(),
+        primaryEmail: z.string().nullish(),
+        dateOfBirth: z.string().nullish(),
+      })
+      .parse(req.body);
+    return updateEmployeeProfile(req.params.id, body);
   }),
 );
 

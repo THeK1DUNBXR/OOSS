@@ -13,7 +13,7 @@
  * same place.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   DELIVERY_LOCATIONS,
@@ -629,7 +629,43 @@ function useBodyFields() {
   };
 }
 
-export function NewInstitution({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** What an institution's own page shows back, for pre-filling its edit. */
+interface EditableInstitution {
+  id: string;
+  name: string;
+  website: string | null;
+  institutionProfile: {
+    institutionType: string | null;
+    managementType: string | null;
+    district: string | null;
+    state: string | null;
+    studentCount: number | null;
+    accreditation: string | null;
+    engagements: string[];
+  } | null;
+}
+
+/**
+ * Add a school or a college — or correct one already on file.
+ *
+ * With `institution` given, the organisation-level fields and (where a
+ * profile already exists) the school-level fields are pre-filled and saved as
+ * two PATCH requests, since they live on two different tables. Where there is
+ * no profile yet, those fields are left off the form entirely rather than
+ * shown and then silently dropped: adding the first one is `AddSchoolDetails`'s
+ * job.
+ */
+export function NewInstitution({
+  open,
+  onClose,
+  institution,
+}: {
+  open: boolean;
+  onClose: () => void;
+  institution?: EditableInstitution | null;
+}) {
+  const editing = Boolean(institution);
+  const hasProfile = !editing || Boolean(institution?.institutionProfile);
   const [name, setName] = useState('');
   const [website, setWebsite] = useState('');
   const [billed, setBilled] = useState(false);
@@ -637,94 +673,162 @@ export function NewInstitution({ open, onClose }: { open: boolean; onClose: () =
   const [accreditation, setAccreditation] = useState('');
   const f = useBodyFields();
 
+  useEffect(() => {
+    if (!open) return;
+    setName(institution?.name ?? '');
+    setWebsite(institution?.website ?? '');
+    const profile = institution?.institutionProfile;
+    setEngagements((profile?.engagements as InstitutionEngagement[]) ?? []);
+    setAccreditation(profile?.accreditation ?? '');
+    f.schoolProps.setInstitutionType(profile?.institutionType ?? '');
+    f.schoolProps.setManagementType(profile?.managementType ?? '');
+    f.schoolProps.setDistrict(profile?.district ?? '');
+    f.schoolProps.setState(profile?.state ?? '');
+    f.schoolProps.setStudentCount(profile?.studentCount ? String(profile.studentCount) : '');
+    // f's setters are stable across renders; re-running this on every render
+    // of f would fight with what somebody is typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, institution]);
+
   const toggle = (e: InstitutionEngagement) =>
     setEngagements((prev) => (prev.includes(e) ? prev.filter((x) => x !== e) : [...prev, e]));
+
+  const profileBody = () => ({ ...f.institutionProfile(), engagements, accreditation: accreditation || null });
 
   return (
     <CreateModal
       open={open}
-      title="Add a school or a college"
-      submitLabel="Add it"
+      title={editing ? `Edit ${institution!.name}` : 'Add a school or a college'}
+      submitLabel={editing ? 'Save' : 'Add it'}
       onClose={onClose}
-      invalidate={[['institutions']]}
-      onSubmit={() =>
-        api.post('/crm/institutions', {
+      invalidate={editing ? [['organization', institution!.id], ['institutions']] : [['institutions']]}
+      onSubmit={async () => {
+        if (editing) {
+          await api.patch(`/crm/organizations/${institution!.id}`, { name, website: website || null });
+          if (hasProfile) await api.patch(`/crm/institutions/${institution!.id}/school-details`, profileBody());
+          return;
+        }
+        return api.post('/crm/institutions', {
           name,
           website: website || null,
-          institutionProfile: { ...f.institutionProfile(), engagements, accreditation: accreditation || null },
+          institutionProfile: profileBody(),
           ...(billed ? { account: f.account() } : {}),
-        })
-      }
+        });
+      }}
     >
-      <p className="text-2xs text-ink-500">
-        Somewhere learners come to us from. Students name it as where they studied, and its page then answers how
-        many it has sent and how they did.
-      </p>
+      {!editing && (
+        <p className="text-2xs text-ink-500">
+          Somewhere learners come to us from. Students name it as where they studied, and its page then answers how
+          many it has sent and how they did.
+        </p>
+      )}
       <TextInput label="Name" required autoFocus value={name} onChange={setName} />
       <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
-      <SchoolFields {...f.schoolProps} />
-      <TextInput
-        label="Accreditation"
-        value={accreditation}
-        onChange={setAccreditation}
-        placeholder="NAAC A+, NBA, autonomous…"
-      />
 
-      {/* A college is not one relationship. Which of the five depths this
-          partnership actually runs at is the thing a partnership recorded only
-          as "active" never says. */}
-      <fieldset className="rounded-lg border border-ink-800 p-3">
-        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">What we do with them</legend>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {INSTITUTION_ENGAGEMENTS.map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => toggle(e)}
-              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                engagements.includes(e) ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
-              }`}
-            >
-              <span
-                className={`block text-xs font-medium ${
-                  engagements.includes(e) ? 'text-accent-soft' : 'text-ink-200'
-                }`}
-              >
-                {INSTITUTION_ENGAGEMENT_LABELS[e]}
-              </span>
-              <span className="block text-2xs text-ink-500">{INSTITUTION_ENGAGEMENT_HINTS[e]}</span>
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 px-1 text-2xs text-ink-500">As many as are true. None yet is a fine answer.</p>
-      </fieldset>
+      {hasProfile && (
+        <>
+          <SchoolFields {...f.schoolProps} />
+          <TextInput
+            label="Accreditation"
+            value={accreditation}
+            onChange={setAccreditation}
+            placeholder="NAAC A+, NBA, autonomous…"
+          />
 
-      {/* Billing is not what makes a body one kind or the other: a polytechnic
-          that buys a staff programme is invoiced like anyone else and stays a
-          college. */}
-      <label className="flex items-start gap-2 rounded-lg border border-ink-800 p-3">
-        <input type="checkbox" className="mt-0.5" checked={billed} onChange={(e) => setBilled(e.target.checked)} />
-        <span>
-          <span className="block text-xs text-ink-200">We invoice them too</span>
-          <span className="block text-2xs text-ink-500">Payment terms and a billing address. It stays a college.</span>
-        </span>
-      </label>
-      {billed && (
-        <fieldset className="rounded-lg border border-ink-800 p-3">
-          <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Billing</legend>
-          <BillingFields {...f.billingProps} />
-        </fieldset>
+          {/* A college is not one relationship. Which of the five depths this
+              partnership actually runs at is the thing a partnership recorded only
+              as "active" never says. */}
+          <fieldset className="rounded-lg border border-ink-800 p-3">
+            <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">What we do with them</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {INSTITUTION_ENGAGEMENTS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => toggle(e)}
+                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                    engagements.includes(e) ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
+                  }`}
+                >
+                  <span
+                    className={`block text-xs font-medium ${
+                      engagements.includes(e) ? 'text-accent-soft' : 'text-ink-200'
+                    }`}
+                  >
+                    {INSTITUTION_ENGAGEMENT_LABELS[e]}
+                  </span>
+                  <span className="block text-2xs text-ink-500">{INSTITUTION_ENGAGEMENT_HINTS[e]}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 px-1 text-2xs text-ink-500">As many as are true. None yet is a fine answer.</p>
+          </fieldset>
+        </>
+      )}
+
+      {!editing && (
+        <>
+          {/* Billing is not what makes a body one kind or the other: a
+              polytechnic that buys a staff programme is invoiced like anyone
+              else and stays a college. */}
+          <label className="flex items-start gap-2 rounded-lg border border-ink-800 p-3">
+            <input type="checkbox" className="mt-0.5" checked={billed} onChange={(e) => setBilled(e.target.checked)} />
+            <span>
+              <span className="block text-xs text-ink-200">We invoice them too</span>
+              <span className="block text-2xs text-ink-500">Payment terms and a billing address. It stays a college.</span>
+            </span>
+          </label>
+          {billed && (
+            <fieldset className="rounded-lg border border-ink-800 p-3">
+              <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Billing</legend>
+              <BillingFields {...f.billingProps} />
+            </fieldset>
+          )}
+        </>
       )}
     </CreateModal>
   );
 }
 
-export function NewOrganization({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** What an organisation's own page shows back, for pre-filling its edit. */
+interface EditableOrganization {
+  id: string;
+  name: string;
+  website: string | null;
+  roles: string[];
+}
+
+/**
+ * Add an organisation — or correct one already on file.
+ *
+ * With `organization` given, only the name and website are edited here: what
+ * the body *is to us* has its own dedicated `PUT .../roles` and its own
+ * picker on the record's own page, and billing is `AddBillingDetails`'s. An
+ * edit that showed the roles picker but only ever sent name and website would
+ * silently drop a change somebody made in it, so it is left off the form
+ * entirely in edit mode rather than shown and ignored.
+ */
+export function NewOrganization({
+  open,
+  onClose,
+  organization,
+}: {
+  open: boolean;
+  onClose: () => void;
+  organization?: EditableOrganization | null;
+}) {
+  const editing = Boolean(organization);
   const [name, setName] = useState('');
   const [website, setWebsite] = useState('');
   const [billed, setBilled] = useState(true);
   const [roles, setRoles] = useState<OrganizationRole[]>(['client']);
   const f = useBodyFields();
+
+  useEffect(() => {
+    if (!open) return;
+    setName(organization?.name ?? '');
+    setWebsite(organization?.website ?? '');
+  }, [open, organization]);
 
   const toggle = (r: OrganizationRole) =>
     setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]));
@@ -732,73 +836,108 @@ export function NewOrganization({ open, onClose }: { open: boolean; onClose: () 
   return (
     <CreateModal
       open={open}
-      title="Add an organisation"
-      submitLabel="Add it"
+      title={editing ? `Edit ${organization!.name}` : 'Add an organisation'}
+      submitLabel={editing ? 'Save' : 'Add it'}
       onClose={onClose}
-      invalidate={[['organizations']]}
+      invalidate={editing ? [['organization', organization!.id], ['organizations']] : [['organizations']]}
       onSubmit={() =>
-        api.post('/crm/organizations', {
-          name,
-          website: website || null,
-          roles,
-          ...(billed ? { account: f.account() } : {}),
-        })
+        editing
+          ? api.patch(`/crm/organizations/${organization!.id}`, { name, website: website || null })
+          : api.post('/crm/organizations', {
+              name,
+              website: website || null,
+              roles,
+              ...(billed ? { account: f.account() } : {}),
+            })
       }
     >
-      <p className="text-2xs text-ink-500">
-        A business, trust or foundation. Schools and colleges go under Institutions.
-      </p>
+      {editing ? (
+        <p className="text-2xs text-ink-500">
+          What they are to us and how we bill them are edited from their own place on the record.
+        </p>
+      ) : (
+        <p className="text-2xs text-ink-500">
+          A business, trust or foundation. Schools and colleges go under Institutions.
+        </p>
+      )}
       <TextInput label="Name" required autoFocus value={name} onChange={setName} />
       <TextInput label="Website" value={website} onChange={setWebsite} placeholder="https://" />
 
-      {/* What they do with us, which is a different question from what they are
-          — and not exclusive. A manufacturer that funds a CSR cohort and hires
-          out of it is both, and recording one loses the half somebody is about
-          to ask about. */}
-      <fieldset className="rounded-lg border border-ink-800 p-3">
-        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">What they are to us</legend>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {ORGANIZATION_ROLES.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => toggle(r)}
-              className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                roles.includes(r) ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
-              }`}
-            >
-              <span className={`block text-xs font-medium ${roles.includes(r) ? 'text-accent-soft' : 'text-ink-200'}`}>
-                {ORGANIZATION_ROLE_LABELS[r]}
-              </span>
-              <span className="block text-2xs text-ink-500">{ORGANIZATION_ROLE_HINTS[r]}</span>
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 px-1 text-2xs text-ink-500">As many as are true.</p>
-      </fieldset>
+      {!editing && (
+        <>
+          {/* What they do with us, which is a different question from what
+              they are — and not exclusive. A manufacturer that funds a CSR
+              cohort and hires out of it is both, and recording one loses the
+              half somebody is about to ask about. */}
+          <fieldset className="rounded-lg border border-ink-800 p-3">
+            <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">What they are to us</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {ORGANIZATION_ROLES.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => toggle(r)}
+                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                    roles.includes(r) ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
+                  }`}
+                >
+                  <span className={`block text-xs font-medium ${roles.includes(r) ? 'text-accent-soft' : 'text-ink-200'}`}>
+                    {ORGANIZATION_ROLE_LABELS[r]}
+                  </span>
+                  <span className="block text-2xs text-ink-500">{ORGANIZATION_ROLE_HINTS[r]}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 px-1 text-2xs text-ink-500">As many as are true.</p>
+          </fieldset>
 
-      <label className="flex items-start gap-2 rounded-lg border border-ink-800 p-3">
-        <input type="checkbox" className="mt-0.5" checked={billed} onChange={(e) => setBilled(e.target.checked)} />
-        <span>
-          <span className="block text-xs text-ink-200">We invoice them</span>
-          <span className="block text-2xs text-ink-500">Payment terms and a billing address. Add it later if you would rather.</span>
-        </span>
-      </label>
-      {billed && (
-        <fieldset className="rounded-lg border border-ink-800 p-3">
-          <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Billing</legend>
-          <BillingFields {...f.billingProps} />
-        </fieldset>
+          <label className="flex items-start gap-2 rounded-lg border border-ink-800 p-3">
+            <input type="checkbox" className="mt-0.5" checked={billed} onChange={(e) => setBilled(e.target.checked)} />
+            <span>
+              <span className="block text-xs text-ink-200">We invoice them</span>
+              <span className="block text-2xs text-ink-500">Payment terms and a billing address. Add it later if you would rather.</span>
+            </span>
+          </label>
+          {billed && (
+            <fieldset className="rounded-lg border border-ink-800 p-3">
+              <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Billing</legend>
+              <BillingFields {...f.billingProps} />
+            </fieldset>
+          )}
+        </>
       )}
     </CreateModal>
   );
 }
 
-/** Billing detail for a body already on file, of either kind. */
+/**
+ * Billing detail for a body already on file, of either kind.
+ *
+ * With `existing` given, the fields are pre-filled from it and saved with a
+ * PATCH; with none, this is the first billing detail the body has had and is
+ * created with a POST.
+ */
 export function AddBillingDetails({
-  open, organizationId, name, onClose, queryKey,
-}: { open: boolean; organizationId: string; name: string; onClose: () => void; queryKey: string }) {
+  open, organizationId, name, onClose, queryKey, existing,
+}: {
+  open: boolean;
+  organizationId: string;
+  name: string;
+  onClose: () => void;
+  queryKey: string;
+  existing?: { tier: string | null; billingEmail: string | null; paymentTermsDays: number | null } | null;
+}) {
+  const editing = Boolean(existing);
   const f = useBodyFields();
+
+  useEffect(() => {
+    if (!open) return;
+    f.billingProps.setTier(existing?.tier ?? '');
+    f.billingProps.setBillingEmail(existing?.billingEmail ?? '');
+    f.billingProps.setPaymentTermsDays(existing?.paymentTermsDays ? String(existing.paymentTermsDays) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, existing]);
+
   return (
     <CreateModal
       open={open}
@@ -806,7 +945,10 @@ export function AddBillingDetails({
       submitLabel="Save"
       onClose={onClose}
       invalidate={[['organization', organizationId], [queryKey]]}
-      onSubmit={() => api.post(`/crm/organizations/${organizationId}/account`, f.account())}
+      onSubmit={() => {
+        const path = `/crm/organizations/${organizationId}/account`;
+        return editing ? api.patch(path, f.account()) : api.post(path, f.account());
+      }}
     >
       <p className="text-2xs text-ink-500">Everything below is optional.</p>
       <BillingFields {...f.billingProps} />
@@ -814,11 +956,41 @@ export function AddBillingDetails({
   );
 }
 
-/** School and college detail for an institution already on file. */
+/**
+ * School and college detail for an institution already on file.
+ *
+ * With `existing` given, the fields are pre-filled from it and saved with a
+ * PATCH; with none, this is the first school detail the institution has had
+ * and is created with a POST.
+ */
 export function AddSchoolDetails({
-  open, organizationId, name, onClose,
-}: { open: boolean; organizationId: string; name: string; onClose: () => void }) {
+  open, organizationId, name, onClose, existing,
+}: {
+  open: boolean;
+  organizationId: string;
+  name: string;
+  onClose: () => void;
+  existing?: {
+    institutionType: string | null;
+    managementType: string | null;
+    district: string | null;
+    state: string | null;
+    studentCount: number | null;
+  } | null;
+}) {
+  const editing = Boolean(existing);
   const f = useBodyFields();
+
+  useEffect(() => {
+    if (!open) return;
+    f.schoolProps.setInstitutionType(existing?.institutionType ?? '');
+    f.schoolProps.setManagementType(existing?.managementType ?? '');
+    f.schoolProps.setDistrict(existing?.district ?? '');
+    f.schoolProps.setState(existing?.state ?? '');
+    f.schoolProps.setStudentCount(existing?.studentCount ? String(existing.studentCount) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, existing]);
+
   return (
     <CreateModal
       open={open}
@@ -826,7 +998,10 @@ export function AddSchoolDetails({
       submitLabel="Save"
       onClose={onClose}
       invalidate={[['organization', organizationId], ['institutions']]}
-      onSubmit={() => api.post(`/crm/institutions/${organizationId}/school-details`, f.institutionProfile())}
+      onSubmit={() => {
+        const path = `/crm/institutions/${organizationId}/school-details`;
+        return editing ? api.patch(path, f.institutionProfile()) : api.post(path, f.institutionProfile());
+      }}
     >
       <p className="text-2xs text-ink-500">
         All optional.
@@ -843,13 +1018,43 @@ const STUDENT_STATUSES = [
   { value: 'withdrawn', label: 'Left' },
 ];
 
+/** The fields a student's record already carries, as read back off the record. */
+interface EditableStudent {
+  id: string;
+  fullName: string;
+  primaryPhone: string | null;
+  primaryEmail: string | null;
+  registrationNumber: string | null;
+  institution: { id: string } | null;
+  placeOfSupply: string | null;
+  address: string | null;
+  status: string;
+  funding: string;
+  sponsor: { id: string } | null;
+  fundingFramework: string | null;
+  deliveryLocation: string | null;
+}
+
 /**
  * A student: an individual who takes a course and is billed in their own name.
  *
  * Not an organisation with one person in it, which is what the product used to
  * make somebody type in order to raise a walk-in's invoice.
+ *
+ * Also the correction path for one arriving wrong out of a bulk import: with
+ * `student` given, the same fields are pre-filled from the record and saved
+ * with a PATCH rather than a POST.
  */
-export function NewStudent({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function NewStudent({
+  open,
+  onClose,
+  student,
+}: {
+  open: boolean;
+  onClose: () => void;
+  student?: EditableStudent | null;
+}) {
+  const editing = Boolean(student);
   const [fullName, setFullName] = useState('');
   const [primaryPhone, setPhone] = useState('');
   const [primaryEmail, setEmail] = useState('');
@@ -862,6 +1067,22 @@ export function NewStudent({ open, onClose }: { open: boolean; onClose: () => vo
   const [sponsorId, setSponsor] = useState('');
   const [fundingFramework, setFramework] = useState('');
   const [deliveryLocation, setLocation] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setFullName(student?.fullName ?? '');
+    setPhone(student?.primaryPhone ?? '');
+    setEmail(student?.primaryEmail ?? '');
+    setRegistration(student?.registrationNumber ?? '');
+    setInstitution(student?.institution?.id ?? '');
+    setPlaceOfSupply(student?.placeOfSupply ?? '');
+    setAddress(student?.address ?? '');
+    setStatus(student?.status ?? 'prospective');
+    setFunding((student?.funding as FundingSource) ?? 'self');
+    setSponsor(student?.sponsor?.id ?? '');
+    setFramework(student?.fundingFramework ?? '');
+    setLocation(student?.deliveryLocation ?? '');
+  }, [open, student]);
 
   const { data: institutions } = useQuery({
     queryKey: ['institutions', 'picker'],
@@ -880,29 +1101,29 @@ export function NewStudent({ open, onClose }: { open: boolean; onClose: () => vo
     retry: false,
   });
 
+  const body = () => ({
+    fullName,
+    primaryPhone: primaryPhone || null,
+    primaryEmail: primaryEmail || null,
+    registrationNumber: registrationNumber || null,
+    institutionId: institutionId || null,
+    placeOfSupply: placeOfSupply || null,
+    address: address || null,
+    status,
+    funding,
+    sponsorId: funding === 'sponsor' ? sponsorId || null : null,
+    fundingFramework: funding === 'scheme' ? fundingFramework || null : null,
+    deliveryLocation: deliveryLocation || null,
+  });
+
   return (
     <CreateModal
       open={open}
-      title="Add a student"
-      submitLabel="Add them"
+      title={editing ? `Edit ${student!.fullName}` : 'Add a student'}
+      submitLabel={editing ? 'Save' : 'Add them'}
       onClose={onClose}
-      invalidate={[['students']]}
-      onSubmit={() =>
-        api.post('/crm/students', {
-          fullName,
-          primaryPhone: primaryPhone || null,
-          primaryEmail: primaryEmail || null,
-          registrationNumber: registrationNumber || null,
-          institutionId: institutionId || null,
-          placeOfSupply: placeOfSupply || null,
-          address: address || null,
-          status,
-          funding,
-          sponsorId: funding === 'sponsor' ? sponsorId || null : null,
-          fundingFramework: funding === 'scheme' ? fundingFramework || null : null,
-          deliveryLocation: deliveryLocation || null,
-        })
-      }
+      invalidate={editing ? [['student', student!.id], ['students']] : [['students']]}
+      onSubmit={() => (editing ? api.patch(`/crm/students/${student!.id}`, body()) : api.post('/crm/students', body()))}
     >
       <TextInput label="Name" required autoFocus value={fullName} onChange={setFullName} />
       <Row>
@@ -1356,6 +1577,66 @@ export function NewSkill({ open, onClose }: { open: boolean; onClose: () => void
       />
       <p className="text-2xs text-ink-500">
         Confidence fades from this date.
+      </p>
+    </CreateModal>
+  );
+}
+
+/**
+ * A correction to the plain identity fields on somebody's employment record —
+ * their name, phone, email, date of birth. Exactly what a staff-list import
+ * writes and sometimes gets wrong, and nothing more: confirmation, notice
+ * period, separation and pay each move through their own action elsewhere on
+ * the page, and statutory identifiers never reach the client at all.
+ */
+export function EditEmployeeProfile({
+  open,
+  onClose,
+  employmentId,
+  person,
+}: {
+  open: boolean;
+  onClose: () => void;
+  employmentId: string;
+  person: { fullName: string; primaryPhone: string | null; primaryEmail: string | null; dateOfBirth?: string | null };
+}) {
+  const [fullName, setFullName] = useState('');
+  const [primaryPhone, setPhone] = useState('');
+  const [primaryEmail, setEmail] = useState('');
+  const [dateOfBirth, setDob] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setFullName(person.fullName ?? '');
+    setPhone(person.primaryPhone ?? '');
+    setEmail(person.primaryEmail ?? '');
+    setDob(person.dateOfBirth ? person.dateOfBirth.slice(0, 10) : '');
+  }, [open, person]);
+
+  return (
+    <CreateModal
+      open={open}
+      title="Edit their details"
+      submitLabel="Save"
+      onClose={onClose}
+      invalidate={[['hr-employee', employmentId], ['hr-employees']]}
+      onSubmit={() =>
+        api.patch(`/hr/employees/${employmentId}`, {
+          fullName,
+          primaryPhone: primaryPhone || null,
+          primaryEmail: primaryEmail || null,
+          dateOfBirth: dateOfBirth || null,
+        })
+      }
+    >
+      <TextInput label="Name" required autoFocus value={fullName} onChange={setFullName} />
+      <Row>
+        <TextInput label="Phone" type="tel" value={primaryPhone} onChange={setPhone} />
+        <TextInput label="Email" type="email" value={primaryEmail} onChange={setEmail} />
+      </Row>
+      <TextInput label="Date of birth" type="date" value={dateOfBirth} onChange={setDob} />
+      <p className="text-2xs text-ink-500">
+        Confirmation, notice period and separation are changed from their own actions on the record, not here.
       </p>
     </CreateModal>
   );
