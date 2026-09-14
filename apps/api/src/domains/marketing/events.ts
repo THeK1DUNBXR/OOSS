@@ -223,7 +223,7 @@ export async function updateEvent(id: string, patch: Partial<EventInput>) {
       ...(patch.costPlanned !== undefined ? { costPlanned: patch.costPlanned } : {}),
       ...(patch.division !== undefined ? { division: patch.division } : {}),
       updatedById: auth.partyId,
-    },
+    } as never,
   });
 
   return updated;
@@ -317,11 +317,17 @@ async function recordTouchpointRow(input: {
   sourceRef?: string | null;
 }) {
   const auth = currentAuth();
+  // Touchpoints are deliberately left off RECORD_TYPE_CODES — no human-facing
+  // code — but the row still needs one to satisfy the shared recordCode
+  // convention, so it borrows the owning entity's own code the same way
+  // MarketingAudienceMember borrows 'AUD' from its parent audience.
+  const recordCode = await nextRecordCode('EVT');
   // Touchpoints are immutable, append-only rows — no update path exists for
   // one once written, by design (MKT-CAP-004).
   return prisma.marketingTouchpoint.create({
     data: {
       tenantId: auth.tenantId,
+      recordCode,
       personId: input.personId,
       leadId: input.leadId ?? null,
       campaignId: input.campaignId ?? null,

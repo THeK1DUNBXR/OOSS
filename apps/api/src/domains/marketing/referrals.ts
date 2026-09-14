@@ -228,9 +228,11 @@ export async function redeemReferral(input: RedeemReferralInput) {
   // channel, independent of any live campaign that happened to be running.
   await prisma.lead.update({ where: { id: lead.id }, data: { campaignId: null, channelKey: 'referral' } });
 
+  const touchpointRecordCode = await nextRecordCode('REF');
   await prisma.marketingTouchpoint.create({
     data: {
       tenantId: auth.tenantId,
+      recordCode: touchpointRecordCode,
       personId: referredPersonId,
       leadId: lead.id,
       channelKey: 'referral',
@@ -338,12 +340,14 @@ export async function leaderboard(programId: string): Promise<LeaderboardRow[]> 
 
   const personIds = [...new Set(referrals.map((r) => r.referrerPersonId).filter((x): x is string => Boolean(x)))];
   const orgIds = [...new Set(referrals.map((r) => r.referrerOrganizationId).filter((x): x is string => Boolean(x)))];
-  const [people, orgs] = await Promise.all([
-    personIds.length ? prisma.person.findMany({ where: { id: { in: personIds } }, select: { id: true, fullName: true } }) : [],
-    orgIds.length ? prisma.organization.findMany({ where: { id: { in: orgIds } }, select: { id: true, name: true } }) : [],
-  ]);
-  const personName = new Map(people.map((p) => [p.id, p.fullName]));
-  const orgName = new Map(orgs.map((o) => [o.id, o.name]));
+  const people: Array<{ id: string; fullName: string }> = personIds.length
+    ? await prisma.person.findMany({ where: { id: { in: personIds } }, select: { id: true, fullName: true } })
+    : [];
+  const orgs: Array<{ id: string; name: string }> = orgIds.length
+    ? await prisma.organization.findMany({ where: { id: { in: orgIds } }, select: { id: true, name: true } })
+    : [];
+  const personName = new Map<string, string>(people.map((p) => [p.id, p.fullName]));
+  const orgName = new Map<string, string>(orgs.map((o) => [o.id, o.name]));
 
   const byReferrer = new Map<string, LeaderboardRow>();
   for (const r of referrals) {

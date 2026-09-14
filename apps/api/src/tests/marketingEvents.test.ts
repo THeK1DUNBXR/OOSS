@@ -31,6 +31,7 @@ import {
   submitForApproval,
   approveAsset,
   createSocialPost,
+  scheduleSocialPost,
   publishSocialPost,
   detectExpiredAssetsInUse,
 } from '../domains/marketing/assets.js';
@@ -348,6 +349,7 @@ describe('MKT-AST — social post publish, manual mode', () => {
     const post = await asUser(OPERATIONS, () =>
       createSocialPost({ channelKey: 'social_linkedin', body: 'Hello world', assetIds: [asset.id], scheduledAt: new Date() }),
     );
+    await asUser(OPERATIONS, () => scheduleSocialPost(post.id));
 
     const missingUrl = await expectReject(() => asUser(OPERATIONS, () => publishSocialPost(post.id, {})));
     expect(missingUrl.status).toBe(400);
