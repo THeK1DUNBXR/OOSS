@@ -192,7 +192,7 @@ router.post(
         reviewDate: z.coerce.date().nullish(),
       })
       .parse(req.body);
-    return createIdp(body);
+    return createIdp({ ...body, goals: body.goals ?? {} });
   }),
 );
 

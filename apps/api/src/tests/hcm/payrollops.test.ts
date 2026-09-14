@@ -36,6 +36,12 @@ async function employmentFor(email: string) {
   return unscopedPrisma.employmentRelationship.findFirstOrThrow({ where: { personId: user.personId } });
 }
 
+/** The party id behind an email — for the run fixture, which does not need a full employment record. */
+async function partyFor(email: string): Promise<string> {
+  const user = await unscopedPrisma.user.findFirstOrThrow({ where: { email } });
+  return user.personId!;
+}
+
 /** A throwaway employee, hired and activated, for tests that need their own subject. */
 async function makeEmployee(label: string) {
   fixtureSeq += 1;
@@ -68,6 +74,18 @@ async function makeEmployee(label: string) {
 /** A run and two instructions in different divisions, in a period this suite owns outright. */
 async function makeRun(payPeriod: string, rows: Array<{ employmentRelationshipId: string; division: string; gross: number; net: number }>) {
   return asUser('chairman@kaizen.co.in', async () => {
+    // Re-running this suite against the same database (a retry, a rerun
+    // during development) must not collide with a period it already used —
+    // clean up whatever it left behind first, run and instructions alike.
+    const stale = await prisma.payrollRun.findFirst({ where: { tenantId: TENANT, payPeriod } });
+    if (stale) {
+      await prisma.payrollJournal.deleteMany({ where: { tenantId: TENANT, payrollRunId: stale.id } });
+      await prisma.bankAdvice.deleteMany({ where: { tenantId: TENANT, payrollRunId: stale.id } });
+      await prisma.payrollReconciliation.deleteMany({ where: { tenantId: TENANT, OR: [{ payrollRunId: stale.id }, { previousPayrollRunId: stale.id }] } });
+      await prisma.payrollInstruction.deleteMany({ where: { tenantId: TENANT, payrollRunId: stale.id } });
+      await prisma.payrollRun.delete({ where: { id: stale.id } });
+    }
+
     const recordCode = await nextRecordCode('PRN');
     const run = await prisma.payrollRun.create({
       data: {
@@ -78,8 +96,8 @@ async function makeRun(payPeriod: string, rows: Array<{ employmentRelationshipId
         grossTotal: rows.reduce((s, r) => s + r.gross, 0),
         netTotal: rows.reduce((s, r) => s + r.net, 0),
         headcount: rows.length,
-        preparedById: (await employmentFor('operations@kaizen.co.in')).personId,
-        approvedById: (await employmentFor('finance@kaizen.co.in')).personId,
+        preparedById: await partyFor('operations@kaizen.co.in'),
+        approvedById: await partyFor('finance@kaizen.co.in'),
       },
     });
     for (const row of rows) {
@@ -145,7 +163,7 @@ describe('payrollops pure logic (packages/shared/src/hcm/payrollops.ts)', () => 
       payDate: '2026-01-15',
     };
     expect(payrollCalendarMilestone(cal, new Date('2026-01-01'))).toBe('before_attendance_lock');
-    expect(payrollCalendarMilestone(cal, new Date('2026-01-11'))).toBe('approval_due');
+    expect(payrollCalendarMilestone(cal, new Date('2026-01-11'))).toBe('run_due'); // between runByAt and approveByAt
     expect(payrollCalendarMilestone(cal, new Date('2026-01-20'))).toBe('past_pay_date');
   });
 });
@@ -194,8 +212,19 @@ describe('ad-hoc pay lines', () => {
     );
     expect(line.status).toBe('Proposed');
 
-    const selfApprove = await expectReject(() => asUser('operations@kaizen.co.in', () => approveAdHocPayLine(line.id)));
+    // hrOps structurally lacks `adhoc_pay:approve` at all — the proposer
+    // never even reaches the Self-Dealing Bar's own-record check.
+    const noGrant = await expectReject(() => asUser('operations@kaizen.co.in', () => approveAdHocPayLine(line.id)));
+    expect(noGrant.status).toBe(403);
+
+    // Chairman holds every verb, so a chairman-proposed line is the shape
+    // that actually reaches the Self-Dealing Bar's own-record check.
+    const chairmanLine = await asUser('chairman@kaizen.co.in', () =>
+      createAdHocPayLine({ employmentRelationshipId: employment.id, payItemId: item.id, payPeriod: '2031-01', amount: 1_500, reason: 'Second line' }),
+    );
+    const selfApprove = await expectReject(() => asUser('chairman@kaizen.co.in', () => approveAdHocPayLine(chairmanLine.id)));
     expect(selfApprove.message).toMatch(/Self-Dealing Bar/);
+    await asUser('finance@kaizen.co.in', () => approveAdHocPayLine(chairmanLine.id));
 
     const approved = await asUser('finance@kaizen.co.in', () => approveAdHocPayLine(line.id));
     expect(approved.status).toBe('Approved');
@@ -267,11 +296,19 @@ describe('payroll journal', () => {
   it('HCM-PAYROLLOPS-007: the preparer cannot also post the journal (Self-Dealing Bar); posting records a Transaction', async () => {
     const a = await makeEmployee('journal-post-a');
     const run = await makeRun('2031-03', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 40_000, net: 34_000 }]);
-    const journal = await asUser('operations@kaizen.co.in', () => generatePayrollJournal(run.id));
 
     const bankAccount = await unscopedPrisma.ledgerAccount.findFirstOrThrow({ where: { tenantId: TENANT, accountType: 'bank' } });
 
-    const selfPost = await expectReject(() => asUser('operations@kaizen.co.in', () => postPayrollJournal(journal.id, bankAccount.id)));
+    // hrOps holds `payroll_journals:create` but not `approve` at all — a
+    // structural refusal, before the Self-Dealing Bar's own-record check.
+    const opsJournal = await asUser('operations@kaizen.co.in', () => generatePayrollJournal(run.id));
+    const noGrant = await expectReject(() => asUser('operations@kaizen.co.in', () => postPayrollJournal(opsJournal.id, bankAccount.id)));
+    expect(noGrant.status).toBe(403);
+
+    // Chairman holds both `create` and `approve`, so a chairman-prepared
+    // journal is the shape that actually reaches the Self-Dealing Bar.
+    const journal = await asUser('chairman@kaizen.co.in', () => generatePayrollJournal(run.id));
+    const selfPost = await expectReject(() => asUser('chairman@kaizen.co.in', () => postPayrollJournal(journal.id, bankAccount.id)));
     expect(selfPost.message).toMatch(/Self-Dealing Bar/);
 
     const posted = await asUser('finance@kaizen.co.in', () => postPayrollJournal(journal.id, bankAccount.id));
@@ -348,7 +385,12 @@ describe('payroll reconciliation', () => {
     const prev = await makeRun('2031-06', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 50_000, net: 45_000 }]);
     const curr = await makeRun('2031-07', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 20_000, net: 18_000 }]);
 
-    const recon = await asUser('operations@kaizen.co.in', () => generatePayrollReconciliation(curr.id, prev.id));
+    // hrOps holds only `payroll_reconciliations:view`; generating one is
+    // financeHead's call, the last check before disbursal.
+    const denied = await expectReject(() => asUser('operations@kaizen.co.in', () => generatePayrollReconciliation(curr.id, prev.id)));
+    expect(denied.status).toBe(403);
+
+    const recon = await asUser('finance@kaizen.co.in', () => generatePayrollReconciliation(curr.id, prev.id));
     expect(recon.unexplainedCount).toBeGreaterThan(0);
     const deltas = recon.deltas as Array<{ employmentRelationshipId: string; unexplained: boolean }>;
     expect(deltas.find((d) => d.employmentRelationshipId === a.employment.id)?.unexplained).toBe(true);
@@ -405,10 +447,10 @@ describe('payroll queries', () => {
     );
     expect(query.status).toBe('Open');
 
-    const kavitha = await unscopedPrisma.user.findFirst({ where: { email: 'kavitha@kaizen.co.in' } });
-    if (kavitha) {
+    const divya = await unscopedPrisma.user.findFirst({ where: { email: 'divya@kaizen.co.in' } });
+    if (divya) {
       const err = await expectReject(() =>
-        asUser('kavitha@kaizen.co.in', () =>
+        asUser('divya@kaizen.co.in', () =>
           createPayrollQuery({ employmentRelationshipId: ravi.id, payPeriod: '2031-01', subject: 'Not mine', message: 'x' }),
         ),
       );
@@ -422,9 +464,16 @@ describe('payroll queries', () => {
     expect(mine.every((q) => q.employmentRelationshipId === ravi.id)).toBe(true);
   });
 
-  it('a financeHead can view but not create a payroll query on someone else\'s behalf without visibility to that employment', async () => {
+  it('financeHead holds view-only on payroll queries — no create grant at all, whoever the subject is', async () => {
     const err = await expectReject(() =>
       asUser('finance@kaizen.co.in', () => createPayrollQuery({ employmentRelationshipId: 'does-not-exist', payPeriod: '2031-01', subject: 'x', message: 'y' })),
+    );
+    expect(err.status).toBe(403);
+  });
+
+  it('hrOps raising a query against an employment that does not exist gets a 404, not a silent create', async () => {
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => createPayrollQuery({ employmentRelationshipId: 'does-not-exist', payPeriod: '2031-01', subject: 'x', message: 'y' })),
     );
     expect(err.status).toBe(404);
   });

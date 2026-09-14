@@ -27,6 +27,10 @@ import {
   recordAlumni,
   getOffboardingForEmployment,
   assetsPendingCount,
+  myResignations,
+  mySubmitResignation,
+  myOffboarding,
+  myNoticeDays,
 } from '../../domains/hcm/separations.js';
 
 const router = Router();
@@ -110,6 +114,26 @@ router.post(
 );
 
 router.post('/resignations/:id/withdraw', handler(async (req) => withdrawResignation(req.params.id)));
+
+// ---------------------------------------------------------------------------
+// "My exit" — resolved against the caller's own employment, no id required.
+// ---------------------------------------------------------------------------
+
+router.get('/my/resignations', handler(async () => myResignations()));
+
+router.post(
+  '/my/resignations',
+  handler(async (req) => {
+    const parsed = submitResignationBody.omit({ employmentRelationshipId: true }).safeParse(req.body);
+    if (!parsed.success) throw ApiError.badRequest('Invalid resignation.', parsed.error.flatten());
+    const requestedLastDay = date(parsed.data.requestedLastDay);
+    if (!requestedLastDay) throw ApiError.badRequest('requestedLastDay must be a valid date.');
+    return mySubmitResignation({ ...parsed.data, requestedLastDay });
+  }),
+);
+
+router.get('/my/offboarding', handler(async () => myOffboarding()));
+router.get('/my/notice-days', handler(async () => myNoticeDays()));
 
 // ---------------------------------------------------------------------------
 // Offboarding / clearance / no-dues, addressed by employment id for the "my

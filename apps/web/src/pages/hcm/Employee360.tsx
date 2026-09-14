@@ -169,7 +169,7 @@ export function Employee360() {
       {tab === 'overview' && <OverviewTab id={id} data={data} />}
       {tab === 'documents' && <DocumentsTab id={id} data={data} />}
       {tab === 'reporting' && <ReportingTab id={id} data={data} />}
-      {tab === 'history' && <HistoryTab id={id} data={data} userPartyId={user.personId} />}
+      {tab === 'history' && <HistoryTab id={id} data={data} userPartyId={user?.personId ?? null} />}
     </div>
   );
 }

@@ -378,7 +378,7 @@ export async function completeEnrollment(id: string, input: { score?: number | n
     await claimFromLearningCompletion({ partyId: employment.personId, skillId, learningRecordId: id });
   }
 
-  let certification = null;
+  let certification: Awaited<ReturnType<typeof issueCertificationFromEnrollment>> | null = null;
   if (program.kind === 'certification') {
     certification = await issueCertificationFromEnrollment({
       employmentRelationshipId: enrollment.employmentRelationshipId,
@@ -524,8 +524,12 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
 
   const certs = await prisma.certification.findMany({
     where: { tenantId: auth.tenantId, expiresOn: { not: null, lte: horizon } },
-    include: { employmentRelationship: { select: { personId: true, recordCode: true } } },
   });
+  const employments = await prisma.employmentRelationship.findMany({
+    where: { tenantId: auth.tenantId, id: { in: certs.map((c) => c.employmentRelationshipId) } },
+    select: { id: true, personId: true },
+  });
+  const personIdByEmployment = new Map<string, string>(employments.map((e) => [e.id, e.personId]));
 
   let processed = 0;
   let notified = 0;
@@ -549,7 +553,7 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
         subjectLabel: cert.recordCode,
         domain: 'hr',
         detail: `${cert.name} expired on ${cert.expiresOn.toISOString().slice(0, 10)} and has not been renewed.`,
-        ownerPartyId: cert.employmentRelationship.personId,
+        ownerPartyId: (personIdByEmployment.get(cert.employmentRelationshipId) ?? null),
         triggerFingerprint: 'expired',
         ladderRung: 0,
       });
@@ -558,7 +562,7 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
         name: EVENTS.CERTIFICATION_EXPIRED,
         subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
         newState: { expiresOn: cert.expiresOn },
-        owner: { partyId: cert.employmentRelationship.personId },
+        owner: { partyId: (personIdByEmployment.get(cert.employmentRelationshipId) ?? null) },
         impact: { domains: ['hr'] },
       });
       notified += 1;
@@ -581,7 +585,7 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
       subjectLabel: cert.recordCode,
       domain: 'hr',
       detail: `${cert.name} expires on ${cert.expiresOn.toISOString().slice(0, 10)} (${rung.days} days or fewer out).`,
-      ownerPartyId: cert.employmentRelationship.personId,
+      ownerPartyId: (personIdByEmployment.get(cert.employmentRelationshipId) ?? null),
       triggerFingerprint: 'expiring',
       ladderRung: rung.days,
     });
@@ -590,7 +594,7 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
       name: EVENTS.CERTIFICATION_EXPIRING,
       subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
       newState: { expiresOn: cert.expiresOn, rungDays: rung.days },
-      owner: { partyId: cert.employmentRelationship.personId },
+      owner: { partyId: (personIdByEmployment.get(cert.employmentRelationshipId) ?? null) },
       impact: { domains: ['hr'] },
     });
     notified += 1;
@@ -814,7 +818,8 @@ export async function listBudgets(fy?: string) {
   });
 
   const spendByFy = new Map<string, number>();
-  for (const fyLabel of new Set(budgets.map((b) => b.fy))) {
+  const distinctFys: string[] = [...new Set(budgets.map((b) => b.fy))];
+  for (const fyLabel of distinctFys) {
     spendByFy.set(fyLabel, await trainingSpendForFy(fyLabel));
   }
 

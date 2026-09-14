@@ -1,12 +1,179 @@
-import { Card, EmptyState, PageHeader } from '../../components/ui.js';
+/**
+ * My home — announcements, kudos, open cases, pending acknowledgements and
+ * surveys waiting to be answered (docs/hcm/engagement.md).
+ */
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, dateTime } from '../../lib/api.js';
+import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip } from '../../components/ui.js';
+
+interface Announcement {
+  id: string;
+  recordCode: string;
+  title: string;
+  body: string;
+  pinned: boolean;
+  acknowledgementRequired: boolean;
+  publishAt: string;
+}
+
+interface Recognition {
+  id: string;
+  fromPartyId: string;
+  badge: string;
+  message: string;
+  points: number;
+  createdAt: string;
+}
+
+interface HrCase {
+  id: string;
+  recordCode: string;
+  category: string;
+  status: string;
+  subject: string;
+  slaDueAt: string;
+}
+
+interface PolicyDocument {
+  id: string;
+  title: string;
+  version: string;
+}
+
+interface PulseSurvey {
+  id: string;
+  title: string;
+  closesAt: string;
+}
+
+interface HomeData {
+  announcements: Announcement[];
+  kudos: Recognition[];
+  openCases: HrCase[];
+  pendingAcknowledgements: { announcements: Announcement[]; policies: PolicyDocument[] };
+  surveysToAnswer: PulseSurvey[];
+}
 
 export function Home() {
+  const qc = useQueryClient();
+  const home = useQuery({ queryKey: ['me-home'], queryFn: () => api.get<HomeData>('/hcm/engagement/me/home') });
+
+  const ackAnnouncement = useMutation({
+    mutationFn: (id: string) => api.post(`/hcm/engagement/announcements/${id}/ack`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me-home'] }),
+  });
+  const ackPolicy = useMutation({
+    mutationFn: (id: string) => api.post(`/hcm/engagement/policies/${id}/ack`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me-home'] }),
+  });
+
   return (
     <div>
-      <PageHeader title="My home" />
-      <Card>
-        <EmptyState message="Nothing here yet." hint="This part of People is being built." />
-      </Card>
+      <PageHeader title="My home" subtitle="What needs your attention, and what's landed for you recently." />
+      {home.isLoading && <Loading />}
+      {home.error && <ErrorBox error={home.error} />}
+      {home.data && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card title="Pending acknowledgements">
+            {home.data.pendingAcknowledgements.announcements.length === 0 && home.data.pendingAcknowledgements.policies.length === 0 ? (
+              <EmptyState message="Nothing waiting on you." />
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {home.data.pendingAcknowledgements.announcements.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between gap-2 rounded border border-ink-800 p-2">
+                    <div>
+                      <p className="text-xs font-medium text-ink-100">{a.title}</p>
+                      <p className="text-2xs text-ink-500">Announcement · {dateTime(a.publishAt)}</p>
+                    </div>
+                    <button className="btn text-2xs" disabled={ackAnnouncement.isPending} onClick={() => ackAnnouncement.mutate(a.id)}>
+                      Acknowledge
+                    </button>
+                  </li>
+                ))}
+                {home.data.pendingAcknowledgements.policies.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between gap-2 rounded border border-ink-800 p-2">
+                    <div>
+                      <p className="text-xs font-medium text-ink-100">{p.title}</p>
+                      <p className="text-2xs text-ink-500">Policy v{p.version}</p>
+                    </div>
+                    <button className="btn text-2xs" disabled={ackPolicy.isPending} onClick={() => ackPolicy.mutate(p.id)}>
+                      Acknowledge
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card title="Surveys to answer">
+            {home.data.surveysToAnswer.length === 0 ? (
+              <EmptyState message="No open surveys are waiting on you." />
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {home.data.surveysToAnswer.map((s) => (
+                  <li key={s.id} className="rounded border border-ink-800 p-2">
+                    <p className="text-xs font-medium text-ink-100">{s.title}</p>
+                    <p className="text-2xs text-ink-500">Closes {dateTime(s.closesAt)}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card title="My open cases">
+            {home.data.openCases.length === 0 ? (
+              <EmptyState message="No open helpdesk cases." />
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {home.data.openCases.map((c) => (
+                  <li key={c.id} className="flex items-center justify-between gap-2 rounded border border-ink-800 p-2">
+                    <div>
+                      <p className="text-xs font-medium text-ink-100">{c.subject}</p>
+                      <p className="text-2xs text-ink-500 mono">{c.recordCode} · {c.category.replace(/_/g, ' ')}</p>
+                    </div>
+                    <StatusChip status={c.status} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card title="Kudos received">
+            {home.data.kudos.length === 0 ? (
+              <EmptyState message="No kudos yet." hint="Recognition given by a colleague will show up here." />
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {home.data.kudos.map((k) => (
+                  <li key={k.id} className="rounded border border-ink-800 p-2">
+                    <p className="text-xs font-medium text-ink-100">{k.badge}</p>
+                    <p className="text-2xs text-ink-400">{k.message}</p>
+                    <p className="text-2xs text-ink-500">{dateTime(k.createdAt)} · {k.points} pts</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card title="Announcements" className="lg:col-span-2">
+            {home.data.announcements.length === 0 ? (
+              <EmptyState message="No announcements right now." />
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {home.data.announcements.map((a) => (
+                  <li key={a.id} className="rounded border border-ink-800 p-2">
+                    <div className="flex items-center gap-2">
+                      {a.pinned && <span className="chip border-accent/40 bg-accent/10 text-accent-soft">Pinned</span>}
+                      <p className="text-xs font-medium text-ink-100">{a.title}</p>
+                    </div>
+                    <p className="mt-1 text-2xs text-ink-400">{a.body}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

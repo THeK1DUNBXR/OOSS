@@ -10,12 +10,14 @@ import {
   listTravelRequests, createTravelRequest, decideTravelRequest, settleTravelRequest,
   listLetterRequests, createLetterRequest, fulfilLetterRequest, rejectLetterRequest, listIssuedHrLetters,
   listIdCards, issueIdCard, reportIdCardLost, returnIdCard,
-  assetsPendingCount, assetsPendingForEmployment,
+  assetsPendingCount, assetsPendingForEmployment, myEmployment,
 } from '../../domains/hcm/assets.js';
 
 const router = Router();
 
 router.get('/_status', handler(async () => ({ module: 'assets', ready: true })));
+
+router.get('/me/employment', handler(async () => myEmployment()));
 
 // ---------------------------------------------------------------------------
 // Assets

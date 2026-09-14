@@ -307,6 +307,7 @@ export async function resolveApplicablePolicy(
   leaveTypeId: string,
   at: Date = new Date(),
 ): Promise<{ policy: { id: string; name: string }; rule: PolicyRuleFacts & { id: string } } | null> {
+  await assertCan({ resource: 'leave_policies', verb: 'view' });
   const auth = currentAuth();
   const employment = await prisma.employmentRelationship.findFirst({
     where: { id: employmentRelationshipId, tenantId: auth.tenantId },
@@ -700,6 +701,7 @@ export async function initiateApprovalChain(leaveRequestId: string, chainId?: st
     include: { leaveType: true },
   });
   if (!request) throw ApiError.notFound('Leave request');
+  await assertEmploymentVisible('leave', request.employmentRelationshipId, 'edit');
 
   const already = await prisma.leaveRequestApproval.findMany({ where: { tenantId: auth.tenantId, leaveRequestId } });
   if (already.length > 0) return already;
@@ -713,7 +715,7 @@ export async function initiateApprovalChain(leaveRequestId: string, chainId?: st
   if (!chain) return [];
 
   const levels = chain.levels as unknown as ChainLevel[];
-  const rows = [];
+  const rows: Awaited<ReturnType<typeof prisma.leaveRequestApproval.create>>[] = [];
   for (const level of levels) {
     const approverPartyId =
       level.kind === 'manager'
@@ -747,9 +749,9 @@ export async function listApprovalsForRequest(leaveRequestId: string) {
   return prisma.leaveRequestApproval.findMany({ where: { tenantId: auth.tenantId, leaveRequestId }, orderBy: { level: 'asc' } });
 }
 
+/** Every pending level resolved to the caller — no broad grant required, since it is scoped to their own partyId already (see `decideApprovalLevel`'s identity-based authority). */
 export async function listMyInbox() {
   const auth = currentAuth();
-  await assertCan({ resource: 'leave', verb: 'approve' });
   if (!auth.partyId) return [];
   return prisma.leaveRequestApproval.findMany({
     where: { tenantId: auth.tenantId, approverPartyId: auth.partyId, decision: 'pending' },
@@ -765,7 +767,6 @@ export async function listMyInbox() {
  */
 export async function decideApprovalLevel(id: string, decision: 'approved' | 'rejected', note?: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'leave', verb: 'approve' });
 
   const approval = await prisma.leaveRequestApproval.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!approval) throw ApiError.notFound('Approval');
@@ -784,10 +785,15 @@ export async function decideApprovalLevel(id: string, decision: 'approved' | 're
       { axis: 'WHO', passed: false, reason: 'self_dealing' },
     ]);
   }
-  if (approval.approverPartyId && auth.partyId && approval.approverPartyId !== auth.partyId) {
-    throw ApiError.forbidden(`This level is resolved to a different approver.`, [
-      { axis: 'WHO', passed: false, reason: 'not_resolved_approver' },
-    ]);
+
+  // The level's own resolved approver may decide it on the strength of that
+  // resolution alone — a delegated, per-record authority the coarse
+  // role/grant matrix does not otherwise express (an ordinary manager holds
+  // no blanket `leave:approve`). Anybody else needs the broad HR/finance
+  // grant instead, as an override of a level nobody was resolved for.
+  const isResolvedApprover = Boolean(approval.approverPartyId) && approval.approverPartyId === auth.partyId;
+  if (!isResolvedApprover) {
+    await assertCan({ resource: 'leave', verb: 'approve' });
   }
 
   if (!['approved', 'rejected'].includes(decision)) {

@@ -19,7 +19,7 @@ import {
   type Verb,
 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
-import { currentAuth } from '../../platform/context.js';
+import { asSystem, currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -750,7 +750,11 @@ export async function submitRegularisation(input: { employmentRelationshipId: st
     throw ApiError.unprocessable(`Attendance for ${ymd(day)} is Locked — the pay period is closed. This cannot be regularised.`);
   }
   if (attendance.status !== 'Disputed') {
-    await transitionAttendance(attendance.id, 'DISPUTE', input.reason);
+    // Driving the existing `WorkAttendance` machine is a side effect of an
+    // action already gated on `attendance_regularisations:create` — the
+    // filer need not separately hold `attendance:edit` (an own-scoped
+    // employee never does), so this step runs as the platform.
+    await asSystem(auth.tenantId, () => transitionAttendance(attendance!.id, 'DISPUTE', input.reason));
   }
 
   const row = await prisma.attendanceRegularisation.create({
@@ -790,7 +794,7 @@ async function decideRegularisation(id: string, approve: boolean, note: string |
     if (correctedWorkedMinutes !== undefined) {
       await prisma.workAttendance.update({ where: { id: row.workAttendanceId }, data: { workedMinutes: correctedWorkedMinutes } });
     }
-    await transitionAttendance(row.workAttendanceId, 'REGULARISE', note ?? undefined);
+    await asSystem(auth.tenantId, () => transitionAttendance(row.workAttendanceId, 'REGULARISE', note ?? undefined));
   }
 
   const updated = await prisma.attendanceRegularisation.update({

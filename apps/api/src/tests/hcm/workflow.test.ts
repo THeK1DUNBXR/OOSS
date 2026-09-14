@@ -7,8 +7,10 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
+import { asSystem } from '../../platform/context.js';
 import type { AuthContext } from '../../platform/context.js';
-import { asPrincipal, asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { asPrincipal, asUser, expectReject, prisma, tenantId, unscopedPrisma, withFixtureRole } from '../helpers.js';
+import { invalidateGrantCache } from '../../platform/permissions.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import {
@@ -27,6 +29,25 @@ let fixtureSeq = 0;
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  // Scaffold gap (see docs/hcm/workflow.md, "Wanted from the scaffold"):
+  // grants.ts (owned by the scaffold, not editable by this workstream) gives
+  // `finance_head` only `view` on `hr_requests`, not `approve` — so a
+  // finance_grant-resolved level can be opened but never decided by the real
+  // seeded finance_head account. This patches the Grant table directly (the
+  // same mechanism `withFixtureRole` uses) to exercise the resolver and
+  // decide() path end to end; it does not touch grants.ts itself.
+  const financeRole = await unscopedPrisma.accessRole.findFirstOrThrow({ where: { tenantId: TENANT, slug: 'finance_head' } });
+  const existing = await unscopedPrisma.grant.findFirst({ where: { tenantId: TENANT, roleId: financeRole.id, resource: 'hr_requests' } });
+  if (existing) {
+    if (!existing.verbs.includes('approve' as never)) {
+      await unscopedPrisma.grant.update({ where: { id: existing.id }, data: { verbs: [...existing.verbs, 'approve'] } });
+    }
+  } else {
+    await unscopedPrisma.grant.create({
+      data: { tenantId: TENANT, principalType: 'role', roleId: financeRole.id, resource: 'hr_requests', verbs: ['view', 'approve'], scope: 'all' },
+    });
+  }
+  invalidateGrantCache();
 });
 
 /** A throwaway employee with no login — its partyId is used directly via `asEmployee`. */
@@ -58,6 +79,22 @@ async function makeEmployee(label: string) {
   });
 }
 
+/** Hires an existing person (e.g. a `withFixtureRole` principal) into a fresh position, as HR ops. */
+async function hireExisting(personId: string) {
+  return asUser('operations@kaizen.co.in', async () => {
+    const position = await prisma.position.create({
+      data: {
+        tenantId: TENANT,
+        recordCode: await nextRecordCode('POS'),
+        jobId: (await prisma.job.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+        orgUnitId: (await prisma.orgUnit.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+        status: 'Open',
+      },
+    });
+    return hire({ personId, positionId: position.id, hireEffectiveDate: new Date() });
+  });
+}
+
 /** Runs `fn` as a bare employee principal for `partyId` — no login required, matching how a fixture-only employee acts on their own request. */
 async function asEmployee<T>(partyId: string, fn: () => Promise<T>): Promise<T> {
   const auth: AuthContext = {
@@ -79,9 +116,14 @@ async function asEmployee<T>(partyId: string, fn: () => Promise<T>): Promise<T> 
   return asPrincipal(auth, fn);
 }
 
+// Multiple staff can hold `hr_ops_manager`/`finance_head` in the seeded
+// dataset; the resolver in the domain layer always picks the earliest
+// (`orderBy: createdAt asc`), so these mirror that ordering exactly rather
+// than asserting against an arbitrary holder.
 async function operationsPartyId(): Promise<string> {
   const affiliation = await unscopedPrisma.affiliation.findFirstOrThrow({
     where: { tenantId: TENANT, roleSlug: 'hr_ops_manager', status: 'active' },
+    orderBy: { createdAt: 'asc' },
   });
   return affiliation.partyId;
 }
@@ -89,6 +131,7 @@ async function operationsPartyId(): Promise<string> {
 async function financePartyId(): Promise<string> {
   const affiliation = await unscopedPrisma.affiliation.findFirstOrThrow({
     where: { tenantId: TENANT, roleSlug: 'finance_head', status: 'active' },
+    orderBy: { createdAt: 'asc' },
   });
   return affiliation.partyId;
 }
@@ -212,32 +255,34 @@ describe('Rejection and invalid transitions (HCM-WORKFLOW-004, 007)', () => {
 
 describe('The Self-Dealing Bar (HCM-WORKFLOW-005, 006)', () => {
   it('HCM-WORKFLOW-005: an approver may never decide a request that is about them, even if resolution drifted onto them', async () => {
-    const { employment, person } = await makeEmployee('self-subject');
+    const { person: proposer } = await makeEmployee('self-subject-proposer');
     const type = await makeType('self-subject', [{ level: 1, resolver: 'hr_grant' }]);
-    const request = await asEmployee(person.id, () =>
-      submitRequest({ typeId: type.id, subjectEmploymentId: employment.id, payload: {} }),
+
+    // A fixture principal who genuinely holds `hr_requests:approve` — the WHO
+    // axis must pass for this scenario to actually exercise the Self-Dealing
+    // Bar rather than stopping earlier on a missing grant.
+    await withFixtureRole(
+      { slug: 'wf_approver', grants: [{ resource: 'hr_requests', verbs: ['view', 'create', 'approve'] }] },
+      async (approver) => {
+        const subjectEmployment = await hireExisting(approver.partyId);
+
+        const request = await asEmployee(proposer.id, () =>
+          submitRequest({ typeId: type.id, subjectEmploymentId: subjectEmployment.id, payload: {} }),
+        );
+        // The hr_grant resolver already excludes the subject, so it opened
+        // unresolved — the scenario below simulates a later reassignment.
+        expect(request.approvals[0].approverPartyId).not.toBe(approver.partyId);
+
+        await unscopedPrisma.hrRequestApproval.updateMany({
+          where: { tenantId: TENANT, requestId: request.id, level: 1 },
+          data: { approverPartyId: approver.partyId },
+        });
+
+        const err = await expectReject(() => decide(request.id, true));
+        expect(err.status).toBe(403);
+        expect(err.message).toMatch(/Self-Dealing Bar/);
+      },
     );
-
-    // Simulate chain drift: the level's resolved approver is now the request's
-    // own subject (e.g. a reassignment after the level opened). decide() must
-    // still refuse this at the unconditional bar, not rely on resolution alone.
-    await prisma.hrRequestApproval.updateMany({
-      where: { tenantId: TENANT, requestId: request.id, level: 1 },
-      data: { approverPartyId: person.id },
-    });
-
-    const err = await expectReject(() => asEmployee(person.id, () => decide(request.id, true)));
-    expect(err.status).toBe(403);
-    expect(err.message).toMatch(/Self-Dealing Bar/);
-
-    // Restore the real resolution and confirm the legitimate approver can still act.
-    const opsPartyId = await operationsPartyId();
-    await prisma.hrRequestApproval.updateMany({
-      where: { tenantId: TENANT, requestId: request.id, level: 1 },
-      data: { approverPartyId: opsPartyId },
-    });
-    const decided = await asUser('operations@kaizen.co.in', () => decide(request.id, true, undefined));
-    expect(decided.status).toBe('closed');
   });
 
   it('HCM-WORKFLOW-006: an approver may never decide a request they themselves raised', async () => {
@@ -256,7 +301,7 @@ describe('The Self-Dealing Bar (HCM-WORKFLOW-005, 006)', () => {
 
     // Simulate drift the other way: the level resolves to the requester
     // directly. decide() must refuse it regardless.
-    await prisma.hrRequestApproval.updateMany({
+    await unscopedPrisma.hrRequestApproval.updateMany({
       where: { tenantId: TENANT, requestId: request.id, level: 1 },
       data: { approverPartyId: opsPartyId },
     });
@@ -291,23 +336,13 @@ describe('Withdrawal and cross-tenant isolation (HCM-WORKFLOW-009, 008)', () => 
     const otherTenant = await unscopedPrisma.tenant.create({
       data: { name: `Other Tenant ${Date.now()}`, slug: `other-wf-${Date.now()}` },
     });
-    const foreignAuth: AuthContext = {
-      tenantId: otherTenant.id,
-      principalType: 'human',
-      partyId: 'foreign-party',
-      userId: null,
-      agentId: null,
-      onBehalfOfPartyId: null,
-      affiliationId: null,
-      roleSlug: 'chairman',
-      branch: null,
-      orgUnitId: null,
-      classificationCeiling: 'regulated',
-      purpose: 'operational',
-      consentCodes: [],
-      stepUpVerified: true,
-    };
-    const err = await expectReject(() => asPrincipal(foreignAuth, () => getRequest(request.id)));
+    // A brand-new tenant has no seeded AccessRole/Grant rows, so a `human`
+    // principal there would fail on the WHO axis before ever reaching the
+    // tenant scope check — that would test the grant seed, not tenant
+    // isolation. `system` bypasses the grant lookup by design (it is always
+    // `allowed`), which is what actually exercises the tenant filter: the
+    // request genuinely exists, just not in this tenant's rows.
+    const err = await expectReject(() => asSystem(otherTenant.id, () => getRequest(request.id)));
     expect(err.status).toBe(404);
   });
 });

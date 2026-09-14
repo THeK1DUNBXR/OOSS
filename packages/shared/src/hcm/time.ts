@@ -119,7 +119,7 @@ export function weekStartMonday(d: Date): Date {
 
 /** Comp-off days earned for a stretch of overtime — half a day per 4 hours, rounded down to the nearest half day. */
 export function compOffDaysForHours(hours: number): number {
-  return Math.floor((hours / 4) * 2) / 2;
+  return Math.floor(hours / 4) / 2;
 }
 
 export function compOffExpiryDate(earnedOn: Date, validityDays: number = COMP_OFF_DEFAULT_VALIDITY_DAYS): Date {

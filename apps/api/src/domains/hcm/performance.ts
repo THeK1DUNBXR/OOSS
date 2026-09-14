@@ -427,7 +427,7 @@ export async function updateCalibrationDecisions(id: string, decisions: Calibrat
  */
 export async function closeCalibrationSession(id: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'calibrations', verb: 'approve' });
+  await assertCan({ resource: 'calibrations', verb: 'edit' });
 
   const session = await prisma.calibrationSession.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!session) throw ApiError.notFound('Calibration session');
@@ -517,7 +517,7 @@ export async function listFinalRatings(filters: { cycleId?: string; employmentRe
 /** Releases one person's rating so they can see it. Barred from the subject themselves — the Self-Dealing Bar in its non-financial form. */
 export async function releaseFinalRating(id: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'reviews', verb: 'approve' });
+  await assertCan({ resource: 'reviews', verb: 'edit' });
 
   const rating = await prisma.finalRating.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!rating) throw ApiError.notFound('Final rating');

@@ -393,10 +393,14 @@ export async function postPayrollJournal(id: string, accountId: string) {
   const run = await prisma.payrollRun.findFirst({ where: { id: journal.payrollRunId, tenantId: auth.tenantId } });
   if (!run) throw ApiError.notFound('Payroll run');
 
+  // The cash leg is the net pay payable, not the journal's total credit —
+  // that total also carries the statutory/other deductions payable, which
+  // moves the company's money to a different payee on a different day, not
+  // straight to employees now.
   const txn = await recordTransaction({
     txnDate: new Date(),
     direction: 'out',
-    amount: num(journal.totalCredit) ?? 0,
+    amount: num(run.netTotal) ?? 0,
     accountId,
     division: null,
     counterparty: `Payroll ${run.payPeriod}`,
@@ -456,7 +460,10 @@ export async function getBankAdvice(id: string) {
  */
 export async function generateBankAdvice(payrollRunId: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'bank_advices', verb: 'create' });
+  // hrOps and financeHead hold `bank_advices:export` (never `create` — the
+  // matrix treats producing this file as the export it is), and neither
+  // holds it at `employee` scope at all.
+  await assertCan({ resource: 'bank_advices', verb: 'export' });
 
   const run = await prisma.payrollRun.findFirst({ where: { id: payrollRunId, tenantId: auth.tenantId } });
   if (!run) throw ApiError.notFound('Payroll run');

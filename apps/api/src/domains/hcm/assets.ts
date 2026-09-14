@@ -595,6 +595,23 @@ export async function returnIdCard(id: string) {
 }
 
 // ---------------------------------------------------------------------------
+// "Me" lookups — /me/requests resolves its own employment id before it can
+// ask for anything self-service.
+// ---------------------------------------------------------------------------
+
+export async function myEmployment() {
+  const auth = currentAuth();
+  if (!auth.partyId) throw ApiError.badRequest('No person behind this session.');
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { tenantId: auth.tenantId, personId: auth.partyId, deletedAt: null },
+    orderBy: { hireEffectiveDate: 'desc' },
+    select: { id: true, status: true },
+  });
+  if (!employment) throw ApiError.notFound('Your employment relationship');
+  return employment;
+}
+
+// ---------------------------------------------------------------------------
 // Command-center numbers
 // ---------------------------------------------------------------------------
 

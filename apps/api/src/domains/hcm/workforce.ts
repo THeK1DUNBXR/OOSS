@@ -403,7 +403,6 @@ export async function directorySearch(filter: DirectoryFilter = {}) {
 
   const locationRows = await prisma.locationAssignment.findMany({
     where: { tenantId: auth.tenantId, employmentRelationshipId: { in: employments.map((e) => e.id) }, effectiveTo: null },
-    include: { },
   });
   const locationIds = [...new Set(locationRows.map((l) => l.locationId))];
   const locations = locationIds.length
@@ -458,7 +457,7 @@ export async function employee360(employmentRelationshipId: string) {
         },
       }),
       listReportingLines(employmentRelationshipId),
-      prisma.gradeAssignment.findFirst({ where: { employmentRelationshipId, effectiveTo: null }, include: { } }),
+      prisma.gradeAssignment.findFirst({ where: { employmentRelationshipId, effectiveTo: null } }),
       prisma.costCentreAssignment.findFirst({ where: { employmentRelationshipId, effectiveTo: null } }),
       prisma.locationAssignment.findFirst({ where: { employmentRelationshipId, effectiveTo: null } }),
       prisma.employeeStatusChange.findMany({ where: { employmentRelationshipId }, orderBy: { createdAt: 'desc' } }),
@@ -548,7 +547,13 @@ export async function listLocations() {
   return prisma.location.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { name: 'asc' } });
 }
 
-export async function createLocation(input: { name: string; kind?: string; city?: string; state?: string; address?: string }) {
+export async function createLocation(input: {
+  name: string;
+  kind?: string;
+  city?: string | null;
+  state?: string | null;
+  address?: string | null;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'org_design', verb: 'create' });
   const row = await prisma.location.create({

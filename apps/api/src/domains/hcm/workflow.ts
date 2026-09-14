@@ -487,7 +487,12 @@ export async function decide(requestId: string, approve: boolean, note?: string)
 
 export async function withdrawRequest(requestId: string) {
   const auth = currentAuth();
-  await assertCan({ resource: 'hr_requests', verb: 'edit' });
+  // The employee role's own-scope grant on `hr_requests` is view+create only
+  // (no `edit`/`delete`) — the scaffold's grant for a requester managing
+  // their own submission. `create` is therefore the closest held verb; the
+  // real authorization is the ownership check just below, not this grant.
+  // See docs/hcm/workflow.md, "Wanted from the scaffold".
+  await assertCan({ resource: 'hr_requests', verb: 'create' });
   const request = await prisma.hrRequest.findFirst({ where: { id: requestId, tenantId: auth.tenantId } });
   if (!request) throw ApiError.notFound('HR request');
   if (request.requestedById !== auth.partyId) {

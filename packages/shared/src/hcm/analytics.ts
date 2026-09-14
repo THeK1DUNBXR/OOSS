@@ -11,6 +11,9 @@
  * distinctly — "not measured yet" is never drawn as a zero.
  */
 
+import { monthKey } from '../finance.js';
+export { monthKey };
+
 export const HCM_ANALYTICS_MODULE = 'analytics' as const;
 
 // ---------------------------------------------------------------------------
@@ -55,12 +58,12 @@ export type AnalyticsReport = (typeof ANALYTICS_REPORTS)[number];
 
 // ---------------------------------------------------------------------------
 // Time buckets
+//
+// `monthKey` (`YYYY-MM` in UTC, the same shape `PayrollInstruction.payPeriod`
+// uses) is `@kaizen/shared`'s `finance.ts` export, imported above and
+// re-exported here rather than redefined — one definition instead of two
+// that could drift apart.
 // ---------------------------------------------------------------------------
-
-/** `YYYY-MM` in UTC — the same shape `PayrollInstruction.payPeriod` uses. */
-export function monthKey(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
 
 /** The `count` trailing month keys ending at (and including) `asOf`'s month, oldest first. */
 export function trailingMonths(count: number, asOf: Date = new Date()): string[] {
@@ -126,8 +129,14 @@ export function absenteeismRate(zeroMinuteDays: number, totalDays: number): numb
 // Hiring funnel
 // ---------------------------------------------------------------------------
 
-/** Offer-accepted share of offers extended (accepted, joined and no-show all count as an acceptance — the candidate said yes). Null with no offers extended. */
-export function offerAcceptanceRate(accepted: number, extended: number): number | null {
+/**
+ * Offer-accepted share of offers extended (accepted, joined and no-show all
+ * count as an acceptance — the candidate said yes). Null with no offers
+ * extended. Named distinctly from `recruiting.ts`'s `offerAcceptanceRate`
+ * (accepted-of-decided, a slightly different base) so both can be exported
+ * from the same `@kaizen/shared` barrel without a collision.
+ */
+export function hiringOfferAcceptanceRate(accepted: number, extended: number): number | null {
   if (extended <= 0) return null;
   return (accepted / extended) * 100;
 }

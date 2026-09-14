@@ -25,7 +25,7 @@ import {
   type OfferState,
   type OfferEvent,
 } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';

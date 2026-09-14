@@ -60,6 +60,20 @@ async function nextEngagementNumber(entity: string): Promise<string> {
   return `${entity}-${year}-${String(row.nextSequence - 1).padStart(5, '0')}`;
 }
 
+/**
+ * Whether the caller manages this resource (holds `edit`) — the signal used
+ * to decide whether a listing shows every row (drafts, closed, superseded
+ * included) or only what a reader is meant to see. Deliberately not the same
+ * question as "what scope does `view` resolve to": announcements, surveys and
+ * policy documents grant an ordinary employee `view` at `all` scope on
+ * purpose (a broadcast has no single owner to narrow against), so scope alone
+ * cannot tell a reader from a manager here the way it can for `hr_cases` or
+ * `recognitions`.
+ */
+async function managesResource(resource: string): Promise<boolean> {
+  return (await scopeFor(resource, 'edit')) !== null;
+}
+
 /** Facts about a party used for audience matching — resolved from their active affiliation. */
 async function audienceFactsFor(tenantId: string, partyId: string | null): Promise<AudienceFacts> {
   if (!partyId) return {};
@@ -158,12 +172,11 @@ export async function withdrawAnnouncement(id: string) {
 export async function listAnnouncements() {
   const auth = currentAuth();
   await assertCan({ resource: 'announcements', verb: 'view' });
-  const scope = await scopeFor('announcements', 'view');
   const rows = await prisma.announcement.findMany({
     where: { tenantId: auth.tenantId },
     orderBy: [{ pinned: 'desc' }, { publishAt: 'desc' }],
   });
-  if (scope === 'all') return rows;
+  if (await managesResource('announcements')) return rows;
 
   const now = new Date();
   const facts = await audienceFactsFor(auth.tenantId, auth.partyId);
@@ -193,7 +206,7 @@ export async function acknowledgeAnnouncement(id: string) {
 
 export async function announcementAcks(id: string) {
   const auth = currentAuth();
-  await assertScopeAll('announcements', 'view');
+  await assertCan({ resource: 'announcements', verb: 'edit' });
   const row = await prisma.announcement.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Announcement');
   const acks = await prisma.announcementAck.findMany({ where: { tenantId: auth.tenantId, announcementId: id } });
@@ -345,9 +358,8 @@ export async function closePulseSurvey(id: string) {
 export async function listPulseSurveys() {
   const auth = currentAuth();
   await assertCan({ resource: 'surveys', verb: 'view' });
-  const scope = await scopeFor('surveys', 'view');
   const rows = await prisma.pulseSurvey.findMany({ where: { tenantId: auth.tenantId }, orderBy: { opensAt: 'desc' } });
-  if (scope === 'all') return rows;
+  if (await managesResource('surveys')) return rows;
   const facts = await audienceFactsFor(auth.tenantId, auth.partyId);
   return rows.filter((r) => r.status !== 'draft' && inAudience(r as unknown as Audience, facts));
 }
@@ -398,7 +410,7 @@ export async function submitSurveyResponse(surveyId: string, employmentRelations
 /** HR-only aggregate results — never a per-respondent breakdown, so an anonymous survey stays anonymous and a named one still reads as a summary rather than a transcript. */
 export async function pulseSurveyResults(surveyId: string) {
   const auth = currentAuth();
-  await assertScopeAll('surveys', 'view');
+  await assertCan({ resource: 'surveys', verb: 'edit' });
   const survey = await prisma.pulseSurvey.findFirst({ where: { id: surveyId, tenantId: auth.tenantId } });
   if (!survey) throw ApiError.notFound('Pulse survey');
   const responses = await prisma.surveyResponse.findMany({ where: { tenantId: auth.tenantId, surveyId } });
@@ -701,9 +713,8 @@ export async function publishPolicyDocument(id: string) {
 export async function listPolicyDocuments() {
   const auth = currentAuth();
   await assertCan({ resource: 'policy_documents', verb: 'view' });
-  const scope = await scopeFor('policy_documents', 'view');
   const rows = await prisma.policyDocument.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
-  return scope === 'all' ? rows : rows.filter((r) => r.status === 'published');
+  return (await managesResource('policy_documents')) ? rows : rows.filter((r) => r.status === 'published');
 }
 
 export async function acknowledgePolicyDocument(id: string) {
@@ -728,7 +739,7 @@ export async function acknowledgePolicyDocument(id: string) {
 
 export async function policyAckStatus(id: string) {
   const auth = currentAuth();
-  await assertScopeAll('policy_documents', 'view');
+  await assertCan({ resource: 'policy_documents', verb: 'edit' });
   const row = await prisma.policyDocument.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Policy document');
   const acks = await prisma.policyAcknowledgement.findMany({ where: { tenantId: auth.tenantId, policyDocumentId: id } });

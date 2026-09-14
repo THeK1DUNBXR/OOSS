@@ -29,7 +29,7 @@ import {
   measured,
   monthKey,
   notMeasured,
-  offerAcceptanceRate,
+  hiringOfferAcceptanceRate,
   spanOfControlStats,
   tenureBucket,
   TENURE_BUCKETS,
@@ -43,8 +43,14 @@ import { auditExport } from '../../platform/audit.js';
 import { payrollTrend } from '../payroll.js';
 
 const EMPLOYED_STATUSES = ['Active', 'OnLeave', 'Suspended', 'NoticePeriod', 'Absconded'];
-/** Never actually started — excluded from both headcount and joiner counts. */
-const NEVER_JOINED_STATUSES = ['OfferRescinded', 'NoShow'];
+/**
+ * Every status that means the person actually started, at some point —
+ * currently employed, or separated having been. `PendingHire` (a hire date
+ * set but never activated), `OfferRescinded` and `NoShow` never started, so a
+ * `PendingHire` row whose `hireEffectiveDate` has already passed does not
+ * inflate a historical headcount it was never actually part of.
+ */
+const EVER_JOINED_STATUSES = [...EMPLOYED_STATUSES, 'Terminated', 'Alumni'];
 
 function monthEnd(key: string): Date {
   const [y, m] = key.split('-').map(Number);
@@ -100,7 +106,7 @@ export async function headcountTrend(months = 12): Promise<HeadcountPoint[]> {
     where: { tenantId: auth.tenantId, deletedAt: null, hireEffectiveDate: { lt: latest } },
     select: { hireEffectiveDate: true, separationDate: true, status: true },
   });
-  const everJoined = rows.filter((r) => !NEVER_JOINED_STATUSES.includes(r.status));
+  const everJoined = rows.filter((r) => EVER_JOINED_STATUSES.includes(r.status));
 
   return keys.map((key) => {
     const start = monthStart(key);
@@ -378,7 +384,7 @@ export async function hiringSummary(months = 12): Promise<HiringSummary> {
 
   return {
     timeToHireDaysAvg: averageTimeToHireDays(pairs),
-    offerAcceptanceRatePct: offerAcceptanceRate(offersAccepted, offersExtended),
+    offerAcceptanceRatePct: hiringOfferAcceptanceRate(offersAccepted, offersExtended),
     offersExtended,
     offersAccepted,
     hires: joined.length,
@@ -644,17 +650,25 @@ export async function exportOvertimeRegister(months = 3): Promise<CsvExport> {
   const money = await canSeeMoney('compensation');
 
   const keys = trailingMonths(months);
+  const start = monthStart(keys[0]);
+  const end = monthEnd(keys[keys.length - 1]);
+  // OvertimeAccrual (compliance-labour.prisma) carries only the bare
+  // employmentRelationshipId scalar, no Prisma relation field — so the
+  // employee's name is joined by hand rather than through `include`.
   const rows = await prisma.overtimeAccrual.findMany({
-    where: { tenantId: auth.tenantId },
-    include: { employmentRelationship: { include: { person: true } } },
+    where: { tenantId: auth.tenantId, computedAt: { gte: start, lt: end } },
     orderBy: [{ employmentRelationshipId: 'asc' }, { isoWeek: 'asc' }],
   });
-  const relevant = rows.filter((r) => monthKey(r.computedAt) >= keys[0] && monthKey(r.computedAt) <= keys[keys.length - 1]);
+  const employments = await prisma.employmentRelationship.findMany({
+    where: { tenantId: auth.tenantId, id: { in: [...new Set(rows.map((r) => r.employmentRelationshipId))] } },
+    include: { person: true },
+  });
+  const nameByEmployment = new Map(employments.map((e) => [e.id, e.person.fullName]));
   const csv = toCsv(
     ['Employee', 'ISO week', 'Hours', 'Amount'],
-    relevant.map((r) => [r.employmentRelationship.person.fullName, r.isoWeek, num(r.hours), money ? num(r.amount) : 'withheld']),
+    rows.map((r) => [nameByEmployment.get(r.employmentRelationshipId) ?? r.employmentRelationshipId, r.isoWeek, num(r.hours), money ? num(r.amount) : 'withheld']),
   );
-  await auditExport('overtime_accrual', `analytics:overtime_register:${keys[0]}..${keys[keys.length - 1]}`, relevant.length);
+  await auditExport('overtime_accrual', `analytics:overtime_register:${keys[0]}..${keys[keys.length - 1]}`, rows.length);
   return { filename: `Overtime register ${keys[0]} to ${keys[keys.length - 1]}.csv`, csv };
 }
 
