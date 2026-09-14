@@ -35,9 +35,27 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
 import { DIVISION_LABELS, type Division } from '@kaizen/shared';
 import { api, money, titleCase } from '../lib/api.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, Withheld } from '../components/ui.js';
+
+/** The tinted status chip a KPI tile wears instead of a colored rail —
+ *  material, not a stripe. Neutral tone wears nothing. */
+function KpiStatus({ tone }: { tone: 'neutral' | 'good' | 'warn' | 'bad' }) {
+  if (tone === 'neutral') return null;
+  const Icon = tone === 'good' ? CheckCircle2 : tone === 'warn' ? AlertTriangle : XCircle;
+  const toneClass = {
+    good: 'bg-band-strong/10 text-band-strong',
+    warn: 'bg-band-watch/10 text-band-watch',
+    bad: 'bg-band-critical/10 text-band-critical',
+  }[tone];
+  return (
+    <span className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full ${toneClass}`}>
+      <Icon className="h-3 w-3" strokeWidth={2} aria-hidden />
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Palette
@@ -176,7 +194,8 @@ function Stat({
   format?: (v: number) => string;
 }) {
   const body = (
-    <div className={`kpi ${tone === 'good' ? 'kpi-good' : tone === 'warn' ? 'kpi-warn' : tone === 'bad' ? 'kpi-bad' : ''}`}>
+    <div className="kpi">
+      <KpiStatus tone={tone} />
       <p className="kpi-label">{label}</p>
       <div className="kpi-value">
         {value === null ? (
@@ -216,7 +235,8 @@ function CountStat({
   drillTo?: string;
 }) {
   const body = (
-    <div className={`kpi ${tone === 'good' ? 'kpi-good' : tone === 'warn' ? 'kpi-warn' : tone === 'bad' ? 'kpi-bad' : ''}`}>
+    <div className="kpi">
+      <KpiStatus tone={tone} />
       <p className="kpi-label">{label}</p>
       <div className="kpi-value">{value}</div>
       {sub && <p className="kpi-sub">{sub}</p>}
@@ -236,8 +256,8 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   if (!active || !payload?.length) return null;
   const rows = payload as Array<{ name?: string; value?: number; color?: string; dataKey?: string }>;
   return (
-    <div className="rounded-sm border-2 border-ink-100 bg-ink-900 px-3 py-2">
-      {label !== undefined && <p className="mb-1 text-2xs font-extrabold uppercase tracking-wide">{String(label)}</p>}
+    <div className="rounded-md border border-ink-800 bg-ink-900 px-3 py-2 shadow-floating">
+      {label !== undefined && <p className="mb-1 text-2xs font-semibold uppercase tracking-wide">{String(label)}</p>}
       {rows.map((r) => (
         <div key={r.dataKey ?? r.name} className="flex items-center gap-2 text-xs">
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: r.color }} />
@@ -478,7 +498,7 @@ export function Executive() {
             </p>
 
             <details className="mt-3">
-              <summary className="cursor-pointer text-2xs font-extrabold uppercase tracking-wide text-ink-500">
+              <summary className="cursor-pointer text-2xs font-semibold uppercase tracking-wide text-ink-500">
                 Show the figures
               </summary>
               <div className="mt-2 overflow-x-auto">

@@ -13,6 +13,7 @@
 
 import { Link } from 'react-router-dom';
 import type { ReactNode } from 'react';
+import { Lock, X } from 'lucide-react';
 import type { SensitivityClass, SeverityCode } from '@kaizen/shared';
 import {
   BAND_WORDS,
@@ -156,7 +157,7 @@ export function Metric({
   }[tone];
 
   const body = (
-    <div className="rounded-lg border border-ink-800 bg-ink-900 p-4 transition-colors hover:border-ink-700">
+    <div className="rounded-md border border-ink-800 bg-ink-900 p-4 shadow-raised transition-all duration-150 hover:-translate-y-px hover:shadow-floating">
       <p className="text-2xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
       <p className={`mt-1.5 text-2xl font-semibold tabular-nums ${toneClass}`}>{value}</p>
       {sub && <p className="mt-1 text-2xs text-ink-400">{sub}</p>}
@@ -193,7 +194,8 @@ export function EmptyState({ message, hint }: { message: string; hint?: string }
 export function Withheld({ reason }: { reason: string }) {
   return (
     <span className="chip border-ink-700 bg-ink-850 text-ink-500" title={reason}>
-      🔒 {withheldWord(reason)}
+      <Lock className="h-2.5 w-2.5" strokeWidth={2} aria-hidden />
+      {withheldWord(reason)}
     </span>
   );
 }
@@ -244,7 +246,7 @@ export function PageHeader({
         <h1 className="text-xl font-semibold tracking-tight text-ink-50">{title}</h1>
         {subtitle && <p className="mt-1 max-w-3xl text-xs leading-relaxed text-ink-400">{subtitle}</p>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
     </header>
   );
 }
@@ -304,16 +306,16 @@ export function Modal({
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 pt-16">
-      <div className={`w-full ${width} rounded-lg border border-ink-700 bg-ink-900 shadow-2xl`}>
-        <header className="flex items-center justify-between border-b border-ink-800 px-4 py-3">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-100/30 p-4 pt-16 backdrop-blur-sm">
+      <div className={`glass w-full ${width} rounded-lg`}>
+        <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <h2 className="text-sm font-semibold text-ink-50">{title}</h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-100" aria-label="Close">
-            ✕
+            <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
           </button>
         </header>
         <div className="max-h-[65vh] overflow-y-auto p-4">{children}</div>
-        {footer && <footer className="flex justify-end gap-2 border-t border-ink-800 px-4 py-3">{footer}</footer>}
+        {footer && <footer className="flex justify-end gap-2 border-t border-white/10 px-4 py-3">{footer}</footer>}
       </div>
     </div>
   );

@@ -1,14 +1,19 @@
 /**
  * The Kaizen Infinities design system.
  *
- * Ink, paper and one accent. Flat — no depth effects anywhere, which is why
- * there is no boxShadow scale below. Hierarchy is carried by borders instead,
- * at three weights: a 1px hairline separates rows, 2px separates a component
- * from the page, 3px encloses something you are meant to read as one object.
+ * Fluent, Apple-esque, minimalist — depth carries hierarchy, not border
+ * weight. Every structural line lightens to a whisper; what used to be a
+ * 1px/2px/3px border ladder is now a resting/raised/floating elevation
+ * ladder (`shadow.soft/raised/floating/glass` below), each a real
+ * dual-layer shadow, never a flat colored offset. Glass (translucency +
+ * backdrop-blur) is reserved for chrome that genuinely floats over content
+ * — modals, dropdowns, popovers — where blur has something behind it to
+ * blur; it is a material, not a decoration sprinkled on static panels.
  *
- * The `ink` scale runs the same direction it did when this app was dark —
+ * The `ink` scale still runs the direction it did when this app was dark —
  * 950 is the page, 100 is the strongest text — so every existing utility
- * keeps its meaning. Only the values were re-pointed onto paper.
+ * keeps its meaning. Only the border/hairline steps (800/700) were
+ * softened; text and surface values are unchanged.
  */
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -20,8 +25,8 @@ export default {
           950: '#F2F2F4', // the page itself
           900: '#ffffff', // a surface raised off the page
           850: '#F2F2F4', // a hovered or recessed surface
-          800: '#dcdce1', // hairline
-          700: '#C9C9D2', // border
+          800: '#e7e7eb', // hairline — a whisper, not a rule
+          700: '#d7d7dd', // border, softened
           600: '#a9a9b4', // border, emphatic
           500: '#6b6b74', // muted text
           400: '#57575f', // secondary text
@@ -75,15 +80,24 @@ export default {
       },
       borderRadius: {
         sm: '14px',
-        DEFAULT: '14px',
-        md: '14px',
-        lg: '20px',
-        xl: '28px',
+        DEFAULT: '16px',
+        md: '18px',
+        lg: '22px',
+        xl: '30px',
       },
       boxShadow: {
-        // Flat by decision, not by omission. Anything that reaches for a
-        // shadow should reach for a border instead.
         none: 'none',
+        // Resting: barely off the page — the ghost of a hairline, not a shadow.
+        soft: '0 1px 2px 0 rgba(15,15,18,0.05)',
+        // Raised: an ordinary card or control, one clear step off the ground.
+        raised: '0 1px 2px rgba(15,15,18,0.04), 0 6px 16px -4px rgba(15,15,18,0.10)',
+        // Floating: a hovered/lifted element, or a card that owns attention.
+        floating: '0 4px 10px rgba(15,15,18,0.06), 0 16px 36px -8px rgba(15,15,18,0.16)',
+        // Glass: something over content — modal, dropdown, popover, palette.
+        glass: '0 8px 20px rgba(15,15,18,0.10), 0 28px 60px -12px rgba(15,15,18,0.28)',
+      },
+      backdropBlur: {
+        glass: '20px',
       },
     },
   },

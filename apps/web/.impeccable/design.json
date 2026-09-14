@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-13T18:50:00Z",
+  "title": "Design System: KaiERP",
+  "extensions": {
+    "colorMeta": {
+      "ink-primary": { "role": "primary", "displayName": "Ink", "canonical": "#0F0F12", "tonalRamp": ["#0F0F12", "#232326", "#3A3A45", "#57575f", "#6b6b74", "#a9a9b4", "#d7d7dd", "#e7e7eb"] },
+      "gold": { "role": "secondary", "displayName": "Signal Gold", "canonical": "#FFC20E", "tonalRamp": ["#8a6a00", "#a9820a", "#c99b0e", "#e3b011", "#FFC20E", "#ffd451", "#ffe497", "#FFF3CE"] },
+      "ink-page": { "role": "neutral", "displayName": "Paper", "canonical": "#F2F2F4" },
+      "ink-surface": { "role": "neutral", "displayName": "Raised Surface", "canonical": "#ffffff" },
+      "ink-hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "#e7e7eb" },
+      "ink-border": { "role": "neutral", "displayName": "Border", "canonical": "#d7d7dd" },
+      "band-strong": { "role": "data", "displayName": "Status: Strong", "canonical": "#1a7a4c" },
+      "band-stable": { "role": "data", "displayName": "Status: Stable", "canonical": "#3d8f68" },
+      "band-watch": { "role": "data", "displayName": "Status: Watch", "canonical": "#b5570c" },
+      "band-strained": { "role": "data", "displayName": "Status: Strained", "canonical": "#a8481a" },
+      "band-critical": { "role": "data", "displayName": "Status: Critical", "canonical": "#ad2c22" },
+      "div-software": { "role": "data", "displayName": "Division: Software", "canonical": "#2a78d6" },
+      "div-skill": { "role": "data", "displayName": "Division: Skill Development", "canonical": "#c2670f" },
+      "div-education": { "role": "data", "displayName": "Division: Education", "canonical": "#12805c" },
+      "div-shared": { "role": "data", "displayName": "Division: Shared", "canonical": "#8f3d90" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display / Headline", "purpose": "Page and section titles (h1-h3, .card-title). Sentence case, size+weight hierarchy, never uppercase." },
+      "body": { "displayName": "Body", "purpose": "Running copy, 14px base, IBM Plex Sans." },
+      "label": { "displayName": "Grouped-list label", "purpose": "Small uppercase tracked labels (.label, .kpi-label, .section-title, .sidebar-group) — the one place uppercase survives." },
+      "numeral": { "displayName": "Tabular numeral", "purpose": "Every money figure and count (.num, .tabular, .kpi-value) — Archivo at 112% font-stretch, tabular-nums." }
+    },
+    "shadows": [
+      { "name": "soft", "value": "0 1px 2px 0 rgba(15,15,18,0.05)", "purpose": "Resting state for inputs and buttons before interaction." },
+      { "name": "raised", "value": "0 1px 2px rgba(15,15,18,0.04), 0 6px 16px -4px rgba(15,15,18,0.10)", "purpose": "Default lift for a card, KPI tile, or primary button." },
+      { "name": "floating", "value": "0 4px 10px rgba(15,15,18,0.06), 0 16px 36px -8px rgba(15,15,18,0.16)", "purpose": "A hovered/lifted element, or a card that owns attention." },
+      { "name": "glass", "value": "0 8px 20px rgba(15,15,18,0.10), 0 28px 60px -12px rgba(15,15,18,0.28)", "purpose": "A modal, dropdown, popover, or the command palette — paired with backdrop-blur and a translucent fill." },
+      { "name": "sidebar-edge", "value": "6px 0 24px -8px rgba(15,15,18,0.35)", "purpose": "Separates the sidebar's trailing edge from the canvas without a hard border." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "150ms ease (Tailwind's default transition-all/transition-colors timing)", "purpose": "Hover/press state changes: color, shadow, and the 1px lift on primary/gold buttons." }
+    ],
+    "breakpoints": [
+      { "name": "md", "value": "768px", "purpose": "Below this, the sidebar collapses to a hamburger-triggered glass overlay drawer." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The default call-to-action. Ink fill at rest, lifts and turns gold on hover.",
+      "html": "<button class=\"ds-btn-primary\">Raise an invoice</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9999px; padding: 8px 16px; font-size: 13px; font-weight: 600; font-family: 'IBM Plex Sans', sans-serif; background-color: #0F0F12; color: #F2F2F4; box-shadow: 0 1px 2px rgba(15,15,18,0.04), 0 6px 16px -4px rgba(15,15,18,0.10); transition: all 150ms ease; border: none; } .ds-btn-primary:hover { background-color: #FFC20E; color: #0F0F12; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(15,15,18,0.06), 0 16px 36px -8px rgba(15,15,18,0.16); } .ds-btn-primary:active { transform: translateY(0); box-shadow: 0 1px 2px 0 rgba(15,15,18,0.05); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Apple's \"plain\" button: no chrome at rest, a soft tint on touch.",
+      "html": "<button class=\"ds-btn-ghost\">Sign out</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9999px; padding: 8px 16px; font-size: 13px; font-weight: 600; font-family: 'IBM Plex Sans', sans-serif; background-color: transparent; color: #0F0F12; border: none; transition: background-color 150ms ease; } .ds-btn-ghost:hover { background-color: rgba(15,15,18,0.06); } .ds-btn-ghost:active { background-color: rgba(15,15,18,0.10); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The base container for one object meant to be read whole. Shadow carries the lift; a hairline keeps the edge crisp.",
+      "html": "<section class=\"ds-card\"><header class=\"ds-card-header\"><h2 class=\"ds-card-title\">Cash on hand</h2></header><div class=\"ds-card-body\">₹0</div></section>",
+      "css": ".ds-card { border-radius: 22px; border: 1px solid #e7e7eb; background: #ffffff; box-shadow: 0 1px 2px rgba(15,15,18,0.04), 0 6px 16px -4px rgba(15,15,18,0.10); } .ds-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #e7e7eb; padding: 14px 20px; } .ds-card-title { font-family: Archivo, sans-serif; font-size: 14px; font-weight: 600; color: #0F0F12; margin: 0; } .ds-card-body { padding: 16px; }"
+    },
+    {
+      "name": "KPI Tile",
+      "kind": "custom",
+      "refersTo": "kpi",
+      "description": "A metric tile wearing a tinted status chip (icon in a tinted circle) instead of the retired colored rail.",
+      "html": "<div class=\"ds-kpi\"><span class=\"ds-kpi-status ds-kpi-status--good\"><svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M22 11.08V12a10 10 0 1 1-5.93-9.14\"/><path d=\"m22 4-10 10.01-3-3\"/></svg></span><p class=\"ds-kpi-label\">Runway</p><div class=\"ds-kpi-value\">Not burning</div></div>",
+      "css": ".ds-kpi { position: relative; overflow: hidden; border-radius: 18px; border: 1px solid #e7e7eb; background: #ffffff; padding: 16px; box-shadow: 0 1px 2px rgba(15,15,18,0.04), 0 6px 16px -4px rgba(15,15,18,0.10); } .ds-kpi-status { position: absolute; top: 12px; right: 12px; width: 20px; height: 20px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; } .ds-kpi-status--good { background: rgba(26,122,76,0.1); color: #1a7a4c; } .ds-kpi-label { font-family: Archivo, sans-serif; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #6b6b74; margin: 0; } .ds-kpi-value { margin-top: 6px; font-family: Archivo, monospace; font-size: 25px; font-weight: 900; line-height: 1; color: #0F0F12; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A text field: soft shadow at rest, a firmer border and shadow plus an accent ring on focus.",
+      "html": "<input class=\"ds-input\" type=\"email\" placeholder=\"you@company.com\" />",
+      "css": ".ds-input { width: 100%; border-radius: 18px; border: 1px solid #d7d7dd; background: #ffffff; padding: 8px 10px; font-size: 13px; color: #0F0F12; box-shadow: 0 1px 2px 0 rgba(15,15,18,0.05); transition: box-shadow 150ms ease, border-color 150ms ease; } .ds-input::placeholder { color: #6b6b74; } .ds-input:focus { outline: none; border-color: #6b6b74; box-shadow: 0 1px 2px rgba(15,15,18,0.04), 0 6px 16px -4px rgba(15,15,18,0.10), 0 0 0 2px rgba(15,15,18,0.10); }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "A pill-shaped status/severity label, tone-tinted at low fill opacity.",
+      "html": "<span class=\"ds-chip ds-chip--watch\">High risk</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 9999px; padding: 2px 10px; font-size: 11px; font-weight: 600; font-family: 'IBM Plex Sans', sans-serif; } .ds-chip--watch { background: rgba(181,87,12,0.1); color: #b5570c; border: 1px solid rgba(181,87,12,0.4); }"
+    },
+    {
+      "name": "Sidebar Nav Item",
+      "kind": "nav",
+      "refersTo": "sidebar-link",
+      "description": "A navigation row on the vibrancy-material sidebar; the active item is a full gold pill, no rail.",
+      "html": "<a class=\"ds-sidebar-link ds-sidebar-link--active\"><span>The Business</span></a>",
+      "css": ".ds-sidebar-link { display: flex; align-items: center; gap: 10px; border-radius: 9999px; padding: 8px 12px; font-size: 13.3px; font-weight: 600; color: #c9c9ce; font-family: 'IBM Plex Sans', sans-serif; transition: background-color 150ms ease, color 150ms ease; } .ds-sidebar-link:hover { background: #232326; color: #ffffff; } .ds-sidebar-link--active { background: #FFC20E; color: #0F0F12; font-weight: 700; box-shadow: 0 2px 10px rgba(255,194,14,0.25); }"
+    },
+    {
+      "name": "Glass Panel",
+      "kind": "custom",
+      "refersTo": "glass",
+      "description": "Floating chrome over real content: modal, dropdown, command palette, mobile nav drawer. Translucent fill + backdrop-blur + a floating shadow.",
+      "html": "<div class=\"ds-glass\">Notifications</div>",
+      "css": ".ds-glass { border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 8px 20px rgba(15,15,18,0.10), 0 28px 60px -12px rgba(15,15,18,0.28); border-radius: 16px; padding: 12px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Vibrant Ledger",
+    "overview": "KaiERP replaced a deliberately flat, border-only-hierarchy system (three border weights carrying everything a shadow would normally carry) with a fluent, Apple-esque, minimalist depth language, taken as the canon/standing-exit path rather than an invented world: Apple's own system apps and macOS vibrancy fused with Notion/Craft's calm, content-first card minimalism. The paper ground, ink text scale, and the three-division/status categorical palettes are unchanged from the incumbent system, so the shift is structural, not a repaint: hierarchy now comes from a resting/raised/floating elevation ladder of real, soft, dual-layer shadows, and glass is reserved for chrome that genuinely floats over content.",
+    "keyCharacteristics": [
+      "Elevation (shadow), not border weight, carries hierarchy.",
+      "Glass/vibrancy is functional (a floating surface with real content behind it), never decorative.",
+      "Headings are sentence-case, size+weight; small-caps tracked labels are reserved for grouped-list labels.",
+      "The three-division and five-status colors are categorical data encodings and are never restyled for aesthetic reasons.",
+      "One consistent-stroke icon system (lucide-react) — no Unicode dingbats standing in for icons."
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "Gold never carries body text — it fails contrast on paper — so a readable gold is always accent-soft (#8a6a00), never the raw hex.", "section": "colors" },
+      { "name": "The Functional Color Floor", "body": "Band and division colors are data encodings, set once and validated for contrast/CVD-safety. No visual-world change may retint, lighten, darken, or reassign them.", "section": "colors" },
+      { "name": "The Sentence-Case Heading Rule", "body": "h1/h2/h3 and .card-title are never uppercase. Uppercase tracking is reserved for .label/.kpi-label/.section-title/.sidebar-group — never a page or card's own title.", "section": "typography" },
+      { "name": "The Functional Glass Rule", "body": "Translucency + backdrop-blur is reserved for chrome with real content behind it to blur. It is never applied to a static panel purely for a frosted look.", "section": "elevation" },
+      { "name": "The No-Colored-Rail Rule", "body": "A left-border or top-border color stripe is retired. Status now reads through a tinted icon chip or a chip's own fill/border color.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use a shadow token (soft/raised/floating/glass) for every new elevated surface — never a border-weight step to signal \"this is raised.\"",
+      "Do reserve .glass/backdrop-blur for chrome that floats over real content (modals, dropdowns, popovers, the mobile nav drawer).",
+      "Do keep headings sentence-case; reserve uppercase tracking for grouped-list-style labels.",
+      "Do use lucide-react (or an equivalent real icon library) at one consistent stroke weight for any new icon; never a Unicode glyph or emoji.",
+      "Do keep every money or count value in tabular numerals."
+    ],
+    "donts": [
+      "Don't restyle, retint, or reassign the band (status) or division colors for aesthetic reasons.",
+      "Don't apply backdrop-blur/translucency to a static, non-floating panel.",
+      "Don't reintroduce a colored border-left/top rail as a status indicator.",
+      "Don't revert to the pre-redesign 1.5-3px border ladder for hierarchy."
+    ]
+  }
+}
