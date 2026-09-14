@@ -1,0 +1,175 @@
+// Technology — vendors and contracts (docs/plan/cio.md, workstream C).
+//
+// `VendorBill.vendorName` (main.prisma) is free text; a bill still pays a
+// vendor. This file is the master the bill's name should have pointed at:
+// who the vendor is, how risky they are, whether their security assessment
+// and DPA are current, and the priced, dated, gated contract that governs
+// the relationship. Cross-workstream references (an application's
+// `vendorId`, a licence's `vendorContractId`) are bare ids resolved at the
+// service layer — relations are declared only within this file.
+
+/// A supplier: name, tier, risk rating and security posture. `organizationId`
+/// is set when the same counterparty is also a party we sell to or partner
+/// with (main.prisma `Organization`), so the two records describe one legal
+/// body without merging them (docs/plan/cio.md's own reasoning for keeping
+/// `Organization`'s institution/organization split exclusive applies here
+/// too — a vendor is read differently from a customer even when it is the
+/// same company).
+model ItVendor {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  name             String
+  organizationId   String?
+  category         String
+  /// 1 (critical) .. 4 (low) — the same scale `ItApplication.tier` will use.
+  tier             Int     @default(3)
+
+  /// low | medium | high | critical, dated: `riskRatedAt` is set every time
+  /// this changes, never silently overwritten.
+  riskRating   String    @default("medium")
+  riskRatedAt  DateTime?
+
+  /// not_assessed | in_progress | passed | failed | expired. Moves only
+  /// through `recordAssessment` (in_progress/passed/failed) or the
+  /// assessment-overdue job (expired) — never a bare field edit.
+  assessmentStatus String    @default("not_assessed")
+  /// When the next assessment is due. Recomputed from the assessment-cadence
+  /// table (dated, seeded by tier) every time an assessment is recorded.
+  assessmentDueAt  DateTime?
+  /// Every 30/7/0-day rung of the assessment-overdue ladder already fired on
+  /// this vendor, so the daily job never re-notifies a rung it already raised
+  /// (IT-VEN-001).
+  assessmentNotifiedRungs Int[] @default([])
+
+  dpaSigned     Boolean   @default(false)
+  dpaSignedAt   DateTime?
+
+  contactName  String?
+  contactEmail String?
+
+  /// active | suspended | offboarded, run through the vendor's own lifecycle
+  /// machine in `packages/shared/src/it/vendors.ts`.
+  status String @default("active")
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  riskAssessments ItVendorRiskAssessment[]
+  contracts       ItVendorContract[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, tier])
+  @@index([tenantId, riskRating])
+  @@map("it_vendors")
+}
+
+/// The dated cadence a vendor's tier is re-assessed on (Principle 4: service
+/// targets are data, not constants). Seeded by tier, idempotent by
+/// `(tenantId, tier)` — a tenant that wants tier 1 assessed every quarter
+/// instead of every six months edits the row, not the code.
+model ItVendorAssessmentCadenceRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  tier          Int
+  cadenceMonths Int
+
+  effectiveFrom DateTime @default(now())
+  note          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, tier])
+  @@map("it_vendor_assessment_cadence_rules")
+}
+
+/// One completed (or in-progress) questionnaire round. Append-only: a
+/// correction is a new assessment, never an edit to a past one — the same
+/// discipline `ComplianceObligation.filedAt` and the compensation/leave
+/// history keep.
+model ItVendorRiskAssessment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  vendorId String
+  vendor   ItVendor @relation(fields: [vendorId], references: [id])
+
+  assessedAt      DateTime
+  assessorPartyId String
+  score           Int?
+  /// in_progress | passed | failed
+  outcome         String
+  questionnaire   Json?
+  notes           String?
+  evidenceDocumentId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, vendorId])
+  @@map("it_vendor_risk_assessments")
+}
+
+/// The priced, dated, gated instrument. `status` runs `draft -> proposed ->
+/// approved -> active -> expiring -> expired | terminated` through the same
+/// approval-gate shape `domains/agreements.ts` runs for MoU/Contract/Partner
+/// Agreement — `approved` alone is privileged, `expiring`/`expired` are
+/// job-driven, never a user transition.
+model ItVendorContract {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  vendorId String
+  vendor   ItVendor @relation(fields: [vendorId], references: [id])
+
+  title String
+
+  value    Decimal @db.Decimal(18, 2)
+  currency String  @default("INR")
+
+  termMonths Int?
+  startDate  DateTime?
+  endDate    DateTime?
+  noticeDays Int       @default(30)
+  autoRenew  Boolean   @default(false)
+
+  slaText    String?
+  documentId String?
+
+  /// The proposer — the Self-Dealing Bar checks this against the approving
+  /// actor on the `approved` transition.
+  ownerPartyId String
+  createdById  String
+
+  status String @default("draft")
+
+  approvedById String?
+  approvedAt   DateTime?
+
+  renewedFromId String?
+
+  terminatedAt      DateTime?
+  terminationReason String?
+
+  /// Every 30/7/0-day rung of the notice ladder already fired (days to
+  /// `endDate - noticeDays`), so a re-run of the daily job never re-notifies
+  /// a rung it already raised (IT-VCT-002).
+  noticeNotifiedRungs Int[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, vendorId])
+  @@index([tenantId, endDate])
+  @@map("it_vendor_contracts")
+}
