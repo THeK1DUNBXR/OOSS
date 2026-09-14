@@ -57,8 +57,12 @@ export async function recordTouchpoint(input: TouchpointInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_forms', verb: 'create' });
 
-  if (!input.personId && !input.organizationId && !input.leadId) {
-    throw ApiError.badRequest('A touchpoint requires at least one of personId, organizationId or leadId.');
+  // An anonymous click on a short link, or an ad impression before anyone is
+  // identified, legitimately carries no person/organization/lead — only a
+  // campaign or a source reference. A touchpoint attached to nothing at all
+  // (no person, org, lead, campaign, or source ref) is the only shape refused.
+  if (!input.personId && !input.organizationId && !input.leadId && !input.campaignId && !input.sourceRef) {
+    throw ApiError.badRequest('A touchpoint requires at least one of personId, organizationId, leadId, campaignId or sourceRef.');
   }
 
   const touchpoint = await prisma.marketingTouchpoint.create({

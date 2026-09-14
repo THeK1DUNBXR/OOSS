@@ -40,6 +40,7 @@ import { findOrCreatePerson } from '../domains/identity.js';
 
 const OPS = 'operations@kaizen.co.in'; // hr_ops_manager: holds marketing_forms VCEDXF
 const CHAIRMAN = 'chairman@kaizen.co.in'; // superadmin
+const FINANCE = 'finance@kaizen.co.in'; // finance_head: holds leads VCEDAXF — createLead runs as this account below
 
 beforeEach(() => {
   resetRateLimitForTests();
@@ -63,8 +64,7 @@ async function makeForm(overrides: Record<string, unknown> = {}) {
 
 async function publishedForm(overrides: Record<string, unknown> = {}) {
   const form = await makeForm(overrides);
-  await asUser(OPS, () => publishForm(form.id));
-  return prisma.marketingForm.findFirstOrThrow({ where: { id: form.id } });
+  return asUser(OPS, () => publishForm(form.id));
 }
 
 describe('MKT-CAP-001 — a public form submission is accepted only against an active publicToken', () => {
@@ -287,7 +287,7 @@ describe('short links — a click records a touchpoint and appends utm to the ta
 describe('MKT-CAP-007 — lead score is the sum of active rule matches, CRM reasons never removed', () => {
   it('previewScore keeps every CRM reason and appends mkt: reasons on top', async () => {
     const tid = await tenantId();
-    const lead = await asUser(OPS, () =>
+    const lead = await asUser(FINANCE, () =>
       createLead({
         title: 'Referral enquiry',
         person: { fullName: 'Referral Person', primaryEmail: `ref-${Date.now()}@example.com`, primaryPhone: '9000000000' },
@@ -323,7 +323,7 @@ describe('MKT-CAP-007 — lead score is the sum of active rule matches, CRM reas
 
 describe('MKT-CAP-006 / EX-MKT-001 — a lead with no attributable source raises the unattributed exception', () => {
   it('flags an open lead with no campaign/channel and an eligible source', async () => {
-    const lead = await asUser(OPS, () =>
+    const lead = await asUser(FINANCE, () =>
       createLead({
         title: 'Walk-in enquiry',
         person: { fullName: 'Manual Lead', primaryEmail: `manual-${Date.now()}@example.com` },
@@ -345,7 +345,7 @@ describe('MKT-CAP-006 / EX-MKT-001 — a lead with no attributable source raises
   });
 
   it('does not flag a lead already carrying a channelKey', async () => {
-    const lead = await asUser(OPS, () =>
+    const lead = await asUser(FINANCE, () =>
       createLead({
         title: 'Attributed enquiry',
         person: { fullName: 'Attributed Lead', primaryEmail: `attributed-${Date.now()}@example.com` },
@@ -377,7 +377,7 @@ describe('MKT-CAP-005 — attribution is computed and stored per model, never de
       recordTouchpoint({ personId: person.person.id, channelKey: 'email', touchKind: 'click', occurredAt: new Date(now.getTime() - 1800_000) }),
     );
 
-    const lead = await asUser(OPS, () =>
+    const lead = await asUser(FINANCE, () =>
       createLead({ title: 'Two touches', personId: person.person.id, vertical: 'education', source: 'inbound_website' }),
     );
 
@@ -400,7 +400,7 @@ describe('MKT-CAP-005 — attribution is computed and stored per model, never de
   });
 
   it('a lead with no touches gets a single "Unattributed" row per model', async () => {
-    const lead = await asUser(OPS, () =>
+    const lead = await asUser(FINANCE, () =>
       createLead({
         title: 'No touches at all',
         person: { fullName: 'Untouched', primaryEmail: `untouched-${Date.now()}@example.com` },
