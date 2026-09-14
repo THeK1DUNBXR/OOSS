@@ -196,6 +196,19 @@ router.get(
   }),
 );
 
+const courseFeePlanSchema = z.object({
+  tenureMonths: z.number().int().positive(),
+  monthlyFee: z.number().nonnegative(),
+});
+
+const courseAddonSchema = z.object({
+  name: z.string().min(1),
+  price: z.number().nonnegative(),
+  gstRate: z.number().min(0).max(100).nullish(),
+  hsnSac: z.string().nullish(),
+  notes: z.string().nullish(),
+});
+
 const courseBodySchema = z.object({
   name: z.string().min(1),
   code: z.string().min(1),
@@ -207,7 +220,15 @@ const courseBodySchema = z.object({
   feeAmount: z.number().nonnegative().nullish(),
   gstRate: z.number().min(0).max(100).nullish(),
   hsnSac: z.string().nullish(),
+  hours: z.number().nonnegative().nullish(),
   division: z.enum(DIVISIONS as unknown as [Division, ...Division[]]).nullish(),
+  /// Tenure-based pricing, where a course is sold on 1/3/6/8-month instalment
+  /// plans instead of (or alongside) the flat fee above. Given, this list
+  /// replaces the course's plans wholesale.
+  feePlans: z.array(courseFeePlanSchema).optional(),
+  /// Paid extras sold alongside this course. Replaces the course's add-ons
+  /// wholesale, same as `feePlans`.
+  addons: z.array(courseAddonSchema).optional(),
 });
 
 router.post(

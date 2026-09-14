@@ -30,6 +30,19 @@ import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { enrolStudent } from './education.js';
 
+export interface CourseFeePlanInput {
+  tenureMonths: number;
+  monthlyFee: number;
+}
+
+export interface CourseAddonInput {
+  name: string;
+  price: number;
+  gstRate?: number | null;
+  hsnSac?: string | null;
+  notes?: string | null;
+}
+
 export interface CourseInput {
   name: string;
   code: string;
@@ -38,7 +51,17 @@ export interface CourseInput {
   feeAmount?: number | null;
   gstRate?: number | null;
   hsnSac?: string | null;
+  hours?: number | null;
   division?: string | null;
+  /**
+   * Tenure-based pricing — a course sold on 1/3/6/8-month instalment plans
+   * instead of (or alongside) the flat `feeAmount`. Given on create or update,
+   * this list replaces the course's plans wholesale: a catalogue edit is a new
+   * price list, not a patch to the old one.
+   */
+  feePlans?: CourseFeePlanInput[];
+  /** Paid extras sold alongside this course. Replaces the course's add-ons wholesale, same as `feePlans`. */
+  addons?: CourseAddonInput[];
 }
 
 export async function listCourses(options: { includeRetired?: boolean } = {}) {
@@ -52,6 +75,8 @@ export async function listCourses(options: { includeRetired?: boolean } = {}) {
         select: { id: true, name: true, status: true, startDate: true, endDate: true, capacity: true, _count: { select: { enrollments: true } } },
         orderBy: { startDate: 'desc' },
       },
+      feePlans: { orderBy: { tenureMonths: 'asc' } },
+      addons: { where: { active: true }, orderBy: { name: 'asc' } },
     },
     orderBy: [{ active: 'desc' }, { name: 'asc' }],
   });
@@ -66,6 +91,7 @@ export async function listCourses(options: { includeRetired?: boolean } = {}) {
     feeAmount: num(c.feeAmount),
     gstRate: num(c.gstRate),
     hsnSac: c.hsnSac,
+    hours: num(c.hours),
     division: c.division,
     active: c.active,
     // What a customer actually pays, worked out here rather than on four
@@ -77,6 +103,19 @@ export async function listCourses(options: { includeRetired?: boolean } = {}) {
         : round2((num(c.feeAmount) ?? 0) * (1 + (num(c.gstRate) ?? 0) / 100)),
     batchCount: c.cohorts.length,
     enrolledCount: c.cohorts.reduce((s, h) => s + h._count.enrollments, 0),
+    feePlans: c.feePlans.map((p) => ({
+      id: p.id,
+      tenureMonths: p.tenureMonths,
+      monthlyFee: num(p.monthlyFee) ?? 0,
+    })),
+    addons: c.addons.map((a) => ({
+      id: a.id,
+      name: a.name,
+      price: num(a.price) ?? 0,
+      gstRate: num(a.gstRate) ?? 0,
+      hsnSac: a.hsnSac,
+      notes: a.notes,
+    })),
     cohorts: c.cohorts.map((h) => ({
       id: h.id,
       name: h.name,
@@ -101,8 +140,39 @@ function validateShape(input: Partial<CourseInput>) {
   if (input.durationWeeks !== undefined && input.durationWeeks !== null && input.durationWeeks <= 0) {
     throw ApiError.badRequest('A course that runs for no weeks is not a course.');
   }
+  if (input.hours !== undefined && input.hours !== null && input.hours < 0) {
+    throw ApiError.badRequest('A course cannot run for a negative number of hours.');
+  }
   if (input.division !== undefined && input.division !== null && !isDivision(input.division)) {
     throw ApiError.badRequest(`'${input.division}' is not a division of this company.`);
+  }
+  if (input.feePlans) {
+    const seen = new Set<number>();
+    for (const plan of input.feePlans) {
+      if (!Number.isInteger(plan.tenureMonths) || plan.tenureMonths < 1) {
+        throw ApiError.badRequest('A fee plan’s tenure is a whole number of months, one or more.');
+      }
+      if (seen.has(plan.tenureMonths)) {
+        throw ApiError.badRequest(`Two fee plans both name a ${plan.tenureMonths}-month tenure — a course has one rate per tenure.`);
+      }
+      seen.add(plan.tenureMonths);
+      if (plan.monthlyFee < 0) {
+        throw ApiError.badRequest('A fee plan’s monthly fee cannot be negative.');
+      }
+    }
+  }
+  if (input.addons) {
+    for (const addon of input.addons) {
+      if (!addon.name?.trim()) {
+        throw ApiError.badRequest('An add-on needs a name.');
+      }
+      if (addon.price < 0) {
+        throw ApiError.badRequest(`The price of add-on "${addon.name}" cannot be negative.`);
+      }
+      if (addon.gstRate !== undefined && addon.gstRate !== null && (addon.gstRate < 0 || addon.gstRate > 100)) {
+        throw ApiError.badRequest(`The GST rate on add-on "${addon.name}" is a percentage between 0 and 100.`);
+      }
+    }
   }
 }
 
@@ -130,7 +200,23 @@ export async function createCourse(input: CourseInput) {
       feeAmount: input.feeAmount ?? null,
       gstRate: input.gstRate ?? 18,
       hsnSac: input.hsnSac ?? null,
+      hours: input.hours ?? null,
       division: input.division ?? 'education',
+      feePlans: input.feePlans?.length
+        ? { create: input.feePlans.map((p) => ({ tenantId: auth.tenantId, tenureMonths: p.tenureMonths, monthlyFee: p.monthlyFee })) }
+        : undefined,
+      addons: input.addons?.length
+        ? {
+            create: input.addons.map((a) => ({
+              tenantId: auth.tenantId,
+              name: a.name.trim(),
+              price: a.price,
+              gstRate: a.gstRate ?? 18,
+              hsnSac: a.hsnSac ?? null,
+              notes: a.notes ?? null,
+            })),
+          }
+        : undefined,
     },
   });
 
@@ -190,8 +276,36 @@ export async function updateCourse(courseId: string, input: Partial<CourseInput>
       ...(input.feeAmount !== undefined ? { feeAmount: input.feeAmount } : {}),
       ...(input.gstRate !== undefined && input.gstRate !== null ? { gstRate: input.gstRate } : {}),
       ...(input.hsnSac !== undefined ? { hsnSac: input.hsnSac } : {}),
+      ...(input.hours !== undefined ? { hours: input.hours } : {}),
       ...(input.division !== undefined && input.division !== null ? { division: input.division } : {}),
       ...(input.active !== undefined ? { active: input.active } : {}),
+      // A catalogue edit that names fee plans or add-ons replaces the whole
+      // list — the same "a corrected price list, not a patch" reasoning as
+      // the rest of this function, and it means a plan or add-on that was
+      // removed on screen is actually gone rather than left billable.
+      ...(input.feePlans !== undefined
+        ? {
+            feePlans: {
+              deleteMany: {},
+              create: input.feePlans.map((p) => ({ tenantId: auth.tenantId, tenureMonths: p.tenureMonths, monthlyFee: p.monthlyFee })),
+            },
+          }
+        : {}),
+      ...(input.addons !== undefined
+        ? {
+            addons: {
+              deleteMany: {},
+              create: input.addons.map((a) => ({
+                tenantId: auth.tenantId,
+                name: a.name.trim(),
+                price: a.price,
+                gstRate: a.gstRate ?? 18,
+                hsnSac: a.hsnSac ?? null,
+                notes: a.notes ?? null,
+              })),
+            },
+          }
+        : {}),
     },
   });
 

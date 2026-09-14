@@ -30,6 +30,7 @@ import { api, date, money } from '../lib/api.js';
 import { Card, ErrorBox, Loading } from '../components/ui.js';
 import { messageOf } from '../components/forms.js';
 import { CustomerBlock, Sheet, Signature, SupplierBlock, rupees } from './documentSheet.js';
+import { KaizenInvoiceDocument } from './kaizenInvoice/KaizenInvoiceDocument.js';
 
 export function InvoiceDocument() {
   const { id } = useParams<{ id: string }>();
@@ -54,6 +55,11 @@ export function InvoiceDocument() {
 
   if (loadError) return <ErrorBox error={loadError} />;
   if (isLoading || !data) return <Loading label="Preparing the invoice" />;
+
+  // A course-sale invoice (raised with an enrollment date) prints as the
+  // Kaizen course ledger, not this generic tax-invoice layout — same
+  // underlying document, a different printed shape.
+  if (data.ledger) return <KaizenInvoiceDocument doc={data} />;
 
   const d = data;
   const paymentLabel = PAYMENT_TYPE_LABELS[d.payment.type as PaymentType] ?? d.payment.type;

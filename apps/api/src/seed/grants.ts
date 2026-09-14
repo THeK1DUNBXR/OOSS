@@ -372,8 +372,18 @@ const employee: GrantSpec[] = [
   // Raising an invoice is not filing a return, and reading the class register
   // is not raising an invoice. Both stay out.
   { resource: 'gst_filings', cell: '-' },
-  { resource: 'company_profile', cell: '-' },
-  { resource: 'education', cell: '-' },
+  // View only — not the settings screen, just enough to print the supplier
+  // block (legal name, GSTIN, address) on the invoice they are about to hand
+  // over. An issued invoice already carries all of this, so an employee could
+  // always see it after the fact; this just lets them see it before, while
+  // they are still filling the form in.
+  { resource: 'company_profile', cell: 'V' },
+  // Create only, not view: putting a walk-in on a course is how a counter
+  // enrolment and its invoice come to exist at all — `enrolStudent`, which
+  // `courses:assign` and the counter's own invoice flow both call, checks
+  // exactly this. The class register itself (attendance, progress, another
+  // trainer's batch) stays out, which is what `view` would open.
+  { resource: 'education', cell: 'C' },
   { resource: 'receivables', cell: '-' },
 ];
 

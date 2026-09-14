@@ -12,6 +12,7 @@
     "db:reset": "prisma db push --force-reset --skip-generate && prisma generate && tsx src/seed/index.ts",
     "generate": "prisma generate",
     "seed": "tsx src/seed/index.ts",
+    "seed:course-catalog": "tsx src/seed/courseCatalog.ts",
     "grants:reconcile": "tsx src/seed/reconcileGrants.ts",
     "jobs:run": "tsx src/jobs/runOnce.ts",
     "test": "vitest run",

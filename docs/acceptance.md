@@ -7,7 +7,7 @@ impossible.
 
 ```bash
 ./scripts/test-db.sh          # provision kaizen_test
-cd apps/api && pnpm test      # 372 tests
+cd apps/api && pnpm test      # 399 tests
 ```
 
 ## How the suite is built
@@ -55,6 +55,7 @@ dataset is a demonstration, not a scratchpad.
 | **GST returns** | 12 | A GSTIN is validated on shape, state code and check digit; credit is set off head by head in the statutory order rather than netted; a registered customer is reported invoice by invoice and an unregistered one rate-wise; a draft is not a supply and a void invoice is reported as cancelled; the 3B agrees with the GSTR-1 by construction; a return the portal would reject cannot be recorded as filed; filing closes the month and a preparation supersedes an earlier one |
 | **The catalogue and the student record** | 15 | A course is edited and retired, never deleted, and a retired one cannot be billed; a fee, rate and SAC flow from the course onto an invoice line; a course assigned with no batch named uses its rolling intake; a query and an issue open and stay open while feedback and a note close as written; attendance, progress and the log merge into one timeline on the server; a trainer reaches the batches they teach and no others |
 | **The student register import** | 8 | The register is recognised before the bank sniffer; instalments, their dates and their receipt numbers are read; dates are inferred month-first or day-first from the file; a row that does not add up is reported and still imports; the commit writes the enrolment and leaves course prices exactly as they were |
+| **Course-sale invoicing** | 15 | A course's tenure-based fee plans and add-ons replace wholesale on edit, the same as its flat fee; two fee plans cannot name the same tenure; a course line billed as quantity=tenure prices through the ordinary gross/discount/tax arithmetic with no special case, and an add-on split across the tenure comes to its full price before discount; an add-on not belonging to the course, or a retired one, is refused; the printed ledger is absent with no enrollment date and present with one, naming the payment-due schedule and, per line, the monthly fee, tenure, effective-monthly-after-discount and a CGST/SGST/IGST split that lands wholly on IGST inter-state and splits evenly intra-state; the schedule itself — due three days after enrolling, then the 1st of the month, pushed a further month inside the fourteen-day rule — is right with no database |
 
 ## The browser suite
 

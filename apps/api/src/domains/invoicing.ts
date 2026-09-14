@@ -59,6 +59,7 @@ import {
   EVENTS,
   amountInWords,
   computeGst,
+  computePaymentSchedule,
   invoicePayable,
   isInterState,
   isValidGstin,
@@ -90,6 +91,11 @@ export interface InvoiceLineInput {
   offeringId?: string | null;
   /** A course from the catalogue. Its price, tax rate and SAC fill the line. */
   courseId?: string | null;
+  /**
+   * A catalogue add-on of that course — a certification exam, a kit. Its
+   * price, tax rate and SAC fill the line the same way a course's do.
+   */
+  courseAddonId?: string | null;
   /**
    * The student's place on that course. Naming it fills the course in, so
    * billing a fee is one choice rather than two that have to agree.
@@ -140,6 +146,12 @@ export interface InvoiceInput {
   issuedDate?: Date;
   dueDate?: Date;
   dueInDays?: number;
+  /**
+   * When the student enrolled — only meaningful for a course-sale invoice.
+   * Printed as a payment-due schedule on the document; stored so a reprint
+   * shows the same schedule the original did.
+   */
+  enrollmentDate?: Date | null;
   /** State code of the place of supply. Defaults from the customer, then from us. */
   placeOfSupply?: string | null;
   customerGstin?: string | null;
@@ -403,6 +415,7 @@ async function resolveTaxReading(
 interface PricedLine {
   offeringId: string | null;
   courseId: string | null;
+  courseAddonId: string | null;
   enrollmentId: string | null;
   description: string;
   quantity: number;
@@ -487,6 +500,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
     let hsnSac = line.hsnSac ?? null;
     let revenueMethod: RevenueTreatment = 'point_in_time';
     let courseId = line.courseId ?? null;
+    let courseAddonId = line.courseAddonId ?? null;
     let enrollmentId: string | null = null;
 
     // The enrolment is the student on the course, which is the thing being
@@ -513,6 +527,26 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       enrollmentId = enrollment.id;
     }
 
+    // A catalogue add-on — priced, taxed and classified the same way a course
+    // is, so naming one is also one choice rather than knowing its price list.
+    if (courseAddonId) {
+      const addon = await prisma.courseAddon.findFirst({
+        where: { id: courseAddonId, tenantId: auth.tenantId },
+      });
+      if (!addon) throw ApiError.notFound('Course add-on');
+      if (!addon.active) {
+        throw ApiError.unprocessable(`"${addon.name}" is retired and cannot be billed.`);
+      }
+      if (courseId && courseId !== addon.courseId) {
+        throw ApiError.badRequest(`"${addon.name}" is not an add-on of the course named on this line.`);
+      }
+      courseId = addon.courseId;
+      description = description || addon.name;
+      if (unitPrice === null) unitPrice = num(addon.price);
+      if (gstRate === null) gstRate = num(addon.gstRate);
+      hsnSac = hsnSac ?? addon.hsnSac;
+    }
+
     if (courseId) {
       const course = await prisma.course.findFirst({
         where: { id: courseId, tenantId: auth.tenantId },
@@ -531,6 +565,9 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
       // property, not a question for whoever raises the invoice.
       revenueMethod = 'over_time_ratable';
     }
+    // An add-on is a one-time extra, not something delivered over the course's
+    // own run — recognised when sold, whichever course it rides along with.
+    if (courseAddonId) revenueMethod = 'point_in_time';
 
     if (line.offeringId) {
       const offering = await prisma.offering.findFirst({
@@ -566,6 +603,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
     out.push({
       offeringId: line.offeringId ?? null,
       courseId,
+      courseAddonId,
       enrollmentId,
       description,
       quantity,
@@ -671,6 +709,7 @@ export async function createInvoice(input: InvoiceInput) {
         currency: input.currency ?? 'INR',
         issuedDate: issue ? issuedDate : null,
         dueDate,
+        enrollmentDate: input.enrollmentDate ?? null,
         placeOfSupply: tax.placeOfSupply,
         interState: tax.interState,
         customerGstin: tax.customerGstin,
@@ -744,6 +783,7 @@ async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
         invoiceId,
         offeringId: line.offeringId,
         courseId: line.courseId,
+        courseAddonId: line.courseAddonId,
         enrollmentId: line.enrollmentId,
         description: line.description,
         quantity: line.quantity,
@@ -806,6 +846,7 @@ export async function updateInvoice(
       existing.lines.map((l) => ({
         offeringId: l.offeringId,
         courseId: l.courseId,
+        courseAddonId: l.courseAddonId,
         enrollmentId: l.enrollmentId,
         description: l.description,
         quantity: l.quantity,
@@ -835,6 +876,7 @@ export async function updateInvoice(
         organizationId: customer.organizationId,
         personId: customer.personId,
         ...(input.dueDate ? { dueDate: input.dueDate } : {}),
+        ...(input.enrollmentDate !== undefined ? { enrollmentDate: input.enrollmentDate } : {}),
         ...(input.currency ? { currency: input.currency } : {}),
         ...(input.division !== undefined ? { division: input.division } : {}),
         ...(input.notes !== undefined ? { notes: input.notes } : {}),
@@ -1390,6 +1432,7 @@ export async function invoiceDocument(invoiceId: string) {
     currency: invoice.currency,
     issuedDate: invoice.issuedDate?.toISOString() ?? null,
     dueDate: invoice.dueDate?.toISOString() ?? null,
+    enrollmentDate: invoice.enrollmentDate?.toISOString() ?? null,
     notes: invoice.notes,
     division: invoice.division,
     raisedBy: raisedBy?.fullName ?? null,
@@ -1456,6 +1499,11 @@ export async function invoiceDocument(invoiceId: string) {
       description: l.description,
       courseName: l.courseId ? (courseMap.get(l.courseId)?.name ?? null) : null,
       courseCode: l.courseId ? (courseMap.get(l.courseId)?.code ?? null) : null,
+      // The add-on's own name, where this line is one. Read from the line's
+      // own description rather than a live join to CourseAddon: an add-on can
+      // be edited or removed from the catalogue later, and a printed document
+      // must keep reading the way it did the day it was issued.
+      addonName: l.courseAddonId ? l.description : null,
       hsnSac: l.hsnSac,
       quantity: l.quantity,
       unitPrice: num(l.unitPrice) || round2((num(l.amount) ?? 0) / Math.max(l.quantity, 1)),
@@ -1481,6 +1529,44 @@ export async function invoiceDocument(invoiceId: string) {
       igst: num(invoice.igstAmount) ?? 0,
       roundOff: num(invoice.roundOff) ?? 0,
     },
+
+    // The Kaizen course-ledger view: present only where an enrollment date was
+    // given, i.e. a course-sale invoice. Every figure here is read off `lines`
+    // above (never a second computation), so the printed ledger table can show
+    // the monthly fee, the tenure, the effective-monthly-after-discount and a
+    // per-line CGST/SGST/IGST split without the client working any of it out
+    // itself — each row's tax split is computed on that row's own tax alone,
+    // the same way the figures on either side of it were.
+    ledger: invoice.enrollmentDate
+      ? {
+          schedule: computePaymentSchedule(invoice.enrollmentDate.toISOString().slice(0, 10)),
+          rows: invoice.lines.map((l) => {
+            const isCourseRow = !l.courseAddonId;
+            const unitPrice = num(l.unitPrice) || round2((num(l.amount) ?? 0) / Math.max(l.quantity, 1));
+            const discountPercent = num(l.discountPercent) ?? 0;
+            const taxAmount = num(l.taxAmount) ?? 0;
+            const amount = num(l.amount) ?? 0;
+            return {
+              lineId: l.id,
+              hsnSac: l.hsnSac,
+              courseName: isCourseRow ? (l.courseId ? (courseMap.get(l.courseId)?.name ?? l.description) : l.description) : null,
+              addonName: isCourseRow ? null : l.description,
+              monthlyFee: unitPrice,
+              tenureMonths: l.quantity,
+              subtotal: round2(unitPrice * l.quantity),
+              discountPercent,
+              discountAmount: num(l.discountAmount) ?? 0,
+              effectiveMonthly: round2(unitPrice * (1 - discountPercent / 100)),
+              taxable: amount,
+              cgst: invoice.interState ? 0 : round2(taxAmount / 2),
+              sgst: invoice.interState ? 0 : round2(taxAmount / 2),
+              igst: invoice.interState ? taxAmount : 0,
+              total: round2(amount + taxAmount),
+              isCourseRow,
+            };
+          }),
+        }
+      : null,
 
     /**
      * What the tax invoice says. Both figures, side by side, and both printed

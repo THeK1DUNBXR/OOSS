@@ -207,6 +207,59 @@ that need no database.
 
 ---
 
+## Course-sale invoices
+
+A counter selling a training course raises a tax invoice the same way any
+other invoice is raised — same `Invoice`/`InvoiceLine` rows, same numbering,
+same immutability — but through its own screen (`/finance/invoices/new`,
+`kaizenInvoice/NewInvoice.tsx`) built around three things a generic
+line-item invoice doesn't model:
+
+- **Tenure-based pricing.** A `Course` can carry `feePlans` — one row per
+  instalment tenure (1/3/6/8-month, each its own monthly rate) — instead of
+  or alongside its flat `feeAmount`. A course line's `quantity` is the
+  tenure in months and its `unitPrice` the plan's monthly rate, so the
+  existing gross/discount/tax arithmetic (`priceLines`, `computeGst`) needs
+  no change to price one: `quantity x unitPrice` already is
+  `months x monthly rate`.
+- **Add-ons.** A `CourseAddon` is a fixed-total extra (typically a
+  certification exam fee) sold alongside a course. Billed as its own line
+  (`courseAddonId` set, `courseId` naming the parent for grouping), priced
+  at `price / tenure` per "month" so the same quantity-based arithmetic
+  produces the right subtotal regardless of the tenure chosen.
+- **One form, several invoices.** Entering more than one course for the
+  same student raises one invoice *per course* — its own number, its own
+  add-ons, its own tax split — rather than one invoice with several
+  courses as lines. The screen calls `POST /finance/invoices` once per
+  course entry.
+
+`Invoice.enrollmentDate`, set only by this flow, drives a payment-due
+schedule (`computePaymentSchedule` in `packages/shared/src/finance.ts`):
+first instalment due enrollment-date-plus-three-days, the rest on the 1st
+of the month after — pushed a further month if fewer than fourteen days
+would separate the two. It's computed and printed, never a stored
+obligation of its own — `FeeInstalment` (the education motion's actual
+instalment records) is a separate concern this flow doesn't touch.
+
+`invoiceDocument()` adds a `ledger` block (present only when
+`enrollmentDate` is set) with the schedule and a per-line breakdown
+(monthly fee, tenure, effective-monthly-after-discount, a CGST/SGST/IGST
+split computed per line) so the printed ledger table needs no client-side
+arithmetic, the same discipline the rest of the invoice document holds to.
+That document prints as two copies — customer and office — on one A4
+sheet with a fold line, a different sheet layout from every other document
+this platform prints, in `kaizenInvoice/style.ts` and `LedgerSheet.tsx`
+rather than `documentSheet.tsx`'s shared one.
+
+The course catalogue's real price list (the company's own ~110 courses and
+their add-ons) is not seed data in the ordinary sense — `pnpm seed` stays
+empty, as always. It is loaded by its own explicit step,
+`pnpm --filter @kaizen/api run seed:course-catalog`
+(`apps/api/src/seed/courseCatalog.ts`), matched and updated by course name
+so re-running it is safe.
+
+---
+
 ## Where it lives
 
 ```
@@ -216,16 +269,27 @@ apps/api/src/platform/
   documentNumber.ts               the company's series
 apps/api/src/domains/
   companyProfile.ts               who the company is, on paper
+  courses.ts                      the catalogue: courses, fee plans, add-ons
   invoicing.ts                    the obligation: draft, price, issue, collect,
                                   void, and the printable document
   receipts.ts                     receipts, and the final invoice
   finance.ts                      payments, allocation, credit notes
   gstReturns.ts                   GSTR-1, GSTR-3B, the checks, prepare and file
+apps/api/src/seed/
+  courseCatalog.ts                loads the real course price list (its own
+                                  step, never part of `pnpm seed`)
+  courseCatalogData.ts            the price list itself
 apps/web/src/
-  components/invoiceEditor.tsx    raising and correcting one
+  components/invoiceEditor.tsx    raising and correcting a generic invoice
   pages/documentSheet.tsx         the look of a document somebody is handed
-  pages/InvoiceDocument.tsx       the tax invoice
+  pages/InvoiceDocument.tsx       the tax invoice (branches to the course
+                                  ledger layout when the document has one)
   pages/ReceiptDocument.tsx       receipts
   pages/FinalInvoiceDocument.tsx  the final invoice
   pages/GstReturns.tsx            the returns, and Company details
+  pages/Courses.tsx               the catalogue, incl. the Fee & Add-on
+                                  Master tab
+  pages/kaizenInvoice/            the course-sale invoice screens: New
+                                  Invoice, Invoice History, the printed
+                                  course ledger, and their own styling
 ```
