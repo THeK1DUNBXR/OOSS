@@ -172,7 +172,19 @@ export async function listBoardMembers() {
   });
   const people = await prisma.person.findMany({ where: { id: { in: members.map((m) => m.personId) } } });
   const nameById = new Map(people.map((p) => [p.id, p.fullName] as const));
-  return members.map((m) => ({ ...m, personName: nameById.get(m.personId) ?? 'Unknown' }));
+
+  // MBP-1 is a once-per-financial-year fact — the same window `sweepMbp1`
+  // raises a compliance item against, computed here so the member list and
+  // the compliance calendar never disagree about which FY "this year" means.
+  const profile = await prisma.companyProfile.findFirst({ where: { tenantId: auth.tenantId } });
+  const fyEnd = profile?.financialYearEnd ?? new Date(Date.UTC(new Date().getUTCFullYear(), 2, 31));
+  const { start, end } = financialYearWindow(fyEnd, new Date());
+
+  return members.map((m) => ({
+    ...m,
+    personName: nameById.get(m.personId) ?? 'Unknown',
+    interestsDeclaredThisYear: Boolean(m.interestsDeclaredOn && m.interestsDeclaredOn >= start && m.interestsDeclaredOn <= end),
+  }));
 }
 
 async function activeVotingMemberCount(): Promise<number> {
@@ -429,15 +441,22 @@ export async function cancelMeeting(meetingId: string, reason?: string) {
   return updated;
 }
 
+/** The view carries a present-attendee count as a fact, not something the
+ *  client counts itself — it is exactly `attendees.filter(present).length`. */
+function withPresentCount<T extends { attendees: unknown }>(m: T): T & { presentCount: number } {
+  return { ...m, presentCount: ((m.attendees as Array<{ present: boolean }>) ?? []).filter((a) => a.present).length };
+}
+
 export async function listMeetings() {
   await assertCan({ resource: 'board_meetings', verb: 'view' });
   const auth = currentAuth();
-  return prisma.boardMeeting.findMany({ where: { tenantId: auth.tenantId }, orderBy: { scheduledFor: 'desc' } });
+  const meetings = await prisma.boardMeeting.findMany({ where: { tenantId: auth.tenantId }, orderBy: { scheduledFor: 'desc' } });
+  return meetings.map(withPresentCount);
 }
 
 export async function meeting(id: string) {
   await assertCan({ resource: 'board_meetings', verb: 'view' });
-  return getMeetingOrThrow(id);
+  return withPresentCount(await getMeetingOrThrow(id));
 }
 
 export interface BoardPackItemInput {
@@ -472,7 +491,7 @@ export async function boardPack(meetingId: string) {
     prisma.boardPackItem.findMany({ where: { meetingId }, orderBy: { order: 'asc' } }),
     prisma.resolution.findMany({ where: { meetingId } }),
   ]);
-  return { meeting: m, items, resolutions };
+  return { meeting: withPresentCount(m), items, resolutions };
 }
 
 // ---------------------------------------------------------------------------

@@ -48,6 +48,7 @@ function NavIcon({ icon, className = 'h-[18px] w-[18px]' }: { icon: string; clas
 const GROUP_LABELS: Record<string, string> = {
   main: '',
   money: 'Money',
+  equity: 'Equity',
   people: 'People',
   // Not "Customers": a student, a college and a business are three different
   // parties, and only one of them is buying anything on any given day.
@@ -236,7 +237,7 @@ export function Shell() {
 
 // Fixed group order, so the shell reads the way the work reads: your own
 // surface first, then the domains, then the platform underneath them.
-const GROUP_ORDER = ['main', 'money', 'people', 'customers', 'delivery', 'setup'];
+const GROUP_ORDER = ['main', 'money', 'equity', 'people', 'customers', 'delivery', 'setup'];
 
 /** The sidebar's content, shared between its desktop in-flow rendering and
  *  its mobile drawer overlay — one nav, two placements. */
