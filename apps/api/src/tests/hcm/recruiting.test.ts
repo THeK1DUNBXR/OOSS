@@ -373,6 +373,12 @@ describe('HCM-RECR-010 — a referral follows Submitted → Shortlisted → Hire
     const referrer = await employmentFor('hr@kaizen.co.in');
     const hrPerson = await unscopedPrisma.person.findFirstOrThrow({ where: { id: referrer.personId } });
 
+    // An existing employee's own affiliation carries a statutory-retention
+    // floor, so identity resolution itself refuses to resolve a match against
+    // them silently — it raises MERGE_CANDIDATE (409) rather than ever
+    // handing back their own Person as "the candidate". That is the first
+    // line of defence; `createReferral`'s own same-person check is the
+    // second, for a match identity resolution does let through silently.
     const refusal = await expectReject(() =>
       asUser('operations@kaizen.co.in', () =>
         createReferral({
@@ -381,7 +387,7 @@ describe('HCM-RECR-010 — a referral follows Submitted → Shortlisted → Hire
         }),
       ),
     );
-    expect(refusal.message).toMatch(/cannot be the same person/);
+    expect(refusal.status).toBe(409);
   });
 
   it('withholds the bonus amount from a viewer without the referrals financial verb', async () => {

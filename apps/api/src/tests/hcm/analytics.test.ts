@@ -30,7 +30,7 @@ import {
   dashboard,
   exportHeadcountRegister,
 } from '../../domains/hcm/analytics.js';
-import { spanOfControlStats, tenureBucket, annualizedAttritionRate, isEarlyAttrition } from '@kaizen/shared';
+import { spanOfControlStats, tenureBucket, annualizedAttritionRate, isEarlyAttrition, computeEnps } from '@kaizen/shared';
 
 let TENANT: string;
 let fixtureSeq = 0;
