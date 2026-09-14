@@ -242,10 +242,13 @@ export function InvoiceEditor({
 
   /**
    * Typing a discount percentage derives its rupee amount off the line's own
-   * gross fee. Typing a rupee amount derives its percentage the same way.
-   * Whichever the counter typed last is the one they meant; the other field
-   * is always what falls out of it against the current fee, never a second
-   * value that could drift from the first.
+   * gross fee. Typing the discounted amount — what the line should actually
+   * come to, not how much is knocked off it — derives the same rupee amount
+   * the other way, as `gross - typed`. Whichever the counter typed last is
+   * the one they meant; the other field, and the stored `discountAmount`
+   * (still the subtracted rupee figure the server and the printed line
+   * expect), are always what falls out of it against the current fee, never
+   * a second value that could drift from the first.
    */
   const setDiscountPercent = (i: number, value: string) =>
     setLines((ls) =>
@@ -258,14 +261,16 @@ export function InvoiceEditor({
       }),
     );
 
-  const setDiscountAmount = (i: number, value: string) =>
+  const setDiscountedAmount = (i: number, value: string) =>
     setLines((ls) =>
       ls.map((l, k) => {
         if (k !== i) return l;
+        if (value === '') return { ...l, discountAmount: '', discountPercent: '' };
         const gross = grossOf(l);
-        const amount = Math.max(0, Math.min(gross, Number(value || 0)));
+        const discounted = Math.max(0, Math.min(gross, Number(value || 0)));
+        const amount = round2(gross - discounted);
         const pct = gross > 0 ? round2((amount / gross) * 100) : 0;
-        return { ...l, discountAmount: value, discountPercent: value === '' ? '' : String(pct) };
+        return { ...l, discountAmount: String(amount), discountPercent: String(pct) };
       }),
     );
 
@@ -583,10 +588,12 @@ export function InvoiceEditor({
                   hint="the return needs it"
                 />
               </div>
-              {/* The discount, either way round: type a percentage and the rupee
-                  figure follows it, or type the rupee figure and the percentage
-                  follows that — always the same one discount, never two that
-                  could disagree. */}
+              {/* The discount, either way round: type a percentage and the
+                  discounted amount follows it, or type the discounted amount
+                  — what the line should actually come to — and the
+                  percentage follows that. Always the same one discount,
+                  never two that could disagree; the rupee figure this
+                  derives is how much came off, never asked for directly. */}
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <TextInput
                   label="Discount %"
@@ -596,10 +603,12 @@ export function InvoiceEditor({
                   placeholder="0"
                 />
                 <MoneyInput
-                  label="Discount amount"
-                  value={line.discountAmount}
-                  onChange={(v) => setDiscountAmount(i, v)}
-                  hint="either field — the other follows it"
+                  label="Discounted amount"
+                  value={
+                    line.discountAmount === '' ? '' : String(round2(grossOf(line) - Number(line.discountAmount || 0)))
+                  }
+                  onChange={(v) => setDiscountedAmount(i, v)}
+                  hint="what it should come to — either field, the other follows it"
                 />
               </div>
               <p className="mt-1 text-right text-2xs text-ink-500">
