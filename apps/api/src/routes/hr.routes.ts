@@ -22,7 +22,6 @@ import {
   applicationMachine,
   positionMachine,
   assignmentMachine,
-  compensationRecordMachine,
   onboardingMachine,
   offboardingMachine,
   goalMachine,
@@ -50,14 +49,14 @@ import { handler, str, bool, date, numeric } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan, canSeeMoney } from '../platform/permissions.js';
+import { assertCan, canSeeMoney, scopeFor } from '../platform/permissions.js';
 import {
   listOrgUnits, createOrgUnit, listJobs, createJob,
   listPositions, createPosition, transitionPosition,
   listEmployments, getEmployment, hire, transitionEmployment, setConfirmationState,
   updateEmployeeProfile, redactRegulatedEmploymentFields,
   proposeAssignment, transitionAssignment,
-  proposeCompensation, transitionCompensation, currentCompensation,
+  proposeCompensation, transitionCompensation, currentCompensation, listCompensationForEmployment,
   transitionOnboarding, transitionOffboarding,
   headcountByDivision,
 } from '../domains/employment.js';
@@ -219,14 +218,24 @@ router.get(
     const e = await getEmployment(req.params.id);
     const money = await canSeeMoney('compensation');
     const pay = money ? await currentCompensation(e.id) : null;
+    // Last-four read-back of PAN/bank is HR's privilege, not the employee's
+    // own — gated on the same `all` scope that makes them HR rather than on
+    // the money grant, since seeing pay and correcting a bank detail are
+    // different questions.
+    const revealLast4 = (await scopeFor('employees', 'edit')) === 'all';
 
     return {
-      ...redactRegulatedEmploymentFields(e),
+      ...redactRegulatedEmploymentFields(e, { revealLast4 }),
       // Whether the viewer may see pay at all, kept separate from whether
       // there is any. A single null would conflate "withheld from you" with
       // "this person has no pay record", and the second is a problem somebody
       // needs to fix.
       payVisible: money,
+      // Whether the employment section of the edit form — dates, engagement
+      // type, statutory identifiers, bank details — is this viewer's to
+      // change at all, so the client can leave it out rather than render
+      // fields it already knows will be refused.
+      canEditEmploymentDetails: revealLast4,
       currentCompensation: pay ? { amount: num(pay.amount), currency: pay.currency, effectiveFrom: pay.effectiveFrom } : null,
       availableTransitions: employmentRelationshipMachine.allowedEvents(e.status as never),
       onboardingTransitions: e.onboarding ? onboardingMachine.allowedEvents(e.onboarding.status as never) : [],
@@ -236,10 +245,18 @@ router.get(
 );
 
 /**
- * A correction to what the staff-list import wrote for this person — their
- * name, phone, email, date of birth. Everything else on the employment
- * itself moves through its own transition endpoint below, or is regulated
- * and never reaches here at all.
+ * A correction to what the staff-list import wrote, and the platform's one
+ * path for HR to fix everything else on the record that is not governed by
+ * its own lifecycle: personal details on the person underneath (name, phone,
+ * email, date of birth, blood group, emergency contact), and — HR only — the
+ * employment relationship's own dates, terms and statutory identifiers.
+ *
+ * Where they sit and what they are paid stay out of this body on purpose:
+ * both have their own workflow (`/hr/assignments`, `/hr/compensation`) and a
+ * direct field write here would let either move without it.
+ *
+ * The response is redacted exactly like the read above — an edit is not a
+ * side door onto a regulated value that the read path withholds.
  */
 router.patch(
   '/employees/:id',
@@ -250,9 +267,23 @@ router.patch(
         primaryPhone: z.string().nullish(),
         primaryEmail: z.string().nullish(),
         dateOfBirth: z.string().nullish(),
+        bloodGroup: z.string().nullish(),
+        emergencyContactName: z.string().nullish(),
+        emergencyContactPhone: z.string().nullish(),
+        hireEffectiveDate: z.string().optional(),
+        noticePeriodDays: z.number().int().min(0).optional(),
+        engagementType: z.string().optional(),
+        panNumber: z.string().nullish(),
+        uanNumber: z.string().nullish(),
+        esicNumber: z.string().nullish(),
+        bankAccountNumber: z.string().nullish(),
+        bankIfsc: z.string().nullish(),
+        bankAccountName: z.string().nullish(),
       })
       .parse(req.body);
-    return updateEmployeeProfile(req.params.id, body);
+    const updated = await updateEmployeeProfile(req.params.id, body);
+    const revealLast4 = (await scopeFor('employees', 'edit')) === 'all';
+    return redactRegulatedEmploymentFields(updated, { revealLast4 });
   }),
 );
 
@@ -327,14 +358,8 @@ router.post(
 router.get(
   '/employees/:id/compensation',
   handler(async (req) => {
-    await assertCan({ resource: 'compensation', verb: 'view' });
-    const auth = currentAuth();
     const money = await canSeeMoney('compensation');
-
-    const rows = await prisma.compensationRecord.findMany({
-      where: { tenantId: auth.tenantId, employmentRelationshipId: req.params.id },
-      orderBy: { effectiveFrom: 'desc' },
-    });
+    const rows = await listCompensationForEmployment(req.params.id);
 
     return rows.map((r) => ({
       id: r.id,
@@ -347,7 +372,14 @@ router.get(
       // Withheld rather than absent, so the surface can say so out loud.
       amount: money ? num(r.amount) : null,
       basicPay: money ? num(r.basicPay) : null,
-      availableTransitions: compensationRecordMachine.allowedEvents(r.status as never),
+      availableTransitions: r.availableTransitions,
+      proposedByPartyId: r.proposedByPartyId,
+      proposedByName: r.proposedByName,
+      // Whether *this* viewer may sign it, and why not when they cannot —
+      // the two bars `transitionCompensation` enforces (never the subject,
+      // never the proposer), so the button can grey out instead of failing.
+      canApprove: r.canApprove,
+      approveWithheldReason: r.approveWithheldReason,
     }));
   }),
 );

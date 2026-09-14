@@ -35,7 +35,7 @@ import {
   Withheld,
 } from '../components/ui.js';
 import { NewButton } from '../components/forms.js';
-import { EditEmployeeProfile, NewLeaveRequest, NewRequisition, NewSkill } from '../components/createForms.js';
+import { EditEmployeeProfile, NewLeaveRequest, NewRequisition, NewSkill, ProposeCompensation } from '../components/createForms.js';
 
 // ---------------------------------------------------------------------------
 // Shared pieces
@@ -387,8 +387,25 @@ interface EmployeeDetailView {
   hireEffectiveDate: string;
   legalEntity: string;
   noticePeriodDays: number;
+  engagementType: string;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
   separationType: string | null;
-  person: { fullName: string; primaryEmail: string | null; primaryPhone: string | null; dateOfBirth: string | null };
+  person: {
+    fullName: string;
+    primaryEmail: string | null;
+    primaryPhone: string | null;
+    dateOfBirth: string | null;
+    hasBloodGroup: boolean;
+  };
+  hasPan: boolean;
+  panLast4?: string | null;
+  hasUan: boolean;
+  hasEsicNumber: boolean;
+  hasBankDetails: boolean;
+  bankLast4?: string | null;
+  /** Set only for HR — `employees:edit@all` — never for self-service. */
+  canEditEmploymentDetails: boolean;
   assignments: Array<{
     id: string;
     rowStatus: string;
@@ -420,6 +437,10 @@ interface CompensationRow {
   amount: number | null;
   basicPay: number | null;
   availableTransitions: string[];
+  proposedByPartyId: string | null;
+  proposedByName: string | null;
+  canApprove: boolean;
+  approveWithheldReason: 'not_holder' | 'self' | 'self_proposed' | null;
 }
 
 interface CapabilityRow {
@@ -443,6 +464,7 @@ const TIER_TONE: Record<string, 'good' | 'warn' | 'bad' | 'neutral'> = {
 export function EmployeeDetail() {
   const { id = '' } = useParams();
   const [editOpen, setEditOpen] = useState(false);
+  const [proposeCompOpen, setProposeCompOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['hr-employee', id],
@@ -481,6 +503,11 @@ export function EmployeeDetail() {
         }
         actions={
           <>
+            {data.payVisible && (
+              <button className="btn-ghost" onClick={() => setProposeCompOpen(true)}>
+                Change salary
+              </button>
+            )}
             <button className="btn-ghost" onClick={() => setEditOpen(true)}>
               Edit
             </button>
@@ -488,7 +515,15 @@ export function EmployeeDetail() {
           </>
         }
       />
-      <EditEmployeeProfile open={editOpen} onClose={() => setEditOpen(false)} employmentId={data.id} person={data.person} />
+      <EditEmployeeProfile
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        employmentId={data.id}
+        person={data.person}
+        employment={data}
+        canEditEmploymentDetails={data.canEditEmploymentDetails}
+      />
+      <ProposeCompensation open={proposeCompOpen} onClose={() => setProposeCompOpen(false)} employmentRelationshipId={data.id} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
@@ -550,33 +585,57 @@ export function EmployeeDetail() {
                     <th className="num">Amount</th>
                     <th>From</th>
                     <th>Status</th>
+                    <th>Proposed by</th>
                     <th>Linked move</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {compensation.map((c) => (
-                    <tr key={c.id}>
-                      <td>{titleCase(c.revisionReason.replace(/_/g, ' '))}</td>
-                      <td className="num">
-                        <Money value={c.amount} />
-                      </td>
-                      <td className="num">{date(c.effectiveFrom)}</td>
-                      <td>
-                        <StatusChip status={c.status} tone={tone(c.status)} />
-                      </td>
-                      <td>{c.linkedAssignmentId ? <span className="chip-gold">linked</span> : '—'}</td>
-                      <td>
-                        <Transitions
-                          collection="compensation"
-                          id={c.id}
-                          events={c.availableTransitions}
-                          invalidate={['hr-compensation', 'hr-employee']}
-                          needsNote={['REJECT', 'WITHDRAW']}
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                  {compensation.map((c) => {
+                    // APPROVE/REJECT are legal from this state per the machine,
+                    // but this viewer may still be barred from signing it —
+                    // never the subject, never the proposer — so those two are
+                    // dropped from what gets offered rather than shown and then
+                    // refused.
+                    const events = c.canApprove
+                      ? c.availableTransitions
+                      : c.availableTransitions.filter((e) => e !== 'APPROVE' && e !== 'REJECT');
+                    const pendingSignoff = (c.status === 'Proposed' || c.status === 'PendingApproval') && !c.canApprove;
+                    return (
+                      <tr key={c.id}>
+                        <td>{titleCase(c.revisionReason.replace(/_/g, ' '))}</td>
+                        <td className="num">
+                          <Money value={c.amount} />
+                        </td>
+                        <td className="num">{date(c.effectiveFrom)}</td>
+                        <td>
+                          <StatusChip status={c.status} tone={tone(c.status)} />
+                        </td>
+                        <td>
+                          {c.proposedByName ?? '—'}
+                          {pendingSignoff && (
+                            <p className="text-2xs text-ink-500">
+                              {c.approveWithheldReason === 'self_proposed'
+                                ? 'awaiting somebody else to sign'
+                                : c.approveWithheldReason === 'self'
+                                  ? 'about you — somebody else signs it'
+                                  : 'awaiting approval'}
+                            </p>
+                          )}
+                        </td>
+                        <td>{c.linkedAssignmentId ? <span className="chip-gold">linked</span> : '—'}</td>
+                        <td>
+                          <Transitions
+                            collection="compensation"
+                            id={c.id}
+                            events={events}
+                            invalidate={['hr-compensation', 'hr-employee']}
+                            needsNote={['REJECT', 'WITHDRAW']}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -629,6 +688,13 @@ export function EmployeeDetail() {
                 )}
               </Field>
             </dl>
+            {data.canEditEmploymentDetails && (
+              <p className="mt-2">
+                <Link className="text-2xs text-accent-soft hover:underline" to="/compliance/payroll">
+                  Set up salary structure →
+                </Link>
+              </p>
+            )}
             <div className="divider" />
             <p className="mb-2 section-title">What can happen next</p>
             <Transitions
