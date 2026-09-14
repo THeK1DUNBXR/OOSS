@@ -38,6 +38,7 @@ import {
   type TimelineEntryView,
 } from '@kaizen/shared';
 import { api, date, money, titleCase } from '../lib/api.js';
+import { humanize } from '../lib/words.js';
 import {
   Card,
   EmptyState,
@@ -232,7 +233,7 @@ export function StudentTimeline() {
                     </span>
                   </td>
                   <td className="text-xs text-ink-100">{row.title}</td>
-                  <td className="text-2xs text-ink-400">{row.severity ?? '—'}</td>
+                  <td className="text-2xs text-ink-400">{row.severity ? humanize(row.severity) : '—'}</td>
                   <td className="text-2xs text-ink-400">{date(row.raisedOn)}</td>
                   <td className={`text-right tabular-nums text-2xs ${row.ageDays > 7 ? 'text-band-watch' : 'text-ink-500'}`}>
                     {row.ageDays}d
@@ -361,11 +362,11 @@ function TimelineRow({ entry, onResolve }: { entry: TimelineEntryView; onResolve
           {entry.rating !== null && <span className="text-2xs text-band-strong">{entry.rating}/5</span>}
           {entry.severity && entry.kind !== 'attendance' && (
             <span className={`text-2xs ${entry.severity === 'high' ? 'text-band-critical' : 'text-ink-500'}`}>
-              {entry.severity}
+              {humanize(entry.severity)}
             </span>
           )}
           {entry.status && entry.status !== 'resolved' && ['query', 'issue'].includes(entry.kind) && (
-            <StatusChip status={entry.status} tone="warn" />
+            <StatusChip status={humanize(entry.status)} tone="warn" />
           )}
         </div>
         {entry.detail && <p className="mt-0.5 text-2xs text-ink-400">{entry.detail}</p>}
@@ -591,7 +592,7 @@ export function LearnerQueue() {
                     {row.detail && <p className="text-2xs text-ink-500">{row.detail}</p>}
                   </td>
                   <td className={`text-2xs ${row.severity === 'high' ? 'text-band-critical' : 'text-ink-400'}`}>
-                    {row.severity ?? '—'}
+                    {row.severity ? humanize(row.severity) : '—'}
                   </td>
                   <td className={`text-right tabular-nums text-2xs ${row.ageDays > 7 ? 'text-band-watch' : 'text-ink-500'}`}>
                     {row.ageDays}d

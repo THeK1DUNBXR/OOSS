@@ -29,6 +29,7 @@ import {
 } from '../components/ui.js';
 import { NewButton } from '../components/forms.js';
 import { NewCohort, NewCourse, NewEnrollment } from '../components/createForms.js';
+import { humanize } from '../lib/words.js';
 
 export function Cohorts() {
   const [adding, setAdding] = useState<'cohort' | 'course' | null>(null);
@@ -58,9 +59,11 @@ export function Cohorts() {
 
       {scoped && (
         <div className="mb-4 rounded-lg border border-accent/40 bg-accent/5 px-4 py-2.5">
-          <p className="text-xs text-accent-soft">
-            Your view is narrowed to your own batches by a <span className="font-mono">batch_member</span> scope
-            resolver on your education grant — not by a role check in service code.
+          <p
+            className="text-xs text-accent-soft"
+            title="Narrowed by a batch_member scope resolver on your education grant, not a role check."
+          >
+            You're only seeing the batches you teach.
           </p>
         </div>
       )}
@@ -80,7 +83,7 @@ export function Cohorts() {
                   <span className="mono">{c.recordCode}</span> · {c.courseName}
                 </span>
               }
-              actions={<StatusChip status={c.status} tone={c.status === 'active' ? 'good' : 'neutral'} />}
+              actions={<StatusChip status={humanize(c.status)} tone={c.status === 'active' ? 'good' : 'neutral'} />}
             >
               <dl className="grid grid-cols-2 gap-x-4">
                 <Field label="Starts">{date(c.startDate)}</Field>
@@ -226,7 +229,7 @@ export function Enrollments() {
                   <td className={`text-right tabular-nums text-xs ${e.atRisk ? 'text-band-watch' : ''}`}>{e.attendancePct}%</td>
                   <td>
                     <StatusChip
-                      status={e.status}
+                      status={humanize(e.status)}
                       tone={e.status === 'completed' ? 'good' : e.status === 'withdrawn' ? 'bad' : 'neutral'}
                     />
                     {e.atRisk && <p className="mt-0.5 text-2xs text-band-watch">at risk</p>}
@@ -315,11 +318,11 @@ export function Projects() {
                   <td><RecordCode code={p.recordCode} /></td>
                   <td className="text-xs text-ink-100">{p.name}</td>
                   <td className="text-2xs text-ink-400">{p.organizationName ?? '—'}</td>
-                  <td><StatusChip status={p.status} tone={p.status === 'delivered' ? 'good' : p.status === 'on_hold' ? 'warn' : 'neutral'} /></td>
+                  <td><StatusChip status={humanize(p.status)} tone={p.status === 'delivered' ? 'good' : p.status === 'on_hold' ? 'warn' : 'neutral'} /></td>
                   <td className={`text-right tabular-nums text-xs ${Math.abs(p.scheduleVariancePct) > 10 ? 'text-band-watch' : ''}`}>
                     {p.scheduleVariancePct}%
                   </td>
-                  <td><StatusChip status={p.healthBand} tone={p.healthBand === 'stable' ? 'good' : 'warn'} /></td>
+                  <td><StatusChip status={humanize(p.healthBand)} tone={p.healthBand === 'stable' ? 'good' : 'warn'} /></td>
                   <td>
                     {p.handoffPending && (
                       <button className="btn-primary" onClick={() => accept.mutate(p.id)} disabled={accept.isPending}>
