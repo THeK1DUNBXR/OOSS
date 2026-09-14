@@ -165,7 +165,7 @@ describe('HCM-RECR-003 — an interview round is scheduled only while the applic
           interviewerPartyIds: [],
         }),
       );
-      expect(refusal.message).toMatch(/Screening or Interviewing/);
+      expect(refusal.message).toMatch(/screened or interviewed/);
     });
   });
 });
@@ -173,7 +173,7 @@ describe('HCM-RECR-003 — an interview round is scheduled only while the applic
 describe('HCM-RECR-004 — a scorecard may only be submitted by a roster interviewer, once', () => {
   it('rejects a non-roster interviewer and a duplicate submission from the same one', async () => {
     const requisition = await makeOpenRequisition();
-    const interviewer = await employmentFor('operations@kaizen.co.in');
+    const interviewer = await employmentFor('hr@kaizen.co.in');
 
     const round = await asUser('operations@kaizen.co.in', async () => {
       const { createApplication } = await import('../../domains/hiring.js');
@@ -281,7 +281,7 @@ describe('HCM-RECR-008 — an accepted offer advances the underlying Application
     const accepted = await asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'ACCEPT'));
     expect(accepted.status).toBe('Accepted');
 
-    const updatedApplication = await prisma.application.findFirstOrThrow({ where: { id: application.id } });
+    const updatedApplication = await asUser('operations@kaizen.co.in', () => prisma.application.findFirstOrThrow({ where: { id: application.id } }));
     expect(updatedApplication.status).toBe('OfferAccepted');
 
     const result = await asUser('operations@kaizen.co.in', () =>
@@ -316,7 +316,7 @@ describe('HCM-RECR-009 — a record from another tenant is a 404, not a 403', ()
 
 describe('HCM-RECR-010 — a referral follows Submitted → Shortlisted → Hired → BonusPaid', () => {
   it('refuses to jump straight from Submitted to BonusPaid', async () => {
-    const referrer = await employmentFor('operations@kaizen.co.in');
+    const referrer = await employmentFor('hr@kaizen.co.in');
     const stamp = Date.now();
 
     const referral = await asUser('operations@kaizen.co.in', () =>

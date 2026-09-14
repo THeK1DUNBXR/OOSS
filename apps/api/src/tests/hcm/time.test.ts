@@ -46,10 +46,15 @@ async function employmentFor(email: string): Promise<{ employmentRelationshipId:
   return { employmentRelationshipId: employment.id, personId: user.personId };
 }
 
-/** A day far from anything the demo dataset seeded, so a fresh test never collides with it. */
+/**
+ * A day far from anything the demo dataset seeded, salted by this run's start
+ * time so a second run against the same persistent test database never lands
+ * on a day an earlier run already wrote clock events or attendance for.
+ */
+const RUN_SALT = Math.floor(Date.now() / 1000) % 5000;
 function fixtureDay(offsetDays: number): Date {
   const d = new Date();
-  d.setUTCDate(d.getUTCDate() + 300 + offsetDays);
+  d.setUTCDate(d.getUTCDate() + 300 + RUN_SALT + offsetDays);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 

@@ -78,7 +78,6 @@ const ENGAGEMENT_TYPES = ['employee', 'contractor', 'consultant', 'intern', 'app
 const FREQUENCIES = ['monthly', 'quarterly', 'yearly', 'none'];
 
 function PoliciesTab() {
-  const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [addingRuleTo, setAddingRuleTo] = useState<string | null>(null);
   const [runningRule, setRunningRule] = useState<PolicyRule | null>(null);

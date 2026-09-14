@@ -173,7 +173,7 @@ describe('HCM-LEARNING-004 — approval by someone else, then attendance and com
       nominate({ sessionId: session.id, employmentRelationshipId: employment.id }),
     );
 
-    const approved = await asUser('operations@kaizen.co.in', () => approveEnrollment(enrollment.id));
+    const approved = await asUser('chairman@kaizen.co.in', () => approveEnrollment(enrollment.id));
     expect(approved.status).toBe('approved');
 
     const attended = await asUser('operations@kaizen.co.in', () => markAttendance(enrollment.id, true));
@@ -233,7 +233,7 @@ describe('HCM-LEARNING-006 — completing a skills-linked program asserts a capa
     const enrollment = await asUser('operations@kaizen.co.in', () =>
       nominate({ sessionId: session.id, employmentRelationshipId: employment.id }),
     );
-    await asUser('operations@kaizen.co.in', () => approveEnrollment(enrollment.id));
+    await asUser('chairman@kaizen.co.in', () => approveEnrollment(enrollment.id));
     await asUser('operations@kaizen.co.in', () => markAttendance(enrollment.id, true));
     await asUser('operations@kaizen.co.in', () => completeEnrollment(enrollment.id));
 
@@ -257,7 +257,7 @@ describe('HCM-LEARNING-007 — completing a certification-kind program issues a 
     const enrollment = await asUser('operations@kaizen.co.in', () =>
       nominate({ sessionId: session.id, employmentRelationshipId: employment.id }),
     );
-    await asUser('operations@kaizen.co.in', () => approveEnrollment(enrollment.id));
+    await asUser('chairman@kaizen.co.in', () => approveEnrollment(enrollment.id));
     await asUser('operations@kaizen.co.in', () => markAttendance(enrollment.id, true));
     const { certification } = await asUser('operations@kaizen.co.in', () => completeEnrollment(enrollment.id));
 
@@ -290,7 +290,7 @@ describe('HCM-LEARNING-008 — a certification cannot be self-verified', () => {
     );
     expect(err.status).toBe(422);
 
-    const verified = await asUser('operations@kaizen.co.in', () => verifyCertification(cert.id));
+    const verified = await asUser('chairman@kaizen.co.in', () => verifyCertification(cert.id));
     expect(verified.verified).toBe(true);
 
     const list = await asUser('operations@kaizen.co.in', () => listCertifications(employment.id));
@@ -369,8 +369,8 @@ describe('HCM-LEARNING-011 — individual development plans', () => {
 describe('HCM-LEARNING-012 — training budgets and cross-tenant isolation', () => {
   it('computes utilisation from completed enrollments in that financial year', async () => {
     const fy = `FY-BUDGET-TEST-${Date.now()}`;
-    await asUser('operations@kaizen.co.in', () => createBudget({ fy, amount: 100_000 }));
-    const budgets = await asUser('operations@kaizen.co.in', () => listBudgets(fy));
+    await asUser('finance@kaizen.co.in', () => createBudget({ fy, amount: 100_000 }));
+    const budgets = await asUser('finance@kaizen.co.in', () => listBudgets(fy));
     expect(budgets[0].amount != null).toBe(true);
     expect(budgets[0].spent).toBe(0);
     expect(budgets[0].utilisationPercent).toBe(0);
