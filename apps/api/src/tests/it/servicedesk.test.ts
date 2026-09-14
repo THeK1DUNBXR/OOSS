@@ -155,6 +155,41 @@ describe('service desk — domain and wiring', () => {
     expect(triaged.respondDueAt!.toISOString()).not.toBe(wrongIfUsingTodaysTable.toISOString());
   });
 
+  it('IT-TKT-004: SLA attainment reports not yet measured with no closed tickets this month, never 100%', async () => {
+    // Runs before any other test in this file closes a ticket, so the
+    // "this month" window genuinely has nothing behind it yet — a fixture
+    // ticket is triaged and resolved here, then deliberately backdated
+    // outside the current month so it does NOT count either.
+    const ticket = await asUser('employee@kaizen.co.in', () =>
+      createTicket({ category: 'question', subject: `Attainment fixture ${stamp()}`, description: 'Resolved, but not this month.' }),
+    );
+    await asUser('operations@kaizen.co.in', () => triageTicket(ticket.id, { priority: 'P3' }));
+    await asUser('operations@kaizen.co.in', () => assignTicket(ticket.id, opsPartyId));
+    await asUser('operations@kaizen.co.in', () => transitionTicket(ticket.id, 'START'));
+    await asUser('operations@kaizen.co.in', () => transitionTicket(ticket.id, 'RESOLVE'));
+
+    const lastMonth = new Date();
+    lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
+    await unscopedPrisma.itTicket.update({ where: { id: ticket.id }, data: { resolvedAt: lastMonth } });
+
+    const s = await asUser('operations@kaizen.co.in', () => summary());
+    // Tickets exist (this one, plus IT-SLA-001's), so this is "no closed
+    // tickets in the period", never the zero-tickets-ever branch.
+    expect(s.notYetMeasured).toBe(false);
+    expect(s.slaAttainment.response).toBeNull();
+    expect(s.slaAttainment.resolution).toBeNull();
+
+    // The zero-tickets-ever branch, exercised directly against the same
+    // pure function the domain calls.
+    expect(slaAttainment([])).toBeNull();
+  });
+
+  it('permission: an employee cannot read fleet-wide SLA figures — summary() needs `all` scope, not `own`', async () => {
+    const denied = await expectReject(() => asUser('employee@kaizen.co.in', () => summary()));
+    expect(denied.status).toBe(403);
+    expect(denied.message).toMatch(/all/i);
+  });
+
   it('IT-TKT-001: an employee sees only tickets they raised (or are assigned), can raise one, and cannot assign or triage', async () => {
     const mine = await asUser('priya@kaizen.co.in', () =>
       createTicket({ category: 'question', subject: `Priya's ticket ${stamp()}`, description: 'Needs a VPN profile.' }),
@@ -228,24 +263,6 @@ describe('service desk — domain and wiring', () => {
 
     const stillFour = await unscopedPrisma.itTicket.findFirstOrThrow({ where: { id: ticket.id } });
     expect(stillFour.satisfaction).toBe(4);
-  });
-
-  it('IT-TKT-004: SLA attainment reports not yet measured with no closed tickets this month, never 100%', async () => {
-    // A brand-new tenant would report this at zero tickets; this tenant
-    // already has fixture tickets from earlier tests, so assert on the
-    // shape directly: attainment is either null ("not yet measured") or a
-    // number, never fabricated as 100 with nothing behind it — and confirm
-    // the explicit not-yet-measured branch on a scoped check.
-    const s = await asUser('operations@kaizen.co.in', () => summary());
-    expect(s.notYetMeasured).toBe(false); // fixture tickets exist by this point
-    expect(typeof s.slaAttainment.response === 'number' || s.slaAttainment.response === null).toBe(true);
-    expect(typeof s.slaAttainment.resolution === 'number' || s.slaAttainment.resolution === null).toBe(true);
-
-    // A ticket that has never had activity at all (fresh tenant) is exactly
-    // what `summary()` guards with `total === 0`; assert that branch of the
-    // domain function directly by mirroring its own zero-row shape.
-    const emptyAttainment = slaAttainment([]);
-    expect(emptyAttainment).toBeNull();
   });
 
   it('permission: an employee cannot see or act on another employee\'s ticket via comments', async () => {

@@ -109,6 +109,7 @@ model ItTicket {
 
   comments ItTicketComment[]
 
+  @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@index([tenantId, requesterPartyId])
   @@index([tenantId, assigneePartyId])
@@ -159,6 +160,7 @@ model ItKnowledgeArticle {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@index([tenantId, applicationId])
   @@map("it_knowledge_articles")

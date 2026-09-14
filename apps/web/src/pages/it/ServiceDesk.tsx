@@ -121,6 +121,7 @@ interface Employee {
 
 const CATEGORY_LABEL: Record<Category, string> = { incident: 'Incident', request: 'Request', access: 'Access', question: 'Question' };
 const PRIORITY_TONE: Record<Priority, 'bad' | 'warn' | 'accent' | 'neutral'> = { P1: 'bad', P2: 'warn', P3: 'accent', P4: 'neutral' };
+const PRIORITY_WORD: Record<Priority, string> = { P1: 'Critical', P2: 'High', P3: 'Medium', P4: 'Low' };
 const STATUS_TONE: Record<Status, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'> = {
   new: 'neutral',
   triaged: 'accent',
@@ -140,7 +141,7 @@ const EVENT_LABEL: Record<TicketEvent, string> = {
 
 function PriorityChip({ priority }: { priority: Priority | null }) {
   if (!priority) return <span className="chip border-ink-700 bg-ink-850 text-ink-500">Untriaged</span>;
-  return <StatusChip status={priority} tone={PRIORITY_TONE[priority]} />;
+  return <StatusChip status={`${priority} · ${PRIORITY_WORD[priority]}`} tone={PRIORITY_TONE[priority]} />;
 }
 
 /** True on a 404 — the endpoint genuinely does not exist yet, belonging to a
@@ -160,13 +161,25 @@ export function ItTickets() {
   const [tab, setTab] = useState<Tab>('open');
   const [newOpen, setNewOpen] = useState(false);
 
-  const summary = useQuery({ queryKey: ['it-tickets-summary'], queryFn: () => api.get<Summary>('/it/tickets/summary') });
+  // The summary is fleet-wide — open by priority, SLA attainment, backlog
+  // age — a statement about every ticket, not just the caller's own. The
+  // API refuses it to anyone without `all` scope on tickets (an `assign`
+  // grant is this workstream's proxy for that: only a desk role holds it),
+  // so this only asks when the button would actually be shown, and treats
+  // a 403 the same as "nothing to show" rather than an error box.
+  const canSeeSummary = can('it_tickets:A');
+  const summary = useQuery({
+    queryKey: ['it-tickets-summary'],
+    queryFn: () => api.get<Summary>('/it/tickets/summary'),
+    enabled: canSeeSummary,
+    retry: false,
+  });
   const tickets = useQuery({
     queryKey: ['it-tickets', tab],
     queryFn: () => api.get<Ticket[]>(`/it/tickets?tab=${tab}`),
   });
 
-  const s = summary.data;
+  const s = summary.error ? undefined : summary.data;
   const openTotal = s ? s.openByPriority.P1 + s.openByPriority.P2 + s.openByPriority.P3 + s.openByPriority.P4 + s.openByPriority.none : undefined;
 
   if (tickets.error) return <ErrorBox error={tickets.error} />;
@@ -528,7 +541,7 @@ function TriageModal({ ticket, onClose, onDone }: { ticket: TicketDetail; onClos
           onChange={(v) => setPriority(v)}
           placeholder="Choose a priority"
           options={(['P1', 'P2', 'P3', 'P4'] as Priority[]).map((p) => ({ value: p, label: p }))}
-          hint="Stamps the SLA clocks from the policy in force today, against this ticket's own raised date."
+          hint="Stamps the SLA clocks from the policy in force on the date this ticket was raised."
         />
         <SelectInput
           label="Category"

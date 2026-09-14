@@ -31,13 +31,16 @@ Prisma relation here), `respondDueAt`/`resolveDueAt` (stamped once at
 triage — see IT-SLA-001 below), `firstRespondedAt` (stamped on `START`),
 `resolvedAt`/`closedAt`, `satisfaction` (1–5, set once by the requester),
 `slaBreachNotified` (`["response"]`/`["resolution"]`, so the breach job
-fires each clock at most once), `waitingSince`.
+fires each clock at most once), `waitingSince`. `recordCode` is unique per
+tenant (`@@unique([tenantId, recordCode])`), the same discipline every
+other register row keeps.
 
 **`ItTicketComment`** — append-only; `internal` comments are desk
 conversation, hidden from the requester.
 
 **`ItKnowledgeArticle`** — `draft` → `published` → `retired`, `helpfulCount`
-a plain counter (not one vote per person — the screen says so).
+a plain counter (not one vote per person — the screen says so). `recordCode`
+is unique per tenant, same as `ItTicket`.
 
 ## Pure arithmetic (`packages/shared/src/it/servicedesk.ts`)
 
@@ -111,7 +114,12 @@ idempotently by `(priority, effectiveFrom)`.
   explaining that those two sections are read directly from the governance
   and assets workstreams' own endpoints once they exist — this endpoint
   does not reach into files it does not own.
-- **`summary()`** — see below.
+- **`summary()`** — fleet-wide figures (open by priority, SLA attainment,
+  backlog age, …), gated on `assertScopeAll('it_tickets', 'view')` rather
+  than a plain `view` grant: an `own`-scope caller (the employee row) holds
+  `view`, but a company-wide SLA attainment percentage is not narrowable
+  row by row, so it is refused to anyone without `all` scope, not silently
+  computed and handed over. See below.
 
 An unresolved desk owner (`resolveDeskOwnerPartyId`) is the `partyId` of the
 active `Affiliation` carrying the `hr_ops_manager` role slug — data, looked
@@ -140,6 +148,13 @@ up, never a role-slug branch in the logic that consumes it.
 | GET | `/my` | the My IT composite |
 
 ### `GET /tickets/summary`
+
+Requires `all` scope on `it_tickets` (Operations Head, Finance Head, or
+chairman) — an employee's `own`-scope grant gets a 403, not a narrowed
+figure, because these are company-wide statistics that cannot be narrowed
+row by row. The web page only requests this endpoint for a caller holding
+`it_tickets:A` (assign — this workstream's proxy for a desk role), and
+treats a refusal the same as nothing to show.
 
 ```jsonc
 {
@@ -175,14 +190,20 @@ up, never a role-slug branch in the logic that consumes it.
 
 - **`ItTickets`** — tabs (mine, unassigned, open, breached, all), summary
   metrics (open, unassigned, breached, SLA attainment, median resolve — each
-  "not yet measured" until there is something to measure), a table, and a
-  raise-a-ticket modal.
+  "not yet measured" until there is something to measure) fetched only for
+  a caller holding `it_tickets:A` — the desk-role proxy for the `all` scope
+  `summary()` requires — a table, and a raise-a-ticket modal. Priority
+  chips pair the code with a plain word (`P1 · Critical`, `P2 · High`,
+  `P3 · Medium`, `P4 · Low`) everywhere a ticket's priority is shown.
 - **`ItTicketDetail`** — description, an append-only timeline of comments
   (internal notes visibly marked and hidden from the requester), triage and
   assign modals (assign reuses the person-search pattern from
   `createForms.tsx`'s `NewEnrollment`, inlined here rather than editing that
-  file), transition buttons driven by `availableTransitions`, and a rating
-  widget shown only when the API says `canRate`.
+  file; the triage modal's hint reads "the policy in force on the date this
+  ticket was raised", not "today", matching IT-SLA-001's own rule),
+  transition buttons driven by `availableTransitions`, and a rating widget
+  shown only when the API says `canRate`. Priority chips here match the
+  list's code-plus-word pairing.
 - **`ItKnowledge`** / **`ItKnowledgeDetail`** — list, detail, new/publish,
   and a helpful counter.
 - **`MyIt`** — the caller's own tickets, a raise-a-ticket action, and two
@@ -215,10 +236,11 @@ requester can rate their own resolved ticket.
 | IT-TKT-001 | `> IT-TKT-001: an employee sees only tickets they raised (or are assigned), can raise one, and cannot assign or triage` |
 | IT-TKT-002 | `> IT-TKT-002: the SLA breach job raises one exception per clock, and a re-run raises none new` |
 | IT-TKT-003 | `> IT-TKT-003: only the requester can rate a resolved ticket, and only once` |
-| IT-TKT-004 | `> IT-TKT-004: SLA attainment reports not yet measured with no closed tickets this month, never 100%` |
+| IT-TKT-004 | `> IT-TKT-004: SLA attainment reports not yet measured with no closed tickets this month, never 100%` — a ticket resolved but deliberately backdated outside the current month proves it is excluded from the "this month" window, not merely that the field can be null in the abstract |
 | — (permission) | `> permission: an employee cannot see or act on another employee's ticket via comments` |
 | — (permission) | `> permission: the requester cannot leave an internal comment, but an assigned desk role can` |
 | — (permission) | `> permission: the Finance Head holds only view on tickets and cannot raise one` |
+| — (permission) | `> permission: an employee cannot read fleet-wide SLA figures — summary() needs \`all\` scope, not \`own\`` |
 | — (pure arithmetic) | `dueFrom / slaAttainment / medianMinutes (pure arithmetic, no DB) > IT-SLA-ARITH-001..008` |
 
 Plus wiring coverage for the full lifecycle machine (`new` → … → `closed`,
