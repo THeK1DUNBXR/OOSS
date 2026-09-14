@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import { EVENTS, JOURNEY_TRANSITIONS, type JourneyStatus, type JourneyStep } from '@kaizen/shared';
+import { EVENTS, JOURNEY_TRANSITIONS, type AudienceCondition, type JourneyStatus, type JourneyStep } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -19,7 +19,7 @@ import { auditWrite } from '../../platform/audit.js';
 import { assertCan } from '../../platform/permissions.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { eligibleForChannel } from './preferences.js';
-import { createSend, dispatchSend } from './messaging.js';
+import { createSend, requestSend, dispatchSend } from './messaging.js';
 
 // ============================================================================
 // Types & schemas
@@ -48,15 +48,20 @@ export interface JourneyRunView {
   exitedReason: string | null;
 }
 
+const AudienceConditionSchema = z.object({
+  field: z.string(),
+  op: z.string(),
+  value: z.unknown().optional(),
+});
+
 const JourneyStepSchema = z.object({
   delayDays: z.number().int().min(0),
   templateId: z.string(),
   channelKey: z.enum(['email', 'sms', 'whatsapp']),
   condition: z
     .object({
-      field: z.string(),
-      op: z.string(),
-      value: z.unknown().optional(),
+      all: z.array(AudienceConditionSchema).optional(),
+      any: z.array(AudienceConditionSchema).optional(),
     })
     .nullish(),
 });
@@ -131,8 +136,16 @@ async function requireJourney(id: string) {
  * A small, closed set of comparisons against a plain field on Person or Lead
  * — deliberately not a rule engine. Matches the AUDIENCE_RULE_OPS vocabulary
  * closely enough for a journey step's gate without importing audiences.ts.
+ * `condition` is an AudienceRule: `{all: [...]}` (every condition must match)
+ * or `{any: [...]}` (at least one must match).
  */
-function evaluateCondition(entity: Record<string, unknown>, condition: { field: string; op: string; value?: unknown }): boolean {
+function evaluateCondition(entity: Record<string, unknown>, rule: { all?: AudienceCondition[]; any?: AudienceCondition[] }): boolean {
+  if (rule.all && rule.all.length > 0) return rule.all.every((c) => evaluateOne(entity, c));
+  if (rule.any && rule.any.length > 0) return rule.any.some((c) => evaluateOne(entity, c));
+  return true;
+}
+
+function evaluateOne(entity: Record<string, unknown>, condition: { field: string; op: string; value?: unknown }): boolean {
   const actual = entity[condition.field];
   switch (condition.op) {
     case 'eq':
@@ -369,8 +382,25 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
       continue;
     }
 
-    const send = await createSend({ templateId: step.templateId, channelKey: step.channelKey, personIds: [run.personId] });
-    await dispatchSend(send.id);
+    try {
+      const send = await createSend({ templateId: step.templateId, channelKey: step.channelKey, personIds: [run.personId] });
+      // A one-recipient journey step send skips the approval gate entirely
+      // (it is never over the batch-approval threshold) — request then
+      // dispatch it in the same tick, exactly like the scheduled job would.
+      await requestSend(send.id);
+      const requested = await prisma.marketingSend.findFirst({ where: { id: send.id } });
+      if (requested?.status === 'queued') {
+        await dispatchSend(send.id);
+      }
+    } catch {
+      // A blocked send (unapproved template, unconfigured adapter) exits the
+      // run rather than crashing the whole tick batch — the underlying
+      // exception (EX-MKT-009/EX-MKT-011) has already been raised by createSend/requestSend.
+      await prisma.marketingJourneyRun.update({ where: { id: run.id }, data: { status: 'exited', exitedReason: 'send_failed', nextAt: null } });
+      await emit({ name: EVENTS.MKT_JOURNEY_RUN_EXITED, subject: { entityType: 'marketing_journey_run', entityId: run.id }, newState: { status: 'exited', exitedReason: 'send_failed' } });
+      exited += 1;
+      continue;
+    }
 
     const nextStep = steps[run.currentStep + 1];
     const nextAt = nextStep ? new Date(Date.now() + nextStep.delayDays * 86_400_000) : null;

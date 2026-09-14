@@ -68,6 +68,13 @@ import { CompliancePayroll } from './pages/compliance/Payroll.js';
 import { ComplianceLabour } from './pages/compliance/Labour.js';
 import { CompliancePrivacy } from './pages/compliance/Privacy.js';
 import { ComplianceCorporate } from './pages/compliance/Corporate.js';
+import { MarketingShell } from './pages/marketing/MarketingShell.js';
+import { MarketingOverview } from './pages/marketing/MarketingOverview.js';
+import { Campaigns as MarketingCampaigns } from './pages/marketing/Campaigns.js';
+import { CampaignDetail as MarketingCampaignDetail } from './pages/marketing/CampaignDetail.js';
+import { Calendar as MarketingCalendar } from './pages/marketing/Calendar.js';
+import { Budget as MarketingBudget } from './pages/marketing/Budget.js';
+import { Plans as MarketingPlans } from './pages/marketing/Plans.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -263,6 +270,17 @@ function Routed() {
         <Route path="/admin/jobs" element={<Jobs />} />
         <Route path="/admin/audit" element={<Audit />} />
         <Route path="/admin/platform" element={<PlatformModel />} />
+
+        {/* marketing */}
+        <Route path="/marketing" element={<MarketingShell />}>
+          <Route index element={<MarketingOverview />} />
+          <Route path="campaigns" element={<MarketingCampaigns />} />
+          <Route path="campaigns/:id" element={<MarketingCampaignDetail />} />
+          <Route path="calendar" element={<MarketingCalendar />} />
+          <Route path="budget" element={<MarketingBudget />} />
+          <Route path="plans" element={<MarketingPlans />} />
+        </Route>
+        {/* end marketing */}
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

@@ -34,6 +34,7 @@ import { computeAndPersistAll } from '../domains/health.js';
 import { runBoardComplianceJob } from '../domains/board.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
 import { COMPLIANCE_JOBS } from './compliance/index.js';
+import { MARKETING_JOBS } from './marketing.js';
 
 export interface JobResult {
   processed: number;
@@ -253,6 +254,7 @@ export const ALL_JOBS: JobDefinition[] = [
     run: async () => counted(await runBoardComplianceJob()),
   },
   ...COMPLIANCE_JOBS,
+  ...MARKETING_JOBS,
 ];
 
 // ---------------------------------------------------------------------------

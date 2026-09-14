@@ -45,7 +45,7 @@ export async function recordMarketingConsent(personId: string, channel: string, 
 export async function withdrawMarketingConsent(personId: string, reason?: string) {
   const consents = await listConsentsForPerson(personId);
   const granted = consents.filter((c) => c.purposeCode === MARKETING_PURPOSE && c.status === 'granted');
-  const withdrawn = [];
+  const withdrawn: Awaited<ReturnType<typeof withdrawConsent>>[] = [];
   for (const c of granted) withdrawn.push(await withdrawConsent(c.id, reason));
   return withdrawn;
 }

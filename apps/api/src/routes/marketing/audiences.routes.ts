@@ -84,7 +84,7 @@ router.post(
     const schema = z.object({ entityType: z.enum(AUDIENCE_ENTITY_TYPES), entityId: z.string() });
     const bodyItems = Array.isArray(req.body) ? req.body : [req.body];
     const items = bodyItems.map((b) => schema.parse(b));
-    const created = [];
+    const created: Awaited<ReturnType<typeof addAudienceMember>>[] = [];
     for (const item of items) created.push(await addAudienceMember(req.params.id, item.entityType, item.entityId));
     return { created };
   }),
