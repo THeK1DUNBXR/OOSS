@@ -30,3 +30,6 @@ e2e/playwright-report/
 **/.impeccable/review/
 **/.impeccable/mocks/
 **/.impeccable/build/
+
+# Agent worktrees live here while a task runs; never part of the repository.
+.claude/worktrees/
