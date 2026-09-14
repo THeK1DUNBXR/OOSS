@@ -286,6 +286,17 @@ export async function submitRequest(input: { typeId: string; subjectEmploymentId
   const subjectPartyId = await partyIdForEmployment(auth.tenantId, input.subjectEmploymentId);
   if (!subjectPartyId) throw ApiError.notFound('Subject employment relationship');
 
+  // `create` on `hr_requests` is held at `own` scope by the plain `employee`
+  // role — `assertCan` above only checks that the verb is held at *some*
+  // scope, not which records it covers, so without this an own-scope caller
+  // could raise a request about a colleague's employment. An `all`-scope
+  // caller (HR ops, or another workstream acting through this engine) may
+  // raise a request about anyone.
+  const createScope = await scopeFor('hr_requests', 'create');
+  if (createScope !== 'all' && subjectPartyId !== auth.partyId) {
+    throw ApiError.forbidden('You may only raise an HR request about your own employment.');
+  }
+
   const requestedById = auth.partyId ?? 'system';
   const recordCode = await nextRecordCode('HRQ');
 
@@ -522,8 +533,18 @@ export async function withdrawRequest(requestId: string) {
 export async function listDelegations() {
   const auth = currentAuth();
   await assertCan({ resource: 'authority_delegations', verb: 'view' });
+  // `view` on `authority_delegations` is held at `own` scope by the plain
+  // `employee` role — `assertCan` only checks the verb is held at *some*
+  // scope, so without this an own-scope caller would see every delegation in
+  // the tenant, not just the ones they raised (the "Your delegations" card
+  // this backs promises exactly that: own delegations only).
+  const scope = await scopeFor('authority_delegations', 'view');
   return prisma.delegationOfAuthority.findMany({
-    where: { tenantId: auth.tenantId, revokedAt: null },
+    where: {
+      tenantId: auth.tenantId,
+      revokedAt: null,
+      ...(scope === 'all' ? {} : { fromPartyId: auth.partyId ?? '__none__' }),
+    },
     orderBy: { fromDate: 'desc' },
   });
 }

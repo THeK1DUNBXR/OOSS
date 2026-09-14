@@ -46,7 +46,7 @@ import {
 } from '@kaizen/shared';
 import { prisma, num, Prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
-import { assertCan, assertScopeAll, canSeeMoney } from '../../platform/permissions.js';
+import { assertScopeAll, canSeeMoney } from '../../platform/permissions.js';
 import { auditExport } from '../../platform/audit.js';
 import { payrollTrend } from '../payroll.js';
 
@@ -678,7 +678,7 @@ export async function openCasesBySla(): Promise<Metric<Array<{ bucket: string; c
 // ---------------------------------------------------------------------------
 
 export async function dashboard(months = 12) {
-  await assertCan({ resource: 'hr_analytics', verb: 'view' });
+  await assertAnalyticsView();
   const [
     headcount, byDivision, byLocation, attrition, tenure, absenteeismResult, overtime,
     liability, hiring, cost, span, payroll, training, gender, comp, enps, cases,
@@ -713,8 +713,15 @@ export async function dashboard(months = 12) {
 // CSV exports (HCM-ANALYTICS reports)
 // ---------------------------------------------------------------------------
 
+/**
+ * Every report here is a tenant-wide register, never one employee's own
+ * record — same discipline as `assertAnalyticsView`: an export needs the
+ * `all`-scope grant, not merely the verb, so a resource that ever picked up
+ * an `own`-scope `hr_reports:export` row (none does today — see grants.ts)
+ * could not use it to pull a colleague's data through this door.
+ */
 async function assertReportExport(): Promise<void> {
-  await assertCan({ resource: 'hr_reports', verb: 'export' });
+  await assertScopeAll('hr_reports', 'export');
 }
 
 export interface CsvExport {

@@ -7,6 +7,10 @@
  * certification entry with self-verification barred, the expiry ladder,
  * mandatory-training overdue detection, IDPs, budget utilisation and
  * cross-tenant isolation.
+ *
+ * HCM-LEARNING-013: the scope-axis audit (see alert-scope.md) — an own-scope
+ * grant must never reach another employee's record just because no `record`
+ * was supplied to `assertCan` for the WHERE axis to narrow against.
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -388,5 +392,143 @@ describe('HCM-LEARNING-012 — training budgets and cross-tenant isolation', () 
       const err = await expectReject(() => asUser('chairman@kaizen.co.in', () => getProgram('does-not-exist')));
       expect(err.status).toBe(404);
     }
+  });
+});
+
+// ===========================================================================
+// HCM-LEARNING-013 — own-scope grants do not reach a colleague's record
+//
+// `assertCan({resource, verb})` with no `record` skips the WHERE axis, so an
+// own-scope grant (exactly what the seeded `employee` role, or any fixture
+// role scoped `@own`, holds) would otherwise pass straight through to an
+// operation on somebody else's row. Every path below was fixed to check
+// `scopeFor(...)` explicitly (admin-only actions) or to narrow a bare list /
+// resolve the target's owner (self-service actions), and each case here
+// proves the fix: an own-scope actor reaches only their own record, or is
+// refused outright on a colleague's.
+// ===========================================================================
+
+/** Hires a fixture person as an employee under `personId`, using an actor with the `employees` grant. */
+async function hireFixturePerson(personId: string) {
+  const position = await unscopedPrisma.position.create({
+    data: {
+      tenantId: TENANT,
+      recordCode: await nextRecordCode('POS'),
+      jobId: (await unscopedPrisma.job.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+      orgUnitId: (await unscopedPrisma.orgUnit.findFirstOrThrow({ where: { tenantId: TENANT } })).id,
+      status: 'Open',
+    },
+  });
+  return asUser('operations@kaizen.co.in', () => hire({ personId, positionId: position.id, hireEffectiveDate: new Date() }));
+}
+
+describe('HCM-LEARNING-013 — own-scope callers cannot act on a colleague\'s record', () => {
+  it('nominating another employee is refused for an own-scope caller (403), not merely narrowed', async () => {
+    const { employment: colleague } = await makeEmployee('scope-nominate-colleague');
+    const { session } = await makeProgramAndSession();
+
+    const err = await withFixtureRole(
+      { slug: 'learning_own_nominate', grants: [{ resource: 'training_enrollments', verbs: ['view', 'create'], scope: 'own' }] },
+      () => expectReject(() => nominate({ sessionId: session.id, employmentRelationshipId: colleague.id })),
+    );
+    expect(err.status).toBe(403);
+  });
+
+  it('listing enrollments with no filter returns only the caller\'s own, never a colleague\'s', async () => {
+    const { employment: colleague } = await makeEmployee('scope-list-enrollments-colleague');
+    const { session } = await makeProgramAndSession();
+    await asUser('operations@kaizen.co.in', () => nominate({ sessionId: session.id, employmentRelationshipId: colleague.id }));
+
+    await withFixtureRole(
+      { slug: 'learning_own_list_enrollments', grants: [{ resource: 'training_enrollments', verbs: ['view', 'create'], scope: 'own' }] },
+      async (fixture) => {
+        const mine = await hireFixturePerson(fixture.partyId);
+        await asPrincipal({ ...selfAuth(fixture), roleSlug: 'hr_ops_manager' }, () => nominate({ sessionId: session.id, employmentRelationshipId: mine.id }));
+
+        const rows = await listEnrollments();
+        expect(rows.every((r) => r.employmentRelationshipId === mine.id)).toBe(true);
+        expect(rows.some((r) => r.employmentRelationshipId === colleague.id)).toBe(false);
+      },
+    );
+  });
+
+  it('approving, rejecting, marking attendance and completing are refused without all-scope, even with the verb granted at own scope', async () => {
+    const { employment } = await makeEmployee('scope-approve-target');
+    const { session } = await makeProgramAndSession();
+    const enrollment = await asUser('operations@kaizen.co.in', () => nominate({ sessionId: session.id, employmentRelationshipId: employment.id }));
+
+    await withFixtureRole(
+      { slug: 'learning_own_approve', grants: [{ resource: 'training_enrollments', verbs: ['view', 'approve', 'edit'], scope: 'own' }] },
+      async () => {
+        const approveErr = await expectReject(() => approveEnrollment(enrollment.id));
+        expect(approveErr.status).toBe(403);
+        const rejectErr = await expectReject(() => rejectEnrollment(enrollment.id));
+        expect(rejectErr.status).toBe(403);
+        const attendErr = await expectReject(() => markAttendance(enrollment.id, true));
+        expect(attendErr.status).toBe(403);
+        const completeErr = await expectReject(() => completeEnrollment(enrollment.id));
+        expect(completeErr.status).toBe(403);
+      },
+    );
+  });
+
+  it('verifying a colleague\'s certification is refused without all-scope, and listing with no filter shows only the caller\'s own', async () => {
+    const { employment: colleague } = await makeEmployee('scope-verify-colleague');
+    const colleagueCert = await asUser('operations@kaizen.co.in', () =>
+      addCertification({ employmentRelationshipId: colleague.id, name: 'Fixture Colleague Cert', issuedOn: new Date() }),
+    );
+
+    await withFixtureRole(
+      { slug: 'learning_own_cert', grants: [{ resource: 'certifications', verbs: ['view', 'create', 'approve'], scope: 'own' }] },
+      async (fixture) => {
+        const err = await expectReject(() => verifyCertification(colleagueCert.id));
+        expect(err.status).toBe(403);
+
+        const mine = await hireFixturePerson(fixture.partyId);
+        const myCert = await asPrincipal({ ...selfAuth(fixture), roleSlug: 'hr_ops_manager' }, () =>
+          addCertification({ employmentRelationshipId: mine.id, name: 'Fixture Own Cert', issuedOn: new Date() }),
+        );
+
+        const rows = await listCertifications();
+        expect(rows.some((c) => c.id === myCert.id)).toBe(true);
+        expect(rows.some((c) => c.id === colleagueCert.id)).toBe(false);
+      },
+    );
+  });
+
+  it('reading and closing a colleague\'s IDP is refused (404); listing with no filter shows only the caller\'s own', async () => {
+    const { employment: colleague } = await makeEmployee('scope-idp-colleague');
+    const colleagueIdp = await asUser('operations@kaizen.co.in', () =>
+      createIdp({ employmentRelationshipId: colleague.id, goals: { items: ['Not yours'] } }),
+    );
+
+    await withFixtureRole(
+      { slug: 'learning_own_idp', grants: [{ resource: 'idps', verbs: ['view', 'create', 'edit'], scope: 'own' }] },
+      async (fixture) => {
+        const closeErr = await expectReject(() => updateIdp(colleagueIdp.id, { status: 'closed' }));
+        expect(closeErr.status).toBe(404);
+
+        const mine = await hireFixturePerson(fixture.partyId);
+        const myIdp = await asPrincipal({ ...selfAuth(fixture), roleSlug: 'hr_ops_manager' }, () =>
+          createIdp({ employmentRelationshipId: mine.id, goals: { items: ['Mine'] } }),
+        );
+
+        const rows = await listIdps();
+        expect(rows.some((i) => i.id === myIdp.id)).toBe(true);
+        expect(rows.some((i) => i.id === colleagueIdp.id)).toBe(false);
+      },
+    );
+  });
+
+  it('the company-wide mandatory-compliance status and the certification-expiry job are refused without all-scope', async () => {
+    await withFixtureRole(
+      { slug: 'learning_own_admin_reads', grants: [{ resource: 'training_enrollments', verbs: ['view'], scope: 'own' }, { resource: 'certifications', verbs: ['view'], scope: 'own' }] },
+      async () => {
+        const statusErr = await expectReject(() => mandatoryComplianceStatus());
+        expect(statusErr.status).toBe(403);
+        const ladderErr = await expectReject(() => runCertificationExpiryLadder());
+        expect(ladderErr.status).toBe(403);
+      },
+    );
   });
 });

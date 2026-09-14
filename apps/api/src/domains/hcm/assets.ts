@@ -71,6 +71,25 @@ async function ownEmploymentWhere(resource: string, verb: 'view' = 'view'): Prom
   return { employmentRelationshipId: { in: mine.length ? mine.map((m) => m.id) : ['__none__'] } };
 }
 
+/**
+ * The other half of the WS5 scope-axis review's fix pattern: an admin-only
+ * mutation (assign an asset, decide a travel request, fulfil a letter,
+ * issue/lose an ID card, move an asset's own status) must never rely on
+ * `assertCan` alone, because `assertCan` only checks that SOME matching grant
+ * exists — it does not itself verify the grant is `all`-scoped. A grant held
+ * at `own` scope would pass that coarse check and let its holder act on a
+ * record about someone else entirely, the Self-Dealing Bar included (that bar
+ * only blocks acting on your OWN record, not a colleague's). None of the
+ * seeded roles currently hold any of these verbs at `own` scope — this is
+ * defence in depth against the day one does.
+ */
+async function assertAllScope(resource: string, verb: 'create' | 'edit' | 'approve' | 'delete'): Promise<void> {
+  const scope = await scopeFor(resource, verb);
+  if (scope !== 'all') {
+    throw ApiError.forbidden(`${resource}:${verb} must be held at "all" scope to act on someone else's record; "${scope}" is not enough.`);
+  }
+}
+
 async function employmentOrThrow(employmentRelationshipId: string) {
   const auth = currentAuth();
   const row = await prisma.employmentRelationship.findFirst({
@@ -106,6 +125,7 @@ export async function createAsset(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'hcm_assets', verb: 'create' });
+  await assertAllScope('hcm_assets', 'create');
   if (!ASSET_CATEGORIES.includes(input.category)) {
     throw ApiError.badRequest(`"${input.category}" is not an asset category. Expected one of ${ASSET_CATEGORIES.join(', ')}.`);
   }
@@ -138,6 +158,7 @@ async function loadAsset(id: string) {
 export async function transitionAsset(id: string, to: Exclude<AssetStatus, 'assigned'>) {
   const auth = currentAuth();
   await assertCan({ resource: 'hcm_assets', verb: 'edit' });
+  await assertAllScope('hcm_assets', 'edit');
   const asset = await loadAsset(id);
   const from = asset.status as AssetStatus;
   if (!canTransitionAsset(from, to)) {
@@ -172,6 +193,7 @@ export async function listAssetAssignments(filter: { employmentRelationshipId?: 
 export async function assignAsset(input: { assetId: string; employmentRelationshipId: string; condition?: AssetCondition; note?: string | null }) {
   const auth = currentAuth();
   await assertCan({ resource: 'asset_assignments', verb: 'create' });
+  await assertAllScope('asset_assignments', 'create');
   const asset = await loadAsset(input.assetId);
   if (asset.status !== 'in_stock') {
     throw ApiError.unprocessable(`Asset ${asset.tag} is "${asset.status}", not in stock, and cannot be assigned.`);
@@ -214,6 +236,7 @@ export async function assignAsset(input: { assetId: string; employmentRelationsh
 export async function returnAsset(assignmentId: string, input: { condition: AssetCondition; note?: string | null }) {
   const auth = currentAuth();
   await assertCan({ resource: 'asset_assignments', verb: 'edit' });
+  await assertAllScope('asset_assignments', 'edit');
   const assignment = await prisma.assetAssignment.findFirst({ where: { id: assignmentId, tenantId: auth.tenantId } });
   if (!assignment) throw ApiError.notFound('Asset assignment');
   if (assignment.returnedOn) throw ApiError.unprocessable('This assignment was already returned.');
@@ -327,6 +350,7 @@ async function loadTravelRequest(id: string) {
 export async function decideTravelRequest(id: string, decision: 'approved' | 'rejected', note?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'travel_requests', verb: 'approve' });
+  await assertAllScope('travel_requests', 'approve');
   if (!auth.partyId) throw ApiError.forbidden('A decision requires a human principal.');
 
   const request = await loadTravelRequest(id);
@@ -367,6 +391,7 @@ export async function decideTravelRequest(id: string, decision: 'approved' | 're
 export async function settleTravelRequest(id: string, expenseClaimId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'travel_requests', verb: 'edit' });
+  await assertAllScope('travel_requests', 'edit');
   const request = await loadTravelRequest(id);
   const from = request.status as TravelRequestStatus;
   if (!canTransitionTravelRequest(from, 'settled')) {
@@ -457,6 +482,7 @@ async function loadLetterRequest(id: string) {
 export async function fulfilLetterRequest(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'letter_requests', verb: 'edit' });
+  await assertAllScope('letter_requests', 'edit');
   if (!auth.partyId) throw ApiError.forbidden('Fulfilment requires a human principal.');
 
   const request = await loadLetterRequest(id);
@@ -527,6 +553,7 @@ export async function fulfilLetterRequest(id: string) {
 export async function rejectLetterRequest(id: string, note: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'letter_requests', verb: 'edit' });
+  await assertAllScope('letter_requests', 'edit');
   const request = await loadLetterRequest(id);
   const from = request.status as LetterRequestStatus;
   if (!canTransitionLetterRequest(from, 'rejected')) {
@@ -540,8 +567,21 @@ export async function rejectLetterRequest(id: string, note: string) {
   return updated;
 }
 
-/** Re-exported so a surface can list HrLetters alongside letter requests without owning `compliance/labour.ts` itself. */
+/**
+ * Re-exported so a surface can list HrLetters alongside letter requests
+ * without owning `compliance/labour.ts` itself.
+ *
+ * `compliance/labour.ts`'s own `listLetters` asserts `hr_letters:view`
+ * without a record and then trusts whatever `employmentRelationshipId` the
+ * caller passes — safe for an `all`-scope caller, but an `own`-scope one
+ * (an employee holds `hr_letters:V@own`) could pass a colleague's id and
+ * still pass that coarse check. This file cannot fix `listLetters` itself
+ * (out of this workstream's files), so the scope check happens here, before
+ * delegating to it — the same discipline `assertEmploymentVisible` applies
+ * everywhere else in this file.
+ */
 export async function listIssuedHrLetters(employmentRelationshipId: string) {
+  await assertEmploymentVisible('hr_letters', employmentRelationshipId, 'view');
   return listHrLetters({ employmentRelationshipId });
 }
 
@@ -573,6 +613,7 @@ export async function listIdCards(filter: { employmentRelationshipId?: string } 
 export async function issueIdCard(employmentRelationshipId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'hcm_assets', verb: 'create' });
+  await assertAllScope('hcm_assets', 'create');
   await employmentOrThrow(employmentRelationshipId);
   const cardNumber = await nextIdCardNumber();
   const row = await prisma.idCard.create({
@@ -586,6 +627,7 @@ export async function issueIdCard(employmentRelationshipId: string) {
 export async function reportIdCardLost(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'hcm_assets', verb: 'edit' });
+  await assertAllScope('hcm_assets', 'edit');
   const card = await prisma.idCard.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!card) throw ApiError.notFound('ID card');
   if (card.status !== 'issued') throw ApiError.unprocessable(`This card is "${card.status}", not currently issued.`);
@@ -609,6 +651,7 @@ export async function reportIdCardLost(id: string) {
 export async function returnIdCard(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'hcm_assets', verb: 'edit' });
+  await assertAllScope('hcm_assets', 'edit');
   const card = await prisma.idCard.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!card) throw ApiError.notFound('ID card');
   if (card.status !== 'issued') throw ApiError.unprocessable(`This card is "${card.status}", not currently issued.`);
@@ -649,9 +692,17 @@ export async function assetsPendingCount() {
   return { travelRequestsPending: travel, letterRequestsPending: letters };
 }
 
-/** The count WS10's separations screen reads for an employment's pending asset returns. */
+/**
+ * The count WS10's separations screen reads for an employment's pending
+ * asset returns. Gated the same as any other by-id read here: an `own`-scope
+ * caller (an employee holds `asset_assignments:V@own`) may only ask about
+ * their own employment, never a colleague's, by passing whichever
+ * employment id they like — this had no check at all until the WS5 scope-axis
+ * review, so it is fixed alongside the rest of this audit.
+ */
 export async function assetsPendingForEmployment(employmentRelationshipId: string): Promise<number> {
   const auth = currentAuth();
+  await assertEmploymentVisible('asset_assignments', employmentRelationshipId, 'view');
   return prisma.assetAssignment.count({
     where: { tenantId: auth.tenantId, employmentRelationshipId, returnedOn: null },
   });

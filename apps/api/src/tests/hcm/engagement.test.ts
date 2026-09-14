@@ -1,12 +1,13 @@
 /**
  * HCM — WS9 engagement (docs/hcm/engagement.md).
  *
- * HCM-ENGAGEMENT-001..010: announcements and acknowledgement, recognition and
+ * HCM-ENGAGEMENT-001..019: announcements and acknowledgement, recognition and
  * its self-recognition refusal, pulse surveys (including the anonymous
- * no-double-submit rule and eNPS aggregation), the HR helpdesk queue with its
- * confidential-grievance concealment (the POSH pattern from
- * compliance/labour.ts, applied here), policy acknowledgement, and the
- * /me/home aggregate.
+ * no-double-submit rule, eNPS aggregation, and two scope-axis refusals — a
+ * self-service `create` grant cannot be used to define a survey or to answer
+ * as someone else), the HR helpdesk queue with its confidential-grievance
+ * concealment (the POSH pattern from compliance/labour.ts, applied here),
+ * policy acknowledgement, and the /me/home aggregate.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { computeEnps, isHrCaseSlaBreached } from '@kaizen/shared';
@@ -152,12 +153,12 @@ describe('Pulse surveys — anonymity and eNPS', () => {
     );
     expect(survey.status).toBe('open');
 
-    await asUser('ravi@kaizen.co.in', () => submitSurveyResponse(survey.id, 'unused', [{ questionId: 'q1', value: 9 }]));
+    await asUser('ravi@kaizen.co.in', () => submitSurveyResponse(survey.id, [{ questionId: 'q1', value: 9 }]));
     await expect(
-      asUser('ravi@kaizen.co.in', () => submitSurveyResponse(survey.id, 'unused', [{ questionId: 'q1', value: 3 }])),
+      asUser('ravi@kaizen.co.in', () => submitSurveyResponse(survey.id, [{ questionId: 'q1', value: 3 }])),
     ).rejects.toThrow();
 
-    await asUser('divya@kaizen.co.in', () => submitSurveyResponse(survey.id, 'unused', [{ questionId: 'q1', value: 3 }]));
+    await asUser('divya@kaizen.co.in', () => submitSurveyResponse(survey.id, [{ questionId: 'q1', value: 3 }]));
 
     const results = await asUser('operations@kaizen.co.in', () => pulseSurveyResults(survey.id));
     expect(results.totalResponses).toBe(2);
@@ -169,11 +170,53 @@ describe('Pulse surveys — anonymity and eNPS', () => {
       prisma.surveyResponse.findMany({ where: { tenantId: TENANT, surveyId: survey.id } }),
     );
     expect(rows.every((r) => r.employmentRelationshipId === null)).toBe(true);
+    // Nor is the token a hash of anyone's identity: it must not equal what the
+    // old (reversible) scheme would have produced for either respondent.
+    const { createHash } = await import('node:crypto');
+    const oldStyleHash = (partyId: string) =>
+      createHash('sha256').update(`${TENANT}:${survey.id}:${partyId}:kz-anon-survey`).digest('hex');
+    const ravi = await asUser('ravi@kaizen.co.in', async (p) => p);
+    const divya = await asUser('divya@kaizen.co.in', async (p) => p);
+    for (const row of rows) {
+      expect(row.respondentToken).not.toBe(oldStyleHash(ravi.partyId));
+      expect(row.respondentToken).not.toBe(oldStyleHash(divya.partyId));
+    }
+  });
+
+  it('HCM-ENGAGEMENT-014: an employee holding surveys:create only to answer cannot use it to define a new survey (scope-axis: verb reused across a self-service action and an admin one)', async () => {
+    await expect(
+      asUser('ravi@kaizen.co.in', () =>
+        createPulseSurvey({
+          title: 'An employee should not be able to create this',
+          questions: [{ id: 'q1', type: 'enps', text: 'x' }],
+          opensAt: new Date(),
+          closesAt: new Date(Date.now() + 86_400_000),
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('HCM-ENGAGEMENT-015: a named survey response is always recorded against the caller\'s own employment, never a client-supplied one (scope-axis: create@all with no record to narrow against)', async () => {
+    const survey = await asUser('operations@kaizen.co.in', () =>
+      createPulseSurvey({
+        title: `Fixture named pulse ${stamp()}`,
+        anonymous: false,
+        questions: [{ id: 'q1', type: 'scale', text: 'How was your week?', scaleMax: 10 }],
+        opensAt: new Date(Date.now() - 1000),
+        closesAt: new Date(Date.now() + 7 * 86_400_000),
+      }),
+    );
+    const ravi = await asUser('ravi@kaizen.co.in', async (p) => p);
+    // The route (and the domain function's signature) takes no identity field
+    // at all — there is nothing left for a caller to override.
+    const response = await asUser('ravi@kaizen.co.in', () => submitSurveyResponse(survey.id, [{ questionId: 'q1', value: 7 }]));
+    const raviEmployment = await unscopedPrisma.employmentRelationship.findFirst({ where: { tenantId: TENANT, personId: ravi.partyId } });
+    expect(response.employmentRelationshipId).toBe(raviEmployment?.id);
   });
 });
 
 describe('HR helpdesk — confidential-grievance concealment', () => {
-  it('HCM-ENGAGEMENT-010: a grievance is auto-confidential, absent from the general queue, and reachable only through the dedicated confidential listing', async () => {
+  it('HCM-ENGAGEMENT-016: a grievance is auto-confidential, absent from the general queue, and reachable only through the dedicated confidential listing', async () => {
     const grievance = await asUser('ravi@kaizen.co.in', () =>
       createHrCase({ category: 'grievance', subject: 'Fixture grievance', body: 'A concern I need to raise.' }),
     );
@@ -197,7 +240,7 @@ describe('HR helpdesk — confidential-grievance concealment', () => {
     expect(mine.case.id).toBe(grievance.id);
   });
 
-  it('HCM-ENGAGEMENT-011: a non-grievance case is visible in the general queue and follows its status transitions', async () => {
+  it('HCM-ENGAGEMENT-017: a non-grievance case is visible in the general queue and follows its status transitions', async () => {
     const payrollCase = await asUser('divya@kaizen.co.in', () =>
       createHrCase({ category: 'payroll', subject: 'Fixture payroll query', body: 'My payslip looks off.' }),
     );
@@ -213,7 +256,7 @@ describe('HR helpdesk — confidential-grievance concealment', () => {
     await expect(asUser('operations@kaizen.co.in', () => transitionHrCase(payrollCase.id, 'not-a-status' as never))).rejects.toThrow();
   });
 
-  it('HCM-ENGAGEMENT-012: an employee cannot reach a colleague\'s open case by id, cross-tenant reach included', async () => {
+  it('HCM-ENGAGEMENT-018: an employee cannot reach a colleague\'s open case by id, cross-tenant reach included', async () => {
     const raviCase = await asUser('ravi@kaizen.co.in', () =>
       createHrCase({ category: 'it', subject: 'Fixture IT case', body: 'Laptop will not boot.' }),
     );
@@ -231,7 +274,7 @@ describe('HR helpdesk — confidential-grievance concealment', () => {
 });
 
 describe('Policy acknowledgement', () => {
-  it('HCM-ENGAGEMENT-013: a published policy needing acknowledgement tracks who has and has not acked it', async () => {
+  it('HCM-ENGAGEMENT-019: a published policy needing acknowledgement tracks who has and has not acked it', async () => {
     const policy = await asUser('operations@kaizen.co.in', () =>
       createPolicyDocument({
         title: `Fixture code of conduct ${stamp()}`,

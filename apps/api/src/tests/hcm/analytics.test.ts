@@ -310,6 +310,13 @@ describe('HCM-ANALYTICS-008 — permission refusal', () => {
     const rejection = await asUser('employee@kaizen.co.in', () => expectReject(() => dashboard(1)));
     expect(rejection.status).toBe(403);
   });
+
+  it('HCM-ANALYTICS-008b: holding hr_analytics:view at `own` scope is refused, not silently narrowed to the caller\'s own record — an aggregate has no "own" that means anything', async () => {
+    await withFixtureRole({ grants: [{ resource: 'hr_analytics', verbs: ['view'], scope: 'own' }] }, async () => {
+      const rejection = await expectReject(() => headcountTrend(1));
+      expect(rejection.status).toBe(403);
+    });
+  });
 });
 
 // ===========================================================================
@@ -335,6 +342,13 @@ describe('HCM-ANALYTICS-009 — report export is audited', () => {
   it('an employee without hr_reports:export is refused the same export', async () => {
     const rejection = await asUser('employee@kaizen.co.in', () => expectReject(() => exportHeadcountRegister()));
     expect(rejection.status).toBe(403);
+  });
+
+  it('HCM-ANALYTICS-009b: holding hr_reports:export at `own` scope is refused — a register export is tenant-wide, never one employee\'s own record', async () => {
+    await withFixtureRole({ grants: [{ resource: 'hr_reports', verbs: ['export'], scope: 'own' }] }, async () => {
+      const rejection = await expectReject(() => exportHeadcountRegister());
+      expect(rejection.status).toBe(403);
+    });
   });
 });
 

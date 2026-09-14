@@ -31,7 +31,7 @@ import { prisma, unscopedPrisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit, subscribe } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan } from '../../platform/permissions.js';
+import { assertCan, scopeFor } from '../../platform/permissions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { accrueEntitlement } from '../leave.js';
@@ -541,9 +541,24 @@ export async function runMonthlyAccrual(period: string = new Date().toISOString(
   return { processed, notified: 0, skippedIdempotent: rules.length - processed - errors.length, errors };
 }
 
+/**
+ * An `AccrualRun` row summarises every employment a rule touched in one
+ * period — it has no owning employment of its own to narrow by. An
+ * own-scope grant (what `employee` holds on `leave_accruals`) cannot
+ * legitimately see this, since "own" here would mean nothing narrower than
+ * "everybody's" — so this is admin-only rather than silently wide open to
+ * anyone holding `view` at any scope (see docs/hcm/leavepolicy.md's scope-axis
+ * fix note).
+ */
 export async function listAccrualRuns(filter: { leavePolicyRuleId?: string; period?: string } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'leave_accruals', verb: 'view' });
+  if ((await scopeFor('leave_accruals', 'view')) !== 'all') {
+    throw ApiError.forbidden(
+      'Accrual runs summarise every employment a rule touched — there is no "your own" view of that.',
+      [{ axis: 'WHERE', passed: false, reason: 'own_scope_insufficient_for_aggregate_record' }],
+    );
+  }
   return prisma.accrualRun.findMany({
     where: {
       tenantId: auth.tenantId,
@@ -890,6 +905,18 @@ export interface TeamCalendarEntry {
 export async function teamCalendar(month: string, orgUnitId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'leave', verb: 'view' });
+  // `employee` holds `leave:view` at `own` scope — the coarse check above
+  // passes for them too, but this reads every employment's leave across an
+  // org unit (or the whole tenant), not the caller's own. Passing no record
+  // to `assertCan` above means the WHERE axis was never actually asked, so
+  // it is asked explicitly here: a "team" view is inherently about other
+  // people's records, and `own` scope cannot answer for that (see
+  // docs/hcm/leavepolicy.md's scope-axis fix note).
+  if ((await scopeFor('leave', 'view')) !== 'all') {
+    throw ApiError.forbidden('The team calendar shows other employments’ leave — an own-scope view cannot answer for that.', [
+      { axis: 'WHERE', passed: false, reason: 'own_scope_insufficient_for_team_view' },
+    ]);
+  }
 
   const [y, m] = month.split('-').map(Number);
   if (!y || !m) throw ApiError.badRequest(`"${month}" is not a YYYY-MM month.`);

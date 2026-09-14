@@ -124,6 +124,14 @@ export async function createNoticePolicy(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'notice_policies', verb: 'create' });
+  // Defining what notice period applies to everyone else is never a
+  // self-service action, regardless of what scope a future grant change
+  // might hand out at `create` — the coarse check above only proves the verb
+  // is held at some scope, not that it is held widely enough to legislate for
+  // the whole tenant.
+  if ((await scopeFor('notice_policies', 'create')) !== 'all') {
+    throw ApiError.forbidden('Defining a notice policy needs an all-scope grant on notice_policies.');
+  }
   if (input.noticeDays < 0) throw ApiError.badRequest('Notice days cannot be negative.');
 
   const row = await prisma.noticePolicy.create({
@@ -143,6 +151,9 @@ export async function createNoticePolicy(input: {
 export async function setNoticePolicyActive(id: string, active: boolean) {
   const auth = currentAuth();
   await assertCan({ resource: 'notice_policies', verb: 'edit' });
+  if ((await scopeFor('notice_policies', 'edit')) !== 'all') {
+    throw ApiError.forbidden('Changing a notice policy needs an all-scope grant on notice_policies.');
+  }
   const before = await prisma.noticePolicy.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!before) throw ApiError.notFound('Notice policy');
   const row = await prisma.noticePolicy.update({ where: { id }, data: { active } });
@@ -287,6 +298,13 @@ function assertResignationTransition(from: ResignationState, to: ResignationStat
 export async function acceptResignation(id: string, agreedLastDay?: Date, note?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'resignations', verb: 'approve' });
+  // `approve` carries no `@own` cell in the shipped matrix, but the coarse
+  // check above only proves the verb is held at *some* scope — never rely on
+  // today's grants.ts to keep an own-scope `approve` from becoming a way to
+  // accept a colleague's resignation.
+  if ((await scopeFor('resignations', 'approve')) !== 'all') {
+    throw ApiError.forbidden('Accepting a resignation needs an all-scope grant on resignations.');
+  }
 
   const row = await prisma.resignation.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Resignation');
@@ -333,6 +351,9 @@ export async function acceptResignation(id: string, agreedLastDay?: Date, note?:
 export async function rejectResignation(id: string, reason: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'resignations', verb: 'approve' });
+  if ((await scopeFor('resignations', 'approve')) !== 'all') {
+    throw ApiError.forbidden('Rejecting a resignation needs an all-scope grant on resignations.');
+  }
 
   const row = await prisma.resignation.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Resignation');
@@ -423,6 +444,12 @@ export async function listExitClearances(offboardingId: string) {
 export async function initiateClearance(offboardingId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'exit_clearances', verb: 'create' });
+  // Opening someone's clearance (and, along the way, driving their
+  // offboarding through REACH_LWD/BEGIN_CLEARANCE) is never a self-service
+  // action — an own-scope `create` on exit_clearances is not enough.
+  if ((await scopeFor('exit_clearances', 'create')) !== 'all') {
+    throw ApiError.forbidden('Opening exit clearance needs an all-scope grant on exit_clearances.');
+  }
   const offboarding = await requireOffboarding(offboardingId);
 
   if (offboarding.status === 'NoticePeriodActive') {
@@ -479,6 +506,13 @@ async function afterClearanceChange(offboardingId: string) {
 export async function clearDepartment(id: string, note?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'exit_clearances', verb: 'edit' });
+  // Signing off a department is a departmental authority, not an own-scope
+  // action on your own record — the Self-Dealing Bar below only stops the
+  // departing employee from clearing themselves, it does not on its own stop
+  // some other own-scoped employee from clearing someone else's department.
+  if ((await scopeFor('exit_clearances', 'edit')) !== 'all') {
+    throw ApiError.forbidden('Clearing a department needs an all-scope grant on exit_clearances.');
+  }
 
   const row = await prisma.exitClearance.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Exit clearance');
@@ -503,6 +537,9 @@ export async function clearDepartment(id: string, note?: string) {
 export async function blockDepartment(id: string, note: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'exit_clearances', verb: 'edit' });
+  if ((await scopeFor('exit_clearances', 'edit')) !== 'all') {
+    throw ApiError.forbidden('Blocking a department needs an all-scope grant on exit_clearances.');
+  }
   if (!note?.trim()) throw ApiError.badRequest('Blocking a department needs a reason.');
 
   const row = await prisma.exitClearance.findFirst({ where: { id, tenantId: auth.tenantId } });
@@ -537,6 +574,9 @@ export async function getNoDues(offboardingId: string) {
 export async function issueNoDues(offboardingId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'no_dues', verb: 'create' });
+  if ((await scopeFor('no_dues', 'create')) !== 'all') {
+    throw ApiError.forbidden('Issuing a no-dues certificate needs an all-scope grant on no_dues.');
+  }
 
   const existing = await prisma.noDuesCertificate.findUnique({ where: { offboardingId } });
   if (existing) throw ApiError.conflict('A no-dues certificate has already been issued for this offboarding.');
@@ -614,6 +654,9 @@ export async function recordAlumni(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'alumni', verb: 'create' });
+  if ((await scopeFor('alumni', 'create')) !== 'all') {
+    throw ApiError.forbidden('Recording an alumni entry needs an all-scope grant on alumni.');
+  }
 
   const employment = await requireEmployment(input.employmentRelationshipId);
   const existing = await prisma.alumniRecord.findUnique({ where: { employmentRelationshipId: input.employmentRelationshipId } });

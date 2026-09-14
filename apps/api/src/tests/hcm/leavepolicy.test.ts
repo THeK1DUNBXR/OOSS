@@ -448,6 +448,19 @@ describe('HCM-LVP-008 — team calendar and cross-tenant isolation', () => {
     expect(result.entries).toEqual([]);
   });
 
+  it('HCM-LVP-009 (scope-axis fix): an own-scope employee is refused the team calendar, which reads other employments\' leave', async () => {
+    const { person } = await makeEmployee('team-calendar-scope');
+    const err = await expectReject(() => asEmployee(person.id, () => teamCalendar('2026-09')));
+    expect(err.status).toBe(403);
+  });
+
+  it('HCM-LVP-009 (scope-axis fix): an own-scope employee is refused the accrual-run list, which has no per-employee owner to narrow by', async () => {
+    const { person } = await makeEmployee('accrual-list-scope');
+    const { listAccrualRuns } = await import('../../domains/hcm/leavepolicy.js');
+    const err = await expectReject(() => asEmployee(person.id, () => listAccrualRuns()));
+    expect(err.status).toBe(403);
+  });
+
   it('HCM-LVP-008: a policy created in one tenant is invisible to a principal with no grants in another tenant', async () => {
     const { policy } = await makePolicyWithRule();
     const foreignAuth: AuthContext = {

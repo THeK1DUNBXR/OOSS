@@ -315,3 +315,53 @@ describe('HCM-WORKFORCE-011 — employee status changes: propose → decide (Sel
     expect(denied.message).toMatch(/Self-Dealing Bar/);
   });
 });
+
+describe('HCM-WORKFORCE-014 — own-scope callers cannot reach a colleague\'s record', () => {
+  it('HCM-WORKFORCE-014: an own-scope employee is refused reading a colleague\'s profile extension', async () => {
+    const { employment } = await makeEmployee('colleague-profile');
+    await asUser('hr@kaizen.co.in', () => upsertProfileExtension(employment.id, { passportNumber: 'C0000001' }));
+
+    // `ravi@kaizen.co.in` holds `employee_profiles:V@own` — the WHERE axis
+    // only narrows when a record is supplied, so before the fix this read by
+    // id returned the colleague's row (passport masked, everything else in
+    // the clear) instead of refusing outright.
+    const denied = await expectReject(() => asUser('ravi@kaizen.co.in', () => getProfileExtension(employment.id)));
+    expect(denied.status).toBe(404);
+  });
+
+  it('HCM-WORKFORCE-015: the directory search for an own-scope employee never returns a colleague', async () => {
+    const { employment, person } = await makeEmployee('colleague-directory');
+
+    // Before the fix, `directorySearch` never narrowed the WHERE axis at
+    // all: any `employee_profiles:V@own` holder got the entire tenant's
+    // directory back regardless of the caller's own scope.
+    const results = await asUser('ravi@kaizen.co.in', () => directorySearch({}));
+    expect(results.some((r) => r.employmentRelationshipId === employment.id)).toBe(false);
+    expect(results.every((r) => r.person.id !== person.id)).toBe(true);
+  });
+
+  it('HCM-WORKFORCE-016: an own-scope employee cannot list a colleague\'s status changes, filtered or unfiltered', async () => {
+    const { employment } = await makeEmployee('colleague-status-change');
+    const stamp = Date.now();
+    const grade = await asUser('hr@kaizen.co.in', () => createGrade({ code: `CS-${stamp}`, name: 'Colleague Status Grade', level: 1 }));
+    await asUser('hr@kaizen.co.in', () =>
+      proposeStatusChange({
+        employmentRelationshipId: employment.id,
+        kind: 'promotion',
+        changes: { gradeId: grade.id },
+        reason: 'Strong quarter',
+        effectiveDate: new Date(),
+      }),
+    );
+
+    // Before the fix, `listStatusChanges` passed the caller-supplied id
+    // straight into the `where` clause with no scope narrowing at all, so an
+    // own-scope employee could read any colleague's pending status change —
+    // filtered by id, or simply by leaving the filter off.
+    const filtered = await asUser('ravi@kaizen.co.in', () => listStatusChanges(employment.id));
+    expect(filtered).toHaveLength(0);
+
+    const unfiltered = await asUser('ravi@kaizen.co.in', () => listStatusChanges());
+    expect(unfiltered.some((c) => c.employmentRelationshipId === employment.id)).toBe(false);
+  });
+});

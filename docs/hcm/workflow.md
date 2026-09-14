@@ -17,14 +17,14 @@ never interprets a request's `payload` — it is opaque JSON the caller defines.
 
 ### Domain (`apps/api/src/domains/hcm/workflow.ts`)
 
-- `submitRequest({ typeId, subjectEmploymentId, payload })` — validates the type's chain, opens level 1, emits `kz.hr.hr_request.submitted`.
-- `decide(requestId, approve, note?)` — decides the current level. Approve on a non-final level advances and opens the next level (emits `kz.hr.hr_request.approved`); approve on the final level closes the request (`kz.hr.hr_request.approved` + `kz.hr.hr_request.closed`); reject ends it (`kz.hr.hr_request.rejected`) without opening further levels.
+- `submitRequest({ typeId, subjectEmploymentId, payload })` — validates the type's chain, opens level 1, emits `kz.hr.hr_request.submitted`. An own-scope caller (the plain `employee` role holds `create` on `hr_requests` at `own`) may only raise a request about their own employment — `assertCan` alone only checks the verb is held at *some* scope, so this is checked explicitly via `scopeFor('hr_requests', 'create')`, refusing with 403 otherwise (`HCM-WORKFLOW-015`). An all-scope caller (HR ops, or another workstream reaching this engine by id) may raise a request about anyone.
+- `decide(requestId, approve, note?)` — decides the current level. Approve on a non-final level advances and opens the next level (emits `kz.hr.hr_request.approved`); approve on the final level closes the request (`kz.hr.hr_request.approved` + `kz.hr.hr_request.closed`); reject ends it (`kz.hr.hr_request.rejected`) without opening further levels. The approval row's decision is flipped with an atomic conditional update (`decision: 'pending'` in the `WHERE`, count checked) rather than a read-then-write, so two concurrent `decide()` calls on the same level can never both succeed — the loser gets a 409 (`HCM-WORKFLOW-014`).
 - `withdrawRequest(requestId)` — the requester only, while still `submitted`.
-- `listInbox(forParty?)` — every `pending` approval resolved to a party, across every request type; requires `hr_requests:approve`.
+- `listInbox(forParty?)` — every `pending` approval resolved to a party, across every request type; requires `hr_requests:approve` (held only at `all` scope by any seeded role, so no own-scope caller can reach this at all).
 - `listMyRequests()` — the caller's own submitted requests.
 - `getRequest(id)` — tenant- and scope-checked read (own-scope callers see only requests they raised or that are about them).
 - `createRequestType` / `listRequestTypes` — request-type CRUD (create/edit), gated on `hr_request_types`.
-- `createDelegation` / `listDelegations` / `revokeDelegation` — gated on `authority_delegations`; only the delegator may revoke their own.
+- `createDelegation` / `listDelegations` / `revokeDelegation` — gated on `authority_delegations`; only the delegator may revoke their own. `listDelegations` scopes to the caller's own delegations (`fromPartyId`) for an own-scope caller (the plain `employee` role holds `view` on `authority_delegations` at `own`) and to the whole tenant for an all-scope caller — again an explicit `scopeFor` check, since `assertCan` alone would otherwise let any employee list every delegation in the tenant (`HCM-WORKFLOW-016`).
 
 **Approval-chain resolution** (`resolveStepApprover` in the domain file):
 
@@ -83,6 +83,9 @@ Pure logic used by both the domain layer and the tests: `ApprovalChain`/`Approva
 | HCM-WORKFLOW-011 | A `manager` step falls back to the `hr_ops_manager` holder when no `ReportingLine` is open for the subject | `HCM-WORKFLOW-011: a manager step falls back...` |
 | HCM-WORKFLOW-012 | An active delegation reroutes a resolved level to the delegate, who can then decide it | `HCM-WORKFLOW-012: an active delegation reroutes...` |
 | HCM-WORKFLOW-013 | A malformed approval chain (non-contiguous levels) is refused at request-type creation, not discovered at submit time | `HCM-WORKFLOW-013: a malformed approval chain is refused at creation...` |
+| HCM-WORKFLOW-014 | Two concurrent `decide()` calls on the same level never both win — one closes the request, the other gets a 409 | `HCM-WORKFLOW-014: two concurrent decide() calls...` |
+| HCM-WORKFLOW-015 | An own-scope caller may raise an HR request about their own employment but is refused (403) about a colleague's | `HCM-WORKFLOW-015: an own-scope caller may raise an HR request...` |
+| HCM-WORKFLOW-016 | An own-scope caller listing delegations sees only their own; an all-scope caller sees the whole tenant | `HCM-WORKFLOW-016: an own-scope caller listing delegations...` |
 
 ## What this does not do
 

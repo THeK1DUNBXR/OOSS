@@ -34,7 +34,7 @@ import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan, assertScopeAll } from '../../platform/permissions.js';
+import { assertCan, assertScopeAll, scopeFor } from '../../platform/permissions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { raiseException } from '../../platform/exceptions.js';
@@ -54,6 +54,32 @@ async function employmentOrThrow(employmentRelationshipId: string) {
   });
   if (!employment) throw ApiError.notFound('Employment relationship');
   return employment;
+}
+
+/**
+ * Admin-only gate. `assertCan({resource, verb})` with no `record` skips the
+ * WHERE axis entirely — an own-scope grant would otherwise pass it and reach
+ * an operation that acts on other people's records (approving someone else's
+ * nomination, marking someone else's attendance, verifying someone else's
+ * certification, reading the whole company's compliance status). Those are
+ * not self-service actions, so they require the caller's resolved scope to
+ * actually be `all`, checked explicitly rather than left to a record that is
+ * never supplied.
+ */
+async function requireAllScope(resource: string, verb: 'approve' | 'edit' | 'view', message: string): Promise<void> {
+  const scope = await scopeFor(resource, verb);
+  if (scope !== 'all') throw ApiError.forbidden(message);
+}
+
+/** The ids of employment relationships belonging to the caller — for narrowing a list, or checking whether a target record is the caller's own. */
+async function myEmploymentIds(): Promise<string[]> {
+  const auth = currentAuth();
+  if (!auth.partyId) return [];
+  const rows = await prisma.employmentRelationship.findMany({
+    where: { tenantId: auth.tenantId, personId: auth.partyId },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
 }
 
 // ---------------------------------------------------------------------------
@@ -197,15 +223,24 @@ export async function listEnrollments(filter: { sessionId?: string; employmentRe
   const auth = currentAuth();
   await assertCan({ resource: 'training_enrollments', verb: 'view' });
 
+  let employmentFilter: string[] | undefined;
   if (filter.employmentRelationshipId) {
     await assertEmploymentVisible('training_enrollments', filter.employmentRelationshipId, 'view');
+    employmentFilter = [filter.employmentRelationshipId];
+  } else {
+    // No target named: an own-scope caller (an `employee` role) would
+    // otherwise see every colleague's enrollments, since the WHERE axis is
+    // only evaluated against a record and none is supplied for a bare list.
+    // Narrow explicitly to the caller's own employment(s) instead.
+    const scope = await scopeFor('training_enrollments', 'view');
+    if (scope !== 'all') employmentFilter = await myEmploymentIds();
   }
 
   return prisma.trainingEnrollment.findMany({
     where: {
       tenantId: auth.tenantId,
       ...(filter.sessionId ? { sessionId: filter.sessionId } : {}),
-      ...(filter.employmentRelationshipId ? { employmentRelationshipId: filter.employmentRelationshipId } : {}),
+      ...(employmentFilter ? { employmentRelationshipId: { in: employmentFilter } } : {}),
     },
     include: {
       session: { include: { program: { select: { title: true, kind: true, skillIds: true, validityMonths: true, cost: true } } } },
@@ -222,6 +257,15 @@ export async function nominate(input: { sessionId: string; employmentRelationshi
   const session = await prisma.trainingSession.findFirst({ where: { id: input.sessionId, tenantId: auth.tenantId } });
   if (!session) throw ApiError.notFound('Training session');
   const employment = await employmentOrThrow(input.employmentRelationshipId);
+
+  // `create` at `own` scope only covers nominating yourself — an own-scope
+  // caller naming somebody else's employment would otherwise pass, since no
+  // record is supplied to the earlier `assertCan` for the WHERE axis to
+  // narrow against.
+  const scope = await scopeFor('training_enrollments', 'create');
+  if (scope !== 'all' && employment.personId !== auth.partyId) {
+    throw ApiError.forbidden('You may only nominate yourself for a session.');
+  }
 
   const enrollment = await prisma.trainingEnrollment.create({
     data: {
@@ -258,6 +302,7 @@ async function loadEnrollment(id: string) {
 export async function approveEnrollment(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'training_enrollments', verb: 'approve' });
+  await requireAllScope('training_enrollments', 'approve', 'Approving a nomination is not a self-service action.');
 
   const enrollment = await loadEnrollment(id);
   try {
@@ -303,6 +348,7 @@ export async function approveEnrollment(id: string) {
 export async function rejectEnrollment(id: string, note?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'training_enrollments', verb: 'approve' });
+  await requireAllScope('training_enrollments', 'approve', 'Rejecting a nomination is not a self-service action.');
   const enrollment = await loadEnrollment(id);
   try {
     assertEnrollmentTransition(enrollment.status as TrainingEnrollmentStatus, 'rejected');
@@ -324,6 +370,7 @@ export async function rejectEnrollment(id: string, note?: string) {
 export async function markAttendance(id: string, attended: boolean) {
   const auth = currentAuth();
   await assertCan({ resource: 'training_enrollments', verb: 'edit' });
+  await requireAllScope('training_enrollments', 'edit', 'Recording someone else\'s attendance is not a self-service action.');
   const enrollment = await loadEnrollment(id);
   const target: TrainingEnrollmentStatus = attended ? 'attended' : 'no_show';
   try {
@@ -344,6 +391,7 @@ export async function markAttendance(id: string, attended: boolean) {
 export async function completeEnrollment(id: string, input: { score?: number | null; feedback?: string | null } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'training_enrollments', verb: 'edit' });
+  await requireAllScope('training_enrollments', 'edit', 'Completing someone else\'s enrollment is not a self-service action.');
 
   const enrollment = await loadEnrollment(id);
   try {
@@ -400,11 +448,18 @@ export async function completeEnrollment(id: string, input: { score?: number | n
 export async function listCertifications(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'certifications', verb: 'view' });
+
+  let employmentFilter: string[] | undefined;
   if (employmentRelationshipId) {
     await assertEmploymentVisible('certifications', employmentRelationshipId, 'view');
+    employmentFilter = [employmentRelationshipId];
+  } else {
+    const scope = await scopeFor('certifications', 'view');
+    if (scope !== 'all') employmentFilter = await myEmploymentIds();
   }
+
   return prisma.certification.findMany({
-    where: { tenantId: auth.tenantId, ...(employmentRelationshipId ? { employmentRelationshipId } : {}) },
+    where: { tenantId: auth.tenantId, ...(employmentFilter ? { employmentRelationshipId: { in: employmentFilter } } : {}) },
     orderBy: { issuedOn: 'desc' },
   });
 }
@@ -483,6 +538,7 @@ export async function addCertification(input: {
 export async function verifyCertification(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'certifications', verb: 'approve' });
+  await requireAllScope('certifications', 'approve', 'Verifying a certification is not a self-service action.');
 
   const cert = await prisma.certification.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!cert) throw ApiError.notFound('Certification');
@@ -519,6 +575,12 @@ export async function verifyCertification(id: string) {
 /** The 90/30/7 expiry ladder job. Idempotent per rung via `lastExpiryRungDays`. */
 export async function runCertificationExpiryLadder(): Promise<JobResult> {
   const auth = currentAuth();
+  // Reachable both as a scheduled job (SYSTEM_PRINCIPAL, which `assertScopeAll`
+  // always passes) and via the route a human can call directly — the latter
+  // had no permission check at all before this, so any authenticated user
+  // could trigger it and would receive every certification's expiry state
+  // back through the exceptions it raises.
+  await assertScopeAll('certifications');
   const now = new Date();
   const horizon = new Date(now.getTime() + 91 * 86_400_000);
 
@@ -648,7 +710,12 @@ export interface MandatoryComplianceRow {
 /** Every active employee against every active mandatory rule, with a due date and whether it has been missed. Auditable, so it needs an all-scope view. */
 export async function mandatoryComplianceStatus(): Promise<MandatoryComplianceRow[]> {
   const auth = currentAuth();
-  await assertScopeAll('training_programs');
+  // Gated on `training_enrollments`, not `training_programs`: the programme
+  // catalogue is deliberately company-wide (`view@all` even for `employee`),
+  // but this reads every colleague's completion and overdue state, which is
+  // the sensitive resource. `employee` holds `training_enrollments` at `own`
+  // scope only, so this correctly bars them from the company-wide view.
+  await assertScopeAll('training_enrollments');
 
   const [rules, employments] = await Promise.all([
     prisma.mandatoryTrainingRule.findMany({
@@ -739,9 +806,18 @@ export async function runMandatoryTrainingOverdueCheck(): Promise<JobResult> {
 export async function listIdps(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'idps', verb: 'view' });
-  if (employmentRelationshipId) await assertEmploymentVisible('idps', employmentRelationshipId, 'view');
+
+  let employmentFilter: string[] | undefined;
+  if (employmentRelationshipId) {
+    await assertEmploymentVisible('idps', employmentRelationshipId, 'view');
+    employmentFilter = [employmentRelationshipId];
+  } else {
+    const scope = await scopeFor('idps', 'view');
+    if (scope !== 'all') employmentFilter = await myEmploymentIds();
+  }
+
   return prisma.individualDevelopmentPlan.findMany({
-    where: { tenantId: auth.tenantId, ...(employmentRelationshipId ? { employmentRelationshipId } : {}) },
+    where: { tenantId: auth.tenantId, ...(employmentFilter ? { employmentRelationshipId: { in: employmentFilter } } : {}) },
     orderBy: { createdAt: 'desc' },
   });
 }
@@ -783,6 +859,20 @@ export async function updateIdp(id: string, input: { goals?: unknown; mentorId?:
   await assertCan({ resource: 'idps', verb: 'edit' });
   const idp = await prisma.individualDevelopmentPlan.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!idp) throw ApiError.notFound('Individual development plan');
+
+  // `edit@own` covers updating your own plan only — without this, any
+  // own-scope holder could edit or close a colleague's IDP, since no record
+  // was supplied to the `assertCan` above for the WHERE axis to narrow.
+  const scope = await scopeFor('idps', 'edit');
+  if (scope !== 'all') {
+    const employment = await prisma.employmentRelationship.findFirst({
+      where: { id: idp.employmentRelationshipId, tenantId: auth.tenantId },
+      select: { personId: true },
+    });
+    if (!employment || employment.personId !== auth.partyId) {
+      throw ApiError.notFound('Individual development plan');
+    }
+  }
 
   const updated = await prisma.individualDevelopmentPlan.update({
     where: { id },

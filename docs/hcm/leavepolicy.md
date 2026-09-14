@@ -106,6 +106,36 @@ ever decide a level on their own leave request, checked before the identity bran
   live policy check before submitting (via `POST /validate`), restricted-holiday elections, and an
   inbox of anything resolved to the viewer to decide in somebody else's chain.
 
+## Scope-axis audit (WS5 alert)
+
+Every `assertCan(...)` call in `apps/api/src/domains/hcm/leavepolicy.ts` was checked against the bug
+class the WS5 review found: calling `assertCan({ resource, verb })` with no `record` on a resource
+`employee` holds at `own` scope passes the coarse check and then returns data about *other*
+employments, since the WHERE axis is only evaluated when a record is supplied.
+
+Two paths had it:
+
+- **`teamCalendar`** — gated on `leave:view`, which `employee` holds at `own` scope, but the function
+  reads every employment's leave in an org unit (or the whole tenant). Fixed by requiring
+  `scopeFor('leave', 'view') === 'all'` before proceeding — a "team" view is inherently about other
+  people's records, and `own` scope cannot answer for that. Refusal test: HCM-LVP-009 (team calendar).
+- **`listAccrualRuns`** — gated on `leave_accruals:view`, which `employee` holds at `own` scope, but
+  `AccrualRun` summarises every employment a rule touched in one period and has no owning employment
+  of its own to narrow by — there is no legitimate "own" reading of it. Fixed the same way. Refusal
+  test: HCM-LVP-009 (accrual-run list).
+
+Every other `assertCan` call in the file was confirmed safe on inspection: `leave_policies` calls
+check `view`/`create`/`edit`/`delete`, and `employee`'s only grant on that resource is `view@all` (an
+intentional company-wide read, not `own`) with no create/edit/delete verb at all; `leave_accruals`
+`create` and `leave_approval_chains` (all verbs) are verbs `employee` holds not at all, so the WHO
+axis already refuses before scope would matter; `leave:approve` inside `decideApprovalLevel` is only
+reached as a fallback for a caller who is *not* the level's resolved approver, and `employee` holds no
+`approve` verb on `leave` at all. Every remaining record-addressed read/write in the file
+(`validateLeaveRequest`, `initiateApprovalChain`, `listApprovalsForRequest`,
+`electRestrictedHoliday`/`withdrawRestrictedHolidayElection`/`listRestrictedHolidayElections`) already
+went through `assertEmploymentVisible`, which resolves the target employment and narrows by
+`scopeFor` before comparing it against the caller — the correct pattern, not the bug.
+
 ## Acceptance
 
 | ID | What PASS means | Test |
@@ -118,8 +148,9 @@ ever decide a level on their own leave request, checked before the identity bran
 | HCM-LVP-006 | An approval chain resolves the requester's actual manager and lets them decide their level; the Self-Dealing Bar refuses the leave-taker deciding their own | `HCM-LVP-006` (×2) |
 | HCM-LVP-007 | A third restricted-holiday election in one FY is refused once the two-per-year limit is reached; withdrawing frees a slot | `HCM-LVP-007` |
 | HCM-LVP-008 | The team calendar returns an empty list rather than erroring for a quiet month; cross-tenant isolation holds | `HCM-LVP-008` (×2) |
+| HCM-LVP-009 | Scope-axis fix: an own-scope employee is refused the team calendar and the accrual-run list, both of which read data about other employments | `HCM-LVP-009` (×2) |
 
-All 18 `it` blocks pass against `kaizen_test_leavepolicy`
+All 20 `it` blocks pass against `kaizen_test_leavepolicy`
 (`npx vitest run src/tests/hcm/leavepolicy.test.ts`).
 
 ## What this does not do

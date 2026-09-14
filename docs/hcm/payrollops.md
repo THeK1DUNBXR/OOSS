@@ -28,7 +28,10 @@ raises about their own payslip.
   and always balanced by construction. `status` moves Prepared → Posted;
   posting also records the net-pay cash leg in the books.
 - **BankAdvice** — the NEFT CSV file for a run's net pay, generated once and
-  kept verbatim (an audited export).
+  kept verbatim (an audited export). `rows` holds the same beneficiaries
+  structured, so a *view* of the advice can mask each `accountNumber` to its
+  last 4 digits without touching `fileText`; only the dedicated download path
+  reads `fileText` itself.
 - **PayrollReconciliation** — a per-employee delta between two runs, with an
   `unexplainedCount` and a raised exception when a swing exceeds the usual
   range.
@@ -54,7 +57,7 @@ Pay items (`listPayItems`, `createPayItem`, `setPayItemActive`); ad-hoc pay
 `rejectArrear`, `markArrearPaid`, `listArrears`); journal
 (`generatePayrollJournal`, `postPayrollJournal`, `getPayrollJournal`,
 `listPayrollJournals`); bank advice (`generateBankAdvice`, `getBankAdvice`,
-`listBankAdvices`); reconciliation (`generatePayrollReconciliation`,
+`downloadBankAdvice`, `listBankAdvices`); reconciliation (`generatePayrollReconciliation`,
 `getPayrollReconciliation`, `listPayrollReconciliations`); calendar
 (`upsertPayrollCalendarEntry`, `listPayrollCalendar`); queries
 (`createPayrollQuery`, `respondToPayrollQuery`, `closePayrollQuery`,
@@ -84,7 +87,31 @@ primitive. So the full division-wise debit/credit breakdown lives in
 `PayrollJournal` here, and `postPayrollJournal` posts only the net-pay cash
 leg into the books via `recordTransaction`, carrying `payrollRunId` (a column
 `Transaction` already reserves for exactly this) and `source: 'payroll'`.
-The journal's `transactionId` then points at that row.
+The journal's `transactionId` then points at that row. `postPayrollJournal`
+also checks `journal.status === 'Posted'` before doing anything else, so a
+second post of an already-posted journal is a 409 conflict, never a second
+`Transaction` — and it requires the chosen account's `accountType` to be
+`bank`, `cash` or `wallet`, since net pay is a cash movement and never a
+costing or equity account.
+
+**Money withheld.** List and get endpoints on `adhoc_pay`, `arrears`,
+`payroll_journals`, `bank_advices` and `payroll_reconciliations` check
+`canSeeMoney(resource)` (the `financial` verb) the same way
+`hcm/compensation.ts` does, and null the money fields with
+`moneyWithheldReason: 'no_permission'` rather than showing zero when it is
+absent — under the shipped matrix that is `hrOps` (who proposes these but
+does not hold `financial` on them) viewing anything past their own create
+call. A structural zero (a journal line's unused side) stays `0`, since it
+carries no figure to withhold.
+
+**Bank account numbers.** `getBankAdvice` (the `view`, held at `hrOps`/
+`financeHead` scope) never returns `fileText` and masks every beneficiary's
+`accountNumber` to its last 4 digits — the same `bankLast4` shape
+`compliance/payroll.ts` already puts on a payslip snapshot. The full NEFT
+CSV, unmasked, is served only by `downloadBankAdvice`
+(`GET /bank-advices/:id/download`), gated on the `export` verb specifically
+(never `view` alone) and audited via `auditExport` on every read — `getBankAdvice`
+itself is no longer treated as an export.
 
 ### Routes (`/api/hcm/payrollops`, `apps/api/src/routes/hcm/payrollops.routes.ts`)
 
@@ -92,7 +119,8 @@ The journal's `transactionId` then points at that row.
 `GET|POST /adhoc-pay`, `POST /adhoc-pay/:id/approve|reject`; `GET|POST
 /arrears`, `POST /arrears/:id/approve|reject|mark-paid`; `GET /journals`,
 `GET /journals/:id`, `POST /journals/generate`, `POST /journals/:id/post`;
-`GET /bank-advices`, `GET /bank-advices/:id`, `POST /bank-advices/generate`;
+`GET /bank-advices`, `GET /bank-advices/:id`, `POST /bank-advices/generate`,
+`GET /bank-advices/:id/download`;
 `GET /reconciliations`, `GET /reconciliations/:id`, `POST
 /reconciliations/generate`; `GET|POST /calendar`; `GET|POST /queries`, `POST
 /queries/:id/respond|close`.
@@ -124,8 +152,11 @@ The journal's `transactionId` then points at that row.
 | HCM-PAYROLLOPS-009 | An unexplained swing between two runs raises an exception and flags the row; financeHead-only to generate | `payroll reconciliation > HCM-PAYROLLOPS-009` |
 | HCM-PAYROLLOPS-010 | A calendar's milestones must fall in order; a valid one is read back with its live stage | `payroll calendar > HCM-PAYROLLOPS-010` |
 | HCM-PAYROLLOPS-011 | An employee raises a query only on their own employment; another employee cannot | `payroll queries > HCM-PAYROLLOPS-011` |
+| HCM-PAYROLLOPS-012 | A bank advice's view masks every account number to its last 4 digits and never returns `fileText`; the full CSV is served only by the `export`-gated, audited download | `bank advice > HCM-PAYROLLOPS-012` |
+| HCM-PAYROLLOPS-013 | An amount is withheld as null (with a reason) for a caller who lacks the `financial` verb on the resource, and shown to one who holds it | `ad-hoc pay lines > HCM-PAYROLLOPS-013` |
+| HCM-PAYROLLOPS-014 | Net pay cannot be posted from a non-cash (e.g. loan or card) ledger account | `payroll journal > HCM-PAYROLLOPS-014` |
 
-18 `it` blocks in total in `apps/api/src/tests/hcm/payrollops.test.ts`,
+21 `it` blocks in total in `apps/api/src/tests/hcm/payrollops.test.ts`,
 covering create → approve/reject → refusal (self-dealing, no-grant, cross-
 tenant 404, double-decision conflict) for every resource above.
 

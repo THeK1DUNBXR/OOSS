@@ -23,7 +23,7 @@ import { asSystem, currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan, scopeFor } from '../../platform/permissions.js';
+import { assertCan, assertScopeAll, scopeFor } from '../../platform/permissions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
@@ -74,6 +74,24 @@ async function ownScopeWhere(resource: string, verb: Verb = 'view'): Promise<Rec
   // No employment on this account and an own-only scope: the list is empty,
   // not unfiltered — an impossible id rather than an omitted clause.
   return { employmentRelationshipId: employment?.id ?? '__none__' };
+}
+
+/**
+ * The WHERE fragment for a "list, optionally filtered to one employment"
+ * endpoint. An explicit `employmentRelationshipId` is never trusted at face
+ * value — an own-scoped caller passing a colleague's id must be refused (404,
+ * a visibility fact) exactly as reading that colleague's record by id would
+ * be, not treated as an escape hatch around the scope filter that applies
+ * when no id is given. Skipping this check when an id is present was a real
+ * bug here (alert-scope.md): the WHO axis alone (`assertCan`) does not
+ * evaluate the WHERE axis — only a scope check or a resolved record does.
+ */
+async function listWhere(resource: string, verb: Verb, employmentRelationshipId?: string): Promise<Record<string, unknown>> {
+  if (employmentRelationshipId) {
+    await assertEmploymentVisible(resource, employmentRelationshipId, verb);
+    return { employmentRelationshipId };
+  }
+  return ownScopeWhere(resource, verb);
 }
 
 function selfDealingCheck(requesterId: string | null, decidingPartyId: string | null) {
@@ -164,10 +182,8 @@ export async function updateShift(id: string, patch: { name?: string; graceMinut
 export async function listRosterAssignments(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'rosters', verb: 'view' });
-  const where = employmentRelationshipId
-    ? { tenantId: auth.tenantId, employmentRelationshipId }
-    : { tenantId: auth.tenantId };
-  return prisma.rosterAssignment.findMany({ where, orderBy: { effectiveFrom: 'desc' } });
+  const where = await listWhere('rosters', 'view', employmentRelationshipId);
+  return prisma.rosterAssignment.findMany({ where: { tenantId: auth.tenantId, ...where }, orderBy: { effectiveFrom: 'desc' } });
 }
 
 export async function assignRoster(input: {
@@ -180,7 +196,7 @@ export async function assignRoster(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'rosters', verb: 'create' });
-  await assertEmploymentVisible('rosters', input.employmentRelationshipId);
+  await assertEmploymentVisible('rosters', input.employmentRelationshipId, 'create');
 
   const shift = await prisma.shift.findFirst({ where: { id: input.shiftId, tenantId: auth.tenantId } });
   if (!shift) throw ApiError.notFound('Shift');
@@ -261,7 +277,7 @@ export async function recordClockEvent(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'clock_events', verb: 'create' });
-  await assertEmploymentVisible('clock_events', input.employmentRelationshipId);
+  await assertEmploymentVisible('clock_events', input.employmentRelationshipId, 'create');
 
   const last = await lastOpenClock(input.employmentRelationshipId, auth.tenantId);
   if (input.kind === 'in' && last?.kind === 'in') {
@@ -309,6 +325,12 @@ export async function recordClockEvent(input: {
  */
 export async function deriveAttendanceFromClockEvents(forDate: Date = new Date(Date.now() - 86_400_000)): Promise<JobResult> {
   const auth = currentAuth();
+  // A tenant-wide recompute, reachable directly via `/jobs/derive-attendance`
+  // as well as the nightly scheduler (which runs it as the system principal,
+  // for which every scope resolves to `all`) — so a manual trigger needs the
+  // same all-scope authority the scheduler always has, not merely
+  // `clock_events:view`, which an own-scoped employee also holds.
+  await assertScopeAll('attendance', 'edit');
   const day = dayStart(forDate);
   const dayEnd = new Date(day.getTime() + 86_400_000);
 
@@ -393,11 +415,8 @@ async function getOrCreateTimesheet(employmentRelationshipId: string, weekStart:
 export async function listTimesheets(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'timesheets', verb: 'view' });
-  const scopeWhere = employmentRelationshipId ? {} : await ownScopeWhere('timesheets', 'view');
-  return prisma.timesheet.findMany({
-    where: { tenantId: auth.tenantId, ...(employmentRelationshipId ? { employmentRelationshipId } : {}), ...scopeWhere },
-    orderBy: { weekStart: 'desc' },
-  });
+  const where = await listWhere('timesheets', 'view', employmentRelationshipId);
+  return prisma.timesheet.findMany({ where: { tenantId: auth.tenantId, ...where }, orderBy: { weekStart: 'desc' } });
 }
 
 export async function getTimesheet(id: string) {
@@ -432,7 +451,7 @@ export async function addTimesheetEntry(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'timesheets', verb: 'create' });
-  await assertEmploymentVisible('timesheets', input.employmentRelationshipId);
+  await assertEmploymentVisible('timesheets', input.employmentRelationshipId, 'create');
   if (input.hours <= 0 || input.hours > 24) throw ApiError.badRequest('Hours for a single entry must be more than 0 and no more than 24.');
 
   const timesheet = await getOrCreateTimesheet(input.employmentRelationshipId, input.date);
@@ -529,17 +548,14 @@ export const rejectTimesheet = (id: string, note: string) => decideTimesheet(id,
 export async function listOvertimeRequests(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'overtime_requests', verb: 'view' });
-  const scopeWhere = employmentRelationshipId ? {} : await ownScopeWhere('overtime_requests', 'view');
-  return prisma.overtimeRequest.findMany({
-    where: { tenantId: auth.tenantId, ...(employmentRelationshipId ? { employmentRelationshipId } : {}), ...scopeWhere },
-    orderBy: { date: 'desc' },
-  });
+  const where = await listWhere('overtime_requests', 'view', employmentRelationshipId);
+  return prisma.overtimeRequest.findMany({ where: { tenantId: auth.tenantId, ...where }, orderBy: { date: 'desc' } });
 }
 
 export async function requestOvertime(input: { employmentRelationshipId: string; date: Date; hours: number; reason?: string | null }) {
   const auth = currentAuth();
   await assertCan({ resource: 'overtime_requests', verb: 'create' });
-  await assertEmploymentVisible('overtime_requests', input.employmentRelationshipId);
+  await assertEmploymentVisible('overtime_requests', input.employmentRelationshipId, 'create');
   if (input.hours <= 0 || input.hours > 12) throw ApiError.badRequest('Overtime hours must be more than 0 and no more than 12 for a single request.');
 
   const row = await prisma.overtimeRequest.create({
@@ -627,7 +643,7 @@ export const rejectOvertimeRequest = (id: string, note: string) => decideOvertim
 export async function earnCompOffForHolidayWork(input: { employmentRelationshipId: string; earnedOn: Date; days: number; note?: string | null }) {
   const auth = currentAuth();
   await assertCan({ resource: 'comp_offs', verb: 'create' });
-  await assertEmploymentVisible('comp_offs', input.employmentRelationshipId);
+  await assertEmploymentVisible('comp_offs', input.employmentRelationshipId, 'create');
   if (input.days <= 0 || input.days > 2) throw ApiError.badRequest('Comp-off for one day worked must be more than 0 and no more than 2 days.');
 
   const earnedOn = dayStart(input.earnedOn);
@@ -659,11 +675,8 @@ export async function earnCompOffForHolidayWork(input: { employmentRelationshipI
 export async function listCompOffs(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'comp_offs', verb: 'view' });
-  const scopeWhere = employmentRelationshipId ? {} : await ownScopeWhere('comp_offs', 'view');
-  return prisma.compOff.findMany({
-    where: { tenantId: auth.tenantId, ...(employmentRelationshipId ? { employmentRelationshipId } : {}), ...scopeWhere },
-    orderBy: { earnedOn: 'desc' },
-  });
+  const where = await listWhere('comp_offs', 'view', employmentRelationshipId);
+  return prisma.compOff.findMany({ where: { tenantId: auth.tenantId, ...where }, orderBy: { earnedOn: 'desc' } });
 }
 
 export async function consumeCompOff(id: string, consumedOn: Date = new Date()) {
@@ -692,6 +705,11 @@ export async function consumeCompOff(id: string, consumedOn: Date = new Date()) 
 /** The comp-off expiry sweep. Every `available` row past its `expiresOn` becomes `expired`, with an event per row rather than a silent bulk update. */
 export async function runCompOffExpiry(): Promise<JobResult> {
   const auth = currentAuth();
+  // Same reasoning as `deriveAttendanceFromClockEvents`: a tenant-wide sweep,
+  // reachable directly via `/jobs/expire-comp-offs` and not just the
+  // scheduler, needs all-scope authority rather than the `view` an
+  // own-scoped employee holds on `comp_offs`.
+  await assertScopeAll('comp_offs', 'edit');
   const now = new Date();
   const expiring = await prisma.compOff.findMany({
     where: { tenantId: auth.tenantId, status: 'available', expiresOn: { lt: now } },
@@ -718,11 +736,8 @@ export async function runCompOffExpiry(): Promise<JobResult> {
 export async function listRegularisations(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'attendance_regularisations', verb: 'view' });
-  const scopeWhere = employmentRelationshipId ? {} : await ownScopeWhere('attendance_regularisations', 'view');
-  return prisma.attendanceRegularisation.findMany({
-    where: { tenantId: auth.tenantId, ...(employmentRelationshipId ? { employmentRelationshipId } : {}), ...scopeWhere },
-    orderBy: { date: 'desc' },
-  });
+  const where = await listWhere('attendance_regularisations', 'view', employmentRelationshipId);
+  return prisma.attendanceRegularisation.findMany({ where: { tenantId: auth.tenantId, ...where }, orderBy: { date: 'desc' } });
 }
 
 /**
@@ -734,7 +749,7 @@ export async function listRegularisations(employmentRelationshipId?: string) {
 export async function submitRegularisation(input: { employmentRelationshipId: string; date: Date; reason: string }) {
   const auth = currentAuth();
   await assertCan({ resource: 'attendance_regularisations', verb: 'create' });
-  await assertEmploymentVisible('attendance_regularisations', input.employmentRelationshipId);
+  await assertEmploymentVisible('attendance_regularisations', input.employmentRelationshipId, 'create');
   if (!input.reason.trim()) throw ApiError.badRequest('A reason is required.');
 
   const day = dayStart(input.date);

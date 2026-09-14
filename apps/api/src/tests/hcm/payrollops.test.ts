@@ -18,7 +18,7 @@ import {
   createAdHocPayLine, approveAdHocPayLine, rejectAdHocPayLine, listAdHocPayLines,
   createArrear, approveArrear, listArrears,
   generatePayrollJournal, postPayrollJournal, getPayrollJournal,
-  generateBankAdvice,
+  generateBankAdvice, getBankAdvice, downloadBankAdvice,
   generatePayrollReconciliation,
   upsertPayrollCalendarEntry, listPayrollCalendar,
   createPayrollQuery, respondToPayrollQuery, listPayrollQueries,
@@ -234,6 +234,24 @@ describe('ad-hoc pay lines', () => {
     expect(again.status).toBe(409);
   });
 
+  it('HCM-PAYROLLOPS-013: hrOps (no `financial` verb) sees ad-hoc pay amounts withheld as null; financeHead sees the real figure', async () => {
+    const { employment } = await makeEmployee('adhoc-money');
+    const item = await asUser('operations@kaizen.co.in', () =>
+      createPayItem({ code: `MONEY-${Date.now()}`, name: 'Money-masked bonus', kind: 'earning', glAccountCode: '6020-BONUS' }),
+    );
+    await asUser('operations@kaizen.co.in', () =>
+      createAdHocPayLine({ employmentRelationshipId: employment.id, payItemId: item.id, payPeriod: '2031-01', amount: 7_777, reason: 'Masking check' }),
+    );
+
+    const asOps = await asUser('operations@kaizen.co.in', () => listAdHocPayLines({ employmentRelationshipId: employment.id }));
+    expect(asOps[0].amount).toBeNull();
+    expect(asOps[0].moneyWithheldReason).toBe('no_permission');
+
+    const asFinance = await asUser('finance@kaizen.co.in', () => listAdHocPayLines({ employmentRelationshipId: employment.id }));
+    expect(Number(asFinance[0].amount)).toBe(7_777);
+    expect(asFinance[0].moneyWithheldReason).toBeNull();
+  });
+
   it('HCM-PAYROLLOPS-004: a rejected line stays Rejected and is listed by status', async () => {
     const { employment } = await makeEmployee('adhoc-reject');
     const item = await asUser('operations@kaizen.co.in', () =>
@@ -324,6 +342,17 @@ describe('payroll journal', () => {
     expect(reread.status).toBe('Posted');
   });
 
+  it('HCM-PAYROLLOPS-014: net pay cannot be posted from a non-cash account', async () => {
+    const a = await makeEmployee('journal-noncash');
+    const run = await makeRun('2031-10', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 15_000, net: 13_000 }]);
+    const journal = await asUser('operations@kaizen.co.in', () => generatePayrollJournal(run.id));
+    const nonCash = await unscopedPrisma.ledgerAccount.findFirst({ where: { tenantId: TENANT, accountType: { notIn: ['bank', 'cash', 'wallet'] } } });
+    if (nonCash) {
+      const err = await expectReject(() => asUser('finance@kaizen.co.in', () => postPayrollJournal(journal.id, nonCash.id)));
+      expect(err.status).toBe(422);
+    }
+  });
+
   it('a cross-tenant journal id is 404, not 403', async () => {
     const a = await makeEmployee('cross-tenant');
     const run = await makeRun('2031-04', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 10_000, net: 9_000 }]);
@@ -372,6 +401,30 @@ describe('bank advice', () => {
   it('an employee holds no grant on bank advices', async () => {
     const err = await expectReject(() => asUser('ravi@kaizen.co.in', () => generateBankAdvice('whatever')));
     expect(err.status).toBe(403);
+  });
+
+  it('HCM-PAYROLLOPS-012: the view response masks account numbers to their last 4 digits; only the audited download carries the full number', async () => {
+    const a = await makeEmployee('bank-mask');
+    await asUser('chairman@kaizen.co.in', () =>
+      prisma.employmentRelationship.update({
+        where: { id: a.employment.id },
+        data: { bankAccountNumber: '000198765432', bankIfsc: 'HDFC0000456' },
+      }),
+    );
+    const run = await makeRun('2031-09', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 20_000, net: 18_000 }]);
+    const advice = await asUser('operations@kaizen.co.in', () => generateBankAdvice(run.id));
+
+    const viewed = await asUser('operations@kaizen.co.in', () => getBankAdvice(advice.id));
+    expect(viewed.rows[0].accountNumber).not.toContain('98765432');
+    expect(viewed.rows[0].accountNumber.endsWith('5432')).toBe(true);
+    expect((viewed as unknown as { fileText?: string }).fileText).toBeUndefined();
+
+    const downloaded = await asUser('operations@kaizen.co.in', () => downloadBankAdvice(advice.id));
+    expect(downloaded.csv).toContain('000198765432');
+
+    // financeHead can view and download too (holds `export`); an employee holds neither.
+    const employeeDenied = await expectReject(() => asUser('ravi@kaizen.co.in', () => getBankAdvice(advice.id)));
+    expect(employeeDenied.status).toBe(403);
   });
 });
 

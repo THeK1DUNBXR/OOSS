@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, dateTime } from '../../lib/api.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip } from '../../components/ui.js';
+import { CreateModal, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 
 interface Announcement {
   id: string;
@@ -41,10 +42,18 @@ interface PolicyDocument {
   version: string;
 }
 
+interface SurveyQuestion {
+  id: string;
+  type: 'scale' | 'text' | 'enps';
+  text: string;
+  scaleMax?: number;
+}
+
 interface PulseSurvey {
   id: string;
   title: string;
   closesAt: string;
+  questions: SurveyQuestion[];
 }
 
 interface HomeData {
@@ -57,6 +66,7 @@ interface HomeData {
 
 export function Home() {
   const qc = useQueryClient();
+  const [answering, setAnswering] = useState<PulseSurvey | null>(null);
   const home = useQuery({ queryKey: ['me-home'], queryFn: () => api.get<HomeData>('/hcm/engagement/me/home') });
 
   const ackAnnouncement = useMutation({
@@ -112,9 +122,14 @@ export function Home() {
             ) : (
               <ul className="flex flex-col gap-2">
                 {home.data.surveysToAnswer.map((s) => (
-                  <li key={s.id} className="rounded border border-ink-800 p-2">
-                    <p className="text-xs font-medium text-ink-100">{s.title}</p>
-                    <p className="text-2xs text-ink-500">Closes {dateTime(s.closesAt)}</p>
+                  <li key={s.id} className="flex items-center justify-between gap-2 rounded border border-ink-800 p-2">
+                    <div>
+                      <p className="text-xs font-medium text-ink-100">{s.title}</p>
+                      <p className="text-2xs text-ink-500">Closes {dateTime(s.closesAt)}</p>
+                    </div>
+                    <button className="btn text-2xs" onClick={() => setAnswering(s)}>
+                      Answer
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -174,6 +189,52 @@ export function Home() {
           </Card>
         </div>
       )}
+      {answering && <AnswerSurveyModal survey={answering} onClose={() => setAnswering(null)} />}
     </div>
+  );
+}
+
+function AnswerSurveyModal({ survey, onClose }: { survey: PulseSurvey; onClose: () => void }) {
+  const [values, setValues] = useState<Record<string, string>>({});
+
+  return (
+    <CreateModal
+      open
+      title={survey.title}
+      submitLabel="Submit"
+      onClose={onClose}
+      invalidate={[['me-home']]}
+      onSubmit={() =>
+        api.post(`/hcm/engagement/surveys/${survey.id}/responses`, {
+          answers: survey.questions.map((q) => ({
+            questionId: q.id,
+            value: q.type === 'text' ? values[q.id] ?? '' : Number(values[q.id] ?? 0),
+          })),
+        })
+      }
+    >
+      {survey.questions.map((q) =>
+        q.type === 'text' ? (
+          <TextArea
+            key={q.id}
+            label={q.text}
+            value={values[q.id] ?? ''}
+            onChange={(v) => setValues({ ...values, [q.id]: v })}
+            required
+          />
+        ) : (
+          <SelectInput
+            key={q.id}
+            label={q.text}
+            value={values[q.id] ?? ''}
+            onChange={(v) => setValues({ ...values, [q.id]: v })}
+            options={Array.from({ length: (q.type === 'enps' ? 10 : q.scaleMax ?? 10) + 1 }, (_, n) => ({
+              value: String(n),
+              label: String(n),
+            }))}
+          />
+        ),
+      )}
+    </CreateModal>
   );
 }

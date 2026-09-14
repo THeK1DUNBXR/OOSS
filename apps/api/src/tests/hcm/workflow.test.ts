@@ -21,6 +21,7 @@ import {
   listInbox,
   withdrawRequest,
   createDelegation,
+  listDelegations,
   _resetReportingLineTableCache,
 } from '../../domains/hcm/workflow.js';
 
@@ -283,7 +284,6 @@ describe('Rejection and invalid transitions (HCM-WORKFLOW-004, 007)', () => {
 
 describe('The Self-Dealing Bar (HCM-WORKFLOW-005, 006)', () => {
   it('HCM-WORKFLOW-005: an approver may never decide a request that is about them, even if resolution drifted onto them', async () => {
-    const { person: proposer } = await makeEmployee('self-subject-proposer');
     const type = await makeType('self-subject', [{ level: 1, resolver: 'hr_grant' }]);
 
     // A fixture principal who genuinely holds `hr_requests:approve` — the WHO
@@ -294,7 +294,11 @@ describe('The Self-Dealing Bar (HCM-WORKFLOW-005, 006)', () => {
       async (approver) => {
         const subjectEmployment = await hireExisting(approver.partyId);
 
-        const request = await asEmployee(proposer.id, () =>
+        // Raised by HR ops (an all-scope caller may raise a request about
+        // anyone) about the approver's own employment — an own-scope
+        // employee could not submit this about a colleague at all, which is
+        // exactly the scope-axis check HCM-WORKFLOW-015 covers separately.
+        const request = await asUser('operations@kaizen.co.in', () =>
           submitRequest({ typeId: type.id, subjectEmploymentId: subjectEmployment.id, payload: {} }),
         );
         // The hr_grant resolver already excludes the subject, so it opened
@@ -372,6 +376,56 @@ describe('Withdrawal and cross-tenant isolation (HCM-WORKFLOW-009, 008)', () => 
     // request genuinely exists, just not in this tenant's rows.
     const err = await expectReject(() => asSystem(otherTenant.id, () => getRequest(request.id)));
     expect(err.status).toBe(404);
+  });
+});
+
+describe('Scope-axis checks (HCM-WORKFLOW-015, 016)', () => {
+  it('HCM-WORKFLOW-015: an own-scope caller may raise an HR request about their own employment but not a colleague\'s', async () => {
+    const { employment: ownEmployment, person: requester } = await makeEmployee('scope-own');
+    const { employment: otherEmployment } = await makeEmployee('scope-colleague');
+    const type = await makeType('scope-own', [{ level: 1, resolver: 'hr_grant' }]);
+
+    const ownRequest = await asEmployee(requester.id, () =>
+      submitRequest({ typeId: type.id, subjectEmploymentId: ownEmployment.id, payload: {} }),
+    );
+    expect(ownRequest.status).toBe('submitted');
+
+    const err = await expectReject(() =>
+      asEmployee(requester.id, () => submitRequest({ typeId: type.id, subjectEmploymentId: otherEmployment.id, payload: {} })),
+    );
+    expect(err.status).toBe(403);
+  });
+
+  it('HCM-WORKFLOW-016: an own-scope caller listing delegations sees only their own, never a colleague\'s', async () => {
+    const { person: ownerA } = await makeEmployee('scope-deleg-a');
+    const { person: ownerB } = await makeEmployee('scope-deleg-b');
+    const { person: delegateTarget } = await makeEmployee('scope-deleg-target');
+
+    await asEmployee(ownerA.id, () =>
+      createDelegation({
+        toPartyId: delegateTarget.id,
+        fromDate: new Date(Date.now() - 86_400_000),
+        toDate: new Date(Date.now() + 86_400_000),
+        scope: 'all',
+      }),
+    );
+    await asEmployee(ownerB.id, () =>
+      createDelegation({
+        toPartyId: delegateTarget.id,
+        fromDate: new Date(Date.now() - 86_400_000),
+        toDate: new Date(Date.now() + 86_400_000),
+        scope: 'all',
+      }),
+    );
+
+    const asSeenByA = await asEmployee(ownerA.id, () => listDelegations());
+    expect(asSeenByA.some((d) => d.fromPartyId === ownerA.id)).toBe(true);
+    expect(asSeenByA.some((d) => d.fromPartyId === ownerB.id)).toBe(false);
+
+    // An all-scope caller (hr_ops) still sees every delegation in the tenant.
+    const asSeenByOps = await asUser('operations@kaizen.co.in', () => listDelegations());
+    expect(asSeenByOps.some((d) => d.fromPartyId === ownerA.id)).toBe(true);
+    expect(asSeenByOps.some((d) => d.fromPartyId === ownerB.id)).toBe(true);
   });
 });
 

@@ -408,7 +408,15 @@ async function alreadyRespondedAnonymously(tenantId: string, surveyId: string, p
   return Boolean(existing);
 }
 
-export async function submitSurveyResponse(surveyId: string, employmentRelationshipId: string, answers: SurveyAnswer[]) {
+/**
+ * `employmentRelationshipId` is never taken from the caller — an own-scope
+ * (`surveys:create@all`, granted so any employee can answer) caller who could
+ * name an arbitrary employment id would be submitting a response *as someone
+ * else*, on a resource `assertCan` alone cannot narrow because there is no
+ * record yet to run the WHERE axis against. It is always resolved from the
+ * caller's own active employment instead.
+ */
+export async function submitSurveyResponse(surveyId: string, answers: SurveyAnswer[]) {
   const auth = currentAuth();
   await assertCan({ resource: 'surveys', verb: 'create' });
   const survey = await prisma.pulseSurvey.findFirst({ where: { id: surveyId, tenantId: auth.tenantId } });
@@ -453,9 +461,15 @@ export async function submitSurveyResponse(surveyId: string, employmentRelations
     });
   }
 
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { tenantId: auth.tenantId, personId: auth.partyId },
+    select: { id: true },
+  });
+  if (!employment) throw ApiError.badRequest('No employment record found to respond as.');
+
   try {
     return await prisma.surveyResponse.create({
-      data: { tenantId: auth.tenantId, surveyId, employmentRelationshipId, respondentToken: null, answers: answers as never },
+      data: { tenantId: auth.tenantId, surveyId, employmentRelationshipId: employment.id, respondentToken: null, answers: answers as never },
     });
   } catch (err) {
     if ((err as { code?: string }).code === 'P2002') {
@@ -477,7 +491,19 @@ export async function pulseSurveyResults(surveyId: string) {
   const perQuestion = questions.map((q) => {
     const values = responses.map((r) => (r.answers as unknown as SurveyAnswer[]).find((a) => a.questionId === q.id)?.value).filter((v) => v !== undefined);
     if (q.type === 'text') {
-      return { questionId: q.id, text: q.text, type: q.type, responses: values.length, answers: values as string[] };
+      // Free text is the one answer shape that can read as identifying on its
+      // own — an anonymous survey's whole point is defeated if a handful of
+      // respondents' verbatim comments are handed back below the sample floor
+      // that keeps a single voice from standing out.
+      const withheld = survey.anonymous && values.length < SURVEY_MIN_SAMPLE;
+      return {
+        questionId: q.id,
+        text: q.text,
+        type: q.type,
+        responses: values.length,
+        answers: withheld ? undefined : (values as string[]),
+        withheldForAnonymity: withheld,
+      };
     }
     const numbers = values.map((v) => Number(v));
     if (q.type === 'enps') {
@@ -503,18 +529,22 @@ export async function pendingSurveysForMe() {
   const inMyAudience = open.filter((s) => inAudience(s as unknown as Audience, facts));
   if (inMyAudience.length === 0) return [];
 
-  const answered = await prisma.surveyResponse.findMany({
-    where: {
-      tenantId: auth.tenantId,
-      surveyId: { in: inMyAudience.map((s) => s.id) },
-      OR: [
-        { employmentRelationshipId: employment?.id ?? '__none__' },
-        ...inMyAudience.map((s) => ({ respondentToken: anonymousToken(auth.tenantId, s.id, auth.partyId!) })),
-      ],
-    },
+  const namedAnswered = await prisma.surveyResponse.findMany({
+    where: { tenantId: auth.tenantId, surveyId: { in: inMyAudience.map((s) => s.id) }, employmentRelationshipId: employment?.id ?? '__none__' },
     select: { surveyId: true },
   });
-  const answeredIds = new Set(answered.map((a) => a.surveyId));
+  const anonymousSurveyIds = inMyAudience.filter((s) => s.anonymous).map((s) => s.id);
+  const anonymousAnswered = anonymousSurveyIds.length
+    ? await prisma.surveyResponseDedupe.findMany({
+        where: {
+          tenantId: auth.tenantId,
+          surveyId: { in: anonymousSurveyIds },
+          dedupeHash: { in: anonymousSurveyIds.map((id) => dedupeHash(auth.tenantId, id, auth.partyId!)) },
+        },
+        select: { surveyId: true },
+      })
+    : [];
+  const answeredIds = new Set([...namedAnswered, ...anonymousAnswered].map((a) => a.surveyId));
   return inMyAudience.filter((s) => !answeredIds.has(s.id));
 }
 

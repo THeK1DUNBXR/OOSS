@@ -30,7 +30,7 @@ import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan, assertScopeAll, canSeeMoney } from '../../platform/permissions.js';
+import { assertCan, assertScopeAll, canSeeMoney, scopeFor } from '../../platform/permissions.js';
 import { transition } from '../../platform/lifecycle.js';
 import { auditWrite } from '../../platform/audit.js';
 import { findOrCreatePerson, type PersonInput } from '../identity.js';
@@ -206,7 +206,19 @@ export async function listInterviewRounds(applicationId: string) {
   await assertCan({ resource: 'interviews', verb: 'view' });
   const application = await prisma.application.findFirst({ where: { id: applicationId, tenantId: auth.tenantId } });
   if (!application) throw ApiError.notFound('Application');
-  return prisma.interviewRound.findMany({ where: { tenantId: auth.tenantId, applicationId }, orderBy: { roundNo: 'asc' } });
+
+  const rows = await prisma.interviewRound.findMany({ where: { tenantId: auth.tenantId, applicationId }, orderBy: { roundNo: 'asc' } });
+
+  // `interviews:V@own` is every employee's self-service grant (they are
+  // either the candidate or a roster interviewer) — `assertCan` above passed
+  // trivially with no record to narrow against, so the narrowing happens
+  // here: an own-scope caller sees only the rounds where they are the
+  // candidate or on that round's interviewer roster, never the whole loop for
+  // an application that is not theirs.
+  const scope = await scopeFor('interviews', 'view');
+  if (scope === 'all') return rows;
+  if (application.candidatePartyId === auth.partyId) return rows;
+  return rows.filter((r) => (r.interviewerPartyIds as unknown as string[]).includes(auth.partyId ?? ''));
 }
 
 export async function scheduleInterview(input: {
@@ -327,7 +339,15 @@ export async function listScorecards(roundId: string) {
   await assertCan({ resource: 'scorecards', verb: 'view' });
   const round = await prisma.interviewRound.findFirst({ where: { id: roundId, tenantId: auth.tenantId } });
   if (!round) throw ApiError.notFound('Interview round');
-  return prisma.interviewScorecard.findMany({ where: { tenantId: auth.tenantId, roundId } });
+
+  // `scorecards:VC@own` is the interviewer's self-service grant — it lets
+  // them file and re-read their own scorecard, never a co-panellist's
+  // recommendation. `assertCan` above had no record to narrow against, so an
+  // own-scope caller is restricted here to the one row that is theirs.
+  const scope = await scopeFor('scorecards', 'view');
+  return prisma.interviewScorecard.findMany({
+    where: { tenantId: auth.tenantId, roundId, ...(scope === 'all' ? {} : { interviewerPartyId: auth.partyId ?? '__none__' }) },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -422,6 +442,38 @@ export async function transitionOffer(id: string, event: OfferEvent, input: { no
     reasonNote: input.note ?? input.declineReason ?? null,
   });
 
+  // The offer and the underlying application are one fact moving together,
+  // not two records somebody has to remember to keep in step: sending an
+  // offer is `hiring.ts`'s EXTEND_OFFER, and accepting/declining/rescinding
+  // this offer is the matching Application event. Driven BEFORE the offer's
+  // own row is persisted below: if the application machine refuses (it is
+  // already past the matching state — a stale second offer against an
+  // application that moved on, say) the offer transition refuses with it,
+  // rather than leaving an offer marked Sent/Accepted/Declined against an
+  // application that never followed.
+  //
+  // RESCIND is the one exception: an offer can be rescinded from Draft or
+  // Approved, before it was ever sent, and the application machine has no
+  // RESCIND_OFFER transition to take from Selected in that case — there is
+  // nothing for the application to follow, so it is a no-op rather than a
+  // refusal.
+  const applicationEvent: Partial<Record<OfferEvent, 'EXTEND_OFFER' | 'ACCEPT_OFFER' | 'DECLINE_OFFER' | 'RESCIND_OFFER'>> = {
+    SEND: 'EXTEND_OFFER',
+    ACCEPT: 'ACCEPT_OFFER',
+    DECLINE: 'DECLINE_OFFER',
+    RESCIND: 'RESCIND_OFFER',
+  };
+  if (applicationEvent[event]) {
+    try {
+      await transitionApplication(offer.applicationId, applicationEvent[event]!, {
+        note: `Offer ${offer.recordCode} ${OFFER_EVENT_VERB[event]}`,
+        rejectionReason: event === 'DECLINE' ? input.declineReason : undefined,
+      });
+    } catch (err) {
+      if (event !== 'RESCIND') throw err;
+    }
+  }
+
   const updated = await prisma.offerLetter.update({
     where: { id },
     data: {
@@ -452,28 +504,6 @@ export async function transitionOffer(id: string, event: OfferEvent, input: { no
     });
   }
 
-  // The offer and the underlying application are one fact moving together,
-  // not two records somebody has to remember to keep in step: sending an
-  // offer is `hiring.ts`'s EXTEND_OFFER, and accepting/declining/rescinding
-  // this offer is the matching Application event.
-  const applicationEvent: Partial<Record<OfferEvent, 'EXTEND_OFFER' | 'ACCEPT_OFFER' | 'DECLINE_OFFER' | 'RESCIND_OFFER'>> = {
-    SEND: 'EXTEND_OFFER',
-    ACCEPT: 'ACCEPT_OFFER',
-    DECLINE: 'DECLINE_OFFER',
-    RESCIND: 'RESCIND_OFFER',
-  };
-  if (applicationEvent[event]) {
-    const { transitionApplication } = await import('../hiring.js');
-    await transitionApplication(offer.applicationId, applicationEvent[event]!, {
-      note: `Offer ${offer.recordCode} ${OFFER_EVENT_VERB[event]}`,
-      rejectionReason: event === 'DECLINE' ? input.declineReason : undefined,
-    }).catch(() => {
-      // The application may already be past the matching state — a second
-      // offer against the same application, say. The fact is still recorded
-      // on the offer itself either way.
-    });
-  }
-
   return updated;
 }
 
@@ -491,16 +521,39 @@ export async function joinAndOnboard(
 // Referrals
 // ---------------------------------------------------------------------------
 
+function maskReferralMoney<T extends { bonusAmount: unknown }>(row: T, canSee: boolean): T {
+  if (canSee) return row;
+  return { ...row, bonusAmount: null };
+}
+
 export async function listReferrals(filter: { referrerEmploymentId?: string } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'referrals', verb: 'view' });
-  return prisma.referral.findMany({
+  const canSee = await canSeeMoney('referrals');
+
+  // `referrals:VC@own` is every employee's self-service grant for the
+  // referrals they themselves raised — `assertCan` above had no record to
+  // narrow against, so without this an own-scope caller would see every
+  // colleague's referral by leaving the filter off.
+  const scope = await scopeFor('referrals', 'view');
+  const ownEmploymentIds =
+    scope === 'all'
+      ? null
+      : (await prisma.employmentRelationship.findMany({ where: { tenantId: auth.tenantId, personId: auth.partyId ?? '__none__' }, select: { id: true } })).map(
+          (e) => e.id,
+        );
+
+  const rows = await prisma.referral.findMany({
     where: {
       tenantId: auth.tenantId,
-      ...(filter.referrerEmploymentId ? { referrerEmploymentId: filter.referrerEmploymentId } : {}),
+      AND: [
+        ...(filter.referrerEmploymentId ? [{ referrerEmploymentId: filter.referrerEmploymentId }] : []),
+        ...(ownEmploymentIds ? [{ referrerEmploymentId: { in: ownEmploymentIds } }] : []),
+      ],
     },
     orderBy: { createdAt: 'desc' },
   });
+  return rows.map((r) => maskReferralMoney(r, canSee));
 }
 
 export async function createReferral(input: {
@@ -515,7 +568,19 @@ export async function createReferral(input: {
   const referrer = await prisma.employmentRelationship.findFirst({ where: { id: input.referrerEmploymentId, tenantId: auth.tenantId } });
   if (!referrer) throw ApiError.notFound('Referring employment');
 
+  // `referrals:VC@own` is every employee's self-service grant for raising
+  // their own referral — never one filed in a colleague's name. Without this
+  // check, `referrerEmploymentId` is caller-supplied and any own-scope holder
+  // could credit anyone's employment.
+  const scope = await scopeFor('referrals', 'create');
+  if (scope !== 'all' && referrer.personId !== auth.partyId) {
+    throw ApiError.forbidden('A referral is raised as yourself: the referring employment must be your own.');
+  }
+
   const { person } = await findOrCreatePerson({ ...input.candidate, source: 'referral' });
+  if (person.id === referrer.personId) {
+    throw ApiError.badRequest('The referrer and the candidate cannot be the same person.');
+  }
 
   const referral = await prisma.referral.create({
     data: {
@@ -611,6 +676,9 @@ export async function updateBackgroundVerification(id: string, input: { status?:
   await assertCan({ resource: 'background_verifications', verb: 'edit' });
   const bgv = await prisma.backgroundVerification.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!bgv) throw ApiError.notFound('Background verification');
+  if (bgv.status === 'Completed') {
+    throw ApiError.conflict('This background verification is Completed. Its outcome is final — a correction is a new check, not an edit of a closed one.');
+  }
 
   const updated = await prisma.backgroundVerification.update({
     where: { id },
@@ -689,6 +757,17 @@ export async function instantiateOnboardingTasks(employmentId: string, hireEffec
 export async function listOnboardingTasks(employmentId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'onboarding_tasks', verb: 'view' });
+
+  // `onboarding_tasks:VE@own` is the joiner's own self-service grant on their
+  // own checklist — `assertCan` above had no record to narrow against, so an
+  // own-scope caller is restricted here to an employment that is actually
+  // theirs, rather than any employment id they happen to know.
+  const scope = await scopeFor('onboarding_tasks', 'view');
+  if (scope !== 'all') {
+    const employment = await prisma.employmentRelationship.findFirst({ where: { id: employmentId, tenantId: auth.tenantId } });
+    if (!employment || employment.personId !== auth.partyId) throw ApiError.notFound('Employment');
+  }
+
   return prisma.onboardingTask.findMany({ where: { tenantId: auth.tenantId, employmentId }, orderBy: { dueDate: 'asc' } });
 }
 
@@ -697,6 +776,19 @@ export async function completeOnboardingTask(id: string, skip = false) {
   await assertCan({ resource: 'onboarding_tasks', verb: 'edit' });
   const task = await prisma.onboardingTask.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!task) throw ApiError.notFound('Onboarding task');
+
+  // `onboarding_tasks:VE@own` is the joiner's own self-service grant, and
+  // only over the tasks their own checklist assigns to them as the employee
+  // — never an HR/IT/manager task, and never a colleague's checklist.
+  // `assertCan` above had no record to narrow against.
+  const scope = await scopeFor('onboarding_tasks', 'edit');
+  if (scope !== 'all') {
+    const employment = await prisma.employmentRelationship.findFirst({ where: { id: task.employmentId, tenantId: auth.tenantId } });
+    if (!employment || employment.personId !== auth.partyId || task.assignee !== 'employee') {
+      throw ApiError.notFound('Onboarding task');
+    }
+  }
+
   if (task.status !== 'Pending') throw ApiError.conflict(`This task is already ${task.status}.`);
 
   const updated = await prisma.onboardingTask.update({

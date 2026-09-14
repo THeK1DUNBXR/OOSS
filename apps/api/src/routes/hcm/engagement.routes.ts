@@ -139,11 +139,10 @@ router.post(
   handler(async (req) => {
     const body = z
       .object({
-        employmentRelationshipId: z.string().optional().default(''),
         answers: z.array(z.object({ questionId: z.string(), value: z.union([z.number(), z.string()]) })),
       })
       .parse(req.body);
-    return submitSurveyResponse(req.params.id, body.employmentRelationshipId, body.answers);
+    return submitSurveyResponse(req.params.id, body.answers);
   }),
 );
 

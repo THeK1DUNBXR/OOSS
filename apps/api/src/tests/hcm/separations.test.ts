@@ -3,7 +3,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { asUser, asPrincipal, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { asUser, asPrincipal, expectReject, prisma, tenantId, unscopedPrisma, withFixtureRole } from '../helpers.js';
 import type { AuthContext } from '../../platform/context.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
@@ -441,5 +441,117 @@ describe('HCM-SEP-012 — an employee sees only their own resignations, never a 
     const theirResignation = (await asEmployee(theirs, () => listResignations()))[0];
     const err = await expectReject(() => asEmployee(mine, () => getResignation(theirResignation.id)));
     expect(err.status).toBe(404);
+  });
+});
+
+// ===========================================================================
+// HCM-SEP-013..017 — the scope-axis bug from the WS5 review, audited here.
+//
+// `assertCan({ resource, verb })` with no `record` only proves the verb is
+// held at *some* scope; the WHERE axis narrows only when a record is
+// supplied. Every admin-only write in this file now also asserts
+// `scopeFor(resource, verb) === 'all'` before touching anything, so an
+// `@own` grant on the same verb — today's matrix never hands the employee
+// role one, but a tenant's own custom role could — can never stand in for
+// real authority over a colleague's record. These fixture roles build
+// exactly that hypothetical: the verb, held only at `own`.
+// ===========================================================================
+
+describe('HCM-SEP-013 — accepting a resignation needs an all-scope grant, never own', () => {
+  it('refuses acceptance from a role holding `resignations:approve` at own scope', async () => {
+    const fixture = await makeEmployee('scope-accept');
+    const resignation = await asEmployee(fixture, () =>
+      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+    );
+
+    const err = await withFixtureRole(
+      { slug: 'sep_own_approver', grants: [{ resource: 'resignations', verbs: ['approve'], scope: 'own' }] },
+      (p) => expectReject(() => asPrincipal({ ...authForFixture(p) }, () => acceptResignation(resignation.id))),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/all-scope/);
+  });
+});
+
+describe('HCM-SEP-014 — clearing a department needs an all-scope grant, never own', () => {
+  it('refuses a clear from a role holding `exit_clearances:edit` at own scope', async () => {
+    const fixture = await makeEmployee('scope-clear');
+    const resignation = await asEmployee(fixture, () =>
+      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+    );
+    const accepted = await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
+    const clearances = await asUser('operations@kaizen.co.in', () => initiateClearance(accepted.offboardingId!));
+
+    const err = await withFixtureRole(
+      { slug: 'sep_own_clearer', grants: [{ resource: 'exit_clearances', verbs: ['edit'], scope: 'own' }] },
+      (p) => expectReject(() => asPrincipal(authForFixture(p), () => clearDepartment(clearances[0].id))),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/all-scope/);
+  });
+});
+
+describe('HCM-SEP-015 — opening exit clearance needs an all-scope grant, never own', () => {
+  it('refuses `initiateClearance` from a role holding `exit_clearances:create` at own scope', async () => {
+    const fixture = await makeEmployee('scope-initiate');
+    const resignation = await asEmployee(fixture, () =>
+      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+    );
+    const accepted = await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
+
+    const err = await withFixtureRole(
+      { slug: 'sep_own_initiator', grants: [{ resource: 'exit_clearances', verbs: ['create'], scope: 'own' }] },
+      (p) => expectReject(() => asPrincipal(authForFixture(p), () => initiateClearance(accepted.offboardingId!))),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/all-scope/);
+  });
+});
+
+describe('HCM-SEP-016 — issuing a no-dues certificate needs an all-scope grant, never own', () => {
+  it('refuses `issueNoDues` from a role holding `no_dues:create` at own scope', async () => {
+    const fixture = await makeEmployee('scope-nodues');
+    const resignation = await asEmployee(fixture, () =>
+      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+    );
+    const accepted = await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
+    const clearances = await asUser('operations@kaizen.co.in', () => initiateClearance(accepted.offboardingId!));
+    await asUser('operations@kaizen.co.in', async () => {
+      for (const c of clearances) await clearDepartment(c.id);
+    });
+
+    const err = await withFixtureRole(
+      { slug: 'sep_own_nodues', grants: [{ resource: 'no_dues', verbs: ['create'], scope: 'own' }] },
+      (p) => expectReject(() => asPrincipal(authForFixture(p), () => issueNoDues(accepted.offboardingId!))),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/all-scope/);
+  });
+});
+
+describe('HCM-SEP-017 — recording an alumni entry needs an all-scope grant, never own', () => {
+  it('refuses `recordAlumni` from a role holding `alumni:create` at own scope', async () => {
+    const fixture = await makeEmployee('scope-alumni');
+    const resignation = await asEmployee(fixture, () =>
+      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+    );
+    await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
+    await asUser('operations@kaizen.co.in', () => transitionEmployment(fixture.employment.id, 'REACH_LAST_WORKING_DAY'));
+
+    const err = await withFixtureRole(
+      {
+        slug: 'sep_own_alumni',
+        grants: [
+          { resource: 'alumni', verbs: ['create'], scope: 'own' },
+          // `recordAlumni` reads the employment through `assertEmploymentVisible`
+          // first, so the fixture needs to actually see it — at `all`, so the
+          // refusal below is provably the alumni-scope check and not this one.
+          { resource: 'employees', verbs: ['view'], scope: 'all' },
+        ],
+      },
+      (p) => expectReject(() => asPrincipal(authForFixture(p), () => recordAlumni({ employmentRelationshipId: fixture.employment.id }))),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/all-scope/);
   });
 });

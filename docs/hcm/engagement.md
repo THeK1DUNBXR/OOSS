@@ -135,10 +135,10 @@ still open past `slaDueAt` raises `HCM_HR_CASE_SLA_BREACHED` on its assignee
 | HCM-ENGAGEMENT-007 | The recognition leaderboard is an all-scope aggregate; an employee cannot pull it | `Recognition > 007` |
 | HCM-ENGAGEMENT-008 | An employee's recognition list never includes a colleague-to-colleague entry | `Recognition > 008` |
 | HCM-ENGAGEMENT-009 | An anonymous survey accepts one response per employee (hashed token) and reports aggregates only | `Pulse surveys > 009` |
-| HCM-ENGAGEMENT-010 | A grievance is auto-confidential, absent from the general queue, visible only via the confidential listing to an all-scope holder or the raiser | `HR helpdesk > 010` |
-| HCM-ENGAGEMENT-011 | A non-grievance case is in the general queue and follows status transitions, rejecting an invalid status | `HR helpdesk > 011` |
-| HCM-ENGAGEMENT-012 | An employee cannot reach a colleague's case by id; a cross-tenant id is never found | `HR helpdesk > 012` |
-| HCM-ENGAGEMENT-013 | A published policy's acknowledgement count is accurate and is an HR-only read | `Policy acknowledgement > 013` |
+| HCM-ENGAGEMENT-016 | A grievance is auto-confidential, absent from the general queue, visible only via the confidential listing to an all-scope holder or the raiser | `HR helpdesk > 010` |
+| HCM-ENGAGEMENT-017 | A non-grievance case is in the general queue and follows status transitions, rejecting an invalid status | `HR helpdesk > 011` |
+| HCM-ENGAGEMENT-018 | An employee cannot reach a colleague's case by id; a cross-tenant id is never found | `HR helpdesk > 012` |
+| HCM-ENGAGEMENT-019 | A published policy's acknowledgement count is accurate and is an HR-only read | `Policy acknowledgement > 013` |
 
 `npx vitest run src/tests/hcm/engagement.test.ts` — 13 passed.
 

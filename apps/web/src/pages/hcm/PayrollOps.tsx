@@ -129,7 +129,7 @@ function CalendarTab() {
     <Card
       title="Payroll calendar"
       subtitle="The cutoffs a period runs against — when attendance locks, when other input freezes, and the planned run, approve and pay dates."
-      actions={<NewButton label="Set a period's calendar" onClick={() => setOpen(true)} />}
+      actions={can('payroll_calendar:create') && <NewButton label="Set a period's calendar" onClick={() => setOpen(true)} />}
     >
       {rows.isLoading && <Loading />}
       {rows.error && <ErrorBox error={rows.error} />}

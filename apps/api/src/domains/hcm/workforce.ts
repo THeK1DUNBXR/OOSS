@@ -89,6 +89,16 @@ async function canSeeFullProfile(personId: string): Promise<boolean> {
 export async function getProfileExtension(employmentRelationshipId: string) {
   await assertCan({ resource: 'employee_profiles', verb: 'view' });
   const employment = await requireEmployment(employmentRelationshipId);
+
+  // `employee_profiles:view` is held at `@own` by the employee role — the
+  // WHERE axis only narrows when a record is supplied, and this is a read by
+  // id, so an own-scope caller reaching a colleague's record must 404 rather
+  // than fall through to the passport-masking logic below.
+  const scope = await scopeFor('employee_profiles', 'view');
+  if (scope !== 'all' && employment.personId !== currentAuth().partyId) {
+    throw ApiError.notFound('Employment relationship');
+  }
+
   const row = await prisma.employeeProfileExtension.findUnique({
     where: { employmentRelationshipId },
   });
@@ -376,10 +386,16 @@ export async function directorySearch(filter: DirectoryFilter = {}) {
   await assertCan({ resource: 'employee_profiles', verb: 'view' });
   const auth = currentAuth();
 
+  // `employee_profiles:view` is held at `@own` by the employee role. This is
+  // a list query, so `assertCan` with no record cannot narrow it — without
+  // this, an own-scope caller gets the entire company directory back.
+  const scope = await scopeFor('employee_profiles', 'view');
+
   const employments = await prisma.employmentRelationship.findMany({
     where: {
       tenantId: auth.tenantId,
       deletedAt: null,
+      ...(scope !== 'all' ? { personId: auth.partyId } : {}),
       ...(filter.status ? { status: filter.status } : {}),
       ...(filter.q
         ? { person: { fullName: { contains: filter.q, mode: 'insensitive' } } }
@@ -648,10 +664,27 @@ export async function proposeStatusChange(input: ProposeStatusChangeInput) {
 export async function listStatusChanges(employmentRelationshipId?: string) {
   await assertCan({ resource: 'employee_changes', verb: 'view' });
   const auth = currentAuth();
-  return prisma.employeeStatusChange.findMany({
-    where: { tenantId: auth.tenantId, ...(employmentRelationshipId ? { employmentRelationshipId } : {}) },
-    orderBy: { createdAt: 'desc' },
-  });
+
+  // `employee_changes:view` is held at `@own` by the employee role. This is a
+  // list query, so `assertCan` with no record cannot narrow it — without
+  // this, an own-scope caller (with or without an `employmentRelationshipId`
+  // filter naming a colleague) gets every status change in the tenant back.
+  const scope = await scopeFor('employee_changes', 'view');
+  const where: Record<string, unknown> = { tenantId: auth.tenantId };
+  if (employmentRelationshipId) where.employmentRelationshipId = employmentRelationshipId;
+
+  if (scope !== 'all') {
+    const own = await prisma.employmentRelationship.findMany({
+      where: { tenantId: auth.tenantId, personId: auth.partyId },
+      select: { id: true },
+    });
+    const ownIds = own.map((e) => e.id);
+    where.employmentRelationshipId = employmentRelationshipId
+      ? (ownIds.includes(employmentRelationshipId) ? employmentRelationshipId : ' no-match')
+      : { in: ownIds };
+  }
+
+  return prisma.employeeStatusChange.findMany({ where, orderBy: { createdAt: 'desc' } });
 }
 
 /**

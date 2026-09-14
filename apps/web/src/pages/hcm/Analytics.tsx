@@ -264,9 +264,19 @@ function DashboardTab() {
         <MetricTile label="Training completions / head" metric={d.training.completionsPerHead} format={(v) => num1(v, 2)} noActionReason="Learning records completed in 12 months, per currently-employed head." />
         <MetricTile label="Cost per hire" metric={d.costPerHire} format={(v) => money(v)} noActionReason="Not measured." />
         <MetricTile label="Gender ratio" metric={d.genderRatio} format={() => '—'} noActionReason="Not measured." />
-        <MetricTile label="Comp-ratio distribution" metric={d.compRatioDistribution} format={() => '—'} noActionReason="Not measured." />
-        <MetricTile label="Engagement eNPS" metric={d.engagementEnps} format={(v) => num1(v, 0)} noActionReason="Not measured." />
-        <MetricTile label="Open cases by SLA" metric={d.openCasesBySla} format={() => '—'} noActionReason="Not measured." />
+        <MetricTile
+          label="Comp-ratio distribution"
+          metric={d.compRatioDistribution}
+          format={(v) => `${v.reduce((s, b) => s + b.count, 0)} employees`}
+          noActionReason="Current CTC ÷ grade midpoint. See the chart below."
+        />
+        <MetricTile label="Engagement eNPS" metric={d.engagementEnps} format={(v) => num1(v, 0)} noActionReason="-100..100, from every pulse survey's eNPS question." />
+        <MetricTile
+          label="Open cases by SLA"
+          metric={d.openCasesBySla}
+          format={(v) => `${v.reduce((s, b) => s + b.count, 0)} open`}
+          noActionReason="Confidential cases excluded. See the chart below."
+        />
       </div>
 
       {/* ---- Charts ---- */}
@@ -307,6 +317,22 @@ function DashboardTab() {
             <LineChart points={d.payroll.map((p) => ({ month: p.payPeriod, gross: p.gross })) as unknown as Array<{ month: string; [k: string]: number | string }>} valueKey="gross" label="Payroll gross" />
           ) : (
             <EmptyState message="No payroll runs recorded yet, or this account cannot see payroll figures." hint="Payroll cost trend needs the payroll:view grant at all scope." />
+          )}
+        </Card>
+
+        <Card title="Comp-ratio distribution" subtitle="Current CTC ÷ this tenant's pay-grade midpoint, one bucket per employee.">
+          {d.compRatioDistribution.measured ? (
+            <CategoricalBarChart bars={d.compRatioDistribution.value.map((b) => ({ label: b.bucket, value: b.count }))} />
+          ) : (
+            <EmptyState message={d.compRatioDistribution.reason ?? NOT_MEASURED} />
+          )}
+        </Card>
+
+        <Card title="Open cases by SLA" subtitle="Open, non-confidential HR helpdesk cases, by how close they are to breaching their SLA.">
+          {d.openCasesBySla.measured ? (
+            <CategoricalBarChart bars={d.openCasesBySla.value.map((b) => ({ label: b.bucket, value: b.count }))} />
+          ) : (
+            <EmptyState message={d.openCasesBySla.reason ?? NOT_MEASURED} />
           )}
         </Card>
       </div>
