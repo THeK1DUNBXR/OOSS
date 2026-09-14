@@ -13,9 +13,10 @@
  * elsewhere in this app.
  */
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { amountInWords, computePaymentSchedule, round2 } from '@kaizen/shared';
-import type { CompanyProfileView, CourseView } from '@kaizen/shared';
+import { PAYMENT_MODES, PAYMENT_MODE_LABELS, amountInWords, computePaymentSchedule, round2 } from '@kaizen/shared';
+import type { CompanyProfileView, CourseView, PaymentMode } from '@kaizen/shared';
 import { api } from '../../lib/api.js';
 import { ErrorBox, Loading, PageHeader } from '../../components/ui.js';
 import { messageOf } from '../../components/forms.js';
@@ -53,13 +54,29 @@ interface CourseEntry {
    * re-derives a rupee discount when the fee under it changes.
    */
   overrideTotal: string;
+  /** What's collected across the counter for this course as it's raised —
+   * blank means credit, a figure less than the total is a part payment, and
+   * the full total is a full payment at issue. Either way it goes through the
+   * same receipt the platform issues for any instalment; a full payment is
+   * not a special case that skips it. */
+  amountPaidNow: string;
   addons: AddonEntry[];
+}
+
+/** What was handed to the customer for one course entry: the receipt(s) this
+ * invoice's payment produced, and the final invoice if that payment settled
+ * it — read back from the invoice document once it's raised. */
+interface DocumentedPayment {
+  invoiceId: string;
+  invoiceLabel: string;
+  receipts: Array<{ id: string; recordCode: string; amount: number; mode: string | null }>;
+  finalInvoice: { id: string; recordCode: string } | null;
 }
 
 let seq = 0;
 function blankEntry(): CourseEntry {
   seq += 1;
-  return { id: seq, courseId: '', tenureMonths: null, discountPercent: 0, overrideTotal: '', addons: [] };
+  return { id: seq, courseId: '', tenureMonths: null, discountPercent: 0, overrideTotal: '', amountPaidNow: '', addons: [] };
 }
 
 /**
@@ -118,10 +135,20 @@ export function NewInvoice() {
   const [fromTN, setFromTN] = useState<'Yes' | 'No'>('Yes');
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [entries, setEntries] = useState<CourseEntry[]>(() => [blankEntry()]);
+  /** How any "amount received now" above was taken. One mode for the sale —
+   * a counter splitting one student's payment across two modes records it as
+   * two separate receipts, which is what taking the second instalment later
+   * on the Invoices screen is for. */
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
+  const [paymentReference, setPaymentReference] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [printBatch, setPrintBatch] = useState<{ docs: LedgerInvoiceData[]; key: number } | null>(null);
+  /** The receipts (and, where a course was paid off, the final invoice) the
+   * last "Save & Print" produced — shown after the entries reset for the
+   * next student, so a link to the actual document isn't lost with them. */
+  const [justRaised, setJustRaised] = useState<DocumentedPayment[]>([]);
 
   const courseById = useMemo(() => new Map((courses ?? []).map((c) => [c.id, c])), [courses]);
 
@@ -312,6 +339,7 @@ export function NewInvoice() {
           });
         }
 
+        const amountNow = round2(Number(preview.entry.amountPaidNow) || 0);
         const invoice = await api.post<{ id: string }>('/finance/invoices', {
           personId,
           interState,
@@ -321,12 +349,37 @@ export function NewInvoice() {
           division: 'education',
           issue: true,
           lines,
+          // A full payment taken as the invoice is raised goes through this
+          // same field — it is not a separate step, and it still gets its own
+          // receipt (and, since it settles the invoice, the final invoice too).
+          ...(amountNow > 0
+            ? { payment: { amount: amountNow, mode: paymentMode, reference: paymentReference.trim() || undefined } }
+            : {}),
         });
         invoiceIds.push(invoice.id);
       }
 
       const docs = await Promise.all(
-        invoiceIds.map((id) => api.get<{ recordCode: string | null; label: string; ledger: unknown }>(`/finance/invoices/${id}/document`)),
+        invoiceIds.map((id) =>
+          api.get<{
+            recordCode: string | null;
+            label: string;
+            ledger: unknown;
+            receipts: Array<{ id: string; recordCode: string; amount: number; mode: string | null }>;
+            statements: Array<{ id: string; recordCode: string; settled: boolean }>;
+          }>(`/finance/invoices/${id}/document`),
+        ),
+      );
+
+      setJustRaised(
+        docs
+          .map((doc, i) => ({
+            invoiceId: invoiceIds[i],
+            invoiceLabel: doc.label,
+            receipts: doc.receipts,
+            finalInvoice: doc.statements.find((s) => s.settled) ?? doc.statements[0] ?? null,
+          }))
+          .filter((d) => d.receipts.length > 0),
       );
 
       const ledgerDocs: LedgerInvoiceData[] = docs.map((doc) => {
@@ -351,6 +404,7 @@ export function NewInvoice() {
       setFromTN('Yes');
       setPlaceOfSupply('');
       setEntries([blankEntry()]);
+      setPaymentReference('');
     } catch (e) {
       setSubmitError(messageOf(e));
     } finally {
@@ -496,6 +550,29 @@ export function NewInvoice() {
                         </div>
                       )}
 
+                      <div className="ki-field">
+                        <label>
+                          Amount received now <span style={{ fontWeight: 400, color: 'var(--ki-muted)' }}>(optional — blank leaves it on credit)</span>
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          placeholder="e.g. full amount at enrolment"
+                          value={entry.amountPaidNow}
+                          onChange={(e) => updateEntry(entry.id, { amountPaidNow: e.target.value })}
+                        />
+                      </div>
+                      {entry.amountPaidNow !== '' && Number(entry.amountPaidNow) > 0 && (
+                        <div className="ki-hint" style={{ marginTop: -8, marginBottom: 8 }}>
+                          A receipt is issued for this the moment the invoice is saved
+                          {Number(entry.amountPaidNow) >=
+                          (invoicePreviews.find((p) => p.entry.id === entry.id)?.grandTotal ?? Infinity)
+                            ? ' — this pays it off in full, so the final invoice is raised for it automatically.'
+                            : '.'}
+                        </div>
+                      )}
+
                       {entry.addons.map((a, aidx) => (
                         <div className="ki-addon-row" key={a.id}>
                           <div className="ki-addon-row-head">
@@ -539,6 +616,33 @@ export function NewInvoice() {
                   and its own tax split — even though you&apos;re entering them together for the same student.
                 </div>
 
+                {entries.some((e) => Number(e.amountPaidNow) > 0) && (
+                  <>
+                    <hr style={{ border: 'none', borderTop: '1px solid var(--ki-line)', margin: '14px 0' }} />
+                    <div className="ki-field-row">
+                      <div className="ki-field">
+                        <label>How was it taken?</label>
+                        <select value={paymentMode} onChange={(e) => setPaymentMode(e.target.value as PaymentMode)}>
+                          {PAYMENT_MODES.map((m) => (
+                            <option key={m} value={m}>
+                              {PAYMENT_MODE_LABELS[m]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="ki-field">
+                        <label>Reference <span style={{ fontWeight: 400, color: 'var(--ki-muted)' }}>(optional)</span></label>
+                        <input
+                          type="text"
+                          placeholder="UTR, UPI reference or cheque number"
+                          value={paymentReference}
+                          onChange={(e) => setPaymentReference(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
                 {submitError && (
                   <p className="ki-hint" style={{ color: 'var(--ki-red)', marginTop: 10 }}>
                     {submitError}
@@ -547,6 +651,39 @@ export function NewInvoice() {
                 <button className="ki-btn-primary" disabled={!canSubmit} onClick={handleSaveAndPrint}>
                   {submitting ? 'Saving…' : 'Save & Print all'}
                 </button>
+
+                {justRaised.length > 0 && (
+                  <div className="ki-hint" style={{ marginTop: 12, padding: 10, border: '1px solid var(--ki-line)', borderRadius: 4 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--ki-black)' }}>
+                      Receipts issued from that sale
+                    </div>
+                    {justRaised.map((d) => (
+                      <div key={d.invoiceId} style={{ marginBottom: 6 }}>
+                        <b>{d.invoiceLabel}</b>
+                        {' — '}
+                        {d.receipts.map((r, i) => (
+                          <span key={r.id}>
+                            {i > 0 && ', '}
+                            <Link to={`/finance/receipts/${r.id}`} style={{ color: 'var(--ki-navy)' }}>
+                              {r.recordCode}
+                            </Link>
+                          </span>
+                        ))}
+                        {d.finalInvoice && (
+                          <>
+                            {' · settled — '}
+                            <Link to={`/finance/final-invoices/${d.finalInvoice.id}`} style={{ color: 'var(--ki-navy)' }}>
+                              final invoice {d.finalInvoice.recordCode}
+                            </Link>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    <button className="ki-btn-remove" onClick={() => setJustRaised([])}>
+                      Dismiss
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

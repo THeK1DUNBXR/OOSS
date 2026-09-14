@@ -10,12 +10,14 @@
  * structurally excluded from these projections entirely, never merely nulled.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  PAYMENT_MODES,
   PAYMENT_MODE_LABELS,
   PAYMENT_TYPE_LABELS,
+  round2,
   type InvoiceView,
   type PaymentMode,
   type PaymentType,
@@ -35,9 +37,25 @@ import {
   StatusChip,
   Tabs,
 } from '../components/ui.js';
-import { NewButton, messageOf } from '../components/forms.js';
+import { CreateModal, MoneyInput, NewButton, Row, SelectInput, TextInput, messageOf } from '../components/forms.js';
 import { NewPayment } from '../components/createForms.js';
-import { CollectPayment, InvoiceEditor } from '../components/invoiceEditor.js';
+import { InvoiceEditor } from '../components/invoiceEditor.js';
+
+/** What `POST /finance/invoices/:id/collect` hands back — the receipt it just
+ * issued and, when that instalment cleared the balance, the final invoice
+ * raised for it in the same act. */
+interface CollectPaymentResult {
+  receipt: { id: string; recordCode: string };
+  finalInvoice: { id: string; recordCode: string } | null;
+}
+
+/** What the take-payment action's success state names: which invoice, and the
+ * documents that were just produced against it. */
+interface JustCollected {
+  invoiceLabel: string;
+  receipt: { id: string; recordCode: string };
+  finalInvoice: { id: string; recordCode: string } | null;
+}
 
 export function Invoices() {
   const qc = useQueryClient();
@@ -46,6 +64,7 @@ export function Invoices() {
   const [editing, setEditing] = useState<InvoiceView | null>(null);
   const [collecting, setCollecting] = useState<InvoiceView | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [justCollected, setJustCollected] = useState<JustCollected | null>(null);
 
   const { data = [], isLoading, error } = useQuery({
     queryKey: ['invoices'],
@@ -75,12 +94,45 @@ export function Invoices() {
       />
       <InvoiceEditor open={creating} onClose={() => setCreating(false)} />
       <InvoiceEditor open={Boolean(editing)} invoice={editing} onClose={() => setEditing(null)} />
-      {collecting && <CollectPayment invoice={collecting} onClose={() => setCollecting(null)} />}
+      {collecting && (
+        <TakePayment
+          invoice={collecting}
+          onClose={() => setCollecting(null)}
+          onCollected={(result, invoice) =>
+            setJustCollected({ invoiceLabel: invoice.label, receipt: result.receipt, finalInvoice: result.finalInvoice })
+          }
+        />
+      )}
 
       {actionError && (
         <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
           {actionError}
         </p>
+      )}
+
+      {justCollected && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded border-l-2 border-band-strong bg-band-strong/10 px-3 py-2 text-sm text-band-strong">
+          <span>
+            Receipt <b className="mono">{justCollected.receipt.recordCode}</b> issued against {justCollected.invoiceLabel}.
+            {justCollected.finalInvoice && (
+              <>
+                {' '}This settles it — final invoice <b className="mono">{justCollected.finalInvoice.recordCode}</b> was raised
+                automatically.
+              </>
+            )}
+          </span>
+          <Link className="btn-ghost" to={`/finance/receipts/${justCollected.receipt.id}`}>
+            Open the receipt
+          </Link>
+          {justCollected.finalInvoice && (
+            <Link className="btn-ghost" to={`/finance/final-invoices/${justCollected.finalInvoice.id}`}>
+              Open the final invoice
+            </Link>
+          )}
+          <button className="btn-ghost" onClick={() => setJustCollected(null)}>
+            Dismiss
+          </button>
+        </div>
       )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
@@ -265,6 +317,100 @@ export function Invoices() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Takes an instalment against an invoice and issues the receipt for it — one
+ * call, because at a counter it is one act. Owns its own success handling
+ * (`onCollected`) rather than the shared `CollectPayment` this replaced,
+ * because the receipt number — and, when the instalment settles the invoice,
+ * the final invoice raised for it automatically — is the point of the
+ * action and has to be named back to whoever just took the money.
+ */
+function TakePayment({
+  invoice,
+  onClose,
+  onCollected,
+}: {
+  invoice: InvoiceView | null;
+  onClose: () => void;
+  onCollected: (result: CollectPaymentResult, invoice: InvoiceView) => void;
+}) {
+  const outstanding = invoice?.outstanding ?? 0;
+  const [amount, setAmount] = useState('');
+  const [mode, setMode] = useState<PaymentMode>('cash');
+  const [reference, setReference] = useState('');
+
+  useEffect(() => {
+    setAmount(outstanding > 0 ? String(outstanding) : '');
+    setReference('');
+  }, [invoice?.id, outstanding]);
+
+  if (!invoice) return null;
+
+  const taking = round2(Number(amount || 0));
+  const after = round2(Math.max(outstanding - taking, 0));
+
+  return (
+    <CreateModal
+      open
+      title={`Receipt an instalment against ${invoice.label}`}
+      submitLabel="Issue the receipt"
+      onClose={onClose}
+      invalidate={[
+        ['invoices'],
+        ['payments'],
+        ['receipts'],
+        ['receivables'],
+        ['learner-timeline'],
+        ['invoice-document'],
+      ]}
+      onCreated={(result) => onCollected(result as CollectPaymentResult, invoice)}
+      onSubmit={() =>
+        api.post<CollectPaymentResult>(`/finance/invoices/${invoice.id}/collect`, {
+          amount: taking,
+          mode,
+          reference: reference.trim() || null,
+          receivedAt: new Date().toISOString(),
+        })
+      }
+    >
+      <dl className="grid gap-1 rounded border border-ink-800 bg-ink-950 p-3 text-xs">
+        <div className="flex justify-between font-medium">
+          <span className="text-ink-400">Total payable</span>
+          <span className="tabular-nums">{money(invoice.total ?? 0)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-ink-400">Already paid</span>
+          <span className="tabular-nums">{money(invoice.allocated ?? 0)}</span>
+        </div>
+        <div className="flex justify-between text-band-watch">
+          <span>Still outstanding</span>
+          <span className="tabular-nums">{money(outstanding)}</span>
+        </div>
+      </dl>
+
+      <Row>
+        <MoneyInput label="Taking now" required value={amount} onChange={setAmount} />
+        <SelectInput
+          label="How"
+          value={mode}
+          onChange={setMode}
+          options={PAYMENT_MODES.map((m) => ({ value: m, label: PAYMENT_MODE_LABELS[m] }))}
+        />
+      </Row>
+      <TextInput label="Reference" value={reference} onChange={setReference} placeholder="UTR, UPI reference or cheque number" />
+
+      <p className="text-2xs text-ink-500">
+        {after > 0
+          ? `A part payment: the receipt will say ₹${taking.toLocaleString('en-IN')} of ₹${(invoice.total ?? 0).toLocaleString('en-IN')}, leaving ₹${after.toLocaleString('en-IN')} owed.`
+          : 'This clears the invoice. The receipt will say so, and the final invoice naming every receipt is raised for it automatically.'}
+      </p>
+      <p className="text-2xs text-ink-600">
+        The invoice is not changed. A receipt is issued for what is paid.
+      </p>
+    </CreateModal>
   );
 }
 

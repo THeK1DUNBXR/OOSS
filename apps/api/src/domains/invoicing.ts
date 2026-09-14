@@ -808,15 +808,24 @@ export async function createInvoice(input: InvoiceInput) {
     confidentiality: 'confidential',
   });
 
-  if (payingNow > 0) {
-    await collectInvoicePayment(invoice.id, input.payment!, { atIssue: true });
-  }
+  // A full payment taken as the invoice is handed over is not a special case
+  // that skips the receipt — it is the payment collected now, through the same
+  // path as any instalment, so it gets the same receipt (and, since it settles
+  // the invoice in the same act, the same automatic final invoice).
+  const collected = payingNow > 0 ? await collectInvoicePayment(invoice.id, input.payment!, { atIssue: true }) : null;
 
   await rehydrateReceivablesFor(invoice.organizationId ?? invoice.accountId);
-  return prisma.invoice.findFirstOrThrow({
+  const row = await prisma.invoice.findFirstOrThrow({
     where: { id: invoice.id },
     include: { lines: { orderBy: { position: 'asc' } }, receipts: true },
   });
+  return {
+    ...row,
+    /** The receipt issued for the payment taken at creation, if any. */
+    receipt: collected ? { id: collected.receipt.id, recordCode: collected.receipt.recordCode } : null,
+    /** Set when that payment happened to settle the invoice on the spot. */
+    finalInvoice: collected?.finalInvoice ?? null,
+  };
 }
 
 async function writeLines(tx: DbTx, invoiceId: string, priced: PricedLine[]) {
@@ -1012,15 +1021,21 @@ export async function issueInvoiceDraft(
     confidentiality: 'confidential',
   });
 
-  if (options.payment && options.payment.amount > 0) {
-    await collectInvoicePayment(invoiceId, options.payment, { atIssue: true });
-  }
+  const collected =
+    options.payment && options.payment.amount > 0
+      ? await collectInvoicePayment(invoiceId, options.payment, { atIssue: true })
+      : null;
 
   await rehydrateReceivablesFor(issued.organizationId ?? issued.accountId);
-  return prisma.invoice.findFirstOrThrow({
+  const row = await prisma.invoice.findFirstOrThrow({
     where: { id: invoiceId },
     include: { lines: { orderBy: { position: 'asc' } }, receipts: true },
   });
+  return {
+    ...row,
+    receipt: collected ? { id: collected.receipt.id, recordCode: collected.receipt.recordCode } : null,
+    finalInvoice: collected?.finalInvoice ?? null,
+  };
 }
 
 /**
@@ -1279,18 +1294,32 @@ export async function collectInvoicePayment(
   }
 
   await rehydrateReceivablesFor(invoice.organizationId ?? invoice.accountId);
+
+  // The moment a receipt brings the balance to zero, the statement naming every
+  // receipt is raised in the same breath — full payment at issue included, since
+  // that receipt settles the invoice too. Imported dynamically because the final
+  // invoice reads receipts and invoices back (`receipts.ts` imports from this
+  // file already); doing it at call time rather than at module load avoids
+  // that cycle mattering.
+  let finalInvoice: { id: string; recordCode: string } | null = null;
+  if (settled) {
+    const { raiseFinalInvoice } = await import('./receipts.js');
+    const final = await raiseFinalInvoice(invoice.id, {});
+    finalInvoice = { id: final.id, recordCode: final.recordCode };
+  }
+
   return {
     payment: result.payment,
     receipt: result.receipt,
     invoice: result.invoice,
     totals: { payable: totals.payable, allocated, outstanding: balanceAfter },
     /**
-     * Whether the instalments are done, which is when somebody raises the final
-     * invoice. Returned so the surface can offer it at the moment it becomes the
-     * obvious next thing to do, rather than making it something you have to know
-     * to go and look for.
+     * Whether the instalments are done. Kept alongside `finalInvoice` below
+     * rather than removed: it is the fact that decided whether one was raised.
      */
     readyForFinalInvoice: settled,
+    /** Set the instant this receipt settled the invoice — the statement raised for it. */
+    finalInvoice,
   };
 }
 

@@ -773,6 +773,11 @@ export interface InvoiceView {
   /** True only while it is a draft. An issued invoice is corrected by a credit note. */
   editable: boolean;
   gstFilingId: string | null;
+  /** How many receipts have been issued against it. Part payments live there, not here. */
+  receiptCount: number;
+  /** The final invoice currently standing against it, if one has been raised. */
+  finalInvoiceId: string | null;
+  finalInvoiceCode: string | null;
   lines: InvoiceLineView[];
 }
 
