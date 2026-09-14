@@ -21,6 +21,7 @@ import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { currentCompensation } from './employment.js';
 import { runHooks } from '../platform/hooks.js';
+import { computeInstruction } from './compliance/payroll.js';
 
 const PAY_PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -103,7 +104,7 @@ export async function openPayrollRun(payPeriod: string) {
   const recordCode = await nextRecordCode('PRN');
 
   const run = await prisma.payrollRun.create({
-    data: { tenantId: auth.tenantId, recordCode, payPeriod },
+    data: { tenantId: auth.tenantId, recordCode, payPeriod, preparedById: auth.partyId },
   });
 
   let grossTotal = 0;
@@ -192,6 +193,15 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
   const run = await prisma.payrollRun.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!run) throw ApiError.notFound('Payroll run');
 
+  if (event === 'COMPUTE') {
+    // Statutory lines (workstream E) are filled before the totals are rolled
+    // up below. Whoever ran Compute is recorded as the preparer — the last
+    // person to touch the figures is who the Self-Dealing Bar bars from
+    // approving them.
+    await computeInstruction(id);
+    await prisma.payrollRun.update({ where: { id }, data: { preparedById: auth.partyId } });
+  }
+
   if (event === 'APPROVE') {
     // Nobody approves the run they prepared, and the statutory lines must be computed (workstream E).
     const instructions = await prisma.payrollInstruction.findMany({ where: { payrollRunId: id } });
@@ -213,7 +223,7 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
     reasonNote: note ?? null,
   });
 
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     // Recompute the totals from the instructions at the moment of computing,
     // so an edited instruction is reflected in the figure that gets approved.
     if (event === 'COMPUTE') {
@@ -234,7 +244,7 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
 
     await tx.payrollInstruction.updateMany({ where: { payrollRunId: id }, data: { status: result.to } });
 
-    const updated = await tx.payrollRun.update({
+    return tx.payrollRun.update({
       where: { id },
       data: {
         status: result.to,
@@ -242,12 +252,18 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
         ...(event === 'DISBURSE' ? { disbursedAt: new Date() } : {}),
       },
     });
-    if (event === 'APPROVE') {
-      const instructions = await tx.payrollInstruction.findMany({ where: { payrollRunId: id } });
-      await runHooks('payroll_run.approved', { run: updated, instructions });
-    }
-    return updated;
   });
+
+  if (event === 'APPROVE') {
+    // Issuing payslips (workstream E) reads the company profile and takes a
+    // document number per instruction — real work, not a fast row update —
+    // so it runs after the state change commits rather than inside the same
+    // transaction, where it would risk the interactive-transaction timeout.
+    const instructions = await prisma.payrollInstruction.findMany({ where: { payrollRunId: id } });
+    await runHooks('payroll_run.approved', { run: updated, instructions });
+  }
+
+  return updated;
 }
 
 /** Monthly pay cost by division — what the Command Center cuts revenue against. */
