@@ -36,6 +36,7 @@ import {
 } from '../components/ui.js';
 import { NewButton } from '../components/forms.js';
 import { EditEmployeeProfile, NewLeaveRequest, NewRequisition, NewSkill } from '../components/createForms.js';
+import { humanize } from '../lib/words.js';
 
 // ---------------------------------------------------------------------------
 // Shared pieces
@@ -355,7 +356,7 @@ export function Employees() {
                     </td>
                     <td className="num">{date(e.hireEffectiveDate)}</td>
                     <td>
-                      <StatusChip status={e.status} tone={tone(e.status)} />
+                      <StatusChip status={humanize(e.status)} tone={tone(e.status)} />
                     </td>
                     <td>
                       <StatusChip
@@ -484,7 +485,7 @@ export function EmployeeDetail() {
             <button className="btn-ghost" onClick={() => setEditOpen(true)}>
               Edit
             </button>
-            <StatusChip status={data.status} tone={tone(data.status)} />
+            <StatusChip status={humanize(data.status)} tone={tone(data.status)} />
           </>
         }
       />
@@ -514,11 +515,11 @@ export function EmployeeDetail() {
                         <Division division={a.position.orgUnit.division} />
                       </div>
                     </td>
-                    <td>{a.reasonCode}</td>
+                    <td>{humanize(a.reasonCode)}</td>
                     <td className="num">{date(a.effectiveFrom)}</td>
                     <td className="num">{a.effectiveTo ? date(a.effectiveTo) : '—'}</td>
                     <td>
-                      <StatusChip status={a.rowStatus} tone={a.rowStatus === 'Effective' ? 'good' : 'neutral'} />
+                      <StatusChip status={humanize(a.rowStatus)} tone={a.rowStatus === 'Effective' ? 'good' : 'neutral'} />
                     </td>
                   </tr>
                 ))}
@@ -563,7 +564,7 @@ export function EmployeeDetail() {
                       </td>
                       <td className="num">{date(c.effectiveFrom)}</td>
                       <td>
-                        <StatusChip status={c.status} tone={tone(c.status)} />
+                        <StatusChip status={humanize(c.status)} tone={tone(c.status)} />
                       </td>
                       <td>{c.linkedAssignmentId ? <span className="chip-gold">linked</span> : '—'}</td>
                       <td>
@@ -600,7 +601,7 @@ export function EmployeeDetail() {
                       <td>{g.description}</td>
                       <td>{g.periodLabel ?? '—'}</td>
                       <td>
-                        <StatusChip status={g.status} tone={tone(g.status)} />
+                        <StatusChip status={humanize(g.status)} tone={tone(g.status)} />
                       </td>
                     </tr>
                   ))}
@@ -677,12 +678,12 @@ export function EmployeeDetail() {
                   <div key={c.id} className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-sm">{c.skillName ?? '—'}</p>
-                      <p className="text-2xs text-ink-500">
-                        last evidenced {relative(c.lastEvidencedAt)}
-                        {c.decayedConfidence !== undefined && ` · confidence now ${c.decayedConfidence.toFixed(2)}`}
-                      </p>
+                      <p className="text-2xs text-ink-500">last evidenced {relative(c.lastEvidencedAt)}</p>
                     </div>
-                    <StatusChip status={c.tier} tone={c.state === 'active' ? (TIER_TONE[c.tier] ?? 'neutral') : 'bad'} />
+                    <StatusChip
+                      status={humanize(c.tier)}
+                      tone={c.state === 'active' ? (TIER_TONE[c.tier] ?? 'neutral') : 'bad'}
+                    />
                   </div>
                 ))}
               </div>
@@ -690,7 +691,7 @@ export function EmployeeDetail() {
           </Card>
 
           {data.onboarding && (
-            <Card title="Onboarding" actions={<StatusChip status={data.onboarding.status} tone={tone(data.onboarding.status)} />}>
+            <Card title="Onboarding" actions={<StatusChip status={humanize(data.onboarding.status)} tone={tone(data.onboarding.status)} />}>
               <Transitions
                 collection="onboardings"
                 id={data.onboarding.id}
@@ -702,7 +703,7 @@ export function EmployeeDetail() {
           )}
 
           {data.offboarding && (
-            <Card title="Offboarding" actions={<StatusChip status={data.offboarding.status} tone={tone(data.offboarding.status)} />}>
+            <Card title="Offboarding" actions={<StatusChip status={humanize(data.offboarding.status)} tone={tone(data.offboarding.status)} />}>
               <Transitions
                 collection="offboardings"
                 id={data.offboarding.id}
@@ -819,7 +820,7 @@ export function Leave() {
                     <td className="num">{r.days}</td>
                     <td className="max-w-[16rem] truncate">{r.reason ?? '—'}</td>
                     <td>
-                      <StatusChip status={r.status} tone={tone(r.status)} />
+                      <StatusChip status={humanize(r.status)} tone={tone(r.status)} />
                     </td>
                     <td>
                       <Transitions
@@ -968,7 +969,7 @@ export function Attendance() {
                     <td className="num">{hours(r.workedMinutes)}</td>
                     <td className="num">{r.overtimeMinutes > 0 ? hours(r.overtimeMinutes) : '—'}</td>
                     <td>
-                      <StatusChip status={r.status} tone={tone(r.status)} />
+                      <StatusChip status={humanize(r.status)} tone={tone(r.status)} />
                       {r.missingPunch && <span className="ml-1 chip-neutral">missing punch</span>}
                     </td>
                     <td className="max-w-[20rem] truncate">{r.note ?? '—'}</td>
@@ -1115,7 +1116,7 @@ export function Payroll() {
                       <Money value={r.netTotal} />
                     </td>
                     <td>
-                      <StatusChip status={r.status} tone={tone(r.status)} />
+                      <StatusChip status={humanize(r.status)} tone={tone(r.status)} />
                     </td>
                     <td>
                       <Transitions
@@ -1172,7 +1173,7 @@ export function Payroll() {
                       <Money value={i.netAmount} />
                     </td>
                     <td>
-                      <StatusChip status={i.status} tone={tone(i.status)} />
+                      <StatusChip status={humanize(i.status)} tone={tone(i.status)} />
                     </td>
                   </tr>
                 ))}
@@ -1310,7 +1311,7 @@ export function Hiring() {
                     <td className="num">{r.targetStartDate ? date(r.targetStartDate) : '—'}</td>
                     <td className="num">{r.openApplications}</td>
                     <td>
-                      <StatusChip status={r.status} tone={tone(r.status)} />
+                      <StatusChip status={humanize(r.status)} tone={tone(r.status)} />
                     </td>
                     <td>
                       <Transitions
@@ -1366,11 +1367,11 @@ export function Hiring() {
                       </td>
                       <td>{a.requisition.position.job.title}</td>
                       <td>
-                        <StatusChip status={a.status} tone={tone(a.status)} />
+                        <StatusChip status={humanize(a.status)} tone={tone(a.status)} />
                         {a.rejectionReason && <div className="mt-0.5 text-2xs text-ink-500">{a.rejectionReason}</div>}
                       </td>
                       <td>
-                        <StatusChip status={a.funnelBucket} tone={a.funnelBucket === 'hired' ? 'good' : 'neutral'} />
+                        <StatusChip status={humanize(a.funnelBucket)} tone={a.funnelBucket === 'hired' ? 'good' : 'neutral'} />
                       </td>
                       <td>
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -1501,8 +1502,7 @@ export function Skills() {
         </div>
         {skill && (
           <p className="mt-3 text-2xs text-ink-500">
-            Confidence in {skill.name} halves every {skill.halfLifeMonths} months without fresh evidence. The decay is
-            worked out when the claim is read, never stored — otherwise it would be stale between nightly runs.
+            Confidence in {skill.name} halves every {skill.halfLifeMonths} months without fresh evidence.
           </p>
         )}
       </Card>
@@ -1531,7 +1531,7 @@ export function Skills() {
                 <tr key={`${c.partyId}-${c.skillName}`}>
                   <td className="font-semibold">{c.fullName}</td>
                   <td>
-                    <StatusChip status={c.tier} tone={TIER_TONE[c.tier] ?? 'neutral'} />
+                    <StatusChip status={humanize(c.tier)} tone={TIER_TONE[c.tier] ?? 'neutral'} />
                   </td>
                   <td>{relative(c.lastEvidencedAt)}</td>
                 </tr>

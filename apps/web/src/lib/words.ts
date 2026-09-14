@@ -171,6 +171,11 @@ export const UNROUTED_WORDS: Record<string, string> = {
     'A rule matched, but nobody suitable is free. Assign it by hand.',
 };
 
+export function unroutedWord(code: string | null | undefined): string {
+  if (!code) return '';
+  return UNROUTED_WORDS[code] ?? words(code);
+}
+
 // ---------------------------------------------------------------------------
 // Money and dates, in words rather than notation
 // ---------------------------------------------------------------------------
@@ -194,5 +199,34 @@ export function words(value: string | null | undefined): string {
   const s = value.replace(/_/g, ' ').trim();
   const sentence = s.charAt(0).toUpperCase() + s.slice(1);
   // Terms the business writes a particular way, which sentence-casing breaks.
+  return sentence.replace(/\bMou\b/g, 'MoU').replace(/\bSla\b/g, 'SLA').replace(/\bAi\b/g, 'AI');
+}
+
+/**
+ * Turns a raw identifier — `snake_case`, `PascalCase` or `camelCase` — into a
+ * plain sentence, whatever shape the record's lifecycle machine or schema
+ * happens to write it in. `PendingHire` and `pending_hire` both come out
+ * "Pending hire"; a run of capitals (an acronym such as `FF` in
+ * `FFSettlementPending`) is left alone rather than broken up letter by letter.
+ *
+ * This is the one to reach for on a raw slug straight off the wire — a status,
+ * a reason code, a field name — where nothing more specific applies.
+ */
+export function humanize(value: string | null | undefined): string {
+  if (!value) return '';
+  const spaced = value
+    .replace(/_/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .trim();
+  if (!spaced) return '';
+  const sentence = spaced
+    .split(/\s+/)
+    .map((w, i) => {
+      if (/^[A-Z]{2,}$/.test(w)) return w; // an acronym — leave it be
+      const lower = w.toLowerCase();
+      return i === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+    })
+    .join(' ');
   return sentence.replace(/\bMou\b/g, 'MoU').replace(/\bSla\b/g, 'SLA').replace(/\bAi\b/g, 'AI');
 }

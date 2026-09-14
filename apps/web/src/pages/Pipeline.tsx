@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PipelineView } from '@kaizen/shared';
 import { api, money, titleCase } from '../lib/api.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip } from '../components/ui.js';
+import { humanize } from '../lib/words.js';
 
 interface BoardCard {
   id: string;
@@ -193,8 +194,8 @@ export function Pipeline() {
                     <p className="mt-0.5 text-2xs text-ink-600">SLA {col.stageAgeBudgetDays}d</p>
                   )}
                   {col.requiredFields.length > 0 && (
-                    <p className="mt-0.5 text-2xs text-ink-600" title="Fields that must be non-null before a transition INTO this stage is accepted.">
-                      requires {col.requiredFields.join(', ')}
+                    <p className="mt-0.5 text-2xs text-ink-600" title="Must be filled in before a card can move into this stage.">
+                      requires {col.requiredFields.map((f) => humanize(f)).join(', ')}
                     </p>
                   )}
                 </div>
@@ -226,7 +227,7 @@ export function Pipeline() {
                           <span className="text-2xs font-medium tabular-nums text-ink-300">{money(c.expectedValue, c.currency)}</span>
                         )}
                         {c.forecastCategory && (
-                          <StatusChip status={c.forecastCategory} tone={FORECAST_TONE[c.forecastCategory] ?? 'neutral'} />
+                          <StatusChip status={humanize(c.forecastCategory)} tone={FORECAST_TONE[c.forecastCategory] ?? 'neutral'} />
                         )}
                         {col.pipelinePosition >= 50 && !c.wonGateSatisfied && (
                           <span className="chip border-band-watch/40 text-band-watch" title="Cannot mark won until a contract or MoU reference exists.">

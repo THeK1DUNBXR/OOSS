@@ -26,6 +26,7 @@ import {
 import { NewButton } from '../components/forms.js';
 import { NewOffering } from '../components/createForms.js';
 import { useSession } from '../lib/session.js';
+import { humanize } from '../lib/words.js';
 
 // ---------------------------------------------------------------------------
 // Offering catalog
@@ -59,7 +60,7 @@ export function Offerings() {
         <div className="mb-4 rounded-lg border border-band-watch/40 bg-band-watch/5 px-4 py-2.5">
           <p className="text-xs text-band-watch">
             {gaps} active offering{gaps === 1 ? '' : 's'} can be selected but not priced — a coverage gap, not a normal
-            state. DET-CRM-OFF-01 raises this to the catalog owner.
+            state. This is raised to the catalogue owner automatically.
           </p>
         </div>
       )}
@@ -77,7 +78,7 @@ export function Offerings() {
                   <span className="mono">{o.offeringCode}</span> · {titleCase(o.vertical)}
                 </span>
               }
-              actions={<StatusChip status={o.status} tone={o.status === 'active' ? 'good' : o.status === 'retired' ? 'neutral' : 'warn'} />}
+              actions={<StatusChip status={humanize(o.status)} tone={o.status === 'active' ? 'good' : o.status === 'retired' ? 'neutral' : 'warn'} />}
             >
               <p className="text-2xs text-ink-400">{o.description}</p>
 
@@ -235,7 +236,7 @@ export function Quotes() {
               actions={
                 <>
                   <StatusChip
-                    status={q.status}
+                    status={humanize(q.status)}
                     tone={q.status === 'issued' ? 'good' : q.status === 'blocked' ? 'bad' : 'neutral'}
                   />
                   {(q.status === 'draft' || q.status === 'blocked') && (
@@ -363,7 +364,7 @@ export function Proposals() {
                   <td className="text-2xs text-ink-400">{date(p.validUntil)}</td>
                   <td>
                     <StatusChip
-                      status={p.response}
+                      status={humanize(p.response)}
                       tone={p.response === 'accepted' ? 'good' : p.response === 'rejected' ? 'bad' : 'neutral'}
                     />
                     {p.stalledNotifiedAt && (
@@ -466,7 +467,7 @@ export function Agreements() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <RecordCode code={a.recordCode} />
                     <StatusChip
-                      status={a.status}
+                      status={humanize(a.status)}
                       tone={
                         ['active', 'signed'].includes(a.status)
                           ? 'good'
@@ -511,8 +512,8 @@ export function Agreements() {
                       </span>
                     )}
                     {a.expiryNotifiedDays.length > 0 && (
-                      <span title="Reminders already sent. Each one is only ever sent once, however many times the check runs.">
-                        ladder: {a.expiryNotifiedDays.join(', ')}d
+                      <span title="Reminders already sent, each only ever once.">
+                        reminded at {a.expiryNotifiedDays.join(', ')}d before expiry
                       </span>
                     )}
                   </div>
@@ -618,8 +619,8 @@ export function Approvals() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="chip border-accent/40 text-accent-soft">{s.action}</span>
-                    <StatusChip status={s.state} tone={s.state === 'escalated' ? 'warn' : 'neutral'} />
+                    <span className="chip border-accent/40 text-accent-soft">{humanize(s.action)}</span>
+                    <StatusChip status={humanize(s.state)} tone={s.state === 'escalated' ? 'warn' : 'neutral'} />
                     {s.slaBreached && <span className="chip border-band-critical/40 text-band-critical">SLA breached</span>}
                     {s.selfDealingBarTripped && (
                       <span className="chip border-band-watch/40 text-band-watch">self-dealing bar</span>
@@ -705,7 +706,7 @@ export function WinLoss() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <RecordCode code={r.recordCode} />
-                        <StatusChip status={r.outcome} tone={r.outcome === 'won' ? 'good' : 'bad'} />
+                        <StatusChip status={humanize(r.outcome)} tone={r.outcome === 'won' ? 'good' : 'bad'} />
                         {r.mandatory && (
                           <span className="chip border-accent/40 text-accent-soft" title={`Mandatory under: ${r.mandatoryBasis}`}>
                             mandatory
@@ -715,8 +716,8 @@ export function WinLoss() {
                         {r.completedAt && <span className="chip border-band-strong/40 text-band-strong">complete</span>}
                       </div>
                       <p className="mt-1.5 text-xs font-medium text-ink-100">{r.subjectLabel}</p>
-                      <p className="text-2xs text-ink-500">
-                        {r.mandatoryBasis === 'not_mandatory' ? 'Below both thresholds' : `Gate: ${r.mandatoryBasis}`}
+                      <p className="text-2xs text-ink-500" title={r.mandatoryBasis}>
+                        {r.mandatoryBasis === 'not_mandatory' ? 'Below both thresholds' : humanize(r.mandatoryBasis)}
                         {r.commercialValueSnapshot !== null && ` · ${money(r.commercialValueSnapshot)} frozen at close`}
                       </p>
                       {r.competitorName && <p className="mt-1 text-2xs text-ink-400">Lost to {r.competitorName} at {r.realLostStage}</p>}
@@ -805,9 +806,11 @@ function CompleteReviewModal({ review, onClose }: { review: WinLossReviewView | 
       <div className="space-y-3">
         <p className="text-2xs text-ink-400">{review.subjectLabel}</p>
         {review.mandatory && (
-          <p className="rounded border border-accent/40 bg-accent/5 px-3 py-2 text-2xs text-accent-soft">
-            Mandatory under: {review.mandatoryBasis}. A lesson is required — the gate is an OR, computed once and
-            frozen at terminal-state entry.
+          <p
+            className="rounded border border-accent/40 bg-accent/5 px-3 py-2 text-2xs text-accent-soft"
+            title={review.mandatoryBasis}
+          >
+            Mandatory — {humanize(review.mandatoryBasis)}. A lesson is required before this can be completed.
           </p>
         )}
         <div>

@@ -40,6 +40,7 @@ import {
 } from '../components/ui.js';
 import { AddBillingDetails, AddSchoolDetails, NewInstitution, NewOrganization } from '../components/createForms.js';
 import { useSession } from '../lib/session.js';
+import { humanize } from '../lib/words.js';
 
 const STATUS_TONE: Record<string, 'neutral' | 'good' | 'accent' | 'warn'> = {
   mou: 'good',
@@ -195,7 +196,7 @@ function BodyList({
               <div className="flex items-start justify-between gap-2">
                 <RecordCode code={o.recordCode} />
                 <StatusChip
-                  status={o.computedRelationshipStatus}
+                  status={humanize(o.computedRelationshipStatus)}
                   tone={STATUS_TONE[o.computedRelationshipStatus] ?? 'neutral'}
                 />
               </div>
@@ -394,10 +395,7 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
               </span>
             ))}
         {data.account && <span className="chip border-ink-700 text-ink-400">We invoice them</span>}
-        <StatusChip status={data.computedRelationshipStatus} tone={STATUS_TONE[data.computedRelationshipStatus] ?? 'neutral'} />
-        <span className="text-2xs text-ink-500" title="Worked out when you ask for it, never stored.">
-          computed at query time
-        </span>
+        <StatusChip status={humanize(data.computedRelationshipStatus)} tone={STATUS_TONE[data.computedRelationshipStatus] ?? 'neutral'} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -475,7 +473,7 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
                           <span className="mono">{st.recordCode}</span> · {st.cohortName}
                         </p>
                       </div>
-                      <StatusChip status={st.status} tone={st.status === 'completed' ? 'good' : 'neutral'} />
+                      <StatusChip status={humanize(st.status)} tone={st.status === 'completed' ? 'good' : 'neutral'} />
                     </li>
                   ))}
                 </ul>
@@ -500,8 +498,8 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="chip border-ink-700 text-ink-400">{r.strength}</span>
-                      <StatusChip status={r.status} tone={r.status === 'active' ? 'good' : 'neutral'} />
+                      <span className="chip border-ink-700 text-ink-400">{humanize(r.strength)}</span>
+                      <StatusChip status={humanize(r.status)} tone={r.status === 'active' ? 'good' : 'neutral'} />
                     </div>
                   </li>
                 ))}
