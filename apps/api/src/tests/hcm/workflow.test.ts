@@ -29,6 +29,11 @@ let fixtureSeq = 0;
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  // A clean slate for delegation resolution: a prior interrupted run of this
+  // suite (e.g. a debugging re-run against this same persistent test DB) can
+  // leave a real DelegationOfAuthority row behind, which would silently
+  // reroute every `hr_grant`/`manager` resolution in every other test here.
+  await unscopedPrisma.delegationOfAuthority.deleteMany({ where: { tenantId: TENANT } });
   // Scaffold gap (see docs/hcm/workflow.md, "Wanted from the scaffold"):
   // grants.ts (owned by the scaffold, not editable by this workstream) gives
   // `finance_head` only `view` on `hr_requests`, not `approve` — so a

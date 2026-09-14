@@ -38,7 +38,7 @@ async function employmentFor(email: string) {
 /** A fresh Open requisition, built the way `hiring.ts`'s own tests do. */
 async function makeOpenRequisition() {
   fixtureSeq += 1;
-  return asUser('hr@kaizen.co.in', async () => {
+  return asUser('operations@kaizen.co.in', async () => {
     const position = await prisma.position.create({
       data: {
         tenantId: TENANT,
@@ -60,7 +60,7 @@ async function makeOpenRequisition() {
 async function makeSelectedApplication(requisitionId: string) {
   fixtureSeq += 1;
   const stamp = `${Date.now()}-${fixtureSeq}`;
-  return asUser('hr@kaizen.co.in', async () => {
+  return asUser('operations@kaizen.co.in', async () => {
     const { createApplication } = await import('../../domains/hiring.js');
     const candidate = await createCandidate({
       fullName: `Fixture Candidate ${stamp}`,
@@ -83,7 +83,7 @@ describe('HCM-RECR-001 — a job posting follows Draft → Published → Closed'
   it('publishes against an open requisition and refuses to skip straight to Closed from Draft', async () => {
     const requisition = await makeOpenRequisition();
 
-    await asUser('hr@kaizen.co.in', async () => {
+    await asUser('operations@kaizen.co.in', async () => {
       const posting = await createJobPosting({
         requisitionId: requisition.id,
         title: `Fixture Role ${Date.now()}`,
@@ -115,7 +115,7 @@ describe('HCM-RECR-002 — a candidate resolves through findOrCreatePerson', () 
     const stamp = Date.now();
     const email = `fixture.dedupe.${stamp}@example.com`;
 
-    await asUser('hr@kaizen.co.in', async () => {
+    await asUser('operations@kaizen.co.in', async () => {
       const first = await createCandidate({ fullName: `Dedupe Test ${stamp}`, primaryEmail: email, source: 'direct' });
       const second = await createCandidate({ fullName: `Dedupe Test ${stamp}`, primaryEmail: email, source: 'direct' });
       expect(second.person.id).toBe(first.person.id);
@@ -127,7 +127,7 @@ describe('HCM-RECR-002 — a candidate resolves through findOrCreatePerson', () 
 
   it('money is withheld rather than shown to a viewer without the candidates financial grant', async () => {
     const stamp = Date.now();
-    await asUser('hr@kaizen.co.in', async () => {
+    await asUser('operations@kaizen.co.in', async () => {
       await createCandidate({
         fullName: `CTC Test ${stamp}`,
         primaryEmail: `fixture.ctc.${stamp}@example.com`,
@@ -151,7 +151,7 @@ describe('HCM-RECR-002 — a candidate resolves through findOrCreatePerson', () 
 describe('HCM-RECR-003 — an interview round is scheduled only while the application is being screened or interviewed', () => {
   it('refuses to schedule against a merely Applied candidate', async () => {
     const requisition = await makeOpenRequisition();
-    await asUser('hr@kaizen.co.in', async () => {
+    await asUser('operations@kaizen.co.in', async () => {
       const { createApplication } = await import('../../domains/hiring.js');
       const candidate = await createCandidate({ fullName: `Too Early ${Date.now()}`, primaryEmail: `fixture.early.${Date.now()}@example.com` });
       const application = await createApplication({ requisitionId: requisition.id, candidatePartyId: candidate.person.id });
@@ -173,9 +173,9 @@ describe('HCM-RECR-003 — an interview round is scheduled only while the applic
 describe('HCM-RECR-004 — a scorecard may only be submitted by a roster interviewer, once', () => {
   it('rejects a non-roster interviewer and a duplicate submission from the same one', async () => {
     const requisition = await makeOpenRequisition();
-    const interviewer = await employmentFor('hr@kaizen.co.in');
+    const interviewer = await employmentFor('operations@kaizen.co.in');
 
-    const round = await asUser('hr@kaizen.co.in', async () => {
+    const round = await asUser('operations@kaizen.co.in', async () => {
       const { createApplication } = await import('../../domains/hiring.js');
       const candidate = await createCandidate({ fullName: `Panel Candidate ${Date.now()}`, primaryEmail: `fixture.panel.${Date.now()}@example.com` });
       const application = await createApplication({ requisitionId: requisition.id, candidatePartyId: candidate.person.id });
@@ -197,7 +197,7 @@ describe('HCM-RECR-004 — a scorecard may only be submitted by a roster intervi
     );
     expect(forbidden.message).toMatch(/roster/);
 
-    await asUser('hr@kaizen.co.in', async () => {
+    await asUser('operations@kaizen.co.in', async () => {
       const scorecard = await submitScorecard({ roundId: round.id, competencyScores: { coding: 4 }, recommendation: 'hire' });
       expect(scorecard.recommendation).toBe('hire');
 
@@ -218,15 +218,15 @@ describe('HCM-RECR-005 — an offer is approved by someone other than its propos
     const requisition = await makeOpenRequisition();
     const { application } = await makeSelectedApplication(requisition.id);
 
-    const offer = await asUser('hr@kaizen.co.in', () =>
+    const offer = await asUser('operations@kaizen.co.in', () =>
       createOffer({ applicationId: application.id, ctc: 1_200_000, joiningDate: new Date(Date.now() + 30 * 86_400_000), validUntil: new Date(Date.now() + 14 * 86_400_000) }),
     );
     expect(offer.status).toBe('Draft');
     expect(offer.recordCode).toMatch(/^OFR-/);
 
-    await asUser('hr@kaizen.co.in', () => transitionOffer(offer.id, 'SUBMIT'));
+    await asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'SUBMIT'));
 
-    const approved = await asUser('controller@kaizen.co.in', () => transitionOffer(offer.id, 'APPROVE'));
+    const approved = await asUser('finance@kaizen.co.in', () => transitionOffer(offer.id, 'APPROVE'));
     expect(approved.status).toBe('Approved');
     expect(approved.approvedByPartyId).not.toBeNull();
   });
@@ -252,11 +252,11 @@ describe('HCM-RECR-007 — an offer machine refuses an out-of-order transition',
     const requisition = await makeOpenRequisition();
     const { application } = await makeSelectedApplication(requisition.id);
 
-    const offer = await asUser('hr@kaizen.co.in', () =>
+    const offer = await asUser('operations@kaizen.co.in', () =>
       createOffer({ applicationId: application.id, ctc: 1_000_000, joiningDate: new Date(Date.now() + 30 * 86_400_000), validUntil: new Date(Date.now() + 14 * 86_400_000) }),
     );
 
-    const refusal = await expectReject(() => asUser('hr@kaizen.co.in', () => transitionOffer(offer.id, 'SEND')));
+    const refusal = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'SEND')));
     expect(refusal.message).toMatch(/does not accept|not one of its transitions/);
   });
 });
@@ -266,25 +266,25 @@ describe('HCM-RECR-008 — an accepted offer advances the underlying Application
     const requisition = await makeOpenRequisition();
     const { application } = await makeSelectedApplication(requisition.id);
 
-    await asUser('hr@kaizen.co.in', () =>
+    await asUser('operations@kaizen.co.in', () =>
       createOnboardingTemplate({ title: `Fixture laptop issue ${Date.now()}`, assignee: 'it', dueOffsetDays: 2 }),
     );
 
-    const offer = await asUser('hr@kaizen.co.in', async () => {
+    const offer = await asUser('operations@kaizen.co.in', async () => {
       const created = await createOffer({ applicationId: application.id, ctc: 1_100_000, joiningDate: new Date(Date.now() + 20 * 86_400_000), validUntil: new Date(Date.now() + 14 * 86_400_000) });
       return transitionOffer(created.id, 'SUBMIT');
     });
-    await asUser('controller@kaizen.co.in', () => transitionOffer(offer.id, 'APPROVE'));
-    const sent = await asUser('hr@kaizen.co.in', () => transitionOffer(offer.id, 'SEND'));
+    await asUser('finance@kaizen.co.in', () => transitionOffer(offer.id, 'APPROVE'));
+    const sent = await asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'SEND'));
     expect(sent.status).toBe('Sent');
 
-    const accepted = await asUser('hr@kaizen.co.in', () => transitionOffer(offer.id, 'ACCEPT'));
+    const accepted = await asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'ACCEPT'));
     expect(accepted.status).toBe('Accepted');
 
     const updatedApplication = await prisma.application.findFirstOrThrow({ where: { id: application.id } });
     expect(updatedApplication.status).toBe('OfferAccepted');
 
-    const result = await asUser('hr@kaizen.co.in', () =>
+    const result = await asUser('operations@kaizen.co.in', () =>
       joinAndOnboard(application.id, { hireEffectiveDate: new Date() }),
     );
     expect(result.tasksCreated).toBeGreaterThan(0);
@@ -294,7 +294,7 @@ describe('HCM-RECR-008 — an accepted offer advances the underlying Application
     // the checklist — the idempotency guard `instantiateOnboardingTasks`
     // itself applies, independent of `joinFromApplication`'s own refusal to
     // re-join an application that is no longer OfferAccepted.
-    const again = await asUser('hr@kaizen.co.in', () => instantiateOnboardingTasks(result.employment.id, new Date()));
+    const again = await asUser('operations@kaizen.co.in', () => instantiateOnboardingTasks(result.employment.id, new Date()));
     expect(again.length).toBe(result.tasksCreated);
   });
 });
@@ -305,7 +305,7 @@ describe('HCM-RECR-008 — an accepted offer advances the underlying Application
 
 describe('HCM-RECR-009 — a record from another tenant is a 404, not a 403', () => {
   it('an offer id that does not belong to this tenant is not found', async () => {
-    const refusal = await expectReject(() => asUser('hr@kaizen.co.in', () => transitionOffer('not-a-real-id', 'SUBMIT')));
+    const refusal = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionOffer('not-a-real-id', 'SUBMIT')));
     expect(refusal.message).toMatch(/Offer letter/);
   });
 });
@@ -316,10 +316,10 @@ describe('HCM-RECR-009 — a record from another tenant is a 404, not a 403', ()
 
 describe('HCM-RECR-010 — a referral follows Submitted → Shortlisted → Hired → BonusPaid', () => {
   it('refuses to jump straight from Submitted to BonusPaid', async () => {
-    const referrer = await employmentFor('hr@kaizen.co.in');
+    const referrer = await employmentFor('operations@kaizen.co.in');
     const stamp = Date.now();
 
-    const referral = await asUser('hr@kaizen.co.in', () =>
+    const referral = await asUser('operations@kaizen.co.in', () =>
       createReferral({
         referrerEmploymentId: referrer.id,
         candidate: { fullName: `Referred Person ${stamp}`, primaryEmail: `fixture.referral.${stamp}@example.com` },
@@ -328,14 +328,14 @@ describe('HCM-RECR-010 — a referral follows Submitted → Shortlisted → Hire
     );
     expect(referral.status).toBe('Submitted');
 
-    const badJump = await expectReject(() => asUser('hr@kaizen.co.in', () => updateReferralStatus(referral.id, 'BonusPaid')));
+    const badJump = await expectReject(() => asUser('operations@kaizen.co.in', () => updateReferralStatus(referral.id, 'BonusPaid')));
     expect(badJump.message).toMatch(/cannot move/);
 
-    const shortlisted = await asUser('hr@kaizen.co.in', () => updateReferralStatus(referral.id, 'Shortlisted'));
+    const shortlisted = await asUser('operations@kaizen.co.in', () => updateReferralStatus(referral.id, 'Shortlisted'));
     expect(shortlisted.status).toBe('Shortlisted');
-    const hired = await asUser('hr@kaizen.co.in', () => updateReferralStatus(referral.id, 'Hired'));
+    const hired = await asUser('operations@kaizen.co.in', () => updateReferralStatus(referral.id, 'Hired'));
     expect(hired.status).toBe('Hired');
-    const paid = await asUser('hr@kaizen.co.in', () => updateReferralStatus(referral.id, 'BonusPaid'));
+    const paid = await asUser('operations@kaizen.co.in', () => updateReferralStatus(referral.id, 'BonusPaid'));
     expect(paid.status).toBe('BonusPaid');
   });
 });
@@ -350,16 +350,16 @@ describe('HCM-RECR-011 — a background verification needs an application or an 
     const { application } = await makeSelectedApplication(requisition.id);
 
     const badRequest = await expectReject(() =>
-      asUser('hr@kaizen.co.in', () => createBackgroundVerification({ vendor: 'Fixture Vendor', checks: ['identity'] })),
+      asUser('operations@kaizen.co.in', () => createBackgroundVerification({ vendor: 'Fixture Vendor', checks: ['identity'] })),
     );
     expect(badRequest.message).toMatch(/needs either/);
 
-    const bgv = await asUser('hr@kaizen.co.in', () =>
+    const bgv = await asUser('operations@kaizen.co.in', () =>
       createBackgroundVerification({ applicationId: application.id, vendor: 'Fixture Vendor', checks: ['identity', 'address'] }),
     );
     expect(bgv.status).toBe('Pending');
 
-    const completed = await asUser('hr@kaizen.co.in', () => updateBackgroundVerification(bgv.id, { status: 'Completed', outcome: 'clear' }));
+    const completed = await asUser('operations@kaizen.co.in', () => updateBackgroundVerification(bgv.id, { status: 'Completed', outcome: 'clear' }));
     expect(completed.status).toBe('Completed');
     expect(completed.outcome).toBe('clear');
     expect(completed.completedAt).not.toBeNull();
@@ -372,12 +372,12 @@ describe('HCM-RECR-011 — a background verification needs an application or an 
 
 describe('HCM-RECR-012 — the recruiting funnel is an all-scope aggregate', () => {
   it('refuses a principal who holds the resource only at a narrower scope', async () => {
-    const refusal = await expectReject(() => asUser('divya@kaizen.co.in', () => recruitingFunnel()));
+    const refusal = await expectReject(() => asUser('employee@kaizen.co.in', () => recruitingFunnel()));
     expect(refusal.status).toBe(403);
   });
 
   it('a holder of the all-scope grant gets numbers back, not an exception', async () => {
-    const funnel = await asUser('hr@kaizen.co.in', () => recruitingFunnel());
+    const funnel = await asUser('operations@kaizen.co.in', () => recruitingFunnel());
     expect(funnel).toHaveProperty('sourceEffectiveness');
     expect(Array.isArray(funnel.sourceEffectiveness)).toBe(true);
   });
