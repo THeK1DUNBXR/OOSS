@@ -29,6 +29,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { seedCompliance } from './compliance/index.js';
 import { AI_TOUCHPOINTS, EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../platform/db.js';
 import { asSystem } from '../platform/context.js';
@@ -159,6 +160,16 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'delivery', position: 50, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
 
   // ---- Set up ----------------------------------------------------------
+  // ---- Compliance (docs/plan/compliance.md) --------------------------------
+  { nodeKey: 'cmp_calendar', label: 'Compliance Calendar', icon: 'clock', path: '/compliance/calendar', group: 'compliance', position: 40, requiredPermission: 'compliance_obligations:V', synonyms: ['due dates', 'filings', 'deadlines', 'obligations', 'gstr due', 'tds due', 'pf due'] },
+  { nodeKey: 'cmp_gst', label: 'GST Compliance', icon: 'scale', path: '/compliance/gst', group: 'compliance', position: 41, requiredPermission: 'gst_filings:V', synonyms: ['reverse charge', 'e-invoice', 'irn', 'debit note', 'gstr-2b', 'itc reconciliation', 'exempt supply'] },
+  { nodeKey: 'cmp_tax', label: 'Income Tax & TDS', icon: 'calculator', path: '/compliance/tax', group: 'compliance', position: 42, requiredPermission: 'tds:V', synonyms: ['tds', 'tan', 'challan', '26q', '24q', 'form 16', 'advance tax', 'msme', '43b(h)'] },
+  { nodeKey: 'cmp_books', label: 'Audit & Periods', icon: 'clipboard', path: '/compliance/books', group: 'compliance', position: 43, requiredPermission: 'accounting_periods:V', synonyms: ['period close', 'lock period', 'audit trail', 'trial balance', 'schedule iii', 'depreciation schedule', 'tally export'] },
+  { nodeKey: 'cmp_payroll', label: 'Payroll Statutory', icon: 'wallet', path: '/compliance/payroll', group: 'compliance', position: 44, requiredPermission: 'payslips:V', synonyms: ['pf', 'esi', 'professional tax', 'payslip', 'ecr', 'gratuity', 'bonus', 'ctc'] },
+  { nodeKey: 'cmp_labour', label: 'Labour & Conduct', icon: 'users', path: '/compliance/labour', group: 'compliance', position: 45, requiredPermission: 'holidays:V', synonyms: ['holidays', 'posh', 'internal committee', 'disciplinary', 'appointment letter', 'relieving letter', 'muster roll', 'registers'] },
+  { nodeKey: 'cmp_privacy', label: 'Data Protection', icon: 'badge', path: '/compliance/privacy', group: 'compliance', position: 46, requiredPermission: 'consents:V', synonyms: ['dpdp', 'consent', 'privacy notice', 'erasure', 'breach', 'data request', 'guardian consent'] },
+  { nodeKey: 'cmp_corporate', label: 'Corporate & Security', icon: 'building', path: '/compliance/corporate', group: 'compliance', position: 47, requiredPermission: 'corporate_registers:V', synonyms: ['board resolution', 'register of members', 'directors', 'mca', 'aoc-4', 'mgt-7', 'refund', 'certificate', 'mfa', 'stamp duty', 'e-sign', 'firc'] },
+
   { nodeKey: 'data_import', label: 'Import Data', icon: 'inbox', path: '/data/import', group: 'setup', position: 50, requiredPermission: 'imports:V', synonyms: ['tally', 'bank statement', 'excel', 'csv', 'upload', 'migrate', 'bring data in'] },
   { nodeKey: 'gov_decisions', label: 'Decisions', icon: 'scale', path: '/command/decisions', group: 'setup', position: 51, requiredPermission: 'decisions:V' },
   { nodeKey: 'gov_exceptions', label: 'Problems', icon: 'alert', path: '/exceptions', group: 'setup', position: 52, requiredPermission: 'exceptions:V', synonyms: ['issues', 'attention', 'exceptions'] },
@@ -884,6 +895,7 @@ export async function seedBootstrap(): Promise<{
     await seedSurfaces();
     await seedAgents();
     await seedLeaveTypes();
+    await seedCompliance();
     accounts = await seedFoundingAccounts();
   });
 

@@ -33,6 +33,14 @@ import { Executive } from './pages/Executive.js';
 import ImportPage from './pages/Import.js';
 import Start from './pages/Start.js';
 import { Ledger, Payables, Budget, Assets } from './pages/Books.js';
+import { ComplianceCalendar } from './pages/compliance/Calendar.js';
+import { ComplianceGst } from './pages/compliance/Gst.js';
+import { ComplianceTax } from './pages/compliance/Tax.js';
+import { ComplianceBooks } from './pages/compliance/Books.js';
+import { CompliancePayroll } from './pages/compliance/Payroll.js';
+import { ComplianceLabour } from './pages/compliance/Labour.js';
+import { CompliancePrivacy } from './pages/compliance/Privacy.js';
+import { ComplianceCorporate } from './pages/compliance/Corporate.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -143,6 +151,23 @@ function Routed() {
         <Route path="/education/queries" element={<LearnerQueue />} />
         <Route path="/delivery/projects" element={<Projects />} />
         <Route path="/delivery/projects/:id" element={<Projects />} />
+
+        <Route path="/compliance/calendar" element={<ComplianceCalendar />} />
+        <Route path="/compliance/calendar/:id" element={<ComplianceCalendar />} />
+        <Route path="/compliance/gst" element={<ComplianceGst />} />
+        <Route path="/compliance/gst/:id" element={<ComplianceGst />} />
+        <Route path="/compliance/tax" element={<ComplianceTax />} />
+        <Route path="/compliance/tax/:id" element={<ComplianceTax />} />
+        <Route path="/compliance/books" element={<ComplianceBooks />} />
+        <Route path="/compliance/books/:id" element={<ComplianceBooks />} />
+        <Route path="/compliance/payroll" element={<CompliancePayroll />} />
+        <Route path="/compliance/payroll/:id" element={<CompliancePayroll />} />
+        <Route path="/compliance/labour" element={<ComplianceLabour />} />
+        <Route path="/compliance/labour/:id" element={<ComplianceLabour />} />
+        <Route path="/compliance/privacy" element={<CompliancePrivacy />} />
+        <Route path="/compliance/privacy/:id" element={<CompliancePrivacy />} />
+        <Route path="/compliance/corporate" element={<ComplianceCorporate />} />
+        <Route path="/compliance/corporate/:id" element={<ComplianceCorporate />} />
 
         <Route path="/admin/pipelines" element={<PipelineAdmin />} />
         <Route path="/admin/territories" element={<TerritoryAdmin />} />

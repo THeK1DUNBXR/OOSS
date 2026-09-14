@@ -28,6 +28,7 @@ import { detectOverdueReviews } from '../domains/winLoss.js';
 import { sweepStaleMergeCandidates } from '../domains/identity.js';
 import { computeAndPersistAll } from '../domains/health.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
+import { COMPLIANCE_JOBS } from './compliance/index.js';
 
 export interface JobResult {
   processed: number;
@@ -176,6 +177,7 @@ export const ALL_JOBS: JobDefinition[] = [
       return { processed: results.length, notified: 0, skippedIdempotent: 0, errors: [] };
     },
   },
+  ...COMPLIANCE_JOBS,
 ];
 
 // ---------------------------------------------------------------------------

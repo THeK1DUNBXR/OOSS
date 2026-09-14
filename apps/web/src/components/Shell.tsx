@@ -52,6 +52,7 @@ const GROUP_LABELS: Record<string, string> = {
   // parties, and only one of them is buying anything on any given day.
   customers: 'Who We Deal With',
   delivery: 'Selling & Delivering',
+  compliance: 'Compliance',
   setup: 'Set up',
 };
 
@@ -63,7 +64,7 @@ const GROUP_LABELS: Record<string, string> = {
  * permanently in the sidebar was most of what made this product feel heavy.
  * It opens on click and stays open for the session.
  */
-const COLLAPSED_BY_DEFAULT = new Set(['setup']);
+const COLLAPSED_BY_DEFAULT = new Set(['compliance', 'setup']);
 
 export function Shell() {
   const { user, nav, signOut } = useSession();
@@ -229,7 +230,7 @@ export function Shell() {
 
 // Fixed group order, so the shell reads the way the work reads: your own
 // surface first, then the domains, then the platform underneath them.
-const GROUP_ORDER = ['main', 'money', 'people', 'customers', 'delivery', 'setup'];
+const GROUP_ORDER = ['main', 'money', 'people', 'customers', 'delivery', 'compliance', 'setup'];
 
 /** The sidebar's content, shared between its desktop in-flow rendering and
  *  its mobile drawer overlay — one nav, two placements. */
