@@ -621,6 +621,10 @@ export const RECORD_TYPE_CODES = [
   // draft reference can never be mistaken for a tax invoice number — the tax
   // series has to stay consecutive, which means a draft cannot take one.
   'DRF',
+  // Data protection (workstream G): a data-principal request and a breach
+  // register entry, each a case a data principal or the company refers to by
+  // number.
+  'DPR', 'BRC',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

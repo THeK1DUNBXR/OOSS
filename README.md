@@ -373,7 +373,7 @@ keep the strict manual posture.
 
 ```bash
 ./scripts/test-db.sh          # provision the suite's own database
-cd apps/api && pnpm test      # 372 tests
+cd apps/api && pnpm test      # 541 tests
 ```
 
 The suite runs against a real PostgreSQL database, inside real request
@@ -447,3 +447,7 @@ of keeping its own copy of the diagram.
   and what invoicing owes the GST returns
 - [docs/operations.md](docs/operations.md) — running, seeding, changing the
   permission matrix
+- [docs/plan/compliance.md](docs/plan/compliance.md) — the compliance plan:
+  GST, income tax and TDS, books and audit, payroll statutory, labour law,
+  data protection, corporate and security, and the calendar that runs them;
+  what each workstream built is in [docs/compliance/](docs/compliance/)

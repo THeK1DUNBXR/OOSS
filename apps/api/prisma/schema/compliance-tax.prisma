@@ -1,0 +1,270 @@
+// Compliance workstream C — income tax and TDS (docs/plan/compliance.md).
+// Owned entirely by this workstream; see schema/README.md for the split.
+
+/// A dated TDS section-rate row. Rates, thresholds and the PAN-missing rate
+/// change by notification on their own timeline (Sec 206AA), so they live
+/// here rather than as a constant in domain code — the same discipline
+/// `finance.ts` already applies to the GST set-off order.
+///
+/// `section` names the specific sub-case, because the rate itself differs by
+/// payee type within one statutory section (194C individual vs company).
+/// Confirm every rate below against the Finance Act in force before relying
+/// on it for a live filing — this is the platform's best-known figure, not a
+/// substitute for the auditor's sign-off the open question in the plan asks for.
+model TdsSectionRate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// 194C_IND | 194C_COMP | 194J_PROF | 194J_TECH | 194H | 194I_LAND | 194I_PLANT | 194Q | 192
+  section String
+
+  /// A human label — "194C — contractor, individual/HUF" — so a rate row
+  /// reads on its own rather than through a lookup table in a screen.
+  label String
+
+  ratePercent Decimal @db.Decimal(5, 2)
+  /// Below this on a single transaction, nothing is deducted.
+  thresholdPerTransaction Decimal @default(0) @db.Decimal(14, 2)
+  /// Once cumulative payments to the payee in the FY cross this, the
+  /// exemption stops applying even to transactions under the per-transaction line.
+  thresholdPerFy Decimal @default(0) @db.Decimal(14, 2)
+  /// Sec 206AA: the flat rate that applies when the payee has furnished no PAN,
+  /// overriding the section rate whenever it is higher.
+  panMissingRatePercent Decimal @default(20) @db.Decimal(5, 2)
+
+  effectiveFrom DateTime
+  note          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, section, effectiveFrom])
+  @@index([tenantId, section])
+  @@map("tds_section_rates")
+}
+
+/// Maps a ledger category to the TDS section its bills default to, so the
+/// before-pay hook can tell "no section was ever considered" apart from
+/// "somebody looked and it does not apply here". Tenant-editable: the
+/// mapping is a fact about how this company's chart of accounts lines up
+/// with the statute, not a fixed table.
+model TdsApplicabilityRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  categoryId String
+  section    String
+  active     Boolean @default(true)
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, categoryId])
+  @@map("tds_applicability_rules")
+}
+
+/// A deliberate decision on one vendor bill's TDS: computed and applied, or
+/// waived. Waiving with no reason is not a decision the before-pay hook will
+/// accept — `reason` is required whenever `decision` is not `applied`.
+model TdsDecision {
+  id       String @id @default(cuid())
+  tenantId String
+
+  billId String
+
+  /// applied | waived_certificate | not_applicable
+  decision       String
+  reason         String?
+  certificateRef String?
+  decidedById    String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, billId])
+  @@map("tds_decisions")
+}
+
+/// One challan: the deposit of TDS deducted across a section group for a
+/// month, paid to the government by the 7th (30 April for March). Status
+/// moves pending -> paid only against a BSR code and challan number — the
+/// same discipline `GstFiling` applies to an ARN.
+model TdsChallan {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// YYYY-MM the liability was deducted in.
+  month String
+  /// The section group deposited together — vendor sections use the section
+  /// code, salary TDS deposits as "192".
+  sectionGroup String
+
+  amount         Decimal @default(0) @db.Decimal(14, 2)
+  deducteeCount  Int     @default(0)
+  bsrCode        String?
+  challanNo      String?
+  paidOn         DateTime?
+  /// pending | paid
+  status String @default("pending")
+
+  preparedById String?
+  paidById     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, month, sectionGroup])
+  @@map("tds_challans")
+}
+
+/// An employee's (or engaged individual's) regime choice and declared
+/// deductions for one financial year, feeding the Sec 192 monthly estimate.
+model TaxDeclaration {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  fy                       String // "2026-27"
+
+  /// old | new
+  regime String @default("new")
+  /// 80C, 80D, HRA rent paid, home-loan interest, etc. — shaped by the regime,
+  /// so held as Json rather than one column per section.
+  declaredDeductions Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, employmentRelationshipId, fy])
+  @@map("tax_declarations")
+}
+
+/// A dated slab table for one regime, one financial year. Both regimes'
+/// slabs, the Sec 87A rebate and the standard deduction all change by
+/// notification, so none of them is a constant in `computeAnnualTax`.
+model IncomeTaxSlabTable {
+  id       String @id @default(cuid())
+  tenantId String
+
+  fy String
+  /// old | new
+  regime String
+
+  /// Ascending [{ upTo: number | null, ratePercent: number }] — the last
+  /// entry's `upTo` is null, meaning "and above".
+  slabs Json
+
+  standardDeduction Decimal @default(0) @db.Decimal(12, 2)
+  rebate87ALimit     Decimal @default(0) @db.Decimal(12, 2)
+  rebate87AMaxAmount Decimal @default(0) @db.Decimal(12, 2)
+  cessPercent        Decimal @default(4) @db.Decimal(5, 2)
+
+  effectiveFrom DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, fy, regime])
+  @@map("income_tax_slab_tables")
+}
+
+/// The effective corporate rate used for the company's own advance-tax
+/// estimate — 22% base + surcharge + cess under Sec 115BAA works out to
+/// 25.17% at the rates in force when this was written; a rate change is a
+/// new dated row, never an edited constant.
+model CorporateTaxRate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// 115BAA | normal — which regime the rate is computed under.
+  regime         String  @default("115BAA")
+  effectiveRatePercent Decimal @db.Decimal(5, 2)
+  effectiveFrom  DateTime
+  note           String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, regime, effectiveFrom])
+  @@map("corporate_tax_rates")
+}
+
+/// One instalment paid against the current FY's advance tax.
+model AdvanceTaxPayment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  fy             String
+  instalmentDate DateTime
+  amount         Decimal  @default(0) @db.Decimal(14, 2)
+  paidOn         DateTime
+  reference      String?
+  createdById    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, fy])
+  @@map("advance_tax_payments")
+}
+
+/// A quarterly TDS return — 24Q (salary) or 26Q (everything else) — snapshot
+/// and never edited once filed, like `GstFiling`. "Prepares, does not
+/// transmit": the export is the deductee-row file a preparer uploads.
+model TdsReturn {
+  id       String @id @default(cuid())
+  tenantId String
+
+  fy      String
+  quarter String // Q1 | Q2 | Q3 | Q4
+  form    String // 24Q | 26Q
+
+  /// prepared | filed | superseded
+  status   String @default("prepared")
+  snapshot Json
+
+  token String?
+  ack   String?
+
+  preparedById   String?
+  filedById      String?
+  filedAt        DateTime?
+  supersededById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, fy, quarter, form])
+  @@map("tds_returns")
+}
+
+/// Form 16A (per vendor, per quarter) or Form 16 (per employee, per FY) —
+/// the final certificate a deductee is owed. Final once issued: a correction
+/// is a new certificate referencing the old, never an edit.
+model TdsCertificate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// 16 | 16A
+  form String
+  /// The vendor bill's vendor identity (PAN) for 16A, the employment
+  /// relationship id for 16.
+  deducteeRef  String
+  deducteeName String
+
+  fy      String
+  quarter String?
+
+  snapshot  Json
+  number    String
+  issuedAt  DateTime @default(now())
+  issuedById String?
+
+  supersedesId String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, number])
+  @@index([tenantId, form, deducteeRef, fy])
+  @@map("tds_certificates")
+}

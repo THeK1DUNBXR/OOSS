@@ -1,0 +1,217 @@
+// Compliance — G. Data protection and privacy (DPDP). Owned by workstream `privacy`.
+// docs/plan/compliance.md §G. Models only — fields added to pre-existing models
+// (StudentProfile.guardianName/guardianPhone/guardianConsentId,
+// Affiliation.revokedAt/revokedReason, CompanyProfile.grievanceOfficerName/Email,
+// EventRecord.retentionClass) already live in main.prisma.
+
+/// The privacy notice a data principal is told about processing under. Versioned,
+/// never edited: a new version supersedes the one before it, the way a GstFiling
+/// supersedes rather than overwrites.
+model PrivacyNotice {
+  id       String @id @default(cuid())
+  tenantId String
+
+  version       Int
+  effectiveFrom DateTime
+  /// Markdown, rendered on the notice screen.
+  body          String
+  /// [{code, label, lawfulBasis, dataCategories, retention}] — the purposes this
+  /// notice actually covers, cross-checked against what X-Purpose may carry.
+  purposes      Json
+
+  /// current | superseded
+  status         String  @default("current")
+  supersededById String?
+
+  publishedById String?
+  createdAt     DateTime @default(now())
+
+  @@unique([tenantId, version])
+  @@index([tenantId, status])
+  @@map("privacy_notices")
+}
+
+/// Records that a data principal was shown a given notice version and accepted it.
+model NoticeAcknowledgement {
+  id       String @id @default(cuid())
+  tenantId String
+
+  personId      String
+  noticeVersion Int
+  acknowledgedAt DateTime @default(now())
+  /// portal | in_app | paper | verbal — how the acknowledgement was captured.
+  channel        String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, personId])
+  @@index([tenantId, noticeVersion])
+  @@map("notice_acknowledgements")
+}
+
+/// Consent as the lawful basis for a purpose. This is the row that populates
+/// `ctx.auth.consentCodes` — the WHY axis has no other source of truth.
+model Consent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  personId   String
+  purposeCode String
+
+  /// granted | withdrawn | expired
+  status String @default("granted")
+
+  grantedAt   DateTime?
+  withdrawnAt DateTime?
+  /// portal | in_app | paper | verbal | guardian_intake
+  channel     String
+  /// What was actually shown/said, and who captured it — the record a
+  /// grievance officer would be asked to produce.
+  evidence    Json      @default("{}")
+
+  /// Set when this is a verifiable parental/guardian consent given on behalf
+  /// of the minor named here rather than by the data principal themself.
+  guardianOfPersonId String?
+
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, personId, status])
+  @@index([tenantId, purposeCode, status])
+  @@index([tenantId, guardianOfPersonId])
+  @@map("consents")
+}
+
+/// Access, correction, erasure, nomination — DPDP Act data-principal rights.
+model DataPrincipalRequest {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  personId String
+  /// access | correction | erasure | nomination
+  kind     String
+
+  /// received | verifying | fulfilled | refused
+  status String @default("received")
+
+  receivedAt   DateTime  @default(now())
+  dueAt        DateTime
+  fulfilledAt  DateTime?
+  refusalReason String?
+  /// The correction patch requested, or free-text detail for access/erasure.
+  requestDetail Json?
+  /// The access export, or the erasure/correction outcome, once acted on.
+  response Json?
+
+  raisedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, personId])
+  @@index([tenantId, dueAt])
+  @@map("data_principal_requests")
+}
+
+/// The breach register (DPDP Rules 2025: 72-hour board/regulator notification).
+model DataBreach {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  detectedAt  DateTime
+  description String
+  categories  String[] @default([])
+  principalsAffected Int @default(0)
+  /// S0_STANDARD .. S4_CRITICAL, mirroring ExceptionRecord's severity vocabulary.
+  severity    String
+
+  /// open | contained | notified_board | notified_principals | closed
+  status String @default("open")
+
+  boardNotifiedAt      DateTime?
+  principalsNotifiedAt DateTime?
+  containedAt          DateTime?
+  closedAt             DateTime?
+  notes                String?
+
+  raisedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@map("data_breaches")
+}
+
+/// A dated rate table: retention class -> years, the way GST rates or PF
+/// ceilings would be. Never a constant in job code.
+model RetentionSchedule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  retentionClass String
+  years          Int
+  effectiveFrom  DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, retentionClass, effectiveFrom])
+  @@index([tenantId, retentionClass])
+  @@map("retention_schedules")
+}
+
+/// A monthly snapshot of what is past its retention window. Reports, never
+/// deletes — the platform states "not yet measured" is distinct from "purged".
+model RetentionReport {
+  id       String @id @default(cuid())
+  tenantId String
+
+  generatedAt DateTime @default(now())
+  /// [{retentionClass, years, totalCount, pastWindowCount}]
+  snapshot    Json
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, generatedAt])
+  @@map("retention_reports")
+}
+
+/// A weekly snapshot of who holds an active affiliation with no matching
+/// active employment — the input to CMP_DPD_STALE_ACCESS.
+model AccessReview {
+  id       String @id @default(cuid())
+  tenantId String
+
+  generatedAt DateTime @default(now())
+  /// [{partyId, fullName, affiliationId, employmentStatus}]
+  findings    Json
+  staleCount  Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, generatedAt])
+  @@map("access_reviews")
+}
+
+/// One run of the field-level encryption backfill — what it touched, so the
+/// Encryption screen can show status rather than a guess.
+model EncryptionBackfillRun {
+  id       String @id @default(cuid())
+  tenantId String
+
+  ranAt          DateTime @default(now())
+  fieldsScanned  Int      @default(0)
+  valuesEncrypted Int     @default(0)
+  alreadyEncrypted Int    @default(0)
+  runById        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, ranAt])
+  @@map("encryption_backfill_runs")
+}

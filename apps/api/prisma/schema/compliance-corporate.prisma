@@ -1,0 +1,288 @@
+// Compliance — corporate, contracts and security hygiene (docs/plan/compliance.md, H).
+// Workstream: corporate. Owned entirely by this file — see schema/README.md.
+
+// ---------------------------------------------------------------------------
+// Security hygiene
+// ---------------------------------------------------------------------------
+
+/// One row per tenant. `mfaRequiredForRoleSlugs` names the roles that cannot
+/// obtain a session for an `approve` verb without MFA enrolled — data, not a
+/// role-slug comparison scattered through business logic.
+model SecurityPolicy {
+  id       String @id @default(cuid())
+  tenantId String @unique
+
+  mfaRequiredForRoleSlugs String[] @default(["finance_head", "chairman"])
+  sessionHours            Int      @default(12)
+  passwordMinLength       Int      @default(12)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("security_policies")
+}
+
+/// A daily backup job's own record: what ran, what it produced, whether it
+/// succeeded. `sha256` lets a restored file be checked against what the job
+/// actually wrote, not just trusted because a row says "completed".
+model BackupRun {
+  id       String @id @default(cuid())
+  tenantId String
+
+  status   String @default("running") // running | completed | failed
+  path     String?
+  sizeBytes Int?
+  sha256   String?
+  error    String?
+
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  @@index([tenantId, startedAt])
+  @@map("compliance_backup_runs")
+}
+
+// ---------------------------------------------------------------------------
+// Statutory registers (Companies Act 2013)
+// ---------------------------------------------------------------------------
+
+/// Append-only: a correction or update is a new row referencing the previous
+/// one via `supersedesId`, never an edit to an existing entry. `body` carries
+/// the kind-specific shape (members: name/folio/shares/class/date; directors:
+/// name/DIN/designation/appointedOn/ceasedOn; charges:
+/// chargeId/holder/amount/createdOn/satisfiedOn).
+model RegisterEntry {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode   String
+  registerKind String // members | directors | charges | kmp | related_party
+  subjectKey   String // groups the chain of entries about the same person/charge/member
+  body         Json
+
+  supersedesId String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, registerKind, subjectKey])
+  @@map("compliance_register_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Board minutes — distinct from Decision (business governance, not statute)
+// ---------------------------------------------------------------------------
+
+model BoardMeeting {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+  kind       String // board | agm | egm
+  heldOn     DateTime
+  noticeOn   DateTime?
+  quorum     String?
+  attendees  Json    @default("[]")
+  minutes    String?
+  status     String  @default("draft") // draft | recorded
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  resolutions BoardResolution[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, heldOn])
+  @@map("compliance_board_meetings")
+}
+
+/// Immutable once its meeting is `recorded` (CMP-COR-003). A correction is a
+/// new resolution referencing the one it corrects, never an edit.
+model BoardResolution {
+  id       String @id @default(cuid())
+  tenantId String
+
+  meetingId String
+  meeting   BoardMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  recordCode String
+  number     Int
+  subject    String
+  text       String
+  kind       String // ordinary | special | circular
+  passedOn   DateTime
+
+  correctsId String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, meetingId])
+  @@map("compliance_board_resolutions")
+}
+
+// ---------------------------------------------------------------------------
+// MCA filings
+// ---------------------------------------------------------------------------
+
+model McaFiling {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+  form       String // AOC-4 | MGT-7 | MGT-7A | DIR-3-KYC | ADT-1 | DPT-3 | MSME-1
+  fy         String // "2025-26"
+  srn        String?
+  filedOn    DateTime?
+  status     String  @default("pending") // pending | filed
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, form, fy])
+  @@map("compliance_mca_filings")
+}
+
+// ---------------------------------------------------------------------------
+// Contracts: stamp duty, e-signature, retention
+// ---------------------------------------------------------------------------
+
+/// Dated: Tamil Nadu stamp duty by agreement kind. `percentOfValue` and
+/// `flatAmount` are alternatives — a rule carries whichever the instrument
+/// actually uses. Placeholder figures, confirmed against the current TN
+/// Stamp Act schedule before being relied on for a real filing.
+model StampDutyRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  agreementKind  String // mou | contract | partner_agreement
+  effectiveFrom  DateTime
+  percentOfValue Decimal? @db.Decimal(6, 3)
+  flatAmount     Decimal? @db.Decimal(12, 2)
+  note           String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, agreementKind, effectiveFrom])
+  @@map("compliance_stamp_duty_rules")
+}
+
+/// Set once a tenant has chosen and configured an e-signature provider.
+/// Absent (no row) is the "not configured" state — ESIGN_NOT_CONFIGURED.
+model ESignConfig {
+  id       String @id @default(cuid())
+  tenantId String @unique
+
+  provider  String // the adapter key, e.g. "not_configured" is never stored — absence is the signal
+  apiKeyRef String? // a reference to where the credential lives, never the credential itself
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("compliance_esign_configs")
+}
+
+/// Dated retention rule by document kind, used to compute `Document.retainUntil`.
+model DocumentRetentionRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  documentKind  String // contracts | invoices | hr_files | ...
+  /// "after_expiry" | "after_fy_end" | "after_exit" — what the years count from.
+  anchor        String
+  years         Int
+  effectiveFrom DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, documentKind, effectiveFrom])
+  @@map("compliance_document_retention_rules")
+}
+
+// ---------------------------------------------------------------------------
+// FEMA
+// ---------------------------------------------------------------------------
+// Payment.foreignCurrency/foreignAmount/fircNumber/fircDate live on
+// main.prisma (workstream H fields, already added). No new model needed.
+
+// ---------------------------------------------------------------------------
+// Refunds
+// ---------------------------------------------------------------------------
+
+/// Versioned refund policy text plus machine rules. Seeded with a first
+/// version; a change is a new version, never an edit to a live one.
+model RefundPolicy {
+  id       String @id @default(cuid())
+  tenantId String
+
+  version       Int
+  text          String
+  rules         Json // { fullWithinDays, partialPercent, noneAfterStartDays }
+  effectiveFrom DateTime
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, version])
+  @@index([tenantId, effectiveFrom])
+  @@map("compliance_refund_policies")
+}
+
+/// A refund is its own Movement fact (CMP-COR-004): approving records a
+/// decision, paying records an outward Payment-shaped transaction through
+/// books' `recordTransaction`. Never an edit to the original invoice/receipt.
+model Refund {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String // series 'N' document number
+
+  invoiceId String?
+  receiptId String?
+
+  amount Decimal @db.Decimal(14, 2)
+  reason String
+
+  status String @default("requested") // requested | approved | paid
+
+  requestedById String
+  approvedById  String?
+  paidPaymentId String? // set once paid: the transaction id booked through recordTransaction
+
+  requestedAt DateTime @default(now())
+  approvedAt  DateTime?
+  paidAt      DateTime?
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@map("compliance_refunds")
+}
+
+// ---------------------------------------------------------------------------
+// Certificates
+// ---------------------------------------------------------------------------
+
+/// Final once issued (like every other document in this platform): a
+/// correction is a new certificate, never an edit.
+model Certificate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  number           String // series 'T' document number
+  enrollmentId     String
+  kind             String // completion | participation
+  snapshot         Json
+  verificationCode String @unique
+  issuedById       String?
+
+  issuedAt DateTime @default(now())
+
+  @@unique([tenantId, number])
+  @@index([tenantId, enrollmentId])
+  @@map("compliance_certificates")
+}

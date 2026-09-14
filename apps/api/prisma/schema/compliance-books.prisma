@@ -1,0 +1,162 @@
+// ===========================================================================
+// Compliance — Books and audit (workstream D, docs/plan/compliance.md).
+//
+// New models only. The fields this workstream needs on pre-existing models
+// (AuditRecord.hash/prevHash, Transaction.reconciledAt) were already added to
+// main.prisma before this workstream started.
+// ===========================================================================
+
+/// A financial-year month, closed once its figures are settled. Independent of
+/// GST's own period lock (`assertPeriodOpen`) — a period can be GST-open and
+/// books-closed, or the reverse.
+model AccountingPeriod {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// "2025-26" (Apr-Mar).
+  fy String
+  /// YYYY-MM.
+  period String
+
+  /// open | closing | closed | reopened
+  status String @default("open")
+
+  /// Two-step close: request-close (`edit`), then close (`approve`) by a
+  /// different party — the proposer never approves.
+  requestedById String?
+  requestedAt   DateTime?
+  closedById    String?
+  closedAt      DateTime?
+  reopenedById  String?
+  reopenedAt    DateTime?
+  reopenReason  String?
+
+  /// The trial balance the period stood on at close — what a closed period
+  /// actually said, kept even if the books move afterward.
+  snapshot Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, period])
+  @@index([tenantId, status])
+  @@map("cmp_accounting_periods")
+}
+
+/// How long a class of record must be kept, and under what statute. Dated data
+/// rather than a constant — the Companies Act retention norm and the DPDP
+/// floor are each somebody else's decision, not this codebase's.
+model RetentionPolicy {
+  id       String @id @default(cuid())
+  tenantId String
+
+  entityType String
+  years      Int
+  basis      String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, entityType])
+  @@map("cmp_retention_policies")
+}
+
+/// A record the monthly retention sweep found past its floor. Flagged, never
+/// deleted — the platform does not act on this list, a person does.
+model RetentionReview {
+  id       String @id @default(cuid())
+  tenantId String
+
+  entityType String
+  entityId   String
+  /// The date retention is measured from (the record's own date, not today).
+  recordDate DateTime
+  dueAt      DateTime
+
+  /// flagged | reviewed | dismissed
+  status String  @default("flagged")
+  note   String?
+
+  flaggedAt    DateTime  @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?
+
+  @@unique([tenantId, entityType, entityId])
+  @@index([tenantId, status])
+  @@map("cmp_retention_reviews")
+}
+
+/// Where a ledger category or account lands in Schedule III's format. An
+/// explicit row overrides the kind/ledgerGroup default; either may be null but
+/// not both.
+model ScheduleIIIMapping {
+  id       String @id @default(cuid())
+  tenantId String
+
+  categoryId String?
+  accountId  String?
+
+  /// profit_and_loss | balance_sheet
+  statement       String
+  scheduleHead    String
+  scheduleSubHead String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, categoryId, accountId])
+  @@index([tenantId, statement])
+  @@map("cmp_schedule_iii_mappings")
+}
+
+/// Schedule II useful life by asset class, dated so a notification change does
+/// not rewrite history.
+model ScheduleIIUsefulLife {
+  id       String @id @default(cuid())
+  tenantId String
+
+  assetClass      String
+  usefulLifeYears Int
+  residualPercent Decimal  @default(5) @db.Decimal(5, 2)
+  effectiveFrom   DateTime
+
+  @@unique([tenantId, assetClass, effectiveFrom])
+  @@map("cmp_schedule_ii_useful_life")
+}
+
+/// The Income-tax Act's block-of-assets WDV rate, dated the same way.
+model IncomeTaxDepreciationBlock {
+  id       String @id @default(cuid())
+  tenantId String
+
+  blockName     String
+  ratePercent   Decimal  @db.Decimal(5, 2)
+  effectiveFrom DateTime
+
+  @@unique([tenantId, blockName, effectiveFrom])
+  @@map("cmp_it_depreciation_blocks")
+}
+
+/// One row of an imported bank statement, matched against the ledger by
+/// `matchBankLines`.
+model BankStatementLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  accountId String
+  date      DateTime
+  amount    Decimal @db.Decimal(18, 2)
+  /// in | out
+  direction String
+  reference String?
+  narration String?
+
+  matchedTransactionId String?
+  matchedAt            DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, accountId, date])
+  @@index([tenantId, matchedAt])
+  @@map("cmp_bank_statement_lines")
+}

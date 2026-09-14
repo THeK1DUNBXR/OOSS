@@ -137,6 +137,24 @@ model CompanyProfile {
   /// consequence — which the returns screen states rather than discovers.
   documentYearFormat String @default("short")
 
+  // ---- Compliance registrations (docs/plan/compliance.md, workstreams A, C, E, G) ----
+  /// Tax Deduction and Collection Account Number (Income-tax Act Sec 203A).
+  tan                   String?
+  /// Tamil Nadu Professional Tax enrolment, EPFO establishment code, ESIC employer code.
+  ptRegistrationNumber  String?
+  pfEstablishmentCode   String?
+  esiEmployerCode       String?
+  /// Udyam registration, when the company itself is an MSME.
+  udyamNumber           String?
+  /// Whether outward supplies are made under the composition scheme (Sec 10).
+  compositionScheme     Boolean @default(false)
+  /// Whether e-invoicing (Rule 48(4)) applies to this registration. Set by the
+  /// company against the turnover threshold in force; the platform does not infer it.
+  eInvoicingApplicable  Boolean @default(false)
+  /// DPDP Act grievance officer, named on the privacy notice.
+  grievanceOfficerName  String?
+  grievanceOfficerEmail String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -250,6 +268,10 @@ model Affiliation {
   positionId String?
 
   deletedAt DateTime?
+  // ---- Access revocation on exit (workstream G) ----
+  revokedAt     DateTime?
+  revokedReason String?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -520,6 +542,11 @@ model StudentProfile {
 
   attachedById String?
   deletedAt    DateTime?
+  // ---- DPDP: a minor's guardian and the consent recorded from them (workstream G). ----
+  guardianName      String?
+  guardianPhone     String?
+  guardianConsentId String?
+
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -943,6 +970,11 @@ model AuditRecord {
   fieldsRead String[] @default([])
   meta       Json?
 
+  /// Tamper evidence (workstream D): each record hashes its content and the
+  /// previous record's hash, the way `EventRecord` already does.
+  hash     String?
+  prevHash String?
+
   timestamp DateTime @default(now())
 
   @@index([tenantId, subjectType, subjectId, timestamp])
@@ -971,6 +1003,13 @@ model User {
   activeAffiliationId String?
 
   lastLoginAt DateTime?
+  // ---- Security hygiene (workstream H) ----
+  mfaSecret         String?
+  mfaEnabledAt      DateTime?
+  passwordChangedAt DateTime?
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -1849,6 +1888,14 @@ model Document {
 
   uploadedById String?
   deletedAt    DateTime?
+  // ---- Retention, stamp duty and e-signature (workstream H) ----
+  retainUntil     DateTime?
+  stampDutyAmount Decimal?  @db.Decimal(14, 2)
+  stampDutyRef    String?
+  eSignProvider   String?
+  eSignRef        String?
+  eSignedAt       DateTime?
+
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -1982,6 +2029,19 @@ model Invoice {
   overdueNotifiedAt DateTime?
   createdById       String?
   deletedAt         DateTime?
+  // ---- Compliance (workstream B) ----
+  /// tax_invoice | bill_of_supply — a bill of supply carries no tax (Rule 49).
+  invoiceType    String  @default("tax_invoice")
+  /// Tax payable by the recipient (Sec 9(3)/9(4)). Printed on the invoice per Rule 46.
+  reverseCharge  Boolean @default(false)
+  /// e-invoicing: the IRP's registration number and acknowledgement, and the signed QR.
+  irn            String?
+  irnAckNo       String?
+  irnAckAt       DateTime?
+  signedQrCode   String?
+  /// not_applicable | pending | registered | cancelled | failed
+  eInvoiceStatus String  @default("not_applicable")
+
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -2057,6 +2117,12 @@ model InvoiceLine {
   gstRate   Decimal @default(0) @db.Decimal(5, 2)
   taxAmount Decimal @default(0) @db.Decimal(18, 2)
 
+  // ---- Compliance (workstream B) ----
+  /// taxable | nil | exempt | non_gst — which GSTR-1/3B section the line reports under.
+  supplyType            String  @default("taxable")
+  /// The notification an exemption is claimed under, e.g. `12/2017-CT(R) entry 66`.
+  exemptionNotification String?
+
   createdAt DateTime @default(now())
 
   @@index([tenantId, invoiceId])
@@ -2125,6 +2191,12 @@ model Payment {
   /// The idempotency marker CRM-FIN-001 adds so the overdue-notification job
   /// stops re-notifying the same pending payment on every hourly tick.
   pendingLastNotifiedAt DateTime?
+
+  // ---- FEMA: a foreign receipt and its inward remittance certificate (workstream H) ----
+  foreignCurrency String?
+  foreignAmount   Decimal?  @db.Decimal(18, 2)
+  fircNumber      String?
+  fircDate        DateTime?
 
   createdAt DateTime @default(now())
 
@@ -3229,6 +3301,23 @@ model EmploymentRelationship {
   uanNumber        String?
 
   deletedAt DateTime?
+  // ---- Compliance (workstreams C, E, F, G) ----
+  /// employee | contractor | consultant | intern | apprentice — drives Sec 192 vs 194C/194J.
+  engagementType                  String    @default("employee")
+  /// Regulated identifiers, structurally excluded from responses like PAN and UAN.
+  esicNumber                      String?
+  bankAccountNumber               String?
+  bankIfsc                        String?
+  bankAccountName                 String?
+  /// old | new — the Sec 192 regime the employee declared for the year.
+  taxRegime                       String    @default("new")
+  nomineeName                     String?
+  nomineeRelationship             String?
+  emergencyContactName            String?
+  emergencyContactPhone           String?
+  backgroundVerificationConsentAt DateTime?
+  codeOfConductAcknowledgedAt     DateTime?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -3376,6 +3465,11 @@ model LeaveType {
   employmentStateAffecting Boolean @default(false)
   statutory                Boolean @default(false)
   annualEntitlementDays    Decimal @default(0) @db.Decimal(6, 2)
+
+  // ---- Carry-forward and encashment rules (workstream F) ----
+  carryForwardCapDays Decimal? @db.Decimal(6, 2)
+  encashable          Boolean  @default(false)
+  maxEncashDays       Decimal? @db.Decimal(6, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3652,6 +3746,24 @@ model PayrollInstruction {
   /// Set when the disbursement is posted to the books.
   paymentId   String?
 
+  // ---- Statutory lines (workstream E). Zero until computed; `computedFrom` names the rate-table versions used. ----
+  basicPay        Decimal @default(0) @db.Decimal(14, 2)
+  hra             Decimal @default(0) @db.Decimal(14, 2)
+  otherAllowances Decimal @default(0) @db.Decimal(14, 2)
+  pfEmployee      Decimal @default(0) @db.Decimal(14, 2)
+  pfEmployer      Decimal @default(0) @db.Decimal(14, 2)
+  epsEmployer     Decimal @default(0) @db.Decimal(14, 2)
+  esiEmployee     Decimal @default(0) @db.Decimal(14, 2)
+  esiEmployer     Decimal @default(0) @db.Decimal(14, 2)
+  professionalTax Decimal @default(0) @db.Decimal(14, 2)
+  tdsAmount       Decimal @default(0) @db.Decimal(14, 2)
+  lwfEmployee     Decimal @default(0) @db.Decimal(14, 2)
+  lwfEmployer     Decimal @default(0) @db.Decimal(14, 2)
+  computedFrom    Json?
+  /// A payslip, once issued, is final — like a tax invoice. Number from the `P` series.
+  payslipNumber   String?
+  payslipIssuedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3675,6 +3787,10 @@ model PayrollRun {
   approvedById String?
   approvedAt   DateTime?
   disbursedAt  DateTime?
+
+  // ---- Workstream E: the proposer/approver split, made visible. ----
+  preparedById String?
+  submittedAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3717,6 +3833,14 @@ model Offboarding {
   checklist        Json     @default("[]")
   disputeReason    String?
   settlementAmount Decimal? @db.Decimal(14, 2)
+
+  // ---- Full-and-final components (workstreams E, F). `settlementAmount` stays the total. ----
+  gratuityAmount          Decimal?  @db.Decimal(14, 2)
+  leaveEncashmentAmount   Decimal?  @db.Decimal(14, 2)
+  bonusAmount             Decimal?  @db.Decimal(14, 2)
+  noticeRecoveryAmount    Decimal?  @db.Decimal(14, 2)
+  settlementComputedAt    DateTime?
+  relievingLetterDocumentId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3889,6 +4013,24 @@ model VendorBill {
   overdueNotifiedAt DateTime?
   createdById       String?
   deletedAt         DateTime?
+  // ---- Compliance (workstreams B, C) ----
+  vendorPan          String?
+  /// Reverse charge on this inward supply: tax the company pays on the vendor's behalf.
+  rcmApplicable      Boolean  @default(false)
+  rcmTaxAmount       Decimal  @default(0) @db.Decimal(18, 2)
+  /// TDS deducted at approval, from the dated section-rate table.
+  tdsSection         String?
+  tdsRate            Decimal? @db.Decimal(5, 2)
+  tdsAmount          Decimal  @default(0) @db.Decimal(18, 2)
+  /// A lower/nil-deduction certificate (Sec 197) reference, when one overrides the table.
+  tdsCertificateRef  String?
+  tdsChallanId       String?
+  /// MSME (Sec 43B(h)): a Udyam-registered vendor must be paid within the agreed term or 45 days.
+  vendorUdyamNumber  String?
+  agreedTermDays     Int?
+  msmeDueAt          DateTime?
+  msmeNotifiedAt     DateTime?
+
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 

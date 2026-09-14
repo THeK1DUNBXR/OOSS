@@ -212,10 +212,14 @@ export async function leaveLedger(leaveBalanceId: string) {
 // Leave requests
 // ---------------------------------------------------------------------------
 
-/** Inclusive whole-day count. Half-days are recorded by overriding `days`. */
-function dayCount(start: Date, end: Date): number {
-  const ms = end.getTime() - start.getTime();
-  return Math.max(1, Math.round(ms / 86_400_000) + 1);
+/**
+ * Inclusive working-day count: the calendar span less Sundays and holidays
+ * (workstream F, CMP-LAB), from `holidayDatesInRange`. Half-days are recorded
+ * by overriding `days`.
+ */
+async function dayCount(start: Date, end: Date): Promise<number> {
+  const { leaveWorkingDayCount } = await import('./compliance/labour.js');
+  return leaveWorkingDayCount(start, end);
 }
 
 export async function listLeaveRequests(filter: { status?: string; employmentRelationshipId?: string } = {}) {
@@ -288,6 +292,7 @@ export async function createLeaveRequest(input: {
   }
 
   const recordCode = await nextRecordCode('LVR');
+  const days = input.days ?? (await dayCount(input.startDate, input.endDate));
   const request = await prisma.leaveRequest.create({
     data: {
       tenantId: auth.tenantId,
@@ -296,7 +301,7 @@ export async function createLeaveRequest(input: {
       leaveTypeId: input.leaveTypeId,
       startDate: input.startDate,
       endDate: input.endDate,
-      days: input.days ?? dayCount(input.startDate, input.endDate),
+      days,
       reason: input.reason ?? null,
     },
   });

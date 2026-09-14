@@ -7,7 +7,7 @@ impossible.
 
 ```bash
 ./scripts/test-db.sh          # provision kaizen_test
-cd apps/api && pnpm test      # 399 tests
+cd apps/api && pnpm test      # 541 tests
 ```
 
 ## How the suite is built
@@ -186,3 +186,24 @@ accepts sixteen. `KIPL/I/26-27/001` is exactly sixteen, which is why the short
 year is the default — and the Company details screen prints the length beside
 the next number so this is seen before the first invoice rather than at the
 filing deadline.
+
+## Compliance
+
+The compliance workstreams (`docs/plan/compliance.md`) each carry their own
+requirement IDs and the test file that pins them, in `src/tests/compliance/`:
+
+| Workstream | Requirements | Tests | Notes |
+|---|---|---|---|
+| A. Calendar | CMP-CAL-001 … 003 | `calendar.test.ts` | [docs/compliance/calendar.md](compliance/calendar.md) |
+| B. GST | CMP-GST-001 … 004 | `gst.test.ts` | [docs/compliance/gst.md](compliance/gst.md) |
+| C. Income tax and TDS | CMP-TDS-001 … 003 | `tax.test.ts` | [docs/compliance/tax.md](compliance/tax.md) |
+| D. Books and audit | CMP-AUD-001 … 003 | `books.test.ts` | [docs/compliance/books.md](compliance/books.md) |
+| E. Payroll statutory | CMP-PAY-001 … 005 | `payroll.test.ts` | [docs/compliance/payroll.md](compliance/payroll.md) |
+| F. Labour and conduct | CMP-LAB-001 … 004 | `labour.test.ts` | [docs/compliance/labour.md](compliance/labour.md) |
+| G. Data protection | CMP-DPD-001 … 004 | `privacy.test.ts` | [docs/compliance/privacy.md](compliance/privacy.md) |
+| H. Corporate and security | CMP-COR-001 … 004 | `corporate.test.ts` | [docs/compliance/corporate.md](compliance/corporate.md) |
+
+Two things the suite pins that the plan did not name: every `AuditRecord` is a
+link in a per-tenant hash chain, verified by recomputing each row from its
+stored content; and the register exports, the payslip, the debit note, the
+refund and the certificate are documents that are final once issued.

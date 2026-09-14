@@ -117,6 +117,15 @@ export const ALL_RESOURCES = [
   'relationships', 'reports', 'requisitions', 'restricted_interactions',
   'routing_rules', 'students', 'tasks', 'territories', 'transactions', 'users',
   'vendor_bills', 'win_loss_reviews',
+  // Compliance (docs/plan/compliance.md), one group per workstream.
+  'compliance_obligations',                                   // A
+  'debit_notes', 'einvoicing',                                // B
+  'tds', 'tax_filings',                                       // C
+  'accounting_periods',                                       // D
+  'rate_tables', 'payslips', 'salary_structures',             // E
+  'holidays', 'posh_cases', 'disciplinary_cases', 'hr_letters', 'statutory_registers', // F
+  'consents', 'data_requests', 'breaches', 'privacy_notices', // G
+  'board_resolutions', 'corporate_registers', 'refunds', 'certificates', 'security_settings', // H
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */
@@ -202,6 +211,34 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'agents', cell: '-' },
   { resource: 'users', cell: '-' },
   { resource: 'restricted_interactions', cell: '-' },
+
+  // ---- Compliance ---------------------------------------------------------
+  // Sees the calendar; the money-side obligations are filed by Finance.
+  { resource: 'compliance_obligations', cell: 'V' },
+  { resource: 'debit_notes', cell: '-' },
+  { resource: 'einvoicing', cell: '-' },
+  { resource: 'tds', cell: '-' },
+  { resource: 'tax_filings', cell: '-' },
+  { resource: 'accounting_periods', cell: '-' },
+  { resource: 'rate_tables', cell: 'V' },
+  // Prepares payslips and salary structures; Finance approves them, as with payroll.
+  { resource: 'payslips', cell: 'VCEX' },
+  { resource: 'salary_structures', cell: 'VCEDXF' },
+  { resource: 'holidays', cell: 'VCED' },
+  // POSH and disciplinary cases are the people function's and the chairman's.
+  { resource: 'posh_cases', cell: 'VCE' },
+  { resource: 'disciplinary_cases', cell: 'VCE' },
+  { resource: 'hr_letters', cell: 'VCEX' },
+  { resource: 'statutory_registers', cell: 'VX' },
+  { resource: 'consents', cell: 'VCE' },
+  { resource: 'data_requests', cell: 'VCE' },
+  { resource: 'breaches', cell: 'VCE' },
+  { resource: 'privacy_notices', cell: 'V' },
+  { resource: 'board_resolutions', cell: '-' },
+  { resource: 'corporate_registers', cell: 'V' },
+  { resource: 'refunds', cell: '-' },
+  { resource: 'certificates', cell: 'VCEX' },
+  { resource: 'security_settings', cell: '-' },
 ];
 
 /**
@@ -294,6 +331,33 @@ const financeHead: GrantSpec[] = [
   { resource: 'agents', cell: '-' },
   { resource: 'jobs', cell: '-' },
   { resource: 'users', cell: '-' },
+
+  // ---- Compliance ---------------------------------------------------------
+  // Owns the calendar and files what is money: `approve` is the filing itself.
+  { resource: 'compliance_obligations', cell: 'VCEDX,approve' },
+  { resource: 'debit_notes', cell: 'VCEDAXF' },
+  { resource: 'einvoicing', cell: 'VCEXF' },
+  { resource: 'tds', cell: 'VCEDXF,approve' },
+  { resource: 'tax_filings', cell: 'VCEDXF,approve' },
+  { resource: 'accounting_periods', cell: 'VCE,approve' },
+  { resource: 'rate_tables', cell: 'VCEX' },
+  // Approves what HR prepares. No `create`: the signatory does not author.
+  { resource: 'payslips', cell: 'VXF,approve' },
+  { resource: 'salary_structures', cell: 'VXF,approve' },
+  { resource: 'holidays', cell: 'V' },
+  { resource: 'posh_cases', cell: '-' },
+  { resource: 'disciplinary_cases', cell: '-' },
+  { resource: 'hr_letters', cell: '-' },
+  { resource: 'statutory_registers', cell: 'VX' },
+  { resource: 'consents', cell: 'V' },
+  { resource: 'data_requests', cell: 'V' },
+  { resource: 'breaches', cell: 'VCE' },
+  { resource: 'privacy_notices', cell: 'V' },
+  { resource: 'board_resolutions', cell: 'V' },
+  { resource: 'corporate_registers', cell: 'VX' },
+  { resource: 'refunds', cell: 'VCEDAXF,approve' },
+  { resource: 'certificates', cell: 'V' },
+  { resource: 'security_settings', cell: '-' },
 ];
 
 /**
@@ -327,6 +391,14 @@ const employee: GrantSpec[] = [
   // find out who your colleagues are is not a nicer place to work.
   { resource: 'people', cell: 'V@all' },
   { resource: 'offerings', cell: 'V@all' },
+
+  // ---- Compliance: their own payslip, consents and requests; the holiday list. ----
+  { resource: 'payslips', cell: 'VF@own' },
+  { resource: 'consents', cell: 'V@own' },
+  { resource: 'data_requests', cell: 'VC@own' },
+  { resource: 'hr_letters', cell: 'V@own' },
+  { resource: 'holidays', cell: 'V@all' },
+  { resource: 'privacy_notices', cell: 'V@all' },
 
   // ---- Billing a customer at the counter ---------------------------------
   //
