@@ -300,6 +300,14 @@ export const EVENTS = {
   IMPORT_STAGED: 'kz.fin.import.staged',
   IMPORT_COMMITTED: 'kz.fin.import.committed',
   IMPORT_REVERTED: 'kz.fin.import.reverted',
+
+  // Compliance calendar (docs/plan/compliance.md, workstream A). Generating a
+  // period's obligations, marking one filed and waiving one are three separate
+  // facts — generation is arithmetic, filing is the acknowledgement a portal
+  // gave back, and a waiver is a deliberate decision not to file at all.
+  COMPLIANCE_OBLIGATIONS_GENERATED: 'kz.cmp.obligation.generated',
+  COMPLIANCE_OBLIGATION_FILED: 'kz.cmp.obligation.filed',
+  COMPLIANCE_OBLIGATION_WAIVED: 'kz.cmp.obligation.waived',
 } as const;
 
 /**
