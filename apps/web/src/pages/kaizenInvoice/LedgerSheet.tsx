@@ -11,6 +11,7 @@
  * the two contexts share every class name in `style.ts`, scoped differently
  * per root, so the markup itself never has to know which one it is in.
  */
+import type { ReactNode } from 'react';
 import { fmtINR, fmtDate } from './calc.js';
 
 export interface LedgerRowData {
@@ -53,6 +54,7 @@ export interface LedgerInvoiceData {
   rows: LedgerRowData[];
   grandTotal: number;
   amountInWords: string;
+  label?: string;
 }
 
 export function LedgerHead({ company }: { company: LedgerCompany }) {
@@ -82,18 +84,28 @@ export function InfoStrip({ doc }: { doc: LedgerInvoiceData }) {
     ? 'Yes — CGST @9% + SGST @9% (intra-state)'
     : 'No — IGST @18% (inter-state)';
   return (
-    <div className="ki-info-strip">
-      <Row k="Invoice No." v={doc.invoiceNo} />
-      <Row k="Date" v={doc.invoiceDate ? fmtDate(doc.invoiceDate) : '—'} />
-      <Row k="Student Name" v={doc.studentName} />
-      <Row k="Contact No." v={doc.contactNo} />
-      <Row k="From Tamil Nadu?" v={doc.fromTNYes ? 'Yes' : 'No'} />
-      <Row k="Tax Basis" v={taxBasis} />
-    </div>
+    <InfoGrid>
+      <InfoRow k="Invoice No." v={doc.invoiceNo} />
+      <InfoRow k="Date" v={doc.invoiceDate ? fmtDate(doc.invoiceDate) : '—'} />
+      <InfoRow k="Student Name" v={doc.studentName} />
+      <InfoRow k="Contact No." v={doc.contactNo} />
+      <InfoRow k="From Tamil Nadu?" v={doc.fromTNYes ? 'Yes' : 'No'} />
+      <InfoRow k="Tax Basis" v={taxBasis} />
+    </InfoGrid>
   );
 }
 
-function Row({ k, v }: { k: string; v: string }) {
+/**
+ * The dotted-leader header row (label left, bold value right) and the grid
+ * that lays six of them out two-per-row — shared by every printed document,
+ * not only the course ledger, so a receipt's "Receipt No. / Date" row looks
+ * exactly like the invoice's "Invoice No. / Date" row above it.
+ */
+export function InfoGrid({ children }: { children: ReactNode }) {
+  return <div className="ki-info-strip">{children}</div>;
+}
+
+export function InfoRow({ k, v }: { k: string; v: ReactNode }) {
   return (
     <div className="ki-row">
       <span className="ki-k">{k}</span>
@@ -104,24 +116,34 @@ function Row({ k, v }: { k: string; v: string }) {
 
 export function ScheduleStrip({ doc }: { doc: LedgerInvoiceData }) {
   return (
-    <div className="ki-schedule-strip">
-      <div className="ki-item">
-        <div className="ki-k">Enrollment Date</div>
-        <div className="ki-v">{doc.enrollmentDate ? fmtDate(doc.enrollmentDate) : '—'}</div>
-      </div>
-      <div className="ki-item">
-        <div className="ki-k">First Payment Due (within 3 days)</div>
-        <div className="ki-v">{doc.schedule ? fmtDate(doc.schedule.firstPaymentDue) : '—'}</div>
-      </div>
-      <div className="ki-item">
-        <div className="ki-k">Subsequent Payments From</div>
-        <div className="ki-v">{doc.schedule ? fmtDate(doc.schedule.subsequentFrom) : '—'}</div>
-      </div>
-      <div className="ki-item">
-        <div className="ki-k">Then due on</div>
-        <div className="ki-v" style={{ fontWeight: 500 }}>
-          1st of every month
-        </div>
+    <DateBoxGrid columns={4}>
+      <DateBoxItem k="Enrollment Date" v={doc.enrollmentDate ? fmtDate(doc.enrollmentDate) : '—'} />
+      <DateBoxItem k="First Payment Due (within 3 days)" v={doc.schedule ? fmtDate(doc.schedule.firstPaymentDue) : '—'} />
+      <DateBoxItem k="Subsequent Payments From" v={doc.schedule ? fmtDate(doc.schedule.subsequentFrom) : '—'} />
+      <DateBoxItem k="Then due on" v="1st of every month" bold={false} />
+    </DateBoxGrid>
+  );
+}
+
+/**
+ * The boxed date/figure strip — a row of bordered pills, four to the row on
+ * the course invoice's enrollment schedule and however many a receipt or
+ * final invoice needs for its own "Balance before / after" or totals strip.
+ */
+export function DateBoxGrid({ columns, children }: { columns: number; children: ReactNode }) {
+  return (
+    <div className="ki-schedule-strip" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
+      {children}
+    </div>
+  );
+}
+
+export function DateBoxItem({ k, v, bold = true }: { k: string; v: ReactNode; bold?: boolean }) {
+  return (
+    <div className="ki-item">
+      <div className="ki-k">{k}</div>
+      <div className="ki-v" style={bold ? undefined : { fontWeight: 500 }}>
+        {v}
       </div>
     </div>
   );
@@ -174,33 +196,48 @@ export function LedgerTable({ rows }: { rows: LedgerRowData[] }) {
   );
 }
 
-export function TotalsStrip({ doc }: { doc: LedgerInvoiceData }) {
+export interface TotalsData {
+  amountInWords: string;
+  grandTotal: number;
+  /** "Grand Total (incl. GST, after discount)" on the course ledger; a
+   * receipt or final invoice names its own figure instead. */
+  label?: string;
+}
+
+/** `NewInvoice`'s preview keeps passing its whole `LedgerInvoiceData` shape
+ * here unchanged — only `amountInWords`/`grandTotal`/`label` are ever read. */
+export function TotalsStrip({ doc }: { doc: TotalsData | LedgerInvoiceData }) {
   return (
     <div className="ki-totals-strip">
       <div className="ki-words">
         In words: <b>{doc.amountInWords}</b>
       </div>
       <div className="ki-grand">
-        <div className="ki-lbl">Grand Total (incl. GST, after discount)</div>
+        <div className="ki-lbl">{doc.label ?? 'Grand Total (incl. GST, after discount)'}</div>
         <div className="ki-amt ki-num">{fmtINR(doc.grandTotal)}</div>
       </div>
     </div>
   );
 }
 
-export function NoteStrip() {
+/** The course-invoice's own note text — every other document passes its own via `children`. */
+export function NoteStrip({ children }: { children?: ReactNode }) {
   return (
     <div className="ki-note-strip">
-      Note: GST rate is a placeholder — confirm the applicable rate/exemption for your course category. The
-      &quot;Student is from Tamil Nadu?&quot; field controls the tax split: Yes charges CGST @9% + SGST @9% (18%
-      total, intra-state); No charges IGST @18% instead (inter-state) — whichever doesn&apos;t apply shows as
-      Rs.0.00 rather than being hidden, so the calculation stays auditable either way. SAC code is common across
-      all courses (9983) — confirm with your accountant. Monthly Fee and Discount % are editable per student
-      since pricing is flexible/negotiable; Discount % is set once and applies to the course and its add-ons.
-      Add-ons are priced as a fixed total, split evenly across the tenure chosen. Payment schedule: first payment
-      due within 3 days of enrollment; subsequent payments fall on the 1st of every month after — pushed to the
-      1st of the month after that if fewer than 14 days separate the first payment from the next 1st. Fees once
-      paid are non-refundable and non-transferable unless stated otherwise in the admission agreement.
+      {children ?? (
+        <>
+          Note: GST rate is a placeholder — confirm the applicable rate/exemption for your course category. The
+          &quot;Student is from Tamil Nadu?&quot; field controls the tax split: Yes charges CGST @9% + SGST @9% (18%
+          total, intra-state); No charges IGST @18% instead (inter-state) — whichever doesn&apos;t apply shows as
+          Rs.0.00 rather than being hidden, so the calculation stays auditable either way. SAC code is common across
+          all courses (9983) — confirm with your accountant. Monthly Fee and Discount % are editable per student
+          since pricing is flexible/negotiable; Discount % is set once and applies to the course and its add-ons.
+          Add-ons are priced as a fixed total, split evenly across the tenure chosen. Payment schedule: first payment
+          due within 3 days of enrollment; subsequent payments fall on the 1st of every month after — pushed to the
+          1st of the month after that if fewer than 14 days separate the first payment from the next 1st. Fees once
+          paid are non-refundable and non-transferable unless stated otherwise in the admission agreement.
+        </>
+      )}
     </div>
   );
 }
@@ -212,6 +249,11 @@ export function SignStrip() {
       <div className="ki-line">Authorized Signatory — Kaizen Infinities</div>
     </div>
   );
+}
+
+/** A diagonal "DRAFT" / "VOID" / "SUPERSEDED" stamp across a printed copy. */
+export function Watermark({ text }: { text: string }) {
+  return <div className="ki-watermark">{text}</div>;
 }
 
 export function LedgerSheet({ company, doc }: { company: LedgerCompany; doc: LedgerInvoiceData }) {

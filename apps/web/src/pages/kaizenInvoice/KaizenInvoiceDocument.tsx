@@ -6,11 +6,9 @@
  * carries a `ledger` block, i.e. it was raised with an enrollment date.
  */
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import type { InvoiceDocumentView } from '@kaizen/shared';
-import { KI_APP_CSS } from './style.js';
 import { LedgerHead, InfoStrip, ScheduleStrip, LedgerTable, TotalsStrip, NoteStrip, SignStrip, type LedgerCompany, type LedgerInvoiceData } from './LedgerSheet.js';
-import { PrintPortal } from './PrintPortal.js';
+import { DocumentToolbar, DocumentScreen, TwoCopyPrintPage, PrintPortal } from '../documents/PrintSheet.js';
 
 export function KaizenInvoiceDocument({ doc }: { doc: InvoiceDocumentView }) {
   const [printKey, setPrintKey] = useState<number | null>(null);
@@ -46,64 +44,26 @@ export function KaizenInvoiceDocument({ doc }: { doc: InvoiceDocumentView }) {
     window.setTimeout(() => window.print(), 50);
   }
 
+  const sheet = (
+    <>
+      <LedgerHead company={company} />
+      <InfoStrip doc={ledgerDoc} />
+      <ScheduleStrip doc={ledgerDoc} />
+      <LedgerTable rows={ledgerDoc.rows} />
+      <TotalsStrip doc={ledgerDoc} />
+      <NoteStrip />
+      <SignStrip />
+    </>
+  );
+
   return (
     <div>
-      <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Link to="/finance/invoices/history" className="btn-ghost">
-          ← Invoice History
-        </Link>
-        <button className="btn-primary" onClick={handlePrint}>
-          Print or save as PDF
-        </button>
-      </div>
-      <style>{KI_APP_CSS}</style>
-      <div className="ki-app">
-        <main className="ki-main">
-          <div className="ki-panel">
-            <LedgerHead company={company} />
-            <InfoStrip doc={ledgerDoc} />
-            <ScheduleStrip doc={ledgerDoc} />
-            <LedgerTable rows={ledgerDoc.rows} />
-            <TotalsStrip doc={ledgerDoc} />
-            <NoteStrip />
-            <SignStrip />
-          </div>
-        </main>
-      </div>
+      <DocumentToolbar backTo="/finance/invoices/history" backLabel="Invoice History" onPrint={handlePrint} />
+      <DocumentScreen>{sheet}</DocumentScreen>
 
       {printKey && (
         <PrintPortal key={printKey}>
-          <div className="ki-print-page">
-            <div className="ki-print-half">
-              <div className="ki-print-copy">
-                <div style={{ textAlign: 'right', fontSize: 8, fontWeight: 700, letterSpacing: '0.05em', color: 'var(--ki-navy)' }}>
-                  CUSTOMER COPY
-                </div>
-                <LedgerHead company={company} />
-                <InfoStrip doc={ledgerDoc} />
-                <ScheduleStrip doc={ledgerDoc} />
-                <LedgerTable rows={ledgerDoc.rows} />
-                <TotalsStrip doc={ledgerDoc} />
-                <NoteStrip />
-                <SignStrip />
-              </div>
-            </div>
-            <div className="ki-fold-line">✂ - - - - - - - - - - - - - - - - fold &amp; cut here - - - - - - - - - - - - - - - - ✂</div>
-            <div className="ki-print-half">
-              <div className="ki-print-copy">
-                <div style={{ textAlign: 'right', fontSize: 8, fontWeight: 700, letterSpacing: '0.05em', color: 'var(--ki-navy)' }}>
-                  OFFICE COPY
-                </div>
-                <LedgerHead company={company} />
-                <InfoStrip doc={ledgerDoc} />
-                <ScheduleStrip doc={ledgerDoc} />
-                <LedgerTable rows={ledgerDoc.rows} />
-                <TotalsStrip doc={ledgerDoc} />
-                <NoteStrip />
-                <SignStrip />
-              </div>
-            </div>
-          </div>
+          <TwoCopyPrintPage render={() => sheet} />
         </PrintPortal>
       )}
     </div>

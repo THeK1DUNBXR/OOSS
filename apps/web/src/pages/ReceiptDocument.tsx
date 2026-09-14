@@ -13,15 +13,19 @@
  * is a document and not a view of the current position.
  */
 
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { PAYMENT_MODE_LABELS, type PaymentMode, type ReceiptDocumentView, type ReceiptView } from '@kaizen/shared';
-import { api, date, dateTime, money } from '../lib/api.js';
+import { amountInWords, PAYMENT_MODE_LABELS, type PaymentMode, type ReceiptDocumentView, type ReceiptView } from '@kaizen/shared';
+import { api, dateTime, money } from '../lib/api.js';
 import { Card, EmptyState, ErrorBox, Loading, Metric, PageHeader, RecordCode } from '../components/ui.js';
-import { CustomerBlock, Sheet, Signature, SupplierBlock, rupees } from './documentSheet.js';
+import { fmtDate, fmtINR } from './kaizenInvoice/calc.js';
+import { LedgerHead, InfoGrid, InfoRow, DateBoxGrid, DateBoxItem, TotalsStrip, NoteStrip, SignStrip, type LedgerCompany } from './kaizenInvoice/LedgerSheet.js';
+import { DocumentToolbar, DocumentScreen, TwoCopyPrintPage, PrintPortal } from './documents/PrintSheet.js';
 
 export function ReceiptDocument() {
   const { id } = useParams<{ id: string }>();
+  const [printKey, setPrintKey] = useState<number | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ['receipt-document', id],
     queryFn: () => api.get<ReceiptDocumentView>(`/finance/receipts/${id}/document`),
@@ -34,145 +38,95 @@ export function ReceiptDocument() {
   const d = data;
   const modeLabel = PAYMENT_MODE_LABELS[d.payment.mode as PaymentMode] ?? d.payment.mode;
 
-  return (
-    <Sheet
-      backTo="/finance/receipts"
-      backLabel="Receipts"
-      title={d.recordCode}
-      subtitle={`Instalment ${d.position.instalmentNumber} of ${d.position.instalmentsSoFar} against ${d.invoice.recordCode}, issued ${dateTime(
-        d.issuedAt,
-      )}${d.issuedBy ? ` by ${d.issuedBy}` : ''}.`}
-      aside={
-        <Card title="The invoice this is against" subtitle="A receipt is always against one invoice, named by its number.">
-          <div className="flex flex-wrap items-center gap-6 text-xs">
-            <Link to={`/finance/invoices/${d.invoice.id}/document`} className="mono text-ink-100 hover:text-accent-soft">
-              {d.invoice.recordCode}
-            </Link>
-            <span className="text-ink-400">
-              Issued <span className="ml-1 text-ink-200">{date(d.invoice.issuedDate)}</span>
-            </span>
-            <span className="text-ink-400">
-              Due <span className="ml-1 text-ink-200">{date(d.invoice.dueDate)}</span>
-            </span>
-            <span className="text-ink-400">
-              Total payable <span className="ml-1 tabular-nums text-ink-100">{money(d.position.totalPayable)}</span>
-            </span>
-            <span className={d.position.balanceAfter > 0 ? 'text-band-watch' : 'text-band-strong'}>
-              Balance after this <span className="ml-1 tabular-nums">{money(d.position.balanceAfter)}</span>
-            </span>
-          </div>
-        </Card>
-      }
-    >
-      <SupplierBlock
-        supplier={d.supplier}
-        docType="Receipt"
-        meta={[
-          ['Receipt no.', d.recordCode],
-          ['Date', dateTime(d.issuedAt)],
-          ['Against invoice', d.invoice.recordCode],
-          ['Instalment', `${d.position.instalmentNumber} of ${d.position.instalmentsSoFar}`],
-        ]}
-      />
+  const company: LedgerCompany = {
+    name: 'Kaizen Infinities',
+    tagline: 'Training & Education Services',
+    legalName: d.supplier.legalName,
+    address: [d.supplier.addressLine1, d.supplier.addressLine2, d.supplier.city ? `${d.supplier.city}-${d.supplier.pincode ?? ''}` : null]
+      .filter(Boolean)
+      .join(', '),
+    location: '—',
+    stateCode: null,
+    gstin: d.supplier.gstin,
+    phone: d.supplier.phone,
+  };
 
-      <CustomerBlock
-        customer={d.customer}
-        heading="Received from"
-        extra={
-          <>
-            <p className="doc-label">Mode of payment</p>
-            <p className="doc-party-name">{modeLabel}</p>
-            {d.payment.reference && <p className="doc-muted">Reference {d.payment.reference}</p>}
-            <p className="doc-muted">Payment {d.payment.paymentCode}</p>
-          </>
-        }
-      />
+  function handlePrint() {
+    setPrintKey(Date.now());
+    window.setTimeout(() => window.print(), 50);
+  }
 
-      <section className="doc-foot" style={{ marginTop: 12 }}>
-        <div>
-          <div className="doc-declaration">
-            <p className="doc-declaration-head">
-              {d.position.isPartPayment ? 'Part payment received' : 'Payment received in full'}
-            </p>
-            <p>
-              Received ₹{rupees(d.position.amountReceivedNow)} by {modeLabel}
-              {d.payment.reference ? ` (${d.payment.reference})` : ''} against invoice {d.invoice.recordCode}, which is
-              for ₹{rupees(d.position.totalPayable)}.
-            </p>
-            {d.position.isPartPayment ? (
-              <p>
-                ₹{rupees(d.position.receivedToDate)} has been received against this invoice in total, leaving ₹
-                {rupees(d.position.balanceAfter)} still payable.
-              </p>
-            ) : (
-              <p>This clears the invoice. Nothing further is due on it.</p>
-            )}
-            {d.payment.note && <p className="doc-muted">{d.payment.note}</p>}
-          </div>
+  const sheet = (
+    <>
+      <LedgerHead company={company} />
+      <InfoGrid>
+        <InfoRow k="Receipt No." v={d.recordCode} />
+        <InfoRow k="Date" v={fmtDate(d.issuedAt)} />
+        <InfoRow k="Student/Customer Name" v={d.customer.name} />
+        <InfoRow k="Contact No." v={d.customer.phone ?? '—'} />
+        <InfoRow k="Against Invoice No." v={d.invoice.recordCode} />
+        <InfoRow k="Invoice Date" v={fmtDate(d.invoice.issuedDate)} />
+      </InfoGrid>
+      <DateBoxGrid columns={4}>
+        <DateBoxItem k="Amount Received" v={fmtINR(d.position.amountReceivedNow)} />
+        <DateBoxItem k="Mode" v={modeLabel} bold={false} />
+        <DateBoxItem k="Balance Before" v={fmtINR(d.position.balanceAfter + d.position.amountReceivedNow)} />
+        <DateBoxItem k="Balance After" v={fmtINR(d.position.balanceAfter)} />
+      </DateBoxGrid>
 
-          {d.sequence.length > 1 && (
-            <>
-              <p className="doc-label" style={{ marginTop: 12 }}>
-                Instalments against this invoice
-              </p>
-              <table className="doc-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Receipt</th>
-                    <th>Date</th>
-                    <th>Mode</th>
-                    <th className="num">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.sequence.map((r) => (
-                    <tr key={r.recordCode} className={r.isThisOne ? 'doc-this-one' : undefined}>
-                      <td>{r.number}</td>
-                      <td>{r.recordCode}</td>
-                      <td>{date(r.issuedAt)}</td>
-                      <td>{r.mode ? (PAYMENT_MODE_LABELS[r.mode as PaymentMode] ?? r.mode) : '—'}</td>
-                      <td className="num">{rupees(r.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
+      {d.sequence.length > 1 && (
+        <div className="ki-ledger-scroll">
+          <table className="ki-ledger">
+            <thead>
+              <tr>
+                <th>No.</th>
+                <th>Receipt</th>
+                <th>Date</th>
+                <th>Mode</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.sequence.map((r) => (
+                <tr key={r.recordCode} className={r.isThisOne ? 'ki-course-row' : undefined}>
+                  <td>{r.number}</td>
+                  <td className="ki-name-cell">{r.recordCode}</td>
+                  <td>{fmtDate(r.issuedAt)}</td>
+                  <td>{r.mode ? (PAYMENT_MODE_LABELS[r.mode as PaymentMode] ?? r.mode) : '—'}</td>
+                  <td className="ki-total-cell">{fmtINR(r.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+      )}
 
-        {/* The two figures, which on anything after the first instalment live here
-            rather than on the invoice. */}
-        <table className="doc-totals">
-          <tbody>
-            <tr className="doc-total-row">
-              <th>Total payable</th>
-              <td className="num">₹{rupees(d.position.totalPayable)}</td>
-            </tr>
-            <tr className="doc-now-row">
-              <th>Amount received now</th>
-              <td className="num">₹{rupees(d.position.amountReceivedNow)}</td>
-            </tr>
-            <tr>
-              <th>Received to date</th>
-              <td className="num">{rupees(d.position.receivedToDate)}</td>
-            </tr>
-            <tr>
-              <th>Balance after this</th>
-              <td className="num">{rupees(d.position.balanceAfter)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+      <TotalsStrip
+        doc={{ amountInWords: amountInWords(d.position.amountReceivedNow), grandTotal: d.position.amountReceivedNow, label: 'Amount Received' }}
+      />
 
-      <footer className="doc-terms">
-        <p className="doc-muted">
-          Subject to realisation of the instrument where the payment was not in cash.
-        </p>
-        <Signature legalName={d.supplier.legalName} />
-        {d.footnote && <p className="doc-muted">{d.footnote}</p>}
-      </footer>
-    </Sheet>
+      <NoteStrip>
+        This receipt acknowledges money received against the invoice named above; the tax invoice remains the tax
+        document.
+        {d.payment.reference && ` Reference: ${d.payment.reference}.`}
+        {d.payment.note && ` ${d.payment.note}`}
+        {d.footnote && ` ${d.footnote}`}
+      </NoteStrip>
+      <SignStrip />
+    </>
+  );
+
+  return (
+    <div>
+      <DocumentToolbar backTo="/finance/receipts" backLabel="Receipts" onPrint={handlePrint} />
+      <DocumentScreen>{sheet}</DocumentScreen>
+
+      {printKey && (
+        <PrintPortal key={printKey}>
+          <TwoCopyPrintPage render={() => sheet} />
+        </PrintPortal>
+      )}
+    </div>
   );
 }
 
