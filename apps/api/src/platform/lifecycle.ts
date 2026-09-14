@@ -24,8 +24,16 @@ import type { Resource, Verb } from '@kaizen/shared';
 
 export interface TransitionInput<S extends string, E extends string> {
   machine: Machine<S, E>;
-  /** The event-name object segment: `kz.hr.<object>.<verb>`. */
+  /** The event-name object segment: `<eventPrefix>.<object>.<verb>`. */
   eventObject: string;
+  /**
+   * The event-name domain prefix. Defaults to `kz.hr`, the namespace this
+   * helper was written for; the technology module passes `kz.it` so a ticket
+   * or a change is not filed under people events.
+   */
+  eventPrefix?: string;
+  /** The `impact.domains` entry the event carries. Defaults to `hr`. */
+  impactDomain?: string;
   /** Past-tense verb per transition, from the machine's own verb map. */
   verbs: Record<E, string>;
 
@@ -80,7 +88,9 @@ export async function transition<S extends string, E extends string>(
   }
 
   const to = input.machine.apply(input.from, input.event);
-  const eventName = hrTransitionEvent(input.eventObject, input.verbs[input.event]);
+  const eventName = input.eventPrefix
+    ? `${input.eventPrefix}.${input.eventObject}.${input.verbs[input.event]}`
+    : hrTransitionEvent(input.eventObject, input.verbs[input.event]);
 
   await emit({
     name: eventName,
@@ -90,7 +100,7 @@ export async function transition<S extends string, E extends string>(
     newState: { status: to, ...input.detail },
     reason: input.reasonNote ? { reasonCode: input.event, note: input.reasonNote } : null,
     owner: { partyId: input.ownerPartyId ?? null },
-    impact: { domains: ['hr'] },
+    impact: { domains: [input.impactDomain ?? 'hr'] },
   });
 
   await auditWrite({

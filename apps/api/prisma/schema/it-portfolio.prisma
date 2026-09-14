@@ -1,0 +1,229 @@
+// Technology — portfolio and budget (docs/plan/cio.md, workstream G).
+//
+// `ItInitiative` is a technology initiative with a business case and stage
+// gates; `ItInitiativeUpdate` is its append-only status feed. `ItRoadmapItem`
+// places initiatives on a quarter x theme grid. `ItBudgetLine` plans a run or
+// grow figure by category and division for a financial year — actuals are
+// NEVER stored on it, only computed per request as a sum over the finance
+// `Transaction`/`VendorBill` rows its `bookCategoryIds` name, within the FY
+// window (Principle 8: money stays in the books). `ItTechDebtItem` is a
+// known cost of not doing something, retired by an initiative.
+//
+// `ItPortfolioSetting` is the dated-threshold table Principle 4 asks for:
+// the stale-initiative day count and the budget-burn margin live here as
+// data, seeded with an effective-from date, never as a constant in domain
+// code.
+
+/// A technology initiative: a business case running through
+/// idea -> assessed -> approved -> in_flight -> delivered -> benefits_realised
+/// (or cancelled from anywhere short of delivered). Approving out of
+/// `assessed` runs `POL-IT-INITIATIVE-APPROVAL` on the Self-Dealing Bar,
+/// gated on `sponsorPartyId` — the accountable requester, which may differ
+/// from `ownerPartyId`, the delivery owner. Spend to date is never stored:
+/// it is summed from `vendorBillIds` at read time.
+model ItInitiative {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  title String
+
+  /// run | grow | transform
+  theme String
+
+  /// The accountable requester — the approval gate's Self-Dealing Bar checks
+  /// this, not `ownerPartyId`, because the person who asked for the money is
+  /// the one who must never sign off their own funding.
+  sponsorPartyId String
+  /// The delivery owner. May be the sponsor, or may not.
+  ownerPartyId String
+
+  businessCase    String?
+  expectedBenefit String?
+
+  budget   Decimal @db.Decimal(18, 2)
+  currency String  @default("INR")
+
+  /// idea | assessed | approved | in_flight | delivered | benefits_realised | cancelled
+  stage String @default("idea")
+
+  /// green | amber | red
+  rag       String    @default("green")
+  ragReason String?
+  ragSetAt  DateTime?
+
+  /// e.g. `FY2026-27 Q3`.
+  targetQuarter String?
+
+  /// Bare id — the `Project` running delivery, once one exists.
+  projectId String?
+
+  /// Bare ids: `VendorBill` rows counted into spend to date. Licences may
+  /// not exist at typecheck time (another workstream's model); licence
+  /// spend is documented as a future join in docs/it/portfolio.md rather
+  /// than read unsafely here.
+  vendorBillIds String[] @default([])
+  licenceIds    String[] @default([])
+
+  /// Set by the stale-in-flight job; cleared the moment a fresh update
+  /// lands, so the ladder can fire again if the initiative goes quiet a
+  /// second time.
+  staleNotifiedAt DateTime?
+
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  updates ItInitiativeUpdate[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, stage])
+  @@index([tenantId, theme])
+  @@map("it_initiatives")
+}
+
+/// Append-only status report against an initiative. Posting one also
+/// refreshes the initiative's own `rag`/`ragReason`/`ragSetAt` (the current
+/// band), but the feed row itself is never edited afterwards.
+model ItInitiativeUpdate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  initiativeId String
+  initiative   ItInitiative @relation(fields: [initiativeId], references: [id])
+
+  body          String
+  /// green | amber | red, as reported at this update.
+  rag           String
+  authorPartyId String?
+  at            DateTime @default(now())
+
+  @@index([tenantId, initiativeId, at])
+  @@map("it_initiative_updates")
+}
+
+/// One milestone on the quarters x themes roadmap grid.
+model ItRoadmapItem {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// e.g. `FY2026-27 Q3`.
+  quarter String
+  /// run | grow | transform
+  theme String
+  /// Bare id, optional — a roadmap item need not be tied to a funded initiative yet.
+  initiativeId String?
+
+  milestone String
+  dueAt     DateTime?
+  done      Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, quarter])
+  @@index([tenantId, theme])
+  @@map("it_roadmap_items")
+}
+
+/// A planned technology spend figure for one FY, category, division and
+/// run/grow split. `bookCategoryIds` names the finance `LedgerCategory` ids
+/// whose `Transaction` and `VendorBill` rows count as actuals — the actual
+/// figure is computed at read time (`computeBudgetActual`), never stored.
+model ItBudgetLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// `FY2026-27`.
+  fy String
+
+  /// licences | hardware | vendors | cloud | people | other
+  category String
+  /// software | skill | education | shared — the fixed division colours.
+  division String?
+  /// run | grow
+  kind String
+
+  planned  Decimal @db.Decimal(18, 2)
+  currency String  @default("INR")
+
+  /// The finance `LedgerCategory` ids whose books rows are this line's
+  /// actuals. Data, so a line can be re-pointed at a renamed category
+  /// without a code change.
+  bookCategoryIds String[] @default([])
+
+  /// draft | approved. Approval needs `it_budgets:approve` and is refused
+  /// to the line's own creator — the self-dealing bar, applied by hand
+  /// since a budget line has no commercial-value gate of its own.
+  status String @default("draft")
+
+  createdById String?
+  approvedById String?
+  approvedAt   DateTime?
+
+  /// Set once the burn-ahead detector fires for this line, so it fires at
+  /// most once per FY per line (a line covers exactly one FY).
+  burnNotifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, fy])
+  @@index([tenantId, status])
+  @@map("it_budget_lines")
+}
+
+/// A known technical-debt item: what it would cost to fix, what it costs to
+/// leave (`interest`), and — when one exists — the initiative that retires
+/// it.
+model ItTechDebtItem {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  title String
+  /// Bare id — the `ItApplication` this debt sits in, when one is named.
+  applicationId String?
+
+  /// low | medium | high | critical
+  severity   String
+  effortDays Int?
+  /// What it costs to leave unresolved — read for a person, not a number.
+  interest String?
+
+  /// open | planned | in_progress | retired | accepted
+  status String @default("open")
+
+  /// Bare id — the initiative that retires this debt, once one is funded.
+  initiativeId String?
+
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, severity])
+  @@map("it_tech_debt_items")
+}
+
+/// Dated thresholds this workstream's jobs read instead of hard-coding
+/// (Principle 4): stale-initiative days, the budget-burn margin percentage,
+/// the theme list. Upserted by `seedPortfolio`, keyed by `key`; the row with
+/// the latest `effectiveFrom` not in the future wins.
+model ItPortfolioSetting {
+  id       String @id @default(cuid())
+  tenantId String
+
+  key           String
+  value         Json
+  effectiveFrom DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, key, effectiveFrom])
+  @@map("it_portfolio_settings")
+}
