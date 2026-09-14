@@ -20,8 +20,11 @@
  * other two can answer "what did I owe, what have I paid, and against which
  * receipts": the invoice predates the payments, and each receipt only knows about
  * itself. So this is that answer, with its own number and date, naming every
- * receipt it consolidates — raised deliberately rather than rendered on the fly,
- * because it is a thing somebody hands over.
+ * receipt it consolidates — a real document, stored and numbered, rather than
+ * rendered on the fly. Raised automatically the instant a receipt brings an
+ * invoice's balance to zero, so a customer paying in full does not need anybody
+ * to remember a second step; also callable on demand mid-way, for the customer
+ * who wants a statement of where they stand before the instalments are done.
  */
 
 import { EVENTS, round2, type PaymentMode } from '@kaizen/shared';
@@ -249,18 +252,19 @@ export async function receiptDocument(receiptId: string) {
 /**
  * Raises the statement that closes out an invoice paid in instalments.
  *
- * Deliberate rather than automatic, because it is a document somebody hands over:
- * it has a number, a date and a signature line, and generating one silently every
- * time a payment landed would fill the record with statements nobody issued.
+ * Callable on demand — a customer who has paid two of three instalments can
+ * legitimately ask for a statement of where they are, and this does not refuse
+ * just because a balance remains; it prints the balance instead of pretending
+ * there is none. And called automatically by `collectInvoicePayment` the moment
+ * a receipt brings an invoice's balance to zero, so the customer leaves the
+ * counter with the invoice, the receipt, and the statement that closes it out,
+ * without anybody having to remember a second step. The idempotency check above
+ * is what makes that safe: calling this again with nothing new to consolidate
+ * hands back the statement that already stands rather than raising a duplicate.
  *
- * Refused when there is nothing to consolidate. An invoice with no receipts
- * against it has a final invoice already — the tax invoice, which says the whole
- * amount is owed and is still the only true document.
- *
- * Not refused when a balance remains. A customer who has paid two of three
- * instalments can legitimately ask for a statement of where they are, and a
- * document that refuses to exist until the last rupee arrives is no use to them.
- * It prints the balance instead of pretending there is none.
+ * Refused when there is nothing to consolidate at all. An invoice with no
+ * receipts against it has a final invoice already — the tax invoice, which says
+ * the whole amount is owed and is still the only true document.
  */
 export async function raiseFinalInvoice(invoiceId: string, input: { note?: string | null } = {}) {
   const auth = currentAuth();
@@ -309,6 +313,20 @@ export async function raiseFinalInvoice(invoiceId: string, input: { note?: strin
   const previous = await prisma.finalInvoice.findMany({
     where: { tenantId: auth.tenantId, invoiceId, status: 'issued' },
   });
+
+  // Nothing has changed since the last one — same receipts, same total, same
+  // credit notes — so raising again would only produce a duplicate that
+  // supersedes nothing new. This is what makes it safe to call automatically
+  // every time an instalment settles an invoice: the deliberate act still
+  // belongs to whoever asked for a statement mid-way, and this just hands back
+  // what already stands rather than starting a pointless supersession chain.
+  const current = previous.find(
+    (p) =>
+      p.receiptCount === rows.length &&
+      Math.abs((num(p.totalReceived) ?? 0) - totalReceived) < 0.001 &&
+      Math.abs((num(p.creditNoted) ?? 0) - totals.creditNoted) < 0.001,
+  );
+  if (current) return current;
 
   const numbering = await documentNumbering();
   const recordCode = await nextDocumentNumber(

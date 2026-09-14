@@ -784,6 +784,112 @@ describe('the final invoice names the receipts it consolidates', () => {
 });
 
 // ===========================================================================
+// A payment reaching zero balance raises the final invoice with it
+// ===========================================================================
+
+describe('the moment a payment settles an invoice, the final invoice is raised automatically', () => {
+  it('a full payment at creation is not a special case: one receipt, one final invoice naming it', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const invoice = await createInvoice({
+        organizationId: await anAccount(),
+        placeOfSupply: '33',
+        lines: [{ description: 'Paid in full', unitPrice: 1000, gstRate: 0 }],
+        payment: { amount: 1000, mode: 'cash', reference: `CASH-${stamp()}` },
+      });
+
+      expect(invoice.status).toBe('settled');
+      expect(invoice.receipt).toBeTruthy();
+      expect(invoice.finalInvoice).toBeTruthy();
+
+      const receipts = await listReceipts({ invoiceId: invoice.id });
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0].recordCode).toBe(invoice.receipt!.recordCode);
+
+      const final = await prisma.finalInvoice.findFirstOrThrow({
+        where: { id: invoice.finalInvoice!.id },
+      });
+      expect(final.recordCode).toBe(invoice.finalInvoice!.recordCode);
+      expect(final.receiptCount).toBe(1);
+      expect(final.receiptCodes).toEqual([receipts[0].recordCode]);
+      expect(final.settled).toBe(true);
+    });
+  });
+
+  it('two part payments raise it on the second, naming both receipts in order, numbered gaplessly', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const invoice = await createInvoice({
+        organizationId: await anAccount(),
+        placeOfSupply: '33',
+        lines: [{ description: 'Two instalments', unitPrice: 1000, gstRate: 0 }],
+        payment: { amount: 400, mode: 'cash', reference: `CASH-${stamp()}` },
+      });
+      // Not settled yet, so nothing to consolidate — no final invoice raised.
+      expect(invoice.finalInvoice).toBeNull();
+
+      const settling = await collectInvoicePayment(invoice.id, {
+        amount: 600,
+        mode: 'upi',
+        reference: `UPI-${stamp()}`,
+      });
+      expect(settling.readyForFinalInvoice).toBe(true);
+      expect(settling.finalInvoice).toBeTruthy();
+
+      const receipts = await listReceipts({ invoiceId: invoice.id });
+      expect(receipts).toHaveLength(2);
+      const [newest, oldest] = receipts;
+
+      // Consecutive in the company's own R series: nothing else was raised
+      // between the two.
+      const seq = (code: string) => Number(code.split('/').pop());
+      expect(seq(newest.recordCode)).toBe(seq(oldest.recordCode) + 1);
+
+      const final = await prisma.finalInvoice.findFirstOrThrow({
+        where: { id: settling.finalInvoice!.id },
+      });
+      expect(final.receiptCodes).toEqual([oldest.recordCode, newest.recordCode]);
+      expect(final.receiptCount).toBe(2);
+      expect(final.settled).toBe(true);
+    });
+  });
+
+  it('refuses a payment against an invoice already settled', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const invoice = await createInvoice({
+        organizationId: await anAccount(),
+        lines: [{ description: 'Settled at once', unitPrice: 500, gstRate: 0 }],
+        payment: { amount: 500, mode: 'cash', reference: `CASH-${stamp()}` },
+      });
+      expect(invoice.status).toBe('settled');
+
+      const err = await expectReject(() =>
+        collectInvoicePayment(invoice.id, { amount: 1, mode: 'cash', reference: `CASH-${stamp()}` }),
+      );
+      expect(err.message).toMatch(/more than the/);
+    });
+  });
+
+  it('carries the receipts and the final invoice reference on the tax invoice document', async () => {
+    await asUser('latha@kaizen.co.in', async () => {
+      const invoice = await createInvoice({
+        organizationId: await anAccount(),
+        placeOfSupply: '33',
+        lines: [{ description: 'Documented', unitPrice: 1000, gstRate: 0 }],
+        payment: { amount: 1000, mode: 'cash', reference: `CASH-${stamp()}` },
+      });
+
+      const doc = await invoiceDocument(invoice.id);
+      expect(doc.receipts).toHaveLength(1);
+      expect(doc.receipts[0].amount).toBe(1000);
+      expect(doc.receipts[0].mode).toBe('cash');
+      expect(doc.statements).toHaveLength(1);
+      expect(doc.statements[0].recordCode).toBe(invoice.finalInvoice!.recordCode);
+      expect(doc.statements[0].settled).toBe(true);
+      expect(doc.position.settled).toBe(true);
+    });
+  });
+});
+
+// ===========================================================================
 // The document
 // ===========================================================================
 

@@ -132,6 +132,18 @@ router.get(
       : [];
     const courseMap = new Map(courses.map((c) => [c.id, c.name]));
 
+    // The final invoice currently standing against each row, if one has been
+    // raised — named here so the list can offer it without a second trip per
+    // invoice. Superseded statements are left out: only the one that stands
+    // is what the list points at.
+    const finalInvoices = rows.length
+      ? await prisma.finalInvoice.findMany({
+          where: { tenantId: auth.tenantId, invoiceId: { in: rows.map((r) => r.id) }, status: 'issued' },
+          select: { id: true, recordCode: true, invoiceId: true },
+        })
+      : [];
+    const finalInvoiceMap = new Map(finalInvoices.map((f) => [f.invoiceId, f]));
+
     return rows.map((inv) => {
       const totals = totalsOf(inv);
       const daysOverdue =
@@ -179,6 +191,11 @@ router.get(
         division: inv.division,
         editable: inv.status === 'draft',
         gstFilingId: inv.gstFilingId,
+        /** How many receipts have been issued against it — part payments live there, not here. */
+        receiptCount: inv.receipts.length,
+        /** The final invoice currently standing against it, if one has been raised. */
+        finalInvoiceId: finalInvoiceMap.get(inv.id)?.id ?? null,
+        finalInvoiceCode: finalInvoiceMap.get(inv.id)?.recordCode ?? null,
         lines: inv.lines.map((l) => ({
           id: l.id,
           offeringName: l.offeringId ? (offeringMap.get(l.offeringId) ?? null) : null,

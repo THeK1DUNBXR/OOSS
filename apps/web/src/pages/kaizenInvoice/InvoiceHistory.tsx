@@ -74,13 +74,15 @@ export function InvoiceHistory() {
                   <th>Course</th>
                   <th>Total</th>
                   <th>Status</th>
+                  <th>Receipts</th>
+                  <th>Final Invoice</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="ki-notes-cell">
+                    <td colSpan={9} className="ki-notes-cell">
                       No saved invoices yet — use &quot;Save &amp; Print&quot; on the New Invoice screen.
                     </td>
                   </tr>
@@ -97,6 +99,28 @@ export function InvoiceHistory() {
                         <td className="ki-notes-cell">{course}</td>
                         <td className="ki-num-cell">{inv.total !== null ? fmtINR(inv.total) : '—'}</td>
                         <td style={{ textTransform: 'capitalize' }}>{inv.status.replace('_', ' ')}</td>
+                        <td>
+                          {inv.receiptCount > 0 ? (
+                            <Link className="ki-btn-remove" style={{ color: 'var(--ki-navy)' }} to={`/finance/invoices/${inv.id}/document`}>
+                              {inv.receiptCount} receipt{inv.receiptCount === 1 ? '' : 's'}
+                            </Link>
+                          ) : (
+                            <span style={{ color: 'var(--ki-muted)' }}>—</span>
+                          )}
+                        </td>
+                        <td>
+                          {inv.finalInvoiceId ? (
+                            <Link
+                              className="ki-btn-remove"
+                              style={{ color: 'var(--ki-navy)' }}
+                              to={`/finance/final-invoices/${inv.finalInvoiceId}`}
+                            >
+                              {inv.finalInvoiceCode}
+                            </Link>
+                          ) : (
+                            <span style={{ color: 'var(--ki-muted)' }}>—</span>
+                          )}
+                        </td>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <Link className="ki-btn-remove" style={{ color: 'var(--ki-navy)' }} to={`/finance/invoices/${inv.id}/document`}>
                             Reprint
