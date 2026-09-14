@@ -752,6 +752,8 @@ export interface InvoiceDocumentView {
   currency: string;
   issuedDate: string | null;
   dueDate: string | null;
+  /** Set only on a course-sale invoice — when the student enrolled, which the schedule below is computed from. */
+  enrollmentDate: string | null;
   notes: string | null;
   division: string | null;
   raisedBy: string | null;
@@ -784,9 +786,12 @@ export interface InvoiceDocumentView {
   };
 
   customer: {
-    kind: 'person' | 'organization';
+    kind: 'student' | 'institution' | 'organization';
+    kindLabel: string;
     name: string;
     recordCode: string | null;
+    /** The learner's own registration number, where they have one. */
+    registrationNumber: string | null;
     gstin: string | null;
     /** B2B or B2C, from whether the registration is real — it decides who can claim the tax. */
     supplyType: 'b2b' | 'b2c';
@@ -805,6 +810,8 @@ export interface InvoiceDocumentView {
     description: string;
     courseName: string | null;
     courseCode: string | null;
+    /** Set where this line is a catalogue add-on rather than the course itself. */
+    addonName: string | null;
     hsnSac: string | null;
     quantity: number;
     unitPrice: number;
@@ -820,6 +827,36 @@ export interface InvoiceDocumentView {
   }>;
 
   tax: { taxableValue: number; cgst: number; sgst: number; igst: number; roundOff: number };
+
+  /**
+   * The Kaizen course-ledger view of this invoice — present only on a
+   * course-sale invoice (one raised with an enrollment date). Every figure
+   * here is derived from `lines`/`tax`/`enrollmentDate` above rather than a
+   * second source of truth; it exists so the printed ledger table (monthly
+   * fee, tenure, effective-monthly-after-discount, the CGST/SGST/IGST split
+   * per line) does not have to be recomputed by the client.
+   */
+  ledger: {
+    schedule: { firstPaymentDue: string; subsequentFrom: string } | null;
+    rows: Array<{
+      lineId: string;
+      hsnSac: string | null;
+      courseName: string | null;
+      addonName: string | null;
+      monthlyFee: number;
+      tenureMonths: number;
+      subtotal: number;
+      discountPercent: number;
+      discountAmount: number;
+      effectiveMonthly: number;
+      taxable: number;
+      cgst: number;
+      sgst: number;
+      igst: number;
+      total: number;
+      isCourseRow: boolean;
+    }>;
+  } | null;
 
   /**
    * What the tax invoice says, fixed at issue. Both figures, side by side, and
@@ -1110,11 +1147,24 @@ export interface CourseView {
   feeAmount: number | null;
   gstRate: number | null;
   hsnSac: string | null;
+  /** Contact hours, shown beside the price — not used in any pricing arithmetic. */
+  hours: number | null;
   division: string | null;
   active: boolean;
   feeWithTax: number | null;
   batchCount: number;
   enrolledCount: number;
+  /** Tenure-based pricing — a course sold on 1/3/6/8-month plans has one row per plan instead of relying on `feeAmount`. */
+  feePlans: Array<{ id: string; tenureMonths: number; monthlyFee: number }>;
+  /** Paid extras sold alongside this course (a certification exam, a kit), priced as a fixed total. */
+  addons: Array<{
+    id: string;
+    name: string;
+    price: number;
+    gstRate: number;
+    hsnSac: string | null;
+    notes: string | null;
+  }>;
   cohorts: Array<{
     id: string;
     name: string;

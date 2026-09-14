@@ -47,6 +47,8 @@ const paymentModeEnum = z.enum(PAYMENT_MODES as unknown as [PaymentMode, ...Paym
 const lineSchema = z.object({
   offeringId: z.string().nullish(),
   courseId: z.string().nullish(),
+  /** A catalogue add-on of that course — its price, tax rate and SAC fill the line the same way a course's do. */
+  courseAddonId: z.string().nullish(),
   /** The student's place on the course — what is actually being billed. */
   enrollmentId: z.string().nullish(),
   description: z.string().nullish(),
@@ -223,6 +225,8 @@ const invoiceBodySchema = z.object({
   issuedDate: z.string().nullish(),
   dueDate: z.string().nullish(),
   dueInDays: z.number().int().positive().optional(),
+  /** Only meaningful for a course-sale invoice — the payment-due schedule prints off it. */
+  enrollmentDate: z.string().nullish(),
   placeOfSupply: z.string().nullish(),
   customerGstin: z.string().nullish(),
   interState: z.boolean().nullish(),
@@ -243,6 +247,7 @@ router.post(
       ...body,
       issuedDate: body.issuedDate ? new Date(body.issuedDate) : undefined,
       dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
+      enrollmentDate: body.enrollmentDate ? new Date(body.enrollmentDate) : undefined,
       payment: collected(body.payment),
     });
     res.status(201).json(invoice);
@@ -267,6 +272,7 @@ router.patch(
       lines: body.lines,
       issuedDate: body.issuedDate ? new Date(body.issuedDate) : undefined,
       dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
+      enrollmentDate: body.enrollmentDate ? new Date(body.enrollmentDate) : undefined,
     });
   }),
 );

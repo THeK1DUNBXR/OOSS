@@ -147,7 +147,7 @@ could not truthfully copy without the same discipline:
   the paisa (bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses
   ₹1,002,060.07) — real, not fabricated, financial figures used for
   verification.
-- 372 backend tests, each naming the requirement it verifies
+- 399 backend tests, each naming the requirement it verifies
   (`docs/acceptance.md` maps requirement → test), plus 4 browser
   (Playwright-style) end-to-end tests, deliberately not a full UI-coverage
   suite.

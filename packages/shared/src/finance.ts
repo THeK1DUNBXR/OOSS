@@ -494,6 +494,57 @@ export function amountInWords(value: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Course-sale payment schedule
+//
+// A course sold on an instalment plan states, on the invoice itself, when the
+// first payment falls due and when the rest do — printed, not left for the
+// student to work out. The rule: the first instalment is due within three
+// days of enrolling; the ones after that fall on the 1st of the month, unless
+// enrolling that close to a month-end would leave fewer than fourteen days
+// between the first instalment and that 1st, in which case the run of
+// monthly instalments starts a month later instead.
+// ---------------------------------------------------------------------------
+
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function firstOfMonthAheadIso(iso: string, monthsAhead: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  const nd = new Date(d.getFullYear(), d.getMonth() + monthsAhead, 1);
+  return nd.toISOString().slice(0, 10);
+}
+
+function daysBetweenIso(a: string, b: string): number {
+  const da = new Date(`${a}T00:00:00`).getTime();
+  const db = new Date(`${b}T00:00:00`).getTime();
+  return Math.round((db - da) / 86_400_000);
+}
+
+export interface PaymentSchedule {
+  /** Due date of the first instalment: enrollment date plus three days. */
+  firstPaymentDue: string;
+  /** The 1st of the month the run of monthly instalments starts from. */
+  subsequentFrom: string;
+}
+
+/**
+ * The payment-due schedule printed under a course-sale invoice's lines, from
+ * the enrollment date alone. Returns null where there is no enrollment date —
+ * a generic invoice has no schedule to print.
+ */
+export function computePaymentSchedule(enrollmentDateIso: string | null | undefined): PaymentSchedule | null {
+  if (!enrollmentDateIso) return null;
+  const firstPaymentDue = addDaysIso(enrollmentDateIso, 3);
+  const nextMonth1st = firstOfMonthAheadIso(enrollmentDateIso, 1);
+  const gap = daysBetweenIso(firstPaymentDue, nextMonth1st);
+  const subsequentFrom = gap < 14 ? firstOfMonthAheadIso(enrollmentDateIso, 2) : nextMonth1st;
+  return { firstPaymentDue, subsequentFrom };
+}
+
+// ---------------------------------------------------------------------------
 // Depreciation
 // ---------------------------------------------------------------------------
 

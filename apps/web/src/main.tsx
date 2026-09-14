@@ -18,6 +18,8 @@ import { People, PersonDetail, Interactions } from './pages/People.js';
 import { Offerings, Quotes, Proposals, Agreements, Approvals, WinLoss } from './pages/Commercial.js';
 import { Invoices, Payments, Receivables } from './pages/Finance.js';
 import { InvoiceDocument } from './pages/InvoiceDocument.js';
+import { NewInvoice } from './pages/kaizenInvoice/NewInvoice.js';
+import { InvoiceHistory } from './pages/kaizenInvoice/InvoiceHistory.js';
 import { ReceiptDocument, Receipts } from './pages/ReceiptDocument.js';
 import { FinalInvoiceDocument, FinalInvoices } from './pages/FinalInvoiceDocument.js';
 import { CompanyDetails, GstReturns } from './pages/GstReturns.js';
@@ -110,6 +112,8 @@ function Routed() {
         <Route path="/finance/budget" element={<Budget />} />
         <Route path="/finance/assets" element={<Assets />} />
         <Route path="/finance/invoices" element={<Invoices />} />
+        <Route path="/finance/invoices/new" element={<NewInvoice />} />
+        <Route path="/finance/invoices/history" element={<InvoiceHistory />} />
         {/* The document route sits above the detail route: a printable invoice is
             a different surface from the list, not a modal over it. */}
         <Route path="/finance/invoices/:id/document" element={<InvoiceDocument />} />

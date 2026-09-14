@@ -30,10 +30,11 @@ import {
   Tabs,
 } from '../components/ui.js';
 import { CreateModal, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../components/forms.js';
+import { FeeMasterCatalog } from './kaizenInvoice/FeeMasterCatalog.js';
 
 export function Courses() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<'selling' | 'all'>('selling');
+  const [tab, setTab] = useState<'selling' | 'all' | 'feeMaster'>('selling');
   const [editing, setEditing] = useState<CourseView | null>(null);
   const [creating, setCreating] = useState(false);
   const [assigning, setAssigning] = useState<CourseView | null>(null);
@@ -98,12 +99,15 @@ export function Courses() {
         tabs={[
           { key: 'selling' as const, label: 'On offer', count: data.filter((c) => c.active).length },
           { key: 'all' as const, label: 'Including retired' },
+          { key: 'feeMaster' as const, label: 'Fee & Add-on Master' },
         ]}
         active={tab}
         onChange={setTab}
       />
 
-      {isLoading ? (
+      {tab === 'feeMaster' ? (
+        <FeeMasterCatalog courses={data} />
+      ) : isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
         <Card>
@@ -165,9 +169,11 @@ export function Courses() {
         </div>
       )}
 
-      <p className="mt-4 text-2xs text-ink-600">
-        Retiring keeps old enrolments readable, and stops the course being billable.
-      </p>
+      {tab !== 'feeMaster' && (
+        <p className="mt-4 text-2xs text-ink-600">
+          Retiring keeps old enrolments readable, and stops the course being billable.
+        </p>
+      )}
     </div>
   );
 }
@@ -187,10 +193,15 @@ function CourseForm({
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
   const [durationWeeks, setWeeks] = useState('');
+  const [hours, setHours] = useState('');
   const [feeAmount, setFee] = useState('');
   const [gstRate, setGstRate] = useState('18');
   const [hsnSac, setHsnSac] = useState('999293');
   const [division, setDivision] = useState('education');
+  const [feePlanRows, setFeePlanRows] = useState<Array<{ id: number; tenureMonths: string; monthlyFee: string }>>([]);
+  const [addonRows, setAddonRows] = useState<
+    Array<{ id: number; name: string; price: string; gstRate: string; notes: string }>
+  >([]);
 
   useEffect(() => {
     if (!open) return;
@@ -198,10 +209,17 @@ function CourseForm({
     setCode(course?.code ?? '');
     setDescription(course?.description ?? '');
     setWeeks(course?.durationWeeks ? String(course.durationWeeks) : '');
+    setHours(course?.hours !== null && course?.hours !== undefined ? String(course.hours) : '');
     setFee(course?.feeAmount !== null && course?.feeAmount !== undefined ? String(course.feeAmount) : '');
     setGstRate(String(course?.gstRate ?? 18));
     setHsnSac(course?.hsnSac ?? '999293');
     setDivision(course?.division ?? 'education');
+    setFeePlanRows(
+      (course?.feePlans ?? []).map((p, i) => ({ id: i, tenureMonths: String(p.tenureMonths), monthlyFee: String(p.monthlyFee) })),
+    );
+    setAddonRows(
+      (course?.addons ?? []).map((a, i) => ({ id: i, name: a.name, price: String(a.price), gstRate: String(a.gstRate), notes: a.notes ?? '' })),
+    );
   }, [open, course]);
 
   const body = () => ({
@@ -209,11 +227,20 @@ function CourseForm({
     code: code || name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 16),
     description: description.trim() || null,
     durationWeeks: durationWeeks ? Number(durationWeeks) : null,
+    hours: hours === '' ? null : Number(hours),
     feeAmount: feeAmount === '' ? null : Number(feeAmount),
     gstRate: Number(gstRate),
     hsnSac: hsnSac.trim() || null,
     division,
+    feePlans: feePlanRows
+      .filter((p) => p.tenureMonths !== '' && p.monthlyFee !== '')
+      .map((p) => ({ tenureMonths: Number(p.tenureMonths), monthlyFee: Number(p.monthlyFee) })),
+    addons: addonRows
+      .filter((a) => a.name.trim() && a.price !== '')
+      .map((a) => ({ name: a.name.trim(), price: Number(a.price), gstRate: a.gstRate === '' ? null : Number(a.gstRate), notes: a.notes.trim() || null })),
   });
+
+  const nextRowId = () => Math.random();
 
   return (
     <CreateModal
@@ -252,14 +279,105 @@ function CourseForm({
           options={GST_RATES.map((r) => ({ value: String(r), label: `${r}%` }))}
         />
       </Row>
-      <TextInput
-        label="SAC"
-        value={hsnSac}
-        onChange={setHsnSac}
-        placeholder="999293"
-        hint="999293 is commercial training and coaching"
-      />
-      <p className="text-2xs text-ink-500">
+      <Row>
+        <TextInput
+          label="SAC"
+          value={hsnSac}
+          onChange={setHsnSac}
+          placeholder="999293"
+          hint="999293 is commercial training and coaching"
+        />
+        <TextInput label="Hours" type="number" value={hours} onChange={setHours} hint="contact hours, shown on the catalogue" />
+      </Row>
+
+      <div className="mt-2 border-t border-ink-800 pt-3">
+        <p className="label mb-2">Tenure-based fee plans</p>
+        <p className="mb-2 text-2xs text-ink-500">
+          Sell this course on instalment plans (1/3/6/8-month, each its own monthly rate) instead of, or alongside,
+          the flat fee above.
+        </p>
+        {feePlanRows.map((row) => (
+          <Row key={row.id}>
+            <TextInput
+              label="Tenure (months)"
+              type="number"
+              value={row.tenureMonths}
+              onChange={(v) => setFeePlanRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, tenureMonths: v } : r)))}
+            />
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <MoneyInput
+                  label="Monthly fee"
+                  value={row.monthlyFee}
+                  onChange={(v) => setFeePlanRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, monthlyFee: v } : r)))}
+                />
+              </div>
+              <button
+                type="button"
+                className="btn-quiet mb-1"
+                onClick={() => setFeePlanRows((rs) => rs.filter((r) => r.id !== row.id))}
+              >
+                Remove
+              </button>
+            </div>
+          </Row>
+        ))}
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setFeePlanRows((rs) => [...rs, { id: nextRowId(), tenureMonths: '', monthlyFee: '' }])}
+        >
+          + Add a fee plan
+        </button>
+      </div>
+
+      <div className="mt-4 border-t border-ink-800 pt-3">
+        <p className="label mb-2">Add-ons</p>
+        <p className="mb-2 text-2xs text-ink-500">
+          Paid extras sold alongside this course — a certification exam, a kit — priced as one fixed total.
+        </p>
+        {addonRows.map((row) => (
+          <div key={row.id} className="mb-3 rounded border border-ink-800 p-3">
+            <Row>
+              <TextInput
+                label="Name"
+                value={row.name}
+                onChange={(v) => setAddonRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, name: v } : r)))}
+              />
+              <MoneyInput
+                label="Fixed price"
+                value={row.price}
+                onChange={(v) => setAddonRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, price: v } : r)))}
+              />
+            </Row>
+            <Row>
+              <SelectInput
+                label="GST rate"
+                value={row.gstRate}
+                onChange={(v) => setAddonRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, gstRate: v } : r)))}
+                options={GST_RATES.map((r) => ({ value: String(r), label: `${r}%` }))}
+              />
+              <TextInput
+                label="Notes"
+                value={row.notes}
+                onChange={(v) => setAddonRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, notes: v } : r)))}
+              />
+            </Row>
+            <button type="button" className="btn-quiet" onClick={() => setAddonRows((rs) => rs.filter((r) => r.id !== row.id))}>
+              Remove this add-on
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setAddonRows((rs) => [...rs, { id: nextRowId(), name: '', price: '', gstRate: '18', notes: '' }])}
+        >
+          + Add an add-on
+        </button>
+      </div>
+
+      <p className="mt-3 text-2xs text-ink-500">
         Fee, rate and code fill the invoice in. A change applies from now on.
       </p>
     </CreateModal>
