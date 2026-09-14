@@ -1,0 +1,209 @@
+// Technology — Incidents, problems and changes (docs/plan/cio.md, workstream E).
+//
+// An `ItIncident` is a live timeline: detected -> acknowledged -> mitigated ->
+// resolved -> closed, each stamp set once by `platform/lifecycle`, never
+// edited afterwards. `ItIncidentUpdate` is the append-only feed a commander
+// posts to while it runs. An `ItProblem` is the root cause an incident (or
+// several) points back to. An `ItChange` is the same shared approval-gate
+// shape `domains/agreements.ts` already runs, applied to a change window
+// instead of a contract, with `ItChangeFreeze` windows the scheduler must not
+// walk into.
+
+/// A live outage. Severity sev1 (business-stopping) .. sev4 (cosmetic).
+/// `detectedAt`/`acknowledgedAt`/`mitigatedAt`/`resolvedAt` are each set once
+/// by the matching lifecycle transition — a second `acknowledge` is a 409,
+/// never a silent overwrite (IT-INC-001). sev1/sev2 require a published
+/// post-incident review before `closed` is reachable (IT-INC-002); once
+/// published, `reviewBody`/`reviewPublishedAt` are final.
+model ItIncident {
+  id         String  @id @default(cuid())
+  tenantId   String
+  recordCode String?
+
+  title    String
+  severity String // sev1 | sev2 | sev3 | sev4
+  status   String @default("declared") // declared | acknowledged | mitigated | resolved | closed
+
+  /// Bare application ids (cross-workstream reference — workstream B owns
+  /// `ItApplication`); resolved at the service layer, never a Prisma relation.
+  affectedApplicationIds String[] @default([])
+
+  detectedAt     DateTime  @default(now())
+  acknowledgedAt DateTime?
+  mitigatedAt    DateTime?
+  resolvedAt     DateTime?
+  closedAt       DateTime?
+
+  commanderPartyId String?
+  impact           String?
+  customerFacing   Boolean @default(false)
+
+  /// Set when this incident is also a personal-data breach (workstream in the
+  /// privacy plan) — a bare id, linked, never duplicated.
+  breachId  String?
+  problemId String?
+
+  reviewRequired     Boolean   @default(false)
+  reviewBody         String?
+  reviewPublishedAt  DateTime?
+  reviewPublishedById String?
+
+  /// The stale-commander ladder (a rung already fired) and the
+  /// review-overdue ladder, each a one-shot timestamp cleared when the
+  /// condition that raised it is no longer true (a fresh update; a
+  /// published review).
+  staleNotifiedAt         DateTime?
+  reviewOverdueNotifiedAt DateTime?
+
+  /// Bumped by every post to `ItIncidentUpdate` and by every transition, so
+  /// the stale-commander job can ask "how long since anything happened here"
+  /// without scanning the update feed.
+  lastActivityAt DateTime @default(now())
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  updates ItIncidentUpdate[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, severity])
+  @@index([tenantId, problemId])
+  @@map("it_incidents")
+}
+
+/// Append-only status feed a commander posts to while an incident runs.
+/// Never edited, never deleted — the timeline IS the record.
+model ItIncidentUpdate {
+  id         String     @id @default(cuid())
+  tenantId   String
+  incidentId String
+  incident   ItIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  body         String
+  authorPartyId String?
+  at           DateTime @default(now())
+
+  @@index([tenantId, incidentId])
+  @@map("it_incident_updates")
+}
+
+/// The root cause an incident (or several) points back to. `known_error` is
+/// a distinct status from `resolved`: a known error has a documented
+/// workaround but no fix shipped yet.
+model ItProblem {
+  id         String  @id @default(cuid())
+  tenantId   String
+  recordCode String?
+
+  title      String
+  status     String  @default("open") // open | analysing | known_error | resolved | closed
+  rootCause  String?
+  knownError Boolean @default(false)
+  workaround String?
+
+  /// Bare incident ids this problem was opened from or later linked to.
+  incidentIds String[] @default([])
+
+  ownerPartyId String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@map("it_problems")
+}
+
+/// A change to a production system. `standard` changes are pre-approved by
+/// kind and skip the gate; `normal` and `emergency` run
+/// `evaluateApprovalGate('POL-IT-CHANGE-APPROVAL', ...)` on submit, the
+/// identical shape `transitionAgreement` runs for a contract. A normal
+/// change cannot be scheduled inside an `ItChangeFreeze` window
+/// (IT-CHG-002); an emergency change can, only if the freeze says so.
+model ItChange {
+  id         String  @id @default(cuid())
+  tenantId   String
+  recordCode String?
+
+  title  String
+  kind   String // standard | normal | emergency
+  risk   String // low | medium | high
+  status String @default("draft") // draft | submitted | approved | scheduled | implemented | reviewed | failed | rolled_back | rejected
+
+  affectedApplicationIds String[] @default([])
+
+  plan         String
+  rollbackPlan String
+
+  windowStart DateTime
+  windowEnd   DateTime
+
+  /// Also the gate's `ownerPartyId` — an engineer's own change is theirs to
+  /// propose, never theirs to approve (the Self-Dealing Bar).
+  requesterPartyId String
+
+  approvedById      String?
+  approvedAt        DateTime?
+  scheduledAt       DateTime?
+  implementedAt     DateTime?
+  /// Set once, by `implement` — a fact recorded, never revised.
+  implementationNote String?
+  reviewedAt         DateTime?
+  /// Set once, by `review` — final.
+  reviewNote          String?
+  rejectionReason     String?
+  failureReason       String?
+
+  /// The change scheduled inside a freeze window it should not have been
+  /// (never happens through the API, but a job can still flag drift) and the
+  /// window-passed-without-implementation ladder — each a one-shot marker.
+  windowMissedNotifiedAt DateTime?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, requesterPartyId])
+  @@index([tenantId, windowStart])
+  @@map("it_changes")
+}
+
+/// A dated window in which a normal change cannot be scheduled.
+/// `allowEmergency` is the one override — an emergency change may still be
+/// scheduled inside the freeze when the freeze itself says so.
+model ItChangeFreeze {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name           String
+  startsAt       DateTime
+  endsAt         DateTime
+  reason         String
+  allowEmergency Boolean @default(false)
+
+  declaredById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, startsAt])
+  @@map("it_change_freezes")
+}
+
+/// Dated thresholds (Principle 4): the stale-commander interval, the review-
+/// overdue days, and which severities require a review. One row per tenant,
+/// upserted by the seed — never a constant in job code.
+model ItItsmPolicy {
+  id       String @id @default(cuid())
+  tenantId String @unique
+
+  staleMinutes            Int      @default(60)
+  reviewOverdueDays        Int      @default(5)
+  reviewRequiredSeverities String[] @default(["sev1", "sev2"])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("it_itsm_policies")
+}
