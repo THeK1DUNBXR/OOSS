@@ -420,6 +420,37 @@ export interface PersonView {
   createdAt: string;
 }
 
+/**
+ * The body `PATCH /hr/employees/:id` accepts. Personal fields (HR at `all`,
+ * the employee at `own`) and employment fields (HR only — see
+ * `apps/api/src/domains/employment.ts`'s `updateEmployeeProfile`) share one
+ * envelope because they share one form; the service layer is what actually
+ * tells them apart.
+ *
+ * A regulated field here is write-only by construction: there is no read
+ * counterpart on `EmployeeDetailView` for `bloodGroup`, `panNumber`,
+ * `uanNumber`, `esicNumber` or the bank fields — only the `has*`/`*Last4`
+ * companions the response carries instead.
+ */
+export interface EmployeeProfileUpdateInput {
+  fullName?: string;
+  primaryPhone?: string | null;
+  primaryEmail?: string | null;
+  dateOfBirth?: string | null;
+  bloodGroup?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  hireEffectiveDate?: string;
+  noticePeriodDays?: number;
+  engagementType?: string;
+  panNumber?: string | null;
+  uanNumber?: string | null;
+  esicNumber?: string | null;
+  bankAccountNumber?: string | null;
+  bankIfsc?: string | null;
+  bankAccountName?: string | null;
+}
+
 export interface DedupCandidate {
   personId: string;
   recordCode: string;

@@ -29,6 +29,8 @@ import {
   ONBOARDING_EVENT_VERB,
   OFFBOARDING_EVENT_VERB,
   isEmployed,
+  BLOOD_GROUPS,
+  EMPLOYMENT_ENGAGEMENT_TYPES,
   type EmploymentState,
   type EmploymentEvent,
   type AssignmentRequestState,
@@ -48,12 +50,13 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
-import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
+import { assertCan, can, canSeeMoney, assertScopeAll, scopeFor } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
 import { assertEmploymentVisible } from '../platform/recordScope.js';
 import { normalisePhone, normaliseEmail } from './identity.js';
 import { runHooks } from '../platform/hooks.js';
+import { encryptField, readRegulated } from './compliance/privacy.js';
 
 // ---------------------------------------------------------------------------
 // Org structure
@@ -225,6 +228,15 @@ export async function getEmployment(id: string) {
  * schema's own documentation for these fields: a null still announces that
  * something is being withheld, and the exclusion contract calls for absence
  * from the response shape entirely.
+ *
+ * A regulated field being write-only is not the same as it being invisible:
+ * a form that lets HR replace a PAN or a blood group still has to say whether
+ * one is on file, or "correct" and "clear" become indistinguishable actions.
+ * So the redaction adds back a `has*` boolean for each excluded field — never
+ * the value, only its presence — and, when `revealLast4` is set (HR viewing
+ * with `employees:edit@all`, per the matrix), the last four characters of the
+ * PAN and the bank account number, decrypted through the one function every
+ * read of a regulated column is meant to go through.
  */
 export function redactRegulatedEmploymentFields<
   T extends {
@@ -237,7 +249,29 @@ export function redactRegulatedEmploymentFields<
     bankAccountName?: unknown;
     person: { bloodGroup?: unknown };
   },
->(employment: T): T {
+>(
+  employment: T,
+  opts: { revealLast4?: boolean } = {},
+): T & {
+  hasPan: boolean;
+  hasUan: boolean;
+  hasEsicNumber: boolean;
+  hasBankDetails: boolean;
+  panLast4?: string | null;
+  bankLast4?: string | null;
+} {
+  const hasBloodGroup = Boolean(employment.person.bloodGroup);
+  const hasPan = Boolean(employment.panNumber);
+  const hasUan = Boolean(employment.uanNumber);
+  const hasEsicNumber = Boolean(employment.esicNumber);
+  const hasBankDetails = Boolean(employment.bankAccountNumber);
+  const revealLast4 = opts.revealLast4 ?? false;
+
+  const last4 = (value: unknown): string | null => {
+    const plain = readRegulated(typeof value === 'string' ? value : null);
+    return plain ? plain.slice(-4) : null;
+  };
+
   return {
     ...employment,
     panNumber: undefined,
@@ -249,7 +283,12 @@ export function redactRegulatedEmploymentFields<
     bankAccountNumber: undefined,
     bankIfsc: undefined,
     bankAccountName: undefined,
-    person: { ...employment.person, bloodGroup: undefined },
+    hasPan,
+    hasUan,
+    hasEsicNumber,
+    hasBankDetails,
+    ...(revealLast4 ? { panLast4: hasPan ? last4(employment.panNumber) : null, bankLast4: hasBankDetails ? last4(employment.bankAccountNumber) : null } : {}),
+    person: { ...employment.person, bloodGroup: undefined, hasBloodGroup },
   };
 }
 
@@ -523,20 +562,88 @@ export async function setConfirmationState(id: string, state: string, note?: str
 }
 
 export interface EmployeeProfileInput {
+  // The person underneath — HR at `all`, the employee themselves at `own`.
   fullName?: string;
   primaryPhone?: string | null;
   primaryEmail?: string | null;
   dateOfBirth?: string | null;
+  /** Regulated (DPDP Act, health data): write-only. See `redactRegulatedEmploymentFields`. */
+  bloodGroup?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+
+  // The employment relationship itself — HR only, `all` scope required.
+  // Where they sit (position, org unit) stays out of this list on purpose: it
+  // already has its own lifecycle (`proposeAssignment`/`transitionAssignment`)
+  // and a direct field edit here would let a seat change bypass it.
+  hireEffectiveDate?: string;
+  noticePeriodDays?: number;
+  engagementType?: string;
+  /** Regulated: write-only. */
+  panNumber?: string | null;
+  uanNumber?: string | null;
+  esicNumber?: string | null;
+  bankAccountNumber?: string | null;
+  bankIfsc?: string | null;
+  bankAccountName?: string | null;
+}
+
+/** Fields that belong to the employment row, not the person — HR's to
+ * correct, never reachable through the employee's own `@own` grant. */
+const EMPLOYMENT_ONLY_FIELDS = [
+  'hireEffectiveDate', 'noticePeriodDays', 'engagementType',
+  'panNumber', 'uanNumber', 'esicNumber',
+  'bankAccountNumber', 'bankIfsc', 'bankAccountName',
+] as const;
+
+const EMPLOYMENT_PLAIN_FIELDS = [
+  'hireEffectiveDate', 'noticePeriodDays', 'engagementType', 'emergencyContactName', 'emergencyContactPhone',
+] as const;
+
+const EMPLOYMENT_REGULATED_FIELDS = [
+  'panNumber', 'uanNumber', 'esicNumber', 'bankAccountNumber', 'bankIfsc', 'bankAccountName',
+] as const;
+
+// A 10-digit Indian mobile number, with or without a +91 prefix — the shape
+// every phone field on the staff list is meant to hold.
+const INDIAN_MOBILE_RE = /^(?:\+91[-\s]?)?[6-9]\d{9}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function assertValidPhone(phone: string): void {
+  if (!INDIAN_MOBILE_RE.test(phone.trim())) {
+    throw ApiError.badRequest('Phone must be a 10-digit Indian mobile number, optionally prefixed with +91.');
+  }
+}
+
+function assertValidEmail(email: string): void {
+  if (!EMAIL_RE.test(email.trim())) {
+    throw ApiError.badRequest('That does not look like an email address.');
+  }
+}
+
+/** In the past, and inside a working lifetime — the two ways a date of birth
+ * gets typed wrong: transposed digits that land in the future, or a
+ * plausible-looking date nobody double-checked. */
+function assertPlausibleDob(iso: string): Date {
+  const dob = new Date(iso);
+  if (Number.isNaN(dob.getTime())) throw ApiError.badRequest('Date of birth is not a valid date.');
+  if (dob.getTime() >= Date.now()) throw ApiError.badRequest('Date of birth must be in the past.');
+  const ageYears = (Date.now() - dob.getTime()) / (365.25 * 86_400_000);
+  if (ageYears < 15 || ageYears > 100) {
+    throw ApiError.badRequest('That date of birth puts them outside a plausible working age (15 to 100 years).');
+  }
+  return dob;
 }
 
 /**
- * The underlying person's plain identity fields — name, phone, email, date of
- * birth. Deliberately narrow: everything else on `EmploymentRelationship` is
- * governed by its own lifecycle transition (`transitionEmployment`,
- * `setConfirmationState`) or is `regulated` and structurally excluded from
- * every projection (PAN, Aadhaar, UAN; `Person.bloodGroup`). This is the
- * correction path for exactly what a staff-list import writes and sometimes
- * gets wrong, and nothing more.
+ * The employee record's editable surface: the person underneath — name,
+ * phone, email, date of birth, blood group, emergency contact — and, HR only,
+ * the employment relationship's own dates, terms and statutory identifiers.
+ *
+ * Salary never moves through here: it has its own two-party proposal and
+ * approval flow (`proposeCompensation`/`transitionCompensation`), and where
+ * they sit has its own assignment lifecycle. Both are deliberately absent
+ * from this input.
  */
 export async function updateEmployeeProfile(employmentId: string, input: EmployeeProfileInput) {
   const auth = currentAuth();
@@ -551,38 +658,145 @@ export async function updateEmployeeProfile(employmentId: string, input: Employe
   if (!employment) throw ApiError.notFound('Employment relationship');
 
   // Then again against whose record this is. `employees:edit` is held at
-  // `@own` by the employee role, and the WHERE axis only narrows a scope when
-  // a record is actually supplied — without this, self-service would let
-  // anybody rewrite a colleague's name, phone or email.
-  await assertCan({ resource: 'employees', verb: 'edit', record: { ownerPartyId: employment.personId } });
+  // `@own` by the employee role: a self-service editor reaches only their own
+  // employment row, and the same "record does not exist" 404 the platform
+  // uses everywhere a grant is scope-narrowed (`assertEmploymentVisible`)
+  // applies here too — a colleague's id refuses to confirm it belongs to
+  // anybody, rather than announcing "yours, no" with a 403.
+  const scope = await scopeFor('employees', 'edit');
+  if (scope !== 'all' && employment.personId !== auth.partyId) {
+    throw ApiError.notFound('Employment relationship');
+  }
 
-  const before = {
+  const touchesEmploymentOnly = EMPLOYMENT_ONLY_FIELDS.some(
+    (f) => (input as Record<string, unknown>)[f] !== undefined,
+  );
+  if (touchesEmploymentOnly && scope !== 'all') {
+    throw ApiError.forbidden(
+      "Employment dates, terms and statutory identifiers are HR's to correct, not self-service.",
+      [{ axis: 'WHO', passed: false, reason: 'employment_fields_require_all_scope' }],
+    );
+  }
+
+  if (input.primaryPhone) assertValidPhone(input.primaryPhone);
+  if (input.primaryEmail) assertValidEmail(input.primaryEmail);
+  const dob = input.dateOfBirth ? assertPlausibleDob(input.dateOfBirth) : null;
+  if (input.bloodGroup && !(BLOOD_GROUPS as readonly string[]).includes(input.bloodGroup)) {
+    throw ApiError.badRequest(`Blood group must be one of: ${BLOOD_GROUPS.join(', ')}.`);
+  }
+  if (input.engagementType && !(EMPLOYMENT_ENGAGEMENT_TYPES as readonly string[]).includes(input.engagementType)) {
+    throw ApiError.badRequest(`Engagement type must be one of: ${EMPLOYMENT_ENGAGEMENT_TYPES.join(', ')}.`);
+  }
+
+  const personBefore = {
     fullName: employment.person.fullName,
     primaryPhone: employment.person.primaryPhone,
     primaryEmail: employment.person.primaryEmail,
+    dateOfBirth: employment.person.dateOfBirth,
+  };
+  const employmentBefore = {
+    hireEffectiveDate: employment.hireEffectiveDate,
+    noticePeriodDays: employment.noticePeriodDays,
+    engagementType: employment.engagementType,
+    emergencyContactName: employment.emergencyContactName,
+    emergencyContactPhone: employment.emergencyContactPhone,
   };
 
-  const updated = await prisma.person.update({
-    where: { id: employment.personId },
-    data: {
-      ...(input.fullName !== undefined ? { fullName: input.fullName } : {}),
-      ...(input.primaryPhone !== undefined
-        ? { primaryPhone: input.primaryPhone, primaryPhoneNormalised: normalisePhone(input.primaryPhone) }
-        : {}),
-      ...(input.primaryEmail !== undefined
-        ? { primaryEmail: input.primaryEmail, primaryEmailNormalised: normaliseEmail(input.primaryEmail) }
-        : {}),
-      ...(input.dateOfBirth !== undefined ? { dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : null } : {}),
-    },
+  const personData: Record<string, unknown> = {
+    ...(input.fullName !== undefined ? { fullName: input.fullName } : {}),
+    ...(input.primaryPhone !== undefined
+      ? { primaryPhone: input.primaryPhone, primaryPhoneNormalised: normalisePhone(input.primaryPhone) }
+      : {}),
+    ...(input.primaryEmail !== undefined
+      ? { primaryEmail: input.primaryEmail, primaryEmailNormalised: normaliseEmail(input.primaryEmail) }
+      : {}),
+    ...(input.dateOfBirth !== undefined ? { dateOfBirth: dob } : {}),
+    ...(input.bloodGroup !== undefined ? { bloodGroup: input.bloodGroup } : {}),
+  };
+
+  // PAN and the bank fields are encrypted at rest on the way in, exactly as
+  // `compliance/payroll.ts`'s `setBankDetails` already does — this is a second
+  // write path onto the same regulated columns, so it has to keep the same
+  // contract. UAN and the ESIC number are regulated (excluded from every
+  // response) but not encrypted, matching the backfill's own field list.
+  const employmentData: Record<string, unknown> = {
+    ...(input.hireEffectiveDate !== undefined ? { hireEffectiveDate: new Date(input.hireEffectiveDate) } : {}),
+    ...(input.noticePeriodDays !== undefined ? { noticePeriodDays: input.noticePeriodDays } : {}),
+    ...(input.engagementType !== undefined ? { engagementType: input.engagementType } : {}),
+    ...(input.emergencyContactName !== undefined ? { emergencyContactName: input.emergencyContactName } : {}),
+    ...(input.emergencyContactPhone !== undefined ? { emergencyContactPhone: input.emergencyContactPhone } : {}),
+    ...(input.panNumber !== undefined ? { panNumber: input.panNumber ? encryptField(input.panNumber) : null } : {}),
+    ...(input.uanNumber !== undefined ? { uanNumber: input.uanNumber } : {}),
+    ...(input.esicNumber !== undefined ? { esicNumber: input.esicNumber } : {}),
+    ...(input.bankAccountNumber !== undefined
+      ? { bankAccountNumber: input.bankAccountNumber ? encryptField(input.bankAccountNumber) : null }
+      : {}),
+    ...(input.bankIfsc !== undefined ? { bankIfsc: input.bankIfsc ? encryptField(input.bankIfsc) : null } : {}),
+    ...(input.bankAccountName !== undefined
+      ? { bankAccountName: input.bankAccountName ? encryptField(input.bankAccountName) : null }
+      : {}),
+  };
+
+  await prisma.$transaction(async (tx) => {
+    if (Object.keys(personData).length) {
+      await tx.person.update({ where: { id: employment.personId }, data: personData as never });
+    }
+    if (Object.keys(employmentData).length) {
+      await tx.employmentRelationship.update({ where: { id: employmentId }, data: employmentData as never });
+    }
   });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'person',
-    subjectId: employment.personId,
-    before,
-    after: { fullName: updated.fullName, primaryPhone: updated.primaryPhone, primaryEmail: updated.primaryEmail },
-  });
+  // Plain person fields: diffed with values, like every other write.
+  if (['fullName', 'primaryPhone', 'primaryEmail', 'dateOfBirth'].some((f) => (input as Record<string, unknown>)[f] !== undefined)) {
+    await auditWrite({
+      action: 'update',
+      subjectType: 'person',
+      subjectId: employment.personId,
+      before: personBefore,
+      after: {
+        fullName: personData.fullName ?? personBefore.fullName,
+        primaryPhone: 'primaryPhone' in personData ? personData.primaryPhone : personBefore.primaryPhone,
+        primaryEmail: 'primaryEmail' in personData ? personData.primaryEmail : personBefore.primaryEmail,
+        dateOfBirth: 'dateOfBirth' in personData ? personData.dateOfBirth : personBefore.dateOfBirth,
+      },
+    });
+  }
+
+  // Blood group is health data under the DPDP Act: the audit trail names the
+  // field that changed, never what it changed to or from.
+  if (input.bloodGroup !== undefined) {
+    await auditWrite({
+      action: 'update',
+      subjectType: 'person',
+      subjectId: employment.personId,
+      meta: { fieldsChanged: ['bloodGroup'] },
+    });
+  }
+
+  const changedPlainEmployment = EMPLOYMENT_PLAIN_FIELDS.filter((f) => (input as Record<string, unknown>)[f] !== undefined);
+  if (changedPlainEmployment.length) {
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employment_relationship',
+      subjectId: employmentId,
+      before: employmentBefore,
+      after: { ...employmentBefore, ...Object.fromEntries(changedPlainEmployment.map((f) => [f, employmentData[f]])) },
+      // `employment_relationship` carries no CRM governance registration —
+      // `setBankDetails`/`setEngagementType` force the same way.
+      force: true,
+    });
+  }
+
+  const changedRegulatedEmployment = EMPLOYMENT_REGULATED_FIELDS.filter((f) => (input as Record<string, unknown>)[f] !== undefined);
+  if (changedRegulatedEmployment.length) {
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employment_relationship',
+      subjectId: employmentId,
+      meta: { fieldsChanged: changedRegulatedEmployment },
+      force: true,
+    });
+  }
 
   return getEmployment(employmentId);
 }
@@ -787,6 +1001,22 @@ export async function transitionCompensation(id: string, event: CompensationEven
     );
   }
 
+  // The identical-actor bar. Separate from the bar above: that one stops
+  // signing a change about yourself, this one stops signing a change you
+  // yourself typed, about anybody. Only a role holding both `create` and
+  // `approve` on `compensation` can ever collide with it — sixteen roles
+  // never could, and the three-role matrix keeps it out of one pair of hands
+  // by construction here rather than by hoping nobody notices they can.
+  if (event === 'APPROVE' || event === 'REJECT') {
+    const proposedBy = await proposerPartyIdOf(id);
+    if (proposedBy && proposedBy === auth.partyId) {
+      throw ApiError.forbidden(
+        'You proposed this compensation change; somebody else has to sign it.',
+        [{ axis: 'WHO', passed: false, reason: 'self_proposed_compensation' }],
+      );
+    }
+  }
+
   const result = await transition({
     machine: compensationRecordMachine,
     eventObject: 'compensation',
@@ -835,6 +1065,76 @@ export async function currentCompensation(employmentRelationshipId: string, asOf
       OR: [{ effectiveTo: null }, { effectiveTo: { gt: asOf } }],
     },
     orderBy: { effectiveFrom: 'desc' },
+  });
+}
+
+/** Who typed a compensation proposal, read back from its creation event
+ * rather than a column — `CompensationRecord` carries no `proposedById` of
+ * its own, and the event log already has the answer. `null` for a record
+ * seeded or migrated in directly, which never fired the event. */
+async function proposerPartyIdOf(compensationRecordId: string): Promise<string | null> {
+  const auth = currentAuth();
+  const created = await prisma.eventRecord.findFirst({
+    where: {
+      tenantId: auth.tenantId,
+      eventName: EVENTS.COMPENSATION_RECORD_CREATED,
+      subjectEntityId: compensationRecordId,
+    },
+    orderBy: { recordedAt: 'asc' },
+    select: { actorPartyId: true },
+  });
+  return created?.actorPartyId ?? null;
+}
+
+/**
+ * Every compensation record on one employment, each carrying who proposed it
+ * and whether the caller may sign it — the two bars `transitionCompensation`
+ * enforces (never the subject, never the proposer), surfaced ahead of time so
+ * a screen can grey out an Approve button instead of offering one that will
+ * be refused.
+ */
+export async function listCompensationForEmployment(employmentRelationshipId: string) {
+  const auth = currentAuth();
+  const employment = await assertEmploymentVisible('compensation', employmentRelationshipId);
+  const holdsApprove = await can({ resource: 'compensation', verb: 'approve' });
+  const isSubject = employment.personId === auth.partyId;
+
+  const rows = await prisma.compensationRecord.findMany({
+    where: { tenantId: auth.tenantId, employmentRelationshipId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+
+  const created = rows.length
+    ? await prisma.eventRecord.findMany({
+        where: {
+          tenantId: auth.tenantId,
+          eventName: EVENTS.COMPENSATION_RECORD_CREATED,
+          subjectEntityId: { in: rows.map((r) => r.id) },
+        },
+        select: { subjectEntityId: true, actorPartyId: true },
+      })
+    : [];
+  const proposerByRecord = new Map(created.map((e) => [e.subjectEntityId, e.actorPartyId]));
+
+  const proposerIds = [...new Set([...proposerByRecord.values()].filter((v): v is string => Boolean(v)))];
+  const proposers = proposerIds.length
+    ? await prisma.person.findMany({ where: { id: { in: proposerIds } }, select: { id: true, fullName: true } })
+    : [];
+  const nameByPartyId = new Map(proposers.map((p) => [p.id, p.fullName]));
+
+  return rows.map((r) => {
+    const proposedByPartyId = proposerByRecord.get(r.id) ?? null;
+    const isProposer = proposedByPartyId !== null && proposedByPartyId === auth.partyId;
+    const canApprove = holdsApprove && !isSubject && !isProposer;
+    const approveWithheldReason = !holdsApprove ? 'not_holder' : isSubject ? 'self' : isProposer ? 'self_proposed' : null;
+    return {
+      ...r,
+      proposedByPartyId,
+      proposedByName: proposedByPartyId ? (nameByPartyId.get(proposedByPartyId) ?? null) : null,
+      canApprove,
+      approveWithheldReason,
+      availableTransitions: compensationRecordMachine.allowedEvents(r.status as never),
+    };
   });
 }
 

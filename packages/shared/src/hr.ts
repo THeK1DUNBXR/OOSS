@@ -404,6 +404,24 @@ export const COMPENSATION_EVENT_VERB: Record<CompensationEvent, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Editable-detail vocabularies
+//
+// Shared between the write path (validation) and the form that collects the
+// value, so the two cannot drift into accepting different sets.
+// ---------------------------------------------------------------------------
+
+/** `Person.bloodGroup` — free text on the staff list, closed here on the way
+ * in so a typo does not sit unreadable on an emergency card. */
+export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as const;
+export type BloodGroup = (typeof BLOOD_GROUPS)[number];
+
+/** `EmploymentRelationship.engagementType` — mirrors the schema's own comment
+ * (`employee | contractor | consultant | intern | apprentice`, Sec 192 vs
+ * 194C/194J). */
+export const EMPLOYMENT_ENGAGEMENT_TYPES = ['employee', 'contractor', 'consultant', 'intern', 'apprentice'] as const;
+export type EmploymentEngagementType = (typeof EMPLOYMENT_ENGAGEMENT_TYPES)[number];
+
+// ---------------------------------------------------------------------------
 // Onboarding / Offboarding
 // ---------------------------------------------------------------------------
 

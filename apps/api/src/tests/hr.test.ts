@@ -253,6 +253,66 @@ describe('§14 — authority over people is held, not inherited from rank', () =
     });
     expect(approved.status).toBe('Approved');
   });
+
+  it('bars the proposer from signing their own proposal, even about somebody else\'s pay', async () => {
+    // The chairman is the one principal who holds both `create` and `approve`
+    // on `compensation` — the only seat where this bar and the self-dealing
+    // bar above are actually different rules.
+    const employment = await employmentFor('divya@kaizen.co.in');
+    const { transitionCompensation } = await import('../domains/employment.js');
+
+    const record = await asUser('chairman@kaizen.co.in', () =>
+      proposeCompensation({
+        employmentRelationshipId: employment.id,
+        revisionReason: 'off_cycle',
+        amount: 60_000,
+        effectiveFrom: new Date(),
+      }),
+    );
+
+    const err = await expectReject(() =>
+      asUser('chairman@kaizen.co.in', async () => {
+        await transitionCompensation(record.id, 'SUBMIT');
+        return transitionCompensation(record.id, 'APPROVE');
+      }),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/you proposed this/i);
+
+    // Finance, who did not type it, can.
+    const approved = await asUser('arun@kaizen.co.in', () => transitionCompensation(record.id, 'APPROVE'));
+    expect(approved.status).toBe('Approved');
+  });
+});
+
+describe('listCompensationForEmployment tells a screen who proposed a change and whether this viewer may sign it', () => {
+  it('names the proposer and withholds the approve button from them, but not from Finance', async () => {
+    const employment = await employmentFor('kavitha@kaizen.co.in');
+    const { listCompensationForEmployment } = await import('../domains/employment.js');
+
+    const record = await asUser('hr@kaizen.co.in', () =>
+      proposeCompensation({
+        employmentRelationshipId: employment.id,
+        revisionReason: 'off_cycle',
+        amount: 61_000,
+        effectiveFrom: new Date(),
+      }),
+    );
+
+    const asHr = await asUser('hr@kaizen.co.in', () => listCompensationForEmployment(employment.id));
+    const hrRow = asHr.find((r) => r.id === record.id)!;
+    // hr_ops_manager proposed it, but holds no `approve` at all — withheld for
+    // the ordinary reason, not the proposer one.
+    expect(hrRow.proposedByPartyId).toBeTruthy();
+    expect(hrRow.canApprove).toBe(false);
+    expect(hrRow.approveWithheldReason).toBe('not_holder');
+
+    const asFinance = await asUser('arun@kaizen.co.in', () => listCompensationForEmployment(employment.id));
+    const financeRow = asFinance.find((r) => r.id === record.id)!;
+    expect(financeRow.proposedByName).toBeTruthy();
+    expect(financeRow.canApprove).toBe(true);
+    expect(financeRow.approveWithheldReason).toBeNull();
+  });
 });
 
 // ===========================================================================
@@ -284,16 +344,121 @@ describe('updateEmployeeProfile corrects what a staff-list import writes on the 
     });
 
     // ravi holds `employees:VE@own` — self-service only, and this is somebody
-    // else's record.
+    // else's record. Refused as "not found" rather than "forbidden": the same
+    // shape `assertEmploymentVisible` uses everywhere else a scope-narrowed
+    // grant meets a record outside it, so a colleague's id cannot be used to
+    // confirm whose it is.
     const err = await expectReject(() =>
       asUser('ravi@kaizen.co.in', () => updateEmployeeProfile(employment.id, { fullName: 'Should not land' })),
     );
-    expect(err.status).toBe(403);
+    expect(err.status).toBe(404);
 
     const missing = await expectReject(() =>
       asUser('hr@kaizen.co.in', () => updateEmployeeProfile('does-not-exist', { fullName: 'Nobody home' })),
     );
     expect(missing.status).toBe(404);
+  });
+
+  it('lets an employee correct their own phone, but not a colleague\'s — 404, not 403', async () => {
+    const mine = await employmentFor('ravi@kaizen.co.in');
+    const theirs = await employmentFor('kavitha@kaizen.co.in');
+
+    const updated = await asUser('ravi@kaizen.co.in', () =>
+      updateEmployeeProfile(mine.id, { primaryPhone: '9876500001' }),
+    );
+    expect(updated.person.primaryPhone).toBe('9876500001');
+
+    const err = await expectReject(() =>
+      asUser('ravi@kaizen.co.in', () => updateEmployeeProfile(theirs.id, { primaryPhone: '9876500002' })),
+    );
+    expect(err.status).toBe(404);
+  });
+
+  it('refuses a plainly wrong phone, email or date of birth', async () => {
+    const { employment } = await makeEmployee('profile-validation');
+    await asUser('hr@kaizen.co.in', async () => {
+      const badPhone = await expectReject(() => updateEmployeeProfile(employment.id, { primaryPhone: '12345' }));
+      expect(badPhone.status).toBe(400);
+
+      const badEmail = await expectReject(() => updateEmployeeProfile(employment.id, { primaryEmail: 'not-an-email' }));
+      expect(badEmail.status).toBe(400);
+
+      const futureDob = await expectReject(() =>
+        updateEmployeeProfile(employment.id, { dateOfBirth: '2999-01-01' }),
+      );
+      expect(futureDob.status).toBe(400);
+
+      const implausibleDob = await expectReject(() =>
+        updateEmployeeProfile(employment.id, { dateOfBirth: '2020-01-01' }),
+      );
+      expect(implausibleDob.status).toBe(400);
+    });
+  });
+
+  it('takes a blood group write-only: `hasBloodGroup` comes back true, the value never does', async () => {
+    const { employment } = await makeEmployee('blood-group');
+
+    const updated = await asUser('hr@kaizen.co.in', () =>
+      updateEmployeeProfile(employment.id, { dateOfBirth: '1990-01-01', bloodGroup: 'B+' }),
+    );
+    // The raw domain read: the value is really there on disk.
+    expect(updated.person.bloodGroup).toBe('B+');
+    expect(updated.person.dateOfBirth?.toISOString().slice(0, 10)).toBe('1990-01-01');
+
+    // What a caller actually receives — the redaction the route applies —
+    // carries the fact that a blood group is on file, never the group itself.
+    const wire = JSON.parse(JSON.stringify(redactRegulatedEmploymentFields(updated)));
+    expect(wire.person.hasBloodGroup).toBe(true);
+    expect('bloodGroup' in wire.person).toBe(false);
+
+    // The audit trail names the field, not the value: no record anywhere in
+    // this tenant's chain carries "B+".
+    const records = await unscopedPrisma.auditRecord.findMany({
+      where: { tenantId: TENANT, subjectType: 'person', subjectId: employment.personId },
+    });
+    const bloodGroupRecord = records.find((r) => (r.meta as { fieldsChanged?: string[] } | null)?.fieldsChanged?.includes('bloodGroup'));
+    expect(bloodGroupRecord).toBeTruthy();
+    expect(JSON.stringify(bloodGroupRecord)).not.toContain('B+');
+  });
+
+  it('keeps employment-side fields — dates, engagement type, PAN, bank details — HR-only, even at `all` view', async () => {
+    const { employment } = await makeEmployee('employment-fields-hr-only');
+
+    const err = await expectReject(() =>
+      asUser('ravi@kaizen.co.in', () =>
+        // ravi is only ever narrowed to `own`; even on a record that were his
+        // own, an employment-side field is not self-service.
+        updateEmployeeProfile(employment.id, { noticePeriodDays: 10 }),
+      ),
+    );
+    expect(err.status).toBe(404); // not his record either way, so this 404s first
+
+    const own = await employmentFor('ravi@kaizen.co.in');
+    const selfErr = await expectReject(() =>
+      asUser('ravi@kaizen.co.in', () => updateEmployeeProfile(own.id, { engagementType: 'contractor' })),
+    );
+    expect(selfErr.status).toBe(403);
+
+    const updated = await asUser('hr@kaizen.co.in', () =>
+      updateEmployeeProfile(employment.id, {
+        noticePeriodDays: 45,
+        engagementType: 'contractor',
+        panNumber: 'ABCDE9999F',
+        bankAccountNumber: '000111222333',
+      }),
+    );
+    expect(updated.noticePeriodDays).toBe(45);
+    expect(updated.engagementType).toBe('contractor');
+    // Encrypted at rest, exactly as `setBankDetails` leaves it.
+    expect(updated.panNumber).not.toBe('ABCDE9999F');
+    expect(updated.panNumber).toMatch(/^enc:v1:/);
+
+    const wire = JSON.parse(JSON.stringify(redactRegulatedEmploymentFields(updated, { revealLast4: true })));
+    expect('panNumber' in wire).toBe(false);
+    expect(wire.hasPan).toBe(true);
+    expect(wire.panLast4).toBe('999F');
+    expect(wire.hasBankDetails).toBe(true);
+    expect(wire.bankLast4).toBe('2333');
   });
 });
 
