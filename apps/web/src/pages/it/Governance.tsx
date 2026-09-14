@@ -10,7 +10,7 @@
  * by the same machine the API enforces against.
  */
 
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, dateTime, relative, titleCase } from '../../lib/api.js';
@@ -131,8 +131,8 @@ export function ItRisks() {
             <div key={`h-${i}`} className="text-center text-ink-500">{i}</div>
           ))}
           {SCALE.slice().reverse().map((l) => (
-            <>
-              <div key={`l-${l}`} className="flex items-center text-ink-500">{l}</div>
+            <Fragment key={`row-${l}`}>
+              <div className="flex items-center text-ink-500">{l}</div>
               {SCALE.map((i) => {
                 const b = cellBand(l, i);
                 return (
@@ -145,7 +145,7 @@ export function ItRisks() {
                   </div>
                 );
               })}
-            </>
+            </Fragment>
           ))}
         </div>
       </Card>

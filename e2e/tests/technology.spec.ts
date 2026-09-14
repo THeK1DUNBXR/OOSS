@@ -12,6 +12,17 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
+/**
+ * Web fonts are decoration with a fallback stack behind them, and a stack
+ * with no route to the internet would otherwise wait on the stylesheet until
+ * the connection fails — long enough to burn the test's whole budget across
+ * a handful of navigations. Abort them; the page reads the same without.
+ */
+async function withoutWebFonts(page: Page): Promise<void> {
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+}
+
+
 /** Every Technology nav entry (`apps/api/src/seed/bootstrap.ts`, `group:
  *  'technology'`), label as seeded. Kept in sync by hand rather than read
  *  from the server, the same way `helpers.ts` keeps `credentials()` by
@@ -88,7 +99,7 @@ function employeeCredentials(): { email: string; password: string } | null {
 /** Opens the collapsed Technology sidebar group, if it is not already open —
  *  a screen inside the group opens it on its own (`Shell.tsx`, `holdsCurrent`). */
 async function openTechnologyGroup(page: Page): Promise<void> {
-  const toggle = page.getByRole('button', { name: 'Technology' });
+  const toggle = page.getByRole('button', { name: 'Technology', exact: true });
   if (await toggle.count()) {
     const expanded = await toggle.getAttribute('aria-expanded');
     if (expanded === 'false') await toggle.click();
@@ -97,6 +108,7 @@ async function openTechnologyGroup(page: Page): Promise<void> {
 
 test.describe('the Technology group, signed in as the chairman', () => {
   test.beforeEach(async ({ page }) => {
+    await withoutWebFonts(page);
     const { email, password } = chairmanCredentials();
     await signInAs(page, email, password);
     await openTechnologyGroup(page);
@@ -112,7 +124,9 @@ test.describe('the Technology group, signed in as the chairman', () => {
     const screens = ['/it', '/it/assets', '/it/tickets', '/it/incidents', '/it/risks', '/it/portfolio', '/it/continuity'];
 
     for (const path of screens) {
-      await page.goto(path);
+      // DOM-ready rather than `load`: the page's web-font stylesheet is external,
+      // and a stack with no internet would otherwise wait on it until it fails.
+      await page.goto(path, { waitUntil: 'domcontentloaded' });
       await expect(page.locator('h1'), `${path} rendered no page header`).toBeVisible();
       // `ErrorBox` (apps/web/src/components/ui.tsx) always wears this class,
       // whatever the error message says, so this is sturdier than matching text.
@@ -123,6 +137,7 @@ test.describe('the Technology group, signed in as the chairman', () => {
 
 test.describe('the Technology group, signed in as an employee', () => {
   test.beforeEach(async ({ page }) => {
+    await withoutWebFonts(page);
     const creds = employeeCredentials();
     test.skip(!creds, 'set E2E_EMPLOYEE_EMAIL and E2E_EMPLOYEE_PASSWORD (or EMPLOYEE_EMAIL/EMPLOYEE_PASSWORD) to run this');
     await signInAs(page, creds!.email, creds!.password);
