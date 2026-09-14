@@ -83,6 +83,9 @@ const KIND_LABEL: Record<string, string> = {
   template_students: 'Students template',
   template_contacts: 'Contacts template',
   template_staff: 'Staff template',
+  template_ledger_accounts: 'Bank & cash accounts template',
+  template_ledger_categories: 'Income & expense categories template',
+  template_vendor_bills: 'Bills to pay template',
   unknown: 'Not recognised',
 };
 
@@ -104,6 +107,9 @@ const KIND_EFFECT: Record<string, string> = {
   template_students: 'Enrols people onto batches, matching anybody already on file rather than copying them.',
   template_contacts: 'Creates people and attaches them to the company or college they are at.',
   template_staff: 'Creates people, their seats and their employment records. Never their pay.',
+  template_ledger_accounts: 'Creates bank, cash, card and loan accounts. A name already on file is left alone.',
+  template_ledger_categories: 'Creates the categories money is earned or spent under. A name already on file is left alone.',
+  template_vendor_bills: 'Creates unpaid vendor bills against categories already on file.',
   unknown: 'Nothing, until you say what it is.',
 };
 

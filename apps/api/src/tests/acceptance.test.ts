@@ -2625,3 +2625,119 @@ describe('The import templates', () => {
     });
   });
 });
+
+describe('The finance import templates', () => {
+  it('creates a bank account, a chart of categories and an unpaid vendor bill, each idempotently', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const { stageImport } = await import('../imports/service.js');
+      const { commitImport } = await import('../imports/commit.js');
+      const XLSX = await import('xlsx');
+      const { TEMPLATES, buildTemplateWorkbook } = await import('../imports/templates.js');
+      const tag = Date.now();
+
+      const fillAndStage = async (slug: string, rows: string[][]) => {
+        const spec = TEMPLATES[slug];
+        const book = XLSX.read(buildTemplateWorkbook(spec), { type: 'buffer' });
+        XLSX.utils.sheet_add_aoa(book.Sheets.Data, rows, { origin: 'A2' });
+        book.Sheets.Data['!ref'] = `A1:${String.fromCharCode(65 + spec.columns.length - 1)}${1 + rows.length}`;
+        return stageImport({
+          fileName: `${slug}.xlsx`,
+          buffer: XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+        });
+      };
+
+      // --- Bank & cash accounts ---------------------------------------
+      const accountName = `Test Current Account ${tag}`;
+      const accountsStaged = await fillAndStage('ledger-accounts', [
+        [accountName, 'Bank', '9021', '150000', '01/04/2026'],
+      ]);
+      expect(accountsStaged.kind).toBe('template_ledger_accounts');
+      const accountsResult = await commitImport(accountsStaged.batchId);
+      expect(accountsResult.errors).toEqual([]);
+      expect(accountsResult.created.ledgerAccount).toBe(1);
+
+      const account = await prisma.ledgerAccount.findFirstOrThrow({ where: { name: accountName } });
+      expect(account.accountType).toBe('bank');
+      expect(account.displayReference).toBe('9021');
+      expect(Number(account.openingBalance)).toBe(150000);
+      expect(account.ledgerGroup).toBe('asset');
+
+      // Re-uploading the same file is safe: the row is caught as a duplicate
+      // of an already-committed one before it ever reaches a commit function,
+      // and there is nothing left ready to create a second account from.
+      const accountsAgain = await fillAndStage('ledger-accounts', [
+        [accountName, 'Bank', '9021', '150000', '01/04/2026'],
+      ]);
+      expect(accountsAgain.stats.duplicate).toBe(1);
+      expect(accountsAgain.stats.ready ?? 0).toBe(0);
+      expect(await prisma.ledgerAccount.count({ where: { name: accountName } })).toBe(1);
+
+      // --- Income & expense categories --------------------------------
+      const parentName = `Test Operating Costs ${tag}`;
+      const childName = `Test Building Rent ${tag}`;
+      const parentStaged = await fillAndStage('ledger-categories', [
+        [parentName, 'Expense', 'Variable', '', 'Shared', 'No'],
+      ]);
+      expect(parentStaged.kind).toBe('template_ledger_categories');
+      expect((await commitImport(parentStaged.batchId)).created.ledgerCategory).toBe(1);
+
+      const childStaged = await fillAndStage('ledger-categories', [
+        [childName, 'Expense', 'Recurring fixed', parentName, 'Shared', 'Yes'],
+      ]);
+      const childResult = await commitImport(childStaged.batchId);
+      expect(childResult.errors).toEqual([]);
+      expect(childResult.created.ledgerCategory).toBe(1);
+
+      const child = await prisma.ledgerCategory.findFirstOrThrow({ where: { name: childName } });
+      const parent = await prisma.ledgerCategory.findFirstOrThrow({ where: { name: parentName } });
+      expect(child.parentId).toBe(parent.id);
+      expect(child.behaviour).toBe('recurring_fixed');
+      expect(child.mustPay).toBe(true);
+      expect(child.defaultDivision).toBe('shared');
+
+      // A parent that is not on file names itself rather than being invented.
+      const orphanStaged = await fillAndStage('ledger-categories', [
+        [`Test Orphan Category ${tag}`, 'Expense', '', `No Such Parent At All ${tag}`, '', 'No'],
+      ]);
+      const orphanResult = await commitImport(orphanStaged.batchId);
+      expect(orphanResult.errors[0]?.message).toContain(`No Such Parent At All ${tag}`);
+      expect(await prisma.ledgerCategory.findFirst({ where: { name: `Test Orphan Category ${tag}` } })).toBeNull();
+
+      // --- Bills to pay --------------------------------------------------
+      const vendorName = `Test Vendor Ltd ${tag}`;
+      const billNumber = `TV/${tag}/01`;
+      const billsStaged = await fillAndStage('vendor-bills', [
+        [vendorName, '33AABCT1234H1Z9', billNumber, '12/08/2026', '11/09/2026', childName, 'Shared', '42000', '7560', 'Office rent'],
+      ]);
+      expect(billsStaged.kind).toBe('template_vendor_bills');
+      const billsResult = await commitImport(billsStaged.batchId);
+      expect(billsResult.errors).toEqual([]);
+      expect(billsResult.created.vendorBill).toBe(1);
+
+      const bill = await prisma.vendorBill.findFirstOrThrow({ where: { vendorName, billNumber } });
+      expect(bill.categoryId).toBe(child.id);
+      expect(bill.division).toBe('shared');
+      expect(Number(bill.subtotal)).toBe(42000);
+      expect(Number(bill.taxAmount)).toBe(7560);
+      expect(Number(bill.total)).toBe(49560);
+      expect(Number(bill.paidAmount)).toBe(0);
+      expect(bill.status).toBe('open');
+
+      // Re-uploading the same file is safe: caught as a duplicate at staging.
+      const billsAgain = await fillAndStage('vendor-bills', [
+        [vendorName, '33AABCT1234H1Z9', billNumber, '12/08/2026', '11/09/2026', childName, 'Shared', '42000', '7560', 'Office rent'],
+      ]);
+      expect(billsAgain.stats.duplicate).toBe(1);
+      expect(billsAgain.stats.ready ?? 0).toBe(0);
+      expect(await prisma.vendorBill.count({ where: { vendorName, billNumber } })).toBe(1);
+
+      // A category that is not on file names itself rather than being invented.
+      const strayStaged = await fillAndStage('vendor-bills', [
+        [vendorName, '', `TV/${tag}/02`, '12/08/2026', '', `No Such Category At All ${tag}`, '', '1000', '', ''],
+      ]);
+      const strayResult = await commitImport(strayStaged.batchId);
+      expect(strayResult.errors[0]?.message).toContain(`No Such Category At All ${tag}`);
+      expect(await prisma.vendorBill.findFirst({ where: { billNumber: `TV/${tag}/02` } })).toBeNull();
+    });
+  });
+});

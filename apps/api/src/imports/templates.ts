@@ -38,7 +38,10 @@ export type TemplateKind =
   | 'template_clients'
   | 'template_students'
   | 'template_contacts'
-  | 'template_staff';
+  | 'template_staff'
+  | 'template_ledger_accounts'
+  | 'template_ledger_categories'
+  | 'template_vendor_bills';
 
 export interface TemplateColumn {
   /** The heading written into the file, and matched on the way back. */
@@ -194,6 +197,64 @@ const SPECS: TemplateSpec[] = [
     ],
     notes: [
       'Pay is deliberately not on this list. A salary is a separate act with its own approval, and a spreadsheet of them arriving through an import is how pay changes without anybody signing for them.',
+    ],
+  },
+  {
+    kind: 'template_ledger_accounts',
+    slug: 'ledger-accounts',
+    title: 'Bank & cash accounts',
+    what: 'Somewhere money sits: a bank account, cash in hand, a card, a loan account.',
+    columns: [
+      { name: 'Account name', field: 'name', required: true, note: 'How you refer to it.', example: 'HDFC Current — Madurai' },
+      { name: 'Type', field: 'accountType', note: 'Bank, Cash, Card, Loan or Wallet. Leave blank for Bank.', example: 'Bank' },
+      { name: 'Last 4 digits', field: 'displayReference', note: 'Never the full number.', example: '4821' },
+      { name: 'Opening balance', field: 'openingBalance', note: 'What it held on the opening date. Leave blank for zero.', example: '185000', as: 'number' },
+      { name: 'Opening date', field: 'openingDate', note: 'DD/MM/YYYY. The date the opening balance is as of.', example: '01/04/2026', as: 'date' },
+    ],
+    notes: [
+      'A name already on file is left alone rather than duplicated, so re-uploading a corrected file is safe.',
+      'A card or a loan account is carried as a liability; everything else as an asset — worked out from the type, not asked separately.',
+    ],
+  },
+  {
+    kind: 'template_ledger_categories',
+    slug: 'ledger-categories',
+    title: 'Income & expense categories',
+    what: "The company's own chart: what money is earned or spent under. Not a statutory chart.",
+    columns: [
+      { name: 'Category name', field: 'name', required: true, note: 'What you call it.', example: 'Building Rent' },
+      { name: 'Type', field: 'kind', note: 'Income, Expense, Asset purchase, Tax, Transfer, Equity or Drawings. Leave blank for Expense.', example: 'Expense' },
+      { name: 'How it behaves', field: 'behaviour', note: 'Recurring fixed, Variable, One-time or Annual. Leave blank for Variable.', example: 'Recurring fixed' },
+      { name: 'Parent category', field: 'parentName', note: 'The category this sits under, if any. Must already be on file.', example: '' },
+      { name: 'Usually which division', field: 'defaultDivision', note: 'Software, Skill Development, Education or Shared. Overridable per entry.', example: 'Shared' },
+      { name: 'Cannot be deferred?', field: 'mustPay', note: 'Yes for rent, salaries, statutory dues — a cost the company cannot put off.', example: 'No', as: 'yesno' },
+    ],
+    notes: [
+      'A name already on file is left alone rather than duplicated, so re-uploading a corrected file is safe.',
+      'A parent category is not created on the fly — it must already be on file. Import the top-level categories first with Parent left blank, then a second file for the ones under them.',
+    ],
+  },
+  {
+    kind: 'template_vendor_bills',
+    slug: 'vendor-bills',
+    title: 'Bills to pay',
+    what: 'What a supplier is owed, as of the day you are bringing your books in. The other half of receivables.',
+    needsFirst: 'Ledger categories, if you want a bill put under a spending category.',
+    columns: [
+      { name: 'Vendor name', field: 'vendorName', required: true, note: 'The supplier.', example: 'ARA Systems' },
+      { name: 'Vendor GSTIN', field: 'vendorGstin', note: '', example: '33AABCA1234H1Z8' },
+      { name: 'Bill number', field: 'billNumber', required: true, note: "The supplier's own number, or one you invent for a bill that never had one.", example: 'ARA/2026/0142' },
+      { name: 'Bill date', field: 'billDate', required: true, note: 'DD/MM/YYYY.', example: '12/08/2026', as: 'date' },
+      { name: 'Due date', field: 'dueDate', note: 'DD/MM/YYYY. Leave blank if there is no term.', example: '11/09/2026', as: 'date' },
+      { name: 'Category', field: 'categoryName', note: 'What it was for. Must already be on file. Leave blank to categorise later.', example: 'Office supplies' },
+      { name: 'Division', field: 'division', note: 'Software, Skill Development, Education or Shared.', example: 'Shared' },
+      { name: 'Amount before GST', field: 'subtotal', required: true, note: '', example: '42000', as: 'number' },
+      { name: 'GST', field: 'taxAmount', note: 'Leave blank for zero.', example: '7560', as: 'number' },
+      { name: 'Note', field: 'note', note: '', example: '' },
+    ],
+    notes: [
+      'A bill already on file under the same vendor and bill number is left alone rather than duplicated, so re-uploading a corrected file is safe.',
+      'Every bill lands unpaid — this is a list of what is owed, not a record of what has already been settled. Record a payment against it afterwards, the same way as any bill entered by hand.',
     ],
   },
 ];
