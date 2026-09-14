@@ -1,6 +1,6 @@
 # Equity, Shareholder & Board portal — plan
 
-Status: **proposal, awaiting answers to the questions in §1.** Nothing in this
+Status: **answered 14 Sep 2026; ready for phase 0.** Nothing in this
 document is built. It is written so that an implementing model (Sonnet) can
 take one phase in §6 at a time as a self-contained brief, and so that the
 decisions in §3 can be argued with before any of it exists.
@@ -16,7 +16,8 @@ is built on or do not survive the first external investor.
 
 | | Section |
 |---|---|
-| §1 | Questions that change the build — please answer before phase 0 |
+| §1 | The answers, and what each one decided |
+| §1a | Three consequences to confirm with the company secretary |
 | §2 | What the codebase is today, and what this touches |
 | §3 | Decisions, and the failures each one prevents |
 | §4 | What the market does, and what is deliberately not copied |
@@ -26,63 +27,106 @@ is built on or do not survive the first external investor.
 
 ---
 
-## 1. Questions that change the build
+## 1. The answers, and what each one decided
 
-Answers to these decide real code. Where a default is stated it is what the
-plan assumes if no answer comes.
+Answered by the chairman on 14 Sep 2026.
 
-1. **What is the group, legally?** Is Kaizen Infinities Pvt Ltd (KIPL, the
-   entity the ERP runs today) itself the holding company, or is there a
-   separate "Kaizen Group" entity above it? List the subsidiaries with KIPL's
-   percentage in each, and say whether any has outside shareholders today.
-   *Default assumed: KIPL is the holding; the existing `kaizen` tenant becomes
-   the holding tenant; each subsidiary is a new tenant.*
-2. **Which hostname(s)?** One portal host for the whole group (e.g.
-   `equity.kaizeninfinities.com`) with an entity picker, or one per subsidiary?
-   Is DNS on Cloudflare, where the Worker already is? *Default: one host, an
-   entity picker after sign-in.*
-3. **Do shareholders and directors have corporate emails?** Routing by email
-   domain works for staff. An outside investor signs in with a Gmail address
-   and may hold shares in two subsidiaries. *Default: email domain is a sign-in
-   hint that pre-selects an entity; the actual routing is by which entities
-   the person holds a shareholder or director relationship in (§3.2).*
-4. **How much of the ERP does a shareholder see?** Holdings and documents
-   only, or also the entity's financial position (cash, P&L by division,
-   the same figures as The Business)? And does a director see more than a
-   shareholder? *Default: shareholders see holdings, certificates, valuations,
-   round history, documents; directors additionally see the board pack, which
-   can embed the financial summary the finance head chooses to publish.*
-5. **"Consolidated" — aggregated or eliminated?** Adding subsidiary P&Ls
-   together is not consolidation under Ind AS 110 / AS 21 (inter-company
-   sales, dividends and the holding's investment must be eliminated).
-   *Default: the group view says "Aggregated" and shows each entity's figure
-   beside the sum; true consolidated statements are out of scope until a
-   company secretary or auditor asks for them.*
-6. **Which instruments, in the first release?** Plain equity only, or CCPS /
-   CCD / convertible notes now? Is there an ESOP pool or plan today? *Default:
-   phase 1 is equity and preference shares as classes; conversions, notes and
-   ESOP follow in later phases (§6).*
-7. **Who keeps the register?** The finance head, a new company-secretary role,
-   or an outside CS firm that needs its own sign-in? *Default: a
-   `company_secretary` role that maintains the register and cannot approve
-   its own entries; the finance head and chairman approve.*
-8. **Are KIPL's shares dematerialised?** Rule 9B (mandatory demat for private
-   companies that are not "small") had a 30 June 2025 deadline. If the shares
-   are in demat, the depository is the register of record and this system
-   mirrors it (ISIN, PAS-6 half-yearly reconciliation). If KIPL and every
-   subsidiary are small companies, physical certificates (SH-1) remain valid.
-   *Default: physical register with a demat flag per entity, unfilled.*
-9. **Board module scope?** Circular resolutions with e-sign, or full meetings
-   with notice, agenda, attendance, minutes and SS-1 timelines? *Default:
-   both, meetings in phase 3; e-sign is "upload the signed copy" until a
-   provider (Leegality / DocuSign / Aadhaar eSign) is chosen.*
-10. **Sign-in for outsiders.** Today: email + password, no reset, no invite,
-    no second factor. External shareholders need an invitation flow and, for
-    a surface showing share certificates, an email one-time code at sign-in.
-    *Default: build invite + email OTP for portal roles in phase 0.*
-11. **Any foreign shareholder, now or planned?** It adds residency to every
-    holder and FC-GPR / FC-TRS / FLA to the compliance calendar. *Default:
-    residency field present, FEMA reporting not built.*
+1. **The group.** KIPL is the holding. The three divisions — Software, Skill
+   Development, Education — become subsidiaries in the near future; the
+   platform must be ready for that. Shareholders are entered by the chairman.
+   *Decided:* the existing `kaizen` tenant is the holding tenant. Every
+   subsidiary tenant records the division it grew out of
+   (`Tenant.config.originDivision`), so the group structure chart can show
+   the three divisions today as *not yet incorporated* and the same nodes
+   become real entities when the tenants exist. A later phase (6b) carries the
+   division-tagged rows — transactions, employees, courses — into the new
+   tenant; nothing in phases 0–5 assumes it has happened.
+2. **Hostname.** One portal host with an entity picker. *Decided:* §3.1 as
+   written; one `routes` entry on the Worker.
+3. **Emails.** Some corporate, some personal. *Decided:* §3.2 as written;
+   email domain is a hint only.
+4. **What a shareholder or director sees.** A holder or director *of the
+   holding* sees every entity's financial summary; one *of a subsidiary only*
+   sees that subsidiary's; the same person can be both, or be on several
+   subsidiaries. *Decided:* the rule is exactly the affiliation model. A
+   person's reach is the union of the entities they hold an affiliation in,
+   and the holding tenant's snapshots carry every subsidiary's summary, so a
+   holding-level portal user sees all of them without any cross-tenant read.
+   The financial block of a snapshot is therefore published unconditionally
+   (the earlier idea of the finance head choosing what goes up is dropped);
+   what goes up is the same summary The Business shows: cash, P&L by
+   division, headcount.
+5. **"Consolidated".** Explained: *aggregated* means adding each company's
+   figures together. *Consolidated* (the Companies Act meaning, s.129(3),
+   Ind AS 110) means adding them and then removing money that only moved
+   between group companies — KIPL invoicing the Education subsidiary for
+   software, a subsidiary paying KIPL a dividend, KIPL's own investment in a
+   subsidiary sitting as an asset. Without those removals the group looks
+   bigger than it is. *Decided:* the group screen shows each entity and a
+   **group total before inter-company eliminations**, labelled in those
+   words, and every transaction whose counterparty is another group entity
+   is flagged `intercompany` so a chartered accountant can do the
+   consolidation from a list rather than a hunt. Producing consolidated
+   statements themselves is not built.
+6. **Instruments.** Everything the Companies Act allows a private limited
+   company. *Decided:* equity; preference (compulsorily or optionally
+   convertible, redeemable); debentures (compulsorily or optionally
+   convertible, non-convertible); convertible notes (DPIIT start-ups only);
+   warrants; ESOP options; sweat equity (s.54); bonus (s.63); rights issue
+   (s.62(1)(a)); private placement (s.42); preferential allotment (s.62(1)(c));
+   buy-back (s.68); reduction of capital (s.66, recorded, not workflowed —
+   it needs the tribunal). Phase 1 ships equity and preference classes and
+   allotment/transfer; phase 4 the rest.
+7. **Register keepers.** Company secretary and finance. *Decided:* §3.4 as
+   written; the chairman enters holders and their sign-ins directly (see 10).
+8. **Dematerialised.** Explained: shares held as electronic entries with a
+   depository (NSDL or CDSL, through a registrar) instead of paper
+   certificates, the way a bank account replaces cash. See §1a.1 for why it
+   matters to this group specifically.
+9. **Board.** Full: meetings with notice, agenda, attendance, minutes and the
+   SS-1 timelines, plus circular resolutions. *Decided:* phase 3 as written.
+10. **Sign-in for outsiders.** No invite flow, no one-time code. The
+    chairman creates the account and sets the password. *Decided:* a
+    "Create sign-in" action on a holder or board member (chairman or company
+    secretary), which creates the principal and a per-entity user, with the
+    password shown once, as the seed does today; the same action resets a
+    password. No email is sent by the platform. The risk accepted: a
+    certificate-bearing surface protected by a password alone.
+11. **Foreign shareholder.** One NRI. *Decided:* residency and investment
+    basis are recorded on every holder (§5); FEMA reporting items are
+    generated for repatriable holdings (§1a.3); phase 6 includes them.
+
+---
+
+## 1a. Three consequences to confirm with the company secretary
+
+These follow from the answers and change the compliance load of the whole
+group, not just the software. They are stated as the platform will state
+them; a company secretary should confirm before the subsidiaries are formed.
+
+1. **Forming subsidiaries ends "small company" status — for KIPL and for
+   each subsidiary.** Section 2(85) excludes a holding company and a
+   subsidiary company from the definition regardless of size. On the day the
+   first subsidiary is incorporated: four board meetings a year with a
+   120-day gap instead of two; MGT-7 instead of MGT-7A; and **Rule 9B
+   dematerialisation becomes mandatory** for KIPL (and for the subsidiaries
+   unless the wholly-owned-subsidiary exemption, which the research could
+   not verify, applies). Until then KIPL is almost certainly a small company
+   and paper certificates are fine. The platform models demat status per
+   entity and raises a compliance item the moment a tenant becomes a holding
+   or a subsidiary.
+2. **Group total is not a consolidated statement.** A holding company must
+   prepare consolidated financial statements (s.129(3)) and file AOC-1 for
+   each subsidiary. The platform gives the per-entity figures, the
+   inter-company flag and the AOC-1 data; the consolidation is an accountant's
+   act.
+3. **The NRI's holding decides the FEMA work.** An NRI investing on a
+   *non-repatriation* basis (Schedule IV of the NDI Rules) is treated as a
+   resident investment: no FC-GPR, no FC-TRS. On a *repatriation* basis every
+   allotment needs FC-GPR within 30 days, every transfer with a resident
+   needs FC-TRS within 60 days, pricing must meet the FEMA fair-value floor,
+   and the FLA return is due 15 July each year. The holder record carries
+   the basis; the calendar follows from it.
 
 ---
 
@@ -190,8 +234,9 @@ by at all, and would otherwise need two passwords.
 `Tenant.parentTenantId` (nullable) and `Tenant.kind: 'holding' | 'subsidiary'
 | 'standalone'`. A subsidiary **publishes** an `EntitySnapshot` into its
 parent tenant — cap table summary, holder list with percentages, share
-classes, board calendar, open resolutions, the financial summary the entity's
-finance head has marked publishable, valuation, compliance flags — written
+classes, board calendar, open resolutions, the financial summary (the same
+cash, P&L-by-division and headcount figures The Business shows), valuation,
+compliance flags — written
 under `asSystem(parentTenantId)` on the relevant events and by a nightly job.
 The chairman's group dashboard reads **only rows in the holding tenant**.
 Look-through ownership (founder 60% of KIPL × KIPL 70% of Sub A + founder 5%
@@ -203,9 +248,7 @@ screens. No consolidated screen ever queries a subsidiary's tables directly.
 Why not a cross-tenant read grant for the chairman: it would be the first code
 path where a request in tenant A reads tenant B's rows, and every later
 feature would be tempted to use it. Publication keeps every read inside one
-tenant, leaves an event on both sides, and lets a subsidiary decide what it
-publishes upward (the finance head marks a period's summary publishable —
-authority stays with the entity). The cost is staleness measured in seconds,
+tenant and leaves an event on both sides. The cost is staleness measured in seconds,
 which the dashboard states ("as published 14 Sep 09:41").
 
 Each snapshot carries the `hash` of the last subsidiary event it reflects, so
@@ -257,7 +300,8 @@ fully diluted, and one number would be wrong for one of them. Valuation shows
 the date, the valuer and the basis, or "No valuation on record". Compliance
 counters (days since last board meeting against 120) count from recorded
 meetings only and say "No meeting recorded" rather than "overdue" when the
-register is empty.
+register is empty. The group figure is headed *Group total before
+inter-company eliminations*, never *Consolidated*.
 
 ---
 
@@ -311,24 +355,29 @@ ratios do).
 **Identity and group**
 - `Principal` — `email @unique`, `passwordHash`, `otpSecret?`, `status`,
   `lastLoginAt`. `User.principalId`.
-- `Tenant` + `parentTenantId?`, `kind`, `config.emailDomains: string[]`.
+- `Tenant` + `parentTenantId?`, `kind`, `config.emailDomains: string[]`,
+  `config.originDivision?` (the division a subsidiary grew out of).
 - `EntityProfile` — extends `CompanyProfile` 1:1 (or new columns on it):
   `incorporatedOn`, `financialYearEnd`, `authorisedCapital` per class,
   `isSmallCompany`, `dematStatus (physical | demat | mixed)`, `isin?`, `rta?`,
   `dpiitNumber?`, `dpiitRecognisedOn?`, `registeredOfficeAddress`.
 
 **Register**
-- `ShareClass` — `name`, `kind (equity | preference)`, `instrument (equity |
-  ccps | ocps | ccd | ocd | convertible_note | warrant | option | phantom)`,
+- `ShareClass` — `name`, `kind (equity | preference | debenture)`, `instrument
+  (equity | sweat_equity | ccps | ocps | rps | ccd | ocd | ncd |
+  convertible_note | warrant | option | phantom)`,
   `faceValue`, `votingRightsPerShare`, `rights Json` (liquidation preference
   multiple and participation, anti-dilution, pro-rata, board seat, information
   rights, dividend rate), `conversionTerms Json?`, `authorisedCount`.
 - `Holder` — the party that holds: `kind (person | organization | entity)`,
   `personId? | organizationId? | heldByTenantId?` (the last is the
   entity-as-stakeholder link), `folioNumber`, `residency (resident |
-  non_resident)`, `pan?`, `nomineeJson?`, `jointHolders Json?`.
+  non_resident)`, `investmentBasis (repatriable | non_repatriable)?` (required
+  when non-resident; decides whether FEMA items are generated), `pan?`,
+  `nomineeJson?`, `jointHolders Json?`.
 - `ShareTransaction` — append-only; `type (allotment | transfer | conversion |
-  buyback | split | bonus | forfeiture | cancellation)`, `shareClassId`,
+  buyback | split | bonus | forfeiture | cancellation | redemption |
+  reduction)`, `shareClassId`,
   `fromHolderId?`, `toHolderId?`, `count`, `pricePerShare?`, `distinctiveFrom /
   distinctiveTo`, `effectiveOn`, `roundId?`, `considerationTransactionId?`
   (→ `Transaction`), `approvalDecisionId?`, `status (proposed | approved |
@@ -338,7 +387,8 @@ ratios do).
   `status (issued | surrendered | cancelled)`, `supersededById?`, `signatories
   Json` (snapshotted names), `stampDutyPaid?`.
 - `FundingRound` — `name`, `kind (seed | series | rights_issue | bonus |
-  preferential | private_placement | esop_top_up)`, `preMoneyValuation?`,
+  preferential | private_placement | sweat_equity | esop_top_up |
+  capital_reduction)`, `preMoneyValuation?`,
   `closedOn?`, `valuationReportId?`, `offerLetterRef?` (PAS-4 serial),
   `status`.
 - `Valuation` — `asOf`, `basis (registered_valuer | merchant_banker | ca_cert
@@ -368,6 +418,10 @@ ratios do).
 `option`), `OptionGrant` (`employeeAffiliationId`, `granted`, `exercisePrice`,
 `vestingSchedule Json` with cliff and tranches, `status`), `VestingEvent`,
 `Exercise` (spawns a `ShareTransaction` allotment), `Lapse`.
+
+**Books** (phase 2) — `Transaction.intercompanyTenantId?` set when the
+counterparty is another group entity; listed on the group screen for the
+accountant doing the consolidation.
 
 **Group** (phase 2) — `EntitySnapshot` in the holding tenant: `sourceTenantId`,
 `asOf`, `sourceEventHash`, `capTable Json`, `holders Json`, `board Json`,
@@ -416,7 +470,11 @@ Files: `schema.prisma`, `apps/api/src/lib/auth.ts`, `lib/http.ts`,
    --name --parent` script that runs the same bootstrap for a subsidiary
    (grants, nav, pipelines, leave types, founding accounts with their own
    `*_EMAIL` env). The existing tenant becomes `kind: holding` when
-   `PARENT_TENANT_SLUG` is unset and any tenant names it as parent.
+   `PARENT_TENANT_SLUG` is unset and any tenant names it as parent. The
+   moment a tenant becomes a holding or a subsidiary, a compliance item is
+   raised in it saying small-company status has ended and naming what
+   changes (§1a.1); nothing is computed from size, because s.2(85) does not
+   look at size for these two kinds.
 3. Roles `shareholder`, `director`, `company_secretary` in `ROLE_SLUGS`,
    `ROLE_DEFINITIONS`, `ROLE_CLASSIFICATION_CEILING` (`confidential` for the
    two portal roles — they never see regulated HR data), `ROLE_GRANT_MATRIX`
@@ -426,14 +484,14 @@ Files: `schema.prisma`, `apps/api/src/lib/auth.ts`, `lib/http.ts`,
    `chairman` gets a `director` affiliation in every subsidiary by the
    create-tenant script only when `--chairman-email` is given; nothing is
    implied.
-4. Invitations and second factor for portal roles: `POST /auth/invite`
-   (secretary or chairman; creates `Principal` with `status: invited`, emails
-   a one-time link — email transport is whatever `platform/exceptions.ts`'s
-   `notify` uses today; if it is log-only, the link is printed to the log and
-   the plan says so), `POST /auth/accept-invite`, and an email OTP step on
-   sign-in when the chosen affiliation's role archetype is `portal`. A
-   password-reset route lands here too, because a portal user cannot walk
-   over to the person who seeded them.
+4. Sign-ins for outsiders, without email. `POST /equity/holders/:id/sign-in`
+   and the same for board members (chairman or company secretary): creates
+   the `Principal` if the email has none, creates this tenant's `User` and a
+   `shareholder`/`director` affiliation, and returns a generated password
+   **once**, as the seed does. Calling it again resets the password. No
+   invite, no one-time code, no reset link — decided by the chairman
+   (§1.10); the platform sends no email. The audit record names who created
+   or reset the sign-in.
 5. Portal surface. Worker var `PORTAL_HOSTS` (comma-separated) surfaced through
    `/api/meta/version` as `surfaceHosts.portal`; client sets `surface =
    'portal'` when `location.hostname` matches, or when the active role's
@@ -513,13 +571,18 @@ Files: `apps/api/src/domains/group.ts`, `jobs/scheduler.ts` (a
 `GroupEntity.tsx`, portal `Entities.tsx`.
 
 1. `EntitySnapshot` written to the parent under `asSystem(parent)` on
-   `kz.eqt.*` effective events and nightly; carries `sourceEventHash`.
-   The publishing side decides content: the financial block is only included
-   for periods the finance head has marked `publishToGroup` (a new flag on
-   the period close, or on a `books` report snapshot — whichever the books
-   module already persists; if nothing is persisted, add a
-   `PublishedFinancialSummary` row rather than recomputing on the parent).
-2. Group dashboard (holding tenant, `chairman` and `director` there):
+   `kz.eqt.*` effective events and nightly; carries `sourceEventHash`. The
+   financial block is the same summary The Business renders (cash position,
+   P&L by division for the last complete month and the year to date,
+   headcount), computed by the existing `books.ts` report functions inside
+   the subsidiary's own context; published unconditionally (§1.4).
+   `Transaction.intercompanyTenantId` is set by the finance head on entry
+   (a counterparty picker offers group entities) and the snapshot carries
+   the inter-company totals.
+2. Group dashboard (holding tenant; `chairman`, `director` and `shareholder`
+   affiliated there — a holding-level shareholder sees every entity's
+   summary, per §1.4, through the portal's Entities page which is the same
+   data with the ERP chrome removed):
    structure chart (entities as nodes, edge % from the subsidiary's own cap
    table, subsidiary/associate/WOS badge by the s.2(87) test, layer count
    against two), per-entity tiles (paid-up by class, fully-diluted, pool
@@ -555,9 +618,15 @@ Board pack. Compliance items generated by a job. Tests `EQT-BRD-*`.
 
 ### Phase 4 — Rounds, instruments, valuations, scenarios
 
-`FundingRound`, preference classes with rights, CCPS/CCD conversion events
-that spawn allotments, convertible notes, warrants; valuation records with
-basis; scenario modelling in `packages/shared/src/equity.ts` (pure: a
+`FundingRound`, preference and debenture classes with rights, conversion and
+redemption events that spawn or retire holdings, convertible notes, warrants,
+rights issues (s.62(1)(a), with the offer-and-renunciation record), bonus
+(s.63, from free reserves only — the books say whether they exist), sweat
+equity (s.54, with the valuation report), private placement (s.42: offer
+letter serial, separate bank account reference, the 200-person count),
+buy-back (s.68: the 10%/25% and debt-equity tests computed from the books),
+capital reduction (s.66, recorded against the tribunal order); valuation
+records with basis; scenario modelling in `packages/shared/src/equity.ts` (pure: a
 proposed round ⇒ post-money table, dilution per holder, waterfall by
 preference stack) rendered client-side and never persisted as fact.
 Tests `EQT-RND-*`.
@@ -577,7 +646,25 @@ role. Tests `EQT-ESP-*`.
 Exports in the layouts the forms want: MGT-1 register, PAS-3 allottee list,
 SH-4 pre-filled, SH-6, AOC-1 (from group snapshots), BEN-1/2 candidates from
 look-through; demat mirror fields, ISIN, PAS-6 half-yearly reconciliation
-item; FEMA (FC-GPR/FC-TRS/FLA) items only when a non-resident holder exists.
+item; FEMA items — FC-GPR within 30 days of an allotment to a repatriable
+non-resident holder, FC-TRS within 60 days of a transfer between such a holder
+and a resident, FLA by 15 July when any such holding exists, and the
+fair-value floor check on the allotment price — generated from
+`Holder.residency` and `investmentBasis`. The group has one NRI holder (§1.11),
+so this is built, not optional.
+
+### Phase 6b — Spinning a division out into a subsidiary
+
+When a division is incorporated: `pnpm tenant:create --slug --name --parent
+kaizen --origin-division education`, then a guarded `pnpm division:spin-out`
+that previews, like an import, every division-tagged row it would carry
+across — transactions, employment relationships, courses and enrolments,
+organisations owned by that division — and the opening allotment of the
+subsidiary's shares to KIPL (and to anyone else the chairman names) as the
+first `ShareTransaction` in the new tenant. Rows are copied and marked
+`migratedToTenantId`, never moved, so the holding's history still reads.
+This phase is specified here so nothing earlier forecloses it; it is built
+when the first subsidiary is formed.
 
 ---
 
