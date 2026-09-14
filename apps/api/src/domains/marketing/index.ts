@@ -65,20 +65,27 @@ export {
   updateTemplate,
   submitForReview,
   approveTemplate,
+  rejectTemplate,
   retireTemplate,
-  duplicateTemplate,
   previewTemplate,
+  mergeFieldsCatalogue,
   createSend,
   listSends,
   loadSend,
+  requestSend,
   approveSend,
-  queueSend,
   cancelSend,
+  dispatchSend,
+  dryRunSend,
+  applyDeliveryEvents,
+  checkSendHealth,
+  sendTest,
   listSendRecipients,
   type TemplateInput,
   type TemplateView,
   type SendInput,
   type SendView,
+  type SendRecipientView,
 } from './messaging.js';
 
 // Journeys
@@ -92,8 +99,17 @@ export {
   resumeJourney,
   retireJourney,
   listJourneyRuns,
+  enrolPerson,
+  exitRun,
+  tick,
+  detectStuckRuns,
+  onLeadCreated,
+  onFormSubmitted,
+  onEventRegistered,
+  onEnrolment,
   type JourneyInput,
   type JourneyView,
+  type JourneyRunView,
 } from './journeys.js';
 
 // Forms & Lead Capture
@@ -173,13 +189,20 @@ export {
 
 // Analytics & Health
 export {
-  computeMarketingHealth,
-  listMetrics,
-  attributionMetrics,
-  campaignPerformance,
-  channelComparison,
-  type HealthScore,
-  type MetricsView,
+  overview,
+  funnel,
+  channels,
+  campaigns as campaignPerformance,
+  attributionSummary,
+  cohorts,
+  exportCsv,
+  type KpiTile,
+  type MarketingOverviewView,
+  type MarketingFunnelView,
+  type ChannelPerformanceView,
+  type CampaignPerformanceView,
+  type AttributionSummaryView,
+  type CohortRow,
 } from './analytics.js';
 
 // Settings (Channels, Vendors, Webhooks)

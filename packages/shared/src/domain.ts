@@ -655,7 +655,11 @@ export const RECORD_TYPE_CODES = [
   // Marketing (mkt), Canon H_MKT. `CMP` is already reserved above for the
   // compliance-obligation record type, so a campaign takes `CPG` instead —
   // no collision, no shared sequence with an unrelated domain.
-  'CHN', 'AUD', 'TPL', 'SND', 'JRN', 'FRM', 'EVT', 'AST', 'PST', 'LNK', 'RFP', 'REF', 'BDG', 'SPN', 'PLN', 'CPG',
+  // `MarketingCampaignApproval` and `MarketingVendor` also carry a house
+  // recordCode per marketing.prisma's convention, unlike the other sub-log
+  // tables (touchpoints, attributions, recipients, …) that were left off this
+  // list on purpose — those are never referred to by a human-facing code.
+  'CHN', 'AUD', 'TPL', 'SND', 'JRN', 'FRM', 'EVT', 'AST', 'PST', 'LNK', 'RFP', 'REF', 'BDG', 'SPN', 'PLN', 'CPG', 'CAA', 'VND',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

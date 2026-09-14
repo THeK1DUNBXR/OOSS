@@ -582,6 +582,32 @@ export interface CampaignView {
   createdAt: string;
 }
 
+/** One row of `MarketingCampaignApproval`, as GET /campaigns/:id embeds it. */
+export interface CampaignApprovalView {
+  id: string;
+  recordCode: string;
+  requestedById: string;
+  decidedById: string | null;
+  decision: 'pending' | 'approved' | 'rejected';
+  reason: string | null;
+  thresholdAmount: number | null;
+  createdAt: string;
+}
+
+/**
+ * GET /campaigns/:id — the detail view. Adds the figures a list row has no
+ * business computing for every row (spend, touchpoints, attributed leads,
+ * events) and the approval trail, on top of the flat `CampaignView` shape a
+ * list row already carries.
+ */
+export interface CampaignDetailView extends CampaignView {
+  approvals: CampaignApprovalView[];
+  spendTotal: number;
+  touchpointCount: number;
+  leadCount: number;
+  events: Array<{ id: string; recordCode: string; name: string; status: MarketingEventStatus; startAt: string }>;
+}
+
 export interface AudienceView {
   id: string;
   recordCode: string;
@@ -844,6 +870,33 @@ export interface BudgetView {
   spent: number;
   remaining: number;
   note: string | null;
+  /** Derived from the event log (`kz.mkt.budget.approved` not superseded by a later `kz.mkt.budget.set`) — MarketingBudget carries no status field of its own. */
+  approved: boolean;
+  approvedById: string | null;
+}
+
+/** GET /budgets/variance — one row per MarketingBudget matching the period/division filter. */
+export interface BudgetVarianceRow {
+  division: string;
+  channelKey: ChannelKey | null;
+  campaignId: string | null;
+  planned: number;
+  committed: number;
+  actual: number;
+  variance: number;
+  /** false when this period/division/channel/campaign has no *approved* budget yet. */
+  measured: boolean;
+}
+
+/** GET /calendar — one row per campaign, marketing event, send or social post overlapping the range. */
+export interface MarketingCalendarItem {
+  id: string;
+  kind: 'campaign' | 'event' | 'send' | 'social_post';
+  label: string;
+  startAt: string;
+  endAt: string | null;
+  status: string;
+  division: string | null;
 }
 
 export interface SpendView {
