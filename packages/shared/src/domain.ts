@@ -652,6 +652,10 @@ export const RECORD_TYPE_CODES = [
   // register entry, each a case a data principal or the company refers to by
   // number.
   'DPR', 'BRC',
+  // Marketing (mkt), Canon H_MKT. `CMP` is already reserved above for the
+  // compliance-obligation record type, so a campaign takes `CPG` instead —
+  // no collision, no shared sequence with an unrelated domain.
+  'CHN', 'AUD', 'TPL', 'SND', 'JRN', 'FRM', 'EVT', 'AST', 'PST', 'LNK', 'RFP', 'REF', 'BDG', 'SPN', 'PLN', 'CPG',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

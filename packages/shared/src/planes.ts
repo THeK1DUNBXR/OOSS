@@ -162,4 +162,26 @@ export const MODULE_REGISTER: ModuleRegisterEntry[] = [
       "Read another tenant's tables — the group view is built from EntitySnapshot rows published upward, never a cross-tenant query.",
     ],
   },
+  {
+    code: 'MKT',
+    name: 'Marketing',
+    boundedContext: 'mkt',
+    plane: 'P2',
+    owns: [
+      'MARKETING_CAMPAIGN', 'MARKETING_CHANNEL', 'MARKETING_AUDIENCE', 'MARKETING_PREFERENCE',
+      'MARKETING_TEMPLATE', 'MARKETING_SEND', 'MARKETING_JOURNEY', 'MARKETING_FORM',
+      'MARKETING_TOUCHPOINT', 'MARKETING_ATTRIBUTION', 'MARKETING_LEAD_SCORE_RULE',
+      'MARKETING_EVENT', 'MARKETING_ASSET', 'MARKETING_SOCIAL_POST', 'MARKETING_SHORT_LINK',
+      'MARKETING_REFERRAL_PROGRAM', 'MARKETING_REFERRAL', 'MARKETING_BUDGET', 'MARKETING_SPEND',
+      'MARKETING_VENDOR', 'MARKETING_CLAIM', 'MARKETING_PLAN',
+    ],
+    neverDoes: [
+      "Write Lead.ownerPartyId or route a lead — that stays CRM's routing engine.",
+      'Create a PERSON directly — it calls findOrCreatePerson, the same as every other module.',
+      "Record money movement itself — a MarketingSpend references Finance's Transaction; marketing never posts beside the books.",
+      'Set a pipeline stage on a lead or opportunity — stage authority is CRM\'s.',
+      "Send to a person without a granted 'marketing' Consent — the compliance Consent model, never a marketing-owned duplicate.",
+      "Approve its own campaign or budget — the proposer is never the approver, even the chairman (platform/approvals.ts).",
+    ],
+  },
 ];

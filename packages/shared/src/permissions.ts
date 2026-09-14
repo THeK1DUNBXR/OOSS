@@ -208,6 +208,21 @@ export const RESOURCES = [
   // ESOP (equity-portal plan §5/§6, phase 5).
   'esop_plans',
   'option_grants',
+  // Marketing (mkt, Canon H_MKT). `channels`, score rules, vendors, claims and
+  // plans live under `marketing_settings` rather than each taking a resource
+  // of their own — none of them differ in who may touch them.
+  'campaigns',
+  'audiences',
+  'marketing_templates',
+  'marketing_sends',
+  'marketing_journeys',
+  'marketing_forms',
+  'marketing_events',
+  'marketing_assets',
+  'marketing_budgets',
+  'marketing_referrals',
+  'marketing_analytics',
+  'marketing_settings',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];
