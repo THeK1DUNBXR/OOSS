@@ -690,11 +690,14 @@ export const mk = {
   cancelSocialPost: (id: string) => api.post<SocialPostView>(`${BASE}/social-posts/${id}/cancel`),
   recordSocialMetrics: (id: string, body: { likes?: number; comments?: number; shares?: number; reach?: number; clicks?: number }) =>
     api.post<SocialPostView>(`${BASE}/social-posts/${id}/metrics`, body),
-  listClaims: () => api.get<Page<ClaimView> | ClaimView[]>(`${BASE}/claims`).then(normalizePage),
-  createClaim: (body: { text: string; evidenceRef?: string; assetIds?: string[] }) => api.post<ClaimView>(`${BASE}/claims`, body),
-  approveClaim: (id: string) => api.post<ClaimView>(`${BASE}/claims/${id}/approve`),
-  rejectClaim: (id: string, reason: string) => api.post<ClaimView>(`${BASE}/claims/${id}/reject`, { reason }),
-  retireClaim: (id: string) => api.post<ClaimView>(`${BASE}/claims/${id}/retire`),
+  // The claim handlers are implemented in settings.routes.ts, which
+  // index.ts mounts at `/settings` — so the real path is
+  // `/settings/claims*`, not `/claims*` (review-web.md #1).
+  listClaims: () => api.get<Page<ClaimView> | ClaimView[]>(`${BASE}/settings/claims`).then(normalizePage),
+  createClaim: (body: { text: string; evidenceRef?: string; assetIds?: string[] }) => api.post<ClaimView>(`${BASE}/settings/claims`, body),
+  approveClaim: (id: string) => api.post<ClaimView>(`${BASE}/settings/claims/${id}/approve`),
+  rejectClaim: (id: string, reason: string) => api.post<ClaimView>(`${BASE}/settings/claims/${id}/reject`, { reason }),
+  retireClaim: (id: string) => api.post<ClaimView>(`${BASE}/settings/claims/${id}/retire`),
 
   // Referrals ----------------------------------------------------------------
   listReferralPrograms: () => api.get<Page<ReferralProgramView> | ReferralProgramView[]>(`${BASE}/referral-programs`).then(normalizePage),
