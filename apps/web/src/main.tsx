@@ -21,6 +21,8 @@ import { ShareClasses } from './pages/equity/ShareClasses.js';
 import { Valuations } from './pages/equity/Valuations.js';
 import { Documents as EquityDocuments } from './pages/equity/Documents.js';
 import { CertificateDocument } from './pages/equity/CertificateDocument.js';
+import { Group } from './pages/equity/Group.js';
+import { GroupEntity } from './pages/equity/GroupEntity.js';
 import { CommandCenter } from './pages/CommandCenter.js';
 import { Workspace, Exceptions } from './pages/Workspace.js';
 import { Pipeline } from './pages/Pipeline.js';
@@ -84,6 +86,7 @@ function PortalRouted() {
             shareholder printing their own certificate stays inside the
             portal's own shell. */}
         <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
+        <Route path="/equity/group/:sourceTenantId" element={<GroupEntity />} />
         <Route path="/portal/board" element={<Board />} />
         <Route path="/portal/entities" element={<PortalEntities />} />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -155,6 +158,8 @@ function Routed() {
         <Route path="/equity/share-classes" element={<ShareClasses />} />
         <Route path="/equity/valuations" element={<Valuations />} />
         <Route path="/equity/documents" element={<EquityDocuments />} />
+        <Route path="/equity/group" element={<Group />} />
+        <Route path="/equity/group/:sourceTenantId" element={<GroupEntity />} />
         <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
 
         <Route path="/business" element={<Executive />} />

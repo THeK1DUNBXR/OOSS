@@ -688,3 +688,64 @@ when the first subsidiary is formed.
 - Ask before: adding a cross-tenant read, storing a full bank account or PAN
   in plain text where the platform elsewhere masks it, or any e-sign or
   email provider dependency.
+
+---
+
+## Phase 2 — as built
+
+Landed on `claude/modest-newton-2kukvo`, on top of phases 0 and 1. Matches
+the brief in §6 with the following decided differently, or decided at all
+where the brief left a gap:
+
+- **`buildEntitySnapshot` / `publishEntitySnapshot` split.** The brief
+  describes one publisher; it is two functions so the "compose the JSON
+  inside the source tenant" step and the "write it into the parent" step are
+  each their own `asSystem` boundary, with the file's own header comment
+  (and `EQT-GRP-001`'s grep test) holding both to the rule that `eqt/group.ts`
+  never reads a subsidiary's tables from outside the source tenant's own
+  context.
+- **`holderKey` on the cap table's `holders` array, not on each row.** The
+  brief asked for a `holderKey` "per holder"; it is carried once per holder
+  (alongside `heldByTenantId`, `kind`, `folioNumber`) in a `holders[]` array
+  appended to the published `CapTableView`, cross-referenced by `holderId`
+  from `rows`/`holderTotals` rather than duplicated onto every row. A holder
+  with no resolvable email or PAN gets `holderKey: null` and `matchedBy:
+  'unmatched'`, and is excluded from `computeLookThrough`'s input rather than
+  poisoning it with a `null` key.
+- **One layer of `layerDepth`, always.** A snapshot is one hop — a
+  subsidiary's own summary, published once into its immediate parent. A
+  grandchild's stake in *its own* parent lives in a snapshot the grandchild
+  publishes into the middle tenant, which the top holding never receives
+  (§3.3 holds: no cross-tenant read, ever). `groupStructure()` therefore
+  reports every node it holds a snapshot for at `layerDepth: 1` and
+  `layerLimitExceeded: false` unconditionally; the two-layer check (s.2(87))
+  is real once a snapshot itself starts relaying what its own children look
+  like, which is future work, not this phase's.
+- **`board: { available: false }` is the whole of it.** As specified — the
+  shape is a fixed literal today, wired to the real board module (built by
+  another agent, in parallel) by pointing `buildEntitySnapshot` at that
+  module's own summary function later; nothing else in this phase reads or
+  writes it.
+- **`Transaction.intercompanyTenantId` validated against the group at
+  entry**, via `isInSameGroup` in `books.ts` (parent, sibling, or child,
+  walked on `Tenant.parentTenantId` the same way `equity.ts`'s
+  `assertNotHoldingsAncestor` already does) — an id outside the caller's own
+  group is refused with 422 rather than silently accepted and only noticed
+  on the group screen.
+- **`GET /books/group-entities`** was added, beyond the brief's route list,
+  to feed the "Group entity counterparty" picker on `NewTransaction`: the
+  parent/siblings/children of the caller's own tenant, by name and slug
+  only — a structural read of `Tenant`, never of another tenant's equity or
+  books rows, on the same footing as `assertNotHoldingsAncestor`.
+- **`markSnapshotDirty` sets `Tenant.config.snapshotDirty`** rather than a
+  new column, following `config.originDivision` and
+  `config.smallCompanyNoticeRaisedAt`'s existing convention for
+  small, infrequently-queried per-tenant flags.
+- **Portal `Entities.tsx`** branches on `SessionUser.tenantKind === 'holding'`
+  (already carried on every session, from phase 0) rather than a new API
+  field, to decide between the group tiles and the phase-0 entity list.
+- Every `EQT-GRP-*` test builds its own subsidiary-tenant principal by hand
+  (`principalInTenant` + `asPrincipal`, mirroring phase 0's own pattern)
+  rather than `asUser`, because `asUser` resolves an email with no tenant
+  filter and every founding account (`chairman@kaizen.co.in`, and so on) is
+  reused verbatim across every tenant `seedBootstrap` creates.

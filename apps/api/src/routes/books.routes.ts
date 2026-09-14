@@ -24,7 +24,7 @@ import { assertCan, canSeeMoney } from '../platform/permissions.js';
 import {
   listAccounts, createAccount, accountBalances,
   listCategories, createCategory,
-  listTransactions, recordTransaction, reverseTransaction,
+  listTransactions, recordTransaction, reverseTransaction, groupCounterpartyOptions,
   listVendorBills, recordVendorBill, payVendorBill, payablesAgeing,
   priceInvoiceGst, gstSummary,
   setBudgetLine, budgetVariance,
@@ -152,6 +152,7 @@ router.get(
       reference: t.reference,
       note: t.note,
       source: t.source,
+      intercompanyTenantId: t.intercompanyTenantId,
       reversalOfId: t.reversalOfId,
       reversedById: t.reversedById,
       reconciledAt: t.reconciledAt?.toISOString() ?? null,
@@ -174,11 +175,14 @@ router.post(
         method: z.string().optional(),
         reference: z.string().nullish(),
         note: z.string().nullish(),
+        intercompanyTenantId: z.string().nullish(),
       })
       .parse(req.body);
     return recordTransaction(body);
   }),
 );
+
+router.get('/group-entities', handler(async () => ({ items: await groupCounterpartyOptions() })));
 
 router.post(
   '/transactions/:id/reverse',

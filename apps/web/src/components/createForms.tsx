@@ -81,6 +81,11 @@ function useCategories(enabled = true) {
   return useList<Named & { kind: string }>('ledger-categories', '/books/categories', enabled);
 }
 
+/** The parent, siblings and children of this tenant — empty when it is not in a group. */
+function useGroupEntities(enabled = true) {
+  return useList<{ tenantId: string; slug: string; name: string }>('group-entities', '/books/group-entities', enabled);
+}
+
 // ---------------------------------------------------------------------------
 // Money
 // ---------------------------------------------------------------------------
@@ -96,6 +101,7 @@ function useCategories(enabled = true) {
 export function NewTransaction({ open, onClose }: { open: boolean; onClose: () => void }) {
   const accounts = useAccounts(open);
   const categories = useCategories(open);
+  const groupEntities = useGroupEntities(open);
 
   const [direction, setDirection] = useState<'out' | 'in'>('out');
   const [txnDate, setTxnDate] = useState(today());
@@ -106,6 +112,7 @@ export function NewTransaction({ open, onClose }: { open: boolean; onClose: () =
   const [counterparty, setCounterparty] = useState('');
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
+  const [intercompanyTenantId, setIntercompanyTenantId] = useState('');
 
   return (
     <CreateModal
@@ -125,6 +132,7 @@ export function NewTransaction({ open, onClose }: { open: boolean; onClose: () =
           counterparty: counterparty || null,
           reference: reference || null,
           note: note || null,
+          intercompanyTenantId: intercompanyTenantId || null,
         })
       }
     >
@@ -173,6 +181,16 @@ export function NewTransaction({ open, onClose }: { open: boolean; onClose: () =
         <TextInput label="Who" value={counterparty} onChange={setCounterparty} placeholder="Supplier or customer" />
         <TextInput label="Reference" value={reference} onChange={setReference} placeholder="Cheque or UTR number" />
       </Row>
+      {groupEntities.rows.length > 0 && (
+        <SelectInput
+          label="Group entity counterparty"
+          hint="only when the other side is the holding or a sibling/child entity"
+          value={intercompanyTenantId}
+          onChange={setIntercompanyTenantId}
+          placeholder="Not inter-company"
+          options={groupEntities.rows.map((e) => ({ value: e.tenantId, label: e.name }))}
+        />
+      )}
       <TextArea label="Note" value={note} onChange={setNote} rows={2} />
     </CreateModal>
   );

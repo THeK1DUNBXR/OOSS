@@ -210,6 +210,9 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'eq_share_classes', label: 'Share Classes', icon: 'package', path: '/equity/share-classes', group: 'equity', position: 83, requiredPermission: 'share_classes:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['equity', 'preference', 'instruments'] },
   { nodeKey: 'eq_valuations', label: 'Valuations', icon: 'trending', path: '/equity/valuations', group: 'equity', position: 84, requiredPermission: 'valuations:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['409a', 'fmv', 'fair value'] },
   { nodeKey: 'eq_documents', label: 'Entity Documents', icon: 'file', path: '/equity/documents', group: 'equity', position: 85, requiredPermission: 'entity_documents:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['certificates', 'resolutions', 'filings'] },
+  // Group (equity-portal plan §6, phase 2). Reads the holding tenant's own
+  // snapshots only — see `domains/group.ts`.
+  { nodeKey: 'eq_group', label: 'Group', icon: 'building', path: '/equity/group', group: 'equity', position: 86, requiredPermission: 'group:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['subsidiaries', 'structure chart', 'consolidated', 'look-through', 'sbo'] },
 ];
 
 /**

@@ -2207,6 +2207,80 @@ model EntityDocument {
   @@map("entity_documents")
 }
 
+/// A subsidiary's published summary, written into its PARENT's tenant
+/// (equity-portal plan §3.3, phase 2). `tenantId` here is the parent — the
+/// only place in the whole domain a write ever lands in a tenant other than
+/// the one the request is running in, and only from `domains/group.ts`'s
+/// `publishEntitySnapshot`, under `asSystem(parentTenantId)`. The group
+/// screen reads only this row; it never opens a subsidiary's own tables.
+model EntitySnapshot {
+  id         String @id @default(cuid())
+  /// The parent — this snapshot lives in the group's own tenant.
+  tenantId   String
+  recordCode String
+
+  sourceTenantId String
+  sourceSlug     String
+  sourceName     String
+  /// The division this entity grew out of, before it was its own tenant
+  /// (`Tenant.config.originDivision`) — carried here so the structure chart
+  /// can match a snapshot to the "not yet incorporated" node it replaces.
+  originDivision String?
+
+  asOf              DateTime
+  /// The hash of the last `EventRecord` in the source tenant at publish
+  /// time — what tells the group screen how far behind a stale snapshot is,
+  /// rather than silently blending an old figure with a fresh one.
+  sourceEventHash   String?
+
+  capTable     Json // CapTableView, holders carrying heldByTenantId and holderKey
+  shareClasses Json
+  /// `{ available: false }` until the board module (built separately) is
+  /// wired in — kept as its own JSON block so that day is one function, not
+  /// a migration.
+  board        Json
+  financial    Json // cash, P&L by division (last complete month + FYTD), headcount, intercompany
+  compliance   Json // dematStatus, isSmallCompany, certificateOverdueCount, kind
+  valuation    Json?
+
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, sourceTenantId])
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, asOf])
+  @@map("entity_snapshots")
+}
+
+/// Every version an `EntitySnapshot` has ever held — the audit of what the
+/// group saw and when, kept even after a fresher snapshot overwrites the
+/// live row. Written in the same call that upserts `EntitySnapshot`.
+model EntitySnapshotHistory {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  sourceTenantId  String
+  sourceSlug      String
+  sourceName      String
+  originDivision  String?
+  asOf            DateTime
+  sourceEventHash String?
+  capTable        Json
+  shareClasses    Json
+  board           Json
+  financial       Json
+  compliance      Json
+  valuation       Json?
+  publishedAt     DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, sourceTenantId, publishedAt])
+  @@map("entity_snapshot_history")
+}
+
 // ===========================================================================
 // Finance (fin-owned)
 // ===========================================================================
@@ -4090,6 +4164,14 @@ model Transaction {
   reference    String?
   note         String?
 
+  /// Set by the finance head when the counterparty IS another group entity
+  /// (equity-portal plan §1.5, §6 phase 2) — the tenant id of that entity,
+  /// validated at entry to be somewhere in this tenant's own group (parent,
+  /// sibling or child), never an arbitrary tenant. Listed on the group
+  /// screen beside "Group total before inter-company eliminations" so an
+  /// accountant doing the consolidation works from a list, not a hunt.
+  intercompanyTenantId String?
+
   /// What raised it: manual | bank_import | payroll | invoice | vendor_bill |
   /// recurring | asset | loan. A figure can always be traced to its origin.
   source       String  @default("manual")
@@ -4117,6 +4199,7 @@ model Transaction {
   @@index([tenantId, division, txnDate])
   @@index([tenantId, accountId, txnDate])
   @@index([tenantId, source])
+  @@index([tenantId, intercompanyTenantId])
   @@map("transactions")
 }
 

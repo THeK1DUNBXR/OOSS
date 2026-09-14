@@ -325,6 +325,10 @@ const financeHead: GrantSpec[] = [
   { resource: 'share_ledger', cell: 'V,approve@all' },
   { resource: 'cap_table', cell: 'V@all' },
   { resource: 'valuations', cell: 'VCE@all' },
+  // The finance head sets `Transaction.intercompanyTenantId` on entry and
+  // reads the group's financial block the figures roll up into (plan §6
+  // phase 2 item 1).
+  { resource: 'group', cell: 'V@all' },
 ];
 
 /**
@@ -450,17 +454,21 @@ const shareholder: GrantSpec[] = [
   // Resolutions they are a voter on — a shareholder ordinary/special
   // resolution — never a board one.
   { resource: 'resolutions', cell: 'V@own' },
+  // A holding-level shareholder sees every entity's summary (plan §1, answer
+  // 4) — the union of what their affiliations reach already includes the
+  // holding tenant when they hold shares there, and the group screen there
+  // reads only snapshots, never a subsidiary's own tables.
+  { resource: 'group', cell: 'V@all' },
 ];
 
 const director: GrantSpec[] = [
-  // Everything a shareholder holds (a director is very often one too), plus
-  // the board itself.
+  // Everything a shareholder holds (a director is very often one too,
+  // including `group:V@all` above), plus the board itself.
   ...shareholder,
   { resource: 'board_meetings', cell: 'V@all' },
   { resource: 'resolutions', cell: 'V,approve@all' },
   { resource: 'board_documents', cell: 'V@all' },
   { resource: 'cap_table', cell: 'V@all' },
-  { resource: 'group', cell: 'V@all' },
 ];
 
 const companySecretary: GrantSpec[] = [
@@ -475,6 +483,7 @@ const companySecretary: GrantSpec[] = [
   { resource: 'compliance', cell: 'VCE@all' },
   { resource: 'entity_documents', cell: 'VCE@all' },
   { resource: 'board_documents', cell: 'VCE@all' },
+  { resource: 'group', cell: 'V@all' },
   // No `approve` anywhere — the whole point of the role (§3.4).
 ];
 

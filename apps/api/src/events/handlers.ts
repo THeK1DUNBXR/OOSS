@@ -19,6 +19,7 @@ import { subscribe, wouldLoop } from '../platform/eventBus.js';
 import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../domains/finance.js';
 import { ensureWinLossReview } from '../domains/winLoss.js';
 import { computeSensitivity } from '../domains/interactions.js';
+import { markSnapshotDirty } from '../domains/group.js';
 
 let registered = false;
 
@@ -127,6 +128,24 @@ export function registerSubscribers(): void {
       await prisma.interaction.update({ where: { id: interaction.id }, data: { sensitivityClass } });
     }
   });
+
+  /**
+   * The group (equity-portal plan §6, phase 2). Nothing here reads or writes
+   * a snapshot itself — it only flags this tenant's own `config.
+   * snapshotDirty`, so the `publish_entity_snapshots` job (every 15 minutes)
+   * publishes it soon rather than waiting for the nightly run. A tenant
+   * with no parent is flagged harmlessly; `publishEntitySnapshot` is a no-op
+   * for it.
+   */
+  const markDirty = (key: string, eventName: string) =>
+    subscribe(eventName, key, async (event: EventEnvelope) => {
+      await markSnapshotDirty(event.tenantId);
+    });
+  markDirty('eqt.snapshot_dirty.allotment', EVENTS.ALLOTMENT_EFFECTIVE);
+  markDirty('eqt.snapshot_dirty.transfer', EVENTS.TRANSFER_EFFECTIVE);
+  markDirty('eqt.snapshot_dirty.reversed', EVENTS.SHARE_TRANSACTION_REVERSED);
+  markDirty('eqt.snapshot_dirty.valuation', EVENTS.VALUATION_RECORDED);
+  markDirty('eqt.snapshot_dirty.transaction', EVENTS.TRANSACTION_RECORDED);
 
   /** A band transition, not a raw reading, is what reaches the Command Center. */
   subscribe(EVENTS.HEALTH_BAND_CHANGED, 'xdm.band_transition_log', async (event: EventEnvelope) => {

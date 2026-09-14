@@ -389,3 +389,252 @@ export function computeCapTable(inputRows: CapTableInputRow[]): CapTableComputat
 
   return { rows, holderTotals };
 }
+
+// ---------------------------------------------------------------------------
+// The group (equity-portal plan §3.3, §5 "Group", §6 phase 2).
+//
+// The group screen never reads a subsidiary's own tables (§3.3) — everything
+// here operates on `EntitySnapshot` rows the subsidiary has already published
+// into its parent. This section is pure vocabulary and the look-through
+// arithmetic; the read model that assembles snapshots into these shapes lives
+// in `apps/api/src/domains/group.ts`.
+// ---------------------------------------------------------------------------
+
+/** s.2(87)/s.90 badges, plus the one status that is not yet a real tenant. */
+export const GROUP_ENTITY_BADGES = [
+  'wholly_owned', 'subsidiary', 'associate', 'investment', 'not_yet_incorporated',
+] as const;
+export type GroupEntityBadge = (typeof GROUP_ENTITY_BADGES)[number];
+
+export const GROUP_ENTITY_BADGE_LABELS: Record<GroupEntityBadge, string> = {
+  wholly_owned: 'Wholly owned',
+  subsidiary: 'Subsidiary',
+  associate: 'Associate',
+  investment: 'Investment',
+  not_yet_incorporated: 'Not yet incorporated',
+};
+
+/**
+ * The heading the plan requires word for word (§1, answer 5): a group total
+ * is an addition, not a consolidation, and the screen must say so in these
+ * exact words. Kept as one constant so no client copy can quietly rename it.
+ */
+export const GROUP_LABELS = {
+  totalBeforeEliminations: 'Group total before inter-company eliminations',
+  aggregatedNotConsolidated: 'Aggregated, not consolidated',
+} as const;
+
+/** s.90: a look-through holding of 10% or more makes a person a Significant Beneficial Owner. */
+export const GROUP_SBO_THRESHOLD_PCT = 10;
+
+/** A snapshot older than this reads as stale on the group screen. */
+export const GROUP_SNAPSHOT_STALE_HOURS = 24;
+
+/** Two layers of wholly/majority-owned subsidiaries is the s.2(87) limit before it is flagged. */
+export const GROUP_LAYER_LIMIT = 2;
+
+export type LookThroughMatch = 'email' | 'pan' | 'unmatched';
+
+/** A folio's cross-tenant identity: lower-cased email when known, else `pan:<sha256>`, else unmatched. */
+export function holderKeyFor(input: { email?: string | null; panHash?: string | null }): { key: string | null; matchedBy: LookThroughMatch } {
+  if (input.email) return { key: input.email.trim().toLowerCase(), matchedBy: 'email' };
+  if (input.panHash) return { key: `pan:${input.panHash}`, matchedBy: 'pan' };
+  return { key: null, matchedBy: 'unmatched' };
+}
+
+export interface LookThroughDirectRow {
+  entityId: string;
+  holderKey: string;
+  issuedPct: number;
+  fullyDilutedPct: number;
+  matchedBy: LookThroughMatch;
+}
+
+/** One group entity's stake in another, read from the child's own cap table (the row where `heldByTenantId` is the parent). */
+export interface LookThroughEdge {
+  parentEntityId: string;
+  childEntityId: string;
+  issuedPct: number;
+  fullyDilutedPct: number;
+}
+
+export interface LookThroughRow {
+  entityId: string;
+  holderKey: string;
+  issuedPct: number;
+  fullyDilutedPct: number;
+  matchedBy: LookThroughMatch;
+}
+
+/**
+ * Effective ownership of each holder in each entity: direct % plus, for every
+ * entity that itself holds a stake in this one, that entity's own look-through
+ * % of the holder times its stake — the worked example in the plan is
+ * founder 60% of the holding × the holding's 70% of a subsidiary, plus the
+ * founder's own 5% direct in the subsidiary, giving 47%.
+ *
+ * Computed depth-first from each entity's parents (an entity with no parent
+ * edge is its own base case), memoised so a diamond in the graph is not
+ * recomputed, and refusing outright — never silently truncating — a cycle,
+ * which the group's own s.19 rule should make impossible but which this
+ * function does not trust to stay impossible.
+ */
+export function computeLookThrough(direct: LookThroughDirectRow[], edges: LookThroughEdge[]): LookThroughRow[] {
+  const entityIds = new Set<string>();
+  for (const d of direct) entityIds.add(d.entityId);
+  for (const e of edges) {
+    entityIds.add(e.parentEntityId);
+    entityIds.add(e.childEntityId);
+  }
+
+  const parentsOf = new Map<string, LookThroughEdge[]>();
+  for (const e of edges) {
+    if (!parentsOf.has(e.childEntityId)) parentsOf.set(e.childEntityId, []);
+    parentsOf.get(e.childEntityId)!.push(e);
+  }
+
+  const matchedByKey = new Map<string, LookThroughMatch>();
+  for (const d of direct) {
+    if (!matchedByKey.has(d.holderKey) || matchedByKey.get(d.holderKey) === 'unmatched') {
+      matchedByKey.set(d.holderKey, d.matchedBy);
+    }
+  }
+
+  const memo = new Map<string, Map<string, { issuedPct: number; fullyDilutedPct: number }>>();
+  const visiting = new Set<string>();
+
+  function compute(entityId: string): Map<string, { issuedPct: number; fullyDilutedPct: number }> {
+    const cached = memo.get(entityId);
+    if (cached) return cached;
+    if (visiting.has(entityId)) {
+      throw new Error(`Look-through ownership graph has a cycle at entity ${entityId} — refused rather than computed.`);
+    }
+    visiting.add(entityId);
+
+    const holderMap = new Map<string, { issuedPct: number; fullyDilutedPct: number }>();
+    for (const row of direct.filter((r) => r.entityId === entityId)) {
+      const cur = holderMap.get(row.holderKey) ?? { issuedPct: 0, fullyDilutedPct: 0 };
+      cur.issuedPct += row.issuedPct;
+      cur.fullyDilutedPct += row.fullyDilutedPct;
+      holderMap.set(row.holderKey, cur);
+    }
+
+    for (const edge of parentsOf.get(entityId) ?? []) {
+      const parentLookThrough = compute(edge.parentEntityId);
+      for (const [holderKey, pct] of parentLookThrough) {
+        const cur = holderMap.get(holderKey) ?? { issuedPct: 0, fullyDilutedPct: 0 };
+        cur.issuedPct += (pct.issuedPct * edge.issuedPct) / 100;
+        cur.fullyDilutedPct += (pct.fullyDilutedPct * edge.fullyDilutedPct) / 100;
+        holderMap.set(holderKey, cur);
+      }
+    }
+
+    visiting.delete(entityId);
+    memo.set(entityId, holderMap);
+    return holderMap;
+  }
+
+  for (const id of entityIds) compute(id);
+
+  const rows: LookThroughRow[] = [];
+  for (const [entityId, holderMap] of memo) {
+    for (const [holderKey, pct] of holderMap) {
+      rows.push({
+        entityId,
+        holderKey,
+        issuedPct: Math.round(pct.issuedPct * 100) / 100,
+        fullyDilutedPct: Math.round(pct.fullyDilutedPct * 100) / 100,
+        matchedBy: matchedByKey.get(holderKey) ?? 'unmatched',
+      });
+    }
+  }
+  return rows;
+}
+
+/** s.2(87): the badge for one entity's stake in another, by total share capital (`issuedPct`). */
+export function groupEntityBadge(issuedPct: number): Exclude<GroupEntityBadge, 'not_yet_incorporated'> {
+  if (issuedPct >= 100) return 'wholly_owned';
+  if (issuedPct > 50) return 'subsidiary';
+  if (issuedPct >= 20) return 'associate';
+  return 'investment';
+}
+
+export interface GroupStructureNodeView {
+  /** `null` for a not-yet-incorporated division node. */
+  tenantId: string | null;
+  slug: string | null;
+  name: string;
+  kind: 'holding' | 'subsidiary' | 'standalone' | 'not_yet_incorporated';
+  originDivision: string | null;
+  badge: GroupEntityBadge | null;
+  layerDepth: number;
+  layerLimitExceeded: boolean;
+  asOf: string | null;
+  publishedAt: string | null;
+  staleSeconds: number | null;
+  stale: boolean;
+}
+
+export interface GroupStructureEdgeView {
+  parentTenantId: string;
+  childTenantId: string;
+  issuedPct: number;
+  fullyDilutedPct: number;
+  badge: GroupEntityBadge;
+}
+
+export interface GroupStructureView {
+  self: { tenantId: string; slug: string; name: string; kind: string };
+  nodes: GroupStructureNodeView[];
+  edges: GroupStructureEdgeView[];
+}
+
+export interface GroupHolderEntityStake {
+  directIssuedPct: number;
+  directFullyDilutedPct: number;
+  lookThroughIssuedPct: number;
+  lookThroughFullyDilutedPct: number;
+  matchedBy: LookThroughMatch;
+}
+
+export interface GroupHolderRowView {
+  holderKey: string;
+  displayName: string;
+  perEntity: Record<string, GroupHolderEntityStake>;
+  /** s.90: true when the look-through, fully-diluted stake in any entity reaches `GROUP_SBO_THRESHOLD_PCT`. */
+  sbo: boolean;
+}
+
+export interface GroupEntityFinancialView {
+  tenantId: string;
+  name: string;
+  period: string;
+  cash: number | null;
+  pnlMonth: { income: number; expense: number; net: number } | null;
+  pnlFyToDate: { income: number; expense: number; net: number } | null;
+  headcount: number;
+  intercompanyIn: number | null;
+  intercompanyOut: number | null;
+  asOf: string;
+}
+
+export interface GroupFinancialsView {
+  entities: GroupEntityFinancialView[];
+  totalLabel: typeof GROUP_LABELS.totalBeforeEliminations;
+  totalCash: number | null;
+  totalPnlMonth: { income: number; expense: number; net: number } | null;
+  intercompanyTotal: { in: number; out: number } | null;
+}
+
+export interface GroupComplianceRowView {
+  tenantId: string;
+  name: string;
+  dematStatus: DematStatus | null;
+  isSmallCompany: boolean | null;
+  certificateOverdueCount: number;
+  kind: string;
+  asOf: string;
+  publishedAt: string;
+  staleSeconds: number;
+  stale: boolean;
+}

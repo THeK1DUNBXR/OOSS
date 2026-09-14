@@ -27,6 +27,7 @@ import { detectOverduePayments } from '../domains/finance.js';
 import { detectOverdueReviews } from '../domains/winLoss.js';
 import { sweepStaleMergeCandidates } from '../domains/identity.js';
 import { detectOverdueCertificates } from '../domains/equity.js';
+import { publishDirtySnapshots, publishNightlySnapshot } from '../domains/group.js';
 import { computeAndPersistAll } from '../domains/health.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
 
@@ -145,6 +146,25 @@ export const ALL_JOBS: JobDefinition[] = [
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
     run: async () => counted(await detectOverdueCertificates()),
+  },
+  {
+    // Group (equity-portal plan §6, phase 2). Publishes only a tenant flagged
+    // `config.snapshotDirty` by the `kz.eqt.*` subscribers in
+    // `events/handlers.ts` — most ticks touch no tenant at all.
+    name: 'publish_entity_snapshots',
+    label: 'Publish dirty entity snapshots to the parent tenant',
+    automationClass: 'data_maintenance',
+    cron: '*/15 * * * *',
+    run: async () => counted(await publishDirtySnapshots()),
+  },
+  {
+    // The backstop against a missed subscriber: every subsidiary republishes
+    // once a night regardless of the dirty flag.
+    name: 'publish_entity_snapshots_nightly',
+    label: 'Nightly full entity snapshot publish',
+    automationClass: 'data_maintenance',
+    cron: '30 2 * * *',
+    run: async () => counted(await publishNightlySnapshot()),
   },
   {
     name: 'runOfferingCoverageJob',

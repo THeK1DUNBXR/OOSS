@@ -328,6 +328,13 @@ export const EVENTS = {
   CERTIFICATE_CANCELLED: 'kz.eqt.certificate.cancelled',
   VALUATION_RECORDED: 'kz.eqt.valuation.recorded',
   ENTITY_DOCUMENT_PUBLISHED: 'kz.eqt.document.published',
+
+  // --- The group (eqt), phase 2 --------------------------------------------
+  // Emitted in BOTH tenants on a publish: in the source tenant, a record that
+  // its summary went up; in the parent, a record that the group's view of
+  // that entity changed. Never the trigger for a cross-tenant read — the
+  // written `EntitySnapshot` row is.
+  SNAPSHOT_PUBLISHED: 'kz.eqt.snapshot.published',
 } as const;
 
 /**
