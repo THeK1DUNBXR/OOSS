@@ -82,6 +82,29 @@ and emits an event on every state change:
   with a due date and whether it is overdue), `runMandatoryTrainingOverdueCheck`
   (raises one exception per overdue pair).
 - **IDPs**: `listIdps`, `createIdp`, `updateIdp`.
+
+**Scope-axis audit** (see `alert-scope.md`): `assertCan({resource, verb})`
+with no `record` skips the WHERE axis, so an own-scope grant (an `employee`
+role, or any fixture role scoped `@own`) would otherwise pass straight
+through to an operation on somebody else's row. Fixed:
+`nominate` (an own-scope caller may only nominate themselves — 403
+otherwise), `approveEnrollment`/`rejectEnrollment`/`markAttendance`/
+`completeEnrollment`/`verifyCertification` (each now requires
+`scopeFor(...) === 'all'` — these are not self-service actions, whatever verb
+a caller happens to hold), `updateIdp` (an own-scope caller may only edit
+their own plan — 404 on a colleague's, matching `assertEmploymentVisible`'s
+not-found-not-forbidden convention), a bare `listEnrollments`/
+`listCertifications`/`listIdps` with no id filter (now narrowed to the
+caller's own employment(s) when scope is not `all`, instead of returning
+every colleague's row), `mandatoryComplianceStatus` (was gated on
+`training_programs`, whose view is company-wide by design — switched to
+`training_enrollments`, the resource whose sensitivity actually matches what
+this reads), and `runCertificationExpiryLadder` (had no permission check at
+all on its route — any authenticated user could trigger it and see every
+certification's expiry state through the exceptions it raises; now requires
+all-scope `certifications:view`). `HCM-LEARNING-013` in the test file proves
+each fix with an own-scope actor refused, or narrowed, on a colleague's
+record.
 - **Budgets**: `listBudgets` (with derived `spent`/`utilisationPercent`),
   `createBudget`.
 

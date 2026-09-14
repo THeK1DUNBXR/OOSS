@@ -88,8 +88,41 @@ same `prisma`/`assertEmploymentVisible` helpers every other HR domain uses.
 | HCM-TIME-007 | Submitting a regularisation disputes the `WorkAttendance` row; approving it regularises the same row; a second approval is refused as an invalid transition (422); self-approval is refused (403) | `HCM-TIME-007` |
 | HCM-TIME-008 | Reading a timesheet id that does not exist in this tenant 404s | `HCM-TIME-008` |
 | HCM-TIME-009 | An employee-scoped principal cannot read a colleague's timesheet by id (404, not 403 — visibility, not authority) | `HCM-TIME-009` |
+| HCM-TIME-010 | An own-scoped caller cannot list a colleague's rosters/timesheets/overtime/comp-offs/regularisations by passing their employment id, and an unfiltered list never includes a colleague's rows | `HCM-TIME-010` (6 cases) |
+| HCM-TIME-011 | The tenant-wide attendance-derivation job is not directly triggerable by an own-scoped principal (403) | `HCM-TIME-011` |
+| HCM-TIME-012 | The tenant-wide comp-off expiry sweep is not directly triggerable by an own-scoped principal (403) | `HCM-TIME-012` |
+| HCM-TIME-013 | An own-scoped caller cannot delete a colleague's timesheet entry by id (404); HR still can | `HCM-TIME-013` |
 
-Run: `TEST_DATABASE_URL=postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test_time?schema=public npx vitest run src/tests/hcm/time.test.ts` from `apps/api` — 9/9 passing.
+Run: `TEST_DATABASE_URL=postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test_time?schema=public npx vitest run src/tests/hcm/time.test.ts` from `apps/api` — 18/18 passing.
+
+### Scope-axis audit (alert-scope.md)
+
+Every `assertCan` call in this domain was reviewed against the pattern: WHO-axis-only checks that skip
+the WHERE axis on a resource an employee holds at `own` scope. Found and fixed:
+
+- **Five list endpoints** (`listRosterAssignments`, `listTimesheets`, `listOvertimeRequests`,
+  `listCompOffs`, `listRegularisations`) accepted an optional `employmentRelationshipId` filter and,
+  when it was supplied, skipped the scope filter entirely instead of applying it — an own-scoped
+  caller who passed a colleague's id got that colleague's rows back. Fixed via a shared `listWhere()`
+  that now runs `assertEmploymentVisible` (the same by-id visibility check a single-record read uses)
+  on any explicit id, and falls back to the existing own-scope filter only when no id is given.
+- **`removeTimesheetEntry`** checked `timesheets:edit` (WHO) and then deleted the entry by id with no
+  WHERE check at all — an own-scoped caller holding `timesheets:edit`@own could delete any entry it
+  knew the id of, not only its own. Fixed by resolving the entry's own timesheet and checking
+  `assertEmploymentVisible` against that.
+- **`deriveAttendanceFromClockEvents` and `runCompOffExpiry`** (the two job functions, also reachable
+  directly via `POST /jobs/derive-attendance` and `POST /jobs/expire-comp-offs`) had no permission
+  check at all — any authenticated principal, including a bare employee, could trigger a tenant-wide
+  recompute or sweep. Fixed with `assertScopeAll` requiring all-scope authority (the scheduler already
+  runs them as the system principal, for which every scope is `all`, so this does not affect the job).
+
+Every function that already resolved a specific record before checking visibility
+(`consumeCompOff`, `getTimesheet`, `submitTimesheet`, `addTimesheetEntry`, `assignRoster`,
+`recordClockEvent`, `requestOvertime`, `earnCompOffForHolidayWork`, `submitRegularisation`, and the
+three `decide*` approval functions, which only ever grant `approve` at all-scope in this workstream's
+grants) was already correct — each checks the WHERE axis against the record's own
+`employmentRelationshipId`, not the caller's. One test per fixed path is in `time.test.ts` under
+HCM-TIME-010..013.
 
 ## What this does not do
 

@@ -151,6 +151,13 @@ their own (`VF@own`/`VC@own` grants).
 | HCM-COMPENSATION-016 | An employee submits their own expense claim; only hrOps/finance (never the employee) can approve it; hrOps reimburses. | `ravi submits his own claim, hrOps approves it…` |
 | HCM-COMPENSATION-017 | Approving an already-reimbursed claim is refused as a conflict (invalid transition). | `an invalid transition (approving an already-reimbursed claim)…` |
 | HCM-COMPENSATION-018 | The Self-Dealing Bar refuses a claim submitted and approved by the same dual-hatted principal. | `the Self-Dealing Bar refuses a claim submitted and approved by the same dual-hatted principal` |
+| HCM-COMPENSATION-019 | A cycle's line list does not leak a colleague's line to an own-scope viewer. | `listing a cycle's lines does not leak a colleague's line to an own-scope viewer` |
+| HCM-COMPENSATION-020 | An unfiltered payout list does not leak a colleague's payout to an own-scope viewer. | `an unfiltered payout list does not leak a colleague's payout to an own-scope viewer` |
+| HCM-COMPENSATION-021 | An unfiltered loan list does not leak a colleague's loan to an own-scope viewer. | `an unfiltered loan list does not leak a colleague's loan to an own-scope viewer` |
+| HCM-COMPENSATION-022 | An unfiltered expense claim list does not leak a colleague's claim to an own-scope viewer. | `an unfiltered expense claim list does not leak a colleague's claim to an own-scope viewer` |
+| HCM-COMPENSATION-023 | An unfiltered benefit enrolment list does not leak a colleague's enrolment to an own-scope viewer. | `an unfiltered benefit enrolment list does not leak a colleague's enrolment to an own-scope viewer` |
+| HCM-COMPENSATION-024 | An own-scope viewer is refused the cycle list and a single cycle outright (not merely narrowed), since a cycle spans every employee and has no "own" slice. | `an own-scope viewer is refused the cycle list and a single cycle outright, not merely narrowed` |
+| HCM-COMPENSATION-025 | An own-scope employee cannot mark a colleague's approved expense claim reimbursed. | `an own-scope employee cannot mark a colleague's approved expense claim reimbursed` |
 
 ## What this does not do
 
