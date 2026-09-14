@@ -834,7 +834,7 @@ export async function listBudgets(fy?: string) {
  */
 async function trainingSpendForFy(fy: string): Promise<number> {
   const auth = currentAuth();
-  const [startYear] = fy.split('-');
+  const [startYear] = fy.replace(/^FY/i, '').split('-');
   const start = new Date(Date.UTC(Number(startYear), 3, 1));
   const end = new Date(Date.UTC(Number(startYear) + 1, 3, 1));
 

@@ -15,7 +15,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date } from '../../lib/api.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
-import { CreateModal, messageOf, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
+import { CreateModal, messageOf, MoneyInput, NewButton, Row, SelectInput, TextInput } from '../../components/forms.js';
 
 type Tab = 'grades' | 'cycles' | 'variable' | 'benefits' | 'loans' | 'expenses';
 
@@ -160,15 +160,6 @@ function CyclesTab() {
     queryFn: () => api.get<RevisionLine[]>(`/hcm/compensation/revision-cycles/${selected}/lines`),
     enabled: !!selected,
   });
-
-  const act = (path: string, body?: unknown) =>
-    useMutation({
-      mutationFn: () => api.post(path, body),
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: ['comp-cycles'] });
-        qc.invalidateQueries({ queryKey: ['comp-cycle-lines', selected] });
-      },
-    });
 
   const propose = useMutation({ mutationFn: (id: string) => api.post(`/hcm/compensation/revision-cycles/${id}/propose`), onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-cycles'] }) });
   const approveCycleM = useMutation({

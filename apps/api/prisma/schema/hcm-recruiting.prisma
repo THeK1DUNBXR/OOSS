@@ -192,7 +192,6 @@ model BackgroundVerification {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@index([tenantId, applicationId])
   @@map("hcm_recruiting_background_verifications")

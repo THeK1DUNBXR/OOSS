@@ -59,6 +59,18 @@ router.post(
   }),
 );
 
+router.get(
+  '/policies/applicable',
+  handler(async (req) => {
+    const employmentRelationshipId = str(req.query.employmentRelationshipId);
+    const leaveTypeId = str(req.query.leaveTypeId);
+    if (!employmentRelationshipId || !leaveTypeId) {
+      return null;
+    }
+    return resolveApplicablePolicy(employmentRelationshipId, leaveTypeId);
+  }),
+);
+
 router.get('/policies/:id', handler(async (req) => getLeavePolicy(req.params.id)));
 
 router.patch(
@@ -108,18 +120,6 @@ router.patch(
 );
 
 router.delete('/rules/:id', handler(async (req) => deletePolicyRule(req.params.id)));
-
-router.get(
-  '/policies/applicable',
-  handler(async (req) => {
-    const employmentRelationshipId = str(req.query.employmentRelationshipId);
-    const leaveTypeId = str(req.query.leaveTypeId);
-    if (!employmentRelationshipId || !leaveTypeId) {
-      return null;
-    }
-    return resolveApplicablePolicy(employmentRelationshipId, leaveTypeId);
-  }),
-);
 
 // ---------------------------------------------------------------------------
 // Validation

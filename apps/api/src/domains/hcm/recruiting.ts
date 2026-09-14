@@ -171,24 +171,12 @@ export async function createCandidate(input: PersonInput & {
   );
 
   const existing = await prisma.candidateProfile.findFirst({ where: { tenantId: auth.tenantId, personId: person.id } });
-  if (existing) return existing;
+  if (existing) return { ...existing, person };
 
-  const recordCode = await nextRecordCode('PER'.length ? 'PER' : 'PER'); // placeholder replaced below
-  return finishCreateCandidate(person.id, input);
-}
-
-async function finishCreateCandidate(
-  personId: string,
-  input: { source?: string; resumeText?: string; currentCtc?: number | null; expectedCtc?: number | null; noticeDays?: number | null; tags?: string[] },
-) {
-  const auth = currentAuth();
-  const recordCode = await nextRecordCode('PER' as never).catch(() => null);
-  const code = recordCode ?? (await nextRecordCode('PER' as never));
   const profile = await prisma.candidateProfile.create({
     data: {
       tenantId: auth.tenantId,
-      recordCode: code,
-      personId,
+      personId: person.id,
       source: input.source ?? 'direct',
       resumeText: input.resumeText ?? null,
       currentCtc: input.currentCtc ?? null,
@@ -200,13 +188,13 @@ async function finishCreateCandidate(
 
   await emit({
     name: EVENTS.CANDIDATE_CREATED,
-    subject: { entityType: 'candidate', entityId: profile.id, recordCode: profile.recordCode },
-    related: [{ relation: 'is', entityType: 'person', entityId: personId }],
+    subject: { entityType: 'candidate', entityId: profile.id, recordCode: person.recordCode },
+    related: [{ relation: 'is', entityType: 'person', entityId: person.id }],
     newState: { source: profile.source },
     impact: { domains: ['hr'] },
   });
 
-  return profile;
+  return { ...profile, person };
 }
 
 // ---------------------------------------------------------------------------
@@ -512,12 +500,9 @@ export async function createReferral(input: {
 
   const { person } = await findOrCreatePerson({ ...input.candidate, source: 'referral' });
 
-  const recordCode = await nextRecordCode('REQ' as never).catch(() => null);
-  const code = recordCode ?? (await nextRecordCode('REQ' as never));
   const referral = await prisma.referral.create({
     data: {
       tenantId: auth.tenantId,
-      recordCode: code,
       referrerEmploymentId: input.referrerEmploymentId,
       candidatePersonId: person.id,
       applicationId: input.applicationId ?? null,
@@ -527,7 +512,7 @@ export async function createReferral(input: {
 
   await emit({
     name: EVENTS.REFERRAL_SUBMITTED,
-    subject: { entityType: 'referral', entityId: referral.id, recordCode: referral.recordCode },
+    subject: { entityType: 'referral', entityId: referral.id, recordCode: person.recordCode },
     related: [
       { relation: 'by', entityType: 'employment', entityId: input.referrerEmploymentId },
       { relation: 'for', entityType: 'person', entityId: person.id },
@@ -593,12 +578,9 @@ export async function createBackgroundVerification(input: {
     throw ApiError.badRequest('A background verification needs either an application or an employment to be run against.');
   }
 
-  const recordCode = await nextRecordCode('CERT' as never).catch(() => null);
-  const code = recordCode ?? (await nextRecordCode('CERT' as never));
   return prisma.backgroundVerification.create({
     data: {
       tenantId: auth.tenantId,
-      recordCode: code,
       applicationId: input.applicationId ?? null,
       employmentId: input.employmentId ?? null,
       vendor: input.vendor,
@@ -625,7 +607,7 @@ export async function updateBackgroundVerification(id: string, input: { status?:
   if (input.status === 'Completed') {
     await emit({
       name: EVENTS.BACKGROUND_VERIFICATION_COMPLETED,
-      subject: { entityType: 'background_verification', entityId: id, recordCode: bgv.recordCode },
+      subject: { entityType: 'background_verification', entityId: id },
       newState: { outcome: updated.outcome },
       impact: { domains: ['hr'] },
     });
@@ -733,34 +715,42 @@ export async function recruitingFunnel() {
 
   const joined = await prisma.application.findMany({
     where: { tenantId: auth.tenantId, status: 'Joined' },
-    include: { requisition: true },
-    select: undefined,
+    select: { createdAt: true, updatedAt: true, candidatePartyId: true },
   });
-
-  const times = joined
-    .map((a) => (a.requisition ? timeToHireDays(a.createdAt, a.updatedAt) : null))
-    .filter((n): n is number => n !== null);
+  const times = joined.map((a) => timeToHireDays(a.createdAt, a.updatedAt));
 
   const offers = await prisma.offerLetter.groupBy({ by: ['status'], where: { tenantId: auth.tenantId }, _count: { _all: true } });
   const offerCounts: Record<string, number> = {};
   for (const row of offers) offerCounts[row.status] = row._count._all;
   const decided = (offerCounts.Accepted ?? 0) + (offerCounts.Declined ?? 0) + (offerCounts.Rescinded ?? 0);
 
-  const bySource = await prisma.candidateProfile.groupBy({ by: ['source'], where: { tenantId: auth.tenantId }, _count: { _all: true } });
-  const sourceApplications = await prisma.$transaction(
-    bySource.map((s) =>
-      prisma.application.count({
-        where: { tenantId: auth.tenantId, candidate: { candidateProfile: { source: s.source } } as never },
-      }).catch(() => 0),
-    ),
-  ).catch(() => bySource.map(() => 0));
+  // CandidateProfile and Application live in different schema files with no
+  // cross-file `@relation`, so the join is done in application code: every
+  // candidate's source, matched against whether that person's own
+  // applications ever reached Joined.
+  const profiles = await prisma.candidateProfile.findMany({ where: { tenantId: auth.tenantId }, select: { personId: true, source: true } });
+  const applicationsByPerson = await prisma.application.groupBy({
+    by: ['candidatePartyId'],
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    _count: { _all: true },
+  });
+  const appCountByPerson = new Map(applicationsByPerson.map((a) => [a.candidatePartyId, a._count._all]));
+  const joinedPersonIds = new Set(joined.map((a) => a.candidatePartyId));
+
+  const tallyBySource = new Map<string, { applications: number; hired: number }>();
+  for (const p of profiles) {
+    const tally = tallyBySource.get(p.source) ?? { applications: 0, hired: 0 };
+    tally.applications += appCountByPerson.get(p.personId) ?? 0;
+    if (joinedPersonIds.has(p.personId)) tally.hired += 1;
+    tallyBySource.set(p.source, tally);
+  }
 
   return {
     meanTimeToHireDays: meanTimeToHireDays(times),
     offerAcceptanceRatePct: offerAcceptanceRate(offerCounts.Accepted ?? 0, decided),
     offersByStatus: offerCounts,
     sourceEffectiveness: sourceEffectiveness(
-      bySource.map((s, i) => ({ source: s.source, applications: sourceApplications[i] ?? s._count._all, hired: 0 })),
+      [...tallyBySource.entries()].map(([source, t]) => ({ source, ...t })),
     ),
   };
 }
