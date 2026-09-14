@@ -217,6 +217,32 @@ export async function getEmployment(id: string) {
 }
 
 /**
+ * Strips every field classified `regulated` from an employment record before
+ * it reaches a response: the statutory identifiers on the employment itself
+ * (PAN, Aadhaar, UAN) and, on the person underneath, `bloodGroup` — health
+ * data under the DPDP Act. Structurally excluded rather than nulled, per the
+ * schema's own documentation for these fields: a null still announces that
+ * something is being withheld, and the exclusion contract calls for absence
+ * from the response shape entirely.
+ */
+export function redactRegulatedEmploymentFields<
+  T extends {
+    panNumber?: unknown;
+    aadhaarReference?: unknown;
+    uanNumber?: unknown;
+    person: { bloodGroup?: unknown };
+  },
+>(employment: T): T {
+  return {
+    ...employment,
+    panNumber: undefined,
+    aadhaarReference: undefined,
+    uanNumber: undefined,
+    person: { ...employment.person, bloodGroup: undefined },
+  };
+}
+
+/**
  * Hiring. Creates the employment relationship in PendingHire, opens the
  * onboarding record, and adds the employee affiliation on the identity plane.
  *

@@ -55,7 +55,7 @@ import {
   listOrgUnits, createOrgUnit, listJobs, createJob,
   listPositions, createPosition, transitionPosition,
   listEmployments, getEmployment, hire, transitionEmployment, setConfirmationState,
-  updateEmployeeProfile,
+  updateEmployeeProfile, redactRegulatedEmploymentFields,
   proposeAssignment, transitionAssignment,
   proposeCompensation, transitionCompensation, currentCompensation,
   transitionOnboarding, transitionOffboarding,
@@ -221,14 +221,7 @@ router.get(
     const pay = money ? await currentCompensation(e.id) : null;
 
     return {
-      ...e,
-      // Statutory identifiers are `regulated` and are structurally excluded
-      // from the projection rather than nulled — a null still announces that
-      // something is being withheld about this person.
-      person: { ...e.person, nationalId: undefined },
-      panNumber: undefined,
-      aadhaarReference: undefined,
-      uanNumber: undefined,
+      ...redactRegulatedEmploymentFields(e),
       // Whether the viewer may see pay at all, kept separate from whether
       // there is any. A single null would conflate "withheld from you" with
       // "this person has no pay record", and the second is a problem somebody

@@ -25,6 +25,8 @@ import {
   detectMissingCompensation,
   headcountByDivision,
   updateEmployeeProfile,
+  getEmployment,
+  redactRegulatedEmploymentFields,
 } from '../domains/employment.js';
 import {
   createLeaveRequest,
@@ -292,6 +294,39 @@ describe('updateEmployeeProfile corrects what a staff-list import writes on the 
       asUser('hr@kaizen.co.in', () => updateEmployeeProfile('does-not-exist', { fullName: 'Nobody home' })),
     );
     expect(missing.status).toBe(404);
+  });
+});
+
+describe('the employee-detail projection never carries a regulated field to the wire', () => {
+  it('drops bloodGroup, panNumber, aadhaarReference and uanNumber from the response shape', async () => {
+    const { employment, person } = await makeEmployee('regulated-fields');
+    await unscopedPrisma.person.update({ where: { id: person.id }, data: { bloodGroup: 'O+' } });
+    await unscopedPrisma.employmentRelationship.update({
+      where: { id: employment.id },
+      data: { panNumber: 'ABCDE1234F', aadhaarReference: 'AADHAAR-REF', uanNumber: 'UAN-123' },
+    });
+
+    const raw = await asUser('hr@kaizen.co.in', () => getEmployment(employment.id));
+    // The domain read itself still carries the regulated values — redaction
+    // is the response layer's job, not the read's.
+    expect(raw.person.bloodGroup).toBe('O+');
+
+    const redacted = redactRegulatedEmploymentFields(raw);
+    expect(redacted.person.bloodGroup).toBeUndefined();
+    expect(redacted.panNumber).toBeUndefined();
+    expect(redacted.aadhaarReference).toBeUndefined();
+    expect(redacted.uanNumber).toBeUndefined();
+
+    // The property assignments above only guarantee an `undefined` value;
+    // what actually reaches a caller is whatever JSON.stringify keeps, which
+    // is what Express serializes a response through. Round-trip it the same
+    // way to prove the keys are genuinely absent from the wire, not merely
+    // nulled — the same distinction §14 draws for every other regulated field.
+    const wire = JSON.parse(JSON.stringify(redacted));
+    expect('bloodGroup' in wire.person).toBe(false);
+    expect('panNumber' in wire).toBe(false);
+    expect('aadhaarReference' in wire).toBe(false);
+    expect('uanNumber' in wire).toBe(false);
   });
 });
 
