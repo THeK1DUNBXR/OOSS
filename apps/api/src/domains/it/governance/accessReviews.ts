@@ -272,17 +272,33 @@ export async function closeCampaign(id: string) {
 export interface CampaignOverdueResult {
   checked: number;
   notified: number;
+  skippedIdempotent: number;
 }
 
+/**
+ * Raises once per campaign, gated on `overdueNotifiedAt` the same way
+ * `ItControl.testOverdueNotifiedAt` gates the control-test detector — a
+ * plain boolean-crossing (not a multi-rung ladder like the risk/finding
+ * detectors), so one flag rather than an array is enough. A campaign that
+ * moves off `open`/`in_progress` (or is decided/closed) drops out of the
+ * query entirely; nothing here ever clears the flag, because there is no
+ * "still overdue, notify again" case this detector is asked to cover.
+ */
 export async function runCampaignOverdueDetector(now: Date = new Date()): Promise<CampaignOverdueResult> {
   const auth = currentAuth();
   const rows = await prisma.itAccessReview.findMany({ where: { tenantId: auth.tenantId, status: { in: ['open', 'in_progress'] } } });
 
   let notified = 0;
+  let skippedIdempotent = 0;
   for (const row of rows) {
     const daysToDue = Math.ceil((row.dueAt.getTime() - now.getTime()) / 86_400_000);
     const overdue = GOVERNANCE_LADDER_RUNGS.filter((r) => r < 0).some((r) => daysToDue <= r);
     if (!overdue) continue;
+
+    if (row.overdueNotifiedAt) {
+      skippedIdempotent += 1;
+      continue;
+    }
 
     await raiseException({
       code: 'IT_ACR_CAMPAIGN_OVERDUE',
@@ -298,9 +314,10 @@ export async function runCampaignOverdueDetector(now: Date = new Date()): Promis
       triggerFingerprint: 'it_access_review_campaign_overdue',
     });
     notified += 1;
+    await prisma.itAccessReview.update({ where: { id: row.id }, data: { overdueNotifiedAt: now } });
   }
 
-  return { checked: rows.length, notified };
+  return { checked: rows.length, notified, skippedIdempotent };
 }
 
 // ---------------------------------------------------------------------------

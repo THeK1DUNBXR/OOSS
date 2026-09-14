@@ -33,7 +33,7 @@ export async function runFindingOverdueJob(): Promise<JobResult> {
 
 export async function runAccessReviewOverdueJob(): Promise<JobResult> {
   const result = await runCampaignOverdueDetector();
-  return { processed: result.checked, notified: result.notified, skippedIdempotent: 0, errors: [] };
+  return { processed: result.checked, notified: result.notified, skippedIdempotent: result.skippedIdempotent, errors: [] };
 }
 
 /** A control is overdue for testing once `frequencyDays` has elapsed since

@@ -417,7 +417,7 @@ async function seedGovernance() {
       name: 'Technology policy publication',
       requiredPermission: 'it_policies:approve',
       authorityClass: 'it_policy_publish',
-      approverResolution: ['chairman'],
+      approverResolution: ['chairman', 'finance_head'],
     },
     {
       code: 'POL-IT-INITIATIVE-APPROVAL',

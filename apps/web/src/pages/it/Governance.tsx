@@ -327,18 +327,19 @@ export function ItRiskDetail() {
         </Card>
 
         <Card title="Actions">
-          {r.availableTransitions.length === 0 ? (
+          {!canEdit ? (
+            <p className="text-2xs italic text-ink-500">View only from here.</p>
+          ) : r.availableTransitions.length === 0 ? (
             <p className="text-2xs text-ink-500">Nothing further — this is where it ends.</p>
           ) : (
             <div className="flex flex-col gap-2">
               {r.availableTransitions.map((event) => (
-                <button key={event} className="btn-sm w-full" disabled={!canEdit || transition.isPending} onClick={() => transition.mutate(event)}>
+                <button key={event} className="btn-sm w-full" disabled={transition.isPending} onClick={() => transition.mutate(event)}>
                   {titleCase(event.replace('_', ' '))}
                 </button>
               ))}
             </div>
           )}
-          {!canEdit && <p className="mt-2 text-2xs italic text-ink-500">View only from here.</p>}
         </Card>
       </div>
 
@@ -1216,13 +1217,15 @@ export function ItFindings() {
                     <td className="px-4 py-2 text-ink-300">{date(f.dueAt)}</td>
                     <td className="px-4 py-2"><StatusChip status={f.status} tone={FINDING_STATUS_TONE[f.status]} /></td>
                     <td className="px-4 py-2">
-                      <div className="flex flex-wrap justify-end gap-1">
-                        {f.availableTransitions.map((event) => (
-                          <button key={event} className="btn-ghost btn-sm" disabled={transition.isPending} onClick={() => transition.mutate({ id: f.id, event })}>
-                            {titleCase(event.replace('_', ' '))}
-                          </button>
-                        ))}
-                      </div>
+                      {can('it_findings:E') && (
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {f.availableTransitions.map((event) => (
+                            <button key={event} className="btn-ghost btn-sm" disabled={transition.isPending} onClick={() => transition.mutate({ id: f.id, event })}>
+                              {titleCase(event.replace('_', ' '))}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -54,7 +54,9 @@ so the overdue detector always re-arms).
 
 **`ItAccessReview`** — a campaign: `name`, `scope` (`all` | `role` |
 `application`), `scopeRef`, `dueAt`, status `open → in_progress → closed`,
-`openedById`, `closedAt`. Opening materialises one **`ItAccessReviewItem`**
+`openedById`, `closedAt`, `overdueNotifiedAt` (set once the overdue detector
+has raised for this campaign, so a re-run raises nothing new). Opening
+materialises one **`ItAccessReviewItem`**
 per active `Affiliation` in scope (narrowed by `roleSlug` for a `role`
 campaign; an `application` campaign reviews the same population as `all`,
 tagged with the application id under review — there is no per-application
@@ -89,12 +91,10 @@ Four machines live in `packages/shared/src/it/governance.ts` (`riskMachine`,
 `Transitions` table the same shape as `packages/shared/src/hr.ts`'s eleven.
 The domain layer applies them **inline** (`machine.can`/`machine.apply`,
 mirroring `domains/it/assets.ts`'s `transitionAsset`) rather than through
-`platform/lifecycle.ts`'s generic `transition()` helper — that helper types
-its `resource` parameter against the CRM/HR `Resource` union declared in
-`packages/shared/src/permissions.ts`, which does not (yet) list this
-workstream's resources and which this workstream's files may not edit to add
-them (see *Proposed changes to files this workstream cannot edit*, below).
-Every detail endpoint still returns `availableTransitions` from
+`platform/lifecycle.ts`'s generic `transition()` helper, the pattern
+established before `packages/shared/src/permissions.ts`'s `RESOURCES` tuple
+listed this workstream's resources. Every detail endpoint still returns
+`availableTransitions` from
 `platform/lifecycle.ts`'s `availableTransitions(machine, state)` (which is
 not resource-typed), so a screen can never render a dead button.
 
@@ -112,15 +112,22 @@ with no band is a seed defect, never a silent constant), `risksSummary`.
 
 **Policies** — `createPolicyDraft`, `updatePolicyDraft` (refuses once
 published), `listPolicies`/`policyDetail` (carries `acknowledgedByMe` for the
-caller), `publishPolicy` (runs `evaluateApprovalGate('POL-IT-POLICY-PUBLISH',
-{ type: 'it_policy', resource: 'it_policies', ownerPartyId: drafterPartyId,
-... })` — the drafter never publishes their own draft), `newVersionOf`,
-`retirePolicy`, `acknowledgePolicy`, `policiesAwaitingCaller` (published
-policies the caller has not yet acknowledged at the current version, filtered
-by `appliesToRoleSlugs` — the My IT page in another workstream calls this),
-`acknowledgementsFor` (gated on `it_policies:E`), `publishedPolicyAudiences`
-(the target-audience computation shared by the summary and the
-re-acknowledgement job, so the two never disagree), `policiesSummary`.
+caller; a caller who lacks `it_policies:edit` — checked with a non-throwing
+`evaluate`, not `assertCan`, so the base `view` grant is untouched — never
+sees a `draft` row: `listPolicies` drops drafts from the result and from any
+`status: 'draft'` filter rather than erroring, and `policyDetail` answers
+`404` for one, the same as a record outside scope), `publishPolicy` (runs
+`evaluateApprovalGate('POL-IT-POLICY-PUBLISH', { type: 'it_policy', resource:
+'it_policies', ownerPartyId: drafterPartyId, ... })` — the drafter never
+publishes their own draft; see *Publication and the approval gate*, below,
+for how a later call finishes the write once the gate's step is approved),
+`newVersionOf`, `retirePolicy`, `acknowledgePolicy`, `policiesAwaitingCaller`
+(published policies the caller has not yet acknowledged at the current
+version, filtered by `appliesToRoleSlugs` — the My IT page in another
+workstream calls this), `acknowledgementsFor` (gated on `it_policies:E`),
+`publishedPolicyAudiences` (the target-audience computation shared by the
+summary and the re-acknowledgement job, so the two never disagree),
+`policiesSummary`.
 
 **Controls** — `createControl`, `updateControl`, `listControls`/
 `controlDetail`, `recordTest` (writes the append-only test row and projects
@@ -182,7 +189,7 @@ All daily, staggered five minutes apart so they never race the same tenant:
 | `runFindingOverdueJob` | Finding remediation overdue, severity-scaled rungs (`FINDING_LADDER_RUNGS`), rung recorded on `overdueNotifiedRungs`. |
 | `runControlTestOverdueJob` | A control past `frequencyDays` since its last test (or since creation, if never tested) raises once per overdue window — `testOverdueNotifiedAt` gates re-firing, and `recordTest` clears it. |
 | `runPolicyReacknowledgementJob` | Per published policy whose `reacknowledgeMonths` window has elapsed since `publishedAt`, **one** exception naming how many of the target audience still owe a re-acknowledgement — never one per person. |
-| `runAccessReviewOverdueJob` | A campaign still `open`/`in_progress` past its `dueAt` raises `IT_ACR_CAMPAIGN_OVERDUE`. |
+| `runAccessReviewOverdueJob` | A campaign still `open`/`in_progress` past its `dueAt` raises `IT_ACR_CAMPAIGN_OVERDUE` once, gated on `overdueNotifiedAt` (a plain flag, not a ladder — this detector has one crossing to notice, not several rungs). |
 
 Every ladder is idempotent per rung/window, the same shape the compliance
 calendar's daily job uses.
@@ -277,7 +284,13 @@ Pure arithmetic first (`riskScore`, `riskBandFor`, `remediationDueAt`,
   publish their own draft (the gate reroutes rather than applying); a
   published body is immutable (`updatePolicyDraft` on a published row is
   refused with 422); a change is `newVersionOf` at `version + 1`, and
-  publishing it marks the row it supersedes `superseded`.
+  publishing it marks the row it supersedes `superseded`. A separate
+  "gate chain" test drives the reroute to completion: chairman drafts and
+  self-publishes → a step opens to the Finance Head with
+  `selfDealingBarTripped: true` → the Finance Head decides it via
+  `decideApprovalStep` → chairman calls `publishPolicy` again and it applies,
+  without the gate being re-evaluated (see *Publication and the approval
+  gate*, below).
 - **IT-POL-002** — an employee acknowledges a published policy once per
   version (a second call is a no-op, not a second row), cannot acknowledge a
   draft, and the summary's `acknowledgementRate` reads `null`/a number
@@ -291,64 +304,41 @@ Pure arithmetic first (`riskScore`, `riskBandFor`, `remediationDueAt`,
 Plus: risk/finding lifecycle transitions and their dead-transition refusal,
 control test recording and the overdue detector's idempotence and re-arming,
 an access-review campaign refusing to close with undecided items, the
-campaign-overdue detector, and the grant matrix — an employee can acknowledge
-a published policy but reaches nothing else in this workstream; the
-Operations Head cannot publish any policy (no `approve` at all, self-dealing
-or not); the Finance Head reads everything here but creates nothing; a
-fixture role holding a wide `it_policy_acknowledgements:create` grant still
-only ever acknowledges under its own `partyId`.
+campaign-overdue detector firing once and staying quiet on a second run
+(`overdueNotifiedAt`), and the grant matrix — an employee can acknowledge a
+published policy but reaches nothing else in this workstream and never sees
+a draft (`listPolicies`/`policyDetail`, filtered or requested directly);
+the Operations Head cannot publish any policy (no `approve` at all,
+self-dealing or not); the Finance Head reads everything here but creates
+nothing, and — holding only `V` on `it_policies`, same as an employee —
+sees no draft either; a fixture role holding a wide
+`it_policy_acknowledgements:create` grant still only ever acknowledges under
+its own `partyId`.
 
 ---
 
-## A gate-content note (not a defect in this workstream's files)
+## Publication and the approval gate
 
-`POL-IT-POLICY-PUBLISH` (and, by the same bootstrap seed, the other four
-`POL-IT-*` gates) is seeded with `approverResolution: ['business_head',
-'director', 'chairman']` (`apps/api/src/seed/bootstrap.ts`, a file this
-workstream may not edit). None of `business_head`/`director` is a role in the
-three-role register (`chairman` | `hr_ops_manager` | `finance_head` |
-`employee`), and no `AuthorityGrant` row exists for `it_policy_publish`
-either, so `evaluateApprovalGate` always resolves tier 0 to a role nobody
-holds and opens an approval step rather than applying directly — even for a
-publish that is not self-dealing. The tests account for this the same way
-the vendor-contract suite's IT-VCT-003 does: assert the gate's own behaviour
-(the self-dealing reroute, the plain `approve`-grant denial) and, once
-asserted, force the row forward to continue exercising this workstream's own
-logic (immutability, versioning). A fix belongs in `seed/bootstrap.ts`'s
-`approverResolution` list, not in a file this workstream owns.
+`POL-IT-POLICY-PUBLISH` is seeded (`apps/api/src/seed/bootstrap.ts`) with
+`approverResolution: ['chairman', 'finance_head']`. For an ordinary
+(non-self-dealing) publish at no declared authority ceiling, tier resolves
+to 0 — `chairman` — and the chairman *is* that tier's approver, so it applies
+directly. The Self-Dealing Bar still applies when the drafter and the
+publisher are the same principal: `evaluateApprovalGate` bumps the tier to 1
+(`finance_head`) and, since the chairman is never `finance_head`, opens an
+`ApprovalStep` there instead of applying — a chairman publishing their own
+draft is routed to the Finance Head, exactly as it should be.
 
-## Proposed changes to files this workstream cannot edit
-
-**`packages/shared/src/permissions.ts`** — the `RESOURCES` tuple (and hence
-the `Resource` type) does not list any Technology resource
-(`it_risks`, `it_policies`, `it_policy_acknowledgements`, `it_controls`,
-`it_access_reviews`, `it_findings`, nor any other workstream's `it_*`
-resource). `assertCan`/`evaluate`/`visibilityWhere` all type their `resource`
-parameter as plain `string`, so every grant check in this workstream compiles
-and runs correctly regardless — but `platform/lifecycle.ts`'s generic
-`transition()` helper types its `resource` field as the stricter `Resource`,
-which is why this workstream applies its machines inline instead of through
-that helper (see *Lifecycle machines*, above). A follow-up owning
-`packages/shared/src/permissions.ts` could append the Technology resources to
-`RESOURCES`, e.g.:
-
-```diff
-   'esop_plans',
-   'option_grants',
-+  // Technology (docs/plan/cio.md).
-+  'it_assets', 'it_applications', 'it_licences', 'it_vendors', 'it_vendor_contracts',
-+  'it_tickets', 'it_sla_policies', 'it_knowledge', 'it_incidents', 'it_problems',
-+  'it_changes', 'it_risks', 'it_policies', 'it_policy_acknowledgements', 'it_controls',
-+  'it_access_reviews', 'it_findings', 'it_initiatives', 'it_budgets', 'it_tech_debt',
-+  'it_continuity',
- ] as const;
-```
-
-Not applied here — outside this workstream's ownership — and not required
-for correctness today, only for letting every Technology domain file use
-`platform/lifecycle.ts`'s shared `transition()` helper instead of the
-inline pattern `domains/it/assets.ts` already established for the same
-reason.
+Deciding that step (`decideApprovalStep`, `platform/approvals.ts`) does not
+itself publish anything — it only records the decision on the step. A later
+call to `publishPolicy` for the same draft looks for an `ApprovalStep` with
+`subjectType: 'it_policy'`, `subjectId: <the draft's id>` and `state:
+'approved'` *before* re-running the gate; when one exists it finalises the
+write directly (still checking the caller holds ordinary `it_policies:edit`
+standing) rather than re-evaluating `evaluateApprovalGate`, which would only
+ever reproduce the same self-dealing reroute for the same drafter. This
+mirrors the shape `domains/agreements.ts`'s `transitionAgreement` gives a
+privileged agreement transition backed by an approval step.
 
 ## Open questions (from the plan)
 

@@ -51,19 +51,23 @@ import {
   runControlTestOverdueJob,
   runAccessReviewOverdueJob,
 } from '../../jobs/it/governance.js';
+import { decideApprovalStep } from '../../platform/approvals.js';
 
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
 /**
- * Publishes via the real gate, and — when the gate opens a step rather than
- * applying directly — forces the row to `published` to continue exercising
- * this acceptance ID's actual subject (immutability, versioning). The
- * bootstrap-seeded content for every `POL-IT-*` gate resolves its tier-0
- * approver to `business_head`/`director`, neither of which is a role in the
- * three-role register, so a *non*-self-dealing publish attempt still opens a
- * step rather than applying — the same shape the vendor-contract test
- * (IT-VCT-003) works around by forcing status forward once the gate's own
- * behaviour (self-dealing reroute, or not) has been asserted.
+ * Publishes via the real gate, and — for the rare case it opens a step
+ * rather than applying directly — forces the row to `published` to keep
+ * exercising this acceptance ID's actual subject (immutability, versioning)
+ * without every such test needing its own approval-step plumbing.
+ * `POL-IT-POLICY-PUBLISH`'s seeded `approverResolution` is `['chairman',
+ * 'finance_head']`: a *non*-self-dealing publish (someone other than the
+ * drafter, at zero/no authority ceiling) resolves tier 0 to `chairman`, and
+ * the chairman *is* that tier's approver, so it applies directly in the
+ * ordinary case — this fallback exists for whichever case does not (a
+ * different approver, a future ceiling). The self-dealing case (the drafter
+ * publishing their own draft) always opens a step, asserted directly by
+ * IT-POL-001 and the gate-chain test below rather than routed through here.
  */
 async function publishForTest(policyId: string, actorEmail: string) {
   const result = await asUser(actorEmail, () => publishPolicy(policyId));
@@ -284,6 +288,43 @@ describe('IT governance — domain and wiring', () => {
     expect(supersededOriginal.status).toBe('superseded');
   });
 
+  it('the gate chain: a self-dealing publish opens a step to the Finance Head, and finishes once that step is approved', async () => {
+    const draft = await asUser('chairman@kaizen.co.in', () =>
+      createPolicyDraft({ code: `IT-POL-CHAIN-${stamp()}`, title: 'Chain test policy', body: 'Body for the gate-chain test.' }),
+    );
+
+    const gated = await asUser('chairman@kaizen.co.in', () => publishPolicy(draft.id));
+    expect(gated.applied).toBe(false);
+    expect(gated.approvalStepId).toBeTruthy();
+
+    const step = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: gated.approvalStepId! } });
+    expect(step.selfDealingBarTripped).toBe(true);
+    expect(step.resolvedApproverRole).toBe('finance_head');
+    expect(step.state).toBe('open');
+
+    // Re-running publish before the step is decided still just re-opens (or
+    // returns) an unapplied gate — never a silent apply.
+    const stillGated = await asUser('chairman@kaizen.co.in', () => publishPolicy(draft.id));
+    expect(stillGated.applied).toBe(false);
+    const stillDraft = await unscopedPrisma.itPolicyDocument.findFirstOrThrow({ where: { id: draft.id } });
+    expect(stillDraft.status).toBe('draft');
+
+    await asUser('finance@kaizen.co.in', () => decideApprovalStep(step.id, true, 'Approved for publication.'));
+
+    // The step is decided but the policy itself has not moved yet — a
+    // decided approval step is not itself the write.
+    const beforeFinalCall = await unscopedPrisma.itPolicyDocument.findFirstOrThrow({ where: { id: draft.id } });
+    expect(beforeFinalCall.status).toBe('draft');
+
+    const republished = await asUser('chairman@kaizen.co.in', () => publishPolicy(draft.id));
+    expect(republished.applied).toBe(true);
+    expect((republished.policy as { status: string }).status).toBe('published');
+
+    const row = await unscopedPrisma.itPolicyDocument.findFirstOrThrow({ where: { id: draft.id } });
+    expect(row.status).toBe('published');
+    expect(row.publishedById).toBeTruthy();
+  });
+
   it('IT-POL-002: an employee acknowledges a published policy once per version, and the rate counts only current versions', async () => {
     const draft = await asUser('operations@kaizen.co.in', () =>
       createPolicyDraft({ code: `IT-POL-ACK-${stamp()}`, title: 'Ack test policy', body: 'Body for the acknowledgement test.' }),
@@ -328,6 +369,32 @@ describe('IT governance — domain and wiring', () => {
       const d = await asUser('employee@kaizen.co.in', () => policyDetail(detail[0].id));
       expect(typeof d.acknowledgedByMe).toBe('boolean');
     }
+  });
+
+  it('listPolicies and policyDetail never leak a draft to a caller who only holds view', async () => {
+    const draftOnly = await asUser('operations@kaizen.co.in', () =>
+      createPolicyDraft({ code: `IT-POL-NOLEAK-${stamp()}`, title: 'Not for employees yet', body: 'Body for the leak test.' }),
+    );
+
+    // The Operations Head drafted it and holds `it_policies:E` — sees it fine.
+    const opsView = await asUser('operations@kaizen.co.in', () => listPolicies());
+    expect(opsView.some((p) => p.id === draftOnly.id)).toBe(true);
+
+    // The employee's `it_policies:V@all` grant is view-only — no draft, ever,
+    // with or without a status filter that asks for one.
+    const employeeView = await asUser('employee@kaizen.co.in', () => listPolicies());
+    expect(employeeView.some((p) => p.status === 'draft')).toBe(false);
+    expect(employeeView.some((p) => p.id === draftOnly.id)).toBe(false);
+
+    const employeeDraftFilter = await asUser('employee@kaizen.co.in', () => listPolicies({ status: 'draft' }));
+    expect(employeeDraftFilter.length).toBe(0);
+
+    const denied = await expectReject(() => asUser('employee@kaizen.co.in', () => policyDetail(draftOnly.id)));
+    expect(denied.status).toBe(404);
+
+    // The Finance Head holds only `V` on `it_policies` too — same treatment.
+    const financeView = await asUser('finance@kaizen.co.in', () => listPolicies());
+    expect(financeView.some((p) => p.id === draftOnly.id)).toBe(false);
   });
 
   // -------------------------------------------------------------------------
@@ -423,14 +490,20 @@ describe('IT governance — domain and wiring', () => {
     expect(closed.status).toBe('closed');
   });
 
-  it('the access-review campaign overdue detector raises an exception for a campaign past its due date', async () => {
+  it('the access-review campaign overdue detector raises an exception for a campaign past its due date, once — a second run raises nothing new', async () => {
     const dueAt = new Date('2020-01-01');
     const campaign = await asUser('operations@kaizen.co.in', () => openCampaign({ name: `Overdue campaign ${stamp()}`, scope: 'role', scopeRef: 'hr_ops_manager', dueAt: new Date() }));
     await unscopedPrisma.itAccessReview.update({ where: { id: campaign.id }, data: { dueAt } });
 
     await asUser('operations@kaizen.co.in', () => runAccessReviewOverdueJob());
-    const exception = await unscopedPrisma.exceptionRecord.findFirst({ where: { tenantId: tid, code: 'IT_ACR_CAMPAIGN_OVERDUE', subjectId: campaign.id } });
-    expect(exception).toBeTruthy();
+    const firstCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_ACR_CAMPAIGN_OVERDUE', subjectId: campaign.id } });
+    expect(firstCount).toBe(1);
+    const notifiedRow = await unscopedPrisma.itAccessReview.findFirstOrThrow({ where: { id: campaign.id } });
+    expect(notifiedRow.overdueNotifiedAt).toBeTruthy();
+
+    await asUser('operations@kaizen.co.in', () => runAccessReviewOverdueJob());
+    const secondCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_ACR_CAMPAIGN_OVERDUE', subjectId: campaign.id } });
+    expect(secondCount).toBe(1);
   });
 
   // -------------------------------------------------------------------------

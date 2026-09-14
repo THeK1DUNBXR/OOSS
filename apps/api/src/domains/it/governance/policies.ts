@@ -26,7 +26,7 @@ import { availableTransitions } from '../../../platform/lifecycle.js';
 import { evaluateApprovalGate } from '../../../platform/approvals.js';
 import { nextRecordCode } from '../../../platform/recordCode.js';
 import { ApiError } from '../../../platform/errors.js';
-import { assertCan } from '../../../platform/permissions.js';
+import { assertCan, evaluate } from '../../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
 
 registerGovernedEntities('it_governance', ['it_policy_document', 'it_policy_acknowledgement']);
@@ -119,13 +119,33 @@ export interface PolicyFilter {
   code?: string;
 }
 
+/** Whether the caller may see a draft (or a policy of any status) at all —
+ * distinct from the base `view` grant, which every account with any
+ * `it_policies` access holds. An employee's `it_policies:V@all` grant is
+ * meant for "what is currently published", never a preview of a policy
+ * nobody has published yet, so this is checked with a non-throwing
+ * `evaluate` rather than `assertCan` (which would refuse the whole list). */
+async function canSeeUnpublished(): Promise<boolean> {
+  return (await evaluate({ resource: RESOURCE, verb: 'edit' })).allowed;
+}
+
 export async function listPolicies(filter: PolicyFilter = {}) {
   await assertCan({ resource: RESOURCE, verb: 'view' });
   const auth = currentAuth();
+  const drafts = await canSeeUnpublished();
+
+  // Explicitly asking for drafts without the standing to see them is not a
+  // reason to fall back to "every other status" — it is empty, the same as
+  // asking for a record outside scope. Any other explicit status filter
+  // passes through unchanged (it can only ever name a non-draft status at
+  // this point); with no filter at all, non-draft is the whole answer.
+  if (!drafts && filter.status === 'draft') return [];
+  const statusWhere = filter.status ? { status: filter.status } : drafts ? {} : { status: { not: 'draft' } };
+
   const rows = await prisma.itPolicyDocument.findMany({
     where: {
       tenantId: auth.tenantId,
-      ...(filter.status ? { status: filter.status } : {}),
+      ...statusWhere,
       ...(filter.code ? { code: filter.code } : {}),
     },
     orderBy: [{ code: 'asc' }, { version: 'desc' }],
@@ -138,6 +158,14 @@ export async function policyDetail(id: string) {
   const policy = await prisma.itPolicyDocument.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!policy) throw ApiError.notFound('Policy');
   await assertCan({ resource: RESOURCE, verb: 'view' });
+
+  // A draft is not "published policies", which is what a plain `view` grant
+  // (an employee's `it_policies:V@all`) is scoped to mean — refused the same
+  // way a record outside scope is refused elsewhere, as not found rather
+  // than forbidden, so a draft's existence is not itself disclosed.
+  if (policy.status === 'draft' && !(await canSeeUnpublished())) {
+    throw ApiError.notFound('Policy');
+  }
 
   const myAck = auth.partyId
     ? await prisma.itPolicyAcknowledgement.findFirst({ where: { tenantId: auth.tenantId, policyId: id, partyId: auth.partyId, version: policy.version } })
@@ -165,21 +193,46 @@ export async function publishPolicy(id: string) {
   }
   if (!policyMachine.can('draft', 'PUBLISH')) throw ApiError.unprocessable('Publish is not a legal transition.');
 
-  const gate = await evaluateApprovalGate(
-    GATE_POLICY_CODE,
-    {
-      id,
-      type: 'it_policy',
-      label: `${policy.recordCode} — ${policy.title} v${policy.version}`,
-      ownerPartyId: policy.drafterPartyId,
-      commercialValue: null,
-      currency: 'INR',
-      strategicValue: null,
-      termMonths: null,
-      resource: 'it_policies',
-    },
-    'it_policy.publish',
-  );
+  // A prior call may already have opened a step against this exact draft
+  // (`subjectType: 'it_policy', subjectId: id`) that has since been decided.
+  // Finalise on that decision rather than re-running the gate — re-running
+  // it would only ever reproduce the same result for the same requester
+  // (the Self-Dealing Bar rerouting the drafter's own attempt again), the
+  // same shape `transitionAgreement` (`domains/agreements.ts`) assumes when
+  // an approval step exists for an agreement's own privileged transition.
+  const approvedStep = await prisma.approvalStep.findFirst({
+    where: { tenantId: auth.tenantId, subjectType: 'it_policy', subjectId: id, state: 'approved' },
+    orderBy: { decidedAt: 'desc' },
+  });
+
+  let gate: { permitted: boolean; approvalStepId: string | null; reason: string };
+  if (approvedStep) {
+    // The gate itself already ran once (at the moment the step was opened)
+    // and a non-self-dealing approver already decided it — the caller
+    // finishing the write still needs ordinary standing on the policy.
+    await assertCan({ resource: RESOURCE, verb: 'edit', record: { ownerPartyId: policy.drafterPartyId } });
+    gate = {
+      permitted: true,
+      approvalStepId: null,
+      reason: `Approved via approval step ${approvedStep.id}${approvedStep.decidedById ? ` by ${approvedStep.decidedById}` : ''}.`,
+    };
+  } else {
+    gate = await evaluateApprovalGate(
+      GATE_POLICY_CODE,
+      {
+        id,
+        type: 'it_policy',
+        label: `${policy.recordCode} — ${policy.title} v${policy.version}`,
+        ownerPartyId: policy.drafterPartyId,
+        commercialValue: null,
+        currency: 'INR',
+        strategicValue: null,
+        termMonths: null,
+        resource: 'it_policies',
+      },
+      'it_policy.publish',
+    );
+  }
 
   if (!gate.permitted) {
     return { applied: false, policy: withTransitions(policy), approvalStepId: gate.approvalStepId, reason: gate.reason };

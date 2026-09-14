@@ -86,6 +86,7 @@ model ItRisk {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@index([tenantId, bandResidual])
   @@index([tenantId, reviewDueAt])
@@ -135,6 +136,7 @@ model ItPolicyDocument {
   acknowledgements ItPolicyAcknowledgement[]
 
   @@unique([tenantId, code, version])
+  @@unique([tenantId, recordCode])
   @@index([tenantId, code, status])
   @@map("it_policy_documents")
 }
@@ -194,6 +196,7 @@ model ItControl {
   tests ItControlTest[]
 
   @@unique([tenantId, code])
+  @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@map("it_controls")
 }
@@ -242,11 +245,19 @@ model ItAccessReview {
 
   closedAt DateTime?
 
+  /// Set once the overdue detector has raised for this campaign, so a
+  /// second run the same day (or any later run before the campaign moves
+  /// or closes) raises nothing new. Cleared implicitly by nothing — a
+  /// campaign that is still overdue stays notified until it closes; the
+  /// job only ever needs to raise it once, not on a ladder of rungs.
+  overdueNotifiedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   items ItAccessReviewItem[]
 
+  @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@index([tenantId, dueAt])
   @@map("it_access_reviews")
@@ -342,6 +353,7 @@ model ItSecurityFinding {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@index([tenantId, severity, status])
   @@index([tenantId, dueAt])
