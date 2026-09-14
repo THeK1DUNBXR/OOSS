@@ -877,3 +877,56 @@ Shipped as briefed in §6, with these choices made along the way:
   drift.
 
 Tests: `apps/api/src/tests/esop.test.ts`, `EQT-ESP-001` through `EQT-ESP-010`.
+## Phase 3 — as built
+
+Board members, meetings and their minutes lifecycle, circular and
+meeting resolutions, and the daily compliance calendar landed as designed in
+§5/§6, with a few notes for whoever builds on this next.
+
+- `BoardMember.role` distinguishes a voting seat (`director`,
+  `independent_director`, `nominee_director`) from `observer` and
+  `company_secretary`; only the voting family counts toward quorum
+  (`quorumFor`) and the s.175 demand threshold (`meetingDemandThreshold`),
+  both mirrored in `@kaizen/shared` as pure functions so a screen can show
+  "Quorum: 2 of 5 present" without waiting on a round trip, while the API
+  computes the same numbers as the source of truth on every write.
+- `Resolution.requiresMeeting` is derived once, at `proposeResolution`, from
+  the closed `RESOLUTION_SUBJECTS_REQUIRING_MEETING` list (s.179(3) + Rule 8)
+  and is never accepted as caller input; `passedBy: 'circulation'` on one of
+  those subjects is refused outright, not silently upgraded to a meeting.
+- An interested vote (`interested: true`, or the voter's declared interests
+  naming the resolution's free-text `subjectRef`) is stored as `abstain` with
+  `abstainedAsInterested` set, and is excluded from both the circulation
+  majority's denominator and the meeting count under s.184 — the same
+  exclusion, expressed once and read by `closeCirculation` and
+  `passAtMeeting` alike.
+- The compliance calendar is written by `runBoardComplianceJob`
+  (`board_compliance`, daily) and is strictly a function of recorded facts:
+  no board meeting and no `incorporatedOn` on file raises nothing at all —
+  never a fabricated "overdue" — and the unique `(tenantId, kind,
+  relatedType, relatedId, dueOn)` key is what actually keeps a re-run from
+  duplicating a row; the job's own `raised` count is how many candidates it
+  swept, not how many rows it wrote, so idempotence is proven against the
+  table, not the return value (see `EQT-BRD-007`).
+- `listBoardMembers` and the meeting reads (`listMeetings`, `meeting`,
+  `boardPack`) now compute `interestsDeclaredThisYear` and `presentCount` on
+  the way out, closing a gap between what `@kaizen/shared`'s view types
+  already declared and what the domain functions returned — both are
+  read-only projections of stored facts, never separately persisted.
+- `Resolution.subjectRef` and `Vote.holderRef` stay the free-text/nullable
+  placeholders §5 called for: nothing here depends on the phase-1 register,
+  and a shareholder's vote (as opposed to a director's) is not yet wired to
+  anything, since `holders`/`ShareTransaction` do not exist in this branch.
+- ERP nav: `eq_board`/`eq_resolutions`/`eq_compliance` under a new `equity`
+  group (after `money`), each with explicit `archetypes: ['command',
+  'workspace', 'console']` — a node with no `archetypes` reaches the portal
+  shell too, which these three must not. The portal's `portal_board` node
+  (phase 0) is unchanged; it is the same data, filtered by the viewer's own
+  grants (`shareholder` sees resolutions only, `director` sees the board
+  calendar too).
+- Screens: `pages/board/{Board,MeetingDetail,Resolutions,Compliance}.tsx` on
+  the ERP side, `portal/pages/Board.tsx` rewritten from its phase-0
+  placeholder. Every write control is gated by `can()` on the same grant
+  the route asserts (`board_meetings:E`/`resolutions:E`/`resolutions:approve`/
+  `compliance:E`/`board_documents:C`) — an omitted control, not a disabled
+  one, where the grant is absent.

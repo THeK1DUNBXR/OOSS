@@ -52,6 +52,10 @@ import { Executive } from './pages/Executive.js';
 import ImportPage from './pages/Import.js';
 import Start from './pages/Start.js';
 import { Ledger, Payables, Budget, Assets } from './pages/Books.js';
+import { Board as EquityBoard } from './pages/board/Board.js';
+import { MeetingDetail } from './pages/board/MeetingDetail.js';
+import { Resolutions, ResolutionDetail } from './pages/board/Resolutions.js';
+import { Compliance as EquityCompliance } from './pages/board/Compliance.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -194,6 +198,12 @@ function Routed() {
         <Route path="/finance/receivables" element={<Receivables />} />
         <Route path="/finance/gst" element={<GstReturns />} />
         <Route path="/finance/company" element={<CompanyDetails />} />
+
+        <Route path="/equity/board" element={<EquityBoard />} />
+        <Route path="/equity/board/meetings/:id" element={<MeetingDetail />} />
+        <Route path="/equity/resolutions" element={<Resolutions />} />
+        <Route path="/equity/resolutions/:id" element={<ResolutionDetail />} />
+        <Route path="/equity/compliance" element={<EquityCompliance />} />
 
         <Route path="/people/employees" element={<Employees />} />
         <Route path="/people/employees/:id" element={<EmployeeDetail />} />

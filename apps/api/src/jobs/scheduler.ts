@@ -30,6 +30,7 @@ import { detectOverdueCertificates } from '../domains/equity.js';
 import { publishDirtySnapshots, publishNightlySnapshot } from '../domains/group.js';
 import { runVesting, runExpiredExerciseWindows } from '../domains/esop.js';
 import { computeAndPersistAll } from '../domains/health.js';
+import { runBoardComplianceJob } from '../domains/board.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
 
 export interface JobResult {
@@ -219,6 +220,13 @@ export const ALL_JOBS: JobDefinition[] = [
       const results = await computeAndPersistAll();
       return { processed: results.length, notified: 0, skippedIdempotent: 0, errors: [] };
     },
+  },
+  {
+    name: 'board_compliance',
+    label: 'Board compliance calendar',
+    automationClass: 'routine_administration',
+    cron: '0 2 * * *',
+    run: async () => counted(await runBoardComplianceJob()),
   },
 ];
 

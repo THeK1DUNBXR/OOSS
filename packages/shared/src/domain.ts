@@ -642,6 +642,9 @@ export const RECORD_TYPE_CODES = [
   'RND',
   // ESOP (equity-portal plan §5/§6, phase 5): a scheme and a grant under it.
   'ESP', 'OPG',
+  // Board (equity-portal plan §6, phase 3): a meeting, a board seat, a
+  // resolution and a compliance item — each referred to by its own code.
+  'BRD', 'BDM', 'RES', 'CPL',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

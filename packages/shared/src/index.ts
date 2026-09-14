@@ -8,3 +8,4 @@ export * from './hr.js';
 export * from './finance.js';
 export * from './equity.js';
 export * from './esop.js';
+export * from './board.js';

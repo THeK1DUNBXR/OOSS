@@ -193,6 +193,18 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'fin_company', label: 'Company Details', icon: 'building', path: '/finance/company', group: 'setup', position: 49, requiredPermission: 'company_profile:V', synonyms: ['gstin', 'registration', 'pan', 'bank details', 'invoice footer', 'legal name', 'address'] },
   { nodeKey: 'adm_platform', label: 'How This Is Built', icon: 'book', path: '/admin/platform', group: 'setup', position: 60, archetypes: ['command', 'workspace', 'console'] },
 
+  // ---- Equity & board (ERP side) -----------------------------------------
+  // The register itself is phase 1's `cap_table`/`holders`/etc, not yet ERP
+  // nav here (this worktree is based on the phase-0 commit). Board, its
+  // resolutions and the compliance calendar are phase 3. `archetypes` is
+  // explicit here on purpose — a node with no `archetypes` leaks into every
+  // host including the portal shell, and these three belong to the ERP side
+  // only; the `portal_board` node above is the shareholder/director view of
+  // the same data.
+  { nodeKey: 'eq_board', label: 'Board', icon: 'shield', path: '/equity/board', group: 'equity', position: 10, requiredPermission: 'board_meetings:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['meetings', 'minutes', 'agenda', 'directors', 'quorum'] },
+  { nodeKey: 'eq_resolutions', label: 'Resolutions', icon: 'scale', path: '/equity/resolutions', group: 'equity', position: 11, requiredPermission: 'resolutions:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['circular resolution', 'vote', 'mgt-14', 'circulation'] },
+  { nodeKey: 'eq_compliance', label: 'Compliance', icon: 'clipboard', path: '/equity/compliance', group: 'equity', position: 12, requiredPermission: 'compliance:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['calendar', 'due dates', 'filings', 'ss-1', 'agm', 'mbp-1'] },
+
   // ---- The equity & board portal ----------------------------------------
   // `archetypes: ['portal']` is what actually keeps these off the ERP shell —
   // `navigationFor()` filters by the active role's archetype, so an ERP role

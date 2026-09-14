@@ -179,6 +179,14 @@ model CompanyProfile {
   /// printing one signatory short.
   certificateSignatories Json      @default("[]")
 
+  /// How many board meetings SS-1 requires in a year. Null derives it: four,
+  /// or two when `isSmallCompany` is true — never guessed when
+  /// `isSmallCompany` itself is unknown.
+  boardMeetingsRequiredPerYear Int?
+
+  /// SS-1's minimum notice period for a board meeting, in clear days.
+  noticeDays Int @default(7)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -4728,4 +4736,241 @@ model ImportRow {
   @@index([tenantId, dedupeKey])
   @@index([batchId, status])
   @@map("import_rows")
+}
+
+// ===========================================================================
+// Board and compliance (equity-portal plan §6, phase 3)
+//
+// Meetings, agenda, attendance and the minutes lifecycle with SS-1 timelines;
+// circular resolutions with the interested-director abstention and the
+// s.179(3) meeting-only bar; a compliance calendar generated from recorded
+// facts, never guessed from an empty register. `Resolution.subjectRef` is a
+// free-text placeholder for what the register (phase 1) will later reference
+// by id — an allotment or a transfer, once that model exists.
+// ===========================================================================
+
+/// A seat on the board (or the company-secretary seat), held by a Person.
+/// Creating one with a director-family role also ensures a `director`
+/// Affiliation for the person, the same pattern `signIns.ts` uses for a
+/// sign-in — this model never itself creates a User or a Principal, which
+/// stays the sign-in action's job.
+model BoardMember {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  personId String
+
+  /// director | independent_director | nominee_director | observer | company_secretary
+  role String
+
+  din                 String?
+  appointedOn         DateTime
+  ceasedOn            DateTime?
+  /// MBP-1: the date this member last declared their interests for the FY.
+  interestsDeclaredOn DateTime?
+  /// [{entity, nature, since}] — the entities and the nature of the interest,
+  /// consulted when a resolution's `subjectRef` names one of them.
+  interests           Json      @default("[]")
+
+  nominatedByHolderRef String?
+
+  /// active | ceased
+  status String @default("active")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, personId])
+  @@map("board_members")
+}
+
+/// A board meeting, an AGM/EGM, or a committee meeting, with the SS-1 notice,
+/// quorum and minutes-lifecycle dates recorded as facts, never inferred.
+model BoardMeeting {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// board | agm | egm | committee
+  kind  String
+  title String
+
+  noticeSentOn DateTime?
+  scheduledFor DateTime
+  heldOn       DateTime?
+
+  /// physical | vc | hybrid
+  mode  String
+  venue String?
+
+  quorumRequired Int
+  /// [{boardMemberId, present, via}]
+  attendees      Json     @default("[]")
+  quorumMet      Boolean?
+
+  /// [{n, title, notes, resolutionId?}]
+  agenda Json @default("[]")
+
+  /// called | held | minutes_draft | minutes_circulated | minutes_entered | minutes_signed | cancelled
+  status String @default("called")
+
+  minutesDraftedOn       DateTime?
+  minutesCirculatedOn    DateTime?
+  minutesEnteredOn       DateTime?
+  minutesSignedOn        DateTime?
+  minutesText            String?
+  minutesDocumentRef     String?
+  chairedByBoardMemberId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, scheduledFor])
+  @@index([tenantId, heldOn])
+  @@map("board_meetings")
+}
+
+/// A board or shareholder resolution, passed at a meeting or by circulation.
+/// `requiresMeeting` is derived at proposal time from `subject` (s.179(3) +
+/// Rule 8) and never accepted as caller input.
+model Resolution {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// board | shareholder_ordinary | shareholder_special
+  kind String
+
+  /// allotment | transfer | esop_scheme | borrowing | investment |
+  /// loan_or_guarantee | financial_statements | board_report | diversification |
+  /// merger_or_acquisition | buyback_authorisation | calls_on_shares |
+  /// appointment | related_party | general | other
+  subject String
+
+  title String
+  text  String
+
+  /// meeting | circulation
+  passedBy        String
+  meetingId       String?
+  requiresMeeting Boolean
+
+  circulatedOn     DateTime?
+  dispatchProofRef String?
+  votingClosesOn   DateTime?
+
+  /// draft | open | passed | failed | withdrawn | meeting_demanded
+  outcome  String    @default("draft")
+  passedOn DateTime?
+
+  mgt14Srn     String?
+  mgt14FiledOn DateTime?
+
+  signedDocumentRef String?
+
+  /// Placeholder for the register-phase reference this resolution acts on
+  /// (an allotment, a transfer) until that model exists.
+  subjectRef String?
+
+  proposedByPartyId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, outcome])
+  @@index([tenantId, meetingId])
+  @@map("resolutions")
+}
+
+/// A single director's or holder's vote on a Resolution. `holderRef` is a
+/// placeholder for shareholder voting, wired to the register in a later
+/// phase; only one of `boardMemberId`/`holderRef` is set on any row.
+model Vote {
+  id           String @id @default(cuid())
+  tenantId     String
+  resolutionId String
+
+  boardMemberId String?
+  holderRef     String?
+
+  /// for | against | abstain
+  choice String
+  castAt DateTime @default(now())
+
+  /// Set when the voter named this resolution's subject in their declared
+  /// interests (s.184) — the choice is then forced to `abstain`.
+  abstainedAsInterested Boolean @default(false)
+  /// s.175: this voter's demand that the matter go to a meeting instead.
+  demandsMeeting        Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([resolutionId, boardMemberId])
+  @@index([tenantId, resolutionId])
+  @@map("votes")
+}
+
+/// A compliance due-date, computed from recorded facts by the daily
+/// `board_compliance` job (and closeable by hand). The unique constraint keys
+/// on non-null `relatedType`/`relatedId` — the job always passes a concrete
+/// pair (using the tenant itself when there is no specific record) so running
+/// it twice writes the item once, never a duplicate.
+model ComplianceItem {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  kind  String
+  title String
+  /// The rule and the event it counts from, in one sentence.
+  basis String
+
+  dueOn DateTime
+
+  /// open | done | waived
+  status     String    @default("open")
+  resolvedOn DateTime?
+  filedRef   String?
+
+  relatedType String
+  relatedId   String
+
+  raisedByJob Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, kind, relatedType, relatedId, dueOn])
+  @@index([tenantId, status, dueOn])
+  @@map("compliance_items")
+}
+
+/// One item in a meeting's board pack — the notice, the agenda, a paper, the
+/// published financial summary, the minutes, a resolution text.
+model BoardPackItem {
+  id       String @id @default(cuid())
+  tenantId String
+
+  meetingId String
+
+  /// notice | agenda | paper | financial_summary | minutes | resolution | other
+  kind  String
+  title String
+
+  fileRef        String
+  addedByPartyId String
+  order          Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, meetingId, order])
+  @@map("board_pack_items")
 }

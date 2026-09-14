@@ -365,6 +365,21 @@ export const EVENTS = {
   OPTION_EXERCISED: 'kz.eqt.option.exercised',
   OPTION_LAPSED: 'kz.eqt.option.lapsed',
   OPTION_CANCELLED: 'kz.eqt.option.cancelled',
+  // Board
+  BOARD_MEMBER_ADDED: 'kz.eqt.board_member.added',
+  BOARD_MEMBER_CEASED: 'kz.eqt.board_member.ceased',
+  MEETING_CALLED: 'kz.eqt.meeting.called',
+  MEETING_HELD: 'kz.eqt.meeting.held',
+  MEETING_MINUTED: 'kz.eqt.meeting.minuted',
+  MEETING_CANCELLED: 'kz.eqt.meeting.cancelled',
+  RESOLUTION_PROPOSED: 'kz.eqt.resolution.proposed',
+  RESOLUTION_CIRCULATED: 'kz.eqt.resolution.circulated',
+  RESOLUTION_PASSED: 'kz.eqt.resolution.passed',
+  RESOLUTION_FAILED: 'kz.eqt.resolution.failed',
+  RESOLUTION_WITHDRAWN: 'kz.eqt.resolution.withdrawn',
+  VOTE_CAST: 'kz.eqt.vote.cast',
+  COMPLIANCE_ITEM_RAISED: 'kz.eqt.compliance.raised',
+  COMPLIANCE_ITEM_RESOLVED: 'kz.eqt.compliance.resolved',
 } as const;
 
 /**
