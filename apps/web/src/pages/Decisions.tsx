@@ -14,6 +14,11 @@ import { Card, ContributionBar, EmptyState, ErrorBox, Loading, Metric, PageHeade
 import { NewButton } from '../components/forms.js';
 import { NewDecision } from '../components/createForms.js';
 
+/** Decision states are recorded PascalCase ("AwaitingAuthority"); this only affects display. */
+function splitState(state: string): string {
+  return state.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+}
+
 interface Calibration {
   buckets: Array<{ band: string; stated: number; realised: number | null; count: number }>;
   sampleSize: number;
@@ -78,7 +83,7 @@ export function Decisions() {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="mono">{d.recordCode}</span>
                       <StatusChip
-                        status={d.state}
+                        status={splitState(d.state)}
                         tone={d.state === 'AwaitingAuthority' ? 'accent' : d.state === 'Analysing' ? 'warn' : 'neutral'}
                       />
                       <span className="chip border-ink-700 text-ink-400">{titleCase(d.authorityBasis)}</span>
@@ -143,7 +148,7 @@ export function Decisions() {
                       <div className="flex items-center justify-between text-2xs">
                         <span className="text-ink-300">{b.band} stated</span>
                         <span className="tabular-nums text-ink-400">
-                          {b.realised === null ? '—' : `${b.realised}% realised`} · n={b.count}
+                          {b.realised === null ? '—' : `${b.realised}% realised`} · {b.count} decision{b.count === 1 ? '' : 's'}
                         </span>
                       </div>
                       <div className="mt-1">

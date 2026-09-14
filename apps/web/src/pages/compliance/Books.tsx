@@ -433,7 +433,7 @@ function BankTab() {
   });
 
   return (
-    <Card title="Bank reconciliation" subtitle="Statement lines imported via /bank/:accountId/statement, matched by amount, direction and a ±3-day window.">
+    <Card title="Bank reconciliation" subtitle="Imported statement lines are matched against the ledger by amount, direction and a ±3-day window.">
       <div className="mb-4 flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-0.5">
           <span className="text-2xs uppercase tracking-wide text-ink-500">Account</span>

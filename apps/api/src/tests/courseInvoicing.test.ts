@@ -238,6 +238,49 @@ describe('a course-sale invoice prices tenure and add-ons through the ordinary l
 });
 
 // ===========================================================================
+// Paying for a course at the counter
+// ===========================================================================
+
+describe('a course-sale invoice paid in full at enrolment gets the same receipt and final invoice as any other', () => {
+  async function aTenureCourse() {
+    return createCourse({
+      name: `Paid Course ${stamp()}`,
+      code: `PDC-${stamp()}`.slice(0, 16),
+      gstRate: 18,
+      hsnSac: '9983',
+      feePlans: [{ tenureMonths: 3, monthlyFee: 10_000 }],
+      addons: [],
+    });
+  }
+
+  it('the counter takes the full fee as the invoice is raised, and walks away with all three documents', async () => {
+    await asUser('chairman@kaizen.co.in', async () => {
+      const course = await aTenureCourse();
+      const invoice = await createInvoice({
+        personId: await aPerson(),
+        placeOfSupply: '33',
+        interState: false,
+        enrollmentDate: new Date('2026-09-10'),
+        lines: [{ courseId: course.id, quantity: 3, unitPrice: 10_000 }],
+        payment: { amount: 35_400, mode: 'cash', reference: `CASH-${stamp()}` },
+      });
+
+      expect(invoice.status).toBe('settled');
+      expect(invoice.receipt).toBeTruthy();
+      expect(invoice.finalInvoice).toBeTruthy();
+
+      const doc = await invoiceDocument(invoice.id);
+      expect(doc.ledger).not.toBeNull();
+      expect(doc.position.settled).toBe(true);
+      expect(doc.receipts).toHaveLength(1);
+      expect(doc.receipts[0].amount).toBe(35_400);
+      expect(doc.statements).toHaveLength(1);
+      expect(doc.statements[0].recordCode).toBe(invoice.finalInvoice!.recordCode);
+    });
+  });
+});
+
+// ===========================================================================
 // The printed ledger
 // ===========================================================================
 

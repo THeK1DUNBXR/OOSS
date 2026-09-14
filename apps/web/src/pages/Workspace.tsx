@@ -200,9 +200,8 @@ export function Workspace() {
                 <li key={e.id} className="px-4 py-2.5">
                   <div className="flex items-center gap-1.5">
                     <SeverityChip severity={e.severity} />
-                    <span className="mono text-ink-600" title="Reference code, for when you need to quote this to someone">{e.code}</span>
                   </div>
-                  <p className="mt-1 text-xs text-ink-100">{e.label}</p>
+                  <p className="mt-1 text-xs text-ink-100" title={e.code}>{e.label}</p>
                   <p className="text-2xs text-ink-500">{e.subjectLabel}</p>
                 </li>
               ))}
@@ -274,7 +273,6 @@ export function Exceptions() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <SeverityChip severity={e.severity} />
-                    <span className="mono text-ink-600" title="Reference code, for when you need to quote this to someone">{e.code}</span>
                     <span className="chip border-ink-700 text-ink-400">{e.domain}</span>
                     <StatusChip status={e.state} tone={e.state === 'resolved' ? 'good' : e.state === 'escalated' ? 'warn' : 'neutral'} />
                     {e.slaBreached && <span className="chip border-band-critical/40 text-band-critical">SLA breached</span>}
@@ -286,7 +284,7 @@ export function Exceptions() {
                     {e.ladderRung && <span className="chip border-ink-800 text-ink-500">rung {e.ladderRung}</span>}
                   </div>
 
-                  <p className="mt-1.5 text-xs font-medium text-ink-100">{e.label}</p>
+                  <p className="mt-1.5 text-xs font-medium text-ink-100" title={e.code}>{e.label}</p>
                   <p className="mt-0.5 text-2xs text-ink-400">{e.detail}</p>
                   <p className="mt-1 text-2xs text-ink-500">
                     {e.subjectLabel} · owner {e.ownerName ?? '— unresolved'} · raised {relative(e.raisedAt)}
@@ -337,7 +335,7 @@ function ResolveModal({ exception, onClose }: { exception: any; onClose: () => v
   return (
     <Modal
       open
-      title={`Resolve ${exception.code}`}
+      title={`Resolve: ${exception.label}`}
       onClose={onClose}
       footer={
         <>

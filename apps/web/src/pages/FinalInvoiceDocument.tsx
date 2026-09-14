@@ -13,9 +13,11 @@
  * statement rather than editing the old one.
  */
 
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  amountInWords,
   PAYMENT_MODE_LABELS,
   type FinalInvoiceDocumentView,
   type FinalInvoiceView,
@@ -23,10 +25,24 @@ import {
 } from '@kaizen/shared';
 import { api, date, dateTime, money } from '../lib/api.js';
 import { Card, EmptyState, ErrorBox, Loading, Metric, PageHeader, RecordCode, StatusChip } from '../components/ui.js';
-import { CustomerBlock, Sheet, Signature, SupplierBlock, rupees } from './documentSheet.js';
+import { fmtDate, fmtINR } from './kaizenInvoice/calc.js';
+import {
+  LedgerHead,
+  InfoGrid,
+  InfoRow,
+  DateBoxGrid,
+  DateBoxItem,
+  TotalsStrip,
+  NoteStrip,
+  SignStrip,
+  Watermark,
+  type LedgerCompany,
+} from './kaizenInvoice/LedgerSheet.js';
+import { DocumentToolbar, DocumentScreen, TwoCopyPrintPage, PrintPortal } from './documents/PrintSheet.js';
 
 export function FinalInvoiceDocument() {
   const { id } = useParams<{ id: string }>();
+  const [printKey, setPrintKey] = useState<number | null>(null);
   const { data, isLoading, error } = useQuery({
     queryKey: ['final-invoice-document', id],
     queryFn: () => api.get<FinalInvoiceDocumentView>(`/finance/final-invoices/${id}/document`),
@@ -38,216 +54,129 @@ export function FinalInvoiceDocument() {
 
   const d = data;
 
-  return (
-    <Sheet
-      backTo="/finance/final-invoices"
-      backLabel="Final invoices"
-      title={d.recordCode}
-      subtitle={`Raised ${dateTime(d.issuedAt)}${d.issuedBy ? ` by ${d.issuedBy}` : ''} against ${d.invoice.recordCode}, consolidating ${
-        d.totals.instalments
-      } receipt${d.totals.instalments === 1 ? '' : 's'}.`}
-      watermark={d.status === 'superseded' ? 'SUPERSEDED' : null}
-      aside={
-        <Card
-          title="The documents behind this"
-          subtitle="The tax invoice it finalises, and every receipt it names."
-        >
-          <div className="flex flex-wrap items-center gap-4 text-xs">
-            <Link to={`/finance/invoices/${d.invoice.id}/document`} className="mono text-ink-100 hover:text-accent-soft">
-              {d.invoice.recordCode}
-            </Link>
-            {d.receipts.map((r) => (
-              <span key={r.recordCode} className="mono text-2xs text-ink-400">
-                {r.recordCode}
-              </span>
-            ))}
-          </div>
-          {d.supersedes.length > 0 && (
-            <p className="mt-2 text-2xs text-ink-500">
-              Supersedes {d.supersedes.join(', ')}. Earlier statements are kept rather than replaced — each was true when
-              it was handed over.
-            </p>
-          )}
-        </Card>
-      }
-    >
-      <SupplierBlock
-        supplier={d.supplier}
-        docType="Final Invoice"
-        meta={[
-          ['Statement no.', d.recordCode],
-          ['Date', date(d.issuedAt)],
-          ['Tax invoice', d.invoice.recordCode],
-          ['Invoice date', date(d.invoice.issuedDate)],
-        ]}
-      />
+  const company: LedgerCompany = {
+    name: 'Kaizen Infinities',
+    tagline: 'Training & Education Services',
+    legalName: d.supplier.legalName,
+    address: [d.supplier.addressLine1, d.supplier.addressLine2, d.supplier.city ? `${d.supplier.city}-${d.supplier.pincode ?? ''}` : null]
+      .filter(Boolean)
+      .join(', '),
+    location: d.supplier.stateName ?? '—',
+    stateCode: null,
+    gstin: d.supplier.gstin,
+    phone: d.supplier.phone,
+  };
 
-      <CustomerBlock
-        customer={d.customer}
-        extra={
-          <>
-            <p className="doc-label">Status</p>
-            <p className="doc-party-name">{d.totals.settled ? 'Settled in full' : 'Balance outstanding'}</p>
-            <p className="doc-muted">
-              {d.totals.instalments} instalment{d.totals.instalments === 1 ? '' : 's'} received
-            </p>
-            {d.invoice.placeOfSupply && <p className="doc-muted">Place of supply: {d.invoice.placeOfSupply}</p>}
-          </>
-        }
-      />
+  function handlePrint() {
+    setPrintKey(Date.now());
+    window.setTimeout(() => window.print(), 50);
+  }
 
-      {/* What was billed. Restated from the invoice so the statement stands on its
-          own — a customer holding this should not need the invoice beside it. */}
-      <p className="doc-label" style={{ marginTop: 12 }}>
+  const sheet = (
+    <>
+      {d.status === 'superseded' && <Watermark text="SUPERSEDED" />}
+      <LedgerHead company={company} />
+      <InfoGrid>
+        <InfoRow k="No." v={d.recordCode} />
+        <InfoRow k="Date" v={fmtDate(d.issuedAt)} />
+        <InfoRow k="Student/Customer Name" v={d.customer.name} />
+        <InfoRow k="Contact No." v={d.customer.phone ?? '—'} />
+        <InfoRow k="Against Invoice No." v={d.invoice.recordCode} />
+        <InfoRow k="Invoice Date" v={fmtDate(d.invoice.issuedDate)} />
+      </InfoGrid>
+      <DateBoxGrid columns={3}>
+        <DateBoxItem k="Total Payable" v={fmtINR(d.totals.totalPayable)} />
+        <DateBoxItem k="Received" v={fmtINR(d.totals.totalReceived)} />
+        <DateBoxItem k="Balance" v={fmtINR(d.totals.balance)} />
+      </DateBoxGrid>
+
+      <p style={{ padding: '8px 22px 0', fontSize: 12, fontWeight: 700 }}>
         What was billed — tax invoice {d.invoice.recordCode}
       </p>
-      <table className="doc-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Description</th>
-            <th>HSN/SAC</th>
-            <th className="num">Qty</th>
-            <th className="num">Rate</th>
-            <th className="num">Amount</th>
-            <th className="num">GST %</th>
-            <th className="num">Tax</th>
-          </tr>
-        </thead>
-        <tbody>
-          {d.invoice.lines.map((line, i) => (
-            <tr key={`${line.description}-${i}`}>
-              <td>{i + 1}</td>
-              <td>
-                {line.description}
-                {line.courseName && !line.description.includes(line.courseName) && (
-                  <span className="doc-muted"> · {line.courseName}</span>
-                )}
-              </td>
-              <td>{line.hsnSac ?? '—'}</td>
-              <td className="num">{line.quantity}</td>
-              <td className="num">{rupees(line.unitPrice)}</td>
-              <td className="num">{rupees(line.amount)}</td>
-              <td className="num">{line.gstRate}%</td>
-              <td className="num">{rupees(line.taxAmount)}</td>
+      <div className="ki-ledger-scroll">
+        <table className="ki-ledger">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Description</th>
+              <th>HSN/SAC</th>
+              <th>Qty</th>
+              <th>Rate</th>
+              <th>Amount</th>
+              <th>GST %</th>
+              <th>Tax</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* The part payments, with their receipt numbers. The reason the document
-          exists. */}
-      <p className="doc-label">Payments received</p>
-      <table className="doc-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Receipt no.</th>
-            <th>Date</th>
-            <th>Mode</th>
-            <th>Reference</th>
-            <th className="num">Amount</th>
-            <th className="num">Balance after</th>
-          </tr>
-        </thead>
-        <tbody>
-          {d.receipts.map((r) => (
-            <tr key={r.recordCode}>
-              <td>{r.number}</td>
-              <td>{r.recordCode}</td>
-              <td>{date(r.issuedAt)}</td>
-              <td>{r.mode ? (PAYMENT_MODE_LABELS[r.mode as PaymentMode] ?? r.mode) : '—'}</td>
-              <td>{r.reference ?? '—'}</td>
-              <td className="num">{rupees(r.amount)}</td>
-              <td className="num">{rupees(r.balanceAfter)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <section className="doc-foot">
-        <div>
-          <div className="doc-declaration">
-            <p className="doc-declaration-head">
-              {d.totals.settled ? 'Settled in full' : 'Balance outstanding'}
-            </p>
-            <p>
-              Tax invoice {d.invoice.recordCode} for ₹{rupees(d.totals.totalPayable)} has been paid in{' '}
-              {d.totals.instalments} instalment{d.totals.instalments === 1 ? '' : 's'} totalling ₹
-              {rupees(d.totals.totalReceived)}, receipted as {d.receipts.map((r) => r.recordCode).join(', ')}.
-            </p>
-            {d.totals.creditNoted > 0 && (
-              <p>Credit notes of ₹{rupees(d.totals.creditNoted)} have been applied against it.</p>
-            )}
-            {d.totals.settled ? (
-              <p>Nothing further is due.</p>
-            ) : (
-              <p>
-                ₹{rupees(d.totals.balance)} remains payable
-                {d.invoice.dueDate ? ` by ${date(d.invoice.dueDate)}` : ''}.
-              </p>
-            )}
-            {d.note && <p className="doc-muted">{d.note}</p>}
-          </div>
-        </div>
-
-        <table className="doc-totals">
+          </thead>
           <tbody>
-            <tr>
-              <th>Taxable value</th>
-              <td className="num">{rupees(d.invoice.taxableValue)}</td>
-            </tr>
-            {d.invoice.interState ? (
-              <tr>
-                <th>IGST</th>
-                <td className="num">{rupees(d.invoice.igst)}</td>
+            {d.invoice.lines.map((line, i) => (
+              <tr key={`${line.description}-${i}`}>
+                <td>{i + 1}</td>
+                <td className="ki-name-cell">
+                  {line.description}
+                  {line.courseName && !line.description.includes(line.courseName) && ` · ${line.courseName}`}
+                </td>
+                <td>{line.hsnSac ?? '—'}</td>
+                <td>{line.quantity}</td>
+                <td>{fmtINR(line.unitPrice)}</td>
+                <td>{fmtINR(line.amount)}</td>
+                <td>{line.gstRate}%</td>
+                <td className="ki-total-cell">{fmtINR(line.taxAmount)}</td>
               </tr>
-            ) : (
-              <>
-                <tr>
-                  <th>CGST</th>
-                  <td className="num">{rupees(d.invoice.cgst)}</td>
-                </tr>
-                <tr>
-                  <th>SGST</th>
-                  <td className="num">{rupees(d.invoice.sgst)}</td>
-                </tr>
-              </>
-            )}
-            {d.invoice.roundOff !== 0 && (
-              <tr>
-                <th>Rounding</th>
-                <td className="num">{rupees(d.invoice.roundOff)}</td>
-              </tr>
-            )}
-            <tr className="doc-total-row">
-              <th>Total payable</th>
-              <td className="num">₹{rupees(d.totals.totalPayable)}</td>
-            </tr>
-            <tr className="doc-now-row">
-              <th>Total received</th>
-              <td className="num">₹{rupees(d.totals.totalReceived)}</td>
-            </tr>
-            {d.totals.creditNoted > 0 && (
-              <tr>
-                <th>Credit notes</th>
-                <td className="num">{rupees(d.totals.creditNoted)}</td>
-              </tr>
-            )}
-            <tr>
-              <th>Balance</th>
-              <td className="num">{rupees(d.totals.balance)}</td>
-            </tr>
+            ))}
           </tbody>
         </table>
-      </section>
+      </div>
 
-      <footer className="doc-terms">
-        {d.supplier.terms && <p>{d.supplier.terms}</p>}
-        <Signature legalName={d.supplier.legalName} />
-        {d.supplier.footnote && <p className="doc-muted">{d.supplier.footnote}</p>}
-      </footer>
-    </Sheet>
+      <p style={{ padding: '10px 22px 0', fontSize: 12, fontWeight: 700 }}>Receipts</p>
+      <div className="ki-ledger-scroll">
+        <table className="ki-ledger">
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>Date</th>
+              <th>Mode</th>
+              <th>Amount</th>
+              <th>Balance after</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.receipts.map((r) => (
+              <tr key={r.recordCode}>
+                <td>{r.number}</td>
+                <td>{fmtDate(r.issuedAt)}</td>
+                <td>{r.mode ? (PAYMENT_MODE_LABELS[r.mode as PaymentMode] ?? r.mode) : '—'}</td>
+                <td>{fmtINR(r.amount)}</td>
+                <td className="ki-total-cell">{fmtINR(r.balanceAfter)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <TotalsStrip doc={{ amountInWords: amountInWords(d.totals.totalPayable), grandTotal: d.totals.totalPayable, label: 'Grand Total (total payable)' }} />
+
+      <NoteStrip>
+        This statement restates tax invoice {d.invoice.recordCode} and every receipt against it, as they stood on
+        the day it was raised.
+        {d.totals.settled ? ' Settled in full — nothing further is due.' : ` Balance of ${money(d.totals.balance)} remains payable.`}
+        {d.supersedes.length > 0 && ` Supersedes ${d.supersedes.join(', ')}.`}
+        {d.note && ` ${d.note}`}
+      </NoteStrip>
+      <SignStrip />
+    </>
+  );
+
+  return (
+    <div>
+      <DocumentToolbar backTo="/finance/final-invoices" backLabel="Final invoices" onPrint={handlePrint} />
+      <DocumentScreen>{sheet}</DocumentScreen>
+
+      {printKey && (
+        <PrintPortal key={printKey}>
+          <TwoCopyPrintPage render={() => sheet} />
+        </PrintPortal>
+      )}
+    </div>
   );
 }
 

@@ -100,3 +100,11 @@ export const ENCRYPTED_FIELD_PREFIX = 'enc:v1:';
 export function isEncryptedFieldValue(value: string | null | undefined): boolean {
   return typeof value === 'string' && value.startsWith(ENCRYPTED_FIELD_PREFIX);
 }
+
+/** A consent or data-principal-request list row, additively carrying the
+ * data principal's name so an unfiltered listing — several people's rows
+ * together — doesn't read as a column of bare cuids. */
+export interface PersonNamedRow {
+  personId: string;
+  personFullName: string | null;
+}

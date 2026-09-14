@@ -16,8 +16,13 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
+  BLOOD_GROUPS,
   DELIVERY_LOCATIONS,
   DELIVERY_LOCATION_LABELS,
+  EMPLOYMENT_ENGAGEMENT_TYPES,
+  COMPENSATION_REVISION_REASONS,
+  PROMOTION_REVISION_REASON,
+  ASSIGNMENT_REASON_CODES,
   FUNDING_FRAMEWORKS,
   FUNDING_FRAMEWORK_LABELS,
   FUNDING_SOURCES,
@@ -28,11 +33,15 @@ import {
   ORGANIZATION_ROLES,
   ORGANIZATION_ROLE_HINTS,
   ORGANIZATION_ROLE_LABELS,
+  type AssignmentReasonCode,
+  type BloodGroup,
+  type CompensationRevisionReason,
+  type EmploymentEngagementType,
   type FundingSource,
   type InstitutionEngagement,
   type OrganizationRole,
 } from '@kaizen/shared';
-import { api } from '../lib/api.js';
+import { api, titleCase } from '../lib/api.js';
 import { CreateModal, MoneyInput, Row, SelectInput, TextArea, TextInput } from './forms.js';
 
 /**
@@ -1600,28 +1609,87 @@ export function NewSkill({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
+/** A blank text field for a regulated identifier means "leave it as it is",
+ * never "clear it" — so it is left out of the PATCH body entirely rather than
+ * sent as an empty string, which the API would read as a write. */
+function orUndefined(value: string): string | undefined {
+  return value.trim() ? value : undefined;
+}
+
+/** "On file, ending 1234" when HR's read-back names the last four; "On file"
+ * when it is there but withheld; blank when there is nothing on file yet. */
+function onFileHint(has: boolean, last4?: string | null): string | undefined {
+  if (!has) return undefined;
+  return last4 ? `On file, ending ${last4} — enter a new value to replace it` : 'On file — enter a new value to replace it';
+}
+
 /**
- * A correction to the plain identity fields on somebody's employment record —
- * their name, phone, email, date of birth. Exactly what a staff-list import
- * writes and sometimes gets wrong, and nothing more: confirmation, notice
- * period, separation and pay each move through their own action elsewhere on
- * the page, and statutory identifiers never reach the client at all.
+ * Everything about an employee that the platform's own rules let this viewer
+ * change: their personal details always, and — only when the read already
+ * carried the HR-only fields (`canEditEmploymentDetails`, set by
+ * `employees:edit@all`) — the employment relationship's dates, terms and
+ * statutory identifiers.
+ *
+ * Salary and where they sit are never in this form. Both have their own
+ * lifecycle (`ProposeCompensation` below; the assignment workflow on "Where
+ * they sit"), and a field here that moved either would let it happen without
+ * the approval or the record either one is built to leave behind.
+ *
+ * Every regulated field — blood group, PAN, UAN, ESIC number, bank details —
+ * is write-only: the read that fills this form in never carries the stored
+ * value, only whether one exists (`has*`) and, for HR, its last four
+ * characters. Leaving the field blank leaves the stored value alone.
  */
 export function EditEmployeeProfile({
   open,
   onClose,
   employmentId,
   person,
+  employment,
+  canEditEmploymentDetails,
 }: {
   open: boolean;
   onClose: () => void;
   employmentId: string;
-  person: { fullName: string; primaryPhone: string | null; primaryEmail: string | null; dateOfBirth?: string | null };
+  person: {
+    fullName: string;
+    primaryPhone: string | null;
+    primaryEmail: string | null;
+    dateOfBirth?: string | null;
+    hasBloodGroup?: boolean;
+  };
+  employment?: {
+    hireEffectiveDate: string;
+    noticePeriodDays: number;
+    engagementType: string;
+    emergencyContactName: string | null;
+    emergencyContactPhone: string | null;
+    hasPan?: boolean;
+    panLast4?: string | null;
+    hasUan?: boolean;
+    hasEsicNumber?: boolean;
+    hasBankDetails?: boolean;
+    bankLast4?: string | null;
+  };
+  canEditEmploymentDetails?: boolean;
 }) {
   const [fullName, setFullName] = useState('');
   const [primaryPhone, setPhone] = useState('');
   const [primaryEmail, setEmail] = useState('');
   const [dateOfBirth, setDob] = useState('');
+  const [bloodGroup, setBloodGroup] = useState<BloodGroup | ''>('');
+  const [emergencyContactName, setEmergencyName] = useState('');
+  const [emergencyContactPhone, setEmergencyPhone] = useState('');
+
+  const [hireEffectiveDate, setHireDate] = useState('');
+  const [noticePeriodDays, setNoticePeriod] = useState('');
+  const [engagementType, setEngagementType] = useState<EmploymentEngagementType | ''>('');
+  const [panNumber, setPan] = useState('');
+  const [uanNumber, setUan] = useState('');
+  const [esicNumber, setEsic] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankIfsc, setBankIfsc] = useState('');
+  const [bankAccountName, setBankAccountName] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -1629,7 +1697,19 @@ export function EditEmployeeProfile({
     setPhone(person.primaryPhone ?? '');
     setEmail(person.primaryEmail ?? '');
     setDob(person.dateOfBirth ? person.dateOfBirth.slice(0, 10) : '');
-  }, [open, person]);
+    setBloodGroup('');
+    setEmergencyName(employment?.emergencyContactName ?? '');
+    setEmergencyPhone(employment?.emergencyContactPhone ?? '');
+    setHireDate(employment?.hireEffectiveDate ? employment.hireEffectiveDate.slice(0, 10) : '');
+    setNoticePeriod(employment ? String(employment.noticePeriodDays ?? '') : '');
+    setEngagementType((employment?.engagementType as EmploymentEngagementType) ?? '');
+    setPan('');
+    setUan('');
+    setEsic('');
+    setBankAccountNumber('');
+    setBankIfsc('');
+    setBankAccountName('');
+  }, [open, person, employment]);
 
   return (
     <CreateModal
@@ -1644,17 +1724,248 @@ export function EditEmployeeProfile({
           primaryPhone: primaryPhone || null,
           primaryEmail: primaryEmail || null,
           dateOfBirth: dateOfBirth || null,
+          bloodGroup: orUndefined(bloodGroup),
+          emergencyContactName: emergencyContactName || null,
+          emergencyContactPhone: emergencyContactPhone || null,
+          ...(canEditEmploymentDetails
+            ? {
+                hireEffectiveDate: orUndefined(hireEffectiveDate),
+                noticePeriodDays: noticePeriodDays ? Number(noticePeriodDays) : undefined,
+                engagementType: orUndefined(engagementType),
+                panNumber: orUndefined(panNumber),
+                uanNumber: orUndefined(uanNumber),
+                esicNumber: orUndefined(esicNumber),
+                bankAccountNumber: orUndefined(bankAccountNumber),
+                bankIfsc: orUndefined(bankIfsc),
+                bankAccountName: orUndefined(bankAccountName),
+              }
+            : {}),
         })
       }
     >
+      <p className="section-title">Personal</p>
       <TextInput label="Name" required autoFocus value={fullName} onChange={setFullName} />
       <Row>
-        <TextInput label="Phone" type="tel" value={primaryPhone} onChange={setPhone} />
+        <TextInput label="Phone" type="tel" value={primaryPhone} onChange={setPhone} hint="10-digit Indian mobile" />
         <TextInput label="Email" type="email" value={primaryEmail} onChange={setEmail} />
       </Row>
-      <TextInput label="Date of birth" type="date" value={dateOfBirth} onChange={setDob} />
+      <Row>
+        <TextInput label="Date of birth" type="date" value={dateOfBirth} onChange={setDob} />
+        <SelectInput
+          label="Blood group"
+          value={bloodGroup}
+          onChange={setBloodGroup}
+          options={BLOOD_GROUPS.map((g) => ({ value: g, label: g }))}
+          placeholder="— leave as is —"
+          hint={onFileHint(Boolean(person.hasBloodGroup))}
+        />
+      </Row>
+      <Row>
+        <TextInput label="Emergency contact name" value={emergencyContactName} onChange={setEmergencyName} />
+        <TextInput label="Emergency contact phone" type="tel" value={emergencyContactPhone} onChange={setEmergencyPhone} />
+      </Row>
+
+      {canEditEmploymentDetails && employment && (
+        <>
+          <div className="divider" />
+          <p className="section-title">Employment — HR only</p>
+          <Row>
+            <TextInput label="Hire date" type="date" value={hireEffectiveDate} onChange={setHireDate} />
+            <TextInput label="Notice period (days)" type="number" value={noticePeriodDays} onChange={setNoticePeriod} />
+          </Row>
+          <SelectInput
+            label="Engagement type"
+            value={engagementType}
+            onChange={setEngagementType}
+            options={EMPLOYMENT_ENGAGEMENT_TYPES.map((t) => ({ value: t, label: titleCaseWord(t) }))}
+          />
+          <Row>
+            <TextInput label="PAN" value={panNumber} onChange={setPan} hint={onFileHint(Boolean(employment.hasPan), employment.panLast4)} />
+            <TextInput label="UAN" value={uanNumber} onChange={setUan} hint={onFileHint(Boolean(employment.hasUan))} />
+          </Row>
+          <TextInput label="ESIC number" value={esicNumber} onChange={setEsic} hint={onFileHint(Boolean(employment.hasEsicNumber))} />
+          <Row>
+            <TextInput
+              label="Bank account number"
+              value={bankAccountNumber}
+              onChange={setBankAccountNumber}
+              hint={onFileHint(Boolean(employment.hasBankDetails), employment.bankLast4)}
+            />
+            <TextInput label="Bank IFSC" value={bankIfsc} onChange={setBankIfsc} />
+          </Row>
+          <TextInput label="Bank account name" value={bankAccountName} onChange={setBankAccountName} />
+        </>
+      )}
+
       <p className="text-2xs text-ink-500">
-        Confirmation, notice period and separation are changed from their own actions on the record, not here.
+        Confirmation, notice period status, separation, where they sit and what they are paid each move through their
+        own action elsewhere on this page, not here.
+      </p>
+    </CreateModal>
+  );
+}
+
+function titleCaseWord(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * A pay change. Never a direct edit to what somebody earns — this opens the
+ * same two-party proposal Finance has to sign off that the API has always
+ * had (`POST /hr/compensation`), just reachable from the employee's own page
+ * for the first time. A promotion has to name the assignment that promoted
+ * them [Canon §14.5]; anything else does not.
+ */
+export function ProposeCompensation({
+  open,
+  onClose,
+  employmentRelationshipId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  employmentRelationshipId: string;
+}) {
+  const [revisionReason, setReason] = useState<CompensationRevisionReason | ''>('');
+  const [amount, setAmount] = useState('');
+  const [basicPay, setBasicPay] = useState('');
+  const [effectiveFrom, setEffectiveFrom] = useState(today());
+  const [linkedAssignmentId, setLinkedAssignmentId] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setReason('');
+    setAmount('');
+    setBasicPay('');
+    setEffectiveFrom(today());
+    setLinkedAssignmentId('');
+  }, [open]);
+
+  const isPromotion = revisionReason === PROMOTION_REVISION_REASON;
+
+  return (
+    <CreateModal
+      open={open}
+      title="Propose a pay change"
+      submitLabel="Send for approval"
+      onClose={onClose}
+      invalidate={[['hr-compensation', employmentRelationshipId], ['hr-employee', employmentRelationshipId]]}
+      onSubmit={() =>
+        api.post('/hr/compensation', {
+          employmentRelationshipId,
+          revisionReason,
+          amount: Number(amount),
+          basicPay: basicPay ? Number(basicPay) : undefined,
+          effectiveFrom,
+          linkedAssignmentId: isPromotion ? linkedAssignmentId : undefined,
+        })
+      }
+    >
+      <SelectInput
+        label="Reason"
+        required
+        value={revisionReason}
+        onChange={setReason}
+        options={COMPENSATION_REVISION_REASONS.map((r) => ({ value: r, label: titleCase(r.replace(/_/g, ' ')) }))}
+        placeholder="Choose a reason"
+      />
+      <Row>
+        <MoneyInput label="New monthly pay" required value={amount} onChange={setAmount} />
+        <MoneyInput label="Of which basic" value={basicPay} onChange={setBasicPay} />
+      </Row>
+      <TextInput label="Effective from" type="date" required value={effectiveFrom} onChange={setEffectiveFrom} />
+      {isPromotion && (
+        <TextInput
+          label="Linked assignment id"
+          required
+          value={linkedAssignmentId}
+          onChange={setLinkedAssignmentId}
+          hint="A promotion pay change has to name the seat move it goes with [Canon §14.5]."
+        />
+      )}
+      <p className="text-2xs text-ink-500">
+        This does not change anybody's pay by itself — it opens a proposal Finance has to approve, and never the
+        person who proposed it or the person it is about.
+      </p>
+    </CreateModal>
+  );
+}
+
+interface PositionOption {
+  id: string;
+  recordCode: string;
+  status: string;
+  job: { title: string };
+  orgUnit: { name: string; division: string | null };
+}
+
+/** Opens a seat change: a new Assignment, Draft until whoever approves it moves it on
+ * through the machine [Canon §14.3 R4]. Submitting here only proposes — the
+ * employee's card keeps showing their current seat until the last ACTIVATE. */
+export function NewAssignment({
+  open,
+  onClose,
+  employmentRelationshipId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  employmentRelationshipId: string;
+}) {
+  const [positionId, setPositionId] = useState('');
+  const [reasonCode, setReasonCode] = useState<AssignmentReasonCode | ''>('');
+  const [effectiveFrom, setEffectiveFrom] = useState(today());
+
+  const positions = useQuery({
+    queryKey: ['positions-for-assignment'],
+    queryFn: () => api.get<PositionOption[]>('/hr/positions'),
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    setPositionId('');
+    setReasonCode('');
+    setEffectiveFrom(today());
+  }, [open]);
+
+  return (
+    <CreateModal
+      open={open}
+      title="Change position"
+      submitLabel="Propose"
+      onClose={onClose}
+      invalidate={[['hr-employee', employmentRelationshipId]]}
+      onSubmit={() =>
+        api.post('/hr/assignments', {
+          employmentRelationshipId,
+          positionId,
+          reasonCode,
+          effectiveFrom,
+        })
+      }
+    >
+      <SelectInput
+        label="New position"
+        required
+        value={positionId}
+        onChange={setPositionId}
+        options={(positions.data ?? []).map((p) => ({
+          value: p.id,
+          label: `${p.job.title} — ${p.orgUnit.name} (${p.recordCode})`,
+        }))}
+        placeholder={positions.isLoading ? 'Loading positions…' : 'Choose a position'}
+      />
+      <SelectInput
+        label="Reason"
+        required
+        value={reasonCode}
+        onChange={setReasonCode}
+        options={ASSIGNMENT_REASON_CODES.map((r) => ({ value: r, label: r }))}
+        placeholder="Choose a reason"
+      />
+      <TextInput label="Effective from" type="date" required value={effectiveFrom} onChange={setEffectiveFrom} />
+      <p className="text-2xs text-ink-500">
+        This opens a proposal, Draft until it is submitted, approved, scheduled and activated — the same approval
+        the seat's own history already requires. Nothing about where they sit changes until it is activated.
       </p>
     </CreateModal>
   );

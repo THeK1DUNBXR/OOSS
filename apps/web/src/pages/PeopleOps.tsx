@@ -35,7 +35,8 @@ import {
   Withheld,
 } from '../components/ui.js';
 import { NewButton } from '../components/forms.js';
-import { EditEmployeeProfile, NewLeaveRequest, NewRequisition, NewSkill } from '../components/createForms.js';
+import { EditEmployeeProfile, NewAssignment, NewLeaveRequest, NewRequisition, NewSkill, ProposeCompensation } from '../components/createForms.js';
+import { humanize } from '../lib/words.js';
 
 // ---------------------------------------------------------------------------
 // Shared pieces
@@ -355,7 +356,7 @@ export function Employees() {
                     </td>
                     <td className="num">{date(e.hireEffectiveDate)}</td>
                     <td>
-                      <StatusChip status={e.status} tone={tone(e.status)} />
+                      <StatusChip status={humanize(e.status)} tone={tone(e.status)} />
                     </td>
                     <td>
                       <StatusChip
@@ -387,16 +388,38 @@ interface EmployeeDetailView {
   hireEffectiveDate: string;
   legalEntity: string;
   noticePeriodDays: number;
+  engagementType: string;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
   separationType: string | null;
-  person: { fullName: string; primaryEmail: string | null; primaryPhone: string | null; dateOfBirth: string | null };
+  person: {
+    fullName: string;
+    primaryEmail: string | null;
+    primaryPhone: string | null;
+    dateOfBirth: string | null;
+    hasBloodGroup: boolean;
+  };
+  hasPan: boolean;
+  panLast4?: string | null;
+  hasUan: boolean;
+  hasEsicNumber: boolean;
+  hasBankDetails: boolean;
+  bankLast4?: string | null;
+  /** Set only for HR — `employees:edit@all` — never for self-service. */
+  canEditEmploymentDetails: boolean;
   assignments: Array<{
     id: string;
     rowStatus: string;
+    requestStatus: string;
     reasonCode: string;
     effectiveFrom: string;
     effectiveTo: string | null;
     position: { recordCode: string; job: { title: string }; orgUnit: { name: string; division: string | null } };
+    availableTransitions: string[];
   }>;
+  /** Withheld rather than guessed from a role slug — a viewer who cannot
+   * open a position for this person does not see the button at all. */
+  canCreateAssignment: boolean;
   leaveBalances: Array<{ id: string; balanceDays: string; heldDays: string; leaveType: { name: string; code: string } }>;
   onboarding: { id: string; status: string } | null;
   offboarding: { id: string; status: string } | null;
@@ -420,6 +443,10 @@ interface CompensationRow {
   amount: number | null;
   basicPay: number | null;
   availableTransitions: string[];
+  proposedByPartyId: string | null;
+  proposedByName: string | null;
+  canApprove: boolean;
+  approveWithheldReason: 'not_holder' | 'self' | 'self_proposed' | null;
 }
 
 interface CapabilityRow {
@@ -443,6 +470,8 @@ const TIER_TONE: Record<string, 'good' | 'warn' | 'bad' | 'neutral'> = {
 export function EmployeeDetail() {
   const { id = '' } = useParams();
   const [editOpen, setEditOpen] = useState(false);
+  const [proposeCompOpen, setProposeCompOpen] = useState(false);
+  const [newAssignmentOpen, setNewAssignmentOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['hr-employee', id],
@@ -481,18 +510,42 @@ export function EmployeeDetail() {
         }
         actions={
           <>
+            {data.payVisible && (
+              <button className="btn-ghost" onClick={() => setProposeCompOpen(true)}>
+                Change salary
+              </button>
+            )}
             <button className="btn-ghost" onClick={() => setEditOpen(true)}>
               Edit
             </button>
-            <StatusChip status={data.status} tone={tone(data.status)} />
+            <StatusChip status={humanize(data.status)} tone={tone(data.status)} />
           </>
         }
       />
-      <EditEmployeeProfile open={editOpen} onClose={() => setEditOpen(false)} employmentId={data.id} person={data.person} />
+      <EditEmployeeProfile
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        employmentId={data.id}
+        person={data.person}
+        employment={data}
+        canEditEmploymentDetails={data.canEditEmploymentDetails}
+      />
+      <ProposeCompensation open={proposeCompOpen} onClose={() => setProposeCompOpen(false)} employmentRelationshipId={data.id} />
+      <NewAssignment open={newAssignmentOpen} onClose={() => setNewAssignmentOpen(false)} employmentRelationshipId={data.id} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          <Card title="Where they sit" subtitle="Dated, so last March stays answerable.">
+          <Card
+            title="Where they sit"
+            subtitle="Dated, so last March stays answerable. A seat move is a proposal — Draft until it is submitted, approved, scheduled and activated."
+            actions={
+              data.canCreateAssignment && (
+                <button className="btn-ghost" onClick={() => setNewAssignmentOpen(true)}>
+                  Change position
+                </button>
+              )
+            }
+          >
             <table className="table">
               <thead>
                 <tr>
@@ -502,6 +555,8 @@ export function EmployeeDetail() {
                   <th>From</th>
                   <th>To</th>
                   <th>Row</th>
+                  <th>Request</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -514,11 +569,23 @@ export function EmployeeDetail() {
                         <Division division={a.position.orgUnit.division} />
                       </div>
                     </td>
-                    <td>{a.reasonCode}</td>
+                    <td>{humanize(a.reasonCode)}</td>
                     <td className="num">{date(a.effectiveFrom)}</td>
                     <td className="num">{a.effectiveTo ? date(a.effectiveTo) : '—'}</td>
                     <td>
-                      <StatusChip status={a.rowStatus} tone={a.rowStatus === 'Effective' ? 'good' : 'neutral'} />
+                      <StatusChip status={humanize(a.rowStatus)} tone={a.rowStatus === 'Effective' ? 'good' : 'neutral'} />
+                    </td>
+                    <td>
+                      <StatusChip status={humanize(a.requestStatus)} tone={tone(a.requestStatus)} />
+                    </td>
+                    <td>
+                      <Transitions
+                        collection="assignments"
+                        id={a.id}
+                        events={a.availableTransitions}
+                        invalidate={['hr-employee']}
+                        needsNote={['REJECT', 'CANCEL']}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -550,33 +617,57 @@ export function EmployeeDetail() {
                     <th className="num">Amount</th>
                     <th>From</th>
                     <th>Status</th>
+                    <th>Proposed by</th>
                     <th>Linked move</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {compensation.map((c) => (
-                    <tr key={c.id}>
-                      <td>{titleCase(c.revisionReason.replace(/_/g, ' '))}</td>
-                      <td className="num">
-                        <Money value={c.amount} />
-                      </td>
-                      <td className="num">{date(c.effectiveFrom)}</td>
-                      <td>
-                        <StatusChip status={c.status} tone={tone(c.status)} />
-                      </td>
-                      <td>{c.linkedAssignmentId ? <span className="chip-gold">linked</span> : '—'}</td>
-                      <td>
-                        <Transitions
-                          collection="compensation"
-                          id={c.id}
-                          events={c.availableTransitions}
-                          invalidate={['hr-compensation', 'hr-employee']}
-                          needsNote={['REJECT', 'WITHDRAW']}
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                  {compensation.map((c) => {
+                    // APPROVE/REJECT are legal from this state per the machine,
+                    // but this viewer may still be barred from signing it —
+                    // never the subject, never the proposer — so those two are
+                    // dropped from what gets offered rather than shown and then
+                    // refused.
+                    const events = c.canApprove
+                      ? c.availableTransitions
+                      : c.availableTransitions.filter((e) => e !== 'APPROVE' && e !== 'REJECT');
+                    const pendingSignoff = (c.status === 'Proposed' || c.status === 'PendingApproval') && !c.canApprove;
+                    return (
+                      <tr key={c.id}>
+                        <td>{titleCase(c.revisionReason.replace(/_/g, ' '))}</td>
+                        <td className="num">
+                          <Money value={c.amount} />
+                        </td>
+                        <td className="num">{date(c.effectiveFrom)}</td>
+                        <td>
+                          <StatusChip status={humanize(c.status)} tone={tone(c.status)} />
+                        </td>
+                        <td>
+                          {c.proposedByName ?? '—'}
+                          {pendingSignoff && (
+                            <p className="text-2xs text-ink-500">
+                              {c.approveWithheldReason === 'self_proposed'
+                                ? 'awaiting somebody else to sign'
+                                : c.approveWithheldReason === 'self'
+                                  ? 'about you — somebody else signs it'
+                                  : 'awaiting approval'}
+                            </p>
+                          )}
+                        </td>
+                        <td>{c.linkedAssignmentId ? <span className="chip-gold">linked</span> : '—'}</td>
+                        <td>
+                          <Transitions
+                            collection="compensation"
+                            id={c.id}
+                            events={events}
+                            invalidate={['hr-compensation', 'hr-employee']}
+                            needsNote={['REJECT', 'WITHDRAW']}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -600,7 +691,7 @@ export function EmployeeDetail() {
                       <td>{g.description}</td>
                       <td>{g.periodLabel ?? '—'}</td>
                       <td>
-                        <StatusChip status={g.status} tone={tone(g.status)} />
+                        <StatusChip status={humanize(g.status)} tone={tone(g.status)} />
                       </td>
                     </tr>
                   ))}
@@ -629,6 +720,13 @@ export function EmployeeDetail() {
                 )}
               </Field>
             </dl>
+            {data.canEditEmploymentDetails && (
+              <p className="mt-2">
+                <Link className="text-2xs text-accent-soft hover:underline" to="/compliance/payroll">
+                  Set up salary structure →
+                </Link>
+              </p>
+            )}
             <div className="divider" />
             <p className="mb-2 section-title">What can happen next</p>
             <Transitions
@@ -677,12 +775,12 @@ export function EmployeeDetail() {
                   <div key={c.id} className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-sm">{c.skillName ?? '—'}</p>
-                      <p className="text-2xs text-ink-500">
-                        last evidenced {relative(c.lastEvidencedAt)}
-                        {c.decayedConfidence !== undefined && ` · confidence now ${c.decayedConfidence.toFixed(2)}`}
-                      </p>
+                      <p className="text-2xs text-ink-500">last evidenced {relative(c.lastEvidencedAt)}</p>
                     </div>
-                    <StatusChip status={c.tier} tone={c.state === 'active' ? (TIER_TONE[c.tier] ?? 'neutral') : 'bad'} />
+                    <StatusChip
+                      status={humanize(c.tier)}
+                      tone={c.state === 'active' ? (TIER_TONE[c.tier] ?? 'neutral') : 'bad'}
+                    />
                   </div>
                 ))}
               </div>
@@ -690,7 +788,7 @@ export function EmployeeDetail() {
           </Card>
 
           {data.onboarding && (
-            <Card title="Onboarding" actions={<StatusChip status={data.onboarding.status} tone={tone(data.onboarding.status)} />}>
+            <Card title="Onboarding" actions={<StatusChip status={humanize(data.onboarding.status)} tone={tone(data.onboarding.status)} />}>
               <Transitions
                 collection="onboardings"
                 id={data.onboarding.id}
@@ -702,7 +800,7 @@ export function EmployeeDetail() {
           )}
 
           {data.offboarding && (
-            <Card title="Offboarding" actions={<StatusChip status={data.offboarding.status} tone={tone(data.offboarding.status)} />}>
+            <Card title="Offboarding" actions={<StatusChip status={humanize(data.offboarding.status)} tone={tone(data.offboarding.status)} />}>
               <Transitions
                 collection="offboardings"
                 id={data.offboarding.id}
@@ -819,7 +917,7 @@ export function Leave() {
                     <td className="num">{r.days}</td>
                     <td className="max-w-[16rem] truncate">{r.reason ?? '—'}</td>
                     <td>
-                      <StatusChip status={r.status} tone={tone(r.status)} />
+                      <StatusChip status={humanize(r.status)} tone={tone(r.status)} />
                     </td>
                     <td>
                       <Transitions
@@ -968,7 +1066,7 @@ export function Attendance() {
                     <td className="num">{hours(r.workedMinutes)}</td>
                     <td className="num">{r.overtimeMinutes > 0 ? hours(r.overtimeMinutes) : '—'}</td>
                     <td>
-                      <StatusChip status={r.status} tone={tone(r.status)} />
+                      <StatusChip status={humanize(r.status)} tone={tone(r.status)} />
                       {r.missingPunch && <span className="ml-1 chip-neutral">missing punch</span>}
                     </td>
                     <td className="max-w-[20rem] truncate">{r.note ?? '—'}</td>
@@ -1115,7 +1213,7 @@ export function Payroll() {
                       <Money value={r.netTotal} />
                     </td>
                     <td>
-                      <StatusChip status={r.status} tone={tone(r.status)} />
+                      <StatusChip status={humanize(r.status)} tone={tone(r.status)} />
                     </td>
                     <td>
                       <Transitions
@@ -1172,7 +1270,7 @@ export function Payroll() {
                       <Money value={i.netAmount} />
                     </td>
                     <td>
-                      <StatusChip status={i.status} tone={tone(i.status)} />
+                      <StatusChip status={humanize(i.status)} tone={tone(i.status)} />
                     </td>
                   </tr>
                 ))}
@@ -1310,7 +1408,7 @@ export function Hiring() {
                     <td className="num">{r.targetStartDate ? date(r.targetStartDate) : '—'}</td>
                     <td className="num">{r.openApplications}</td>
                     <td>
-                      <StatusChip status={r.status} tone={tone(r.status)} />
+                      <StatusChip status={humanize(r.status)} tone={tone(r.status)} />
                     </td>
                     <td>
                       <Transitions
@@ -1366,11 +1464,11 @@ export function Hiring() {
                       </td>
                       <td>{a.requisition.position.job.title}</td>
                       <td>
-                        <StatusChip status={a.status} tone={tone(a.status)} />
+                        <StatusChip status={humanize(a.status)} tone={tone(a.status)} />
                         {a.rejectionReason && <div className="mt-0.5 text-2xs text-ink-500">{a.rejectionReason}</div>}
                       </td>
                       <td>
-                        <StatusChip status={a.funnelBucket} tone={a.funnelBucket === 'hired' ? 'good' : 'neutral'} />
+                        <StatusChip status={humanize(a.funnelBucket)} tone={a.funnelBucket === 'hired' ? 'good' : 'neutral'} />
                       </td>
                       <td>
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -1501,8 +1599,7 @@ export function Skills() {
         </div>
         {skill && (
           <p className="mt-3 text-2xs text-ink-500">
-            Confidence in {skill.name} halves every {skill.halfLifeMonths} months without fresh evidence. The decay is
-            worked out when the claim is read, never stored — otherwise it would be stale between nightly runs.
+            Confidence in {skill.name} halves every {skill.halfLifeMonths} months without fresh evidence.
           </p>
         )}
       </Card>
@@ -1531,7 +1628,7 @@ export function Skills() {
                 <tr key={`${c.partyId}-${c.skillName}`}>
                   <td className="font-semibold">{c.fullName}</td>
                   <td>
-                    <StatusChip status={c.tier} tone={TIER_TONE[c.tier] ?? 'neutral'} />
+                    <StatusChip status={humanize(c.tier)} tone={TIER_TONE[c.tier] ?? 'neutral'} />
                   </td>
                   <td>{relative(c.lastEvidencedAt)}</td>
                 </tr>

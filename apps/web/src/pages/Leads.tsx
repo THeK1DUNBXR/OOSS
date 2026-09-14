@@ -26,6 +26,7 @@ import {
   Tabs,
 } from '../components/ui.js';
 import { useSession } from '../lib/session.js';
+import { humanize, unroutedWord } from '../lib/words.js';
 
 type LeadTab = 'all' | 'unrouted' | 'mine';
 
@@ -120,8 +121,8 @@ export function Leads() {
                       <div>
                         <StatusChip status="unrouted" tone="warn" />
                         {l.unroutedReason && (
-                          <p className="mt-0.5 text-2xs text-ink-500" title="The two unrouted causes need different remedies.">
-                            {titleCase(l.unroutedReason)}
+                          <p className="mt-0.5 text-2xs text-ink-500" title={l.unroutedReason}>
+                            {unroutedWord(l.unroutedReason)}
                           </p>
                         )}
                       </div>
@@ -375,9 +376,9 @@ export function LeadDetail() {
                     </div>
 
                     {!c.passedHardFilters ? (
-                      <p className="mt-1 text-2xs text-band-strained">
-                        Failed the {c.hardFilterFailure} hard filter — never scored on the soft factors at all, because
-                        assigning outside territory or grant is an authorization error, not a preference.
+                      <p className="mt-1 text-2xs text-band-strained" title={c.hardFilterFailure}>
+                        Not eligible — {humanize(c.hardFilterFailure)}. Never scored on the rest, because assigning
+                        outside territory or grant is not allowed at all, not just a weaker preference.
                       </p>
                     ) : (
                       <div className="mt-2 space-y-1">

@@ -185,7 +185,7 @@ function LeaveTab() {
     <div className="flex flex-col gap-4">
       <Card
         title="Carry-forward and lapse (1 April)"
-        subtitle="Per leave type carrying a cap, every balance above it is trimmed and the excess lapsed. Idempotent — a second run in the same financial year does nothing (CMP-LAB-004)."
+        subtitle="Per leave type carrying a cap, every balance above it is trimmed and the excess lapsed. Idempotent — a second run in the same financial year does nothing."
       >
         {error && <ErrorBox error={error} />}
         <button className="btn-primary" onClick={() => runClose.mutate()} disabled={runClose.isPending}>
@@ -241,7 +241,7 @@ function HoursTab() {
     <div className="flex flex-col gap-4">
       <Card
         title="Weekly hours cap check"
-        subtitle="Sums last week's attendance per employment against the weekly cap; a breach raises an exception rather than posting overtime silently (CMP-LAB-002)."
+        subtitle="Sums last week's attendance per employment against the weekly cap; a breach raises an exception rather than posting overtime silently."
       >
         {error && <ErrorBox error={error} />}
         <button className="btn-primary" onClick={() => runCheck.mutate()} disabled={runCheck.isPending}>
@@ -521,6 +521,8 @@ function PoshTab() {
 interface DisciplinaryCase {
   id: string;
   employmentRelationshipId: string;
+  employmentFullName: string | null;
+  employmentRecordCode: string | null;
   status: string;
   showCauseIssuedAt: string;
   replyDueAt: string;
@@ -535,7 +537,7 @@ function DisciplinaryTab() {
   const cases = useQuery({ queryKey: ['disciplinary-cases'], queryFn: () => api.get<DisciplinaryCase[]>('/compliance/labour/disciplinary') });
 
   return (
-    <Card title="Disciplinary cases" subtitle="Show-cause, reply, inquiry, decision, close. Evidence at each step is case-scoped and reaches performance.ts." actions={<NewButton label="Open case" onClick={() => setOpen(true)} />}>
+    <Card title="Disciplinary cases" subtitle="Show-cause, reply, inquiry, decision, close. Evidence recorded at each step becomes part of that person's record." actions={<NewButton label="Open case" onClick={() => setOpen(true)} />}>
       {cases.isLoading && <Loading />}
       {cases.data && cases.data.length === 0 && <EmptyState message="No disciplinary cases open." />}
       {cases.data && cases.data.length > 0 && (
@@ -552,7 +554,9 @@ function DisciplinaryTab() {
           <tbody>
             {cases.data.map((c) => (
               <tr key={c.id}>
-                <td className="font-mono text-2xs">{c.employmentRelationshipId}</td>
+                <td className="text-2xs" title={c.employmentRecordCode ?? c.employmentRelationshipId}>
+                  {c.employmentFullName ?? c.employmentRelationshipId}
+                </td>
                 <td><StatusChip status={c.status} /></td>
                 <td>{dateTime(c.showCauseIssuedAt)}</td>
                 <td>{dateTime(c.replyDueAt)}</td>

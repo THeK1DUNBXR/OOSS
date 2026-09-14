@@ -24,6 +24,7 @@ import {
   validateCommittee,
   openDisciplinaryCase,
   advanceDisciplinaryCase,
+  listDisciplinaryCases,
   listLetters,
   registerEmployees,
   registerMusterRoll,
@@ -347,13 +348,17 @@ describe('POSH Internal Committee validation', () => {
 
 describe('Disciplinary process', () => {
   it('walks show-cause through decision, recording case-scoped evidence at each step', async () => {
-    const { employment } = await makeEmployee('disciplinary');
+    const { employment, person } = await makeEmployee('disciplinary');
 
     const kase = await asUser('operations@kaizen.co.in', () =>
       openDisciplinaryCase({ employmentRelationshipId: employment.id, note: 'Show-cause issued for fixture matter.' }),
     );
     expect(kase.status).toBe('show_cause');
     expect(kase.replyDueAt.getTime()).toBeGreaterThan(kase.showCauseIssuedAt.getTime());
+
+    // The list names the employee, not just the employment cuid.
+    const cases = await asUser('operations@kaizen.co.in', () => listDisciplinaryCases(employment.id));
+    expect(cases.find((c) => c.id === kase.id)?.employmentFullName).toBe(person.fullName);
 
     await asUser('operations@kaizen.co.in', async () => {
       await advanceDisciplinaryCase(kase.id, { event: 'reply', note: 'Employee replied.' });

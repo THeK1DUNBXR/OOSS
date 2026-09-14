@@ -94,8 +94,7 @@ export function PipelineAdmin() {
                   {p.stages.map((s: any) => (
                     <tr key={s.id}>
                       <td>
-                        <p className="text-xs text-ink-100">{s.label}</p>
-                        <p className="mono">{s.stageKey}</p>
+                        <p className="text-xs text-ink-100" title={s.stageKey}>{s.label}</p>
                       </td>
                       <td className="text-right tabular-nums text-xs text-accent-soft">{s.pipelinePosition}</td>
                       <td className="text-right tabular-nums text-xs">{s.defaultProbability}%</td>
@@ -179,9 +178,10 @@ export function TerritoryAdmin() {
                     {t.appliesToVerticals.join(', ') || 'all verticals'} · {t.appliesToAccountKind}
                   </p>
                   <p className="mt-0.5 text-2xs text-ink-600">
-                    capacity ceiling {t.capacityCeiling} · owner position{' '}
-                    <span className="font-mono">{t.ownerPositionId ?? 'unset'}</span>
-                    <span title="A job, not a person — so this still works when someone changes role or leaves."> ⓘ</span>
+                    capacity ceiling {t.capacityCeiling} ·{' '}
+                    <span title={t.ownerPositionId ? `${t.ownerPositionId} — a job, not a person, so this still works when someone changes role or leaves.` : undefined}>
+                      {t.ownerPositionId ? 'owner position assigned' : 'no owner position set'}
+                    </span>
                   </p>
                 </li>
               ))}
@@ -393,9 +393,6 @@ export function Governance() {
                     <span className="text-2xs font-medium text-ink-200">Version {v.version}</span>
                     <span className="text-2xs text-ink-500">effective {date(v.effectiveFrom)}</span>
                   </div>
-                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-2xs text-ink-400">
-                    {JSON.stringify(v.content, null, 2)}
-                  </pre>
                 </div>
               ))}
               <p className="mt-2 text-2xs italic text-ink-500">
@@ -494,7 +491,7 @@ export function Agents() {
         tabs={[
           { key: 'roster', label: 'Roster', count: agents.length },
           { key: 'actions', label: 'Actions', count: actions.length },
-          { key: 'touchpoints', label: 'Touchpoint catalogue' },
+          { key: 'touchpoints', label: 'Where AI can act' },
         ]}
         active={tab}
         onChange={setTab}
@@ -509,8 +506,7 @@ export function Agents() {
               {agents.map((a) => (
                 <Card
                   key={a.id}
-                  title={a.name}
-                  subtitle={<span className="mono">{a.agentKey}</span>}
+                  title={<span title={a.agentKey}>{a.name}</span>}
                   actions={
                     <>
                       <StatusChip status={a.tier.replace(/_/g, ' ').toLowerCase()} tone={TIER_TONE[a.tier] ?? 'neutral'} />
@@ -585,13 +581,12 @@ export function Agents() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-xs font-medium text-ink-100">{a.agentName}</span>
+                        <span className="text-xs font-medium text-ink-100" title={a.tool}>{a.agentName}</span>
                         <StatusChip status={a.tier.replace(/_/g, ' ').toLowerCase()} tone={TIER_TONE[a.tier] ?? 'neutral'} />
                         <StatusChip
                           status={a.state}
                           tone={a.state === 'executed' ? 'good' : a.state === 'blocked' ? 'bad' : 'neutral'}
                         />
-                        <span className="mono">{a.tool}</span>
                       </div>
                       <p className="mt-1 text-2xs text-ink-400">{a.rationale}</p>
                       {a.blockedReason && <p className="mt-0.5 text-2xs text-band-critical">{a.blockedReason}</p>}
@@ -618,23 +613,19 @@ export function Agents() {
           <table className="table">
             <thead>
               <tr>
-                <th>Code</th>
                 <th>Surface</th>
                 <th>Tier</th>
-                <th>Tool</th>
                 <th>Boundary</th>
               </tr>
             </thead>
             <tbody>
               {platform.aiTouchpoints.map((t: any) => (
                 <tr key={t.code}>
-                  <td className="mono">{t.code}</td>
                   <td>
-                    <p className="text-xs text-ink-100">{t.surface}</p>
+                    <p className="text-xs text-ink-100" title={`${t.code} · calls ${t.tool}`}>{t.surface}</p>
                     <p className="text-2xs text-ink-500">{t.description}</p>
                   </td>
                   <td><StatusChip status={t.tier.replace(/_/g, ' ').toLowerCase()} tone={TIER_TONE[t.tier] ?? 'neutral'} /></td>
-                  <td className="mono">{t.tool}</td>
                   <td className="max-w-md text-2xs text-ink-400">{t.boundary}</td>
                 </tr>
               ))}
@@ -650,12 +641,17 @@ export function Agents() {
 // Event fabric
 // ---------------------------------------------------------------------------
 
-export function Events() {
-  const [filter, setFilter] = useState('');
+/** Event names are recorded as a dotted internal code, e.g. "kz.crm.opportunity.won";
+ *  this only affects display — the raw name stays available on hover. */
+function humanEventName(name: string): string {
+  const words = name.split('.').filter((w) => w !== 'kz').join(' ').replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
+export function Events() {
   const { data = [], isLoading, error } = useQuery({
-    queryKey: ['events', filter],
-    queryFn: () => api.get<EventView[]>(`/admin/events?limit=120${filter ? `&eventName=${filter}` : ''}`),
+    queryKey: ['events'],
+    queryFn: () => api.get<EventView[]>('/admin/events?limit=120'),
     refetchInterval: 30_000,
   });
 
@@ -680,10 +676,10 @@ export function Events() {
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric
-          label="Chain integrity"
-          value={chain?.valid ? 'Valid' : 'Broken'}
+          label="Record integrity"
+          value={chain?.valid ? 'Intact' : 'Broken'}
           tone={chain?.valid ? 'good' : 'bad'}
-          sub={chain ? `${chain.checked} links verified${chain.brokenAt ? ` · broken at ${chain.brokenAt}` : ''}` : ''}
+          sub={chain ? `${chain.checked} events checked, none tampered with` : ''}
           drillTo="/admin/events"
         />
         <Metric label="Events shown" value={data.length} sub="Newest first" drillTo="/admin/events" />
@@ -691,17 +687,8 @@ export function Events() {
           label="Dead letters"
           value={deadLetters.length}
           tone={deadLetters.length > 0 ? 'warn' : 'good'}
-          sub="A handler's third failure writes here rather than only logging"
+          sub="Something that failed three times in a row rather than only logging"
           drillTo="/admin/events"
-        />
-      </div>
-
-      <div className="mb-3">
-        <input
-          className="input max-w-sm"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter by canonical event name, e.g. kz.crm.opportunity.won"
         />
       </div>
 
@@ -717,15 +704,13 @@ export function Events() {
                 <th>Actor</th>
                 <th>Recorded</th>
                 <th>Confidentiality</th>
-                <th title="Each entry is linked to the one before it. A break raises an alert.">Chain</th>
               </tr>
             </thead>
             <tbody>
               {data.map((e) => (
                 <tr key={e.id}>
                   <td>
-                    <p className="mono text-ink-200">{e.eventName}</p>
-                    {e.causationId && <p className="text-2xs text-ink-600">caused by {e.causationId.slice(0, 10)}…</p>}
+                    <p className="text-ink-200" title={e.eventName}>{humanEventName(e.eventName)}</p>
                   </td>
                   <td>
                     <p className="text-2xs text-ink-300">{e.subjectType}</p>
@@ -737,13 +722,6 @@ export function Events() {
                   </td>
                   <td className="text-2xs text-ink-500">{dateTime(e.recordedAt)}</td>
                   <td><SensitivityChip level={e.confidentiality} /></td>
-                  <td>
-                    {e.chainValid ? (
-                      <span className="text-band-strong" title={e.hash.slice(0, 16)}>✓</span>
-                    ) : (
-                      <span className="text-band-critical" title="This entry does not link back to the one before it">✕</span>
-                    )}
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -767,17 +745,9 @@ export function Jobs() {
     queryFn: () => api.get<any>('/admin/jobs'),
   });
 
-  const { data: firingLog = [] } = useQuery({
-    queryKey: ['firing-log'],
-    queryFn: () => api.get<any[]>('/admin/jobs/firing-log?limit=40'),
-  });
-
   const run = useMutation({
     mutationFn: (jobNames?: string[]) => api.post('/admin/jobs/run', { jobNames, dryRun }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['jobs'] });
-      qc.invalidateQueries({ queryKey: ['firing-log'] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs'] }),
   });
 
   if (error) return <ErrorBox error={error} />;
@@ -808,8 +778,7 @@ export function Jobs() {
               <thead>
                 <tr>
                   <th>Job</th>
-                  <th>Class</th>
-                  <th>Cron</th>
+                  <th>Kind</th>
                   <th />
                 </tr>
               </thead>
@@ -817,11 +786,9 @@ export function Jobs() {
                 {data?.registered.map((j: any) => (
                   <tr key={j.name}>
                     <td>
-                      <p className="text-xs text-ink-100">{j.label}</p>
-                      <p className="mono">{j.name}</p>
+                      <p className="text-xs text-ink-100" title={`${j.name} · runs on schedule ${j.cron}`}>{j.label}</p>
                     </td>
                     <td className="text-2xs text-ink-400">{titleCase(j.automationClass)}</td>
-                    <td className="mono">{j.cron}</td>
                     <td>
                       <button className="btn-ghost" onClick={() => run.mutate([j.name])} disabled={run.isPending}>
                         Run
@@ -850,29 +817,6 @@ export function Jobs() {
                         {r.errors?.length > 0 && <p className="text-2xs text-band-critical">{r.errors[0]}</p>}
                       </div>
                       <StatusChip status={r.status} tone={r.status === 'completed' ? 'good' : r.status === 'failed' ? 'bad' : 'neutral'} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-
-            <Card
-              title="Idempotency-key log"
-              subtitle="Inspectable to answer: did this firing already happen?"
-              bodyClassName="p-0 max-h-64 overflow-y-auto"
-            >
-              {firingLog.length === 0 ? (
-                <EmptyState message="This has not run yet." />
-              ) : (
-                <ul className="divide-y divide-ink-850">
-                  {firingLog.map((f) => (
-                    <li key={f.id} className="px-4 py-2 text-2xs">
-                      <p className="text-ink-300">
-                        {f.triggerFingerprint} <span className="text-ink-600">rung {f.ladderRung}</span>
-                      </p>
-                      <p className="text-ink-600">
-                        {f.subjectRef} · {relative(f.firedAt)} · {f.outcome}
-                      </p>
                     </li>
                   ))}
                 </ul>
@@ -924,7 +868,7 @@ export function Audit() {
         <Metric
           label="Governed entities"
           value={platform?.governedEntities?.length ?? 0}
-          sub="A per-domain-extensible registry, not a flat CRM-only array"
+          sub="Record types this audit trail covers"
           drillTo="/admin/platform"
         />
       </div>
@@ -965,9 +909,8 @@ export function Audit() {
                       tone={r.action === 'merge' ? 'warn' : r.action === 'read' ? 'accent' : 'neutral'}
                     />
                   </td>
-                  <td className="text-2xs text-ink-300">
+                  <td className="text-2xs text-ink-300" title={r.subjectId}>
                     {r.subjectType}
-                    <p className="text-ink-600">{r.subjectId.slice(0, 12)}…</p>
                   </td>
                   <td className="text-2xs text-ink-400">
                     {r.actorLabel ?? r.actorType}
@@ -978,9 +921,14 @@ export function Audit() {
                       <p className="text-2xs text-band-watch">
                         read: {r.fieldsRead.join(', ')} <span className="text-ink-600">(names only, never values)</span>
                       </p>
-                    ) : (
-                      <pre className="truncate text-2xs text-ink-500">{JSON.stringify(r.diff ?? r.meta ?? {})}</pre>
-                    )}
+                    ) : (() => {
+                      const changed = Object.keys(r.diff ?? r.meta ?? {});
+                      return changed.length > 0 ? (
+                        <p className="text-2xs text-ink-500" title={JSON.stringify(r.diff ?? r.meta)}>
+                          {changed.length} field{changed.length === 1 ? '' : 's'} changed
+                        </p>
+                      ) : null;
+                    })()}
                   </td>
                 </tr>
               ))}
@@ -997,12 +945,7 @@ export function Audit() {
 // ---------------------------------------------------------------------------
 
 export function PlatformModel() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['platform'],
-    queryFn: () => api.get<any>('/admin/platform'),
-  });
-
-  const { data: thresholds = [] } = useQuery({
+  const { data: thresholds = [], isLoading } = useQuery({
     queryKey: ['thresholds'],
     queryFn: () => api.get<any[]>('/admin/thresholds'),
   });
@@ -1012,127 +955,53 @@ export function PlatformModel() {
     queryFn: () => api.get<any[]>('/admin/sensitivity-registrations'),
   });
 
-  if (isLoading || !data) return <Loading />;
+  if (isLoading) return <Loading />;
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title="How This Is Built"
-        subtitle="How the system is put together, read from the running system."
+        title="Settings & Sensitivity"
+        subtitle="The tunable numbers the platform runs on, and how sensitive each kind of record is treated."
       />
 
-      <Card title="The ten planes" subtitle="Each capability belongs to one plane.">
-        <div className="grid gap-2 md:grid-cols-2">
-          {data.planes.map((p: any) => (
-            <div key={p.code} className="rounded border border-ink-800 bg-ink-950 p-3">
-              <div className="flex items-baseline gap-2">
-                <span className="mono text-accent-soft">{p.code}</span>
-                <span className="text-xs font-medium text-ink-100">{p.name}</span>
+      <Card title="Thresholds" subtitle="The numeric limits and cut-offs the platform checks against.">
+        <ul className="divide-y divide-ink-850">
+          {thresholds.map((t) => (
+            <li key={t.id} className="py-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-ink-200" title={t.thresholdKey}>{t.description}</span>
+                <span className="shrink-0 text-xs tabular-nums text-ink-100">
+                  {t.value.toLocaleString('en-IN')} <span className="text-2xs text-ink-500">{t.unit}</span>
+                </span>
               </div>
-              <p className="mt-1 text-2xs text-ink-400">{p.question}</p>
-              <p className="mt-0.5 text-2xs text-ink-600">owns: {p.owns}</p>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </Card>
 
-      <Card title="Module register" subtitle="Each boundary is written as a prohibition, not just a diagram.">
-        <div className="space-y-3">
-          {data.moduleRegister.map((m: any) => (
-            <div key={m.code} className="rounded border border-ink-800 bg-ink-950 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="mono text-accent-soft">{m.code}</span>
-                <span className="text-xs font-medium text-ink-100">{m.name}</span>
-                <span className="chip border-ink-700 text-ink-400">{m.boundedContext}</span>
-                <span className="chip border-ink-700 text-ink-400">{m.plane}</span>
-              </div>
-              <p className="mt-1.5 text-2xs text-ink-400">Owns: {m.owns.join(', ')}</p>
-              <div className="mt-2">
-                <p className="text-2xs uppercase tracking-wide text-band-critical">Never does</p>
-                <ul className="mt-0.5 space-y-0.5">
-                  {m.neverDoes.map((n: string, i: number) => (
-                    <li key={i} className="text-2xs text-ink-400">· {n}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card title="Event crosswalk" subtitle="Every legacy name mapped one-to-one to its canonical form." bodyClassName="p-0 max-h-96 overflow-y-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Legacy</th>
-                <th>Canonical</th>
+      <Card
+        title="Sensitivity by record type"
+        subtitle="Anything not listed here is treated as confidential by default."
+        bodyClassName="p-0 max-h-96 overflow-y-auto"
+      >
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Where it appears</th>
+              <th>Record type</th>
+              <th>Sensitivity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {registrations.map((r) => (
+              <tr key={r.id}>
+                <td className="text-2xs text-ink-400" title={r.contextCode}>{titleCase(r.contextCode)}</td>
+                <td className="text-2xs text-ink-300">{titleCase(r.entityType)}</td>
+                <td><SensitivityChip level={r.sensitivityClass} /></td>
               </tr>
-            </thead>
-            <tbody>
-              {data.eventCrosswalk.map((c: any) => (
-                <tr key={c.legacy}>
-                  <td className="mono">{c.legacy}</td>
-                  <td className="mono text-accent-soft">{c.canonical}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-
-        <div className="space-y-5">
-          <Card title="Thresholds" subtitle="Every threshold is a row you can change." bodyClassName="p-0 max-h-64 overflow-y-auto">
-            <ul className="divide-y divide-ink-850">
-              {thresholds.map((t) => (
-                <li key={t.id} className="px-4 py-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="mono">{t.thresholdKey}</span>
-                    <span className="text-xs tabular-nums text-ink-100">
-                      {t.value.toLocaleString('en-IN')} <span className="text-2xs text-ink-500">{t.unit}</span>
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-2xs text-ink-500">{t.description}</p>
-                </li>
-              ))}
-            </ul>
-          </Card>
-
-          <Card
-            title="Sensitivity registrations"
-            subtitle="Anything unregistered is treated as confidential."
-            bodyClassName="p-0 max-h-64 overflow-y-auto"
-          >
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Context</th>
-                  <th>Entity type</th>
-                  <th>Class</th>
-                </tr>
-              </thead>
-              <tbody>
-                {registrations.map((r) => (
-                  <tr key={r.id}>
-                    <td className="mono">{r.contextCode}</td>
-                    <td className="text-2xs text-ink-300">{r.entityType}</td>
-                    <td><SensitivityChip level={r.sensitivityClass} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </div>
-      </div>
-
-      <Card title="The five axes" subtitle="All five must pass, on every request.">
-        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-          {data.axes.map((a: any) => (
-            <div key={a.code} className="rounded border border-ink-800 bg-ink-950 p-3">
-              <p className="mono text-accent-soft">{a.code}</p>
-              <p className="mt-1 text-2xs text-ink-400">{a.question}</p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </tbody>
+        </table>
       </Card>
     </div>
   );

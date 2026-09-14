@@ -25,6 +25,7 @@ import { transitionPayrollRun } from '../../domains/payroll.js';
 import {
   proposeSalaryStructure,
   approveSalaryStructure,
+  listSalaryStructures,
   computeInstruction,
   listPayslips,
   exportEcr,
@@ -170,7 +171,7 @@ describe('statutory arithmetic (packages/shared/src/compliance/payroll.ts)', () 
 
 describe('payroll runs against the dated tables (real database)', () => {
   it('CMP-PAY-001 / CMP-PAY-002 / CMP-PAY-003: a full run — compute, self-approval refused, a different approver succeeds, a payslip is issued and final', async () => {
-    const { employment: emp } = await makeEmployee('run-a');
+    const { employment: emp, person } = await makeEmployee('run-a');
     const payPeriod = '2031-01';
 
     // Proposed by the chairman — who holds every grant, including `approve` —
@@ -192,6 +193,10 @@ describe('payroll runs against the dated tables (real database)', () => {
     expect(selfApprove.message).toMatch(/Self-Dealing/i);
 
     await asUser('finance@kaizen.co.in', () => approveSalaryStructure(proposed.id));
+
+    // The list carries the employee's name, not just the employment cuid.
+    const structures = await asUser('finance@kaizen.co.in', () => listSalaryStructures(emp.id));
+    expect(structures.find((s) => s.id === proposed.id)?.employmentFullName).toBe(person.fullName);
 
     // Opened by Operations (holds `payroll:create`), computed by Finance (holds
     // `payroll:edit` and, uniquely, `payroll:approve`) — so Finance ends up the
@@ -218,6 +223,10 @@ describe('payroll runs against the dated tables (real database)', () => {
     );
     expect(payslip.number).toMatch(/\/P\//);
     const snapshotBefore = JSON.stringify(payslip.snapshot);
+
+    // Listing payslips names the employee too.
+    const payslipList = await asUser('chairman@kaizen.co.in', () => listPayslips({ employmentRelationshipId: emp.id }));
+    expect(payslipList.find((p) => p.id === payslip.id)?.employmentFullName).toBe(person.fullName);
 
     // The only lawful correction is a new payslip referencing the old — never
     // an edit. Simulated here as the domain would do it: a second row whose

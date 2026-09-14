@@ -38,8 +38,12 @@ and the answer to that is a credit note.
 
 ### The receipt
 
-Every instalment against an issued invoice produces one. Its own number, its own
-time, the invoice it is against, the amount, the mode and the balance it left.
+Every payment against an issued invoice produces one — **including a full
+payment taken the moment the invoice is raised**. That is not a special case
+that skips the receipt: it goes through the same `collectInvoicePayment`
+either way, at issue or on any later instalment, and gets the same document.
+Its own number, its own time, the invoice it is against, the amount, the mode
+and the balance it left.
 
 Those figures are **snapshotted onto the receipt row** rather than recomputed at
 print time. A receipt saying "₹20,000 of ₹70,800, ₹50,800 still owed" has to keep
@@ -49,19 +53,42 @@ is a document and not a view of the current position.
 `RECEIPT` was always the allocation join, and always made part payment
 representable in the ledger. What was missing was that it is also a document.
 
+An invoice already settled refuses a further payment outright — there is
+nothing left to receipt, and taking money "against" a cleared invoice would be
+an advance wearing the wrong document.
+
 ### The final invoice
 
-Raised once the instalments are done. Neither of the other two can answer the
-question a customer asks at the end — *what did I owe, what have I paid, and
-against which receipts* — because the invoice predates the payments and each
-receipt only knows about itself.
+Raised the instant a receipt brings an invoice's outstanding balance to
+zero — automatically, in the same request as that receipt, whether that is the
+first payment (a full payment at issue) or the last of several instalments.
+Nobody has to remember a second step: a customer who pays in full at the
+counter leaves with the tax invoice, the receipt, and the final invoice
+together, in one act.
 
-So this names them all: the total payable, every instalment with its receipt
-number and date, what has been received, and what is left. It restates what was
-billed so it stands on its own without the invoice beside it.
+It is also callable on demand before that point, because a customer who has
+paid two of three instalments can legitimately ask for a statement of where
+they stand — it prints the balance rather than refusing to exist until the
+last rupee arrives.
 
-Raising a second one after a further instalment **supersedes** the first rather
-than replacing it. Both were true when they were handed over.
+Neither the tax invoice nor any single receipt can answer the question a
+customer asks at the end — *what did I owe, what have I paid, and against
+which receipts* — because the invoice predates the payments and each receipt
+only knows about itself. So this names them all: the total payable, every
+instalment with its receipt number, date, amount and mode, what has been
+received, and what is left. It restates what was billed so it stands on its
+own without the invoice beside it, and the tax invoice document itself lists
+every receipt issued against it and the final invoice that closed it out, so
+either document points at the others.
+
+Raising a second one after a further instalment **supersedes** the first
+rather than replacing it — both were true when they were handed over. Raising
+it again with nothing new to consolidate since the last one is a no-op: it
+hands back the statement that already stands rather than starting a pointless
+supersession chain. Once an invoice is settled, no further receipt is
+possible against it (above), which is what makes the final invoice raised at
+settlement the last of the three — a credit note against an already-final
+invoice is a different, later document, not a fourth instalment of this one.
 
 ---
 

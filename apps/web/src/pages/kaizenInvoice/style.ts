@@ -90,6 +90,7 @@ export const KI_APP_CSS = `
 @media (max-width:980px){.ki-app .ki-layout{grid-template-columns:1fr;}}
 
 .ki-app .ki-panel{
+  position:relative;
   background:var(--ki-panel);
   border:1.5px solid var(--ki-black);
   border-radius:14px;
@@ -222,6 +223,13 @@ export const KI_APP_CSS = `
 
 .ki-app .ki-empty-note{padding:40px;text-align:center;color:var(--ki-muted);font-size:13px;}
 
+.ki-app .ki-watermark,#ki-print-root .ki-watermark{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:'Archivo Black',sans-serif;font-weight:400;letter-spacing:0.12em;text-transform:uppercase;
+  color:rgba(13,13,18,0.08);pointer-events:none;
+}
+.ki-app .ki-watermark{font-size:64px;}
+
 @media (max-width:700px){
   .ki-app .ki-ledger-head{flex-wrap:wrap;padding:16px 16px 12px;}
   .ki-app .ki-ledger-head .ki-meta{margin-left:0;text-align:left;}
@@ -294,7 +302,8 @@ export const KI_PRINT_CSS = `
     border-top:1px dashed #888;border-bottom:1px dashed #888;
     font-size:7px;color:#888;letter-spacing:0.08em;
   }
-  #ki-print-root .ki-print-copy{width:100%;border:1.5px solid var(--ki-black);border-radius:8px;padding:4px 7px 3px;box-sizing:border-box;}
+  #ki-print-root .ki-print-copy{position:relative;width:100%;border:1.5px solid var(--ki-black);border-radius:8px;padding:4px 7px 3px;box-sizing:border-box;}
+  #ki-print-root .ki-watermark{font-size:36px;}
 
   #ki-print-root .ki-ledger-head{display:flex;align-items:center;gap:8px;padding:4px 6px;border-bottom:2px solid var(--ki-black);}
   #ki-print-root .ki-ledger-head img{height:24px;}

@@ -140,6 +140,7 @@ function ConsentsTab() {
             <div className="flex items-center justify-between text-xs">
               <div>
                 <span className="font-medium text-ink-100">{c.purposeCode}</span>
+                <span className="ml-2 text-2xs text-ink-500" title={c.personId}>{c.personFullName ?? c.personId}</span>
                 {c.guardianOfPersonId && <span className="ml-2 text-2xs text-ink-500">guardian consent</span>}
               </div>
               <StatusChip status={c.status} tone={statusTone(c.status)} />
@@ -202,6 +203,9 @@ function RequestsTab() {
               <RecordCode code={r.recordCode} />
               <StatusChip status={r.status} tone={statusTone(r.status)} />
             </div>
+            <Field label="For">
+              <span title={r.personId}>{r.personFullName ?? r.personId}</span>
+            </Field>
             <Field label="Kind">{r.kind}</Field>
             <Field label="Due">{date(r.dueAt)}</Field>
             {r.refusalReason && <Field label="Refused because">{r.refusalReason}</Field>}
@@ -414,8 +418,8 @@ function EncryptionTab() {
       </p>
       {!s?.keyConfigured && (
         <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-xs text-band-critical">
-          FIELD_ENCRYPTION_KEY is not set. Values are encrypted under a well-known development key — set it before
-          this reaches production.
+          Real encryption is not set up on this server yet — values are protected with a placeholder key. Have
+          whoever manages the deployment fix this before it holds real staff data.
         </p>
       )}
       <div className="mb-3 flex gap-6 text-xs">
@@ -423,7 +427,7 @@ function EncryptionTab() {
         <span>Plaintext: <strong className="text-band-critical">{s?.plaintext ?? 0}</strong></span>
       </div>
       <button className="btn-primary" onClick={() => backfill.mutate()} disabled={backfill.isPending}>
-        {backfill.isPending ? 'Encrypting…' : 'Run backfill'}
+        {backfill.isPending ? 'Encrypting…' : 'Encrypt existing values'}
       </button>
       {s?.lastRun && (
         <p className="mt-3 text-2xs text-ink-500">

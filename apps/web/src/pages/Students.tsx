@@ -24,6 +24,7 @@ import {
   type DeliveryLocation,
 } from '@kaizen/shared';
 import { api, date } from '../lib/api.js';
+import { humanize } from '../lib/words.js';
 import {
   Card,
   EmptyState,
@@ -182,7 +183,7 @@ export function Students() {
             >
               <div className="flex items-start justify-between gap-2">
                 <RecordCode code={s.recordCode} />
-                <StatusChip status={STATUS_LABEL[s.status] ?? s.status} tone={STATUS_TONE[s.status] ?? 'neutral'} />
+                <StatusChip status={STATUS_LABEL[s.status] ?? humanize(s.status)} tone={STATUS_TONE[s.status] ?? 'neutral'} />
               </div>
               <p className="mt-1.5 text-sm font-medium text-ink-100">{s.fullName}</p>
               {s.registrationNumber && <p className="mono truncate text-2xs">{s.registrationNumber}</p>}
@@ -257,7 +258,7 @@ export function StudentDetail() {
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="chip border-accent/40 text-accent-soft">Student</span>
-        <StatusChip status={STATUS_LABEL[data.status] ?? data.status} tone={STATUS_TONE[data.status] ?? 'neutral'} />
+        <StatusChip status={STATUS_LABEL[data.status] ?? humanize(data.status)} tone={STATUS_TONE[data.status] ?? 'neutral'} />
         {!data.billable && <span className="chip border-ink-700 text-ink-400">{payer(data)}</span>}
       </div>
 
@@ -295,7 +296,7 @@ export function StudentDetail() {
                         {e.enrolledAt && ` · joined ${date(e.enrolledAt)}`}
                       </p>
                     </div>
-                    <StatusChip status={e.status} tone={e.status === 'completed' ? 'good' : 'neutral'} />
+                    <StatusChip status={humanize(e.status)} tone={e.status === 'completed' ? 'good' : 'neutral'} />
                   </li>
                 ))}
               </ul>

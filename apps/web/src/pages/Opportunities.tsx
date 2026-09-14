@@ -30,6 +30,7 @@ import {
   Tabs,
 } from '../components/ui.js';
 import { useSession } from '../lib/session.js';
+import { humanize, withheldWord } from '../lib/words.js';
 
 const FORECAST_TONE: Record<string, 'neutral' | 'accent' | 'good' | 'warn' | 'bad'> = {
   pipeline: 'neutral',
@@ -113,7 +114,7 @@ export function Opportunities() {
                     </p>
                   </td>
                   <td>
-                    <StatusChip status={o.forecastCategory} tone={FORECAST_TONE[o.forecastCategory] ?? 'neutral'} />
+                    <StatusChip status={humanize(o.forecastCategory)} tone={FORECAST_TONE[o.forecastCategory] ?? 'neutral'} />
                   </td>
                   <td className="text-right tabular-nums text-xs">{money(o.expectedValue, o.currency)}</td>
                   <td className="text-right tabular-nums text-xs text-ink-400">{money(o.weightedValue, o.currency)}</td>
@@ -269,7 +270,8 @@ export function OpportunityDetail() {
             </div>
             {currentStage?.requiredFields?.length > 0 && (
               <p className="mt-3 text-2xs text-ink-500">
-                Fields required to enter this stage: {currentStage.requiredFields.join(', ')}
+                Fields required to enter this stage:{' '}
+                {currentStage.requiredFields.map((f: string) => humanize(f)).join(', ')}
               </p>
             )}
           </Card>
@@ -291,7 +293,9 @@ export function OpportunityDetail() {
                       <p className="mt-0.5 text-2xs text-ink-400">{t.notes}</p>
                     ) : (
                       t.withheld?.some((w: any) => w.path === 'notes') && (
-                        <p className="mt-0.5 text-2xs italic text-ink-600">notes withheld · classification ceiling</p>
+                        <p className="mt-0.5 text-2xs italic text-ink-600">
+                          notes withheld · {withheldWord('classification_ceiling')}
+                        </p>
                       )
                     )}
                   </li>
@@ -309,7 +313,7 @@ export function OpportunityDetail() {
               <Field label="Vertical">{titleCase(o.vertical)}</Field>
               <Field label="Strategic value">{o.strategicValue ? titleCase(o.strategicValue) : '—'}</Field>
               <Field label="Expected close">{date(o.expectedCloseDate)}</Field>
-              <Field label="Outcome">{o.outcome ? <StatusChip status={o.outcome} tone={o.outcome === 'won' ? 'good' : 'bad'} /> : '—'}</Field>
+              <Field label="Outcome">{o.outcome ? <StatusChip status={humanize(o.outcome)} tone={o.outcome === 'won' ? 'good' : 'bad'} /> : '—'}</Field>
               {o.legacyStage && <Field label="Legacy stage">{o.legacyStage}</Field>}
             </dl>
           </Card>
@@ -320,7 +324,7 @@ export function OpportunityDetail() {
                 {data.proposal ? (
                   <span>
                     <span className="mono">{data.proposal.recordCode}</span>{' '}
-                    <StatusChip status={data.proposal.response} tone={data.proposal.response === 'accepted' ? 'good' : 'neutral'} />
+                    <StatusChip status={humanize(data.proposal.response)} tone={data.proposal.response === 'accepted' ? 'good' : 'neutral'} />
                   </span>
                 ) : (
                   <span className="text-ink-500">none — the offered stage is blocked until one exists</span>
@@ -330,7 +334,7 @@ export function OpportunityDetail() {
                 {data.quote ? (
                   <span>
                     <span className="mono">{data.quote.recordCode}</span>{' '}
-                    <StatusChip status={data.quote.status} tone={data.quote.status === 'blocked' ? 'bad' : 'neutral'} />
+                    <StatusChip status={humanize(data.quote.status)} tone={data.quote.status === 'blocked' ? 'bad' : 'neutral'} />
                   </span>
                 ) : (
                   '—'
@@ -361,7 +365,9 @@ export function OpportunityDetail() {
             <Card title="Receivables" subtitle="What is owed on this deal.">
               <dl>
                 <Field label="Outstanding">{money(data.receivables.amountOutstanding ? Number(data.receivables.amountOutstanding) : null)}</Field>
-                <Field label="Dunning stage">{data.receivables.dunningStage ?? 'none'}</Field>
+                <Field label="Dunning stage">
+                  {data.receivables.dunningStage ? humanize(data.receivables.dunningStage) : 'None'}
+                </Field>
               </dl>
             </Card>
           )}
@@ -371,7 +377,7 @@ export function OpportunityDetail() {
               <ul className="space-y-1">
                 {data.withheld.map((w: any, i: number) => (
                   <li key={i} className="text-2xs text-ink-500">
-                    <span className="font-mono">{w.path}</span> — {w.reason.replace(/_/g, ' ')}
+                    <span className="font-mono">{w.path}</span> — {withheldWord(w.reason)}
                   </li>
                 ))}
               </ul>

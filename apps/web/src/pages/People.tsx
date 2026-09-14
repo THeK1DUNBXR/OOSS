@@ -30,6 +30,7 @@ import {
 import { NewButton } from '../components/forms.js';
 import { NewContact, NewInteraction } from '../components/createForms.js';
 import { useSession } from '../lib/session.js';
+import { humanize, withheldWord } from '../lib/words.js';
 
 /**
  * What a person is to us, as one word.
@@ -193,7 +194,7 @@ export function People() {
                       </td>
                       <td>
                         <StatusChip
-                          status={p.dedupeStatus}
+                          status={humanize(p.dedupeStatus)}
                           tone={p.dedupeStatus === 'active' ? 'good' : p.dedupeStatus === 'merged' ? 'neutral' : 'warn'}
                         />
                       </td>
@@ -345,7 +346,7 @@ export function PersonDetail() {
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <StatusChip status={a.status} tone={a.status === 'active' ? 'good' : 'neutral'} />
+                      <StatusChip status={humanize(a.status)} tone={a.status === 'active' ? 'good' : 'neutral'} />
                       {a.statutoryRetentionFloor && (
                         <span className="chip border-band-watch/40 text-band-watch" title="A dedup match against this person never auto-merges.">
                           retention floor
@@ -366,7 +367,7 @@ export function PersonDetail() {
                 {data.timeline.map((t: InteractionView) => (
                   <li key={t.id} className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="chip border-ink-700 text-ink-400">{t.interactionType}</span>
+                      <span className="chip border-ink-700 text-ink-400">{humanize(t.interactionType)}</span>
                       <SensitivityChip level={t.sensitivityClass} />
                       <span className="text-2xs text-ink-500">{relative(t.occurredAt)}</span>
                     </div>
@@ -385,7 +386,7 @@ export function PersonDetail() {
               <Field label="Phone">{p.primaryPhone ?? '—'}</Field>
               <Field label="Email">{p.primaryEmail ?? '—'}</Field>
               <Field label="Dedupe status">
-                <StatusChip status={p.dedupeStatus} tone={p.dedupeStatus === 'active' ? 'good' : 'neutral'} />
+                <StatusChip status={humanize(p.dedupeStatus)} tone={p.dedupeStatus === 'active' ? 'good' : 'neutral'} />
               </Field>
               {p.mergedIntoId && (
                 <Field label="Merged into">
@@ -456,8 +457,8 @@ export function Interactions() {
               <li key={t.id} className="px-4 py-3 hover:bg-ink-850/40">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="mono">{t.recordCode}</span>
-                  <span className="chip border-ink-700 text-ink-400">{t.interactionType}</span>
-                  <span className="chip border-ink-800 text-ink-500">{t.direction}</span>
+                  <span className="chip border-ink-700 text-ink-400">{humanize(t.interactionType)}</span>
+                  <span className="chip border-ink-800 text-ink-500">{humanize(t.direction)}</span>
                   <SensitivityChip level={t.sensitivityClass} />
                   <span className="ml-auto text-2xs text-ink-500">{relative(t.occurredAt)}</span>
                 </div>
@@ -467,15 +468,18 @@ export function Interactions() {
                 ) : (
                   t.withheld.length > 0 && (
                     <p className="mt-0.5 text-2xs italic text-ink-600">
-                      {t.withheld.map((w) => `${w.path} withheld · ${w.reason.replace(/_/g, ' ')}`).join(', ')}
+                      {t.withheld.map((w) => `${w.path} withheld · ${withheldWord(w.reason)}`).join(', ')}
                     </p>
                   )
                 )}
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {t.relatedReferences.map((r, i) => (
-                    <span key={i} className="chip border-ink-800 text-ink-500">
-                      {r.contextCode}.{r.entityType}
-                      {r.displayLabel && ` · ${r.displayLabel}`}
+                    <span
+                      key={i}
+                      className="chip border-ink-800 text-ink-500"
+                      title={`${r.contextCode}.${r.entityType}`}
+                    >
+                      {r.displayLabel ?? `${r.contextCode}.${r.entityType}`}
                     </span>
                   ))}
                 </div>

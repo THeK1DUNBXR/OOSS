@@ -26,6 +26,11 @@ import { useSession } from '../../lib/session.js';
 
 type Tab = 'runs' | 'structures' | 'rates' | 'payslips' | 'exports' | 'settlements';
 
+/** Payroll run statuses are recorded PascalCase ("UnderReview"); this only affects display. */
+function splitState(state: string): string {
+  return state.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+}
+
 function thisMonth(): string {
   const d = new Date();
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -105,13 +110,13 @@ function RunsTab() {
                 onClick={() => setSelected(r.id)}
               >
                 <span>{r.payPeriod}</span>
-                <StatusChip status={r.status} />
+                <StatusChip status={splitState(r.status)} />
               </button>
             </li>
           ))}
         </ul>
       </Card>
-      <Card title={run ? `${run.payPeriod} — ${run.status}` : 'Select a run'}>
+      <Card title={run ? `${run.payPeriod} — ${splitState(run.status)}` : 'Select a run'}>
         {!run && <EmptyState message="Pick a run from the list." />}
         {run && (
           <div className="flex flex-col gap-4">
@@ -214,7 +219,9 @@ function StructuresTab() {
           <tbody className="divide-y divide-ink-850">
             {structures.data.map((s: any) => (
               <tr key={s.id}>
-                <td className="py-1">{s.employmentRelationshipId}</td>
+                <td className="py-1" title={s.employmentRecordCode ?? s.employmentRelationshipId}>
+                  {s.employmentFullName ?? s.employmentRelationshipId}
+                </td>
                 <td className="py-1">{date(s.effectiveFrom)}</td>
                 <td className="py-1 text-right tabular-nums">{money(s.ctcAnnual)}</td>
                 <td className="py-1 text-right tabular-nums">{money(s.basic)}</td>
@@ -367,6 +374,7 @@ function PayslipsTab() {
         <table className="w-full text-sm">
           <thead className="text-left text-2xs uppercase text-ink-500">
             <tr>
+              <th className="px-3 py-1">Employee</th>
               <th className="px-3 py-1">Number</th>
               <th className="px-3 py-1">Period</th>
               <th className="px-3 py-1">Issued</th>
@@ -375,6 +383,9 @@ function PayslipsTab() {
           <tbody className="divide-y divide-ink-850">
             {payslips.data.map((p: any) => (
               <tr key={p.id} className="cursor-pointer hover:bg-ink-850" onClick={() => setOpen(p)}>
+                <td className="px-3 py-1" title={p.employmentRecordCode ?? p.employmentRelationshipId}>
+                  {p.employmentFullName ?? p.employmentRelationshipId}
+                </td>
                 <td className="px-3 py-1">{p.number}</td>
                 <td className="px-3 py-1">{p.payPeriod}</td>
                 <td className="px-3 py-1">{dateTime(p.issuedAt)}</td>

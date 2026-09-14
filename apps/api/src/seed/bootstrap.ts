@@ -204,7 +204,7 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'adm_events', label: 'System History', icon: 'list', path: '/admin/events', group: 'setup', position: 58, requiredPermission: 'events:V' },
   { nodeKey: 'adm_audit', label: 'Audit Trail', icon: 'lock', path: '/admin/audit', group: 'setup', position: 59, requiredPermission: 'audit:V' },
   { nodeKey: 'fin_company', label: 'Company Details', icon: 'building', path: '/finance/company', group: 'setup', position: 49, requiredPermission: 'company_profile:V', synonyms: ['gstin', 'registration', 'pan', 'bank details', 'invoice footer', 'legal name', 'address'] },
-  { nodeKey: 'adm_platform', label: 'How This Is Built', icon: 'book', path: '/admin/platform', group: 'setup', position: 60, archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'adm_platform', label: 'Thresholds & Sensitivity', icon: 'book', path: '/admin/platform', group: 'setup', position: 60, archetypes: ['command', 'workspace', 'console'] },
 
   // ---- Equity & board (ERP side) -----------------------------------------
   // The register itself is phase 1's `cap_table`/`holders`/etc, not yet ERP
