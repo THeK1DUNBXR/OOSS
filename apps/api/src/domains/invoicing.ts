@@ -82,6 +82,7 @@ import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { companyProfile, documentNumbering, supplyingParty } from './companyProfile.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
+import { runHooks } from '../platform/hooks.js';
 
 // ---------------------------------------------------------------------------
 // Input
@@ -932,6 +933,8 @@ export async function issueInvoiceDraft(
 
   const issuedDate = options.issuedDate ?? new Date();
   await assertPeriodOpen(issuedDate, 'This invoice');
+  // GST classification rules and e-invoicing readiness attach here (workstream B).
+  await runHooks('invoice.before_issue', { invoice: existing, lines: existing.lines, issuedDate });
 
   // Here is where the invoice number is allocated, and nowhere else: at the
   // moment the draft becomes a document. Allocating it inside the same update

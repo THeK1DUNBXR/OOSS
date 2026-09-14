@@ -53,6 +53,7 @@ import { transition } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
 import { assertEmploymentVisible } from '../platform/recordScope.js';
 import { normalisePhone, normaliseEmail } from './identity.js';
+import { runHooks } from '../platform/hooks.js';
 
 // ---------------------------------------------------------------------------
 // Org structure
@@ -889,10 +890,15 @@ export async function transitionOffboarding(id: string, event: OffboardingEvent,
     reasonNote: note ?? null,
   });
 
-  return prisma.offboarding.update({
+  const updated = await prisma.offboarding.update({
     where: { id },
     data: { status: result.to, disputeReason: event === 'DISPUTE' ? (note ?? 'disputed') : null },
   });
+  if (result.to === 'ClosedArchived' || result.to === 'FFSettlementCompleted') {
+    // Access revocation and the exit paperwork attach here (workstreams F, G).
+    await runHooks('offboarding.completed', { offboarding: updated, employmentRelationship: record.employmentRelationship });
+  }
+  return updated;
 }
 
 // ---------------------------------------------------------------------------

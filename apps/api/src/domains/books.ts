@@ -40,6 +40,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
+import { runHooks } from '../platform/hooks.js';
 
 // ---------------------------------------------------------------------------
 // Accounts and categories
@@ -180,6 +181,8 @@ export interface TransactionInput {
 export async function recordTransaction(input: TransactionInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'transactions', verb: 'create' });
+  // A closed accounting period vetoes the entry here (docs/plan/compliance.md, D).
+  await runHooks('transaction.before_record', { txnDate: input.txnDate, source: input.source ?? 'manual' });
 
   if (input.amount <= 0) {
     // The direction carries the sign, so a negative amount would be a second,
@@ -418,6 +421,8 @@ export async function payVendorBill(id: string, input: { amount: number; account
   const bill = await prisma.vendorBill.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!bill) throw ApiError.notFound('Vendor bill');
   if (bill.status === 'cancelled') throw ApiError.unprocessable('This bill was cancelled.');
+  // TDS not yet deducted, or an MSME term breached, vetoes the payment here (workstream C).
+  await runHooks('vendor_bill.before_pay', { bill, amount: input.amount });
 
   const outstanding = round2((num(bill.total) ?? 0) - (num(bill.paidAmount) ?? 0));
   if (input.amount > outstanding + 0.005) {

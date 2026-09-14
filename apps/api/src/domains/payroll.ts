@@ -20,6 +20,7 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { currentCompensation } from './employment.js';
+import { runHooks } from '../platform/hooks.js';
 
 const PAY_PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -191,6 +192,12 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
   const run = await prisma.payrollRun.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!run) throw ApiError.notFound('Payroll run');
 
+  if (event === 'APPROVE') {
+    // Nobody approves the run they prepared, and the statutory lines must be computed (workstream E).
+    const instructions = await prisma.payrollInstruction.findMany({ where: { payrollRunId: id } });
+    await runHooks('payroll_run.before_approve', { run, instructions, approverPartyId: auth.partyId });
+  }
+
   const result = await transition({
     machine: payrollMachine,
     eventObject: 'payroll_run',
@@ -227,7 +234,7 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
 
     await tx.payrollInstruction.updateMany({ where: { payrollRunId: id }, data: { status: result.to } });
 
-    return tx.payrollRun.update({
+    const updated = await tx.payrollRun.update({
       where: { id },
       data: {
         status: result.to,
@@ -235,6 +242,11 @@ export async function transitionPayrollRun(id: string, event: PayrollEvent, note
         ...(event === 'DISBURSE' ? { disbursedAt: new Date() } : {}),
       },
     });
+    if (event === 'APPROVE') {
+      const instructions = await tx.payrollInstruction.findMany({ where: { payrollRunId: id } });
+      await runHooks('payroll_run.approved', { run: updated, instructions });
+    }
+    return updated;
   });
 }
 
