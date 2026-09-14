@@ -349,3 +349,20 @@ describe('HCM-TIME-012 — the comp-off expiry sweep is not directly triggerable
     expect(rejected.status).toBe(403);
   });
 });
+
+describe('HCM-TIME-013 — an own-scoped principal cannot delete a colleague’s timesheet entry by id', () => {
+  it('HCM-TIME-013: removeTimesheetEntry refuses an own-scoped caller who is not the timesheet’s own employment', async () => {
+    const priya = await employmentFor('priya@kaizen.co.in');
+    const day = fixtureDay(70);
+
+    const entry = await asUser('priya@kaizen.co.in', () =>
+      addTimesheetEntry({ employmentRelationshipId: priya.employmentRelationshipId, date: day, hours: 4, taskRef: 'Fixture task 3' }),
+    );
+
+    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => removeTimesheetEntry(entry.id)));
+    expect(rejected.status).toBe(404);
+
+    // The entry is untouched — HR, which holds `timesheets:edit` at all scope, can still remove it.
+    await asUser('hr@kaizen.co.in', () => removeTimesheetEntry(entry.id));
+  });
+});
