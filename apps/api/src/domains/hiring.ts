@@ -229,7 +229,7 @@ export async function transitionApplication(
     reasonNote: input.note ?? input.rejectionReason ?? null,
   });
 
-  return prisma.application.update({
+  const updated = await prisma.application.update({
     where: { id },
     data: {
       status: result.to,
@@ -237,6 +237,29 @@ export async function transitionApplication(
       ...(input.screeningOutcome ? { screeningOutcome: input.screeningOutcome } : {}),
     },
   });
+
+  // CMP-LAB-003: an accepted offer generates an appointment letter as a
+  // final document, not a bare state flip.
+  if (result.to === 'OfferAccepted') {
+    const [candidate, position] = await Promise.all([
+      prisma.person.findFirst({ where: { id: application.candidatePartyId, tenantId: auth.tenantId } }),
+      prisma.position.findFirst({
+        where: { id: application.requisition.positionId, tenantId: auth.tenantId },
+        include: { job: true },
+      }),
+    ]);
+    const { issueLetter } = await import('./compliance/labour.js');
+    await issueLetter({
+      kind: 'appointment',
+      applicationId: id,
+      employeeName: candidate?.fullName ?? 'Candidate',
+      legalEntity: 'Kaizen Infinities Pvt Ltd',
+      designation: position?.job.title ?? null,
+      hireEffectiveDate: application.requisition.targetStartDate ?? null,
+    });
+  }
+
+  return updated;
 }
 
 /**

@@ -1,0 +1,276 @@
+// Compliance — F. Labour law and conduct (docs/plan/compliance.md).
+//
+// New models only; fields added to pre-existing models (LeaveType,
+// EmploymentRelationship, Offboarding) already live in main.prisma.
+
+/// A gazetted or company holiday. Seeded for the current calendar year with
+/// the three fixed national holidays; state holidays are declared by
+/// notification through the year and added here as they are announced.
+model Holiday {
+  id       String @id @default(cuid())
+  tenantId String
+
+  date DateTime
+  name String
+  /// national | state | restricted
+  kind  String
+  /// The state the holiday applies in, when `kind` is not national.
+  state String?
+  note  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, date, name])
+  @@index([tenantId, date])
+  @@map("compliance_labour_holidays")
+}
+
+/// One row per (leaveTypeId, financial year) once the 1 April carry-forward
+/// job has closed that leave type for that year — the idempotency guard for
+/// CMP-LAB-004: a re-run in the same FY finds the row and does nothing.
+model LeaveYearClose {
+  id       String @id @default(cuid())
+  tenantId String
+
+  leaveTypeId String
+  /// "2026-27" — the FY the carried-forward balance opens into.
+  fy          String
+
+  balancesClosed Int      @default(0)
+  closedAt       DateTime @default(now())
+
+  @@unique([tenantId, leaveTypeId, fy])
+  @@map("compliance_labour_leave_year_closes")
+}
+
+/// A leave-encashment payout recorded against the ledger, for payroll to pick
+/// up. `amount` is basic/26 × days at the time of encashment — a fact worth
+/// keeping even after the next compensation revision changes basic pay.
+model LeaveEncashment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  leaveTypeId               String
+  leaveTransactionId        String?
+
+  days   Decimal @db.Decimal(6, 2)
+  amount Decimal @db.Decimal(14, 2)
+
+  computedAt  DateTime @default(now())
+  createdById String?
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("compliance_labour_leave_encashments")
+}
+
+/// Dated working-hours rules (Tamil Nadu Shops & Establishments Act):
+/// daily/weekly caps, spread-over, overtime multiplier and the per-quarter OT
+/// cap. `confirmed` marks a row as checked against the live notification
+/// rather than the plan's own reading of the Act — false until somebody
+/// checks it.
+model WorkingHoursRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  effectiveFrom DateTime
+
+  dailyCapHours        Decimal @db.Decimal(5, 2)
+  weeklyCapHours        Decimal @db.Decimal(5, 2)
+  spreadOverHours       Decimal @db.Decimal(5, 2)
+  otMultiplier          Decimal @db.Decimal(4, 2)
+  otCapPerQuarterHours  Decimal @db.Decimal(6, 2)
+  /// Checked against the live TN notification, not just this plan's reading
+  /// of the Act.
+  confirmed             Boolean @default(false)
+  note                  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, effectiveFrom])
+  @@map("compliance_labour_working_hours_rules")
+}
+
+/// One row per employment per ISO week that crossed the weekly hours cap —
+/// the overtime pay computed from it (hours × rate), where rate is
+/// 2 × basic/(26×8) from the CompensationRecord in force that week.
+model OvertimeAccrual {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  /// "2026-W37"
+  isoWeek                   String
+
+  hours  Decimal @db.Decimal(6, 2)
+  rate   Decimal @db.Decimal(10, 2)
+  amount Decimal @db.Decimal(14, 2)
+
+  computedAt DateTime @default(now())
+
+  @@unique([tenantId, employmentRelationshipId, isoWeek])
+  @@map("compliance_labour_overtime_accruals")
+}
+
+/// One row per Internal Committee member (POSH Act 2013). A person on the
+/// payroll is `personId`; the mandatory external member is `externalName`
+/// with no `personId`, because they are deliberately not an employee.
+model InternalCommitteeMember {
+  id       String @id @default(cuid())
+  tenantId String
+
+  personId     String?
+  externalName String?
+
+  /// presiding | member | external
+  role        String
+  isWoman     Boolean  @default(false)
+  appointedOn DateTime
+  /// Null while the term is current.
+  termEnds    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, role])
+  @@map("compliance_labour_icc_members")
+}
+
+/// A POSH complaint. `concealed` is always true and the point of the field:
+/// the domain layer must check it explicitly rather than rely on every
+/// listing query remembering to filter case data out of headline counts.
+model PoshComplaint {
+  id       String @id @default(cuid())
+  tenantId String
+
+  number String
+
+  complainantPersonId String?
+  complainantText     String?
+  respondentPersonId  String?
+  respondentText      String?
+
+  receivedOn DateTime
+  /// received | inquiry | report_submitted | closed | withdrawn
+  status     String   @default("received")
+
+  inquiryDueAt   DateTime
+  inquiryClosedAt DateTime?
+  reportDueAt    DateTime?
+
+  findings String?
+  action   String?
+
+  /// Always true. Present as a column, not just a permission rule, so a
+  /// listing query has to name it to bypass it — see `posh_cases:view`.
+  concealed Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@map("compliance_labour_posh_complaints")
+}
+
+/// A POSH awareness workshop, feeding the annual report's "workshops held" count.
+model PoshWorkshop {
+  id       String @id @default(cuid())
+  tenantId String
+
+  heldOn        DateTime
+  topic         String
+  attendeeCount Int
+  note          String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, heldOn])
+  @@map("compliance_labour_posh_workshops")
+}
+
+/// The annual report to the District Officer (POSH Act Sec 21) — a snapshot
+/// document, final once filed like every other filing on this platform.
+model PoshAnnualReport {
+  id       String @id @default(cuid())
+  tenantId String
+
+  year     Int
+  snapshot Json
+  /// prepared | filed
+  status   String @default("prepared")
+
+  preparedAt   DateTime @default(now())
+  preparedById String?
+  filedAt      DateTime?
+  filedById    String?
+
+  @@unique([tenantId, year])
+  @@map("compliance_labour_posh_annual_reports")
+}
+
+/// A structured disciplinary case: show-cause, reply, inquiry, decision.
+/// Evidence at each step is recorded through `performance.ts`'s case-scoped
+/// evidence, referenced back here only by the employment id — the case does
+/// not duplicate the evidence store.
+model DisciplinaryCase {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+
+  /// show_cause | reply_received | inquiry | decision | closed
+  status String @default("show_cause")
+
+  showCauseIssuedAt DateTime
+  replyDueAt        DateTime
+  replyReceivedAt   DateTime?
+
+  inquiryOfficer   String?
+  inquiryStartedAt DateTime?
+
+  decision  String?
+  decidedAt DateTime?
+  /// warning | suspension | termination | none
+  outcome   String?
+
+  closedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, status])
+  @@map("compliance_labour_disciplinary_cases")
+}
+
+/// A letter issued to an employee or a candidate. Final once issued — a
+/// correction is a new letter with `supersededById` set on the old one, the
+/// same discipline every filing on this platform follows.
+model HrLetter {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// offer | appointment | confirmation | relieving | experience | warning
+  kind String
+
+  employmentRelationshipId String?
+  applicationId             String?
+
+  number   String
+  snapshot Json
+
+  issuedAt   DateTime @default(now())
+  issuedById String?
+
+  supersededById String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, number])
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, applicationId])
+  @@map("compliance_labour_hr_letters")
+}
