@@ -109,9 +109,9 @@ describe('service desk — domain and wiring', () => {
 
   beforeAll(async () => {
     tid = await tenantId();
-    const employee = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'employee@kaizen.co.in' } });
+    const employee = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'employee@kaizen.co.in', tenant: { slug: 'kaizen' } } });
     employeePartyId = employee.personId;
-    const ops = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in' } });
+    const ops = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } } });
     opsPartyId = ops.personId;
   });
 

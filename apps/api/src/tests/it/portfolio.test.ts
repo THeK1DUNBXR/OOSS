@@ -128,7 +128,7 @@ describe('portfolio — domain and wiring', () => {
   });
 
   it('IT-INI-002: a stage transition the machine has no arrow for is refused by the API, not silently accepted', async () => {
-    const opsUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in' }, include: { person: true } });
+    const opsUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } }, include: { person: true } });
     const created = await asUser('operations@kaizen.co.in', () =>
       createInitiative({
         title: `In-flight initiative ${stamp()}`,
@@ -165,7 +165,10 @@ describe('portfolio — domain and wiring', () => {
     // Operations Head creates but cannot approve; the Finance Head approves
     // but cannot create) — so the chairman is the only account that can even
     // attempt to approve its own proposal, mirroring the vendor-contract test.
-    const chairmanUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'chairman@kaizen.co.in' }, include: { person: true } });
+    // Named by tenant: the equity suite bootstraps subsidiary tenants whose
+    // founding accounts carry the same emails, and the shared database holds
+    // them all.
+    const chairmanUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'chairman@kaizen.co.in', tenant: { slug: 'kaizen' } }, include: { person: true } });
 
     const own = await asUser('chairman@kaizen.co.in', () =>
       createInitiative({
@@ -188,7 +191,7 @@ describe('portfolio — domain and wiring', () => {
   });
 
   it('IT-INI-001: a Finance Head approving an initiative they did not sponsor is never flagged self-dealing', async () => {
-    const opsUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in' }, include: { person: true } });
+    const opsUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } }, include: { person: true } });
     const initiative = await asUser('operations@kaizen.co.in', () =>
       createInitiative({
         title: `Sponsored by ops ${stamp()}`,
@@ -452,7 +455,7 @@ describe('portfolio — domain and wiring', () => {
   });
 
   it('the portfolio summary reports "not yet measured" only with no initiatives, and stage/RAG counts once one exists', async () => {
-    const opsUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in' }, include: { person: true } });
+    const opsUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } }, include: { person: true } });
     const before = await asUser('finance@kaizen.co.in', () => portfolioSummary());
     if (before.notYetMeasured) {
       // Only true on a tenant with zero initiatives — the fixture tenant
