@@ -22,8 +22,13 @@ import {
   createRightsOffers, listRightsOffers, acceptRightsOffer, renounceRightsOffer,
   scenarioRound, scenarioWaterfall,
 } from '../domains/rounds.js';
+import filingsRoutes from './filings.routes.js';
 
 const router = Router();
+
+// ---- Filings, demat, FEMA (phase 6a) -----------------------------------------
+
+router.use('/filings', filingsRoutes);
 
 // ---- Share classes ---------------------------------------------------------
 
@@ -127,6 +132,7 @@ router.post(
         effectiveOn: z.string(),
         considerationTransactionId: z.string().nullish(),
         boardResolutionRef: z.string().nullish(),
+        roundId: z.string().nullish(),
       })
       .parse(req.body);
     return proposeAllotment(body);

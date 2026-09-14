@@ -359,6 +359,9 @@ export const EVENTS = {
   OPTION_EXERCISED: 'kz.eqt.option.exercised',
   OPTION_LAPSED: 'kz.eqt.option.lapsed',
   OPTION_CANCELLED: 'kz.eqt.option.cancelled',
+
+  // --- Filings, demat, FEMA (eqt), phase 6a ---------------------------------
+  FILING_RECORDED: 'kz.eqt.filing.recorded',
 } as const;
 
 /**

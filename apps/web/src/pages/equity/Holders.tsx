@@ -46,6 +46,16 @@ function NewHolder({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [panNumber, setPanNumber] = useState('');
   const [nomineeName, setNomineeName] = useState('');
 
+  // MGT-1 fields (Rule 3) — recorded when known, left blank otherwise.
+  const [address, setAddress] = useState('');
+  const [occupation, setOccupation] = useState('');
+  const [nationality, setNationality] = useState('');
+  const [guardianOrSpouseName, setGuardianOrSpouseName] = useState('');
+
+  // Rule 9B: the holder's own demat account.
+  const [dpId, setDpId] = useState('');
+  const [clientId, setClientId] = useState('');
+
   const organizations = useOrganizations(open && kind === 'organization');
 
   return (
@@ -65,6 +75,11 @@ function NewHolder({ open, onClose }: { open: boolean; onClose: () => void }) {
           investmentBasis: residency === 'non_resident' ? investmentBasis || null : null,
           panNumber: panNumber || null,
           nominee: nomineeName ? { name: nomineeName } : null,
+          address: address || null,
+          occupation: occupation || null,
+          nationality: nationality || null,
+          guardianOrSpouseName: guardianOrSpouseName || null,
+          dematAccount: dpId || clientId ? { dpId: dpId || null, clientId: clientId || null } : null,
         })
       }
     >
@@ -144,6 +159,29 @@ function NewHolder({ open, onClose }: { open: boolean; onClose: () => void }) {
         <TextInput label="PAN" value={panNumber} onChange={(v) => setPanNumber(v.toUpperCase())} />
         <TextInput label="Nominee" value={nomineeName} onChange={setNomineeName} placeholder="Optional" />
       </Row>
+
+      <fieldset className="rounded-lg border border-ink-800 p-3">
+        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">MGT-1 fields</legend>
+        <div className="flex flex-col gap-3">
+          <TextInput label="Address" value={address} onChange={setAddress} placeholder="Optional" />
+          <Row>
+            <TextInput label="Occupation" value={occupation} onChange={setOccupation} placeholder="Optional" />
+            <TextInput label="Nationality" value={nationality} onChange={setNationality} placeholder="Optional" />
+          </Row>
+          <TextInput label="Father / spouse name" value={guardianOrSpouseName} onChange={setGuardianOrSpouseName} placeholder="Optional" />
+        </div>
+      </fieldset>
+
+      <fieldset className="rounded-lg border border-ink-800 p-3">
+        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Demat account (Rule 9B)</legend>
+        <Row>
+          <TextInput label="DP ID" value={dpId} onChange={setDpId} placeholder="Optional" />
+          <TextInput label="Client ID" value={clientId} onChange={setClientId} placeholder="Optional" />
+        </Row>
+        <p className="mt-2 text-2xs text-ink-500">
+          Every share this holder holds is treated as dematerialised once this is set.
+        </p>
+      </fieldset>
     </CreateModal>
   );
 }
@@ -329,6 +367,13 @@ export function HolderDetail() {
               {data.investmentBasis ? INVESTMENT_BASIS_LABELS[data.investmentBasis] : '—'}
             </Field>
             <Field label="Status">{data.status === 'active' ? 'Active' : 'Ceased'}</Field>
+            <Field label="Address">{data.address || 'Not recorded'}</Field>
+            <Field label="Occupation">{data.occupation || 'Not recorded'}</Field>
+            <Field label="Nationality">{data.nationality || 'Not recorded'}</Field>
+            <Field label="Father / spouse name">{data.guardianOrSpouseName || 'Not recorded'}</Field>
+            <Field label="Demat account">
+              {data.dematAccount ? 'On record' : 'Not recorded — holds physically'}
+            </Field>
           </dl>
         </Card>
 

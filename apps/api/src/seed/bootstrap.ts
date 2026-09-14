@@ -222,6 +222,8 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'eq_rounds', label: 'Rounds', icon: 'trending', path: '/equity/rounds', group: 'equity', position: 86, requiredPermission: 'rounds:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['funding round', 'preferential', 'private placement', 'bonus', 'rights issue', 'buyback'] },
   { nodeKey: 'eq_scenarios', label: 'Scenarios', icon: 'chart', path: '/equity/scenarios', group: 'equity', position: 87, requiredPermission: 'cap_table:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['dilution', 'waterfall', 'modelling', 'what if'] },
   { nodeKey: 'eq_esop', label: 'ESOP', icon: 'coins', path: '/equity/esop', group: 'equity', position: 88, requiredPermission: 'esop_plans:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['options', 'option pool', 'stock options', 'vesting', 'sh-6'] },
+  // Filings, demat, FEMA (phase 6a).
+  { nodeKey: 'eq_filings', label: 'Filings', icon: 'file', path: '/equity/filings', group: 'equity', position: 89, requiredPermission: 'compliance:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['mgt-1', 'mgt-2', 'pas-3', 'sh-4', 'pas-6', 'demat', 'fema', 'fc-gpr', 'fc-trs', 'fla'] },
 ];
 
 /**

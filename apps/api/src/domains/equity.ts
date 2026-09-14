@@ -37,6 +37,7 @@ import { documentPrefix, companyProfile } from './companyProfile.js';
 import { findOrCreatePerson } from './identity.js';
 import { evaluateApprovalGate } from '../platform/approvals.js';
 import { raiseException } from '../platform/exceptions.js';
+import { assertDematCompliant, assertFemaPricingFloor } from './filings.js';
 
 registerGovernedEntities('eqt', [
   'share_class', 'holder', 'share_transaction', 'share_certificate', 'valuation', 'entity_document', 'funding_round',
@@ -178,6 +179,13 @@ export interface HolderInput {
   panNumber?: string | null;
   nominee?: Record<string, unknown> | null;
   jointHolders?: unknown[] | null;
+  /** MGT-1 fields (Rule 3) — recorded when known, left blank otherwise. */
+  address?: string | null;
+  occupation?: string | null;
+  nationality?: string | null;
+  guardianOrSpouseName?: string | null;
+  /** Rule 9B: this holder's demat account, when their holding is dematerialised. */
+  dematAccount?: Record<string, unknown> | null;
 }
 
 /**
@@ -263,6 +271,11 @@ export async function createHolder(input: HolderInput) {
       panNumber: input.panNumber ?? null,
       nominee: (input.nominee ?? undefined) as never,
       jointHolders: (input.jointHolders ?? undefined) as never,
+      address: input.address ?? null,
+      occupation: input.occupation ?? null,
+      nationality: input.nationality ?? null,
+      guardianOrSpouseName: input.guardianOrSpouseName ?? null,
+      dematAccount: (input.dematAccount ?? undefined) as never,
     },
   });
 
@@ -283,6 +296,11 @@ export interface HolderUpdateInput {
   nominee?: Record<string, unknown> | null;
   jointHolders?: unknown[] | null;
   status?: 'active' | 'ceased';
+  address?: string | null;
+  occupation?: string | null;
+  nationality?: string | null;
+  guardianOrSpouseName?: string | null;
+  dematAccount?: Record<string, unknown> | null;
 }
 
 /** Contact/nominee/residency/status. `heldByTenantId` never changes once set. */
@@ -308,6 +326,11 @@ export async function updateHolder(id: string, input: HolderUpdateInput) {
       ...(input.nominee !== undefined ? { nominee: input.nominee as never } : {}),
       ...(input.jointHolders !== undefined ? { jointHolders: input.jointHolders as never } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.address !== undefined ? { address: input.address } : {}),
+      ...(input.occupation !== undefined ? { occupation: input.occupation } : {}),
+      ...(input.nationality !== undefined ? { nationality: input.nationality } : {}),
+      ...(input.guardianOrSpouseName !== undefined ? { guardianOrSpouseName: input.guardianOrSpouseName } : {}),
+      ...(input.dematAccount !== undefined ? { dematAccount: input.dematAccount as never } : {}),
     },
   });
 
@@ -351,6 +374,8 @@ export async function holder(id: string) {
 export async function holderView(row: {
   id: string; recordCode: string; kind: string; personId: string | null; organizationId: string | null;
   heldByTenantId: string | null; folioNumber: string; residency: string; investmentBasis: string | null; status: string;
+  address?: string | null; occupation?: string | null; nationality?: string | null; guardianOrSpouseName?: string | null;
+  dematAccount?: unknown;
 }) {
   let displayName = row.folioNumber;
   if (row.kind === 'person' && row.personId) {
@@ -375,6 +400,11 @@ export async function holderView(row: {
     residency: row.residency,
     investmentBasis: row.investmentBasis,
     status: row.status,
+    address: row.address ?? null,
+    occupation: row.occupation ?? null,
+    nationality: row.nationality ?? null,
+    guardianOrSpouseName: row.guardianOrSpouseName ?? null,
+    dematAccount: (row.dematAccount ?? null) as Record<string, unknown> | null,
   };
 }
 
@@ -570,6 +600,8 @@ export interface ProposeAllotmentInput {
   effectiveOn: string;
   considerationTransactionId?: string | null;
   boardResolutionRef?: string | null;
+  /** The round this allotment is struck under (§6 phase 4/6a) — an ordinary allotment needs one to ever reach `closeRound`'s `raised` figure or a PAS-3 allottee list. */
+  roundId?: string | null;
 }
 
 export async function proposeAllotment(input: ProposeAllotmentInput) {
@@ -585,6 +617,16 @@ export async function proposeAllotment(input: ProposeAllotmentInput) {
   await assertConsiderationIsEquity(input.considerationTransactionId);
   const pendingConsideration = Boolean((input.pricePerShare ?? 0) > 0 && !input.considerationTransactionId);
 
+  // Rule 9B: a fully-demat company refuses to allot to a holder with no
+  // demat account on record. FEMA: an issue to a repatriable non-resident
+  // may not price below the latest fair-value certificate.
+  await assertDematCompliant([input.toHolderId]);
+  const { femaPricingNote } = await assertFemaPricingFloor({
+    toHolderId: input.toHolderId,
+    shareClassId: input.shareClassId,
+    pricePerShare: input.pricePerShare,
+  });
+
   const row = await prisma.shareTransaction.create({
     data: {
       tenantId: auth.tenantId,
@@ -597,6 +639,7 @@ export async function proposeAllotment(input: ProposeAllotmentInput) {
       effectiveOn: new Date(input.effectiveOn),
       considerationTransactionId: input.considerationTransactionId ?? null,
       boardResolutionRef: input.boardResolutionRef ?? null,
+      roundId: input.roundId ?? null,
       status: 'proposed',
       proposedByPartyId: auth.partyId ?? 'system',
     },
@@ -609,7 +652,7 @@ export async function proposeAllotment(input: ProposeAllotmentInput) {
     newState: { shareClassId: row.shareClassId, toHolderId: row.toHolderId, count: input.count, pendingConsideration },
   });
 
-  return shareTransactionView(row);
+  return { ...shareTransactionView(row), femaPricingNote };
 }
 
 export interface ProposeTransferInput {
@@ -645,6 +688,16 @@ export async function proposeTransfer(input: ProposeTransferInput) {
 
   await assertConsiderationIsEquity(input.considerationTransactionId);
 
+  // Rule 9B: refuse a leg to a holder with no demat account when the
+  // company is fully demat. FEMA: the pricing floor reaches the receiving
+  // side of a transfer exactly as it reaches an allotment.
+  await assertDematCompliant([input.fromHolderId, input.toHolderId]);
+  const { femaPricingNote } = await assertFemaPricingFloor({
+    toHolderId: input.toHolderId,
+    shareClassId: input.shareClassId,
+    pricePerShare: input.pricePerShare,
+  });
+
   const row = await prisma.shareTransaction.create({
     data: {
       tenantId: auth.tenantId,
@@ -669,7 +722,7 @@ export async function proposeTransfer(input: ProposeTransferInput) {
     newState: { shareClassId: row.shareClassId, fromHolderId: row.fromHolderId, toHolderId: row.toHolderId, count: input.count },
   });
 
-  return shareTransactionView(row);
+  return { ...shareTransactionView(row), femaPricingNote };
 }
 
 /**

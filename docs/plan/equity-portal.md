@@ -819,3 +819,70 @@ Shipped as briefed in §6, with these choices made along the way:
   drift.
 
 Tests: `apps/api/src/tests/esop.test.ts`, `EQT-ESP-001` through `EQT-ESP-010`.
+
+## Phase 6a — as built
+
+Ships `domains/filings.ts` (MGT-1/MGT-2 register exports, PAS-3 allottee
+list, SH-4 pre-fill, PAS-6 reconciliation), a `Filing` model and log
+(`recordFiling`/`listFilings`), the Rule 9B demat guard and the FEMA pricing
+floor called from `equity.ts`'s `proposeAllotment`/`proposeTransfer`, and the
+FEMA calendar subscribed to the register's own effective events. Web:
+`pages/equity/Filings.tsx`, `pages/equity/Sh4Sheet.tsx`, the missing
+conversion/redemption terms fields on the share class dialog, and the MGT-1 /
+demat fields on the holder form.
+
+**Where it differs from the brief, and why.**
+
+- **`proposeAllotment` gained an optional `roundId`.** Nothing in phases 1–4
+  ever linked an ordinary allotment to the `FundingRound` it was struck
+  under — only a conversion, a redemption, a buy-back and a bonus carry
+  `roundId` (§6 phase 4's own `proposeConversion`/`proposeRedemption`/
+  `proposeBuyback`/`proposeBonus`). That leaves `closeRound`'s `raised`
+  figure and `pas3Srn`/`pas3FiledOn` genuinely unreachable for a seed,
+  series, preferential or private-placement round's own allotments — there
+  was no allotment a PAS-3 list could ever cover. `ProposeAllotmentInput`
+  now accepts `roundId?`, written straight onto the row the same way the
+  other four instrument-proposal functions already do; nothing else about
+  the ledger changed.
+- **The Filing → exception link is by code and subject, not a stored
+  pointer.** `recordFiling` does not carry a foreign key to the
+  `ExceptionRecord` it might close — the two engines stay decoupled, the way
+  a receipt clears an invoice by amount and reference rather than a schema
+  join. A small table (`FORM_EXCEPTION` in `filings.ts`) names which code and
+  subject type a form's `status: 'filed'` resolves, and the matching open
+  exception on that subject is looked up and resolved at record time. A form
+  with no compliance item behind it (MGT-1, MGT-2, SH-4, MGT-14, MGT-7,
+  MGT-7A, and `other`) simply logs.
+- **PAS-6's exception code is `EX-EQT-010`, not named in the brief's own
+  004–009 list.** The brief assigns explicit codes to demat-required,
+  ISIN-missing, FC-GPR, FC-TRS, FLA and the FEMA valuation-missing note, but
+  not to the PAS-6 reconciliation item itself, which the same paragraph
+  still asks to be raised. `010` continues the sequence rather than
+  colliding with the group phase's own codes, which start numbering
+  separately once written.
+- **`assertFemaPricingFloor` and `assertDematCompliant` read `toHolderId`
+  only.** FEMA's pricing floor and Rule 9B's demat guard both name the party
+  a holding is *landing with* — the receiving side of an allotment, or of a
+  transfer — as the one the rule reaches; `assertDematCompliant` is still
+  called with both legs of a transfer (`[fromHolderId, toHolderId]`) because
+  a demat company cannot hand a paper-only holder anything to hold, on
+  either side of the ledger entry.
+- **`Holder.dematAccount` is one field, not a certificate-level flag.** The
+  brief's own phrasing floats both a per-holder and a per-certificate shape;
+  a holder either settles through a depository or does not, so every share
+  a holder holds is treated as demat once `dematAccount` is set, and PAS-6's
+  reconciliation partitions each class's issued count by that one field
+  rather than walking certificates.
+- **The FLA sweep checks the most recently *completed* 31 March, not the
+  current financial year's.** Run on any day of the year, "at 31 March" has
+  to mean a date already in the past — the job compares `now` against this
+  year's 31 March and falls back to last year's when it has not arrived yet,
+  so a company whose books this month have not reached the cutoff is not
+  asked for a return covering a date that has not happened.
+
+Tests: `apps/api/src/tests/equityFilings.test.ts`, `EQT-FIL-001` through
+`EQT-FIL-010`, run inside a subsidiary tenant this file creates for itself in
+`beforeAll` (the same isolation phase 4's and phase 5's own suites use) —
+`EQT-FIL-004` specifically needs `Tenant.kind` to already read `subsidiary`
+the moment its first check runs, which only a tenant `seedBootstrap` itself
+made a subsidiary of `kaizen` can guarantee.

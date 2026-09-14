@@ -25,6 +25,8 @@ import { CertificateDocument } from './pages/equity/CertificateDocument.js';
 import { Rounds } from './pages/equity/Rounds.js';
 import { Scenarios } from './pages/equity/Scenarios.js';
 import { Esop } from './pages/equity/Esop.js';
+import { Filings } from './pages/equity/Filings.js';
+import { Sh4Sheet } from './pages/equity/Sh4Sheet.js';
 import { MyOptions } from './pages/MyOptions.js';
 import { CommandCenter } from './pages/CommandCenter.js';
 import { Workspace, Exceptions } from './pages/Workspace.js';
@@ -165,6 +167,8 @@ function Routed() {
         <Route path="/equity/rounds" element={<Rounds />} />
         <Route path="/equity/scenarios" element={<Scenarios />} />
         <Route path="/equity/esop" element={<Esop />} />
+        <Route path="/equity/filings" element={<Filings />} />
+        <Route path="/equity/filings/sh-4/:transactionId" element={<Sh4Sheet />} />
         <Route path="/me/options" element={<MyOptions />} />
 
         <Route path="/business" element={<Executive />} />

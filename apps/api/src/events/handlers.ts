@@ -20,6 +20,7 @@ import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../dom
 import { ensureWinLossReview } from '../domains/winLoss.js';
 import { computeSensitivity } from '../domains/interactions.js';
 import { handleEmploymentExit } from '../domains/esop.js';
+import { handleAllotmentEffectiveForFema, handleTransferEffectiveForFema } from '../domains/filings.js';
 
 let registered = false;
 
@@ -137,6 +138,17 @@ export function registerSubscribers(): void {
   // `EMPLOYMENT_EVENT_VERB` maps all three to `separated`), never a role slug.
   subscribe('kz.hr.employment.separated', 'eqt.esop_exit_lapse', async (event: EventEnvelope) => {
     await handleEmploymentExit(event.subject.entityId, new Date(event.occurredAt));
+  });
+
+  // FEMA (equity-portal plan §6 phase 6a). Repatriable non-resident holdings
+  // carry FC-GPR/FC-TRS deadlines; a non-repatriable one (Schedule IV) is
+  // treated as resident money and raises nothing — `handle*ForFema` makes
+  // that check itself, subject by subject, rather than here.
+  subscribe(EVENTS.ALLOTMENT_EFFECTIVE, 'eqt.fema_fc_gpr', async (event: EventEnvelope) => {
+    await handleAllotmentEffectiveForFema(event.subject.entityId);
+  });
+  subscribe(EVENTS.TRANSFER_EFFECTIVE, 'eqt.fema_fc_trs', async (event: EventEnvelope) => {
+    await handleTransferEffectiveForFema(event.subject.entityId);
   });
 
   /** A band transition, not a raw reading, is what reaches the Command Center. */
