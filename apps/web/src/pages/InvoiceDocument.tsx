@@ -54,6 +54,7 @@ import { KaizenInvoiceDocument } from './kaizenInvoice/KaizenInvoiceDocument.js'
  * blocks below simply render nothing.
  */
 type InvoiceDocumentViewWithFinal = InvoiceDocumentView & {
+  /** The standing final invoice, derived from `statements`: the latest one not superseded. */
   finalInvoice?: { recordCode: string; issuedAt: string } | null;
 };
 
@@ -87,7 +88,8 @@ export function InvoiceDocument() {
   // underlying document, a different printed shape.
   if (data.ledger) return <KaizenInvoiceDocument doc={data} />;
 
-  const d = data as InvoiceDocumentViewWithFinal;
+  const standing = [...data.statements].filter((st) => st.status !== 'superseded').sort((a, b) => b.issuedAt.localeCompare(a.issuedAt))[0];
+  const d: InvoiceDocumentViewWithFinal = { ...data, finalInvoice: standing ? { recordCode: standing.recordCode, issuedAt: standing.issuedAt } : null };
   const paymentLabel = PAYMENT_TYPE_LABELS[d.payment.type as PaymentType] ?? d.payment.type;
   const modeLabel = d.payment.mode ? (PAYMENT_MODE_LABELS[d.payment.mode as PaymentMode] ?? d.payment.mode) : null;
   // A discount column is only worth the ink when at least one line actually
