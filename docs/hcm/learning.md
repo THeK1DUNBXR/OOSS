@@ -135,6 +135,7 @@ is spread in today.
 | HCM-LEARNING-010 | An employee past their mandatory-training due window with no completion is flagged overdue, and the job raises an exception for it | `HCM-LEARNING-010 — mandatory training overdue detection` |
 | HCM-LEARNING-011 | An IDP can be created with goals/mentor/review date and closed | `HCM-LEARNING-011 — individual development plans` |
 | HCM-LEARNING-012 | Budget utilisation derives from completed-enrollment spend; a program id from another tenant (or a non-existent one) is 404, not 403 | `HCM-LEARNING-012 — training budgets and cross-tenant isolation` |
+| HCM-LEARNING-013 | An own-scope grant (an `employee`-shaped role, or any fixture role scoped `@own`) never reaches another employee's record: nominating a colleague, approving/rejecting/attendance/completion, verifying a colleague's certification, reading or closing a colleague's IDP are all refused, and a bare list (no id filter) on enrollments/certifications/IDPs returns only the caller's own rows, never a colleague's | `HCM-LEARNING-013 — own-scope callers cannot act on a colleague's record` |
 
 ## What this does not do
 
