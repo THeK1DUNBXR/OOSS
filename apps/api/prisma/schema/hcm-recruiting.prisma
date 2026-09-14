@@ -1,0 +1,246 @@
+// HCM — recruiting (docs/hcm/recruiting.md).
+//
+// Full ATS on top of the existing Requisition/Application machines
+// (main.prisma). Nothing here re-derives a requisition or an application —
+// every model below hangs off `requisitionId`/`applicationId` as a plain
+// String column, per the multi-file schema convention (no `@relation` across
+// schema files).
+
+/// A published listing against an open requisition. A requisition can be
+/// published more than once over its life (re-posted after a hold), so this
+/// is its own record rather than a field bolted onto Requisition.
+model JobPosting {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  requisitionId String
+  title         String
+  description   String
+  /// internal | external | referral
+  channel     String    @default("internal")
+  /// Draft | Published | Closed | Cancelled
+  status      String    @default("Draft")
+  slug        String
+  publishedAt DateTime?
+  closesAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, slug])
+  @@index([tenantId, status])
+  @@index([tenantId, requisitionId])
+  @@map("hcm_recruiting_job_postings")
+}
+
+/// The candidate-facing half of a Person: what recruiting knows about them
+/// beyond identity. One row per Person per tenant — a person interviewing a
+/// second time gets a second Application, not a second profile.
+/// No dedicated record-code series was allocated to this workstream for a
+/// candidate profile (only JPST and OFR were — see docs/hcm/recruiting.md
+/// "Wanted from the scaffold"); a candidate is referred to by the Person's
+/// own PER code instead.
+model CandidateProfile {
+  id       String @id @default(cuid())
+  tenantId String
+
+  personId String
+  /// direct | referral | agency | job_board | campus
+  source      String  @default("direct")
+  resumeText  String?
+  /// Money withheld = null + reason for anyone lacking `candidates:financial`,
+  /// never a masked zero.
+  currentCtc  Decimal? @db.Decimal(14, 2)
+  expectedCtc Decimal? @db.Decimal(14, 2)
+  noticeDays  Int?
+  tags        Json    @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, personId])
+  @@index([tenantId, source])
+  @@map("hcm_recruiting_candidate_profiles")
+}
+
+/// One round of an application's interview loop. `interviewerPartyIds` is a
+/// JSON array of Person ids rather than a join table — the loop's roster is
+/// read and written as one unit, never queried row by row.
+model InterviewRound {
+  id       String @id @default(cuid())
+  tenantId String
+
+  applicationId       String
+  roundNo             Int
+  /// phone | technical | hr | panel
+  kind                String
+  scheduledAt         DateTime
+  interviewerPartyIds Json     @default("[]")
+  /// video | onsite | phone
+  mode                String   @default("video")
+  /// Scheduled | Completed | Cancelled | NoShow
+  status              String   @default("Scheduled")
+  /// advance | reject | hold — set when the round is marked complete.
+  outcome             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, applicationId])
+  @@index([tenantId, status])
+  @@map("hcm_recruiting_interview_rounds")
+}
+
+/// One interviewer's scored feedback on one round. A panel round gets one row
+/// per panellist — the recommendation is never averaged into the round
+/// itself, so a hiring manager reads each vote rather than a blended number.
+model InterviewScorecard {
+  id       String @id @default(cuid())
+  tenantId String
+
+  roundId            String
+  interviewerPartyId String
+  competencyScores   Json    @default("{}")
+  /// strong_hire | hire | no_hire | strong_no_hire
+  recommendation     String
+  notes              String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, roundId, interviewerPartyId])
+  @@index([tenantId, roundId])
+  @@map("hcm_recruiting_interview_scorecards")
+}
+
+/// A compensation offer against an application. Re-issuable: a rescinded
+/// offer's application can carry a second OfferLetter row rather than
+/// resurrecting the first, so the record of what was withdrawn stays intact.
+model OfferLetter {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  applicationId String
+  ctc           Decimal   @db.Decimal(14, 2)
+  joiningDate   DateTime
+  validUntil    DateTime
+  /// Draft | ApprovalPending | Approved | Sent | Accepted | Declined | Rescinded
+  status        String    @default("Draft")
+  proposedByPartyId String?
+  approvedByPartyId String?
+  approvedAt        DateTime?
+  sentAt            DateTime?
+  decidedAt         DateTime?
+  declineReason     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, applicationId])
+  @@index([tenantId, status])
+  @@map("hcm_recruiting_offer_letters")
+}
+
+/// An employee-sourced candidate. `bonusAmount` is set from the referral
+/// policy at submission and paid out through payroll as an ad-hoc line once
+/// `status` reaches BonusPaid — this record only tracks the entitlement.
+/// No dedicated record-code series was allocated to this workstream for a
+/// referral (see docs/hcm/recruiting.md "Wanted from the scaffold").
+model Referral {
+  id       String @id @default(cuid())
+  tenantId String
+
+  referrerEmploymentId String
+  candidatePersonId    String
+  applicationId        String?
+  bonusAmount          Decimal? @db.Decimal(12, 2)
+  /// Submitted | Shortlisted | Hired | BonusPaid | Rejected
+  status               String   @default("Submitted")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, referrerEmploymentId])
+  @@index([tenantId, status])
+  @@map("hcm_recruiting_referrals")
+}
+
+/// A background check run against a candidate (pre-joining) or a freshly
+/// joined employee (post-joining) — `applicationId`/`employmentId` are both
+/// optional and at least one is always set, whichever the vendor was engaged
+/// against.
+/// No dedicated record-code series was allocated to this workstream for a
+/// background verification (CERT went to WS6 learning's certifications — see
+/// docs/hcm/recruiting.md "Wanted from the scaffold").
+model BackgroundVerification {
+  id       String @id @default(cuid())
+  tenantId String
+
+  applicationId String?
+  employmentId  String?
+  vendor        String
+  checks        Json      @default("[]")
+  /// Pending | InProgress | Completed
+  status        String    @default("Pending")
+  /// clear | adverse | pending
+  outcome       String?
+  completedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, applicationId])
+  @@map("hcm_recruiting_background_verifications")
+}
+
+/// A reusable checklist item HR maintains once (e.g. "Issue laptop", due
+/// offset +2 days) and instantiates onto every new joiner, rather than typing
+/// the same task out by hand at each hire.
+model OnboardingTaskTemplate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  title         String
+  category      String  @default("general")
+  /// hr | it | manager | employee
+  assignee      String
+  dueOffsetDays Int     @default(0)
+  active        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, active])
+  @@map("hcm_recruiting_onboarding_task_templates")
+}
+
+/// One instantiated checklist item for one joiner, either copied from a
+/// template at joining time or added ad hoc.
+model OnboardingTask {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentId    String
+  templateId      String?
+  title           String
+  /// hr | it | manager | employee
+  assignee        String
+  assigneePartyId String?
+  dueDate         DateTime?
+  /// Pending | Done | Skipped
+  status          String    @default("Pending")
+  completedAt     DateTime?
+  completedByPartyId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentId])
+  @@index([tenantId, status])
+  @@map("hcm_recruiting_onboarding_tasks")
+}

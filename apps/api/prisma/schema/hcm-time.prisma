@@ -1,0 +1,227 @@
+// HCM — G2. Time: shifts, rosters, clock in/out, timesheets, overtime and
+// comp-off, attendance regularisation (docs/hcm/time.md).
+//
+// New models only. `employmentRelationshipId` is a plain String column, not a
+// Prisma relation, per the multi-file schema convention (docs/plan/hcm.md
+// rule 8) — main.prisma is never edited by a workstream. Every model carries
+// `tenantId` and is indexed on it, exactly as compliance-labour.prisma does.
+
+/// A shift definition: start/end are "HH:MM" local clock time, so a night
+/// shift (`nightShift: true`) is the one case where `endTime` reads earlier
+/// than `startTime` — it is understood to cross midnight.
+model Shift {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code String
+  name String
+
+  startTime      String
+  endTime        String
+  graceMinutes   Int     @default(0)
+  breakMinutes   Int     @default(0)
+  nightShift     Boolean @default(false)
+  active         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+  @@map("hcm_time_shifts")
+}
+
+/// One employment's assignment to a shift over a date range. `weeklyOffDays`
+/// is 0 (Sunday) .. 6 (Saturday); a day in that set is never expected to be
+/// worked, so the nightly deriver does not mark it absent.
+model RosterAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  shiftId                  String
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  weeklyOffDays Int[]     @default([0])
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId, effectiveFrom])
+  @@index([tenantId, shiftId])
+  @@map("hcm_time_roster_assignments")
+}
+
+/// One clock in or clock out. The nightly deriver folds a day's events into
+/// the existing `WorkAttendance` row; this table is the raw punch log, kept
+/// even after that fold so a dispute has something to point back at.
+model ClockEvent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+
+  /// in | out
+  kind       String
+  occurredAt DateTime
+
+  /// web | mobile | biometric_import
+  source   String  @default("web")
+  ip       String?
+  deviceId String?
+  lat      Decimal? @db.Decimal(9, 6)
+  long     Decimal? @db.Decimal(9, 6)
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, employmentRelationshipId, occurredAt])
+  @@map("hcm_time_clock_events")
+}
+
+/// A weekly timesheet — draft while the employee is filling it in, then
+/// submitted/approved/rejected like every other lifecycle in this platform.
+model Timesheet {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  /// Monday of the ISO week, at UTC midnight — the natural key with
+  /// `employmentRelationshipId`.
+  weekStart                DateTime
+
+  recordCode String
+
+  /// draft | submitted | approved | rejected
+  status String @default("draft")
+
+  totalHours Decimal @db.Decimal(6, 2) @default(0)
+
+  submittedAt    DateTime?
+  decidedById    String?
+  decidedAt      DateTime?
+  decisionNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, employmentRelationshipId, weekStart])
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@map("hcm_time_timesheets")
+}
+
+/// One day/project/task line of a timesheet.
+model TimesheetEntry {
+  id       String @id @default(cuid())
+  tenantId String
+
+  timesheetId String
+
+  date      DateTime
+  projectId String?
+  taskRef   String?
+  hours     Decimal @db.Decimal(5, 2)
+  billable  Boolean @default(false)
+  note      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, timesheetId])
+  @@map("hcm_time_timesheet_entries")
+}
+
+/// A pre-approval request to work overtime on a given date. Approving one is
+/// also what earns the comp-off (see `CompOff.sourceRef`).
+model OvertimeRequest {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+
+  date   DateTime
+  hours  Decimal  @db.Decimal(5, 2)
+  reason String?
+
+  /// requested | approved | rejected
+  status String @default("requested")
+
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId, date])
+  @@index([tenantId, status])
+  @@map("hcm_time_overtime_requests")
+}
+
+/// A comp-off, earned from approved overtime or holiday work, with its own
+/// expiry. Consumption is recorded here directly rather than by writing into
+/// the leave ledger — `leavepolicy`'s CO leave type (docs/hcm/leavepolicy.md,
+/// when it lands) is the intended integration point; until then this is the
+/// full record.
+model CompOff {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+
+  /// overtime | holiday_work
+  earnedFrom String
+  /// The OvertimeRequest id, when `earnedFrom` is "overtime".
+  sourceRef  String?
+
+  earnedOn  DateTime
+  days      Decimal  @db.Decimal(3, 2)
+  expiresOn DateTime
+
+  /// available | consumed | expired
+  status     String    @default("available")
+  consumedOn DateTime?
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId, status])
+  @@map("hcm_time_comp_offs")
+}
+
+/// A request to regularise (or dispute) a day's attendance. Submitting one
+/// puts the underlying `WorkAttendance` row into `Disputed`; approving it
+/// moves that row to `Regularised` — this table never re-implements that
+/// machine, it only drives it (apps/api/src/domains/hcm/time.ts).
+model AttendanceRegularisation {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  /// The `WorkAttendance` row this drives — created on submit if the day had
+  /// no attendance record at all (a missed punch).
+  workAttendanceId         String
+
+  date   DateTime
+  reason String
+
+  /// submitted | approved | rejected
+  status String @default("submitted")
+
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId, date])
+  @@index([tenantId, status])
+  @@map("hcm_time_attendance_regularisations")
+}

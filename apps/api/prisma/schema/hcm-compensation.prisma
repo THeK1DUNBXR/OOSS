@@ -1,0 +1,263 @@
+// HCM — WS7 compensation (docs/hcm/compensation.md).
+//
+// New models only. Referenced employment/person rows live in main.prisma and
+// are addressed here by plain `*Id` String columns — no `@relation` across
+// the schema-file boundary, exactly as compliance-*.prisma does.
+
+/// A pay band: WS1's `Grade` is the org-level level/code with no money in it;
+/// this is the money side, owned here. `code` is what a job posting or an
+/// offer names; `minPay`/`midPay`/`maxPay` are annual CTC figures in `currency`.
+model PayGrade {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code  String
+  level Int
+  currency String @default("INR")
+
+  minPay Decimal @db.Decimal(14, 2)
+  midPay Decimal @db.Decimal(14, 2)
+  maxPay Decimal @db.Decimal(14, 2)
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("hcm_compensation_pay_grades")
+}
+
+/// A revision cycle (the annual round, an off-cycle correction round). Lines
+/// hang off it. `budgetPct` is the ceiling on aggregate increase the cycle is
+/// allowed; `applyCycle` refuses to run over it.
+model SalaryRevisionCycle {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name          String
+  effectiveDate DateTime
+  budgetPct     Decimal @db.Decimal(6, 2)
+
+  /// draft | proposed | approved | applied
+  status String @default("draft")
+
+  proposedById String?
+  approvedById String?
+  appliedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("hcm_compensation_revision_cycles")
+}
+
+/// One employment's line in a revision cycle. `proposedById`/`approvedById`
+/// carry the Self-Dealing Bar: the approver may be neither the proposer nor
+/// the employee the line is about.
+model SalaryRevisionLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  cycleId                  String
+  employmentRelationshipId String
+
+  currentCtc  Decimal @db.Decimal(14, 2)
+  proposedPct Decimal @db.Decimal(6, 2)
+  proposedCtc Decimal @db.Decimal(14, 2)
+  /// A free-text pointer to the rating/cycle that justified the number — not
+  /// a foreign key, since WS5 performance owns that table.
+  ratingLink  String?
+  approvedCtc Decimal? @db.Decimal(14, 2)
+
+  /// proposed | approved | rejected | applied
+  status String @default("proposed")
+
+  proposedById String?
+  approvedById String?
+  decidedAt    DateTime?
+  appliedAt    DateTime?
+  /// The CompensationRecord this line wrote into, once applied.
+  compensationRecordId String?
+  note                 String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, cycleId, employmentRelationshipId])
+  @@index([tenantId, cycleId])
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_compensation_revision_lines")
+}
+
+/// A bonus/commission/incentive scheme. `formula` is a `VariablePayFormula`
+/// from `@kaizen/shared` (`percentage_of_base` | `fixed` | `tiered`).
+model VariablePayPlan {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name   String
+  /// bonus | commission | incentive
+  kind   String
+  /// monthly | quarterly | annual
+  period String
+
+  formula Json
+  active  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("hcm_compensation_variable_pay_plans")
+}
+
+/// One computed payout for one employment for one period of one plan.
+model VariablePayout {
+  id       String @id @default(cuid())
+  tenantId String
+
+  planId                   String
+  employmentRelationshipId String
+  /// "2026-Q2", "2026-08" — whatever grain the plan's `period` implies.
+  period                   String
+
+  computedAmount Decimal  @db.Decimal(14, 2)
+  approvedAmount Decimal? @db.Decimal(14, 2)
+
+  /// computed | approved | paid
+  status String @default("computed")
+
+  computedById String?
+  approvedById String?
+  paidAt       DateTime?
+  note         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, planId, employmentRelationshipId, period])
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_compensation_variable_payouts")
+}
+
+/// A benefit scheme (health, life, accident, meal, fuel, NPS) with employer
+/// and employee monthly contributions.
+model BenefitPlan {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name     String
+  /// health | life | accident | meal | fuel | nps | other
+  kind     String
+  provider String?
+
+  employerContribution Decimal @db.Decimal(12, 2)
+  employeeContribution Decimal @db.Decimal(12, 2)
+
+  enrolmentOpensOn  DateTime?
+  enrolmentClosesOn DateTime?
+  active            Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("hcm_compensation_benefit_plans")
+}
+
+/// One employment's enrolment in one plan, with dependants as a JSON list
+/// (`[{name, relation, dob}]`) rather than a normalised table — nobody
+/// queries "everyone whose spouse is named X" and a fifth table for it would
+/// buy nothing.
+model BenefitEnrollment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  planId                   String
+  employmentRelationshipId String
+
+  dependants Json @default("[]")
+
+  /// enrolled | waitlisted | cancelled
+  status String @default("enrolled")
+
+  enrolledAt  DateTime  @default(now())
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, planId, employmentRelationshipId])
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_compensation_benefit_enrollments")
+}
+
+/// An employee loan/advance, EMI schedule computed on demand from
+/// `emiSchedule()` rather than persisted row-by-row.
+model EmployeeLoan {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  employmentRelationshipId String
+
+  principal    Decimal @db.Decimal(14, 2)
+  interestPct  Decimal @db.Decimal(6, 2)
+  tenureMonths Int
+  emi          Decimal @db.Decimal(12, 2)
+
+  /// requested | approved | rejected | disbursed | closed
+  status String @default("requested")
+
+  requestedById String?
+  approvedById  String?
+  decidedAt     DateTime?
+  disbursedAt   DateTime?
+  startDate     DateTime?
+  closedAt      DateTime?
+
+  outstandingPrincipal Decimal @db.Decimal(14, 2)
+  note                 String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_compensation_employee_loans")
+}
+
+/// A reimbursable expense claim. "Reimbursed via payroll" is recorded as a
+/// status and a note here — WS8 payrollops owns the ad-hoc pay line and the
+/// journal that actually moves the money; this row is the claim's own record
+/// of having been asked to be paid, not the payment itself.
+model ExpenseClaim {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  employmentRelationshipId String
+
+  /// travel | food | phone | other
+  category String
+  amount   Decimal @db.Decimal(12, 2)
+  receipts Json    @default("[]")
+
+  /// submitted | approved | rejected | reimbursed
+  status String @default("submitted")
+
+  submittedById String?
+  approvedById  String?
+  decidedAt     DateTime?
+  reimbursedAt  DateTime?
+  note          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_compensation_expense_claims")
+}
