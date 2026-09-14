@@ -14,7 +14,7 @@ model AccountingPeriod {
   tenantId String
 
   /// "2025-26" (Apr-Mar).
-  fy String
+  fy     String
   /// YYYY-MM.
   period String
 
@@ -145,7 +145,7 @@ model BankStatementLine {
 
   accountId String
   date      DateTime
-  amount    Decimal @db.Decimal(18, 2)
+  amount    Decimal  @db.Decimal(18, 2)
   /// in | out
   direction String
   reference String?

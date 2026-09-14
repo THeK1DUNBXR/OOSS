@@ -806,6 +806,22 @@ export const EXCEPTION_CODES = {
   // transfer going effective. Raised once per share transaction, by the
   // `certificate_window` job and echoed on the cap table as `certificateOverdue`.
   EX_EQT_002: { code: 'EX-EQT-002', label: 'Share certificate overdue (SH-1, two months)', severity: 'S2_WARNING' },
+  // Marketing (mkt), Canon H_MKT.
+  EX_MKT_001: { code: 'EX-MKT-001', label: 'Lead created with no attributable source', severity: 'S1_ATTENTION' },
+  EX_MKT_002: { code: 'EX-MKT-002', label: 'Campaign spend exceeds planned budget', severity: 'S2_WARNING' },
+  EX_MKT_003: { code: 'EX-MKT-003', label: 'Send requested to recipients lacking marketing consent', severity: 'S2_WARNING' },
+  EX_MKT_004: { code: 'EX-MKT-004', label: 'Live campaign with no touchpoints for 7 days', severity: 'S1_ATTENTION' },
+  EX_MKT_005: { code: 'EX-MKT-005', label: 'Bounce rate above 5% on a send', severity: 'S2_WARNING' },
+  EX_MKT_006: { code: 'EX-MKT-006', label: 'Unsubscribe spike on a send (>2%)', severity: 'S2_WARNING' },
+  EX_MKT_007: { code: 'EX-MKT-007', label: 'Form submission unconverted for 24h', severity: 'S1_ATTENTION' },
+  EX_MKT_008: { code: 'EX-MKT-008', label: 'Event completed with follow-ups outstanding after 3 days', severity: 'S1_ATTENTION' },
+  EX_MKT_009: { code: 'EX-MKT-009', label: 'DLT/WhatsApp template used before registration/approval', severity: 'S3_HIGH_RISK' },
+  EX_MKT_010: { code: 'EX-MKT-010', label: 'Campaign live past endAt', severity: 'S1_ATTENTION' },
+  EX_MKT_011: { code: 'EX-MKT-011', label: 'Channel adapter not configured but send requested', severity: 'S1_ATTENTION' },
+  EX_MKT_012: { code: 'EX-MKT-012', label: 'Asset used past usage-rights expiry', severity: 'S2_WARNING' },
+  EX_MKT_013: { code: 'EX-MKT-013', label: 'Referral reward pending beyond 30 days', severity: 'S1_ATTENTION' },
+  EX_MKT_014: { code: 'EX-MKT-014', label: 'Budget period has no approved budget while spend recorded', severity: 'S2_WARNING' },
+  EX_MKT_015: { code: 'EX-MKT-015', label: 'Journey run stuck (nextAt overdue by 2 days)', severity: 'S1_ATTENTION' },
 } as const;
 
 export const EXCEPTION_STATES = ['open', 'acknowledged', 'resolved', 'escalated', 'suppressed'] as const;
