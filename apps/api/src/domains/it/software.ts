@@ -49,7 +49,7 @@ import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan } from '../../platform/permissions.js';
+import { assertCan, canSeeMoney, evaluate } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException, notify } from '../../platform/exceptions.js';
 import { decideApprovalStep, addBusinessDays } from '../../platform/approvals.js';
@@ -62,6 +62,26 @@ const RENEWAL_POLICY_CODE = 'POL-IT-LICENCE-APPROVAL';
 function num(d: unknown): number {
   if (d === null || d === undefined) return 0;
   return typeof d === 'number' ? d : Number((d as { toString(): string }).toString());
+}
+
+/**
+ * `costPerPeriod`, `pendingRenewalCostPerPeriod` and the derived
+ * `annualisedCost` are withheld — present but nulled, never a silently
+ * dropped key — from any caller who does not hold `it_licences:financial`
+ * (Finance Head and the chairman hold it; Operations Head, who can create
+ * and edit licences, does not). The same shape `maskContractMoney` in
+ * `domains/it/vendors.ts` uses, applied explicitly here rather than through
+ * `applyFieldVisibility`: none of these field names are in the platform's
+ * shared `MONEY_FIELDS` list (`packages/shared/src/permissions.ts`, not
+ * this workstream's file to extend).
+ */
+function maskLicenceMoney<T extends Record<string, unknown>>(row: T, seesMoney: boolean): T {
+  if (seesMoney) return row;
+  const masked: Record<string, unknown> = { ...row };
+  if ('costPerPeriod' in masked) masked.costPerPeriod = null;
+  if ('pendingRenewalCostPerPeriod' in masked) masked.pendingRenewalCostPerPeriod = null;
+  if ('annualisedCost' in masked) masked.annualisedCost = null;
+  return masked as T;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,14 +185,31 @@ async function loadApplication(id: string) {
   return app;
 }
 
+/**
+ * An application's licences are included only for a caller who separately
+ * holds `it_licences:view` — an employee holds `it_applications:view` (the
+ * catalogue) but no grant on `it_licences` at all (the matrix's `–`), and
+ * must not see a licence's existence, let alone its cost, by way of the
+ * application it hangs off. Checked with `evaluate`, not `assertCan`, so
+ * the absence of the grant quietly empties the array rather than refusing
+ * the whole application.
+ */
 export async function applicationDetail(id: string) {
   await assertCan({ resource: 'it_applications', verb: 'view' });
   const app = await loadApplication(id);
   const auth = currentAuth();
-  const licences = await prisma.itLicence.findMany({
-    where: { tenantId: auth.tenantId, applicationId: id, deletedAt: null },
-    orderBy: { createdAt: 'desc' },
-  });
+
+  const licenceGrant = await evaluate({ resource: 'it_licences', verb: 'view' });
+  let licences: unknown[] = [];
+  if (licenceGrant.allowed) {
+    const seesMoney = await canSeeMoney('it_licences');
+    const rows = await prisma.itLicence.findMany({
+      where: { tenantId: auth.tenantId, applicationId: id, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    licences = rows.map((row) => maskLicenceMoney(row, seesMoney));
+  }
+
   return {
     ...app,
     availableTransitions: availableTransitions(itApplicationMachine, app.status as ItApplicationStatus),
@@ -363,6 +400,7 @@ export interface LicenceFilter {
 export async function listLicences(filter: LicenceFilter = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'it_licences', verb: 'view' });
+  const seesMoney = await canSeeMoney('it_licences');
 
   const rows = await prisma.itLicence.findMany({
     where: {
@@ -375,14 +413,15 @@ export async function listLicences(filter: LicenceFilter = {}) {
     orderBy: { createdAt: 'desc' },
   });
 
+  let filtered = rows;
   if (filter.view === 'renewing') {
     const now = new Date();
-    return rows.filter((r) => r.renewalDate && daysUntilLicenceDate(r.renewalDate, now) <= 90 && r.status !== 'cancelled');
+    filtered = rows.filter((r) => r.renewalDate && daysUntilLicenceDate(r.renewalDate, now) <= 90 && r.status !== 'cancelled');
+  } else if (filter.view === 'over_allocated') {
+    filtered = rows.filter((r) => seatUtilisation(r.seatsPurchased, r.seatsInUse).overAllocated);
   }
-  if (filter.view === 'over_allocated') {
-    return rows.filter((r) => seatUtilisation(r.seatsPurchased, r.seatsInUse).overAllocated);
-  }
-  return rows;
+
+  return filtered.map((row) => maskLicenceMoney(row, seesMoney));
 }
 
 async function loadLicence(id: string) {
@@ -398,13 +437,15 @@ async function loadLicence(id: string) {
 export async function licenceDetail(id: string) {
   await assertCan({ resource: 'it_licences', verb: 'view' });
   const licence = await loadLicence(id);
+  const seesMoney = await canSeeMoney('it_licences');
   const events = await prisma.itLicenceEvent.findMany({ where: { licenceId: id }, orderBy: { createdAt: 'desc' } });
-  return {
+  const shaped = {
     ...licence,
     annualisedCost: annualisedCost(num(licence.costPerPeriod), licence.billingCycle as ItBillingCycle),
     seatUtilisation: seatUtilisation(licence.seatsPurchased, licence.seatsInUse),
     events,
   };
+  return maskLicenceMoney(shaped, seesMoney);
 }
 
 /** Seats in use are typed in — the platform does not meter SaaS logins
@@ -868,8 +909,9 @@ export async function applicationsSummary(): Promise<ApplicationsSummary> {
 }
 
 export interface LicencesSummary extends ItSummaryBase {
-  annualisedSpend: number;
-  annualisedSpendByApplication: Array<{ applicationId: string; applicationName: string; annualisedCost: number }>;
+  /** `null` — present, withheld — for a caller without `it_licences:financial`. */
+  annualisedSpend: number | null;
+  annualisedSpendByApplication: Array<{ applicationId: string; applicationName: string; annualisedCost: number | null }>;
   renewingIn90Days: number;
   overAllocated: number;
   underUsed: number;
@@ -880,6 +922,7 @@ export interface LicencesSummary extends ItSummaryBase {
 export async function licencesSummary(): Promise<LicencesSummary> {
   const auth = currentAuth();
   await assertCan({ resource: 'it_licences', verb: 'view' });
+  const seesMoney = await canSeeMoney('it_licences');
 
   const rows = await prisma.itLicence.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, status: { not: 'cancelled' } },
@@ -888,7 +931,7 @@ export async function licencesSummary(): Promise<LicencesSummary> {
   if (rows.length === 0) {
     return {
       notYetMeasured: true,
-      annualisedSpend: 0,
+      annualisedSpend: seesMoney ? 0 : null,
       annualisedSpendByApplication: [],
       renewingIn90Days: 0,
       overAllocated: 0,
@@ -928,10 +971,16 @@ export async function licencesSummary(): Promise<LicencesSummary> {
     seatsInUse += row.seatsInUse;
   }
 
+  const spendByApplication = [...byApp.values()].sort((a, b) => b.annualisedCost - a.annualisedCost);
+
   return {
     notYetMeasured: false,
-    annualisedSpend: totalAnnualisedSpend(rows.map((r) => ({ costPerPeriod: num(r.costPerPeriod), billingCycle: r.billingCycle as ItBillingCycle }))),
-    annualisedSpendByApplication: [...byApp.values()].sort((a, b) => b.annualisedCost - a.annualisedCost),
+    annualisedSpend: seesMoney
+      ? totalAnnualisedSpend(rows.map((r) => ({ costPerPeriod: num(r.costPerPeriod), billingCycle: r.billingCycle as ItBillingCycle })))
+      : null,
+    annualisedSpendByApplication: seesMoney
+      ? spendByApplication
+      : spendByApplication.map((a) => ({ ...a, annualisedCost: null })),
     renewingIn90Days,
     overAllocated,
     underUsed,

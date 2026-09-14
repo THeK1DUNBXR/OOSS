@@ -7,9 +7,13 @@
  * renewal ladder fires once per rung (IT-LIC-001), an over-allocated licence
  * raises an exception naming it (IT-LIC-002), a renewal proposed by the
  * Operations Head opens an approval step the Operations Head cannot decide
- * (IT-LIC-003), plus the permission tests: an employee sees the catalogue
- * but never a licence's cost, the Operations Head cannot approve their own
- * renewal, and the Finance Head cannot create a licence.
+ * (IT-LIC-003), plus the permission tests: an employee holds no grant on
+ * `it_licences` at all (denied outright, and sees none of an application's
+ * licences via the catalogue either), the Operations Head sees licences and
+ * their summary but every cost figure comes back withheld — `null`, present
+ * but never a real number — because `it_licences:VCEX` carries no
+ * `financial`, the Operations Head cannot approve their own renewal, and the
+ * Finance Head cannot create a licence.
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -237,15 +241,58 @@ describe('technology — applications, licences and subscriptions — domain and
     expect(denied.status).toBe(403);
   });
 
-  it('an employee sees the application catalogue but holds no grant on licences at all (permission test)', async () => {
+  it('an employee holds no grant on it_licences at all, and sees no licence — cost included — via an application either (permission test)', async () => {
     const list = await asUser('employee@kaizen.co.in', () => listApplications());
     expect(Array.isArray(list)).toBe(true);
 
     const denied = await expectReject(() => asUser('employee@kaizen.co.in', () => listLicences()));
     expect(denied.status).toBe(403);
 
+    const deniedDetail = await expectReject(() => {
+      const anyLicenceId = 'not-a-real-licence-id';
+      return asUser('employee@kaizen.co.in', () => licenceDetail(anyLicenceId));
+    });
+    expect(deniedDetail.status).toBe(403);
+
     const deniedSummary = await expectReject(() => asUser('employee@kaizen.co.in', () => licencesSummary()));
     expect(deniedSummary.status).toBe(403);
+
+    // IT-LIC reviewed finding (2): an application's own detail must not leak
+    // a licence — let alone its cost — to a caller with no it_licences grant.
+    const app = await asUser('operations@kaizen.co.in', () =>
+      createApplication({ name: `Fixture employee-view app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
+    );
+    await asUser('operations@kaizen.co.in', () =>
+      createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 5, seatsInUse: 2, costPerPeriod: 900, billingCycle: 'monthly' }),
+    );
+    const employeeView = await asUser('employee@kaizen.co.in', () => applicationDetail(app.id));
+    expect(employeeView.licences).toEqual([]);
+  });
+
+  it('reviewed finding (1): the Operations Head sees licences but never their cost — withheld server-side, not merely hidden by the screen', async () => {
+    const app = await asUser('operations@kaizen.co.in', () =>
+      createApplication({ name: `Fixture money-masking app ${stamp()}`, category: 'productivity', hosting: 'saas' }),
+    );
+    const licence = await asUser('operations@kaizen.co.in', () =>
+      createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 6, seatsInUse: 3, costPerPeriod: 1234, billingCycle: 'monthly' }),
+    );
+
+    const list = await asUser('operations@kaizen.co.in', () => listLicences());
+    const listed = list.find((l) => l.id === licence.id)!;
+    expect(listed.costPerPeriod).toBeNull();
+
+    const detail = await asUser('operations@kaizen.co.in', () => licenceDetail(licence.id));
+    expect(detail.costPerPeriod).toBeNull();
+    expect(detail.annualisedCost).toBeNull();
+
+    const summary = await asUser('operations@kaizen.co.in', () => licencesSummary());
+    expect(summary.annualisedSpend).toBeNull();
+    expect(summary.annualisedSpendByApplication.every((a) => a.annualisedCost === null)).toBe(true);
+
+    // Finance Head, who holds `it_licences:financial`, sees the real figures.
+    const financeDetail = await asUser('finance@kaizen.co.in', () => licenceDetail(licence.id));
+    expect(Number(financeDetail.costPerPeriod)).toBe(1234);
+    expect(financeDetail.annualisedCost).toBe(1234 * 12);
   });
 
   it('cancelling a licence requires a reason and clears any open renewal proposal', async () => {
@@ -272,7 +319,10 @@ describe('technology — applications, licences and subscriptions — domain and
     expect(appsSummary.notYetMeasured).toBe(false);
     expect(Object.keys(appsSummary.byStatus).sort()).toEqual(['active', 'evaluating', 'retired', 'sunsetting'].sort());
 
-    const licSummary = await asUser('operations@kaizen.co.in', () => licencesSummary());
+    // Money-bearing figures are asserted from Finance Head, who holds
+    // `it_licences:financial` — Operations Head's own view of them is
+    // covered separately by the money-masking permission test above.
+    const licSummary = await asUser('finance@kaizen.co.in', () => licencesSummary());
     expect(licSummary.notYetMeasured).toBe(false);
     expect(licSummary.annualisedSpend).toBeGreaterThan(0);
     expect(licSummary.seatsPurchased).toBeGreaterThanOrEqual(0);
@@ -285,7 +335,8 @@ describe('technology — applications, licences and subscriptions — domain and
     const licence = await asUser('operations@kaizen.co.in', () =>
       createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 20, seatsInUse: 10, costPerPeriod: 100, billingCycle: 'monthly' }),
     );
-    const detail = await asUser('operations@kaizen.co.in', () => licenceDetail(licence.id));
+    // Finance Head: holds `it_licences:financial`, sees the real figures.
+    const detail = await asUser('finance@kaizen.co.in', () => licenceDetail(licence.id));
     expect(detail.annualisedCost).toBe(1200);
     expect(detail.seatUtilisation).toEqual({ percent: 50, overAllocated: false });
   });

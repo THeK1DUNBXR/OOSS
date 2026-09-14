@@ -30,6 +30,7 @@ import {
   RecordCode,
   StatusChip,
   Tabs,
+  Withheld,
 } from '../../components/ui.js';
 import { MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
@@ -76,7 +77,8 @@ interface ItLicence {
   kind: LicenceKind;
   seatsPurchased: number;
   seatsInUse: number;
-  costPerPeriod: string | number;
+  /** `null` — present, withheld server-side — for a caller without `it_licences:financial`. */
+  costPerPeriod: string | number | null;
   currency: string;
   billingCycle: BillingCycle;
   termStart: string | null;
@@ -97,7 +99,7 @@ interface ItLicence {
 }
 
 interface LicenceDetailView extends ItLicence {
-  annualisedCost: number;
+  annualisedCost: number | null;
   seatUtilisation: { percent: number | null; overAllocated: boolean };
   events: LicenceEvent[];
 }
@@ -121,8 +123,8 @@ interface ApplicationsSummary {
 
 interface LicencesSummary {
   notYetMeasured: boolean;
-  annualisedSpend: number;
-  annualisedSpendByApplication: Array<{ applicationId: string; applicationName: string; annualisedCost: number }>;
+  annualisedSpend: number | null;
+  annualisedSpendByApplication: Array<{ applicationId: string; applicationName: string; annualisedCost: number | null }>;
   renewingIn90Days: number;
   overAllocated: number;
   underUsed: number;
@@ -534,7 +536,7 @@ export function ItApplicationDetail() {
                     </td>
                     <td className="py-2 pr-3 text-ink-300">{l.kind}</td>
                     <td className="py-2 pr-3 tabular-nums text-ink-300">{l.seatsInUse}/{l.seatsPurchased}</td>
-                    <td className="py-2 pr-3 tabular-nums text-ink-300">{can('it_licences:F') ? money(l.costPerPeriod, l.currency) : <span className="text-ink-600">withheld</span>}</td>
+                    <td className="py-2 pr-3 tabular-nums text-ink-300">{can('it_licences:F') ? money(l.costPerPeriod, l.currency) : <Withheld reason="no_permission" />}</td>
                     <td className="py-2 pr-3 text-ink-300">{l.renewalDate ? date(l.renewalDate) : '—'}</td>
                     <td className="py-2 pr-3"><StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} /></td>
                   </tr>
@@ -586,7 +588,7 @@ export function ItLicences() {
       ) : (
         s && (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Metric label="Annualised spend" value={can('it_licences:F') ? money(s.annualisedSpend) : '—'} noActionReason="Normalised across billing cycles." />
+            <Metric label="Annualised spend" value={can('it_licences:F') ? money(s.annualisedSpend) : <Withheld reason="no_permission" />} noActionReason="Normalised across billing cycles." />
             <Metric label="Renewing in 90 days" value={s.renewingIn90Days} tone={s.renewingIn90Days > 0 ? 'warn' : 'good'} drillTo="/it/licences" />
             <Metric label="Over-allocated" value={s.overAllocated} tone={s.overAllocated > 0 ? 'bad' : 'good'} drillTo="/it/licences" />
             <Metric label="Seats purchased vs in use" value={`${s.seatsInUse}/${s.seatsPurchased}`} noActionReason="Across every un-cancelled licence." />
@@ -632,7 +634,7 @@ export function ItLicences() {
                       </td>
                       <td className="py-2 pr-3 text-ink-300">{l.application?.name ?? l.applicationId}</td>
                       <td className={`py-2 pr-3 tabular-nums ${over ? 'text-band-critical' : 'text-ink-300'}`}>{l.seatsInUse}/{l.seatsPurchased}</td>
-                      <td className="py-2 pr-3 tabular-nums text-ink-300">{can('it_licences:F') ? `${money(l.costPerPeriod, l.currency)}/${l.billingCycle}` : 'withheld'}</td>
+                      <td className="py-2 pr-3 tabular-nums text-ink-300">{can('it_licences:F') ? `${money(l.costPerPeriod, l.currency)}/${l.billingCycle}` : <Withheld reason="no_permission" />}</td>
                       <td className="py-2 pr-3 text-ink-300">{l.renewalDate ? date(l.renewalDate) : '—'}</td>
                       <td className="py-2 pr-3"><StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} /></td>
                     </tr>
@@ -809,8 +811,8 @@ export function ItLicenceDetail() {
               {l.seatUtilisation.overAllocated && <span className="ml-2 text-band-critical">over-allocated</span>}
               <p className="mt-0.5 text-2xs italic text-ink-500">Typed in — the platform does not meter logins.</p>
             </Field>
-            <Field label="Cost">{can('it_licences:F') ? `${money(l.costPerPeriod, l.currency)} / ${l.billingCycle}` : 'withheld'}</Field>
-            <Field label="Annualised cost">{can('it_licences:F') ? money(l.annualisedCost, l.currency) : 'withheld'}</Field>
+            <Field label="Cost">{can('it_licences:F') ? `${money(l.costPerPeriod, l.currency)} / ${l.billingCycle}` : <Withheld reason="no_permission" />}</Field>
+            <Field label="Annualised cost">{can('it_licences:F') ? money(l.annualisedCost, l.currency) : <Withheld reason="no_permission" />}</Field>
             <Field label="Term">{l.termStart ? date(l.termStart) : '—'} to {l.termEnd ? date(l.termEnd) : '—'}</Field>
             <Field label="Renewal date">{l.renewalDate ? date(l.renewalDate) : '—'}</Field>
             <Field label="Auto-renew">{l.autoRenew ? 'Yes' : 'No'}</Field>
@@ -893,13 +895,13 @@ function RenewModal({
   onDone,
 }: {
   licenceId: string;
-  currentCost: string | number;
+  currentCost: string | number | null;
   currentCycle: BillingCycle;
   onClose: () => void;
   onDone: () => void;
 }) {
   const [newTermEnd, setNewTermEnd] = useState('');
-  const [newCostPerPeriod, setNewCostPerPeriod] = useState(String(currentCost));
+  const [newCostPerPeriod, setNewCostPerPeriod] = useState(currentCost === null ? '' : String(currentCost));
   const [newBillingCycle, setNewBillingCycle] = useState<BillingCycle>(currentCycle);
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -935,7 +937,12 @@ function RenewModal({
         <p className="text-2xs text-ink-500">A renewal you propose is never one you can approve — it always goes to Finance.</p>
         <TextInput label="New term end" type="date" required value={newTermEnd} onChange={setNewTermEnd} />
         <Row>
-          <MoneyInput label="New cost per period" value={newCostPerPeriod} onChange={setNewCostPerPeriod} />
+          <MoneyInput
+            label="New cost per period"
+            value={newCostPerPeriod}
+            onChange={setNewCostPerPeriod}
+            hint={currentCost === null ? 'You cannot see the current cost — leave blank to keep it unchanged.' : undefined}
+          />
           <SelectInput label="Billing cycle" required value={newBillingCycle} onChange={setNewBillingCycle} options={[
             { value: 'monthly', label: 'Monthly' },
             { value: 'quarterly', label: 'Quarterly' },

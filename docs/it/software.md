@@ -102,6 +102,11 @@ step is open, `{ applied: true, licence, ... }` once decided.
 
 ### `GET /licences/summary`
 
+`annualisedSpend` and every `annualisedSpendByApplication[].annualisedCost`
+are `null` — present, withheld — for a caller without
+`it_licences:financial` (Operations Head's `VCEX` carries no `F`). Shown here
+as seen by Finance Head, who holds it:
+
 ```jsonc
 {
   "notYetMeasured": false,
@@ -183,10 +188,24 @@ npx vitest run src/tests/it/software.test.ts
 - **Application detail** (`/it/applications/:id`) — fields, owner
   assignment, lifecycle buttons rendered only from `availableTransitions`,
   its licences, and links (by path only, no duplication) to Continuity,
-  Incidents and Changes.
+  Incidents and Changes. The `licences[]` array itself is server-shaped: it
+  is populated only when the caller separately holds `it_licences:view` (an
+  employee holds `it_applications:view` but no grant on `it_licences` at
+  all, so they see none), and within it `costPerPeriod` is withheld —
+  present but `null` — for a caller without `it_licences:financial`
+  (`GET /applications/:id`, `applicationDetail` in
+  `domains/it/software.ts`).
 - **Licences** (`/it/licences`) — tabs (renewing soon, over-allocated, all),
-  annualised spend metric (withheld for a viewer without `it_licences:F`),
-  a New licence modal.
+  an annualised spend metric, a New licence modal. Money is withheld
+  server-side, not merely hidden by the screen: `listLicences`,
+  `licenceDetail` and `licencesSummary` each call `canSeeMoney('it_licences')`
+  and null `costPerPeriod`/`annualisedCost`/`annualisedSpend`
+  (present-but-`null`, the same shape `maskContractMoney` in
+  `domains/it/vendors.ts` uses) for a caller without `it_licences:financial`
+  — Operations Head holds `VCEX` on this resource, no `F`. The `can('it_licences:F')`
+  check on screen renders `Withheld` in place of the figure; it is a display
+  choice layered on top of a response that already carries no real number to
+  leak.
 - **Licence detail** (`/it/licences/:id`) — seat update, propose renewal,
   the Approve/Decline controls shown only to a viewer holding
   `it_licences:approve` (never rendered disabled for anyone else), cancel
