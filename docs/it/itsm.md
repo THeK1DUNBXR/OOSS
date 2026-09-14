@@ -108,10 +108,17 @@ never render a button the API would refuse.
   `reviewed | failed | rolled_back` that are `reviewed`; `null` with no
   counted rows (a change still `draft`/`scheduled` says nothing about
   success yet).
-- `isInFreeze(freezes, at, kind)` — the freeze covering `at`, or `null`; an
-  `emergency` change passes through a freeze that declares
+- `isInFreeze(freezes, at, kind)` — the freeze covering the instant `at`, or
+  `null`; an `emergency` change passes through a freeze that declares
   `allowEmergency`, every other kind is blocked by any freeze covering the
   moment.
+- `isWindowInFreeze(freezes, windowStart, windowEnd, kind)` — the freeze
+  overlapping the whole `[windowStart, windowEnd]` range, or `null`. This is
+  what `SCHEDULE` and `changeDetail`'s `freezeInForce` actually check: a
+  change that starts the day before a freeze opens and runs three days into
+  it is just as much happening during the freeze as one that starts inside
+  it — `isInFreeze` alone, tested only at `windowStart`, would miss that.
+  Same `allowEmergency` override as `isInFreeze`.
 
 ---
 
@@ -175,13 +182,23 @@ the tenant has no incidents at all.
   "awaitingApproval": 2,
   "scheduledThisWeek": 1,
   "successRate90d": 0.75,
-  "freezeInForce": { "name": "Quarter close freeze", "until": "2026-10-05T00:00:00.000Z" }
+  "freezeInForce": { "name": "Quarter close freeze", "until": "2026-10-05T00:00:00.000Z", "blockedKinds": ["standard", "normal"] }
 }
 ```
 `successRate90d` is `null` with no change reaching `reviewed | failed |
 rolled_back` in 90 days. `freezeInForce` is `null` when no freeze covers
-the current moment (computed against `kind: 'normal'`, so it reports the
-freeze a normal change would hit right now).
+the current moment. `blockedKinds` names every change `kind` at least one
+freeze covering the moment actually blocks right now — `standard` and
+`normal` always, `emergency` only when no freeze covering the moment
+declares `allowEmergency`; when two freezes overlap the moment with
+different `allowEmergency` settings, `blockedKinds` still reflects the
+union (an emergency change is blocked unless *every* freeze covering the
+moment allows it), while the reported `name`/`until` are whichever of the
+covering freezes runs latest. This is the "in force right now" figure for
+the KPI tile — a specific change's own risk is `changeDetail`'s
+`freezeInForce`, which checks the change's own `[windowStart, windowEnd]`
+against `isWindowInFreeze`, the same rule `SCHEDULE` enforces (not just
+whether the moment of the read happens to fall inside a freeze).
 
 ## Jobs (`apps/api/src/jobs/it/itsm.ts`, exported in `JOBS`)
 

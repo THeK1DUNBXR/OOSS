@@ -16,10 +16,12 @@ import {
   IT_DOMAIN,
   changeSuccessRate,
   isInFreeze,
+  isWindowInFreeze,
   itChangeMachine,
   itIncidentMachine,
   itProblemMachine,
   mttrMinutes,
+  IT_CHANGE_KINDS,
   ITSM_INCIDENT_VERBS,
   type ItChangeEvent,
   type ItChangeKind,
@@ -547,6 +549,28 @@ async function activeFreezes(tenantId: string): Promise<ItFreezeWindow[]> {
   return rows.map((f) => ({ name: f.name, startsAt: f.startsAt, endsAt: f.endsAt, allowEmergency: f.allowEmergency }));
 }
 
+/**
+ * The freeze covering this instant, if any, plus which change kinds it
+ * actually blocks right now — `standard`/`normal` always, `emergency` only
+ * when the freeze does not say `allowEmergency`. When more than one freeze
+ * covers the moment, the one reported is whichever runs latest (the one
+ * that matters for "until"); `blockedKinds` still reflects every freeze
+ * covering the moment, not just the reported one.
+ */
+function freezeInForceNow(freezes: ItFreezeWindow[]): { name: string; until: Date | string; blockedKinds: ItChangeKind[] } | null {
+  const now = new Date();
+  const covering = freezes.filter((f) => {
+    const start = new Date(f.startsAt).getTime();
+    const end = new Date(f.endsAt).getTime();
+    return now.getTime() >= start && now.getTime() <= end;
+  });
+  if (covering.length === 0) return null;
+
+  const blockedKinds = IT_CHANGE_KINDS.filter((kind) => isInFreeze(freezes, now, kind) !== null);
+  const reported = covering.reduce((latest, f) => (new Date(f.endsAt).getTime() > new Date(latest.endsAt).getTime() ? f : latest));
+  return { name: reported.name, until: reported.endsAt, blockedKinds: [...blockedKinds] };
+}
+
 export async function changeDetail(id: string) {
   const auth = currentAuth();
   const change = await prisma.itChange.findFirst({ where: { id, tenantId: auth.tenantId } });
@@ -554,7 +578,10 @@ export async function changeDetail(id: string) {
   await assertCan({ resource: 'it_changes', verb: 'view', record: { ownerPartyId: change.requesterPartyId } });
 
   const freezes = await activeFreezes(auth.tenantId);
-  const inForce = isInFreeze(freezes, new Date(), change.kind as ItChangeKind);
+  // The same rule `SCHEDULE` enforces: the whole window, not just its start
+  // — a freeze this change's window runs into is exactly the freeze it
+  // will be refused a schedule under.
+  const inForce = isWindowInFreeze(freezes, change.windowStart, change.windowEnd, change.kind as ItChangeKind);
 
   return {
     ...change,
@@ -607,7 +634,10 @@ export async function transitionChange(id: string, input: TransitionChangeInput)
 
   if (event === 'SCHEDULE') {
     const freezes = await activeFreezes(auth.tenantId);
-    const hit = isInFreeze(freezes, change.windowStart, change.kind as ItChangeKind);
+    // The whole window, not just its start — a change that starts before a
+    // freeze opens and runs into it is just as much scheduled into the
+    // freeze as one that starts inside it.
+    const hit = isWindowInFreeze(freezes, change.windowStart, change.windowEnd, change.kind as ItChangeKind);
     if (hit) {
       throw ApiError.unprocessable(
         `${change.recordCode ?? id} cannot be scheduled: the '${hit.name}' freeze covers this window (${new Date(hit.startsAt).toISOString().slice(0, 10)} to ${new Date(hit.endsAt).toISOString().slice(0, 10)})${change.kind === 'emergency' ? ', and the freeze does not allow emergency changes' : ''} (IT-CHG-002).`,
@@ -832,7 +862,7 @@ export async function changeSummary() {
 
   const total = await prisma.itChange.count({ where: { tenantId: auth.tenantId } });
   const freezes = await activeFreezes(auth.tenantId);
-  const freezeInForce = isInFreeze(freezes, new Date(), 'normal');
+  const freezeInForce = freezeInForceNow(freezes);
 
   if (total === 0) {
     return {
@@ -840,7 +870,7 @@ export async function changeSummary() {
       awaitingApproval: 0,
       scheduledThisWeek: 0,
       successRate90d: null,
-      freezeInForce: freezeInForce ? { name: freezeInForce.name, until: freezeInForce.endsAt } : null,
+      freezeInForce,
     };
   }
 
@@ -863,6 +893,6 @@ export async function changeSummary() {
     awaitingApproval,
     scheduledThisWeek,
     successRate90d,
-    freezeInForce: freezeInForce ? { name: freezeInForce.name, until: freezeInForce.endsAt } : null,
+    freezeInForce,
   };
 }

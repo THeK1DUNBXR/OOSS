@@ -66,6 +66,7 @@ model ItIncident {
 
   updates ItIncidentUpdate[]
 
+  @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@index([tenantId, severity])
   @@index([tenantId, problemId])
@@ -111,6 +112,7 @@ model ItProblem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@map("it_problems")
 }
@@ -164,6 +166,7 @@ model ItChange {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@index([tenantId, requesterPartyId])
   @@index([tenantId, windowStart])

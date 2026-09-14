@@ -13,7 +13,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { changeSuccessRate, isInFreeze, mttrMinutes } from '@kaizen/shared';
+import { changeSuccessRate, isInFreeze, isWindowInFreeze, mttrMinutes } from '@kaizen/shared';
 import { asUser, expectReject, tenantId, unscopedPrisma } from '../helpers.js';
 import {
   changeDetail,
@@ -64,6 +64,29 @@ describe('pure arithmetic (no DB)', () => {
     const allowsEmergency = [{ name: 'Peak season', startsAt: new Date('2026-12-20'), endsAt: new Date('2027-01-05'), allowEmergency: true }];
     expect(isInFreeze(allowsEmergency, new Date('2026-12-25'), 'emergency')).toBeNull();
     expect(isInFreeze(allowsEmergency, new Date('2026-12-25'), 'normal')?.name).toBe('Peak season');
+  });
+
+  it('isWindowInFreeze catches a change that starts before a freeze and runs into it, not only one that starts inside it', () => {
+    const freezes = [{ name: 'Year-end freeze', startsAt: new Date('2026-12-20'), endsAt: new Date('2027-01-05'), allowEmergency: false }];
+
+    // Starts three days before the freeze opens, ends two days into it —
+    // `isInFreeze` at the window's own start would miss this entirely.
+    expect(isInFreeze(freezes, new Date('2026-12-17'), 'normal')).toBeNull();
+    expect(isWindowInFreeze(freezes, new Date('2026-12-17'), new Date('2026-12-22'), 'normal')?.name).toBe('Year-end freeze');
+
+    // Starts inside the freeze and runs past its end — also an overlap.
+    expect(isWindowInFreeze(freezes, new Date('2026-12-30'), new Date('2027-01-10'), 'normal')?.name).toBe('Year-end freeze');
+
+    // Entirely swallows the freeze.
+    expect(isWindowInFreeze(freezes, new Date('2026-12-01'), new Date('2027-02-01'), 'normal')?.name).toBe('Year-end freeze');
+
+    // No overlap at all.
+    expect(isWindowInFreeze(freezes, new Date('2026-06-01'), new Date('2026-06-05'), 'normal')).toBeNull();
+
+    // Same `allowEmergency` override as `isInFreeze`.
+    const allowsEmergency = [{ name: 'Peak season', startsAt: new Date('2026-12-20'), endsAt: new Date('2027-01-05'), allowEmergency: true }];
+    expect(isWindowInFreeze(allowsEmergency, new Date('2026-12-17'), new Date('2026-12-22'), 'emergency')).toBeNull();
+    expect(isWindowInFreeze(allowsEmergency, new Date('2026-12-17'), new Date('2026-12-22'), 'normal')?.name).toBe('Peak season');
   });
 });
 
@@ -284,6 +307,27 @@ describe('incidents, problems and changes — domain and wiring', () => {
     expect(refused.message).toContain(freezeName);
     expect(refused.message).toContain('IT-CHG-002');
 
+    // A change that starts BEFORE the freeze opens and runs INTO it is
+    // refused too — the check is the whole window, not only its start.
+    const straddlingStart = new Date(freezeStart.getTime() - 2 * 86_400_000);
+    const straddlingEnd = new Date(freezeStart.getTime() + 86_400_000);
+    const straddlingChange = await asUser('employee@kaizen.co.in', () =>
+      createChange({
+        title: `Straddles the freeze open ${stamp()}`,
+        kind: 'normal',
+        risk: 'medium',
+        plan: 'Add another column.',
+        rollbackPlan: 'Drop it.',
+        windowStart: straddlingStart,
+        windowEnd: straddlingEnd,
+      }),
+    );
+    await asUser('employee@kaizen.co.in', () => transitionChange(straddlingChange.id, { event: 'SUBMIT' }));
+    await asUser('operations@kaizen.co.in', () => transitionChange(straddlingChange.id, { event: 'APPROVE' }));
+    const straddlingRefused = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionChange(straddlingChange.id, { event: 'SCHEDULE' })));
+    expect(straddlingRefused.status).toBe(422);
+    expect(straddlingRefused.message).toContain(freezeName);
+
     // An allow-listed freeze, in a window of its own (not overlapping the
     // non-permissive freeze above), lets an emergency change through.
     const permissiveStart = new Date(freezeEnd.getTime() + 30 * 86_400_000);
@@ -403,6 +447,40 @@ describe('incidents, problems and changes — domain and wiring', () => {
     );
     const detail = await asUser('operations@kaizen.co.in', () => changeDetail(change.id));
     expect(detail.availableTransitions).toContain('SUBMIT');
+  });
+
+  it("a change detail's freezeInForce checks the change's own window (not just the read's own moment), matching the schedule-time rule", async () => {
+    const dayOffset = 200 + (Number(stamp()) % 5000);
+    const freezeStart = new Date(Date.now() + dayOffset * 86_400_000);
+    const freezeEnd = new Date(freezeStart.getTime() + 5 * 86_400_000);
+    const freezeName = `Detail-check freeze ${stamp()}`;
+    await asUser('operations@kaizen.co.in', () => declareFreeze({ name: freezeName, startsAt: freezeStart, endsAt: freezeEnd, reason: 'Detail-check freeze window.' }));
+
+    // The window starts two days before the freeze opens and runs a day
+    // into it — "now" (when this reads) is nowhere near either.
+    const windowStart = new Date(freezeStart.getTime() - 2 * 86_400_000);
+    const windowEnd = new Date(freezeStart.getTime() + 86_400_000);
+    const change = await asUser('operations@kaizen.co.in', () =>
+      createChange({ title: `Straddling detail check ${stamp()}`, kind: 'normal', risk: 'low', plan: 'x', rollbackPlan: 'x', windowStart, windowEnd }),
+    );
+
+    const detail = await asUser('operations@kaizen.co.in', () => changeDetail(change.id));
+    expect(detail.freezeInForce?.name).toBe(freezeName);
+  });
+
+  it("changeSummary's freezeInForce names the freeze covering right now and which kinds it actually blocks", async () => {
+    const now = new Date();
+    const freezeStart = new Date(now.getTime() - 86_400_000);
+    const freezeEnd = new Date(now.getTime() + 86_400_000);
+    const freezeName = `Live freeze ${stamp()}`;
+    await asUser('operations@kaizen.co.in', () =>
+      declareFreeze({ name: freezeName, startsAt: freezeStart, endsAt: freezeEnd, reason: 'Covers this instant.', allowEmergency: true }),
+    );
+
+    const summary = await asUser('operations@kaizen.co.in', () => changeSummary());
+    expect(summary.freezeInForce).toBeTruthy();
+    expect(summary.freezeInForce!.blockedKinds).toEqual(expect.arrayContaining(['standard', 'normal']));
+    expect(summary.freezeInForce!.blockedKinds).not.toContain('emergency');
   });
 
   it('summaries report real figures once there is data, in the documented shape', async () => {

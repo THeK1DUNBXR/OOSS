@@ -154,3 +154,31 @@ export function isInFreeze(freezes: ItFreezeWindow[], at: Date | string, kind: I
   }
   return null;
 }
+
+/**
+ * The freeze that overlaps `[windowStart, windowEnd]` at all, or `null` — a
+ * change that starts before a freeze and runs into it is just as much a
+ * change happening during the freeze as one that starts inside it, so
+ * scheduling checks the whole window, not only its start (`isInFreeze`
+ * alone would miss a change that starts the day before a freeze opens and
+ * runs three days into it). Two ranges overlap when each starts before the
+ * other ends. Same `allowEmergency` override as `isInFreeze`.
+ */
+export function isWindowInFreeze(
+  freezes: ItFreezeWindow[],
+  windowStart: Date | string,
+  windowEnd: Date | string,
+  kind: ItChangeKind,
+): ItFreezeWindow | null {
+  const start = new Date(windowStart).getTime();
+  const end = new Date(windowEnd).getTime();
+  for (const f of freezes) {
+    const freezeStart = new Date(f.startsAt).getTime();
+    const freezeEnd = new Date(f.endsAt).getTime();
+    if (start <= freezeEnd && end >= freezeStart) {
+      if (kind === 'emergency' && f.allowEmergency) continue;
+      return f;
+    }
+  }
+  return null;
+}

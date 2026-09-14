@@ -557,7 +557,9 @@ export function ItChanges() {
     return true;
   });
 
-  const canDeclareFreeze = can('it_changes:A') || can('it_changes:E');
+  // The server gates `declareFreeze` on `it_changes:edit` alone — match it
+  // exactly, so this button is never shown to someone the API would refuse.
+  const canDeclareFreeze = can('it_changes:E');
 
   return (
     <div>
@@ -576,6 +578,7 @@ export function ItChanges() {
         <div className="mb-4 rounded-lg border border-band-watch/40 bg-band-watch/10 px-4 py-2.5">
           <p className="text-xs text-band-watch">
             A freeze is in force: <strong>{summary.freezeInForce.name}</strong>, until {dateTime(summary.freezeInForce.until)}.
+            {' '}Blocks {(summary.freezeInForce.blockedKinds ?? []).map(titleCase).join(', ') || 'nothing'} changes from being scheduled.
           </p>
         </div>
       )}
@@ -790,21 +793,26 @@ export function ItChangeDetail() {
   if (!change) return null;
 
   const needsNote = (t: string) => t === 'IMPLEMENT' || t === 'REVIEW';
+  // A control the grant does not permit is omitted, never shown disabled —
+  // `APPROVE` needs `it_changes:approve`; everything else needs only the
+  // `it_changes:approve` machine to have offered it at all (the server's own
+  // `edit`/`create` checks on the other transitions track the matrix, and a
+  // refusal there still surfaces through `transitionError`).
+  const visibleTransitions = (change.availableTransitions ?? []).filter((t) => t !== 'APPROVE' || can('it_changes:approve'));
 
   return (
     <div>
       <PageHeader
         title={change.title}
         subtitle={<span className="mono">{change.recordCode}</span>}
-        actions={(change.availableTransitions ?? []).map((t) => {
+        actions={visibleTransitions.map((t) => {
           const gated = t === 'APPROVE';
-          const disabled = gated && !can('it_changes:approve');
           return (
             <button
               key={t}
               className={t === 'APPROVE' || t === 'SCHEDULE' ? 'btn-primary' : 'btn-ghost'}
-              disabled={transition.isPending || disabled}
-              title={disabled ? 'it_changes:approve is not held.' : gated ? 'A privileged transition — runs the approval gate.' : undefined}
+              disabled={transition.isPending}
+              title={gated ? 'A privileged transition — runs the approval gate.' : undefined}
               onClick={() => (needsNote(t) ? setNoteFor(t) : transition.mutate({ event: t }))}
             >
               → {CHANGE_TRANSITION_LABEL[t] ?? titleCase(t)}
