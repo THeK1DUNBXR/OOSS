@@ -1,0 +1,195 @@
+// Compliance — payroll statutory (docs/plan/compliance.md, workstream E).
+//
+// Every model here is new; fields added to a pre-existing model (PayrollRun,
+// PayrollInstruction, EmploymentRelationship, Offboarding, CompanyProfile) live
+// in main.prisma instead, because a model cannot be split across files. A
+// reference to one of those rows is stored as a plain id column with no
+// `@relation` — the back side cannot be added here without editing a model this
+// workstream does not own.
+
+/// PF & MP Act 1952. One dated row is the rate in force on a given day; the
+/// employer's 12% splits into EPS (capped at the wage ceiling) and the
+/// remainder, plus EDLI and admin charges the company pays on top.
+model PfRateTable {
+  id       String @id @default(cuid())
+  tenantId String
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  employeeRate Decimal @db.Decimal(6, 4) // 0.12
+  employerRate Decimal @db.Decimal(6, 4) // 0.12
+  epsRate      Decimal @db.Decimal(6, 4) // 0.0833
+  edliRate     Decimal @db.Decimal(6, 4) // 0.005
+  adminRate    Decimal @db.Decimal(6, 4) // 0.005
+  wageCeiling  Decimal @db.Decimal(10, 2) // 15000
+
+  /// Employer may contribute on the full wage rather than the capped ceiling;
+  /// off by default, since the statutory floor is the capped figure.
+  voluntary Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, effectiveFrom])
+  @@map("cmp_pay_pf_rate_tables")
+}
+
+/// ESI Act 1948. Contribution periods run April-September and
+/// October-March; nobody above the wage ceiling is ESI-eligible.
+model EsiRateTable {
+  id       String @id @default(cuid())
+  tenantId String
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  employeeRate Decimal @db.Decimal(6, 4) // 0.0075
+  employerRate Decimal @db.Decimal(6, 4) // 0.0325
+  wageCeiling  Decimal @db.Decimal(10, 2) // 21000
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, effectiveFrom])
+  @@map("cmp_pay_esi_rate_tables")
+}
+
+/// Tamil Nadu Professional Tax, half-yearly slabs by gross. Seeded from what
+/// is currently known; `confirmNote` says this needs checking against the
+/// corporation's own schedule rather than pretending it is settled law.
+model ProfessionalTaxSlabTable {
+  id       String @id @default(cuid())
+  tenantId String
+
+  state         String   @default("TN")
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  /// [{ minGross, maxGross, halfYearlyAmount }, ...] ascending by minGross.
+  slabs       Json
+  confirmNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, state, effectiveFrom])
+  @@map("cmp_pay_pt_slab_tables")
+}
+
+/// Tamil Nadu Labour Welfare Fund — a flat annual contribution collected in
+/// December. `confirmNote` flags the figures for the same reason as PT.
+model LwfRateTable {
+  id       String @id @default(cuid())
+  tenantId String
+
+  state         String   @default("TN")
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  employeeAmount Decimal @db.Decimal(10, 2)
+  employerAmount Decimal @db.Decimal(10, 2)
+  /// The calendar month (1-12) the contribution falls due in.
+  dueMonth       Int     @default(12)
+  confirmNote    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, state, effectiveFrom])
+  @@map("cmp_pay_lwf_rate_tables")
+}
+
+/// State/category minimum monthly wage, for the run-approval floor check
+/// (CMP-PAY-005).
+model MinimumWageTable {
+  id       String @id @default(cuid())
+  tenantId String
+
+  state         String
+  category      String // e.g. "unskilled", "semi-skilled", "skilled", "clerical"
+  monthlyAmount Decimal  @db.Decimal(10, 2)
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, state, category, effectiveFrom])
+  @@map("cmp_pay_minimum_wage_tables")
+}
+
+/// The CTC breakdown compensation alone does not carry. Proposed by whoever
+/// holds `salary_structures:create`, approved by a different partyId holding
+/// `salary_structures:approve` — the Self-Dealing Bar extended here.
+model SalaryStructure {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+
+  effectiveFrom DateTime
+  status        String   @default("Proposed") // Proposed | Approved
+
+  ctcAnnual         Decimal @db.Decimal(14, 2)
+  basic             Decimal @db.Decimal(14, 2)
+  hra               Decimal @db.Decimal(14, 2)
+  specialAllowance  Decimal @default(0) @db.Decimal(14, 2)
+  conveyance        Decimal @default(0) @db.Decimal(14, 2)
+  /// { label: amount, ... } — anything beyond the named components above.
+  otherAllowances   Json    @default("{}")
+  employerPfMonthly  Decimal @default(0) @db.Decimal(14, 2)
+  employerEsiMonthly Decimal @default(0) @db.Decimal(14, 2)
+
+  proposedById String?
+  approvedById String?
+  approvedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId, effectiveFrom])
+  @@index([tenantId, status])
+  @@map("cmp_pay_salary_structures")
+}
+
+/// Final once issued, like a tax invoice — a correction is a new payslip
+/// referencing the one it supersedes (CMP-PAY-003).
+model Payslip {
+  id       String @id @default(cuid())
+  tenantId String
+
+  instructionId             String
+  employmentRelationshipId  String
+  payPeriod                 String // YYYY-MM
+
+  number   String
+  snapshot Json
+
+  issuedAt      DateTime @default(now())
+  supersededById String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, number])
+  @@index([tenantId, employmentRelationshipId, payPeriod])
+  @@index([tenantId, instructionId])
+  @@map("cmp_pay_payslips")
+}
+
+/// Monthly gratuity accrual per active employee, written by the 1st-of-month
+/// job. A running record, not a payable — the payable is computed fresh at
+/// offboarding from years of service and last-drawn basic.
+model GratuityAccrual {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  asOfDate                 DateTime
+  accrued                  Decimal  @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, employmentRelationshipId, asOfDate])
+  @@map("cmp_pay_gratuity_accruals")
+}
