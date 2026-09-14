@@ -25,9 +25,9 @@ import { nextRecordCode } from '../../platform/recordCode.js';
 import {
   createPayGrade, listPayGrades,
   createRevisionCycle, addRevisionLine, listRevisionLines, proposeCycle,
-  approveRevisionLine, approveCycle, applyCycle, getRevisionCycle,
+  approveRevisionLine, approveCycle, applyCycle, getRevisionCycle, listRevisionCycles,
   createVariablePayPlan, computePayout, approvePayout, markPayoutPaid, listVariablePayouts,
-  createBenefitPlan, enrolInBenefit, cancelBenefitEnrollment, listMyBenefitEnrollments,
+  createBenefitPlan, enrolInBenefit, cancelBenefitEnrollment, listMyBenefitEnrollments, listBenefitEnrollments,
   requestLoan, approveLoan, disburseLoan, recordLoanRepayment, listLoans,
   submitExpenseClaim, approveExpenseClaim, reimburseExpenseClaim, listExpenseClaims,
 } from '../../domains/hcm/compensation.js';
@@ -424,5 +424,92 @@ describe('expense claims', () => {
         expect(err.message).toMatch(/Self-Dealing Bar|cannot be approved by you/);
       },
     );
+  });
+});
+
+// ===========================================================================
+// Scope axis — companion to the WS5 review finding: `assertCan({resource,
+// verb})` alone only proves the verb is held in *some* scope. It does not
+// confirm the acting principal's `own`-scope grant is being exercised on
+// their own record rather than a colleague's. Every path below either lists
+// across employments with no id to narrow by, or acts on a record by id with
+// no employment check at all — both shapes a bare `assertCan` alone cannot
+// close, so each is proved here against `ravi`, a real `employee`-role
+// principal, and a colleague's freshly made record.
+// ===========================================================================
+
+describe("scope axis: an own-scope employee cannot reach a colleague's data", () => {
+  it("HCM-COMPENSATION-019: listing a cycle's lines does not leak a colleague's line to an own-scope viewer", async () => {
+    const { employment: colleague } = await makeEmployee('scope-revline');
+    const cycle = await asUser('operations@kaizen.co.in', () =>
+      createRevisionCycle({ name: `Scope cycle ${Date.now()}`, effectiveDate: new Date(), budgetPct: 20 }),
+    );
+    await asUser('operations@kaizen.co.in', () =>
+      addRevisionLine({ cycleId: cycle.id, employmentRelationshipId: colleague.id, currentCtc: 600_000, proposedPct: 10 }),
+    );
+    const asRavi = await asUser('ravi@kaizen.co.in', () => listRevisionLines(cycle.id));
+    expect(asRavi.find((l) => l.employmentRelationshipId === colleague.id)).toBeUndefined();
+  });
+
+  it("HCM-COMPENSATION-020: an unfiltered payout list does not leak a colleague's payout to an own-scope viewer", async () => {
+    const { employment: colleague } = await makeEmployee('scope-payout');
+    const plan = await asUser('operations@kaizen.co.in', () =>
+      createVariablePayPlan({ name: `Scope bonus ${Date.now()}`, kind: 'bonus', period: 'annual', formula: { type: 'fixed', amount: 1_000 } }),
+    );
+    await asUser('operations@kaizen.co.in', () => computePayout(plan.id, colleague.id, '2026', 0));
+    const asRavi = await asUser('ravi@kaizen.co.in', () => listVariablePayouts());
+    expect(asRavi.find((p) => p.employmentRelationshipId === colleague.id)).toBeUndefined();
+  });
+
+  it("HCM-COMPENSATION-021: an unfiltered loan list does not leak a colleague's loan to an own-scope viewer", async () => {
+    const { employment: colleague } = await makeEmployee('scope-loan');
+    await asUser('operations@kaizen.co.in', () =>
+      requestLoan({ employmentRelationshipId: colleague.id, principal: 10_000, interestPct: 0, tenureMonths: 2 }),
+    );
+    const asRavi = await asUser('ravi@kaizen.co.in', () => listLoans());
+    expect(asRavi.find((l) => l.employmentRelationshipId === colleague.id)).toBeUndefined();
+  });
+
+  it("HCM-COMPENSATION-022: an unfiltered expense claim list does not leak a colleague's claim to an own-scope viewer", async () => {
+    const { employment: colleague } = await makeEmployee('scope-expense');
+    await asUser('operations@kaizen.co.in', () =>
+      submitExpenseClaim({ employmentRelationshipId: colleague.id, category: 'other', amount: 500 }),
+    );
+    const asRavi = await asUser('ravi@kaizen.co.in', () => listExpenseClaims());
+    expect(asRavi.find((c) => c.employmentRelationshipId === colleague.id)).toBeUndefined();
+  });
+
+  it("HCM-COMPENSATION-023: an unfiltered benefit enrolment list does not leak a colleague's enrolment to an own-scope viewer", async () => {
+    const { employment: colleague } = await makeEmployee('scope-benefit');
+    const plan = await asUser('operations@kaizen.co.in', () =>
+      createBenefitPlan({ name: `Scope health ${Date.now()}`, kind: 'health', employerContribution: 100, employeeContribution: 10 }),
+    );
+    await asUser('operations@kaizen.co.in', () => enrolInBenefit(plan.id, colleague.id));
+    const asRavi = await asUser('ravi@kaizen.co.in', () => listBenefitEnrollments());
+    expect(asRavi.find((e) => e.employmentRelationshipId === colleague.id)).toBeUndefined();
+  });
+
+  it('HCM-COMPENSATION-024: an own-scope viewer is refused the cycle list and a single cycle outright, not merely narrowed', async () => {
+    const listErr = await expectReject(() => asUser('ravi@kaizen.co.in', () => listRevisionCycles()));
+    expect(listErr.status).toBe(403);
+    expect(listErr.message).toMatch(/all-scope grant/);
+
+    const cycle = await asUser('operations@kaizen.co.in', () =>
+      createRevisionCycle({ name: `Scope get cycle ${Date.now()}`, effectiveDate: new Date(), budgetPct: 20 }),
+    );
+    const getErr = await expectReject(() => asUser('ravi@kaizen.co.in', () => getRevisionCycle(cycle.id)));
+    expect(getErr.status).toBe(403);
+    expect(getErr.message).toMatch(/all-scope grant/);
+  });
+
+  it("HCM-COMPENSATION-025: an own-scope employee cannot mark a colleague's approved expense claim reimbursed", async () => {
+    const { employment: colleague } = await makeEmployee('scope-reimburse');
+    const claim = await asUser('operations@kaizen.co.in', () =>
+      submitExpenseClaim({ employmentRelationshipId: colleague.id, category: 'travel', amount: 750 }),
+    );
+    await asUser('finance@kaizen.co.in', () => approveExpenseClaim(claim.id));
+    const err = await expectReject(() => asUser('ravi@kaizen.co.in', () => reimburseExpenseClaim(claim.id)));
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/all-scope grant/);
   });
 });

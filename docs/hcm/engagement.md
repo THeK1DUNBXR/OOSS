@@ -11,9 +11,15 @@ web at `/people/engagement` and `/me/home`.
 - `Announcement` + `AnnouncementAck` — audience-targeted (all/division/org-unit/location)
   broadcasts, optionally pinned, optionally acknowledgement-required.
 - `Recognition` — peer-to-peer kudos with a badge, message and point value.
-- `PulseSurvey` + `SurveyResponse` — pulse/eNPS surveys with `scale`/`text`/`enps`
-  questions; `anonymous` surveys never store `employmentRelationshipId`, only a
-  salted, non-reversible `respondentToken` that stops a second submission.
+- `PulseSurvey` + `SurveyResponse` + `SurveyResponseDedupe` — pulse/eNPS
+  surveys with `scale`/`text`/`enps` questions; `anonymous` surveys never
+  store `employmentRelationshipId`, and `respondentToken` is always a plain
+  random id, never derived from who answered. The one-way check that stops a
+  second anonymous submission lives entirely in `SurveyResponseDedupe`, a
+  table with no other column and no relation to `SurveyResponse` — so even a
+  reader who could recompute the dedupe hash for every party id in the tenant
+  (the salt is a source constant, not a secret) learns only "this person
+  responded", never which row holds their answers.
 - `HrCase` + `HrCaseMessage` — the HR helpdesk ticket and its conversation.
   `confidential` is forced `true` for every `grievance` case (and settable on
   any other category) — see Concealment below.
@@ -31,11 +37,15 @@ Announcements: `createAnnouncement`, `publishAnnouncement`,
 Recognition: `giveRecognition` (refuses self-recognition), `listRecognitions`,
 `recognitionLeaderboard` (all-scope aggregate).
 
-Pulse surveys: `createPulseSurvey`, `openPulseSurvey`, `closePulseSurvey`,
-`listPulseSurveys`, `submitSurveyResponse` (validates every question is
-answered in range; anonymous path hashes identity into a token), `pulseSurveyResults`
-(aggregate only — never a per-respondent breakdown, anonymous or not),
-`pendingSurveysForMe`.
+Pulse surveys: `createPulseSurvey` (gated on `surveys:edit`, deliberately not
+`create` — see Scope-axis review below), `openPulseSurvey`, `closePulseSurvey`,
+`listPulseSurveys`, `submitSurveyResponse` (audience-checked; validates every
+question is answered in range; always resolves the responder's own employment
+server-side; the anonymous path records a one-way dedupe hash in
+`SurveyResponseDedupe`, never on the response row itself), `pulseSurveyResults`
+(aggregate only — never a per-respondent breakdown; free-text answers on an
+anonymous survey are additionally withheld below `SURVEY_MIN_SAMPLE`
+responses), `pendingSurveysForMe`.
 
 HR helpdesk: `createHrCase`, `listHrCases`, `listConfidentialHrCases`,
 `getHrCase`, `addHrCaseMessage`, `assignHrCase`, `transitionHrCase`,
@@ -50,6 +60,44 @@ Exit interviews: `createExitInterview`, `listExitInterviews`,
 
 Home: `myEngagementHome` — announcements, kudos received, my open cases,
 pending acknowledgements (announcements + policies), surveys to answer.
+
+### Scope-axis review (post-review fixes)
+
+A cross-workstream review flagged a pattern: `assertCan({ resource, verb })`
+called with no record (and no `scopeFor` check) on a resource an ordinary
+employee holds `create`/`edit` on at some scope lets that employee act on
+records that are not theirs, because the WHERE axis only ever runs against a
+record that is supplied. Auditing every `assertCan`/`assertScopeAll` call in
+this file against the grants matrix (`announcements: V@all`,
+`recognitions: VC@own`, `surveys: VC@all`, `hr_cases: VC@own`,
+`policy_documents: V@all`, `exit_interviews: -` for an ordinary employee):
+
+- `giveRecognition` and `createHrCase` are both `create@own` self-service
+  paths, but the record's owning field (`fromPartyId`, `raisedByPartyId`) is
+  always hard-coded to `auth.partyId` — there is no field an employee's input
+  can use to act as someone else. Safe as found.
+- `createPulseSurvey` was checking `surveys:create` — the same verb the
+  grants matrix gives an ordinary employee (at `all` scope, so an
+  `assertScopeAll` check would not have caught this either) purely so
+  `submitSurveyResponse` lets them answer a survey. Any employee could
+  therefore define and open a company-wide survey. **Fixed**: creation now
+  checks `surveys:edit`, the verb only a manager holds, matching how
+  `openPulseSurvey`/`closePulseSurvey` are already gated. See
+  HCM-ENGAGEMENT-014.
+- `submitSurveyResponse` took a client-supplied `employmentRelationshipId`
+  and wrote it straight onto a non-anonymous response — an employee holding
+  `surveys:create@all` (all-scope, precisely because anyone can be asked to
+  answer a company survey) could submit a response **as any other employee**,
+  since there was no record yet for the WHERE axis to narrow against.
+  **Fixed**: the parameter is gone from the function's signature and the
+  route; the responder's own active `EmploymentRelationship` is always
+  resolved server-side from `auth.partyId`. See HCM-ENGAGEMENT-015.
+- Every other `create`/`edit` path in this file (`announcements`, `hr_cases`
+  transitions/assignment, `policy_documents`, `exit_interviews`) is either
+  restricted to a verb employees do not hold at all, or reaches a record
+  through a function (`loadVisibleCase`, `assertScopeAll`) that already
+  resolves scope against that record before acting. No further instances
+  found.
 
 ### Concealment — the confidential-grievance rule
 
@@ -85,9 +133,9 @@ POST /announcements/:id/publish           POST /announcements/:id/withdraw
 POST /announcements/:id/ack               GET  /announcements/:id/acks
 GET  /recognitions                        POST /recognitions
 GET  /recognitions/leaderboard
-GET  /surveys                             POST /surveys
+GET  /surveys                             POST /surveys              (edit-gated)
 POST /surveys/:id/open                    POST /surveys/:id/close
-POST /surveys/:id/responses               GET  /surveys/:id/results
+POST /surveys/:id/responses  { answers }  GET  /surveys/:id/results
 GET  /hr-cases                            GET  /hr-cases/confidential
 POST /hr-cases                            GET  /hr-cases/:id
 POST /hr-cases/:id/messages               POST /hr-cases/:id/assign
@@ -109,9 +157,17 @@ still open past `slaDueAt` raises `HCM_HR_CASE_SLA_BREACHED` on its assignee
 
 ### Pure logic (`packages/shared/src/hcm/engagement.ts`)
 
-`computeEnps` (promoters/passives/detractors + -100..100 score),
-`isHrCaseSlaBreached`/`daysToSlaDue`, `validateSurveyAnswers`, `responseRate`,
-`inAudience` (all/division/org-unit/location matching).
+`computeEnps` (promoters/passives/detractors + -100..100 score, `null` below
+`SURVEY_MIN_SAMPLE` responses — the same k-anonymity floor
+`commandCenter.ts` uses for unit-level capacity), `isHrCaseSlaBreached`/
+`daysToSlaDue`, `validateSurveyAnswers`, `responseRate`, `inAudience`
+(all/division/org-unit/location matching).
+
+`inAudience`'s facts are resolved by `audienceFactsFor` in the domain layer —
+division from the affiliation's org unit, **location from the affiliation's
+`Position.location`** (an org unit carries no location of its own; the first
+version of this read it off the org unit and so never matched a
+location-targeted audience against anyone — fixed).
 
 ### Web
 
@@ -120,7 +176,9 @@ still open past `slaDueAt` raises `HCM_HR_CASE_SLA_BREACHED` on its assignee
   (general queue + a separately-revealed confidential queue), Policies (+
   acknowledgement status).
 - `/me/home` (`apps/web/src/pages/me/Home.tsx`): pending acknowledgements,
-  surveys to answer, my open cases, kudos received, announcements.
+  surveys to answer (each with an **Answer** action that renders the
+  survey's actual questions and submits `POST /surveys/:id/responses`), my
+  open cases, kudos received, announcements.
 
 ## Acceptance
 
@@ -134,13 +192,15 @@ still open past `slaDueAt` raises `HCM_HR_CASE_SLA_BREACHED` on its assignee
 | HCM-ENGAGEMENT-006 | An employee can give/receive recognition; giving it to oneself is refused | `Recognition > 006` |
 | HCM-ENGAGEMENT-007 | The recognition leaderboard is an all-scope aggregate; an employee cannot pull it | `Recognition > 007` |
 | HCM-ENGAGEMENT-008 | An employee's recognition list never includes a colleague-to-colleague entry | `Recognition > 008` |
-| HCM-ENGAGEMENT-009 | An anonymous survey accepts one response per employee (hashed token) and reports aggregates only | `Pulse surveys > 009` |
-| HCM-ENGAGEMENT-016 | A grievance is auto-confidential, absent from the general queue, visible only via the confidential listing to an all-scope holder or the raiser | `HR helpdesk > 010` |
-| HCM-ENGAGEMENT-017 | A non-grievance case is in the general queue and follows status transitions, rejecting an invalid status | `HR helpdesk > 011` |
-| HCM-ENGAGEMENT-018 | An employee cannot reach a colleague's case by id; a cross-tenant id is never found | `HR helpdesk > 012` |
-| HCM-ENGAGEMENT-019 | A published policy's acknowledgement count is accurate and is an HR-only read | `Policy acknowledgement > 013` |
+| HCM-ENGAGEMENT-009 | An anonymous survey accepts one response per employee (dedupe hash, never joinable to the response) and reports aggregates only | `Pulse surveys > 009` |
+| HCM-ENGAGEMENT-014 | An employee's `surveys:create` (held only so they can answer) is refused when used to define a new survey | `Pulse surveys > 014` |
+| HCM-ENGAGEMENT-015 | A named survey response is always recorded against the caller's own employment — there is no field left for a caller to override | `Pulse surveys > 015` |
+| HCM-ENGAGEMENT-016 | A grievance is auto-confidential, absent from the general queue, visible only via the confidential listing to an all-scope holder or the raiser | `HR helpdesk > 016` |
+| HCM-ENGAGEMENT-017 | A non-grievance case is in the general queue and follows status transitions, rejecting an invalid status | `HR helpdesk > 017` |
+| HCM-ENGAGEMENT-018 | An employee cannot reach a colleague's case by id; a cross-tenant id is never found | `HR helpdesk > 018` |
+| HCM-ENGAGEMENT-019 | A published policy's acknowledgement count is accurate and is an HR-only read | `Policy acknowledgement > 019` |
 
-`npx vitest run src/tests/hcm/engagement.test.ts` — 13 passed.
+`npx vitest run src/tests/hcm/engagement.test.ts` — 15 passed.
 
 ## What this does not do
 

@@ -29,6 +29,7 @@ import {
   listGrades,
   createGrade,
   proposeStatusChange,
+  listStatusChanges,
   decideStatusChange,
   applyStatusChange,
 } from '../../domains/hcm/workforce.js';

@@ -686,7 +686,7 @@ function OffersTab() {
                 <td className="text-right">
                   <div className="flex justify-end gap-1">
                     {o.availableTransitions.map((event) => (
-                      <button key={event} className="btn text-2xs" onClick={() => transitionMut.mutate({ id: o.id, event })}>
+                      <button key={event} className="btn text-2xs" disabled={transitionMut.isPending} onClick={() => transitionMut.mutate({ id: o.id, event })}>
                         {event.toLowerCase()}
                       </button>
                     ))}
@@ -772,7 +772,7 @@ function ReferralsTab() {
   return (
     <Card
       title="Referrals"
-      subtitle="An employee-sourced candidate. The bonus is tracked here; payroll pays it once BonusPaid."
+      subtitle="An employee-sourced candidate. The bonus is tracked here; payroll pays it once BonusPaid. Withheld unless referrals:financial is held."
       actions={<NewButton label="Record referral" onClick={() => setOpen(true)} />}
     >
       {referrals.isLoading && <Loading />}
@@ -792,7 +792,7 @@ function ReferralsTab() {
             {referrals.data.map((r) => (
               <tr key={r.id}>
                 <td className="mono text-2xs">{r.referrerEmploymentId}</td>
-                <td>{r.bonusAmount != null ? `₹${r.bonusAmount.toLocaleString('en-IN')}` : '—'}</td>
+                <td>{r.bonusAmount != null ? `₹${r.bonusAmount.toLocaleString('en-IN')}` : <Withheld reason="no_permission" />}</td>
                 <td><StatusChip status={r.status} tone={r.status === 'BonusPaid' ? 'good' : r.status === 'Rejected' ? 'bad' : 'neutral'} /></td>
                 <td className="text-right">
                   <div className="flex justify-end gap-1">

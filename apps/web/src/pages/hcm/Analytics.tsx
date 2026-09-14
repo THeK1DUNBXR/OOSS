@@ -322,7 +322,7 @@ function DashboardTab() {
 
         <Card title="Comp-ratio distribution" subtitle="Current CTC ÷ this tenant's pay-grade midpoint, one bucket per employee.">
           {d.compRatioDistribution.measured ? (
-            <CategoricalBarChart bars={d.compRatioDistribution.value.map((b) => ({ label: b.bucket, value: b.count }))} />
+            <CategoricalBarChart bars={(d.compRatioDistribution.value as Array<{ bucket: string; count: number }>).map((b) => ({ label: b.bucket, value: b.count }))} />
           ) : (
             <EmptyState message={d.compRatioDistribution.reason ?? NOT_MEASURED} />
           )}
@@ -330,7 +330,7 @@ function DashboardTab() {
 
         <Card title="Open cases by SLA" subtitle="Open, non-confidential HR helpdesk cases, by how close they are to breaching their SLA.">
           {d.openCasesBySla.measured ? (
-            <CategoricalBarChart bars={d.openCasesBySla.value.map((b) => ({ label: b.bucket, value: b.count }))} />
+            <CategoricalBarChart bars={(d.openCasesBySla.value as Array<{ bucket: string; count: number }>).map((b) => ({ label: b.bucket, value: b.count }))} />
           ) : (
             <EmptyState message={d.openCasesBySla.reason ?? NOT_MEASURED} />
           )}

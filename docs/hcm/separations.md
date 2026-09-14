@@ -79,8 +79,22 @@ No role slug is ever compared. Scope narrowing goes through `assertCan`'s `recor
 | HCM-SEP-010 | A resignation from another tenant 404s rather than leaking a 403 | `HCM-SEP-010` |
 | HCM-SEP-011 | `recordAlumni` moves `Terminated` into `Alumni` and writes rehire/consent fields | `HCM-SEP-011` |
 | HCM-SEP-012 | An employee's resignation list is narrowed to their own; a colleague's resignation 404s by id | `HCM-SEP-012` |
+| HCM-SEP-013 | Accepting a resignation is refused for a role holding `resignations:approve` only at `own` scope | `HCM-SEP-013` |
+| HCM-SEP-014 | Clearing a department is refused for a role holding `exit_clearances:edit` only at `own` scope | `HCM-SEP-014` |
+| HCM-SEP-015 | Opening exit clearance is refused for a role holding `exit_clearances:create` only at `own` scope | `HCM-SEP-015` |
+| HCM-SEP-016 | Issuing no-dues is refused for a role holding `no_dues:create` only at `own` scope | `HCM-SEP-016` |
+| HCM-SEP-017 | Recording an alumni entry is refused for a role holding `alumni:create` only at `own` scope | `HCM-SEP-017` |
 
-All 12 pass against `kaizen_test_separations` (`npx vitest run src/tests/hcm/separations.test.ts`).
+All 17 pass against `kaizen_test_separations` (`npx vitest run src/tests/hcm/separations.test.ts`).
+
+### Scope-axis audit (WS5-review pattern)
+
+Every exported function that calls `assertCan({ resource, verb })` was checked against the bug the WS5 review found: a coarse check with no `record` only proves the verb is held at *some* scope, and the WHERE axis narrows only when a record is supplied — so an `@own` grant on a create/edit/approve verb can stand in for real authority over someone else's record unless the scope is checked explicitly.
+
+- **Genuinely admin-only writes** — `createNoticePolicy`, `setNoticePolicyActive`, `acceptResignation`, `rejectResignation`, `initiateClearance`, `clearDepartment`, `blockDepartment`, `issueNoDues`, `recordAlumni` — now each assert `scopeFor(resource, verb) === 'all'` before doing anything, on top of whatever verb-level `assertCan` already ran. None of these are reachable via today's shipped matrix at `own` scope (the employee role holds no create/edit/approve on any of `notice_policies`, `exit_clearances`, `no_dues`, `alumni`, and holds `approve` on nothing at all) — the added check is defense-in-depth against a future or tenant-customised grant, not a fix for a live hole in the shipped roles. HCM-SEP-013..017 prove it with fixture roles built to hold exactly that hypothetical `@own` grant.
+- **Legitimate self-service creates** — `submitResignation` and `withdrawResignation` are the only paths an own-scoped employee holds a create verb on (`resignations:create@own`). Both already required the caller to be the resignation's subject: `submitResignation` calls `requireEmployment` (which runs `assertEmploymentVisible('employees', ..., 'view')` — 404 for a colleague's employment id under `own` scope) and then a second, explicitly record-scoped `assertCan({ ..., record: { ownerPartyId: employment.personId } })`; `withdrawResignation` runs the same record-scoped check before touching the row. No change was needed here — HCM-SEP-003/012 already exercise this path, including a fresh assertion added nowhere else needed it.
+- **Reads by id** — `getResignation`, `listExitClearances`, `getNoDues`, `getOffboardingForEmployment` all compare `scopeFor(resource, 'view')` (or `assertEmploymentVisible`) against the record's owning person and 404 rather than 403 when it does not match, so an own-scoped id guess never confirms a colleague's record exists. `listResignations` narrows the same way for a list with no id at all. Covered by HCM-SEP-010 (cross-tenant) and HCM-SEP-012 (cross-colleague).
+- **No role slug is compared anywhere in this file** — every check above goes through `assertCan`'s `record.ownerPartyId`, `scopeFor(resource, verb)`, or `assertEmploymentVisible`, matching the mechanisms `employment.ts`/`compliance/labour.ts` already use.
 
 ## What this does not do
 

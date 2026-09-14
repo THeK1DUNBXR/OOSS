@@ -9,16 +9,16 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { asUser, expectReject, prisma, tenantId, unscopedPrisma, withFixtureRole } from '../helpers.js';
 import { createRequisition, transitionRequisition, transitionApplication } from '../../domains/hiring.js';
 import {
   createJobPosting, transitionJobPosting,
   createCandidate, listCandidates,
-  scheduleInterview, completeInterview, submitScorecard,
+  scheduleInterview, completeInterview, submitScorecard, listScorecards, listInterviewRounds,
   createOffer, transitionOffer, listOffers, joinAndOnboard,
-  createReferral, updateReferralStatus,
+  createReferral, updateReferralStatus, listReferrals,
   createBackgroundVerification, updateBackgroundVerification,
-  createOnboardingTemplate, listOnboardingTasks, instantiateOnboardingTasks,
+  createOnboardingTemplate, listOnboardingTasks, instantiateOnboardingTasks, completeOnboardingTask,
   recruitingFunnel,
 } from '../../domains/hcm/recruiting.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
@@ -260,6 +260,33 @@ describe('HCM-RECR-007 — an offer machine refuses an out-of-order transition',
     const refusal = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'SEND')));
     expect(refusal.message).toMatch(/does not accept|not one of its transitions/);
   });
+
+  it('an offer past its validUntil can no longer be accepted', async () => {
+    const requisition = await makeOpenRequisition();
+    const { application } = await makeSelectedApplication(requisition.id);
+
+    const offer = await asUser('operations@kaizen.co.in', async () => {
+      const created = await createOffer({
+        applicationId: application.id,
+        ctc: 1_000_000,
+        joiningDate: new Date(Date.now() + 30 * 86_400_000),
+        validUntil: new Date(Date.now() + 1000),
+      });
+      return transitionOffer(created.id, 'SUBMIT');
+    });
+    await asUser('finance@kaizen.co.in', () => transitionOffer(offer.id, 'APPROVE'));
+    const sent = await asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'SEND'));
+    expect(sent.status).toBe('Sent');
+
+    // Force it into the past rather than sleeping the test past a 1-second window.
+    await prisma.offerLetter.update({ where: { id: offer.id }, data: { validUntil: new Date(Date.now() - 60_000) } });
+
+    const refusal = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'ACCEPT')));
+    expect(refusal.message).toMatch(/expired/);
+
+    const stillSent = await asUser('operations@kaizen.co.in', () => prisma.offerLetter.findFirstOrThrow({ where: { id: offer.id } }));
+    expect(stillSent.status).toBe('Sent');
+  });
 });
 
 describe('HCM-RECR-008 — an accepted offer advances the underlying Application, and joining instantiates onboarding once', () => {
@@ -339,6 +366,38 @@ describe('HCM-RECR-010 — a referral follows Submitted → Shortlisted → Hire
     const paid = await asUser('operations@kaizen.co.in', () => updateReferralStatus(referral.id, 'BonusPaid'));
     expect(paid.status).toBe('BonusPaid');
   });
+
+  it('refuses a referral where the referrer and the candidate are the same person', async () => {
+    const referrer = await employmentFor('hr@kaizen.co.in');
+    const hrPerson = await unscopedPrisma.person.findFirstOrThrow({ where: { id: referrer.personId } });
+
+    const refusal = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () =>
+        createReferral({
+          referrerEmploymentId: referrer.id,
+          candidate: { fullName: hrPerson.fullName, primaryEmail: hrPerson.primaryEmail ?? undefined },
+        }),
+      ),
+    );
+    expect(refusal.message).toMatch(/cannot be the same person/);
+  });
+
+  it('withholds the bonus amount from a viewer without the referrals financial verb', async () => {
+    const referrer = await employmentFor('hr@kaizen.co.in');
+    const stamp = Date.now();
+    const referral = await asUser('operations@kaizen.co.in', () =>
+      createReferral({
+        referrerEmploymentId: referrer.id,
+        candidate: { fullName: `Masked Bonus ${stamp}`, primaryEmail: `fixture.masked.${stamp}@example.com` },
+        bonusAmount: 20_000,
+      }),
+    );
+    // operations (hr_ops_manager) holds referrals:VCEDA but not the distinct
+    // `financial` verb, so the bonus comes back null rather than 20000.
+    const list = await asUser('operations@kaizen.co.in', () => listReferrals({ referrerEmploymentId: referrer.id }));
+    const row = list.find((r) => r.id === referral.id);
+    expect(row?.bonusAmount).toBeNull();
+  });
 });
 
 // ===========================================================================
@@ -364,6 +423,15 @@ describe('HCM-RECR-011 — a background verification needs an application or an 
     expect(completed.status).toBe('Completed');
     expect(completed.outcome).toBe('clear');
     expect(completed.completedAt).not.toBeNull();
+
+    // A Completed outcome is final: a correction is a new check, not an edit
+    // of a closed one.
+    const refusal = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => updateBackgroundVerification(bgv.id, { outcome: 'adverse' })),
+    );
+    expect(refusal.message).toMatch(/final/);
+    const unchanged = await asUser('operations@kaizen.co.in', () => prisma.backgroundVerification.findFirstOrThrow({ where: { id: bgv.id } }));
+    expect(unchanged.outcome).toBe('clear');
   });
 });
 
@@ -381,5 +449,158 @@ describe('HCM-RECR-012 — the recruiting funnel is an all-scope aggregate', () 
     const funnel = await asUser('operations@kaizen.co.in', () => recruitingFunnel());
     expect(funnel).toHaveProperty('sourceEffectiveness');
     expect(Array.isArray(funnel.sourceEffectiveness)).toBe(true);
+  });
+});
+
+// ===========================================================================
+// Scope axis — an `own`-scope grant (the shape every `employee` self-service
+// grant in this workstream takes: interviews:V@own, scorecards:VC@own,
+// referrals:VC@own, onboarding_tasks:VE@own) must narrow to the caller's own
+// record. `assertCan({ verb })` with no `record` passes the WHERE axis
+// trivially — the narrowing has to happen in the domain function itself, and
+// each of the five reads/writes below closes exactly one place that check was
+// missing.
+// ===========================================================================
+
+describe('HCM-RECR-013 — an own-scope grant narrows to the caller, never a colleague\'s record', () => {
+  it('interviews:V@own sees only the rounds where the caller is the candidate or on the roster, not the whole loop for someone else\'s application', async () => {
+    const requisition = await makeOpenRequisition();
+    const interviewer = await employmentFor('hr@kaizen.co.in');
+
+    const { applicationId } = await asUser('operations@kaizen.co.in', async () => {
+      const { createApplication } = await import('../../domains/hiring.js');
+      const candidate = await createCandidate({ fullName: `Scope Candidate ${Date.now()}`, primaryEmail: `fixture.scope.iv.${Date.now()}@example.com` });
+      const application = await createApplication({ requisitionId: requisition.id, candidatePartyId: candidate.person.id });
+      await transitionApplication(application.id, 'ADVANCE'); // Screening
+      await scheduleInterview({
+        applicationId: application.id,
+        roundNo: 1,
+        kind: 'technical',
+        scheduledAt: new Date(),
+        interviewerPartyIds: [interviewer.personId],
+      });
+      return { applicationId: application.id };
+    });
+
+    // A bystander holding `interviews:view@own` — neither this application's
+    // candidate nor on the round's roster — must not see the round at all.
+    const bystanderRounds = await withFixtureRole(
+      { slug: 'recr_iv_bystander', grants: [{ resource: 'interviews', verbs: ['view'], scope: 'own' }] },
+      () => listInterviewRounds(applicationId),
+    );
+    expect(bystanderRounds.length).toBe(0);
+
+    // The all-scope holder still sees it, proving this is a narrowing and not
+    // a break in the read path itself.
+    const allScopeRounds = await asUser('operations@kaizen.co.in', () => listInterviewRounds(applicationId));
+    expect(allScopeRounds.length).toBe(1);
+  });
+
+  it('scorecards:V@own sees only the caller\'s own scorecard, never a co-panellist\'s recommendation', async () => {
+    const requisition = await makeOpenRequisition();
+    const interviewer = await employmentFor('hr@kaizen.co.in');
+
+    const round = await asUser('operations@kaizen.co.in', async () => {
+      const { createApplication } = await import('../../domains/hiring.js');
+      const candidate = await createCandidate({ fullName: `Scope Panel ${Date.now()}`, primaryEmail: `fixture.scope.sc.${Date.now()}@example.com` });
+      const application = await createApplication({ requisitionId: requisition.id, candidatePartyId: candidate.person.id });
+      await transitionApplication(application.id, 'ADVANCE'); // Screening
+      return scheduleInterview({
+        applicationId: application.id,
+        roundNo: 1,
+        kind: 'panel',
+        scheduledAt: new Date(),
+        interviewerPartyIds: [interviewer.personId],
+      });
+    });
+    await asUser('hr@kaizen.co.in', () =>
+      submitScorecard({ roundId: round.id, competencyScores: { coding: 4 }, recommendation: 'hire' }),
+    );
+
+    // Another own-scope holder (not this round's interviewer) reads back none
+    // of the panel's scorecards, rather than the one interviewer's recommendation.
+    const bystanderCards = await withFixtureRole(
+      { slug: 'recr_sc_bystander', grants: [{ resource: 'scorecards', verbs: ['view'], scope: 'own' }] },
+      () => listScorecards(round.id),
+    );
+    expect(bystanderCards.length).toBe(0);
+
+    const allScopeCards = await asUser('operations@kaizen.co.in', () => listScorecards(round.id));
+    expect(allScopeCards.length).toBe(1);
+  });
+
+  it('referrals:C@own refuses to raise a referral crediting someone else\'s employment', async () => {
+    const referrer = await employmentFor('hr@kaizen.co.in');
+    const stamp = Date.now();
+
+    const refusal = await expectReject(() =>
+      withFixtureRole({ slug: 'recr_ref_spoof', grants: [{ resource: 'referrals', verbs: ['create'], scope: 'own' }] }, () =>
+        createReferral({
+          referrerEmploymentId: referrer.id,
+          candidate: { fullName: `Spoofed Referral ${stamp}`, primaryEmail: `fixture.spoof.${stamp}@example.com` },
+        }),
+      ),
+    );
+    expect(refusal.status).toBe(403);
+    expect(refusal.message).toMatch(/raised as yourself/);
+  });
+
+  it('referrals:V@own never lists a colleague\'s referral', async () => {
+    const referrer = await employmentFor('hr@kaizen.co.in');
+    const stamp = Date.now();
+    await asUser('operations@kaizen.co.in', () =>
+      createReferral({
+        referrerEmploymentId: referrer.id,
+        candidate: { fullName: `Colleague Referral ${stamp}`, primaryEmail: `fixture.colleague.${stamp}@example.com` },
+        bonusAmount: 10_000,
+      }),
+    );
+
+    // A bystander holding only `referrals:view@own` and no employment of
+    // their own in this tenant sees an empty list — never hr@'s referral.
+    const bystanderReferrals = await withFixtureRole(
+      { slug: 'recr_ref_bystander', grants: [{ resource: 'referrals', verbs: ['view'], scope: 'own' }] },
+      () => listReferrals({ referrerEmploymentId: referrer.id }),
+    );
+    expect(bystanderReferrals.length).toBe(0);
+
+    const allScopeReferrals = await asUser('operations@kaizen.co.in', () => listReferrals({ referrerEmploymentId: referrer.id }));
+    expect(allScopeReferrals.length).toBeGreaterThan(0);
+  });
+
+  it('onboarding_tasks:VE@own cannot read or complete a checklist item on someone else\'s employment', async () => {
+    const requisition = await makeOpenRequisition();
+    const { application } = await makeSelectedApplication(requisition.id);
+    await asUser('operations@kaizen.co.in', () =>
+      createOnboardingTemplate({ title: `Scope fixture task ${Date.now()}`, assignee: 'employee', dueOffsetDays: 1 }),
+    );
+    const offer = await asUser('operations@kaizen.co.in', async () => {
+      const created = await createOffer({ applicationId: application.id, ctc: 1_000_000, joiningDate: new Date(Date.now() + 20 * 86_400_000), validUntil: new Date(Date.now() + 14 * 86_400_000) });
+      return transitionOffer(created.id, 'SUBMIT');
+    });
+    await asUser('finance@kaizen.co.in', () => transitionOffer(offer.id, 'APPROVE'));
+    await asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'SEND'));
+    await asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'ACCEPT'));
+    const { employment } = await asUser('operations@kaizen.co.in', () => joinAndOnboard(application.id, { hireEffectiveDate: new Date() }));
+
+    const task = await asUser('operations@kaizen.co.in', () =>
+      prisma.onboardingTask.findFirstOrThrow({ where: { tenantId: TENANT, employmentId: employment.id, assignee: 'employee' } }),
+    );
+
+    const grants = [{ resource: 'onboarding_tasks', verbs: ['view', 'edit'] as string[], scope: 'own' }];
+
+    const viewRefusal = await expectReject(() =>
+      withFixtureRole({ slug: 'recr_ob_bystander_v', grants }, () => listOnboardingTasks(employment.id)),
+    );
+    expect(viewRefusal.status).toBe(404);
+
+    const editRefusal = await expectReject(() =>
+      withFixtureRole({ slug: 'recr_ob_bystander_e', grants }, () => completeOnboardingTask(task.id, false)),
+    );
+    expect(editRefusal.status).toBe(404);
+
+    // The task is untouched — still Pending, for the actual joiner to complete.
+    const untouched = await asUser('operations@kaizen.co.in', () => prisma.onboardingTask.findFirstOrThrow({ where: { id: task.id } }));
+    expect(untouched.status).toBe('Pending');
   });
 });

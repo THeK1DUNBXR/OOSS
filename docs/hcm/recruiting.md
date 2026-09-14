@@ -111,18 +111,46 @@ those stay in People → Hiring; this page reads `/hr/requisitions` and
   directly elsewhere.
 - **Record codes**: `nextRecordCode('JPST' | 'OFR')`, generator-assigned,
   never caller-supplied.
-- **Money withheld**: `CandidateProfile.currentCtc/expectedCtc` and
-  `OfferLetter.ctc` come back `null` (never a masked non-null figure) for a
-  viewer who holds the base resource grant but not the distinct `financial`
-  verb — checked with `canSeeMoney()`, exactly the axis the platform names
-  for this.
+- **Money withheld**: `CandidateProfile.currentCtc/expectedCtc`,
+  `OfferLetter.ctc` and `Referral.bonusAmount` come back `null` (never a
+  masked non-null figure) for a viewer who holds the base resource grant but
+  not the distinct `financial` verb — checked with `canSeeMoney()`, exactly
+  the axis the platform names for this.
 - **Built on Requisition/Application, not duplicated**: `createOffer`
   requires the application to be `Selected`; sending an offer drives the
   application's own `EXTEND_OFFER` event, and accepting/declining/rescinding
   drive `ACCEPT_OFFER`/`DECLINE_OFFER`/`RESCIND_OFFER` — the offer and the
-  application move together as one fact. `joinAndOnboard` calls
-  `hiring.ts`'s `joinFromApplication` verbatim rather than re-implementing
-  the hire.
+  application move together as one fact, checked *before* the offer's own
+  machine runs: if the application machine would refuse the paired event, the
+  offer transition refuses with it rather than leaving an offer marked
+  Sent/Accepted/Declined against an application that never followed. (RESCIND
+  is the one exception — an offer rescinded before it was ever sent has no
+  matching Application transition to take, so it is a no-op there rather than
+  a refusal.) `joinAndOnboard` calls `hiring.ts`'s `joinFromApplication`
+  verbatim rather than re-implementing the hire.
+- **Offer expiry**: `ACCEPT` is refused once `validUntil` has passed — an
+  expired offer cannot be turned into an acceptance by calling the endpoint
+  late.
+- **Referral integrity**: the referrer and the candidate can never resolve to
+  the same `Person` — `createReferral` checks this after `findOrCreatePerson`
+  resolves the candidate, since the whole point of dedup is that a
+  self-referral cannot be dodged by mis-typing your own name.
+- **Background verification finality**: once `status` reaches `Completed`,
+  `updateBackgroundVerification` refuses any further edit — a correction is a
+  new check, not a rewrite of a closed one.
+- **Own-scope narrowing** (the scope-axis pattern flagged across the HCM
+  workstreams): `assertCan({ resource, verb })` with no `record` passes the
+  WHERE axis unconditionally, so every own-scope self-service grant this
+  workstream's `employee` role holds (`interviews:V@own`,
+  `scorecards:VC@own`, `referrals:VC@own`, `onboarding_tasks:VE@own`) is
+  narrowed by hand in the domain function itself, not left to `assertCan`
+  alone: `listInterviewRounds` filters to rounds where the caller is the
+  candidate or on the roster; `listScorecards` filters to the caller's own
+  scorecard; `createReferral` refuses a `referrerEmploymentId` that is not
+  the caller's own employment and `listReferrals` filters to the caller's own
+  employments; `listOnboardingTasks`/`completeOnboardingTask` refuse (404) an
+  employment that is not the caller's own, and `completeOnboardingTask`
+  additionally requires the task's `assignee` to be `employee`.
 
 ## Acceptance
 
@@ -140,8 +168,15 @@ those stay in People → Hiring; this page reads `/hr/requisitions` and
 | HCM-RECR-010 | A referral follows Submitted → Shortlisted → Hired → BonusPaid and refuses to skip | `HCM-RECR-010` |
 | HCM-RECR-011 | A background verification needs an application or employment, and records a Completed outcome | `HCM-RECR-011` |
 | HCM-RECR-012 | The recruiting funnel is an all-scope aggregate, refused at narrower scope | `HCM-RECR-012` |
+| HCM-RECR-013 | An own-scope grant (interviews/scorecards/referrals/onboarding_tasks) narrows to the caller's own record, never a colleague's | `HCM-RECR-013` |
 
-Tests: `apps/api/src/tests/hcm/recruiting.test.ts` — 14 `it` blocks, all
+Also covered without a dedicated ID (folded into the describe blocks above):
+an offer past `validUntil` cannot be accepted (HCM-RECR-007's suite), a
+referral cannot name the referrer as their own candidate and its bonus is
+withheld without `referrals:financial` (HCM-RECR-010's suite), and a
+`Completed` background verification outcome is final (HCM-RECR-011's suite).
+
+Tests: `apps/api/src/tests/hcm/recruiting.test.ts` — 22 `it` blocks, all
 passing against `kaizen_test_recruiting`.
 
 ## What this does not do

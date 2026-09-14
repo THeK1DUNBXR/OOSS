@@ -1,12 +1,14 @@
 /**
  * HCM — WS2 time (docs/hcm/time.md).
  *
- * HCM-TIME-001..009: shifts + roster, clock in/out and its own-account
+ * HCM-TIME-001..012: shifts + roster, clock in/out and its own-account
  * double clock-in refusal, the nightly attendance deriver, timesheets
  * submit → approve with the Self-Dealing Bar, overtime approval earning a
  * comp-off, comp-off expiry and the refusal to consume one, attendance
  * regularisation driving the existing WorkAttendance machine (including an
- * invalid-transition refusal), and scope/visibility refusals.
+ * invalid-transition refusal), scope/visibility refusals on a colleague's
+ * timesheet, and the alert-scope.md scope-axis fix on every "list, optionally
+ * filtered to one employment" endpoint plus the two admin-only job triggers.
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -15,19 +17,23 @@ import {
   createShift,
   assignRoster,
   rosterFor,
+  listRosterAssignments,
   recordClockEvent,
   deriveAttendanceFromClockEvents,
   addTimesheetEntry,
   submitTimesheet,
   approveTimesheet,
   getTimesheet,
+  listTimesheets,
   requestOvertime,
   approveOvertimeRequest,
+  listOvertimeRequests,
   listCompOffs,
   consumeCompOff,
   runCompOffExpiry,
   submitRegularisation,
   approveRegularisation,
+  listRegularisations,
 } from '../../domains/hcm/time.js';
 
 let TENANT: string;
@@ -274,5 +280,71 @@ describe('HCM-TIME-009 — own-scope visibility on a colleague’s timesheet', (
 
     const rejected = await expectReject(() => asUser('priya@kaizen.co.in', () => getTimesheet(timesheet.id)));
     expect(rejected.status).toBe(404);
+  });
+});
+
+// ===========================================================================
+// alert-scope.md — the scope-axis bug: `assertCan` alone (no `record`, no
+// scope check) never evaluates the WHERE axis, so an own-scoped caller who
+// passed a colleague's `employmentRelationshipId` into a "list, optionally
+// filtered to one employment" call used to get that colleague's rows back.
+// Fixed here via `listWhere()`, which now runs `assertEmploymentVisible` on
+// any explicit id exactly as a by-id read would. One refusal test per list
+// endpoint that took the fix, plus the two admin-only job triggers that had
+// no scope check at all.
+// ===========================================================================
+
+describe('HCM-TIME-010 — an own-scoped principal cannot list a colleague’s records by passing their employment id', () => {
+  it('HCM-TIME-010: listRosterAssignments(colleague) 404s for an own-scoped caller', async () => {
+    const priya = await employmentFor('priya@kaizen.co.in');
+    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => listRosterAssignments(priya.employmentRelationshipId)));
+    expect(rejected.status).toBe(404);
+  });
+
+  it('HCM-TIME-010: listTimesheets(colleague) 404s for an own-scoped caller', async () => {
+    const priya = await employmentFor('priya@kaizen.co.in');
+    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => listTimesheets(priya.employmentRelationshipId)));
+    expect(rejected.status).toBe(404);
+  });
+
+  it('HCM-TIME-010: listOvertimeRequests(colleague) 404s for an own-scoped caller', async () => {
+    const priya = await employmentFor('priya@kaizen.co.in');
+    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => listOvertimeRequests(priya.employmentRelationshipId)));
+    expect(rejected.status).toBe(404);
+  });
+
+  it('HCM-TIME-010: listCompOffs(colleague) 404s for an own-scoped caller', async () => {
+    const priya = await employmentFor('priya@kaizen.co.in');
+    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => listCompOffs(priya.employmentRelationshipId)));
+    expect(rejected.status).toBe(404);
+  });
+
+  it('HCM-TIME-010: listRegularisations(colleague) 404s for an own-scoped caller', async () => {
+    const priya = await employmentFor('priya@kaizen.co.in');
+    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => listRegularisations(priya.employmentRelationshipId)));
+    expect(rejected.status).toBe(404);
+  });
+
+  it('HCM-TIME-010: an own-scoped caller with no employment id filter still sees only their own rows, never a colleague’s', async () => {
+    const priya = await employmentFor('priya@kaizen.co.in');
+    const day = fixtureDay(60);
+    await asUser('priya@kaizen.co.in', () => requestOvertime({ employmentRelationshipId: priya.employmentRelationshipId, date: day, hours: 3 }));
+
+    const divyaOwnList = await asUser('divya@kaizen.co.in', () => listOvertimeRequests());
+    expect(divyaOwnList.every((r) => r.employmentRelationshipId !== priya.employmentRelationshipId)).toBe(true);
+  });
+});
+
+describe('HCM-TIME-011 — the nightly attendance deriver is not directly triggerable by an own-scoped principal', () => {
+  it('HCM-TIME-011: an employee cannot run the tenant-wide attendance derivation job directly', async () => {
+    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => deriveAttendanceFromClockEvents(fixtureDay(0))));
+    expect(rejected.status).toBe(403);
+  });
+});
+
+describe('HCM-TIME-012 — the comp-off expiry sweep is not directly triggerable by an own-scoped principal', () => {
+  it('HCM-TIME-012: an employee cannot run the tenant-wide comp-off expiry job directly', async () => {
+    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => runCompOffExpiry()));
+    expect(rejected.status).toBe(403);
   });
 });

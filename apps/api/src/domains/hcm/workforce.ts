@@ -395,7 +395,7 @@ export async function directorySearch(filter: DirectoryFilter = {}) {
     where: {
       tenantId: auth.tenantId,
       deletedAt: null,
-      ...(scope !== 'all' ? { personId: auth.partyId } : {}),
+      ...(scope !== 'all' ? { personId: auth.partyId ?? 'NO-OWNER-SENTINEL' } : {}),
       ...(filter.status ? { status: filter.status } : {}),
       ...(filter.q
         ? { person: { fullName: { contains: filter.q, mode: 'insensitive' } } }
@@ -675,12 +675,12 @@ export async function listStatusChanges(employmentRelationshipId?: string) {
 
   if (scope !== 'all') {
     const own = await prisma.employmentRelationship.findMany({
-      where: { tenantId: auth.tenantId, personId: auth.partyId },
+      where: { tenantId: auth.tenantId, personId: auth.partyId ?? 'NO-OWNER-SENTINEL' },
       select: { id: true },
     });
     const ownIds = own.map((e) => e.id);
     where.employmentRelationshipId = employmentRelationshipId
-      ? (ownIds.includes(employmentRelationshipId) ? employmentRelationshipId : ' no-match')
+      ? (ownIds.includes(employmentRelationshipId) ? employmentRelationshipId : 'no-such-employment-relationship')
       : { in: ownIds };
   }
 

@@ -17,8 +17,9 @@ import {
   listAssets, createAsset, transitionAsset,
   listAssetAssignments, assignAsset, returnAsset,
   listTravelRequests, createTravelRequest, decideTravelRequest, settleTravelRequest,
-  listLetterRequests, createLetterRequest, fulfilLetterRequest, rejectLetterRequest,
+  listLetterRequests, createLetterRequest, fulfilLetterRequest, rejectLetterRequest, listIssuedHrLetters,
   listIdCards, issueIdCard, reportIdCardLost,
+  assetsPendingForEmployment,
 } from '../../domains/hcm/assets.js';
 
 let TENANT: string;
@@ -317,6 +318,22 @@ describe('Letter requests (HCM-ASSETS-009, 010, 011)', () => {
     const others = await asEmployee(other.id, () => listLetterRequests({}));
     expect(others.every((r) => r.employmentRelationshipId !== employment.id)).toBe(true);
   });
+
+  it('WS5 scope-axis review: an employee cannot read a colleague\'s issued HrLetters by passing their employment id', async () => {
+    const { employment, person } = await makeEmployee('letter-hrletter-scope-a');
+    const { person: other } = await makeEmployee('letter-hrletter-scope-b');
+    const request = await asEmployee(person.id, () => createLetterRequest({ employmentRelationshipId: employment.id, kind: 'experience' }));
+    await asUser('operations@kaizen.co.in', () => fulfilLetterRequest(request.id));
+
+    // The subject may read their own.
+    const mine = await asEmployee(person.id, () => listIssuedHrLetters(employment.id));
+    expect(mine.length).toBeGreaterThan(0);
+
+    // A colleague passing the same employment id — the exact shape of the
+    // `assertCan`-without-a-record bug the WS5 review flagged — is refused.
+    const err = await expectReject(() => asEmployee(other.id, () => listIssuedHrLetters(employment.id)));
+    expect(err.status).toBe(404);
+  });
 });
 
 // ===========================================================================
@@ -355,6 +372,25 @@ describe('Cross-tenant isolation (HCM-ASSETS-013)', () => {
     // `allowed`), which is what actually exercises the tenant filter: the
     // asset genuinely exists, just not in this tenant's rows.
     const err = await expectReject(() => asSystem(otherTenant.id, () => transitionAsset(asset.id, 'retired')));
+    expect(err.status).toBe(404);
+  });
+});
+
+// ===========================================================================
+// WS5 scope-axis review — assetsPendingForEmployment had no check at all
+// ===========================================================================
+
+describe('WS5 scope-axis review: assetsPendingForEmployment', () => {
+  it('an employee may ask about their own pending returns, but not a colleague\'s', async () => {
+    const asset = await makeAsset();
+    const { employment, person } = await makeEmployee('pending-scope-a');
+    const { person: other } = await makeEmployee('pending-scope-b');
+    await asUser('operations@kaizen.co.in', () => assignAsset({ assetId: asset.id, employmentRelationshipId: employment.id }));
+
+    const mine = await asEmployee(person.id, () => assetsPendingForEmployment(employment.id));
+    expect(mine).toBe(1);
+
+    const err = await expectReject(() => asEmployee(other.id, () => assetsPendingForEmployment(employment.id)));
     expect(err.status).toBe(404);
   });
 });

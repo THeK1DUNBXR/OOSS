@@ -466,7 +466,7 @@ describe('HCM-SEP-013 — accepting a resignation needs an all-scope grant, neve
 
     const err = await withFixtureRole(
       { slug: 'sep_own_approver', grants: [{ resource: 'resignations', verbs: ['approve'], scope: 'own' }] },
-      (p) => expectReject(() => asPrincipal({ ...authForFixture(p) }, () => acceptResignation(resignation.id))),
+      () => expectReject(() => acceptResignation(resignation.id)),
     );
     expect(err.status).toBe(403);
     expect(err.message).toMatch(/all-scope/);
@@ -484,7 +484,7 @@ describe('HCM-SEP-014 — clearing a department needs an all-scope grant, never 
 
     const err = await withFixtureRole(
       { slug: 'sep_own_clearer', grants: [{ resource: 'exit_clearances', verbs: ['edit'], scope: 'own' }] },
-      (p) => expectReject(() => asPrincipal(authForFixture(p), () => clearDepartment(clearances[0].id))),
+      () => expectReject(() => clearDepartment(clearances[0].id)),
     );
     expect(err.status).toBe(403);
     expect(err.message).toMatch(/all-scope/);
@@ -501,7 +501,7 @@ describe('HCM-SEP-015 — opening exit clearance needs an all-scope grant, never
 
     const err = await withFixtureRole(
       { slug: 'sep_own_initiator', grants: [{ resource: 'exit_clearances', verbs: ['create'], scope: 'own' }] },
-      (p) => expectReject(() => asPrincipal(authForFixture(p), () => initiateClearance(accepted.offboardingId!))),
+      () => expectReject(() => initiateClearance(accepted.offboardingId!)),
     );
     expect(err.status).toBe(403);
     expect(err.message).toMatch(/all-scope/);
@@ -522,7 +522,7 @@ describe('HCM-SEP-016 — issuing a no-dues certificate needs an all-scope grant
 
     const err = await withFixtureRole(
       { slug: 'sep_own_nodues', grants: [{ resource: 'no_dues', verbs: ['create'], scope: 'own' }] },
-      (p) => expectReject(() => asPrincipal(authForFixture(p), () => issueNoDues(accepted.offboardingId!))),
+      () => expectReject(() => issueNoDues(accepted.offboardingId!)),
     );
     expect(err.status).toBe(403);
     expect(err.message).toMatch(/all-scope/);
@@ -549,7 +549,7 @@ describe('HCM-SEP-017 — recording an alumni entry needs an all-scope grant, ne
           { resource: 'employees', verbs: ['view'], scope: 'all' },
         ],
       },
-      (p) => expectReject(() => asPrincipal(authForFixture(p), () => recordAlumni({ employmentRelationshipId: fixture.employment.id }))),
+      () => expectReject(() => recordAlumni({ employmentRelationshipId: fixture.employment.id })),
     );
     expect(err.status).toBe(403);
     expect(err.message).toMatch(/all-scope/);

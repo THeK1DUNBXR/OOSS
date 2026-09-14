@@ -118,7 +118,7 @@ describe('HCM-LEARNING-003 — a nomination cannot be approved by the person nom
     const err = await withFixtureRole(
       {
         slug: 'learning_self',
-        grants: [{ resource: 'training_enrollments', verbs: ['view', 'create', 'approve'], scope: 'own' }],
+        grants: [{ resource: 'training_enrollments', verbs: ['view', 'create', 'approve'], scope: 'all' }],
       },
       async (fixture) => {
         const position = await unscopedPrisma.position.create({
@@ -284,7 +284,7 @@ describe('HCM-LEARNING-008 — a certification cannot be self-verified', () => {
     );
 
     const err = await withFixtureRole(
-      { slug: 'cert_holder', grants: [{ resource: 'certifications', verbs: ['view', 'approve'], scope: 'own' }] },
+      { slug: 'cert_holder', grants: [{ resource: 'certifications', verbs: ['view', 'approve'], scope: 'all' }] },
       async (fixture) => {
         // Same person as the holder, acting with the approve grant.
         return expectReject(() =>

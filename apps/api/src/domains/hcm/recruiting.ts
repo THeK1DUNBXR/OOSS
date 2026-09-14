@@ -11,6 +11,7 @@
 
 import {
   EVENTS,
+  applicationMachine,
   jobPostingMachine,
   offerMachine,
   JOB_POSTING_EVENT_VERB,
@@ -427,6 +428,30 @@ export async function transitionOffer(id: string, event: OfferEvent, input: { no
     );
   }
 
+  // Checked before the offer's own machine runs (and before it writes its own
+  // event/audit row) rather than after: SEND/ACCEPT/DECLINE are one fact with
+  // the matching Application event, so if the application machine would
+  // refuse it, the offer transition itself never happened — not an offer left
+  // marked Sent/Accepted/Declined against an application that never followed.
+  // RESCIND is the one exception: it can fire from Draft or Approved, before
+  // the offer was ever sent, and the application machine has no RESCIND_OFFER
+  // to take from Selected in that case — there is nothing for it to follow.
+  const applicationEventFor: Partial<Record<OfferEvent, 'EXTEND_OFFER' | 'ACCEPT_OFFER' | 'DECLINE_OFFER' | 'RESCIND_OFFER'>> = {
+    SEND: 'EXTEND_OFFER',
+    ACCEPT: 'ACCEPT_OFFER',
+    DECLINE: 'DECLINE_OFFER',
+    RESCIND: 'RESCIND_OFFER',
+  };
+  if (applicationEventFor[event] && event !== 'RESCIND') {
+    const application = await prisma.application.findFirst({ where: { id: offer.applicationId, tenantId: auth.tenantId } });
+    if (!application || !applicationMachine.can(application.status as never, applicationEventFor[event]!)) {
+      throw ApiError.unprocessable(
+        `The underlying application is ${application?.status ?? 'gone'}; it no longer accepts ${applicationEventFor[event]}. ` +
+          'This offer cannot move without the application moving with it.',
+      );
+    }
+  }
+
   const result = await transition({
     machine: offerMachine,
     eventObject: 'offer',
@@ -442,30 +467,14 @@ export async function transitionOffer(id: string, event: OfferEvent, input: { no
     reasonNote: input.note ?? input.declineReason ?? null,
   });
 
-  // The offer and the underlying application are one fact moving together,
-  // not two records somebody has to remember to keep in step: sending an
-  // offer is `hiring.ts`'s EXTEND_OFFER, and accepting/declining/rescinding
-  // this offer is the matching Application event. Driven BEFORE the offer's
-  // own row is persisted below: if the application machine refuses (it is
-  // already past the matching state — a stale second offer against an
-  // application that moved on, say) the offer transition refuses with it,
-  // rather than leaving an offer marked Sent/Accepted/Declined against an
-  // application that never followed.
-  //
-  // RESCIND is the one exception: an offer can be rescinded from Draft or
-  // Approved, before it was ever sent, and the application machine has no
-  // RESCIND_OFFER transition to take from Selected in that case — there is
-  // nothing for the application to follow, so it is a no-op rather than a
-  // refusal.
-  const applicationEvent: Partial<Record<OfferEvent, 'EXTEND_OFFER' | 'ACCEPT_OFFER' | 'DECLINE_OFFER' | 'RESCIND_OFFER'>> = {
-    SEND: 'EXTEND_OFFER',
-    ACCEPT: 'ACCEPT_OFFER',
-    DECLINE: 'DECLINE_OFFER',
-    RESCIND: 'RESCIND_OFFER',
-  };
-  if (applicationEvent[event]) {
+  // Drives the matching Application event now that feasibility was checked
+  // above. RESCIND still tolerates a refusal here (see the comment above) —
+  // everything else already passed the pre-check, so this should not throw,
+  // but the guard stays as the actual source of truth rather than trusting
+  // the pre-check alone against a concurrent change.
+  if (applicationEventFor[event]) {
     try {
-      await transitionApplication(offer.applicationId, applicationEvent[event]!, {
+      await transitionApplication(offer.applicationId, applicationEventFor[event]!, {
         note: `Offer ${offer.recordCode} ${OFFER_EVENT_VERB[event]}`,
         rejectionReason: event === 'DECLINE' ? input.declineReason : undefined,
       });
