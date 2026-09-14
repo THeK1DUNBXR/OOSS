@@ -13,6 +13,7 @@
     "generate": "prisma generate",
     "seed": "tsx src/seed/index.ts",
     "tenant:create": "tsx src/seed/createTenant.ts",
+    "division:spin-out": "tsx src/seed/spinOut.ts",
     "grants:reconcile": "tsx src/seed/reconcileGrants.ts",
     "jobs:run": "tsx src/jobs/runOnce.ts",
     "test": "vitest run",

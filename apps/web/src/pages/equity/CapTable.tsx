@@ -40,6 +40,53 @@ function ChartTooltip({ active, payload }: { active?: boolean; payload?: unknown
   );
 }
 
+interface SpinOutDivisionSummary {
+  division: string;
+  carriedTotal: number;
+  refusedTotal: number;
+  command: string;
+}
+interface SpinOutDivisionsView {
+  tenantKind: string;
+  divisions: SpinOutDivisionSummary[];
+}
+
+const DIVISION_LABEL: Record<string, string> = { software: 'Software', skill: 'Skill', education: 'Education' };
+
+/**
+ * "Divisions" — not yet incorporated as their own tenant, read-only. Shown
+ * only on a holding or standalone tenant that still has a division nobody
+ * has spun out (equity-portal plan §6b). No commit from here: the spin-out is
+ * a deliberate script, run by hand, with a preview of its own to argue with.
+ */
+function DivisionsCard() {
+  const { data } = useQuery({
+    queryKey: ['equity-spin-out-divisions'],
+    queryFn: () => api.get<SpinOutDivisionsView>('/group/spin-out/preview'),
+  });
+
+  if (!data || data.divisions.length === 0) return null;
+
+  return (
+    <Card title="Divisions" subtitle="Not yet incorporated as their own entity." className="mb-4">
+      <div className="divide-y divide-ink-800">
+        {data.divisions.map((d) => (
+          <div key={d.division} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-ink-100">{DIVISION_LABEL[d.division] ?? d.division}</span>
+              <span className="text-ink-400">
+                {d.carriedTotal} row{d.carriedTotal === 1 ? '' : 's'} would carry
+                {d.refusedTotal > 0 ? `, ${d.refusedTotal} refused` : ''}
+              </span>
+            </div>
+            <code className="mono text-2xs text-ink-500">{d.command}</code>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export function CapTable() {
   const [asOf, setAsOf] = useState('');
 
@@ -79,6 +126,8 @@ export function CapTable() {
           </label>
         }
       />
+
+      <DivisionsCard />
 
       {isLoading || !data ? (
         <Loading />

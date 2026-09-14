@@ -819,3 +819,94 @@ Shipped as briefed in §6, with these choices made along the way:
   drift.
 
 Tests: `apps/api/src/tests/esop.test.ts`, `EQT-ESP-001` through `EQT-ESP-010`.
+
+## Phase 6b — as built
+
+Ships `pnpm division:spin-out` (`apps/api/src/seed/spinOut.ts`, over the
+engine in `seed/spinOutEngine.ts`) — preview → commit → revert, mirroring
+`imports/service.ts`/`imports/commit.ts` — plus a read-only preview at
+`GET /group/spin-out/preview` and a "Divisions" card on `CapTable.tsx`. Where
+it differs from the brief, and why:
+
+- **Bounded to what the brief names, not every `division`-tagged model in
+  the schema.** §6b's own text says "transactions, employment relationships,
+  courses and enrolments, organisations owned by that division" — that is
+  the carried set. `VendorBill`, `BudgetLine`, `RecurringRule`, `FixedAsset`,
+  `Loan` and `PayrollInstruction` also carry a `division` column but are out
+  of scope for this phase, left for whoever spins out a division with real
+  vendor bills or fixed assets on the books to extend deliberately rather
+  than carried by a guess at what "the same shape" should do with them.
+- **A transaction linked to a record this script does not carry is refused,
+  not carried half-finished.** `Transaction.invoiceId`/`vendorBillId`/
+  `payrollRunId`/`fixedAssetId`/`loanId` point at models outside the carried
+  set; copying the transaction alone would leave a reference to nothing in
+  the subsidiary. Refused by name, with the record it recommends instead
+  ("record the equivalent directly in the subsidiary").
+- **A transaction tagged `shared` is a candidate, not silently out of
+  scope.** It is read alongside the target division's own rows and refused
+  explicitly ("cannot be attributed to one subsidiary; split it first")
+  rather than simply never matching the division filter — the difference
+  matters because a chairman reading the preview needs to see that a shared
+  cost exists and was considered, not infer its absence.
+- **An organisation's division is derived from its invoices**, because
+  `Organization` itself carries no `division` column — only `Invoice.division`
+  does. An organisation invoiced only under the target division carries; one
+  invoiced under more than one division, or under `shared`, is refused by
+  name rather than guessed at.
+- **An employment relationship's division is derived from its current
+  assignment's position's org unit**, walking the org-unit parent chain for
+  the nearest division an ancestor carries (`EmploymentRelationship` itself
+  has no `division` column either). More than one current assignment in
+  different divisions, or an assignment in a `shared` unit, is refused by
+  name ("spans more than one division" / "assigned to a shared unit").
+- **The system principal cannot pass the ordinary approval gate for the
+  opening allotment.** `evaluateApprovalGate` resolves an actor's authority
+  ceiling from an `AuthorityGrant` keyed to a `partyId`, and the system
+  principal carries none — so `proposeAllotment` → `approveShareTransaction`
+  would only ever open a pending `ApprovalStep` rather than grant outright.
+  The opening allotment instead writes the `ShareTransaction` straight to
+  `effective` with `boardResolutionRef: 'spin-out'`, the same explicit path
+  `imports/commit.ts#commitOpeningRegisterRow` already takes for the
+  opening-register import — except certificates are issued through the
+  ordinary `issueCertificateFor`, which still enforces the two-signatory
+  rule (the opening-register import's certificates carry `imported: true`
+  and skip it; a spin-out's opening allotment is a real allotment, not a
+  backfill, so it does not).
+- **Provenance columns, not a join table.** `migratedToTenantId` (nullable,
+  on every carried model) and `spinOutBatchId` (nullable, on every model a
+  commit creates or opens — including `LedgerAccount`/`LedgerCategory`,
+  which are opened by name rather than carried) are plain schema additions,
+  the same shape `ImportRow.entityId`/`entityType` already establishes for
+  an import batch, chosen over a generic join table because each carried
+  model already has its own identity and the column reads directly on the
+  row without a lookup.
+- **`LedgerAccount.openingNote`** is a new nullable column carrying "opening
+  balance to be set from the transfer of funds" — the model had nowhere
+  else to say this, and the alternative (a note only in the CLI's console
+  output) would not survive past the terminal session that ran the commit.
+- **The event name is `kz.sys.spin_out.<verb>`, not `kz.sys.tenant.spin_out.
+  <verb>`.** `EVENT_NAME_PATTERN` is `kz.<domain>.<entity>.<verb>` — four
+  segments — and the plan's own brief names five; `tenant` is dropped to fit
+  the grammar every other event in the system is validated against.
+- **The web panel reads a shallow preview (`deep: false`).** The CLI's
+  preview also checks whether the subsidiary's own share register is empty
+  and whether it carries two certificate signatories — genuine cross-tenant
+  reads, legitimate for the script (the sanctioned cross-tenant writer) but
+  not for a live API request. `domains/group.ts` passes `deep: false`, so a
+  request never reads past the `Tenant` row (itself exempt from the tenant
+  gate, like the structural check `assertNotHoldingsAncestor` already makes
+  in `domains/equity.ts`) of a tenant that is not the caller's own.
+- **`--other-holder` needs an email or a phone** (`"<name>|<email>=<count>"`),
+  because the holder is resolved as a `Person` in the subsidiary through the
+  same `findOrCreatePerson` every other holder goes through, and a person
+  cannot be created from a bare name.
+
+Not done by this phase, and said so in `docs/operations.md`: ending the
+migrated employment relationships in the holding (an HR act the chairman
+takes deliberately), moving the actual cash (a bank transfer, not a data
+migration), and registering the subsidiary for its own GSTIN before it can
+invoice.
+
+Tests: `apps/api/src/tests/spinOut.test.ts`, `EQT-SPN-001` through
+`EQT-SPN-007`, run inside a holding tenant and a subsidiary tenant this file
+creates for itself in `beforeAll`, for the same reason phase 4's suite does.
