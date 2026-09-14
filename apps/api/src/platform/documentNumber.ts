@@ -43,6 +43,11 @@ export const DOCUMENT_SERIES = {
   payslip: 'P',
   refund: 'N',
   certificate: 'T',
+  /// A share certificate (SH-1): `KIPL/S/26-27/001`. Its own letter, apart
+  /// from the course certificate above. Never allocated for a certificate
+  /// the opening-register import carries in with its own paper number — see
+  /// `ShareCertificate.imported`.
+  shareCertificate: 'S',
 } as const;
 
 export type DocumentSeries = (typeof DOCUMENT_SERIES)[keyof typeof DOCUMENT_SERIES];
@@ -56,6 +61,7 @@ export const SERIES_LABELS: Record<DocumentSeries, string> = {
   P: 'Payslips',
   N: 'Refunds',
   T: 'Certificates',
+  S: 'Share certificates',
 };
 
 export type YearFormat = 'short' | 'full';

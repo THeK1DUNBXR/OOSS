@@ -16,7 +16,7 @@ import { nextCorporateCode } from './codes.js';
 export async function listBoardMeetings() {
   await assertCan({ resource: 'board_resolutions', verb: 'view' });
   const auth = currentAuth();
-  return prisma.boardMeeting.findMany({
+  return prisma.complianceBoardMeeting.findMany({
     where: { tenantId: auth.tenantId },
     include: { resolutions: { orderBy: { number: 'asc' } } },
     orderBy: { heldOn: 'desc' },
@@ -26,7 +26,7 @@ export async function listBoardMeetings() {
 export async function getBoardMeeting(id: string) {
   await assertCan({ resource: 'board_resolutions', verb: 'view' });
   const auth = currentAuth();
-  const meeting = await prisma.boardMeeting.findFirst({
+  const meeting = await prisma.complianceBoardMeeting.findFirst({
     where: { id, tenantId: auth.tenantId },
     include: { resolutions: { orderBy: { number: 'asc' } } },
   });
@@ -44,7 +44,7 @@ export async function createBoardMeeting(input: {
   await assertCan({ resource: 'board_resolutions', verb: 'create' });
   const auth = currentAuth();
   const recordCode = await nextCorporateCode('BM');
-  const meeting = await prisma.boardMeeting.create({
+  const meeting = await prisma.complianceBoardMeeting.create({
     data: {
       tenantId: auth.tenantId,
       recordCode,
@@ -65,12 +65,12 @@ export async function createBoardMeeting(input: {
 export async function updateBoardMeetingMinutes(id: string, minutes: string) {
   await assertCan({ resource: 'board_resolutions', verb: 'edit' });
   const auth = currentAuth();
-  const meeting = await prisma.boardMeeting.findFirst({ where: { id, tenantId: auth.tenantId } });
+  const meeting = await prisma.complianceBoardMeeting.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!meeting) throw ApiError.notFound('Board meeting');
   if (meeting.status !== 'draft') {
     throw ApiError.unprocessable('Minutes are only editable while the meeting is a draft. A recorded meeting is final — add a resolution instead.');
   }
-  const updated = await prisma.boardMeeting.update({ where: { id }, data: { minutes } });
+  const updated = await prisma.complianceBoardMeeting.update({ where: { id }, data: { minutes } });
   await auditWrite({ action: 'update', subjectType: 'board_meeting', subjectId: id, before: { minutes: meeting.minutes }, after: { minutes } });
   return updated;
 }
@@ -79,11 +79,11 @@ export async function updateBoardMeetingMinutes(id: string, minutes: string) {
 export async function recordBoardMeeting(id: string) {
   await assertCan({ resource: 'board_resolutions', verb: 'edit' });
   const auth = currentAuth();
-  const meeting = await prisma.boardMeeting.findFirst({ where: { id, tenantId: auth.tenantId } });
+  const meeting = await prisma.complianceBoardMeeting.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!meeting) throw ApiError.notFound('Board meeting');
   if (meeting.status === 'recorded') return meeting;
 
-  const updated = await prisma.boardMeeting.update({ where: { id }, data: { status: 'recorded' } });
+  const updated = await prisma.complianceBoardMeeting.update({ where: { id }, data: { status: 'recorded' } });
   await auditWrite({ action: 'update', subjectType: 'board_meeting', subjectId: id, before: { status: 'draft' }, after: { status: 'recorded' } });
   return updated;
 }
@@ -104,7 +104,7 @@ export async function addBoardResolution(input: {
 }) {
   await assertCan({ resource: 'board_resolutions', verb: 'create' });
   const auth = currentAuth();
-  const meeting = await prisma.boardMeeting.findFirst({ where: { id: input.meetingId, tenantId: auth.tenantId } });
+  const meeting = await prisma.complianceBoardMeeting.findFirst({ where: { id: input.meetingId, tenantId: auth.tenantId } });
   if (!meeting) throw ApiError.notFound('Board meeting');
 
   if (meeting.status === 'recorded' && !input.correctsId) {
@@ -112,18 +112,18 @@ export async function addBoardResolution(input: {
   }
 
   if (input.correctsId) {
-    const corrected = await prisma.boardResolution.findFirst({ where: { id: input.correctsId, tenantId: auth.tenantId } });
+    const corrected = await prisma.complianceBoardResolution.findFirst({ where: { id: input.correctsId, tenantId: auth.tenantId } });
     if (!corrected) throw ApiError.notFound('Resolution to correct');
   }
 
-  const last = await prisma.boardResolution.findFirst({
+  const last = await prisma.complianceBoardResolution.findFirst({
     where: { tenantId: auth.tenantId, meetingId: input.meetingId },
     orderBy: { number: 'desc' },
   });
   const number = (last?.number ?? 0) + 1;
   const recordCode = await nextCorporateCode('BR');
 
-  const resolution = await prisma.boardResolution.create({
+  const resolution = await prisma.complianceBoardResolution.create({
     data: {
       tenantId: auth.tenantId,
       meetingId: input.meetingId,

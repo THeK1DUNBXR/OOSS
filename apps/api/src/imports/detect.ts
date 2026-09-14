@@ -38,6 +38,7 @@ export type ImportKind =
   | 'template_students'
   | 'template_contacts'
   | 'template_staff'
+  | 'template_opening_register'
   | 'unknown';
 
 export interface Detection {
@@ -239,7 +240,7 @@ export function detectWorkbook(sheets: SheetGrid[]): { primary: Detection; perSh
 
   const order: ImportKind[] = [
     'template_courses', 'template_batches', 'template_colleges', 'template_clients',
-    'template_students', 'template_contacts', 'template_staff',
+    'template_students', 'template_contacts', 'template_staff', 'template_opening_register',
     'tally_ledger', 'bank_statement', 'employees', 'salary',
     'chart_of_accounts', 'attendance', 'transactions', 'unknown',
   ];

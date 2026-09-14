@@ -7,20 +7,40 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { NavNodeView, SessionUser, Verb } from '@kaizen/shared';
-import { api, getToken, login as apiLogin, logout as apiLogout, setToken, switchContext as apiSwitch, verifyMfa as apiVerifyMfa } from './api.js';
+import type { EntitySelectionResponse, NavNodeView, SessionUser, Verb } from '@kaizen/shared';
+import {
+  api,
+  chooseEntity as apiChooseEntity,
+  getToken,
+  login as apiLogin,
+  logout as apiLogout,
+  onUnauthorized,
+  setToken,
+  switchContext as apiSwitch,
+  switchEntity as apiSwitchEntity,
+  verifyMfa as apiVerifyMfa,
+} from './api.js';
 
 interface SessionState {
   user: SessionUser | null;
   nav: NavNodeView[];
   loading: boolean;
   error: string | null;
-  /** Set once `signIn` gets `{ mfaRequired: true }` back — the login screen shows the code prompt while this is non-null. */
+  /** A one-line notice for the sign-in screen — currently only "your session
+   *  ended", surfaced by the global 401 handler rather than an error box. */
+  notice: string | null;
+  /** Set by `signIn` when the principal holds more than one entity: the
+   *  picker renders in place of the form until `chooseEntity` resolves it. */
+  pendingSelection: EntitySelectionResponse | null;
+  /** Set once a sign-in (or an entity choice) gets `{ mfaRequired: true }`
+   *  back — the login screen shows the code prompt while this is non-null. */
   mfaChallengeToken: string | null;
   signIn: (email: string, password: string) => Promise<void>;
+  chooseEntity: (tenantId: string) => Promise<void>;
   verifyMfa: (code: string) => Promise<void>;
   signOut: () => void;
   switchTo: (affiliationId: string, stepUpPassword?: string) => Promise<void>;
+  switchEntity: (tenantId: string) => Promise<void>;
   can: (grant: string) => boolean;
   refresh: () => Promise<void>;
 }
@@ -42,6 +62,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [nav, setNav] = useState<NavNodeView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<EntitySelectionResponse | null>(null);
   const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
 
   const loadNav = useCallback(async () => {
@@ -77,9 +99,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string) => {
       setError(null);
+      setNotice(null);
       setMfaChallengeToken(null);
       try {
         const res = await apiLogin(email, password);
+        if ('entities' in res) {
+          // No token exists yet — the picker below decides which entity the
+          // session is actually for.
+          setPendingSelection(res);
+          return;
+        }
         if ('mfaRequired' in res) {
           setMfaChallengeToken(res.challengeToken);
           return;
@@ -92,6 +121,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     },
     [loadNav],
+  );
+
+  /** Completes sign-in once the picker shown for `pendingSelection` names an
+   *  entity. The chosen entity's account may still ask for its code. */
+  const chooseEntity = useCallback(
+    async (tenantId: string) => {
+      if (!pendingSelection) throw new Error('No entity selection in progress.');
+      setError(null);
+      try {
+        const res = await apiChooseEntity(tenantId, pendingSelection.selectionToken);
+        setPendingSelection(null);
+        if ('mfaRequired' in res) {
+          setMfaChallengeToken(res.challengeToken);
+          return;
+        }
+        setUser(res.user);
+        await loadNav();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not open that entity');
+        throw err;
+      }
+    },
+    [pendingSelection, loadNav],
   );
 
   const verifyMfa = useCallback(
@@ -115,6 +167,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     apiLogout();
     setUser(null);
     setNav([]);
+    setPendingSelection(null);
+  }, []);
+
+  // A 401 from any endpoint but sign-in itself means the token this browser
+  // held no longer works — revoked, expired, or the server restarted with a
+  // new secret. One line above the form, not a screen of error boxes.
+  useEffect(() => {
+    onUnauthorized(() => {
+      setUser(null);
+      setNav([]);
+      setPendingSelection(null);
+      setNotice('Your session ended. Sign in again.');
+    });
+    return () => onUnauthorized(null);
   }, []);
 
   /**
@@ -124,6 +190,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const switchTo = useCallback(
     async (affiliationId: string, stepUpPassword?: string) => {
       const res = await apiSwitch(affiliationId, stepUpPassword);
+      setUser(res.user);
+      await loadNav();
+    },
+    [loadNav],
+  );
+
+  /**
+   * Moves an already-signed-in principal into another entity, entirely
+   * separate from `switchTo` (which stays within one entity's affiliations).
+   * Reach never unions across entities either — the new session is composed
+   * fresh, exactly as `switchTo` composes fresh across affiliations.
+   */
+  const switchEntity = useCallback(
+    async (tenantId: string) => {
+      const res = await apiSwitchEntity(tenantId);
+      if ('mfaRequired' in res) {
+        // The chosen entity's account has a second factor: the current session
+        // is dropped and the code prompt takes over, exactly as at sign-in.
+        setToken(null);
+        setUser(null);
+        setNav([]);
+        setMfaChallengeToken(res.challengeToken);
+        return;
+      }
       setUser(res.user);
       await loadNav();
     },
@@ -153,8 +243,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<SessionState>(
-    () => ({ user, nav, loading, error, mfaChallengeToken, signIn, verifyMfa, signOut, switchTo, can, refresh }),
-    [user, nav, loading, error, mfaChallengeToken, signIn, verifyMfa, signOut, switchTo, can, refresh],
+    () => ({
+      user, nav, loading, error, notice, pendingSelection, mfaChallengeToken,
+      signIn, chooseEntity, verifyMfa, signOut, switchTo, switchEntity, can, refresh,
+    }),
+    [
+      user, nav, loading, error, notice, pendingSelection, mfaChallengeToken,
+      signIn, chooseEntity, verifyMfa, signOut, switchTo, switchEntity, can, refresh,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

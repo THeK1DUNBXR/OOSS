@@ -33,7 +33,7 @@ import {
   type Division,
   type GstLineInput,
 } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import { prisma, unscopedPrisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -56,6 +56,28 @@ registerGovernedEntities('fin', [
   'ledger_category',
   'budget_line',
 ]);
+
+/**
+ * True when `candidateTenantId` is somewhere in the caller's own group —
+ * parent, sibling (shares a parent), or child — walked structurally on
+ * `Tenant.parentTenantId` the same way `equity.ts`'s `assertNotHoldingsAncestor`
+ * does (equity-portal plan §6 phase 2 item A). The one place in this file the
+ * unscoped tenant table is read, because the question is about the shape of
+ * the tenant graph, never about a row this tenant owns.
+ */
+async function isInSameGroup(tenantId: string, candidateTenantId: string): Promise<boolean> {
+  if (tenantId === candidateTenantId) return false; // a transaction cannot be intercompany with itself
+  const [self, candidate] = await Promise.all([
+    unscopedPrisma.tenant.findFirst({ where: { id: tenantId }, select: { id: true, parentTenantId: true } }),
+    unscopedPrisma.tenant.findFirst({ where: { id: candidateTenantId }, select: { id: true, parentTenantId: true } }),
+  ]);
+  if (!self || !candidate) return false;
+  // Parent, or child.
+  if (candidate.id === self.parentTenantId || self.id === candidate.parentTenantId) return true;
+  // Sibling — the same parent, when either has one.
+  if (self.parentTenantId && self.parentTenantId === candidate.parentTenantId) return true;
+  return false;
+}
 
 // ---------------------------------------------------------------------------
 // Accounts and categories
@@ -205,6 +227,38 @@ export interface TransactionInput {
   vendorBillId?: string | null;
   fixedAssetId?: string | null;
   loanId?: string | null;
+  /** Set when the counterparty IS another group entity (equity-portal plan §6, phase 2). */
+  intercompanyTenantId?: string | null;
+}
+
+/**
+ * The parent, siblings and children of the caller's own tenant — the
+ * choices for the "Group entity counterparty" picker on a transaction.
+ * Structural only (name/slug), read the same way `isInSameGroup` reads it;
+ * never a figure from another tenant's own books.
+ */
+export async function groupCounterpartyOptions(): Promise<Array<{ tenantId: string; slug: string; name: string }>> {
+  const auth = currentAuth();
+  await assertCan({ resource: 'transactions', verb: 'view' });
+
+  const self = await unscopedPrisma.tenant.findFirst({ where: { id: auth.tenantId }, select: { parentTenantId: true } });
+  const parentId = self?.parentTenantId ?? null;
+
+  const [parent, siblings, children] = await Promise.all([
+    parentId
+      ? unscopedPrisma.tenant.findFirst({ where: { id: parentId }, select: { id: true, slug: true, name: true } })
+      : Promise.resolve(null),
+    parentId
+      ? unscopedPrisma.tenant.findMany({ where: { parentTenantId: parentId, id: { not: auth.tenantId } }, select: { id: true, slug: true, name: true } })
+      : Promise.resolve([]),
+    unscopedPrisma.tenant.findMany({ where: { parentTenantId: auth.tenantId }, select: { id: true, slug: true, name: true } }),
+  ]);
+
+  const out: Array<{ tenantId: string; slug: string; name: string }> = [];
+  if (parent) out.push({ tenantId: parent.id, slug: parent.slug, name: parent.name });
+  for (const s of siblings) out.push({ tenantId: s.id, slug: s.slug, name: s.name });
+  for (const c of children) out.push({ tenantId: c.id, slug: c.slug, name: c.name });
+  return out;
 }
 
 export async function recordTransaction(input: TransactionInput) {
@@ -235,6 +289,12 @@ export async function recordTransaction(input: TransactionInput) {
     division = category?.defaultDivision ?? null;
   }
 
+  if (input.intercompanyTenantId && !(await isInSameGroup(auth.tenantId, input.intercompanyTenantId))) {
+    throw ApiError.unprocessable(
+      'An inter-company counterparty must be another entity in this group — the holding, a sibling subsidiary, or a child.',
+    );
+  }
+
   const recordCode = await nextRecordCode('TXN');
   const txn = await prisma.transaction.create({
     data: {
@@ -256,6 +316,7 @@ export async function recordTransaction(input: TransactionInput) {
       vendorBillId: input.vendorBillId ?? null,
       fixedAssetId: input.fixedAssetId ?? null,
       loanId: input.loanId ?? null,
+      intercompanyTenantId: input.intercompanyTenantId ?? null,
       createdById: auth.partyId,
     },
   });

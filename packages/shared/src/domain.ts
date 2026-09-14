@@ -352,6 +352,13 @@ export const AFFILIATION_TYPES = [
   'alumnus',
   'candidate',
   'vendor_contact',
+  // Equity & board — an outsider's relationship to this entity, not an
+  // employment. The chairman holds `director` in a subsidiary the same way, by
+  // the create-tenant script naming them explicitly (§6, phase 0 item 3);
+  // nothing about being chairman elsewhere implies it.
+  'shareholder',
+  'director',
+  'company_secretary',
 ] as const;
 export type AffiliationType = (typeof AFFILIATION_TYPES)[number];
 
@@ -388,6 +395,9 @@ export const AFFILIATION_LABELS: Record<AffiliationType, string> = {
   alumnus: 'Alumnus',
   candidate: 'Candidate',
   vendor_contact: 'Supplier contact',
+  shareholder: 'Shareholder',
+  director: 'Board member',
+  company_secretary: 'Company secretary',
 };
 
 export const RELATIONSHIP_ENTITY_TYPES = ['person', 'organization', 'institution', 'project', 'contract'] as const;
@@ -621,6 +631,23 @@ export const RECORD_TYPE_CODES = [
   // draft reference can never be mistaken for a tax invoice number — the tax
   // series has to stay consecutive, which means a draft cannot take one.
   'DRF',
+  // The register (equity-portal plan §5): a class of shares, a holder, one
+  // ledger entry, a printed certificate, a recorded valuation.
+  'SHC', 'HLD', 'SHT', 'CRT', 'VAL',
+  // The group (equity-portal plan §6, phase 2): a subsidiary's published
+  // summary, written into its parent's tenant.
+  'ESN',
+  // Rounds (equity-portal plan §6 phase 4): the container an allotment, a
+  // bonus, a rights offer, a buy-back or a capital reduction is struck under.
+  'RND',
+  // ESOP (equity-portal plan §5/§6, phase 5): a scheme and a grant under it.
+  'ESP', 'OPG',
+  // Board (equity-portal plan §6, phase 3): a meeting, a board seat, a
+  // resolution and a compliance item — each referred to by its own code.
+  'BRD', 'BDM', 'RES', 'CPL',
+  // The filing log (equity-portal plan §6 phase 6a): one row per statutory
+  // form owed or filed — MGT-1/2, PAS-3, SH-4, PAS-6, FC-GPR, FC-TRS, FLA.
+  'FIL',
   // Data protection (workstream G): a data-principal request and a breach
   // register entry, each a case a data principal or the company refers to by
   // number.
@@ -770,6 +797,15 @@ export const EXCEPTION_CODES = {
   // outside the company is waiting.
   EX_EDU_002: { code: 'EX-EDU-002', label: 'Learner issue raised', severity: 'S3_HIGH_RISK' },
   EX_EDU_003: { code: 'EX-EDU-003', label: 'Learner query unanswered', severity: 'S2_WARNING' },
+  // Raised once, the moment `reconcileTenantKinds` first finds a tenant to be
+  // a holding or a subsidiary: s.2(85) ends "small company" status for both
+  // regardless of size, which changes the board-meeting cadence, the annual
+  // return form and (per §1a.1) the demat mandate.
+  EX_EQT_001: { code: 'EX-EQT-001', label: 'Small company status ended by group structure', severity: 'S2_WARNING' },
+  // SH-1 (s.56): a certificate is due within two months of an allotment or a
+  // transfer going effective. Raised once per share transaction, by the
+  // `certificate_window` job and echoed on the cap table as `certificateOverdue`.
+  EX_EQT_002: { code: 'EX-EQT-002', label: 'Share certificate overdue (SH-1, two months)', severity: 'S2_WARNING' },
 } as const;
 
 export const EXCEPTION_STATES = ['open', 'acknowledged', 'resolved', 'escalated', 'suppressed'] as const;

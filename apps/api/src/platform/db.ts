@@ -18,8 +18,17 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { getContext, maybeTenantId } from './context.js';
 
-/** Models that legitimately have no tenant key. */
-const TENANT_EXEMPT_MODELS = new Set<string>(['Tenant']);
+/**
+ * Models that legitimately have no tenant key.
+ *
+ * `Principal` joins `Tenant` here: a person's credential and login are cross-
+ * tenant by nature — one email, one password, however many tenants they hold
+ * a `User` row in — so a `tenantId` on it would be meaningless (whose?) rather
+ * than merely inconvenient. Its use stays confined to `lib/auth.ts`,
+ * `lib/http.ts` and the seed, which are the only places identity is resolved
+ * before a tenant is.
+ */
+const TENANT_EXEMPT_MODELS = new Set<string>(['Tenant', 'Principal']);
 
 /** Operations whose `where` clause we scope. */
 const READ_OPS = new Set([
@@ -72,7 +81,18 @@ export const prisma = basePrisma.$extends({
   name: 'tenantScope',
   query: {
     $allModels: {
-      async $allOperations({ model, operation, args, query }) {
+      // Typed loosely on purpose: with this many models the generated union
+      // of every model's every operation exceeds what the compiler will
+      // represent (TS2590). The gate reads only the model name and the
+      // where/data shapes, which the loose type still carries.
+      async $allOperations({ model, operation, args, query }: {
+        model: string;
+        operation: string;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        args: any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        query: (args: any) => Promise<unknown>;
+      }) {
         if (!model || TENANT_EXEMPT_MODELS.has(model)) return query(args);
 
         const tenantId = maybeTenantId();

@@ -27,10 +27,26 @@
     // `wrangler secret put` if it should not be public) to the URL of the
     // running API. Empty means every /api call returns a 503 that says so,
     // rather than failing in a way nobody can read.
-    "API_ORIGIN": ""
+    "API_ORIGIN": "",
+    // Comma-separated portal hostnames (equity-portal plan §3.1). This
+    // Worker does not route by host — it forwards every /api request to
+    // API_ORIGIN regardless of which hostname it arrived on, and the client
+    // decides the shell to render from what the API reports at
+    // `/api/meta/version`. This var exists only so it can be set here too,
+    // matching the API's own PORTAL_HOSTS (see docs/operations.md); the two
+    // must agree, and neither is read from the other.
+    "PORTAL_HOSTS": ""
   },
 
   "observability": {
     "enabled": true
   }
+
+  // Once the portal hostname is chosen (equity-portal plan §1, answer 2), add
+  // a `routes` entry so this same Worker also serves that host — one bundle,
+  // one API, the hostname only ever selects a shell client-side:
+  //
+  // "routes": [
+  //   { "pattern": "equity.example.com/*", "zone_name": "example.com" }
+  // ]
 }

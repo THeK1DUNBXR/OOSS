@@ -4,7 +4,7 @@
  * given and shows withheld reason codes where the server named them.
  */
 
-import type { SessionUser } from '@kaizen/shared';
+import type { EntitySelectionResponse, SessionUser } from '@kaizen/shared';
 
 const TOKEN_KEY = 'kaizen.token';
 
@@ -51,8 +51,23 @@ export class ApiClientError extends Error implements ApiFailure {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
+/**
+ * Called once by `SessionProvider` to learn about a 401 from anywhere but
+ * sign-in itself. The client holds no permission logic of its own — this is
+ * only "the token this browser was holding no longer works", so the app can
+ * return to the sign-in screen with one line rather than a page of error
+ * boxes on a surface that shows share certificates.
+ */
+let unauthorizedListener: (() => void) | null = null;
+export function onUnauthorized(listener: (() => void) | null) {
+  unauthorizedListener = listener;
+}
+
+/** Paths where a 401 is an expected outcome, not an expired session. */
+const AUTH_PATHS = new Set(['/auth/login', '/auth/switch-entity']);
+
+async function request<T>(path: string, init?: RequestInit, tokenOverride?: string): Promise<T> {
+  const token = tokenOverride ?? getToken();
   const res = await fetch(`/api${path}`, {
     ...init,
     headers: {
@@ -68,6 +83,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    if (res.status === 401 && !AUTH_PATHS.has(path)) {
+      setToken(null);
+      unauthorizedListener?.();
+    }
     const err = body?.error ?? {};
     throw new ApiClientError({
       status: res.status,
@@ -86,6 +105,11 @@ export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
+  /** A `POST` authorised by a token other than the one in storage — the
+   *  five-minute selection token the entity picker exchanges before a
+   *  session token exists at all. */
+  postWithToken: <T>(path: string, body: unknown, token: string) =>
+    request<T>(path, { method: 'POST', body: JSON.stringify(body) }, token),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: body === undefined ? undefined : JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
@@ -177,19 +201,44 @@ function encodeHeader(value: string): string {
   return value.replace(/[^\x20-\x7E]/g, '_');
 }
 
-export type LoginResponse = { token: string; user: SessionUser } | { mfaRequired: true; challengeToken: string };
+/** A session, or one of the two half-way states a sign-in can stop at. */
+export type MfaRequired = { mfaRequired: true; challengeToken: string };
+export type SessionIssued = { token: string; user: SessionUser };
+export type LoginOutcome = SessionIssued | MfaRequired | EntitySelectionResponse;
 
-export async function login(email: string, password: string): Promise<LoginResponse> {
-  const res = await api.post<LoginResponse>('/auth/login', { email, password });
+function storeIfSession<T extends SessionIssued | MfaRequired | EntitySelectionResponse>(res: T): T {
   if ('token' in res) setToken(res.token);
   return res;
 }
 
-/** Completes a login begun with `login()`, once it returned `{ mfaRequired: true }`. */
+/**
+ * A principal with one entity and no second factor gets a token straight
+ * back. One with several entities gets the entity list and a short-lived
+ * selection token; one whose account has a second factor gets a challenge.
+ * No token is stored until a session is actually issued.
+ */
+export async function login(email: string, password: string): Promise<LoginOutcome> {
+  return storeIfSession(await api.post<LoginOutcome>('/auth/login', { email, password }));
+}
+
+/** Completes a login that stopped at `{ mfaRequired: true }`. */
 export async function verifyMfa(challengeToken: string, code: string) {
-  const res = await api.post<{ token: string; user: SessionUser }>('/auth/mfa/verify', { challengeToken, code });
+  const res = await api.post<SessionIssued>('/auth/mfa/verify', { challengeToken, code });
   setToken(res.token);
   return res;
+}
+
+/** Completes the entity picker shown at sign-in, authorised by the
+ *  selection token `login()` returned rather than a session token. The
+ *  chosen entity's account may itself ask for a second factor. */
+export async function chooseEntity(tenantId: string, selectionToken: string): Promise<SessionIssued | MfaRequired> {
+  return storeIfSession(await api.postWithToken<SessionIssued | MfaRequired>('/auth/switch-entity', { tenantId }, selectionToken));
+}
+
+/** Moves an already-signed-in principal into another entity they hold an
+ *  active affiliation in — the in-session counterpart to `chooseEntity`. */
+export async function switchEntity(tenantId: string): Promise<SessionIssued | MfaRequired> {
+  return storeIfSession(await api.post<SessionIssued | MfaRequired>('/auth/switch-entity', { tenantId }));
 }
 
 export async function switchContext(affiliationId: string, stepUpPassword?: string) {

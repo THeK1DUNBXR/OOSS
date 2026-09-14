@@ -74,7 +74,12 @@ model RegisterEntry {
 // Board minutes — distinct from Decision (business governance, not statute)
 // ---------------------------------------------------------------------------
 
-model BoardMeeting {
+/// The compliance record of a meeting — a light, immutable-once-recorded
+/// log (CMP-COR-003). The equity portal's `BoardMeeting` in main.prisma is the
+/// governance module itself (notice, quorum, minutes lifecycle, votes); the
+/// two are to be unified, with this one reading from that one, in follow-up
+/// work. Renamed at the merge so both can exist until then.
+model ComplianceBoardMeeting {
   id       String @id @default(cuid())
   tenantId String
 
@@ -91,7 +96,7 @@ model BoardMeeting {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  resolutions BoardResolution[]
+  resolutions ComplianceBoardResolution[]
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, heldOn])
@@ -100,12 +105,12 @@ model BoardMeeting {
 
 /// Immutable once its meeting is `recorded` (CMP-COR-003). A correction is a
 /// new resolution referencing the one it corrects, never an edit.
-model BoardResolution {
+model ComplianceBoardResolution {
   id       String @id @default(cuid())
   tenantId String
 
   meetingId String
-  meeting   BoardMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  meeting   ComplianceBoardMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
 
   recordCode String
   number     Int

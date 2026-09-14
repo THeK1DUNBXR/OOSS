@@ -8,6 +8,7 @@ import { prisma } from './platform/db.js';
 import { BUILD, STARTED_AT, buildLabel } from './platform/build.js';
 import { reconcileNavForAllTenants } from './platform/navSync.js';
 import { addMissingGrantsForAllTenants } from './platform/grantSync.js';
+import { reconcileTenantKinds } from './platform/tenantKind.js';
 import { assertProductionSecrets } from './lib/auth.js';
 
 export function createApp() {
@@ -87,6 +88,19 @@ if (process.env.NODE_ENV !== 'test') {
     })
     .catch((error: unknown) => {
       console.error('Grants could not be brought up to the matrix at boot:', error);
+    });
+
+  // Never trust `kind` as written — a subsidiary added since the last boot
+  // must flip its parent to `holding` without anybody running the seed by
+  // hand.
+  void reconcileTenantKinds()
+    .then((changes) => {
+      if (changes.length > 0) {
+        console.log(`Tenant kinds reconciled: ${changes.map((c) => `${c.slug} -> ${c.to}`).join(', ')}`);
+      }
+    })
+    .catch((error: unknown) => {
+      console.error('Tenant kinds could not be reconciled at boot:', error);
     });
 
   app.listen(port, () => {

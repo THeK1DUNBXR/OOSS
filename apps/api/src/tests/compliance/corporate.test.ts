@@ -268,7 +268,7 @@ describe('login: MFA (CMP-COR-002)', () => {
 describe('CMP-COR-002: an approve-shaped action requires MFA enrolment for a policy-named role', () => {
   it('refuses when the role is named in the policy and MFA is not enrolled', async () => {
     await asUser('finance@kaizen.co.in', async () => {
-      const financeUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'finance@kaizen.co.in' } });
+      const financeUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'finance@kaizen.co.in', tenantId: TENANT } });
       // Guaranteed unenrolled for this assertion, regardless of prior test state.
       await unscopedPrisma.user.update({ where: { id: financeUser.id }, data: { mfaSecret: null, mfaEnabledAt: null } });
 
@@ -279,7 +279,7 @@ describe('CMP-COR-002: an approve-shaped action requires MFA enrolment for a pol
 
   it('passes once the role has MFA enrolled', async () => {
     await asUser('finance@kaizen.co.in', async () => {
-      const financeUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'finance@kaizen.co.in' } });
+      const financeUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'finance@kaizen.co.in', tenantId: TENANT } });
       const secret = generateTotpSecret();
       await unscopedPrisma.user.update({ where: { id: financeUser.id }, data: { mfaSecret: secret, mfaEnabledAt: new Date() } });
 
@@ -332,7 +332,7 @@ describe('CMP-COR-003: a recorded board meeting\'s resolutions are immutable', (
       });
       expect(correction.correctsId).toBe(first.id);
 
-      const originalStillIntact = await prisma.boardResolution.findFirstOrThrow({ where: { id: first.id } });
+      const originalStillIntact = await prisma.complianceBoardResolution.findFirstOrThrow({ where: { id: first.id } });
       expect(originalStillIntact.text).toBe('Resolved that the FY27 budget of ₹1,00,00,000 is approved.');
     });
   });
@@ -394,8 +394,8 @@ describe('CMP-COR-004: a refund is its own Movement fact', () => {
 
     // Approving and paying a refund are gated by CMP-COR-002 for finance_head
     // and chairman — enrol both for this test, and clear them afterward.
-    const financeUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'finance@kaizen.co.in' } });
-    const chairmanUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'chairman@kaizen.co.in' } });
+    const financeUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'finance@kaizen.co.in', tenantId: TENANT } });
+    const chairmanUser = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'chairman@kaizen.co.in', tenantId: TENANT } });
     await unscopedPrisma.user.update({ where: { id: financeUser.id }, data: { mfaSecret: generateTotpSecret(), mfaEnabledAt: new Date() } });
     await unscopedPrisma.user.update({ where: { id: chairmanUser.id }, data: { mfaSecret: generateTotpSecret(), mfaEnabledAt: new Date() } });
 

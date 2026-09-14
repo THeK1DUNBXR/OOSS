@@ -15,7 +15,7 @@ import {
   Activity, AlertTriangle, Award, Bell, Book, Building2, Calculator, ChevronDown,
   ChevronRight, ChevronsUpDown, Circle, Clipboard, Clock, Coins, Columns3, File,
   FileText, Gauge, GraduationCap, Home, Inbox, Kanban, Key, Layers, Lock, Map as MapIcon,
-  Menu, Package, Receipt, Scale, ScrollText, Search, Settings, Shield, ShieldCheck,
+  Menu, Package, PieChart, Receipt, Scale, ScrollText, Search, Settings, Shield, ShieldCheck,
   Sparkles, Target, TrendingUp, Users, Wallet, X, type LucideIcon,
 } from 'lucide-react';
 import { useSession } from '../lib/session.js';
@@ -23,6 +23,7 @@ import { api, relative } from '../lib/api.js';
 import { words } from '../lib/words.js';
 import { FirstRun } from './FirstRun.js';
 import { BuildFootnote } from './BuildFootnote.js';
+import { EntitySwitcher } from './EntitySwitcher.js';
 import { SetupBanner } from '../pages/Start.js';
 
 /** One consistent stroke and weight — a real icon system, not a dingbat per row. */
@@ -33,7 +34,7 @@ const ICONS: Record<string, LucideIcon> = {
   wallet: Wallet, coins: Coins, graduation: GraduationCap, badge: Award, kanban: Kanban,
   alert: AlertTriangle, scale: Scale, settings: Settings, map: MapIcon, key: Key, bot: Circle,
   activity: Activity, clock: Clock, search: Search, layers: Layers,
-  sparkle: Sparkles, lock: Lock, list: FileText, book: Book,
+  sparkle: Sparkles, lock: Lock, list: FileText, book: Book, chart: PieChart,
 };
 
 function NavIcon({ icon, className = 'h-[18px] w-[18px]' }: { icon: string; className?: string }) {
@@ -47,6 +48,7 @@ function NavIcon({ icon, className = 'h-[18px] w-[18px]' }: { icon: string; clas
 const GROUP_LABELS: Record<string, string> = {
   main: '',
   money: 'Money',
+  equity: 'Equity',
   people: 'People',
   // Not "Customers": a student, a college and a business are three different
   // parties, and only one of them is buying anything on any given day.
@@ -54,6 +56,12 @@ const GROUP_LABELS: Record<string, string> = {
   delivery: 'Selling & Delivering',
   compliance: 'Compliance',
   setup: 'Set up',
+  // Never actually reaches this sidebar — `archetypes: ['portal']` on every
+  // node in this group already keeps it off an ERP role's navigation, and
+  // `grouped` below drops the group as a second line of defence. Declared
+  // for completeness with `GROUP_ORDER`/`GROUP_LABELS` (plan §7), not because
+  // anything renders it here.
+  portal: 'Portal',
 };
 
 /**
@@ -230,7 +238,7 @@ export function Shell() {
 
 // Fixed group order, so the shell reads the way the work reads: your own
 // surface first, then the domains, then the platform underneath them.
-const GROUP_ORDER = ['main', 'money', 'people', 'customers', 'delivery', 'compliance', 'setup'];
+const GROUP_ORDER = ['main', 'money', 'equity', 'people', 'customers', 'delivery', 'compliance', 'setup'];
 
 /** The sidebar's content, shared between its desktop in-flow rendering and
  *  its mobile drawer overlay — one nav, two placements. */
@@ -254,6 +262,10 @@ function SidebarNav({
   const grouped = useMemo(() => {
     const map = new Map<string, NavNodeView[]>();
     for (const node of nav) {
+      // An ERP role is never granted a `portal` node in the first place, so
+      // this never fires in practice — belt-and-braces against the sidebar
+      // ever rendering the portal's own navigation (plan §6, phase 0 item 5).
+      if (node.group === 'portal') continue;
       map.set(node.group, [...(map.get(node.group) ?? []), node]);
     }
     return [...map.entries()].sort(
@@ -380,6 +392,14 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="mt-1 rounded-md bg-[#18181c] p-2 shadow-floating">
+      {/* The entity level sits above the affiliation level: which company,
+          before which relationship inside it (plan §3.2). Only renders when
+          there is more than one to choose from. */}
+      {user.entityCount > 1 && (
+        <div className="mb-2 border-b border-[#2a2a2e] pb-2">
+          <EntitySwitcher variant="dark" />
+        </div>
+      )}
       <p className="mb-1.5 px-1 text-2xs text-[#9a9aa3]">
         Which of your relationships are you answerable as?
       </p>

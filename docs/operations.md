@@ -145,10 +145,25 @@ that runs twice does not act twice.
 | `PORT` | `4000` | |
 | `JOBS_ENABLED` | `true` | in-process scheduler |
 | `TENANT_ENFORCE_MODE` | `enforce` | `warn` logs an unscoped query instead of throwing — for migration only |
+| `PORTAL_HOSTS` | *(empty)* | comma-separated hostnames the equity portal shell serves — read into `surfaceHosts.portal` by `/api/meta/version` |
+| `TENANT_KIND` | `standalone` | read once at a tenant's first bootstrap as a stated starting guess — `reconcileTenantKinds` (run at the end of every bootstrap and at boot) recomputes it from the actual parent/child rows regardless, so a wrong guess here never sticks |
+| `PARENT_TENANT_SLUG` | *(unset)* | the parent tenant's slug, read by `pnpm seed` for the default tenant and overridable per call to `pnpm tenant:create --parent` |
 
 `TENANT_ENFORCE_MODE=warn` is a migration aid, not a configuration. Running it
 in production means a service that forgets a tenant predicate returns another
 tenant's rows.
+
+**`PORTAL_HOSTS` is set in two places, for two different reasons.** The API
+*serves* it — it is the source `/api/meta/version` reads into
+`surfaceHosts.portal`, which is what the client actually checks to render the
+portal shell (equity-portal plan §3.1). The Worker's own `PORTAL_HOSTS` (in
+`wrangler.jsonc`, `vars`) does nothing at request time — the Worker does not
+route by host, it forwards every `/api/*` request to `API_ORIGIN` regardless
+of which hostname it arrived on — it exists only to document the same intent
+next to the config that actually needs a hostname: once the portal hostname
+is chosen, add a matching `routes` entry to `wrangler.jsonc` so this Worker
+answers on it too (a commented example sits beside the var). Keep both
+values in agreement by hand; neither is read from the other.
 
 
 ---
@@ -193,3 +208,99 @@ invoices the finding names, prepare again, and file that one.
 
 The platform prepares returns and does not transmit them. The JSON download is
 the offline utility's file; `File` records what the portal gave back.
+
+## Spinning a division out into a subsidiary
+
+Equity-portal plan §3.3 and §6b: a division becomes its own legal entity
+(subsidiary tenant), carrying across the rows that belonged to it and leaving
+the holding's own history untouched. Two steps, both from `apps/api`.
+
+### 1. Create the subsidiary tenant
+
+```bash
+pnpm tenant:create --slug kz-edu --name "Kaizen Education Pvt Ltd" \
+  --parent kaizen --origin-division education \
+  --chairman-email chairman@kaizen.co.in
+```
+
+This is the ordinary tenant bootstrap (`docs/plan/equity-portal.md` §6, phase
+0) — a new tenant, its own founding accounts, `parentTenantId` pointing at
+the holding, `config.originDivision` recording which division it grew out of.
+Before the spin-out can commit, set the subsidiary's **company details**
+(legal name, and at least two certificate signatories — a share certificate
+needs them like any other) and, separately, register the subsidiary for its
+own GSTIN — that is a real filing with the tax department, not something this
+platform can do for you, and the subsidiary cannot invoice until it is done.
+
+### 2. Preview, then commit
+
+```bash
+pnpm division:spin-out --from kaizen --division education --to kz-edu
+```
+
+Without `--yes` this only previews: every transaction, employment
+relationship, course, cohort, enrolment and organisation it would carry
+across, every one it would refuse and why, and whether it is ready to commit
+right now (the subsidiary must exist, name the holding as its parent, have an
+**empty** share register, and carry two certificate signatories). Nothing is
+written. The same preview, scoped to the caller's own tenant, is what the
+"Divisions" card on the cap table shows — read-only; it never commits.
+
+**What is carried**, copied under a fresh id and record code in the
+subsidiary, business dates and amounts preserved: transactions tagged to the
+division, employment relationships whose current position sits in it,
+courses (with their cohorts and enrolments), and organisations invoiced only
+under that division. The source row is marked `migratedToTenantId` and never
+edited or deleted otherwise — the holding's own history still reads exactly
+as it did.
+
+**What is refused, by name:** a transaction tagged `shared` (it cannot be
+attributed to one subsidiary — split it first); a transaction linked to an
+invoice, vendor bill, payroll run, fixed asset or loan (this script does not
+carry those — record the equivalent directly in the subsidiary); an employee
+whose current assignments span more than one division, or sit in a `shared`
+unit; a person with no email or phone on file (nothing to resolve them by in
+the new tenant); an organisation invoiced from more than one division.
+
+**Cash never moves by data migration.** The subsidiary's ledger accounts open
+at zero, named after the accounts the carried transactions used, with a note
+that the opening balance is to be set from the transfer of funds — moving the
+actual money into the subsidiary's own bank account is a bank transfer a
+human makes, not a database write.
+
+**Not done by this script, on purpose:**
+
+- **Ending the migrated employment relationships in the holding.** The
+  source rows are marked `migratedToTenantId`, not separated — deciding when
+  someone's employment with the holding actually ends is an HR act the
+  chairman takes deliberately.
+- **Moving the cash.** See above.
+- **Registering the subsidiary for its own GSTIN**, and completing its
+  company profile before it can invoice.
+
+To commit:
+
+```bash
+pnpm division:spin-out --from kaizen --division education --to kz-edu --yes \
+  --kipl-stake 7000 --face-value 10 --class "Equity" \
+  --other-holder "Jane Founder|jane@example.com=3000"
+```
+
+This carries the rows above, then writes the subsidiary's **opening
+allotment**: a share class, the holding recorded as an `entity` holder
+(`--kipl-stake`) alongside anyone else named (`--other-holder
+"<name>|<email>=<count>"`, repeatable), an allotment per holder approved and
+made effective under the system principal with `boardResolutionRef:
+'spin-out'`, and certificates issued. `tenant.config.spinOut` on the
+subsidiary then records which division, which holding, and the batch id.
+
+### Reverting
+
+```bash
+pnpm division:spin-out --revert <batchId> --from kaizen --to kz-edu --yes
+```
+
+Removes only the rows this batch created in the subsidiary, and clears
+`migratedToTenantId` on the sources — safe only while the subsidiary has not
+yet acquired a life of its own. It refuses outright if the subsidiary carries
+any transaction or register row from outside the batch.

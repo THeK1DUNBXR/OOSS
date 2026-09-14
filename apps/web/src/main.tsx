@@ -4,9 +4,32 @@ import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import { SessionProvider, useSession } from './lib/session.js';
+import { useSurface } from './lib/surface.js';
 import { Shell } from './components/Shell.js';
 import { Loading } from './components/ui.js';
 import { Login } from './pages/Login.js';
+import { PortalShell } from './portal/PortalShell.js';
+import { Holdings } from './portal/pages/Holdings.js';
+import { Certificates } from './portal/pages/Certificates.js';
+import { Documents } from './portal/pages/Documents.js';
+import { Board } from './portal/pages/Board.js';
+import { Entities as PortalEntities } from './portal/pages/Entities.js';
+import { Options as PortalOptions } from './portal/pages/Options.js';
+import { CapTable } from './pages/equity/CapTable.js';
+import { Register } from './pages/equity/Register.js';
+import { Holders, HolderDetail } from './pages/equity/Holders.js';
+import { ShareClasses } from './pages/equity/ShareClasses.js';
+import { Valuations } from './pages/equity/Valuations.js';
+import { Documents as EquityDocuments } from './pages/equity/Documents.js';
+import { CertificateDocument } from './pages/equity/CertificateDocument.js';
+import { Group } from './pages/equity/Group.js';
+import { GroupEntity } from './pages/equity/GroupEntity.js';
+import { Rounds } from './pages/equity/Rounds.js';
+import { Scenarios } from './pages/equity/Scenarios.js';
+import { Esop } from './pages/equity/Esop.js';
+import { Filings } from './pages/equity/Filings.js';
+import { Sh4Sheet } from './pages/equity/Sh4Sheet.js';
+import { MyOptions } from './pages/MyOptions.js';
 import { CommandCenter } from './pages/CommandCenter.js';
 import { Workspace, Exceptions } from './pages/Workspace.js';
 import { Pipeline } from './pages/Pipeline.js';
@@ -33,6 +56,10 @@ import { Executive } from './pages/Executive.js';
 import ImportPage from './pages/Import.js';
 import Start from './pages/Start.js';
 import { Ledger, Payables, Budget, Assets } from './pages/Books.js';
+import { Board as EquityBoard } from './pages/board/Board.js';
+import { MeetingDetail } from './pages/board/MeetingDetail.js';
+import { Resolutions, ResolutionDetail } from './pages/board/Resolutions.js';
+import { Compliance as EquityCompliance } from './pages/board/Compliance.js';
 import { ComplianceCalendar } from './pages/compliance/Calendar.js';
 import { ComplianceGst } from './pages/compliance/Gst.js';
 import { ComplianceTax } from './pages/compliance/Tax.js';
@@ -57,11 +84,46 @@ function LegacyAccountLink() {
   return <Navigate to={`/crm/organizations/${id}`} replace />;
 }
 
+/**
+ * The portal's own `<Routes>` block — no ERP sidebar or ERP routes reach a
+ * portal surface at all, in either direction (plan §3.1). Every path here
+ * mirrors a `portal_*` node in `NAV_REGISTRY`; a node the server did not
+ * return for this role still resolves the route (so a bookmark does not
+ * 404), and `PortalShell` renders the "not given a view" empty state instead
+ * of the page when its section list is empty.
+ */
+function PortalRouted() {
+  const { nav } = useSession();
+  const landing = nav.find((n) => n.group === 'portal')?.path ?? '/portal/holdings';
+
+  return (
+    <Routes>
+      <Route element={<PortalShell />}>
+        <Route path="/" element={<Navigate to={landing} replace />} />
+        <Route path="/portal/holdings" element={<Holdings />} />
+        <Route path="/portal/certificates" element={<Certificates />} />
+        <Route path="/portal/documents" element={<Documents />} />
+        {/* The same sheet the ERP register opens, routed here too so a
+            shareholder printing their own certificate stays inside the
+            portal's own shell. */}
+        <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
+        <Route path="/equity/group/:sourceTenantId" element={<GroupEntity />} />
+        <Route path="/portal/board" element={<Board />} />
+        <Route path="/portal/entities" element={<PortalEntities />} />
+        <Route path="/portal/options" element={<PortalOptions />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  );
+}
+
 function Routed() {
   const { user, loading } = useSession();
+  const surface = useSurface(user);
 
   if (loading) return <Loading label="Resolving your session" />;
   if (!user) return <Login />;
+  if (surface === 'portal') return <PortalRouted />;
 
   return (
     <Routes>
@@ -111,6 +173,23 @@ function Routed() {
         <Route path="/commercial/win-loss" element={<WinLoss />} />
         <Route path="/commercial/win-loss/:id" element={<WinLoss />} />
 
+        <Route path="/equity/cap-table" element={<CapTable />} />
+        <Route path="/equity/register" element={<Register />} />
+        <Route path="/equity/holders" element={<Holders />} />
+        <Route path="/equity/holders/:id" element={<HolderDetail />} />
+        <Route path="/equity/share-classes" element={<ShareClasses />} />
+        <Route path="/equity/valuations" element={<Valuations />} />
+        <Route path="/equity/documents" element={<EquityDocuments />} />
+        <Route path="/equity/group" element={<Group />} />
+        <Route path="/equity/group/:sourceTenantId" element={<GroupEntity />} />
+        <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
+        <Route path="/equity/rounds" element={<Rounds />} />
+        <Route path="/equity/scenarios" element={<Scenarios />} />
+        <Route path="/equity/esop" element={<Esop />} />
+        <Route path="/equity/filings" element={<Filings />} />
+        <Route path="/equity/filings/sh-4/:transactionId" element={<Sh4Sheet />} />
+        <Route path="/me/options" element={<MyOptions />} />
+
         <Route path="/business" element={<Executive />} />
         <Route path="/data/import" element={<ImportPage />} />
         <Route path="/start" element={<Start />} />
@@ -135,6 +214,12 @@ function Routed() {
         <Route path="/finance/receivables" element={<Receivables />} />
         <Route path="/finance/gst" element={<GstReturns />} />
         <Route path="/finance/company" element={<CompanyDetails />} />
+
+        <Route path="/equity/board" element={<EquityBoard />} />
+        <Route path="/equity/board/meetings/:id" element={<MeetingDetail />} />
+        <Route path="/equity/resolutions" element={<Resolutions />} />
+        <Route path="/equity/resolutions/:id" element={<ResolutionDetail />} />
+        <Route path="/equity/compliance" element={<EquityCompliance />} />
 
         <Route path="/people/employees" element={<Employees />} />
         <Route path="/people/employees/:id" element={<EmployeeDetail />} />

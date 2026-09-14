@@ -66,6 +66,16 @@ router.get(
       /** What a current seed would write, so a mismatch in the count shows. */
       expected: { navNodes: NAV_REGISTRY.length },
 
+      // Which hostnames serve the portal shell, so the client can tell without
+      // a second build (equity-portal plan §3.1). Empty until an operator sets
+      // `PORTAL_HOSTS` — the client falls back to archetype alone.
+      surfaceHosts: {
+        portal: (process.env.PORTAL_HOSTS ?? '')
+          .split(',')
+          .map((h) => h.trim())
+          .filter(Boolean),
+      },
+
       /**
        * Permission changes the declared matrix wants and this tenant has not
        * had applied.
