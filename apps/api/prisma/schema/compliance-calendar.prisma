@@ -1,0 +1,110 @@
+// Compliance — calendar and register (docs/plan/compliance.md, workstream A).
+//
+// The spine for every statutory deadline the platform tracks. A type is the
+// standing definition of an obligation (GSTR-3B, PF ECR, DIR-3 KYC...); an
+// obligation is one period's instance of it, materialised by
+// `generateObligations` and carried through upcoming -> due -> filed/overdue
+// or waived.
+
+/// The standing definition of a recurring (or one-off) statutory obligation.
+/// Statutory numbers — which day of the month, which month, how many days
+/// after a triggering event — live in `dueRule` as data, never as a constant
+/// in domain code (Principle 1).
+model ComplianceObligationType {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// A short stable identifier, e.g. `GSTR3B`, `TDS_DEPOSIT`, `AOC4`. Upserted
+  /// against by the seed, so it is the seed's idempotency key.
+  code String
+
+  label        String
+  governingLaw String
+  section      String?
+
+  /// fin | hr | gov | edu — which part of the business the obligation belongs
+  /// to, for the summary tiles and the filter tabs.
+  domain String
+
+  /// monthly | quarterly | half_yearly | annual | one_off
+  recurrence String
+
+  /// The due-date arithmetic, e.g. `{"day": 11}` (11th of next month),
+  /// `{"month": 9, "day": 30}` (30 September every year), or
+  /// `{"monthsAfterFyEnd": 6, "day": 30}`. Read by `nextDueDates` in
+  /// `packages/shared/src/compliance/calendar.ts` — pure arithmetic, no DB.
+  dueRule Json
+
+  /// The ACCESS_ROLE slug whose active affiliation is this obligation's owner.
+  /// Data, not a role comparison in domain logic — `domains/compliance/calendar.ts`
+  /// looks an affiliation up by it rather than branching on the slug.
+  ownerRoleSlug String
+
+  /// Whether marking an instance of this type filed requires a linked
+  /// evidence document (CMP-CAL-002), on top of the reference every filing
+  /// requires regardless.
+  evidenceRequired Boolean @default(false)
+
+  /// An inactive type is not materialised by `generateObligations`, but its
+  /// past obligations stand — turning a filing requirement off does not erase
+  /// the record that it was once filed.
+  active Boolean @default(true)
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  obligations ComplianceObligation[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, domain])
+  @@map("compliance_obligation_types")
+}
+
+/// One period's instance of an obligation type — the thing that actually has
+/// a due date and a status. A filing is a snapshot once made: `filedAt`,
+/// `filedById` and `reference` are set once by `markFiled` and never edited
+/// afterwards; a correction is a new filing on the next period, the same
+/// discipline `GstFiling` already keeps.
+model ComplianceObligation {
+  id       String @id @default(cuid())
+  tenantId String
+
+  typeId String
+  type   ComplianceObligationType @relation(fields: [typeId], references: [id])
+
+  /// The period this instance covers, in the shape the recurrence implies:
+  /// `2026-09` (monthly), `2026-Q2` (quarterly), `FY2026-27` (annual/one_off
+  /// tied to a financial year), or a plain calendar year `2026` for a
+  /// half-yearly/annual obligation not tied to the FY.
+  period String
+  dueAt  DateTime
+
+  /// upcoming | due | filed | overdue | waived
+  status String @default("upcoming")
+
+  filedAt             DateTime?
+  filedById           String?
+  evidenceDocumentId  String?
+  /// The portal's acknowledgement — ARN, challan number, acknowledgement
+  /// number. A filing with none was not filed (mirrors `GstFiling.arn`).
+  reference           String?
+  note                String?
+
+  /// Every ladder rung already notified for this obligation (e.g. `[30, 7,
+  /// 1]`), so the daily job never re-notifies a rung it already fired —
+  /// idempotence carried in the row rather than recomputed from event
+  /// history, the same shape the MoU/contract expiry ladders use.
+  notifiedRungs Int[] @default([])
+
+  recordCode String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, typeId, period])
+  @@index([tenantId, status])
+  @@index([tenantId, dueAt])
+  @@map("compliance_obligations")
+}
