@@ -279,7 +279,9 @@ describe('HCM-RECR-007 — an offer machine refuses an out-of-order transition',
     expect(sent.status).toBe('Sent');
 
     // Force it into the past rather than sleeping the test past a 1-second window.
-    await prisma.offerLetter.update({ where: { id: offer.id }, data: { validUntil: new Date(Date.now() - 60_000) } });
+    await asUser('operations@kaizen.co.in', () =>
+      prisma.offerLetter.update({ where: { id: offer.id }, data: { validUntil: new Date(Date.now() - 60_000) } }),
+    );
 
     const refusal = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionOffer(offer.id, 'ACCEPT')));
     expect(refusal.message).toMatch(/expired/);
