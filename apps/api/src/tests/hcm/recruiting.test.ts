@@ -197,7 +197,8 @@ describe('HCM-RECR-004 — a scorecard may only be submitted by a roster intervi
     );
     expect(forbidden.message).toMatch(/roster/);
 
-    await asUser('operations@kaizen.co.in', async () => {
+    // hr@kaizen.co.in is the roster interviewer set on the round above.
+    await asUser('hr@kaizen.co.in', async () => {
       const scorecard = await submitScorecard({ roundId: round.id, competencyScores: { coding: 4 }, recommendation: 'hire' });
       expect(scorecard.recommendation).toBe('hire');
 

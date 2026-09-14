@@ -169,7 +169,9 @@ export function Employee360() {
       {tab === 'overview' && <OverviewTab id={id} data={data} />}
       {tab === 'documents' && <DocumentsTab id={id} data={data} />}
       {tab === 'reporting' && <ReportingTab id={id} data={data} />}
-      {tab === 'history' && <HistoryTab id={id} data={data} userPartyId={user?.personId ?? null} />}
+      {tab === 'history' && (
+        <HistoryTab id={id} data={data} userPartyId={user?.personId ?? null} subjectPersonId={data.person.id} />
+      )}
     </div>
   );
 }
@@ -670,7 +672,17 @@ const KIND_OPTIONS = [
   { value: 'redesignation', label: 'Redesignation' },
 ];
 
-function HistoryTab({ id, data, userPartyId }: { id: string; data: Employee360View; userPartyId: string | null }) {
+function HistoryTab({
+  id,
+  data,
+  userPartyId,
+  subjectPersonId,
+}: {
+  id: string;
+  data: Employee360View;
+  userPartyId: string | null;
+  subjectPersonId: string;
+}) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<'transfer' | 'promotion' | 'demotion' | 'redesignation' | ''>('');
@@ -719,7 +731,7 @@ function HistoryTab({ id, data, userPartyId }: { id: string; data: Employee360Vi
           </thead>
           <tbody>
             {data.statusChanges.map((c) => {
-              const isSelf = c.proposedById === userPartyId;
+              const isSelfDealing = c.proposedById === userPartyId || subjectPersonId === userPartyId;
               return (
                 <tr key={c.id}>
                   <td>{titleCase(c.kind)}</td>
@@ -732,8 +744,8 @@ function HistoryTab({ id, data, userPartyId }: { id: string; data: Employee360Vi
                   </td>
                   <td className="whitespace-nowrap">
                     {c.status === 'pending_approval' &&
-                      (isSelf ? (
-                        <span className="text-2xs italic text-ink-500" title="The Self-Dealing Bar: a proposer may never decide their own change.">
+                      (isSelfDealing ? (
+                        <span className="text-2xs italic text-ink-500" title="The Self-Dealing Bar: neither the proposer nor the subject of a change may decide it.">
                           Awaiting another decider
                         </span>
                       ) : (

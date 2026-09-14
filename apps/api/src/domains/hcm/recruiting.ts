@@ -447,13 +447,25 @@ export async function transitionOffer(id: string, event: OfferEvent, input: { no
     });
   }
 
-  // An accepted offer moves the application forward too — the two are one
-  // fact in the world, exactly as `hiring.ts` treats OfferExtended/Accepted.
-  if (event === 'ACCEPT') {
+  // The offer and the underlying application are one fact moving together,
+  // not two records somebody has to remember to keep in step: sending an
+  // offer is `hiring.ts`'s EXTEND_OFFER, and accepting/declining/rescinding
+  // this offer is the matching Application event.
+  const applicationEvent: Partial<Record<OfferEvent, 'EXTEND_OFFER' | 'ACCEPT_OFFER' | 'DECLINE_OFFER' | 'RESCIND_OFFER'>> = {
+    SEND: 'EXTEND_OFFER',
+    ACCEPT: 'ACCEPT_OFFER',
+    DECLINE: 'DECLINE_OFFER',
+    RESCIND: 'RESCIND_OFFER',
+  };
+  if (applicationEvent[event]) {
     const { transitionApplication } = await import('../hiring.js');
-    await transitionApplication(offer.applicationId, 'ACCEPT_OFFER', { note: `Offer ${offer.recordCode} accepted` }).catch(() => {
-      // The application may already be past OfferExtended if a second offer
-      // is being tracked here; the acceptance is still recorded on the offer.
+    await transitionApplication(offer.applicationId, applicationEvent[event]!, {
+      note: `Offer ${offer.recordCode} ${OFFER_EVENT_VERB[event]}`,
+      rejectionReason: event === 'DECLINE' ? input.declineReason : undefined,
+    }).catch(() => {
+      // The application may already be past the matching state — a second
+      // offer against the same application, say. The fact is still recorded
+      // on the offer itself either way.
     });
   }
 

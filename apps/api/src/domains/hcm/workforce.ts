@@ -655,10 +655,12 @@ export async function listStatusChanges(employmentRelationshipId?: string) {
 }
 
 /**
- * Decides a pending status change. The Self-Dealing Bar: the decider may
- * never be the proposer — an employee cannot approve their own transfer,
- * and a manager cannot approve a change they themselves proposed on
- * somebody else's behalf without a second, independent decider.
+ * Decides a pending status change. The Self-Dealing Bar is unconditional and
+ * two-sided: the decider may never be the proposer — an employee cannot
+ * approve their own transfer, and a manager cannot approve a change they
+ * themselves proposed on somebody else's behalf without a second,
+ * independent decider — and the decider may never be the subject of the
+ * change either, even when someone else proposed it on their behalf.
  */
 export async function decideStatusChange(id: string, approve: boolean, note?: string) {
   const auth = currentAuth();
@@ -671,6 +673,10 @@ export async function decideStatusChange(id: string, approve: boolean, note?: st
   }
   if (row.proposedById === auth.partyId) {
     throw ApiError.forbidden('The Self-Dealing Bar is unconditional: a proposer may never decide their own status change.');
+  }
+  const subject = await requireEmployment(row.employmentRelationshipId);
+  if (subject.personId === auth.partyId) {
+    throw ApiError.forbidden('The Self-Dealing Bar is unconditional: the subject of a status change may never decide it themselves.');
   }
 
   const updated = await prisma.employeeStatusChange.update({

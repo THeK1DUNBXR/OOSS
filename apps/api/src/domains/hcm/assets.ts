@@ -32,8 +32,8 @@ import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan, canSeeMoney } from '../../platform/permissions.js';
-import { assertEmploymentVisible, employmentVisibilityWhere } from '../../platform/recordScope.js';
+import { assertCan, canSeeMoney, scopeFor } from '../../platform/permissions.js';
+import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { issueLetter, listLetters as listHrLetters } from '../compliance/labour.js';
@@ -46,6 +46,29 @@ function maskCost<T extends Record<string, unknown>>(row: T, canSee: boolean, fi
   const out = { ...row };
   for (const f of fields) (out as Record<string, unknown>)[f] = null;
   return out;
+}
+
+/**
+ * The `where` fragment that narrows a list to the caller's own employment(s)
+ * for a resource whose grant scope is not `all`.
+ *
+ * `employmentVisibilityWhere` (recordScope.ts) assumes the model carries an
+ * actual Prisma relation named `employmentRelationship` — ours are plain
+ * `employmentRelationshipId` string columns, the same "id only" discipline
+ * this workstream uses everywhere else (e.g. `expenseClaimId`), so this
+ * resolves the caller's own employment id(s) first and filters on that
+ * column directly.
+ */
+async function ownEmploymentWhere(resource: string, verb: 'view' = 'view'): Promise<Record<string, unknown>> {
+  const auth = currentAuth();
+  const scope = await scopeFor(resource, verb);
+  if (scope === 'all') return {};
+  if (!auth.partyId) return { employmentRelationshipId: '__none__' };
+  const mine = await prisma.employmentRelationship.findMany({
+    where: { tenantId: auth.tenantId, personId: auth.partyId },
+    select: { id: true },
+  });
+  return { employmentRelationshipId: { in: mine.length ? mine.map((m) => m.id) : ['__none__'] } };
 }
 
 async function employmentOrThrow(employmentRelationshipId: string) {

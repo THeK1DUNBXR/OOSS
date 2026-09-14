@@ -8,7 +8,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { asUser, expectReject, prisma, tenantId } from '../helpers.js';
+import { asPrincipal, asUser, authFor, expectReject, prisma, principalFor, tenantId } from '../helpers.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
@@ -287,5 +287,31 @@ describe('HCM-WORKFORCE-011 — employee status changes: propose → decide (Sel
 
     const reApply = await expectReject(() => asUser('hr@kaizen.co.in', () => applyStatusChange(proposed.id)));
     expect(reApply.status).toBe(409);
+  });
+
+  it('HCM-WORKFORCE-013: the subject of a status change may never decide it themselves, even holding the approve grant', async () => {
+    const { employment, person } = await makeEmployee('subject-dealing');
+    const stamp = Date.now();
+    const grade = await asUser('hr@kaizen.co.in', () => createGrade({ code: `SJ-${stamp}`, name: 'Subject Grade', level: 2 }));
+
+    const proposed = await asUser('hr@kaizen.co.in', () =>
+      proposeStatusChange({
+        employmentRelationshipId: employment.id,
+        kind: 'promotion',
+        changes: { gradeId: grade.id },
+        reason: 'Strong quarter',
+        effectiveDate: new Date(),
+      }),
+    );
+
+    // A principal shaped like `hr_ops_manager` (holds `employee_changes:approve`)
+    // but whose party IS the subject of the change — proposed by someone
+    // else, so the plain proposer check above would not catch this.
+    const hrPrincipal = await principalFor('hr@kaizen.co.in');
+    const denied = await expectReject(() =>
+      asPrincipal(authFor(hrPrincipal, { partyId: person.id }), () => decideStatusChange(proposed.id, true)),
+    );
+    expect(denied.status).toBe(403);
+    expect(denied.message).toMatch(/Self-Dealing Bar/);
   });
 });

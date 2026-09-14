@@ -303,8 +303,13 @@ export async function getReviewAssignment(id: string) {
   const assignment = await prisma.reviewAssignment.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!assignment) throw ApiError.notFound('Review assignment');
 
+  // Only the reviewer themselves (or an all-scope grant) may fetch a single
+  // assignment by id — a subject who is not also its reviewer (i.e. every
+  // kind but `self`) must never be able to resolve this record, since it
+  // carries the peer/upward reviewer's identity and their submitted
+  // ratings/comments before the cycle closes and any rating is released.
   const scope = await scopeFor('reviews', 'view');
-  if (scope !== 'all' && assignment.reviewerPartyId !== auth.partyId && assignment.subjectPartyId !== auth.partyId) {
+  if (scope !== 'all' && assignment.reviewerPartyId !== auth.partyId) {
     throw ApiError.notFound('Review assignment');
   }
 

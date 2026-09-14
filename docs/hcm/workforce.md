@@ -27,10 +27,12 @@ then applied.
 - `EmployeeStatusChange` — `transfer | promotion | demotion |
   redesignation`, `pending_approval → approved|rejected → applied`. Proposed
   by anyone holding `employee_changes:create`; decided by anyone holding
-  `employee_changes:approve` **other than the proposer** (unconditional,
-  same shape as `approvals.ts`'s Self-Dealing Bar); applying writes the new
-  `GradeAssignment`/`CostCentreAssignment`/`LocationAssignment` row(s) named
-  in `changes`.
+  `employee_changes:approve` **other than the proposer, and other than the
+  employment the change is about** (unconditional and two-sided, same shape
+  as `approvals.ts`'s Self-Dealing Bar — a manager cannot approve their own
+  promotion even when someone else filed the paperwork); applying writes the
+  new `GradeAssignment`/`CostCentreAssignment`/`LocationAssignment` row(s)
+  named in `changes`.
 
 ### Shared pure logic (`packages/shared/src/hcm/workforce.ts`)
 
@@ -63,9 +65,9 @@ audit record.
   name to Employee 360.
 - `Directory.tsx` (`/people/directory`) — searchable staff list.
 - `Employee360.tsx` (`/people/employees/:id/360`) — Profile / Documents /
-  Reporting / History tabs; a decide button is hidden (not disabled) for
-  whoever proposed the change, with the reason stated plainly, rather than
-  offered and then refused.
+  Reporting / History tabs; a decide button is hidden (not disabled), with
+  the reason stated plainly, for whoever proposed the change **and** for the
+  employment the change is about, rather than offered and then refused.
 - One `Link` added to `PeopleOps.tsx`'s `EmployeeDetail` ("Full profile" →
   the 360 page).
 
@@ -85,6 +87,7 @@ audit record.
 | HCM-WORKFORCE-010 | Cost centre, location and grade can be created and listed | `HCM-WORKFORCE-010` |
 | HCM-WORKFORCE-011 | The proposer of a status change may never decide it (403, Self-Dealing Bar) | `HCM-WORKFORCE-011` |
 | HCM-WORKFORCE-012 | A different decider can approve; applying writes the grade assignment; re-deciding/re-applying are refused (409) | `HCM-WORKFORCE-012` |
+| HCM-WORKFORCE-013 | The subject of a status change may never decide it themselves, even holding the approve grant (403, Self-Dealing Bar) | `HCM-WORKFORCE-013` |
 
 ## What this does not do
 

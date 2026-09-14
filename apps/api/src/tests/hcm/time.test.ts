@@ -31,9 +31,25 @@ import {
 } from '../../domains/hcm/time.js';
 
 let TENANT: string;
+/**
+ * Days ahead of today from which this run's fixture dates start. Clocking in
+ * is checked against the single most recent punch for an employment
+ * regardless of date, so a second run against the same persistent test
+ * database must never land on a day an earlier run already wrote clock
+ * events, timesheets or attendance for — this walks past the latest
+ * `ClockEvent` this tenant already has, so every run starts strictly after
+ * whatever the last one left behind.
+ */
+let FIXTURE_BASE_DAYS = 300;
 
 beforeAll(async () => {
   TENANT = await tenantId();
+  const latest = await unscopedPrisma.clockEvent.aggregate({ where: { tenantId: TENANT }, _max: { occurredAt: true } });
+  const latestOccurredAt = latest._max.occurredAt;
+  if (latestOccurredAt) {
+    const daysAhead = Math.ceil((latestOccurredAt.getTime() - Date.now()) / 86_400_000) + 7;
+    FIXTURE_BASE_DAYS = Math.max(FIXTURE_BASE_DAYS, daysAhead);
+  }
 });
 
 /** The employment behind an already-seeded, login-capable staff account. */
@@ -46,15 +62,10 @@ async function employmentFor(email: string): Promise<{ employmentRelationshipId:
   return { employmentRelationshipId: employment.id, personId: user.personId };
 }
 
-/**
- * A day far from anything the demo dataset seeded, salted by this run's start
- * time so a second run against the same persistent test database never lands
- * on a day an earlier run already wrote clock events or attendance for.
- */
-const RUN_SALT = Math.floor(Date.now() / 1000) % 5000;
+/** A day far from anything the demo dataset — or an earlier run of this file — seeded. */
 function fixtureDay(offsetDays: number): Date {
   const d = new Date();
-  d.setUTCDate(d.getUTCDate() + 300 + RUN_SALT + offsetDays);
+  d.setUTCDate(d.getUTCDate() + FIXTURE_BASE_DAYS + offsetDays);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 

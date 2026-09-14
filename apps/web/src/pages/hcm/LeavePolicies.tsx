@@ -375,7 +375,11 @@ interface Chain {
 function ChainsTab() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: '', isDefault: false, levels: [{ level: 1, kind: 'manager' as ChainLevel['kind'], approverPartyId: '' }] });
+  const [form, setForm] = useState<{ name: string; isDefault: boolean; levels: ChainLevel[] }>({
+    name: '',
+    isDefault: false,
+    levels: [{ level: 1, kind: 'manager', approverPartyId: '' }],
+  });
 
   const chains = useQuery({ queryKey: ['leavepolicy-chains'], queryFn: () => api.get<Chain[]>('/hcm/leavepolicy/approval-chains') });
 

@@ -237,9 +237,9 @@ describe('HCM-LEARNING-006 — completing a skills-linked program asserts a capa
     await asUser('operations@kaizen.co.in', () => markAttendance(enrollment.id, true));
     await asUser('operations@kaizen.co.in', () => completeEnrollment(enrollment.id));
 
-    const claim = await prisma.capabilityClaim.findFirst({
-      where: { tenantId: TENANT, partyId: person.id, skillId: skill.id },
-    });
+    const claim = await asUser('operations@kaizen.co.in', () =>
+      prisma.capabilityClaim.findFirst({ where: { tenantId: TENANT, partyId: person.id, skillId: skill.id } }),
+    );
     expect(claim).not.toBeNull();
     expect(claim?.tier).toBe('assessed');
   });
