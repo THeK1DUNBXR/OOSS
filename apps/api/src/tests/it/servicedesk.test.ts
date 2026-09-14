@@ -13,7 +13,8 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { dueFrom, slaAttainment, medianMinutes, backlogAgeBuckets } from '@kaizen/shared';
-import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { asUser, asPrincipal, authFor, expectReject, prisma, tenantId, unscopedPrisma, type TestPrincipal } from '../helpers.js';
+import { seedBootstrap } from '../../seed/bootstrap.js';
 import {
   createTicket,
   listTickets,
@@ -155,34 +156,12 @@ describe('service desk — domain and wiring', () => {
     expect(triaged.respondDueAt!.toISOString()).not.toBe(wrongIfUsingTodaysTable.toISOString());
   });
 
-  it('IT-TKT-004: SLA attainment reports not yet measured with no closed tickets this month, never 100%', async () => {
-    // Runs before any other test in this file closes a ticket, so the
-    // "this month" window genuinely has nothing behind it yet — a fixture
-    // ticket is triaged and resolved here, then deliberately backdated
-    // outside the current month so it does NOT count either.
-    const ticket = await asUser('employee@kaizen.co.in', () =>
-      createTicket({ category: 'question', subject: `Attainment fixture ${stamp()}`, description: 'Resolved, but not this month.' }),
-    );
-    await asUser('operations@kaizen.co.in', () => triageTicket(ticket.id, { priority: 'P3' }));
-    await asUser('operations@kaizen.co.in', () => assignTicket(ticket.id, opsPartyId));
-    await asUser('operations@kaizen.co.in', () => transitionTicket(ticket.id, 'START'));
-    await asUser('operations@kaizen.co.in', () => transitionTicket(ticket.id, 'RESOLVE'));
-
-    const lastMonth = new Date();
-    lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
-    await unscopedPrisma.itTicket.update({ where: { id: ticket.id }, data: { resolvedAt: lastMonth } });
-
-    const s = await asUser('operations@kaizen.co.in', () => summary());
-    // Tickets exist (this one, plus IT-SLA-001's), so this is "no closed
-    // tickets in the period", never the zero-tickets-ever branch.
-    expect(s.notYetMeasured).toBe(false);
-    expect(s.slaAttainment.response).toBeNull();
-    expect(s.slaAttainment.resolution).toBeNull();
-
-    // The zero-tickets-ever branch, exercised directly against the same
-    // pure function the domain calls.
-    expect(slaAttainment([])).toBeNull();
-  });
+  // IT-TKT-004 (SLA attainment reports not yet measured with no closed
+  // tickets in the period) needs a tenant it controls completely — the
+  // shared "kaizen" tenant used by every other test in this file may
+  // already have a this-month-closed ticket by the time this runs, from
+  // another suite entirely (the overview/health tests, or a future one).
+  // See the isolated-tenant describe block at the end of this file.
 
   it('permission: an employee cannot read fleet-wide SLA figures — summary() needs `all` scope, not `own`', async () => {
     const denied = await expectReject(() => asUser('employee@kaizen.co.in', () => summary()));
@@ -372,5 +351,68 @@ describe('service desk — domain and wiring', () => {
       asUser('finance@kaizen.co.in', () => createTicket({ category: 'question', subject: 'nope', description: 'nope' })),
     );
     expect(denied.status).toBe(403);
+  });
+});
+
+/**
+ * IT-TKT-004 needs a tenant it controls completely — "no closed tickets in
+ * the period" is meaningless against the shared "kaizen" tenant every other
+ * test in this file runs against, which another suite (or a future test)
+ * may already have closed a ticket in this month. So, the same as
+ * `overview.test.ts`'s IT-HLT-001, this bootstraps its own tenant
+ * (`seedBootstrap`, which seeds `ItSlaPolicy` for it the same as any other
+ * tenant) and runs entirely inside it via `asPrincipal`/`authFor`.
+ */
+describe('IT-TKT-004: SLA attainment reports not yet measured with no closed tickets in the period', () => {
+  let ttid: string;
+  let chairman: TestPrincipal;
+
+  async function asTenantChairman<T>(fn: () => Promise<T>): Promise<T> {
+    return asPrincipal(authFor(chairman), fn);
+  }
+
+  beforeAll(async () => {
+    const slug = `it-servicedesk-tkt004-${stamp()}`;
+    const seeded = await seedBootstrap({ tenantSlug: slug, tenantName: `Service desk IT-TKT-004 fixture ${slug}` });
+    ttid = seeded.tenantId;
+
+    const user = await unscopedPrisma.user.findFirstOrThrow({ where: { tenantId: ttid, email: 'chairman@kaizen.co.in' } });
+    const affiliation = await unscopedPrisma.affiliation.findFirstOrThrow({
+      where: { partyId: user.personId, tenantId: ttid, status: 'active' },
+      orderBy: [{ primaryFlag: 'desc' }, { createdAt: 'asc' }],
+    });
+    chairman = {
+      tenantId: ttid,
+      partyId: user.personId,
+      userId: user.id,
+      affiliationId: affiliation.id,
+      roleSlug: affiliation.roleSlug ?? 'chairman',
+      branch: user.branch,
+    };
+  }, 60_000);
+
+  it('never reports 100% with nothing behind it: a ticket resolved but backdated outside the current month does not count', async () => {
+    const ticket = await asTenantChairman(() =>
+      createTicket({ category: 'question', subject: `Attainment fixture ${stamp()}`, description: 'Resolved, but not this month.' }),
+    );
+    await asTenantChairman(() => triageTicket(ticket.id, { priority: 'P3' }));
+    await asTenantChairman(() => assignTicket(ticket.id, chairman.partyId));
+    await asTenantChairman(() => transitionTicket(ticket.id, 'START'));
+    await asTenantChairman(() => transitionTicket(ticket.id, 'RESOLVE'));
+
+    const lastMonth = new Date();
+    lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
+    await unscopedPrisma.itTicket.update({ where: { id: ticket.id }, data: { resolvedAt: lastMonth } });
+
+    const s = await asTenantChairman(() => summary());
+    // The ticket exists (triaged, resolved), so this is "no closed tickets
+    // in the period", never the zero-tickets-ever branch.
+    expect(s.notYetMeasured).toBe(false);
+    expect(s.slaAttainment.response).toBeNull();
+    expect(s.slaAttainment.resolution).toBeNull();
+
+    // The zero-tickets-ever branch, exercised directly against the same
+    // pure function the domain calls.
+    expect(slaAttainment([])).toBeNull();
   });
 });
