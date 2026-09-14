@@ -652,6 +652,18 @@ export const RECORD_TYPE_CODES = [
   // register entry, each a case a data principal or the company refers to by
   // number.
   'DPR', 'BRC',
+  // Technology (docs/plan/cio.md): an asset, an application, a licence, a
+  // vendor and a vendor contract (A-C); a ticket and a knowledge article (D);
+  // an incident, a problem and a change (E); a risk, a policy document, a
+  // control, an access review and a security finding (F); an initiative and
+  // a technical-debt item (G); a continuity plan, a continuity test and a
+  // maintenance window (H). Each is a thing a person refers to by number.
+  'ITA', 'SWA', 'LIC', 'ITV', 'VCT',
+  'TKT', 'KBA',
+  'INC', 'PRB', 'CHG',
+  'ITR', 'ITP', 'CTL', 'ACR', 'FND',
+  'ITI', 'TDB',
+  'DRP', 'DRT', 'MWN',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 
@@ -679,6 +691,10 @@ export const HEALTH_DOMAINS = [
   { code: 'H_OPS', name: 'Operations', module: 'wfl' },
   { code: 'H_STR', name: 'Strategy', module: 'str' },
   { code: 'H_RSK', name: 'Risk', module: 'gov' },
+  // Technology (docs/plan/cio.md, workstream I): the desk, incidents,
+  // changes, risk, findings and continuity, each factor omitted while its
+  // inputs do not exist yet.
+  { code: 'H_TEC', name: 'Technology', module: 'it' },
 ] as const;
 
 export type HealthDomainCode = (typeof HEALTH_DOMAINS)[number]['code'];

@@ -52,6 +52,7 @@ const DOMAIN_PLAIN_NAME: Record<string, string> = {
   H_OPS: 'Operations',
   H_STR: 'Strategy',
   H_RSK: 'Risk',
+  H_TEC: 'Technology',
 };
 
 
@@ -461,6 +462,7 @@ async function domainOwner(domainCode: string): Promise<string | null> {
     H_PPL: ['hr_ops_manager', 'chairman'],
     H_OPS: ['hr_ops_manager', 'chairman'],
     H_RSK: ['chairman'],
+    H_TEC: ['hr_ops_manager', 'chairman'],
   };
   for (const roleSlug of preferred[domainCode] ?? ['finance_head', 'chairman']) {
     const holder = await prisma.affiliation.findFirst({

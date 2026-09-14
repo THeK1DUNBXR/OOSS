@@ -397,6 +397,68 @@ export const EVENTS = {
   COMPLIANCE_OBLIGATIONS_GENERATED: 'kz.cmp.obligation.generated',
   COMPLIANCE_OBLIGATION_FILED: 'kz.cmp.obligation.filed',
   COMPLIANCE_OBLIGATION_WAIVED: 'kz.cmp.obligation.waived',
+
+  // --- Technology (docs/plan/cio.md) ----------------------------------------
+  // A. Assets and devices
+  IT_ASSET_CREATED: 'kz.it.asset.created',
+  IT_ASSET_TRANSITIONED: 'kz.it.asset.transitioned',
+  IT_ASSET_ASSIGNED: 'kz.it.asset.assigned',
+  IT_ASSET_RETURNED: 'kz.it.asset.returned',
+  IT_ASSET_WARRANTY_APPROACHING: 'kz.it.asset.warranty_approaching',
+  // B. Applications, licences and subscriptions
+  IT_APPLICATION_CREATED: 'kz.it.application.created',
+  IT_APPLICATION_TRANSITIONED: 'kz.it.application.transitioned',
+  IT_LICENCE_CREATED: 'kz.it.licence.created',
+  IT_LICENCE_RENEWAL_PROPOSED: 'kz.it.licence.renewal_proposed',
+  IT_LICENCE_RENEWED: 'kz.it.licence.renewed',
+  IT_LICENCE_RENEWAL_APPROACHING: 'kz.it.licence.renewal_approaching',
+  IT_LICENCE_CANCELLED: 'kz.it.licence.cancelled',
+  // C. Vendors and contracts
+  IT_VENDOR_CREATED: 'kz.it.vendor.created',
+  IT_VENDOR_ASSESSED: 'kz.it.vendor.assessed',
+  IT_VENDOR_CONTRACT_CREATED: 'kz.it.vendor_contract.created',
+  IT_VENDOR_CONTRACT_TRANSITIONED: 'kz.it.vendor_contract.transitioned',
+  IT_VENDOR_CONTRACT_EXPIRING: 'kz.it.vendor_contract.expiring',
+  // D. Service desk
+  IT_TICKET_RAISED: 'kz.it.ticket.raised',
+  IT_TICKET_TRANSITIONED: 'kz.it.ticket.transitioned',
+  IT_TICKET_ASSIGNED: 'kz.it.ticket.assigned',
+  IT_TICKET_SLA_BREACHED: 'kz.it.ticket.sla_breached',
+  IT_TICKET_RATED: 'kz.it.ticket.rated',
+  IT_KNOWLEDGE_PUBLISHED: 'kz.it.knowledge.published',
+  // E. Incidents, problems and changes
+  IT_INCIDENT_DECLARED: 'kz.it.incident.declared',
+  IT_INCIDENT_TRANSITIONED: 'kz.it.incident.transitioned',
+  IT_INCIDENT_REVIEW_PUBLISHED: 'kz.it.incident.review_published',
+  IT_PROBLEM_CREATED: 'kz.it.problem.created',
+  IT_PROBLEM_TRANSITIONED: 'kz.it.problem.transitioned',
+  IT_CHANGE_CREATED: 'kz.it.change.created',
+  IT_CHANGE_TRANSITIONED: 'kz.it.change.transitioned',
+  IT_CHANGE_FREEZE_DECLARED: 'kz.it.change.freeze_declared',
+  // F. Security and governance
+  IT_RISK_CREATED: 'kz.it.risk.created',
+  IT_RISK_TRANSITIONED: 'kz.it.risk.transitioned',
+  IT_POLICY_PUBLISHED: 'kz.it.policy.published',
+  IT_POLICY_ACKNOWLEDGED: 'kz.it.policy.acknowledged',
+  IT_CONTROL_TESTED: 'kz.it.control.tested',
+  IT_ACCESS_REVIEW_OPENED: 'kz.it.access_review.opened',
+  IT_ACCESS_REVIEW_DECIDED: 'kz.it.access_review.decided',
+  IT_ACCESS_REVIEW_CLOSED: 'kz.it.access_review.closed',
+  IT_FINDING_RAISED: 'kz.it.finding.raised',
+  IT_FINDING_TRANSITIONED: 'kz.it.finding.transitioned',
+  // G. Portfolio and budget
+  IT_INITIATIVE_CREATED: 'kz.it.initiative.created',
+  IT_INITIATIVE_TRANSITIONED: 'kz.it.initiative.transitioned',
+  IT_INITIATIVE_UPDATED: 'kz.it.initiative.updated',
+  IT_BUDGET_LINE_SET: 'kz.it.budget.line_set',
+  IT_BUDGET_BURN_EXCEEDED: 'kz.it.budget.burn_exceeded',
+  IT_TECH_DEBT_CREATED: 'kz.it.tech_debt.created',
+  IT_TECH_DEBT_TRANSITIONED: 'kz.it.tech_debt.transitioned',
+  // H. Continuity and operations
+  IT_CONTINUITY_PLAN_SET: 'kz.it.continuity.plan_set',
+  IT_CONTINUITY_TESTED: 'kz.it.continuity.tested',
+  IT_AVAILABILITY_RECORDED: 'kz.it.availability.recorded',
+  IT_MAINTENANCE_SCHEDULED: 'kz.it.maintenance.scheduled',
 } as const;
 
 /**

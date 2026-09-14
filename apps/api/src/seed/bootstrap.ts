@@ -30,6 +30,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { seedCompliance } from './compliance/index.js';
+import { seedIt } from './it/index.js';
 import { AI_TOUCHPOINTS, EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../platform/db.js';
 import { asSystem } from '../platform/context.js';
@@ -192,6 +193,32 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'cmp_labour', label: 'Labour & Conduct', icon: 'users', path: '/compliance/labour', group: 'compliance', position: 45, requiredPermission: 'holidays:V', synonyms: ['holidays', 'posh', 'internal committee', 'disciplinary', 'appointment letter', 'relieving letter', 'muster roll', 'registers'] },
   { nodeKey: 'cmp_privacy', label: 'Data Protection', icon: 'badge', path: '/compliance/privacy', group: 'compliance', position: 46, requiredPermission: 'consents:V', synonyms: ['dpdp', 'consent', 'privacy notice', 'erasure', 'breach', 'data request', 'guardian consent'] },
   { nodeKey: 'cmp_corporate', label: 'Corporate & Security', icon: 'building', path: '/compliance/corporate', group: 'compliance', position: 47, requiredPermission: 'corporate_registers:V', synonyms: ['board resolution', 'register of members', 'directors', 'mca', 'aoc-4', 'mgt-7', 'refund', 'certificate', 'mfa', 'stamp duty', 'e-sign', 'firc'] },
+
+  // ---- Technology (docs/plan/cio.md) ---------------------------------------
+  // The CIO's office. `it_initiatives:V` gates the overview to the roles that
+  // run or fund the estate; an employee reaches My IT and the catalogue.
+  { nodeKey: 'it_overview', label: 'Technology', icon: 'server', path: '/it', group: 'technology', position: 60, requiredPermission: 'it_initiatives:V', synonyms: ['cio', 'it', 'technology overview', 'estate'] },
+  { nodeKey: 'it_my', label: 'My IT', icon: 'laptop', path: '/it/my', group: 'technology', position: 61, requiredPermission: 'it_tickets:V', synonyms: ['my laptop', 'raise a ticket', 'it help', 'my tickets', 'acknowledge policy'] },
+  { nodeKey: 'it_assets', label: 'Assets', icon: 'laptop', path: '/it/assets', group: 'technology', position: 62, requiredPermission: 'it_assets:C', synonyms: ['laptops', 'devices', 'hardware', 'serial number', 'warranty', 'inventory'] },
+  { nodeKey: 'it_applications', label: 'Applications', icon: 'layers', path: '/it/applications', group: 'technology', position: 63, requiredPermission: 'it_applications:V', synonyms: ['software', 'saas', 'systems', 'catalogue', 'what we run on'] },
+  { nodeKey: 'it_licences', label: 'Licences', icon: 'key', path: '/it/licences', group: 'technology', position: 64, requiredPermission: 'it_licences:V', synonyms: ['subscriptions', 'seats', 'renewals', 'licence spend'] },
+  { nodeKey: 'it_vendors', label: 'Vendors', icon: 'building', path: '/it/vendors', group: 'technology', position: 65, requiredPermission: 'it_vendors:V', synonyms: ['suppliers', 'vendor risk', 'dpa', 'security assessment'] },
+  { nodeKey: 'it_contracts', label: 'Vendor Contracts', icon: 'scroll', path: '/it/contracts', group: 'technology', position: 66, requiredPermission: 'it_vendor_contracts:V', synonyms: ['notice period', 'auto-renew', 'supplier contract', 'sla'] },
+  { nodeKey: 'it_tickets', label: 'Service Desk', icon: 'ticket', path: '/it/tickets', group: 'technology', position: 67, requiredPermission: 'it_tickets:A', synonyms: ['tickets', 'helpdesk', 'requests', 'sla', 'support queue'] },
+  { nodeKey: 'it_knowledge', label: 'Knowledge Base', icon: 'book', path: '/it/knowledge', group: 'technology', position: 68, requiredPermission: 'it_knowledge:V', synonyms: ['how do i', 'articles', 'faq', 'runbook'] },
+  { nodeKey: 'it_incidents', label: 'Incidents', icon: 'alert', path: '/it/incidents', group: 'technology', position: 69, requiredPermission: 'it_incidents:V', synonyms: ['outage', 'major incident', 'sev1', 'post-incident review', 'mttr'] },
+  { nodeKey: 'it_problems', label: 'Problems', icon: 'search', path: '/it/problems', group: 'technology', position: 70, requiredPermission: 'it_problems:V', synonyms: ['root cause', 'known error', 'workaround'] },
+  { nodeKey: 'it_changes', label: 'Changes', icon: 'git', path: '/it/changes', group: 'technology', position: 71, requiredPermission: 'it_changes:V', synonyms: ['change request', 'cab', 'deployment', 'freeze', 'rollback'] },
+  { nodeKey: 'it_risks', label: 'Risks', icon: 'shield', path: '/it/risks', group: 'technology', position: 72, requiredPermission: 'it_risks:V', synonyms: ['risk register', 'likelihood', 'impact', 'treatment'] },
+  { nodeKey: 'it_policies', label: 'Policies', icon: 'file', path: '/it/policies', group: 'technology', position: 73, requiredPermission: 'it_policies:V', synonyms: ['acceptable use', 'password policy', 'byod', 'acknowledge'] },
+  { nodeKey: 'it_controls', label: 'Controls', icon: 'clipboard', path: '/it/controls', group: 'technology', position: 74, requiredPermission: 'it_controls:V', synonyms: ['iso 27001', 'soc 2', 'control test', 'evidence'] },
+  { nodeKey: 'it_access_reviews', label: 'Access Reviews', icon: 'lock', path: '/it/access-reviews', group: 'technology', position: 75, requiredPermission: 'it_access_reviews:V', synonyms: ['who has access', 'recertification', 'revoke', 'campaign'] },
+  { nodeKey: 'it_findings', label: 'Security Findings', icon: 'bug', path: '/it/findings', group: 'technology', position: 76, requiredPermission: 'it_findings:V', synonyms: ['vulnerability', 'pentest', 'cvss', 'remediation'] },
+  { nodeKey: 'it_portfolio', label: 'Portfolio', icon: 'kanban', path: '/it/portfolio', group: 'technology', position: 77, requiredPermission: 'it_initiatives:V', synonyms: ['initiatives', 'business case', 'rag', 'stage gate'] },
+  { nodeKey: 'it_roadmap', label: 'Roadmap', icon: 'map', path: '/it/roadmap', group: 'technology', position: 78, requiredPermission: 'it_initiatives:V', synonyms: ['quarters', 'themes', 'milestones'] },
+  { nodeKey: 'it_budget', label: 'Technology Budget', icon: 'coins', path: '/it/budget', group: 'technology', position: 79, requiredPermission: 'it_budgets:V', synonyms: ['run vs grow', 'it spend', 'planned vs actual'] },
+  { nodeKey: 'it_tech_debt', label: 'Technical Debt', icon: 'wrench', path: '/it/tech-debt', group: 'technology', position: 80, requiredPermission: 'it_tech_debt:V', synonyms: ['tech debt', 'refactor', 'legacy'] },
+  { nodeKey: 'it_continuity', label: 'Continuity', icon: 'activity', path: '/it/continuity', group: 'technology', position: 81, requiredPermission: 'it_continuity:V', synonyms: ['disaster recovery', 'rto', 'rpo', 'backup', 'restore test', 'availability', 'uptime', 'maintenance window'] },
 
   { nodeKey: 'data_import', label: 'Import Data', icon: 'inbox', path: '/data/import', group: 'setup', position: 50, requiredPermission: 'imports:V', synonyms: ['tally', 'bank statement', 'excel', 'csv', 'upload', 'migrate', 'bring data in'] },
   { nodeKey: 'gov_decisions', label: 'Decisions', icon: 'scale', path: '/command/decisions', group: 'setup', position: 51, requiredPermission: 'decisions:V' },
@@ -358,6 +385,37 @@ async function seedGovernance() {
       name: 'Partner agreement privileged-transition approval',
       requiredPermission: 'partner_agreements:approve',
       authorityClass: 'partner_approval',
+    },
+    // Technology (docs/plan/cio.md): five more instances of the same shape.
+    {
+      code: 'POL-IT-LICENCE-APPROVAL',
+      name: 'Licence renewal approval',
+      requiredPermission: 'it_licences:approve',
+      authorityClass: 'it_licence_approval',
+    },
+    {
+      code: 'POL-IT-VENDOR-CONTRACT-APPROVAL',
+      name: 'Vendor contract approval',
+      requiredPermission: 'it_vendor_contracts:approve',
+      authorityClass: 'it_contract_approval',
+    },
+    {
+      code: 'POL-IT-CHANGE-APPROVAL',
+      name: 'Change approval (normal and emergency changes)',
+      requiredPermission: 'it_changes:approve',
+      authorityClass: 'it_change_approval',
+    },
+    {
+      code: 'POL-IT-POLICY-PUBLISH',
+      name: 'Technology policy publication',
+      requiredPermission: 'it_policies:approve',
+      authorityClass: 'it_policy_publish',
+    },
+    {
+      code: 'POL-IT-INITIATIVE-APPROVAL',
+      name: 'Technology initiative funding approval',
+      requiredPermission: 'it_initiatives:approve',
+      authorityClass: 'it_initiative_approval',
     },
   ];
 
@@ -1013,6 +1071,7 @@ export async function seedBootstrap(opts: SeedBootstrapOptions = {}): Promise<{
     await seedAgents();
     await seedLeaveTypes();
     await seedCompliance();
+    await seedIt();
     accounts = await seedFoundingAccounts();
   });
 

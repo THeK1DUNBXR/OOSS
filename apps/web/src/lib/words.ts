@@ -32,6 +32,7 @@ export const DOMAIN_WORDS: Record<string, { name: string; asks: string }> = {
   H_OPS: { name: 'Operations', asks: 'Is the day-to-day running cleanly?' },
   H_STR: { name: 'Strategy', asks: 'Are the long bets moving?' },
   H_RSK: { name: 'Risk', asks: 'Are the problems we know about being handled?' },
+  H_TEC: { name: 'Technology', asks: 'Are the systems we run on being looked after?' },
 };
 
 export function domainName(code: string, fallback?: string | null): string {
