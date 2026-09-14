@@ -32,6 +32,7 @@ import { runVesting, runExpiredExerciseWindows } from '../domains/esop.js';
 import { checkDematRequirements, runPas6HalfYearly, runFlaReturn } from '../domains/filings.js';
 import { computeAndPersistAll } from '../domains/health.js';
 import { runBoardComplianceJob } from '../domains/board.js';
+import { runCeoDetectors } from '../domains/ceo/detectors.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
 import { COMPLIANCE_JOBS } from './compliance/index.js';
 
@@ -251,6 +252,13 @@ export const ALL_JOBS: JobDefinition[] = [
     automationClass: 'routine_administration',
     cron: '0 2 * * *',
     run: async () => counted(await runBoardComplianceJob()),
+  },
+  {
+    name: 'runCeoDetectorsJob',
+    label: "Chairman's Office detectors",
+    automationClass: 'routine_administration',
+    cron: '0 3 * * *',
+    run: async () => counted(await runCeoDetectors()),
   },
   ...COMPLIANCE_JOBS,
 ];

@@ -208,6 +208,19 @@ export const RESOURCES = [
   // ESOP (equity-portal plan §5/§6, phase 5).
   'esop_plans',
   'option_grants',
+  // Chairman's Office (docs/plan/ceo-office.md §6, Phase 0 — the resources for
+  // phases 1-9 are declared here up front so nine phases can build in
+  // parallel; §1/§3.4 of that plan name which non-chairman role, if any,
+  // holds a cell on each).
+  'kpi_definitions', 'ceo_cockpit',                                   // Phase 1
+  'strategic_themes', 'objectives', 'key_results',                    // Phase 2
+  'initiatives',                                                      // Phase 3
+  'meeting_series', 'meeting_instances',                              // Phase 4
+  'doa_matrix', 'ceo_approvals_inbox',                                // Phase 5
+  'board_packs', 'investor_updates', 'stakeholders',                  // Phase 6
+  'risks', 'policy_documents',                                        // Phase 7
+  'financial_scenarios', 'headcount_plans',                           // Phase 8
+  'seats', 'one_on_ones', 'succession_candidates', 'time_audit',      // Phase 9
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

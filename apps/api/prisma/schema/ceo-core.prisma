@@ -1,0 +1,10 @@
+// Chairman's Office — shared schema file (docs/plan/ceo-office.md §6, Phase 0).
+//
+// Deliberately empty. §5 of the plan keeps every model inside its owning
+// phase's own `ceo-<area>.prisma` file (`ceo-cockpit.prisma`,
+// `ceo-strategy.prisma`, `ceo-initiatives.prisma`, `ceo-rhythm.prisma`,
+// `ceo-doa.prisma`, `ceo-board.prisma`, `ceo-risk.prisma`,
+// `ceo-finance.prisma`, `ceo-people.prisma`) — no model is shared across two
+// phases as of Phase 0. This file exists so the filename is already claimed
+// for any future cross-phase model, without requiring a schema-ownership
+// renegotiation to add it.

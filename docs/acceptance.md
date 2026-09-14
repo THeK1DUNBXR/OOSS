@@ -197,6 +197,27 @@ year is the default — and the Company details screen prints the length beside
 the next number so this is seen before the first invoice rather than at the
 filing deadline.
 
+## Chairman's Office
+
+The Chairman's Office module (`docs/plan/ceo-office.md`) ships as ten phases
+— Phase 0 (Foundation) then Phases 1-9 in parallel, each with its own test
+file in `src/tests/ceo/`. Phase 0 lands this table as `pending`; Phase 10 (the
+orchestrator, after every phase merges) fills each row in with the real test
+count and a plain-English "what is pinned."
+
+| Requirement | Tests | What is pinned |
+|---|---|---|
+| **CEO-FOUND-000** Foundation (Phase 0) | pending | pending |
+| **CEO-COC-000** Cockpit, Company Scorecard, KPI Library (Phase 1) | pending | pending |
+| **CEO-STR-000** Strategy & OKRs (Phase 2) | pending | pending |
+| **CEO-INI-000** Strategic Initiatives Portfolio (Phase 3) | pending | pending |
+| **CEO-RHY-000** Operating Rhythm (Phase 4) | pending | pending |
+| **CEO-DOA-000** Delegation of Authority & Approvals Inbox (Phase 5) | pending | pending |
+| **CEO-BRD-000** Board Pack, Investor Updates & Stakeholders (Phase 6) | pending | pending |
+| **CEO-RSK-000** Risk Register, Policy Register & Governance Overview (Phase 7) | pending | pending |
+| **CEO-FIN-000** Financial Planning & Headcount (Phase 8) | pending | pending |
+| **CEO-PPL-000** Leadership, Org, 1:1s & Succession (Phase 9) | pending | pending |
+
 ## Compliance
 
 The compliance workstreams (`docs/plan/compliance.md`) each carry their own

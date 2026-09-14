@@ -397,6 +397,56 @@ export const EVENTS = {
   COMPLIANCE_OBLIGATIONS_GENERATED: 'kz.cmp.obligation.generated',
   COMPLIANCE_OBLIGATION_FILED: 'kz.cmp.obligation.filed',
   COMPLIANCE_OBLIGATION_WAIVED: 'kz.cmp.obligation.waived',
+
+  // --- Chairman's Office (ceo), docs/plan/ceo-office.md §5/§6 --------------
+  // Phase 0 owns the full list; each owning phase (1-9) emits only its own
+  // names.
+  // Phase 1 — Cockpit & KPI Library
+  CEO_KPI_DEFINITION_CREATED: 'kz.ceo.kpi_definition.created',
+  CEO_KPI_FORMULA_PUBLISHED: 'kz.ceo.kpi_formula.published',
+  CEO_NORTH_STAR_CHANGED: 'kz.ceo.north_star.changed',
+  // Phase 2 — Strategy & OKRs
+  CEO_VISION_SET: 'kz.ceo.vision.set',
+  CEO_AOP_SUBMITTED: 'kz.ceo.aop.submitted',
+  CEO_AOP_ACTIVATED: 'kz.ceo.aop.activated',
+  CEO_OBJECTIVE_CREATED: 'kz.ceo.objective.created',
+  CEO_OBJECTIVE_SCORED: 'kz.ceo.objective.scored',
+  CEO_KEY_RESULT_CHECKED_IN: 'kz.ceo.key_result.checked_in',
+  // Phase 3 — Initiatives
+  CEO_INITIATIVE_CREATED: 'kz.ceo.initiative.created',
+  CEO_INITIATIVE_STATUS_CHANGED: 'kz.ceo.initiative.status_changed',
+  CEO_INITIATIVE_KILLED: 'kz.ceo.initiative.killed',
+  CEO_INITIATIVE_MILESTONE_COMPLETED: 'kz.ceo.initiative.milestone_completed',
+  // Phase 4 — Operating Rhythm
+  CEO_MEETING_SCHEDULED: 'kz.ceo.meeting.scheduled',
+  CEO_MEETING_CLOSED: 'kz.ceo.meeting.closed',
+  CEO_ISSUE_RAISED: 'kz.ceo.issue.raised',
+  CEO_ISSUE_RESOLVED: 'kz.ceo.issue.resolved',
+  CEO_ACTION_ITEM_COMPLETED: 'kz.ceo.action_item.completed',
+  // Phase 5 — Delegation of Authority & Approvals Inbox
+  CEO_DOA_ENTRY_CHANGED: 'kz.ceo.doa_entry.changed',
+  CEO_DELEGATION_CREATED: 'kz.ceo.delegation.created',
+  CEO_DELEGATION_ENDED: 'kz.ceo.delegation.ended',
+  // Phase 6 — Board Pack, Investor Updates & Stakeholders
+  CEO_BOARD_PACK_ISSUED: 'kz.ceo.board_pack.issued',
+  CEO_INVESTOR_UPDATE_ISSUED: 'kz.ceo.investor_update.issued',
+  CEO_DOCUMENT_CIRCULATED: 'kz.ceo.document.circulated',
+  CEO_DOCUMENT_ACKNOWLEDGED: 'kz.ceo.document.acknowledged',
+  CEO_STAKEHOLDER_TOUCHED: 'kz.ceo.stakeholder.touched',
+  // Phase 7 — Risk Register, Policy Register & Governance Overview
+  CEO_RISK_RAISED: 'kz.ceo.risk.raised',
+  CEO_RISK_CLOSED: 'kz.ceo.risk.closed',
+  CEO_POLICY_PUBLISHED: 'kz.ceo.policy.published',
+  CEO_POLICY_ACKNOWLEDGED: 'kz.ceo.policy.acknowledged',
+  // Phase 8 — Financial Planning & Headcount
+  CEO_SCENARIO_CREATED: 'kz.ceo.scenario.created',
+  CEO_BUDGET_LINE_PROPOSED: 'kz.ceo.budget_line.proposed',
+  CEO_HEADCOUNT_PLAN_APPROVED: 'kz.ceo.headcount_plan.approved',
+  // Phase 9 — Leadership, Org, 1:1s & Succession
+  CEO_SEAT_CREATED: 'kz.ceo.seat.created',
+  CEO_SEAT_REASSIGNED: 'kz.ceo.seat.reassigned',
+  CEO_SUCCESSION_REVIEWED: 'kz.ceo.succession.reviewed',
+  CEO_ONE_ON_ONE_LOGGED: 'kz.ceo.one_on_one.logged',
 } as const;
 
 /**

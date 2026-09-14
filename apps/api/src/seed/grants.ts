@@ -127,6 +127,18 @@ export const ALL_RESOURCES = [
   'rounds',
   // ESOP (phase 5).
   'esop_plans', 'option_grants',
+  // Chairman's Office (docs/plan/ceo-office.md §6, Phase 0). Kept in lockstep
+  // with RESOURCES in `@kaizen/shared/permissions.ts` — a test asserts the
+  // two lists agree.
+  'kpi_definitions', 'ceo_cockpit',                                   // Phase 1
+  'strategic_themes', 'objectives', 'key_results',                    // Phase 2
+  'initiatives',                                                      // Phase 3
+  'meeting_series', 'meeting_instances',                              // Phase 4
+  'doa_matrix', 'ceo_approvals_inbox',                                // Phase 5
+  'board_packs', 'investor_updates', 'stakeholders',                  // Phase 6
+  'risks', 'policy_documents',                                        // Phase 7
+  'financial_scenarios', 'headcount_plans',                           // Phase 8
+  'seats', 'one_on_ones', 'succession_candidates', 'time_audit',      // Phase 9
   // Compliance (docs/plan/compliance.md), one group per workstream.
   'compliance_obligations',                                   // A
   'debit_notes', 'einvoicing',                                // B
@@ -272,6 +284,33 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'refunds', cell: '-' },
   { resource: 'certificates', cell: 'VCEX' },
   { resource: 'security_settings', cell: '-' },
+
+  // ---- Chairman's Office (docs/plan/ceo-office.md §1) ---------------------
+  // Sees the KPI library to bind Phase 2's OKRs against it, and holds their
+  // own owned/sponsored OKRs, initiatives and meeting instances — never
+  // another leader's, and never the module's chairman-only surfaces.
+  { resource: 'kpi_definitions', cell: 'V@all' },
+  { resource: 'objectives', cell: 'VCE@own' },
+  { resource: 'key_results', cell: 'VCE@own' },
+  { resource: 'initiatives', cell: 'VCE@own' },
+  { resource: 'meeting_series', cell: 'VCE@own' },
+  { resource: 'meeting_instances', cell: 'VCE@own' },
+  // Org data is Operations' to maintain.
+  { resource: 'seats', cell: 'V@all' },
+  { resource: 'ceo_cockpit', cell: '-' },
+  { resource: 'strategic_themes', cell: '-' },
+  { resource: 'doa_matrix', cell: '-' },
+  { resource: 'ceo_approvals_inbox', cell: '-' },
+  { resource: 'board_packs', cell: '-' },
+  { resource: 'investor_updates', cell: '-' },
+  { resource: 'stakeholders', cell: '-' },
+  { resource: 'risks', cell: '-' },
+  { resource: 'policy_documents', cell: '-' },
+  { resource: 'financial_scenarios', cell: '-' },
+  { resource: 'headcount_plans', cell: '-' },
+  { resource: 'one_on_ones', cell: '-' },
+  { resource: 'succession_candidates', cell: '-' },
+  { resource: 'time_audit', cell: '-' },
 ];
 
 /**
@@ -417,6 +456,31 @@ const financeHead: GrantSpec[] = [
   { resource: 'refunds', cell: 'VCEDAXF,approve' },
   { resource: 'certificates', cell: 'V' },
   { resource: 'security_settings', cell: '-' },
+
+  // ---- Chairman's Office (docs/plan/ceo-office.md §1) ---------------------
+  { resource: 'kpi_definitions', cell: 'V@all' },
+  { resource: 'objectives', cell: 'VCE@own' },
+  { resource: 'key_results', cell: 'VCE@own' },
+  { resource: 'initiatives', cell: 'VCE@own' },
+  { resource: 'meeting_series', cell: 'VCE@own' },
+  { resource: 'meeting_instances', cell: 'VCE@own' },
+  // The annual budget, scenarios and headcount plan are Finance's own domain
+  // even though the chairman reviews them on this screen.
+  { resource: 'financial_scenarios', cell: 'V@all' },
+  { resource: 'headcount_plans', cell: 'V@all' },
+  { resource: 'ceo_cockpit', cell: '-' },
+  { resource: 'strategic_themes', cell: '-' },
+  { resource: 'doa_matrix', cell: '-' },
+  { resource: 'ceo_approvals_inbox', cell: '-' },
+  { resource: 'board_packs', cell: '-' },
+  { resource: 'investor_updates', cell: '-' },
+  { resource: 'stakeholders', cell: '-' },
+  { resource: 'risks', cell: '-' },
+  { resource: 'policy_documents', cell: '-' },
+  { resource: 'seats', cell: '-' },
+  { resource: 'one_on_ones', cell: '-' },
+  { resource: 'succession_candidates', cell: '-' },
+  { resource: 'time_audit', cell: '-' },
 ];
 
 /**
@@ -538,6 +602,30 @@ const employee: GrantSpec[] = [
   // ESOP: their own grants, and nobody else's — the same `@own` shape leave
   // and attendance already take.
   { resource: 'option_grants', cell: 'V@own' },
+
+  // Chairman's Office (docs/plan/ceo-office.md §1): a module built for one
+  // person does not need every feature visible to everyone.
+  { resource: 'kpi_definitions', cell: '-' },
+  { resource: 'ceo_cockpit', cell: '-' },
+  { resource: 'strategic_themes', cell: '-' },
+  { resource: 'objectives', cell: '-' },
+  { resource: 'key_results', cell: '-' },
+  { resource: 'initiatives', cell: '-' },
+  { resource: 'meeting_series', cell: '-' },
+  { resource: 'meeting_instances', cell: '-' },
+  { resource: 'doa_matrix', cell: '-' },
+  { resource: 'ceo_approvals_inbox', cell: '-' },
+  { resource: 'board_packs', cell: '-' },
+  { resource: 'investor_updates', cell: '-' },
+  { resource: 'stakeholders', cell: '-' },
+  { resource: 'risks', cell: '-' },
+  { resource: 'policy_documents', cell: '-' },
+  { resource: 'financial_scenarios', cell: '-' },
+  { resource: 'headcount_plans', cell: '-' },
+  { resource: 'seats', cell: '-' },
+  { resource: 'one_on_ones', cell: '-' },
+  { resource: 'succession_candidates', cell: '-' },
+  { resource: 'time_audit', cell: '-' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -575,6 +663,30 @@ const shareholder: GrantSpec[] = [
   // `@own` resolves the same way regardless of which affiliation is active,
   // because it reads `OptionGrant.personId`, not the role.
   { resource: 'option_grants', cell: 'V@own' },
+
+  // Chairman's Office (docs/plan/ceo-office.md §1) is ERP-only — an outsider
+  // portal role holds none of it.
+  { resource: 'kpi_definitions', cell: '-' },
+  { resource: 'ceo_cockpit', cell: '-' },
+  { resource: 'strategic_themes', cell: '-' },
+  { resource: 'objectives', cell: '-' },
+  { resource: 'key_results', cell: '-' },
+  { resource: 'initiatives', cell: '-' },
+  { resource: 'meeting_series', cell: '-' },
+  { resource: 'meeting_instances', cell: '-' },
+  { resource: 'doa_matrix', cell: '-' },
+  { resource: 'ceo_approvals_inbox', cell: '-' },
+  { resource: 'board_packs', cell: '-' },
+  { resource: 'investor_updates', cell: '-' },
+  { resource: 'stakeholders', cell: '-' },
+  { resource: 'risks', cell: '-' },
+  { resource: 'policy_documents', cell: '-' },
+  { resource: 'financial_scenarios', cell: '-' },
+  { resource: 'headcount_plans', cell: '-' },
+  { resource: 'seats', cell: '-' },
+  { resource: 'one_on_ones', cell: '-' },
+  { resource: 'succession_candidates', cell: '-' },
+  { resource: 'time_audit', cell: '-' },
 ];
 
 const director: GrantSpec[] = [
@@ -612,6 +724,31 @@ const companySecretary: GrantSpec[] = [
   // ---- ESOP (§6, phase 5) -------------------------------------------------
   { resource: 'esop_plans', cell: 'VCE@all' },
   { resource: 'option_grants', cell: 'VCE@all' },
+
+  // ---- Chairman's Office (docs/plan/ceo-office.md §1) ---------------------
+  // Compiles the board pack and investor update; never issues one — that
+  // stays the chairman's (or whoever the DoA matrix names).
+  { resource: 'board_packs', cell: 'VC@all' },
+  { resource: 'investor_updates', cell: 'VC@all' },
+  { resource: 'kpi_definitions', cell: '-' },
+  { resource: 'ceo_cockpit', cell: '-' },
+  { resource: 'strategic_themes', cell: '-' },
+  { resource: 'objectives', cell: '-' },
+  { resource: 'key_results', cell: '-' },
+  { resource: 'initiatives', cell: '-' },
+  { resource: 'meeting_series', cell: '-' },
+  { resource: 'meeting_instances', cell: '-' },
+  { resource: 'doa_matrix', cell: '-' },
+  { resource: 'ceo_approvals_inbox', cell: '-' },
+  { resource: 'stakeholders', cell: '-' },
+  { resource: 'risks', cell: '-' },
+  { resource: 'policy_documents', cell: '-' },
+  { resource: 'financial_scenarios', cell: '-' },
+  { resource: 'headcount_plans', cell: '-' },
+  { resource: 'seats', cell: '-' },
+  { resource: 'one_on_ones', cell: '-' },
+  { resource: 'succession_candidates', cell: '-' },
+  { resource: 'time_audit', cell: '-' },
 ];
 
 export const ROLE_GRANT_MATRIX: RoleGrants = {
