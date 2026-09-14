@@ -4,7 +4,8 @@
  * given and shows withheld reason codes where the server named them.
  */
 
-import type { SessionUser } from '@kaizen/shared';
+import type { LoginResult, SessionUser } from '@kaizen/shared';
+import { loginNeedsEntitySelection } from '@kaizen/shared';
 
 const TOKEN_KEY = 'kaizen.token';
 
@@ -51,8 +52,23 @@ export class ApiClientError extends Error implements ApiFailure {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
+/**
+ * Called once by `SessionProvider` to learn about a 401 from anywhere but
+ * sign-in itself. The client holds no permission logic of its own — this is
+ * only "the token this browser was holding no longer works", so the app can
+ * return to the sign-in screen with one line rather than a page of error
+ * boxes on a surface that shows share certificates.
+ */
+let unauthorizedListener: (() => void) | null = null;
+export function onUnauthorized(listener: (() => void) | null) {
+  unauthorizedListener = listener;
+}
+
+/** Paths where a 401 is an expected outcome, not an expired session. */
+const AUTH_PATHS = new Set(['/auth/login', '/auth/switch-entity']);
+
+async function request<T>(path: string, init?: RequestInit, tokenOverride?: string): Promise<T> {
+  const token = tokenOverride ?? getToken();
   const res = await fetch(`/api${path}`, {
     ...init,
     headers: {
@@ -68,6 +84,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    if (res.status === 401 && !AUTH_PATHS.has(path)) {
+      setToken(null);
+      unauthorizedListener?.();
+    }
     const err = body?.error ?? {};
     throw new ApiClientError({
       status: res.status,
@@ -86,6 +106,11 @@ export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) }),
+  /** A `POST` authorised by a token other than the one in storage — the
+   *  five-minute selection token the entity picker exchanges before a
+   *  session token exists at all. */
+  postWithToken: <T>(path: string, body: unknown, token: string) =>
+    request<T>(path, { method: 'POST', body: JSON.stringify(body) }, token),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: body === undefined ? undefined : JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
@@ -177,8 +202,34 @@ function encodeHeader(value: string): string {
   return value.replace(/[^\x20-\x7E]/g, '_');
 }
 
-export async function login(email: string, password: string) {
-  const res = await api.post<{ token: string; user: SessionUser }>('/auth/login', { email, password });
+/**
+ * A principal with one entity gets a token straight back; one with several
+ * gets the entity list and a short-lived selection token instead — no token
+ * is stored until one of those is exchanged for a session, by `chooseEntity`
+ * or `switchEntity` below.
+ */
+export async function login(email: string, password: string): Promise<LoginResult> {
+  const res = await api.post<LoginResult>('/auth/login', { email, password });
+  if (!loginNeedsEntitySelection(res)) setToken(res.token);
+  return res;
+}
+
+/** Completes the entity picker shown at sign-in, authorised by the
+ *  selection token `login()` returned rather than a session token. */
+export async function chooseEntity(tenantId: string, selectionToken: string) {
+  const res = await api.postWithToken<{ token: string; user: SessionUser }>(
+    '/auth/switch-entity',
+    { tenantId },
+    selectionToken,
+  );
+  setToken(res.token);
+  return res;
+}
+
+/** Moves an already-signed-in principal into another entity they hold an
+ *  active affiliation in — the in-session counterpart to `chooseEntity`. */
+export async function switchEntity(tenantId: string) {
+  const res = await api.post<{ token: string; user: SessionUser }>('/auth/switch-entity', { tenantId });
   setToken(res.token);
   return res;
 }

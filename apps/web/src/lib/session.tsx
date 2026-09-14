@@ -7,17 +7,36 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { NavNodeView, SessionUser, Verb } from '@kaizen/shared';
-import { api, getToken, login as apiLogin, logout as apiLogout, setToken, switchContext as apiSwitch } from './api.js';
+import type { EntitySelectionResponse, NavNodeView, SessionUser, Verb } from '@kaizen/shared';
+import { loginNeedsEntitySelection } from '@kaizen/shared';
+import {
+  api,
+  chooseEntity as apiChooseEntity,
+  getToken,
+  login as apiLogin,
+  logout as apiLogout,
+  onUnauthorized,
+  setToken,
+  switchContext as apiSwitch,
+  switchEntity as apiSwitchEntity,
+} from './api.js';
 
 interface SessionState {
   user: SessionUser | null;
   nav: NavNodeView[];
   loading: boolean;
   error: string | null;
+  /** A one-line notice for the sign-in screen — currently only "your session
+   *  ended", surfaced by the global 401 handler rather than an error box. */
+  notice: string | null;
+  /** Set by `signIn` when the principal holds more than one entity: the
+   *  picker renders in place of the form until `chooseEntity` resolves it. */
+  pendingSelection: EntitySelectionResponse | null;
   signIn: (email: string, password: string) => Promise<void>;
+  chooseEntity: (tenantId: string) => Promise<void>;
   signOut: () => void;
   switchTo: (affiliationId: string, stepUpPassword?: string) => Promise<void>;
+  switchEntity: (tenantId: string) => Promise<void>;
   can: (grant: string) => boolean;
   refresh: () => Promise<void>;
 }
@@ -39,6 +58,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [nav, setNav] = useState<NavNodeView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<EntitySelectionResponse | null>(null);
 
   const loadNav = useCallback(async () => {
     try {
@@ -73,8 +94,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string) => {
       setError(null);
+      setNotice(null);
       try {
         const res = await apiLogin(email, password);
+        if (loginNeedsEntitySelection(res)) {
+          // No token exists yet — the picker below decides which entity the
+          // session is actually for.
+          setPendingSelection(res);
+          return;
+        }
         setUser(res.user);
         await loadNav();
       } catch (err) {
@@ -85,10 +113,43 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [loadNav],
   );
 
+  /** Completes sign-in once the picker shown for `pendingSelection` names an
+   *  entity. */
+  const chooseEntity = useCallback(
+    async (tenantId: string) => {
+      if (!pendingSelection) throw new Error('No entity selection in progress.');
+      setError(null);
+      try {
+        const res = await apiChooseEntity(tenantId, pendingSelection.selectionToken);
+        setUser(res.user);
+        setPendingSelection(null);
+        await loadNav();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not open that entity');
+        throw err;
+      }
+    },
+    [pendingSelection, loadNav],
+  );
+
   const signOut = useCallback(() => {
     apiLogout();
     setUser(null);
     setNav([]);
+    setPendingSelection(null);
+  }, []);
+
+  // A 401 from any endpoint but sign-in itself means the token this browser
+  // held no longer works — revoked, expired, or the server restarted with a
+  // new secret. One line above the form, not a screen of error boxes.
+  useEffect(() => {
+    onUnauthorized(() => {
+      setUser(null);
+      setNav([]);
+      setPendingSelection(null);
+      setNotice('Your session ended. Sign in again.');
+    });
+    return () => onUnauthorized(null);
   }, []);
 
   /**
@@ -98,6 +159,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const switchTo = useCallback(
     async (affiliationId: string, stepUpPassword?: string) => {
       const res = await apiSwitch(affiliationId, stepUpPassword);
+      setUser(res.user);
+      await loadNav();
+    },
+    [loadNav],
+  );
+
+  /**
+   * Moves an already-signed-in principal into another entity, entirely
+   * separate from `switchTo` (which stays within one entity's affiliations).
+   * Reach never unions across entities either — the new session is composed
+   * fresh, exactly as `switchTo` composes fresh across affiliations.
+   */
+  const switchEntity = useCallback(
+    async (tenantId: string) => {
+      const res = await apiSwitchEntity(tenantId);
       setUser(res.user);
       await loadNav();
     },
@@ -127,8 +203,36 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<SessionState>(
-    () => ({ user, nav, loading, error, signIn, signOut, switchTo, can, refresh }),
-    [user, nav, loading, error, signIn, signOut, switchTo, can, refresh],
+    () => ({
+      user,
+      nav,
+      loading,
+      error,
+      notice,
+      pendingSelection,
+      signIn,
+      chooseEntity,
+      signOut,
+      switchTo,
+      switchEntity,
+      can,
+      refresh,
+    }),
+    [
+      user,
+      nav,
+      loading,
+      error,
+      notice,
+      pendingSelection,
+      signIn,
+      chooseEntity,
+      signOut,
+      switchTo,
+      switchEntity,
+      can,
+      refresh,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

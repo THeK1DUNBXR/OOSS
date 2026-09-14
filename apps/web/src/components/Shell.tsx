@@ -23,6 +23,7 @@ import { api, relative } from '../lib/api.js';
 import { words } from '../lib/words.js';
 import { FirstRun } from './FirstRun.js';
 import { BuildFootnote } from './BuildFootnote.js';
+import { EntitySwitcher } from './EntitySwitcher.js';
 import { SetupBanner } from '../pages/Start.js';
 
 /** One consistent stroke and weight — a real icon system, not a dingbat per row. */
@@ -53,6 +54,12 @@ const GROUP_LABELS: Record<string, string> = {
   customers: 'Who We Deal With',
   delivery: 'Selling & Delivering',
   setup: 'Set up',
+  // Never actually reaches this sidebar — `archetypes: ['portal']` on every
+  // node in this group already keeps it off an ERP role's navigation, and
+  // `grouped` below drops the group as a second line of defence. Declared
+  // for completeness with `GROUP_ORDER`/`GROUP_LABELS` (plan §7), not because
+  // anything renders it here.
+  portal: 'Portal',
 };
 
 /**
@@ -253,6 +260,10 @@ function SidebarNav({
   const grouped = useMemo(() => {
     const map = new Map<string, NavNodeView[]>();
     for (const node of nav) {
+      // An ERP role is never granted a `portal` node in the first place, so
+      // this never fires in practice — belt-and-braces against the sidebar
+      // ever rendering the portal's own navigation (plan §6, phase 0 item 5).
+      if (node.group === 'portal') continue;
       map.set(node.group, [...(map.get(node.group) ?? []), node]);
     }
     return [...map.entries()].sort(
@@ -379,6 +390,14 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="mt-1 rounded-md bg-[#18181c] p-2 shadow-floating">
+      {/* The entity level sits above the affiliation level: which company,
+          before which relationship inside it (plan §3.2). Only renders when
+          there is more than one to choose from. */}
+      {user.entityCount > 1 && (
+        <div className="mb-2 border-b border-[#2a2a2e] pb-2">
+          <EntitySwitcher variant="dark" />
+        </div>
+      )}
       <p className="mb-1.5 px-1 text-2xs text-[#9a9aa3]">
         Which of your relationships are you answerable as?
       </p>

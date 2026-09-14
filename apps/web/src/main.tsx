@@ -4,9 +4,16 @@ import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import { SessionProvider, useSession } from './lib/session.js';
+import { useSurface } from './lib/surface.js';
 import { Shell } from './components/Shell.js';
 import { Loading } from './components/ui.js';
 import { Login } from './pages/Login.js';
+import { PortalShell } from './portal/PortalShell.js';
+import { Holdings } from './portal/pages/Holdings.js';
+import { Certificates } from './portal/pages/Certificates.js';
+import { Documents } from './portal/pages/Documents.js';
+import { Board } from './portal/pages/Board.js';
+import { Entities as PortalEntities } from './portal/pages/Entities.js';
 import { CommandCenter } from './pages/CommandCenter.js';
 import { Workspace, Exceptions } from './pages/Workspace.js';
 import { Pipeline } from './pages/Pipeline.js';
@@ -47,11 +54,40 @@ function LegacyAccountLink() {
   return <Navigate to={`/crm/organizations/${id}`} replace />;
 }
 
+/**
+ * The portal's own `<Routes>` block — no ERP sidebar or ERP routes reach a
+ * portal surface at all, in either direction (plan §3.1). Every path here
+ * mirrors a `portal_*` node in `NAV_REGISTRY`; a node the server did not
+ * return for this role still resolves the route (so a bookmark does not
+ * 404), and `PortalShell` renders the "not given a view" empty state instead
+ * of the page when its section list is empty.
+ */
+function PortalRouted() {
+  const { nav } = useSession();
+  const landing = nav.find((n) => n.group === 'portal')?.path ?? '/portal/holdings';
+
+  return (
+    <Routes>
+      <Route element={<PortalShell />}>
+        <Route path="/" element={<Navigate to={landing} replace />} />
+        <Route path="/portal/holdings" element={<Holdings />} />
+        <Route path="/portal/certificates" element={<Certificates />} />
+        <Route path="/portal/documents" element={<Documents />} />
+        <Route path="/portal/board" element={<Board />} />
+        <Route path="/portal/entities" element={<PortalEntities />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  );
+}
+
 function Routed() {
   const { user, loading } = useSession();
+  const surface = useSurface(user);
 
   if (loading) return <Loading label="Resolving your session" />;
   if (!user) return <Login />;
+  if (surface === 'portal') return <PortalRouted />;
 
   return (
     <Routes>

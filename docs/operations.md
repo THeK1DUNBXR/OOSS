@@ -153,6 +153,18 @@ that runs twice does not act twice.
 in production means a service that forgets a tenant predicate returns another
 tenant's rows.
 
+**`PORTAL_HOSTS` is set in two places, for two different reasons.** The API
+*serves* it — it is the source `/api/meta/version` reads into
+`surfaceHosts.portal`, which is what the client actually checks to render the
+portal shell (equity-portal plan §3.1). The Worker's own `PORTAL_HOSTS` (in
+`wrangler.jsonc`, `vars`) does nothing at request time — the Worker does not
+route by host, it forwards every `/api/*` request to `API_ORIGIN` regardless
+of which hostname it arrived on — it exists only to document the same intent
+next to the config that actually needs a hostname: once the portal hostname
+is chosen, add a matching `routes` entry to `wrangler.jsonc` so this Worker
+answers on it too (a commented example sits beside the var). Keep both
+values in agreement by hand; neither is read from the other.
+
 
 ---
 
