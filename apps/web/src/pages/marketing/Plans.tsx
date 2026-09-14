@@ -25,6 +25,7 @@ export function Plans() {
   const close = useClosePlan();
 
   const canWrite = can('marketing_settings:E');
+  const canApprove = can('marketing_settings:approve');
 
   if (error) return <ErrorBox error={error} />;
 
@@ -68,7 +69,7 @@ export function Plans() {
                     </td>
                     <td className="text-right tabular-nums text-xs">{p.campaignIds.length}</td>
                     <td className="text-right">
-                      {canWrite && allowed.has('approved') && (
+                      {canApprove && allowed.has('approved') && (
                         <button className="text-2xs text-accent-soft hover:underline" onClick={() => approve.mutate(p.id)}>
                           Approve
                         </button>

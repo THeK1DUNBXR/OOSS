@@ -12,9 +12,15 @@ import { NOT_MEASURED } from '../../lib/words.js';
 import { money } from '../../lib/api.js';
 import { useMarketingOverview, type MeasuredKpi } from '../../lib/marketingApi.js';
 
+// Recharts takes literal SVG/CSS color props, not Tailwind classes, so these
+// mirror tailwind.config.js's `ink`/`div` steps by value rather than name:
+// FUNNEL_COLOUR is `div-software`, MUTED is `ink-500`, GRID is `ink-800`
+// (the hairline), and SURFACE below is `ink-900` — the same steps
+// Executive.tsx and CommandCenter.tsx pick their chart colours from.
 const FUNNEL_COLOUR = '#2a78d6';
 const MUTED = '#6b6b74';
 const GRID = '#e7e7eb';
+const SURFACE = '#ffffff';
 
 function KpiTile({ kpi }: { kpi: MeasuredKpi }) {
   return (

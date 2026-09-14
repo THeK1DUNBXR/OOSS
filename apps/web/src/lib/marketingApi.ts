@@ -888,7 +888,7 @@ export function useSpends(params?: { campaignId?: string; from?: string; to?: st
   return useQuery({ queryKey: ['mkt', 'spends', params], queryFn: () => mk.listSpends(params) });
 }
 export function useCreateSpend() {
-  return useMkMutation(mk.createSpend, [['mkt', 'spends'], ['mkt', 'budget', 'variance'], ['mkt', 'campaigns']]);
+  return useMkMutation(mk.createSpend, [['mkt', 'spends'], ['mkt', 'budget', 'variance'], ['mkt', 'campaigns'], ['mkt', 'campaign']]);
 }
 export function useReconcileSpend() {
   return useMkMutation(({ id, body }: { id: string; body: { transactionId?: string; vendorBillId?: string } }) => mk.reconcileSpend(id, body), [
@@ -967,8 +967,12 @@ export function useSetChannelPreference() {
 export function useSetDoNotContact() {
   return useMkMutation(mk.setDoNotContact, [['mkt', 'preferences']]);
 }
-export function usePreferenceCoverage() {
-  return useQuery({ queryKey: ['mkt', 'preferences', 'coverage'], queryFn: mk.getPreferenceCoverage });
+/** `consentCoverage()` (`domains/marketing/preferences.ts`) asserts
+ *  `marketing_analytics:view`, a different grant than the Consent page's own
+ *  `audiences:V` — so a caller passes whether that grant holds and the query
+ *  simply never runs (and the tiles are omitted) rather than erroring. */
+export function usePreferenceCoverage(enabled = true) {
+  return useQuery({ queryKey: ['mkt', 'preferences', 'coverage'], queryFn: mk.getPreferenceCoverage, enabled });
 }
 
 // ---------------------------------------------------------------------------

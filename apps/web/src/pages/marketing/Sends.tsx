@@ -6,8 +6,10 @@
  * suppressed (the contract's own words). The wizard shows that breakdown —
  * the dry run — before the send is ever requested, so nobody queues a send
  * blind. Requesting it is the step that can fail honestly: with no channel
- * adapter configured, the send raises EX-MKT-011 and stays in draft with a
- * `blockedReason` this screen shows verbatim, never a silent no-op.
+ * adapter configured, the send raises EX-MKT-011 and the request fails —
+ * `MarketingSend` has no column to persist a structured reason on the record
+ * itself, so the server's 422 message is shown verbatim in the banner below,
+ * never a silent no-op and never a UI field the server cannot fill in.
  */
 
 import { useState } from 'react';
@@ -21,7 +23,6 @@ import {
   type ChannelKey,
   type RecipientStatus,
   type SendStatus,
-  type SendView,
 } from '@kaizen/shared';
 import { dateTime } from '../../lib/api.js';
 import {
@@ -62,10 +63,6 @@ const STATUS_TONE: Record<SendStatus, 'neutral' | 'good' | 'accent' | 'warn' | '
   failed: 'bad',
   cancelled: 'warn',
 };
-
-/** The contract's `blockedReason` on a send stuck in draft after a failed
- *  request — not yet named on the shared `SendView`, so read defensively. */
-type SendRow = SendView & { blockedReason?: string | null };
 
 const SKIP_REASON_GROUPS: Array<{ key: string; label: string; match: (r: string) => boolean }> = [
   { key: 'no_consent', label: 'No consent', match: (r) => r.includes('consent') },
@@ -362,7 +359,7 @@ function SendDetailBody({ id }: { id: string }) {
   if (isLoading) return <Loading />;
   if (error || !data) return <ErrorBox error={error ?? new Error('Not found')} />;
 
-  const send = data as SendRow;
+  const send = data;
   const nextStates = SEND_TRANSITIONS[send.status];
   const isOwnProposal = Boolean(user && send.requestedById === user.personId);
   const overThreshold = Boolean(policy.data && send.recipientCount > policy.data.sendApprovalThreshold);
@@ -374,12 +371,6 @@ function SendDetailBody({ id }: { id: string }) {
     <div className="space-y-4">
       {banner && (
         <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{banner}</p>
-      )}
-
-      {send.status === 'draft' && send.blockedReason && (
-        <p className="rounded-md border border-band-critical/40 bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
-          {send.blockedReason}
-        </p>
       )}
 
       <div className="flex flex-wrap items-center gap-2">

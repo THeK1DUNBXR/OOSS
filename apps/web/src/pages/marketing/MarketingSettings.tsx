@@ -15,17 +15,19 @@ import {
   CHANNEL_KEYS,
   CHANNEL_KEY_LABELS,
   CHANNEL_KIND_LABELS,
+  CHANNEL_KINDS,
   type ChannelKey,
   type ChannelKind,
 } from '@kaizen/shared';
 import { Card, EmptyState, ErrorBox, Field, Loading, Modal, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
-import { Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
+import { CreateModal, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 import { dateTime, titleCase } from '../../lib/api.js';
 import {
   useAdapterStatus,
   useAiTouchpoints,
   useChannels,
+  useCreateChannel,
   useMarketingPolicy,
   useRequestAiDraft,
   useUpdateChannel,
@@ -104,6 +106,7 @@ export function MarketingSettings() {
 function ChannelsTab({ canEdit }: { canEdit: boolean }) {
   const { data, isLoading, error } = useChannels();
   const [editing, setEditing] = useState<ChannelView | null>(null);
+  const [creating, setCreating] = useState(false);
 
   if (error) return <ErrorBox error={error} />;
 
@@ -111,6 +114,11 @@ function ChannelsTab({ canEdit }: { canEdit: boolean }) {
 
   return (
     <>
+      {canEdit && (
+        <div className="mb-3 flex justify-end">
+          <NewButton label="Add channel" onClick={() => setCreating(true)} />
+        </div>
+      )}
       <Card bodyClassName="p-0 overflow-x-auto">
         {isLoading ? (
           <Loading />
@@ -166,7 +174,43 @@ function ChannelsTab({ canEdit }: { canEdit: boolean }) {
       </Card>
 
       {editing && <EditChannelModal channel={editing} onClose={() => setEditing(null)} />}
+      <CreateChannelModal open={creating} onClose={() => setCreating(false)} />
     </>
+  );
+}
+
+function CreateChannelModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [key, setKey] = useState<ChannelKey | ''>('');
+  const [label, setLabel] = useState('');
+  const [kind, setKind] = useState<ChannelKind>(CHANNEL_KINDS[0]);
+  const create = useCreateChannel();
+
+  const reset = () => {
+    setKey('');
+    setLabel('');
+    setKind(CHANNEL_KINDS[0]);
+  };
+
+  return (
+    <CreateModal
+      open={open}
+      title="Add channel"
+      submitLabel="Add channel"
+      onClose={onClose}
+      onCreated={reset}
+      onSubmit={() => create.mutateAsync({ key: key as ChannelKey, label, kind })}
+    >
+      <SelectInput
+        label="Channel"
+        required
+        value={key}
+        onChange={(v) => setKey(v as ChannelKey)}
+        placeholder="Choose a channel key"
+        options={CHANNEL_KEYS.map((k) => ({ value: k, label: CHANNEL_KEY_LABELS[k] }))}
+      />
+      <TextInput label="Label" required value={label} onChange={setLabel} placeholder="e.g. Marketing email" />
+      <SelectInput label="Kind" value={kind} onChange={(v) => setKind(v as ChannelKind)} options={CHANNEL_KINDS.map((k) => ({ value: k, label: CHANNEL_KIND_LABELS[k] }))} />
+    </CreateModal>
   );
 }
 

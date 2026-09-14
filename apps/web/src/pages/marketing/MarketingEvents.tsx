@@ -234,46 +234,50 @@ export function MarketingEventDetail() {
         title={e.name}
         subtitle={<span className="mono">{e.recordCode} · {MARKETING_EVENT_KIND_LABELS[e.kind]}</span>}
         actions={
-          can('marketing_events:E') && (
-            <>
-              {actions.map((a) => (
-                <button
-                  key={a.hook}
-                  className="btn"
-                  disabled={hookFor[a.hook].isPending}
-                  onClick={() => hookFor[a.hook].mutate(id!, { onError: (err) => setError(messageOf(err)) })}
-                >
-                  {a.label}
-                </button>
-              ))}
-              {e.status === 'completed' && (
-                <button
-                  className="btn"
-                  disabled={convertAttendees.isPending}
-                  onClick={() => convertAttendees.mutate(undefined, { onError: (err) => setError(messageOf(err)) })}
-                >
-                  Convert attendees to leads
-                </button>
-              )}
+          <>
+            {can('marketing_events:E') && (
+              <>
+                {actions.map((a) => (
+                  <button
+                    key={a.hook}
+                    className="btn"
+                    disabled={hookFor[a.hook].isPending}
+                    onClick={() => hookFor[a.hook].mutate(id!, { onError: (err) => setError(messageOf(err)) })}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+                {e.status === 'completed' && (
+                  <button
+                    className="btn"
+                    disabled={convertAttendees.isPending}
+                    onClick={() => convertAttendees.mutate(undefined, { onError: (err) => setError(messageOf(err)) })}
+                  >
+                    Convert attendees to leads
+                  </button>
+                )}
+                {canCancel && (
+                  <button
+                    className="btn-danger"
+                    onClick={() => {
+                      const reason = prompt('Reason for cancelling this event?');
+                      if (reason) cancel.mutate({ id: id!, reason }, { onError: (err) => setError(messageOf(err)) });
+                    }}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </>
+            )}
+            {can('marketing_events:export') && (
               <button
                 className="btn-quiet"
                 onClick={() => api.download(`/marketing/events/${id}/export`, `${e.recordCode}-registrations.csv`).catch((err) => setError(messageOf(err)))}
               >
                 Export CSV
               </button>
-              {canCancel && (
-                <button
-                  className="btn-danger"
-                  onClick={() => {
-                    const reason = prompt('Reason for cancelling this event?');
-                    if (reason) cancel.mutate({ id: id!, reason }, { onError: (err) => setError(messageOf(err)) });
-                  }}
-                >
-                  Cancel
-                </button>
-              )}
-            </>
-          )
+            )}
+          </>
         }
       />
 

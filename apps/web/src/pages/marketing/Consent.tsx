@@ -63,7 +63,8 @@ export function Consent() {
     enabled: q.length >= 2,
   });
 
-  const coverage = usePreferenceCoverage();
+  const canSeeCoverage = can('marketing_analytics:V');
+  const coverage = usePreferenceCoverage(canSeeCoverage);
 
   return (
     <div>
@@ -72,27 +73,29 @@ export function Consent() {
         subtitle="Marketing consent, channel opt-ins, and do-not-contact — for one person at a time."
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <CoverageMetric
-          label="People contacted"
-          value={coverage.data?.contacted}
-          measured={coverage.data?.measured ?? false}
-          noActionReason="Everyone who has received at least one marketing send."
-        />
-        <CoverageMetric
-          label="With marketing consent"
-          value={coverage.data?.consented}
-          measured={coverage.data?.measured ?? false}
-          noActionReason="Consent coverage of the people contacted — an H_MKT input."
-        />
-        <CoverageMetric
-          label="Consent missing"
-          value={coverage.data?.missing}
-          measured={coverage.data?.measured ?? false}
-          tone={coverage.data && coverage.data.missing > 0 ? 'warn' : 'neutral'}
-          noActionReason="Contacted without a recorded marketing consent."
-        />
-      </div>
+      {canSeeCoverage && (
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <CoverageMetric
+            label="People contacted"
+            value={coverage.data?.contacted}
+            measured={coverage.data?.measured ?? false}
+            noActionReason="Everyone who has received at least one marketing send."
+          />
+          <CoverageMetric
+            label="With marketing consent"
+            value={coverage.data?.consented}
+            measured={coverage.data?.measured ?? false}
+            noActionReason="Consent coverage of the people contacted — an H_MKT input."
+          />
+          <CoverageMetric
+            label="Consent missing"
+            value={coverage.data?.missing}
+            measured={coverage.data?.measured ?? false}
+            tone={coverage.data && coverage.data.missing > 0 ? 'warn' : 'neutral'}
+            noActionReason="Contacted without a recorded marketing consent."
+          />
+        </div>
+      )}
 
       <Card
         title="Find a person"

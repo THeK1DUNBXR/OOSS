@@ -27,6 +27,7 @@ import {
   type ChannelKey,
   type FormSubmissionStatus,
   type FormView,
+  type Vertical,
 } from '@kaizen/shared';
 import { date, dateTime, titleCase } from '../../lib/api.js';
 import {
@@ -72,6 +73,12 @@ import { useSession } from '../../lib/session.js';
 type FormTab = 'forms' | 'submissions' | 'touchpoints' | 'scoreRules' | 'links';
 
 type FieldSpec = { key: string; label: string; type: string; required: boolean; options: string };
+
+/** `FormView.fields` is `unknown` on the shared type — the API stores it as
+ *  opaque JSON — but structurally it is always what `FormBuilderModal` last
+ *  submitted: this narrow shape, not `any`, so a stray property still gets
+ *  caught rather than silently passed through. */
+type RawFormField = { key?: string; label?: string; type?: string; required?: boolean; options?: string[] };
 
 function copyToClipboard(text: string) {
   navigator.clipboard?.writeText(text).catch(() => {
@@ -267,12 +274,12 @@ function FormBuilderModal({ open, form, onClose }: { open: boolean; form?: FormV
   const editing = Boolean(form);
   const [name, setName] = useState(form?.name ?? '');
   const [slug, setSlug] = useState(form?.slug ?? '');
-  const [vertical, setVertical] = useState(form?.vertical ?? 'sap_enterprise');
+  const [vertical, setVertical] = useState<Vertical>((form?.vertical as Vertical) ?? 'sap_enterprise');
   const [defaultCampaignId, setDefaultCampaignId] = useState(form?.defaultCampaignId ?? '');
   const [thankYouMessage, setThankYouMessage] = useState(form?.thankYouMessage ?? 'Thanks — we will be in touch.');
   const [fields, setFields] = useState<FieldSpec[]>(
     Array.isArray(form?.fields)
-      ? (form!.fields as any[]).map((f) => ({
+      ? (form!.fields as RawFormField[]).map((f) => ({
           key: f.key ?? '',
           label: f.label ?? '',
           type: f.type ?? 'text',
@@ -339,7 +346,7 @@ function FormBuilderModal({ open, form, onClose }: { open: boolean; form?: FormV
         <Row>
           <SelectInput
             label="Vertical"
-            value={vertical as any}
+            value={vertical}
             onChange={setVertical}
             options={VERTICALS.map((v) => ({ value: v, label: VERTICAL_LABELS[v] }))}
           />

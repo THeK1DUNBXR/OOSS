@@ -48,8 +48,13 @@ import {
 } from '../../lib/marketingApi.js';
 import { MarketingHealthCard } from './MarketingHealthCard.js';
 
+// Recharts takes literal SVG color props, not Tailwind classes, so these
+// mirror tailwind.config.js's `ink`/`div` steps by value rather than name —
+// MUTED is `ink-500`, GRID is `ink-800` (the hairline), ACCENT and the first
+// four channel hues are the four `div-*` steps, in the same fixed order
+// Executive.tsx and CommandCenter.tsx assign them in.
 const MUTED = '#6b6b74';
-const GRID = '#2a2a31';
+const GRID = '#e7e7eb';
 const ACCENT = '#2a78d6';
 
 const CHANNEL_COLOUR: Record<string, string> = {
