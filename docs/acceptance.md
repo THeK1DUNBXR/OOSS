@@ -217,3 +217,30 @@ Two things the suite pins that the plan did not name: every `AuditRecord` is a
 link in a per-tenant hash chain, verified by recomputing each row from its
 stored content; and the register exports, the payslip, the debit note, the
 refund and the certificate are documents that are final once issued.
+
+## Technology
+
+The technology workstreams (`docs/plan/cio.md`) each carry their own
+requirement IDs and the test file that pins them, in `src/tests/it/`:
+
+| Workstream | Requirements | Tests | Notes |
+|---|---|---|---|
+| A. Assets and devices | IT-AST-001 … 005 | `assets.test.ts` | [docs/it/assets.md](it/assets.md) |
+| B. Applications, licences and subscriptions | IT-APP-001, IT-LIC-001 … 004 | `software.test.ts` | [docs/it/software.md](it/software.md) |
+| C. Vendors and contracts | IT-VEN-001, IT-VCT-001 … 003 | `vendors.test.ts` | [docs/it/vendors.md](it/vendors.md) |
+| D. Service desk | IT-SLA-001, IT-TKT-001 … 004 | `servicedesk.test.ts` | [docs/it/servicedesk.md](it/servicedesk.md) |
+| E. Incidents, problems and changes | IT-INC-001 … 002, IT-CHG-001 … 003 | `itsm.test.ts` | [docs/it/itsm.md](it/itsm.md) |
+| F. Security and governance | IT-RSK-001, IT-POL-001 … 002, IT-ACR-001, IT-FND-001 | `governance.test.ts` | [docs/it/governance.md](it/governance.md) |
+| G. Portfolio and budget | IT-INI-001 … 002, IT-BUD-001 … 002 | `portfolio.test.ts` | [docs/it/portfolio.md](it/portfolio.md) |
+| H. Continuity and operations | IT-DR-001 … 003, IT-AVL-001 | `continuity.test.ts` | [docs/it/continuity.md](it/continuity.md) |
+| I. Overview and health | IT-OVR-001, IT-HLT-001 | `overview.test.ts` | [docs/it/README.md](it/README.md) |
+
+The shape mirrors Compliance's: the Operations Head runs the desk and
+proposes spend, the Finance Head approves licences, vendor contracts,
+budgets and initiative funding, and the chairman publishes policy and
+approves a change the Operations Head raised — nobody signs off their own
+change, their own licence renewal, their own initiative, or their own
+access-review row. Every summary a screen reads carries `notYetMeasured`,
+the same honest-empty-state discipline the rest of the platform keeps, so a
+tenant with nothing recorded yet reports "Nothing to measure yet" rather
+than a zero.

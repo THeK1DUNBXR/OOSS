@@ -68,6 +68,16 @@ import { CompliancePayroll } from './pages/compliance/Payroll.js';
 import { ComplianceLabour } from './pages/compliance/Labour.js';
 import { CompliancePrivacy } from './pages/compliance/Privacy.js';
 import { ComplianceCorporate } from './pages/compliance/Corporate.js';
+// Technology (docs/plan/cio.md), one file per workstream.
+import { ItOverview } from './pages/it/Overview.js';
+import { ItAssets, ItAssetDetail } from './pages/it/Assets.js';
+import { ItApplications, ItApplicationDetail, ItLicences, ItLicenceDetail } from './pages/it/Software.js';
+import { ItVendors, ItVendorDetail, ItVendorContracts, ItVendorContractDetail } from './pages/it/Vendors.js';
+import { ItTickets, ItTicketDetail, ItKnowledge, ItKnowledgeDetail, MyIt } from './pages/it/ServiceDesk.js';
+import { ItIncidents, ItIncidentDetail, ItProblems, ItProblemDetail, ItChanges, ItChangeDetail } from './pages/it/Itsm.js';
+import { ItRisks, ItRiskDetail, ItPolicies, ItPolicyDetail, ItControls, ItAccessReviews, ItAccessReviewDetail, ItFindings } from './pages/it/Governance.js';
+import { ItPortfolio, ItInitiativeDetail, ItRoadmap, ItBudget, ItTechDebt } from './pages/it/Portfolio.js';
+import { ItContinuity, ItAvailability, ItMaintenance } from './pages/it/Continuity.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -253,6 +263,46 @@ function Routed() {
         <Route path="/compliance/privacy/:id" element={<CompliancePrivacy />} />
         <Route path="/compliance/corporate" element={<ComplianceCorporate />} />
         <Route path="/compliance/corporate/:id" element={<ComplianceCorporate />} />
+
+        {/* Technology (docs/plan/cio.md) */}
+        <Route path="/it" element={<ItOverview />} />
+        <Route path="/it/my" element={<MyIt />} />
+        <Route path="/it/assets" element={<ItAssets />} />
+        <Route path="/it/assets/:id" element={<ItAssetDetail />} />
+        <Route path="/it/applications" element={<ItApplications />} />
+        <Route path="/it/applications/:id" element={<ItApplicationDetail />} />
+        <Route path="/it/licences" element={<ItLicences />} />
+        <Route path="/it/licences/:id" element={<ItLicenceDetail />} />
+        <Route path="/it/vendors" element={<ItVendors />} />
+        <Route path="/it/vendors/:id" element={<ItVendorDetail />} />
+        <Route path="/it/contracts" element={<ItVendorContracts />} />
+        <Route path="/it/contracts/:id" element={<ItVendorContractDetail />} />
+        <Route path="/it/tickets" element={<ItTickets />} />
+        <Route path="/it/tickets/:id" element={<ItTicketDetail />} />
+        <Route path="/it/knowledge" element={<ItKnowledge />} />
+        <Route path="/it/knowledge/:id" element={<ItKnowledgeDetail />} />
+        <Route path="/it/incidents" element={<ItIncidents />} />
+        <Route path="/it/incidents/:id" element={<ItIncidentDetail />} />
+        <Route path="/it/problems" element={<ItProblems />} />
+        <Route path="/it/problems/:id" element={<ItProblemDetail />} />
+        <Route path="/it/changes" element={<ItChanges />} />
+        <Route path="/it/changes/:id" element={<ItChangeDetail />} />
+        <Route path="/it/risks" element={<ItRisks />} />
+        <Route path="/it/risks/:id" element={<ItRiskDetail />} />
+        <Route path="/it/policies" element={<ItPolicies />} />
+        <Route path="/it/policies/:id" element={<ItPolicyDetail />} />
+        <Route path="/it/controls" element={<ItControls />} />
+        <Route path="/it/access-reviews" element={<ItAccessReviews />} />
+        <Route path="/it/access-reviews/:id" element={<ItAccessReviewDetail />} />
+        <Route path="/it/findings" element={<ItFindings />} />
+        <Route path="/it/portfolio" element={<ItPortfolio />} />
+        <Route path="/it/portfolio/:id" element={<ItInitiativeDetail />} />
+        <Route path="/it/roadmap" element={<ItRoadmap />} />
+        <Route path="/it/budget" element={<ItBudget />} />
+        <Route path="/it/tech-debt" element={<ItTechDebt />} />
+        <Route path="/it/continuity" element={<ItContinuity />} />
+        <Route path="/it/availability" element={<ItAvailability />} />
+        <Route path="/it/maintenance" element={<ItMaintenance />} />
 
         <Route path="/admin/pipelines" element={<PipelineAdmin />} />
         <Route path="/admin/territories" element={<TerritoryAdmin />} />

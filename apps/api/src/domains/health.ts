@@ -29,6 +29,10 @@ import {
   HEALTH_DOMAINS,
   bandFor,
   distanceToEdge,
+  mttrMinutes,
+  changeSuccessRate,
+  slaAttainment,
+  testOverdueRung,
   type HealthBand,
 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
@@ -52,6 +56,7 @@ const DOMAIN_PLAIN_NAME: Record<string, string> = {
   H_OPS: 'Operations',
   H_STR: 'Strategy',
   H_RSK: 'Risk',
+  H_TEC: 'Technology',
 };
 
 
@@ -366,6 +371,142 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     return finalise(domainCode, factors);
   }
 
+  if (domainCode === 'H_TEC') {
+    const now = new Date();
+    const since30 = daysAgo(30);
+    const since90 = daysAgo(90);
+
+    const [ticketsResolved30d, incidentsSev12Last90d, changesLast90d, openRisks, openFindings, activePlansTier12] = await Promise.all([
+      prisma.itTicket.findMany({
+        where: { tenantId: auth.tenantId, resolvedAt: { gte: since30, not: null }, resolveDueAt: { not: null } },
+        select: { resolvedAt: true, resolveDueAt: true },
+      }),
+      prisma.itIncident.findMany({
+        where: { tenantId: auth.tenantId, severity: { in: ['sev1', 'sev2'] }, resolvedAt: { gte: since90, not: null } },
+        select: { detectedAt: true, resolvedAt: true },
+      }),
+      prisma.itChange.findMany({
+        where: { tenantId: auth.tenantId, updatedAt: { gte: since90 }, status: { in: ['reviewed', 'failed', 'rolled_back'] } },
+        select: { status: true },
+      }),
+      prisma.itRisk.findMany({
+        where: { tenantId: auth.tenantId, status: { in: ['open', 'treating'] } },
+        select: { bandInherent: true, bandResidual: true },
+      }),
+      prisma.itSecurityFinding.findMany({
+        where: { tenantId: auth.tenantId, status: { in: ['open', 'in_progress'] } },
+        select: { dueAt: true },
+      }),
+      prisma.itContinuityPlan.findMany({
+        where: { tenantId: auth.tenantId, status: 'active', applicationTier: { lte: 2 }, deletedAt: null },
+        select: { lastTestedAt: true, testCadenceDays: true },
+      }),
+    ]);
+
+    const raw: Array<{ code: string; label: string; weight: number; value: number; target: number; higherIsBetter: boolean; narrative: string; drill: string }> = [];
+
+    if (ticketsResolved30d.length > 0) {
+      const attainment = slaAttainment(
+        ticketsResolved30d.map((t) => ({ met: Boolean(t.resolvedAt && t.resolveDueAt && t.resolvedAt <= t.resolveDueAt) })),
+      );
+      if (attainment !== null) {
+        raw.push({
+          code: 'sla_attainment',
+          label: 'Tickets resolved on time',
+          weight: 20,
+          value: attainment,
+          target: 90,
+          higherIsBetter: true,
+          narrative: `${attainment}% of tickets resolved in the last 30 days met their resolution clock.`,
+          drill: '/it/tickets?tab=breached',
+        });
+      }
+    }
+
+    if (incidentsSev12Last90d.length > 0) {
+      const mttr = mttrMinutes(incidentsSev12Last90d);
+      if (mttr !== null) {
+        raw.push({
+          code: 'incident_recovery',
+          label: 'Major incidents recovered quickly',
+          weight: 15,
+          value: Math.round(mttr),
+          target: 240,
+          higherIsBetter: false,
+          narrative: `Sev1/sev2 incidents resolved in the last 90 days took ${Math.round(mttr)} minutes to recover from, on average.`,
+          drill: '/it/incidents',
+        });
+      }
+    }
+
+    if (changesLast90d.length > 0) {
+      const rate = changeSuccessRate(changesLast90d);
+      if (rate !== null) {
+        raw.push({
+          code: 'change_success',
+          label: 'Changes landing clean',
+          weight: 15,
+          value: Number((rate * 100).toFixed(1)),
+          target: 90,
+          higherIsBetter: true,
+          narrative: `${Math.round(rate * 100)}% of reviewed changes in the last 90 days landed without a failure or rollback.`,
+          drill: '/it/changes',
+        });
+      }
+    }
+
+    if (openRisks.length > 0) {
+      const highCritical = openRisks.filter((r) => {
+        const band = r.bandResidual ?? r.bandInherent;
+        return band === 'high' || band === 'critical';
+      }).length;
+      const share = Number(((highCritical / openRisks.length) * 100).toFixed(1));
+      raw.push({
+        code: 'risk_exposure',
+        label: 'Open risk sitting in the high bands',
+        weight: 20,
+        value: share,
+        target: 25,
+        higherIsBetter: false,
+        narrative: `${highCritical} of ${openRisks.length} open risks carry a high or critical band.`,
+        drill: '/it/risks',
+      });
+    }
+
+    if (openFindings.length > 0) {
+      const pastDue = openFindings.filter((f) => f.dueAt < now).length;
+      const share = Number(((pastDue / openFindings.length) * 100).toFixed(1));
+      raw.push({
+        code: 'finding_remediation',
+        label: 'Open findings past their due date',
+        weight: 15,
+        value: share,
+        target: 10,
+        higherIsBetter: false,
+        narrative: `${pastDue} of ${openFindings.length} open security findings are past their remediation due date.`,
+        drill: '/it/findings',
+      });
+    }
+
+    if (activePlansTier12.length > 0) {
+      const withinCadence = activePlansTier12.filter((p) => testOverdueRung(p.lastTestedAt, p.testCadenceDays, now) === undefined).length;
+      const share = Number(((withinCadence / activePlansTier12.length) * 100).toFixed(1));
+      raw.push({
+        code: 'continuity_coverage',
+        label: 'Tier-1/2 continuity plans tested on cadence',
+        weight: 15,
+        value: share,
+        target: 100,
+        higherIsBetter: true,
+        narrative: `${withinCadence} of ${activePlansTier12.length} tier-1/2 continuity plans have been tested within their cadence.`,
+        drill: '/it/continuity',
+      });
+    }
+
+    if (raw.length === 0) return notYetMeasured(domainCode);
+    return finalise(domainCode, buildFactors(domainCode, raw));
+  }
+
   // Domains whose modules have not landed report honestly.
   return notYetMeasured(domainCode);
 }
@@ -461,6 +602,7 @@ async function domainOwner(domainCode: string): Promise<string | null> {
     H_PPL: ['hr_ops_manager', 'chairman'],
     H_OPS: ['hr_ops_manager', 'chairman'],
     H_RSK: ['chairman'],
+    H_TEC: ['hr_ops_manager', 'chairman'],
   };
   for (const roleSlug of preferred[domainCode] ?? ['finance_head', 'chairman']) {
     const holder = await prisma.affiliation.findFirst({

@@ -1,0 +1,167 @@
+// Technology — service desk (docs/plan/cio.md, workstream D).
+//
+// `ExceptionRecord` is what the system raises; this is what a person raises.
+// An `ItSlaPolicy` row is the dated target a ticket's priority is held to —
+// the response and resolution clocks a ticket carries are stamped once, at
+// triage, from the policy in force on the ticket's OWN creation date, never
+// from whatever the table says today (IT-SLA-001). A comment is append-only,
+// a satisfaction rating is set once by the requester, and a knowledge
+// article moves draft -> published -> retired with a publish timestamp set
+// once.
+
+/// The service desk's dated target table: priority P1..P4 maps to a response
+/// and a resolution budget in minutes, and whether that budget only counts
+/// business hours. Effective-dated the way statutory rates are (Principle 4)
+/// — a new row supersedes the old one from its `effectiveFrom` date forward;
+/// nothing here is a constant in domain code. The seeded table (P1 30m/4h ..
+/// P4 1d/10d) is a starting point, not a decision the company has made, and
+/// the web screen says so.
+model ItSlaPolicy {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// P1 (critical) .. P4 (low).
+  priority String
+
+  responseMinutes   Int
+  resolutionMinutes Int
+
+  /// When true, `dueFrom` (packages/shared/src/it/servicedesk.ts) counts only
+  /// Mon-Fri 09:00-18:00 IST toward the budget; when false the budget is
+  /// plain calendar time.
+  businessHoursOnly Boolean @default(true)
+
+  effectiveFrom DateTime @default(now())
+  note          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, priority, effectiveFrom])
+  @@map("it_sla_policies")
+}
+
+/// A ticket a person raised. `requesterPartyId` is the owning party for
+/// scope evaluation (an employee sees their own); `assigneePartyId` is who
+/// is working it, and a ticket assigned to someone is also visible to them
+/// even when they did not raise it (the domain layer widens the WHERE
+/// clause with an OR, since the five-axis evaluator itself narrows on a
+/// single owner field).
+///
+/// `respondDueAt`/`resolveDueAt` are stamped once, at triage, from the SLA
+/// policy in force on `createdAt` — never recomputed against today's table,
+/// and never touched by a later re-triage of the same ticket (re-triaging
+/// changes priority/category prospectively; the clocks already running are
+/// not rewound).
+model ItTicket {
+  id         String  @id @default(cuid())
+  tenantId   String
+  recordCode String?
+
+  requesterPartyId String
+  assigneePartyId  String?
+
+  /// incident | request | access | question
+  category String
+
+  /// P1 | P2 | P3 | P4. Set at triage; `new` tickets carry no priority yet.
+  priority String?
+
+  /// new -> triaged -> in_progress -> waiting -> resolved -> closed, with
+  /// `reopened` (an event, not a distinct state — see `ticketMachine` in
+  /// packages/shared/src/it/servicedesk.ts) taking a resolved ticket back to
+  /// in_progress.
+  status String @default("new")
+
+  subject     String
+  description String
+
+  /// Bare ids into other workstreams' registers — resolved at the service
+  /// layer, never a Prisma relation across files (Principle: cross-workstream
+  /// references are bare ids).
+  assetId       String?
+  applicationId String?
+
+  respondDueAt DateTime?
+  resolveDueAt DateTime?
+
+  firstRespondedAt DateTime?
+  resolvedAt       DateTime?
+  closedAt         DateTime?
+
+  /// 1..5, set once by the requester on a resolved (or closed) ticket
+  /// (IT-TKT-003).
+  satisfaction Int?
+
+  /// Every SLA clock already notified for this ticket — "response" and/or
+  /// "resolution" — so the breach job fires each clock at most once
+  /// (IT-TKT-002). Not a ladder of rungs: each clock either has breached and
+  /// been notified, or has not.
+  slaBreachNotified String[] @default([])
+
+  /// Set when the ticket enters `waiting`, cleared when it leaves. The
+  /// waiting-too-long nudge job reads this rather than re-deriving it from
+  /// the transition history.
+  waitingSince DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments ItTicketComment[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, requesterPartyId])
+  @@index([tenantId, assigneePartyId])
+  @@index([tenantId, priority, status])
+  @@map("it_tickets")
+}
+
+/// Append-only. `internal` comments (engineer notes, triage reasoning) are
+/// never shown to the requester; public ones are the conversation with them.
+model ItTicketComment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  ticketId String
+  ticket   ItTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  body           String
+  internal       Boolean @default(false)
+  authorPartyId  String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, ticketId])
+  @@map("it_ticket_comments")
+}
+
+/// A published article is what the desk points a requester to instead of a
+/// ticket. `helpfulCount` is a plain counter incremented by the `/helpful`
+/// endpoint — not a vote per person (no authentication of "have you already
+/// clicked this" is asked of it), the same honesty the plan asks screens to
+/// state about what is typed in versus computed.
+model ItKnowledgeArticle {
+  id         String  @id @default(cuid())
+  tenantId   String
+  recordCode String?
+
+  title String
+  body  String
+
+  applicationId String?
+
+  /// draft | published | retired
+  status String @default("draft")
+
+  helpfulCount Int @default(0)
+  publishedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, applicationId])
+  @@map("it_knowledge_articles")
+}

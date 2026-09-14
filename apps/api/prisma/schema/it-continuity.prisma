@@ -1,0 +1,178 @@
+// Technology — continuity and operations (docs/plan/cio.md, workstream H).
+//
+// `BackupRun` (main.prisma) records the platform's own backup. Nothing said
+// which system must be back in how long, whether the last drill actually hit
+// that number, how reliable an application has been this month, or when it
+// next goes dark for maintenance. This file is that: a continuity plan per
+// application, an append-only test log against it, a monthly availability
+// reading, and a maintenance window calendar.
+//
+// The application catalogue (`ItApplication`, workstream B) is another
+// workstream's model in another schema file — cross-workstream references are
+// bare string ids, never a Prisma relation across files (see the builder
+// brief). `applicationId` here is that bare id; `applicationName` and
+// `applicationTier` are typed in at plan creation as a snapshot, so tier-1
+// detection and screen labels work standalone even before, or without, the
+// catalogue existing. A join that resolves the live application name/tier
+// from `ItApplication` is integration work for workstream I (the overview) or
+// a later pass — documented in docs/it/continuity.md.
+
+/// A continuity plan for one application: how fast it must come back (RTO),
+/// how much data it may lose (RPO), how it is backed up, and who owns
+/// proving the plan works. `applicationTier` is snapshotted at creation
+/// (1 = critical .. 4 = low, `IT_TIERS` in packages/shared/src/it/common.ts)
+/// because this file cannot join the application catalogue — a tier change
+/// on the live application does not retroactively rewrite an existing plan;
+/// a new plan (or an edit) is how that is corrected.
+model ItContinuityPlan {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  applicationId   String
+  applicationName String
+  applicationTier Int
+
+  rtoMinutes Int
+  rpoMinutes Int
+
+  backupMethod    String
+  backupFrequency String
+
+  restoreProcedureDocumentId String?
+  ownerPartyId               String?
+
+  lastTestedAt    DateTime?
+  testCadenceDays Int
+
+  /// draft | active | retired
+  status String @default("draft")
+
+  /// Every DR-test-overdue ladder rung already notified for this plan (see
+  /// TEST_OVERDUE_LADDER_RUNGS in packages/shared/src/it/continuity.ts), so
+  /// the daily job never re-notifies a rung it already fired. Cleared back to
+  /// `[]` whenever a new test is recorded — a fresh test restarts the clock.
+  testOverdueNotifiedRungs Int[] @default([])
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  tests ItContinuityTest[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, applicationId])
+  @@index([tenantId, applicationTier, status])
+  @@map("it_continuity_plans")
+}
+
+/// One DR drill against a plan — append-only, immutable after write
+/// (Principle 5): a mistaken entry is corrected by recording a fresh test,
+/// never by editing this row. `recordContinuityTest` raises
+/// `IT_DR_RTO_EXCEEDED` when the actual recovery time (or data loss) beat
+/// what the plan promised.
+model ItContinuityTest {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  planId String
+  plan   ItContinuityPlan @relation(fields: [planId], references: [id])
+
+  testedAt DateTime
+
+  /// restore | failover | tabletop
+  kind String
+
+  /// pass | fail | partial
+  outcome String
+
+  actualRecoveryMinutes Int?
+  actualDataLossMinutes Int?
+
+  notes               String?
+  evidenceDocumentId  String?
+  recordedById        String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, planId, testedAt])
+  @@map("it_continuity_tests")
+}
+
+/// One application's uptime reading for one calendar month. Uptime % is
+/// never stored — it is computed from `minutesDown` and the period's own
+/// length by `uptimePercent` (packages/shared/src/it/continuity.ts), the
+/// same "compute, don't store" discipline the books keep for totals.
+model ItAvailabilityReading {
+  id       String @id @default(cuid())
+  tenantId String
+
+  applicationId   String
+  applicationName String
+
+  /// `2026-09` — the calendar month this reading covers.
+  period String
+
+  minutesDown   Int @default(0)
+  incidentCount Int @default(0)
+
+  /// typed | incidents — typed in by hand, or rolled up from the incidents
+  /// workstream (E) once that link exists. This workstream only ever writes
+  /// `typed`; `incidents` is reserved for that later integration.
+  source String @default("typed")
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, applicationId, period])
+  @@index([tenantId, period])
+  @@map("it_availability_readings")
+}
+
+/// A planned (or unplanned-but-declared) outage window for an application.
+/// `changeId` is a bare id into workstream E's `ItChange` when the window
+/// belongs to a change record — resolved at the service layer, never a
+/// cross-file relation.
+model ItMaintenanceWindow {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  applicationId   String
+  applicationName String
+
+  startsAt DateTime
+  endsAt   DateTime
+  reason   String
+
+  changeId String?
+
+  /// Stamped once, by the daily job, the first time it notifies the owner
+  /// that the window starts within 24 hours. A window rescheduled earlier
+  /// after notification is treated as a new window from the notifier's point
+  /// of view (`recordMaintenanceWindow`/`rescheduleMaintenanceWindow` reset it).
+  notifiedAt DateTime?
+
+  /// planned | in_progress | done | cancelled
+  status String @default("planned")
+
+  cancelReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, startsAt])
+  @@index([tenantId, status])
+  @@map("it_maintenance_windows")
+}

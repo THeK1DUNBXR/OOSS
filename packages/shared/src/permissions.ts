@@ -208,6 +208,16 @@ export const RESOURCES = [
   // ESOP (equity-portal plan §5/§6, phase 5).
   'esop_plans',
   'option_grants',
+  // Technology (docs/plan/cio.md), one group per workstream. Kept in
+  // lockstep with ALL_RESOURCES in `apps/api/src/seed/grants.ts`.
+  'it_assets',
+  'it_applications', 'it_licences',
+  'it_vendors', 'it_vendor_contracts',
+  'it_tickets', 'it_sla_policies', 'it_knowledge',
+  'it_incidents', 'it_problems', 'it_changes',
+  'it_risks', 'it_policies', 'it_policy_acknowledgements', 'it_controls', 'it_access_reviews', 'it_findings',
+  'it_initiatives', 'it_budgets', 'it_tech_debt',
+  'it_continuity',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

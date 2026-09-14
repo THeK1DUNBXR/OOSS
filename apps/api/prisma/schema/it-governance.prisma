@@ -1,0 +1,361 @@
+// Technology — security and governance (docs/plan/cio.md, workstream F).
+//
+// A risk register scored from a dated table, policy documents staff
+// acknowledge (immutable once published — a change is a new version), a
+// control library mapped to frameworks, an access-review campaign with a
+// self-review bar, and security findings with severity-driven remediation
+// SLAs. The same discipline the compliance calendar keeps: dated tables for
+// numbers that change by decision rather than by code, append-only logs for
+// anything that is a timeline, and a lifecycle machine for anything with a
+// status.
+
+/// Scoring bands for likelihood x impact (1..25). A dated table: every row
+/// sharing a `setId` (and its `effectiveFrom`) is one version of the band
+/// set; `bandFor` (packages/shared/src/it/governance.ts) picks the highest
+/// `minScore` at or below the score, within the set in force at scoring
+/// time. A risk stores which set it was scored under
+/// (`ItRisk.scoredUnderBandSetId`) so a later change to the bands never
+/// silently reclassifies an already-scored risk.
+model ItRiskScoringBand {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Groups the rows of one version of the table — every row sharing this id
+  /// shares the same `effectiveFrom` and together covers the full 1..25
+  /// range.
+  setId String
+  /// low | medium | high | critical
+  band String
+  /// The lowest score (inclusive) this band applies to within its set.
+  minScore Int
+
+  effectiveFrom DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, effectiveFrom])
+  @@index([tenantId, setId])
+  @@map("it_risk_scoring_bands")
+}
+
+/// The risk register. Inherent scores are set at creation from likelihood and
+/// impact before any control; residual scores are set once treatment/controls
+/// are in place. Both are computed by `riskScore`/`bandFor` and stored — never
+/// recomputed against a possibly-since-changed band set without recording
+/// which one was used (IT-RSK-001).
+model ItRisk {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String?
+
+  title    String
+  category String
+  ownerPartyId String
+
+  likelihoodInherent Int
+  impactInherent     Int
+  scoreInherent      Int
+  bandInherent       String // low | medium | high | critical
+
+  likelihoodResidual Int?
+  impactResidual     Int?
+  scoreResidual      Int?
+  bandResidual        String?
+
+  /// The `ItRiskScoringBand.setId` in force when the (most recent) score was
+  /// computed.
+  scoredUnderBandSetId String?
+
+  /// accept | mitigate | transfer | avoid
+  treatment     String
+  treatmentPlan String?
+
+  reviewDueAt DateTime?
+
+  /// open | treating | accepted | closed — via platform/lifecycle.
+  status String @default("open")
+
+  /// Bare ids of ItControl rows mitigating this risk. Cross-workstream
+  /// reference is a bare string, resolved at the service layer.
+  controlIds String[] @default([])
+
+  /// Every review-overdue ladder rung already notified for this risk.
+  reviewNotifiedRungs Int[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, bandResidual])
+  @@index([tenantId, reviewDueAt])
+  @@map("it_risks")
+}
+
+/// The standing text of a policy. A published row is immutable — `body` is
+/// never edited once `status` is `published`; a change is `newVersion`,
+/// which creates a new `draft` row at `version + 1` under the same `code`,
+/// and publishing it marks the row named by `supersedesId` `superseded`.
+/// Publication runs through `POL-IT-POLICY-PUBLISH` on the Self-Dealing Bar —
+/// the drafter (`drafterPartyId`) never publishes their own draft.
+model ItPolicyDocument {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String?
+
+  code    String
+  title   String
+  body    String
+  version Int @default(1)
+
+  /// draft -> published -> superseded | retired, via platform/lifecycle.
+  status String @default("draft")
+
+  drafterPartyId String
+
+  /// The ACCESS_ROLE slugs this policy applies to. Data, not a role
+  /// comparison in domain logic.
+  appliesToRoleSlugs String[] @default([])
+
+  /// How often a party must re-acknowledge a published version; null means
+  /// once per version is enough.
+  reacknowledgeMonths Int?
+
+  publishedAt   DateTime?
+  publishedById String?
+
+  /// The previous version's row id, set when this row was created by
+  /// `newVersion`.
+  supersedesId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  acknowledgements ItPolicyAcknowledgement[]
+
+  @@unique([tenantId, code, version])
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, code, status])
+  @@map("it_policy_documents")
+}
+
+/// Append-only: one row per party, per policy, per version they acknowledged.
+/// `it_policy_acknowledgements:C@own` — the caller acknowledges for
+/// themselves only, never on another party's behalf.
+model ItPolicyAcknowledgement {
+  id       String @id @default(cuid())
+  tenantId String
+
+  policyId String
+  policy   ItPolicyDocument @relation(fields: [policyId], references: [id])
+  version  Int
+
+  partyId String
+
+  acknowledgedAt DateTime @default(now())
+
+  @@unique([tenantId, policyId, partyId, version])
+  @@index([tenantId, partyId])
+  @@map("it_policy_acknowledgements")
+}
+
+/// The control library — one row per control, mapped to whichever frameworks
+/// name it (ISO 27001 Annex A, SOC 2, DPDP...).
+model ItControl {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String?
+
+  code  String
+  title String
+
+  /// [{ "framework": "ISO27001", "ref": "A.8.1" }, ...]
+  frameworkRefs Json
+
+  ownerPartyId String
+  frequencyDays Int
+
+  lastTestedAt DateTime?
+  /// pass | fail | partial
+  lastResult   String?
+  evidenceDocumentId String?
+
+  /// active | retired
+  status String @default("active")
+
+  /// Set once a test-overdue exception has fired for the current gap, so the
+  /// ladder job never re-raises for the same overdue window.
+  testOverdueNotifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tests ItControlTest[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@map("it_controls")
+}
+
+/// Append-only test log — a control's `lastTestedAt`/`lastResult` are a
+/// projection of the latest row here, never edited independently of it.
+model ItControlTest {
+  id       String @id @default(cuid())
+  tenantId String
+
+  controlId String
+  control   ItControl @relation(fields: [controlId], references: [id])
+
+  testedAt      DateTime @default(now())
+  result        String // pass | fail | partial
+  testerPartyId String
+  notes         String?
+  evidenceDocumentId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, controlId, testedAt])
+  @@map("it_control_tests")
+}
+
+/// An access-review campaign — a point-in-time sweep of who has access to
+/// what. Opening materialises one `ItAccessReviewItem` per active
+/// `Affiliation` (optionally narrowed by role) in scope.
+model ItAccessReview {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String?
+
+  name String
+  /// all | role | application
+  scope    String
+  /// The role slug or applicationId the scope narrows to; null when scope is `all`.
+  scopeRef String?
+
+  dueAt DateTime
+  /// open | in_progress | closed
+  status String @default("open")
+
+  openedById String
+
+  closedAt DateTime?
+
+  /// Set once the overdue detector has raised for this campaign, so a
+  /// second run the same day (or any later run before the campaign moves
+  /// or closes) raises nothing new. Cleared implicitly by nothing — a
+  /// campaign that is still overdue stays notified until it closes; the
+  /// job only ever needs to raise it once, not on a ladder of rungs.
+  overdueNotifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items ItAccessReviewItem[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, dueAt])
+  @@map("it_access_reviews")
+}
+
+/// One line of a campaign: one person's access, in scope, decided once.
+/// `decidedAt` set once the decision is made — a reviewer may never decide
+/// their own row (`partyId == reviewerPartyId` is refused, IT-ACR-001), and a
+/// `revoke` decision raises an exception for the Operations Head to act on
+/// rather than editing the `Affiliation` itself (out of this workstream's
+/// files).
+model ItAccessReviewItem {
+  id       String @id @default(cuid())
+  tenantId String
+
+  reviewId String
+  review   ItAccessReview @relation(fields: [reviewId], references: [id])
+
+  partyId       String
+  affiliationId String?
+  /// Snapshot of the affiliation's role slug at the time the item was
+  /// materialised — a later role change does not rewrite history.
+  roleSlug      String?
+  applicationId String?
+
+  reviewerPartyId String?
+  /// keep | revoke | modify
+  decision String?
+  decidedAt DateTime?
+  note      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, reviewId])
+  @@index([tenantId, partyId])
+  @@map("it_access_review_items")
+}
+
+/// Remediation SLA by finding severity. A dated table (Principle 4): the days
+/// a finding of each severity has to be fixed, effective from a date, so a
+/// tightened SLA never rewrites an already-open finding's due date.
+model ItRemediationRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  severity String // critical | high | medium | low
+  days     Int
+
+  effectiveFrom DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, severity, effectiveFrom])
+  @@map("it_remediation_rules")
+}
+
+/// A security finding — from a pentest, a scan, an audit, or raised
+/// internally. `dueAt` is computed once at creation from the remediation
+/// table in force that day (IT-FND-001) and never recomputed by a later
+/// change to the table.
+model ItSecurityFinding {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String?
+
+  title    String
+  /// pentest | scan | audit | internal
+  source   String
+  /// critical | high | medium | low
+  severity String
+  cvss     Decimal? @db.Decimal(3, 1)
+
+  description String?
+
+  /// Bare ids — cross-workstream references, resolved at the service layer.
+  applicationId String?
+  assetId       String?
+
+  dueAt DateTime
+
+  /// open | in_progress | risk_accepted | fixed | verified — via
+  /// platform/lifecycle.
+  status String @default("open")
+
+  /// The ItChange fixing this finding, once one is raised for it.
+  changeId String?
+
+  /// Every overdue-ladder rung already notified for this finding.
+  overdueNotifiedRungs Int[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, severity, status])
+  @@index([tenantId, dueAt])
+  @@map("it_security_findings")
+}

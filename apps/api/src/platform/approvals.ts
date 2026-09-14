@@ -58,7 +58,12 @@ export const DEFAULT_APPROVAL_POLICY: ApprovalPolicyContent = {
 
 export interface GateSubject {
   id: string;
-  type: 'mou' | 'contract' | 'partner_agreement' | 'quote' | 'share_transaction' | 'option_grant' | 'option_exercise';
+  type:
+    | 'mou' | 'contract' | 'partner_agreement' | 'quote' | 'share_transaction' | 'option_grant' | 'option_exercise'
+    // Technology (docs/plan/cio.md): a licence renewal, a vendor contract, a
+    // normal or emergency change, a policy publication and an initiative's
+    // funding each run through this same gate.
+    | 'it_licence' | 'it_vendor_contract' | 'it_change' | 'it_policy' | 'it_initiative';
   label: string;
   ownerPartyId: string | null;
   commercialValue: number | null;

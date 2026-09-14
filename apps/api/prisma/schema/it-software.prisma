@@ -1,0 +1,217 @@
+// Technology — applications, licences and subscriptions (docs/plan/cio.md,
+// workstream B). Nothing in the platform names what software the company
+// runs on: `VendorBill.vendorName` is free text and nothing says what was
+// bought or for how many seats. This is the catalogue and the seat ledger.
+//
+// `ItApplication` is the catalogue row a licence hangs off; `ItLicence` is
+// one commercial agreement against it — seats, cost, term, renewal;
+// `ItLicenceEvent` is the append-only history of what happened to a
+// licence's seats and renewals. `ItSoftwareThreshold` is the dated table
+// that carries the under-use percentage, the minimum seats to judge it by,
+// and the renewal ladder rungs — data, never a constant in job code.
+//
+// Cross-workstream references (`vendorId`, `ownerPartyId`, `vendorContractId`,
+// `lastVendorBillId`) are bare ids, resolved at the service layer against
+// `Person`/`VendorBill` in `main.prisma` or another workstream's own model —
+// never a Prisma relation across files.
+
+/// The catalogue: every application the company runs on, whether or not it
+/// currently has a licence attached. An application with no `ownerPartyId`
+/// is a routing defect the daily job surfaces (`IT_APP_UNOWNED`), not a row
+/// that quietly sits unowned.
+model ItApplication {
+  id         String  @id @default(cuid())
+  tenantId   String
+  recordCode String?
+
+  name       String
+  vendorName String?
+  /// Bare id into `ItVendor` (workstream C) when the vendor is on the vendor
+  /// master. Resolved at the service layer; never a Prisma relation across
+  /// workstream files.
+  vendorId   String?
+
+  category String
+
+  /// 1 (business-stopping) .. 4 (low). `IT_TIERS` in
+  /// `packages/shared/src/it/common.ts`.
+  tier Int @default(3)
+
+  /// saas | on_prem | cloud
+  hosting String
+
+  /// The party accountable for this application. Never resolved by role —
+  /// data on the row, like every other owner field in the platform.
+  ownerPartyId String?
+
+  /// The most sensitive data class this application handles:
+  /// internal | confidential | restricted | regulated
+  dataClassificationHandled String @default("internal")
+
+  sso Boolean @default(false)
+
+  /// evaluating | active | sunsetting | retired — run through
+  /// `platform/lifecycle.ts`'s generic `transition`/`availableTransitions`
+  /// against the machine in `packages/shared/src/it/software.ts`.
+  status String @default("evaluating")
+
+  url   String?
+  notes String?
+
+  /// Set the first time the unowned-application job raises
+  /// `IT_APP_UNOWNED` for this row, so the ladder fires once and a
+  /// subsequent run does not re-raise while the row stays unowned. Cleared
+  /// the moment an owner is assigned.
+  unownedNotifiedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  licences ItLicence[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, tier])
+  @@index([tenantId, ownerPartyId])
+  @@map("it_applications")
+}
+
+/// One commercial agreement for an application: what was bought, for how
+/// many seats, at what cost, on what term. Seats in use are typed in — the
+/// platform does not meter SaaS logins (docs/plan/cio.md Principle 7); the
+/// screen says so.
+model ItLicence {
+  id         String  @id @default(cuid())
+  tenantId   String
+  recordCode String?
+
+  applicationId String
+  application   ItApplication @relation(fields: [applicationId], references: [id])
+
+  /// per_seat | site | perpetual | usage
+  kind String
+
+  seatsPurchased Int @default(0)
+  /// Typed in by whoever manages the licence — never metered.
+  seatsInUse     Int @default(0)
+
+  costPerPeriod Decimal @db.Decimal(18, 2)
+  currency      String  @default("INR")
+  /// monthly | quarterly | annual | one_off
+  billingCycle  String
+
+  termStart   DateTime?
+  termEnd     DateTime?
+  renewalDate DateTime?
+  noticeDays  Int       @default(30)
+  autoRenew   Boolean   @default(false)
+
+  /// Bare id into `ItVendorContract` (workstream C), when this licence sits
+  /// under a vendor contract.
+  vendorContractId String?
+  /// Bare id into `VendorBill` (`main.prisma`) — the last bill this licence
+  /// was invoiced on. The movement of money stays the books'; this is a
+  /// pointer to it, never a duplicated figure (docs/plan/cio.md Principle 8).
+  lastVendorBillId String?
+
+  /// active | expiring | expired | cancelled
+  status String @default("active")
+
+  /// Every renewal-ladder rung already raised for the current renewal cycle
+  /// (e.g. `[90, 60, 30]`), so the daily job never re-raises a rung it
+  /// already fired. Reset when the licence renews.
+  renewalNotifiedRungs Int[] @default([])
+
+  /// Set once the over-allocation exception has fired for the seat count
+  /// currently on the row, so the job does not re-raise on every run while
+  /// the same over-allocation stands. Cleared when seats are next updated.
+  overAllocationNotifiedAt DateTime?
+  /// Same idempotency shape for the under-use exception.
+  underUseNotifiedAt       DateTime?
+
+  /// Who is proposing the open renewal, and what they proposed — carried on
+  /// the row so `approveRenewal`/`cancel` can find it and so the Self-Dealing
+  /// Bar has a proposer to compare the decider against. Cleared once decided.
+  pendingRenewalProposedById String?
+  pendingRenewalApprovalStepId String?
+  pendingRenewalTermEnd       DateTime?
+  pendingRenewalCostPerPeriod Decimal?  @db.Decimal(18, 2)
+  pendingRenewalNote          String?
+
+  cancelledAt     DateTime?
+  cancelledReason String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  events ItLicenceEvent[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, applicationId])
+  @@index([tenantId, renewalDate])
+  @@map("it_licences")
+}
+
+/// Append-only: a seat change, a renewal proposed/approved/applied, a
+/// cancellation. Never edited or deleted — the history of a licence is the
+/// sum of its rows, the same discipline every other timeline in the
+/// technology module keeps (docs/plan/cio.md Principle 5).
+model ItLicenceEvent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  licenceId String
+  licence   ItLicence @relation(fields: [licenceId], references: [id])
+
+  /// seats_changed | renewal_proposed | renewal_approved | renewal_applied |
+  /// renewal_declined | cancelled
+  kind String
+
+  actorPartyId String?
+  note         String?
+  /// Free-form per-kind detail (before/after seat counts, the proposed term,
+  /// the approval step id, the cancellation reason) — never re-derived from
+  /// this row; the licence's own fields stay authoritative.
+  detail       Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, licenceId])
+  @@map("it_licence_events")
+}
+
+/// Dated table: the under-use threshold, the minimum seat count it applies
+/// to, and the renewal ladder rungs — statutory-style numbers kept as data,
+/// never a constant in job code (docs/plan/cio.md Principle 4). Upserted by
+/// the seed, effective from a date; the row with the latest `effectiveFrom`
+/// on or before "now" is the one in force.
+model ItSoftwareThreshold {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code           String
+  effectiveFrom  DateTime
+
+  /// A licence is under-used when `seatsInUse / seatsPurchased * 100` falls
+  /// below this percentage.
+  underUsePercent Int
+  /// Only licences with at least this many seats purchased are judged for
+  /// under-use — a two-seat licence at 50% utilisation is not a finding.
+  underUseMinSeats Int
+
+  /// Days-before-renewal rungs, widest first, e.g. `[90, 60, 30, 7, 0]`. `0`
+  /// stands for "renewal date reached / expired".
+  renewalLadderRungs Int[]
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, effectiveFrom])
+  @@map("it_software_thresholds")
+}

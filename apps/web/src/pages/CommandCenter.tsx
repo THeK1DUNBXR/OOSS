@@ -100,7 +100,7 @@ export function CommandCenter() {
 }
 
 // ---------------------------------------------------------------------------
-// Company Pulse — ten domains, each a tile that answers "how much room before
+// Company Pulse — eleven domains, each a tile that answers "how much room before
 // this crosses" alongside "where it is now". Never a bare number.
 // ---------------------------------------------------------------------------
 
@@ -114,7 +114,7 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
         subtitle="Ten areas, scored out of 100. Click one to see what is moving it."
         bodyClassName="p-3"
       >
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           {pulse.map((p) => (
             <button
               key={p.domainCode}

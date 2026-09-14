@@ -17,6 +17,7 @@ import {
   FileText, Gauge, GraduationCap, Home, Inbox, Kanban, Key, Layers, Lock, Map as MapIcon,
   Menu, Package, PieChart, Receipt, Scale, ScrollText, Search, Settings, Shield, ShieldCheck,
   Sparkles, Target, TrendingUp, Users, Wallet, X, type LucideIcon,
+  Server, Laptop, Ticket, GitBranch, Bug, Wrench,
 } from 'lucide-react';
 import { useSession } from '../lib/session.js';
 import { api, relative } from '../lib/api.js';
@@ -35,6 +36,8 @@ const ICONS: Record<string, LucideIcon> = {
   alert: AlertTriangle, scale: Scale, settings: Settings, map: MapIcon, key: Key, bot: Circle,
   activity: Activity, clock: Clock, search: Search, layers: Layers,
   sparkle: Sparkles, lock: Lock, list: FileText, book: Book, chart: PieChart,
+  // Technology (docs/plan/cio.md)
+  server: Server, laptop: Laptop, ticket: Ticket, git: GitBranch, bug: Bug, wrench: Wrench,
 };
 
 function NavIcon({ icon, className = 'h-[18px] w-[18px]' }: { icon: string; className?: string }) {
@@ -55,6 +58,9 @@ const GROUP_LABELS: Record<string, string> = {
   customers: 'Who We Deal With',
   delivery: 'Selling & Delivering',
   compliance: 'Compliance',
+  // The CIO's office: the estate, the desk, the risks and the spend behind
+  // the systems the company runs on.
+  technology: 'Technology',
   setup: 'Set up',
   // Never actually reaches this sidebar — `archetypes: ['portal']` on every
   // node in this group already keeps it off an ERP role's navigation, and
@@ -72,7 +78,7 @@ const GROUP_LABELS: Record<string, string> = {
  * permanently in the sidebar was most of what made this product feel heavy.
  * It opens on click and stays open for the session.
  */
-const COLLAPSED_BY_DEFAULT = new Set(['compliance', 'setup']);
+const COLLAPSED_BY_DEFAULT = new Set(['compliance', 'technology', 'setup']);
 
 export function Shell() {
   const { user, nav, signOut } = useSession();
@@ -238,7 +244,7 @@ export function Shell() {
 
 // Fixed group order, so the shell reads the way the work reads: your own
 // surface first, then the domains, then the platform underneath them.
-const GROUP_ORDER = ['main', 'money', 'equity', 'people', 'customers', 'delivery', 'compliance', 'setup'];
+const GROUP_ORDER = ['main', 'money', 'equity', 'people', 'customers', 'delivery', 'compliance', 'technology', 'setup'];
 
 /** The sidebar's content, shared between its desktop in-flow rendering and
  *  its mobile drawer overlay — one nav, two placements. */

@@ -136,6 +136,15 @@ export const ALL_RESOURCES = [
   'holidays', 'posh_cases', 'disciplinary_cases', 'hr_letters', 'statutory_registers', // F
   'consents', 'data_requests', 'breaches', 'privacy_notices', // G
   'board_resolutions', 'corporate_registers', 'refunds', 'certificates', 'security_settings', // H
+  // Technology (docs/plan/cio.md), one group per workstream.
+  'it_assets',                                                // A
+  'it_applications', 'it_licences',                           // B
+  'it_vendors', 'it_vendor_contracts',                        // C
+  'it_tickets', 'it_sla_policies', 'it_knowledge',            // D
+  'it_incidents', 'it_problems', 'it_changes',                // E
+  'it_risks', 'it_policies', 'it_policy_acknowledgements', 'it_controls', 'it_access_reviews', 'it_findings', // F
+  'it_initiatives', 'it_budgets', 'it_tech_debt',             // G
+  'it_continuity',                                            // H
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */
@@ -272,6 +281,34 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'refunds', cell: '-' },
   { resource: 'certificates', cell: 'VCEX' },
   { resource: 'security_settings', cell: '-' },
+  // ---- Technology (docs/plan/cio.md) ---------------------------------------
+  // Runs the desk and the estate day to day, and proposes spend. Never
+  // `approve` on a licence, a vendor contract, a budget or an initiative —
+  // the Finance Head signs those — and never publishes a policy. Holds
+  // `approve` on changes because an engineer's change is the Operations
+  // Head's to approve; their own goes to the chairman on the self-dealing bar.
+  { resource: 'it_assets', cell: 'VCEDAX' },
+  { resource: 'it_applications', cell: 'VCEDX' },
+  { resource: 'it_licences', cell: 'VCEX' },
+  { resource: 'it_vendors', cell: 'VCEX' },
+  { resource: 'it_vendor_contracts', cell: 'VCEX' },
+  { resource: 'it_tickets', cell: 'VCEDAX' },
+  { resource: 'it_sla_policies', cell: 'VCE' },
+  { resource: 'it_knowledge', cell: 'VCEDX' },
+  { resource: 'it_incidents', cell: 'VCEDAX' },
+  { resource: 'it_problems', cell: 'VCEDAX' },
+  { resource: 'it_changes', cell: 'VCEX,approve' },
+  { resource: 'it_risks', cell: 'VCEX' },
+  { resource: 'it_policies', cell: 'VCEX' },
+  { resource: 'it_policy_acknowledgements', cell: 'V' },
+  { resource: 'it_policy_acknowledgements', cell: 'C@own' },
+  { resource: 'it_controls', cell: 'VCEX' },
+  { resource: 'it_access_reviews', cell: 'VCEA' },
+  { resource: 'it_findings', cell: 'VCEDX' },
+  { resource: 'it_initiatives', cell: 'VCEX' },
+  { resource: 'it_budgets', cell: 'VCE' },
+  { resource: 'it_tech_debt', cell: 'VCEDX' },
+  { resource: 'it_continuity', cell: 'VCEDX' },
 ];
 
 /**
@@ -417,6 +454,33 @@ const financeHead: GrantSpec[] = [
   { resource: 'refunds', cell: 'VCEDAXF,approve' },
   { resource: 'certificates', cell: 'V' },
   { resource: 'security_settings', cell: '-' },
+  // ---- Technology (docs/plan/cio.md) ---------------------------------------
+  // Signs the spend and sees the cost: approves licences, vendor contracts,
+  // the technology budget and an initiative's funding, and reads everything
+  // else. Never `create` on what it approves, so the signatory is never the
+  // author — the compensation split, applied to technology.
+  { resource: 'it_assets', cell: 'VF' },
+  { resource: 'it_applications', cell: 'V' },
+  { resource: 'it_licences', cell: 'VF,approve' },
+  { resource: 'it_vendors', cell: 'V' },
+  { resource: 'it_vendor_contracts', cell: 'VF,approve' },
+  { resource: 'it_tickets', cell: 'V' },
+  { resource: 'it_sla_policies', cell: 'V' },
+  { resource: 'it_knowledge', cell: 'V' },
+  { resource: 'it_incidents', cell: 'V' },
+  { resource: 'it_problems', cell: 'V' },
+  { resource: 'it_changes', cell: 'V' },
+  { resource: 'it_risks', cell: 'V' },
+  { resource: 'it_policies', cell: 'V' },
+  { resource: 'it_policy_acknowledgements', cell: 'V' },
+  { resource: 'it_policy_acknowledgements', cell: 'C@own' },
+  { resource: 'it_controls', cell: 'V' },
+  { resource: 'it_access_reviews', cell: 'V' },
+  { resource: 'it_findings', cell: 'V' },
+  { resource: 'it_initiatives', cell: 'V,approve' },
+  { resource: 'it_budgets', cell: 'VCEDXF,approve' },
+  { resource: 'it_tech_debt', cell: 'V' },
+  { resource: 'it_continuity', cell: 'V' },
 ];
 
 /**
@@ -538,6 +602,19 @@ const employee: GrantSpec[] = [
   // ESOP: their own grants, and nobody else's — the same `@own` shape leave
   // and attendance already take.
   { resource: 'option_grants', cell: 'V@own' },
+
+  // ---- Technology (docs/plan/cio.md) ---------------------------------------
+  // Self-service: the laptop assigned to me, the ticket I raised, the
+  // change I am proposing, the policy I have to read and say I have read.
+  // The application catalogue and the knowledge base are company-wide on
+  // purpose — "what do we use for this" is a question anyone may ask.
+  { resource: 'it_assets', cell: 'V@own' },
+  { resource: 'it_applications', cell: 'V@all' },
+  { resource: 'it_tickets', cell: 'VC@own' },
+  { resource: 'it_knowledge', cell: 'V@all' },
+  { resource: 'it_changes', cell: 'VC@own' },
+  { resource: 'it_policies', cell: 'V@all' },
+  { resource: 'it_policy_acknowledgements', cell: 'VC@own' },
 ];
 
 // ---------------------------------------------------------------------------
