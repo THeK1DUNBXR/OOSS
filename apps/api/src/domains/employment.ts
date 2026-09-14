@@ -814,7 +814,11 @@ export async function proposeAssignment(input: {
   correlationId?: string | null;
 }) {
   const auth = currentAuth();
-  await assertCan({ resource: 'assignments', verb: 'create' });
+  // Scoped the same way every other employment-addressed write is: nobody
+  // with only an `@own` grant on `assignments` (nobody has one today, but
+  // the check should not depend on that staying true) can move a colleague's
+  // seat by naming their employment id.
+  await assertEmploymentVisible('assignments', input.employmentRelationshipId, 'create');
 
   const employment = await prisma.employmentRelationship.findFirst({
     where: { id: input.employmentRelationshipId, tenantId: auth.tenantId },

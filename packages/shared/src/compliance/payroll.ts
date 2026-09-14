@@ -278,3 +278,14 @@ export function leaveEncashment(basicMonthly: number, encashableDays: number): n
 export function noticeRecovery(basicMonthly: number, unservedDays: number): number {
   return round2((basicMonthly / 30) * unservedDays);
 }
+
+// ---------------------------------------------------------------------------
+// List-row shapes — additive fields joined in by the API so a screen listing
+// several employments' rows can name each one rather than show a bare cuid.
+// ---------------------------------------------------------------------------
+
+export interface EmploymentNamedRow {
+  employmentRelationshipId: string;
+  employmentFullName: string | null;
+  employmentRecordCode: string | null;
+}

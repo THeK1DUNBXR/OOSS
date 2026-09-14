@@ -22,6 +22,7 @@ import {
   EMPLOYMENT_ENGAGEMENT_TYPES,
   COMPENSATION_REVISION_REASONS,
   PROMOTION_REVISION_REASON,
+  ASSIGNMENT_REASON_CODES,
   FUNDING_FRAMEWORKS,
   FUNDING_FRAMEWORK_LABELS,
   FUNDING_SOURCES,
@@ -32,6 +33,7 @@ import {
   ORGANIZATION_ROLES,
   ORGANIZATION_ROLE_HINTS,
   ORGANIZATION_ROLE_LABELS,
+  type AssignmentReasonCode,
   type BloodGroup,
   type CompensationRevisionReason,
   type EmploymentEngagementType,
@@ -1883,6 +1885,87 @@ export function ProposeCompensation({
       <p className="text-2xs text-ink-500">
         This does not change anybody's pay by itself — it opens a proposal Finance has to approve, and never the
         person who proposed it or the person it is about.
+      </p>
+    </CreateModal>
+  );
+}
+
+interface PositionOption {
+  id: string;
+  recordCode: string;
+  status: string;
+  job: { title: string };
+  orgUnit: { name: string; division: string | null };
+}
+
+/** Opens a seat change: a new Assignment, Draft until whoever approves it moves it on
+ * through the machine [Canon §14.3 R4]. Submitting here only proposes — the
+ * employee's card keeps showing their current seat until the last ACTIVATE. */
+export function NewAssignment({
+  open,
+  onClose,
+  employmentRelationshipId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  employmentRelationshipId: string;
+}) {
+  const [positionId, setPositionId] = useState('');
+  const [reasonCode, setReasonCode] = useState<AssignmentReasonCode | ''>('');
+  const [effectiveFrom, setEffectiveFrom] = useState(today());
+
+  const positions = useQuery({
+    queryKey: ['positions-for-assignment'],
+    queryFn: () => api.get<PositionOption[]>('/hr/positions'),
+    enabled: open,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    setPositionId('');
+    setReasonCode('');
+    setEffectiveFrom(today());
+  }, [open]);
+
+  return (
+    <CreateModal
+      open={open}
+      title="Change position"
+      submitLabel="Propose"
+      onClose={onClose}
+      invalidate={[['hr-employee', employmentRelationshipId]]}
+      onSubmit={() =>
+        api.post('/hr/assignments', {
+          employmentRelationshipId,
+          positionId,
+          reasonCode,
+          effectiveFrom,
+        })
+      }
+    >
+      <SelectInput
+        label="New position"
+        required
+        value={positionId}
+        onChange={setPositionId}
+        options={(positions.data ?? []).map((p) => ({
+          value: p.id,
+          label: `${p.job.title} — ${p.orgUnit.name} (${p.recordCode})`,
+        }))}
+        placeholder={positions.isLoading ? 'Loading positions…' : 'Choose a position'}
+      />
+      <SelectInput
+        label="Reason"
+        required
+        value={reasonCode}
+        onChange={setReasonCode}
+        options={ASSIGNMENT_REASON_CODES.map((r) => ({ value: r, label: r }))}
+        placeholder="Choose a reason"
+      />
+      <TextInput label="Effective from" type="date" required value={effectiveFrom} onChange={setEffectiveFrom} />
+      <p className="text-2xs text-ink-500">
+        This opens a proposal, Draft until it is submitted, approved, scheduled and activated — the same approval
+        the seat's own history already requires. Nothing about where they sit changes until it is activated.
       </p>
     </CreateModal>
   );

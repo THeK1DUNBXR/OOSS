@@ -35,7 +35,7 @@ import {
   Withheld,
 } from '../components/ui.js';
 import { NewButton } from '../components/forms.js';
-import { EditEmployeeProfile, NewLeaveRequest, NewRequisition, NewSkill, ProposeCompensation } from '../components/createForms.js';
+import { EditEmployeeProfile, NewAssignment, NewLeaveRequest, NewRequisition, NewSkill, ProposeCompensation } from '../components/createForms.js';
 import { humanize } from '../lib/words.js';
 
 // ---------------------------------------------------------------------------
@@ -410,11 +410,16 @@ interface EmployeeDetailView {
   assignments: Array<{
     id: string;
     rowStatus: string;
+    requestStatus: string;
     reasonCode: string;
     effectiveFrom: string;
     effectiveTo: string | null;
     position: { recordCode: string; job: { title: string }; orgUnit: { name: string; division: string | null } };
+    availableTransitions: string[];
   }>;
+  /** Withheld rather than guessed from a role slug — a viewer who cannot
+   * open a position for this person does not see the button at all. */
+  canCreateAssignment: boolean;
   leaveBalances: Array<{ id: string; balanceDays: string; heldDays: string; leaveType: { name: string; code: string } }>;
   onboarding: { id: string; status: string } | null;
   offboarding: { id: string; status: string } | null;
@@ -466,6 +471,7 @@ export function EmployeeDetail() {
   const { id = '' } = useParams();
   const [editOpen, setEditOpen] = useState(false);
   const [proposeCompOpen, setProposeCompOpen] = useState(false);
+  const [newAssignmentOpen, setNewAssignmentOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['hr-employee', id],
@@ -525,10 +531,21 @@ export function EmployeeDetail() {
         canEditEmploymentDetails={data.canEditEmploymentDetails}
       />
       <ProposeCompensation open={proposeCompOpen} onClose={() => setProposeCompOpen(false)} employmentRelationshipId={data.id} />
+      <NewAssignment open={newAssignmentOpen} onClose={() => setNewAssignmentOpen(false)} employmentRelationshipId={data.id} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
-          <Card title="Where they sit" subtitle="Dated, so last March stays answerable.">
+          <Card
+            title="Where they sit"
+            subtitle="Dated, so last March stays answerable. A seat move is a proposal — Draft until it is submitted, approved, scheduled and activated."
+            actions={
+              data.canCreateAssignment && (
+                <button className="btn-ghost" onClick={() => setNewAssignmentOpen(true)}>
+                  Change position
+                </button>
+              )
+            }
+          >
             <table className="table">
               <thead>
                 <tr>
@@ -538,6 +555,8 @@ export function EmployeeDetail() {
                   <th>From</th>
                   <th>To</th>
                   <th>Row</th>
+                  <th>Request</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -555,6 +574,18 @@ export function EmployeeDetail() {
                     <td className="num">{a.effectiveTo ? date(a.effectiveTo) : '—'}</td>
                     <td>
                       <StatusChip status={humanize(a.rowStatus)} tone={a.rowStatus === 'Effective' ? 'good' : 'neutral'} />
+                    </td>
+                    <td>
+                      <StatusChip status={humanize(a.requestStatus)} tone={tone(a.requestStatus)} />
+                    </td>
+                    <td>
+                      <Transitions
+                        collection="assignments"
+                        id={a.id}
+                        events={a.availableTransitions}
+                        invalidate={['hr-employee']}
+                        needsNote={['REJECT', 'CANCEL']}
+                      />
                     </td>
                   </tr>
                 ))}

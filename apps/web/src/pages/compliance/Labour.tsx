@@ -521,6 +521,8 @@ function PoshTab() {
 interface DisciplinaryCase {
   id: string;
   employmentRelationshipId: string;
+  employmentFullName: string | null;
+  employmentRecordCode: string | null;
   status: string;
   showCauseIssuedAt: string;
   replyDueAt: string;
@@ -552,7 +554,9 @@ function DisciplinaryTab() {
           <tbody>
             {cases.data.map((c) => (
               <tr key={c.id}>
-                <td className="font-mono text-2xs">{c.employmentRelationshipId}</td>
+                <td className="text-2xs" title={c.employmentRecordCode ?? c.employmentRelationshipId}>
+                  {c.employmentFullName ?? c.employmentRelationshipId}
+                </td>
                 <td><StatusChip status={c.status} /></td>
                 <td>{dateTime(c.showCauseIssuedAt)}</td>
                 <td>{dateTime(c.replyDueAt)}</td>

@@ -49,7 +49,7 @@ import { handler, str, bool, date, numeric } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan, canSeeMoney, scopeFor } from '../platform/permissions.js';
+import { assertCan, can, canSeeMoney, scopeFor } from '../platform/permissions.js';
 import {
   listOrgUnits, createOrgUnit, listJobs, createJob,
   listPositions, createPosition, transitionPosition,
@@ -223,9 +223,14 @@ router.get(
     // the money grant, since seeing pay and correcting a bank detail are
     // different questions.
     const revealLast4 = (await scopeFor('employees', 'edit')) === 'all';
+    // Whether this viewer may open "Change position" at all — a withheld
+    // signal the client reads instead of guessing from a role slug.
+    const canCreateAssignment = await can({ resource: 'assignments', verb: 'create' });
 
     return {
       ...redactRegulatedEmploymentFields(e, { revealLast4 }),
+      assignments: e.assignments.map((a) => ({ ...a, availableTransitions: assignmentMachine.allowedEvents(a.requestStatus as never) })),
+      canCreateAssignment,
       // Whether the viewer may see pay at all, kept separate from whether
       // there is any. A single null would conflate "withheld from you" with
       // "this person has no pay record", and the second is a problem somebody

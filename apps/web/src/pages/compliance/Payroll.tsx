@@ -219,7 +219,9 @@ function StructuresTab() {
           <tbody className="divide-y divide-ink-850">
             {structures.data.map((s: any) => (
               <tr key={s.id}>
-                <td className="py-1">{s.employmentRelationshipId}</td>
+                <td className="py-1" title={s.employmentRecordCode ?? s.employmentRelationshipId}>
+                  {s.employmentFullName ?? s.employmentRelationshipId}
+                </td>
                 <td className="py-1">{date(s.effectiveFrom)}</td>
                 <td className="py-1 text-right tabular-nums">{money(s.ctcAnnual)}</td>
                 <td className="py-1 text-right tabular-nums">{money(s.basic)}</td>
@@ -372,6 +374,7 @@ function PayslipsTab() {
         <table className="w-full text-sm">
           <thead className="text-left text-2xs uppercase text-ink-500">
             <tr>
+              <th className="px-3 py-1">Employee</th>
               <th className="px-3 py-1">Number</th>
               <th className="px-3 py-1">Period</th>
               <th className="px-3 py-1">Issued</th>
@@ -380,6 +383,9 @@ function PayslipsTab() {
           <tbody className="divide-y divide-ink-850">
             {payslips.data.map((p: any) => (
               <tr key={p.id} className="cursor-pointer hover:bg-ink-850" onClick={() => setOpen(p)}>
+                <td className="px-3 py-1" title={p.employmentRecordCode ?? p.employmentRelationshipId}>
+                  {p.employmentFullName ?? p.employmentRelationshipId}
+                </td>
                 <td className="px-3 py-1">{p.number}</td>
                 <td className="px-3 py-1">{p.payPeriod}</td>
                 <td className="px-3 py-1">{dateTime(p.issuedAt)}</td>

@@ -272,7 +272,8 @@ export async function listSalaryStructures(employmentRelationshipId?: string) {
     await assertEmploymentVisible('salary_structures', employmentRelationshipId);
     where.employmentRelationshipId = employmentRelationshipId;
   }
-  return prisma.salaryStructure.findMany({ where, orderBy: { effectiveFrom: 'desc' } });
+  const rows = await prisma.salaryStructure.findMany({ where, orderBy: { effectiveFrom: 'desc' } });
+  return attachEmploymentNames(rows);
 }
 
 export interface SalaryStructureInput {
@@ -634,7 +635,28 @@ export async function listPayslips(input: { employmentRelationshipId?: string; p
     where.employmentRelationshipId = input.employmentRelationshipId;
   }
 
-  return prisma.payslip.findMany({ where, orderBy: { issuedAt: 'desc' } });
+  const rows = await prisma.payslip.findMany({ where, orderBy: { issuedAt: 'desc' } });
+  return attachEmploymentNames(rows);
+}
+
+/**
+ * SalaryStructure/Payslip carry `employmentRelationshipId` as a plain column,
+ * not a Prisma relation, so a list of them names nobody by default — one
+ * batched lookup across the whole page, never a query per row.
+ */
+async function attachEmploymentNames<T extends { employmentRelationshipId: string }>(
+  rows: T[],
+): Promise<Array<T & { employmentFullName: string | null; employmentRecordCode: string | null }>> {
+  const auth = currentAuth();
+  const employments = await prisma.employmentRelationship.findMany({
+    where: { tenantId: auth.tenantId, id: { in: [...new Set(rows.map((r) => r.employmentRelationshipId))] } },
+    select: { id: true, recordCode: true, person: { select: { fullName: true } } },
+  });
+  const byId = new Map(employments.map((e) => [e.id, e]));
+  return rows.map((r) => {
+    const e = byId.get(r.employmentRelationshipId);
+    return { ...r, employmentFullName: e?.person.fullName ?? null, employmentRecordCode: e?.recordCode ?? null };
+  });
 }
 
 export async function getPayslip(id: string) {

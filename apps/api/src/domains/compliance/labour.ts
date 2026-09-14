@@ -760,9 +760,20 @@ export async function markPoshAnnualReportFiled(year: number) {
 export async function listDisciplinaryCases(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'disciplinary_cases', verb: 'view' });
-  return prisma.disciplinaryCase.findMany({
+  const rows = await prisma.disciplinaryCase.findMany({
     where: { tenantId: auth.tenantId, ...(employmentRelationshipId ? { employmentRelationshipId } : {}) },
     orderBy: { showCauseIssuedAt: 'desc' },
+  });
+  // DisciplinaryCase.employmentRelationshipId is a plain column, not a
+  // Prisma relation — one batched lookup for the whole list, not per row.
+  const employments = await prisma.employmentRelationship.findMany({
+    where: { tenantId: auth.tenantId, id: { in: [...new Set(rows.map((r) => r.employmentRelationshipId))] } },
+    select: { id: true, recordCode: true, person: { select: { fullName: true } } },
+  });
+  const byId = new Map(employments.map((e) => [e.id, e]));
+  return rows.map((r) => {
+    const e = byId.get(r.employmentRelationshipId);
+    return { ...r, employmentFullName: e?.person.fullName ?? null, employmentRecordCode: e?.recordCode ?? null };
   });
 }
 

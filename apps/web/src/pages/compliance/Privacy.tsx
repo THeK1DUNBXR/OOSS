@@ -140,6 +140,7 @@ function ConsentsTab() {
             <div className="flex items-center justify-between text-xs">
               <div>
                 <span className="font-medium text-ink-100">{c.purposeCode}</span>
+                <span className="ml-2 text-2xs text-ink-500" title={c.personId}>{c.personFullName ?? c.personId}</span>
                 {c.guardianOfPersonId && <span className="ml-2 text-2xs text-ink-500">guardian consent</span>}
               </div>
               <StatusChip status={c.status} tone={statusTone(c.status)} />
@@ -202,6 +203,9 @@ function RequestsTab() {
               <RecordCode code={r.recordCode} />
               <StatusChip status={r.status} tone={statusTone(r.status)} />
             </div>
+            <Field label="For">
+              <span title={r.personId}>{r.personFullName ?? r.personId}</span>
+            </Field>
             <Field label="Kind">{r.kind}</Field>
             <Field label="Due">{date(r.dueAt)}</Field>
             {r.refusalReason && <Field label="Refused because">{r.refusalReason}</Field>}

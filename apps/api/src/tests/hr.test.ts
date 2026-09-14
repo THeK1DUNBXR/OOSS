@@ -20,6 +20,7 @@ import {
   transitionEmployment,
   proposeCompensation,
   proposeAssignment,
+  transitionAssignment,
   currentCompensation,
   detectOverdueConfirmations,
   detectMissingCompensation,
@@ -697,6 +698,74 @@ describe('§14.5 — a promotion moves the seat and the money together', () => {
       }),
     );
     expect(err.status).toBe(422);
+  });
+});
+
+// ===========================================================================
+// A seat change reaches the employee's own detail once it is activated
+// ===========================================================================
+
+describe('Position and org-unit changes', () => {
+  it("HR creates an assignment for an employee and it shows as current once activated", async () => {
+    const { employment, position: originalPosition } = await makeEmployee('assignment-target');
+    const newPosition = await asUser('hr@kaizen.co.in', async () =>
+      prisma.position.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await (await import('../platform/recordCode.js')).nextRecordCode('POS'),
+          jobId: originalPosition.jobId,
+          orgUnitId: originalPosition.orgUnitId,
+          status: 'Open',
+        },
+      }),
+    );
+
+    const assignment = await asUser('hr@kaizen.co.in', () =>
+      proposeAssignment({
+        employmentRelationshipId: employment.id,
+        positionId: newPosition.id,
+        reasonCode: 'Transfer',
+        effectiveFrom: new Date(),
+      }),
+    );
+    expect(assignment.requestStatus).toBe('Draft');
+
+    // Through the same approval the machine already requires — SUBMIT,
+    // APPROVE, SCHEDULE, ACTIVATE — never a shortcut past it. HR proposes and
+    // schedules; only the chairman holds `assignments:approve`, the same
+    // split as a pay change.
+    await asUser('hr@kaizen.co.in', () => transitionAssignment(assignment.id, 'SUBMIT'));
+    await asUser('chairman@kaizen.co.in', () => transitionAssignment(assignment.id, 'APPROVE'));
+    await asUser('hr@kaizen.co.in', async () => {
+      await transitionAssignment(assignment.id, 'SCHEDULE');
+      await transitionAssignment(assignment.id, 'ACTIVATE');
+    });
+
+    const reloaded = await asUser('hr@kaizen.co.in', () => getEmployment(employment.id));
+    const current = reloaded.assignments.find((a) => a.rowStatus === 'Effective');
+    expect(current?.id).toBe(assignment.id);
+    expect(current?.positionId).toBe(newPosition.id);
+
+    // The seat it replaced is superseded, not deleted.
+    const original = reloaded.assignments.find((a) => a.positionId === originalPosition.id);
+    expect(original?.rowStatus).toBe('Superseded');
+  });
+
+  it('an employee cannot create an assignment for themselves', async () => {
+    const mine = await employmentFor('divya@kaizen.co.in');
+    const position = await unscopedPrisma.position.findFirstOrThrow({ where: { tenantId: TENANT, status: 'Filled' } });
+
+    const err = await expectReject(() =>
+      asUser('divya@kaizen.co.in', () =>
+        proposeAssignment({
+          employmentRelationshipId: mine.id,
+          positionId: position.id,
+          reasonCode: 'Transfer',
+          effectiveFrom: new Date(),
+        }),
+      ),
+    );
+    expect([403, 404]).toContain(err.status);
   });
 });
 

@@ -278,3 +278,10 @@ export const REGISTER_NAMES: Record<'wages' | 'leave' | 'muster-roll' | 'employe
   'muster-roll': 'Muster Roll',
   employees: 'Register of Employees (Form Q)',
 };
+
+/** A disciplinary-case list row, with the employment named rather than a bare cuid. */
+export interface DisciplinaryCaseNamedRow {
+  employmentRelationshipId: string;
+  employmentFullName: string | null;
+  employmentRecordCode: string | null;
+}

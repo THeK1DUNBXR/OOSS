@@ -16,7 +16,9 @@ import {
   grantConsent,
   withdrawConsent,
   grantedConsentCodes,
+  listConsentsForPerson,
   raiseDataRequest,
+  listDataRequests,
   fulfilDataRequest,
   publishNotice,
   acknowledgeNotice,
@@ -90,6 +92,10 @@ describe('CMP-DPD-001: a regulated read via a purpose that requires consent', ()
     );
     const codes = await grantedConsentCodes(TENANT, person.id);
     expect(codes).toContain('employment');
+
+    // The list names the data principal, not just their cuid.
+    const consents = await asUser('operations@kaizen.co.in', () => listConsentsForPerson(person.id));
+    expect(consents.every((c) => c.personFullName === person.fullName)).toBe(true);
   });
 
   it('withdrawing a consent removes it from grantedConsentCodes', async () => {
@@ -190,6 +196,11 @@ describe('Data-principal requests', () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('due-date'));
     const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'access' }));
     expect(request.dueAt.getTime()).toBe(requestDueAt(request.receivedAt, DATA_REQUEST_DUE_DAYS).getTime());
+
+    // An unfiltered listing — several people's requests together — still
+    // names each principal rather than showing a bare cuid.
+    const requests = await asUser('operations@kaizen.co.in', () => listDataRequests({}));
+    expect(requests.find((r) => r.id === request.id)?.personFullName).toBe(person.fullName);
   });
 
   it('an employee can raise their own request', async () => {

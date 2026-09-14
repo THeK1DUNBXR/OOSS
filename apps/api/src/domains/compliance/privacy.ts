@@ -258,7 +258,12 @@ export async function withdrawConsent(id: string, reason?: string) {
 export async function listConsentsForPerson(personId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'consents', verb: 'view', record: { ownerPartyId: personId } });
-  return prisma.consent.findMany({ where: { tenantId: auth.tenantId, personId }, orderBy: { createdAt: 'desc' } });
+  const rows = await prisma.consent.findMany({ where: { tenantId: auth.tenantId, personId }, orderBy: { createdAt: 'desc' } });
+  // Consent.personId carries no Prisma relation (guardianOfPersonId can name
+  // a different person entirely, so the column is deliberately untyped as a
+  // foreign key) — one batched lookup, not one query per row.
+  const person = await prisma.person.findFirst({ where: { id: personId, tenantId: auth.tenantId }, select: { fullName: true } });
+  return rows.map((r) => ({ ...r, personFullName: person?.fullName ?? null }));
 }
 
 /**
@@ -403,7 +408,7 @@ export async function raiseDataRequest(input: { personId: string; kind: string; 
 export async function listDataRequests(filter: { status?: string; personId?: string } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'data_requests', verb: 'view' });
-  return prisma.dataPrincipalRequest.findMany({
+  const rows = await prisma.dataPrincipalRequest.findMany({
     where: {
       tenantId: auth.tenantId,
       ...(filter.status ? { status: filter.status } : {}),
@@ -412,6 +417,16 @@ export async function listDataRequests(filter: { status?: string; personId?: str
     orderBy: { receivedAt: 'desc' },
     take: 200,
   });
+  // DataPrincipalRequest.personId carries no Prisma relation, so this is one
+  // batched lookup across every row on the page rather than one per row —
+  // the unfiltered listing mixes requests from many people, and without a
+  // name a reviewer sees nothing but a cuid per row.
+  const people = await prisma.person.findMany({
+    where: { tenantId: auth.tenantId, id: { in: [...new Set(rows.map((r) => r.personId))] } },
+    select: { id: true, fullName: true },
+  });
+  const byId = new Map(people.map((p) => [p.id, p.fullName]));
+  return rows.map((r) => ({ ...r, personFullName: byId.get(r.personId) ?? null }));
 }
 
 async function getDataRequest(id: string) {
