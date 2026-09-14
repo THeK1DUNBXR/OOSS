@@ -150,8 +150,8 @@ export function isLikelyMatch(input: {
 // ---------------------------------------------------------------------------
 
 /** A minimal, correct CSV formatter: quotes a field only when it needs it. */
-export function toCsv(headers: string[], rows: Array<Array<string | number | null>>): string {
-  const escape = (v: string | number | null): string => {
+export function toCsv(headers: string[], rows: Array<Array<string | number | null | undefined>>): string {
+  const escape = (v: string | number | null | undefined): string => {
     const s = v === null || v === undefined ? '' : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };

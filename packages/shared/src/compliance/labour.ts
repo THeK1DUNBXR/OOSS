@@ -1,3 +1,4 @@
+import { toCsv } from './books.js';
 /**
  * Compliance — F. Labour law and conduct (docs/plan/compliance.md).
  *
@@ -269,11 +270,7 @@ export function csvCell(value: string | number | null | undefined): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-export function toCsv(headers: string[], rows: Array<Array<string | number | null | undefined>>): string {
-  const lines = [headers.map(csvCell).join(',')];
-  for (const row of rows) lines.push(row.map(csvCell).join(','));
-  return lines.join('\r\n');
-}
+// `toCsv` lives in ./books.ts and is shared by every register export.
 
 export const REGISTER_NAMES: Record<'wages' | 'leave' | 'muster-roll' | 'employees', string> = {
   wages: 'Register of Wages',
