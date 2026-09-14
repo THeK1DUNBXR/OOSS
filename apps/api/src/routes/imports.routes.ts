@@ -27,7 +27,7 @@ const KINDS: ImportKind[] = [
   'tally_ledger', 'bank_statement', 'employees', 'salary',
   'attendance', 'transactions', 'chart_of_accounts',
   'template_courses', 'template_batches', 'template_colleges', 'template_clients',
-  'template_students', 'template_contacts', 'template_staff',
+  'template_students', 'template_contacts', 'template_staff', 'template_opening_register',
   'template_ledger_accounts', 'template_ledger_categories', 'template_vendor_bills',
 ];
 

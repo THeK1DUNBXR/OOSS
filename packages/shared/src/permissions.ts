@@ -188,6 +188,26 @@ export const RESOURCES = [
   // Cross-cutting.
   'tasks',
   'imports',
+  // Equity & board (phase 0 declares the resources so boot autosync grants
+  // them once phase 1 fills in the cells; §3.4 of the equity-portal plan).
+  'cap_table',
+  'share_classes',
+  'holders',
+  'share_ledger',
+  'share_certificates',
+  'valuations',
+  'entity_documents',
+  'board_meetings',
+  'resolutions',
+  'board_documents',
+  'compliance',
+  'group',
+  'holdings',
+  // Rounds, instruments, valuations, scenarios (equity-portal plan §6 phase 4).
+  'rounds',
+  // ESOP (equity-portal plan §5/§6, phase 5).
+  'esop_plans',
+  'option_grants',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];
@@ -218,7 +238,19 @@ export type Resource = (typeof RESOURCES)[number];
  * holds neither `create` nor `edit`. Neither can move a salary alone, and that
  * is a property of the matrix rather than of anybody's restraint.
  */
-export const ROLE_SLUGS = ['chairman', 'finance_head', 'hr_ops_manager', 'employee'] as const;
+export const ROLE_SLUGS = [
+  'chairman',
+  'finance_head',
+  'hr_ops_manager',
+  'employee',
+  // The equity & board portal. `shareholder` and `director` are `portal`
+  // archetype — they never see the ERP shell, only their own holdings and (for
+  // a director) the board; `company_secretary` is `workspace` — they keep the
+  // register but hold no `approve` anywhere in it.
+  'shareholder',
+  'director',
+  'company_secretary',
+] as const;
 
 export type RoleSlug = (typeof ROLE_SLUGS)[number];
 
@@ -265,6 +297,14 @@ export const MONEY_FIELDS = [
   'ctc',
   'basicPay',
   'monthlyRate',
+  // The register. A director (`cap_table:V@all`, no `financial`) sees counts
+  // and percentages, never what a share cost or what paid-up capital is worth
+  // — the same masking a payslip gets, on the same mechanism.
+  'pricePerShare',
+  'faceValue',
+  'equityValue',
+  'paidUpAmount',
+  'stampDutyPaid',
 ];
 
 /**
@@ -346,4 +386,12 @@ export const ROLE_CLASSIFICATION_CEILING: Record<string, SensitivityClass> = {
   // ceiling: a ceiling below `regulated` would hide an employee's own PAN from
   // them, which protects nobody.
   employee: 'regulated',
+  // A holder or a director outside the company is never shown HR's regulated
+  // data — they see the entity's own regulated register (cap table, board
+  // minutes) through the affiliation-scoped grants, and no more.
+  shareholder: 'confidential',
+  director: 'confidential',
+  // Keeps the register — reads statutory identifiers on holders the same way
+  // finance and HR read them on employees, which is the job rather than rank.
+  company_secretary: 'regulated',
 };

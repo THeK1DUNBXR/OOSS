@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import { AFFILIATION_LABELS, type EntityOption, type TenantKind } from '@kaizen/shared';
 import { useSession } from '../lib/session.js';
+import { words } from '../lib/words.js';
 
 /**
  * Four roles, described rather than offered as demo logins.
@@ -17,11 +19,50 @@ const ROLES = [
   { label: 'Chairman', note: 'Everything.' },
 ];
 
+const KIND_WORDS: Record<TenantKind, string> = {
+  holding: 'Holding company',
+  subsidiary: 'Subsidiary',
+  standalone: 'Company',
+};
+
+function roleWords(slugs: string[]): string {
+  return slugs
+    .map((s) => AFFILIATION_LABELS[s as keyof typeof AFFILIATION_LABELS] ?? words(s))
+    .join(', ');
+}
+
 export function Login() {
-  const { signIn, error } = useSession();
+  const { signIn, verifyMfa, mfaChallengeToken, error, notice, pendingSelection, chooseEntity } = useSession();
+
+  // Three screens, in the order a sign-in passes through them: the entity
+  // picker when the principal holds several, the code prompt when the chosen
+  // entity's account has a second factor, otherwise the form.
+  if (pendingSelection) {
+    return <EntityPicker entities={pendingSelection.entities} onChoose={chooseEntity} error={error} />;
+  }
+
+  return <SignInForm signIn={signIn} verifyMfa={verifyMfa} mfaChallengeToken={mfaChallengeToken} error={error} notice={notice} />;
+}
+
+function SignInForm({
+  signIn,
+  verifyMfa,
+  mfaChallengeToken,
+  error,
+  notice,
+}: {
+  signIn: (email: string, password: string) => Promise<void>;
+  verifyMfa: (code: string) => Promise<void>;
+  mfaChallengeToken: string | null;
+  error: string | null;
+  notice: string | null;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const emailId = useId();
+  const passwordId = useId();
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +75,48 @@ export function Login() {
       setBusy(false);
     }
   };
+
+  const submitCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await verifyMfa(code);
+    } catch {
+      /* surfaced via session error */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (mfaChallengeToken) {
+    return (
+      <div className="flex min-h-full items-center justify-center p-6">
+        <div className="card w-full max-w-sm p-6">
+          <h1 className="text-xl">Enter your code</h1>
+          <p className="mt-1 text-2xs leading-relaxed text-ink-500">
+            This account has a second factor. Enter the six-digit code from your authenticator app.
+          </p>
+          <form onSubmit={submitCode} className="mt-4 space-y-3">
+            <div>
+              <label className="label">Code</label>
+              <input
+                className="input"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                inputMode="numeric"
+                autoFocus
+                maxLength={6}
+              />
+            </div>
+            {error && <p className="text-2xs text-band-critical">{error}</p>}
+            <button className="btn-primary w-full py-2" disabled={busy || code.length !== 6}>
+              {busy ? 'Verifying…' : 'Verify'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full items-center justify-center p-6">
@@ -51,14 +134,28 @@ export function Login() {
             </div>
           </div>
 
+          {notice && (
+            <p className="mb-3 rounded-md border border-band-watch/40 bg-band-watch/10 px-3 py-2 text-2xs font-medium text-band-watch">
+              {notice}
+            </p>
+          )}
+
           <form onSubmit={submit} className="space-y-3">
             <div>
-              <label className="label">Email</label>
-              <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="username" />
+              <label htmlFor={emailId} className="label">Email</label>
+              <input
+                id={emailId}
+                className="input"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                autoComplete="username"
+              />
             </div>
             <div>
-              <label className="label">Password</label>
+              <label htmlFor={passwordId} className="label">Password</label>
               <input
+                id={passwordId}
                 className="input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -96,6 +193,75 @@ export function Login() {
             Your account is created for you. Ask them to reset it if you cannot get in.
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shown in place of the form once `login()` finds the principal holds more
+ * than one entity. `suggested` (the email-domain hint, §3.2 — never the
+ * reason an entity is reachable) is listed first with a quiet note; every
+ * other entity follows in the order the server returned.
+ */
+function EntityPicker({
+  entities,
+  onChoose,
+  error,
+}: {
+  entities: EntityOption[];
+  onChoose: (tenantId: string) => Promise<void>;
+  error: string | null;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const choose = async (tenantId: string) => {
+    setBusy(tenantId);
+    try {
+      await onChoose(tenantId);
+    } catch {
+      /* surfaced via session error */
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const ordered = [...entities].sort((a, b) => (b.suggested ? 1 : 0) - (a.suggested ? 1 : 0));
+
+  return (
+    <div className="flex min-h-full items-center justify-center p-6">
+      <div className="card w-full max-w-lg p-6">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-sm border-2 border-gold bg-gold font-display text-lg font-black text-ink-100">
+            K
+          </div>
+          <div>
+            <h1 className="text-xl">Which entity?</h1>
+            <p className="text-2xs font-bold uppercase tracking-[0.09em] text-ink-500">
+              You hold a relationship with more than one
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {ordered.map((e) => (
+            <button
+              key={e.tenantId}
+              onClick={() => choose(e.tenantId)}
+              disabled={busy !== null}
+              className="flex w-full flex-col items-start gap-0.5 rounded-md border border-ink-800 bg-ink-950 px-3.5 py-3 text-left transition-shadow hover:shadow-raised disabled:opacity-60"
+            >
+              <span className="text-sm font-semibold text-ink-100">{e.name}</span>
+              <span className="text-2xs text-ink-500">
+                {KIND_WORDS[e.kind]} · {roleWords(e.roleSlugs)}
+              </span>
+              {e.suggested && <span className="mt-0.5 text-2xs italic text-accent-soft">Suggested from your email</span>}
+              {busy === e.tenantId && <span className="mt-1 text-2xs text-ink-500">Opening…</span>}
+            </button>
+          ))}
+        </div>
+
+        {error && <p className="mt-3 text-2xs text-band-critical">{error}</p>}
       </div>
     </div>
   );

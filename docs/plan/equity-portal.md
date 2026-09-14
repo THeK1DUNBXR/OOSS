@@ -1,0 +1,1194 @@
+# Equity, Shareholder & Board portal — plan
+
+Status: **built 14 Sep 2026.** Every phase in §6 (0 through 6b) plus the
+group-dependent exports (6c) is implemented, merged and pushed on
+`claude/modest-newton-2kukvo`; the merged tree passes 472 tests (384 before
+this work). The "as built" notes at the end record where each phase departed
+from the brief and why. Phases were built by separate implementing agents in
+parallel worktrees and merged in the order 0, 1, 2, 4, 5, 3, 6a, 6b, 6c.
+
+What was asked for: a new domain, reachable only by shareholders and board
+members, for equity management; connected to the ERP; one tenant per subsidiary
+of Kaizen Infinities; routing by the user's email domain; the chairman signing
+in through the group and seeing every subsidiary, consolidated and isolated.
+
+What this plan does with that: keeps the intent, changes three mechanisms
+(§3.1–§3.3), because as literally stated they break invariants the platform
+is built on or do not survive the first external investor.
+
+| | Section |
+|---|---|
+| §1 | The answers, and what each one decided |
+| §1a | Three consequences to confirm with the company secretary |
+| §2 | What the codebase is today, and what this touches |
+| §3 | Decisions, and the failures each one prevents |
+| §4 | What the market does, and what is deliberately not copied |
+| §5 | Data model |
+| §6 | Phases, each a brief for Sonnet |
+| §7 | Conventions the implementer must hold to |
+
+---
+
+## 1. The answers, and what each one decided
+
+Answered by the chairman on 14 Sep 2026.
+
+1. **The group.** KIPL is the holding. The three divisions — Software, Skill
+   Development, Education — become subsidiaries in the near future; the
+   platform must be ready for that. Shareholders are entered by the chairman.
+   *Decided:* the existing `kaizen` tenant is the holding tenant. Every
+   subsidiary tenant records the division it grew out of
+   (`Tenant.config.originDivision`), so the group structure chart can show
+   the three divisions today as *not yet incorporated* and the same nodes
+   become real entities when the tenants exist. A later phase (6b) carries the
+   division-tagged rows — transactions, employees, courses — into the new
+   tenant; nothing in phases 0–5 assumes it has happened.
+2. **Hostname.** One portal host with an entity picker. *Decided:* §3.1 as
+   written; one `routes` entry on the Worker.
+3. **Emails.** Some corporate, some personal. *Decided:* §3.2 as written;
+   email domain is a hint only.
+4. **What a shareholder or director sees.** A holder or director *of the
+   holding* sees every entity's financial summary; one *of a subsidiary only*
+   sees that subsidiary's; the same person can be both, or be on several
+   subsidiaries. *Decided:* the rule is exactly the affiliation model. A
+   person's reach is the union of the entities they hold an affiliation in,
+   and the holding tenant's snapshots carry every subsidiary's summary, so a
+   holding-level portal user sees all of them without any cross-tenant read.
+   The financial block of a snapshot is therefore published unconditionally
+   (the earlier idea of the finance head choosing what goes up is dropped);
+   what goes up is the same summary The Business shows: cash, P&L by
+   division, headcount.
+5. **"Consolidated".** Explained: *aggregated* means adding each company's
+   figures together. *Consolidated* (the Companies Act meaning, s.129(3),
+   Ind AS 110) means adding them and then removing money that only moved
+   between group companies — KIPL invoicing the Education subsidiary for
+   software, a subsidiary paying KIPL a dividend, KIPL's own investment in a
+   subsidiary sitting as an asset. Without those removals the group looks
+   bigger than it is. *Decided:* the group screen shows each entity and a
+   **group total before inter-company eliminations**, labelled in those
+   words, and every transaction whose counterparty is another group entity
+   is flagged `intercompany` so a chartered accountant can do the
+   consolidation from a list rather than a hunt. Producing consolidated
+   statements themselves is not built.
+6. **Instruments.** Everything the Companies Act allows a private limited
+   company. *Decided:* equity; preference (compulsorily or optionally
+   convertible, redeemable); debentures (compulsorily or optionally
+   convertible, non-convertible); convertible notes (DPIIT start-ups only);
+   warrants; ESOP options; sweat equity (s.54); bonus (s.63); rights issue
+   (s.62(1)(a)); private placement (s.42); preferential allotment (s.62(1)(c));
+   buy-back (s.68); reduction of capital (s.66, recorded, not workflowed —
+   it needs the tribunal). Phase 1 ships equity and preference classes and
+   allotment/transfer; phase 4 the rest.
+7. **Register keepers.** Company secretary and finance. *Decided:* §3.4 as
+   written; the chairman enters holders and their sign-ins directly (see 10).
+8. **Dematerialised.** Explained: shares held as electronic entries with a
+   depository (NSDL or CDSL, through a registrar) instead of paper
+   certificates, the way a bank account replaces cash. See §1a.1 for why it
+   matters to this group specifically.
+9. **Board.** Full: meetings with notice, agenda, attendance, minutes and the
+   SS-1 timelines, plus circular resolutions. *Decided:* phase 3 as written.
+10. **Sign-in for outsiders.** No invite flow, no one-time code. The
+    chairman creates the account and sets the password. *Decided:* a
+    "Create sign-in" action on a holder or board member (chairman or company
+    secretary), which creates the principal and a per-entity user, with the
+    password shown once, as the seed does today; the same action resets a
+    password. No email is sent by the platform. The risk accepted: a
+    certificate-bearing surface protected by a password alone.
+11. **Foreign shareholder.** One NRI. *Decided:* residency and investment
+    basis are recorded on every holder (§5); FEMA reporting items are
+    generated for repatriable holdings (§1a.3); phase 6 includes them.
+
+---
+
+## 1a. Three consequences to confirm with the company secretary
+
+These follow from the answers and change the compliance load of the whole
+group, not just the software. They are stated as the platform will state
+them; a company secretary should confirm before the subsidiaries are formed.
+
+1. **Forming subsidiaries ends "small company" status — for KIPL and for
+   each subsidiary.** Section 2(85) excludes a holding company and a
+   subsidiary company from the definition regardless of size. On the day the
+   first subsidiary is incorporated: four board meetings a year with a
+   120-day gap instead of two; MGT-7 instead of MGT-7A; and **Rule 9B
+   dematerialisation becomes mandatory** for KIPL (and for the subsidiaries
+   unless the wholly-owned-subsidiary exemption, which the research could
+   not verify, applies). Until then KIPL is almost certainly a small company
+   and paper certificates are fine. The platform models demat status per
+   entity and raises a compliance item the moment a tenant becomes a holding
+   or a subsidiary.
+2. **Group total is not a consolidated statement.** A holding company must
+   prepare consolidated financial statements (s.129(3)) and file AOC-1 for
+   each subsidiary. The platform gives the per-entity figures, the
+   inter-company flag and the AOC-1 data; the consolidation is an accountant's
+   act.
+3. **The NRI's holding decides the FEMA work.** An NRI investing on a
+   *non-repatriation* basis (Schedule IV of the NDI Rules) is treated as a
+   resident investment: no FC-GPR, no FC-TRS. On a *repatriation* basis every
+   allotment needs FC-GPR within 30 days, every transfer with a resident
+   needs FC-TRS within 60 days, pricing must meet the FEMA fair-value floor,
+   and the FLA return is due 15 July each year. The holder record carries
+   the basis; the calendar follows from it.
+
+---
+
+## 2. What the codebase is today, and what this touches
+
+The full briefings are long; this is what matters for the design.
+
+**Tenancy.** `apps/api/src/platform/db.ts` — a Prisma extension injects
+`tenantId` into every query and throws if none is in scope. Tenant comes from
+the `User` row re-read on every request (`apps/api/src/lib/http.ts:29-71`),
+never from a header or hostname. There is no parent tenant, no group, no
+cross-tenant read path of any kind. The header comment in `db.ts` says no role
+bypasses the gate, including the chairman. The README says the same. **This
+plan keeps that true.**
+
+**Identity.** `User` is `@@unique([tenantId, email])` — one user per tenant,
+no cross-tenant identity. Roles live on `Affiliation.roleSlug`, several per
+person, switched inside one tenant by `POST /auth/switch-context`. A person
+with no active affiliation cannot sign in. Four roles exist:
+`chairman`, `finance_head`, `hr_ops_manager`, `employee`.
+
+**Surfaces.** `AccessRole.archetype` accepts `command | workspace | portal |
+console`. `portal` is declared in `packages/shared/src/api.ts:99`, filtered by
+`navigationFor()` in `apps/api/src/domains/surfaces.ts`, and used by nothing.
+The client has no hostname awareness anywhere; the Worker strips `Host`.
+
+**Company.** `CompanyProfile` (one per tenant) already carries `cin`, `pan`,
+`gstin`, `legalName`, `documentPrefix` (`KIPL`). Document numbering
+(`apps/api/src/platform/documentNumber.ts`) has three series letters
+(`I`, `R`, `F`); a certificate series fits there. `EmploymentRelationship.
+legalEntity` is a free string defaulting to "Kaizen Infinities Pvt Ltd" —
+the only other place a legal entity is named.
+
+**Money.** A capital injection is already modelled: a `Transaction` on a
+`LedgerCategory` of `kind: 'equity'`, excluded from P&L by `isTrading()` and
+counted in cash (`packages/shared/src/finance.ts:38-56`, `books.ts:1037`). The
+register must point at those rows, not post beside them.
+
+**Governance.** `emit()` with hash-chained events named
+`kz.<ctx>.<entity>.<verb>`; `assertCan()` at the top of every domain function;
+`approvals.ts` with the self-dealing bar; `AuditRecord` for regulated reads.
+Nav is `NAV_REGISTRY` in `apps/api/src/seed/bootstrap.ts`, reconciled at boot.
+New resources go in `packages/shared/src/permissions.ts` **and**
+`apps/api/src/seed/grants.ts` (a test asserts parity), and boot grants them.
+
+**Web.** One `<Routes>` block in `apps/web/src/main.tsx`, no lazy loading, no
+data grid, no forms library, recharts used in one file, a print-sheet chassis
+in `apps/web/src/pages/documentSheet.tsx` that a share certificate can reuse.
+
+---
+
+## 3. Decisions, and the failures each one prevents
+
+### 3.1 The hostname selects a surface, never a tenant or a permission
+
+`worker/index.ts`, `apps/web/src/main.tsx`
+
+The portal host (`equity.<domain>`) serves the same bundle and talks to the
+same API. At boot the client reads `window.location.hostname` and, if it is a
+portal host, renders the **portal shell**: no ERP sidebar, an entity picker,
+the shareholder/director surfaces only. Roles with `archetype: 'portal'`
+(§3.4) get the portal shell on either host; ERP roles opening the portal host
+are offered the portal view of the entities they are affiliated to, which for
+the chairman is every one of them.
+
+Why not route the tenant by host: the API already refuses to trust anything
+but the token for tenancy, and the Worker strips `Host` before forwarding.
+Making the host authoritative would add a second tenancy mechanism that the
+gate cannot see. "Exclusive for shareholders and board members" is a property
+of grants — a person without a `shareholder`/`director`/`company_secretary`
+affiliation has no navigation on that host and no route resolves — not of DNS.
+
+The Worker gets a `PORTAL_HOSTS` var so the client can be told which hosts are
+portals without a second build (`/api/meta/version` already carries build
+facts; a `surfaceHosts` field is added there).
+
+### 3.2 A person is one identity across entities; routing is by relationship, not by email domain
+
+`apps/api/prisma/schema.prisma` (`Principal`), `apps/api/src/lib/auth.ts`
+
+New model `Principal { id, email @unique, passwordHash, secondFactor,
+status }`. `User.principalId` links every per-tenant `User` to it; the
+per-tenant `passwordHash` is migrated into the principal (same email ⇒ same
+principal) and dropped. Sign-in verifies the principal, then lists the
+tenants in which it holds an active affiliation. One ⇒ silent. Several ⇒ the
+entity picker (portal) or the existing context switcher extended with an
+entity level (ERP). `POST /auth/switch-entity` issues a token for the chosen
+tenant's `User`. The token shape does not change; the gate does not change.
+
+Email domain is kept as what it can honestly be: a **hint**.
+`Tenant.config.emailDomains` maps `sub-a.com` ⇒ that tenant so the picker
+pre-selects it. It is never the reason a person can see an entity.
+
+Why: the chairman at `chairman@kaizen.co.in` holds a director affiliation in
+each subsidiary — that is a fact about relationships, and it is what should
+open the subsidiary, so that removing them from a board removes the access on
+the next request (the platform's existing revocation guarantee). An investor
+at a Gmail address holding shares in two subsidiaries has no domain to route
+by at all, and would otherwise need two passwords.
+
+### 3.3 The tenant gate stays absolute; the group view is built from upward publication
+
+`apps/api/src/domains/group.ts`, `apps/api/src/jobs/scheduler.ts`
+
+`Tenant.parentTenantId` (nullable) and `Tenant.kind: 'holding' | 'subsidiary'
+| 'standalone'`. A subsidiary **publishes** an `EntitySnapshot` into its
+parent tenant — cap table summary, holder list with percentages, share
+classes, board calendar, open resolutions, the financial summary (the same
+cash, P&L-by-division and headcount figures The Business shows), valuation,
+compliance flags — written
+under `asSystem(parentTenantId)` on the relevant events and by a nightly job.
+The chairman's group dashboard reads **only rows in the holding tenant**.
+Look-through ownership (founder 60% of KIPL × KIPL 70% of Sub A + founder 5%
+direct = 47%) is computed over snapshots in the holding tenant.
+
+Isolated view = switch entity (§3.2) into the subsidiary and use its own
+screens. No consolidated screen ever queries a subsidiary's tables directly.
+
+Why not a cross-tenant read grant for the chairman: it would be the first code
+path where a request in tenant A reads tenant B's rows, and every later
+feature would be tempted to use it. Publication keeps every read inside one
+tenant and leaves an event on both sides. The cost is staleness measured in seconds,
+which the dashboard states ("as published 14 Sep 09:41").
+
+Each snapshot carries the `hash` of the last subsidiary event it reflects, so
+the group view can say which entity is behind and by how much rather than
+silently mixing ages.
+
+### 3.4 Three new roles, one archetype, and the self-dealing bar reaches the register
+
+`packages/shared/src/permissions.ts`, `apps/api/src/seed/grants.ts`
+
+| Role | Archetype | Holds |
+|---|---|---|
+| `shareholder` | portal | `holdings:V@own`, `certificates:V@own`, `entity_documents:V@all` (portal class), `valuations:V@all`, `resolutions:V@own` (where they are a voter, e.g. shareholder resolutions) |
+| `director` | portal | everything a shareholder holds, plus `board_meetings:V@all`, `resolutions:V,approve@all` (votes), `board_documents:V@all`, `cap_table:V@all` |
+| `company_secretary` | workspace | `cap_table:VCEX`, `share_ledger:VC` (no edit — the ledger is append-only), `certificates:VC`, `board_meetings:VCE`, `resolutions:VCE`, `compliance:VCE`; **no `approve`** |
+| `finance_head` (existing) | | `+ share_ledger:approve`, `cap_table:V`, `valuations:VCE` |
+| `chairman` (existing) | | everything, as now; the bar still blocks approving an allotment or transfer they are a party to |
+
+An allotment or transfer is proposed by the secretary and **approved** through
+`approvals.ts`, whose self-dealing bar already reroutes an approver who is the
+subject. A transfer where the chairman is transferee goes to the finance head.
+
+### 3.5 The register is a ledger; the cap table is its sum
+
+`apps/api/src/domains/equity.ts`
+
+`ShareTransaction` rows are append-only (allotment, transfer, conversion,
+buy-back, split, bonus, forfeiture, cancellation), each with a `reversalOfId`
+like `Transaction`. Holdings and the cap table are computed from them, as
+leave balances are from the leave ledger. A `ShareCertificate` is issued
+against a range of distinctive numbers and is a document: numbered from a
+new `S` series (`KIPL/S/26-27/001`), fixed at issue, printed from the same
+sheet chassis as an invoice, superseded (never edited) on transfer or split.
+
+### 3.6 The register references the books; it never posts to them
+
+An allotment for cash carries `considerationTransactionId` pointing at the
+`Transaction` of `kind: 'equity'` that already lifts cash and stays out of
+P&L. If the money has not arrived, the allotment is `pending_consideration`
+and says so. Dividends, when they come, are `Transaction`s the finance head
+posts and the register references. Module boundary written down:
+**EQT never holds money movement; FIN never holds share ownership.**
+
+### 3.7 Say what is known
+
+The cap table shows *issued* and *fully diluted* as two columns, because the
+Companies Act uses "total share capital" for subsidiary status and FEMA uses
+fully diluted, and one number would be wrong for one of them. Valuation shows
+the date, the valuer and the basis, or "No valuation on record". Compliance
+counters (days since last board meeting against 120) count from recorded
+meetings only and say "No meeting recorded" rather than "overdue" when the
+register is empty. The group figure is headed *Group total before
+inter-company eliminations*, never *Consolidated*.
+
+---
+
+## 4. What the market does, and what is deliberately not copied
+
+Researched: Vestd (UK + India), Carta, Ledgy, Qapita, Hissa, Eqvista, Pulley,
+Capdesk, Diligent Boards/Entities, BoardEffect, OnBoard, Equidam.
+
+**Copied.** Portal role tiers (Vestd: investors see ownership summary,
+employees see grants, finance sees all). Entity-as-stakeholder (Pulley: a
+subsidiary's cap table lists the holding as an institutional holder linked to
+its own account — this is §3.3 with a link instead of a grant). Rights matrix
+per class (Hissa: liquidation preference, anti-dilution, pro-rata, board
+seat, information rights). Board consents drafted from cap-table data (Carta).
+Structure chart from ownership edges (Diligent Entities). India instruments as
+legal objects — equity, CCPS, CCD, convertible note, warrant, option, phantom
+— with conversion events that spawn allotments (Qapita; iSAFE modelled as
+CCPS because a SAFE does not exist in Indian law).
+
+**Not copied.** Marketplace/liquidity desks (Hissa), 409A (no Indian
+standing; India needs a merchant-banker FMV for ESOP perquisite), token cap
+tables, investor MOIC/IRR portfolios, HRIS integrations (the HRM is in the
+same system). No vendor combines a statutory register, India filings, a
+shareholder portal and a real meetings module; that combination is what an
+in-house build is for.
+
+**Regulatory anchors the model carries** (details with sources in the
+research report; the model stores the data these forms need, exports come in
+phase 6): MGT-1 register of members per class; SH-1 certificates within two
+months of allotment; SH-4 transfers, 60/30-day windows; PAS-3 within 15/30
+days of allotment; SH-7 for capital changes; MGT-14 for special resolutions;
+MGT-7/7A annual return; Rule 12 ESOP (one-year minimum vesting, SH-6
+register, promoter exclusion with DPIIT relief); Rule 9B demat + PAS-6;
+s.173 / SS-1 board meetings (four a year, ≤120-day gap, 7-day notice, minutes
+within 30 days, s.179(3) matters at a meeting not by circulation); s.175
+circular resolutions; MBP-1 director interests; s.2(87) subsidiary test,
+s.19 no subsidiary may hold its holding's shares (the graph refuses that
+edge), two-layer limit; s.90 SBO (≥10% direct or indirect — computed from the
+look-through graph); AOC-1 statement of subsidiaries. Angel tax (s.56(2)(viib))
+is abolished from AY 2025-26 and is not modelled.
+
+---
+
+## 5. Data model
+
+All rows carry `tenantId`, tenant-leading indexes, `recordCode`, `deletedAt`
+where soft delete applies, `Decimal(18,2)` for money, `Decimal(24,6)` for
+share counts and prices (fractional shares do not occur, but conversion
+ratios do).
+
+**Identity and group**
+- `Principal` — `email @unique`, `passwordHash`, `otpSecret?`, `status`,
+  `lastLoginAt`. `User.principalId`.
+- `Tenant` + `parentTenantId?`, `kind`, `config.emailDomains: string[]`,
+  `config.originDivision?` (the division a subsidiary grew out of).
+- `EntityProfile` — extends `CompanyProfile` 1:1 (or new columns on it):
+  `incorporatedOn`, `financialYearEnd`, `authorisedCapital` per class,
+  `isSmallCompany`, `dematStatus (physical | demat | mixed)`, `isin?`, `rta?`,
+  `dpiitNumber?`, `dpiitRecognisedOn?`, `registeredOfficeAddress`.
+
+**Register**
+- `ShareClass` — `name`, `kind (equity | preference | debenture)`, `instrument
+  (equity | sweat_equity | ccps | ocps | rps | ccd | ocd | ncd |
+  convertible_note | warrant | option | phantom)`,
+  `faceValue`, `votingRightsPerShare`, `rights Json` (liquidation preference
+  multiple and participation, anti-dilution, pro-rata, board seat, information
+  rights, dividend rate), `conversionTerms Json?`, `authorisedCount`.
+- `Holder` — the party that holds: `kind (person | organization | entity)`,
+  `personId? | organizationId? | heldByTenantId?` (the last is the
+  entity-as-stakeholder link), `folioNumber`, `residency (resident |
+  non_resident)`, `investmentBasis (repatriable | non_repatriable)?` (required
+  when non-resident; decides whether FEMA items are generated), `pan?`,
+  `nomineeJson?`, `jointHolders Json?`.
+- `ShareTransaction` — append-only; `type (allotment | transfer | conversion |
+  buyback | split | bonus | forfeiture | cancellation | redemption |
+  reduction)`, `shareClassId`,
+  `fromHolderId?`, `toHolderId?`, `count`, `pricePerShare?`, `distinctiveFrom /
+  distinctiveTo`, `effectiveOn`, `roundId?`, `considerationTransactionId?`
+  (→ `Transaction`), `approvalDecisionId?`, `status (proposed | approved |
+  effective | reversed)`, `reversalOfId?`, `boardResolutionId?`, `documents`.
+- `ShareCertificate` — `certificateNumber` (document series `C`),
+  `holderId`, `shareClassId`, `distinctiveFrom/To`, `count`, `issuedOn`,
+  `status (issued | surrendered | cancelled)`, `supersededById?`, `signatories
+  Json` (snapshotted names), `stampDutyPaid?`.
+- `FundingRound` — `name`, `kind (seed | series | rights_issue | bonus |
+  preferential | private_placement | sweat_equity | esop_top_up |
+  capital_reduction)`, `preMoneyValuation?`,
+  `closedOn?`, `valuationReportId?`, `offerLetterRef?` (PAS-4 serial),
+  `status`.
+- `Valuation` — `asOf`, `basis (registered_valuer | merchant_banker | ca_cert
+  | internal | round_price)`, `valuerName`, `perShareByClass Json`,
+  `equityValue`, `reportDocumentId`, `validUntil?`.
+
+**Board and compliance** (phase 3)
+- `BoardMember` — `personId`, `role (director | independent | nominee |
+  observer | company_secretary)`, `din?`, `appointedOn`, `ceasedOn?`,
+  `interestsDeclaredOn?` (MBP-1), `nominatedByHolderId?`.
+- `BoardMeeting` — `kind (board | agm | egm | committee)`, `noticeSentOn`,
+  `heldOn`, `mode (physical | vc | hybrid)`, `quorumMet`, `attendees Json`,
+  `agendaItems[]`, `minutesStatus (draft | circulated | entered | signed)`,
+  `minutesEnteredOn?`, `minutesDocumentId?`.
+- `Resolution` — `kind (board | shareholder_ordinary | shareholder_special)`,
+  `passedBy (meeting | circulation)`, `meetingId?`, `text`, `subject
+  (allotment | transfer | esop_scheme | borrowing | ... )`, `requiresMeeting`
+  (true for s.179(3) subjects — validated), `votes[]`, `dispatchProof?`,
+  `outcome`, `mgt14Srn?`, `signedDocumentId?`.
+- `Vote` — `resolutionId`, `boardMemberId | holderId`, `choice`, `castAt`,
+  `abstainedAsInterested`.
+- `ComplianceItem` — generated, not typed: `kind`, `dueOn`, `basis` (which
+  rule and which event it counts from), `status`, `filedRef?`; produced by a
+  job from the register and meeting history.
+
+**ESOP** (phase 5) — `EsopPlan`, `OptionPool` (a `ShareClass` of instrument
+`option`), `OptionGrant` (`employeeAffiliationId`, `granted`, `exercisePrice`,
+`vestingSchedule Json` with cliff and tranches, `status`), `VestingEvent`,
+`Exercise` (spawns a `ShareTransaction` allotment), `Lapse`.
+
+**Books** (phase 2) — `Transaction.intercompanyTenantId?` set when the
+counterparty is another group entity; listed on the group screen for the
+accountant doing the consolidation.
+
+**Group** (phase 2) — `EntitySnapshot` in the holding tenant: `sourceTenantId`,
+`asOf`, `sourceEventHash`, `capTable Json`, `holders Json`, `board Json`,
+`financial Json?`, `compliance Json`, `valuation Json?`. Plus `GroupEdge`
+computed from snapshots for the structure chart, and `LookThrough` rows for
+each principal ⇒ entity effective percentage.
+
+Record type codes to add in `packages/shared/src/domain.ts`: `SHC` (class),
+`HLD` (holder), `SHT` (share transaction), `CRT` (certificate), `RND`, `VAL`,
+`BDM` (meeting), `RES`, `OPG` (option grant).
+
+Events, bounded context `eqt` added to `BOUNDED_CONTEXTS` and a module
+register entry `EQT` with its never-does: `kz.eqt.share_class.created`,
+`kz.eqt.allotment.proposed | .approved | .effective`, `kz.eqt.transfer.*`,
+`kz.eqt.certificate.issued | .cancelled`, `kz.eqt.round.opened | .closed`,
+`kz.eqt.valuation.recorded`, `kz.eqt.snapshot.published`,
+`kz.eqt.meeting.called | .held | .minuted`, `kz.eqt.resolution.proposed |
+.passed | .failed`, `kz.eqt.option.granted | .vested | .exercised | .lapsed`.
+
+---
+
+## 6. Phases, each a brief for Sonnet
+
+Each phase is one branch and one PR, lands with tests named by requirement
+(`EQT-<AREA>-<NNN>`), a row in `docs/acceptance.md`, and a section appended
+to this file recording what was decided differently and why. Phases 0–2 are
+the answer to the request; 3–6 are the product.
+
+### Phase 0 — Foundations: identity, entities, portal surface
+
+Files: `schema.prisma`, `apps/api/src/lib/auth.ts`, `lib/http.ts`,
+`routes/auth.routes.ts`, `seed/bootstrap.ts` (tenant + roles), `seed/grants.ts`,
+`packages/shared/src/permissions.ts`, `api.ts`, `planes.ts`, `domain.ts`,
+`worker/index.ts`, `wrangler.jsonc`, `apps/web/src/main.tsx`,
+`lib/session.tsx`, `lib/api.ts`, new `apps/web/src/portal/`.
+
+1. `Principal` model; migration moves `User.passwordHash` into it keyed by
+   lowercase email; `User.principalId` required; `User.passwordHash` dropped.
+   `login()` verifies against the principal, returns `{ entities: [{tenantId,
+   slug, name, kind, affiliations}] }` when more than one, else a token as now.
+   `POST /auth/switch-entity { tenantId }` — allowed only if the principal has
+   a `User` with an active affiliation there; issues a token for that user;
+   audit-logged in both tenants. Token shape unchanged.
+2. `Tenant.parentTenantId`, `Tenant.kind`, `config.emailDomains`. Seed:
+   `TENANT_KIND`, `PARENT_TENANT_SLUG` env; a `pnpm tenant:create --slug
+   --name --parent` script that runs the same bootstrap for a subsidiary
+   (grants, nav, pipelines, leave types, founding accounts with their own
+   `*_EMAIL` env). The existing tenant becomes `kind: holding` when
+   `PARENT_TENANT_SLUG` is unset and any tenant names it as parent. The
+   moment a tenant becomes a holding or a subsidiary, a compliance item is
+   raised in it saying small-company status has ended and naming what
+   changes (§1a.1); nothing is computed from size, because s.2(85) does not
+   look at size for these two kinds.
+3. Roles `shareholder`, `director`, `company_secretary` in `ROLE_SLUGS`,
+   `ROLE_DEFINITIONS`, `ROLE_CLASSIFICATION_CEILING` (`confidential` for the
+   two portal roles — they never see regulated HR data), `ROLE_GRANT_MATRIX`
+   with the cells in §3.4 against the phase-1 resources (empty until phase 1
+   lands; declare the resources now so boot autosync grants them once).
+   New affiliation types `shareholder`, `director`, `company_secretary`.
+   `chairman` gets a `director` affiliation in every subsidiary by the
+   create-tenant script only when `--chairman-email` is given; nothing is
+   implied.
+4. Sign-ins for outsiders, without email. `POST /equity/holders/:id/sign-in`
+   and the same for board members (chairman or company secretary): creates
+   the `Principal` if the email has none, creates this tenant's `User` and a
+   `shareholder`/`director` affiliation, and returns a generated password
+   **once**, as the seed does. Calling it again resets the password. No
+   invite, no one-time code, no reset link — decided by the chairman
+   (§1.10); the platform sends no email. The audit record names who created
+   or reset the sign-in.
+5. Portal surface. Worker var `PORTAL_HOSTS` (comma-separated) surfaced through
+   `/api/meta/version` as `surfaceHosts.portal`; client sets `surface =
+   'portal'` when `location.hostname` matches, or when the active role's
+   archetype is `portal`. `apps/web/src/portal/PortalShell.tsx`: masthead with
+   the entity name and picker, three sections (Holdings, Board, Documents),
+   footnote kept. `navigationFor()` already filters by archetype; add the
+   portal nodes to `NAV_REGISTRY` with `archetypes: ['portal']`. The ERP host
+   with a portal-only principal renders the portal shell, never the sidebar.
+   Add a `routes` entry to `wrangler.jsonc` for the portal host once question
+   2 is answered; until then the dev proxy serves both on `localhost`
+   with `?surface=portal` honoured in development only.
+6. Global 401 handling in `lib/api.ts` (clear token, return to sign-in) — a
+   portal user's session expiring into a page of error boxes is not
+   acceptable on a screen that shows share certificates.
+
+Tests: `EQT-IDN-001` one principal, two tenants, two users, one password;
+`EQT-IDN-002` switch-entity refused without an active affiliation there and
+returns 404 not 403; `EQT-IDN-003` revoking the director affiliation makes
+the next request fail; `EQT-IDN-004` portal archetype sees only portal nav on
+either host; `EQT-IDN-005` the tenant gate still throws inside the group
+tenant when reading a subsidiary model with no scope (the existing
+`CRM-FOUND-001` suite re-run against a parent/child pair).
+
+### Phase 1 — The register
+
+Files: `schema.prisma`, new `apps/api/src/domains/equity.ts`,
+`routes/equity.routes.ts`, `platform/documentNumber.ts` (series `C`),
+`seed/bootstrap.ts` nav (`group: 'equity'` ⇒ add to `GROUP_ORDER` /
+`GROUP_LABELS` in `Shell.tsx`), `packages/shared/src/equity.ts` (cap-table
+arithmetic, pure, tested), web pages `CapTable.tsx`, `ShareClasses.tsx`,
+`Holders.tsx`, `ShareLedger.tsx`, `CertificateDocument.tsx`, portal pages
+`Holdings.tsx`, `Certificates.tsx`, `Documents.tsx`.
+
+1. Models `ShareClass`, `Holder`, `ShareTransaction`, `ShareCertificate`,
+   `Valuation`, `EntityProfile` fields. `Holder` for a person goes through
+   `findOrCreatePerson` (an investor who is also a contact is one row).
+2. `equity.ts`: `createShareClass`, `proposeAllotment`, `proposeTransfer`,
+   `approveShareTransaction` (through `approvals.ts`; the secretary cannot
+   approve; the bar reroutes an interested approver), `makeEffective` (assigns
+   distinctive numbers gaplessly per class, issues or supersedes
+   certificates), `reverseShareTransaction`, `capTable(asOf?)` returning
+   issued and fully-diluted columns and per-holder percentages,
+   `holdingsFor(holderId)`, `recordValuation`.
+3. `considerationTransactionId` must reference a `Transaction` on a category
+   of `kind: 'equity'` in the same tenant or the allotment stays
+   `pending_consideration`; the cap table shows the flag.
+4. Certificate document view + printable sheet from `documentSheet.tsx`;
+   figures and names snapshotted at issue.
+5. Cap table page: table first (holder, class, count, issued %, fully-diluted
+   %, certificates, since), one donut second, with a **new** categorical
+   palette validated per `apps/web/DESIGN.md` — the division hues are
+   reserved. Money withheld renders `Withheld`, as elsewhere.
+6. Portal: Holdings (own rows only, `@own` resolved through `Holder.personId`
+   ⇒ the session's `partyId`; an organisation holder is visible to the persons
+   affiliated as its contacts), Certificates (print), Documents (entity
+   documents marked `audience: shareholders`).
+7. Import: a template (`Data` + `How to fill this in` sheets, numbered after
+   the existing ones) for the opening register — holders, classes, opening
+   allotments with distinctive ranges — through the existing preview/commit
+   import path, so the first cap table is not typed in.
+
+Tests: `EQT-REG-001` the ledger is append-only (no update route; reversal
+posts the opposite); `EQT-REG-002` distinctive numbers are gapless and never
+overlap within a class; `EQT-REG-003` the secretary cannot approve their own
+proposal and the chairman cannot approve a transfer they receive;
+`EQT-REG-004` cap table sums to 100.00% on both bases and a pending
+consideration is visible; `EQT-REG-005` a shareholder reads only their own
+holdings and a cross-holder read is 404; `EQT-REG-006` an issued certificate's
+view is byte-identical after a later transfer of other shares;
+`EQT-REG-007` the two-month certificate window raises a compliance item.
+
+### Phase 2 — The group
+
+Files: `apps/api/src/domains/group.ts`, `jobs/scheduler.ts` (a
+`publish_entity_snapshot` job), event subscribers in `events/handlers.ts`,
+`packages/shared/src/equity.ts` (look-through), web `Group.tsx`,
+`GroupEntity.tsx`, portal `Entities.tsx`.
+
+1. `EntitySnapshot` written to the parent under `asSystem(parent)` on
+   `kz.eqt.*` effective events and nightly; carries `sourceEventHash`. The
+   financial block is the same summary The Business renders (cash position,
+   P&L by division for the last complete month and the year to date,
+   headcount), computed by the existing `books.ts` report functions inside
+   the subsidiary's own context; published unconditionally (§1.4).
+   `Transaction.intercompanyTenantId` is set by the finance head on entry
+   (a counterparty picker offers group entities) and the snapshot carries
+   the inter-company totals.
+2. Group dashboard (holding tenant; `chairman`, `director` and `shareholder`
+   affiliated there — a holding-level shareholder sees every entity's
+   summary, per §1.4, through the portal's Entities page which is the same
+   data with the ERP chrome removed):
+   structure chart (entities as nodes, edge % from the subsidiary's own cap
+   table, subsidiary/associate/WOS badge by the s.2(87) test, layer count
+   against two), per-entity tiles (paid-up by class, fully-diluted, pool
+   granted/available, demat status, last valuation, next compliance due,
+   snapshot age), consolidated holders table (direct and look-through per
+   principal, SBO flag at ≥10%), aggregated financial block labelled
+   *Aggregated, not consolidated* with each entity's figure beside the sum.
+3. Isolated view: an entity tile opens `switch-entity` and lands on that
+   tenant's own cap table. The group screen never reads a subsidiary table.
+4. The graph refuses an edge from a subsidiary into its holding (s.19) at
+   `Holder` creation when `heldByTenantId` is the parent's parent chain.
+
+Tests: `EQT-GRP-001` a snapshot is the only row the group screen reads
+(grep-style test on `group.ts` for `unscopedPrisma`/`asSystem` outside the
+publisher, mirroring the existing role-slug grep test); `EQT-GRP-002`
+look-through arithmetic on the worked example; `EQT-GRP-003` a stale
+snapshot is labelled with its age and never blended; `EQT-GRP-004` a
+subsidiary cannot hold its holding's shares; `EQT-GRP-005` a chairman with
+no affiliation in a subsidiary sees its snapshot on the group screen and
+cannot switch into it.
+
+### Phase 3 — Board
+
+Meetings, agenda, attendance, minutes lifecycle with SS-1 dates
+(notice ≥7 days; draft minutes within 15 days; entered within 30; four a
+year with ≤120-day gap — half-yearly for small companies), circular
+resolutions with dispatch proof and a "1/3 may demand a meeting" path,
+votes with the interested-director abstention, s.179(3) subjects refused by
+circulation, MBP-1 annual declaration prompt, board pack assembly (documents +
+the published financial summary), signed-copy upload as the e-sign stand-in
+with a provider adapter interface. Portal: Meetings, Resolutions (vote),
+Board pack. Compliance items generated by a job. Tests `EQT-BRD-*`.
+
+### Phase 4 — Rounds, instruments, valuations, scenarios
+
+`FundingRound`, preference and debenture classes with rights, conversion and
+redemption events that spawn or retire holdings, convertible notes, warrants,
+rights issues (s.62(1)(a), with the offer-and-renunciation record), bonus
+(s.63, from free reserves only — the books say whether they exist), sweat
+equity (s.54, with the valuation report), private placement (s.42: offer
+letter serial, separate bank account reference, the 200-person count),
+buy-back (s.68: the 10%/25% and debt-equity tests computed from the books),
+capital reduction (s.66, recorded against the tribunal order); valuation
+records with basis; scenario modelling in `packages/shared/src/equity.ts` (pure: a
+proposed round ⇒ post-money table, dilution per holder, waterfall by
+preference stack) rendered client-side and never persisted as fact.
+Tests `EQT-RND-*`.
+
+### Phase 5 — ESOP
+
+Plan, pool as a `ShareClass` of instrument `option`, grants to
+`EmploymentRelationship`s (the HRM already has the employee), vesting with
+cliff and tranches (Rule 12: ≥1 year between grant and first vesting,
+validated), exercise ⇒ allotment, lapse on exit (subscribes to the HRM exit
+event), perquisite computation needing a merchant-banker FMV on record,
+SH-6 register export. Employee portal view under the existing `employee`
+role. Tests `EQT-ESP-*`.
+
+### Phase 6 — Filings and demat
+
+Exports in the layouts the forms want: MGT-1 register, PAS-3 allottee list,
+SH-4 pre-filled, SH-6, AOC-1 (from group snapshots), BEN-1/2 candidates from
+look-through; demat mirror fields, ISIN, PAS-6 half-yearly reconciliation
+item; FEMA items — FC-GPR within 30 days of an allotment to a repatriable
+non-resident holder, FC-TRS within 60 days of a transfer between such a holder
+and a resident, FLA by 15 July when any such holding exists, and the
+fair-value floor check on the allotment price — generated from
+`Holder.residency` and `investmentBasis`. The group has one NRI holder (§1.11),
+so this is built, not optional.
+
+### Phase 6b — Spinning a division out into a subsidiary
+
+When a division is incorporated: `pnpm tenant:create --slug --name --parent
+kaizen --origin-division education`, then a guarded `pnpm division:spin-out`
+that previews, like an import, every division-tagged row it would carry
+across — transactions, employment relationships, courses and enrolments,
+organisations owned by that division — and the opening allotment of the
+subsidiary's shares to KIPL (and to anyone else the chairman names) as the
+first `ShareTransaction` in the new tenant. Rows are copied and marked
+`migratedToTenantId`, never moved, so the holding's history still reads.
+This phase is specified here so nothing earlier forecloses it; it is built
+when the first subsidiary is formed.
+
+---
+
+## 7. Conventions the implementer must hold to
+
+- Every domain function opens with `assertCan`/`assertScopeAll`; scoped
+  `prisma` only; `unscopedPrisma` appears in `lib/auth.ts` and the snapshot
+  publisher and nowhere else in this domain.
+- No service code compares a role slug (the existing grep test will fail the
+  PR). Narrowings are grants and scope resolvers.
+- New resources in both `RESOURCES` and `ALL_RESOURCES`; new events in
+  `EVENTS` with the `kz.eqt.*` grammar; `emit()` after every state change;
+  a regulated read writes an `AuditRecord`, never an event.
+- Money is `Decimal`; the client does no arithmetic on document views.
+- Plain words on screen (`Cap table`, `Register`, `Board`), codes in tooltips.
+  Empty states are true sentences: "No shares have been allotted yet."
+- Nav rows via `NAV_REGISTRY`; a new nav `group` needs `GROUP_ORDER` and
+  `GROUP_LABELS` in `Shell.tsx`.
+- Tests through `asUser` / `withFixtureRole`, named by requirement; one row
+  in `docs/acceptance.md` per phase.
+- Ask before: adding a cross-tenant read, storing a full bank account or PAN
+  in plain text where the platform elsewhere masks it, or any e-sign or
+  email provider dependency.
+
+---
+
+## Phase 2 — as built
+
+Landed on `claude/modest-newton-2kukvo`, on top of phases 0 and 1. Matches
+the brief in §6 with the following decided differently, or decided at all
+where the brief left a gap:
+
+- **`buildEntitySnapshot` / `publishEntitySnapshot` split.** The brief
+  describes one publisher; it is two functions so the "compose the JSON
+  inside the source tenant" step and the "write it into the parent" step are
+  each their own `asSystem` boundary, with the file's own header comment
+  (and `EQT-GRP-001`'s grep test) holding both to the rule that `eqt/group.ts`
+  never reads a subsidiary's tables from outside the source tenant's own
+  context.
+- **`holderKey` on the cap table's `holders` array, not on each row.** The
+  brief asked for a `holderKey` "per holder"; it is carried once per holder
+  (alongside `heldByTenantId`, `kind`, `folioNumber`) in a `holders[]` array
+  appended to the published `CapTableView`, cross-referenced by `holderId`
+  from `rows`/`holderTotals` rather than duplicated onto every row. A holder
+  with no resolvable email or PAN gets `holderKey: null` and `matchedBy:
+  'unmatched'`, and is excluded from `computeLookThrough`'s input rather than
+  poisoning it with a `null` key.
+- **One layer of `layerDepth`, always.** A snapshot is one hop — a
+  subsidiary's own summary, published once into its immediate parent. A
+  grandchild's stake in *its own* parent lives in a snapshot the grandchild
+  publishes into the middle tenant, which the top holding never receives
+  (§3.3 holds: no cross-tenant read, ever). `groupStructure()` therefore
+  reports every node it holds a snapshot for at `layerDepth: 1` and
+  `layerLimitExceeded: false` unconditionally; the two-layer check (s.2(87))
+  is real once a snapshot itself starts relaying what its own children look
+  like, which is future work, not this phase's.
+- **`board: { available: false }` is the whole of it.** As specified — the
+  shape is a fixed literal today, wired to the real board module (built by
+  another agent, in parallel) by pointing `buildEntitySnapshot` at that
+  module's own summary function later; nothing else in this phase reads or
+  writes it.
+- **`Transaction.intercompanyTenantId` validated against the group at
+  entry**, via `isInSameGroup` in `books.ts` (parent, sibling, or child,
+  walked on `Tenant.parentTenantId` the same way `equity.ts`'s
+  `assertNotHoldingsAncestor` already does) — an id outside the caller's own
+  group is refused with 422 rather than silently accepted and only noticed
+  on the group screen.
+- **`GET /books/group-entities`** was added, beyond the brief's route list,
+  to feed the "Group entity counterparty" picker on `NewTransaction`: the
+  parent/siblings/children of the caller's own tenant, by name and slug
+  only — a structural read of `Tenant`, never of another tenant's equity or
+  books rows, on the same footing as `assertNotHoldingsAncestor`.
+- **`markSnapshotDirty` sets `Tenant.config.snapshotDirty`** rather than a
+  new column, following `config.originDivision` and
+  `config.smallCompanyNoticeRaisedAt`'s existing convention for
+  small, infrequently-queried per-tenant flags.
+- **Portal `Entities.tsx`** branches on `SessionUser.tenantKind === 'holding'`
+  (already carried on every session, from phase 0) rather than a new API
+  field, to decide between the group tiles and the phase-0 entity list.
+- Every `EQT-GRP-*` test builds its own subsidiary-tenant principal by hand
+  (`principalInTenant` + `asPrincipal`, mirroring phase 0's own pattern)
+  rather than `asUser`, because `asUser` resolves an email with no tenant
+  filter and every founding account (`chairman@kaizen.co.in`, and so on) is
+  reused verbatim across every tenant `seedBootstrap` creates.
+## Phase 4 — as built
+
+Ships `FundingRound`, conversion/redemption/buy-back/bonus as `ShareTransaction`
+rows through the existing register machinery, a rights-issue offer/accept/
+renounce path, valuation-round linkage, and the pure scenario functions —
+`modelRound`/`waterfall` in `@kaizen/shared`, exposed as
+`POST /equity/scenarios/round|waterfall`.
+
+**Where it differs from the brief, and why.**
+
+- **One `count` column, two legs.** `ShareTransaction.count` already named
+  the allotted (target) side for an ordinary row; a conversion at a ratio
+  other than 1:1 needs a *different* number for the side being retired. Two
+  new columns carry that rather than reshaping the ledger: `fromShareClassId`
+  (the source class) and a `meta Json?` field carrying `{ sourceCount }`.
+  Every place that sums a holder's balance or the cap table (`effectiveBalance`,
+  `capTable`, `holdingsFor`, the scenario endpoints' own live cap-table read,
+  and the buy-back tests' paid-up-capital sum) now asks a shared
+  `outgoingCount()` helper for the retiring amount instead of trusting `count`
+  — a conversion is the one type where they disagree.
+- **Free reserves is a stated proxy, not a statutory figure.** The books carry
+  no ledger account that distinguishes a free reserve from a statutory one,
+  and no separate tracking of dividends declared out of reserves. The proxy
+  used everywhere this plan asks for free reserves (the bonus gate, the
+  buy-back 10%/25%/2:1 tests) is cumulative trading profit and loss across
+  every period the books have ever recorded (`freeReservesProxy` in
+  `domains/rounds.ts`) — refused as **not measured** when the books carry no
+  transaction to sum, per the house rule that "not measured" is never zero,
+  and named as a proxy in every message that cites it.
+- **Rights-issue offers are not a new table.** An offer, its acceptance and
+  its renunciation are small, per-holder, and referenced from nowhere outside
+  the round they were made under, so they are held as a JSON array under
+  `FundingRound.pricePerShareByClass.__rightsOffers` rather than a fifth
+  model. Acceptance still spawns a real `ShareTransaction` allotment through
+  the ordinary propose → approve → effective path; only the offer bookkeeping
+  itself is off-register.
+- **Rounds gate on `rounds:approve`, not a bespoke policy.** Opening and
+  closing a round carry statutory consequences (a valuer's report, the
+  200-offeree count, the PAS-3 clock) squarely comparable to approving a
+  ledger entry, so they reuse the existing `finance_head`/`chairman`
+  `share_ledger:approve` split rather than adding a second approval-gate
+  policy: `company_secretary` proposes and keeps the round's record (`VCE`),
+  `finance_head` and the chairman open, close and cancel it (`approve`),
+  `director` reads it.
+- **The 10%/25%/2:1 tests run at `proposeBuyback`, not only at `openRound`.**
+  `openRound` on a `buyback` round checks only that free reserves are
+  measurable — the specific ceilings depend on the value of the buy-back
+  being proposed, which does not exist yet when the round opens. Each
+  `proposeBuyback` call re-derives paid-up capital, securities premium, free
+  reserves and total debt (`Loan`, via the same amortisation schedule the
+  books use) and refuses by name against whichever test the proposed value
+  or the tenant's current gearing fails.
+- **`waterfall`'s as-converted comparison is exit-value-relative, not
+  remainder-relative.** A non-participating class compares its preference
+  against what it would receive by converting and sharing the *whole* exit
+  value as common from the start (the comparison a rational holder actually
+  makes), not against a share of whatever happens to be left after the
+  preference stack above it is paid — the two differ once more than one
+  preference class is stacked, and the exit-value comparison is the one that
+  produces the holder's genuinely better outcome.
+
+Tests: `apps/api/src/tests/equityRounds.test.ts`, `EQT-RND-001` through
+`EQT-RND-008`, run inside a subsidiary tenant this file creates for itself in
+`beforeAll` — the free-reserves and s.42 offeree-count assertions need books
+this suite controls completely rather than whatever another suite left behind
+in the shared `kaizen` tenant (`vitest.config.ts` runs every file serially
+against one database).
+## Phase 5 — as built
+
+Shipped as briefed in §6, with these choices made along the way:
+
+- **No promoter register exists yet**, so `promoterCheck.isPromoterOrPromoterGroup`
+  is computed as the same test Rule 12(1)(c) names for the group it is
+  refusing — holding more than ten percent of the equity share capital,
+  directly or through a holder represented — rather than left unenforced for
+  want of a separate promoter flag. `holdsOver10Pct` and
+  `isPromoterOrPromoterGroup` are therefore always equal today; a future
+  promoter register would let the two diverge without a schema change, since
+  both are already distinct fields.
+- **The exercise-allotment permission boundary.** An approved exercise has to
+  find-or-create a `Holder` and allot shares through `equity.ts`'s own
+  `makeEffective` — but the finance head who approves an exercise holds
+  `share_ledger:V,approve@all`, never `share_ledger:create` or `holders:create`
+  (§3.4 keeps those the secretary's). Rather than widen those grants, two
+  narrow internal functions were added to `equity.ts` —
+  `holderForExercise` and `recordExerciseAllotment` — both gated on
+  `share_ledger:approve` alone: the grant an exercise's approver already
+  holds, and the same one `makeEffective` itself requires. The three calls
+  together (`holderForExercise` → `recordExerciseAllotment` →
+  `makeEffective`) run under one approver, which is what "approve and allot
+  in the same step" means for an exercise — the two-party discipline the
+  manual register's propose/approve split exists for was already kept once,
+  on `option_grants`, by the employee's own request and the finance head's
+  approval of it.
+- **`EsopPlan.targetShareClassId`** is the authority for what an exercise
+  allots into, not `ShareClass.conversionTerms` on the pool class — the brief
+  asked for exactly this once a pool class carried no reliable
+  `convertsToClassId`, so the plan names its own target class directly.
+- **`OptionGrant.exerciseWindowEndsOn`**, not in §5's field list, was added:
+  the exit event fixes the post-exit exercise deadline once, from the plan's
+  `exerciseWindowMonthsAfterExit` at the moment of exit, and the daily sweep
+  (`runExpiredExerciseWindows`) compares against that fixed date rather than
+  recomputing it — so a later change to the plan's own window never moves a
+  deadline an exit has already set.
+- **The HRM exit event** subscribed to is `kz.hr.employment.separated` —
+  `EMPLOYMENT_EVENT_VERB` maps `TERMINATE_POST_DISCIPLINARY`,
+  `REACH_LAST_WORKING_DAY` and `ABANDONMENT_CONFIRMED` all to `separated`,
+  so one subscription covers every terminal separation without a role-slug
+  or event-type comparison in the handler.
+- **Perquisite tax deferral** requires both the plan's own
+  `isDpiitRecognised` (copied from the company's DPIIT status at plan
+  creation, so a later change to the company's status never retroactively
+  alters a running plan) and a new `CompanyProfile.iac80CertificateRef` —
+  s.192(1C) deferral needs the 80-IAC certificate, not DPIIT recognition
+  alone.
+- Nav: `eq_esop` (the register keeper's own screen, ERP), `my_options` (an
+  employee's own grants, workspace archetype, alongside `hr_leave`/
+  `hr_payroll` in the `people` group) and `portal_options` (the same content,
+  reached from the portal shell) — the last needed `option_grants:V@own` on
+  `shareholder` itself, not only `director`, so a holder who is also an
+  employee sees their own grants in the portal regardless of which
+  affiliation happens to be active.
+- Web: `MyOptionsView` is one shared component rendered by both
+  `pages/MyOptions.tsx` and `portal/pages/Options.tsx`, so the two pages the
+  brief asks for read the same sentence rather than two screens that quietly
+  drift.
+
+Tests: `apps/api/src/tests/esop.test.ts`, `EQT-ESP-001` through `EQT-ESP-010`.
+## Phase 3 — as built
+
+Board members, meetings and their minutes lifecycle, circular and
+meeting resolutions, and the daily compliance calendar landed as designed in
+§5/§6, with a few notes for whoever builds on this next.
+
+- `BoardMember.role` distinguishes a voting seat (`director`,
+  `independent_director`, `nominee_director`) from `observer` and
+  `company_secretary`; only the voting family counts toward quorum
+  (`quorumFor`) and the s.175 demand threshold (`meetingDemandThreshold`),
+  both mirrored in `@kaizen/shared` as pure functions so a screen can show
+  "Quorum: 2 of 5 present" without waiting on a round trip, while the API
+  computes the same numbers as the source of truth on every write.
+- `Resolution.requiresMeeting` is derived once, at `proposeResolution`, from
+  the closed `RESOLUTION_SUBJECTS_REQUIRING_MEETING` list (s.179(3) + Rule 8)
+  and is never accepted as caller input; `passedBy: 'circulation'` on one of
+  those subjects is refused outright, not silently upgraded to a meeting.
+- An interested vote (`interested: true`, or the voter's declared interests
+  naming the resolution's free-text `subjectRef`) is stored as `abstain` with
+  `abstainedAsInterested` set, and is excluded from both the circulation
+  majority's denominator and the meeting count under s.184 — the same
+  exclusion, expressed once and read by `closeCirculation` and
+  `passAtMeeting` alike.
+- The compliance calendar is written by `runBoardComplianceJob`
+  (`board_compliance`, daily) and is strictly a function of recorded facts:
+  no board meeting and no `incorporatedOn` on file raises nothing at all —
+  never a fabricated "overdue" — and the unique `(tenantId, kind,
+  relatedType, relatedId, dueOn)` key is what actually keeps a re-run from
+  duplicating a row; the job's own `raised` count is how many candidates it
+  swept, not how many rows it wrote, so idempotence is proven against the
+  table, not the return value (see `EQT-BRD-007`).
+- `listBoardMembers` and the meeting reads (`listMeetings`, `meeting`,
+  `boardPack`) now compute `interestsDeclaredThisYear` and `presentCount` on
+  the way out, closing a gap between what `@kaizen/shared`'s view types
+  already declared and what the domain functions returned — both are
+  read-only projections of stored facts, never separately persisted.
+- `Resolution.subjectRef` and `Vote.holderRef` stay the free-text/nullable
+  placeholders §5 called for: nothing here depends on the phase-1 register,
+  and a shareholder's vote (as opposed to a director's) is not yet wired to
+  anything, since `holders`/`ShareTransaction` do not exist in this branch.
+- ERP nav: `eq_board`/`eq_resolutions`/`eq_compliance` under a new `equity`
+  group (after `money`), each with explicit `archetypes: ['command',
+  'workspace', 'console']` — a node with no `archetypes` reaches the portal
+  shell too, which these three must not. The portal's `portal_board` node
+  (phase 0) is unchanged; it is the same data, filtered by the viewer's own
+  grants (`shareholder` sees resolutions only, `director` sees the board
+  calendar too).
+- Screens: `pages/board/{Board,MeetingDetail,Resolutions,Compliance}.tsx` on
+  the ERP side, `portal/pages/Board.tsx` rewritten from its phase-0
+  placeholder. Every write control is gated by `can()` on the same grant
+  the route asserts (`board_meetings:E`/`resolutions:E`/`resolutions:approve`/
+  `compliance:E`/`board_documents:C`) — an omitted control, not a disabled
+  one, where the grant is absent.
+
+## Phase 6a — as built
+
+Ships `domains/filings.ts` (MGT-1/MGT-2 register exports, PAS-3 allottee
+list, SH-4 pre-fill, PAS-6 reconciliation), a `Filing` model and log
+(`recordFiling`/`listFilings`), the Rule 9B demat guard and the FEMA pricing
+floor called from `equity.ts`'s `proposeAllotment`/`proposeTransfer`, and the
+FEMA calendar subscribed to the register's own effective events. Web:
+`pages/equity/Filings.tsx`, `pages/equity/Sh4Sheet.tsx`, the missing
+conversion/redemption terms fields on the share class dialog, and the MGT-1 /
+demat fields on the holder form.
+
+**Where it differs from the brief, and why.**
+
+- **`proposeAllotment` gained an optional `roundId`.** Nothing in phases 1–4
+  ever linked an ordinary allotment to the `FundingRound` it was struck
+  under — only a conversion, a redemption, a buy-back and a bonus carry
+  `roundId` (§6 phase 4's own `proposeConversion`/`proposeRedemption`/
+  `proposeBuyback`/`proposeBonus`). That leaves `closeRound`'s `raised`
+  figure and `pas3Srn`/`pas3FiledOn` genuinely unreachable for a seed,
+  series, preferential or private-placement round's own allotments — there
+  was no allotment a PAS-3 list could ever cover. `ProposeAllotmentInput`
+  now accepts `roundId?`, written straight onto the row the same way the
+  other four instrument-proposal functions already do; nothing else about
+  the ledger changed.
+- **The Filing → exception link is by code and subject, not a stored
+  pointer.** `recordFiling` does not carry a foreign key to the
+  `ExceptionRecord` it might close — the two engines stay decoupled, the way
+  a receipt clears an invoice by amount and reference rather than a schema
+  join. A small table (`FORM_EXCEPTION` in `filings.ts`) names which code and
+  subject type a form's `status: 'filed'` resolves, and the matching open
+  exception on that subject is looked up and resolved at record time. A form
+  with no compliance item behind it (MGT-1, MGT-2, SH-4, MGT-14, MGT-7,
+  MGT-7A, and `other`) simply logs.
+- **PAS-6's exception code is `EX-EQT-010`, not named in the brief's own
+  004–009 list.** The brief assigns explicit codes to demat-required,
+  ISIN-missing, FC-GPR, FC-TRS, FLA and the FEMA valuation-missing note, but
+  not to the PAS-6 reconciliation item itself, which the same paragraph
+  still asks to be raised. `010` continues the sequence rather than
+  colliding with the group phase's own codes, which start numbering
+  separately once written.
+- **`assertFemaPricingFloor` and `assertDematCompliant` read `toHolderId`
+  only.** FEMA's pricing floor and Rule 9B's demat guard both name the party
+  a holding is *landing with* — the receiving side of an allotment, or of a
+  transfer — as the one the rule reaches; `assertDematCompliant` is still
+  called with both legs of a transfer (`[fromHolderId, toHolderId]`) because
+  a demat company cannot hand a paper-only holder anything to hold, on
+  either side of the ledger entry.
+- **`Holder.dematAccount` is one field, not a certificate-level flag.** The
+  brief's own phrasing floats both a per-holder and a per-certificate shape;
+  a holder either settles through a depository or does not, so every share
+  a holder holds is treated as demat once `dematAccount` is set, and PAS-6's
+  reconciliation partitions each class's issued count by that one field
+  rather than walking certificates.
+- **The FLA sweep checks the most recently *completed* 31 March, not the
+  current financial year's.** Run on any day of the year, "at 31 March" has
+  to mean a date already in the past — the job compares `now` against this
+  year's 31 March and falls back to last year's when it has not arrived yet,
+  so a company whose books this month have not reached the cutoff is not
+  asked for a return covering a date that has not happened.
+
+Tests: `apps/api/src/tests/equityFilings.test.ts`, `EQT-FIL-001` through
+`EQT-FIL-010`, run inside a subsidiary tenant this file creates for itself in
+`beforeAll` (the same isolation phase 4's and phase 5's own suites use) —
+`EQT-FIL-004` specifically needs `Tenant.kind` to already read `subsidiary`
+the moment its first check runs, which only a tenant `seedBootstrap` itself
+made a subsidiary of `kaizen` can guarantee.
+
+## Phase 6b — as built
+
+Ships `pnpm division:spin-out` (`apps/api/src/seed/spinOut.ts`, over the
+engine in `seed/spinOutEngine.ts`) — preview → commit → revert, mirroring
+`imports/service.ts`/`imports/commit.ts` — plus a read-only preview at
+`GET /group/spin-out/preview` and a "Divisions" card on `CapTable.tsx`. Where
+it differs from the brief, and why:
+
+- **Bounded to what the brief names, not every `division`-tagged model in
+  the schema.** §6b's own text says "transactions, employment relationships,
+  courses and enrolments, organisations owned by that division" — that is
+  the carried set. `VendorBill`, `BudgetLine`, `RecurringRule`, `FixedAsset`,
+  `Loan` and `PayrollInstruction` also carry a `division` column but are out
+  of scope for this phase, left for whoever spins out a division with real
+  vendor bills or fixed assets on the books to extend deliberately rather
+  than carried by a guess at what "the same shape" should do with them.
+- **A transaction linked to a record this script does not carry is refused,
+  not carried half-finished.** `Transaction.invoiceId`/`vendorBillId`/
+  `payrollRunId`/`fixedAssetId`/`loanId` point at models outside the carried
+  set; copying the transaction alone would leave a reference to nothing in
+  the subsidiary. Refused by name, with the record it recommends instead
+  ("record the equivalent directly in the subsidiary").
+- **A transaction tagged `shared` is a candidate, not silently out of
+  scope.** It is read alongside the target division's own rows and refused
+  explicitly ("cannot be attributed to one subsidiary; split it first")
+  rather than simply never matching the division filter — the difference
+  matters because a chairman reading the preview needs to see that a shared
+  cost exists and was considered, not infer its absence.
+- **An organisation's division is derived from its invoices**, because
+  `Organization` itself carries no `division` column — only `Invoice.division`
+  does. An organisation invoiced only under the target division carries; one
+  invoiced under more than one division, or under `shared`, is refused by
+  name rather than guessed at.
+- **An employment relationship's division is derived from its current
+  assignment's position's org unit**, walking the org-unit parent chain for
+  the nearest division an ancestor carries (`EmploymentRelationship` itself
+  has no `division` column either). More than one current assignment in
+  different divisions, or an assignment in a `shared` unit, is refused by
+  name ("spans more than one division" / "assigned to a shared unit").
+- **The system principal cannot pass the ordinary approval gate for the
+  opening allotment.** `evaluateApprovalGate` resolves an actor's authority
+  ceiling from an `AuthorityGrant` keyed to a `partyId`, and the system
+  principal carries none — so `proposeAllotment` → `approveShareTransaction`
+  would only ever open a pending `ApprovalStep` rather than grant outright.
+  The opening allotment instead writes the `ShareTransaction` straight to
+  `effective` with `boardResolutionRef: 'spin-out'`, the same explicit path
+  `imports/commit.ts#commitOpeningRegisterRow` already takes for the
+  opening-register import — except certificates are issued through the
+  ordinary `issueCertificateFor`, which still enforces the two-signatory
+  rule (the opening-register import's certificates carry `imported: true`
+  and skip it; a spin-out's opening allotment is a real allotment, not a
+  backfill, so it does not).
+- **Provenance columns, not a join table.** `migratedToTenantId` (nullable,
+  on every carried model) and `spinOutBatchId` (nullable, on every model a
+  commit creates or opens — including `LedgerAccount`/`LedgerCategory`,
+  which are opened by name rather than carried) are plain schema additions,
+  the same shape `ImportRow.entityId`/`entityType` already establishes for
+  an import batch, chosen over a generic join table because each carried
+  model already has its own identity and the column reads directly on the
+  row without a lookup.
+- **`LedgerAccount.openingNote`** is a new nullable column carrying "opening
+  balance to be set from the transfer of funds" — the model had nowhere
+  else to say this, and the alternative (a note only in the CLI's console
+  output) would not survive past the terminal session that ran the commit.
+- **The event name is `kz.sys.spin_out.<verb>`, not `kz.sys.tenant.spin_out.
+  <verb>`.** `EVENT_NAME_PATTERN` is `kz.<domain>.<entity>.<verb>` — four
+  segments — and the plan's own brief names five; `tenant` is dropped to fit
+  the grammar every other event in the system is validated against.
+- **The web panel reads a shallow preview (`deep: false`).** The CLI's
+  preview also checks whether the subsidiary's own share register is empty
+  and whether it carries two certificate signatories — genuine cross-tenant
+  reads, legitimate for the script (the sanctioned cross-tenant writer) but
+  not for a live API request. `domains/group.ts` passes `deep: false`, so a
+  request never reads past the `Tenant` row (itself exempt from the tenant
+  gate, like the structural check `assertNotHoldingsAncestor` already makes
+  in `domains/equity.ts`) of a tenant that is not the caller's own.
+- **`--other-holder` needs an email or a phone** (`"<name>|<email>=<count>"`),
+  because the holder is resolved as a `Person` in the subsidiary through the
+  same `findOrCreatePerson` every other holder goes through, and a person
+  cannot be created from a bare name.
+
+Not done by this phase, and said so in `docs/operations.md`: ending the
+migrated employment relationships in the holding (an HR act the chairman
+takes deliberately), moving the actual cash (a bank transfer, not a data
+migration), and registering the subsidiary for its own GSTIN before it can
+invoice.
+
+Tests: `apps/api/src/tests/spinOut.test.ts`, `EQT-SPN-001` through
+`EQT-SPN-007`, run inside a holding tenant and a subsidiary tenant this file
+creates for itself in `beforeAll`, for the same reason phase 4's suite does.
+
+## Phase 6c — as built
+
+Ships the group-dependent statutory exports the phase-6a header already
+promised elsewhere: `GET /equity/filings/aoc-1.xlsx` (and its `aoc1()` data
+function), `GET /equity/filings/ben.json` / `ben-2.xlsx`, and the `EX-EQT-011`
+BEN declaration item. All of it lives in `domains/group.ts`, not
+`filings.ts` — the same file, and the same rule, phase 2 already established
+(read only `EntitySnapshot`/`EntitySnapshotHistory`, never a subsidiary's
+live tables from outside its own context). `FILING_FORMS` gained `AOC-1`,
+`BEN-1`, `BEN-2`, `BEN-3`; `filings.ts`'s `FORM_EXCEPTION` map gained one
+entry (`BEN-2` → `EX-EQT-011`, subject `group_holder`) so `recordFiling`
+closes it exactly the way it already closes PAS-3/FC-GPR/FC-TRS/FLA/PAS-6.
+
+**Where it differs from the brief, and why.**
+
+- **The `company` block lives inside the snapshot's existing `compliance`
+  JSON, not a new column.** The brief's own environment note says a
+  snapshot JSON block is not a schema change; `compliance` already carries
+  `dematStatus`/`isSmallCompany`/`kind` as a loosely-typed per-tenant bag,
+  so `{ legalName, cin, financialYearEndMonth, incorporatedOn,
+  reportingCurrency: 'INR' }` joins it rather than opening a fifth JSON
+  column on `EntitySnapshot`/`EntitySnapshotHistory`.
+- **Reserves and profit-after-tax are `not published` for every
+  subsidiary, unconditionally — not sometimes.** The books carry no ledger
+  account distinguishing a statutory reserve from retained earnings, and no
+  tax computation exists anywhere in this platform (the same gap phase 4's
+  free-reserves proxy already named). Turnover and profit-before-tax ride
+  on the snapshot's own FY-to-date P&L (`pnlFyToDate.income`/`.net`), which
+  is always a real, though sometimes genuinely zero, figure — the two
+  pairs read differently by construction, not by chance, and a reader
+  should not expect `not published` to ever turn into a number once more
+  data arrives; it is a structural gap, not a temporary one.
+- **AOC-1's Part A/B split is the same `groupEntityBadge` the structure
+  chart already computes** (`wholly_owned`/`subsidiary` → Part A,
+  `associate` → Part B, `investment` → neither, since it is below the
+  20% associate floor) — not a second classification.
+- **BEN candidates are computed per (entity, person), not per person.**
+  The brief's own worked example (founder 60% of the holding × the
+  holding's 70% of a subsidiary, plus 5% direct, = 47%) is a statement
+  about the person's stake *in the subsidiary*, not in the holding — s.90
+  SBO is a per-company obligation, and a person can cross the threshold in
+  the holding, in a subsidiary, in both, or in neither, independently. The
+  holding tenant's own BEN export therefore lists one row per entity a
+  person qualifies in (the holding itself, direct-only since nothing sits
+  above it in this model, and each subsidiary via direct + look-through),
+  computed by re-deriving from `groupHolders()`'s own
+  `computeLookThrough` output — not a separate copy of that arithmetic —
+  so the group screen and the BEN export can never disagree about who
+  holds what. `GroupHolderRowView` gained a `holderKind` field (`person` /
+  `organization` / `entity`) for this — an additive change, so
+  `Group.tsx`'s existing holders table is untouched by it.
+- **The "holding reporting company" shortcut is a plain register read, no
+  look-through at all.** A subsidiary's own cap table already carries the
+  holding as an `entity` holder (`heldByTenantId`); when that holder's own
+  issued % is ≥10%, the subsidiary's BEN-2 names it and stops — exactly
+  the research's own note ("subsidiaries of a holding reporting company
+  report the holding"), and the only shape of BEN-2 a subsidiary can ever
+  produce on its own, since it holds no snapshot of anything (snapshots
+  live in a *parent*, never in the child that published them) and so
+  cannot look through to the individuals above its own immediate holder.
+- **The threshold-crossed date is derived from real history, with an
+  honest fallback, not computed as a fact the platform does not have.**
+  For a candidate's stake in the holding itself, the holding's own ledger
+  (`ShareTransaction.effectiveOn`, replayed through `capTable(asOf)`) is
+  real history whether or not a snapshot ever existed. For the indirect
+  portion in a subsidiary, `EntitySnapshotHistory` gives the subsidiary's
+  own direct % and the holding's own edge % at each point that subsidiary
+  published — combined, one hop, since `layerDepth` is always 1 (phase
+  2's own decision). Where no historical point on record already crosses
+  the threshold, the field reads `as of snapshot <date>` rather than a
+  fabricated crossing date — never silently defaulting to "today" or to
+  the snapshot's own `asOf` dressed up as a real answer.
+- **`EX-EQT-011` is raised as a side effect of computing candidates
+  (`groupBenCandidates()`), not a separate scheduled sweep.** Every other
+  `EX-EQT-*` exception in phase 6a is either a write-time guard or a daily
+  job; this one is neither, because the candidate set is a live
+  recomputation over `groupHolders()` each time, cheap enough that the
+  compute path already *is* the correct trigger, and `raiseException`'s
+  own open-exception check on `(code, subjectId)` makes a repeated call
+  idempotent rather than merely safe. The one honest gap this leaves: a
+  candidate who crosses the threshold and is never looked at again (nobody
+  opens Filings, no job re-checks) raises nothing until someone does look
+  — flagged here rather than silently accepted, and not closed by this
+  phase for want of a clean way to run `groupHolders()`'s own `assertCan`
+  gate from inside a system-principal scheduler tick without widening what
+  the scheduler is trusted to read.
+- **Uniqueness on holder key, not on (entity, holder key).** The brief's
+  own wording ("unique on holder key") is kept literally even though a
+  person can be a BEN candidate of more than one entity at once: the first
+  `raiseBenDeclarations` call for that holder key raises the item once,
+  named with whichever entity it was computed against first in
+  `groupHolders()`'s own iteration order; a second, third entity crossing
+  the same threshold for the same person raises nothing further. A
+  genuinely separate BEN-2 obligation per entity is a real gap this
+  leaves for whoever next revisits the exception's own subject shape.
+
+Tests: `apps/api/src/tests/equityGroupFilings.test.ts`, `EQT-FIL-011`
+through `EQT-FIL-015`, run inside a holding tenant this file creates for
+itself in `beforeAll` — never `kaizen`, since these tests mutate the
+holding's *own* cap table (to give a person a direct stake to look through
+from), which no earlier phase's suite ever needed to do.

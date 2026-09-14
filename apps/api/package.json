@@ -12,6 +12,8 @@
     "db:reset": "prisma db push --force-reset --skip-generate && prisma generate && tsx src/seed/index.ts",
     "generate": "prisma generate",
     "seed": "tsx src/seed/index.ts",
+    "tenant:create": "tsx src/seed/createTenant.ts",
+    "division:spin-out": "tsx src/seed/spinOut.ts",
     "seed:course-catalog": "tsx src/seed/courseCatalog.ts",
     "grants:reconcile": "tsx src/seed/reconcileGrants.ts",
     "jobs:run": "tsx src/jobs/runOnce.ts",
@@ -43,5 +45,8 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "prisma": {
+    "schema": "prisma/schema"
   }
 }

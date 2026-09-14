@@ -29,6 +29,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { seedCompliance } from './compliance/index.js';
 import { AI_TOUCHPOINTS, EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../platform/db.js';
 import { asSystem } from '../platform/context.js';
@@ -39,9 +40,28 @@ import { PIPELINE_SEEDS, RETIRED_POST_AWARD_STAGES, transitionsFor } from './pip
 import { registerSubscribers } from '../events/handlers.js';
 import { runBackfills } from './backfill.js';
 import { BUILD } from '../platform/build.js';
+import { reconcileTenantKinds } from '../platform/tenantKind.js';
 
 export const TENANT_SLUG = process.env.TENANT_SLUG ?? 'kaizen';
 const TENANT_NAME = process.env.TENANT_NAME ?? 'Kaizen Infinities';
+
+/**
+ * `TENANT_KIND`/`PARENT_TENANT_SLUG` name the group relationship at bootstrap
+ * time, but they are a starting hint rather than the truth: `reconcileTenantKinds`
+ * (run at the end of every bootstrap, and at API boot) recomputes `kind` from
+ * the actual parent/child rows every time, so a stale env var left on a
+ * server cannot leave a tenant's `kind` wrong the way a hand-set flag could.
+ */
+const PARENT_TENANT_SLUG = process.env.PARENT_TENANT_SLUG || undefined;
+
+/**
+ * Read for the same reason `PARENT_TENANT_SLUG` is: as an operator's stated
+ * intent at first creation. It is never the value that ends up governing
+ * anything — `reconcileTenantKinds`, run at the end of this same bootstrap,
+ * recomputes `kind` from the parent/child rows regardless of what this said,
+ * so a wrong guess here corrects itself on the next run rather than sticking.
+ */
+const TENANT_KIND = process.env.TENANT_KIND || undefined;
 
 // ---------------------------------------------------------------------------
 // Thresholds — every unvalidated constant ships as a tunable row from day one
@@ -100,8 +120,8 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   // ---- Start here ------------------------------------------------------
   { nodeKey: 'business', label: 'The Business', icon: 'trending', path: '/business', group: 'main', position: 0, requiredPermission: 'transactions:V', synonyms: ['dashboard', 'how are we doing', 'profit', 'runway', 'cash', 'by division', 'p&l'] },
   { nodeKey: 'command', label: 'Needs Attention', icon: 'gauge', path: '/command', group: 'main', position: 1, requiredPermission: 'health_scores:V', synonyms: ['pulse', 'today', 'command centre', 'state of kaizen', 'problems'] },
-  { nodeKey: 'workspace', label: 'My Work', icon: 'home', path: '/workspace', group: 'main', position: 2, synonyms: ['my day', 'my queue', 'home', 'workspace'] },
-  { nodeKey: 'start', label: 'Getting Started', icon: 'book', path: '/start', group: 'main', position: 3, synonyms: ['setup', 'help', 'tutorial', 'how do i', 'guide', 'onboarding'] },
+  { nodeKey: 'workspace', label: 'My Work', icon: 'home', path: '/workspace', group: 'main', position: 2, archetypes: ['command', 'workspace', 'console'], synonyms: ['my day', 'my queue', 'home', 'workspace'] },
+  { nodeKey: 'start', label: 'Getting Started', icon: 'book', path: '/start', group: 'main', position: 3, archetypes: ['command', 'workspace', 'console'], synonyms: ['setup', 'help', 'tutorial', 'how do i', 'guide', 'onboarding'] },
 
   // ---- Money -----------------------------------------------------------
   { nodeKey: 'fin_ledger', label: 'Ledger', icon: 'coins', path: '/finance/ledger', group: 'money', position: 10, requiredPermission: 'transactions:V', synonyms: ['transactions', 'cash book', 'spend', 'expenses', 'bank'] },
@@ -124,6 +144,10 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'hr_payroll', label: 'Payroll', icon: 'wallet', path: '/people/payroll', group: 'people', position: 23, requiredPermission: 'payroll:V', synonyms: ['salary', 'pay run', 'wages', 'payslip'] },
   { nodeKey: 'hr_hiring', label: 'Hiring', icon: 'inbox', path: '/people/hiring', group: 'people', position: 24, requiredPermission: 'requisitions:V', synonyms: ['recruitment', 'vacancies', 'candidates', 'applications'] },
   { nodeKey: 'hr_capabilities', label: 'Skills', icon: 'badge', path: '/people/skills', group: 'people', position: 25, requiredPermission: 'capabilities:V', synonyms: ['capability', 'who can do', 'expertise'] },
+  // An employee's own grants — `option_grants:V@own` — separate from the
+  // register's own `eq_esop` node, the same way a payslip is separate from
+  // the payroll screen it is drawn from.
+  { nodeKey: 'my_options', label: 'My Options', icon: 'coins', path: '/me/options', group: 'people', position: 26, requiredPermission: 'option_grants:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['esop', 'stock options', 'vesting', 'my grants'] },
 
   // ---- Customers -------------------------------------------------------
   { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'customers', position: 30, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },
@@ -159,6 +183,16 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'delivery', position: 50, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
 
   // ---- Set up ----------------------------------------------------------
+  // ---- Compliance (docs/plan/compliance.md) --------------------------------
+  { nodeKey: 'cmp_calendar', label: 'Compliance Calendar', icon: 'clock', path: '/compliance/calendar', group: 'compliance', position: 40, requiredPermission: 'compliance_obligations:V', synonyms: ['due dates', 'filings', 'deadlines', 'obligations', 'gstr due', 'tds due', 'pf due'] },
+  { nodeKey: 'cmp_gst', label: 'GST Compliance', icon: 'scale', path: '/compliance/gst', group: 'compliance', position: 41, requiredPermission: 'gst_filings:V', synonyms: ['reverse charge', 'e-invoice', 'irn', 'debit note', 'gstr-2b', 'itc reconciliation', 'exempt supply'] },
+  { nodeKey: 'cmp_tax', label: 'Income Tax & TDS', icon: 'calculator', path: '/compliance/tax', group: 'compliance', position: 42, requiredPermission: 'tds:V', synonyms: ['tds', 'tan', 'challan', '26q', '24q', 'form 16', 'advance tax', 'msme', '43b(h)'] },
+  { nodeKey: 'cmp_books', label: 'Audit & Periods', icon: 'clipboard', path: '/compliance/books', group: 'compliance', position: 43, requiredPermission: 'accounting_periods:V', synonyms: ['period close', 'lock period', 'audit trail', 'trial balance', 'schedule iii', 'depreciation schedule', 'tally export'] },
+  { nodeKey: 'cmp_payroll', label: 'Payroll Statutory', icon: 'wallet', path: '/compliance/payroll', group: 'compliance', position: 44, requiredPermission: 'payslips:V', synonyms: ['pf', 'esi', 'professional tax', 'payslip', 'ecr', 'gratuity', 'bonus', 'ctc'] },
+  { nodeKey: 'cmp_labour', label: 'Labour & Conduct', icon: 'users', path: '/compliance/labour', group: 'compliance', position: 45, requiredPermission: 'holidays:V', synonyms: ['holidays', 'posh', 'internal committee', 'disciplinary', 'appointment letter', 'relieving letter', 'muster roll', 'registers'] },
+  { nodeKey: 'cmp_privacy', label: 'Data Protection', icon: 'badge', path: '/compliance/privacy', group: 'compliance', position: 46, requiredPermission: 'consents:V', synonyms: ['dpdp', 'consent', 'privacy notice', 'erasure', 'breach', 'data request', 'guardian consent'] },
+  { nodeKey: 'cmp_corporate', label: 'Corporate & Security', icon: 'building', path: '/compliance/corporate', group: 'compliance', position: 47, requiredPermission: 'corporate_registers:V', synonyms: ['board resolution', 'register of members', 'directors', 'mca', 'aoc-4', 'mgt-7', 'refund', 'certificate', 'mfa', 'stamp duty', 'e-sign', 'firc'] },
+
   { nodeKey: 'data_import', label: 'Import Data', icon: 'inbox', path: '/data/import', group: 'setup', position: 50, requiredPermission: 'imports:V', synonyms: ['tally', 'bank statement', 'excel', 'csv', 'upload', 'migrate', 'bring data in'] },
   { nodeKey: 'gov_decisions', label: 'Decisions', icon: 'scale', path: '/command/decisions', group: 'setup', position: 51, requiredPermission: 'decisions:V' },
   { nodeKey: 'gov_exceptions', label: 'Problems', icon: 'alert', path: '/exceptions', group: 'setup', position: 52, requiredPermission: 'exceptions:V', synonyms: ['issues', 'attention', 'exceptions'] },
@@ -170,7 +204,54 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'adm_events', label: 'System History', icon: 'list', path: '/admin/events', group: 'setup', position: 58, requiredPermission: 'events:V' },
   { nodeKey: 'adm_audit', label: 'Audit Trail', icon: 'lock', path: '/admin/audit', group: 'setup', position: 59, requiredPermission: 'audit:V' },
   { nodeKey: 'fin_company', label: 'Company Details', icon: 'building', path: '/finance/company', group: 'setup', position: 49, requiredPermission: 'company_profile:V', synonyms: ['gstin', 'registration', 'pan', 'bank details', 'invoice footer', 'legal name', 'address'] },
-  { nodeKey: 'adm_platform', label: 'How This Is Built', icon: 'book', path: '/admin/platform', group: 'setup', position: 60 },
+  { nodeKey: 'adm_platform', label: 'How This Is Built', icon: 'book', path: '/admin/platform', group: 'setup', position: 60, archetypes: ['command', 'workspace', 'console'] },
+
+  // ---- Equity & board (ERP side) -----------------------------------------
+  // The register itself is phase 1's `cap_table`/`holders`/etc, not yet ERP
+  // nav here (this worktree is based on the phase-0 commit). Board, its
+  // resolutions and the compliance calendar are phase 3. `archetypes` is
+  // explicit here on purpose — a node with no `archetypes` leaks into every
+  // host including the portal shell, and these three belong to the ERP side
+  // only; the `portal_board` node above is the shareholder/director view of
+  // the same data.
+  { nodeKey: 'eq_board', label: 'Board', icon: 'shield', path: '/equity/board', group: 'equity', position: 91, requiredPermission: 'board_meetings:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['meetings', 'minutes', 'agenda', 'directors', 'quorum'] },
+  { nodeKey: 'eq_resolutions', label: 'Resolutions', icon: 'scale', path: '/equity/resolutions', group: 'equity', position: 92, requiredPermission: 'resolutions:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['circular resolution', 'vote', 'mgt-14', 'circulation'] },
+  { nodeKey: 'eq_compliance', label: 'Compliance', icon: 'clipboard', path: '/equity/compliance', group: 'equity', position: 93, requiredPermission: 'compliance:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['calendar', 'due dates', 'filings', 'ss-1', 'agm', 'mbp-1'] },
+
+  // ---- The equity & board portal ----------------------------------------
+  // `archetypes: ['portal']` is what actually keeps these off the ERP shell —
+  // `navigationFor()` filters by the active role's archetype, so an ERP role
+  // opening the portal host sees none of these, and a portal role opening the
+  // ERP host still sees only these (§3.1).
+  { nodeKey: 'portal_holdings', label: 'Holdings', icon: 'coins', path: '/portal/holdings', group: 'portal', position: 70, requiredPermission: 'holdings:V', archetypes: ['portal'], synonyms: ['shares', 'my shares', 'cap table', 'ownership'] },
+  { nodeKey: 'portal_certificates', label: 'Certificates', icon: 'file', path: '/portal/certificates', group: 'portal', position: 71, requiredPermission: 'share_certificates:V', archetypes: ['portal'], synonyms: ['share certificate'] },
+  { nodeKey: 'portal_documents', label: 'Documents', icon: 'file', path: '/portal/documents', group: 'portal', position: 72, requiredPermission: 'entity_documents:V', archetypes: ['portal'] },
+  { nodeKey: 'portal_board', label: 'Board', icon: 'shield', path: '/portal/board', group: 'portal', position: 73, requiredPermission: 'board_meetings:V', archetypes: ['portal'], synonyms: ['meetings', 'resolutions', 'minutes'] },
+  { nodeKey: 'portal_entities', label: 'Entities', icon: 'building', path: '/portal/entities', group: 'portal', position: 74, requiredPermission: 'group:V', archetypes: ['portal'], synonyms: ['group', 'subsidiaries', 'structure chart'] },
+  // An employee who is also a shareholder sees their own grants here too —
+  // identical content to `my_options`, reached from the portal shell instead
+  // of the ERP one.
+  { nodeKey: 'portal_options', label: 'Options', icon: 'coins', path: '/portal/options', group: 'portal', position: 75, requiredPermission: 'option_grants:V', archetypes: ['portal'], synonyms: ['esop', 'stock options', 'vesting'] },
+
+  // The register, worked from the ERP side — company secretary, finance,
+  // chairman. Nothing here is `archetypes: ['portal']`, so it never reaches
+  // the portal shell; the portal's own view of the same facts is the
+  // `portal_*` group above.
+  { nodeKey: 'eq_cap_table', label: 'Cap Table', icon: 'chart', path: '/equity/cap-table', group: 'equity', position: 80, requiredPermission: 'cap_table:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['shareholders', 'cap table', 'ownership', 'members'] },
+  { nodeKey: 'eq_register', label: 'Share Register', icon: 'file', path: '/equity/register', group: 'equity', position: 81, requiredPermission: 'share_ledger:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['share register', 'allotments', 'transfers', 'ledger'] },
+  { nodeKey: 'eq_holders', label: 'Holders', icon: 'users', path: '/equity/holders', group: 'equity', position: 82, requiredPermission: 'holders:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['shareholders', 'members', 'investors'] },
+  { nodeKey: 'eq_share_classes', label: 'Share Classes', icon: 'package', path: '/equity/share-classes', group: 'equity', position: 83, requiredPermission: 'share_classes:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['equity', 'preference', 'instruments'] },
+  { nodeKey: 'eq_valuations', label: 'Valuations', icon: 'trending', path: '/equity/valuations', group: 'equity', position: 84, requiredPermission: 'valuations:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['409a', 'fmv', 'fair value'] },
+  { nodeKey: 'eq_documents', label: 'Entity Documents', icon: 'file', path: '/equity/documents', group: 'equity', position: 85, requiredPermission: 'entity_documents:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['certificates', 'resolutions', 'filings'] },
+  // Group (equity-portal plan §6, phase 2). Reads the holding tenant's own
+  // snapshots only — see `domains/group.ts`.
+  { nodeKey: 'eq_group', label: 'Group', icon: 'building', path: '/equity/group', group: 'equity', position: 90, requiredPermission: 'group:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['subsidiaries', 'structure chart', 'consolidated', 'look-through', 'sbo'] },
+  // Rounds, instruments, valuations, scenarios (phase 4).
+  { nodeKey: 'eq_rounds', label: 'Rounds', icon: 'trending', path: '/equity/rounds', group: 'equity', position: 86, requiredPermission: 'rounds:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['funding round', 'preferential', 'private placement', 'bonus', 'rights issue', 'buyback'] },
+  { nodeKey: 'eq_scenarios', label: 'Scenarios', icon: 'chart', path: '/equity/scenarios', group: 'equity', position: 87, requiredPermission: 'cap_table:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['dilution', 'waterfall', 'modelling', 'what if'] },
+  { nodeKey: 'eq_esop', label: 'ESOP', icon: 'coins', path: '/equity/esop', group: 'equity', position: 88, requiredPermission: 'esop_plans:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['options', 'option pool', 'stock options', 'vesting', 'sh-6'] },
+  // Filings, demat, FEMA (phase 6a).
+  { nodeKey: 'eq_filings', label: 'Filings', icon: 'file', path: '/equity/filings', group: 'equity', position: 89, requiredPermission: 'compliance:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['mgt-1', 'mgt-2', 'pas-3', 'sh-4', 'pas-6', 'demat', 'fema', 'fc-gpr', 'fc-trs', 'fla'] },
 ];
 
 /**
@@ -647,8 +728,18 @@ async function seedSurfaces() {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * The tenant every helper below writes into. `seedBootstrap` sets this once
+ * at the top of a run — set rather than threaded as a parameter through every
+ * `seedThresholds`/`seedGovernance`/… helper, so a subsidiary's bootstrap is a
+ * one-line change here and not a signature change in a dozen functions that
+ * otherwise behave identically for every tenant.
+ */
+let ACTIVE_TENANT_SLUG = TENANT_SLUG;
+let ACTIVE_TENANT_NAME = TENANT_NAME;
+
 async function currentTenant() {
-  const t = await unscopedPrisma.tenant.findFirstOrThrow({ where: { slug: TENANT_SLUG } });
+  const t = await unscopedPrisma.tenant.findFirstOrThrow({ where: { slug: ACTIVE_TENANT_SLUG } });
   return t;
 }
 // ---------------------------------------------------------------------------
@@ -803,7 +894,7 @@ async function seedAccount(spec: FoundingAccount): Promise<SeededAccount> {
         tenantId,
         partyId: person.id,
         affiliationType: 'employee',
-        counterpartyName: TENANT_NAME,
+        counterpartyName: ACTIVE_TENANT_NAME,
         roleSlug: spec.roleSlug,
         primaryFlag: true,
         status: 'active',
@@ -819,10 +910,22 @@ async function seedAccount(spec: FoundingAccount): Promise<SeededAccount> {
     return { roleSlug: spec.roleSlug, name: fullName, email, holds: spec.holds, password: null, created: false };
   }
 
+  // The credential lives on the Principal, not the User — find-or-create it
+  // directly here rather than leaving it to the backfill, so a brand-new
+  // tenant's founding accounts never pass through the "unmigrated" state at
+  // all. Keyed on lowercase email: the same person signing in as chairman of
+  // the holding and as a director of a subsidiary is one Principal (§3.2),
+  // and a subsidiary bootstrapped with the same `OWNER_EMAIL` reuses the
+  // holding chairman's existing password rather than silently resetting it.
+  const existingPrincipal = await unscopedPrisma.principal.findFirst({ where: { email } });
   const fromEnv = process.env[`${spec.env}_PASSWORD`];
   const password = fromEnv ?? randomUUID().replace(/-/g, '').slice(0, 16);
+
+  const principal =
+    existingPrincipal ?? (await unscopedPrisma.principal.create({ data: { email, passwordHash: await hashPassword(password) } }));
+
   await prisma.user.create({
-    data: { tenantId, personId: person.id, email, passwordHash: await hashPassword(password) },
+    data: { tenantId, personId: person.id, email, principalId: principal.id },
   });
 
   console.log(`  ${spec.roleSlug} ${email} created`);
@@ -831,7 +934,7 @@ async function seedAccount(spec: FoundingAccount): Promise<SeededAccount> {
     name: fullName,
     email,
     holds: spec.holds,
-    password: fromEnv ? null : password,
+    password: existingPrincipal || fromEnv ? null : password,
     created: true,
   };
 }
@@ -844,17 +947,38 @@ async function seedFoundingAccounts(): Promise<SeededAccount[]> {
 
 // ---------------------------------------------------------------------------
 
-export async function seedBootstrap(): Promise<{
+export interface SeedBootstrapOptions {
+  /** Defaults to `TENANT_SLUG` (env `TENANT_SLUG`, else `kaizen`) — the existing default path is unchanged when this is omitted. */
+  tenantSlug?: string;
+  tenantName?: string;
+  /** The slug of this tenant's parent, if any — `PARENT_TENANT_SLUG` when omitted. `reconcileTenantKinds` derives `kind` from this at the end of the run; it is never trusted as written past that point. */
+  parentTenantSlug?: string;
+  /** The division this subsidiary grew out of — written into `config.originDivision` (§1.1). */
+  originDivision?: 'software' | 'skill' | 'education';
+}
+
+export async function seedBootstrap(opts: SeedBootstrapOptions = {}): Promise<{
   tenantId: string;
   owner: { email: string; password: string | null };
   accounts: SeededAccount[];
 }> {
+  ACTIVE_TENANT_SLUG = opts.tenantSlug ?? TENANT_SLUG;
+  ACTIVE_TENANT_NAME = opts.tenantName ?? TENANT_NAME;
+  const parentSlug = opts.parentTenantSlug ?? PARENT_TENANT_SLUG;
+
+  const parent = parentSlug ? await unscopedPrisma.tenant.findFirst({ where: { slug: parentSlug } }) : null;
+  if (parentSlug && !parent) {
+    throw new Error(`--parent ${parentSlug} does not exist. Bootstrap the parent tenant first.`);
+  }
+
   const tenant = await unscopedPrisma.tenant.upsert({
-    where: { slug: TENANT_SLUG },
+    where: { slug: ACTIVE_TENANT_SLUG },
     create: {
-      slug: TENANT_SLUG,
-      name: TENANT_NAME,
+      slug: ACTIVE_TENANT_SLUG,
+      name: ACTIVE_TENANT_NAME,
       status: 'active',
+      parentTenantId: parent?.id ?? null,
+      ...(TENANT_KIND ? { kind: TENANT_KIND } : {}),
       config: {
         // The explicit bootstrap authority set, owned by SYS: who may create
         // the first POLICY or GRANT for a new tenant. This breaks the
@@ -867,8 +991,12 @@ export async function seedBootstrap(): Promise<{
         // Until then the product leads with setup rather than with empty
         // dashboards.
         onboardingComplete: false,
+        ...(opts.originDivision ? { originDivision: opts.originDivision } : {}),
       },
     },
+    // A tenant that already exists keeps its parent as it is — re-running
+    // bootstrap is not how a tenant is re-parented, the same posture every
+    // other block here takes toward its own rows.
     update: {},
   });
 
@@ -884,6 +1012,7 @@ export async function seedBootstrap(): Promise<{
     await seedSurfaces();
     await seedAgents();
     await seedLeaveTypes();
+    await seedCompliance();
     accounts = await seedFoundingAccounts();
   });
 
@@ -925,6 +1054,14 @@ export async function seedBootstrap(): Promise<{
   if (backfilled.designations > 0) {
     console.log(`  ${backfilled.designations} founding account(s) now named by designation`);
   }
+  if (backfilled.principals > 0) {
+    console.log(`  ${backfilled.principals} user(s) given a principal`);
+  }
+
+  // Never trust `kind` as written — recompute it from the parent/child rows
+  // that actually exist, every run. Raises the §1a.1 small-company notice the
+  // first time this or any tenant in the same group flips to holding/subsidiary.
+  await reconcileTenantKinds();
 
   // `owner` is kept as its own field because it is what every caller printing
   // sign-in details actually wants, and because removing it would break them for

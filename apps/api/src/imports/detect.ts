@@ -41,6 +41,7 @@ export type ImportKind =
   | 'template_ledger_accounts'
   | 'template_ledger_categories'
   | 'template_vendor_bills'
+  | 'template_opening_register'
   | 'unknown';
 
 export interface Detection {
@@ -242,7 +243,7 @@ export function detectWorkbook(sheets: SheetGrid[]): { primary: Detection; perSh
 
   const order: ImportKind[] = [
     'template_courses', 'template_batches', 'template_colleges', 'template_clients',
-    'template_students', 'template_contacts', 'template_staff',
+    'template_students', 'template_contacts', 'template_staff', 'template_opening_register',
     'template_ledger_accounts', 'template_ledger_categories', 'template_vendor_bills',
     'tally_ledger', 'bank_statement', 'employees', 'salary',
     'chart_of_accounts', 'attendance', 'transactions', 'unknown',

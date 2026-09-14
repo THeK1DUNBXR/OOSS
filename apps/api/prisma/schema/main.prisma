@@ -36,7 +36,23 @@ model Tenant {
   /// The explicit bootstrap authority set — who may create the first POLICY or
   /// GRANT for a new tenant. Owned by SYS, it breaks the circularity of the
   /// permission system needing permission to create itself.
+  ///
+  /// Also carries, by convention (documented as `TenantConfig` in
+  /// `@kaizen/shared`): `emailDomains: string[]` (a routing hint only — see
+  /// `apps/api/src/lib/auth.ts`), `originDivision` (the division a subsidiary
+  /// grew out of, before it existed as its own tenant) and
+  /// `smallCompanyNoticeRaisedAt` (set once `reconcileTenantKinds` has raised
+  /// the §1a.1 compliance notice, so it fires exactly once).
   config Json @default("{}")
+
+  /// The group. A tenant with a parent is a `subsidiary`; a tenant another
+  /// tenant names as parent is a `holding`; anything else is `standalone`.
+  /// Recomputed by `reconcileTenantKinds` rather than trusted as written, so it
+  /// can never go stale the way a hand-set flag would.
+  parentTenantId String?
+  parent         Tenant?  @relation("TenantGroup", fields: [parentTenantId], references: [id], onDelete: Restrict)
+  subsidiaries   Tenant[] @relation("TenantGroup")
+  kind           String   @default("standalone") // holding | subsidiary | standalone
 
   users           User[]
   people          Person[]
@@ -136,6 +152,57 @@ model CompanyProfile {
   /// that would rather match its existing paper series and accept the
   /// consequence — which the returns screen states rather than discovers.
   documentYearFormat String @default("short")
+
+  /// The register (equity-portal plan §5 "EntityProfile"). Held on the same
+  /// row as the rest of the company's own facts rather than a second 1:1
+  /// table, for the same reason `documentPrefix` is here: one thing a tenant
+  /// has one of.
+  incorporatedOn         DateTime?
+  financialYearEndMonth  Int?      @default(3)
+  /// null = not stated. A stated false is a fact worth keeping once a
+  /// subsidiary exists and `reconcileTenantKinds` has already ended it —
+  /// the flag is not derived from that, because s.2(85) turns on group
+  /// structure, not on this column.
+  isSmallCompany         Boolean?
+  dematStatus            String    @default("physical") // physical | demat | mixed
+  isin                   String?
+  rtaName                String?
+  dpiitNumber            String?
+  dpiitRecognisedOn      DateTime?
+  /// The 80-IAC certificate reference. Its presence, together with
+  /// `EsopPlan.isDpiitRecognised`, is what lets an exercise defer tax under
+  /// s.192(1C) instead of taxing the perquisite in the month of exercise.
+  iac80CertificateRef    String?
+  /// Snapshotted onto every certificate at issue (s.46: two signatories).
+  /// `[]` until the secretary sets it, which is exactly why `makeEffective`
+  /// refuses to issue a certificate against an empty list rather than
+  /// printing one signatory short.
+  certificateSignatories Json      @default("[]")
+
+  /// How many board meetings SS-1 requires in a year. Null derives it: four,
+  /// or two when `isSmallCompany` is true — never guessed when
+  /// `isSmallCompany` itself is unknown.
+  boardMeetingsRequiredPerYear Int?
+
+  /// SS-1's minimum notice period for a board meeting, in clear days.
+  noticeDays Int @default(7)
+  // ---- Compliance registrations (docs/plan/compliance.md, workstreams A, C, E, G) ----
+  /// Tax Deduction and Collection Account Number (Income-tax Act Sec 203A).
+  tan                   String?
+  /// Tamil Nadu Professional Tax enrolment, EPFO establishment code, ESIC employer code.
+  ptRegistrationNumber  String?
+  pfEstablishmentCode   String?
+  esiEmployerCode       String?
+  /// Udyam registration, when the company itself is an MSME.
+  udyamNumber           String?
+  /// Whether outward supplies are made under the composition scheme (Sec 10).
+  compositionScheme     Boolean @default(false)
+  /// Whether e-invoicing (Rule 48(4)) applies to this registration. Set by the
+  /// company against the turnover threshold in force; the platform does not infer it.
+  eInvoicingApplicable  Boolean @default(false)
+  /// DPDP Act grievance officer, named on the privacy notice.
+  grievanceOfficerName  String?
+  grievanceOfficerEmail String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -250,6 +317,10 @@ model Affiliation {
   positionId String?
 
   deletedAt DateTime?
+  // ---- Access revocation on exit (workstream G) ----
+  revokedAt     DateTime?
+  revokedReason String?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -347,6 +418,10 @@ model Organization {
   students           StudentProfile[]    @relation("StudentInstitution")
   /// The learners whose fees this body is paying.
   sponsoredStudents  StudentProfile[]    @relation("StudentSponsor")
+
+  /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
+  migratedToTenantId String?
+  spinOutBatchId     String?
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, name])
@@ -520,6 +595,11 @@ model StudentProfile {
 
   attachedById String?
   deletedAt    DateTime?
+  // ---- DPDP: a minor's guardian and the consent recorded from them (workstream G). ----
+  guardianName      String?
+  guardianPhone     String?
+  guardianConsentId String?
+
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -943,6 +1023,11 @@ model AuditRecord {
   fieldsRead String[] @default([])
   meta       Json?
 
+  /// Tamper evidence (workstream D): each record hashes its content and the
+  /// previous record's hash, the way `EventRecord` already does.
+  hash     String?
+  prevHash String?
+
   timestamp DateTime @default(now())
 
   @@index([tenantId, subjectType, subjectId, timestamp])
@@ -962,15 +1047,32 @@ model User {
   personId String
   person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
-  email        String
-  passwordHash String
-  status       String  @default("active") // active | invited | suspended
-  branch       String?
+  email  String
+  status String  @default("active") // active | invited | suspended
+  branch String?
+
+  /// Deprecated: the credential now lives on `Principal`, one per email across
+  /// every tenant. Kept nullable rather than dropped because `prisma db push`
+  /// cannot run code before dropping a column — a hard drop here would lose
+  /// every existing install's password in the same step that removed the
+  /// column to hold it. `seed/backfill.ts` moves the hash across and nulls
+  /// this field; `login()` refuses a user whose `principalId` is still unset
+  /// rather than falling back to it.
+  passwordHash String?
+  principalId  String?
+  principal    Principal? @relation(fields: [principalId], references: [id])
 
   /// Server-side carriage. Never client-trusted.
   activeAffiliationId String?
 
   lastLoginAt DateTime?
+  // ---- Security hygiene (workstream H) ----
+  mfaSecret         String?
+  mfaEnabledAt      DateTime?
+  passwordChangedAt DateTime?
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -978,7 +1080,34 @@ model User {
 
   @@unique([tenantId, email])
   @@index([tenantId, personId])
+  @@index([principalId])
   @@map("users")
+}
+
+/// One identity across every tenant a person touches — the group's chairman,
+/// an outside shareholder in two subsidiaries, a director who is also staff at
+/// the holding company. `User` stays per-tenant (a role, an affiliation, a
+/// classification ceiling are all tenant-scoped facts); the credential and the
+/// login itself are not, so they live here instead of being copied once per
+/// tenant and drifting.
+///
+/// Deliberately exempt from the tenant-scope gate (`TENANT_EXEMPT_MODELS` in
+/// `platform/db.ts`) — a principal is cross-tenant by definition, the same way
+/// `Tenant` itself is. Its use stays confined to `lib/auth.ts`, `lib/http.ts`
+/// and the seed: nowhere in a domain function is it legitimate to query a
+/// Principal directly, because a domain function runs inside one tenant.
+model Principal {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  status       String    @default("active") // active | suspended
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  users User[]
+
+  @@map("principals")
 }
 
 /// Watermark-relative delta state. `reachSignature` — a hash over resolved
@@ -1849,6 +1978,14 @@ model Document {
 
   uploadedById String?
   deletedAt    DateTime?
+  // ---- Retention, stamp duty and e-signature (workstream H) ----
+  retainUntil     DateTime?
+  stampDutyAmount Decimal?  @db.Decimal(14, 2)
+  stampDutyRef    String?
+  eSignProvider   String?
+  eSignRef        String?
+  eSignedAt       DateTime?
+
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -1873,6 +2010,687 @@ model Note {
 
   @@index([tenantId, attachedToType, attachedToId])
   @@map("notes")
+}
+
+// ===========================================================================
+// Equity register (eqt-owned) — equity-portal plan §5, phase 1.
+//
+// The register is a ledger; the cap table is its sum (§3.5). SHARE_TRANSACTION
+// is append-only — a mistake is reversed with a second row carrying
+// `reversalOfId`, never edited away — the same discipline TRANSACTION already
+// keeps for money. EQT never holds money movement; FIN never holds share
+// ownership (§3.6): an allotment for cash points at a TRANSACTION on a
+// `kind: equity` category instead of posting one itself.
+// ===========================================================================
+
+/// One class of instrument this entity has issued: equity, a preference
+/// series, a convertible instrument. `instrument` and `faceValue` are
+/// immutable once any effective transaction references the class — changing
+/// what a class of shares *is* after certificates have been printed against it
+/// would make every certificate a lie about what it represents.
+model ShareClass {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name            String
+  kind            String // equity | preference | debenture
+  instrument      String // equity | sweat_equity | ccps | ocps | rps | ccd | ocd | ncd | convertible_note | warrant | option | phantom
+  faceValue       Decimal  @db.Decimal(18, 2)
+  votesPerShare   Decimal  @default(1) @db.Decimal(24, 6)
+  /// Liquidation preference, anti-dilution, pro-rata, board seat, information
+  /// rights, dividend rate — shaped per instrument, so a free-form object
+  /// rather than a column each.
+  rights          Json     @default("{}")
+  conversionTerms Json?
+  /// RPS and NCD only: `{ redeemOn?, premium?, fromReserves }` — see
+  /// `RedemptionTerms` in `@kaizen/shared`.
+  redemptionTerms Json?
+  authorisedCount Decimal? @db.Decimal(24, 6)
+  status          String   @default("active") // active | closed
+
+  /// Names the spin-out batch that created this class (equity-portal plan
+  /// §6b), for `--revert`.
+  spinOutBatchId String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, name])
+  @@index([tenantId, status])
+  @@map("share_classes")
+}
+
+/// The party that holds shares: a person, an organisation, or — the
+/// entity-as-stakeholder link (§3.3, s.19) — another tenant in this group,
+/// recorded the way Pulley records a holding company on a subsidiary's own
+/// cap table. Exactly one of `personId` / `organizationId` / `heldByTenantId`
+/// is set.
+model Holder {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  kind           String // person | organization | entity
+  personId       String?
+  organizationId String?
+  /// The holding tenant, when this holder IS another group entity. Refused at
+  /// creation when that tenant has this tenant as an ancestor in its own
+  /// `parentTenantId` chain (s.19: a subsidiary may not hold its holding's
+  /// shares) — see `assertNotHoldingsAncestor` in `domains/equity.ts`, the one
+  /// place in this domain the unscoped tenant table is read, because the check
+  /// is structural on tenants rather than a read of this tenant's own data.
+  heldByTenantId String?
+
+  /// Generator-assigned per tenant: `F-00001`.
+  folioNumber String
+
+  residency       String  @default("resident") // resident | non_resident
+  /// Required when `residency` is `non_resident` — decides the FEMA calendar
+  /// (repatriable: FC-GPR/FC-TRS/FLA; non_repatriable: treated as resident
+  /// money under Schedule IV).
+  investmentBasis String?
+  /// Regulated, like an employee's PAN — named `panNumber` rather than `pan`
+  /// so it rides the same `REGULATED_EXCLUDED_FIELDS` exclusion every other
+  /// statutory identifier in this platform already gets, with no change to
+  /// the shared permission list.
+  panNumber       String?
+  nominee         Json?
+  jointHolders    Json?
+  status          String  @default("active") // active | ceased
+
+  /// MGT-1 fields (Rule 3, Mgmt & Admin Rules) not needed for anything else
+  /// in the register and left blank rather than guessed — "not recorded" is
+  /// never a fabricated address.
+  address                String?
+  occupation             String?
+  nationality            String?
+  guardianOrSpouseName   String?
+
+  /// Rule 9B / PAS-6: the holder's demat account, when their holding is
+  /// dematerialised. Held once per holder rather than per certificate — a
+  /// holder either holds through a depository or does not — and every share
+  /// this holder holds is treated as demat when this is set. `{ dpId,
+  /// clientId }` at minimum; kept as free `Json` because the two depositories
+  /// (NSDL/CDSL) and an RTA's own reference are not a single fixed shape.
+  dematAccount Json?
+  /// Names the spin-out batch that created this holder (equity-portal plan
+  /// §6b), for `--revert`.
+  spinOutBatchId String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, folioNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, personId])
+  @@index([tenantId, organizationId])
+  @@map("holders")
+}
+
+/// One entry in the register. Append-only: no route ever updates `count`,
+/// `fromHolderId`, `toHolderId` or `shareClassId` once a row exists — a
+/// mistake is rejected and re-proposed, or reversed after it goes effective
+/// with a second row carrying `reversalOfId`.
+model ShareTransaction {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  type String // allotment | transfer | conversion | buyback | split | bonus | forfeiture | cancellation | redemption | reduction
+
+  shareClassId String
+  fromHolderId String?
+  toHolderId   String?
+
+  count         Decimal  @db.Decimal(24, 6)
+  pricePerShare Decimal? @db.Decimal(18, 2)
+
+  /// Assigned by `makeEffective`, gaplessly per class — never caller-supplied.
+  distinctiveFrom BigInt?
+  distinctiveTo   BigInt?
+
+  effectiveOn DateTime
+  /// The round this transaction was struck under — a real reference (phase 4)
+  /// to `FundingRound`, not just a free string; nullable because the phase 1
+  /// ledger (an ordinary allotment or transfer) never needs a round.
+  roundId     String?
+  round       FundingRound? @relation(fields: [roundId], references: [id])
+
+  /// Conversion only: the convertible class the source holding is retired
+  /// from — `shareClassId` on a conversion row names the *target* class it is
+  /// allotted into, so the two ends of `conversionTerms` each have a column.
+  fromShareClassId String?
+
+  /// Buy-back only: when the bought-back shares were extinguished. s.68(7)
+  /// gives seven days from completion; `makeEffective` on a buyback writes
+  /// this immediately rather than waiting for a second act, because nothing
+  /// further is needed once the holding is retired.
+  extinguishedOn DateTime?
+
+  /// The `Transaction` (kind: equity) that already lifted cash for this
+  /// allotment. Absent + a positive price ⇒ `pendingConsideration` (§3.6).
+  considerationTransactionId String?
+  approvalDecisionId         String?
+  boardResolutionRef         String?
+
+  status String @default("proposed") // proposed | approved | effective | reversed | rejected
+
+  reversalOfId String?
+  reversedById String?
+
+  proposedByPartyId String
+
+  note      String?
+  documents Json    @default("[]")
+  /// Structured extra data a transaction type needs and no other type does —
+  /// `{ fromReserves }` on a redemption, `{ ratioNumerator, ratioDenominator }`
+  /// on a bonus — kept off `documents` (file references) and off dedicated
+  /// columns (most rows never use it).
+  meta      Json?
+
+  /// Names the spin-out batch that created this row — the subsidiary's
+  /// opening allotment (equity-portal plan §6b) — for `--revert`.
+  spinOutBatchId String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, shareClassId, status])
+  @@index([tenantId, toHolderId])
+  @@index([tenantId, fromHolderId])
+  @@index([tenantId, roundId])
+  @@map("share_transactions")
+}
+
+/// A printed certificate against a range of distinctive numbers. Numbered from
+/// document series `C`, fixed at issue, superseded — never edited — on a
+/// transfer or a split.
+model ShareCertificate {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// The document number: `KIPL/C/26-27/001` for one this platform issued, or
+  /// the paper number carried over by the opening-register import for one
+  /// that pre-dates it (`imported: true`, no series `C` number allocated).
+  certificateNumber String
+  imported          Boolean @default(false)
+
+  holderId     String
+  shareClassId String
+
+  distinctiveFrom BigInt
+  distinctiveTo   BigInt
+  count           Decimal @db.Decimal(24, 6)
+
+  issuedOn DateTime
+  status   String   @default("issued") // issued | surrendered | cancelled
+
+  supersededById String?
+
+  issuedForTransactionId String?
+
+  /// Snapshotted at issue, so the document reads the same after the
+  /// signatories on file change (§3.7: figures and names are snapshotted).
+  signatories        Json   @default("[]")
+  holderNameSnapshot String
+
+  stampDutyPaid   Decimal?  @db.Decimal(18, 2)
+  stampDutyPaidOn DateTime?
+
+  /// Names the spin-out batch that issued this certificate (equity-portal
+  /// plan §6b), for `--revert`.
+  spinOutBatchId String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, holderId, status])
+  @@index([tenantId, shareClassId])
+  @@map("share_certificates")
+}
+
+/// A recorded valuation: date, valuer, basis, per-class figure — or the
+/// screen says "No valuation on record" rather than inventing a number (§3.7).
+model Valuation {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  asOf  DateTime
+  basis String // registered_valuer | merchant_banker | ca_certificate | internal | round_price
+
+  valuerName      String?
+  perShareByClass Json
+  equityValue     Decimal?  @db.Decimal(18, 2)
+  reportRef       String?
+  validUntil      DateTime?
+  note            String?
+
+  /// The round this valuation was recorded for, when it was — a preferential
+  /// or private-placement round refuses to open without one on this basis
+  /// dated before the opening (Rule 13, s.42).
+  roundId String?
+
+  createdById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, asOf])
+  @@index([tenantId, roundId])
+  @@map("valuations")
+}
+
+/// A round: the container an allotment, a bonus, a rights offer, a buy-back or
+/// a capital reduction is struck under, carrying the statutory prerequisites
+/// its kind needs before it may open and the totals `closeRound` computes
+/// once every transaction under it has gone effective (§6 phase 4).
+model FundingRound {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name   String
+  /// seed | series | rights_issue | bonus | preferential | private_placement |
+  /// sweat_equity | esop_top_up | buyback | capital_reduction | conversion
+  kind   String
+  /// draft | open | closed | cancelled
+  status String @default("draft")
+
+  openedOn DateTime?
+  closedOn DateTime?
+
+  preMoneyValuation    Decimal? @db.Decimal(18, 2)
+  postMoneyValuation   Decimal? @db.Decimal(18, 2)
+  /// What was actually raised, computed by `closeRound` from the round's own
+  /// effective allotments — never entered by hand.
+  raised               Decimal? @db.Decimal(18, 2)
+  /// `{ [shareClassId]: pricePerShare }` — the price each class is offered at
+  /// under this round, distinct from any one transaction's own price so a
+  /// round can be quoted before the first allotment is proposed against it.
+  pricePerShareByClass Json?
+
+  /// The registered-valuer report a preferential/private-placement round must
+  /// carry before it opens (Rule 13).
+  valuationId String?
+
+  boardResolutionRef       String?
+  shareholderResolutionRef String?
+  mgt14Srn                 String?
+  pas3Srn                  String?
+  pas3FiledOn              DateTime?
+  /// PAS-4 offer-letter serial — private placement only (s.42).
+  offerLetterSerial        String?
+  /// The separate bank account s.42 requires application money to land in —
+  /// private placement only.
+  separateBankAccountRef   String?
+  /// How many persons have been offered shares under this round — counted
+  /// against the 200-person s.42 ceiling across every private-placement round
+  /// in the financial year, not just this one.
+  offereeCount             Int?
+  /// Rights issue only (s.62(1)(a)): whether an entitlement may be renounced
+  /// to a named third party rather than taken up or let lapse.
+  renunciationAllowed      Boolean?
+  /// Bonus only (s.63): free_reserves | securities_premium |
+  /// capital_redemption_reserve — refused unless the named source is actually
+  /// measured and positive.
+  sourceOfBonus            String?
+  /// Sweat equity only (s.54): the valuation report a sweat-equity allotment
+  /// needs, distinct from `valuationId` because a sweat-equity report values
+  /// the consideration (IP, know-how) rather than the company.
+  valuationReportRef       String?
+  /// Capital reduction only (s.66): the tribunal order this is recorded
+  /// against — the act itself is not workflowed, only recorded.
+  tribunalOrderRef         String?
+
+  notes String?
+
+  transactions ShareTransaction[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, kind])
+  @@map("funding_rounds")
+}
+
+/// The filing log (equity-portal plan §6 phase 6a). One row per statutory
+/// form the register keeper owes, or has filed — not a second calendar next
+/// to the exception engine, the record that closes what an `ExceptionRecord`
+/// already opened (`domains/filings.ts#recordFiling` resolves the matching
+/// open exception by code and subject when one exists).
+model Filing {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// MGT-1 | MGT-2 | PAS-3 | SH-4 | SH-7 | MGT-14 | MGT-7 | MGT-7A | PAS-6 |
+  /// FC-GPR | FC-TRS | FLA | other
+  form String
+
+  /// What this filing was for — a round for PAS-3, a share transaction for
+  /// SH-4/FC-GPR/FC-TRS, a company profile for PAS-6/FLA. Optional: some
+  /// filings (MGT-1/MGT-2 exports, MGT-14) are not against one register row.
+  relatedType String?
+  relatedId   String?
+
+  /// A human description of the period or event this filing covers —
+  /// "H2 2025-26" for a PAS-6, "FY 2025-26" for an FLA, the round's own name
+  /// for a PAS-3 — since the three forms measure a period by different rules
+  /// and none of them reduce to one date column.
+  periodOrEvent String
+
+  srn     String?
+  filedOn DateTime?
+  dueOn   DateTime?
+  status  String    @default("due") // due | filed | not_required
+  note    String?
+
+  recordedByPartyId String
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, form])
+  @@index([tenantId, relatedType, relatedId])
+  @@map("filings")
+}
+
+/// A document published to holders, the board, or the secretary — a
+/// certificate scan, a resolution, a valuation report, an agreement, a
+/// filing. Kept apart from the general-purpose `Document` model (which
+/// requires an actual stored blob) because most of what this carries in
+/// phase 1 is a reference to something kept outside the platform — there is
+/// no blob store yet — and `audience` is a concept specific to who may see a
+/// register document, not to every attachment in the system.
+model EntityDocument {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  title    String
+  kind     String // certificate | resolution | valuation_report | agreement | filing | other
+  /// Who this is published to. A shareholder sees `shareholders` only; a
+  /// director also `board`; the secretary (and chairman) every audience.
+  audience String // shareholders | board | secretary
+
+  /// A reference to where the file actually lives — an external URL, until a
+  /// blob store exists. Never a claim that this platform is holding the bytes.
+  fileRef String
+
+  uploadedByPartyId String
+
+  relatedType String?
+  relatedId   String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, audience])
+  @@index([tenantId, relatedType, relatedId])
+  @@map("entity_documents")
+}
+
+/// A subsidiary's published summary, written into its PARENT's tenant
+/// (equity-portal plan §3.3, phase 2). `tenantId` here is the parent — the
+/// only place in the whole domain a write ever lands in a tenant other than
+/// the one the request is running in, and only from `domains/group.ts`'s
+/// `publishEntitySnapshot`, under `asSystem(parentTenantId)`. The group
+/// screen reads only this row; it never opens a subsidiary's own tables.
+model EntitySnapshot {
+  id         String @id @default(cuid())
+  /// The parent — this snapshot lives in the group's own tenant.
+  tenantId   String
+  recordCode String
+
+  sourceTenantId String
+  sourceSlug     String
+  sourceName     String
+  /// The division this entity grew out of, before it was its own tenant
+  /// (`Tenant.config.originDivision`) — carried here so the structure chart
+  /// can match a snapshot to the "not yet incorporated" node it replaces.
+  originDivision String?
+
+  asOf              DateTime
+  /// The hash of the last `EventRecord` in the source tenant at publish
+  /// time — what tells the group screen how far behind a stale snapshot is,
+  /// rather than silently blending an old figure with a fresh one.
+  sourceEventHash   String?
+
+  capTable     Json // CapTableView, holders carrying heldByTenantId and holderKey
+  shareClasses Json
+  /// `{ available: false }` until the board module (built separately) is
+  /// wired in — kept as its own JSON block so that day is one function, not
+  /// a migration.
+  board        Json
+  financial    Json // cash, P&L by division (last complete month + FYTD), headcount, intercompany
+  compliance   Json // dematStatus, isSmallCompany, certificateOverdueCount, kind
+  valuation    Json?
+
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, sourceTenantId])
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, asOf])
+  @@map("entity_snapshots")
+}
+
+/// Every version an `EntitySnapshot` has ever held — the audit of what the
+/// group saw and when, kept even after a fresher snapshot overwrites the
+/// live row. Written in the same call that upserts `EntitySnapshot`.
+model EntitySnapshotHistory {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  sourceTenantId  String
+  sourceSlug      String
+  sourceName      String
+  originDivision  String?
+  asOf            DateTime
+  sourceEventHash String?
+  capTable        Json
+  shareClasses    Json
+  board           Json
+  financial       Json
+  compliance      Json
+  valuation       Json?
+  publishedAt     DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, sourceTenantId, publishedAt])
+  @@map("entity_snapshot_history")
+}
+
+// ===========================================================================
+// ESOP (equity-portal plan §5/§6, phase 5). Grants go through the same pool
+// `ShareClass` (`instrument: option`) and the same `proposeAllotment` /
+// `approveShareTransaction` / `makeEffective` path phase 1 built for exercise —
+// an exercise is an allotment out of the pool, not a second ledger.
+// ===========================================================================
+
+/// One scheme: a pool, its default terms, and whether it carries DPIIT relief.
+/// `poolShareClassId` names the `ShareClass` (`instrument: option`) whose
+/// `authorisedCount` is the pool size; `targetShareClassId` names the equity
+/// class an exercise allots into — options convert into the class the plan
+/// names, not whatever a `conversionTerms` link on the pool class might say.
+model EsopPlan {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name               String
+  poolShareClassId   String
+  targetShareClassId String
+
+  /// The shareholder resolution date (Rule 12: a separate resolution from the
+  /// board approval that proposes the scheme) and its reference — both null
+  /// until `activatePlan`.
+  approvedOn    DateTime?
+  resolutionRef String?
+  mgt14Srn      String?
+
+  /// Copied from `CompanyProfile.dpiitNumber`/`dpiitRecognisedOn` at creation.
+  /// Drives the promoter-exclusion relief (Rule 12(1)(c)) and the exercise tax
+  /// deferral (s.192(1C)) for every grant under this plan — a later change to
+  /// the company's own DPIIT status does not retroactively alter a plan
+  /// already running under the status it was created with.
+  isDpiitRecognised Boolean @default(false)
+
+  exercisePriceDefault Decimal? @db.Decimal(18, 2)
+  /// `{cliffMonths, totalMonths, frequency: 'monthly'|'quarterly'|'annual'}`.
+  vestingDefault Json
+
+  exerciseWindowMonthsAfterExit Int @default(3)
+
+  status String @default("draft") // draft | active | closed
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@map("esop_plans")
+}
+
+/// One grant. `vesting.schedule` is the materialised set of tranches —
+/// computed once at grant time from the plan default or an override — which
+/// `VestingEvent` rows mirror as individually trackable state.
+model OptionGrant {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  planId       String
+  employmentId String
+  personId     String
+
+  grantedOn     DateTime
+  count         Decimal  @db.Decimal(24, 6)
+  exercisePrice Decimal  @db.Decimal(18, 2)
+  /// `{cliffMonths, schedule: [{on, count}]}`.
+  vesting       Json
+
+  grantLetterRef String?
+
+  status String @default("proposed") // proposed | granted | partly_vested | fully_vested | exercised | lapsed | cancelled
+
+  vested    Decimal @default(0) @db.Decimal(24, 6)
+  exercised Decimal @default(0) @db.Decimal(24, 6)
+  lapsed    Decimal @default(0) @db.Decimal(24, 6)
+
+  lapsedOn     DateTime?
+  lapseReason  String?
+  /// Set on the exit event for a grant with a vested-unexercised balance: the
+  /// exit date plus the plan's `exerciseWindowMonthsAfterExit`. The daily
+  /// lapse check compares against this rather than recomputing it, so a later
+  /// change to the plan's own window does not move a deadline already fixed
+  /// by the exit that set it.
+  exerciseWindowEndsOn DateTime?
+
+  /// `{isPromoterOrPromoterGroup, holdsOver10Pct, dpiitReliefApplied}`,
+  /// computed once at grant time from the cap table.
+  promoterCheck Json
+
+  /// Set when this single grant is ≥1% of issued capital (Rule 12(4)).
+  resolutionRef String?
+
+  proposedByPartyId String
+  approvedByPartyId String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, personId])
+  @@index([tenantId, employmentId])
+  @@index([tenantId, planId])
+  @@map("option_grants")
+}
+
+/// One materialised tranche of a grant, tracked separately from the JSON
+/// schedule so the vesting job can mark each one `vested` without rewriting
+/// the whole grant.
+model VestingEvent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  grantId String
+  on      DateTime
+  count   Decimal  @db.Decimal(24, 6)
+  status  String   @default("scheduled") // scheduled | vested | lapsed
+
+  vestedOn DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, grantId, status])
+  @@index([tenantId, status, on])
+  @@map("vesting_events")
+}
+
+/// One exercise request against a grant's vested-unexercised balance. The
+/// perquisite is computed only from a merchant-banker `Valuation` within 180
+/// days of the request; absent that, `fmvBasis` stays `none` and the figure is
+/// withheld rather than guessed.
+model OptionExercise {
+  id       String @id @default(cuid())
+  tenantId String
+
+  grantId String
+
+  requestedOn   DateTime
+  count         Decimal  @db.Decimal(24, 6)
+  exercisePrice Decimal  @db.Decimal(18, 2)
+
+  fmvPerShare   Decimal? @db.Decimal(18, 2)
+  fmvBasis      String   @default("none") // merchant_banker | none
+  fmvValuationId String?
+
+  perquisite     Decimal? @db.Decimal(18, 2)
+  perquisiteNote String?
+  taxDeferred    Boolean  @default(false)
+
+  status String @default("requested") // requested | approved | allotted | rejected
+
+  allotmentTransactionId String?
+  paidReference          String?
+
+  requestedByPartyId String
+  approvedByPartyId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, grantId, status])
+  @@index([tenantId, status])
+  @@map("option_exercises")
 }
 
 // ===========================================================================
@@ -1982,6 +2800,19 @@ model Invoice {
   overdueNotifiedAt DateTime?
   createdById       String?
   deletedAt         DateTime?
+  // ---- Compliance (workstream B) ----
+  /// tax_invoice | bill_of_supply — a bill of supply carries no tax (Rule 49).
+  invoiceType    String  @default("tax_invoice")
+  /// Tax payable by the recipient (Sec 9(3)/9(4)). Printed on the invoice per Rule 46.
+  reverseCharge  Boolean @default(false)
+  /// e-invoicing: the IRP's registration number and acknowledgement, and the signed QR.
+  irn            String?
+  irnAckNo       String?
+  irnAckAt       DateTime?
+  signedQrCode   String?
+  /// not_applicable | pending | registered | cancelled | failed
+  eInvoiceStatus String  @default("not_applicable")
+
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -2057,6 +2888,12 @@ model InvoiceLine {
   gstRate   Decimal @default(0) @db.Decimal(5, 2)
   taxAmount Decimal @default(0) @db.Decimal(18, 2)
 
+  // ---- Compliance (workstream B) ----
+  /// taxable | nil | exempt | non_gst — which GSTR-1/3B section the line reports under.
+  supplyType            String  @default("taxable")
+  /// The notification an exemption is claimed under, e.g. `12/2017-CT(R) entry 66`.
+  exemptionNotification String?
+
   createdAt DateTime @default(now())
 
   @@index([tenantId, invoiceId])
@@ -2125,6 +2962,12 @@ model Payment {
   /// The idempotency marker CRM-FIN-001 adds so the overdue-notification job
   /// stops re-notifying the same pending payment on every hourly tick.
   pendingLastNotifiedAt DateTime?
+
+  // ---- FEMA: a foreign receipt and its inward remittance certificate (workstream H) ----
+  foreignCurrency String?
+  foreignAmount   Decimal?  @db.Decimal(18, 2)
+  fircNumber      String?
+  fircDate        DateTime?
 
   createdAt DateTime @default(now())
 
@@ -2408,6 +3251,10 @@ model Course {
   feePlans CourseFeePlan[]
   addons   CourseAddon[]
 
+  /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
+  migratedToTenantId String?
+  spinOutBatchId     String?
+
   @@unique([tenantId, recordCode])
   @@unique([tenantId, code])
   @@map("courses")
@@ -2484,6 +3331,10 @@ model Cohort {
 
   enrollments Enrollment[]
 
+  /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
+  migratedToTenantId String?
+  spinOutBatchId     String?
+
   @@unique([tenantId, recordCode])
   @@index([tenantId, trainerPartyId])
   @@map("cohorts")
@@ -2534,6 +3385,10 @@ model Enrollment {
   attendance    Attendance[]
   dailyProgress DailyProgress[]
   logs          LearnerLog[]
+
+  /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
+  migratedToTenantId String?
+  spinOutBatchId     String?
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, cohortId, status])
@@ -3229,6 +4084,23 @@ model EmploymentRelationship {
   uanNumber        String?
 
   deletedAt DateTime?
+  // ---- Compliance (workstreams C, E, F, G) ----
+  /// employee | contractor | consultant | intern | apprentice — drives Sec 192 vs 194C/194J.
+  engagementType                  String    @default("employee")
+  /// Regulated identifiers, structurally excluded from responses like PAN and UAN.
+  esicNumber                      String?
+  bankAccountNumber               String?
+  bankIfsc                        String?
+  bankAccountName                 String?
+  /// old | new — the Sec 192 regime the employee declared for the year.
+  taxRegime                       String    @default("new")
+  nomineeName                     String?
+  nomineeRelationship             String?
+  emergencyContactName            String?
+  emergencyContactPhone           String?
+  backgroundVerificationConsentAt DateTime?
+  codeOfConductAcknowledgedAt     DateTime?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -3243,6 +4115,10 @@ model EmploymentRelationship {
   payrollInstructions PayrollInstruction[]
   onboarding          Onboarding?
   offboarding         Offboarding?
+
+  /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
+  migratedToTenantId String?
+  spinOutBatchId     String?
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, status])
@@ -3376,6 +4252,11 @@ model LeaveType {
   employmentStateAffecting Boolean @default(false)
   statutory                Boolean @default(false)
   annualEntitlementDays    Decimal @default(0) @db.Decimal(6, 2)
+
+  // ---- Carry-forward and encashment rules (workstream F) ----
+  carryForwardCapDays Decimal? @db.Decimal(6, 2)
+  encashable          Boolean  @default(false)
+  maxEncashDays       Decimal? @db.Decimal(6, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3652,6 +4533,24 @@ model PayrollInstruction {
   /// Set when the disbursement is posted to the books.
   paymentId   String?
 
+  // ---- Statutory lines (workstream E). Zero until computed; `computedFrom` names the rate-table versions used. ----
+  basicPay        Decimal @default(0) @db.Decimal(14, 2)
+  hra             Decimal @default(0) @db.Decimal(14, 2)
+  otherAllowances Decimal @default(0) @db.Decimal(14, 2)
+  pfEmployee      Decimal @default(0) @db.Decimal(14, 2)
+  pfEmployer      Decimal @default(0) @db.Decimal(14, 2)
+  epsEmployer     Decimal @default(0) @db.Decimal(14, 2)
+  esiEmployee     Decimal @default(0) @db.Decimal(14, 2)
+  esiEmployer     Decimal @default(0) @db.Decimal(14, 2)
+  professionalTax Decimal @default(0) @db.Decimal(14, 2)
+  tdsAmount       Decimal @default(0) @db.Decimal(14, 2)
+  lwfEmployee     Decimal @default(0) @db.Decimal(14, 2)
+  lwfEmployer     Decimal @default(0) @db.Decimal(14, 2)
+  computedFrom    Json?
+  /// A payslip, once issued, is final — like a tax invoice. Number from the `P` series.
+  payslipNumber   String?
+  payslipIssuedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3675,6 +4574,10 @@ model PayrollRun {
   approvedById String?
   approvedAt   DateTime?
   disbursedAt  DateTime?
+
+  // ---- Workstream E: the proposer/approver split, made visible. ----
+  preparedById String?
+  submittedAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3718,6 +4621,14 @@ model Offboarding {
   disputeReason    String?
   settlementAmount Decimal? @db.Decimal(14, 2)
 
+  // ---- Full-and-final components (workstreams E, F). `settlementAmount` stays the total. ----
+  gratuityAmount          Decimal?  @db.Decimal(14, 2)
+  leaveEncashmentAmount   Decimal?  @db.Decimal(14, 2)
+  bonusAmount             Decimal?  @db.Decimal(14, 2)
+  noticeRecoveryAmount    Decimal?  @db.Decimal(14, 2)
+  settlementComputedAt    DateTime?
+  relievingLetterDocumentId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3757,6 +4668,13 @@ model LedgerAccount {
   active           Boolean   @default(true)
   /// Ledger grouping for the balance sheet: asset | liability | equity.
   ledgerGroup      String    @default("asset")
+
+  /// Set by `pnpm division:spin-out` on an account it opened at zero for a
+  /// subsidiary from a carried transaction's account name — cash never moves
+  /// by data migration, so this says so on the account itself.
+  openingNote String?
+  /// Names the spin-out batch that created this account, for `--revert`.
+  spinOutBatchId String?
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -3798,6 +4716,10 @@ model LedgerCategory {
   budgetLines    BudgetLine[]
   recurringRules RecurringRule[]
 
+  /// Names the spin-out batch that created this category in a subsidiary
+  /// (equity-portal plan §6b), for `--revert`.
+  spinOutBatchId String?
+
   @@unique([tenantId, name])
   @@index([tenantId, kind])
   @@map("ledger_categories")
@@ -3830,6 +4752,14 @@ model Transaction {
   reference    String?
   note         String?
 
+  /// Set by the finance head when the counterparty IS another group entity
+  /// (equity-portal plan §1.5, §6 phase 2) — the tenant id of that entity,
+  /// validated at entry to be somewhere in this tenant's own group (parent,
+  /// sibling or child), never an arbitrary tenant. Listed on the group
+  /// screen beside "Group total before inter-company eliminations" so an
+  /// accountant doing the consolidation works from a list, not a hunt.
+  intercompanyTenantId String?
+
   /// What raised it: manual | bank_import | payroll | invoice | vendor_bill |
   /// recurring | asset | loan. A figure can always be traced to its origin.
   source       String  @default("manual")
@@ -3846,6 +4776,13 @@ model Transaction {
   /// Matched against a bank statement line.
   reconciledAt DateTime?
 
+  /// Set when this row was copied into a subsidiary tenant by `pnpm division:spin-out`
+  /// (equity-portal plan §6b) — never edited or deleted otherwise, so the
+  /// holding's history still reads.
+  migratedToTenantId String?
+  /// Set on a row this script created in the subsidiary, naming the batch — the
+  /// only rows `pnpm division:spin-out --revert` may remove.
+  spinOutBatchId     String?
   createdById String?
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
@@ -3857,6 +4794,7 @@ model Transaction {
   @@index([tenantId, division, txnDate])
   @@index([tenantId, accountId, txnDate])
   @@index([tenantId, source])
+  @@index([tenantId, intercompanyTenantId])
   @@map("transactions")
 }
 
@@ -3889,6 +4827,24 @@ model VendorBill {
   overdueNotifiedAt DateTime?
   createdById       String?
   deletedAt         DateTime?
+  // ---- Compliance (workstreams B, C) ----
+  vendorPan          String?
+  /// Reverse charge on this inward supply: tax the company pays on the vendor's behalf.
+  rcmApplicable      Boolean  @default(false)
+  rcmTaxAmount       Decimal  @default(0) @db.Decimal(18, 2)
+  /// TDS deducted at approval, from the dated section-rate table.
+  tdsSection         String?
+  tdsRate            Decimal? @db.Decimal(5, 2)
+  tdsAmount          Decimal  @default(0) @db.Decimal(18, 2)
+  /// A lower/nil-deduction certificate (Sec 197) reference, when one overrides the table.
+  tdsCertificateRef  String?
+  tdsChallanId       String?
+  /// MSME (Sec 43B(h)): a Udyam-registered vendor must be paid within the agreed term or 45 days.
+  vendorUdyamNumber  String?
+  agreedTermDays     Int?
+  msmeDueAt          DateTime?
+  msmeNotifiedAt     DateTime?
+
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -4106,4 +5062,241 @@ model ImportRow {
   @@index([tenantId, dedupeKey])
   @@index([batchId, status])
   @@map("import_rows")
+}
+
+// ===========================================================================
+// Board and compliance (equity-portal plan §6, phase 3)
+//
+// Meetings, agenda, attendance and the minutes lifecycle with SS-1 timelines;
+// circular resolutions with the interested-director abstention and the
+// s.179(3) meeting-only bar; a compliance calendar generated from recorded
+// facts, never guessed from an empty register. `Resolution.subjectRef` is a
+// free-text placeholder for what the register (phase 1) will later reference
+// by id — an allotment or a transfer, once that model exists.
+// ===========================================================================
+
+/// A seat on the board (or the company-secretary seat), held by a Person.
+/// Creating one with a director-family role also ensures a `director`
+/// Affiliation for the person, the same pattern `signIns.ts` uses for a
+/// sign-in — this model never itself creates a User or a Principal, which
+/// stays the sign-in action's job.
+model BoardMember {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  personId String
+
+  /// director | independent_director | nominee_director | observer | company_secretary
+  role String
+
+  din                 String?
+  appointedOn         DateTime
+  ceasedOn            DateTime?
+  /// MBP-1: the date this member last declared their interests for the FY.
+  interestsDeclaredOn DateTime?
+  /// [{entity, nature, since}] — the entities and the nature of the interest,
+  /// consulted when a resolution's `subjectRef` names one of them.
+  interests           Json      @default("[]")
+
+  nominatedByHolderRef String?
+
+  /// active | ceased
+  status String @default("active")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, personId])
+  @@map("board_members")
+}
+
+/// A board meeting, an AGM/EGM, or a committee meeting, with the SS-1 notice,
+/// quorum and minutes-lifecycle dates recorded as facts, never inferred.
+model BoardMeeting {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// board | agm | egm | committee
+  kind  String
+  title String
+
+  noticeSentOn DateTime?
+  scheduledFor DateTime
+  heldOn       DateTime?
+
+  /// physical | vc | hybrid
+  mode  String
+  venue String?
+
+  quorumRequired Int
+  /// [{boardMemberId, present, via}]
+  attendees      Json     @default("[]")
+  quorumMet      Boolean?
+
+  /// [{n, title, notes, resolutionId?}]
+  agenda Json @default("[]")
+
+  /// called | held | minutes_draft | minutes_circulated | minutes_entered | minutes_signed | cancelled
+  status String @default("called")
+
+  minutesDraftedOn       DateTime?
+  minutesCirculatedOn    DateTime?
+  minutesEnteredOn       DateTime?
+  minutesSignedOn        DateTime?
+  minutesText            String?
+  minutesDocumentRef     String?
+  chairedByBoardMemberId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, scheduledFor])
+  @@index([tenantId, heldOn])
+  @@map("board_meetings")
+}
+
+/// A board or shareholder resolution, passed at a meeting or by circulation.
+/// `requiresMeeting` is derived at proposal time from `subject` (s.179(3) +
+/// Rule 8) and never accepted as caller input.
+model Resolution {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// board | shareholder_ordinary | shareholder_special
+  kind String
+
+  /// allotment | transfer | esop_scheme | borrowing | investment |
+  /// loan_or_guarantee | financial_statements | board_report | diversification |
+  /// merger_or_acquisition | buyback_authorisation | calls_on_shares |
+  /// appointment | related_party | general | other
+  subject String
+
+  title String
+  text  String
+
+  /// meeting | circulation
+  passedBy        String
+  meetingId       String?
+  requiresMeeting Boolean
+
+  circulatedOn     DateTime?
+  dispatchProofRef String?
+  votingClosesOn   DateTime?
+
+  /// draft | open | passed | failed | withdrawn | meeting_demanded
+  outcome  String    @default("draft")
+  passedOn DateTime?
+
+  mgt14Srn     String?
+  mgt14FiledOn DateTime?
+
+  signedDocumentRef String?
+
+  /// Placeholder for the register-phase reference this resolution acts on
+  /// (an allotment, a transfer) until that model exists.
+  subjectRef String?
+
+  proposedByPartyId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, outcome])
+  @@index([tenantId, meetingId])
+  @@map("resolutions")
+}
+
+/// A single director's or holder's vote on a Resolution. `holderRef` is a
+/// placeholder for shareholder voting, wired to the register in a later
+/// phase; only one of `boardMemberId`/`holderRef` is set on any row.
+model Vote {
+  id           String @id @default(cuid())
+  tenantId     String
+  resolutionId String
+
+  boardMemberId String?
+  holderRef     String?
+
+  /// for | against | abstain
+  choice String
+  castAt DateTime @default(now())
+
+  /// Set when the voter named this resolution's subject in their declared
+  /// interests (s.184) — the choice is then forced to `abstain`.
+  abstainedAsInterested Boolean @default(false)
+  /// s.175: this voter's demand that the matter go to a meeting instead.
+  demandsMeeting        Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([resolutionId, boardMemberId])
+  @@index([tenantId, resolutionId])
+  @@map("votes")
+}
+
+/// A compliance due-date, computed from recorded facts by the daily
+/// `board_compliance` job (and closeable by hand). The unique constraint keys
+/// on non-null `relatedType`/`relatedId` — the job always passes a concrete
+/// pair (using the tenant itself when there is no specific record) so running
+/// it twice writes the item once, never a duplicate.
+model ComplianceItem {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  kind  String
+  title String
+  /// The rule and the event it counts from, in one sentence.
+  basis String
+
+  dueOn DateTime
+
+  /// open | done | waived
+  status     String    @default("open")
+  resolvedOn DateTime?
+  filedRef   String?
+
+  relatedType String
+  relatedId   String
+
+  raisedByJob Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, kind, relatedType, relatedId, dueOn])
+  @@index([tenantId, status, dueOn])
+  @@map("compliance_items")
+}
+
+/// One item in a meeting's board pack — the notice, the agenda, a paper, the
+/// published financial summary, the minutes, a resolution text.
+model BoardPackItem {
+  id       String @id @default(cuid())
+  tenantId String
+
+  meetingId String
+
+  /// notice | agenda | paper | financial_summary | minutes | resolution | other
+  kind  String
+  title String
+
+  fileRef        String
+  addedByPartyId String
+  order          Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, meetingId, order])
+  @@map("board_pack_items")
 }

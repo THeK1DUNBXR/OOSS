@@ -46,6 +46,7 @@ export const BOUNDED_CONTEXTS = [
   'str', // strategy
   'agt', // agent principals
   'xdm', // cross-domain / health
+  'eqt', // equity, shareholder & board register
 ] as const;
 
 export type BoundedContext = (typeof BOUNDED_CONTEXTS)[number];
@@ -148,5 +149,17 @@ export const MODULE_REGISTER: ModuleRegisterEntry[] = [
     plane: 'P2',
     owns: ['COURSE', 'COHORT', 'ENROLLMENT', 'ATTENDANCE', 'DAILY_PROGRESS', 'STUDENT_PROFILE'],
     neverDoes: ['Run the admissions pipeline — that is CRM\'s PL-ADMISSION motion until enrollment is confirmed.'],
+  },
+  {
+    code: 'EQT',
+    name: 'Equity & Board',
+    boundedContext: 'eqt',
+    plane: 'P2',
+    owns: ['SHARE_CLASS', 'HOLDER', 'SHARE_TRANSACTION', 'SHARE_CERTIFICATE', 'BOARD_MEETING', 'RESOLUTION', 'ENTITY_SNAPSHOT'],
+    neverDoes: [
+      'Hold money movement itself — an allotment references the FIN Transaction that already lifted cash; EQT never posts beside the books.',
+      'Approve its own allotment or transfer — that goes through the approval gate, whose self-dealing bar reroutes an interested approver.',
+      "Read another tenant's tables — the group view is built from EntitySnapshot rows published upward, never a cross-tenant query.",
+    ],
   },
 ];

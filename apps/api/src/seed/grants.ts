@@ -117,6 +117,25 @@ export const ALL_RESOURCES = [
   'relationships', 'reports', 'requisitions', 'restricted_interactions',
   'routing_rules', 'students', 'tasks', 'territories', 'transactions', 'users',
   'vendor_bills', 'win_loss_reviews',
+  // Equity & board (phase 0 declares them; §3.4 fills in the cells; phase 1
+  // ships the screens). Kept in lockstep with RESOURCES in
+  // `@kaizen/shared/permissions.ts` — a test asserts the two lists agree.
+  'cap_table', 'share_classes', 'holders', 'share_ledger', 'share_certificates',
+  'valuations', 'entity_documents', 'board_meetings', 'resolutions',
+  'board_documents', 'compliance', 'group', 'holdings',
+  // Rounds, instruments, valuations, scenarios (phase 4).
+  'rounds',
+  // ESOP (phase 5).
+  'esop_plans', 'option_grants',
+  // Compliance (docs/plan/compliance.md), one group per workstream.
+  'compliance_obligations',                                   // A
+  'debit_notes', 'einvoicing',                                // B
+  'tds', 'tax_filings',                                       // C
+  'accounting_periods',                                       // D
+  'rate_tables', 'payslips', 'salary_structures',             // E
+  'holidays', 'posh_cases', 'disciplinary_cases', 'hr_letters', 'statutory_registers', // F
+  'consents', 'data_requests', 'breaches', 'privacy_notices', // G
+  'board_resolutions', 'corporate_registers', 'refunds', 'certificates', 'security_settings', // H
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */
@@ -202,6 +221,57 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'agents', cell: '-' },
   { resource: 'users', cell: '-' },
   { resource: 'restricted_interactions', cell: '-' },
+
+  // The register and the board are the company secretary's and the finance
+  // head's, never operations'.
+  { resource: 'cap_table', cell: '-' },
+  { resource: 'share_classes', cell: '-' },
+  { resource: 'holders', cell: '-' },
+  { resource: 'share_ledger', cell: '-' },
+  { resource: 'share_certificates', cell: '-' },
+  { resource: 'valuations', cell: '-' },
+  { resource: 'entity_documents', cell: '-' },
+  { resource: 'board_meetings', cell: '-' },
+  { resource: 'resolutions', cell: '-' },
+  { resource: 'board_documents', cell: '-' },
+  { resource: 'compliance', cell: '-' },
+  { resource: 'group', cell: '-' },
+  { resource: 'holdings', cell: '-' },
+  { resource: 'rounds', cell: '-' },
+
+  // ---- ESOP (§6, phase 5) -------------------------------------------------
+  // HR proposes a grant against an employment relationship it already owns;
+  // it reads the plan to know the pool and the default terms and does not
+  // create or close a scheme, and never approves its own proposal.
+  { resource: 'esop_plans', cell: 'V@all' },
+  { resource: 'option_grants', cell: 'VC@all' },
+  // ---- Compliance ---------------------------------------------------------
+  // Sees the calendar; the money-side obligations are filed by Finance.
+  { resource: 'compliance_obligations', cell: 'V' },
+  { resource: 'debit_notes', cell: '-' },
+  { resource: 'einvoicing', cell: '-' },
+  { resource: 'tds', cell: '-' },
+  { resource: 'tax_filings', cell: '-' },
+  { resource: 'accounting_periods', cell: '-' },
+  { resource: 'rate_tables', cell: 'V' },
+  // Prepares payslips and salary structures; Finance approves them, as with payroll.
+  { resource: 'payslips', cell: 'VCEX' },
+  { resource: 'salary_structures', cell: 'VCEDXF' },
+  { resource: 'holidays', cell: 'VCED' },
+  // POSH and disciplinary cases are the people function's and the chairman's.
+  { resource: 'posh_cases', cell: 'VCE' },
+  { resource: 'disciplinary_cases', cell: 'VCE' },
+  { resource: 'hr_letters', cell: 'VCEX' },
+  { resource: 'statutory_registers', cell: 'VX' },
+  { resource: 'consents', cell: 'VCE' },
+  { resource: 'data_requests', cell: 'VCE' },
+  { resource: 'breaches', cell: 'VCE' },
+  { resource: 'privacy_notices', cell: 'V' },
+  { resource: 'board_resolutions', cell: '-' },
+  { resource: 'corporate_registers', cell: 'V' },
+  { resource: 'refunds', cell: '-' },
+  { resource: 'certificates', cell: 'VCEX' },
+  { resource: 'security_settings', cell: '-' },
 ];
 
 /**
@@ -294,6 +364,59 @@ const financeHead: GrantSpec[] = [
   { resource: 'agents', cell: '-' },
   { resource: 'jobs', cell: '-' },
   { resource: 'users', cell: '-' },
+
+  // ---- Equity & board (§3.4) ---------------------------------------------
+  // The books referenced by an allotment's consideration are the finance
+  // head's ground truth, so the ledger's approval and the cap table's view
+  // sit here beside the transactions they touch — never `create` or `edit`
+  // on the register itself, which stays the secretary's.
+  { resource: 'share_ledger', cell: 'V,approve@all' },
+  { resource: 'cap_table', cell: 'V@all' },
+  { resource: 'valuations', cell: 'VCE@all' },
+  // The finance head sets `Transaction.intercompanyTenantId` on entry and
+  // reads the group's financial block the figures roll up into (plan §6
+  // phase 2 item 1).
+  { resource: 'group', cell: 'V@all' },
+  // Rounds (phase 4): the finance head approves what the secretary proposes,
+  // the same split the ledger already keeps.
+  { resource: 'rounds', cell: 'V,approve@all' },
+  // Filings, demat, FEMA (phase 6a): reads and downloads the statutory
+  // exports and records a filing, the same reach the company secretary has
+  // over the register itself.
+  { resource: 'compliance', cell: 'VCEX@all' },
+
+  // ---- ESOP (§6, phase 5) -------------------------------------------------
+  // Approves what HR proposes and what a grantee requests to exercise — the
+  // same two-party shape compensation already keeps. Never `create` on a
+  // grant, so the approver is never also the proposer by construction.
+  { resource: 'option_grants', cell: 'V,approve@all' },
+  { resource: 'esop_plans', cell: 'V,approve@all' },
+  // ---- Compliance ---------------------------------------------------------
+  // Owns the calendar and files what is money: `approve` is the filing itself.
+  { resource: 'compliance_obligations', cell: 'VCEDX,approve' },
+  { resource: 'debit_notes', cell: 'VCEDAXF' },
+  { resource: 'einvoicing', cell: 'VCEXF' },
+  { resource: 'tds', cell: 'VCEDXF,approve' },
+  { resource: 'tax_filings', cell: 'VCEDXF,approve' },
+  { resource: 'accounting_periods', cell: 'VCE,approve' },
+  { resource: 'rate_tables', cell: 'VCEX' },
+  // Approves what HR prepares. No `create`: the signatory does not author.
+  { resource: 'payslips', cell: 'VXF,approve' },
+  { resource: 'salary_structures', cell: 'VXF,approve' },
+  { resource: 'holidays', cell: 'V' },
+  { resource: 'posh_cases', cell: '-' },
+  { resource: 'disciplinary_cases', cell: '-' },
+  { resource: 'hr_letters', cell: '-' },
+  { resource: 'statutory_registers', cell: 'VX' },
+  { resource: 'consents', cell: 'V' },
+  { resource: 'data_requests', cell: 'V' },
+  { resource: 'breaches', cell: 'VCE' },
+  { resource: 'privacy_notices', cell: 'V' },
+  { resource: 'board_resolutions', cell: 'V' },
+  { resource: 'corporate_registers', cell: 'VX' },
+  { resource: 'refunds', cell: 'VCEDAXF,approve' },
+  { resource: 'certificates', cell: 'V' },
+  { resource: 'security_settings', cell: '-' },
 ];
 
 /**
@@ -327,6 +450,14 @@ const employee: GrantSpec[] = [
   // find out who your colleagues are is not a nicer place to work.
   { resource: 'people', cell: 'V@all' },
   { resource: 'offerings', cell: 'V@all' },
+
+  // ---- Compliance: their own payslip, consents and requests; the holiday list. ----
+  { resource: 'payslips', cell: 'VF@own' },
+  { resource: 'consents', cell: 'V@own' },
+  { resource: 'data_requests', cell: 'VC@own' },
+  { resource: 'hr_letters', cell: 'V@own' },
+  { resource: 'holidays', cell: 'V@all' },
+  { resource: 'privacy_notices', cell: 'V@all' },
 
   // ---- Billing a customer at the counter ---------------------------------
   //
@@ -385,6 +516,102 @@ const employee: GrantSpec[] = [
   // trainer's batch) stays out, which is what `view` would open.
   { resource: 'education', cell: 'C' },
   { resource: 'receivables', cell: '-' },
+
+  // The register and the board are somebody else's employment relationship,
+  // not this one's.
+  { resource: 'cap_table', cell: '-' },
+  { resource: 'share_classes', cell: '-' },
+  { resource: 'holders', cell: '-' },
+  { resource: 'share_ledger', cell: '-' },
+  { resource: 'share_certificates', cell: '-' },
+  { resource: 'valuations', cell: '-' },
+  { resource: 'entity_documents', cell: '-' },
+  { resource: 'board_meetings', cell: '-' },
+  { resource: 'resolutions', cell: '-' },
+  { resource: 'board_documents', cell: '-' },
+  { resource: 'compliance', cell: '-' },
+  { resource: 'group', cell: '-' },
+  { resource: 'holdings', cell: '-' },
+  { resource: 'rounds', cell: '-' },
+  { resource: 'esop_plans', cell: '-' },
+
+  // ESOP: their own grants, and nobody else's — the same `@own` shape leave
+  // and attendance already take.
+  { resource: 'option_grants', cell: 'V@own' },
+];
+
+// ---------------------------------------------------------------------------
+// The equity & board portal roles (equity-portal plan §3.4). Two `portal`
+// archetype roles for outsiders — a holder is never inside the ERP shell —
+// and one `workspace` role for the company secretary, who keeps the register
+// alongside finance but holds no `approve` anywhere in it: the secretary
+// proposes an allotment or a transfer, and `approvals.ts` decides it.
+//
+// Cells against `cap_table`/`holdings`/etc. are declared now, against no
+// domain code yet — phase 1 ships `equity.ts` and the screens that read
+// them. Declaring the resources here is what makes boot's `addMissingGrants`
+// backfill existing tenants the day phase 1 lands, instead of every tenant
+// needing the seed re-run by hand.
+// ---------------------------------------------------------------------------
+
+const shareholder: GrantSpec[] = [
+  { resource: 'holdings', cell: 'V@own' },
+  { resource: 'share_certificates', cell: 'V@own' },
+  // A shareholder-facing document set is company-wide once granted — the
+  // narrowing that matters is `entity_documents.audience`, not tenancy — so
+  // this is `@all` on purpose, the same shape `courses:V@all` already takes
+  // for an employee at the counter.
+  { resource: 'entity_documents', cell: 'V@all' },
+  { resource: 'valuations', cell: 'V@all' },
+  // Resolutions they are a voter on — a shareholder ordinary/special
+  // resolution — never a board one.
+  { resource: 'resolutions', cell: 'V@own' },
+  // A holding-level shareholder sees every entity's summary (plan §1, answer
+  // 4) — the union of what their affiliations reach already includes the
+  // holding tenant when they hold shares there, and the group screen there
+  // reads only snapshots, never a subsidiary's own tables.
+  { resource: 'group', cell: 'V@all' },
+  // A holder who is also an employee sees their own option grants here too —
+  // `@own` resolves the same way regardless of which affiliation is active,
+  // because it reads `OptionGrant.personId`, not the role.
+  { resource: 'option_grants', cell: 'V@own' },
+];
+
+const director: GrantSpec[] = [
+  // Everything a shareholder holds (a director is very often one too,
+  // including `group:V@all` above), plus the board itself.
+  ...shareholder,
+  { resource: 'board_meetings', cell: 'V@all' },
+  { resource: 'resolutions', cell: 'V,approve@all' },
+  { resource: 'board_documents', cell: 'V@all' },
+  { resource: 'cap_table', cell: 'V@all' },
+  // Rounds (phase 4): a director reads what round a class is under and its
+  // statutory prerequisites, never proposes or approves one.
+  { resource: 'rounds', cell: 'V@all' },
+  { resource: 'esop_plans', cell: 'V@all' },
+  { resource: 'option_grants', cell: 'V@all' },
+];
+
+const companySecretary: GrantSpec[] = [
+  { resource: 'cap_table', cell: 'VCEX@all' },
+  { resource: 'share_classes', cell: 'VCE@all' },
+  { resource: 'holders', cell: 'VCE@all' },
+  // The ledger is append-only: `create` proposes a transaction, never `edit`.
+  { resource: 'share_ledger', cell: 'VC@all' },
+  { resource: 'share_certificates', cell: 'VC@all' },
+  { resource: 'board_meetings', cell: 'VCE@all' },
+  { resource: 'resolutions', cell: 'VCE@all' },
+  // `X` (export) added in phase 6a: MGT-1/MGT-2/PAS-3 are downloads.
+  { resource: 'compliance', cell: 'VCEX@all' },
+  { resource: 'entity_documents', cell: 'VCE@all' },
+  { resource: 'board_documents', cell: 'VCE@all' },
+  { resource: 'group', cell: 'V@all' },
+  // No `approve` anywhere — the whole point of the role (§3.4).
+  { resource: 'rounds', cell: 'VCE@all' },
+
+  // ---- ESOP (§6, phase 5) -------------------------------------------------
+  { resource: 'esop_plans', cell: 'VCE@all' },
+  { resource: 'option_grants', cell: 'VCE@all' },
 ];
 
 export const ROLE_GRANT_MATRIX: RoleGrants = {
@@ -392,6 +619,9 @@ export const ROLE_GRANT_MATRIX: RoleGrants = {
   finance_head: financeHead,
   hr_ops_manager: hrOpsManager,
   employee,
+  shareholder,
+  director,
+  company_secretary: companySecretary,
 };
 
 export const ROLE_DEFINITIONS: Array<{
@@ -430,6 +660,30 @@ export const ROLE_DEFINITIONS: Array<{
     name: 'Employee',
     description:
       'Self-service. Own leave, attendance, goals, skills, payslip and documents, plus the staff and skills directories. Sees no colleague’s file and no company money.',
+    archetype: 'workspace',
+    classificationCeiling: 'regulated',
+  },
+  {
+    slug: 'shareholder',
+    name: 'Shareholder',
+    description:
+      'A holder of this entity, reached through the portal and nowhere else. Sees their own holdings and certificates, the entity documents and valuations shared with holders, and the resolutions they vote on.',
+    archetype: 'portal',
+    classificationCeiling: 'confidential',
+  },
+  {
+    slug: 'director',
+    name: 'Director',
+    description:
+      'A board member of this entity. Everything a shareholder sees, plus the board calendar, resolutions and board documents, and a read of the cap table and the group. Votes; does not keep the register.',
+    archetype: 'portal',
+    classificationCeiling: 'confidential',
+  },
+  {
+    slug: 'company_secretary',
+    name: 'Company Secretary',
+    description:
+      'Keeps the register and the board minutes: the cap table, share classes, holders, certificates, meetings, resolutions and compliance. No approve anywhere — proposes an allotment or a transfer; the approval gate decides it.',
     archetype: 'workspace',
     classificationCeiling: 'regulated',
   },

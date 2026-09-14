@@ -24,7 +24,7 @@ import { assertCan, canSeeMoney } from '../platform/permissions.js';
 import {
   listAccounts, createAccount, accountBalances,
   listCategories, createCategory,
-  listTransactions, recordTransaction, reverseTransaction,
+  listTransactions, recordTransaction, reverseTransaction, groupCounterpartyOptions,
   listVendorBills, recordVendorBill, payVendorBill, payablesAgeing,
   priceInvoiceGst, gstSummary,
   setBudgetLine, budgetVariance,
@@ -152,6 +152,7 @@ router.get(
       reference: t.reference,
       note: t.note,
       source: t.source,
+      intercompanyTenantId: t.intercompanyTenantId,
       reversalOfId: t.reversalOfId,
       reversedById: t.reversedById,
       reconciledAt: t.reconciledAt?.toISOString() ?? null,
@@ -174,11 +175,14 @@ router.post(
         method: z.string().optional(),
         reference: z.string().nullish(),
         note: z.string().nullish(),
+        intercompanyTenantId: z.string().nullish(),
       })
       .parse(req.body);
     return recordTransaction(body);
   }),
 );
+
+router.get('/group-entities', handler(async () => ({ items: await groupCounterpartyOptions() })));
 
 router.post(
   '/transactions/:id/reverse',
@@ -491,6 +495,15 @@ router.patch(
         defaultDueDays: z.number().int().positive().max(365).optional(),
         documentPrefix: z.string().max(8).nullish(),
         documentYearFormat: z.enum(['short', 'full']).optional(),
+        incorporatedOn: z.string().nullish(),
+        financialYearEndMonth: z.number().int().min(1).max(12).nullish(),
+        isSmallCompany: z.boolean().nullish(),
+        dematStatus: z.enum(['physical', 'demat', 'mixed']).optional(),
+        isin: z.string().nullish(),
+        rtaName: z.string().nullish(),
+        dpiitNumber: z.string().nullish(),
+        dpiitRecognisedOn: z.string().nullish(),
+        certificateSignatories: z.array(z.object({ name: z.string(), designation: z.string() })).optional(),
       })
       .parse(req.body);
     return updateCompanyProfile(body);

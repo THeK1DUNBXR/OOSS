@@ -9,6 +9,7 @@ import { newRequestContext, runWithContext, type RequestContext } from '../platf
 import { ApiError } from '../platform/errors.js';
 import { TenantScopeError } from '../platform/db.js';
 import { toAuthContext, verifyToken } from './auth.js';
+import { grantedConsentCodes, resolvePurpose } from '../domains/compliance/privacy.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -57,6 +58,12 @@ export async function contextMiddleware(req: Request, res: Response, next: NextF
             affiliation.orgUnitId,
             ceiling,
           );
+          // The WHY axis's real data: which purposes this person has actually
+          // granted consent for, and the purpose this request is bound to —
+          // accepted from the client only when the current privacy notice
+          // names it, never invented by the header.
+          ctx.auth.consentCodes = user.personId ? await grantedConsentCodes(user.tenantId, user.personId) : [];
+          ctx.auth.purpose = await resolvePurpose(user.tenantId, req.headers['x-purpose'] as string | undefined);
         }
       }
     } catch {

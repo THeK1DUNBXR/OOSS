@@ -26,8 +26,14 @@ import { runExpiryLadder, auditWonWithoutContract } from '../domains/agreements.
 import { detectOverduePayments } from '../domains/finance.js';
 import { detectOverdueReviews } from '../domains/winLoss.js';
 import { sweepStaleMergeCandidates } from '../domains/identity.js';
+import { detectOverdueCertificates } from '../domains/equity.js';
+import { publishDirtySnapshots, publishNightlySnapshot } from '../domains/group.js';
+import { runVesting, runExpiredExerciseWindows } from '../domains/esop.js';
+import { checkDematRequirements, runPas6HalfYearly, runFlaReturn } from '../domains/filings.js';
 import { computeAndPersistAll } from '../domains/health.js';
+import { runBoardComplianceJob } from '../domains/board.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
+import { COMPLIANCE_JOBS } from './compliance/index.js';
 
 export interface JobResult {
   processed: number;
@@ -139,6 +145,69 @@ export const ALL_JOBS: JobDefinition[] = [
     run: async () => counted(await sweepStaleMergeCandidates()),
   },
   {
+    name: 'runCertificateWindowJob',
+    label: 'EX-EQT-002 share certificate window (SH-1, two months)',
+    automationClass: 'threshold_response',
+    cron: '0 6 * * *',
+    run: async () => counted(await detectOverdueCertificates()),
+  },
+  // ESOP (equity-portal plan §6, phase 5).
+  {
+    name: 'esop_vesting',
+    label: 'ESOP: vest tranches due today',
+    automationClass: 'routine_administration',
+    cron: '0 2 * * *',
+    run: async () => counted(await runVesting()),
+  },
+  {
+    name: 'runEsopExerciseWindowJob',
+    label: 'ESOP: lapse a vested-unexercised balance past its post-exit window',
+    automationClass: 'threshold_response',
+    cron: '0 3 * * *',
+    run: async () => counted(await runExpiredExerciseWindows()),
+  },
+  // Filings, demat, FEMA (equity-portal plan §6 phase 6a).
+  {
+    name: 'runDematStatusCheckJob',
+    label: 'EX-EQT-004/005 demat status (Rule 9B)',
+    automationClass: 'threshold_response',
+    cron: '0 6 * * *',
+    run: async () => counted(await checkDematRequirements()),
+  },
+  {
+    name: 'runPas6HalfYearlyJob',
+    label: 'EX-EQT-010 PAS-6 reconciliation, half-yearly',
+    automationClass: 'routine_administration',
+    cron: '0 7 * * *',
+    run: async () => counted(await runPas6HalfYearly()),
+  },
+  {
+    name: 'runFlaReturnJob',
+    label: 'EX-EQT-008 FLA return, yearly',
+    automationClass: 'routine_administration',
+    cron: '0 8 1 4 *',
+    run: async () => counted(await runFlaReturn()),
+  },
+  {
+    // Group (equity-portal plan §6, phase 2). Publishes only a tenant flagged
+    // `config.snapshotDirty` by the `kz.eqt.*` subscribers in
+    // `events/handlers.ts` — most ticks touch no tenant at all.
+    name: 'publish_entity_snapshots',
+    label: 'Publish dirty entity snapshots to the parent tenant',
+    automationClass: 'data_maintenance',
+    cron: '*/15 * * * *',
+    run: async () => counted(await publishDirtySnapshots()),
+  },
+  {
+    // The backstop against a missed subscriber: every subsidiary republishes
+    // once a night regardless of the dirty flag.
+    name: 'publish_entity_snapshots_nightly',
+    label: 'Nightly full entity snapshot publish',
+    automationClass: 'data_maintenance',
+    cron: '30 2 * * *',
+    run: async () => counted(await publishNightlySnapshot()),
+  },
+  {
     name: 'runOfferingCoverageJob',
     label: 'DET-CRM-OFF-01 offering coverage gap',
     automationClass: 'data_maintenance',
@@ -176,6 +245,14 @@ export const ALL_JOBS: JobDefinition[] = [
       return { processed: results.length, notified: 0, skippedIdempotent: 0, errors: [] };
     },
   },
+  {
+    name: 'board_compliance',
+    label: 'Board compliance calendar',
+    automationClass: 'routine_administration',
+    cron: '0 2 * * *',
+    run: async () => counted(await runBoardComplianceJob()),
+  },
+  ...COMPLIANCE_JOBS,
 ];
 
 // ---------------------------------------------------------------------------

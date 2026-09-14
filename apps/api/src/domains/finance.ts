@@ -326,11 +326,23 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
  * `refunded` row maps to BOTH a reversal payment AND a credit note — never one
  * without the other.
  */
-export async function issueCreditNote(invoiceId: string, amount: number, reason: string) {
+/**
+ * `reasonCode` (docs/plan/compliance.md, workstream B — CMP-GST-003) is
+ * optional here so the base finance route (which does not know about it) is
+ * unaffected: given, it is stored on `CreditNoteReason` — kept off CreditNote
+ * itself, which this workstream does not add a field to.
+ */
+export async function issueCreditNote(invoiceId: string, amount: number, reason: string, reasonCode?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'edit' });
 
-  const recordCode = await nextRecordCode('REC');
+  // The company's own document series ('C'), not the generic record-code
+  // sequence: a credit note is a final document a customer holds, and its
+  // numbering has to be gapless the way a tax invoice's is.
+  const { documentNumbering } = await import('./companyProfile.js');
+  const { DOCUMENT_SERIES, nextDocumentNumber } = await import('../platform/documentNumber.js');
+  const numbering = await documentNumbering();
+  const recordCode = await nextDocumentNumber(DOCUMENT_SERIES.creditNote, numbering.prefix, new Date(), numbering.yearFormat);
   const note = await prisma.creditNote.create({
     data: {
       tenantId: auth.tenantId,
@@ -340,6 +352,19 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
       reason,
       issuedById: auth.partyId,
     },
+  });
+
+  if (reasonCode) {
+    await prisma.creditNoteReason.create({
+      data: { tenantId: auth.tenantId, creditNoteId: note.id, reasonCode },
+    });
+  }
+
+  await auditWrite({
+    action: 'create',
+    subjectType: 'credit_note',
+    subjectId: note.id,
+    after: { recordCode, invoiceId, amount, reason, reasonCode: reasonCode ?? null },
   });
 
   await emit({

@@ -68,6 +68,25 @@ export const EVENTS = {
   AFFILIATION_ENDED: 'kz.idn.affiliation.ended',
   ORGANIZATION_CREATED: 'kz.idn.organization.created',
   SESSION_CONTEXT_SWITCHED: 'kz.idn.session.context_switched',
+  /// A sign-in created for an outsider — a shareholder or board member with no
+  /// employment here (§1.10). Never fires on the founding-account seed path.
+  SIGN_IN_CREATED: 'kz.idn.sign_in.created',
+  SIGN_IN_RESET: 'kz.idn.sign_in.reset',
+  /// A principal chose which entity to continue in, after `login()` returned
+  /// more than one. Written in the target tenant only — switching carries no
+  /// cross-tenant event, the same way the token it issues carries no
+  /// cross-tenant reach.
+  ENTITY_SWITCHED: 'kz.idn.entity.switched',
+  /// `reconcileTenantKinds` flipped a tenant's `kind` for the first time —
+  /// the moment s.2(85) ends small-company status for it (§1a.1).
+  TENANT_KIND_CHANGED: 'kz.sys.tenant.kind_changed',
+
+  // --- Spin-out: a division carved out into its own subsidiary tenant
+  // (equity-portal plan §6b) — emitted in both the holding and the
+  // subsidiary tenant, by `pnpm division:spin-out`.
+  TENANT_SPIN_OUT_PREVIEWED: 'kz.sys.spin_out.previewed',
+  TENANT_SPIN_OUT_COMMITTED: 'kz.sys.spin_out.committed',
+  TENANT_SPIN_OUT_REVERTED: 'kz.sys.spin_out.reverted',
 
   // --- CRM: organisation specialisations ------------------------------------
   CRM_ORGANIZATION_CREATED: 'kz.crm.organization.created',
@@ -300,6 +319,84 @@ export const EVENTS = {
   IMPORT_STAGED: 'kz.fin.import.staged',
   IMPORT_COMMITTED: 'kz.fin.import.committed',
   IMPORT_REVERTED: 'kz.fin.import.reverted',
+
+  // --- Equity register (eqt), phase 1 ---------------------------------------
+  SHARE_CLASS_CREATED: 'kz.eqt.share_class.created',
+  HOLDER_CREATED: 'kz.eqt.holder.created',
+  ALLOTMENT_PROPOSED: 'kz.eqt.allotment.proposed',
+  ALLOTMENT_APPROVED: 'kz.eqt.allotment.approved',
+  ALLOTMENT_EFFECTIVE: 'kz.eqt.allotment.effective',
+  TRANSFER_PROPOSED: 'kz.eqt.transfer.proposed',
+  TRANSFER_APPROVED: 'kz.eqt.transfer.approved',
+  TRANSFER_EFFECTIVE: 'kz.eqt.transfer.effective',
+  SHARE_TRANSACTION_REVERSED: 'kz.eqt.share_transaction.reversed',
+  SHARE_TRANSACTION_REJECTED: 'kz.eqt.share_transaction.rejected',
+  CERTIFICATE_ISSUED: 'kz.eqt.certificate.issued',
+  CERTIFICATE_CANCELLED: 'kz.eqt.certificate.cancelled',
+  VALUATION_RECORDED: 'kz.eqt.valuation.recorded',
+  ENTITY_DOCUMENT_PUBLISHED: 'kz.eqt.document.published',
+
+  // --- The group (eqt), phase 2 --------------------------------------------
+  // Emitted in BOTH tenants on a publish: in the source tenant, a record that
+  // its summary went up; in the parent, a record that the group's view of
+  // that entity changed. Never the trigger for a cross-tenant read — the
+  // written `EntitySnapshot` row is.
+  SNAPSHOT_PUBLISHED: 'kz.eqt.snapshot.published',
+  // --- Rounds, instruments, valuations, scenarios (eqt), phase 4 -----------
+  ROUND_CREATED: 'kz.eqt.round.created',
+  ROUND_OPENED: 'kz.eqt.round.opened',
+  ROUND_CLOSED: 'kz.eqt.round.closed',
+  ROUND_CANCELLED: 'kz.eqt.round.cancelled',
+  CONVERSION_PROPOSED: 'kz.eqt.conversion.proposed',
+  CONVERSION_APPROVED: 'kz.eqt.conversion.approved',
+  CONVERSION_EFFECTIVE: 'kz.eqt.conversion.effective',
+  REDEMPTION_PROPOSED: 'kz.eqt.redemption.proposed',
+  REDEMPTION_APPROVED: 'kz.eqt.redemption.approved',
+  REDEMPTION_EFFECTIVE: 'kz.eqt.redemption.effective',
+  BUYBACK_PROPOSED: 'kz.eqt.buyback.proposed',
+  BUYBACK_APPROVED: 'kz.eqt.buyback.approved',
+  BUYBACK_EFFECTIVE: 'kz.eqt.buyback.effective',
+  BONUS_PROPOSED: 'kz.eqt.bonus.proposed',
+  BONUS_APPROVED: 'kz.eqt.bonus.approved',
+  BONUS_EFFECTIVE: 'kz.eqt.bonus.effective',
+  RIGHTS_OFFERED: 'kz.eqt.rights.offered',
+  RIGHTS_ACCEPTED: 'kz.eqt.rights.accepted',
+  RIGHTS_RENOUNCED: 'kz.eqt.rights.renounced',
+  // --- ESOP (eqt), phase 5 ---------------------------------------------------
+  ESOP_PLAN_CREATED: 'kz.eqt.esop_plan.created',
+  ESOP_PLAN_ACTIVATED: 'kz.eqt.esop_plan.activated',
+  OPTION_PROPOSED: 'kz.eqt.option.proposed',
+  OPTION_GRANTED: 'kz.eqt.option.granted',
+  OPTION_VESTED: 'kz.eqt.option.vested',
+  OPTION_EXERCISE_REQUESTED: 'kz.eqt.option.exercise_requested',
+  OPTION_EXERCISED: 'kz.eqt.option.exercised',
+  OPTION_LAPSED: 'kz.eqt.option.lapsed',
+  OPTION_CANCELLED: 'kz.eqt.option.cancelled',
+  // Board
+  BOARD_MEMBER_ADDED: 'kz.eqt.board_member.added',
+  BOARD_MEMBER_CEASED: 'kz.eqt.board_member.ceased',
+  MEETING_CALLED: 'kz.eqt.meeting.called',
+  MEETING_HELD: 'kz.eqt.meeting.held',
+  MEETING_MINUTED: 'kz.eqt.meeting.minuted',
+  MEETING_CANCELLED: 'kz.eqt.meeting.cancelled',
+  RESOLUTION_PROPOSED: 'kz.eqt.resolution.proposed',
+  RESOLUTION_CIRCULATED: 'kz.eqt.resolution.circulated',
+  RESOLUTION_PASSED: 'kz.eqt.resolution.passed',
+  RESOLUTION_FAILED: 'kz.eqt.resolution.failed',
+  RESOLUTION_WITHDRAWN: 'kz.eqt.resolution.withdrawn',
+  VOTE_CAST: 'kz.eqt.vote.cast',
+  COMPLIANCE_ITEM_RAISED: 'kz.eqt.compliance.raised',
+  COMPLIANCE_ITEM_RESOLVED: 'kz.eqt.compliance.resolved',
+
+  // --- Filings, demat, FEMA (eqt), phase 6a ---------------------------------
+  FILING_RECORDED: 'kz.eqt.filing.recorded',
+  // Compliance calendar (docs/plan/compliance.md, workstream A). Generating a
+  // period's obligations, marking one filed and waiving one are three separate
+  // facts — generation is arithmetic, filing is the acknowledgement a portal
+  // gave back, and a waiver is a deliberate decision not to file at all.
+  COMPLIANCE_OBLIGATIONS_GENERATED: 'kz.cmp.obligation.generated',
+  COMPLIANCE_OBLIGATION_FILED: 'kz.cmp.obligation.filed',
+  COMPLIANCE_OBLIGATION_WAIVED: 'kz.cmp.obligation.waived',
 } as const;
 
 /**

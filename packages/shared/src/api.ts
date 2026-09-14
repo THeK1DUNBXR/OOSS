@@ -63,11 +63,17 @@ export interface AffiliationSummary {
 
 export interface SessionUser {
   userId: string;
+  /** The cross-tenant identity this user is one entity's face of. */
+  principalId: string;
   personId: string;
   fullName: string;
   email: string;
   tenantId: string;
   tenantName: string;
+  tenantKind: TenantKind;
+  parentTenantId: string | null;
+  /** How many tenants this principal holds an active affiliation in — the entity picker shows itself when this is more than one. */
+  entityCount: number;
   activeAffiliationId: string;
   roleSlug: string;
   archetype: SurfaceArchetype;
@@ -76,6 +82,53 @@ export interface SessionUser {
   grants: string[];
   authorityGrants: AuthorityGrantView[];
   branch: string | null;
+}
+
+export const TENANT_KINDS = ['holding', 'subsidiary', 'standalone'] as const;
+export type TenantKind = (typeof TENANT_KINDS)[number];
+
+/**
+ * One entity a principal can continue into, as returned by `POST /auth/login`
+ * when the principal holds an active affiliation in more than one, and by
+ * `GET /auth/entities` at any time.
+ */
+export interface EntityOption {
+  tenantId: string;
+  slug: string;
+  name: string;
+  kind: TenantKind;
+  parentTenantId: string | null;
+  roleSlugs: string[];
+  /** True when the email's domain matches this tenant's `config.emailDomains` — a hint only, first in the list, never the reason access is granted. */
+  suggested?: boolean;
+}
+
+/** Returned instead of a token when a principal holds more than one entity. */
+export interface EntitySelectionResponse {
+  entities: EntityOption[];
+  /** Short-lived (5 min) JWT carrying only `{ principalId, purpose: 'select-entity' }` — exchanged at `/auth/switch-entity` for a normal token, never usable for anything else. */
+  selectionToken: string;
+}
+
+/**
+ * Documents the keys the platform reads out of `Tenant.config`, which stays a
+ * JSON blob rather than columns because most of it is optional and tenant-
+ * specific. Not every key here is present on every tenant.
+ */
+export interface TenantConfig {
+  bootstrapAuthoritySet?: string[];
+  forecastPeriod?: string;
+  baseCurrency?: string;
+  onboardingComplete?: boolean;
+  /** Domains that hint (never decide) which entity a login should pre-select — §3.2. */
+  emailDomains?: string[];
+  /** The division a subsidiary grew out of, before it was incorporated as its own tenant — §1.1. */
+  originDivision?: 'software' | 'skill' | 'education';
+  /** Set once `reconcileTenantKinds` has raised the small-company-status notice for this tenant, so it fires exactly once — §1a.1. */
+  smallCompanyNoticeRaisedAt?: string;
+  seed?: { sequence: number; at: string; build: number; commit: string; navNodes: number };
+  /** Set on the subsidiary once `pnpm division:spin-out` has committed — §6b. */
+  spinOut?: { from: string; division: 'software' | 'skill' | 'education'; at: string; batchId: string };
 }
 
 export interface AuthorityGrantView {
@@ -90,6 +143,13 @@ export interface AuthorityGrantView {
 export interface LoginResponse {
   token: string;
   user: SessionUser;
+}
+
+/** What `POST /auth/login` actually returns — a token when the principal resolves to exactly one entity, an entity list to choose from otherwise. */
+export type LoginResult = LoginResponse | EntitySelectionResponse;
+
+export function loginNeedsEntitySelection(result: LoginResult): result is EntitySelectionResponse {
+  return (result as EntitySelectionResponse).entities !== undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -757,6 +817,10 @@ export interface InvoiceDocumentView {
   notes: string | null;
   division: string | null;
   raisedBy: string | null;
+  /** tax_invoice | bill_of_supply (docs/plan/compliance.md, workstream B). */
+  invoiceType: string;
+  /** Rule 46(p): tax on this supply is payable by the recipient. */
+  reverseCharge: boolean;
 
   supplier: {
     legalName: string;

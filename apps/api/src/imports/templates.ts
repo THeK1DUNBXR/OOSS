@@ -41,7 +41,8 @@ export type TemplateKind =
   | 'template_staff'
   | 'template_ledger_accounts'
   | 'template_ledger_categories'
-  | 'template_vendor_bills';
+  | 'template_vendor_bills'
+  | 'template_opening_register';
 
 export interface TemplateColumn {
   /** The heading written into the file, and matched on the way back. */
@@ -255,6 +256,35 @@ const SPECS: TemplateSpec[] = [
     notes: [
       'A bill already on file under the same vendor and bill number is left alone rather than duplicated, so re-uploading a corrected file is safe.',
       'Every bill lands unpaid — this is a list of what is owed, not a record of what has already been settled. Record a payment against it afterwards, the same way as any bill entered by hand.',
+    ],
+  },
+  {
+    kind: 'template_opening_register',
+    slug: 'opening-register',
+    title: 'Opening register',
+    what: 'The share register as it stands today — holders, classes and the allotments already made — so the first cap table is not typed in by hand.',
+    columns: [
+      { name: 'Holder name', field: 'holderName', required: true, note: 'Full name of the person, or the registered name of the organisation.', example: 'Karthik Raman' },
+      { name: 'Holder kind', field: 'holderKind', required: true, note: 'Person or Organisation.', example: 'Person' },
+      { name: 'Email', field: 'email', note: '', example: 'karthik@example.com' },
+      { name: 'Phone', field: 'phone', note: '', example: '9843012345' },
+      { name: 'PAN', field: 'panNumber', note: 'Optional.', example: 'ABCDE1234F' },
+      { name: 'Residency', field: 'residency', note: 'Resident or Non-resident. Leave blank for Resident.', example: 'Resident' },
+      { name: 'Investment basis', field: 'investmentBasis', note: 'Repatriable or Non-repatriable. Required only for a non-resident holder.', example: '' },
+      { name: 'Share class', field: 'shareClassName', required: true, note: 'A new class is created if this name is not already on file, provided face value and instrument are also given.', example: 'Equity' },
+      { name: 'Instrument', field: 'instrument', note: 'Equity, Preference, etc. Required when the class is new.', example: 'Equity' },
+      { name: 'Face value', field: 'faceValue', note: 'Required when the class is new.', example: '10', as: 'number' },
+      { name: 'Count', field: 'count', required: true, note: 'Number of shares.', example: '1000', as: 'number' },
+      { name: 'Distinctive from', field: 'distinctiveFrom', required: true, note: 'The first distinctive number in the range on the existing certificate.', example: '1', as: 'number' },
+      { name: 'Distinctive to', field: 'distinctiveTo', required: true, note: 'The last distinctive number in the range.', example: '1000', as: 'number' },
+      { name: 'Allotted on', field: 'allottedOn', required: true, note: 'DD/MM/YYYY.', example: '01/04/2020', as: 'date' },
+      { name: 'Price per share', field: 'pricePerShare', note: 'Leave blank if not known.', example: '10', as: 'number' },
+      { name: 'Certificate number', field: 'certificateNumber', note: 'The number already printed on the paper certificate, if one exists.', example: 'KIPL/C/20-21/001' },
+    ],
+    notes: [
+      'Every row becomes an effective allotment, dated as given — this is the opening position, not a proposal working through approval.',
+      'A distinctive range that overlaps another row already on file, or another row in this same file, within the same share class, is refused rather than imported.',
+      'A certificate number given here is kept exactly as written rather than allocated from this platform’s own certificate series — it is the paper the holder is already holding.',
     ],
   },
 ];

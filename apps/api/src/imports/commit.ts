@@ -12,7 +12,7 @@
  * sixty of them before their first import is asking them not to bother.
  */
 
-import { prisma } from '../platform/db.js';
+import { prisma, dec } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
@@ -158,6 +158,9 @@ export async function commitImport(id: string): Promise<CommitResult> {
           break;
         case 'template_vendor_bills':
           outcome = await commitVendorBillTemplateRow(data);
+          break;
+        case 'template_opening_register':
+          outcome = await commitOpeningRegisterRow(data);
           break;
         default:
           throw new Error(`No commit path for an import of kind "${batch.kind}".`);
@@ -731,6 +734,12 @@ export async function revertImport(id: string) {
           break;
         case 'compensationRecord':
           await prisma.compensationRecord.delete({ where: { id: row.entityId } });
+          break;
+        case 'shareTransaction':
+          // Certificates carry a foreign key to the transaction that
+          // produced them, so they go first.
+          await prisma.shareCertificate.deleteMany({ where: { tenantId: auth.tenantId, issuedForTransactionId: row.entityId } });
+          await prisma.shareTransaction.delete({ where: { id: row.entityId } });
           break;
         case 'workAttendance':
           await prisma.workAttendance.deleteMany({
@@ -1388,4 +1397,169 @@ async function commitVendorBillTemplateRow(data: Record<string, unknown>) {
     note: text(data.note),
   });
   return { entityType: 'vendorBill', entityId: bill.id };
+}
+
+/** instrument → the class kind s.2(87) cares about, for a class the import creates. */
+const INSTRUMENT_CLASS_KIND: Record<string, string> = {
+  equity: 'equity',
+  sweat_equity: 'equity',
+  ccps: 'preference',
+  ocps: 'preference',
+  rps: 'preference',
+  ccd: 'debenture',
+  ocd: 'debenture',
+  ncd: 'debenture',
+  convertible_note: 'debenture',
+  warrant: 'equity',
+  option: 'equity',
+  phantom: 'equity',
+};
+
+/**
+ * One row of the opening register: a holder, a share class (created on
+ * demand when it is new and the row gives a face value and an instrument),
+ * and an **effective** allotment carrying the distinctive range and
+ * certificate the row states — this is the opening position, not a proposal
+ * working through `proposeAllotment`/`approveShareTransaction`.
+ *
+ * A distinctive range overlapping one already on file in the same class is
+ * refused, naming the row it collides with — checked against the database
+ * rather than only within the file, which is what makes a second row in the
+ * same file that collides with the first refuse too: each row is written
+ * before the next is checked, so a same-file collision is a database
+ * collision by the time it is looked for.
+ */
+async function commitOpeningRegisterRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
+  const holderName = text(data.holderName);
+  const shareClassName = text(data.shareClassName);
+  if (!holderName || !shareClassName) return null;
+
+  const { findOrCreatePerson } = await import('../domains/identity.js');
+  const { nextFolioNumber } = await import('../domains/equity.js');
+
+  const kind = text(data.holderKind)?.toLowerCase().startsWith('org') ? 'organization' : 'person';
+
+  let shareClass = await prisma.shareClass.findFirst({ where: { tenantId: auth.tenantId, name: shareClassName } });
+  if (!shareClass) {
+    const faceValue = data.faceValue == null ? null : Number(data.faceValue);
+    const instrument = text(data.instrument)?.toLowerCase() ?? 'equity';
+    if (faceValue == null) {
+      throw new Error(`"${shareClassName}" is not an existing share class, and no face value was given to create one.`);
+    }
+    shareClass = await prisma.shareClass.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('SHC'),
+        name: shareClassName,
+        kind: INSTRUMENT_CLASS_KIND[instrument] ?? 'equity',
+        instrument,
+        faceValue: dec(faceValue)!,
+      },
+    });
+  }
+
+  let personId: string | null = null;
+  let organizationId: string | null = null;
+  if (kind === 'person') {
+    const email = text(data.email)?.toLowerCase() ?? null;
+    const phone = text(data.phone);
+    const resolved = await findOrCreatePerson({ fullName: holderName, primaryEmail: email, primaryPhone: phone, source: 'import' });
+    personId = resolved.person.id;
+  } else {
+    const org = await organizationByName(holderName);
+    if (!org) throw new Error(`"${holderName}" is not on file as an organisation. Import it first, or correct the name.`);
+    organizationId = org.id;
+  }
+
+  let holderRow = await prisma.holder.findFirst({
+    where: { tenantId: auth.tenantId, ...(personId ? { personId } : { organizationId }) },
+  });
+  if (!holderRow) {
+    const residencyText = text(data.residency)?.toLowerCase() ?? '';
+    const residency = residencyText.startsWith('non') ? 'non_resident' : 'resident';
+    const basisText = text(data.investmentBasis)?.toLowerCase() ?? '';
+    const investmentBasis = basisText.startsWith('non') ? 'non_repatriable' : basisText ? 'repatriable' : null;
+    if (residency === 'non_resident' && !investmentBasis) {
+      throw new Error(`"${holderName}" is marked non-resident but no investment basis was given.`);
+    }
+    holderRow = await prisma.holder.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('HLD'),
+        kind,
+        personId,
+        organizationId,
+        folioNumber: await nextFolioNumber(),
+        residency,
+        investmentBasis,
+        panNumber: text(data.panNumber),
+      },
+    });
+  }
+
+  const fromNum = Number(data.distinctiveFrom);
+  const toNum = Number(data.distinctiveTo);
+  if (!Number.isFinite(fromNum) || !Number.isFinite(toNum) || toNum < fromNum) {
+    throw new Error('Distinctive from/to must be whole numbers with "to" not before "from".');
+  }
+  const distinctiveFrom = BigInt(Math.round(fromNum));
+  const distinctiveTo = BigInt(Math.round(toNum));
+  const count = Number(data.count);
+
+  const overlap = await prisma.shareTransaction.findFirst({
+    where: {
+      tenantId: auth.tenantId,
+      shareClassId: shareClass.id,
+      status: 'effective',
+      distinctiveFrom: { not: null, lte: distinctiveTo },
+      distinctiveTo: { not: null, gte: distinctiveFrom },
+    },
+  });
+  if (overlap) {
+    throw new Error(
+      `Distinctive numbers ${distinctiveFrom}-${distinctiveTo} in "${shareClassName}" overlap ${overlap.recordCode}'s range (${overlap.distinctiveFrom}-${overlap.distinctiveTo}).`,
+    );
+  }
+
+  const effectiveOn = new Date(String(data.allottedOn));
+
+  const txn = await prisma.shareTransaction.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode: await nextRecordCode('SHT'),
+      type: 'allotment',
+      shareClassId: shareClass.id,
+      toHolderId: holderRow.id,
+      count: dec(count)!,
+      pricePerShare: data.pricePerShare == null ? null : dec(Number(data.pricePerShare)),
+      distinctiveFrom,
+      distinctiveTo,
+      effectiveOn,
+      status: 'effective',
+      proposedByPartyId: auth.partyId ?? 'system',
+      note: 'Opening register import.',
+    },
+  });
+
+  await prisma.shareCertificate.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode: await nextRecordCode('CRT'),
+      certificateNumber: text(data.certificateNumber) ?? `${shareClass.recordCode}/${distinctiveFrom}-${distinctiveTo}`,
+      imported: true,
+      holderId: holderRow.id,
+      shareClassId: shareClass.id,
+      distinctiveFrom,
+      distinctiveTo,
+      count: dec(count)!,
+      issuedOn: effectiveOn,
+      status: 'issued',
+      issuedForTransactionId: txn.id,
+      signatories: [] as never,
+      holderNameSnapshot: holderName,
+    },
+  });
+
+  return { entityType: 'shareTransaction', entityId: txn.id };
 }

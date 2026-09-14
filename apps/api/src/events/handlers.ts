@@ -19,6 +19,9 @@ import { subscribe, wouldLoop } from '../platform/eventBus.js';
 import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../domains/finance.js';
 import { ensureWinLossReview } from '../domains/winLoss.js';
 import { computeSensitivity } from '../domains/interactions.js';
+import { markSnapshotDirty } from '../domains/group.js';
+import { handleEmploymentExit } from '../domains/esop.js';
+import { handleAllotmentEffectiveForFema, handleTransferEffectiveForFema } from '../domains/filings.js';
 
 let registered = false;
 
@@ -126,6 +129,44 @@ export function registerSubscribers(): void {
     if (sensitivityClass !== interaction.sensitivityClass) {
       await prisma.interaction.update({ where: { id: interaction.id }, data: { sensitivityClass } });
     }
+  });
+
+  /**
+   * The group (equity-portal plan §6, phase 2). Nothing here reads or writes
+   * a snapshot itself — it only flags this tenant's own `config.
+   * snapshotDirty`, so the `publish_entity_snapshots` job (every 15 minutes)
+   * publishes it soon rather than waiting for the nightly run. A tenant
+   * with no parent is flagged harmlessly; `publishEntitySnapshot` is a no-op
+   * for it.
+   */
+  const markDirty = (key: string, eventName: string) =>
+    subscribe(eventName, key, async (event: EventEnvelope) => {
+      await markSnapshotDirty(event.tenantId);
+    });
+  markDirty('eqt.snapshot_dirty.allotment', EVENTS.ALLOTMENT_EFFECTIVE);
+  markDirty('eqt.snapshot_dirty.transfer', EVENTS.TRANSFER_EFFECTIVE);
+  markDirty('eqt.snapshot_dirty.reversed', EVENTS.SHARE_TRANSACTION_REVERSED);
+  markDirty('eqt.snapshot_dirty.valuation', EVENTS.VALUATION_RECORDED);
+  markDirty('eqt.snapshot_dirty.transaction', EVENTS.TRANSACTION_RECORDED);
+  // ESOP (equity-portal plan §6, phase 5): an employee's exit lapses their
+  // unvested options immediately and starts the exercise-window clock on any
+  // vested-unexercised balance. Subscribed against the HRM's own past-tense
+  // name for every terminal separation transition (resignation reaching its
+  // last working day, post-disciplinary termination, confirmed abandonment —
+  // `EMPLOYMENT_EVENT_VERB` maps all three to `separated`), never a role slug.
+  subscribe('kz.hr.employment.separated', 'eqt.esop_exit_lapse', async (event: EventEnvelope) => {
+    await handleEmploymentExit(event.subject.entityId, new Date(event.occurredAt));
+  });
+
+  // FEMA (equity-portal plan §6 phase 6a). Repatriable non-resident holdings
+  // carry FC-GPR/FC-TRS deadlines; a non-repatriable one (Schedule IV) is
+  // treated as resident money and raises nothing — `handle*ForFema` makes
+  // that check itself, subject by subject, rather than here.
+  subscribe(EVENTS.ALLOTMENT_EFFECTIVE, 'eqt.fema_fc_gpr', async (event: EventEnvelope) => {
+    await handleAllotmentEffectiveForFema(event.subject.entityId);
+  });
+  subscribe(EVENTS.TRANSFER_EFFECTIVE, 'eqt.fema_fc_trs', async (event: EventEnvelope) => {
+    await handleTransferEffectiveForFema(event.subject.entityId);
   });
 
   /** A band transition, not a raw reading, is what reaches the Command Center. */

@@ -16,7 +16,16 @@
  * printed on a document somebody hands to a customer.
  */
 
-import { EVENTS, isValidGstin, stateCodeOf, stateNameFor } from '@kaizen/shared';
+import {
+  EVENTS,
+  isValidGstin,
+  stateCodeOf,
+  stateNameFor,
+  isValidTan,
+  isValidCin,
+  isValidUdyam,
+  checkPanAgainstGstin,
+} from '@kaizen/shared';
 import { prefixFrom, type YearFormat } from '../platform/documentNumber.js';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
@@ -50,6 +59,24 @@ export interface CompanyProfileInput {
   defaultDueDays?: number;
   documentPrefix?: string | null;
   documentYearFormat?: YearFormat;
+  // The register (equity-portal plan §5 "EntityProfile").
+  incorporatedOn?: string | null;
+  financialYearEndMonth?: number | null;
+  isSmallCompany?: boolean | null;
+  dematStatus?: 'physical' | 'demat' | 'mixed';
+  isin?: string | null;
+  rtaName?: string | null;
+  dpiitNumber?: string | null;
+  dpiitRecognisedOn?: string | null;
+  iac80CertificateRef?: string | null;
+  certificateSignatories?: Array<{ name: string; designation: string }>;
+  tan?: string | null;
+  udyamNumber?: string | null;
+}
+
+/** 12 characters, starting `INE` for an Indian ISIN. */
+function isValidIsin(isin: string): boolean {
+  return /^INE[A-Z0-9]{9}$/.test(isin);
 }
 
 /**
@@ -93,6 +120,51 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
 
   const stateCode = input.stateCode ?? current.stateCode;
 
+  if (input.isin) {
+    const isin = input.isin.trim().toUpperCase();
+    if (!isValidIsin(isin)) {
+      throw ApiError.badRequest(`${isin} is not a valid ISIN. It is twelve characters and, for an India-issued security, starts INE.`);
+    }
+    input.isin = isin;
+  }
+
+  // TAN (Sec 203A): four letters, five digits, one letter — checked for shape
+  // only, the way isValidGstin already is; the portal is the authority on
+  // whether a number is actually allotted.
+  if (input.tan) {
+    const tan = input.tan.trim().toUpperCase();
+    if (!isValidTan(tan)) {
+      throw ApiError.badRequest(`${tan} is not a valid TAN. It is ten characters: four letters, five digits, one letter.`);
+    }
+    input.tan = tan;
+  }
+
+  if (input.cin) {
+    const cin = input.cin.trim().toUpperCase();
+    if (!isValidCin(cin)) {
+      throw ApiError.badRequest(`${cin} is not a valid CIN. It is twenty-one characters: L/U, a five-digit industry code, a two-letter state code, a four-digit year, a three-letter company type, and a six-digit registration number.`);
+    }
+    input.cin = cin;
+  }
+
+  if (input.udyamNumber) {
+    const udyam = input.udyamNumber.trim().toUpperCase();
+    if (!isValidUdyam(udyam)) {
+      throw ApiError.badRequest(`${udyam} is not a valid Udyam registration number. It reads UDYAM-XX-00-0000000 — a two-letter state code, a two-digit district code, and a seven-digit number.`);
+    }
+    input.udyamNumber = udyam;
+  }
+
+  // The PAN embedded in a GSTIN (characters 3-12) has to be the company's own
+  // PAN — a mismatch is not a typo waiting to be found at the portal, it is
+  // two different companies' numbers on one profile.
+  const panForCheck = input.pan !== undefined ? input.pan : current.pan;
+  const gstinForCheck = input.gstin !== undefined ? input.gstin : current.gstin;
+  const panCheck = checkPanAgainstGstin(panForCheck, gstinForCheck);
+  if (!panCheck.ok) {
+    throw ApiError.unprocessable(panCheck.message!, { reasonCode: panCheck.reasonCode });
+  }
+
   const updated = await prisma.companyProfile.update({
     where: { id: current.id },
     data: {
@@ -123,6 +195,18 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
         ? { documentPrefix: input.documentPrefix?.trim().toUpperCase() || null }
         : {}),
       ...(input.documentYearFormat !== undefined ? { documentYearFormat: input.documentYearFormat } : {}),
+      ...(input.incorporatedOn !== undefined ? { incorporatedOn: input.incorporatedOn ? new Date(input.incorporatedOn) : null } : {}),
+      ...(input.financialYearEndMonth !== undefined ? { financialYearEndMonth: input.financialYearEndMonth } : {}),
+      ...(input.isSmallCompany !== undefined ? { isSmallCompany: input.isSmallCompany } : {}),
+      ...(input.dematStatus !== undefined ? { dematStatus: input.dematStatus } : {}),
+      ...(input.isin !== undefined ? { isin: input.isin } : {}),
+      ...(input.rtaName !== undefined ? { rtaName: input.rtaName } : {}),
+      ...(input.dpiitNumber !== undefined ? { dpiitNumber: input.dpiitNumber } : {}),
+      ...(input.dpiitRecognisedOn !== undefined ? { dpiitRecognisedOn: input.dpiitRecognisedOn ? new Date(input.dpiitRecognisedOn) : null } : {}),
+      ...(input.iac80CertificateRef !== undefined ? { iac80CertificateRef: input.iac80CertificateRef } : {}),
+      ...(input.certificateSignatories !== undefined ? { certificateSignatories: input.certificateSignatories as never } : {}),
+      ...(input.tan !== undefined ? { tan: input.tan } : {}),
+      ...(input.udyamNumber !== undefined ? { udyamNumber: input.udyamNumber } : {}),
     },
   });
 

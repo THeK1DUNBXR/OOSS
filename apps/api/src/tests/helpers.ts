@@ -30,10 +30,13 @@ export async function tenantId(slug = 'kaizen'): Promise<string> {
 }
 
 export async function principalFor(email: string): Promise<TestPrincipal> {
-  const user = await unscopedPrisma.user.findFirstOrThrow({
-    where: { email },
-    include: { person: true },
-  });
+  // The suite's people live in the `kaizen` tenant. Equity tests bootstrap
+  // subsidiary tenants whose founding accounts carry the same emails (one
+  // principal, several entities), so the lookup names the tenant rather
+  // than taking whichever row the database returns first.
+  const user =
+    (await unscopedPrisma.user.findFirst({ where: { email, tenant: { slug: 'kaizen' } }, include: { person: true } })) ??
+    (await unscopedPrisma.user.findFirstOrThrow({ where: { email }, include: { person: true } }));
   const affiliation = await unscopedPrisma.affiliation.findFirstOrThrow({
     where: { partyId: user.personId, status: 'active' },
     orderBy: [{ primaryFlag: 'desc' }, { createdAt: 'asc' }],

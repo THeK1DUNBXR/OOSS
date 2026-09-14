@@ -36,6 +36,18 @@ export const DOCUMENT_SERIES = {
   invoice: 'I',
   receipt: 'R',
   finalInvoice: 'F',
+  // Added with the compliance work (docs/plan/compliance.md): each is a
+  // document that is final once issued, so each gets a gapless series.
+  creditNote: 'C',
+  debitNote: 'D',
+  payslip: 'P',
+  refund: 'N',
+  certificate: 'T',
+  /// A share certificate (SH-1): `KIPL/S/26-27/001`. Its own letter, apart
+  /// from the course certificate above. Never allocated for a certificate
+  /// the opening-register import carries in with its own paper number — see
+  /// `ShareCertificate.imported`.
+  shareCertificate: 'S',
 } as const;
 
 export type DocumentSeries = (typeof DOCUMENT_SERIES)[keyof typeof DOCUMENT_SERIES];
@@ -44,6 +56,12 @@ export const SERIES_LABELS: Record<DocumentSeries, string> = {
   I: 'Tax invoices',
   R: 'Receipts',
   F: 'Final invoices',
+  C: 'Credit notes',
+  D: 'Debit notes',
+  P: 'Payslips',
+  N: 'Refunds',
+  T: 'Certificates',
+  S: 'Share certificates',
 };
 
 export type YearFormat = 'short' | 'full';

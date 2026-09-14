@@ -37,6 +37,7 @@ import {
   EVENTS,
   GST_RETURN_TYPES,
   isValidGstin,
+  isNonTaxableSupply,
   monthRange,
   placeOfSupplyLabel,
   round2,
@@ -52,6 +53,7 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { assertRegistered, supplyingParty } from './companyProfile.js';
+import { rcmLiabilityFor } from './compliance/gst.js';
 
 const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -184,6 +186,8 @@ export async function computeGstr1(period: string) {
   const b2cRates = new Map<string, Gstr1RateLine>();
   /** Supplies at 0%: reported, and reported separately from taxable ones. */
   let nilRatedValue = 0;
+  let exemptedValue = 0;
+  let nonGstValue = 0;
   const hsn = new Map<string, Gstr1HsnLine>();
   const creditNoteRows: Array<{ recordCode: string; invoiceNumber: string; amount: number; reason: string; issuedAt: string }> = [];
 
@@ -198,7 +202,11 @@ export async function computeGstr1(period: string) {
     const invSgst = num(inv.sgstAmount) ?? 0;
     const invIgst = num(inv.igstAmount) ?? 0;
 
-    taxableValue = round2(taxableValue + invTaxable);
+    // Turnover (CMP-GST-001) counts only taxable lines; nil/exempt/non-GST
+    // lines are reported in `nil` below, not folded into this figure.
+    taxableValue = round2(
+      taxableValue + inv.lines.reduce((s, l) => s + (isNonTaxableSupply(l.supplyType) ? 0 : num(l.amount) ?? 0), 0),
+    );
     cgst = round2(cgst + invCgst);
     sgst = round2(sgst + invSgst);
     igst = round2(igst + invIgst);
@@ -242,8 +250,10 @@ export async function computeGstr1(period: string) {
       });
     } else {
       // B2C is rate-wise, and the rate lives on the line rather than on the
-      // invoice, so the invoice is split across as many buckets as it has rates.
-      for (const line of inv.lines) {
+      // invoice, so the invoice is split across as many buckets as it has
+      // rates. Nil/exempt/non-GST lines are reported apart (CMP-GST-001),
+      // not as a taxable 0% bucket here.
+      for (const line of inv.lines.filter((l) => !isNonTaxableSupply(l.supplyType))) {
         const rate = num(line.gstRate) ?? 0;
         const value = num(line.amount) ?? 0;
         const tax = round2((value * rate) / 100);
@@ -267,11 +277,15 @@ export async function computeGstr1(period: string) {
       }
     }
 
-    // Nil-rated supplies are reported, and reported apart from taxable ones: a
-    // zero-rate line folded into the taxable total is a figure that does not
-    // reconcile with 3.1 of the 3B.
+    // Nil, exempt and non-GST supplies are reported apart from taxable ones,
+    // per each line's own classification (CMP-GST-001) — a zero-rate line
+    // folded into the taxable total is a figure that does not reconcile with
+    // 3.1 of the 3B.
     for (const line of inv.lines) {
-      if ((num(line.gstRate) ?? 0) === 0) nilRatedValue = round2(nilRatedValue + (num(line.amount) ?? 0));
+      const value = num(line.amount) ?? 0;
+      if (line.supplyType === 'nil') nilRatedValue = round2(nilRatedValue + value);
+      else if (line.supplyType === 'exempt') exemptedValue = round2(exemptedValue + value);
+      else if (line.supplyType === 'non_gst') nonGstValue = round2(nonGstValue + value);
     }
 
     // The HSN/SAC summary. Every line contributes, B2B and B2C alike, because
@@ -327,6 +341,30 @@ export async function computeGstr1(period: string) {
     }
   }
 
+  // Debit notes raised in the month, the CDNR/CDNUR counterpart that raises
+  // rather than reduces what was reported (CMP-GST-003) — its own table, with
+  // its own sign, because a debit note is not a negative credit note.
+  const debitNoteRows: Array<{ recordCode: string; invoiceNumber: string; amount: number; reasonCode: string; issuedAt: string }> = [];
+  const debitNotes = await prisma.debitNote.findMany({
+    where: { tenantId: auth.tenantId, issuedAt: { gte: from, lt: to } },
+  });
+  if (debitNotes.length) {
+    const dnInvoices = await prisma.invoice.findMany({
+      where: { id: { in: debitNotes.map((n) => n.invoiceId) } },
+      select: { id: true, recordCode: true },
+    });
+    const codeOf = new Map(dnInvoices.map((i) => [i.id, i.recordCode]));
+    for (const note of debitNotes) {
+      debitNoteRows.push({
+        recordCode: note.recordCode,
+        invoiceNumber: codeOf.get(note.invoiceId) ?? note.invoiceId,
+        amount: num(note.amount) ?? 0,
+        reasonCode: note.reasonCode,
+        issuedAt: note.issuedAt.toISOString().slice(0, 10),
+      });
+    }
+  }
+
   const unclassified = [...hsn.values()].filter((h) => h.hsnSac === 'UNCLASSIFIED');
 
   return {
@@ -338,9 +376,10 @@ export async function computeGstr1(period: string) {
     b2b,
     b2cl,
     b2cs: [...b2cRates.values()].sort((a, b) => a.gstRate - b.gstRate),
-    nil: { nilRated: nilRatedValue, exempted: 0, nonGst: 0 },
+    nil: { nilRated: nilRatedValue, exempted: exemptedValue, nonGst: nonGstValue },
     hsn: [...hsn.values()].sort((a, b) => a.hsnSac.localeCompare(b.hsnSac) || a.gstRate - b.gstRate),
     creditNotes: creditNoteRows,
+    debitNotes: debitNoteRows,
     documentSummary: {
       from: numbered[0]?.recordCode ?? null,
       to: numbered[numbered.length - 1]?.recordCode ?? null,
@@ -357,6 +396,7 @@ export async function computeGstr1(period: string) {
       tax: round2(cgst + sgst + igst),
       invoiceValue: round2(live.reduce((s, i) => s + (num(i.grandTotal) ?? 0), 0)),
       creditNoted: round2(creditNoteRows.reduce((s, c) => s + c.amount, 0)),
+      debitNoted: round2(debitNoteRows.reduce((s, d) => s + d.amount, 0)),
     },
 
     /**
@@ -540,13 +580,19 @@ export async function computeGstr3b(period: string) {
       customerGstin: true,
       placeOfSupply: true,
       grandTotal: true,
-      lines: { select: { amount: true, gstRate: true } },
+      lines: { select: { amount: true, gstRate: true, supplyType: true } },
     },
   });
 
   const output = invoices.reduce(
     (acc, i) => ({
-      taxableValue: round2(acc.taxableValue + (num(i.taxableValue) ?? 0)),
+      // Taxable turnover (3.1(a)) excludes nil/exempt/non-GST lines
+      // (CMP-GST-001): they are reported in the row below, not folded into
+      // what looks like ordinary taxable supply.
+      taxableValue: round2(
+        acc.taxableValue +
+          i.lines.reduce((s, l) => s + (isNonTaxableSupply(l.supplyType) ? 0 : num(l.amount) ?? 0), 0),
+      ),
       cgst: round2(acc.cgst + (num(i.cgstAmount) ?? 0)),
       sgst: round2(acc.sgst + (num(i.sgstAmount) ?? 0)),
       igst: round2(acc.igst + (num(i.igstAmount) ?? 0)),
@@ -558,7 +604,12 @@ export async function computeGstr3b(period: string) {
   // state. The state's share of the IGST is settled from this, so a supply
   // missing from it is money that never reaches the state it was collected for.
   const interState = new Map<string, { taxableValue: number; igst: number }>();
-  let nilRated = 0;
+  // Nil, exempt and non-GST are reported apart, per line's own classification
+  // (CMP-GST-001) — not inferred from a 0% rate, which a taxable line can also
+  // carry (a discount down to nil, say).
+  let nilRatedTotal = 0;
+  let exemptTotal = 0;
+  let nonGstTotal = 0;
   for (const inv of invoices) {
     if (inv.interState && supplyTypeOf(inv.customerGstin) === 'b2c' && inv.placeOfSupply) {
       const row = interState.get(inv.placeOfSupply) ?? { taxableValue: 0, igst: 0 };
@@ -567,9 +618,13 @@ export async function computeGstr3b(period: string) {
       interState.set(inv.placeOfSupply, row);
     }
     for (const line of inv.lines) {
-      if ((num(line.gstRate) ?? 0) === 0) nilRated = round2(nilRated + (num(line.amount) ?? 0));
+      const value = num(line.amount) ?? 0;
+      if (line.supplyType === 'nil') nilRatedTotal = round2(nilRatedTotal + value);
+      else if (line.supplyType === 'exempt') exemptTotal = round2(exemptTotal + value);
+      else if (line.supplyType === 'non_gst') nonGstTotal = round2(nonGstTotal + value);
     }
   }
+  const nilRated = round2(nilRatedTotal + exemptTotal);
 
   const bills = await prisma.vendorBill.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, billDate: { gte: from, lt: to } },
@@ -601,6 +656,15 @@ export async function computeGstr3b(period: string) {
     }
   }
 
+  // Reverse charge on inward supplies (CMP-GST-002): the tax payable under
+  // Sec 9(3)/9(4), from the self-invoices raised this period. Sec 16 makes tax
+  // actually paid under RCM eligible for credit straight away, so it is added
+  // to the same period's ITC rather than deferred.
+  const rcm = await rcmLiabilityFor(period);
+  credit.cgst = round2(credit.cgst + rcm.cgst);
+  credit.sgst = round2(credit.sgst + rcm.sgst);
+  credit.igst = round2(credit.igst + rcm.igst);
+
   const setOff = setOffInputCredit(
     { cgst: output.cgst, sgst: output.sgst, igst: output.igst },
     credit,
@@ -630,24 +694,22 @@ export async function computeGstr3b(period: string) {
     },
 
     /**
-     * The rest of table 3.1, reported as zero and reported nonetheless.
+     * The rest of table 3.1.
      *
-     * A 3B that omits them is not a shorter 3B, it is an incomplete one: the
-     * portal asks for every row, and a company that starts exporting or selling
-     * an exempt supply needs the row to exist before it has a figure in it. They
-     * are zero here because this platform has no way to mark a supply zero-rated
-     * or exempt yet — which is stated rather than implied, so nobody reads a zero
-     * as a measurement.
+     * Nil-rated and exempt outward supplies, and non-GST ones, come from each
+     * line's own `supplyType` (CMP-GST-001). Zero-rated (exports/SEZ) has
+     * nothing in this platform that can mark a supply that way yet, so it
+     * still reads zero — stated, not implied. `reverseCharge` here is 3.1(d):
+     * tax payable on inward supplies under reverse charge (CMP-GST-002), from
+     * this period's `RcmSelfInvoice` rows — what the offline JSON's
+     * `isup_rev` block reports.
      */
     otherOutwardSupplies: {
       zeroRated: { taxableValue: 0, igst: 0 },
-      /** Nil-rated: a 0% line is a nil-rated supply, and those this platform can see. */
-      nilRatedAndExempt: { taxableValue: nilRated },
-      nonGst: { taxableValue: 0 },
-      reverseCharge: { taxableValue: 0, cgst: 0, sgst: 0, igst: 0 },
-      note:
-        'Zero-rated, exempt and non-GST supplies read zero because nothing in this platform can yet mark a supply as ' +
-        'one. They are not measured, rather than measured at nothing.',
+      nilRatedAndExempt: { taxableValue: nilRated, nilRated: nilRatedTotal, exempted: exemptTotal },
+      nonGst: { taxableValue: nonGstTotal },
+      reverseCharge: rcm,
+      note: 'Zero-rated (exports/SEZ) reads zero: nothing in this platform yet marks a supply that way.',
     },
 
     /**
