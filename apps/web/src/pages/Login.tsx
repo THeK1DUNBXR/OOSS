@@ -18,9 +18,10 @@ const ROLES = [
 ];
 
 export function Login() {
-  const { signIn, error } = useSession();
+  const { signIn, verifyMfa, mfaChallengeToken, error } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
@@ -34,6 +35,48 @@ export function Login() {
       setBusy(false);
     }
   };
+
+  const submitCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await verifyMfa(code);
+    } catch {
+      /* surfaced via session error */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (mfaChallengeToken) {
+    return (
+      <div className="flex min-h-full items-center justify-center p-6">
+        <div className="card w-full max-w-sm p-6">
+          <h1 className="text-xl">Enter your code</h1>
+          <p className="mt-1 text-2xs leading-relaxed text-ink-500">
+            This account has a second factor. Enter the six-digit code from your authenticator app.
+          </p>
+          <form onSubmit={submitCode} className="mt-4 space-y-3">
+            <div>
+              <label className="label">Code</label>
+              <input
+                className="input"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                inputMode="numeric"
+                autoFocus
+                maxLength={6}
+              />
+            </div>
+            {error && <p className="text-2xs text-band-critical">{error}</p>}
+            <button className="btn-primary w-full py-2" disabled={busy || code.length !== 6}>
+              {busy ? 'Verifying…' : 'Verify'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full items-center justify-center p-6">

@@ -32,6 +32,7 @@ import { assertCan } from '../platform/permissions.js';
 import { evaluateApprovalGate } from '../platform/approvals.js';
 import { raiseException } from '../platform/exceptions.js';
 import { createRelationship } from './relationships.js';
+import { assertStampDutySatisfied } from './compliance/corporate/contracts.js';
 
 export type AgreementKind = 'mou' | 'contract' | 'partner_agreement';
 
@@ -354,6 +355,13 @@ export async function transitionAgreement(
     }
   } else {
     await assertCan({ resource: `${kind}s`, verb: 'edit', record: { ownerPartyId: agreement.ownerPartyId as string | null } });
+  }
+
+  // A signed agreement is a stamped instrument when the schedule says duty
+  // applies — checked here, not left to be discovered when the document is
+  // produced for an audit (docs/plan/compliance.md, H).
+  if (toStatus === 'signed') {
+    await assertStampDutySatisfied(kind, id);
   }
 
   const auth = currentAuth();

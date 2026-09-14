@@ -177,8 +177,17 @@ function encodeHeader(value: string): string {
   return value.replace(/[^\x20-\x7E]/g, '_');
 }
 
-export async function login(email: string, password: string) {
-  const res = await api.post<{ token: string; user: SessionUser }>('/auth/login', { email, password });
+export type LoginResponse = { token: string; user: SessionUser } | { mfaRequired: true; challengeToken: string };
+
+export async function login(email: string, password: string): Promise<LoginResponse> {
+  const res = await api.post<LoginResponse>('/auth/login', { email, password });
+  if ('token' in res) setToken(res.token);
+  return res;
+}
+
+/** Completes a login begun with `login()`, once it returned `{ mfaRequired: true }`. */
+export async function verifyMfa(challengeToken: string, code: string) {
+  const res = await api.post<{ token: string; user: SessionUser }>('/auth/mfa/verify', { challengeToken, code });
   setToken(res.token);
   return res;
 }

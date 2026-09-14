@@ -8,6 +8,7 @@ import { prisma } from './platform/db.js';
 import { BUILD, STARTED_AT, buildLabel } from './platform/build.js';
 import { reconcileNavForAllTenants } from './platform/navSync.js';
 import { addMissingGrantsForAllTenants } from './platform/grantSync.js';
+import { assertProductionSecrets } from './lib/auth.js';
 
 export function createApp() {
   const app = express();
@@ -44,6 +45,12 @@ export function createApp() {
 const port = Number(process.env.PORT ?? 4000);
 
 if (process.env.NODE_ENV !== 'test') {
+  // CMP-COR-001, stated again explicitly right before the process actually
+  // starts serving traffic — `lib/auth.ts` already checks this at module
+  // load, which covers every import path; this is the last chance before a
+  // socket opens.
+  assertProductionSecrets();
+
   const app = createApp();
   // Cross-domain subscribers register once at boot, against canonical names only.
   registerSubscribers();

@@ -8,14 +8,17 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { NavNodeView, SessionUser, Verb } from '@kaizen/shared';
-import { api, getToken, login as apiLogin, logout as apiLogout, setToken, switchContext as apiSwitch } from './api.js';
+import { api, getToken, login as apiLogin, logout as apiLogout, setToken, switchContext as apiSwitch, verifyMfa as apiVerifyMfa } from './api.js';
 
 interface SessionState {
   user: SessionUser | null;
   nav: NavNodeView[];
   loading: boolean;
   error: string | null;
+  /** Set once `signIn` gets `{ mfaRequired: true }` back — the login screen shows the code prompt while this is non-null. */
+  mfaChallengeToken: string | null;
   signIn: (email: string, password: string) => Promise<void>;
+  verifyMfa: (code: string) => Promise<void>;
   signOut: () => void;
   switchTo: (affiliationId: string, stepUpPassword?: string) => Promise<void>;
   can: (grant: string) => boolean;
@@ -39,6 +42,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [nav, setNav] = useState<NavNodeView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
 
   const loadNav = useCallback(async () => {
     try {
@@ -73,8 +77,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(
     async (email: string, password: string) => {
       setError(null);
+      setMfaChallengeToken(null);
       try {
         const res = await apiLogin(email, password);
+        if ('mfaRequired' in res) {
+          setMfaChallengeToken(res.challengeToken);
+          return;
+        }
         setUser(res.user);
         await loadNav();
       } catch (err) {
@@ -83,6 +92,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     },
     [loadNav],
+  );
+
+  const verifyMfa = useCallback(
+    async (code: string) => {
+      if (!mfaChallengeToken) throw new Error('No sign-in is waiting for a code.');
+      setError(null);
+      try {
+        const res = await apiVerifyMfa(mfaChallengeToken, code);
+        setMfaChallengeToken(null);
+        setUser(res.user);
+        await loadNav();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'That code is not correct.');
+        throw err;
+      }
+    },
+    [mfaChallengeToken, loadNav],
   );
 
   const signOut = useCallback(() => {
@@ -127,8 +153,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<SessionState>(
-    () => ({ user, nav, loading, error, signIn, signOut, switchTo, can, refresh }),
-    [user, nav, loading, error, signIn, signOut, switchTo, can, refresh],
+    () => ({ user, nav, loading, error, mfaChallengeToken, signIn, verifyMfa, signOut, switchTo, can, refresh }),
+    [user, nav, loading, error, mfaChallengeToken, signIn, verifyMfa, signOut, switchTo, can, refresh],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
