@@ -18,7 +18,7 @@ import { assertCan } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { emit } from '../platform/eventBus.js';
-import { EVENTS } from '@kaizen/shared';
+import { EVENTS, DIVISION_LABELS, DIVISIONS, type Division } from '@kaizen/shared';
 import { matchFailure, matchPerson } from './matchName.js';
 import {
   classifyLedger, divisionFor, isAccountName,
@@ -149,6 +149,15 @@ export async function commitImport(id: string): Promise<CommitResult> {
           break;
         case 'template_staff':
           outcome = await commitEmployeeRow(data);
+          break;
+        case 'template_ledger_accounts':
+          outcome = await commitLedgerAccountTemplateRow(data);
+          break;
+        case 'template_ledger_categories':
+          outcome = await commitLedgerCategoryTemplateRow(data);
+          break;
+        case 'template_vendor_bills':
+          outcome = await commitVendorBillTemplateRow(data);
           break;
         case 'template_opening_register':
           outcome = await commitOpeningRegisterRow(data);
@@ -1231,6 +1240,163 @@ async function commitContactRow(data: Record<string, unknown>) {
   }
 
   return { entityType: 'person', entityId: person.id };
+}
+
+// ---------------------------------------------------------------------------
+// Finance: the company's own chart, its accounts, and what it owes.
+//
+// A Tally export already carries this — `commitLedgerRow` and
+// `commitAccountRow` above read a chart and post transactions straight from
+// it. These three exist for the company that has no such export yet, or
+// whose vendor bills a Tally export never carried in the first place:
+// somebody types the shape the platform states, the same way they would for
+// Courses or Client companies.
+// ---------------------------------------------------------------------------
+
+/** A ledger category by name. Unique per tenant, so there is nothing to disambiguate. */
+async function ledgerCategoryByName(name: string) {
+  const auth = currentAuth();
+  return prisma.ledgerCategory.findFirst({ where: { tenantId: auth.tenantId, name } });
+}
+
+const ACCOUNT_TYPES = new Set(['bank', 'cash', 'card', 'loan', 'wallet']);
+
+/** "Bank", "Credit card" and their kin, to the accountType the ledger stores. */
+function accountTypeOf(v: unknown): string {
+  const raw = text(v)?.toLowerCase();
+  if (!raw) return 'bank';
+  if (ACCOUNT_TYPES.has(raw)) return raw;
+  if (raw.includes('cash')) return 'cash';
+  if (raw.includes('card')) return 'card';
+  if (raw.includes('loan')) return 'loan';
+  if (raw.includes('wallet')) return 'wallet';
+  throw new Error(`Type reads "${text(v)}". Use Bank, Cash, Card, Loan or Wallet.`);
+}
+
+const CATEGORY_KIND_WORDS: Record<string, string> = {
+  income: 'income', revenue: 'income',
+  expense: 'expense', cost: 'expense',
+  'asset purchase': 'asset_purchase', asset: 'asset_purchase', 'fixed asset': 'asset_purchase',
+  tax: 'tax', statutory: 'tax',
+  transfer: 'transfer',
+  equity: 'equity', 'capital in': 'equity', 'capital introduced': 'equity',
+  drawings: 'drawings', 'capital out': 'drawings', 'capital taken out': 'drawings',
+};
+
+/** "Asset purchase", "Tax or statutory due" and the like, to the stored kind. */
+function categoryKindOf(v: unknown): string {
+  const raw = text(v)?.toLowerCase();
+  if (!raw) return 'expense';
+  if (CATEGORY_KIND_WORDS[raw]) return CATEGORY_KIND_WORDS[raw];
+  throw new Error(`Type reads "${text(v)}". Use Income, Expense, Asset purchase, Tax, Transfer, Equity or Drawings.`);
+}
+
+const CATEGORY_BEHAVIOUR_WORDS: Record<string, string> = {
+  'recurring fixed': 'recurring_fixed', fixed: 'recurring_fixed', 'same every month': 'recurring_fixed',
+  variable: 'variable', varies: 'variable',
+  'one-time': 'one_time', 'one time': 'one_time', onetime: 'one_time', 'one-off': 'one_time', 'one off': 'one_time',
+  annual: 'annual', yearly: 'annual', 'once a year': 'annual',
+};
+
+/** "Same every month" and its kin, to the stored behaviour. */
+function categoryBehaviourOf(v: unknown): string {
+  const raw = text(v)?.toLowerCase();
+  if (!raw) return 'variable';
+  if (CATEGORY_BEHAVIOUR_WORDS[raw]) return CATEGORY_BEHAVIOUR_WORDS[raw];
+  throw new Error(`How it behaves reads "${text(v)}". Use Recurring fixed, Variable, One-time or Annual.`);
+}
+
+const DIVISION_BY_LABEL: Record<string, Division> = Object.fromEntries(
+  Object.entries(DIVISION_LABELS).map(([code, label]) => [label.toLowerCase(), code as Division]),
+);
+
+/** "Skill Development" and its own code alike, to the division the ledger stores. */
+function divisionValueOf(v: unknown): string | null {
+  const raw = text(v)?.toLowerCase();
+  if (!raw) return null;
+  if ((DIVISIONS as readonly string[]).includes(raw)) return raw;
+  if (DIVISION_BY_LABEL[raw]) return DIVISION_BY_LABEL[raw];
+  throw new Error(`Division reads "${text(v)}". Use Software, Skill Development, Education or Shared.`);
+}
+
+async function commitLedgerAccountTemplateRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
+  const name = text(data.name);
+  if (!name) return null;
+
+  const existing = await prisma.ledgerAccount.findFirst({ where: { tenantId: auth.tenantId, name } });
+  if (existing) return { entityType: 'ledgerAccount', entityId: existing.id };
+
+  const { createAccount } = await import('../domains/books.js');
+  const account = await createAccount({
+    name,
+    accountType: accountTypeOf(data.accountType),
+    displayReference: text(data.displayReference),
+    openingBalance: data.openingBalance == null ? 0 : Number(data.openingBalance),
+    openingDate: data.openingDate ? new Date(String(data.openingDate)) : null,
+  });
+  return { entityType: 'ledgerAccount', entityId: account.id };
+}
+
+async function commitLedgerCategoryTemplateRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
+  const name = text(data.name);
+  if (!name) return null;
+
+  const existing = await prisma.ledgerCategory.findFirst({ where: { tenantId: auth.tenantId, name } });
+  if (existing) return { entityType: 'ledgerCategory', entityId: existing.id };
+
+  let parentId: string | null = null;
+  const parentName = text(data.parentName);
+  if (parentName) {
+    const parent = await ledgerCategoryByName(parentName);
+    if (!parent) throw new Error(`"${parentName}" is not on file. Import it first, with Parent category left blank, or correct the name.`);
+    parentId = parent.id;
+  }
+
+  const { createCategory } = await import('../domains/books.js');
+  const category = await createCategory({
+    name,
+    kind: categoryKindOf(data.kind),
+    behaviour: categoryBehaviourOf(data.behaviour),
+    parentId,
+    defaultDivision: divisionValueOf(data.defaultDivision),
+    mustPay: data.mustPay === true,
+  });
+  return { entityType: 'ledgerCategory', entityId: category.id };
+}
+
+async function commitVendorBillTemplateRow(data: Record<string, unknown>) {
+  const auth = currentAuth();
+  const vendorName = text(data.vendorName);
+  const billNumber = text(data.billNumber);
+  if (!vendorName || !billNumber) return null;
+
+  const existing = await prisma.vendorBill.findFirst({ where: { tenantId: auth.tenantId, vendorName, billNumber } });
+  if (existing) return { entityType: 'vendorBill', entityId: existing.id };
+
+  let categoryId: string | null = null;
+  const categoryName = text(data.categoryName);
+  if (categoryName) {
+    const category = await ledgerCategoryByName(categoryName);
+    if (!category) throw new Error(`"${categoryName}" is not on file. Import the Ledger categories template first, or correct the name.`);
+    categoryId = category.id;
+  }
+
+  const { recordVendorBill } = await import('../domains/books.js');
+  const bill = await recordVendorBill({
+    vendorName,
+    vendorGstin: text(data.vendorGstin),
+    billNumber,
+    billDate: new Date(String(data.billDate)),
+    dueDate: data.dueDate ? new Date(String(data.dueDate)) : null,
+    categoryId,
+    division: divisionValueOf(data.division),
+    subtotal: Number(data.subtotal ?? 0),
+    taxAmount: data.taxAmount == null ? 0 : Number(data.taxAmount),
+    note: text(data.note),
+  });
+  return { entityType: 'vendorBill', entityId: bill.id };
 }
 
 /** instrument → the class kind s.2(87) cares about, for a class the import creates. */
