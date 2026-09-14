@@ -159,6 +159,54 @@ their own (`VF@own`/`VC@own` grants).
 | HCM-COMPENSATION-024 | An own-scope viewer is refused the cycle list and a single cycle outright (not merely narrowed), since a cycle spans every employee and has no "own" slice. | `an own-scope viewer is refused the cycle list and a single cycle outright, not merely narrowed` |
 | HCM-COMPENSATION-025 | An own-scope employee cannot mark a colleague's approved expense claim reimbursed. | `an own-scope employee cannot mark a colleague's approved expense claim reimbursed` |
 
+## Scope-axis audit (post-review)
+
+A cross-workstream review (WS5) found that `assertCan({resource, verb})`
+alone only proves a verb is held in *some* scope — it says nothing about
+whether an `own`-scope grant is being exercised on the caller's own record,
+because the WHERE/scope axis is only evaluated once a record (or an explicit
+scope check) is in play. Auditing every function in this file against that
+pattern found and closed:
+
+- **List endpoints with no id to narrow by** (`listRevisionLines` when called
+  without a matching own line, `listVariablePayouts`/`listLoans`/
+  `listExpenseClaims`/`listBenefitEnrollments` when called with no
+  `employmentRelationshipId`) returned every employee's rows to a caller
+  holding only an `own`-scope grant — for `salary_revisions`/`variable_pay`
+  (which also grant `financial` at `own` scope) this meant an employee could
+  read a colleague's money outright. Fixed by narrowing the query to the
+  caller's own employment whenever `scopeFor(resource, 'view') !== 'all'`.
+- **`listRevisionCycles`/`getRevisionCycle`**: a cycle is a company-wide
+  object with no "own" slice — `getRevisionCycle`'s aggregate budget in
+  particular is exactly the shape `assertScopeAll` exists for. Both now
+  require the `view` grant at `all` scope; `myRevisionLines` remains the
+  employee's own read path.
+- **`reimburseExpenseClaim`**: sat on `expense_claims:edit`, the same grant
+  row as an employee's own `create`/`view` (`VCE@own`), with no employment
+  check at all — an employee could mark *any* colleague's approved claim
+  reimbursed. Now requires `edit` at `all` scope, like the approve/reject
+  actions beside it.
+- **`addRevisionLine`/`computePayout`**: hardened to require `create` at
+  `all` scope outright — these are always proposed by HR *about* someone
+  else, never a self-service act, even though no role currently holds either
+  verb at `own` scope.
+- **`enrolInBenefit`/`requestLoan`/`submitExpenseClaim`**: these legitimately
+  serve both an own-scope self-service create and an all-scope HR create.
+  They already resolved correctly today because the employee's `view` and
+  `create` verbs sit on the same grant row (`VCE@own`/`VC@own`), but the
+  employment check was against the *default* `view` verb rather than
+  `create` — a coincidence of the current matrix, not a guarantee. Now check
+  the `create` verb explicitly.
+- Every `approve`/`reject` action, `proposeCycle`/`approveCycle`/
+  `applyCycle`, `disburseLoan`/`recordLoanRepayment`, and `markPayoutPaid`
+  were checked against the shipped matrix and confirmed to hold their verb
+  only at `all` scope for every role that has it at all (`hr_ops_manager`,
+  `finance_head`) — no change needed there beyond `reimburseExpenseClaim`
+  above.
+
+Tests HCM-COMPENSATION-019 through -025 prove each closed path against
+`ravi` (a real `employee`-role principal) and a colleague's record.
+
 ## What this does not do
 
 - Does not post anything to the general ledger. Reimbursing an expense claim
