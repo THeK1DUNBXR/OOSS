@@ -643,14 +643,6 @@ function ScoreRulesTab() {
   if (rules.error) return <ErrorBox error={rules.error} />;
   const items = rules.data ?? [];
 
-  const submitCreate = () => {
-    setError(null);
-    create.mutate(
-      { name, condition: { field, op, value }, points: Number(points), order: items.length + 1 },
-      { onSuccess: () => { setCreating(false); setName(''); setValue(''); }, onError: (e) => setError(messageOf(e)) },
-    );
-  };
-
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -729,8 +721,8 @@ function ScoreRulesTab() {
         open={creating}
         title="New score rule"
         onClose={() => setCreating(false)}
-        onSubmit={async () => submitCreate()}
-        invalidate={[]}
+        onSubmit={() => create.mutateAsync({ name, condition: { field, op, value }, points: Number(points), order: items.length + 1 })}
+        invalidate={[['mkt', 'score-rules']]}
       >
         <TextInput label="Name" required value={name} onChange={setName} placeholder="Attended an event" />
         <Row>
