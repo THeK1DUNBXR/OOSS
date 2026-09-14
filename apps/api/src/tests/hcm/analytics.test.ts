@@ -375,14 +375,32 @@ describe('HCM-ANALYTICS-010 — tenant scoping', () => {
 // `level` field between WS1's Grade and WS7's PayGrade
 // ===========================================================================
 
+/**
+ * Compa-ratio distribution reads across the whole tenant (there is no
+ * per-employment filter to isolate this test's own fixture behind), so a
+ * fixed, reserved grade level is claimed and wiped clean first — the test
+ * stays deterministic whether this file runs once or is re-run against the
+ * same never-reset test database.
+ */
+async function resetGradeLevel(tenant: string, level: number): Promise<void> {
+  const grades = await prisma.grade.findMany({ where: { tenantId: tenant, level }, select: { id: true } });
+  const gradeIds = grades.map((g) => g.id);
+  if (gradeIds.length > 0) {
+    await prisma.gradeAssignment.deleteMany({ where: { tenantId: tenant, gradeId: { in: gradeIds } } });
+    await prisma.grade.deleteMany({ where: { tenantId: tenant, id: { in: gradeIds } } });
+  }
+  await prisma.payGrade.deleteMany({ where: { tenantId: tenant, level } });
+}
+
 describe('HCM-ANALYTICS-011 — compa-ratio distribution', () => {
   it('an employee whose current CTC equals the grade midpoint of the pay grade at their level lands in the 95-110% bucket', async () => {
     const { employment } = await makeEmployee('comp-ratio', 200, 100_000);
     fixtureSeq += 1;
     const stamp = `${Date.now()}-${fixtureSeq}`;
-    const level = 900_000 + fixtureSeq;
+    const level = 999_001; // reserved for this test
 
     await asUser('operations@kaizen.co.in', async () => {
+      await resetGradeLevel(TENANT, level);
       const grade = await prisma.grade.create({
         data: { tenantId: TENANT, code: `CR-GRADE-${stamp}`, name: `Comp ratio fixture grade ${stamp}`, level },
       });
