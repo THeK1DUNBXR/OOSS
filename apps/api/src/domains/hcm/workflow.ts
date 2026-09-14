@@ -416,10 +416,16 @@ export async function decide(requestId: string, approve: boolean, note?: string)
     throw ApiError.forbidden('This level is resolved to a different approver.');
   }
 
-  await prisma.hrRequestApproval.update({
-    where: { id: approval.id },
+  // Atomic compare-and-set: two concurrent `decide()` calls both pass the
+  // `decision !== 'pending'` check above (read-committed reads the same
+  // pre-write row), so the guard against a double-decide has to live in the
+  // write itself — only one of the racing updates can match `decision:
+  // 'pending'` and actually flip a row; the loser's count comes back 0.
+  const claimed = await prisma.hrRequestApproval.updateMany({
+    where: { id: approval.id, tenantId: auth.tenantId, decision: 'pending' },
     data: { decision: approve ? 'approved' : 'rejected', note: note ?? null, decidedAt: new Date() },
   });
+  if (claimed.count === 0) throw ApiError.conflict('This level has already been decided.');
 
   const chain = request.type.approvalChain as unknown as ApprovalChain;
   const isFinalLevel = request.currentLevel >= chain.length;

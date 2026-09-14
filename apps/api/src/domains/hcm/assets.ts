@@ -155,7 +155,7 @@ export async function transitionAsset(id: string, to: Exclude<AssetStatus, 'assi
 export async function listAssetAssignments(filter: { employmentRelationshipId?: string; assetId?: string } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'asset_assignments', verb: 'view' });
-  const where = await employmentVisibilityWhere('asset_assignments');
+  const where = await ownEmploymentWhere('asset_assignments');
   return prisma.assetAssignment.findMany({
     where: {
       tenantId: auth.tenantId,
@@ -254,7 +254,7 @@ export async function returnAsset(assignmentId: string, input: { condition: Asse
 export async function listTravelRequests(filter: { employmentRelationshipId?: string; status?: string } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'travel_requests', verb: 'view' });
-  const where = await employmentVisibilityWhere('travel_requests');
+  const where = await ownEmploymentWhere('travel_requests');
   const canSee = await canSeeMoney('travel_requests');
   const rows = await prisma.travelRequest.findMany({
     where: {
@@ -402,7 +402,7 @@ async function nextLetterRequestNumber(): Promise<string> {
 export async function listLetterRequests(filter: { employmentRelationshipId?: string; status?: string } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'letter_requests', verb: 'view' });
-  const where = await employmentVisibilityWhere('letter_requests');
+  const where = await ownEmploymentWhere('letter_requests');
   return prisma.letterRequest.findMany({
     where: {
       tenantId: auth.tenantId,

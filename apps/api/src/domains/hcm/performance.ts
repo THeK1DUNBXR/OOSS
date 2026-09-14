@@ -524,6 +524,19 @@ export async function releaseFinalRating(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'reviews', verb: 'edit' });
 
+  // `reviews:edit` alone is not enough: an employee holds it too, at `own`
+  // scope, for filing their own review response — and `assertCan` without a
+  // `record` never checks the WHERE axis. Releasing somebody else's rating is
+  // never an `own`-scope action, so it is gated on the resolved scope being
+  // `all` here explicitly, the same way `nineBoxForCycle` gates an aggregate
+  // read. Without this an ordinary employee could release a colleague's
+  // rating outright — the Self-Dealing Bar alone only stops them releasing
+  // their *own*.
+  const scope = await scopeFor('reviews', 'edit');
+  if (scope !== 'all') {
+    throw ApiError.forbidden('Releasing a rating needs an all-scope grant on reviews; it is not a self-service action.');
+  }
+
   const rating = await prisma.finalRating.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!rating) throw ApiError.notFound('Final rating');
   if (rating.released) throw ApiError.conflict('This rating has already been released.');

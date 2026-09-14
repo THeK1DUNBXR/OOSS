@@ -9,8 +9,8 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import type { AuthContext } from '../../platform/context.js';
-import { asPrincipal, asUser, expectReject, prisma, tenantId, unscopedPrisma } from '../helpers.js';
+import { asSystem, type AuthContext } from '../../platform/context.js';
+import { asPrincipal, asUser, expectReject, prisma, tenantId, unscopedPrisma, withFixtureRole } from '../helpers.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
 import {

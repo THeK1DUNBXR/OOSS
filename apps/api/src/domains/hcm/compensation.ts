@@ -344,6 +344,13 @@ export async function rejectRevisionLine(lineId: string, note: string) {
   const line = await prisma.salaryRevisionLine.findFirst({ where: { id: lineId, tenantId: auth.tenantId } });
   if (!line) throw ApiError.notFound('Salary revision line');
   if (line.status !== 'proposed') throw ApiError.conflict(`Line is already ${line.status}.`);
+  const subjectPersonId = await employmentPersonId(line.employmentRelationshipId);
+  if (subjectPersonId === auth.partyId) {
+    throw ApiError.forbidden(
+      'A salary revision line about you cannot be decided by you, at any amount.',
+      [{ axis: 'WHO', passed: false, reason: 'self_dealing_bar_compensation' }],
+    );
+  }
   if (line.proposedById && line.proposedById === auth.partyId) {
     throw ApiError.forbidden('The proposer of a salary revision line cannot also decide it (Self-Dealing Bar).', [
       { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
