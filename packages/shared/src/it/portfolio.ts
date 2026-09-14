@@ -222,26 +222,32 @@ export interface ItPortfolioSummary extends ItSummaryBase {
   byRag: RagCounts;
 }
 
+/**
+ * `planned`/`actual`/`variance` are `null` rather than a number whenever the
+ * viewer does not hold `it_budgets:F` — present-but-withheld, the platform's
+ * usual masking shape, never a silently zeroed figure (see
+ * `maskBudgetMoney` in `domains/it/portfolio.ts`).
+ */
 export interface ItBudgetCategoryLine {
   category: ItBudgetCategory;
-  planned: number;
-  actual: number;
-  variance: number;
+  planned: number | null;
+  actual: number | null;
+  variance: number | null;
 }
 
 export interface ItBudgetDivisionLine {
   division: string;
-  planned: number;
-  actual: number;
-  variance: number;
+  planned: number | null;
+  actual: number | null;
+  variance: number | null;
   run: number;
   grow: number;
 }
 
 export interface ItBudgetSummary extends ItSummaryBase {
   fy: string | null;
-  plannedTotal: number;
-  actualTotal: number;
+  plannedTotal: number | null;
+  actualTotal: number | null;
   byCategory: ItBudgetCategoryLine[];
   byDivision: ItBudgetDivisionLine[];
   runTotal: number;

@@ -26,6 +26,7 @@ import {
   RecordCode,
   StatusChip,
   Tabs,
+  Withheld,
 } from '../../components/ui.js';
 import { CreateModal, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
@@ -275,7 +276,8 @@ interface InitiativeDetailView extends InitiativeRow {
   expectedBenefit: string | null;
   ragReason: string | null;
   ragSetAt: string | null;
-  spendToDate: number;
+  /** null, present-but-withheld, for a viewer without `it_budgets:F` — never zeroed. */
+  spendToDate: number | null;
   availableTransitions: string[];
   updates: Array<{ id: string; body: string; rag: string; authorPartyId: string | null; at: string }>;
 }
@@ -394,11 +396,22 @@ export function ItInitiativeDetail() {
           <Card title="Budget vs spend">
             <Metric label="Budget" value={money(data.budget, data.currency)} noActionReason="Set at proposal." />
             <div className="mt-3">
-              <Metric label="Spend to date" value={money(data.spendToDate, data.currency)} sub="Summed from linked vendor bills." noActionReason="Computed, not stored." />
+              <Metric
+                label="Spend to date"
+                value={data.spendToDate === null ? <Withheld reason="no_permission" /> : money(data.spendToDate, data.currency)}
+                sub="Summed from linked vendor bills."
+                noActionReason="Computed, not stored."
+              />
             </div>
-            <p className="mt-3 text-2xs text-ink-500">
-              Spend to date sums the linked vendor bills only. Licence spend is not yet joined in — see docs/it/portfolio.md.
-            </p>
+            {data.spendToDate === null ? (
+              <p className="mt-3 text-2xs text-ink-500">
+                Spend figures need financial visibility on the budget (<code>it_budgets:F</code>) — the Finance Head and the chairman hold it.
+              </p>
+            ) : (
+              <p className="mt-3 text-2xs text-ink-500">
+                Spend to date sums the linked vendor bills only. Licence spend is not yet joined in — see docs/it/portfolio.md.
+              </p>
+            )}
           </Card>
         </div>
       </div>
@@ -604,30 +617,33 @@ const CATEGORIES = ['licences', 'hardware', 'vendors', 'cloud', 'people', 'other
 const KINDS = ['run', 'grow'] as const;
 const DIVISIONS = ['software', 'skill', 'education', 'shared'] as const;
 
+/** `planned`/`actual`/`variance` are `null`, present-but-withheld, for a
+ * viewer without `it_budgets:F` — the Operations Head holds `VCE` on
+ * `it_budgets`, not `F`. Never rendered as zero. */
 interface BudgetLine {
   id: string;
   category: string;
   division: string | null;
   kind: string;
-  planned: number;
-  actual: number;
-  variance: number;
+  planned: number | null;
+  actual: number | null;
+  variance: number | null;
   status: string;
 }
 
 interface BudgetForFyView {
   fy: string;
   lines: BudgetLine[];
-  plannedTotal: number;
-  actualTotal: number;
+  plannedTotal: number | null;
+  actualTotal: number | null;
 }
 
 interface BudgetSummaryView {
   notYetMeasured: boolean;
   fy: string | null;
-  plannedTotal: number;
-  actualTotal: number;
-  byDivision: Array<{ division: string; planned: number; actual: number; variance: number; run: number; grow: number }>;
+  plannedTotal: number | null;
+  actualTotal: number | null;
+  byDivision: Array<{ division: string; planned: number | null; actual: number | null; variance: number | null; run: number; grow: number }>;
   runTotal: number;
   growTotal: number;
 }
@@ -650,6 +666,7 @@ function fyOptions(): string[] {
 export function ItBudget() {
   const qc = useQueryClient();
   const { can } = useSession();
+  const seesMoney = can('it_budgets:F');
   const [fy, setFy] = useState(currentFy());
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -696,11 +713,17 @@ export function ItBudget() {
 
       {summary && (
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Metric label="Planned" value={money(summary.plannedTotal)} noActionReason="Set on each budget line." />
-          <Metric label="Actual" value={money(summary.actualTotal)} noActionReason="Summed from the books." />
+          <Metric label="Planned" value={summary.plannedTotal === null ? <Withheld reason="no_permission" /> : money(summary.plannedTotal)} noActionReason="Set on each budget line." />
+          <Metric label="Actual" value={summary.actualTotal === null ? <Withheld reason="no_permission" /> : money(summary.actualTotal)} noActionReason="Summed from the books." />
           <Metric label="Run" value={money(summary.runTotal)} noActionReason="Kind = run." />
           <Metric label="Grow" value={money(summary.growTotal)} noActionReason="Kind = grow." />
         </div>
+      )}
+      {summary && !seesMoney && (
+        <p className="mb-4 text-2xs text-ink-500">
+          Planned and actual figures need financial visibility on the budget (<code>it_budgets:F</code>) — the Finance
+          Head and the chairman hold it. Run and grow totals are shown regardless.
+        </p>
       )}
 
       {summary && !summary.notYetMeasured && summary.byDivision.length > 0 && (
@@ -731,9 +754,15 @@ export function ItBudget() {
                 <th className="px-3 py-2 text-left">Category</th>
                 <th className="px-3 py-2 text-left">Division</th>
                 <th className="px-3 py-2 text-left">Kind</th>
-                <th className="px-3 py-2 text-right">Planned</th>
-                <th className="px-3 py-2 text-right">Actual</th>
-                <th className="px-3 py-2 text-right">Variance</th>
+                {seesMoney ? (
+                  <>
+                    <th className="px-3 py-2 text-right">Planned</th>
+                    <th className="px-3 py-2 text-right">Actual</th>
+                    <th className="px-3 py-2 text-right">Variance</th>
+                  </>
+                ) : (
+                  <th className="px-3 py-2 text-right">Money</th>
+                )}
                 <th className="px-3 py-2 text-left">Status</th>
                 <th className="px-3 py-2" />
               </tr>
@@ -744,9 +773,17 @@ export function ItBudget() {
                   <td className="px-3 py-2">{titleCase(l.category)}</td>
                   <td className="px-3 py-2">{l.division ? DIVISION_LABELS[l.division as Division] ?? titleCase(l.division) : '—'}</td>
                   <td className="px-3 py-2">{titleCase(l.kind)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(l.planned)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(l.actual)}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${l.variance < 0 ? 'text-band-critical' : 'text-ink-300'}`}>{money(l.variance)}</td>
+                  {seesMoney ? (
+                    <>
+                      <td className="px-3 py-2 text-right tabular-nums">{l.planned === null ? <Withheld reason="no_permission" /> : money(l.planned)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{l.actual === null ? <Withheld reason="no_permission" /> : money(l.actual)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${(l.variance ?? 0) < 0 ? 'text-band-critical' : 'text-ink-300'}`}>
+                        {l.variance === null ? <Withheld reason="no_permission" /> : money(l.variance)}
+                      </td>
+                    </>
+                  ) : (
+                    <td className="px-3 py-2 text-right"><Withheld reason="no_permission" /></td>
+                  )}
                   <td className="px-3 py-2"><StatusChip status={l.status} tone={l.status === 'approved' ? 'good' : 'neutral'} /></td>
                   <td className="px-3 py-2 text-right">
                     {l.status === 'draft' && can('it_budgets:approve') && (

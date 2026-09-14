@@ -6,7 +6,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { handler, str, date } from '../../lib/http.js';
 import { ApiError } from '../../platform/errors.js';
-import { IT_THEMES } from '@kaizen/shared';
+import { IT_THEMES, IT_BUDGET_CATEGORIES, IT_BUDGET_KINDS, IT_TECH_DEBT_SEVERITIES } from '@kaizen/shared';
 import {
   createInitiative,
   listInitiatives,
@@ -151,9 +151,9 @@ router.post(
     const body = z
       .object({
         fy: z.string().min(1),
-        category: z.string(),
+        category: z.enum(IT_BUDGET_CATEGORIES),
         division: z.string().nullish(),
-        kind: z.string(),
+        kind: z.enum(IT_BUDGET_KINDS),
         planned: z.number().nonnegative(),
         currency: z.string().optional(),
         bookCategoryIds: z.array(z.string()).optional(),
@@ -201,7 +201,7 @@ router.post(
       .object({
         title: z.string().min(1),
         applicationId: z.string().nullish(),
-        severity: z.string(),
+        severity: z.enum(IT_TECH_DEBT_SEVERITIES),
         effortDays: z.number().int().nonnegative().nullish(),
         interest: z.string().nullish(),
         initiativeId: z.string().nullish(),

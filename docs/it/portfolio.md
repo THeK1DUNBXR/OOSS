@@ -37,10 +37,13 @@ leave.
   **Actuals are never stored** — `computeBudgetActual` sums `Transaction`
   (outward, dated inside the FY window) and `VendorBill` (dated inside the
   FY window) rows whose `categoryId` is in `bookCategoryIds`, narrowed to
-  the line's division when one is set. Approving needs `it_budgets:approve`
-  and is refused to the line's own `createdById` by hand — the proposer
-  never approves, even when a line has no commercial-value gate of its own
-  to run `evaluateApprovalGate` against.
+  the current tenant, the line's division when one is set, and — for
+  `VendorBill` — to `status in (open, part_paid, paid)`: a `draft` bill is
+  not yet a commitment and a `cancelled` one never was, so neither counts as
+  spend (the same live-bill set `domains/books.ts` reads). Approving needs
+  `it_budgets:approve` and is refused to the line's own `createdById` by
+  hand — the proposer never approves, even when a line has no
+  commercial-value gate of its own to run `evaluateApprovalGate` against.
 - **`ItTechDebtItem`** — title, `applicationId`, severity (`low` | `medium`
   | `high` | `critical`), `effortDays`, `interest` (what it costs to leave,
   in words), status (`open → planned → in_progress → retired | accepted`,
@@ -53,36 +56,51 @@ leave.
 
 ### Why `platform/lifecycle.ts`'s `transition()` is not used directly
 
-`transition()` composes its event name as `` `kz.hr.${object}.${verb}` ``
-unconditionally — every call site today is an HR domain, and the function
-has no namespace parameter. Technology's canonical events are `kz.it.*`
-(`IT_INITIATIVE_TRANSITIONED`, `IT_TECH_DEBT_TRANSITIONED`, …), so this
-workstream uses the state machines (`itInitiativeMachine`,
-`itTechDebtMachine`) and `availableTransitions()` directly from
-`@kaizen/shared`/`platform/lifecycle.ts`, and does its own
-assert/audit/emit under the correct event name — the same five steps
-`transition()` runs, in the right namespace. **Proposed fix, not applied**
-(outside this workstream's owned files): parameterise `transition()` with
-an `eventPrefix` (default `'kz.hr'`), e.g.
-
-```diff
-- eventObject: string;
-+ eventObject: string;
-+ eventPrefix?: string; // default 'kz.hr', so existing HR call sites are unaffected
-...
-- const eventName = hrTransitionEvent(input.eventObject, input.verbs[input.event]);
-+ const eventName = `${input.eventPrefix ?? 'kz.hr'}.${input.eventObject}.${input.verbs[input.event]}`;
-```
+`transition()` now takes an `eventPrefix`/`impactDomain`, so it can carry
+`kz.it.*` events too. This workstream still runs its own local
+assert/audit/emit rather than calling it, because `APPROVE` (`assessed ->
+approved`) needs the gate branch — `evaluateApprovalGate`, returning
+`{ applied: false, reason, approvalStepId, ... }` on an unpermitted step
+rather than throwing — which `transition()` does not run; every other
+transition would still need its own path beside it. The state-machine
+mechanics (`can`/`apply`, `availableTransitions`) come from the machines in
+`@kaizen/shared`; the five steps `transition()` runs elsewhere run here
+under the correct `IT_*` event names.
 
 ### Spend to date and licences
 
 An initiative's `spendToDate` sums `VendorBill.total` for the ids in
-`vendorBillIds` that exist in `main.prisma`. `licenceIds` is carried on the
-model per the plan, but is not read into spend today: `ItLicence` is
-another workstream's model and may not exist at typecheck time, so reading
-it unsafely would break this workstream's ability to compile standalone.
-**Licence spend joins later**, once the licence workstream's model is
-stable — the field is already there to join against.
+`vendorBillIds` that exist in `main.prisma`, scoped to the current tenant
+and to live, real-spend bills (`status in (open, part_paid, paid)`,
+`deletedAt: null`) — the same rule `computeBudgetActual` applies.
+`licenceIds` is carried on the model per the plan, but is not read into
+spend today: `ItLicence` is another workstream's model and may not exist at
+typecheck time, so reading it unsafely would break this workstream's
+ability to compile standalone. **Licence spend joins later**, once the
+licence workstream's model is stable — the field is already there to join
+against.
+
+### Money masking — `it_budgets:F`
+
+The Operations Head holds `it_budgets:VCE` — view, create, edit — but not
+`F` (financial); the Finance Head and the chairman hold both. A budget
+line's `planned`/`actual`/`variance`, a FY's `plannedTotal`/`actualTotal`,
+and an initiative's `spendToDate` are all budget money in this sense, and
+are withheld — `null`, present-but-masked, never a silently zeroed figure —
+from a caller who does not hold `it_budgets:F`, checked with
+`canSeeMoney('it_budgets')` (`platform/permissions.ts`). None of these
+field names are in the platform's shared `MONEY_FIELDS` list, so
+`applyFieldVisibility` would not mask them on its own; `maskBudgetMoney` in
+`domains/it/portfolio.ts` is a small manual masker keyed to this
+workstream's own field names, deep-walked (a budget summary nests money
+inside `byCategory`/`byDivision`) the same way `maskContractMoney` in
+`domains/it/vendors.ts` masks a vendor contract's `value`. `runTotal`,
+`growTotal` and a division's `run`/`grow` are not masked — the run/grow
+split is a planning shape, not a figure the Finance Head alone signs off.
+The web `ItBudget` and `ItInitiativeDetail` pages check
+`can('it_budgets:F')` and render `Withheld` in place of a masked value,
+collapsing the budget table's Planned/Actual/Variance columns into a single
+"Money" column when it is absent.
 
 ## What the platform does and does not do
 
@@ -104,17 +122,17 @@ stable — the field is already there to join against.
 | `GET` | `/initiatives?stage=&theme=&rag=` | list |
 | `GET` | `/initiatives/summary` | `ItPortfolioSummary` (below) |
 | `POST` | `/initiatives` | create (`it_initiatives:create`) |
-| `GET` | `/initiatives/:id` | detail, with `spendToDate` and `availableTransitions` |
+| `GET` | `/initiatives/:id` | detail, with `spendToDate` (`number \| null`, masked without `it_budgets:F`) and `availableTransitions` |
 | `POST` | `/initiatives/:id/transition` | `{ event, note? }` → `{ applied, initiative, approvalStepId, reason }` |
 | `GET` | `/initiatives/:id/updates` | list |
 | `POST` | `/initiatives/:id/updates` | `{ body, rag }`, append-only |
 | `GET` | `/roadmap`, `/roadmap/items` | list (`?quarter=&theme=`) |
 | `POST` | `/roadmap/items` | create |
 | `POST` | `/roadmap/items/:id/done` | `{ done? }` (extra, not in the plan's endpoint list, mirrors the model's `done` field) |
-| `GET` | `/budget?fy=FY2026-27` | `BudgetForFy` — every line for the FY with `actual`/`variance` computed |
-| `GET` | `/budget/summary?fy=` | `ItBudgetSummary` (below); `fy` defaults to the FY containing today |
+| `GET` | `/budget?fy=FY2026-27` | `BudgetForFy` — every line for the FY with `actual`/`variance` computed, money masked without `it_budgets:F` |
+| `GET` | `/budget/summary?fy=` | `ItBudgetSummary` (below); `fy` defaults to the FY containing today; money masked without `it_budgets:F` |
 | `POST` | `/budget/lines` | create (`it_budgets:create`) |
-| `GET` | `/budget/lines/:id` | detail, with `actual`/`variance` |
+| `GET` | `/budget/lines/:id` | detail, with `actual`/`variance`, money masked without `it_budgets:F` |
 | `PATCH` | `/budget/lines/:id` | edit `planned`/`division`/`bookCategoryIds` (extra, matches the `E` verb every role with `it_budgets` holds) |
 | `POST` | `/budget/lines/:id/approve` | `it_budgets:approve`, refused to the line's own creator |
 | `GET` | `/tech-debt?status=&severity=&applicationId=` | list |
@@ -134,13 +152,16 @@ interface ItPortfolioSummary {
 }
 
 // GET /it/budget/summary
+// planned/actual/variance/plannedTotal/actualTotal are `null` — present but
+// withheld — for a caller without `it_budgets:F`. runTotal/growTotal/run/grow
+// are never masked.
 interface ItBudgetSummary {
   notYetMeasured: boolean;
   fy: string | null;
-  plannedTotal: number;
-  actualTotal: number;
-  byCategory: Array<{ category: string; planned: number; actual: number; variance: number }>;
-  byDivision: Array<{ division: string; planned: number; actual: number; variance: number; run: number; grow: number }>;
+  plannedTotal: number | null;
+  actualTotal: number | null;
+  byCategory: Array<{ category: string; planned: number | null; actual: number | null; variance: number | null }>;
+  byDivision: Array<{ division: string; planned: number | null; actual: number | null; variance: number | null; run: number; grow: number }>;
   runTotal: number;
   growTotal: number;
 }
@@ -180,7 +201,16 @@ Plus permission tests: the Finance Head cannot create an initiative (holds
 approve it (holds `VCE`, no `approve`); a budget line's own creator can
 never approve it even holding the grant (self-dealing bar applied by hand);
 the employee reaches nothing on `it_initiatives`, `it_budgets` or
-`it_tech_debt` — no grant at all.
+`it_tech_debt` — no grant at all; the Operations Head gets every budget
+money field masked (`null`) on `budgetForFy`, `budgetSummary` and
+`budgetLineDetail` (holds `it_budgets:VCE`, not `F`), and a bill in
+`draft`/`cancelled` status never counts toward a budget line's actual
+(IT-BUD-001).
+
+Routes validate `category`, `kind` and `severity` with `z.enum` against the
+shared `IT_BUDGET_CATEGORIES`/`IT_BUDGET_KINDS`/`IT_TECH_DEBT_SEVERITIES`
+constants (and `theme` against `IT_THEMES`), so an unrecognised value is a
+400 at the edge, not a row the domain layer has to reject later.
 
 ## Web
 
@@ -189,7 +219,8 @@ the employee reaches nothing on `it_initiatives`, `it_budgets` or
   sponsor/owner search (built the same way `NewEnrollment`'s contact search
   is in `createForms.tsx`, against `GET /hr/employees`).
 - **Initiative detail** (`/it/portfolio/:id`) — business case, budget vs
-  spend to date, the updates feed with a post-update form (body + RAG),
+  spend to date (`Withheld` in place of the figure when `spendToDate` comes
+  back `null`), the updates feed with a post-update form (body + RAG),
   transition buttons from `availableTransitions`, and the same gate-result
   modal `Agreements` renders in `Commercial.tsx` when a transition opens an
   approval step instead of applying.
@@ -197,6 +228,10 @@ the employee reaches nothing on `it_initiatives`, `it_budgets` or
 - **Budget** (`/it/budget`) — FY picker, a planned/actual/variance table by
   category and division, divisions in their fixed colours via
   `DIVISION_LABELS`, a run-vs-grow `ContributionBar` per division, New line
-  modal, an Approve button gated by `can('it_budgets:approve')`.
+  modal, an Approve button gated by `can('it_budgets:approve')`. Planned,
+  actual and variance render as `Withheld` (the table collapses those three
+  columns into one "Money" column) whenever `can('it_budgets:F')` is false —
+  the Operations Head sees the run/grow split and can still propose and edit
+  lines, just not the figures on them.
 - **Technical debt** (`/it/tech-debt`) — list with severity/status tabs,
   New item modal, transition buttons.

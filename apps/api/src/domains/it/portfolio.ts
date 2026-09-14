@@ -9,12 +9,15 @@
  * for MoUs and contracts. Spend to date and a budget line's actual are never
  * stored: both are summed over the books at read time.
  *
- * `platform/lifecycle.ts`'s `transition()` composes its event name as
- * `kz.hr.<object>.<verb>` unconditionally, which is the HR namespace, not
- * technology's `kz.it.*`. So the state-machine mechanics (`can`/`apply`,
- * `availableTransitions`) are used directly from the machines in
- * `@kaizen/shared`, and this file does its own assert/audit/emit under the
- * correct `IT_*` event names — the same five steps, the right namespace.
+ * `platform/lifecycle.ts`'s `transition()` now takes an `eventPrefix`/
+ * `impactDomain`, so it could carry `kz.it.*` events too — but `APPROVE`
+ * needs the gate branch (`evaluateApprovalGate`, returning `{ applied:
+ * false, ... }` on an unpermitted step rather than throwing) that
+ * `transition()` does not run, so every other transition would still need
+ * its own path anyway. This file keeps one local implementation for both:
+ * the state-machine mechanics (`can`/`apply`, `availableTransitions`) come
+ * from the machines in `@kaizen/shared`; assert/audit/emit run here under
+ * the correct `IT_*` event names.
  */
 
 import {
@@ -50,7 +53,7 @@ import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan } from '../../platform/permissions.js';
+import { assertCan, canSeeMoney } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { evaluateApprovalGate } from '../../platform/approvals.js';
 import { availableTransitions } from '../../platform/lifecycle.js';
@@ -62,6 +65,36 @@ registerGovernedEntities('it_portfolio', [
   'it_budget_line',
   'it_tech_debt_item',
 ]);
+
+// ---------------------------------------------------------------------------
+// Money masking: the Operations Head holds `it_budgets:VCE` — create, edit,
+// view — but not `F` (financial); the Finance Head and chairman hold both.
+// None of this workstream's own field names (`planned`, `actual`,
+// `variance`, `plannedTotal`, `actualTotal`, `spendToDate`) are in the
+// platform's shared `MONEY_FIELDS` list, so `applyFieldVisibility` would not
+// mask them on its own — this is a manual masker keyed to those names,
+// mirroring `maskContractMoney` in `domains/it/vendors.ts`, deep-walked
+// because a budget summary nests money inside `byCategory`/`byDivision`.
+// ---------------------------------------------------------------------------
+
+const BUDGET_MONEY_FIELDS = ['planned', 'actual', 'variance', 'plannedTotal', 'actualTotal', 'spendToDate'] as const;
+
+function walkMaskBudget(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(walkMaskBudget);
+  if (value === null || typeof value !== 'object' || value instanceof Date) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = (BUDGET_MONEY_FIELDS as readonly string[]).includes(key) ? null : walkMaskBudget(v);
+  }
+  return out;
+}
+
+/** Present-but-withheld, never a silently zeroed figure: nulls
+ * `BUDGET_MONEY_FIELDS` wherever they occur, however deep. A no-op when the
+ * viewer holds `it_budgets:F`. */
+function maskBudgetMoney<T>(value: T, seesMoney: boolean): T {
+  return seesMoney ? value : (walkMaskBudget(value) as T);
+}
 
 // ---------------------------------------------------------------------------
 // Dated settings (Principle 4): stale-initiative days, budget-burn margin.
@@ -166,10 +199,20 @@ export async function listInitiatives(filter: InitiativeFilter = {}) {
 
 /** Spend to date: a sum over the `VendorBill` rows the initiative names —
  * never over licences, which may not exist at typecheck time (see the
- * schema's doc comment and docs/it/portfolio.md). */
+ * schema's doc comment and docs/it/portfolio.md). Scoped to the current
+ * tenant, live rows only, and only bills that are actually spend (a
+ * `draft` bill is not yet a commitment and a `cancelled` one never was). */
 export async function computeInitiativeSpend(initiative: { vendorBillIds: string[] }): Promise<number> {
   if (initiative.vendorBillIds.length === 0) return 0;
-  const bills = await prisma.vendorBill.findMany({ where: { id: { in: initiative.vendorBillIds } } });
+  const auth = currentAuth();
+  const bills = await prisma.vendorBill.findMany({
+    where: {
+      tenantId: auth.tenantId,
+      id: { in: initiative.vendorBillIds },
+      deletedAt: null,
+      status: { in: ['open', 'part_paid', 'paid'] },
+    },
+  });
   return bills.reduce((sum, b) => sum + (num(b.total) ?? 0), 0);
 }
 
@@ -183,9 +226,14 @@ export async function initiativeDetail(id: string) {
   if (!initiative) throw ApiError.notFound('Initiative');
 
   const spendToDate = await computeInitiativeSpend(initiative);
+  // Spend is budget money: gated on `it_budgets:F`, the same verb a budget
+  // line's actual is gated on, not on `it_initiatives` (which has no F verb
+  // for anyone but the chairman) — seeing what an initiative has spent is
+  // the same "financial visibility" as seeing what a budget line has spent.
+  const seesMoney = await canSeeMoney('it_budgets');
   return {
     ...initiative,
-    spendToDate,
+    spendToDate: seesMoney ? spendToDate : null,
     availableTransitions: availableTransitions(itInitiativeMachine, initiative.stage as ItInitiativeStage),
   };
 }
@@ -535,23 +583,29 @@ export async function budgetLineDetail(id: string) {
   const line = await prisma.itBudgetLine.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!line) throw ApiError.notFound('Budget line');
   const actual = await computeBudgetActual(line);
-  return { ...line, actual, variance: (num(line.planned) ?? 0) - actual };
+  const seesMoney = await canSeeMoney('it_budgets');
+  return maskBudgetMoney({ ...line, actual, variance: (num(line.planned) ?? 0) - actual }, seesMoney);
 }
 
 /**
  * A budget line's actual: the sum of `Transaction` (outward) and `VendorBill`
  * rows whose `categoryId` is one of `bookCategoryIds`, dated inside the
- * line's own FY window, narrowed to the line's division when one is set.
- * Never stored — a late bill moves this the next time anyone asks
- * (IT-BUD-001).
+ * line's own FY window, narrowed to the line's division when one is set,
+ * scoped to the current tenant. Only bills that are actually spend count —
+ * `draft` (not yet committed) and `cancelled` (never was) are excluded, the
+ * same set `domains/books.ts` treats as live, plus `paid` (a paid bill is
+ * still spend, just settled). Never stored — a late bill moves this the
+ * next time anyone asks (IT-BUD-001).
  */
 export async function computeBudgetActual(line: { fy: string; division: string | null; bookCategoryIds: string[] }): Promise<number> {
   if (line.bookCategoryIds.length === 0) return 0;
+  const auth = currentAuth();
   const { start, end } = fyWindow(line.fy);
 
   const [txns, bills] = await Promise.all([
     prisma.transaction.findMany({
       where: {
+        tenantId: auth.tenantId,
         categoryId: { in: line.bookCategoryIds },
         direction: 'out',
         txnDate: { gte: start, lt: end },
@@ -562,9 +616,11 @@ export async function computeBudgetActual(line: { fy: string; division: string |
     }),
     prisma.vendorBill.findMany({
       where: {
+        tenantId: auth.tenantId,
         categoryId: { in: line.bookCategoryIds },
         billDate: { gte: start, lt: end },
         deletedAt: null,
+        status: { in: ['open', 'part_paid', 'paid'] },
         ...(line.division ? { division: line.division } : {}),
       },
       select: { total: true },
@@ -578,9 +634,9 @@ export async function computeBudgetActual(line: { fy: string; division: string |
 
 export interface BudgetForFy {
   fy: string;
-  lines: Array<{ id: string; category: string; division: string | null; kind: string; planned: number; actual: number; variance: number; status: string }>;
-  plannedTotal: number;
-  actualTotal: number;
+  lines: Array<{ id: string; category: string; division: string | null; kind: string; planned: number | null; actual: number | null; variance: number | null; status: string }>;
+  plannedTotal: number | null;
+  actualTotal: number | null;
 }
 
 export async function budgetForFy(fy: string): Promise<BudgetForFy> {
@@ -597,12 +653,16 @@ export async function budgetForFy(fy: string): Promise<BudgetForFy> {
     }),
   );
 
-  return {
-    fy,
-    lines: withActuals,
-    plannedTotal: withActuals.reduce((s, l) => s + l.planned, 0),
-    actualTotal: withActuals.reduce((s, l) => s + l.actual, 0),
-  };
+  const seesMoney = await canSeeMoney('it_budgets');
+  return maskBudgetMoney(
+    {
+      fy,
+      lines: withActuals,
+      plannedTotal: withActuals.reduce((s, l) => s + l.planned, 0),
+      actualTotal: withActuals.reduce((s, l) => s + l.actual, 0),
+    },
+    seesMoney,
+  );
 }
 
 export async function budgetSummary(fy?: string): Promise<ItBudgetSummary> {
@@ -629,8 +689,15 @@ export async function budgetSummary(fy?: string): Promise<ItBudgetSummary> {
     lines.map(async (l) => ({ line: l, planned: num(l.planned) ?? 0, actual: await computeBudgetActual(l) })),
   );
 
-  const byCategoryMap = new Map<string, ItBudgetCategoryLine>();
-  const byDivisionMap = new Map<string, ItBudgetDivisionLine>();
+  // Accumulated as plain (never-null) numbers regardless of who is asking —
+  // `ItBudgetCategoryLine`/`ItBudgetDivisionLine` allow `null` because the
+  // *response* may withhold money, not because the arithmetic building it
+  // should ever carry a null through a running total. Masking happens once,
+  // on the way out.
+  interface CategoryAcc { category: string; planned: number; actual: number; variance: number }
+  interface DivisionAcc { division: string; planned: number; actual: number; variance: number; run: number; grow: number }
+  const byCategoryMap = new Map<string, CategoryAcc>();
+  const byDivisionMap = new Map<string, DivisionAcc>();
   let runTotal = 0;
   let growTotal = 0;
 
@@ -654,16 +721,20 @@ export async function budgetSummary(fy?: string): Promise<ItBudgetSummary> {
     else growTotal += planned;
   }
 
-  return {
-    notYetMeasured: false,
-    fy: targetFy,
-    plannedTotal: withActuals.reduce((s, l) => s + l.planned, 0),
-    actualTotal: withActuals.reduce((s, l) => s + l.actual, 0),
-    byCategory: [...byCategoryMap.values()],
-    byDivision: [...byDivisionMap.values()],
-    runTotal,
-    growTotal,
-  };
+  const seesMoney = await canSeeMoney('it_budgets');
+  return maskBudgetMoney(
+    {
+      notYetMeasured: false,
+      fy: targetFy,
+      plannedTotal: withActuals.reduce((s, l) => s + l.planned, 0),
+      actualTotal: withActuals.reduce((s, l) => s + l.actual, 0),
+      byCategory: [...byCategoryMap.values()] as unknown as ItBudgetCategoryLine[],
+      byDivision: [...byDivisionMap.values()] as unknown as ItBudgetDivisionLine[],
+      runTotal,
+      growTotal,
+    },
+    seesMoney,
+  );
 }
 
 // ---------------------------------------------------------------------------

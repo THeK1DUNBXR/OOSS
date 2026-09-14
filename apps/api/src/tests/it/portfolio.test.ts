@@ -27,6 +27,7 @@ import { asUser, expectReject, tenantId, unscopedPrisma } from '../helpers.js';
 import {
   approveBudgetLine,
   budgetLineDetail,
+  budgetSummary,
   createBudgetLine,
   createInitiative,
   createTechDebtItem,
@@ -308,6 +309,99 @@ describe('portfolio — domain and wiring', () => {
 
     const stillPlanned = await unscopedPrisma.itBudgetLine.findFirstOrThrow({ where: { id: line.id } });
     expect(Number(stillPlanned.planned)).toBe(200_000);
+
+    // A draft bill is not yet a commitment and a cancelled one never was —
+    // neither counts as spend.
+    await unscopedPrisma.vendorBill.create({
+      data: {
+        tenantId: tid,
+        recordCode: `BILL-PORTFOLIO-${stamp()}`,
+        vendorName: 'Cloud Co',
+        billDate: new Date('2026-07-01T00:00:00.000Z'),
+        categoryId: category.id,
+        division: 'shared',
+        total: 999_000,
+        status: 'draft',
+      },
+    });
+    await unscopedPrisma.vendorBill.create({
+      data: {
+        tenantId: tid,
+        recordCode: `BILL-PORTFOLIO-${stamp()}`,
+        vendorName: 'Cloud Co',
+        billDate: new Date('2026-08-01T00:00:00.000Z'),
+        categoryId: category.id,
+        division: 'shared',
+        total: 999_000,
+        status: 'cancelled',
+      },
+    });
+
+    const afterDraftAndCancelled = await asUser('finance@kaizen.co.in', () => budgetLineDetail(line.id));
+    expect(afterDraftAndCancelled.actual).toBe(55_000);
+    expect(afterDraftAndCancelled.variance).toBe(145_000);
+  });
+
+  it('the Operations Head gets budget money masked — holds it_budgets:VCE, not F', async () => {
+    const catName = `IT Masking Category ${stamp()}`;
+    const category = await unscopedPrisma.ledgerCategory.create({
+      data: { tenantId: tid, name: catName, kind: 'expense', behaviour: 'variable' },
+    });
+    const line = await asUser('finance@kaizen.co.in', () =>
+      createBudgetLine({
+        fy: 'FY2026-27',
+        category: 'hardware',
+        division: 'shared',
+        kind: 'grow',
+        planned: 75_000,
+        bookCategoryIds: [category.id],
+      }),
+    );
+    await unscopedPrisma.vendorBill.create({
+      data: {
+        tenantId: tid,
+        recordCode: `BILL-MASK-${stamp()}`,
+        vendorName: 'Hardware Co',
+        billDate: new Date('2026-05-01T00:00:00.000Z'),
+        categoryId: category.id,
+        division: 'shared',
+        total: 20_000,
+        status: 'open',
+      },
+    });
+
+    const opsDetail = await asUser('operations@kaizen.co.in', () => budgetLineDetail(line.id));
+    expect(opsDetail.planned).toBeNull();
+    expect(opsDetail.actual).toBeNull();
+    expect(opsDetail.variance).toBeNull();
+
+    const financeDetail = await asUser('finance@kaizen.co.in', () => budgetLineDetail(line.id));
+    expect(financeDetail.planned).not.toBeNull();
+    expect(financeDetail.actual).toBe(20_000);
+
+    const opsForFy = await asUser('operations@kaizen.co.in', () => budgetForFy('FY2026-27'));
+    expect(opsForFy.plannedTotal).toBeNull();
+    expect(opsForFy.actualTotal).toBeNull();
+    for (const l of opsForFy.lines) {
+      expect(l.planned).toBeNull();
+      expect(l.actual).toBeNull();
+      expect(l.variance).toBeNull();
+    }
+
+    const opsSummary = await asUser('operations@kaizen.co.in', () => budgetSummary('FY2026-27'));
+    expect(opsSummary.plannedTotal).toBeNull();
+    expect(opsSummary.actualTotal).toBeNull();
+    for (const c of opsSummary.byCategory) {
+      expect(c.planned).toBeNull();
+      expect(c.actual).toBeNull();
+      expect(c.variance).toBeNull();
+    }
+    // Run/grow is a planning shape, not signed-off money — never masked.
+    expect(typeof opsSummary.runTotal).toBe('number');
+    expect(typeof opsSummary.growTotal).toBe('number');
+
+    const financeSummary = await asUser('finance@kaizen.co.in', () => budgetSummary('FY2026-27'));
+    expect(financeSummary.plannedTotal).not.toBeNull();
   });
 
   it('IT-BUD-002: the burn detector fires once per FY margin crossing, and a second run raises nothing new', async () => {
