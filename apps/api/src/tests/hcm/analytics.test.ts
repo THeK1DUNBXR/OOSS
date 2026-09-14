@@ -272,14 +272,28 @@ describe('HCM-ANALYTICS-006 — hiring summary', () => {
 // ===========================================================================
 
 describe('HCM-ANALYTICS-007 — not-measured metrics degrade gracefully', () => {
-  it('cost-per-hire, gender ratio, comp-ratio, eNPS and open-cases-by-SLA are all `measured: false` with a reason, never a thrown error', async () => {
+  it('cost-per-hire and gender ratio are `measured: false` with a reason, never a thrown error — this schema structurally cannot answer either, with or without fixtures', async () => {
     await asUser('operations@kaizen.co.in', async () => {
-      for (const fn of [costPerHire, genderRatio, compRatioDistribution, engagementEnps, openCasesBySla]) {
+      // Unlike comp-ratio/eNPS/open-cases-by-SLA (HCM-ANALYTICS-011..013,
+      // which become measured once their own tables carry a minimal row),
+      // these two have no schema field to ever read a value from, so they
+      // stay not-measured regardless of run order or leftover fixtures.
+      for (const fn of [costPerHire, genderRatio]) {
         const result = await fn();
         expect(result.measured).toBe(false);
         expect(result.value).toBeNull();
         expect(typeof (result as { reason: string }).reason).toBe('string');
         expect((result as { reason: string }).reason.length).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  it('comp-ratio, eNPS and open-cases-by-SLA never throw, whatever state their tables are in', async () => {
+    await asUser('operations@kaizen.co.in', async () => {
+      for (const fn of [compRatioDistribution, engagementEnps, openCasesBySla]) {
+        const result = await fn();
+        expect(typeof result.measured).toBe('boolean');
+        expect(result.measured ? result.value !== null : result.value === null).toBe(true);
       }
     });
   });

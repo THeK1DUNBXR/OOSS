@@ -4,9 +4,10 @@ HR analytics & reporting. A read-only layer: no new tables, no lifecycle, no
 write path. Every function reads existing tables — `EmploymentRelationship`,
 `Assignment`, `LeaveBalance`, `WorkAttendance`, `PayrollInstruction`,
 `Application`, `Requisition`, `OvertimeAccrual`, `LearningRecord` — plus,
-where they exist, a small set of other workstreams' tables read defensively
-so a metric this dashboard has no data source for yet reports **not
-measured** instead of crashing the page.
+where they exist, a small set of other workstreams' tables (`Grade`,
+`GradeAssignment`, `PayGrade`, `PulseSurvey`, `SurveyResponse`, `HrCase`)
+read defensively via `readOptionalModel` so a metric this dashboard has no
+data source for yet reports **not measured** instead of crashing the page.
 
 ## What exists now
 
@@ -51,7 +52,9 @@ codebase. Reports additionally assert `hr_reports:export`.
 | `payrollCostTrend(months)` | Delegates to `domains/payroll.ts`'s own `payrollTrend` — it already asserts `payroll:view@all` and masks money on its own terms, so a caller without that grant gets that denial rather than a second, looser copy of the figure. |
 | `trainingSummary(months)` | `completionsPerHead` (measured: `LearningRecord` completions ÷ current headcount); `averageHoursPerHead` (**always not measured** — `LearningActivity` carries no duration field in this schema, only `cost`). |
 | `genderRatio()` | **Always not measured** — `Person` carries no gender field anywhere in this schema. |
-| `compRatioDistribution()` / `engagementEnps()` / `openCasesBySla()` | Probe for a `payGrade` / `surveyResponse` / `hrCase` Prisma model by name (`readOptionalModel`, which returns `null` on an absent model, an absent table, or any other failure — never throws) and report **not measured**, with a reason that distinguishes "the table hasn't landed yet" from "it has landed but this workstream doesn't read its shape yet" (compensation/engagement/cases workstreams were not guessed at beyond that — see "Wanted from the scaffold"). |
+| `compRatioDistribution()` | Compa-ratio (current CTC ÷ grade midpoint) bucketed into `<80% / 80-95% / 95-110% / 110-120% / >120%`. WS1's `Grade` and WS7's `PayGrade` are deliberately two separate, unlinked tables (per the plan — neither carries a foreign key to the other); the only field they share is `level`, so an employment's current `GradeAssignment` → `Grade.level` is matched to whichever `PayGrade` sits at that same level for the tenant — a level more than one `PayGrade` claims is dropped rather than guessed at. Read via `readOptionalModel` (never throws on an absent table); withheld (`notMeasured`) without `compensation:financial`, since a compa-ratio is a money figure by another name. |
+| `engagementEnps()` | Every `enps`-type question answered across every `PulseSurvey`/`SurveyResponse` this tenant has, scored with `@kaizen/shared`'s `computeEnps` (which itself withholds the score below its own k-anonymity floor). Read via `readOptionalModel`. |
+| `openCasesBySla()` | Open (non-terminal), non-`confidential` `HrCase` rows bucketed by `daysToSlaDue` into `Breached / Due today / Due this week / On track` — a confidential/grievance case is excluded the same way it is excluded from the general case queue in `domains/hcm/engagement.ts`, so this aggregate never hints at how many grievances are open. Read via `readOptionalModel`. |
 | `dashboard(months)` | Runs all of the above in parallel for the one page-load call. |
 | `exportHeadcountRegister` / `exportAttritionReport` / `exportLeaveLiabilityReport` / `exportOvertimeRegister` / `exportTrainingRegister` | CSV builders (`toCsv`), each calling `auditExport` so every download lands an `export` audit record with row count. |
 
@@ -84,9 +87,11 @@ Two tabs:
   reason, never a bare `0` or `—` standing in for one; then inline-SVG charts
   with no charting library — a single accent-coloured line/bar for a
   one-series figure (headcount trend, tenure distribution, overtime hours,
-  payroll cost trend) and the platform's fixed categorical `div-*` palette
-  (with a legend) for the headcount-by-division breakdown, since division is
-  the same cut Finance and the Command Center already use it for.
+  payroll cost trend, comp-ratio distribution, open cases by SLA) and the
+  platform's fixed categorical `div-*` palette (with a legend) for the
+  headcount-by-division breakdown only, since division is the only cut here
+  that is actually a division — comp-ratio buckets and SLA buckets are not,
+  so they stay on the single accent hue.
 - **Reports** — one button per CSV export, using `api.download`.
 
 ## Acceptance
@@ -99,12 +104,15 @@ Two tabs:
 | HCM-ANALYTICS-004 | Leave liability sums days correctly and withholds the amount (never the days) from a viewer without `compensation:financial` | `leave liability` |
 | HCM-ANALYTICS-005 | Overtime hours sum correctly inside the trailing window | `overtime hours` |
 | HCM-ANALYTICS-006 | A full requisition → application → offer → join flow produces a non-null offer-acceptance rate and time-to-hire | `hiring summary` |
-| HCM-ANALYTICS-007 | Cost-per-hire, gender ratio, comp-ratio, eNPS and open-cases-by-SLA all resolve to `measured: false` with a reason — never throw; span of control resolves either way without throwing | `not-measured metrics degrade gracefully` (2 cases) |
-| HCM-ANALYTICS-008 | An `employee` principal (no `hr_analytics` grant) is refused (403) on both a single metric and the whole dashboard | `permission refusal` (2 cases) |
-| HCM-ANALYTICS-009 | A CSV export lands exactly one new `export` audit record and is itself refused without `hr_reports:export` | `report export is audited` (2 cases) |
+| HCM-ANALYTICS-007 | Cost-per-hire and gender ratio always resolve to `measured: false` with a reason (no schema field, ever); comp-ratio/eNPS/open-cases-by-SLA never throw whatever state their tables are in; span of control resolves either way without throwing | `not-measured metrics degrade gracefully` (3 cases) |
+| HCM-ANALYTICS-008 | An `employee` principal (no `hr_analytics` grant) is refused (403) on both a single metric and the whole dashboard; holding `hr_analytics:view` at `own` scope (not `all`) is refused the same way — an aggregate has no meaningful "own" | `permission refusal` (3 cases) |
+| HCM-ANALYTICS-009 | A CSV export lands exactly one new `export` audit record and is itself refused without `hr_reports:export`; holding `hr_reports:export` at `own` scope is refused the same way | `report export is audited` (3 cases) |
 | HCM-ANALYTICS-010 | Headcount is scoped to the caller's own tenant (cross-checked against a direct count) | `tenant scoping` |
+| HCM-ANALYTICS-011 | Compa-ratio buckets an employee whose CTC equals their pay grade's midpoint into `95-110%`, bridged through `Grade.level`/`PayGrade.level`; withheld without `compensation:financial` | `compa-ratio distribution` (2 cases) |
+| HCM-ANALYTICS-012 | eNPS scores a seeded 4-promoter/1-detractor mix via the shared formula (`computeEnps([9,10,9,10,3]).score === 60`), and adding it to the tenant-wide pool never lowers the aggregate score | `engagement eNPS` |
+| HCM-ANALYTICS-013 | An overdue open case buckets as `Breached`; a confidential grievance case never moves the SLA breakdown | `open cases by SLA` (2 cases) |
 
-14 `it` blocks total, run against `kaizen_test_analytics`.
+22 `it` blocks total, run against `kaizen_test_analytics`.
 
 ## What this does not do
 
@@ -113,13 +121,21 @@ Two tabs:
   gap, not a permission gap).
 - No hours-per-head for training (`LearningActivity` has no duration field —
   only completions-per-head is measured).
-- No compa-ratio, eNPS, or open-cases-by-SLA yet — each needs a table
-  (pay grades/bands, survey responses, HR cases) that belongs to a workstream
-  that had not landed a stable, known shape at the time this one was built.
-  `readOptionalModel` probes for a plausible model name so these degrade
-  gracefully instead of crashing, and will report "not measured (shape not
-  read yet)" rather than a wrong number even once the table exists, until
-  this file is updated to read it deliberately.
+- Comp-ratio distribution can only place an employee whose current grade
+  level resolves to *exactly one* `PayGrade` at that level — there is no
+  `payGradeId` anywhere in the schema linking an employment (or WS1's
+  `Grade`) to WS7's `PayGrade` directly, `level` is the only field the two
+  tables share, and a level two or more `PayGrade` rows claim is dropped
+  rather than guessed at. An employee with no current `GradeAssignment`, or
+  no `Effective` `CompensationRecord`, is likewise excluded rather than
+  counted at a wrong ratio.
+- eNPS is withheld (not measured) below `computeEnps`'s own k-anonymity floor
+  (`SURVEY_MIN_SAMPLE` responses), even once a survey exists — this workstream
+  defers entirely to that floor rather than adding a second one.
+- `readOptionalModel` still guards all three of comp-ratio, eNPS and
+  open-cases-by-SLA against their tables being absent (a `not measured`
+  degrade, never a throw) — relevant if this file is ever run against a
+  schema snapshot from before WS7/WS1/WS9 landed their models.
 - No historical division/location breakdown — only a current snapshot. A true
   historical cut would need either a headcount-snapshot table or walking
   every `Assignment`'s `effectiveFrom`/`effectiveTo` per month, which was cut
@@ -131,11 +147,34 @@ Two tabs:
 
 ## Wanted from the scaffold
 
-- A stable name/shape for whatever the compensation workstream calls its
-  pay-grade/band table (for compa-ratio), the engagement workstream calls its
-  survey-response table (for eNPS), and the separations/cases workstream
-  calls its HR-case table (for open-cases-by-SLA) would let this file read
-  them properly instead of only probing for a model name and reporting "not
-  measured" either way.
+- A real `payGradeId` column somewhere on the employment/assignment spine
+  (or on WS1's `GradeAssignment`) would remove the `level`-number bridge
+  compa-ratio currently leans on to reach WS7's `PayGrade` — today two
+  tenant grade tables happening to share a level number is the only
+  connection between "what rung this person sits on" and "what that rung
+  is meant to pay".
 - No new grant/event/nav was needed beyond what the scaffold already
   registered (`hr_analytics`, `hr_reports`, the `/people/analytics` nav node).
+
+## Security review (scope-axis audit)
+
+Following the WS5 review finding that `assertCan({ resource, verb })` without
+a scope check lets an `own`-scope holder of a create/edit verb act on records
+that are not their own: every entry point in this file was re-checked.
+
+- `hr_analytics` and `hr_reports` are never granted at `own` scope to any
+  role in `apps/api/src/seed/grants.ts` (`hr_ops_manager`/`finance_head` hold
+  `@all`; `employee` holds neither) — so this specific bug was not live here.
+  `dashboard()` was nonetheless tightened from a bare `assertCan({ resource:
+  'hr_analytics', verb: 'view' })` to `assertAnalyticsView()`
+  (`assertScopeAll`), and `assertReportExport()` from a bare `assertCan` to
+  `assertScopeAll('hr_reports', 'export')`, so a future grants-matrix change
+  that ever added an `own`-scope row for either resource could not use this
+  reporting layer as a way to pull every other employee's data through it.
+  Every other function in this file already called `assertScopeAll` via
+  `assertAnalyticsView()`. HCM-ANALYTICS-008/009 each gained a case proving
+  an `own`-scope grant on the resource is refused exactly like no grant at
+  all.
+- Nothing in this file creates, edits, or approves a record — it is
+  read-only aggregation — so the "own-scope create/edit about someone else"
+  half of the pattern does not apply to any function here.
