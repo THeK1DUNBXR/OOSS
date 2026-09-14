@@ -75,6 +75,13 @@ import { CampaignDetail as MarketingCampaignDetail } from './pages/marketing/Cam
 import { Calendar as MarketingCalendar } from './pages/marketing/Calendar.js';
 import { Budget as MarketingBudget } from './pages/marketing/Budget.js';
 import { Plans as MarketingPlans } from './pages/marketing/Plans.js';
+import { Analytics as MarketingAnalytics } from './pages/marketing/Analytics.js';
+import { MarketingSettings } from './pages/marketing/MarketingSettings.js';
+import { Forms as MarketingForms } from './pages/marketing/Forms.js';
+import { MarketingEvents, MarketingEventDetail } from './pages/marketing/MarketingEvents.js';
+import { Assets as MarketingAssets } from './pages/marketing/Assets.js';
+import { Social as MarketingSocial } from './pages/marketing/Social.js';
+import { Referrals as MarketingReferrals } from './pages/marketing/Referrals.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -279,6 +286,14 @@ function Routed() {
           <Route path="calendar" element={<MarketingCalendar />} />
           <Route path="budget" element={<MarketingBudget />} />
           <Route path="plans" element={<MarketingPlans />} />
+          <Route path="analytics" element={<MarketingAnalytics />} />
+          <Route path="settings" element={<MarketingSettings />} />
+          <Route path="forms" element={<MarketingForms />} />
+          <Route path="events" element={<MarketingEvents />} />
+          <Route path="events/:id" element={<MarketingEventDetail />} />
+          <Route path="assets" element={<MarketingAssets />} />
+          <Route path="social" element={<MarketingSocial />} />
+          <Route path="referrals" element={<MarketingReferrals />} />
         </Route>
         {/* end marketing */}
 

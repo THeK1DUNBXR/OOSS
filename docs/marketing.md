@@ -655,4 +655,158 @@ decision from the proposal.
 
 ---
 
-<!-- continue -->
+## Jobs
+
+Seven scheduled jobs keep the module's derived state honest without a human
+having to drive every step by hand:
+
+1. **Send dispatch** — calls the same `POST /sends/:id/dispatch` a human
+   would, over every send sitting `queued`, so a queued send does not wait
+   indefinitely on someone remembering to press go.
+2. **Journey tick** — calls `POST /journeys/tick`, advancing every
+   `MarketingJourneyRun` whose `nextAt` is due; the same endpoint a support
+   engineer would call to un-stick a run by hand.
+3. **Attribution recompute** — calls `POST /attribution/recompute` on a
+   rolling window so `MarketingAttribution` stays current as new touchpoints
+   and outcomes land, rather than only being correct the moment someone
+   requests a report.
+4. **Audience re-evaluation** — re-runs `evaluate` on active dynamic
+   audiences so segment membership tracks the underlying rule against
+   current data instead of going stale between manual triggers.
+5. **Webhook reconciliation sweep** — retries parsing on
+   `MarketingWebhookInbound` rows still `received`/unprocessed, so a
+   transient adapter failure doesn't leave delivery events permanently
+   unattached to their recipients.
+6. **Exception scan** — evaluates the time- and threshold-based exceptions
+   that are not natural side effects of a single write (stale campaigns
+   EX-MKT-004, unconverted submissions EX-MKT-007, outstanding event
+   follow-ups EX-MKT-008, campaigns live past `endAt` EX-MKT-010, expired
+   asset usage EX-MKT-012, pending referral rewards EX-MKT-013, budget-less
+   spend EX-MKT-014, stuck journey runs EX-MKT-015) and raises them.
+7. **Budget actuals rollup** — recomputes each `MarketingCampaign`'s
+   `budgetActual` and each `MarketingBudget`'s `committed`/`actual` from
+   reconciled spend, so the numbers on a campaign or budget record reflect
+   spend as of the last rollup rather than requiring a live join on every
+   read.
+
+---
+
+## API
+
+Base path `/api/marketing`, mounted from
+`apps/api/src/routes/marketing/index.ts` over one router file per group in
+`apps/api/src/routes/marketing/{campaigns,budget,audiences,preferences,
+settings,messaging,journeys,capture,events,assets,referrals,analytics,
+public}.routes.ts`. Every authenticated route runs through the same
+auth-plus-tenant middleware as `crm.routes.ts`. List endpoints share one
+query shape — `?q=&status=&division=&campaignId=&from=&to=&page=&pageSize=`
+returning `{ items, total }`; single-record endpoints return the view
+directly; mutations return the updated view; errors use the platform's
+`ApiError`. Two routes are deliberately unauthenticated and token- or
+signature-guarded instead: public form submission and the inbound webhook.
+
+**Overview / analytics** (`marketing_analytics`) — `GET /overview`;
+`GET /analytics/funnel|channels|campaigns|attribution|cohorts`;
+`GET /analytics/export?kind=campaigns|channels|leads` (CSV, export grant).
+
+**Campaigns** (`campaigns`) — `GET/POST /campaigns`, `GET/PATCH/DELETE
+/campaigns/:id`; lifecycle actions `submit`, `approve`, `reject`, `launch`,
+`pause`, `resume`, `complete`, `archive`, `cancel`; `GET /campaigns/:id
+/timeline` and `/utm`.
+
+**Plans & calendar** (`campaigns` view / `marketing_settings` write) —
+`GET/POST /plans`, `PATCH /plans/:id`, `POST /plans/:id/approve|close`;
+`GET /calendar` merging campaigns, events, sends and social posts.
+
+**Budget & spend** (`marketing_budgets`) — `GET/POST /budgets`, `PATCH
+/budgets/:id`, `POST /budgets/:id/approve`; `GET/POST /spends`, `POST
+/spends/:id/reconcile`; `GET /budgets/variance`; `GET/POST/PATCH /vendors`.
+
+**Audiences** (`audiences`) — `GET/POST /audiences`, `GET/PATCH/DELETE
+/audiences/:id`; `POST /audiences/:id/evaluate`; member management
+(`POST/DELETE .../members`, `POST .../suppress`); `POST /audiences/preview`;
+`GET /audiences/fields` (rule-builder vocabulary).
+
+**Consent & preferences** (`audiences` view / `marketing_settings` write,
+purpose `marketing`) — `GET /preferences`; `POST /preferences/consent`
+(reuses the existing consent domain function), `/withdraw`, `/channel`,
+`/do-not-contact`; `GET /preferences/coverage`; public
+`GET`/`POST /public/unsubscribe/:token`.
+
+**Templates** (`marketing_templates`) — `GET/POST /templates`, `GET/PATCH
+/templates/:id` (PATCH on an approved template opens a new version); `submit`,
+`approve`, `reject`, `retire`; `POST /templates/:id/preview`; `GET
+/templates/merge-fields`.
+
+**Sends** (`marketing_sends`) — `GET/POST /sends`, `GET /sends/:id`;
+`request` (queues if the adapter is configured, else `EX-MKT-011` with
+`blockedReason`), `approve` (above the send-approval threshold), `cancel`,
+`dispatch`; `GET /sends/:id/recipients`, `GET /sends/:id/dry-run`; `POST
+/sends/test`.
+
+**Journeys** (`marketing_journeys`) — `GET/POST /journeys`, `PATCH
+/journeys/:id`; `activate`, `pause`, `retire`; `GET /journeys/:id/runs`;
+`POST /journeys/:id/enrol`, `/journeys/runs/:runId/exit`; `POST
+/journeys/tick` (job entry point).
+
+**Capture** (`marketing_forms`; touchpoints under `campaigns` view) —
+`GET/POST /forms`, `GET/PATCH /forms/:id`; `publish`, `unpublish`,
+`rotate-token`; `GET /forms/:id/embed`; `GET /forms/:id/submissions`; `POST
+/submissions/:id/convert|reject|mark-spam`; unauthenticated `POST
+/public/forms/:publicToken/submit` (honeypot, rate limit, dedupe); `GET/POST
+/touchpoints`; `POST /attribution/recompute`, `GET /attribution/lead/:leadId`;
+`GET/POST/PATCH/DELETE /score-rules`, `POST /score-rules/preview|apply`;
+`GET/POST /links`, unauthenticated `GET /public/l/:slug`; unauthenticated
+`POST /public/webhooks/:provider`.
+
+**Events** (`marketing_events`) — `GET/POST /events`, `GET/PATCH
+/events/:id`; `open`, `close`, `start`, `complete`, `cancel`; `GET
+/events/:id/registrations`; `POST /events/:id/register`; registration
+actions `confirm`, `check-in`, `no-show`, `cancel`, `follow-up`; `POST
+/events/:id/convert-attendees`; `GET /events/:id/export`.
+
+**Assets, social, claims** (`marketing_assets`) — `GET/POST /assets`,
+`GET/PATCH /assets/:id` (new version if approved); `submit`, `approve`,
+`reject`, `retire`; `GET/POST/PATCH /social-posts`, `publish`, `cancel`,
+`metrics`; `GET/POST /claims`, `approve`, `reject`, `retire`.
+
+**Referrals** (`marketing_referrals`) — `GET/POST/PATCH
+/referral-programs`, `activate`, `deactivate`; `GET /referrals`; `POST
+/referrals/issue`, `/redeem`; `POST /referrals/:id/qualify|reward|void`; `GET
+/referrals/leaderboard`.
+
+**Settings** (`marketing_settings`) — `GET/POST/PATCH /settings/channels`;
+`GET /settings/adapters`; `GET/PATCH /settings/policy` (approval thresholds,
+alert rates, stale-campaign days, form-convert SLA — stored on
+`Tenant.config.marketing`); `GET /settings/webhooks`; `GET
+/settings/ai-touchpoints`; `POST /ai/draft`.
+
+---
+
+## Screens
+
+`apps/web/src/pages/marketing/` under nav group "Marketing", routes under
+`/marketing/...`: `MarketingOverview`, `Campaigns`, `CampaignDetail`,
+`Audiences`, `Consent`, `Templates`, `Sends`, `Journeys`, `Forms`,
+`MarketingEvents`, `Assets`, `Social`, `Referrals`, `Budget`, `Analytics`,
+`MarketingSettings`, `Calendar`. Each screen maps to one resource group above;
+`MarketingOverview` and `Calendar` are the two cross-cutting views, reading
+across campaigns, events, sends and social posts rather than owning a
+resource of their own.
+
+---
+
+## Retention
+
+Touchpoints, sends, and webhook payloads are the module's own audit trail and
+are kept for as long as attribution and deliverability reporting need to
+reach back — they are never edited, only appended to, so retention here is a
+question of how far back reporting looks, not of correcting history.
+Consent and preference records follow Compliance's own DPDP retention rules
+for the `marketing` purpose, not a Marketing-specific schedule — this module
+reads and writes that state, it does not set the policy for how long it is
+kept. Where a person withdraws marketing consent or requests erasure,
+Marketing's own rows (form submissions, touchpoints, send recipient records)
+are handled the same way any other module's personal-data rows are handled
+under the platform's erasure flow — this module does not define a separate
+erasure path for marketing data.

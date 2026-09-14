@@ -10,7 +10,6 @@
  */
 
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
 import {
   AI_TIER_BY_CODE,
   CHANNEL_KEYS,
@@ -24,7 +23,6 @@ import { Row, SelectInput, TextArea, TextInput, messageOf } from '../../componen
 import { useSession } from '../../lib/session.js';
 import { dateTime, titleCase } from '../../lib/api.js';
 import {
-  mk,
   useAdapterStatus,
   useAiTouchpoints,
   useChannels,
