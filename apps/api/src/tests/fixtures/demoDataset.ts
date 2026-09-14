@@ -509,6 +509,13 @@ async function seedOrganizations(): Promise<SeededOrg[]> {
           name: o.name,
           website: o.website,
           tags: [],
+          // What this body *is* — exclusive and enforced (schema.prisma). An
+          // institution profile is attached below when `o.institution` is
+          // set, and a row carrying one without `kind: 'institution'` is
+          // exactly the pre-backfill shape backfillOrganizationKinds exists
+          // to repair; setting it here rather than leaving the default keeps
+          // this dataset from seeding that inconsistency into every run.
+          kind: o.institution ? 'institution' : 'organization',
           // Retained transitionally for backward-compatible reporting only.
           legacyCategory: o.institution ? 'institution' : 'company',
         },

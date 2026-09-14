@@ -1129,10 +1129,26 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       });
     }
 
+    // `assembleOrganization360` gates entry on `resourceFor(org.kind)`, which
+    // is `institutions` for any `kind: 'institution'` row — the same check
+    // `canSeeInstitution` makes, so the two could never disagree there. The
+    // badge-but-not-contents path only exists for the legacy shape
+    // `backfillOrganizationKinds` (src/seed/backfill.ts) reconciles: a row
+    // still carrying `kind: 'organization'` with a profile attached directly
+    // underneath it, pre-dating that invariant. Built here rather than
+    // scavenged with a bare `findFirst` off shared tenant data, which made
+    // this test's outcome depend on whichever institution-kind fixture
+    // another test happened to leave lying around first.
+    const legacyShaped = await unscopedPrisma.organization.create({
+      data: { tenantId: TENANT, recordCode: `ORG-TEST-${Date.now()}`, kind: 'organization', name: `Pre-backfill college ${Date.now()}` },
+    });
+    await unscopedPrisma.institutionProfile.create({
+      data: { tenantId: TENANT, organizationId: legacyShaped.id, institutionType: 'school' },
+    });
+
     await asPrincipal(authFor(p, { roleSlug: 'org_only_viewer' }), async () => {
       const { assembleOrganization360 } = await import('../domains/organizations.js');
-      const org = await prisma.organization.findFirstOrThrow({ where: { institutionProfile: { isNot: null } } });
-      const view = await assembleOrganization360(org.id);
+      const view = await assembleOrganization360(legacyShaped.id);
 
       // The fact of the specialisation is not itself sensitive; its contents are.
       expect(view.specialisations.some((s) => s.kind === 'institution_profile' && s.present)).toBe(true);
