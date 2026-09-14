@@ -893,6 +893,8 @@ export interface GroupHolderEntityStake {
 export interface GroupHolderRowView {
   holderKey: string;
   displayName: string;
+  /** `unmatched` only when no holder row anywhere in the group ever resolved to a `person`; used to keep BEN's individuals-only rule out of the group screen's own arithmetic. */
+  holderKind: 'person' | 'organization' | 'entity';
   perEntity: Record<string, GroupHolderEntityStake>;
   /** s.90: true when the look-through, fully-diluted stake in any entity reaches `GROUP_SBO_THRESHOLD_PCT`. */
   sbo: boolean;
@@ -938,7 +940,7 @@ export interface GroupComplianceRowView {
 
 export const FILING_FORMS = [
   'MGT-1', 'MGT-2', 'PAS-3', 'SH-4', 'SH-7', 'MGT-14', 'MGT-7', 'MGT-7A',
-  'PAS-6', 'FC-GPR', 'FC-TRS', 'FLA', 'other',
+  'PAS-6', 'FC-GPR', 'FC-TRS', 'FLA', 'AOC-1', 'BEN-1', 'BEN-2', 'BEN-3', 'other',
 ] as const;
 export type FilingForm = (typeof FILING_FORMS)[number];
 
@@ -955,8 +957,91 @@ export const FILING_FORM_LABELS: Record<FilingForm, string> = {
   'FC-GPR': 'FC-GPR — foreign investment allotment report',
   'FC-TRS': 'FC-TRS — foreign investment transfer report',
   FLA: 'FLA — foreign liabilities and assets return',
+  'AOC-1': 'AOC-1 — statement of subsidiaries, associates and joint ventures',
+  'BEN-1': 'BEN-1 — declaration of significant beneficial ownership',
+  'BEN-2': 'BEN-2 — return of significant beneficial owners',
+  'BEN-3': 'BEN-3 — register of significant beneficial owners',
   other: 'Other',
 };
+
+// ---------------------------------------------------------------------------
+// Group-dependent statutory exports — AOC-1, BEN candidates (equity-portal
+// plan §6 phase 6c). Vocabulary only; the read model (snapshot-only, per
+// §3.3) lives in `apps/api/src/domains/group.ts`.
+// ---------------------------------------------------------------------------
+
+/** A figure the snapshot's financial block does not carry — never a silent zero. */
+export const NOT_PUBLISHED = 'not published' as const;
+export type NotPublished = typeof NOT_PUBLISHED;
+
+export interface Aoc1SubsidiaryRow {
+  tenantId: string;
+  name: string;
+  cin: string | NotPublished;
+  reportingPeriod: string;
+  reportingCurrency: string;
+  shareCapital: number;
+  reserves: number | NotPublished;
+  turnover: number | NotPublished;
+  profitBeforeTax: number | NotPublished;
+  profitAfterTax: number | NotPublished;
+  parentHoldingIssuedPct: number;
+  parentHoldingFullyDilutedPct: number;
+}
+
+export interface Aoc1AssociateRow {
+  tenantId: string;
+  name: string;
+  cin: string | NotPublished;
+  latestAuditedBalanceSheetDate: string | NotPublished;
+  netWorthAttributable: number | NotPublished;
+  profitOrLossForYear: number | NotPublished;
+  holdingIssuedPct: number;
+  holdingFullyDilutedPct: number;
+}
+
+export interface Aoc1View {
+  asOf: string;
+  partA: Aoc1SubsidiaryRow[];
+  partB: Aoc1AssociateRow[];
+  note: string | null;
+}
+
+export interface GroupBenChainLink {
+  tenantId: string;
+  name: string;
+  directPctInEntity: number;
+  parentStakeInEntity: number;
+  contributionPct: number;
+}
+
+export interface GroupBenIndividualCandidate {
+  holderKey: string;
+  displayName: string;
+  matchedBy: LookThroughMatch;
+  /** The entity (the holding itself, or one of its subsidiaries) this candidate is a significant beneficial owner OF — each is its own BEN-2 obligation. */
+  entityId: string;
+  entityName: string;
+  directIssuedPct: number;
+  indirectIssuedPct: number;
+  lookThroughIssuedPct: number;
+  chain: GroupBenChainLink[];
+  thresholdCrossedOn: string;
+}
+
+export interface GroupBenHoldingReportingCompany {
+  tenantId: string;
+  name: string;
+  directIssuedPct: number;
+  directFullyDilutedPct: number;
+}
+
+export interface GroupBenCandidatesView {
+  asOf: string;
+  mode: 'individuals' | 'holding_reporting_company';
+  individuals: GroupBenIndividualCandidate[];
+  holdingReportingCompany: GroupBenHoldingReportingCompany | null;
+}
 
 export const FILING_STATUSES = ['due', 'filed', 'not_required'] as const;
 export type FilingStatus = (typeof FILING_STATUSES)[number];

@@ -7,6 +7,7 @@
  */
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import type {
   GroupComplianceRowView, GroupEntityFinancialView, GroupHolderRowView,
   GroupStructureView, GroupEntityBadge,
@@ -168,7 +169,14 @@ export function Group() {
       )}
 
       {tab === 'holders' && (
-        <Card bodyClassName="p-0">
+        <Card
+          bodyClassName="p-0"
+          actions={
+            <Link to="/equity/filings" className="btn-ghost">
+              BEN-2 candidates
+            </Link>
+          }
+        >
           {holders.isLoading || !holders.data ? (
             <Loading />
           ) : holders.data.holders.length === 0 ? (

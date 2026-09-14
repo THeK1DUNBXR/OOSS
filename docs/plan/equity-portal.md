@@ -1,9 +1,11 @@
 # Equity, Shareholder & Board portal — plan
 
-Status: **answered 14 Sep 2026; ready for phase 0.** Nothing in this
-document is built. It is written so that an implementing model (Sonnet) can
-take one phase in §6 at a time as a self-contained brief, and so that the
-decisions in §3 can be argued with before any of it exists.
+Status: **built 14 Sep 2026.** Every phase in §6 (0 through 6b) plus the
+group-dependent exports (6c) is implemented, merged and pushed on
+`claude/modest-newton-2kukvo`; the merged tree passes 472 tests (384 before
+this work). The "as built" notes at the end record where each phase departed
+from the brief and why. Phases were built by separate implementing agents in
+parallel worktrees and merged in the order 0, 1, 2, 4, 5, 3, 6a, 6b, 6c.
 
 What was asked for: a new domain, reachable only by shareholders and board
 members, for equity management; connected to the ERP; one tenant per subsidiary
@@ -1088,3 +1090,105 @@ invoice.
 Tests: `apps/api/src/tests/spinOut.test.ts`, `EQT-SPN-001` through
 `EQT-SPN-007`, run inside a holding tenant and a subsidiary tenant this file
 creates for itself in `beforeAll`, for the same reason phase 4's suite does.
+
+## Phase 6c — as built
+
+Ships the group-dependent statutory exports the phase-6a header already
+promised elsewhere: `GET /equity/filings/aoc-1.xlsx` (and its `aoc1()` data
+function), `GET /equity/filings/ben.json` / `ben-2.xlsx`, and the `EX-EQT-011`
+BEN declaration item. All of it lives in `domains/group.ts`, not
+`filings.ts` — the same file, and the same rule, phase 2 already established
+(read only `EntitySnapshot`/`EntitySnapshotHistory`, never a subsidiary's
+live tables from outside its own context). `FILING_FORMS` gained `AOC-1`,
+`BEN-1`, `BEN-2`, `BEN-3`; `filings.ts`'s `FORM_EXCEPTION` map gained one
+entry (`BEN-2` → `EX-EQT-011`, subject `group_holder`) so `recordFiling`
+closes it exactly the way it already closes PAS-3/FC-GPR/FC-TRS/FLA/PAS-6.
+
+**Where it differs from the brief, and why.**
+
+- **The `company` block lives inside the snapshot's existing `compliance`
+  JSON, not a new column.** The brief's own environment note says a
+  snapshot JSON block is not a schema change; `compliance` already carries
+  `dematStatus`/`isSmallCompany`/`kind` as a loosely-typed per-tenant bag,
+  so `{ legalName, cin, financialYearEndMonth, incorporatedOn,
+  reportingCurrency: 'INR' }` joins it rather than opening a fifth JSON
+  column on `EntitySnapshot`/`EntitySnapshotHistory`.
+- **Reserves and profit-after-tax are `not published` for every
+  subsidiary, unconditionally — not sometimes.** The books carry no ledger
+  account distinguishing a statutory reserve from retained earnings, and no
+  tax computation exists anywhere in this platform (the same gap phase 4's
+  free-reserves proxy already named). Turnover and profit-before-tax ride
+  on the snapshot's own FY-to-date P&L (`pnlFyToDate.income`/`.net`), which
+  is always a real, though sometimes genuinely zero, figure — the two
+  pairs read differently by construction, not by chance, and a reader
+  should not expect `not published` to ever turn into a number once more
+  data arrives; it is a structural gap, not a temporary one.
+- **AOC-1's Part A/B split is the same `groupEntityBadge` the structure
+  chart already computes** (`wholly_owned`/`subsidiary` → Part A,
+  `associate` → Part B, `investment` → neither, since it is below the
+  20% associate floor) — not a second classification.
+- **BEN candidates are computed per (entity, person), not per person.**
+  The brief's own worked example (founder 60% of the holding × the
+  holding's 70% of a subsidiary, plus 5% direct, = 47%) is a statement
+  about the person's stake *in the subsidiary*, not in the holding — s.90
+  SBO is a per-company obligation, and a person can cross the threshold in
+  the holding, in a subsidiary, in both, or in neither, independently. The
+  holding tenant's own BEN export therefore lists one row per entity a
+  person qualifies in (the holding itself, direct-only since nothing sits
+  above it in this model, and each subsidiary via direct + look-through),
+  computed by re-deriving from `groupHolders()`'s own
+  `computeLookThrough` output — not a separate copy of that arithmetic —
+  so the group screen and the BEN export can never disagree about who
+  holds what. `GroupHolderRowView` gained a `holderKind` field (`person` /
+  `organization` / `entity`) for this — an additive change, so
+  `Group.tsx`'s existing holders table is untouched by it.
+- **The "holding reporting company" shortcut is a plain register read, no
+  look-through at all.** A subsidiary's own cap table already carries the
+  holding as an `entity` holder (`heldByTenantId`); when that holder's own
+  issued % is ≥10%, the subsidiary's BEN-2 names it and stops — exactly
+  the research's own note ("subsidiaries of a holding reporting company
+  report the holding"), and the only shape of BEN-2 a subsidiary can ever
+  produce on its own, since it holds no snapshot of anything (snapshots
+  live in a *parent*, never in the child that published them) and so
+  cannot look through to the individuals above its own immediate holder.
+- **The threshold-crossed date is derived from real history, with an
+  honest fallback, not computed as a fact the platform does not have.**
+  For a candidate's stake in the holding itself, the holding's own ledger
+  (`ShareTransaction.effectiveOn`, replayed through `capTable(asOf)`) is
+  real history whether or not a snapshot ever existed. For the indirect
+  portion in a subsidiary, `EntitySnapshotHistory` gives the subsidiary's
+  own direct % and the holding's own edge % at each point that subsidiary
+  published — combined, one hop, since `layerDepth` is always 1 (phase
+  2's own decision). Where no historical point on record already crosses
+  the threshold, the field reads `as of snapshot <date>` rather than a
+  fabricated crossing date — never silently defaulting to "today" or to
+  the snapshot's own `asOf` dressed up as a real answer.
+- **`EX-EQT-011` is raised as a side effect of computing candidates
+  (`groupBenCandidates()`), not a separate scheduled sweep.** Every other
+  `EX-EQT-*` exception in phase 6a is either a write-time guard or a daily
+  job; this one is neither, because the candidate set is a live
+  recomputation over `groupHolders()` each time, cheap enough that the
+  compute path already *is* the correct trigger, and `raiseException`'s
+  own open-exception check on `(code, subjectId)` makes a repeated call
+  idempotent rather than merely safe. The one honest gap this leaves: a
+  candidate who crosses the threshold and is never looked at again (nobody
+  opens Filings, no job re-checks) raises nothing until someone does look
+  — flagged here rather than silently accepted, and not closed by this
+  phase for want of a clean way to run `groupHolders()`'s own `assertCan`
+  gate from inside a system-principal scheduler tick without widening what
+  the scheduler is trusted to read.
+- **Uniqueness on holder key, not on (entity, holder key).** The brief's
+  own wording ("unique on holder key") is kept literally even though a
+  person can be a BEN candidate of more than one entity at once: the first
+  `raiseBenDeclarations` call for that holder key raises the item once,
+  named with whichever entity it was computed against first in
+  `groupHolders()`'s own iteration order; a second, third entity crossing
+  the same threshold for the same person raises nothing further. A
+  genuinely separate BEN-2 obligation per entity is a real gap this
+  leaves for whoever next revisits the exception's own subject shape.
+
+Tests: `apps/api/src/tests/equityGroupFilings.test.ts`, `EQT-FIL-011`
+through `EQT-FIL-015`, run inside a holding tenant this file creates for
+itself in `beforeAll` — never `kaizen`, since these tests mutate the
+holding's *own* cap table (to give a person a direct stake to look through
+from), which no earlier phase's suite ever needed to do.

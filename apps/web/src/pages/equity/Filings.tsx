@@ -13,7 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   DEMAT_STATUS_LABELS, FILING_FORMS, FILING_FORM_LABELS, FILING_STATUSES,
   type FilingForm, type FilingStatus, type FilingView, type FundingRoundView,
-  type Pas6View, type ShareClassView, type ShareTransactionView,
+  type GroupBenCandidatesView, type Pas6View, type ShareClassView, type ShareTransactionView,
 } from '@kaizen/shared';
 import { api, date } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
@@ -248,10 +248,88 @@ function StatutoryForms() {
           )}
         </div>
 
+        <div>
+          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">AOC-1 — statement of subsidiaries</p>
+          <button className="btn-ghost" onClick={() => api.download('/equity/filings/aoc-1.xlsx', 'aoc-1.xlsx')}>
+            Download
+          </button>
+        </div>
+
+        <div>
+          <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-500">BEN-2 — significant beneficial owner candidates</p>
+          <button className="btn-ghost" onClick={() => api.download('/equity/filings/ben-2.xlsx', 'ben-2-candidates.xlsx')}>
+            Download
+          </button>
+        </div>
+
         {profile && profile.dematStatus !== 'physical' && (
           <p className="text-2xs text-ink-500">PAS-6 reconciliation figures are below.</p>
         )}
       </div>
+    </Card>
+  );
+}
+
+function BenCandidatesPanel() {
+  const { can } = useSession();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['equity-ben-candidates'],
+    queryFn: () => api.get<GroupBenCandidatesView>('/equity/filings/ben.json'),
+    enabled: can('compliance:X'),
+  });
+
+  if (!can('compliance:X')) return null;
+  if (error) return <ErrorBox error={error} />;
+
+  return (
+    <Card title="BEN-2 candidates" subtitle="Persons whose look-through holding reaches ten percent or more (s.90).">
+      {isLoading || !data ? (
+        <Loading />
+      ) : data.mode === 'holding_reporting_company' ? (
+        data.holdingReportingCompany ? (
+          <p className="text-2xs text-ink-300">
+            This company is itself a subsidiary of a reporting company — {data.holdingReportingCompany.name} is named as the holding
+            reporting company under BEN-2 (
+            {data.holdingReportingCompany.directIssuedPct.toFixed(2)}% issued ·{' '}
+            {data.holdingReportingCompany.directFullyDilutedPct.toFixed(2)}% fully diluted); no individuals are listed here.
+          </p>
+        ) : null
+      ) : data.individuals.length === 0 ? (
+        <EmptyState message="No one holds ten percent or more on a look-through basis." />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Entity</th>
+                <th className="text-right">Direct %</th>
+                <th className="text-right">Indirect %</th>
+                <th className="text-right">Look-through %</th>
+                <th>Chain</th>
+                <th>Threshold crossed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.individuals.map((c) => (
+                <tr key={`${c.holderKey}-${c.entityId}`}>
+                  <td>{c.displayName}</td>
+                  <td className="text-ink-300">{c.entityName}</td>
+                  <td className="text-right tabular-nums">{c.directIssuedPct.toFixed(2)}%</td>
+                  <td className="text-right tabular-nums">{c.indirectIssuedPct.toFixed(2)}%</td>
+                  <td className="text-right tabular-nums">{c.lookThroughIssuedPct.toFixed(2)}%</td>
+                  <td className="text-2xs text-ink-400">
+                    {c.chain.length === 0
+                      ? '—'
+                      : c.chain.map((l) => `${l.name} (${l.directPctInEntity.toFixed(1)}% × ${l.parentStakeInEntity.toFixed(1)}%)`).join('; ')}
+                  </td>
+                  <td className="text-2xs text-ink-400">{c.thresholdCrossedOn}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Card>
   );
 }
@@ -361,6 +439,7 @@ export function Filings() {
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="flex flex-col gap-4 lg:col-span-2">
           <StatutoryForms />
+          <BenCandidatesPanel />
           <Pas6Panel />
           <FilingLog />
         </div>

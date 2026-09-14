@@ -12,6 +12,7 @@ import {
   pas3AllotteeList, pas3Export, sh4Data, pas6,
   recordFiling, listFilings,
 } from '../domains/filings.js';
+import { aoc1, aoc1Export, groupBenCandidates, benCandidatesExport } from '../domains/group.js';
 
 const router = Router();
 
@@ -72,6 +73,44 @@ router.get(
 router.get('/sh-4.pdf-data', handler(async (req) => sh4Data(String(req.query.transactionId ?? ''))));
 
 router.get('/pas-6.json', handler(async () => pas6()));
+
+// Group-dependent exports (equity-portal plan §6 phase 6c) — read the
+// holding tenant's own `EntitySnapshot` rows only; see `domains/group.ts`.
+router.get('/aoc-1', handler(async () => aoc1()));
+router.get(
+  '/aoc-1.xlsx',
+  handler(async (_req, res) => {
+    const file = await aoc1Export();
+    res
+      .status(200)
+      .set({
+        'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'content-disposition': 'attachment; filename="aoc-1.xlsx"',
+        'content-length': String(file.length),
+        'cache-control': 'no-store',
+      })
+      .send(file);
+    return undefined;
+  }),
+);
+
+router.get('/ben.json', handler(async () => groupBenCandidates()));
+router.get(
+  '/ben-2.xlsx',
+  handler(async (_req, res) => {
+    const file = await benCandidatesExport();
+    res
+      .status(200)
+      .set({
+        'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'content-disposition': 'attachment; filename="ben-2-candidates.xlsx"',
+        'content-length': String(file.length),
+        'cache-control': 'no-store',
+      })
+      .send(file);
+    return undefined;
+  }),
+);
 
 router.get('/log', handler(async (req) => ({ items: await listFilings(str(req.query.form)) })));
 

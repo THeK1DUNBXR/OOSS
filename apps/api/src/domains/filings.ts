@@ -765,6 +765,11 @@ const FORM_EXCEPTION: Partial<Record<FilingForm, { code: string; subjectType: st
   'FC-TRS': { code: 'EX-EQT-007', subjectType: 'share_transaction' },
   FLA: { code: 'EX-EQT-008', subjectType: 'holder' },
   'PAS-6': { code: 'EX-EQT-010', subjectType: 'company_profile' },
+  // Group-dependent (equity-portal plan §6 phase 6c) — `relatedType:
+  // 'group_holder'`, `relatedId: <holderKey>`, exactly as `domains/group.ts`'s
+  // `raiseBenDeclarations` raises it. AOC-1 (Part A/B) carries no compliance
+  // item to close; it simply logs, like MGT-1/MGT-7 above.
+  'BEN-2': { code: 'EX-EQT-011', subjectType: 'group_holder' },
 };
 
 export interface RecordFilingInput {
