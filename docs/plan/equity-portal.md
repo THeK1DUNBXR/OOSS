@@ -758,3 +758,64 @@ Tests: `apps/api/src/tests/equityRounds.test.ts`, `EQT-RND-001` through
 this suite controls completely rather than whatever another suite left behind
 in the shared `kaizen` tenant (`vitest.config.ts` runs every file serially
 against one database).
+## Phase 5 — as built
+
+Shipped as briefed in §6, with these choices made along the way:
+
+- **No promoter register exists yet**, so `promoterCheck.isPromoterOrPromoterGroup`
+  is computed as the same test Rule 12(1)(c) names for the group it is
+  refusing — holding more than ten percent of the equity share capital,
+  directly or through a holder represented — rather than left unenforced for
+  want of a separate promoter flag. `holdsOver10Pct` and
+  `isPromoterOrPromoterGroup` are therefore always equal today; a future
+  promoter register would let the two diverge without a schema change, since
+  both are already distinct fields.
+- **The exercise-allotment permission boundary.** An approved exercise has to
+  find-or-create a `Holder` and allot shares through `equity.ts`'s own
+  `makeEffective` — but the finance head who approves an exercise holds
+  `share_ledger:V,approve@all`, never `share_ledger:create` or `holders:create`
+  (§3.4 keeps those the secretary's). Rather than widen those grants, two
+  narrow internal functions were added to `equity.ts` —
+  `holderForExercise` and `recordExerciseAllotment` — both gated on
+  `share_ledger:approve` alone: the grant an exercise's approver already
+  holds, and the same one `makeEffective` itself requires. The three calls
+  together (`holderForExercise` → `recordExerciseAllotment` →
+  `makeEffective`) run under one approver, which is what "approve and allot
+  in the same step" means for an exercise — the two-party discipline the
+  manual register's propose/approve split exists for was already kept once,
+  on `option_grants`, by the employee's own request and the finance head's
+  approval of it.
+- **`EsopPlan.targetShareClassId`** is the authority for what an exercise
+  allots into, not `ShareClass.conversionTerms` on the pool class — the brief
+  asked for exactly this once a pool class carried no reliable
+  `convertsToClassId`, so the plan names its own target class directly.
+- **`OptionGrant.exerciseWindowEndsOn`**, not in §5's field list, was added:
+  the exit event fixes the post-exit exercise deadline once, from the plan's
+  `exerciseWindowMonthsAfterExit` at the moment of exit, and the daily sweep
+  (`runExpiredExerciseWindows`) compares against that fixed date rather than
+  recomputing it — so a later change to the plan's own window never moves a
+  deadline an exit has already set.
+- **The HRM exit event** subscribed to is `kz.hr.employment.separated` —
+  `EMPLOYMENT_EVENT_VERB` maps `TERMINATE_POST_DISCIPLINARY`,
+  `REACH_LAST_WORKING_DAY` and `ABANDONMENT_CONFIRMED` all to `separated`,
+  so one subscription covers every terminal separation without a role-slug
+  or event-type comparison in the handler.
+- **Perquisite tax deferral** requires both the plan's own
+  `isDpiitRecognised` (copied from the company's DPIIT status at plan
+  creation, so a later change to the company's status never retroactively
+  alters a running plan) and a new `CompanyProfile.iac80CertificateRef` —
+  s.192(1C) deferral needs the 80-IAC certificate, not DPIIT recognition
+  alone.
+- Nav: `eq_esop` (the register keeper's own screen, ERP), `my_options` (an
+  employee's own grants, workspace archetype, alongside `hr_leave`/
+  `hr_payroll` in the `people` group) and `portal_options` (the same content,
+  reached from the portal shell) — the last needed `option_grants:V@own` on
+  `shareholder` itself, not only `director`, so a holder who is also an
+  employee sees their own grants in the portal regardless of which
+  affiliation happens to be active.
+- Web: `MyOptionsView` is one shared component rendered by both
+  `pages/MyOptions.tsx` and `portal/pages/Options.tsx`, so the two pages the
+  brief asks for read the same sentence rather than two screens that quietly
+  drift.
+
+Tests: `apps/api/src/tests/esop.test.ts`, `EQT-ESP-001` through `EQT-ESP-010`.

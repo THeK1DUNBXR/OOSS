@@ -14,6 +14,7 @@ import { Certificates } from './portal/pages/Certificates.js';
 import { Documents } from './portal/pages/Documents.js';
 import { Board } from './portal/pages/Board.js';
 import { Entities as PortalEntities } from './portal/pages/Entities.js';
+import { Options as PortalOptions } from './portal/pages/Options.js';
 import { CapTable } from './pages/equity/CapTable.js';
 import { Register } from './pages/equity/Register.js';
 import { Holders, HolderDetail } from './pages/equity/Holders.js';
@@ -23,6 +24,8 @@ import { Documents as EquityDocuments } from './pages/equity/Documents.js';
 import { CertificateDocument } from './pages/equity/CertificateDocument.js';
 import { Rounds } from './pages/equity/Rounds.js';
 import { Scenarios } from './pages/equity/Scenarios.js';
+import { Esop } from './pages/equity/Esop.js';
+import { MyOptions } from './pages/MyOptions.js';
 import { CommandCenter } from './pages/CommandCenter.js';
 import { Workspace, Exceptions } from './pages/Workspace.js';
 import { Pipeline } from './pages/Pipeline.js';
@@ -88,6 +91,7 @@ function PortalRouted() {
         <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
         <Route path="/portal/board" element={<Board />} />
         <Route path="/portal/entities" element={<PortalEntities />} />
+        <Route path="/portal/options" element={<PortalOptions />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
@@ -160,6 +164,8 @@ function Routed() {
         <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
         <Route path="/equity/rounds" element={<Rounds />} />
         <Route path="/equity/scenarios" element={<Scenarios />} />
+        <Route path="/equity/esop" element={<Esop />} />
+        <Route path="/me/options" element={<MyOptions />} />
 
         <Route path="/business" element={<Executive />} />
         <Route path="/data/import" element={<ImportPage />} />

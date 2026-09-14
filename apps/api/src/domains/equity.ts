@@ -378,6 +378,107 @@ export async function holderView(row: {
   };
 }
 
+/**
+ * The `Holder` a share ends up allotted to, found or created — for the ESOP
+ * exercise-approval flow (`domains/esop.ts`), which needs a `Holder` for a
+ * person who may never have held anything before their first exercise.
+ *
+ * Gated on `share_ledger:approve`, the same grant `recordExerciseAllotment`
+ * and `makeEffective` require, rather than `holders:create` — creating the
+ * holder row here is part of completing an already-approved allotment, not
+ * the register keeper's general authority to add a holder.
+ */
+export async function holderForExercise(personId: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'share_ledger', verb: 'approve' });
+
+  const existing = await prisma.holder.findFirst({ where: { tenantId: auth.tenantId, kind: 'person', personId } });
+  if (existing) return holderView(existing);
+
+  const folioNumber = await nextFolioNumber();
+  const row = await prisma.holder.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode: await nextRecordCode('HLD'),
+      kind: 'person',
+      personId,
+      folioNumber,
+      residency: 'resident',
+    },
+  });
+
+  await auditWrite({ action: 'create', subjectType: 'holder', subjectId: row.id, after: { folioNumber, kind: row.kind } });
+  await emit({
+    name: EVENTS.HOLDER_CREATED,
+    subject: { entityType: 'holder', entityId: row.id, recordCode: row.recordCode },
+    newState: { kind: row.kind, folioNumber },
+  });
+
+  return holderView(row);
+}
+
+export interface ExerciseAllotmentInput {
+  shareClassId: string;
+  toHolderId: string;
+  count: number;
+  pricePerShare: number;
+  effectiveOn: string;
+  considerationTransactionId?: string | null;
+}
+
+/**
+ * Creates an allotment already at `approved`, for a caller — the ESOP
+ * exercise-approval flow — that has already gated the underlying decision on
+ * its own resource (`option_grants:approve`) and its own self-dealing bar.
+ * Held to `share_ledger:approve` (the same grant `makeEffective` itself
+ * requires) rather than `share_ledger:create`: an exercise already went
+ * through the two-party discipline the manual register's propose/approve
+ * split exists for — the employee's own request, and the finance head's
+ * approval of it — on `option_grants`, not here.
+ */
+export async function recordExerciseAllotment(input: ExerciseAllotmentInput) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'share_ledger', verb: 'approve' });
+
+  const shareClass = await prisma.shareClass.findFirst({ where: { id: input.shareClassId, tenantId: auth.tenantId } });
+  if (!shareClass) throw ApiError.notFound('Share class');
+  const toHolder = await prisma.holder.findFirst({ where: { id: input.toHolderId, tenantId: auth.tenantId } });
+  if (!toHolder) throw ApiError.notFound('Holder');
+  if (input.count <= 0) throw ApiError.badRequest('An allotment must be for a positive number of shares.');
+
+  await assertConsiderationIsEquity(input.considerationTransactionId);
+
+  const row = await prisma.shareTransaction.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode: await nextRecordCode('SHT'),
+      type: 'allotment',
+      shareClassId: input.shareClassId,
+      toHolderId: input.toHolderId,
+      count: dec(input.count)!,
+      pricePerShare: dec(input.pricePerShare),
+      effectiveOn: new Date(input.effectiveOn),
+      considerationTransactionId: input.considerationTransactionId ?? null,
+      status: 'approved',
+      proposedByPartyId: auth.partyId ?? 'system',
+    },
+  });
+
+  await auditWrite({ action: 'create', subjectType: 'share_transaction', subjectId: row.id, after: row as never });
+  await emit({
+    name: EVENTS.ALLOTMENT_PROPOSED,
+    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
+    newState: { shareClassId: row.shareClassId, toHolderId: row.toHolderId, count: input.count, source: 'esop_exercise' },
+  });
+  await emit({
+    name: EVENTS.ALLOTMENT_APPROVED,
+    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
+    newState: { status: 'approved', source: 'esop_exercise' },
+  });
+
+  return shareTransactionView(row);
+}
+
 export async function nextFolioNumber(): Promise<string> {
   const auth = currentAuth();
   // Its own sequence space, keyed like the document series are (`platform/

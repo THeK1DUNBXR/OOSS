@@ -59,6 +59,7 @@ export interface CompanyProfileInput {
   rtaName?: string | null;
   dpiitNumber?: string | null;
   dpiitRecognisedOn?: string | null;
+  iac80CertificateRef?: string | null;
   certificateSignatories?: Array<{ name: string; designation: string }>;
 }
 
@@ -154,6 +155,7 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
       ...(input.rtaName !== undefined ? { rtaName: input.rtaName } : {}),
       ...(input.dpiitNumber !== undefined ? { dpiitNumber: input.dpiitNumber } : {}),
       ...(input.dpiitRecognisedOn !== undefined ? { dpiitRecognisedOn: input.dpiitRecognisedOn ? new Date(input.dpiitRecognisedOn) : null } : {}),
+      ...(input.iac80CertificateRef !== undefined ? { iac80CertificateRef: input.iac80CertificateRef } : {}),
       ...(input.certificateSignatories !== undefined ? { certificateSignatories: input.certificateSignatories as never } : {}),
     },
   });

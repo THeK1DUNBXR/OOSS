@@ -125,6 +125,8 @@ export const ALL_RESOURCES = [
   'board_documents', 'compliance', 'group', 'holdings',
   // Rounds, instruments, valuations, scenarios (phase 4).
   'rounds',
+  // ESOP (phase 5).
+  'esop_plans', 'option_grants',
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */
@@ -227,6 +229,13 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'group', cell: '-' },
   { resource: 'holdings', cell: '-' },
   { resource: 'rounds', cell: '-' },
+
+  // ---- ESOP (§6, phase 5) -------------------------------------------------
+  // HR proposes a grant against an employment relationship it already owns;
+  // it reads the plan to know the pool and the default terms and does not
+  // create or close a scheme, and never approves its own proposal.
+  { resource: 'esop_plans', cell: 'V@all' },
+  { resource: 'option_grants', cell: 'VC@all' },
 ];
 
 /**
@@ -331,6 +340,13 @@ const financeHead: GrantSpec[] = [
   // Rounds (phase 4): the finance head approves what the secretary proposes,
   // the same split the ledger already keeps.
   { resource: 'rounds', cell: 'V,approve@all' },
+
+  // ---- ESOP (§6, phase 5) -------------------------------------------------
+  // Approves what HR proposes and what a grantee requests to exercise — the
+  // same two-party shape compensation already keeps. Never `create` on a
+  // grant, so the approver is never also the proposer by construction.
+  { resource: 'option_grants', cell: 'V,approve@all' },
+  { resource: 'esop_plans', cell: 'V,approve@all' },
 ];
 
 /**
@@ -429,6 +445,11 @@ const employee: GrantSpec[] = [
   { resource: 'group', cell: '-' },
   { resource: 'holdings', cell: '-' },
   { resource: 'rounds', cell: '-' },
+  { resource: 'esop_plans', cell: '-' },
+
+  // ESOP: their own grants, and nobody else's — the same `@own` shape leave
+  // and attendance already take.
+  { resource: 'option_grants', cell: 'V@own' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -457,6 +478,10 @@ const shareholder: GrantSpec[] = [
   // Resolutions they are a voter on — a shareholder ordinary/special
   // resolution — never a board one.
   { resource: 'resolutions', cell: 'V@own' },
+  // A holder who is also an employee sees their own option grants here too —
+  // `@own` resolves the same way regardless of which affiliation is active,
+  // because it reads `OptionGrant.personId`, not the role.
+  { resource: 'option_grants', cell: 'V@own' },
 ];
 
 const director: GrantSpec[] = [
@@ -471,6 +496,8 @@ const director: GrantSpec[] = [
   // Rounds (phase 4): a director reads what round a class is under and its
   // statutory prerequisites, never proposes or approves one.
   { resource: 'rounds', cell: 'V@all' },
+  { resource: 'esop_plans', cell: 'V@all' },
+  { resource: 'option_grants', cell: 'V@all' },
 ];
 
 const companySecretary: GrantSpec[] = [
@@ -487,6 +514,10 @@ const companySecretary: GrantSpec[] = [
   { resource: 'board_documents', cell: 'VCE@all' },
   // No `approve` anywhere — the whole point of the role (§3.4).
   { resource: 'rounds', cell: 'VCE@all' },
+
+  // ---- ESOP (§6, phase 5) -------------------------------------------------
+  { resource: 'esop_plans', cell: 'VCE@all' },
+  { resource: 'option_grants', cell: 'VCE@all' },
 ];
 
 export const ROLE_GRANT_MATRIX: RoleGrants = {

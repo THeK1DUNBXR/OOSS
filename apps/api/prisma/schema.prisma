@@ -169,6 +169,10 @@ model CompanyProfile {
   rtaName                String?
   dpiitNumber            String?
   dpiitRecognisedOn      DateTime?
+  /// The 80-IAC certificate reference. Its presence, together with
+  /// `EsopPlan.isDpiitRecognised`, is what lets an exercise defer tax under
+  /// s.192(1C) instead of taxing the perquisite in the month of exercise.
+  iac80CertificateRef    String?
   /// Snapshotted onto every certificate at issue (s.46: two signatories).
   /// `[]` until the secretary sets it, which is exactly why `makeEffective`
   /// refuses to issue a certificate against an empty list rather than
@@ -2311,6 +2315,175 @@ model EntityDocument {
   @@index([tenantId, audience])
   @@index([tenantId, relatedType, relatedId])
   @@map("entity_documents")
+}
+
+// ===========================================================================
+// ESOP (equity-portal plan §5/§6, phase 5). Grants go through the same pool
+// `ShareClass` (`instrument: option`) and the same `proposeAllotment` /
+// `approveShareTransaction` / `makeEffective` path phase 1 built for exercise —
+// an exercise is an allotment out of the pool, not a second ledger.
+// ===========================================================================
+
+/// One scheme: a pool, its default terms, and whether it carries DPIIT relief.
+/// `poolShareClassId` names the `ShareClass` (`instrument: option`) whose
+/// `authorisedCount` is the pool size; `targetShareClassId` names the equity
+/// class an exercise allots into — options convert into the class the plan
+/// names, not whatever a `conversionTerms` link on the pool class might say.
+model EsopPlan {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name               String
+  poolShareClassId   String
+  targetShareClassId String
+
+  /// The shareholder resolution date (Rule 12: a separate resolution from the
+  /// board approval that proposes the scheme) and its reference — both null
+  /// until `activatePlan`.
+  approvedOn    DateTime?
+  resolutionRef String?
+  mgt14Srn      String?
+
+  /// Copied from `CompanyProfile.dpiitNumber`/`dpiitRecognisedOn` at creation.
+  /// Drives the promoter-exclusion relief (Rule 12(1)(c)) and the exercise tax
+  /// deferral (s.192(1C)) for every grant under this plan — a later change to
+  /// the company's own DPIIT status does not retroactively alter a plan
+  /// already running under the status it was created with.
+  isDpiitRecognised Boolean @default(false)
+
+  exercisePriceDefault Decimal? @db.Decimal(18, 2)
+  /// `{cliffMonths, totalMonths, frequency: 'monthly'|'quarterly'|'annual'}`.
+  vestingDefault Json
+
+  exerciseWindowMonthsAfterExit Int @default(3)
+
+  status String @default("draft") // draft | active | closed
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@map("esop_plans")
+}
+
+/// One grant. `vesting.schedule` is the materialised set of tranches —
+/// computed once at grant time from the plan default or an override — which
+/// `VestingEvent` rows mirror as individually trackable state.
+model OptionGrant {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  planId       String
+  employmentId String
+  personId     String
+
+  grantedOn     DateTime
+  count         Decimal  @db.Decimal(24, 6)
+  exercisePrice Decimal  @db.Decimal(18, 2)
+  /// `{cliffMonths, schedule: [{on, count}]}`.
+  vesting       Json
+
+  grantLetterRef String?
+
+  status String @default("proposed") // proposed | granted | partly_vested | fully_vested | exercised | lapsed | cancelled
+
+  vested    Decimal @default(0) @db.Decimal(24, 6)
+  exercised Decimal @default(0) @db.Decimal(24, 6)
+  lapsed    Decimal @default(0) @db.Decimal(24, 6)
+
+  lapsedOn     DateTime?
+  lapseReason  String?
+  /// Set on the exit event for a grant with a vested-unexercised balance: the
+  /// exit date plus the plan's `exerciseWindowMonthsAfterExit`. The daily
+  /// lapse check compares against this rather than recomputing it, so a later
+  /// change to the plan's own window does not move a deadline already fixed
+  /// by the exit that set it.
+  exerciseWindowEndsOn DateTime?
+
+  /// `{isPromoterOrPromoterGroup, holdsOver10Pct, dpiitReliefApplied}`,
+  /// computed once at grant time from the cap table.
+  promoterCheck Json
+
+  /// Set when this single grant is ≥1% of issued capital (Rule 12(4)).
+  resolutionRef String?
+
+  proposedByPartyId String
+  approvedByPartyId String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, personId])
+  @@index([tenantId, employmentId])
+  @@index([tenantId, planId])
+  @@map("option_grants")
+}
+
+/// One materialised tranche of a grant, tracked separately from the JSON
+/// schedule so the vesting job can mark each one `vested` without rewriting
+/// the whole grant.
+model VestingEvent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  grantId String
+  on      DateTime
+  count   Decimal  @db.Decimal(24, 6)
+  status  String   @default("scheduled") // scheduled | vested | lapsed
+
+  vestedOn DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, grantId, status])
+  @@index([tenantId, status, on])
+  @@map("vesting_events")
+}
+
+/// One exercise request against a grant's vested-unexercised balance. The
+/// perquisite is computed only from a merchant-banker `Valuation` within 180
+/// days of the request; absent that, `fmvBasis` stays `none` and the figure is
+/// withheld rather than guessed.
+model OptionExercise {
+  id       String @id @default(cuid())
+  tenantId String
+
+  grantId String
+
+  requestedOn   DateTime
+  count         Decimal  @db.Decimal(24, 6)
+  exercisePrice Decimal  @db.Decimal(18, 2)
+
+  fmvPerShare   Decimal? @db.Decimal(18, 2)
+  fmvBasis      String   @default("none") // merchant_banker | none
+  fmvValuationId String?
+
+  perquisite     Decimal? @db.Decimal(18, 2)
+  perquisiteNote String?
+  taxDeferred    Boolean  @default(false)
+
+  status String @default("requested") // requested | approved | allotted | rejected
+
+  allotmentTransactionId String?
+  paidReference          String?
+
+  requestedByPartyId String
+  approvedByPartyId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, grantId, status])
+  @@index([tenantId, status])
+  @@map("option_exercises")
 }
 
 // ===========================================================================

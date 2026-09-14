@@ -637,6 +637,8 @@ export const RECORD_TYPE_CODES = [
   // Rounds (equity-portal plan §6 phase 4): the container an allotment, a
   // bonus, a rights offer, a buy-back or a capital reduction is struck under.
   'RND',
+  // ESOP (equity-portal plan §5/§6, phase 5): a scheme and a grant under it.
+  'ESP', 'OPG',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

@@ -349,6 +349,16 @@ export const EVENTS = {
   RIGHTS_OFFERED: 'kz.eqt.rights.offered',
   RIGHTS_ACCEPTED: 'kz.eqt.rights.accepted',
   RIGHTS_RENOUNCED: 'kz.eqt.rights.renounced',
+  // --- ESOP (eqt), phase 5 ---------------------------------------------------
+  ESOP_PLAN_CREATED: 'kz.eqt.esop_plan.created',
+  ESOP_PLAN_ACTIVATED: 'kz.eqt.esop_plan.activated',
+  OPTION_PROPOSED: 'kz.eqt.option.proposed',
+  OPTION_GRANTED: 'kz.eqt.option.granted',
+  OPTION_VESTED: 'kz.eqt.option.vested',
+  OPTION_EXERCISE_REQUESTED: 'kz.eqt.option.exercise_requested',
+  OPTION_EXERCISED: 'kz.eqt.option.exercised',
+  OPTION_LAPSED: 'kz.eqt.option.lapsed',
+  OPTION_CANCELLED: 'kz.eqt.option.cancelled',
 } as const;
 
 /**
