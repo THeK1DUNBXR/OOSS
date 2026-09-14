@@ -380,6 +380,9 @@ export const EVENTS = {
   VOTE_CAST: 'kz.eqt.vote.cast',
   COMPLIANCE_ITEM_RAISED: 'kz.eqt.compliance.raised',
   COMPLIANCE_ITEM_RESOLVED: 'kz.eqt.compliance.resolved',
+
+  // --- Filings, demat, FEMA (eqt), phase 6a ---------------------------------
+  FILING_RECORDED: 'kz.eqt.filing.recorded',
 } as const;
 
 /**

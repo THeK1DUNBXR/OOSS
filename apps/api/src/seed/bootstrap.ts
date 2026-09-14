@@ -201,9 +201,9 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   // host including the portal shell, and these three belong to the ERP side
   // only; the `portal_board` node above is the shareholder/director view of
   // the same data.
-  { nodeKey: 'eq_board', label: 'Board', icon: 'shield', path: '/equity/board', group: 'equity', position: 10, requiredPermission: 'board_meetings:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['meetings', 'minutes', 'agenda', 'directors', 'quorum'] },
-  { nodeKey: 'eq_resolutions', label: 'Resolutions', icon: 'scale', path: '/equity/resolutions', group: 'equity', position: 11, requiredPermission: 'resolutions:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['circular resolution', 'vote', 'mgt-14', 'circulation'] },
-  { nodeKey: 'eq_compliance', label: 'Compliance', icon: 'clipboard', path: '/equity/compliance', group: 'equity', position: 12, requiredPermission: 'compliance:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['calendar', 'due dates', 'filings', 'ss-1', 'agm', 'mbp-1'] },
+  { nodeKey: 'eq_board', label: 'Board', icon: 'shield', path: '/equity/board', group: 'equity', position: 91, requiredPermission: 'board_meetings:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['meetings', 'minutes', 'agenda', 'directors', 'quorum'] },
+  { nodeKey: 'eq_resolutions', label: 'Resolutions', icon: 'scale', path: '/equity/resolutions', group: 'equity', position: 92, requiredPermission: 'resolutions:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['circular resolution', 'vote', 'mgt-14', 'circulation'] },
+  { nodeKey: 'eq_compliance', label: 'Compliance', icon: 'clipboard', path: '/equity/compliance', group: 'equity', position: 93, requiredPermission: 'compliance:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['calendar', 'due dates', 'filings', 'ss-1', 'agm', 'mbp-1'] },
 
   // ---- The equity & board portal ----------------------------------------
   // `archetypes: ['portal']` is what actually keeps these off the ERP shell —
@@ -232,11 +232,13 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'eq_documents', label: 'Entity Documents', icon: 'file', path: '/equity/documents', group: 'equity', position: 85, requiredPermission: 'entity_documents:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['certificates', 'resolutions', 'filings'] },
   // Group (equity-portal plan §6, phase 2). Reads the holding tenant's own
   // snapshots only — see `domains/group.ts`.
-  { nodeKey: 'eq_group', label: 'Group', icon: 'building', path: '/equity/group', group: 'equity', position: 85, requiredPermission: 'group:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['subsidiaries', 'structure chart', 'consolidated', 'look-through', 'sbo'] },
+  { nodeKey: 'eq_group', label: 'Group', icon: 'building', path: '/equity/group', group: 'equity', position: 90, requiredPermission: 'group:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['subsidiaries', 'structure chart', 'consolidated', 'look-through', 'sbo'] },
   // Rounds, instruments, valuations, scenarios (phase 4).
   { nodeKey: 'eq_rounds', label: 'Rounds', icon: 'trending', path: '/equity/rounds', group: 'equity', position: 86, requiredPermission: 'rounds:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['funding round', 'preferential', 'private placement', 'bonus', 'rights issue', 'buyback'] },
   { nodeKey: 'eq_scenarios', label: 'Scenarios', icon: 'chart', path: '/equity/scenarios', group: 'equity', position: 87, requiredPermission: 'cap_table:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['dilution', 'waterfall', 'modelling', 'what if'] },
   { nodeKey: 'eq_esop', label: 'ESOP', icon: 'coins', path: '/equity/esop', group: 'equity', position: 88, requiredPermission: 'esop_plans:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['options', 'option pool', 'stock options', 'vesting', 'sh-6'] },
+  // Filings, demat, FEMA (phase 6a).
+  { nodeKey: 'eq_filings', label: 'Filings', icon: 'file', path: '/equity/filings', group: 'equity', position: 89, requiredPermission: 'compliance:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['mgt-1', 'mgt-2', 'pas-3', 'sh-4', 'pas-6', 'demat', 'fema', 'fc-gpr', 'fc-trs', 'fla'] },
 ];
 
 /**

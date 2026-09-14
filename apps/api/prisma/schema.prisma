@@ -2047,6 +2047,22 @@ model Holder {
   jointHolders    Json?
   status          String  @default("active") // active | ceased
 
+  /// MGT-1 fields (Rule 3, Mgmt & Admin Rules) not needed for anything else
+  /// in the register and left blank rather than guessed — "not recorded" is
+  /// never a fabricated address.
+  address                String?
+  occupation             String?
+  nationality            String?
+  guardianOrSpouseName   String?
+
+  /// Rule 9B / PAS-6: the holder's demat account, when their holding is
+  /// dematerialised. Held once per holder rather than per certificate — a
+  /// holder either holds through a depository or does not — and every share
+  /// this holder holds is treated as demat when this is set. `{ dpId,
+  /// clientId }` at minimum; kept as free `Json` because the two depositories
+  /// (NSDL/CDSL) and an RTA's own reference are not a single fixed shape.
+  dematAccount Json?
+
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2286,6 +2302,50 @@ model FundingRound {
   @@index([tenantId, status])
   @@index([tenantId, kind])
   @@map("funding_rounds")
+}
+
+/// The filing log (equity-portal plan §6 phase 6a). One row per statutory
+/// form the register keeper owes, or has filed — not a second calendar next
+/// to the exception engine, the record that closes what an `ExceptionRecord`
+/// already opened (`domains/filings.ts#recordFiling` resolves the matching
+/// open exception by code and subject when one exists).
+model Filing {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// MGT-1 | MGT-2 | PAS-3 | SH-4 | SH-7 | MGT-14 | MGT-7 | MGT-7A | PAS-6 |
+  /// FC-GPR | FC-TRS | FLA | other
+  form String
+
+  /// What this filing was for — a round for PAS-3, a share transaction for
+  /// SH-4/FC-GPR/FC-TRS, a company profile for PAS-6/FLA. Optional: some
+  /// filings (MGT-1/MGT-2 exports, MGT-14) are not against one register row.
+  relatedType String?
+  relatedId   String?
+
+  /// A human description of the period or event this filing covers —
+  /// "H2 2025-26" for a PAS-6, "FY 2025-26" for an FLA, the round's own name
+  /// for a PAS-3 — since the three forms measure a period by different rules
+  /// and none of them reduce to one date column.
+  periodOrEvent String
+
+  srn     String?
+  filedOn DateTime?
+  dueOn   DateTime?
+  status  String    @default("due") // due | filed | not_required
+  note    String?
+
+  recordedByPartyId String
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, form])
+  @@index([tenantId, relatedType, relatedId])
+  @@map("filings")
 }
 
 /// A document published to holders, the board, or the secretary — a

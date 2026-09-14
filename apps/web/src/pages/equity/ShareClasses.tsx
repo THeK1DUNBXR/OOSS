@@ -23,6 +23,12 @@ const ANTI_DILUTION_LABELS: Record<AntiDilution, string> = {
   full_ratchet: 'Full ratchet',
 };
 
+const AT_OPTION_OF_LABELS: Record<'holder' | 'company' | 'mandatory', string> = {
+  holder: 'Holder',
+  company: 'Company',
+  mandatory: 'Mandatory',
+};
+
 function NewShareClass({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<ShareClassKind>('equity');
@@ -37,6 +43,27 @@ function NewShareClass({ open, onClose }: { open: boolean; onClose: () => void }
   const [boardSeat, setBoardSeat] = useState(false);
   const [informationRights, setInformationRights] = useState(false);
   const [dividendRate, setDividendRate] = useState('');
+
+  // Conversion terms (§A): converts into another class, at a ratio, optionally
+  // with a price floor and a by-date, at whoever's option, on a named
+  // trigger — used by a preference, debenture, note or warrant class.
+  const [convertsToClassId, setConvertsToClassId] = useState('');
+  const [ratio, setRatio] = useState('1');
+  const [priceFloor, setPriceFloor] = useState('');
+  const [byDate, setByDate] = useState('');
+  const [atOptionOf, setAtOptionOf] = useState<'holder' | 'company' | 'mandatory'>('holder');
+  const [trigger, setTrigger] = useState('');
+
+  // Redemption terms — RPS and NCD.
+  const [redeemOn, setRedeemOn] = useState('');
+  const [premium, setPremium] = useState('');
+  const [fromReserves, setFromReserves] = useState(false);
+
+  const existingClasses = useQuery({
+    queryKey: ['equity-share-classes', 'picker'],
+    queryFn: () => api.get<{ items: ShareClassView[] }>('/equity/share-classes'),
+    enabled: open,
+  });
 
   return (
     <CreateModal
@@ -62,6 +89,23 @@ function NewShareClass({ open, onClose }: { open: boolean; onClose: () => void }
             informationRights,
             dividendRate: dividendRate ? Number(dividendRate) : null,
           },
+          conversionTerms: convertsToClassId
+            ? {
+                convertsToClassId,
+                ratio: Number(ratio || 1),
+                priceFloor: priceFloor ? Number(priceFloor) : undefined,
+                byDate: byDate || undefined,
+                atOptionOf,
+                trigger: trigger || undefined,
+              }
+            : null,
+          redemptionTerms: redeemOn || premium || fromReserves
+            ? {
+                redeemOn: redeemOn || undefined,
+                premium: premium ? Number(premium) : undefined,
+                fromReserves,
+              }
+            : null,
         })
       }
     >
@@ -128,6 +172,49 @@ function NewShareClass({ open, onClose }: { open: boolean; onClose: () => void }
           </div>
         </div>
       </fieldset>
+
+      <fieldset className="rounded-lg border border-ink-800 p-3">
+        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Conversion terms</legend>
+        <div className="flex flex-col gap-3">
+          <Row>
+            <SelectInput
+              label="Converts to class"
+              value={convertsToClassId}
+              onChange={setConvertsToClassId}
+              placeholder="Not convertible"
+              options={(existingClasses.data?.items ?? []).map((c) => ({ value: c.id, label: c.name }))}
+            />
+            <TextInput label="Ratio" type="number" hint="underlying shares per unit" value={ratio} onChange={setRatio} />
+          </Row>
+          <Row>
+            <TextInput label="Price floor" type="number" value={priceFloor} onChange={setPriceFloor} />
+            <TextInput label="By date" type="date" value={byDate} onChange={setByDate} />
+          </Row>
+          <Row>
+            <SelectInput
+              label="At the option of"
+              value={atOptionOf}
+              onChange={(v) => setAtOptionOf(v as typeof atOptionOf)}
+              options={(['holder', 'company', 'mandatory'] as const).map((v) => ({ value: v, label: AT_OPTION_OF_LABELS[v] }))}
+            />
+            <TextInput label="Trigger" value={trigger} onChange={setTrigger} placeholder="A qualified financing, an IPO…" />
+          </Row>
+        </div>
+      </fieldset>
+
+      <fieldset className="rounded-lg border border-ink-800 p-3">
+        <legend className="px-1 text-2xs uppercase tracking-wide text-ink-500">Redemption terms</legend>
+        <div className="flex flex-col gap-3">
+          <Row>
+            <TextInput label="Redeem on" type="date" value={redeemOn} onChange={setRedeemOn} />
+            <TextInput label="Premium" type="number" value={premium} onChange={setPremium} />
+          </Row>
+          <label className="flex items-center gap-2 text-xs text-ink-200">
+            <input type="checkbox" checked={fromReserves} onChange={(e) => setFromReserves(e.target.checked)} />
+            Redeemed from free reserves
+          </label>
+        </div>
+      </fieldset>
     </CreateModal>
   );
 }
@@ -162,6 +249,8 @@ export function ShareClasses() {
         <div className="grid gap-4 lg:grid-cols-2">
           {rows.map((c) => {
             const rights = c.rights as Record<string, unknown>;
+            const conv = c.conversionTerms as Record<string, unknown> | null;
+            const redeem = c.redemptionTerms as Record<string, unknown> | null;
             return (
               <Card key={c.id} title={c.name} subtitle={SHARE_INSTRUMENT_LABELS[c.instrument]}>
                 <dl>
@@ -186,6 +275,20 @@ export function ShareClasses() {
                       ]
                         .filter(Boolean)
                         .join(', ')}
+                    </Field>
+                  )}
+                  {conv && (
+                    <Field label="Converts">
+                      {String(conv.ratio ?? 1)}× on {String(conv.atOptionOf ?? 'holder')}'s option
+                      {conv.byDate ? ` by ${String(conv.byDate).slice(0, 10)}` : ''}
+                      {conv.priceFloor ? `, floor ${money(Number(conv.priceFloor))}` : ''}
+                    </Field>
+                  )}
+                  {redeem && (
+                    <Field label="Redeems">
+                      {redeem.redeemOn ? String(redeem.redeemOn).slice(0, 10) : 'Date not set'}
+                      {redeem.premium ? `, premium ${money(Number(redeem.premium))}` : ''}
+                      {redeem.fromReserves ? ' — from free reserves' : ''}
                     </Field>
                   )}
                 </dl>

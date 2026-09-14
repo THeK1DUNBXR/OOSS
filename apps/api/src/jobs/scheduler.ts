@@ -29,6 +29,7 @@ import { sweepStaleMergeCandidates } from '../domains/identity.js';
 import { detectOverdueCertificates } from '../domains/equity.js';
 import { publishDirtySnapshots, publishNightlySnapshot } from '../domains/group.js';
 import { runVesting, runExpiredExerciseWindows } from '../domains/esop.js';
+import { checkDematRequirements, runPas6HalfYearly, runFlaReturn } from '../domains/filings.js';
 import { computeAndPersistAll } from '../domains/health.js';
 import { runBoardComplianceJob } from '../domains/board.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
@@ -163,6 +164,28 @@ export const ALL_JOBS: JobDefinition[] = [
     automationClass: 'threshold_response',
     cron: '0 3 * * *',
     run: async () => counted(await runExpiredExerciseWindows()),
+  },
+  // Filings, demat, FEMA (equity-portal plan §6 phase 6a).
+  {
+    name: 'runDematStatusCheckJob',
+    label: 'EX-EQT-004/005 demat status (Rule 9B)',
+    automationClass: 'threshold_response',
+    cron: '0 6 * * *',
+    run: async () => counted(await checkDematRequirements()),
+  },
+  {
+    name: 'runPas6HalfYearlyJob',
+    label: 'EX-EQT-010 PAS-6 reconciliation, half-yearly',
+    automationClass: 'routine_administration',
+    cron: '0 7 * * *',
+    run: async () => counted(await runPas6HalfYearly()),
+  },
+  {
+    name: 'runFlaReturnJob',
+    label: 'EX-EQT-008 FLA return, yearly',
+    automationClass: 'routine_administration',
+    cron: '0 8 1 4 *',
+    run: async () => counted(await runFlaReturn()),
   },
   {
     // Group (equity-portal plan §6, phase 2). Publishes only a tenant flagged

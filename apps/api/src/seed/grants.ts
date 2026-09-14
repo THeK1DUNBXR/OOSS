@@ -344,6 +344,10 @@ const financeHead: GrantSpec[] = [
   // Rounds (phase 4): the finance head approves what the secretary proposes,
   // the same split the ledger already keeps.
   { resource: 'rounds', cell: 'V,approve@all' },
+  // Filings, demat, FEMA (phase 6a): reads and downloads the statutory
+  // exports and records a filing, the same reach the company secretary has
+  // over the register itself.
+  { resource: 'compliance', cell: 'VCEX@all' },
 
   // ---- ESOP (§6, phase 5) -------------------------------------------------
   // Approves what HR proposes and what a grantee requests to exercise — the
@@ -517,7 +521,8 @@ const companySecretary: GrantSpec[] = [
   { resource: 'certificates', cell: 'VC@all' },
   { resource: 'board_meetings', cell: 'VCE@all' },
   { resource: 'resolutions', cell: 'VCE@all' },
-  { resource: 'compliance', cell: 'VCE@all' },
+  // `X` (export) added in phase 6a: MGT-1/MGT-2/PAS-3 are downloads.
+  { resource: 'compliance', cell: 'VCEX@all' },
   { resource: 'entity_documents', cell: 'VCE@all' },
   { resource: 'board_documents', cell: 'VCE@all' },
   { resource: 'group', cell: 'V@all' },

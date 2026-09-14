@@ -440,6 +440,13 @@ export interface HolderView {
   residency: Residency;
   investmentBasis: InvestmentBasis | null;
   status: 'active' | 'ceased';
+  /** MGT-1 fields (Rule 3) — recorded when known, blank otherwise. */
+  address: string | null;
+  occupation: string | null;
+  nationality: string | null;
+  guardianOrSpouseName: string | null;
+  /** Rule 9B: this holder's demat account, when their holding is dematerialised. */
+  dematAccount: Record<string, unknown> | null;
 }
 
 export interface ShareTransactionView {
@@ -923,4 +930,117 @@ export interface GroupComplianceRowView {
   publishedAt: string;
   staleSeconds: number;
   stale: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Filings, demat, FEMA (equity-portal plan §6 phase 6a)
+// ---------------------------------------------------------------------------
+
+export const FILING_FORMS = [
+  'MGT-1', 'MGT-2', 'PAS-3', 'SH-4', 'SH-7', 'MGT-14', 'MGT-7', 'MGT-7A',
+  'PAS-6', 'FC-GPR', 'FC-TRS', 'FLA', 'other',
+] as const;
+export type FilingForm = (typeof FILING_FORMS)[number];
+
+export const FILING_FORM_LABELS: Record<FilingForm, string> = {
+  'MGT-1': 'MGT-1 — register of members',
+  'MGT-2': 'MGT-2 — register of debenture holders',
+  'PAS-3': 'PAS-3 — return of allotment',
+  'SH-4': 'SH-4 — securities transfer form',
+  'SH-7': 'SH-7 — notice of change in share capital',
+  'MGT-14': 'MGT-14 — filing of resolutions',
+  'MGT-7': 'MGT-7 — annual return',
+  'MGT-7A': 'MGT-7A — annual return (small company)',
+  'PAS-6': 'PAS-6 — reconciliation of share capital audit report',
+  'FC-GPR': 'FC-GPR — foreign investment allotment report',
+  'FC-TRS': 'FC-TRS — foreign investment transfer report',
+  FLA: 'FLA — foreign liabilities and assets return',
+  other: 'Other',
+};
+
+export const FILING_STATUSES = ['due', 'filed', 'not_required'] as const;
+export type FilingStatus = (typeof FILING_STATUSES)[number];
+
+export interface FilingView {
+  id: string;
+  recordCode: string;
+  form: FilingForm;
+  relatedType: string | null;
+  relatedId: string | null;
+  periodOrEvent: string;
+  srn: string | null;
+  filedOn: string | null;
+  dueOn: string | null;
+  status: FilingStatus;
+  note: string | null;
+  recordedByPartyId: string;
+  createdAt: string;
+}
+
+export interface Mgt1Row {
+  folioNumber: string;
+  holderName: string;
+  address: string;
+  email: string;
+  panOrCin: string;
+  guardianOrSpouseName: string;
+  occupation: string;
+  nationality: string;
+  becameMemberOn: string;
+  ceasedOn: string;
+  distinctiveNumbers: string;
+  certificateNumbers: string;
+  nominalValue: number | null;
+  amountPaidUp: number | null;
+  lockIn: string;
+  remarks: string;
+}
+
+export interface Pas3Row {
+  holderName: string;
+  address: string;
+  pan: string;
+  nationality: string;
+  shareClassName: string;
+  count: number;
+  nominalValue: number | null;
+  premium: number | null;
+  total: number | null;
+  consideration: string;
+  effectiveOn: string;
+}
+
+export interface Sh4Data {
+  companyLegalName: string;
+  companyCin: string | null;
+  transactionRecordCode: string;
+  effectiveOn: string | null;
+  transferor: { name: string; folioNumber: string; address: string | null };
+  transferee: { name: string; folioNumber: string; address: string | null };
+  shareClassName: string;
+  distinctiveFrom: string | null;
+  distinctiveTo: string | null;
+  count: number;
+  certificateNumbers: string[];
+  pricePerShare: number | null;
+  consideration: number | null;
+  dematLeg: boolean;
+  stampDuty: number | null;
+  stampDutyNote: string | null;
+}
+
+export interface Pas6ClassFigure {
+  shareClassId: string;
+  shareClassName: string;
+  issuedCount: number;
+  dematCount: number;
+  physicalCount: number;
+  difference: number;
+}
+
+export interface Pas6View {
+  asOf: string;
+  isin: string | null;
+  dematStatus: DematStatus;
+  classes: Pas6ClassFigure[];
 }
