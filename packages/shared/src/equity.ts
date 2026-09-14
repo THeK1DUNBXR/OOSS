@@ -124,6 +124,291 @@ export const ENTITY_DOCUMENT_AUDIENCES = ['shareholders', 'board', 'secretary'] 
 export type EntityDocumentAudience = (typeof ENTITY_DOCUMENT_AUDIENCES)[number];
 
 // ---------------------------------------------------------------------------
+// Rounds, instruments, valuations (equity-portal plan §6 phase 4)
+// ---------------------------------------------------------------------------
+
+export const FUNDING_ROUND_KINDS = [
+  'seed', 'series', 'rights_issue', 'bonus', 'preferential', 'private_placement',
+  'sweat_equity', 'esop_top_up', 'buyback', 'capital_reduction', 'conversion',
+] as const;
+export type FundingRoundKind = (typeof FUNDING_ROUND_KINDS)[number];
+
+export const FUNDING_ROUND_KIND_LABELS: Record<FundingRoundKind, string> = {
+  seed: 'Seed round',
+  series: 'Priced series',
+  rights_issue: 'Rights issue (s.62(1)(a))',
+  bonus: 'Bonus issue (s.63)',
+  preferential: 'Preferential allotment (s.62(1)(c))',
+  private_placement: 'Private placement (s.42)',
+  sweat_equity: 'Sweat equity (s.54)',
+  esop_top_up: 'ESOP pool top-up',
+  buyback: 'Buy-back (s.68)',
+  capital_reduction: 'Reduction of capital (s.66)',
+  conversion: 'Conversion',
+};
+
+export const FUNDING_ROUND_STATUSES = ['draft', 'open', 'closed', 'cancelled'] as const;
+export type FundingRoundStatus = (typeof FUNDING_ROUND_STATUSES)[number];
+
+/**
+ * `ShareClass.conversionTerms` shape (§A). `atOptionOf` names who decides
+ * when it is not automatic; `trigger` is a free sentence for a mandatory
+ * conversion's condition (a qualified financing, an IPO) rather than a coded
+ * enum, because the conditions a term sheet actually writes down do not
+ * reduce to a short list.
+ */
+export interface ConversionTerms {
+  convertsToClassId: string;
+  /** Underlying equity shares per one unit of this class. */
+  ratio: number;
+  priceFloor?: number;
+  byDate?: string;
+  atOptionOf: 'holder' | 'company' | 'mandatory';
+  trigger?: string;
+}
+
+/** `ShareClass.redemptionTerms` shape — RPS and NCD. */
+export interface RedemptionTerms {
+  redeemOn?: string;
+  premium?: number;
+  fromReserves: boolean;
+}
+
+export interface FundingRoundView {
+  id: string;
+  recordCode: string;
+  name: string;
+  kind: FundingRoundKind;
+  status: FundingRoundStatus;
+  openedOn: string | null;
+  closedOn: string | null;
+  preMoneyValuation: number | null;
+  postMoneyValuation: number | null;
+  raised: number | null;
+  pricePerShareByClass: Record<string, number> | null;
+  valuationId: string | null;
+  boardResolutionRef: string | null;
+  shareholderResolutionRef: string | null;
+  mgt14Srn: string | null;
+  pas3Srn: string | null;
+  pas3FiledOn: string | null;
+  offerLetterSerial: string | null;
+  separateBankAccountRef: string | null;
+  offereeCount: number | null;
+  renunciationAllowed: boolean | null;
+  sourceOfBonus: string | null;
+  valuationReportRef: string | null;
+  tribunalOrderRef: string | null;
+  notes: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Scenario modelling — pure, never persisted (§6 phase 4). A proposed round or
+// exit is arithmetic over the live cap table, not a fact about the company;
+// nothing in this section reads or writes a database.
+// ---------------------------------------------------------------------------
+
+export interface ScenarioCapTableRow {
+  holderId: string;
+  holderName: string;
+  shareClassId: string;
+  /** liquidation preference multiple, participating, seniority (0 = paid first) */
+  preference?: { multiple: number; participating: boolean; seniority: number } | null;
+  count: number;
+}
+
+export interface ModelRoundInput {
+  newMoney: number;
+  preMoney: number;
+  newClass: {
+    name: string;
+    liquidationPreferenceMultiple: number;
+    participating: boolean;
+    seniority: number;
+  };
+  /** Percentage of the post-money fully-diluted cap the option pool is topped up to, before the new money is priced in — the standard "pool shuffle". */
+  optionPoolTopUpPct?: number;
+}
+
+export interface ModelRoundHolderRow {
+  holderId: string;
+  holderName: string;
+  before: { count: number; pct: number };
+  after: { count: number; pct: number };
+  dilutionPct: number;
+}
+
+export interface ModelRoundResult {
+  postMoney: number;
+  pricePerShare: number;
+  newShares: number;
+  poolTopUpShares: number;
+  holders: ModelRoundHolderRow[];
+}
+
+/**
+ * A proposed round applied to the live cap table: post-money, the price
+ * implied by it, how many new shares that mints, and — because a pool top-up
+ * is dilutive to everyone except the pool itself — the pool shares minted
+ * before the new money's shares are counted, per the standard mechanic (the
+ * pool top-up dilutes existing holders, not the incoming investor).
+ *
+ * Every existing holder is diluted by exactly the same proportion of the
+ * pre-round total (pro-rata): nobody's *pre-round* pct changes, only what it
+ * becomes of the larger post-round total.
+ */
+export function modelRound(capTable: ScenarioCapTableRow[], input: ModelRoundInput): ModelRoundResult {
+  const preTotal = capTable.reduce((s, r) => s + r.count, 0);
+  const postMoney = input.preMoney + input.newMoney;
+  const pricePerShare = preTotal > 0 && input.preMoney > 0 ? input.preMoney / preTotal : 0;
+
+  // Pool top-up: mint enough pool shares that the pool reaches the target
+  // percentage of the post-round fully-diluted total, funded by diluting the
+  // existing holders (the new investor's shares are priced on top of it).
+  let poolTopUpShares = 0;
+  if (input.optionPoolTopUpPct && input.optionPoolTopUpPct > 0 && pricePerShare > 0) {
+    const targetPct = input.optionPoolTopUpPct / 100;
+    // shares needed so pool / (preTotal + pool) = targetPct, solved for pool.
+    poolTopUpShares = Math.round((targetPct * preTotal) / (1 - targetPct));
+  }
+
+  const preTotalWithPool = preTotal + poolTopUpShares;
+  const newShares = pricePerShare > 0 ? Math.round(input.newMoney / pricePerShare) : 0;
+  const postTotal = preTotalWithPool + newShares;
+
+  const holders: ModelRoundHolderRow[] = capTable.map((r) => {
+    const beforePct = preTotal > 0 ? (r.count / preTotal) * 100 : 0;
+    const afterPct = postTotal > 0 ? (r.count / postTotal) * 100 : 0;
+    return {
+      holderId: r.holderId,
+      holderName: r.holderName,
+      before: { count: r.count, pct: round2(beforePct) },
+      after: { count: r.count, pct: round2(afterPct) },
+      dilutionPct: round2(beforePct - afterPct),
+    };
+  });
+
+  return { postMoney: round2(postMoney), pricePerShare: round2(pricePerShare), newShares, poolTopUpShares, holders };
+}
+
+export interface WaterfallHolderResult {
+  holderId: string;
+  holderName: string;
+  shareClassId: string;
+  /** What the preference stack pays this row before any as-converted sharing. */
+  preferencePayout: number;
+  /** What sharing the remainder as-converted equity pays this row. */
+  commonPayout: number;
+  /** The better of taking the preference or converting to common, per holder — a non-participating holder's own choice. */
+  totalPayout: number;
+  converted: boolean;
+}
+
+export interface WaterfallResult {
+  exitValue: number;
+  rows: WaterfallHolderResult[];
+  /** Anything left over after every class is paid — should be ~0 when the whole exit value clears the stack. */
+  unallocated: number;
+}
+
+/**
+ * Distribution by preference stack at a given exit value: senior classes
+ * (lowest `seniority` number first) are paid their preference — multiple ×
+ * their count's face contribution — before anything reaches common, a
+ * participating class also shares the remainder alongside common, and a
+ * non-participating class takes whichever of (preference) or (as-converted
+ * common share) is larger — the choice a rational holder actually makes.
+ *
+ * `pricePerShare` is the per-share basis the preference multiple applies to
+ * (the price that class was issued at); passed per row via `count`'s implicit
+ * face is not enough on its own, so callers pass it as part of the class's
+ * `preference` block through `issuePricePerShare` on the input row — kept
+ * simple here by taking it as a flat map to avoid growing the row shape
+ * further for a function nothing persists.
+ */
+export function waterfall(
+  capTable: ScenarioCapTableRow[],
+  issuePricePerShareByClass: Record<string, number>,
+  exitValue: number,
+): WaterfallResult {
+  let remaining = exitValue;
+  const totalCommonEquivalent = capTable.reduce((s, r) => s + r.count, 0);
+
+  // Preference classes, senior (lowest seniority number) first.
+  const preferenceRows = capTable
+    .filter((r) => r.preference)
+    .sort((a, b) => (a.preference!.seniority ?? 0) - (b.preference!.seniority ?? 0));
+
+  const preferencePayout = new Map<string, number>();
+  for (const r of preferenceRows) {
+    const key = `${r.holderId}::${r.shareClassId}`;
+    const price = issuePricePerShareByClass[r.shareClassId] ?? 0;
+    const pref = Math.min(remaining, price * r.count * r.preference!.multiple);
+    preferencePayout.set(key, pref);
+    remaining = round2(remaining - pref);
+  }
+
+  // The remainder is shared as-converted equity among common holders and any
+  // participating preference holders (who take their preference AND share
+  // the remainder alongside common).
+  const participatingHolders = new Set(
+    capTable.filter((r) => r.preference?.participating).map((r) => `${r.holderId}::${r.shareClassId}`),
+  );
+  const commonHolders = capTable.filter((r) => !r.preference || participatingHolders.has(`${r.holderId}::${r.shareClassId}`));
+  const commonTotal = commonHolders.reduce((s, r) => s + r.count, 0);
+
+  const commonPayout = new Map<string, number>();
+  for (const r of commonHolders) {
+    const key = `${r.holderId}::${r.shareClassId}`;
+    const share = commonTotal > 0 ? (r.count / commonTotal) * remaining : 0;
+    commonPayout.set(key, round2(share));
+  }
+  const allocatedToCommon = [...commonPayout.values()].reduce((s, v) => s + v, 0);
+  remaining = round2(remaining - allocatedToCommon);
+
+  // As-converted comparison for a non-participating class: what it would get
+  // if it gave up the preference and shared the WHOLE remaining pool
+  // (preference stack unwound above it) as if it were common from the start.
+  const asConvertedTotal = totalCommonEquivalent;
+  const rows: WaterfallHolderResult[] = capTable.map((r) => {
+    const key = `${r.holderId}::${r.shareClassId}`;
+    const pref = preferencePayout.get(key) ?? 0;
+    const common = commonPayout.get(key) ?? 0;
+    const nonParticipating = Boolean(r.preference && !r.preference.participating);
+
+    if (!nonParticipating) {
+      return {
+        holderId: r.holderId,
+        holderName: r.holderName,
+        shareClassId: r.shareClassId,
+        preferencePayout: round2(pref),
+        commonPayout: round2(common),
+        totalPayout: round2(pref + common),
+        converted: false,
+      };
+    }
+
+    const asConvertedShare = asConvertedTotal > 0 ? (r.count / asConvertedTotal) * exitValue : 0;
+    const takePreference = pref >= asConvertedShare;
+    return {
+      holderId: r.holderId,
+      holderName: r.holderName,
+      shareClassId: r.shareClassId,
+      preferencePayout: round2(takePreference ? pref : 0),
+      commonPayout: round2(takePreference ? 0 : asConvertedShare),
+      totalPayout: round2(takePreference ? pref : asConvertedShare),
+      converted: !takePreference,
+    };
+  });
+
+  return { exitValue: round2(exitValue), rows, unallocated: round2(remaining) };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
 // View shapes — what the API hands the web, money already `Withheld` where
 // the viewer lacks `financial`.
 // ---------------------------------------------------------------------------
@@ -138,6 +423,7 @@ export interface ShareClassView {
   votesPerShare: number;
   rights: Record<string, unknown>;
   conversionTerms: Record<string, unknown> | null;
+  redemptionTerms: Record<string, unknown> | null;
   authorisedCount: number | null;
   status: 'active' | 'closed';
 }

@@ -210,6 +210,9 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'eq_share_classes', label: 'Share Classes', icon: 'package', path: '/equity/share-classes', group: 'equity', position: 83, requiredPermission: 'share_classes:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['equity', 'preference', 'instruments'] },
   { nodeKey: 'eq_valuations', label: 'Valuations', icon: 'trending', path: '/equity/valuations', group: 'equity', position: 84, requiredPermission: 'valuations:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['409a', 'fmv', 'fair value'] },
   { nodeKey: 'eq_documents', label: 'Entity Documents', icon: 'file', path: '/equity/documents', group: 'equity', position: 85, requiredPermission: 'entity_documents:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['certificates', 'resolutions', 'filings'] },
+  // Rounds, instruments, valuations, scenarios (phase 4).
+  { nodeKey: 'eq_rounds', label: 'Rounds', icon: 'trending', path: '/equity/rounds', group: 'equity', position: 86, requiredPermission: 'rounds:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['funding round', 'preferential', 'private placement', 'bonus', 'rights issue', 'buyback'] },
+  { nodeKey: 'eq_scenarios', label: 'Scenarios', icon: 'chart', path: '/equity/scenarios', group: 'equity', position: 87, requiredPermission: 'cap_table:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['dilution', 'waterfall', 'modelling', 'what if'] },
 ];
 
 /**

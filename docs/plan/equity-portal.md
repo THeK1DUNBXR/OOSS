@@ -688,3 +688,73 @@ when the first subsidiary is formed.
 - Ask before: adding a cross-tenant read, storing a full bank account or PAN
   in plain text where the platform elsewhere masks it, or any e-sign or
   email provider dependency.
+
+---
+
+## Phase 4 — as built
+
+Ships `FundingRound`, conversion/redemption/buy-back/bonus as `ShareTransaction`
+rows through the existing register machinery, a rights-issue offer/accept/
+renounce path, valuation-round linkage, and the pure scenario functions —
+`modelRound`/`waterfall` in `@kaizen/shared`, exposed as
+`POST /equity/scenarios/round|waterfall`.
+
+**Where it differs from the brief, and why.**
+
+- **One `count` column, two legs.** `ShareTransaction.count` already named
+  the allotted (target) side for an ordinary row; a conversion at a ratio
+  other than 1:1 needs a *different* number for the side being retired. Two
+  new columns carry that rather than reshaping the ledger: `fromShareClassId`
+  (the source class) and a `meta Json?` field carrying `{ sourceCount }`.
+  Every place that sums a holder's balance or the cap table (`effectiveBalance`,
+  `capTable`, `holdingsFor`, the scenario endpoints' own live cap-table read,
+  and the buy-back tests' paid-up-capital sum) now asks a shared
+  `outgoingCount()` helper for the retiring amount instead of trusting `count`
+  — a conversion is the one type where they disagree.
+- **Free reserves is a stated proxy, not a statutory figure.** The books carry
+  no ledger account that distinguishes a free reserve from a statutory one,
+  and no separate tracking of dividends declared out of reserves. The proxy
+  used everywhere this plan asks for free reserves (the bonus gate, the
+  buy-back 10%/25%/2:1 tests) is cumulative trading profit and loss across
+  every period the books have ever recorded (`freeReservesProxy` in
+  `domains/rounds.ts`) — refused as **not measured** when the books carry no
+  transaction to sum, per the house rule that "not measured" is never zero,
+  and named as a proxy in every message that cites it.
+- **Rights-issue offers are not a new table.** An offer, its acceptance and
+  its renunciation are small, per-holder, and referenced from nowhere outside
+  the round they were made under, so they are held as a JSON array under
+  `FundingRound.pricePerShareByClass.__rightsOffers` rather than a fifth
+  model. Acceptance still spawns a real `ShareTransaction` allotment through
+  the ordinary propose → approve → effective path; only the offer bookkeeping
+  itself is off-register.
+- **Rounds gate on `rounds:approve`, not a bespoke policy.** Opening and
+  closing a round carry statutory consequences (a valuer's report, the
+  200-offeree count, the PAS-3 clock) squarely comparable to approving a
+  ledger entry, so they reuse the existing `finance_head`/`chairman`
+  `share_ledger:approve` split rather than adding a second approval-gate
+  policy: `company_secretary` proposes and keeps the round's record (`VCE`),
+  `finance_head` and the chairman open, close and cancel it (`approve`),
+  `director` reads it.
+- **The 10%/25%/2:1 tests run at `proposeBuyback`, not only at `openRound`.**
+  `openRound` on a `buyback` round checks only that free reserves are
+  measurable — the specific ceilings depend on the value of the buy-back
+  being proposed, which does not exist yet when the round opens. Each
+  `proposeBuyback` call re-derives paid-up capital, securities premium, free
+  reserves and total debt (`Loan`, via the same amortisation schedule the
+  books use) and refuses by name against whichever test the proposed value
+  or the tenant's current gearing fails.
+- **`waterfall`'s as-converted comparison is exit-value-relative, not
+  remainder-relative.** A non-participating class compares its preference
+  against what it would receive by converting and sharing the *whole* exit
+  value as common from the start (the comparison a rational holder actually
+  makes), not against a share of whatever happens to be left after the
+  preference stack above it is paid — the two differ once more than one
+  preference class is stacked, and the exit-value comparison is the one that
+  produces the holder's genuinely better outcome.
+
+Tests: `apps/api/src/tests/equityRounds.test.ts`, `EQT-RND-001` through
+`EQT-RND-008`, run inside a subsidiary tenant this file creates for itself in
+`beforeAll` — the free-reserves and s.42 offeree-count assertions need books
+this suite controls completely rather than whatever another suite left behind
+in the shared `kaizen` tenant (`vitest.config.ts` runs every file serially
+against one database).

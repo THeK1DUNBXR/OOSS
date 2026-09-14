@@ -1971,18 +1971,21 @@ model ShareClass {
   tenantId   String
   recordCode String
 
-  name      String
-  kind      String // equity | preference | debenture
-  instrument String // equity | sweat_equity | ccps | ocps | rps | ccd | ocd | ncd | convertible_note | warrant | option | phantom
-  faceValue Decimal @db.Decimal(18, 2)
-  votesPerShare Decimal @default(1) @db.Decimal(24, 6)
+  name            String
+  kind            String // equity | preference | debenture
+  instrument      String // equity | sweat_equity | ccps | ocps | rps | ccd | ocd | ncd | convertible_note | warrant | option | phantom
+  faceValue       Decimal  @db.Decimal(18, 2)
+  votesPerShare   Decimal  @default(1) @db.Decimal(24, 6)
   /// Liquidation preference, anti-dilution, pro-rata, board seat, information
   /// rights, dividend rate — shaped per instrument, so a free-form object
   /// rather than a column each.
-  rights           Json     @default("{}")
-  conversionTerms  Json?
-  authorisedCount  Decimal? @db.Decimal(24, 6)
-  status           String   @default("active") // active | closed
+  rights          Json     @default("{}")
+  conversionTerms Json?
+  /// RPS and NCD only: `{ redeemOn?, premium?, fromReserves }` — see
+  /// `RedemptionTerms` in `@kaizen/shared`.
+  redemptionTerms Json?
+  authorisedCount Decimal? @db.Decimal(24, 6)
+  status          String   @default("active") // active | closed
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -2004,33 +2007,33 @@ model Holder {
   tenantId   String
   recordCode String
 
-  kind             String // person | organization | entity
-  personId         String?
-  organizationId   String?
+  kind           String // person | organization | entity
+  personId       String?
+  organizationId String?
   /// The holding tenant, when this holder IS another group entity. Refused at
   /// creation when that tenant has this tenant as an ancestor in its own
   /// `parentTenantId` chain (s.19: a subsidiary may not hold its holding's
   /// shares) — see `assertNotHoldingsAncestor` in `domains/equity.ts`, the one
   /// place in this domain the unscoped tenant table is read, because the check
   /// is structural on tenants rather than a read of this tenant's own data.
-  heldByTenantId   String?
+  heldByTenantId String?
 
   /// Generator-assigned per tenant: `F-00001`.
   folioNumber String
 
-  residency        String  @default("resident") // resident | non_resident
+  residency       String  @default("resident") // resident | non_resident
   /// Required when `residency` is `non_resident` — decides the FEMA calendar
   /// (repatriable: FC-GPR/FC-TRS/FLA; non_repatriable: treated as resident
   /// money under Schedule IV).
-  investmentBasis  String?
+  investmentBasis String?
   /// Regulated, like an employee's PAN — named `panNumber` rather than `pan`
   /// so it rides the same `REGULATED_EXCLUDED_FIELDS` exclusion every other
   /// statutory identifier in this platform already gets, with no change to
   /// the shared permission list.
-  panNumber        String?
-  nominee          Json?
-  jointHolders     Json?
-  status           String  @default("active") // active | ceased
+  panNumber       String?
+  nominee         Json?
+  jointHolders    Json?
+  status          String  @default("active") // active | ceased
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -2067,7 +2070,22 @@ model ShareTransaction {
   distinctiveTo   BigInt?
 
   effectiveOn DateTime
+  /// The round this transaction was struck under — a real reference (phase 4)
+  /// to `FundingRound`, not just a free string; nullable because the phase 1
+  /// ledger (an ordinary allotment or transfer) never needs a round.
   roundId     String?
+  round       FundingRound? @relation(fields: [roundId], references: [id])
+
+  /// Conversion only: the convertible class the source holding is retired
+  /// from — `shareClassId` on a conversion row names the *target* class it is
+  /// allotted into, so the two ends of `conversionTerms` each have a column.
+  fromShareClassId String?
+
+  /// Buy-back only: when the bought-back shares were extinguished. s.68(7)
+  /// gives seven days from completion; `makeEffective` on a buyback writes
+  /// this immediately rather than waiting for a second act, because nothing
+  /// further is needed once the holding is retired.
+  extinguishedOn DateTime?
 
   /// The `Transaction` (kind: equity) that already lifted cash for this
   /// allotment. Absent + a positive price ⇒ `pendingConsideration` (§3.6).
@@ -2084,6 +2102,11 @@ model ShareTransaction {
 
   note      String?
   documents Json    @default("[]")
+  /// Structured extra data a transaction type needs and no other type does —
+  /// `{ fromReserves }` on a redemption, `{ ratioNumerator, ratioDenominator }`
+  /// on a bonus — kept off `documents` (file references) and off dedicated
+  /// columns (most rows never use it).
+  meta      Json?
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -2094,6 +2117,7 @@ model ShareTransaction {
   @@index([tenantId, shareClassId, status])
   @@index([tenantId, toHolderId])
   @@index([tenantId, fromHolderId])
+  @@index([tenantId, roundId])
   @@map("share_transactions")
 }
 
@@ -2127,7 +2151,7 @@ model ShareCertificate {
 
   /// Snapshotted at issue, so the document reads the same after the
   /// signatories on file change (§3.7: figures and names are snapshotted).
-  signatories       Json    @default("[]")
+  signatories        Json   @default("[]")
   holderNameSnapshot String
 
   stampDutyPaid   Decimal?  @db.Decimal(18, 2)
@@ -2153,12 +2177,17 @@ model Valuation {
   asOf  DateTime
   basis String // registered_valuer | merchant_banker | ca_certificate | internal | round_price
 
-  valuerName       String?
-  perShareByClass  Json
-  equityValue      Decimal? @db.Decimal(18, 2)
-  reportRef        String?
-  validUntil       DateTime?
-  note             String?
+  valuerName      String?
+  perShareByClass Json
+  equityValue     Decimal?  @db.Decimal(18, 2)
+  reportRef       String?
+  validUntil      DateTime?
+  note            String?
+
+  /// The round this valuation was recorded for, when it was — a preferential
+  /// or private-placement round refuses to open without one on this basis
+  /// dated before the opening (Rule 13, s.42).
+  roundId String?
 
   createdById String?
   deletedAt   DateTime?
@@ -2167,7 +2196,84 @@ model Valuation {
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, asOf])
+  @@index([tenantId, roundId])
   @@map("valuations")
+}
+
+/// A round: the container an allotment, a bonus, a rights offer, a buy-back or
+/// a capital reduction is struck under, carrying the statutory prerequisites
+/// its kind needs before it may open and the totals `closeRound` computes
+/// once every transaction under it has gone effective (§6 phase 4).
+model FundingRound {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name   String
+  /// seed | series | rights_issue | bonus | preferential | private_placement |
+  /// sweat_equity | esop_top_up | buyback | capital_reduction | conversion
+  kind   String
+  /// draft | open | closed | cancelled
+  status String @default("draft")
+
+  openedOn DateTime?
+  closedOn DateTime?
+
+  preMoneyValuation    Decimal? @db.Decimal(18, 2)
+  postMoneyValuation   Decimal? @db.Decimal(18, 2)
+  /// What was actually raised, computed by `closeRound` from the round's own
+  /// effective allotments — never entered by hand.
+  raised               Decimal? @db.Decimal(18, 2)
+  /// `{ [shareClassId]: pricePerShare }` — the price each class is offered at
+  /// under this round, distinct from any one transaction's own price so a
+  /// round can be quoted before the first allotment is proposed against it.
+  pricePerShareByClass Json?
+
+  /// The registered-valuer report a preferential/private-placement round must
+  /// carry before it opens (Rule 13).
+  valuationId String?
+
+  boardResolutionRef       String?
+  shareholderResolutionRef String?
+  mgt14Srn                 String?
+  pas3Srn                  String?
+  pas3FiledOn              DateTime?
+  /// PAS-4 offer-letter serial — private placement only (s.42).
+  offerLetterSerial        String?
+  /// The separate bank account s.42 requires application money to land in —
+  /// private placement only.
+  separateBankAccountRef   String?
+  /// How many persons have been offered shares under this round — counted
+  /// against the 200-person s.42 ceiling across every private-placement round
+  /// in the financial year, not just this one.
+  offereeCount             Int?
+  /// Rights issue only (s.62(1)(a)): whether an entitlement may be renounced
+  /// to a named third party rather than taken up or let lapse.
+  renunciationAllowed      Boolean?
+  /// Bonus only (s.63): free_reserves | securities_premium |
+  /// capital_redemption_reserve — refused unless the named source is actually
+  /// measured and positive.
+  sourceOfBonus            String?
+  /// Sweat equity only (s.54): the valuation report a sweat-equity allotment
+  /// needs, distinct from `valuationId` because a sweat-equity report values
+  /// the consideration (IP, know-how) rather than the company.
+  valuationReportRef       String?
+  /// Capital reduction only (s.66): the tribunal order this is recorded
+  /// against — the act itself is not workflowed, only recorded.
+  tribunalOrderRef         String?
+
+  notes String?
+
+  transactions ShareTransaction[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, kind])
+  @@map("funding_rounds")
 }
 
 /// A document published to holders, the board, or the secretary — a
@@ -2182,8 +2288,8 @@ model EntityDocument {
   tenantId   String
   recordCode String
 
-  title String
-  kind  String // certificate | resolution | valuation_report | agreement | filing | other
+  title    String
+  kind     String // certificate | resolution | valuation_report | agreement | filing | other
   /// Who this is published to. A shareholder sees `shareholders` only; a
   /// director also `board`; the secretary (and chairman) every audience.
   audience String // shareholders | board | secretary
@@ -2332,12 +2438,12 @@ model InvoiceLine {
   invoiceId String
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  offeringId    String?
+  offeringId      String?
   /// The course being billed, where this line is education revenue. What a
   /// course costs, the tax it attracts and the SAC it is classified under are
   /// facts about the course, so an employee raising the invoice picks the
   /// course and does not have to know any of them.
-  courseId      String?
+  courseId        String?
   /// The student's place on that course.
   ///
   /// The line already names the course and the invoice already names the
@@ -2348,18 +2454,18 @@ model InvoiceLine {
   ///
   /// Checked on the way in: the enrolment has to belong to the person the
   /// invoice is addressed to, and to the course the line names.
-  enrollmentId  String?
-  description   String
-  quantity      Int     @default(1)
+  enrollmentId    String?
+  description     String
+  quantity        Int     @default(1)
   /// The price of one of whatever this line is, before any discount.
-  unitPrice Decimal @default(0) @db.Decimal(18, 2)
+  unitPrice       Decimal @default(0) @db.Decimal(18, 2)
   /// The extended value after the line's own discount — unitPrice x quantity,
   /// less `discountAmount`. This is the taxable value: what GST is computed
   /// on, and what the invoice actually bills for this line. The pre-discount
   /// figure (`unitPrice x quantity`) is never stored separately because it is
   /// always recoverable from those two columns; a course fee before a
   /// discount is a derived fact, not a second source of truth to keep in step.
-  amount Decimal @db.Decimal(18, 2)
+  amount          Decimal @db.Decimal(18, 2)
   /// The discount on this line, entered directly in rupees or derived from
   /// `discountPercent` against `unitPrice x quantity` — whichever the counter
   /// typed, the other is back-computed so the two never disagree.
@@ -2367,9 +2473,9 @@ model InvoiceLine {
   discountPercent Decimal @default(0) @db.Decimal(5, 2)
   /// The order the lines were entered in, so an edited invoice does not
   /// reshuffle itself on reload.
-  position Int @default(0)
+  position        Int     @default(0)
   /// Derived from OFFERING.defaultRevenueTreatment — never asked of sales per deal.
-  revenueMethod String
+  revenueMethod   String
 
   /// GST per line, because a single invoice can carry goods and services at
   /// different rates and a single invoice-level rate would misstate both.

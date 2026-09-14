@@ -123,6 +123,8 @@ export const ALL_RESOURCES = [
   'cap_table', 'share_classes', 'holders', 'share_ledger', 'certificates',
   'valuations', 'entity_documents', 'board_meetings', 'resolutions',
   'board_documents', 'compliance', 'group', 'holdings',
+  // Rounds, instruments, valuations, scenarios (phase 4).
+  'rounds',
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */
@@ -224,6 +226,7 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'compliance', cell: '-' },
   { resource: 'group', cell: '-' },
   { resource: 'holdings', cell: '-' },
+  { resource: 'rounds', cell: '-' },
 ];
 
 /**
@@ -325,6 +328,9 @@ const financeHead: GrantSpec[] = [
   { resource: 'share_ledger', cell: 'V,approve@all' },
   { resource: 'cap_table', cell: 'V@all' },
   { resource: 'valuations', cell: 'VCE@all' },
+  // Rounds (phase 4): the finance head approves what the secretary proposes,
+  // the same split the ledger already keeps.
+  { resource: 'rounds', cell: 'V,approve@all' },
 ];
 
 /**
@@ -422,6 +428,7 @@ const employee: GrantSpec[] = [
   { resource: 'compliance', cell: '-' },
   { resource: 'group', cell: '-' },
   { resource: 'holdings', cell: '-' },
+  { resource: 'rounds', cell: '-' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -461,6 +468,9 @@ const director: GrantSpec[] = [
   { resource: 'board_documents', cell: 'V@all' },
   { resource: 'cap_table', cell: 'V@all' },
   { resource: 'group', cell: 'V@all' },
+  // Rounds (phase 4): a director reads what round a class is under and its
+  // statutory prerequisites, never proposes or approves one.
+  { resource: 'rounds', cell: 'V@all' },
 ];
 
 const companySecretary: GrantSpec[] = [
@@ -476,6 +486,7 @@ const companySecretary: GrantSpec[] = [
   { resource: 'entity_documents', cell: 'VCE@all' },
   { resource: 'board_documents', cell: 'VCE@all' },
   // No `approve` anywhere — the whole point of the role (§3.4).
+  { resource: 'rounds', cell: 'VCE@all' },
 ];
 
 export const ROLE_GRANT_MATRIX: RoleGrants = {

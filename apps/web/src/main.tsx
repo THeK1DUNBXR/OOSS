@@ -21,6 +21,8 @@ import { ShareClasses } from './pages/equity/ShareClasses.js';
 import { Valuations } from './pages/equity/Valuations.js';
 import { Documents as EquityDocuments } from './pages/equity/Documents.js';
 import { CertificateDocument } from './pages/equity/CertificateDocument.js';
+import { Rounds } from './pages/equity/Rounds.js';
+import { Scenarios } from './pages/equity/Scenarios.js';
 import { CommandCenter } from './pages/CommandCenter.js';
 import { Workspace, Exceptions } from './pages/Workspace.js';
 import { Pipeline } from './pages/Pipeline.js';
@@ -156,6 +158,8 @@ function Routed() {
         <Route path="/equity/valuations" element={<Valuations />} />
         <Route path="/equity/documents" element={<EquityDocuments />} />
         <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
+        <Route path="/equity/rounds" element={<Rounds />} />
+        <Route path="/equity/scenarios" element={<Scenarios />} />
 
         <Route path="/business" element={<Executive />} />
         <Route path="/data/import" element={<ImportPage />} />

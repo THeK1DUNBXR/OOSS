@@ -328,6 +328,27 @@ export const EVENTS = {
   CERTIFICATE_CANCELLED: 'kz.eqt.certificate.cancelled',
   VALUATION_RECORDED: 'kz.eqt.valuation.recorded',
   ENTITY_DOCUMENT_PUBLISHED: 'kz.eqt.document.published',
+
+  // --- Rounds, instruments, valuations, scenarios (eqt), phase 4 -----------
+  ROUND_CREATED: 'kz.eqt.round.created',
+  ROUND_OPENED: 'kz.eqt.round.opened',
+  ROUND_CLOSED: 'kz.eqt.round.closed',
+  ROUND_CANCELLED: 'kz.eqt.round.cancelled',
+  CONVERSION_PROPOSED: 'kz.eqt.conversion.proposed',
+  CONVERSION_APPROVED: 'kz.eqt.conversion.approved',
+  CONVERSION_EFFECTIVE: 'kz.eqt.conversion.effective',
+  REDEMPTION_PROPOSED: 'kz.eqt.redemption.proposed',
+  REDEMPTION_APPROVED: 'kz.eqt.redemption.approved',
+  REDEMPTION_EFFECTIVE: 'kz.eqt.redemption.effective',
+  BUYBACK_PROPOSED: 'kz.eqt.buyback.proposed',
+  BUYBACK_APPROVED: 'kz.eqt.buyback.approved',
+  BUYBACK_EFFECTIVE: 'kz.eqt.buyback.effective',
+  BONUS_PROPOSED: 'kz.eqt.bonus.proposed',
+  BONUS_APPROVED: 'kz.eqt.bonus.approved',
+  BONUS_EFFECTIVE: 'kz.eqt.bonus.effective',
+  RIGHTS_OFFERED: 'kz.eqt.rights.offered',
+  RIGHTS_ACCEPTED: 'kz.eqt.rights.accepted',
+  RIGHTS_RENOUNCED: 'kz.eqt.rights.renounced',
 } as const;
 
 /**

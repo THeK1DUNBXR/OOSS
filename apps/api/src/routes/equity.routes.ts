@@ -16,6 +16,12 @@ import {
   recordValuation, listValuations,
   publishDocument, listDocuments,
 } from '../domains/equity.js';
+import {
+  createRound, updateRound, listRounds, round, openRound, closeRound, cancelRound,
+  proposeConversion, proposeRedemption, proposeBuyback, proposeBonus,
+  createRightsOffers, listRightsOffers, acceptRightsOffer, renounceRightsOffer,
+  scenarioRound, scenarioWaterfall,
+} from '../domains/rounds.js';
 
 const router = Router();
 
@@ -38,6 +44,7 @@ router.post(
         votesPerShare: z.number().positive().optional(),
         rights: z.record(z.unknown()).optional(),
         conversionTerms: z.record(z.unknown()).nullish(),
+        redemptionTerms: z.record(z.unknown()).nullish(),
         authorisedCount: z.number().nonnegative().nullish(),
       })
       .parse(req.body);
@@ -52,6 +59,7 @@ router.patch(
       .object({
         rights: z.record(z.unknown()).optional(),
         conversionTerms: z.record(z.unknown()).nullish(),
+        redemptionTerms: z.record(z.unknown()).nullish(),
         authorisedCount: z.number().nonnegative().nullish(),
         status: z.enum(['active', 'closed']).optional(),
       })
@@ -193,6 +201,7 @@ router.post(
         reportRef: z.string().nullish(),
         validUntil: z.string().nullish(),
         note: z.string().nullish(),
+        roundId: z.string().nullish(),
       })
       .parse(req.body);
     return recordValuation(body);
@@ -217,6 +226,174 @@ router.post(
       })
       .parse(req.body);
     return publishDocument(body);
+  }),
+);
+
+// ---- Rounds (phase 4) ---------------------------------------------------------
+
+const roundKindEnum = z.enum([
+  'seed', 'series', 'rights_issue', 'bonus', 'preferential', 'private_placement',
+  'sweat_equity', 'esop_top_up', 'buyback', 'capital_reduction', 'conversion',
+]);
+
+const roundInputSchema = z.object({
+  name: z.string().min(1).optional(),
+  kind: roundKindEnum.optional(),
+  preMoneyValuation: z.number().nonnegative().nullish(),
+  pricePerShareByClass: z.record(z.number()).nullish(),
+  valuationId: z.string().nullish(),
+  boardResolutionRef: z.string().nullish(),
+  shareholderResolutionRef: z.string().nullish(),
+  mgt14Srn: z.string().nullish(),
+  offerLetterSerial: z.string().nullish(),
+  separateBankAccountRef: z.string().nullish(),
+  offereeCount: z.number().int().nonnegative().nullish(),
+  renunciationAllowed: z.boolean().nullish(),
+  sourceOfBonus: z.enum(['free_reserves', 'securities_premium', 'capital_redemption_reserve']).nullish(),
+  valuationReportRef: z.string().nullish(),
+  tribunalOrderRef: z.string().nullish(),
+  notes: z.string().nullish(),
+});
+
+router.get('/rounds', handler(async () => ({ items: await listRounds() })));
+router.get('/rounds/:id', handler(async (req) => round(req.params.id)));
+
+router.post(
+  '/rounds',
+  handler(async (req) => {
+    const body = roundInputSchema.required({ name: true, kind: true }).parse(req.body);
+    return createRound(body);
+  }),
+);
+
+router.patch('/rounds/:id', handler(async (req) => updateRound(req.params.id, roundInputSchema.parse(req.body))));
+
+router.post('/rounds/:id/open', handler(async (req) => openRound(req.params.id)));
+router.post('/rounds/:id/close', handler(async (req) => closeRound(req.params.id)));
+router.post('/rounds/:id/cancel', handler(async (req) => cancelRound(req.params.id)));
+
+router.post(
+  '/rounds/:id/bonus',
+  handler(async (req) => {
+    const body = z
+      .object({
+        shareClassId: z.string(),
+        ratioNumerator: z.number().positive(),
+        ratioDenominator: z.number().positive(),
+        effectiveOn: z.string(),
+      })
+      .parse(req.body);
+    return proposeBonus({ roundId: req.params.id, ...body });
+  }),
+);
+
+router.post(
+  '/rounds/:id/rights',
+  handler(async (req) => {
+    const body = z
+      .object({ shareClassId: z.string(), ratioNumerator: z.number().positive(), ratioDenominator: z.number().positive() })
+      .parse(req.body);
+    return createRightsOffers({ roundId: req.params.id, ...body });
+  }),
+);
+
+router.get('/rounds/:id/rights', handler(async (req) => listRightsOffers(req.params.id)));
+
+router.post(
+  '/rights/:offerId/accept',
+  handler(async (req) => {
+    const body = z.object({ roundId: z.string(), count: z.number().positive() }).parse(req.body);
+    return acceptRightsOffer(body.roundId, req.params.offerId, body.count);
+  }),
+);
+
+router.post(
+  '/rights/:offerId/renounce',
+  handler(async (req) => {
+    const body = z.object({ roundId: z.string(), toHolderId: z.string() }).parse(req.body);
+    return renounceRightsOffer(body.roundId, req.params.offerId, body.toHolderId);
+  }),
+);
+
+// ---- Instruments: conversions, redemptions, buy-backs (phase 4) ---------------
+
+router.post(
+  '/ledger/conversions',
+  handler(async (req) => {
+    const body = z
+      .object({
+        holderId: z.string(),
+        fromClassId: z.string(),
+        count: z.number().positive(),
+        effectiveOn: z.string(),
+        roundId: z.string().nullish(),
+      })
+      .parse(req.body);
+    return proposeConversion(body);
+  }),
+);
+
+router.post(
+  '/ledger/redemptions',
+  handler(async (req) => {
+    const body = z
+      .object({
+        holderId: z.string(),
+        shareClassId: z.string(),
+        count: z.number().positive(),
+        effectiveOn: z.string(),
+        fromReserves: z.boolean(),
+        roundId: z.string().nullish(),
+      })
+      .parse(req.body);
+    return proposeRedemption(body);
+  }),
+);
+
+router.post(
+  '/ledger/buybacks',
+  handler(async (req) => {
+    const body = z
+      .object({
+        roundId: z.string(),
+        holderId: z.string(),
+        shareClassId: z.string(),
+        count: z.number().positive(),
+        pricePerShare: z.number().nonnegative(),
+        effectiveOn: z.string(),
+      })
+      .parse(req.body);
+    return proposeBuyback(body);
+  }),
+);
+
+// ---- Scenarios (phase 4) — computed live, never persisted (EQT-RND-008) -------
+
+router.post(
+  '/scenarios/round',
+  handler(async (req) => {
+    const body = z
+      .object({
+        newMoney: z.number().nonnegative(),
+        preMoney: z.number().nonnegative(),
+        newClass: z.object({
+          name: z.string().min(1),
+          liquidationPreferenceMultiple: z.number().nonnegative(),
+          participating: z.boolean(),
+          seniority: z.number().int(),
+        }),
+        optionPoolTopUpPct: z.number().nonnegative().max(100).optional(),
+      })
+      .parse(req.body);
+    return scenarioRound(body);
+  }),
+);
+
+router.post(
+  '/scenarios/waterfall',
+  handler(async (req) => {
+    const body = z.object({ exitValue: z.number().nonnegative() }).parse(req.body);
+    return scenarioWaterfall(body.exitValue);
   }),
 );
 
