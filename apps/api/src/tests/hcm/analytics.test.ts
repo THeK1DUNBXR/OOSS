@@ -476,17 +476,6 @@ describe('HCM-ANALYTICS-012 — engagement eNPS', () => {
           data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-${i}`, answers: [{ questionId: 'q1', value }] },
         });
       }
-      void (async () => {
-        // (kept for structural symmetry with the loop above — no-op)
-      })();
-      await (async () => {})();
-      // placeholder removed below
-      await prisma.surveyResponse.create({
-        data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-b`, answers: [{ questionId: 'q1', value: 10 }] },
-      });
-      await prisma.surveyResponse.create({
-        data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-c`, answers: [{ questionId: 'q1', value: 3 }] },
-      });
 
       const after = await engagementEnps();
       expect(after.measured).toBe(true);
