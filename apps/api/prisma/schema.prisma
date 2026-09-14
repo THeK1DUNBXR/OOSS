@@ -2019,17 +2019,23 @@ model InvoiceLine {
   enrollmentId  String?
   description   String
   quantity      Int     @default(1)
-  /// The price of one of whatever this line is.
-  ///
-  /// `amount` is the extended value — unitPrice x quantity. They are both
-  /// stored because the line previously carried one figure and a quantity that
-  /// nothing multiplied by: an invoice for three seats at 20,000 totalled
-  /// 20,000, on screen and in the ledger.
-  unitPrice     Decimal @default(0) @db.Decimal(18, 2)
-  amount        Decimal @db.Decimal(18, 2)
+  /// The price of one of whatever this line is, before any discount.
+  unitPrice Decimal @default(0) @db.Decimal(18, 2)
+  /// The extended value after the line's own discount — unitPrice x quantity,
+  /// less `discountAmount`. This is the taxable value: what GST is computed
+  /// on, and what the invoice actually bills for this line. The pre-discount
+  /// figure (`unitPrice x quantity`) is never stored separately because it is
+  /// always recoverable from those two columns; a course fee before a
+  /// discount is a derived fact, not a second source of truth to keep in step.
+  amount Decimal @db.Decimal(18, 2)
+  /// The discount on this line, entered directly in rupees or derived from
+  /// `discountPercent` against `unitPrice x quantity` — whichever the counter
+  /// typed, the other is back-computed so the two never disagree.
+  discountAmount  Decimal @default(0) @db.Decimal(18, 2)
+  discountPercent Decimal @default(0) @db.Decimal(5, 2)
   /// The order the lines were entered in, so an edited invoice does not
   /// reshuffle itself on reload.
-  position      Int     @default(0)
+  position Int @default(0)
   /// Derived from OFFERING.defaultRevenueTreatment — never asked of sales per deal.
   revenueMethod String
 

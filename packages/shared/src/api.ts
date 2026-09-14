@@ -727,6 +727,8 @@ export interface InvoiceLineView {
   quantity: number;
   unitPrice: number | null;
   amount: number | null;
+  discountAmount: number | null;
+  discountPercent: number | null;
   gstRate: number | null;
   taxAmount: number | null;
   hsnSac: string | null;
@@ -806,7 +808,12 @@ export interface InvoiceDocumentView {
     hsnSac: string | null;
     quantity: number;
     unitPrice: number;
+    /** The fee before any discount — unitPrice x quantity. */
+    grossAmount: number;
+    /** The taxable value, after the line's own discount. What tax is charged on. */
     amount: number;
+    discountAmount: number;
+    discountPercent: number;
     gstRate: number;
     taxAmount: number;
     revenueMethod: string;
