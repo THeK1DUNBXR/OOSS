@@ -203,6 +203,11 @@ export const RESOURCES = [
   'compliance',
   'group',
   'holdings',
+  // Rounds, instruments, valuations, scenarios (equity-portal plan §6 phase 4).
+  'rounds',
+  // ESOP (equity-portal plan §5/§6, phase 5).
+  'esop_plans',
+  'option_grants',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

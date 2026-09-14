@@ -20,6 +20,7 @@ import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../dom
 import { ensureWinLossReview } from '../domains/winLoss.js';
 import { computeSensitivity } from '../domains/interactions.js';
 import { markSnapshotDirty } from '../domains/group.js';
+import { handleEmploymentExit } from '../domains/esop.js';
 
 let registered = false;
 
@@ -146,6 +147,15 @@ export function registerSubscribers(): void {
   markDirty('eqt.snapshot_dirty.reversed', EVENTS.SHARE_TRANSACTION_REVERSED);
   markDirty('eqt.snapshot_dirty.valuation', EVENTS.VALUATION_RECORDED);
   markDirty('eqt.snapshot_dirty.transaction', EVENTS.TRANSACTION_RECORDED);
+  // ESOP (equity-portal plan §6, phase 5): an employee's exit lapses their
+  // unvested options immediately and starts the exercise-window clock on any
+  // vested-unexercised balance. Subscribed against the HRM's own past-tense
+  // name for every terminal separation transition (resignation reaching its
+  // last working day, post-disciplinary termination, confirmed abandonment —
+  // `EMPLOYMENT_EVENT_VERB` maps all three to `separated`), never a role slug.
+  subscribe('kz.hr.employment.separated', 'eqt.esop_exit_lapse', async (event: EventEnvelope) => {
+    await handleEmploymentExit(event.subject.entityId, new Date(event.occurredAt));
+  });
 
   /** A band transition, not a raw reading, is what reaches the Command Center. */
   subscribe(EVENTS.HEALTH_BAND_CHANGED, 'xdm.band_transition_log', async (event: EventEnvelope) => {

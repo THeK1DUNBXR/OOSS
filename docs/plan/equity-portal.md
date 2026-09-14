@@ -749,3 +749,131 @@ where the brief left a gap:
   rather than `asUser`, because `asUser` resolves an email with no tenant
   filter and every founding account (`chairman@kaizen.co.in`, and so on) is
   reused verbatim across every tenant `seedBootstrap` creates.
+## Phase 4 — as built
+
+Ships `FundingRound`, conversion/redemption/buy-back/bonus as `ShareTransaction`
+rows through the existing register machinery, a rights-issue offer/accept/
+renounce path, valuation-round linkage, and the pure scenario functions —
+`modelRound`/`waterfall` in `@kaizen/shared`, exposed as
+`POST /equity/scenarios/round|waterfall`.
+
+**Where it differs from the brief, and why.**
+
+- **One `count` column, two legs.** `ShareTransaction.count` already named
+  the allotted (target) side for an ordinary row; a conversion at a ratio
+  other than 1:1 needs a *different* number for the side being retired. Two
+  new columns carry that rather than reshaping the ledger: `fromShareClassId`
+  (the source class) and a `meta Json?` field carrying `{ sourceCount }`.
+  Every place that sums a holder's balance or the cap table (`effectiveBalance`,
+  `capTable`, `holdingsFor`, the scenario endpoints' own live cap-table read,
+  and the buy-back tests' paid-up-capital sum) now asks a shared
+  `outgoingCount()` helper for the retiring amount instead of trusting `count`
+  — a conversion is the one type where they disagree.
+- **Free reserves is a stated proxy, not a statutory figure.** The books carry
+  no ledger account that distinguishes a free reserve from a statutory one,
+  and no separate tracking of dividends declared out of reserves. The proxy
+  used everywhere this plan asks for free reserves (the bonus gate, the
+  buy-back 10%/25%/2:1 tests) is cumulative trading profit and loss across
+  every period the books have ever recorded (`freeReservesProxy` in
+  `domains/rounds.ts`) — refused as **not measured** when the books carry no
+  transaction to sum, per the house rule that "not measured" is never zero,
+  and named as a proxy in every message that cites it.
+- **Rights-issue offers are not a new table.** An offer, its acceptance and
+  its renunciation are small, per-holder, and referenced from nowhere outside
+  the round they were made under, so they are held as a JSON array under
+  `FundingRound.pricePerShareByClass.__rightsOffers` rather than a fifth
+  model. Acceptance still spawns a real `ShareTransaction` allotment through
+  the ordinary propose → approve → effective path; only the offer bookkeeping
+  itself is off-register.
+- **Rounds gate on `rounds:approve`, not a bespoke policy.** Opening and
+  closing a round carry statutory consequences (a valuer's report, the
+  200-offeree count, the PAS-3 clock) squarely comparable to approving a
+  ledger entry, so they reuse the existing `finance_head`/`chairman`
+  `share_ledger:approve` split rather than adding a second approval-gate
+  policy: `company_secretary` proposes and keeps the round's record (`VCE`),
+  `finance_head` and the chairman open, close and cancel it (`approve`),
+  `director` reads it.
+- **The 10%/25%/2:1 tests run at `proposeBuyback`, not only at `openRound`.**
+  `openRound` on a `buyback` round checks only that free reserves are
+  measurable — the specific ceilings depend on the value of the buy-back
+  being proposed, which does not exist yet when the round opens. Each
+  `proposeBuyback` call re-derives paid-up capital, securities premium, free
+  reserves and total debt (`Loan`, via the same amortisation schedule the
+  books use) and refuses by name against whichever test the proposed value
+  or the tenant's current gearing fails.
+- **`waterfall`'s as-converted comparison is exit-value-relative, not
+  remainder-relative.** A non-participating class compares its preference
+  against what it would receive by converting and sharing the *whole* exit
+  value as common from the start (the comparison a rational holder actually
+  makes), not against a share of whatever happens to be left after the
+  preference stack above it is paid — the two differ once more than one
+  preference class is stacked, and the exit-value comparison is the one that
+  produces the holder's genuinely better outcome.
+
+Tests: `apps/api/src/tests/equityRounds.test.ts`, `EQT-RND-001` through
+`EQT-RND-008`, run inside a subsidiary tenant this file creates for itself in
+`beforeAll` — the free-reserves and s.42 offeree-count assertions need books
+this suite controls completely rather than whatever another suite left behind
+in the shared `kaizen` tenant (`vitest.config.ts` runs every file serially
+against one database).
+## Phase 5 — as built
+
+Shipped as briefed in §6, with these choices made along the way:
+
+- **No promoter register exists yet**, so `promoterCheck.isPromoterOrPromoterGroup`
+  is computed as the same test Rule 12(1)(c) names for the group it is
+  refusing — holding more than ten percent of the equity share capital,
+  directly or through a holder represented — rather than left unenforced for
+  want of a separate promoter flag. `holdsOver10Pct` and
+  `isPromoterOrPromoterGroup` are therefore always equal today; a future
+  promoter register would let the two diverge without a schema change, since
+  both are already distinct fields.
+- **The exercise-allotment permission boundary.** An approved exercise has to
+  find-or-create a `Holder` and allot shares through `equity.ts`'s own
+  `makeEffective` — but the finance head who approves an exercise holds
+  `share_ledger:V,approve@all`, never `share_ledger:create` or `holders:create`
+  (§3.4 keeps those the secretary's). Rather than widen those grants, two
+  narrow internal functions were added to `equity.ts` —
+  `holderForExercise` and `recordExerciseAllotment` — both gated on
+  `share_ledger:approve` alone: the grant an exercise's approver already
+  holds, and the same one `makeEffective` itself requires. The three calls
+  together (`holderForExercise` → `recordExerciseAllotment` →
+  `makeEffective`) run under one approver, which is what "approve and allot
+  in the same step" means for an exercise — the two-party discipline the
+  manual register's propose/approve split exists for was already kept once,
+  on `option_grants`, by the employee's own request and the finance head's
+  approval of it.
+- **`EsopPlan.targetShareClassId`** is the authority for what an exercise
+  allots into, not `ShareClass.conversionTerms` on the pool class — the brief
+  asked for exactly this once a pool class carried no reliable
+  `convertsToClassId`, so the plan names its own target class directly.
+- **`OptionGrant.exerciseWindowEndsOn`**, not in §5's field list, was added:
+  the exit event fixes the post-exit exercise deadline once, from the plan's
+  `exerciseWindowMonthsAfterExit` at the moment of exit, and the daily sweep
+  (`runExpiredExerciseWindows`) compares against that fixed date rather than
+  recomputing it — so a later change to the plan's own window never moves a
+  deadline an exit has already set.
+- **The HRM exit event** subscribed to is `kz.hr.employment.separated` —
+  `EMPLOYMENT_EVENT_VERB` maps `TERMINATE_POST_DISCIPLINARY`,
+  `REACH_LAST_WORKING_DAY` and `ABANDONMENT_CONFIRMED` all to `separated`,
+  so one subscription covers every terminal separation without a role-slug
+  or event-type comparison in the handler.
+- **Perquisite tax deferral** requires both the plan's own
+  `isDpiitRecognised` (copied from the company's DPIIT status at plan
+  creation, so a later change to the company's status never retroactively
+  alters a running plan) and a new `CompanyProfile.iac80CertificateRef` —
+  s.192(1C) deferral needs the 80-IAC certificate, not DPIIT recognition
+  alone.
+- Nav: `eq_esop` (the register keeper's own screen, ERP), `my_options` (an
+  employee's own grants, workspace archetype, alongside `hr_leave`/
+  `hr_payroll` in the `people` group) and `portal_options` (the same content,
+  reached from the portal shell) — the last needed `option_grants:V@own` on
+  `shareholder` itself, not only `director`, so a holder who is also an
+  employee sees their own grants in the portal regardless of which
+  affiliation happens to be active.
+- Web: `MyOptionsView` is one shared component rendered by both
+  `pages/MyOptions.tsx` and `portal/pages/Options.tsx`, so the two pages the
+  brief asks for read the same sentence rather than two screens that quietly
+  drift.
+
+Tests: `apps/api/src/tests/esop.test.ts`, `EQT-ESP-001` through `EQT-ESP-010`.

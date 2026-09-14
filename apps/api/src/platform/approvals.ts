@@ -58,7 +58,7 @@ export const DEFAULT_APPROVAL_POLICY: ApprovalPolicyContent = {
 
 export interface GateSubject {
   id: string;
-  type: 'mou' | 'contract' | 'partner_agreement' | 'quote' | 'share_transaction';
+  type: 'mou' | 'contract' | 'partner_agreement' | 'quote' | 'share_transaction' | 'option_grant' | 'option_exercise';
   label: string;
   ownerPartyId: string | null;
   commercialValue: number | null;

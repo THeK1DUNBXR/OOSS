@@ -39,7 +39,7 @@ import { evaluateApprovalGate } from '../platform/approvals.js';
 import { raiseException } from '../platform/exceptions.js';
 
 registerGovernedEntities('eqt', [
-  'share_class', 'holder', 'share_transaction', 'share_certificate', 'valuation', 'entity_document',
+  'share_class', 'holder', 'share_transaction', 'share_certificate', 'valuation', 'entity_document', 'funding_round',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -54,6 +54,7 @@ export interface ShareClassInput {
   votesPerShare?: number;
   rights?: Record<string, unknown>;
   conversionTerms?: Record<string, unknown> | null;
+  redemptionTerms?: Record<string, unknown> | null;
   authorisedCount?: number | null;
 }
 
@@ -72,6 +73,7 @@ export async function createShareClass(input: ShareClassInput) {
       votesPerShare: dec(input.votesPerShare ?? 1)!,
       rights: (input.rights ?? {}) as never,
       conversionTerms: (input.conversionTerms ?? undefined) as never,
+      redemptionTerms: (input.redemptionTerms ?? undefined) as never,
       authorisedCount: input.authorisedCount == null ? null : dec(input.authorisedCount),
     },
   });
@@ -89,6 +91,7 @@ export async function createShareClass(input: ShareClassInput) {
 export interface ShareClassUpdateInput {
   rights?: Record<string, unknown>;
   conversionTerms?: Record<string, unknown> | null;
+  redemptionTerms?: Record<string, unknown> | null;
   authorisedCount?: number | null;
   status?: 'active' | 'closed';
 }
@@ -112,6 +115,7 @@ export async function updateShareClass(id: string, input: ShareClassUpdateInput)
     data: {
       ...(input.rights !== undefined ? { rights: input.rights as never } : {}),
       ...(input.conversionTerms !== undefined ? { conversionTerms: input.conversionTerms as never } : {}),
+      ...(input.redemptionTerms !== undefined ? { redemptionTerms: input.redemptionTerms as never } : {}),
       ...(input.authorisedCount !== undefined
         ? { authorisedCount: input.authorisedCount == null ? null : dec(input.authorisedCount) }
         : {}),
@@ -140,7 +144,7 @@ export async function listShareClasses() {
 function shareClassView(row: {
   id: string; recordCode: string; name: string; kind: string; instrument: string;
   faceValue: unknown; votesPerShare: unknown; rights: unknown; conversionTerms: unknown;
-  authorisedCount: unknown; status: string;
+  redemptionTerms?: unknown; authorisedCount: unknown; status: string;
 }) {
   return {
     id: row.id,
@@ -152,6 +156,7 @@ function shareClassView(row: {
     votesPerShare: num(row.votesPerShare as never) ?? 1,
     rights: (row.rights ?? {}) as Record<string, unknown>,
     conversionTerms: (row.conversionTerms ?? null) as Record<string, unknown> | null,
+    redemptionTerms: (row.redemptionTerms ?? null) as Record<string, unknown> | null,
     authorisedCount: num(row.authorisedCount as never),
     status: row.status,
   };
@@ -343,7 +348,7 @@ export async function holder(id: string) {
   return holderView(row);
 }
 
-async function holderView(row: {
+export async function holderView(row: {
   id: string; recordCode: string; kind: string; personId: string | null; organizationId: string | null;
   heldByTenantId: string | null; folioNumber: string; residency: string; investmentBasis: string | null; status: string;
 }) {
@@ -371,6 +376,107 @@ async function holderView(row: {
     investmentBasis: row.investmentBasis,
     status: row.status,
   };
+}
+
+/**
+ * The `Holder` a share ends up allotted to, found or created — for the ESOP
+ * exercise-approval flow (`domains/esop.ts`), which needs a `Holder` for a
+ * person who may never have held anything before their first exercise.
+ *
+ * Gated on `share_ledger:approve`, the same grant `recordExerciseAllotment`
+ * and `makeEffective` require, rather than `holders:create` — creating the
+ * holder row here is part of completing an already-approved allotment, not
+ * the register keeper's general authority to add a holder.
+ */
+export async function holderForExercise(personId: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'share_ledger', verb: 'approve' });
+
+  const existing = await prisma.holder.findFirst({ where: { tenantId: auth.tenantId, kind: 'person', personId } });
+  if (existing) return holderView(existing);
+
+  const folioNumber = await nextFolioNumber();
+  const row = await prisma.holder.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode: await nextRecordCode('HLD'),
+      kind: 'person',
+      personId,
+      folioNumber,
+      residency: 'resident',
+    },
+  });
+
+  await auditWrite({ action: 'create', subjectType: 'holder', subjectId: row.id, after: { folioNumber, kind: row.kind } });
+  await emit({
+    name: EVENTS.HOLDER_CREATED,
+    subject: { entityType: 'holder', entityId: row.id, recordCode: row.recordCode },
+    newState: { kind: row.kind, folioNumber },
+  });
+
+  return holderView(row);
+}
+
+export interface ExerciseAllotmentInput {
+  shareClassId: string;
+  toHolderId: string;
+  count: number;
+  pricePerShare: number;
+  effectiveOn: string;
+  considerationTransactionId?: string | null;
+}
+
+/**
+ * Creates an allotment already at `approved`, for a caller — the ESOP
+ * exercise-approval flow — that has already gated the underlying decision on
+ * its own resource (`option_grants:approve`) and its own self-dealing bar.
+ * Held to `share_ledger:approve` (the same grant `makeEffective` itself
+ * requires) rather than `share_ledger:create`: an exercise already went
+ * through the two-party discipline the manual register's propose/approve
+ * split exists for — the employee's own request, and the finance head's
+ * approval of it — on `option_grants`, not here.
+ */
+export async function recordExerciseAllotment(input: ExerciseAllotmentInput) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'share_ledger', verb: 'approve' });
+
+  const shareClass = await prisma.shareClass.findFirst({ where: { id: input.shareClassId, tenantId: auth.tenantId } });
+  if (!shareClass) throw ApiError.notFound('Share class');
+  const toHolder = await prisma.holder.findFirst({ where: { id: input.toHolderId, tenantId: auth.tenantId } });
+  if (!toHolder) throw ApiError.notFound('Holder');
+  if (input.count <= 0) throw ApiError.badRequest('An allotment must be for a positive number of shares.');
+
+  await assertConsiderationIsEquity(input.considerationTransactionId);
+
+  const row = await prisma.shareTransaction.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode: await nextRecordCode('SHT'),
+      type: 'allotment',
+      shareClassId: input.shareClassId,
+      toHolderId: input.toHolderId,
+      count: dec(input.count)!,
+      pricePerShare: dec(input.pricePerShare),
+      effectiveOn: new Date(input.effectiveOn),
+      considerationTransactionId: input.considerationTransactionId ?? null,
+      status: 'approved',
+      proposedByPartyId: auth.partyId ?? 'system',
+    },
+  });
+
+  await auditWrite({ action: 'create', subjectType: 'share_transaction', subjectId: row.id, after: row as never });
+  await emit({
+    name: EVENTS.ALLOTMENT_PROPOSED,
+    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
+    newState: { shareClassId: row.shareClassId, toHolderId: row.toHolderId, count: input.count, source: 'esop_exercise' },
+  });
+  await emit({
+    name: EVENTS.ALLOTMENT_APPROVED,
+    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
+    newState: { status: 'approved', source: 'esop_exercise' },
+  });
+
+  return shareTransactionView(row);
 }
 
 export async function nextFolioNumber(): Promise<string> {
@@ -407,20 +513,53 @@ async function assertConsiderationIsEquity(considerationTransactionId: string | 
   }
 }
 
-/** Effective balance of one holder in one class: total in minus total out, over effective transactions only. */
-async function effectiveBalance(holderId: string, shareClassId: string): Promise<number> {
+/**
+ * Effective balance of one holder in one class: total in minus total out,
+ * over effective transactions only.
+ *
+ * A conversion's row carries the *target* class in `shareClassId` and the
+ * *source* class in `fromShareClassId` (§6 phase 4) — its outgoing leg has to
+ * be matched by `fromShareClassId`, not `shareClassId`, or a converted
+ * holding would look uncancelled in the class it converted out of.
+ */
+export async function effectiveBalance(holderId: string, shareClassId: string): Promise<number> {
   const auth = currentAuth();
-  const [into, outOf] = await Promise.all([
-    prisma.shareTransaction.aggregate({
+  const [intoRows, outRows] = await Promise.all([
+    prisma.shareTransaction.findMany({
       where: { tenantId: auth.tenantId, shareClassId, toHolderId: holderId, status: 'effective' },
-      _sum: { count: true },
+      select: { count: true },
     }),
-    prisma.shareTransaction.aggregate({
-      where: { tenantId: auth.tenantId, shareClassId, fromHolderId: holderId, status: 'effective' },
-      _sum: { count: true },
+    prisma.shareTransaction.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        fromHolderId: holderId,
+        status: 'effective',
+        OR: [
+          { shareClassId, type: { not: 'conversion' } },
+          { fromShareClassId: shareClassId, type: 'conversion' },
+        ],
+      },
+      select: { count: true, type: true, meta: true },
     }),
   ]);
-  return (num(into._sum.count) ?? 0) - (num(outOf._sum.count) ?? 0);
+  const into = intoRows.reduce((s, r) => s + (num(r.count) ?? 0), 0);
+  const outOf = outRows.reduce((s, r) => s + outgoingCount(r), 0);
+  return into - outOf;
+}
+
+/**
+ * `ShareTransaction.count` always names the allotment side (the *target*
+ * count for a conversion, at the ratio). The amount that leaves the source
+ * side of a conversion is a different number — carried in `meta.sourceCount`
+ * — so every place that sums an outgoing leg has to ask for it specifically
+ * rather than trust `count`.
+ */
+export function outgoingCount(row: { count: unknown; type: string; meta?: unknown }): number {
+  if (row.type === 'conversion') {
+    const sourceCount = (row.meta as { sourceCount?: number } | null)?.sourceCount;
+    if (sourceCount != null) return Number(sourceCount);
+  }
+  return num(row.count as never) ?? 0;
 }
 
 export interface ProposeAllotmentInput {
@@ -592,13 +731,23 @@ export async function approveShareTransaction(id: string) {
 
   await auditWrite({ action: 'update', subjectType: 'share_transaction', subjectId: id, before: txn as never, after: updated as never });
   await emit({
-    name: txn.type === 'allotment' ? EVENTS.ALLOTMENT_APPROVED : EVENTS.TRANSFER_APPROVED,
+    name: APPROVED_EVENT_BY_TYPE[txn.type] ?? EVENTS.TRANSFER_APPROVED,
     subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
     newState: { status: 'approved' },
   });
 
   return shareTransactionView(updated);
 }
+
+/** Which `.approved` event a given `ShareTransaction.type` emits (§6 phase 4). */
+const APPROVED_EVENT_BY_TYPE: Record<string, string> = {
+  allotment: EVENTS.ALLOTMENT_APPROVED,
+  transfer: EVENTS.TRANSFER_APPROVED,
+  conversion: EVENTS.CONVERSION_APPROVED,
+  redemption: EVENTS.REDEMPTION_APPROVED,
+  buyback: EVENTS.BUYBACK_APPROVED,
+  bonus: EVENTS.BONUS_APPROVED,
+};
 
 export async function rejectShareTransaction(id: string, reason: string) {
   const auth = currentAuth();
@@ -619,7 +768,7 @@ export async function rejectShareTransaction(id: string, reason: string) {
 }
 
 /** The next unused distinctive number for a class — one after the ledger's own current max. */
-async function nextDistinctiveStart(shareClassId: string): Promise<bigint> {
+export async function nextDistinctiveStart(shareClassId: string): Promise<bigint> {
   const auth = currentAuth();
   const agg = await prisma.shareTransaction.aggregate({
     where: { tenantId: auth.tenantId, shareClassId, status: 'effective', distinctiveTo: { not: null } },
@@ -640,7 +789,7 @@ async function requireTwoSignatories(): Promise<Array<{ name: string; designatio
   return signatories;
 }
 
-async function issueCertificateFor(input: {
+export async function issueCertificateFor(input: {
   holderId: string;
   shareClassId: string;
   distinctiveFrom: bigint;
@@ -816,7 +965,171 @@ export async function makeEffective(id: string) {
     return shareTransactionView(updated);
   }
 
-  throw ApiError.badRequest(`makeEffective is implemented for allotment and transfer only in phase 1; got "${txn.type}".`);
+  if (txn.type === 'bonus') {
+    // Shares minted from reserves — mechanically an allotment (new
+    // distinctive numbers, a fresh certificate), never a debit anywhere.
+    const start = await nextDistinctiveStart(txn.shareClassId);
+    const end = start + BigInt(count) - BigInt(1);
+
+    const updated = await prisma.shareTransaction.update({
+      where: { id },
+      data: { status: 'effective', distinctiveFrom: start, distinctiveTo: end },
+    });
+
+    await issueCertificateFor({
+      holderId: txn.toHolderId!,
+      shareClassId: txn.shareClassId,
+      distinctiveFrom: start,
+      distinctiveTo: end,
+      count,
+      issuedOn: txn.effectiveOn,
+      issuedForTransactionId: txn.id,
+    });
+
+    await auditWrite({ action: 'update', subjectType: 'share_transaction', subjectId: id, before: txn as never, after: updated as never });
+    await emit({
+      name: EVENTS.BONUS_EFFECTIVE,
+      subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
+      newState: { status: 'effective', distinctiveFrom: start.toString(), distinctiveTo: end.toString() },
+    });
+
+    return shareTransactionView(updated);
+  }
+
+  if (txn.type === 'conversion') {
+    // `count` is the target allotment (§below); the source holding retired is
+    // whatever count of the *convertible* class the ratio was applied to,
+    // carried in `meta.sourceCount` because the two ends of a conversion at a
+    // ratio other than 1:1 are never the same number.
+    const sourceCount = Number((txn.meta as { sourceCount?: number } | null)?.sourceCount ?? count);
+
+    // The source holding is retired in `fromShareClassId`, the target
+    // allotted fresh in `shareClassId` — the two ends of `conversionTerms`.
+    await retireHolderCertificates({
+      holderId: txn.fromHolderId!,
+      shareClassId: txn.fromShareClassId!,
+      count: sourceCount,
+      effectiveOn: txn.effectiveOn,
+      issuedForTransactionId: txn.id,
+      cancelTaken: true,
+    });
+
+    const start = await nextDistinctiveStart(txn.shareClassId);
+    const end = start + BigInt(count) - BigInt(1);
+
+    const updated = await prisma.shareTransaction.update({
+      where: { id },
+      data: { status: 'effective', distinctiveFrom: start, distinctiveTo: end },
+    });
+
+    await issueCertificateFor({
+      holderId: txn.toHolderId!,
+      shareClassId: txn.shareClassId,
+      distinctiveFrom: start,
+      distinctiveTo: end,
+      count,
+      issuedOn: txn.effectiveOn,
+      issuedForTransactionId: txn.id,
+    });
+
+    await auditWrite({ action: 'update', subjectType: 'share_transaction', subjectId: id, before: txn as never, after: updated as never });
+    await emit({
+      name: EVENTS.CONVERSION_EFFECTIVE,
+      subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
+      newState: { status: 'effective', fromShareClassId: txn.fromShareClassId, toShareClassId: txn.shareClassId },
+    });
+
+    return shareTransactionView(updated);
+  }
+
+  if (txn.type === 'redemption' || txn.type === 'buyback') {
+    await retireHolderCertificates({
+      holderId: txn.fromHolderId!,
+      shareClassId: txn.shareClassId,
+      count,
+      effectiveOn: txn.effectiveOn,
+      issuedForTransactionId: txn.id,
+      cancelTaken: true,
+    });
+
+    const updated = await prisma.shareTransaction.update({
+      where: { id },
+      data: {
+        status: 'effective',
+        // s.68(7): extinguished within seven days of completion — written the
+        // moment the holding is retired, because nothing further is needed.
+        ...(txn.type === 'buyback' ? { extinguishedOn: new Date() } : {}),
+      },
+    });
+
+    await auditWrite({ action: 'update', subjectType: 'share_transaction', subjectId: id, before: txn as never, after: updated as never });
+    await emit({
+      name: txn.type === 'buyback' ? EVENTS.BUYBACK_EFFECTIVE : EVENTS.REDEMPTION_EFFECTIVE,
+      subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
+      newState: { status: 'effective' },
+    });
+
+    return shareTransactionView(updated);
+  }
+
+  throw ApiError.badRequest(`makeEffective is not implemented for transaction type "${txn.type}".`);
+}
+
+/**
+ * Cancels (never reassigns) `count` shares' worth of a holder's issued
+ * certificates in a class — the retirement half of a conversion, a
+ * redemption or a buy-back, using the same oldest-range-first consumption
+ * `makeEffective`'s transfer path uses, except the taken ranges are
+ * cancelled outright rather than reissued to a recipient.
+ */
+async function retireHolderCertificates(input: {
+  holderId: string;
+  shareClassId: string;
+  count: number;
+  effectiveOn: Date;
+  issuedForTransactionId: string;
+  cancelTaken: boolean;
+}): Promise<void> {
+  const auth = currentAuth();
+  const sourceCerts = await prisma.shareCertificate.findMany({
+    where: { tenantId: auth.tenantId, holderId: input.holderId, shareClassId: input.shareClassId, status: 'issued' },
+    orderBy: { distinctiveFrom: 'asc' },
+  });
+
+  let remaining = input.count;
+  for (const cert of sourceCerts) {
+    if (remaining <= 0) break;
+    const certCount = Number(cert.distinctiveTo - cert.distinctiveFrom) + 1;
+    const take = Math.min(remaining, certCount);
+    const takenTo = cert.distinctiveFrom + BigInt(take) - BigInt(1);
+
+    let newRemainderCertId: string | null = null;
+    if (take < certCount) {
+      const remainderFrom = takenTo + BigInt(1);
+      const remainderCert = await issueCertificateFor({
+        holderId: input.holderId,
+        shareClassId: input.shareClassId,
+        distinctiveFrom: remainderFrom,
+        distinctiveTo: cert.distinctiveTo,
+        count: certCount - take,
+        issuedOn: input.effectiveOn,
+        issuedForTransactionId: input.issuedForTransactionId,
+      });
+      newRemainderCertId = remainderCert.id;
+    }
+
+    await prisma.shareCertificate.update({
+      where: { id: cert.id },
+      data: { status: input.cancelTaken ? 'cancelled' : 'surrendered', supersededById: newRemainderCertId },
+    });
+
+    remaining -= take;
+  }
+
+  // A holder retiring shares that were never certificated (imported opening
+  // register, or a class this tenant does not print certificates for) is not
+  // an error — there is nothing to cancel, and the ledger balance already
+  // carries the truth of the retirement.
 }
 
 /**
@@ -891,7 +1204,7 @@ export async function reverseShareTransaction(id: string, reason: string) {
   return { reversed: shareTransactionView(await prisma.shareTransaction.findFirstOrThrow({ where: { id } })), reversal: shareTransactionView(reversal) };
 }
 
-function shareTransactionView(row: {
+export function shareTransactionView(row: {
   id: string; recordCode: string; type: string; shareClassId: string; fromHolderId: string | null;
   toHolderId: string | null; count: unknown; pricePerShare: unknown; distinctiveFrom: unknown; distinctiveTo: unknown;
   effectiveOn: Date | null; status: string; considerationTransactionId: string | null; reversalOfId: string | null;
@@ -963,6 +1276,11 @@ export async function capTable(asOf?: string) {
     const cls = classById.get(t.shareClassId);
     if (!cls) continue;
     const amount = num(t.count) ?? 0;
+    // A conversion's outgoing leg retires the *source* class
+    // (`fromShareClassId`) by the *source* count (`meta.sourceCount`) — the
+    // ratio means the target count on the row itself is a different number.
+    const outClassId = t.type === 'conversion' && t.fromShareClassId ? t.fromShareClassId : t.shareClassId;
+    const outAmount = outgoingCount(t);
     if (t.toHolderId) {
       const k = `${t.toHolderId}::${t.shareClassId}`;
       net.set(k, (net.get(k) ?? 0) + amount);
@@ -970,8 +1288,8 @@ export async function capTable(asOf?: string) {
       if (price > 0 && !t.considerationTransactionId) pending.set(k, true);
     }
     if (t.fromHolderId) {
-      const k = `${t.fromHolderId}::${t.shareClassId}`;
-      net.set(k, (net.get(k) ?? 0) - amount);
+      const k = `${t.fromHolderId}::${outClassId}`;
+      net.set(k, (net.get(k) ?? 0) - outAmount);
     }
   }
 
@@ -1073,8 +1391,9 @@ export async function holdingsFor(holderIdOrMe: string) {
   const byClass = new Map<string, number>();
   for (const t of transactions) {
     const amount = num(t.count) ?? 0;
+    const outClassId = t.type === 'conversion' && t.fromShareClassId ? t.fromShareClassId : t.shareClassId;
     if (t.toHolderId === row.id) byClass.set(t.shareClassId, (byClass.get(t.shareClassId) ?? 0) + amount);
-    if (t.fromHolderId === row.id) byClass.set(t.shareClassId, (byClass.get(t.shareClassId) ?? 0) - amount);
+    if (t.fromHolderId === row.id) byClass.set(outClassId, (byClass.get(outClassId) ?? 0) - outgoingCount(t));
   }
 
   const view = await holderView(row);
@@ -1215,6 +1534,8 @@ export interface ValuationInput {
   reportRef?: string | null;
   validUntil?: string | null;
   note?: string | null;
+  /** Links this valuation to the round it was recorded for (§6 phase 4). */
+  roundId?: string | null;
 }
 
 export async function recordValuation(input: ValuationInput) {
@@ -1233,6 +1554,7 @@ export async function recordValuation(input: ValuationInput) {
       reportRef: input.reportRef ?? null,
       validUntil: input.validUntil ? new Date(input.validUntil) : null,
       note: input.note ?? null,
+      roundId: input.roundId ?? null,
       createdById: auth.partyId,
     },
   });
@@ -1254,9 +1576,17 @@ export async function listValuations() {
   return rows.map(valuationView);
 }
 
-function valuationView(row: {
+/** The most recent valuation on record, or null — "No valuation on record" (§3.7) is the caller's to say, not this function's. */
+export async function latestValuation() {
+  const auth = currentAuth();
+  await assertCan({ resource: 'valuations', verb: 'view' });
+  const row = await prisma.valuation.findFirst({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { asOf: 'desc' } });
+  return row ? valuationView(row) : null;
+}
+
+export function valuationView(row: {
   id: string; recordCode: string; asOf: Date; basis: string; valuerName: string | null; perShareByClass: unknown;
-  equityValue: unknown; reportRef: string | null; validUntil: Date | null; note: string | null;
+  equityValue: unknown; reportRef: string | null; validUntil: Date | null; note: string | null; roundId?: string | null;
 }) {
   return {
     id: row.id,
@@ -1269,6 +1599,7 @@ function valuationView(row: {
     reportRef: row.reportRef,
     validUntil: row.validUntil ? row.validUntil.toISOString() : null,
     note: row.note,
+    roundId: row.roundId ?? null,
   };
 }
 

@@ -28,6 +28,7 @@ import { detectOverdueReviews } from '../domains/winLoss.js';
 import { sweepStaleMergeCandidates } from '../domains/identity.js';
 import { detectOverdueCertificates } from '../domains/equity.js';
 import { publishDirtySnapshots, publishNightlySnapshot } from '../domains/group.js';
+import { runVesting, runExpiredExerciseWindows } from '../domains/esop.js';
 import { computeAndPersistAll } from '../domains/health.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
 
@@ -146,6 +147,21 @@ export const ALL_JOBS: JobDefinition[] = [
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
     run: async () => counted(await detectOverdueCertificates()),
+  },
+  // ESOP (equity-portal plan §6, phase 5).
+  {
+    name: 'esop_vesting',
+    label: 'ESOP: vest tranches due today',
+    automationClass: 'routine_administration',
+    cron: '0 2 * * *',
+    run: async () => counted(await runVesting()),
+  },
+  {
+    name: 'runEsopExerciseWindowJob',
+    label: 'ESOP: lapse a vested-unexercised balance past its post-exit window',
+    automationClass: 'threshold_response',
+    cron: '0 3 * * *',
+    run: async () => counted(await runExpiredExerciseWindows()),
   },
   {
     // Group (equity-portal plan §6, phase 2). Publishes only a tenant flagged

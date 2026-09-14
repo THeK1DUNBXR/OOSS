@@ -335,6 +335,36 @@ export const EVENTS = {
   // that entity changed. Never the trigger for a cross-tenant read — the
   // written `EntitySnapshot` row is.
   SNAPSHOT_PUBLISHED: 'kz.eqt.snapshot.published',
+  // --- Rounds, instruments, valuations, scenarios (eqt), phase 4 -----------
+  ROUND_CREATED: 'kz.eqt.round.created',
+  ROUND_OPENED: 'kz.eqt.round.opened',
+  ROUND_CLOSED: 'kz.eqt.round.closed',
+  ROUND_CANCELLED: 'kz.eqt.round.cancelled',
+  CONVERSION_PROPOSED: 'kz.eqt.conversion.proposed',
+  CONVERSION_APPROVED: 'kz.eqt.conversion.approved',
+  CONVERSION_EFFECTIVE: 'kz.eqt.conversion.effective',
+  REDEMPTION_PROPOSED: 'kz.eqt.redemption.proposed',
+  REDEMPTION_APPROVED: 'kz.eqt.redemption.approved',
+  REDEMPTION_EFFECTIVE: 'kz.eqt.redemption.effective',
+  BUYBACK_PROPOSED: 'kz.eqt.buyback.proposed',
+  BUYBACK_APPROVED: 'kz.eqt.buyback.approved',
+  BUYBACK_EFFECTIVE: 'kz.eqt.buyback.effective',
+  BONUS_PROPOSED: 'kz.eqt.bonus.proposed',
+  BONUS_APPROVED: 'kz.eqt.bonus.approved',
+  BONUS_EFFECTIVE: 'kz.eqt.bonus.effective',
+  RIGHTS_OFFERED: 'kz.eqt.rights.offered',
+  RIGHTS_ACCEPTED: 'kz.eqt.rights.accepted',
+  RIGHTS_RENOUNCED: 'kz.eqt.rights.renounced',
+  // --- ESOP (eqt), phase 5 ---------------------------------------------------
+  ESOP_PLAN_CREATED: 'kz.eqt.esop_plan.created',
+  ESOP_PLAN_ACTIVATED: 'kz.eqt.esop_plan.activated',
+  OPTION_PROPOSED: 'kz.eqt.option.proposed',
+  OPTION_GRANTED: 'kz.eqt.option.granted',
+  OPTION_VESTED: 'kz.eqt.option.vested',
+  OPTION_EXERCISE_REQUESTED: 'kz.eqt.option.exercise_requested',
+  OPTION_EXERCISED: 'kz.eqt.option.exercised',
+  OPTION_LAPSED: 'kz.eqt.option.lapsed',
+  OPTION_CANCELLED: 'kz.eqt.option.cancelled',
 } as const;
 
 /**
