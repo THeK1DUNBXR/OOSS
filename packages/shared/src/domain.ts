@@ -652,6 +652,11 @@ export const RECORD_TYPE_CODES = [
   // register entry, each a case a data principal or the company refers to by
   // number.
   'DPR', 'BRC',
+  // HCM/HRMS (docs/plan/hcm.md): the records a human refers to by number.
+  // `RES` is already the board Resolution code (above), so a resignation is
+  // `RSG`; `LN` is already the finance borrowing code, so an employee loan is
+  // `LOAN`, a distinct string.
+  'TSH', 'OFR', 'RVW', 'LOAN', 'RSG', 'CASE', 'AST', 'TRV', 'HRQ', 'JPST', 'CERT', 'SREV',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

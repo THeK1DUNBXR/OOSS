@@ -68,6 +68,31 @@ import { CompliancePayroll } from './pages/compliance/Payroll.js';
 import { ComplianceLabour } from './pages/compliance/Labour.js';
 import { CompliancePrivacy } from './pages/compliance/Privacy.js';
 import { ComplianceCorporate } from './pages/compliance/Corporate.js';
+import { OrgChart } from './pages/hcm/OrgChart.js';
+import { Directory } from './pages/hcm/Directory.js';
+import { Employee360 } from './pages/hcm/Employee360.js';
+import { Time as HcmTime } from './pages/hcm/Time.js';
+import { LeavePolicies } from './pages/hcm/LeavePolicies.js';
+import { LeaveCalendar } from './pages/hcm/LeaveCalendar.js';
+import { Recruiting } from './pages/hcm/Recruiting.js';
+import { Performance as HcmPerformance } from './pages/hcm/Performance.js';
+import { Learning as HcmLearning } from './pages/hcm/Learning.js';
+import { Compensation } from './pages/hcm/Compensation.js';
+import { PayrollOps } from './pages/hcm/PayrollOps.js';
+import { Engagement } from './pages/hcm/Engagement.js';
+import { Separations } from './pages/hcm/Separations.js';
+import { Assets as HcmAssets } from './pages/hcm/Assets.js';
+import { Analytics as HcmAnalytics } from './pages/hcm/Analytics.js';
+import { Approvals as HcmApprovals } from './pages/hcm/Approvals.js';
+import { Home as MeHome } from './pages/me/Home.js';
+import { Leave as MeLeave } from './pages/me/Leave.js';
+import { Attendance as MeAttendance } from './pages/me/Attendance.js';
+import { Payslips as MePayslips } from './pages/me/Payslips.js';
+import { Performance as MePerformance } from './pages/me/Performance.js';
+import { Learning as MeLearning } from './pages/me/Learning.js';
+import { Money as MeMoney } from './pages/me/Money.js';
+import { Requests as MeRequests } from './pages/me/Requests.js';
+import { Exit as MeExit } from './pages/me/Exit.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -228,6 +253,33 @@ function Routed() {
         <Route path="/people/payroll" element={<Payroll />} />
         <Route path="/people/hiring" element={<Hiring />} />
         <Route path="/people/skills" element={<Skills />} />
+        <Route path="/people/employees/:id/360" element={<Employee360 />} />
+
+        <Route path="/people/org-chart" element={<OrgChart />} />
+        <Route path="/people/directory" element={<Directory />} />
+        <Route path="/people/time" element={<HcmTime />} />
+        <Route path="/people/leave-policies" element={<LeavePolicies />} />
+        <Route path="/people/leave-calendar" element={<LeaveCalendar />} />
+        <Route path="/people/recruiting" element={<Recruiting />} />
+        <Route path="/people/performance" element={<HcmPerformance />} />
+        <Route path="/people/learning" element={<HcmLearning />} />
+        <Route path="/people/compensation" element={<Compensation />} />
+        <Route path="/people/payroll-ops" element={<PayrollOps />} />
+        <Route path="/people/engagement" element={<Engagement />} />
+        <Route path="/people/separations" element={<Separations />} />
+        <Route path="/people/assets" element={<HcmAssets />} />
+        <Route path="/people/analytics" element={<HcmAnalytics />} />
+        <Route path="/people/approvals" element={<HcmApprovals />} />
+
+        <Route path="/me/home" element={<MeHome />} />
+        <Route path="/me/leave" element={<MeLeave />} />
+        <Route path="/me/attendance" element={<MeAttendance />} />
+        <Route path="/me/payslips" element={<MePayslips />} />
+        <Route path="/me/performance" element={<MePerformance />} />
+        <Route path="/me/learning" element={<MeLearning />} />
+        <Route path="/me/money" element={<MeMoney />} />
+        <Route path="/me/requests" element={<MeRequests />} />
+        <Route path="/me/exit" element={<MeExit />} />
 
         <Route path="/education/courses" element={<Courses />} />
         <Route path="/education/cohorts" element={<Cohorts />} />

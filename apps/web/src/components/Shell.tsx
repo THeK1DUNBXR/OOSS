@@ -12,10 +12,10 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useQuery } from '@tanstack/react-query';
 import type { NavNodeView, NotificationView } from '@kaizen/shared';
 import {
-  Activity, AlertTriangle, Award, Bell, Book, Building2, Calculator, ChevronDown,
-  ChevronRight, ChevronsUpDown, Circle, Clipboard, Clock, Coins, Columns3, File,
+  Activity, AlertTriangle, Award, Bell, Book, Building2, Calculator, Calendar, ChevronDown,
+  ChevronRight, ChevronsUpDown, Circle, Clipboard, Clock, Coins, Columns3, DoorOpen, File,
   FileText, Gauge, GraduationCap, Home, Inbox, Kanban, Key, Layers, Lock, Map as MapIcon,
-  Menu, Package, PieChart, Receipt, Scale, ScrollText, Search, Settings, Shield, ShieldCheck,
+  Menu, Network, Package, PieChart, Receipt, Scale, ScrollText, Search, Settings, Shield, ShieldCheck,
   Sparkles, Target, TrendingUp, Users, Wallet, X, type LucideIcon,
 } from 'lucide-react';
 import { useSession } from '../lib/session.js';
@@ -35,6 +35,7 @@ const ICONS: Record<string, LucideIcon> = {
   alert: AlertTriangle, scale: Scale, settings: Settings, map: MapIcon, key: Key, bot: Circle,
   activity: Activity, clock: Clock, search: Search, layers: Layers,
   sparkle: Sparkles, lock: Lock, list: FileText, book: Book, chart: PieChart,
+  network: Network, calendar: Calendar, doorexit: DoorOpen,
 };
 
 function NavIcon({ icon, className = 'h-[18px] w-[18px]' }: { icon: string; className?: string }) {
@@ -49,6 +50,7 @@ const GROUP_LABELS: Record<string, string> = {
   main: '',
   money: 'Money',
   equity: 'Equity',
+  me: 'Me',
   people: 'People',
   // Not "Customers": a student, a college and a business are three different
   // parties, and only one of them is buying anything on any given day.
@@ -238,7 +240,7 @@ export function Shell() {
 
 // Fixed group order, so the shell reads the way the work reads: your own
 // surface first, then the domains, then the platform underneath them.
-const GROUP_ORDER = ['main', 'money', 'equity', 'people', 'customers', 'delivery', 'compliance', 'setup'];
+const GROUP_ORDER = ['main', 'money', 'equity', 'me', 'people', 'customers', 'delivery', 'compliance', 'setup'];
 
 /** The sidebar's content, shared between its desktop in-flow rendering and
  *  its mobile drawer overlay — one nav, two placements. */
