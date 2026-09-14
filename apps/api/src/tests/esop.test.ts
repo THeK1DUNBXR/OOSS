@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import {
   createShareClass, createHolder, proposeAllotment, approveShareTransaction, makeEffective,
-  recordValuation,
+  recordValuation, capTable,
 } from '../domains/equity.js';
 import {
   createPlan, activatePlan, listPlans, plan,
@@ -194,13 +194,19 @@ describe('EQT-ESP-003 — a promoter or over-ten-percent holder is refused witho
   it('refuses a grant to a >10% holder under a non-DPIIT plan, and allows it once the plan is DPIIT-recognised', async () => {
     const emp = await makeEmployee('esp003');
 
-    // Give this person the overwhelming majority of the equity.
+    // Give this person the overwhelming majority of the equity. The suite
+    // shares one tenant with the register, rounds and filings tests, so the
+    // stake is sized against whatever they have already allotted rather than
+    // assumed to be the only equity in existence.
+    const alreadyIssued = (await asUser('chairman@kaizen.co.in', () => capTable())).holderTotals
+      .reduce((sum, h) => sum + h.totalCount, 0);
+    const majorityCount = Math.max(900, Math.ceil(alreadyIssued * 20));
     const majorityHolder = await asUser('secretary@kaizen.co.in', () => createHolder({ kind: 'person', personId: emp.person.id, residency: 'resident' }));
     const minorityHolder = await asUser('secretary@kaizen.co.in', () =>
       createHolder({ kind: 'person', person: { fullName: `Minority ${Date.now()}`, email: `minority.${Date.now()}@example.test` }, residency: 'resident' }),
     );
 
-    for (const [holderId, count] of [[majorityHolder.id, 900], [minorityHolder.id, 100]] as const) {
+    for (const [holderId, count] of [[majorityHolder.id, majorityCount], [minorityHolder.id, 100]] as const) {
       const proposed = await asUser('secretary@kaizen.co.in', () =>
         proposeAllotment({ shareClassId: TARGET_CLASS_ID, toHolderId: holderId, count, effectiveOn: new Date().toISOString() }),
       );
