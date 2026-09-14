@@ -153,6 +153,28 @@ model CompanyProfile {
   /// consequence — which the returns screen states rather than discovers.
   documentYearFormat String @default("short")
 
+  /// The register (equity-portal plan §5 "EntityProfile"). Held on the same
+  /// row as the rest of the company's own facts rather than a second 1:1
+  /// table, for the same reason `documentPrefix` is here: one thing a tenant
+  /// has one of.
+  incorporatedOn         DateTime?
+  financialYearEndMonth  Int?      @default(3)
+  /// null = not stated. A stated false is a fact worth keeping once a
+  /// subsidiary exists and `reconcileTenantKinds` has already ended it —
+  /// the flag is not derived from that, because s.2(85) turns on group
+  /// structure, not on this column.
+  isSmallCompany         Boolean?
+  dematStatus            String    @default("physical") // physical | demat | mixed
+  isin                   String?
+  rtaName                String?
+  dpiitNumber            String?
+  dpiitRecognisedOn      DateTime?
+  /// Snapshotted onto every certificate at issue (s.46: two signatories).
+  /// `[]` until the secretary sets it, which is exactly why `makeEffective`
+  /// refuses to issue a certificate against an empty list rather than
+  /// printing one signatory short.
+  certificateSignatories Json      @default("[]")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1926,6 +1948,263 @@ model Note {
 
   @@index([tenantId, attachedToType, attachedToId])
   @@map("notes")
+}
+
+// ===========================================================================
+// Equity register (eqt-owned) — equity-portal plan §5, phase 1.
+//
+// The register is a ledger; the cap table is its sum (§3.5). SHARE_TRANSACTION
+// is append-only — a mistake is reversed with a second row carrying
+// `reversalOfId`, never edited away — the same discipline TRANSACTION already
+// keeps for money. EQT never holds money movement; FIN never holds share
+// ownership (§3.6): an allotment for cash points at a TRANSACTION on a
+// `kind: equity` category instead of posting one itself.
+// ===========================================================================
+
+/// One class of instrument this entity has issued: equity, a preference
+/// series, a convertible instrument. `instrument` and `faceValue` are
+/// immutable once any effective transaction references the class — changing
+/// what a class of shares *is* after certificates have been printed against it
+/// would make every certificate a lie about what it represents.
+model ShareClass {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name      String
+  kind      String // equity | preference | debenture
+  instrument String // equity | sweat_equity | ccps | ocps | rps | ccd | ocd | ncd | convertible_note | warrant | option | phantom
+  faceValue Decimal @db.Decimal(18, 2)
+  votesPerShare Decimal @default(1) @db.Decimal(24, 6)
+  /// Liquidation preference, anti-dilution, pro-rata, board seat, information
+  /// rights, dividend rate — shaped per instrument, so a free-form object
+  /// rather than a column each.
+  rights           Json     @default("{}")
+  conversionTerms  Json?
+  authorisedCount  Decimal? @db.Decimal(24, 6)
+  status           String   @default("active") // active | closed
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, name])
+  @@index([tenantId, status])
+  @@map("share_classes")
+}
+
+/// The party that holds shares: a person, an organisation, or — the
+/// entity-as-stakeholder link (§3.3, s.19) — another tenant in this group,
+/// recorded the way Pulley records a holding company on a subsidiary's own
+/// cap table. Exactly one of `personId` / `organizationId` / `heldByTenantId`
+/// is set.
+model Holder {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  kind             String // person | organization | entity
+  personId         String?
+  organizationId   String?
+  /// The holding tenant, when this holder IS another group entity. Refused at
+  /// creation when that tenant has this tenant as an ancestor in its own
+  /// `parentTenantId` chain (s.19: a subsidiary may not hold its holding's
+  /// shares) — see `assertNotHoldingsAncestor` in `domains/equity.ts`, the one
+  /// place in this domain the unscoped tenant table is read, because the check
+  /// is structural on tenants rather than a read of this tenant's own data.
+  heldByTenantId   String?
+
+  /// Generator-assigned per tenant: `F-00001`.
+  folioNumber String
+
+  residency        String  @default("resident") // resident | non_resident
+  /// Required when `residency` is `non_resident` — decides the FEMA calendar
+  /// (repatriable: FC-GPR/FC-TRS/FLA; non_repatriable: treated as resident
+  /// money under Schedule IV).
+  investmentBasis  String?
+  /// Regulated, like an employee's PAN — named `panNumber` rather than `pan`
+  /// so it rides the same `REGULATED_EXCLUDED_FIELDS` exclusion every other
+  /// statutory identifier in this platform already gets, with no change to
+  /// the shared permission list.
+  panNumber        String?
+  nominee          Json?
+  jointHolders     Json?
+  status           String  @default("active") // active | ceased
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, folioNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, personId])
+  @@index([tenantId, organizationId])
+  @@map("holders")
+}
+
+/// One entry in the register. Append-only: no route ever updates `count`,
+/// `fromHolderId`, `toHolderId` or `shareClassId` once a row exists — a
+/// mistake is rejected and re-proposed, or reversed after it goes effective
+/// with a second row carrying `reversalOfId`.
+model ShareTransaction {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  type String // allotment | transfer | conversion | buyback | split | bonus | forfeiture | cancellation | redemption | reduction
+
+  shareClassId String
+  fromHolderId String?
+  toHolderId   String?
+
+  count         Decimal  @db.Decimal(24, 6)
+  pricePerShare Decimal? @db.Decimal(18, 2)
+
+  /// Assigned by `makeEffective`, gaplessly per class — never caller-supplied.
+  distinctiveFrom BigInt?
+  distinctiveTo   BigInt?
+
+  effectiveOn DateTime
+  roundId     String?
+
+  /// The `Transaction` (kind: equity) that already lifted cash for this
+  /// allotment. Absent + a positive price ⇒ `pendingConsideration` (§3.6).
+  considerationTransactionId String?
+  approvalDecisionId         String?
+  boardResolutionRef         String?
+
+  status String @default("proposed") // proposed | approved | effective | reversed | rejected
+
+  reversalOfId String?
+  reversedById String?
+
+  proposedByPartyId String
+
+  note      String?
+  documents Json    @default("[]")
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, shareClassId, status])
+  @@index([tenantId, toHolderId])
+  @@index([tenantId, fromHolderId])
+  @@map("share_transactions")
+}
+
+/// A printed certificate against a range of distinctive numbers. Numbered from
+/// document series `C`, fixed at issue, superseded — never edited — on a
+/// transfer or a split.
+model ShareCertificate {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// The document number: `KIPL/C/26-27/001` for one this platform issued, or
+  /// the paper number carried over by the opening-register import for one
+  /// that pre-dates it (`imported: true`, no series `C` number allocated).
+  certificateNumber String
+  imported          Boolean @default(false)
+
+  holderId     String
+  shareClassId String
+
+  distinctiveFrom BigInt
+  distinctiveTo   BigInt
+  count           Decimal @db.Decimal(24, 6)
+
+  issuedOn DateTime
+  status   String   @default("issued") // issued | surrendered | cancelled
+
+  supersededById String?
+
+  issuedForTransactionId String?
+
+  /// Snapshotted at issue, so the document reads the same after the
+  /// signatories on file change (§3.7: figures and names are snapshotted).
+  signatories       Json    @default("[]")
+  holderNameSnapshot String
+
+  stampDutyPaid   Decimal?  @db.Decimal(18, 2)
+  stampDutyPaidOn DateTime?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, holderId, status])
+  @@index([tenantId, shareClassId])
+  @@map("share_certificates")
+}
+
+/// A recorded valuation: date, valuer, basis, per-class figure — or the
+/// screen says "No valuation on record" rather than inventing a number (§3.7).
+model Valuation {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  asOf  DateTime
+  basis String // registered_valuer | merchant_banker | ca_certificate | internal | round_price
+
+  valuerName       String?
+  perShareByClass  Json
+  equityValue      Decimal? @db.Decimal(18, 2)
+  reportRef        String?
+  validUntil       DateTime?
+  note             String?
+
+  createdById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, asOf])
+  @@map("valuations")
+}
+
+/// A document published to holders, the board, or the secretary — a
+/// certificate scan, a resolution, a valuation report, an agreement, a
+/// filing. Kept apart from the general-purpose `Document` model (which
+/// requires an actual stored blob) because most of what this carries in
+/// phase 1 is a reference to something kept outside the platform — there is
+/// no blob store yet — and `audience` is a concept specific to who may see a
+/// register document, not to every attachment in the system.
+model EntityDocument {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  title String
+  kind  String // certificate | resolution | valuation_report | agreement | filing | other
+  /// Who this is published to. A shareholder sees `shareholders` only; a
+  /// director also `board`; the secretary (and chairman) every audience.
+  audience String // shareholders | board | secretary
+
+  /// A reference to where the file actually lives — an external URL, until a
+  /// blob store exists. Never a claim that this platform is holding the bytes.
+  fileRef String
+
+  uploadedByPartyId String
+
+  relatedType String?
+  relatedId   String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, audience])
+  @@index([tenantId, relatedType, relatedId])
+  @@map("entity_documents")
 }
 
 // ===========================================================================

@@ -50,6 +50,21 @@ export interface CompanyProfileInput {
   defaultDueDays?: number;
   documentPrefix?: string | null;
   documentYearFormat?: YearFormat;
+  // The register (equity-portal plan §5 "EntityProfile").
+  incorporatedOn?: string | null;
+  financialYearEndMonth?: number | null;
+  isSmallCompany?: boolean | null;
+  dematStatus?: 'physical' | 'demat' | 'mixed';
+  isin?: string | null;
+  rtaName?: string | null;
+  dpiitNumber?: string | null;
+  dpiitRecognisedOn?: string | null;
+  certificateSignatories?: Array<{ name: string; designation: string }>;
+}
+
+/** 12 characters, starting `INE` for an Indian ISIN. */
+function isValidIsin(isin: string): boolean {
+  return /^INE[A-Z0-9]{9}$/.test(isin);
 }
 
 /**
@@ -93,6 +108,14 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
 
   const stateCode = input.stateCode ?? current.stateCode;
 
+  if (input.isin) {
+    const isin = input.isin.trim().toUpperCase();
+    if (!isValidIsin(isin)) {
+      throw ApiError.badRequest(`${isin} is not a valid ISIN. It is twelve characters and, for an India-issued security, starts INE.`);
+    }
+    input.isin = isin;
+  }
+
   const updated = await prisma.companyProfile.update({
     where: { id: current.id },
     data: {
@@ -123,6 +146,15 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
         ? { documentPrefix: input.documentPrefix?.trim().toUpperCase() || null }
         : {}),
       ...(input.documentYearFormat !== undefined ? { documentYearFormat: input.documentYearFormat } : {}),
+      ...(input.incorporatedOn !== undefined ? { incorporatedOn: input.incorporatedOn ? new Date(input.incorporatedOn) : null } : {}),
+      ...(input.financialYearEndMonth !== undefined ? { financialYearEndMonth: input.financialYearEndMonth } : {}),
+      ...(input.isSmallCompany !== undefined ? { isSmallCompany: input.isSmallCompany } : {}),
+      ...(input.dematStatus !== undefined ? { dematStatus: input.dematStatus } : {}),
+      ...(input.isin !== undefined ? { isin: input.isin } : {}),
+      ...(input.rtaName !== undefined ? { rtaName: input.rtaName } : {}),
+      ...(input.dpiitNumber !== undefined ? { dpiitNumber: input.dpiitNumber } : {}),
+      ...(input.dpiitRecognisedOn !== undefined ? { dpiitRecognisedOn: input.dpiitRecognisedOn ? new Date(input.dpiitRecognisedOn) : null } : {}),
+      ...(input.certificateSignatories !== undefined ? { certificateSignatories: input.certificateSignatories as never } : {}),
     },
   });
 

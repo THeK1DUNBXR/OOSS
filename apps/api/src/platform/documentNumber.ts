@@ -36,6 +36,10 @@ export const DOCUMENT_SERIES = {
   invoice: 'I',
   receipt: 'R',
   finalInvoice: 'F',
+  /// A share certificate (SH-1): `KIPL/C/26-27/001`. Never allocated for a
+  /// certificate the opening-register import carries in with its own paper
+  /// number — see `ShareCertificate.imported`.
+  certificate: 'C',
 } as const;
 
 export type DocumentSeries = (typeof DOCUMENT_SERIES)[keyof typeof DOCUMENT_SERIES];
@@ -44,6 +48,7 @@ export const SERIES_LABELS: Record<DocumentSeries, string> = {
   I: 'Tax invoices',
   R: 'Receipts',
   F: 'Final invoices',
+  C: 'Share certificates',
 };
 
 export type YearFormat = 'short' | 'full';

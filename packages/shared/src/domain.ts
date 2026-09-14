@@ -631,6 +631,9 @@ export const RECORD_TYPE_CODES = [
   // draft reference can never be mistaken for a tax invoice number — the tax
   // series has to stay consecutive, which means a draft cannot take one.
   'DRF',
+  // The register (equity-portal plan §5): a class of shares, a holder, one
+  // ledger entry, a printed certificate, a recorded valuation.
+  'SHC', 'HLD', 'SHT', 'CRT', 'VAL',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 
@@ -781,6 +784,10 @@ export const EXCEPTION_CODES = {
   // regardless of size, which changes the board-meeting cadence, the annual
   // return form and (per §1a.1) the demat mandate.
   EX_EQT_001: { code: 'EX-EQT-001', label: 'Small company status ended by group structure', severity: 'S2_WARNING' },
+  // SH-1 (s.56): a certificate is due within two months of an allotment or a
+  // transfer going effective. Raised once per share transaction, by the
+  // `certificate_window` job and echoed on the cap table as `certificateOverdue`.
+  EX_EQT_002: { code: 'EX-EQT-002', label: 'Share certificate overdue (SH-1, two months)', severity: 'S2_WARNING' },
 } as const;
 
 export const EXCEPTION_STATES = ['open', 'acknowledged', 'resolved', 'escalated', 'suppressed'] as const;

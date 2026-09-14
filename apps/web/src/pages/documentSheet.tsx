@@ -232,7 +232,10 @@ export const DOCUMENT_CSS = `
 .doc-signature { margin-top: 18px; text-align: right; }
 .doc-sign-line { border-top: 1px solid #17171a; display: inline-block; padding-top: 3px; margin: 22px 0 0; min-width: 52mm; }
 @media print {
-  .no-print, .sidebar, header.topbar { display: none !important; }
+  /* .glass catches the portal masthead too — the certificate sheet is the
+     one document this shell prints, and its chrome hides the same way the
+     ERP sidebar does. */
+  .no-print, .sidebar, header.topbar, .glass { display: none !important; }
   body { background: #fff !important; }
   .doc-sheet { border: 0; margin: 0; padding: 0; max-width: none; }
   @page { size: A4; margin: 12mm; }

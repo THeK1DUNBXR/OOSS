@@ -26,6 +26,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  DEMAT_STATUSES,
+  DEMAT_STATUS_LABELS,
   GST_RETURN_LABELS,
   type GstFilingView,
   type GstReturnType,
@@ -43,7 +45,7 @@ import {
   StatusChip,
   Tabs,
 } from '../components/ui.js';
-import { CreateModal, TextArea, TextInput } from '../components/forms.js';
+import { CreateModal, Row, SelectInput, TextArea, TextInput } from '../components/forms.js';
 
 function thisMonth(): string {
   const d = new Date();
@@ -712,9 +714,16 @@ export function CompanyDetails() {
   const [form, setForm] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  // Two fixed slots, not part of `form`'s flat string map — an array field
+  // edited as a whole rather than diffed key by key.
+  const [signatories, setSignatories] = useState<Array<{ name: string; designation: string }> | null>(null);
 
   const save = useMutation({
-    mutationFn: () => api.patch('/books/company-profile', numbersFixed(form)),
+    mutationFn: () =>
+      api.patch('/books/company-profile', {
+        ...numbersFixed(form),
+        ...(signatories ? { certificateSignatories: signatories } : {}),
+      }),
     onSuccess: () => {
       setFailure(null);
       setSaved(true);
@@ -734,6 +743,20 @@ export function CompanyDetails() {
   const set = (key: string) => (v: string) => {
     setSaved(false);
     setForm((f) => ({ ...f, [key]: v }));
+  };
+
+  const sigRows: Array<{ name: string; designation: string }> =
+    signatories ??
+    (Array.isArray(data.certificateSignatories) && data.certificateSignatories.length
+      ? data.certificateSignatories
+      : [
+          { name: '', designation: '' },
+          { name: '', designation: '' },
+        ]);
+  const setSignatory = (i: number, field: 'name' | 'designation', v: string) => {
+    setSaved(false);
+    const next = sigRows.map((s, idx) => (idx === i ? { ...s, [field]: v } : s));
+    setSignatories(next);
   };
 
   return (
@@ -824,6 +847,68 @@ export function CompanyDetails() {
               value={value('defaultDueDays')}
               onChange={set('defaultDueDays')}
             />
+          </div>
+        </Card>
+
+        <Card
+          title="The register"
+          subtitle="What the share certificate and the entity's own filings carry."
+          className="lg:col-span-2"
+        >
+          <div className="flex flex-col gap-3">
+            <Row>
+              <TextInput label="Incorporated on" type="date" value={value('incorporatedOn')} onChange={set('incorporatedOn')} />
+              <TextInput
+                label="Financial year ends (month)"
+                type="number"
+                hint="1–12"
+                value={value('financialYearEndMonth')}
+                onChange={set('financialYearEndMonth')}
+              />
+            </Row>
+            <Row>
+              <SelectInput
+                label="Demat status"
+                value={value('dematStatus') as 'physical' | 'demat' | 'mixed' | ''}
+                onChange={set('dematStatus')}
+                placeholder="Not set"
+                options={DEMAT_STATUSES.map((d) => ({ value: d, label: DEMAT_STATUS_LABELS[d] }))}
+              />
+              <TextInput label="ISIN" value={value('isin')} onChange={(v) => set('isin')(v.toUpperCase())} hint="twelve characters, starts INE" />
+            </Row>
+            <Row>
+              <TextInput label="RTA" value={value('rtaName')} onChange={set('rtaName')} placeholder="Registrar and transfer agent, if any" />
+              <label className="flex items-center gap-2 pt-6 text-xs text-ink-200">
+                <input
+                  type="checkbox"
+                  checked={value('isSmallCompany') === 'true'}
+                  onChange={(e) => set('isSmallCompany')(e.target.checked ? 'true' : 'false')}
+                />
+                A small company
+              </label>
+            </Row>
+            <Row>
+              <TextInput label="DPIIT number" value={value('dpiitNumber')} onChange={set('dpiitNumber')} />
+              <TextInput
+                label="DPIIT recognised on"
+                type="date"
+                value={value('dpiitRecognisedOn')}
+                onChange={set('dpiitRecognisedOn')}
+              />
+            </Row>
+          </div>
+
+          <div className="mt-4 border-t border-ink-800 pt-3">
+            <p className="label mb-2">Certificate signatories</p>
+            <p className="mb-2 text-2xs text-ink-500">
+              s.46 requires two. A certificate cannot be issued until both are set.
+            </p>
+            {sigRows.map((s, i) => (
+              <Row key={i}>
+                <TextInput label={`Signatory ${i + 1}`} value={s.name} onChange={(v) => setSignatory(i, 'name', v)} />
+                <TextInput label="Designation" value={s.designation} onChange={(v) => setSignatory(i, 'designation', v)} />
+              </Row>
+            ))}
           </div>
         </Card>
       </div>
@@ -969,9 +1054,13 @@ function SeriesStart({ series, onClose }: { series: any; onClose: () => void }) 
 function numbersFixed(form: Record<string, string>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(form)) {
-    if (key === 'defaultDueDays') {
+    if (key === 'defaultDueDays' || key === 'financialYearEndMonth') {
       const n = Number(raw);
       if (Number.isFinite(n) && n > 0) out[key] = Math.round(n);
+      continue;
+    }
+    if (key === 'isSmallCompany') {
+      out[key] = raw === 'true';
       continue;
     }
     out[key] = raw.trim() === '' ? null : raw.trim();

@@ -14,6 +14,13 @@ import { Certificates } from './portal/pages/Certificates.js';
 import { Documents } from './portal/pages/Documents.js';
 import { Board } from './portal/pages/Board.js';
 import { Entities as PortalEntities } from './portal/pages/Entities.js';
+import { CapTable } from './pages/equity/CapTable.js';
+import { Register } from './pages/equity/Register.js';
+import { Holders, HolderDetail } from './pages/equity/Holders.js';
+import { ShareClasses } from './pages/equity/ShareClasses.js';
+import { Valuations } from './pages/equity/Valuations.js';
+import { Documents as EquityDocuments } from './pages/equity/Documents.js';
+import { CertificateDocument } from './pages/equity/CertificateDocument.js';
 import { CommandCenter } from './pages/CommandCenter.js';
 import { Workspace, Exceptions } from './pages/Workspace.js';
 import { Pipeline } from './pages/Pipeline.js';
@@ -73,6 +80,10 @@ function PortalRouted() {
         <Route path="/portal/holdings" element={<Holdings />} />
         <Route path="/portal/certificates" element={<Certificates />} />
         <Route path="/portal/documents" element={<Documents />} />
+        {/* The same sheet the ERP register opens, routed here too so a
+            shareholder printing their own certificate stays inside the
+            portal's own shell. */}
+        <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
         <Route path="/portal/board" element={<Board />} />
         <Route path="/portal/entities" element={<PortalEntities />} />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -136,6 +147,15 @@ function Routed() {
         <Route path="/approvals/:id" element={<Approvals />} />
         <Route path="/commercial/win-loss" element={<WinLoss />} />
         <Route path="/commercial/win-loss/:id" element={<WinLoss />} />
+
+        <Route path="/equity/cap-table" element={<CapTable />} />
+        <Route path="/equity/register" element={<Register />} />
+        <Route path="/equity/holders" element={<Holders />} />
+        <Route path="/equity/holders/:id" element={<HolderDetail />} />
+        <Route path="/equity/share-classes" element={<ShareClasses />} />
+        <Route path="/equity/valuations" element={<Valuations />} />
+        <Route path="/equity/documents" element={<EquityDocuments />} />
+        <Route path="/equity/certificates/:id/document" element={<CertificateDocument />} />
 
         <Route path="/business" element={<Executive />} />
         <Route path="/data/import" element={<ImportPage />} />

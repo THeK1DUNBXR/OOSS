@@ -26,6 +26,7 @@ import { runExpiryLadder, auditWonWithoutContract } from '../domains/agreements.
 import { detectOverduePayments } from '../domains/finance.js';
 import { detectOverdueReviews } from '../domains/winLoss.js';
 import { sweepStaleMergeCandidates } from '../domains/identity.js';
+import { detectOverdueCertificates } from '../domains/equity.js';
 import { computeAndPersistAll } from '../domains/health.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
 
@@ -137,6 +138,13 @@ export const ALL_JOBS: JobDefinition[] = [
     automationClass: 'data_maintenance',
     cron: '0 11 * * *',
     run: async () => counted(await sweepStaleMergeCandidates()),
+  },
+  {
+    name: 'runCertificateWindowJob',
+    label: 'EX-EQT-002 share certificate window (SH-1, two months)',
+    automationClass: 'threshold_response',
+    cron: '0 6 * * *',
+    run: async () => counted(await detectOverdueCertificates()),
   },
   {
     name: 'runOfferingCoverageJob',

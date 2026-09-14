@@ -108,13 +108,25 @@ export function diffForAudit(
     if (NOISE_FIELDS.has(key)) continue;
     const from = before?.[key];
     const to = after?.[key];
-    if (JSON.stringify(from) !== JSON.stringify(to)) diff[key] = { from: normalise(from), to: normalise(to) };
+    if (stableStringify(from) !== stableStringify(to)) diff[key] = { from: normalise(from), to: normalise(to) };
   }
   return diff;
 }
 
+/**
+ * `JSON.stringify` throws on a bigint (`ShareTransaction.distinctiveFrom`
+ * and its neighbours are the first bigint columns this platform has), so
+ * comparison — not only storage — has to go through a replacer that stands
+ * one in for a string, or writing an audit record for any row carrying one
+ * throws before the write it is meant to record ever happens.
+ */
+function stableStringify(v: unknown): string {
+  return JSON.stringify(v, (_key, value) => (typeof value === 'bigint' ? value.toString() : value));
+}
+
 function normalise(v: unknown): unknown {
   if (v instanceof Date) return v.toISOString();
+  if (typeof v === 'bigint') return v.toString();
   if (v && typeof v === 'object' && 'toString' in v && v.constructor?.name === 'Decimal') return Number(v.toString());
   return v;
 }

@@ -199,6 +199,17 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'portal_documents', label: 'Documents', icon: 'file', path: '/portal/documents', group: 'portal', position: 72, requiredPermission: 'entity_documents:V', archetypes: ['portal'] },
   { nodeKey: 'portal_board', label: 'Board', icon: 'shield', path: '/portal/board', group: 'portal', position: 73, requiredPermission: 'board_meetings:V', archetypes: ['portal'], synonyms: ['meetings', 'resolutions', 'minutes'] },
   { nodeKey: 'portal_entities', label: 'Entities', icon: 'building', path: '/portal/entities', group: 'portal', position: 74, requiredPermission: 'group:V', archetypes: ['portal'], synonyms: ['group', 'subsidiaries', 'structure chart'] },
+
+  // The register, worked from the ERP side — company secretary, finance,
+  // chairman. Nothing here is `archetypes: ['portal']`, so it never reaches
+  // the portal shell; the portal's own view of the same facts is the
+  // `portal_*` group above.
+  { nodeKey: 'eq_cap_table', label: 'Cap Table', icon: 'chart', path: '/equity/cap-table', group: 'equity', position: 80, requiredPermission: 'cap_table:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['shareholders', 'cap table', 'ownership', 'members'] },
+  { nodeKey: 'eq_register', label: 'Share Register', icon: 'file', path: '/equity/register', group: 'equity', position: 81, requiredPermission: 'share_ledger:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['share register', 'allotments', 'transfers', 'ledger'] },
+  { nodeKey: 'eq_holders', label: 'Holders', icon: 'users', path: '/equity/holders', group: 'equity', position: 82, requiredPermission: 'holders:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['shareholders', 'members', 'investors'] },
+  { nodeKey: 'eq_share_classes', label: 'Share Classes', icon: 'package', path: '/equity/share-classes', group: 'equity', position: 83, requiredPermission: 'share_classes:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['equity', 'preference', 'instruments'] },
+  { nodeKey: 'eq_valuations', label: 'Valuations', icon: 'trending', path: '/equity/valuations', group: 'equity', position: 84, requiredPermission: 'valuations:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['409a', 'fmv', 'fair value'] },
+  { nodeKey: 'eq_documents', label: 'Entity Documents', icon: 'file', path: '/equity/documents', group: 'equity', position: 85, requiredPermission: 'entity_documents:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['certificates', 'resolutions', 'filings'] },
 ];
 
 /**

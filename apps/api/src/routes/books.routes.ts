@@ -491,6 +491,15 @@ router.patch(
         defaultDueDays: z.number().int().positive().max(365).optional(),
         documentPrefix: z.string().max(8).nullish(),
         documentYearFormat: z.enum(['short', 'full']).optional(),
+        incorporatedOn: z.string().nullish(),
+        financialYearEndMonth: z.number().int().min(1).max(12).nullish(),
+        isSmallCompany: z.boolean().nullish(),
+        dematStatus: z.enum(['physical', 'demat', 'mixed']).optional(),
+        isin: z.string().nullish(),
+        rtaName: z.string().nullish(),
+        dpiitNumber: z.string().nullish(),
+        dpiitRecognisedOn: z.string().nullish(),
+        certificateSignatories: z.array(z.object({ name: z.string(), designation: z.string() })).optional(),
       })
       .parse(req.body);
     return updateCompanyProfile(body);

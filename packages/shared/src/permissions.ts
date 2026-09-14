@@ -292,6 +292,14 @@ export const MONEY_FIELDS = [
   'ctc',
   'basicPay',
   'monthlyRate',
+  // The register. A director (`cap_table:V@all`, no `financial`) sees counts
+  // and percentages, never what a share cost or what paid-up capital is worth
+  // — the same masking a payslip gets, on the same mechanism.
+  'pricePerShare',
+  'faceValue',
+  'equityValue',
+  'paidUpAmount',
+  'stampDutyPaid',
 ];
 
 /**

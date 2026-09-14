@@ -312,6 +312,22 @@ export const EVENTS = {
   IMPORT_STAGED: 'kz.fin.import.staged',
   IMPORT_COMMITTED: 'kz.fin.import.committed',
   IMPORT_REVERTED: 'kz.fin.import.reverted',
+
+  // --- Equity register (eqt), phase 1 ---------------------------------------
+  SHARE_CLASS_CREATED: 'kz.eqt.share_class.created',
+  HOLDER_CREATED: 'kz.eqt.holder.created',
+  ALLOTMENT_PROPOSED: 'kz.eqt.allotment.proposed',
+  ALLOTMENT_APPROVED: 'kz.eqt.allotment.approved',
+  ALLOTMENT_EFFECTIVE: 'kz.eqt.allotment.effective',
+  TRANSFER_PROPOSED: 'kz.eqt.transfer.proposed',
+  TRANSFER_APPROVED: 'kz.eqt.transfer.approved',
+  TRANSFER_EFFECTIVE: 'kz.eqt.transfer.effective',
+  SHARE_TRANSACTION_REVERSED: 'kz.eqt.share_transaction.reversed',
+  SHARE_TRANSACTION_REJECTED: 'kz.eqt.share_transaction.rejected',
+  CERTIFICATE_ISSUED: 'kz.eqt.certificate.issued',
+  CERTIFICATE_CANCELLED: 'kz.eqt.certificate.cancelled',
+  VALUATION_RECORDED: 'kz.eqt.valuation.recorded',
+  ENTITY_DOCUMENT_PUBLISHED: 'kz.eqt.document.published',
 } as const;
 
 /**

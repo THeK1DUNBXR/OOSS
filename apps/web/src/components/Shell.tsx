@@ -15,7 +15,7 @@ import {
   Activity, AlertTriangle, Award, Bell, Book, Building2, Calculator, ChevronDown,
   ChevronRight, ChevronsUpDown, Circle, Clipboard, Clock, Coins, Columns3, File,
   FileText, Gauge, GraduationCap, Home, Inbox, Kanban, Key, Layers, Lock, Map as MapIcon,
-  Menu, Package, Receipt, Scale, ScrollText, Search, Settings, Shield, ShieldCheck,
+  Menu, Package, PieChart, Receipt, Scale, ScrollText, Search, Settings, Shield, ShieldCheck,
   Sparkles, Target, TrendingUp, Users, Wallet, X, type LucideIcon,
 } from 'lucide-react';
 import { useSession } from '../lib/session.js';
@@ -34,7 +34,7 @@ const ICONS: Record<string, LucideIcon> = {
   wallet: Wallet, coins: Coins, graduation: GraduationCap, badge: Award, kanban: Kanban,
   alert: AlertTriangle, scale: Scale, settings: Settings, map: MapIcon, key: Key, bot: Circle,
   activity: Activity, clock: Clock, search: Search, layers: Layers,
-  sparkle: Sparkles, lock: Lock, list: FileText, book: Book,
+  sparkle: Sparkles, lock: Lock, list: FileText, book: Book, chart: PieChart,
 };
 
 function NavIcon({ icon, className = 'h-[18px] w-[18px]' }: { icon: string; className?: string }) {
@@ -48,6 +48,7 @@ function NavIcon({ icon, className = 'h-[18px] w-[18px]' }: { icon: string; clas
 const GROUP_LABELS: Record<string, string> = {
   main: '',
   money: 'Money',
+  equity: 'Equity',
   people: 'People',
   // Not "Customers": a student, a college and a business are three different
   // parties, and only one of them is buying anything on any given day.
@@ -236,7 +237,7 @@ export function Shell() {
 
 // Fixed group order, so the shell reads the way the work reads: your own
 // surface first, then the domains, then the platform underneath them.
-const GROUP_ORDER = ['main', 'money', 'people', 'customers', 'delivery', 'setup'];
+const GROUP_ORDER = ['main', 'money', 'equity', 'people', 'customers', 'delivery', 'setup'];
 
 /** The sidebar's content, shared between its desktop in-flow rendering and
  *  its mobile drawer overlay — one nav, two placements. */

@@ -58,13 +58,20 @@ export const DEFAULT_APPROVAL_POLICY: ApprovalPolicyContent = {
 
 export interface GateSubject {
   id: string;
-  type: 'mou' | 'contract' | 'partner_agreement' | 'quote';
+  type: 'mou' | 'contract' | 'partner_agreement' | 'quote' | 'share_transaction';
   label: string;
   ownerPartyId: string | null;
   commercialValue: number | null;
   currency: string;
   strategicValue: string | null;
   termMonths: number | null;
+  /**
+   * Overrides the `${type}s` resource the gate would otherwise derive. A
+   * `share_transaction` gates on `share_ledger:approve` (§3.4 of the
+   * equity-portal plan), not the ungranted `share_transactions` resource the
+   * default derivation would ask for.
+   */
+  resource?: string;
 }
 
 export interface GateResult {
@@ -125,7 +132,7 @@ export async function evaluateApprovalGate(
 
   // required_permission — a distinct grant from base edit. Holding edit alone
   // never confers approval authority.
-  const resource = `${subject.type}s`;
+  const resource = subject.resource ?? `${subject.type}s`;
   const permission = await evaluate({ resource, verb: 'approve' });
   if (!permission.allowed) {
     throw ApiError.forbidden(
