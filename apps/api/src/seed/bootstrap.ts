@@ -41,6 +41,7 @@ import { registerSubscribers } from '../events/handlers.js';
 import { runBackfills } from './backfill.js';
 import { BUILD } from '../platform/build.js';
 import { reconcileTenantKinds } from '../platform/tenantKind.js';
+import { reconcileMarketingDefaults } from '../platform/marketingSync.js';
 
 export const TENANT_SLUG = process.env.TENANT_SLUG ?? 'kaizen';
 const TENANT_NAME = process.env.TENANT_NAME ?? 'Kaizen Infinities';
@@ -182,6 +183,24 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'edu_queries', label: 'Student Queries', icon: 'message', path: '/education/queries', group: 'delivery', position: 49, requiredPermission: 'education:V', synonyms: ['complaints', 'issues', 'feedback', 'questions', 'grievance'] },
   { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'delivery', position: 50, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
 
+  // ---- Marketing (docs/plan/marketing-api-contract.md) ------------------
+  { nodeKey: 'mkt_overview', label: 'Overview', icon: 'gauge', path: '/marketing', group: 'marketing', position: 60, requiredPermission: 'campaigns:V', synonyms: ['marketing', 'marketing home', 'campaign performance'] },
+  { nodeKey: 'mkt_campaigns', label: 'Campaigns', icon: 'target', path: '/marketing/campaigns', group: 'marketing', position: 61, requiredPermission: 'campaigns:V', synonyms: ['campaign', 'brief', 'launch'] },
+  { nodeKey: 'mkt_calendar', label: 'Calendar', icon: 'clock', path: '/marketing/calendar', group: 'marketing', position: 62, requiredPermission: 'campaigns:V', synonyms: ['marketing calendar', 'schedule'] },
+  { nodeKey: 'mkt_audiences', label: 'Audiences', icon: 'users', path: '/marketing/audiences', group: 'marketing', position: 63, requiredPermission: 'audiences:V', synonyms: ['segment', 'segmentation', 'list'] },
+  { nodeKey: 'mkt_consent', label: 'Consent', icon: 'shield', path: '/marketing/consent', group: 'marketing', position: 64, requiredPermission: 'audiences:V', synonyms: ['preferences', 'opt-in', 'opt-out', 'do not contact', 'unsubscribe'] },
+  { nodeKey: 'mkt_templates', label: 'Templates', icon: 'file', path: '/marketing/templates', group: 'marketing', position: 65, requiredPermission: 'marketing_templates:V', synonyms: ['email template', 'sms template', 'whatsapp template', 'copy'] },
+  { nodeKey: 'mkt_sends', label: 'Sends', icon: 'message', path: '/marketing/sends', group: 'marketing', position: 66, requiredPermission: 'marketing_sends:V', synonyms: ['campaign send', 'blast', 'broadcast', 'email blast'] },
+  { nodeKey: 'mkt_journeys', label: 'Journeys', icon: 'columns', path: '/marketing/journeys', group: 'marketing', position: 67, requiredPermission: 'marketing_journeys:V', synonyms: ['drip', 'automation', 'nurture'] },
+  { nodeKey: 'mkt_forms', label: 'Forms', icon: 'clipboard', path: '/marketing/forms', group: 'marketing', position: 68, requiredPermission: 'marketing_forms:V', synonyms: ['landing form', 'web form', 'lead capture'] },
+  { nodeKey: 'mkt_events', label: 'Events', icon: 'graduation', path: '/marketing/events', group: 'marketing', position: 69, requiredPermission: 'marketing_events:V', synonyms: ['webinar', 'seminar', 'open day', 'demo', 'college visit', 'placement drive'] },
+  { nodeKey: 'mkt_assets', label: 'Assets', icon: 'package', path: '/marketing/assets', group: 'marketing', position: 70, requiredPermission: 'marketing_assets:V', synonyms: ['content library', 'brochure', 'creative', 'deck'] },
+  { nodeKey: 'mkt_social', label: 'Social', icon: 'sparkle', path: '/marketing/social', group: 'marketing', position: 71, requiredPermission: 'marketing_assets:V', synonyms: ['social post', 'social media'] },
+  { nodeKey: 'mkt_referrals', label: 'Referrals', icon: 'badge', path: '/marketing/referrals', group: 'marketing', position: 72, requiredPermission: 'marketing_referrals:V', synonyms: ['referral program', 'affiliate'] },
+  { nodeKey: 'mkt_budget', label: 'Budget', icon: 'calculator', path: '/marketing/budget', group: 'marketing', position: 73, requiredPermission: 'marketing_budgets:V', synonyms: ['spend', 'vendor', 'marketing spend'] },
+  { nodeKey: 'mkt_analytics', label: 'Analytics', icon: 'chart', path: '/marketing/analytics', group: 'marketing', position: 74, requiredPermission: 'marketing_analytics:V', synonyms: ['funnel', 'attribution', 'cost per lead', 'roi', 'romi'] },
+  { nodeKey: 'mkt_settings', label: 'Marketing Settings', icon: 'settings', path: '/marketing/settings', group: 'marketing', position: 75, requiredPermission: 'marketing_settings:V', synonyms: ['channel', 'adapter', 'claim', 'policy'] },
+
   // ---- Set up ----------------------------------------------------------
   // ---- Compliance (docs/plan/compliance.md) --------------------------------
   { nodeKey: 'cmp_calendar', label: 'Compliance Calendar', icon: 'clock', path: '/compliance/calendar', group: 'compliance', position: 40, requiredPermission: 'compliance_obligations:V', synonyms: ['due dates', 'filings', 'deadlines', 'obligations', 'gstr due', 'tds due', 'pf due'] },
@@ -281,6 +300,10 @@ async function seedSensitivityRegistrations() {
     { contextCode: 'prj', entityType: 'project', sensitivityClass: 'internal' },
     { contextCode: 'hr', entityType: 'performance_note', sensitivityClass: 'confidential' },
     { contextCode: 'hr', entityType: 'compensation_record', sensitivityClass: 'regulated' },
+    { contextCode: 'mkt', entityType: 'marketing_campaign', sensitivityClass: 'internal' },
+    { contextCode: 'mkt', entityType: 'marketing_send', sensitivityClass: 'confidential' },
+    { contextCode: 'mkt', entityType: 'marketing_form_submission', sensitivityClass: 'confidential' },
+    { contextCode: 'mkt', entityType: 'marketing_event', sensitivityClass: 'internal' },
     // Deliberately absent: hr.ICC_CASE. Its existence is the sensitive fact, so
     // it is concealed rather than classified — and any unregistered type that
     // reaches the interaction log fails closed at `confidential` anyway.
@@ -610,6 +633,20 @@ async function seedAgents() {
       purpose: 'Answers from governed widget data through the identical five-axis filter. It cannot answer what the surface would withhold.',
       tier: 'READ',
       tools: ['tool.xdm.answer_from_composition', 'tool.mem.render_narrative'],
+      countCeiling: null,
+    },
+    {
+      // Kept in lockstep with `domains/marketing/ai.ts`'s own
+      // `ensureMarketingAssistant()`, which upserts the identical row the
+      // first time `POST /marketing/ai/draft` runs — seeded here too so the
+      // agent is visible on the Admin > AI Agents screen from day one rather
+      // than only after somebody has asked for a first draft.
+      agentKey: 'marketing-assistant',
+      name: 'Marketing Assistant',
+      purpose:
+        'Drafts campaign briefs, message copy, subject lines, audience suggestions and next-best-actions from structured data. Never sends a message, never creates or evaluates an audience, never approves a budget or a send.',
+      tier: 'DRAFT',
+      tools: ['tool.mkt.draft_campaign_brief', 'tool.mkt.suggest_message_copy', 'tool.mkt.suggest_audience', 'tool.mkt.suggest_next_action'],
       countCeiling: null,
     },
   ];
@@ -1015,6 +1052,12 @@ export async function seedBootstrap(opts: SeedBootstrapOptions = {}): Promise<{
     await seedCompliance();
     accounts = await seedFoundingAccounts();
   });
+
+  // Marketing's per-tenant defaults (channels, starter score rules) — the
+  // same idempotent reconcile `reconcileMarketingDefaultsForAllTenants` runs
+  // at every API boot, called here too so a freshly bootstrapped tenant has
+  // them from the first run rather than only after the API restarts once.
+  await reconcileMarketingDefaults(tenant.id);
 
   // Rows written under an older shape, brought up to the current one. Safe to
   // re-run: each backfill changes only what still carries the old shape.

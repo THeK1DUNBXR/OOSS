@@ -241,6 +241,8 @@ async function referenceResolvesInTenant(ref: RelatedReference, tenantId: string
     enrollment: (id) => prisma.enrollment.findFirst({ where: { id, tenantId }, select: { id: true } }),
     account: (id) => prisma.account.findFirst({ where: { id, tenantId }, select: { id: true } }),
     institution_profile: (id) => prisma.institutionProfile.findFirst({ where: { id, tenantId }, select: { id: true } }),
+    marketing_campaign: (id) => prisma.marketingCampaign.findFirst({ where: { id, tenantId }, select: { id: true } }),
+    marketing_event: (id) => prisma.marketingEvent.findFirst({ where: { id, tenantId }, select: { id: true } }),
   };
 
   const resolver = table[ref.entityType];

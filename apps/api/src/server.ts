@@ -9,6 +9,7 @@ import { BUILD, STARTED_AT, buildLabel } from './platform/build.js';
 import { reconcileNavForAllTenants } from './platform/navSync.js';
 import { addMissingGrantsForAllTenants } from './platform/grantSync.js';
 import { reconcileTenantKinds } from './platform/tenantKind.js';
+import { reconcileMarketingDefaultsForAllTenants } from './platform/marketingSync.js';
 import { assertProductionSecrets } from './lib/auth.js';
 
 export function createApp() {
@@ -101,6 +102,20 @@ if (process.env.NODE_ENV !== 'test') {
     })
     .catch((error: unknown) => {
       console.error('Tenant kinds could not be reconciled at boot:', error);
+    });
+
+  // Marketing's own per-tenant defaults (channels, starter score rules) —
+  // same idempotent every-boot reconcile shape as nav and grants above.
+  void reconcileMarketingDefaultsForAllTenants()
+    .then(({ tenants, channelsCreated, scoreRulesCreated }) => {
+      if (channelsCreated > 0 || scoreRulesCreated > 0) {
+        console.log(
+          `Marketing defaults reconciled across ${tenants} tenant(s): ${channelsCreated} channel(s), ${scoreRulesCreated} score rule(s) created`,
+        );
+      }
+    })
+    .catch((error: unknown) => {
+      console.error('Marketing defaults could not be reconciled at boot:', error);
     });
 
   app.listen(port, () => {
