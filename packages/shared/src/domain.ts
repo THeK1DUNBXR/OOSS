@@ -352,6 +352,13 @@ export const AFFILIATION_TYPES = [
   'alumnus',
   'candidate',
   'vendor_contact',
+  // Equity & board — an outsider's relationship to this entity, not an
+  // employment. The chairman holds `director` in a subsidiary the same way, by
+  // the create-tenant script naming them explicitly (§6, phase 0 item 3);
+  // nothing about being chairman elsewhere implies it.
+  'shareholder',
+  'director',
+  'company_secretary',
 ] as const;
 export type AffiliationType = (typeof AFFILIATION_TYPES)[number];
 
@@ -388,6 +395,9 @@ export const AFFILIATION_LABELS: Record<AffiliationType, string> = {
   alumnus: 'Alumnus',
   candidate: 'Candidate',
   vendor_contact: 'Supplier contact',
+  shareholder: 'Shareholder',
+  director: 'Board member',
+  company_secretary: 'Company secretary',
 };
 
 export const RELATIONSHIP_ENTITY_TYPES = ['person', 'organization', 'institution', 'project', 'contract'] as const;
@@ -766,6 +776,11 @@ export const EXCEPTION_CODES = {
   // outside the company is waiting.
   EX_EDU_002: { code: 'EX-EDU-002', label: 'Learner issue raised', severity: 'S3_HIGH_RISK' },
   EX_EDU_003: { code: 'EX-EDU-003', label: 'Learner query unanswered', severity: 'S2_WARNING' },
+  // Raised once, the moment `reconcileTenantKinds` first finds a tenant to be
+  // a holding or a subsidiary: s.2(85) ends "small company" status for both
+  // regardless of size, which changes the board-meeting cadence, the annual
+  // return form and (per §1a.1) the demat mandate.
+  EX_EQT_001: { code: 'EX-EQT-001', label: 'Small company status ended by group structure', severity: 'S2_WARNING' },
 } as const;
 
 export const EXCEPTION_STATES = ['open', 'acknowledged', 'resolved', 'escalated', 'suppressed'] as const;

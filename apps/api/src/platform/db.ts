@@ -18,8 +18,17 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { getContext, maybeTenantId } from './context.js';
 
-/** Models that legitimately have no tenant key. */
-const TENANT_EXEMPT_MODELS = new Set<string>(['Tenant']);
+/**
+ * Models that legitimately have no tenant key.
+ *
+ * `Principal` joins `Tenant` here: a person's credential and login are cross-
+ * tenant by nature — one email, one password, however many tenants they hold
+ * a `User` row in — so a `tenantId` on it would be meaningless (whose?) rather
+ * than merely inconvenient. Its use stays confined to `lib/auth.ts`,
+ * `lib/http.ts` and the seed, which are the only places identity is resolved
+ * before a tenant is.
+ */
+const TENANT_EXEMPT_MODELS = new Set<string>(['Tenant', 'Principal']);
 
 /** Operations whose `where` clause we scope. */
 const READ_OPS = new Set([

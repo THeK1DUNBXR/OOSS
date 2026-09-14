@@ -145,6 +145,9 @@ that runs twice does not act twice.
 | `PORT` | `4000` | |
 | `JOBS_ENABLED` | `true` | in-process scheduler |
 | `TENANT_ENFORCE_MODE` | `enforce` | `warn` logs an unscoped query instead of throwing — for migration only |
+| `PORTAL_HOSTS` | *(empty)* | comma-separated hostnames the equity portal shell serves — read into `surfaceHosts.portal` by `/api/meta/version` |
+| `TENANT_KIND` | `standalone` | read once at a tenant's first bootstrap as a stated starting guess — `reconcileTenantKinds` (run at the end of every bootstrap and at boot) recomputes it from the actual parent/child rows regardless, so a wrong guess here never sticks |
+| `PARENT_TENANT_SLUG` | *(unset)* | the parent tenant's slug, read by `pnpm seed` for the default tenant and overridable per call to `pnpm tenant:create --parent` |
 
 `TENANT_ENFORCE_MODE=warn` is a migration aid, not a configuration. Running it
 in production means a service that forgets a tenant predicate returns another

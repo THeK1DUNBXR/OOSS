@@ -68,6 +68,18 @@ export const EVENTS = {
   AFFILIATION_ENDED: 'kz.idn.affiliation.ended',
   ORGANIZATION_CREATED: 'kz.idn.organization.created',
   SESSION_CONTEXT_SWITCHED: 'kz.idn.session.context_switched',
+  /// A sign-in created for an outsider — a shareholder or board member with no
+  /// employment here (§1.10). Never fires on the founding-account seed path.
+  SIGN_IN_CREATED: 'kz.idn.sign_in.created',
+  SIGN_IN_RESET: 'kz.idn.sign_in.reset',
+  /// A principal chose which entity to continue in, after `login()` returned
+  /// more than one. Written in the target tenant only — switching carries no
+  /// cross-tenant event, the same way the token it issues carries no
+  /// cross-tenant reach.
+  ENTITY_SWITCHED: 'kz.idn.entity.switched',
+  /// `reconcileTenantKinds` flipped a tenant's `kind` for the first time —
+  /// the moment s.2(85) ends small-company status for it (§1a.1).
+  TENANT_KIND_CHANGED: 'kz.sys.tenant.kind_changed',
 
   // --- CRM: organisation specialisations ------------------------------------
   CRM_ORGANIZATION_CREATED: 'kz.crm.organization.created',

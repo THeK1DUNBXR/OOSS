@@ -36,7 +36,23 @@ model Tenant {
   /// The explicit bootstrap authority set — who may create the first POLICY or
   /// GRANT for a new tenant. Owned by SYS, it breaks the circularity of the
   /// permission system needing permission to create itself.
+  ///
+  /// Also carries, by convention (documented as `TenantConfig` in
+  /// `@kaizen/shared`): `emailDomains: string[]` (a routing hint only — see
+  /// `apps/api/src/lib/auth.ts`), `originDivision` (the division a subsidiary
+  /// grew out of, before it existed as its own tenant) and
+  /// `smallCompanyNoticeRaisedAt` (set once `reconcileTenantKinds` has raised
+  /// the §1a.1 compliance notice, so it fires exactly once).
   config Json @default("{}")
+
+  /// The group. A tenant with a parent is a `subsidiary`; a tenant another
+  /// tenant names as parent is a `holding`; anything else is `standalone`.
+  /// Recomputed by `reconcileTenantKinds` rather than trusted as written, so it
+  /// can never go stale the way a hand-set flag would.
+  parentTenantId String?
+  parent         Tenant?  @relation("TenantGroup", fields: [parentTenantId], references: [id], onDelete: Restrict)
+  subsidiaries   Tenant[] @relation("TenantGroup")
+  kind           String   @default("standalone") // holding | subsidiary | standalone
 
   users           User[]
   people          Person[]
@@ -962,10 +978,20 @@ model User {
   personId String
   person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
 
-  email        String
-  passwordHash String
-  status       String  @default("active") // active | invited | suspended
-  branch       String?
+  email  String
+  status String  @default("active") // active | invited | suspended
+  branch String?
+
+  /// Deprecated: the credential now lives on `Principal`, one per email across
+  /// every tenant. Kept nullable rather than dropped because `prisma db push`
+  /// cannot run code before dropping a column — a hard drop here would lose
+  /// every existing install's password in the same step that removed the
+  /// column to hold it. `seed/backfill.ts` moves the hash across and nulls
+  /// this field; `login()` refuses a user whose `principalId` is still unset
+  /// rather than falling back to it.
+  passwordHash String?
+  principalId  String?
+  principal    Principal? @relation(fields: [principalId], references: [id])
 
   /// Server-side carriage. Never client-trusted.
   activeAffiliationId String?
@@ -978,7 +1004,34 @@ model User {
 
   @@unique([tenantId, email])
   @@index([tenantId, personId])
+  @@index([principalId])
   @@map("users")
+}
+
+/// One identity across every tenant a person touches — the group's chairman,
+/// an outside shareholder in two subsidiaries, a director who is also staff at
+/// the holding company. `User` stays per-tenant (a role, an affiliation, a
+/// classification ceiling are all tenant-scoped facts); the credential and the
+/// login itself are not, so they live here instead of being copied once per
+/// tenant and drifting.
+///
+/// Deliberately exempt from the tenant-scope gate (`TENANT_EXEMPT_MODELS` in
+/// `platform/db.ts`) — a principal is cross-tenant by definition, the same way
+/// `Tenant` itself is. Its use stays confined to `lib/auth.ts`, `lib/http.ts`
+/// and the seed: nowhere in a domain function is it legitimate to query a
+/// Principal directly, because a domain function runs inside one tenant.
+model Principal {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  status       String    @default("active") // active | suspended
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  users User[]
+
+  @@map("principals")
 }
 
 /// Watermark-relative delta state. `reachSignature` — a hash over resolved

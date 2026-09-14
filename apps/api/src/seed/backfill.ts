@@ -14,6 +14,50 @@
 import { unscopedPrisma } from '../platform/db.js';
 
 /**
+ * Move every `User.passwordHash` onto the `Principal` it belongs to.
+ *
+ * `prisma db push` cannot run code before dropping a column, so `User.
+ * passwordHash` stays as a nullable, deprecated field rather than being
+ * dropped outright — a hard drop in the same step that introduced `Principal`
+ * would lose every existing install's password. This is the code that would
+ * have run first: for every user with no principal yet, find-or-create the
+ * `Principal` by lowercase email (so two tenants' users sharing an email
+ * become the one identity §3.2 describes), copy the hash across, point the
+ * user at it, and null the column it came from. A second run does nothing —
+ * every user it would touch already has a principal.
+ */
+export async function backfillPrincipals(): Promise<number> {
+  const orphaned = await unscopedPrisma.user.findMany({
+    where: { principalId: null },
+    select: { id: true, email: true, passwordHash: true },
+  });
+  if (orphaned.length === 0) return 0;
+
+  let migrated = 0;
+  for (const user of orphaned) {
+    const email = user.email.toLowerCase();
+    // A hash-less row (already migrated by hand, or created directly by a
+    // test fixture) still needs a principal to sign in through — a
+    // placeholder hash that can never verify, rather than leaving it unset
+    // and login silently falling through to nothing.
+    const passwordHash = user.passwordHash ?? (await unscopedPrisma.principal.findFirst({ where: { email } }))?.passwordHash ?? 'unmigrated';
+
+    const principal = await unscopedPrisma.principal.upsert({
+      where: { email },
+      create: { email, passwordHash },
+      update: {},
+    });
+
+    await unscopedPrisma.user.update({
+      where: { id: user.id },
+      data: { principalId: principal.id, passwordHash: null },
+    });
+    migrated += 1;
+  }
+  return migrated;
+}
+
+/**
  * Say which of the two an organisation is.
  *
  * `Organization.kind` arrived after the rows did, defaulting to `organization`
@@ -159,10 +203,14 @@ export async function runBackfills(): Promise<{
   organizationKinds: number;
   studentProfiles: number;
   designations: number;
+  principals: number;
 }> {
   return {
     organizationKinds: await backfillOrganizationKinds(),
     studentProfiles: await backfillStudentProfiles(),
     designations: await backfillDesignations(),
+    // Runs last: the other backfills may create or touch `User` rows, and
+    // every one of them should walk out of the seed with a principal.
+    principals: await backfillPrincipals(),
   };
 }
