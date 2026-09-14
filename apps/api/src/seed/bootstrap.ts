@@ -141,6 +141,10 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'hr_payroll', label: 'Payroll', icon: 'wallet', path: '/people/payroll', group: 'people', position: 23, requiredPermission: 'payroll:V', synonyms: ['salary', 'pay run', 'wages', 'payslip'] },
   { nodeKey: 'hr_hiring', label: 'Hiring', icon: 'inbox', path: '/people/hiring', group: 'people', position: 24, requiredPermission: 'requisitions:V', synonyms: ['recruitment', 'vacancies', 'candidates', 'applications'] },
   { nodeKey: 'hr_capabilities', label: 'Skills', icon: 'badge', path: '/people/skills', group: 'people', position: 25, requiredPermission: 'capabilities:V', synonyms: ['capability', 'who can do', 'expertise'] },
+  // An employee's own grants — `option_grants:V@own` — separate from the
+  // register's own `eq_esop` node, the same way a payslip is separate from
+  // the payroll screen it is drawn from.
+  { nodeKey: 'my_options', label: 'My Options', icon: 'coins', path: '/me/options', group: 'people', position: 26, requiredPermission: 'option_grants:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['esop', 'stock options', 'vesting', 'my grants'] },
 
   // ---- Customers -------------------------------------------------------
   { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'customers', position: 30, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },
@@ -199,6 +203,10 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'portal_documents', label: 'Documents', icon: 'file', path: '/portal/documents', group: 'portal', position: 72, requiredPermission: 'entity_documents:V', archetypes: ['portal'] },
   { nodeKey: 'portal_board', label: 'Board', icon: 'shield', path: '/portal/board', group: 'portal', position: 73, requiredPermission: 'board_meetings:V', archetypes: ['portal'], synonyms: ['meetings', 'resolutions', 'minutes'] },
   { nodeKey: 'portal_entities', label: 'Entities', icon: 'building', path: '/portal/entities', group: 'portal', position: 74, requiredPermission: 'group:V', archetypes: ['portal'], synonyms: ['group', 'subsidiaries', 'structure chart'] },
+  // An employee who is also a shareholder sees their own grants here too —
+  // identical content to `my_options`, reached from the portal shell instead
+  // of the ERP one.
+  { nodeKey: 'portal_options', label: 'Options', icon: 'coins', path: '/portal/options', group: 'portal', position: 75, requiredPermission: 'option_grants:V', archetypes: ['portal'], synonyms: ['esop', 'stock options', 'vesting'] },
 
   // The register, worked from the ERP side — company secretary, finance,
   // chairman. Nothing here is `archetypes: ['portal']`, so it never reaches
@@ -210,6 +218,7 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'eq_share_classes', label: 'Share Classes', icon: 'package', path: '/equity/share-classes', group: 'equity', position: 83, requiredPermission: 'share_classes:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['equity', 'preference', 'instruments'] },
   { nodeKey: 'eq_valuations', label: 'Valuations', icon: 'trending', path: '/equity/valuations', group: 'equity', position: 84, requiredPermission: 'valuations:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['409a', 'fmv', 'fair value'] },
   { nodeKey: 'eq_documents', label: 'Entity Documents', icon: 'file', path: '/equity/documents', group: 'equity', position: 85, requiredPermission: 'entity_documents:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['certificates', 'resolutions', 'filings'] },
+  { nodeKey: 'eq_esop', label: 'ESOP', icon: 'coins', path: '/equity/esop', group: 'equity', position: 86, requiredPermission: 'esop_plans:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['options', 'option pool', 'stock options', 'vesting', 'sh-6'] },
 ];
 
 /**

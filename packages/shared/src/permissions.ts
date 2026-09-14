@@ -203,6 +203,9 @@ export const RESOURCES = [
   'compliance',
   'group',
   'holdings',
+  // ESOP (equity-portal plan §5/§6, phase 5).
+  'esop_plans',
+  'option_grants',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

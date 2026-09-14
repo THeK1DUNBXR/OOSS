@@ -634,6 +634,8 @@ export const RECORD_TYPE_CODES = [
   // The register (equity-portal plan §5): a class of shares, a holder, one
   // ledger entry, a printed certificate, a recorded valuation.
   'SHC', 'HLD', 'SHT', 'CRT', 'VAL',
+  // ESOP (equity-portal plan §5/§6, phase 5): a scheme and a grant under it.
+  'ESP', 'OPG',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

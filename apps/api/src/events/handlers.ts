@@ -19,6 +19,7 @@ import { subscribe, wouldLoop } from '../platform/eventBus.js';
 import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../domains/finance.js';
 import { ensureWinLossReview } from '../domains/winLoss.js';
 import { computeSensitivity } from '../domains/interactions.js';
+import { handleEmploymentExit } from '../domains/esop.js';
 
 let registered = false;
 
@@ -126,6 +127,16 @@ export function registerSubscribers(): void {
     if (sensitivityClass !== interaction.sensitivityClass) {
       await prisma.interaction.update({ where: { id: interaction.id }, data: { sensitivityClass } });
     }
+  });
+
+  // ESOP (equity-portal plan §6, phase 5): an employee's exit lapses their
+  // unvested options immediately and starts the exercise-window clock on any
+  // vested-unexercised balance. Subscribed against the HRM's own past-tense
+  // name for every terminal separation transition (resignation reaching its
+  // last working day, post-disciplinary termination, confirmed abandonment —
+  // `EMPLOYMENT_EVENT_VERB` maps all three to `separated`), never a role slug.
+  subscribe('kz.hr.employment.separated', 'eqt.esop_exit_lapse', async (event: EventEnvelope) => {
+    await handleEmploymentExit(event.subject.entityId, new Date(event.occurredAt));
   });
 
   /** A band transition, not a raw reading, is what reaches the Command Center. */

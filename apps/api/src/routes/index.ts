@@ -12,6 +12,7 @@ import booksRoutes from './books.routes.js';
 import { importsRouter } from './imports.routes.js';
 import metaRoutes from './meta.routes.js';
 import equityRoutes from './equity.routes.js';
+import esopRoutes from './esop.routes.js';
 import { requireAuth } from '../lib/http.js';
 
 const router = Router();
@@ -28,6 +29,7 @@ router.use('/hr', requireAuth, hrRoutes);
 router.use('/books', requireAuth, booksRoutes);
 router.use('/imports', requireAuth, importsRouter);
 router.use('/equity', requireAuth, equityRoutes);
+router.use('/esop', requireAuth, esopRoutes);
 // What is running, and against what data. Signed in, because the seed stamp is
 // about a particular tenant.
 router.use('/meta', requireAuth, metaRoutes);
