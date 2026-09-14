@@ -41,6 +41,7 @@ import { raiseException } from '../../platform/exceptions.js';
 import { registerHook } from '../../platform/hooks.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../../platform/documentNumber.js';
 import { companyProfile, documentNumbering } from '../companyProfile.js';
+import { encryptField, readRegulated } from './privacy.js';
 
 registerGovernedEntities('cmp_pay', [
   'salary_structure',
@@ -601,7 +602,7 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
         total: num(instruction.deductions),
       },
       net: num(instruction.netAmount),
-      bankLast4: employment.bankAccountNumber ? employment.bankAccountNumber.slice(-4) : null,
+      bankLast4: readRegulated(employment.bankAccountNumber)?.slice(-4) ?? null,
     };
 
     const payslip = await prisma.payslip.create({
@@ -823,7 +824,15 @@ export async function setBankDetails(employmentRelationshipId: string, input: Ba
   const before = await prisma.employmentRelationship.findFirst({ where: { id: employmentRelationshipId, tenantId: auth.tenantId } });
   if (!before) throw ApiError.notFound('Employment relationship');
 
-  const row = await prisma.employmentRelationship.update({ where: { id: employmentRelationshipId }, data: input });
+  // The account number and the name on it are regulated values: encrypted on
+  // the way in, the way the privacy backfill leaves everything already on disk.
+  const data = {
+    ...input,
+    ...(input.bankAccountNumber !== undefined ? { bankAccountNumber: encryptField(input.bankAccountNumber) } : {}),
+    ...(input.bankAccountName !== undefined ? { bankAccountName: encryptField(input.bankAccountName) } : {}),
+    ...(input.bankIfsc !== undefined ? { bankIfsc: encryptField(input.bankIfsc) } : {}),
+  };
+  const row = await prisma.employmentRelationship.update({ where: { id: employmentRelationshipId }, data });
   // Regulated values themselves never enter the diff — only that the fields changed.
   await auditWrite({
     action: 'update',
