@@ -445,7 +445,7 @@ export function Receivables() {
                 <th className="text-right">Outstanding</th>
                 <th>Next due</th>
                 <th>Dunning stage</th>
-                <th>Hydrated</th>
+                <th>As of</th>
               </tr>
             </thead>
             <tbody>
@@ -464,7 +464,9 @@ export function Receivables() {
                       <span className="text-2xs text-ink-600">current</span>
                     )}
                   </td>
-                  <td className="text-2xs text-ink-500">{relative(r.hydratedAt)}</td>
+                  <td className="text-2xs text-ink-500" title="When this row was last recomputed from the invoices and payments behind it">
+                    {relative(r.hydratedAt)}
+                  </td>
                 </tr>
               ))}
             </tbody>

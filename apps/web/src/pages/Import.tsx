@@ -677,8 +677,16 @@ function columnsFor(kind: string): Column[] {
         { key: 'cr', label: 'Credit', align: 'right', render: (s) => amountText(s.closingCredit) },
       ];
     default:
-      return [{ key: 'raw', label: 'Content', render: (s) => truncate(JSON.stringify(s), 90) }];
+      return [{ key: 'raw', label: 'Content', render: (s) => truncate(plainRow(s), 90) }];
   }
+}
+
+/** A row whose shape isn't recognised yet, read out as "field: value" rather than as JSON. */
+function plainRow(s: Record<string, unknown>): string {
+  return Object.entries(s)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(', ');
 }
 
 const shortDate = (v: unknown): string => (v ? date(String(v)) : '—');
