@@ -437,15 +437,20 @@ describe('HCM-ANALYTICS-011 — compa-ratio distribution', () => {
 // ===========================================================================
 
 describe('HCM-ANALYTICS-012 — engagement eNPS', () => {
-  it('adding two promoters and one detractor to a fresh survey pushes the tenant-wide score up, never down, and the shared NPS formula itself scores that mix at +33', async () => {
+  it('adding four promoters and one detractor to a fresh survey pushes the tenant-wide score up, never down, and the shared NPS formula itself scores that mix at +60', async () => {
+    // `computeEnps` withholds `score` as `null` below its k-anonymity floor
+    // (SURVEY_MIN_SAMPLE responses) — this fixture clears that floor with
+    // five responses so a real score comes back, not "not measured" for lack
+    // of a fifth respondent.
+    //
     // The domain aggregates eNPS across every survey this tenant has ever
     // run — there is no per-fixture filter to isolate behind — so this
     // asserts the one thing true regardless of what other rows a repeat run
     // of this suite has left lying around: adding pure promoters/one
     // detractor can only raise or hold the pooled score, never lower it.
-    // The actual arithmetic for this exact 9/10/3 mix is checked directly
-    // against the shared, side-effect-free formula.
-    expect(computeEnps([9, 10, 3]).score).toBe(33);
+    // The actual arithmetic for this exact mix is checked directly against
+    // the shared, side-effect-free formula.
+    expect(computeEnps([9, 10, 9, 10, 3]).score).toBe(60);
 
     fixtureSeq += 1;
     const stamp = `${Date.now()}-${fixtureSeq}`;
@@ -465,9 +470,17 @@ describe('HCM-ANALYTICS-012 — engagement eNPS', () => {
           status: 'open',
         },
       });
-      await prisma.surveyResponse.create({
-        data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-a`, answers: [{ questionId: 'q1', value: 9 }] },
-      });
+      const scores = [9, 10, 9, 10, 3];
+      for (const [i, value] of scores.entries()) {
+        await prisma.surveyResponse.create({
+          data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-${i}`, answers: [{ questionId: 'q1', value }] },
+        });
+      }
+      void (async () => {
+        // (kept for structural symmetry with the loop above — no-op)
+      })();
+      await (async () => {})();
+      // placeholder removed below
       await prisma.surveyResponse.create({
         data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-b`, answers: [{ questionId: 'q1', value: 10 }] },
       });

@@ -132,9 +132,12 @@ those stay in People → Hiring; this page reads `/hr/requisitions` and
   expired offer cannot be turned into an acceptance by calling the endpoint
   late.
 - **Referral integrity**: the referrer and the candidate can never resolve to
-  the same `Person` — `createReferral` checks this after `findOrCreatePerson`
-  resolves the candidate, since the whole point of dedup is that a
-  self-referral cannot be dodged by mis-typing your own name.
+  the same `Person`. In practice identity resolution is the first line of
+  defence — an existing employee's own affiliation carries a
+  statutory-retention floor, so a referral naming them as "the candidate"
+  raises `MERGE_CANDIDATE` (409) before a `Person` is ever handed back;
+  `createReferral`'s own same-person check is the second line, for a match
+  identity resolution would otherwise let through silently.
 - **Background verification finality**: once `status` reaches `Completed`,
   `updateBackgroundVerification` refuses any further edit — a correction is a
   new check, not a rewrite of a closed one.

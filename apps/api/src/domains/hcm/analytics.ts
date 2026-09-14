@@ -639,7 +639,11 @@ export async function engagementEnps(): Promise<Metric<number>> {
     return notMeasured('No response has answered an eNPS question yet.');
   }
   const { score } = computeEnps(scores);
-  return score === null ? notMeasured('No response has answered an eNPS question yet.') : measured(score);
+  // `computeEnps` itself withholds `score` (as `null`) below its k-anonymity
+  // floor, the same discipline `commandCenter.ts` uses for unit capacity —
+  // not enough of a distinct reason from "no responses" to warrant a second
+  // message, since either way the honest state is "not enough to report".
+  return score === null ? notMeasured('Too few eNPS responses recorded yet to report a score without exposing individuals.') : measured(score);
 }
 
 /**
