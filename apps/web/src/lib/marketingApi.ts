@@ -121,6 +121,17 @@ export interface Page<T> {
   total: number;
 }
 
+/**
+ * Tolerates a bare array in place of `{ items, total }`. Most list routes
+ * return their full, unpaginated set today rather than a real page (see
+ * review-web.md #7) — as `{ items, total }` in some places and a plain array
+ * in others — so every list call runs through this one normaliser instead of
+ * each hook guessing at the shape for itself.
+ */
+function normalizePage<T>(raw: Page<T> | T[]): Page<T> {
+  return Array.isArray(raw) ? { items: raw, total: raw.length } : raw;
+}
+
 const BASE = '/marketing';
 
 // ---------------------------------------------------------------------------
@@ -451,7 +462,7 @@ export const mk = {
     api.download(`${BASE}/analytics/export${qs({ kind, ...params })}`, fallbackName),
 
   // Campaigns ------------------------------------------------------------------
-  listCampaigns: (params?: Params) => api.get<Page<CampaignView>>(`${BASE}/campaigns${qs(params)}`),
+  listCampaigns: (params?: Params) => api.get<Page<CampaignView> | CampaignView[]>(`${BASE}/campaigns${qs(params)}`).then(normalizePage),
   getCampaign: (id: string) => api.get<CampaignDetailView>(`${BASE}/campaigns/${id}`),
   createCampaign: (body: {
     name: string;
@@ -489,7 +500,7 @@ export const mk = {
   getCampaignUtm: (id: string) => api.get<CampaignUtmResponse>(`${BASE}/campaigns/${id}/utm`),
 
   // Plans & calendar -------------------------------------------------------------
-  listPlans: (params?: Params) => api.get<Page<PlanView>>(`${BASE}/plans${qs(params)}`),
+  listPlans: (params?: Params) => api.get<Page<PlanView> | PlanView[]>(`${BASE}/plans${qs(params)}`).then(normalizePage),
   createPlan: (body: { period: string; division: string; theme: string; goals?: unknown; campaignIds?: string[] }) =>
     api.post<PlanView>(`${BASE}/plans`, body),
   updatePlan: (id: string, body: Partial<Record<string, unknown>>) => api.patch<PlanView>(`${BASE}/plans/${id}`, body),
@@ -498,12 +509,12 @@ export const mk = {
   getCalendar: (params: { from: string; to: string }) => api.get<CalendarItem[]>(`${BASE}/calendar${qs(params)}`),
 
   // Budget & spend ------------------------------------------------------------
-  listBudgets: (params?: { period?: string; division?: string }) => api.get<Page<BudgetView>>(`${BASE}/budgets${qs(params)}`),
+  listBudgets: (params?: { period?: string; division?: string }) => api.get<Page<BudgetView> | BudgetView[]>(`${BASE}/budgets${qs(params)}`).then(normalizePage),
   createBudget: (body: { period: string; division: string; channelKey?: ChannelKey; campaignId?: string; planned: number; note?: string }) =>
     api.post<BudgetView>(`${BASE}/budgets`, body),
   updateBudget: (id: string, body: Partial<Record<string, unknown>>) => api.patch<BudgetView>(`${BASE}/budgets/${id}`, body),
   approveBudget: (id: string) => api.post<BudgetView>(`${BASE}/budgets/${id}/approve`),
-  listSpends: (params?: { campaignId?: string; from?: string; to?: string }) => api.get<Page<SpendView>>(`${BASE}/spends${qs(params)}`),
+  listSpends: (params?: { campaignId?: string; from?: string; to?: string }) => api.get<Page<SpendView> | SpendView[]>(`${BASE}/spends${qs(params)}`).then(normalizePage),
   createSpend: (body: {
     campaignId?: string;
     channelKey: ChannelKey;
@@ -518,12 +529,12 @@ export const mk = {
   reconcileSpend: (id: string, body: { transactionId?: string; vendorBillId?: string }) =>
     api.post<SpendView>(`${BASE}/spends/${id}/reconcile`, body),
   getBudgetVariance: (params: { period: string; division?: string }) => api.get<BudgetVarianceRow[]>(`${BASE}/budgets/variance${qs(params)}`),
-  listVendors: () => api.get<Page<VendorView>>(`${BASE}/vendors`),
+  listVendors: () => api.get<Page<VendorView> | VendorView[]>(`${BASE}/vendors`).then(normalizePage),
   createVendor: (body: { organizationId: string; services: string[]; contractRef?: string }) => api.post<VendorView>(`${BASE}/vendors`, body),
   updateVendor: (id: string, body: Partial<Record<string, unknown>>) => api.patch<VendorView>(`${BASE}/vendors/${id}`, body),
 
   // Audiences ------------------------------------------------------------------
-  listAudiences: (params?: Params) => api.get<Page<AudienceView>>(`${BASE}/audiences${qs(params)}`),
+  listAudiences: (params?: Params) => api.get<Page<AudienceView> | AudienceView[]>(`${BASE}/audiences${qs(params)}`).then(normalizePage),
   getAudience: (id: string) => api.get<AudienceDetailView>(`${BASE}/audiences/${id}`),
   createAudience: (body: { name: string; kind: AudienceKind; entityType: AudienceEntityType; rules?: AudienceRule; description?: string }) =>
     api.post<AudienceView>(`${BASE}/audiences`, body),
@@ -550,7 +561,7 @@ export const mk = {
   getPreferenceCoverage: () => api.get<PreferenceCoverageResponse>(`${BASE}/preferences/coverage`),
 
   // Templates --------------------------------------------------------------------
-  listTemplates: (params?: { channelKey?: ChannelKey; status?: TemplateStatus }) => api.get<Page<TemplateView>>(`${BASE}/templates${qs(params)}`),
+  listTemplates: (params?: { channelKey?: ChannelKey; status?: TemplateStatus }) => api.get<Page<TemplateView> | TemplateView[]>(`${BASE}/templates${qs(params)}`).then(normalizePage),
   getTemplate: (id: string) => api.get<TemplateView>(`${BASE}/templates/${id}`),
   createTemplate: (body: { channelKey: ChannelKey; name: string; subject?: string; body: string; language?: string; dltTemplateId?: string; waTemplateName?: string }) =>
     api.post<TemplateView>(`${BASE}/templates`, body),
@@ -563,7 +574,7 @@ export const mk = {
   getMergeFields: () => api.get<MergeField[]>(`${BASE}/templates/merge-fields`),
 
   // Sends ----------------------------------------------------------------------
-  listSends: (params?: Params) => api.get<Page<SendView>>(`${BASE}/sends${qs(params)}`),
+  listSends: (params?: Params) => api.get<Page<SendView> | SendView[]>(`${BASE}/sends${qs(params)}`).then(normalizePage),
   getSend: (id: string) => api.get<SendDetailView>(`${BASE}/sends/${id}`),
   createSend: (body: { campaignId?: string; templateId: string; channelKey: ChannelKey; audienceId: string; scheduledAt?: string }) =>
     purposePost<SendView>(`${BASE}/sends`, body),
@@ -576,7 +587,7 @@ export const mk = {
   sendTest: (body: { templateId: string; channelKey: ChannelKey; to: string }) => purposePost<{ ok: boolean }>(`${BASE}/sends/test`, body),
 
   // Journeys -----------------------------------------------------------------
-  listJourneys: (params?: Params) => api.get<Page<JourneyView>>(`${BASE}/journeys${qs(params)}`),
+  listJourneys: (params?: Params) => api.get<Page<JourneyView> | JourneyView[]>(`${BASE}/journeys${qs(params)}`).then(normalizePage),
   getJourney: (id: string) => api.get<JourneyView>(`${BASE}/journeys/${id}`),
   createJourney: (body: { name: string; triggerKind: JourneyTriggerKind; steps: JourneyStep[]; audienceId?: string }) =>
     api.post<JourneyView>(`${BASE}/journeys`, body),
@@ -584,12 +595,12 @@ export const mk = {
   activateJourney: (id: string) => api.post<JourneyView>(`${BASE}/journeys/${id}/activate`),
   pauseJourney: (id: string) => api.post<JourneyView>(`${BASE}/journeys/${id}/pause`),
   retireJourney: (id: string) => api.post<JourneyView>(`${BASE}/journeys/${id}/retire`),
-  listJourneyRuns: (id: string, status?: string) => api.get<Page<{ id: string; personId: string; personName: string; currentStep: number; status: string; nextAt: string | null }>>(`${BASE}/journeys/${id}/runs${qs({ status })}`),
+  listJourneyRuns: (id: string, status?: string) => api.get<Page<{ id: string; personId: string; personName: string; currentStep: number; status: string; nextAt: string | null }> | { id: string; personId: string; personName: string; currentStep: number; status: string; nextAt: string | null }[]>(`${BASE}/journeys/${id}/runs${qs({ status })}`).then(normalizePage),
   enrolInJourney: (id: string, personId: string) => api.post<void>(`${BASE}/journeys/${id}/enrol`, { personId }),
   exitJourneyRun: (runId: string, reason: string) => api.post<void>(`${BASE}/journeys/runs/${runId}/exit`, { reason }),
 
   // Forms, submissions, touchpoints, scoring, links -------------------------
-  listForms: (params?: Params) => api.get<Page<FormView>>(`${BASE}/forms${qs(params)}`),
+  listForms: (params?: Params) => api.get<Page<FormView> | FormView[]>(`${BASE}/forms${qs(params)}`).then(normalizePage),
   getForm: (id: string) => api.get<FormDetailView>(`${BASE}/forms/${id}`),
   createForm: (body: { name: string; slug: string; fields: unknown[]; vertical: string; defaultCampaignId?: string; thankYouMessage?: string }) =>
     api.post<FormView>(`${BASE}/forms`, body),
@@ -598,12 +609,12 @@ export const mk = {
   unpublishForm: (id: string) => api.post<FormView>(`${BASE}/forms/${id}/unpublish`),
   rotateFormToken: (id: string) => api.post<FormView>(`${BASE}/forms/${id}/rotate-token`),
   getFormEmbed: (id: string) => api.get<FormEmbedResponse>(`${BASE}/forms/${id}/embed`),
-  listFormSubmissions: (id: string, status?: FormSubmissionStatus) => api.get<Page<FormSubmissionView>>(`${BASE}/forms/${id}/submissions${qs({ status })}`),
+  listFormSubmissions: (id: string, status?: FormSubmissionStatus) => api.get<Page<FormSubmissionView> | FormSubmissionView[]>(`${BASE}/forms/${id}/submissions${qs({ status })}`).then(normalizePage),
   convertSubmission: (id: string) => api.post<FormSubmissionView>(`${BASE}/submissions/${id}/convert`),
   rejectSubmission: (id: string, reason: string) => api.post<FormSubmissionView>(`${BASE}/submissions/${id}/reject`, { reason }),
   markSubmissionSpam: (id: string) => api.post<FormSubmissionView>(`${BASE}/submissions/${id}/mark-spam`),
   listTouchpoints: (params?: { personId?: string; leadId?: string; campaignId?: string; from?: string; to?: string }) =>
-    api.get<Page<TouchpointView>>(`${BASE}/touchpoints${qs(params)}`),
+    api.get<Page<TouchpointView> | TouchpointView[]>(`${BASE}/touchpoints${qs(params)}`).then(normalizePage),
   createTouchpoint: (body: {
     personId?: string;
     leadId?: string;
@@ -624,12 +635,12 @@ export const mk = {
   deleteScoreRule: (id: string) => api.del<void>(`${BASE}/score-rules/${id}`),
   previewScoreRules: (leadId: string) => api.post<ScoreRulePreviewResponse>(`${BASE}/score-rules/preview`, { leadId }),
   applyScoreRules: () => api.post<{ updated: number }>(`${BASE}/score-rules/apply`),
-  listLinks: () => api.get<Page<ShortLinkView>>(`${BASE}/links`),
+  listLinks: () => api.get<Page<ShortLinkView> | ShortLinkView[]>(`${BASE}/links`).then(normalizePage),
   createLink: (body: { slug?: string; targetUrl: string; campaignId?: string; channelKey?: ChannelKey; utm?: Record<string, string> }) =>
     api.post<ShortLinkView>(`${BASE}/links`, body),
 
   // Events -----------------------------------------------------------------
-  listEvents: (params?: Params) => api.get<Page<MarketingEventView>>(`${BASE}/events${qs(params)}`),
+  listEvents: (params?: Params) => api.get<Page<MarketingEventView> | MarketingEventView[]>(`${BASE}/events${qs(params)}`).then(normalizePage),
   getEvent: (id: string) => api.get<EventDetailView>(`${BASE}/events/${id}`),
   createEvent: (body: {
     name: string;
@@ -650,7 +661,7 @@ export const mk = {
   startEvent: (id: string) => api.post<MarketingEventView>(`${BASE}/events/${id}/start`),
   completeEvent: (id: string) => api.post<MarketingEventView>(`${BASE}/events/${id}/complete`),
   cancelEvent: (id: string, reason: string) => api.post<MarketingEventView>(`${BASE}/events/${id}/cancel`, { reason }),
-  listRegistrations: (id: string) => api.get<Page<RegistrationView>>(`${BASE}/events/${id}/registrations`),
+  listRegistrations: (id: string) => api.get<Page<RegistrationView> | RegistrationView[]>(`${BASE}/events/${id}/registrations`).then(normalizePage),
   registerForEvent: (id: string, body: { personId?: string; person?: { fullName: string; primaryPhone?: string; primaryEmail?: string }; source?: string }) =>
     api.post<RegistrationView>(`${BASE}/events/${id}/register`, body),
   confirmRegistration: (id: string) => api.post<RegistrationView>(`${BASE}/events/registrations/${id}/confirm`),
@@ -662,7 +673,7 @@ export const mk = {
   exportEvent: (id: string, fallbackName: string) => api.download(`${BASE}/events/${id}/export`, fallbackName),
 
   // Assets, social, claims --------------------------------------------------
-  listAssets: (params?: Params) => api.get<Page<AssetView>>(`${BASE}/assets${qs(params)}`),
+  listAssets: (params?: Params) => api.get<Page<AssetView> | AssetView[]>(`${BASE}/assets${qs(params)}`).then(normalizePage),
   getAsset: (id: string) => api.get<AssetView>(`${BASE}/assets/${id}`),
   createAsset: (body: { name: string; kind: AssetKind; url?: string; campaignId?: string; usageRights?: string; expiresAt?: string; tags?: string[] }) =>
     api.post<AssetView>(`${BASE}/assets`, body),
@@ -671,7 +682,7 @@ export const mk = {
   approveAsset: (id: string) => api.post<AssetView>(`${BASE}/assets/${id}/approve`),
   rejectAsset: (id: string, reason: string) => api.post<AssetView>(`${BASE}/assets/${id}/reject`, { reason }),
   retireAsset: (id: string) => api.post<AssetView>(`${BASE}/assets/${id}/retire`),
-  listSocialPosts: (params?: { from?: string; to?: string; channelKey?: ChannelKey }) => api.get<Page<SocialPostView>>(`${BASE}/social-posts${qs(params)}`),
+  listSocialPosts: (params?: { from?: string; to?: string; channelKey?: ChannelKey }) => api.get<Page<SocialPostView> | SocialPostView[]>(`${BASE}/social-posts${qs(params)}`).then(normalizePage),
   createSocialPost: (body: { channelKey: ChannelKey; campaignId?: string; body: string; assetIds?: string[]; scheduledAt: string }) =>
     api.post<SocialPostView>(`${BASE}/social-posts`, body),
   updateSocialPost: (id: string, body: Partial<Record<string, unknown>>) => api.patch<SocialPostView>(`${BASE}/social-posts/${id}`, body),
@@ -679,20 +690,20 @@ export const mk = {
   cancelSocialPost: (id: string) => api.post<SocialPostView>(`${BASE}/social-posts/${id}/cancel`),
   recordSocialMetrics: (id: string, body: { likes?: number; comments?: number; shares?: number; reach?: number; clicks?: number }) =>
     api.post<SocialPostView>(`${BASE}/social-posts/${id}/metrics`, body),
-  listClaims: () => api.get<Page<ClaimView>>(`${BASE}/claims`),
+  listClaims: () => api.get<Page<ClaimView> | ClaimView[]>(`${BASE}/claims`).then(normalizePage),
   createClaim: (body: { text: string; evidenceRef?: string; assetIds?: string[] }) => api.post<ClaimView>(`${BASE}/claims`, body),
   approveClaim: (id: string) => api.post<ClaimView>(`${BASE}/claims/${id}/approve`),
   rejectClaim: (id: string, reason: string) => api.post<ClaimView>(`${BASE}/claims/${id}/reject`, { reason }),
   retireClaim: (id: string) => api.post<ClaimView>(`${BASE}/claims/${id}/retire`),
 
   // Referrals ----------------------------------------------------------------
-  listReferralPrograms: () => api.get<Page<ReferralProgramView>>(`${BASE}/referral-programs`),
+  listReferralPrograms: () => api.get<Page<ReferralProgramView> | ReferralProgramView[]>(`${BASE}/referral-programs`).then(normalizePage),
   createReferralProgram: (body: { name: string; kind: ReferralProgramKind; rewardKind: RewardKind; rewardAmount?: number; terms?: string }) =>
     api.post<ReferralProgramView>(`${BASE}/referral-programs`, body),
   updateReferralProgram: (id: string, body: Partial<Record<string, unknown>>) => api.patch<ReferralProgramView>(`${BASE}/referral-programs/${id}`, body),
   activateReferralProgram: (id: string) => api.post<ReferralProgramView>(`${BASE}/referral-programs/${id}/activate`),
   deactivateReferralProgram: (id: string) => api.post<ReferralProgramView>(`${BASE}/referral-programs/${id}/deactivate`),
-  listReferrals: (params?: { programId?: string; status?: ReferralStatus }) => api.get<Page<ReferralView>>(`${BASE}/referrals${qs(params)}`),
+  listReferrals: (params?: { programId?: string; status?: ReferralStatus }) => api.get<Page<ReferralView> | ReferralView[]>(`${BASE}/referrals${qs(params)}`).then(normalizePage),
   issueReferral: (body: { programId: string; referrerPersonId?: string; referrerOrganizationId?: string }) =>
     api.post<ReferralView>(`${BASE}/referrals/issue`, body),
   redeemReferral: (body: { code: string; referredPersonId?: string; person?: { fullName: string; primaryPhone?: string; primaryEmail?: string } }) =>
@@ -703,7 +714,7 @@ export const mk = {
   getReferralLeaderboard: (programId: string) => api.get<ReferralLeaderboardRow[]>(`${BASE}/referrals/leaderboard${qs({ programId })}`),
 
   // Settings --------------------------------------------------------------------
-  listChannels: () => api.get<Page<ChannelView>>(`${BASE}/settings/channels`),
+  listChannels: () => api.get<Page<ChannelView> | ChannelView[]>(`${BASE}/settings/channels`).then(normalizePage),
   createChannel: (body: { key: ChannelKey; label: string; kind: ChannelKind; senderIds?: string[]; dltEntityId?: string; config?: unknown }) =>
     api.post<ChannelView>(`${BASE}/settings/channels`, body),
   updateChannel: (id: string, body: Partial<Record<string, unknown>>) => api.patch<ChannelView>(`${BASE}/settings/channels/${id}`, body),
