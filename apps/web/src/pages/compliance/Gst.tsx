@@ -400,7 +400,7 @@ function EInvoiceTab() {
         ) : (
           <EmptyState
             message="No e-invoicing provider is configured."
-            hint="Requesting an IRN returns EINVOICE_NOT_CONFIGURED until one is set — nothing is silently left blank."
+            hint="Requesting an IRN is refused until one is set up — nothing is silently left blank."
           />
         )}
       </Card>

@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, money, date } from '../../lib/api.js';
-import { Card, EmptyState, ErrorBox, Loading, Modal, PageHeader, RecordCode, StatusChip, Tabs } from '../../components/ui.js';
+import { Card, EmptyState, ErrorBox, Field, Loading, Modal, PageHeader, RecordCode, StatusChip, Tabs } from '../../components/ui.js';
 import { TextInput, SelectInput, Row, messageOf } from '../../components/forms.js';
 
 const TDS_SECTIONS = ['194C_IND', '194C_COMP', '194J_PROF', '194J_TECH', '194H', '194I_LAND', '194I_PLANT', '194Q'] as const;
@@ -322,7 +322,17 @@ function SalaryTab() {
       {projection.error && <ErrorBox error={projection.error} />}
       {projection.data && (
         <Card>
-          <pre className="whitespace-pre-wrap text-xs text-ink-200">{JSON.stringify(projection.data, null, 2)}</pre>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+            <Field label="Financial year">{String(projection.data.fy ?? '—')}</Field>
+            <Field label="Tax regime">{String(projection.data.regime ?? '—')}</Field>
+            <Field label="Estimated annual gross">{money(Number(projection.data.annualGrossEstimate ?? 0))}</Field>
+            <Field label="Declared deductions">{money(Number(projection.data.declaredDeductionTotal ?? 0))}</Field>
+            <Field label="Taxable income">{money(Number(projection.data.taxableIncome ?? 0))}</Field>
+            <Field label="Estimated annual tax">{money(Number(projection.data.annualTax ?? 0))}</Field>
+            <Field label="Already deducted this year">{money(Number(projection.data.alreadyDeducted ?? 0))}</Field>
+            <Field label="Months remaining">{String(projection.data.monthsRemaining ?? '—')}</Field>
+            <Field label="Next monthly deduction">{money(Number(projection.data.monthlyEstimate ?? 0))}</Field>
+          </dl>
         </Card>
       )}
     </div>
