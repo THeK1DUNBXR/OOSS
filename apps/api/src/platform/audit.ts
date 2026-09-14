@@ -199,6 +199,12 @@ export async function createChainedAuditRecord(
     });
     const prevHash = last?.hash ?? null;
     const timestamp = new Date();
+    // Hash the diff as the JSON column will hold it, not as the live object:
+    // a Decimal or a Date serialises to a string on the way in, and verify
+    // reads that string back. Hashing the live object would make every row
+    // carrying a Decimal look tampered the moment it was re-read.
+    const rawDiff = (data as { diff?: unknown }).diff;
+    const storedDiff = rawDiff === undefined || rawDiff === null ? rawDiff : JSON.parse(JSON.stringify(rawDiff));
     const hash = computeAuditHash(
       hashPayloadOf({
         tenantId,
@@ -206,12 +212,14 @@ export async function createChainedAuditRecord(
         subjectType: (data as { subjectType: string }).subjectType,
         subjectId: (data as { subjectId: string }).subjectId,
         actorId: (data as { actorId: string | null }).actorId ?? null,
-        diff: (data as { diff?: unknown }).diff,
+        diff: storedDiff,
         timestamp,
       }),
       prevHash,
     );
-    await tx.auditRecord.create({ data: { ...(data as object), timestamp, prevHash, hash } as never });
+    await tx.auditRecord.create({
+      data: { ...(data as object), diff: storedDiff as never, timestamp, prevHash, hash } as never,
+    });
   });
 }
 
