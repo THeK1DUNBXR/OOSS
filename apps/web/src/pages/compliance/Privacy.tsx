@@ -414,8 +414,8 @@ function EncryptionTab() {
       </p>
       {!s?.keyConfigured && (
         <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-xs text-band-critical">
-          FIELD_ENCRYPTION_KEY is not set. Values are encrypted under a well-known development key — set it before
-          this reaches production.
+          Real encryption is not set up on this server yet — values are protected with a placeholder key. Have
+          whoever manages the deployment fix this before it holds real staff data.
         </p>
       )}
       <div className="mb-3 flex gap-6 text-xs">
@@ -423,7 +423,7 @@ function EncryptionTab() {
         <span>Plaintext: <strong className="text-band-critical">{s?.plaintext ?? 0}</strong></span>
       </div>
       <button className="btn-primary" onClick={() => backfill.mutate()} disabled={backfill.isPending}>
-        {backfill.isPending ? 'Encrypting…' : 'Run backfill'}
+        {backfill.isPending ? 'Encrypting…' : 'Encrypt existing values'}
       </button>
       {s?.lastRun && (
         <p className="mt-3 text-2xs text-ink-500">

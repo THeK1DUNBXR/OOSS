@@ -26,6 +26,11 @@ import { useSession } from '../../lib/session.js';
 
 type Tab = 'runs' | 'structures' | 'rates' | 'payslips' | 'exports' | 'settlements';
 
+/** Payroll run statuses are recorded PascalCase ("UnderReview"); this only affects display. */
+function splitState(state: string): string {
+  return state.replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+}
+
 function thisMonth(): string {
   const d = new Date();
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -105,13 +110,13 @@ function RunsTab() {
                 onClick={() => setSelected(r.id)}
               >
                 <span>{r.payPeriod}</span>
-                <StatusChip status={r.status} />
+                <StatusChip status={splitState(r.status)} />
               </button>
             </li>
           ))}
         </ul>
       </Card>
-      <Card title={run ? `${run.payPeriod} — ${run.status}` : 'Select a run'}>
+      <Card title={run ? `${run.payPeriod} — ${splitState(run.status)}` : 'Select a run'}>
         {!run && <EmptyState message="Pick a run from the list." />}
         {run && (
           <div className="flex flex-col gap-4">

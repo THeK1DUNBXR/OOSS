@@ -87,6 +87,12 @@ function ownerLabel(slug: string): string {
   return OWNER_ROLE_LABEL[slug] ?? slug;
 }
 
+/** Some server error text is prefixed with the internal requirement it enforces
+ *  (e.g. "CMP-CAL-002: ..."); that prefix is dropped here, not in the message itself. */
+function plainMessage(msg: string): string {
+  return msg.replace(/^[A-Z]{2,5}-[A-Z]{2,5}-\d+:\s*/, '');
+}
+
 export function ComplianceCalendar() {
   const qc = useQueryClient();
   const [domain, setDomain] = useState<Domain | 'all'>('all');
@@ -131,7 +137,7 @@ export function ComplianceCalendar() {
 
       {generate.isError && (
         <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
-          {messageOf(generate.error)}
+          {plainMessage(messageOf(generate.error))}
         </p>
       )}
 
@@ -272,7 +278,7 @@ function FileModal({ obligation, onClose, onFiled }: { obligation: Obligation; o
       onFiled();
       onClose();
     },
-    onError: (e: unknown) => setError(messageOf(e)),
+    onError: (e: unknown) => setError(plainMessage(messageOf(e))),
   });
 
   return (
@@ -330,7 +336,7 @@ function WaiveModal({ obligation, onClose, onWaived }: { obligation: Obligation;
       onWaived();
       onClose();
     },
-    onError: (e: unknown) => setError(messageOf(e)),
+    onError: (e: unknown) => setError(plainMessage(messageOf(e))),
   });
 
   return (

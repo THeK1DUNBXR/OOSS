@@ -146,7 +146,7 @@ function SecurityTab() {
         )}
       </Card>
 
-      <Card title="Backups" subtitle="A daily pg_dump when BACKUP_DIR is set. Unset is a quiet no-op, not a failure." className="lg:col-span-2">
+      <Card title="Backups" subtitle="A daily backup of the books. If backups have not been turned on for this server, nothing runs — that is not a failure." className="lg:col-span-2">
         <button className="btn mb-3" onClick={() => runBackup.mutate()} disabled={runBackup.isPending}>
           {runBackup.isPending ? 'Running…' : 'Run now'}
         </button>
@@ -161,7 +161,7 @@ function SecurityTab() {
                 <th className="py-1">Started</th>
                 <th>Status</th>
                 <th>Size</th>
-                <th>SHA-256</th>
+                <th>Verified</th>
                 <th>Error</th>
               </tr>
             </thead>
@@ -171,7 +171,7 @@ function SecurityTab() {
                   <td className="py-1">{dateTime(b.startedAt)}</td>
                   <td><StatusChip status={b.status} tone={b.status === 'completed' ? 'good' : b.status === 'failed' ? 'bad' : 'neutral'} /></td>
                   <td>{b.sizeBytes ? `${(b.sizeBytes / 1024).toFixed(0)} KB` : '—'}</td>
-                  <td className="max-w-[10rem] truncate font-mono text-2xs">{b.sha256 ?? '—'}</td>
+                  <td title={b.sha256 ?? undefined}>{b.sha256 ? 'yes' : '—'}</td>
                   <td className="max-w-xs truncate text-band-critical">{b.error ?? ''}</td>
                 </tr>
               ))}
@@ -272,7 +272,9 @@ function RegistersTab() {
               <tr key={e.id} className="border-t border-ink-800">
                 <td className="py-1"><RecordCode code={e.recordCode} /></td>
                 <td>{e.subjectKey}</td>
-                <td className="max-w-md truncate font-mono text-2xs">{JSON.stringify(e.body)}</td>
+                <td className="max-w-md truncate text-2xs text-ink-400" title={JSON.stringify(e.body)}>
+                  {Object.entries(e.body).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(' · ') || '—'}
+                </td>
                 <td>{date(e.createdAt)}</td>
               </tr>
             ))}
@@ -447,7 +449,7 @@ function ContractsTab() {
           </Field>
         ))}
       </Card>
-      <Card title="E-signature" subtitle="No provider is configured — every request returns ESIGN_NOT_CONFIGURED until one is set up (Aadhaar eSign or DSC).">
+      <Card title="E-signature" subtitle="No provider is set up yet (Aadhaar eSign or DSC) — every request is refused until one is.">
         <EmptyState message="No e-signature provider configured for this tenant." />
       </Card>
       <Card title="Document retention" subtitle="Contracts: 8 years after expiry. Invoices: 8 financial years. HR files: 3 years after exit." className="lg:col-span-2">
@@ -472,7 +474,7 @@ function ContractsTab() {
 
 function FemaTab() {
   return (
-    <Card title="Foreign receipts (FEMA/FIRC)" subtitle="A foreign receipt's currency, amount and FIRC are set from a payment's own record. A monthly sweep flags a foreign receipt still missing its FIRC after 30 days (CMP_FEMA_FIRC_MISSING).">
+    <Card title="Foreign receipts (FEMA/FIRC)" subtitle="A foreign receipt's currency, amount and FIRC are set from a payment's own record. Anything still missing its FIRC after 30 days is flagged.">
       <EmptyState message="Update foreign receipt details from a payment's own record." />
     </Card>
   );

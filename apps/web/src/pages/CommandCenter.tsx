@@ -24,6 +24,7 @@ import {
   Modal,
   PageHeader,
   SeverityChip,
+  Withheld,
 } from '../components/ui.js';
 
 export function CommandCenter() {
@@ -288,11 +289,11 @@ function AttentionQueue({ items }: { items: ExceptionView[] }) {
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-xs font-medium text-ink-100">{e.label}</p>
+                  <p className="mt-1 text-xs font-medium text-ink-100" title={e.code}>{e.label}</p>
                   <p className="mt-0.5 line-clamp-2 text-2xs text-ink-400">{e.detail}</p>
                   <p className="mt-1 text-2xs text-ink-500">
                     {e.subjectLabel} · {e.ownerName ? `with ${e.ownerName}` : 'not yet assigned to anyone'} ·
-                    noticed {relative(e.raisedAt)} · <span className="mono">{e.code}</span>
+                    noticed {relative(e.raisedAt)}
                   </p>
                   {e.ranked && (
                     <p className="mt-1 text-2xs italic text-ink-600" title="Why this is where it is in the list.">
@@ -645,7 +646,7 @@ function LiveAndHandled({ data }: { data: CommandCenterResponse['liveAndHandled'
       <table className="table">
         <thead>
           <tr>
-            <th>Class</th>
+            <th>Kind</th>
             <th className="text-right">Runs</th>
             <th className="text-right">Success</th>
             <th className="text-right">Exceptions</th>
@@ -658,8 +659,7 @@ function LiveAndHandled({ data }: { data: CommandCenterResponse['liveAndHandled'
           {data.rows.map((r) => (
             <tr key={r.automationClass}>
               <td>
-                <p className="text-xs text-ink-100">{r.label}</p>
-                {r.topDefinition && <p className="mono">{r.topDefinition}</p>}
+                <p className="text-xs text-ink-100" title={r.topDefinition ?? undefined}>{r.label}</p>
               </td>
               <td className="text-right tabular-nums">
                 {r.count === 0 ? (
@@ -731,7 +731,7 @@ function PeopleCapability() {
             <p className="text-2xs uppercase tracking-wide text-ink-500">{u.unit}</p>
             {u.withheld ? (
               <>
-                <p className="mt-2 text-xs text-ink-400">WITHHELD</p>
+                <div className="mt-2">{u.withheldReason && <Withheld reason={u.withheldReason} />}</div>
                 <p className="mt-1 text-2xs text-ink-500">{u.note}</p>
               </>
             ) : (
