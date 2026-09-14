@@ -186,7 +186,7 @@ function hashPayloadOf(row: {
  * concurrent writes for the same tenant queue rather than race for "the
  * latest hash".
  */
-async function createChainedAuditRecord(
+export async function createChainedAuditRecord(
   data: Omit<Parameters<typeof prisma.auditRecord.create>[0]['data'], 'hash' | 'prevHash' | 'timestamp'>,
 ): Promise<void> {
   const tenantId = (data as { tenantId: string }).tenantId;

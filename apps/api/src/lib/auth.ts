@@ -29,6 +29,7 @@ import { emit } from '../platform/eventBus.js';
 import { resolveGrants } from '../platform/permissions.js';
 import { formatGrant } from '@kaizen/shared';
 import { generateTotpSecret, otpauthUri, verifyTotp } from '../domains/compliance/corporate/totp.js';
+import { createChainedAuditRecord } from '../platform/audit.js';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me';
 const TOKEN_TTL = '12h';
@@ -164,16 +165,16 @@ async function completeLogin(
   });
 
   await asSystem(user.tenantId, async () => {
-    await prisma.auditRecord.create({
-      data: {
-        tenantId: user.tenantId,
-        action: 'login',
-        subjectType: 'user',
-        subjectId: user.id,
-        actorType: 'human',
-        actorId: user.personId,
-        actorLabel: active.roleSlug,
-      },
+    // Through the chained writer, so a sign-in is a link in the audit chain
+    // rather than a row that breaks it.
+    await createChainedAuditRecord({
+      tenantId: user.tenantId,
+      action: 'login',
+      subjectType: 'user',
+      subjectId: user.id,
+      actorType: 'human',
+      actorId: user.personId,
+      actorLabel: active.roleSlug,
     });
   });
 

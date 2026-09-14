@@ -19,7 +19,7 @@ import {
   REGISTER_NAMES,
   replyDueAt as computeReplyDueAt,
   reportDueAt as computeReportDueAt,
-  toCsv,
+  toCsv as sharedToCsv,
   validateIccComposition,
   workingDayCount,
   buildLetterBody,
@@ -37,6 +37,9 @@ import { auditWrite, auditExport, registerGovernedEntities } from '../../platfor
 import { raiseException } from '../../platform/exceptions.js';
 import { registerHook } from '../../platform/hooks.js';
 import type { JobResult } from '../../jobs/scheduler.js';
+
+/** The registers are read by spreadsheet tools that expect RFC 4180 line endings. */
+const toCsv = (headers: string[], rows: Array<Array<string | number | null | undefined>>) => sharedToCsv(headers, rows, '\r\n');
 
 registerGovernedEntities('cmp_labour', [
   'holiday',
