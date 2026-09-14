@@ -258,6 +258,17 @@ export async function createReviewAssignment(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'reviews', verb: 'create' });
 
+  // As with releasing a rating: an employee holds `reviews:create` too, at
+  // `own` scope, for filing their own review response — but assigning who
+  // reviews whom is never a self-service action, so it needs the resolved
+  // scope to be `all`. Without this any employee could open review
+  // assignments (naming any two colleagues as subject/reviewer) despite
+  // holding no real authority over the cycle.
+  const scope = await scopeFor('reviews', 'create');
+  if (scope !== 'all') {
+    throw ApiError.forbidden('Assigning a review needs an all-scope grant on reviews; it is not a self-service action.');
+  }
+
   if (!REVIEW_ASSIGNMENT_KINDS.includes(input.kind)) {
     throw ApiError.badRequest(`"${input.kind}" is not a review assignment kind. Expected one of: ${REVIEW_ASSIGNMENT_KINDS.join(', ')}.`);
   }
@@ -684,6 +695,15 @@ export async function scheduleOneOnOne(input: {
   const report = await employmentOrThrow(input.reportEmploymentRelationshipId);
   if (manager.personId === report.personId) {
     throw ApiError.badRequest('A 1:1 needs two different people — the manager and the report.');
+  }
+
+  // `one_on_ones:create` is held at `own` scope by every employee. Without a
+  // `record` on `assertCan`, that only checks the verb — an own-scope caller
+  // must still be one of the two people in the meeting, or they could
+  // schedule a 1:1 between two arbitrary colleagues.
+  const scope = await scopeFor('one_on_ones', 'create');
+  if (scope !== 'all' && manager.personId !== auth.partyId && report.personId !== auth.partyId) {
+    throw ApiError.forbidden('A 1:1 can only be scheduled by one of its two participants, unless you hold an all-scope grant.');
   }
 
   const row = await prisma.oneOnOne.create({

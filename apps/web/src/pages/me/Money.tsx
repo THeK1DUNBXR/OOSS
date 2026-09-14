@@ -44,7 +44,6 @@ export function Money() {
 }
 
 function ExpensesCard({ employmentId }: { employmentId: string }) {
-  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ category: 'travel' as Claim['category'], amount: '', note: '' });
   const claims = useQuery({
@@ -90,7 +89,6 @@ function ExpensesCard({ employmentId }: { employmentId: string }) {
 }
 
 function LoansCard({ employmentId }: { employmentId: string }) {
-  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ principal: '', interestPct: '0', tenureMonths: '12' });
   const [preview, setPreview] = useState<EmiPreview | null>(null);

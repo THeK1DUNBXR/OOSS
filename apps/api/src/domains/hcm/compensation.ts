@@ -414,6 +414,12 @@ export async function approveCycle(id: string) {
 export async function applyCycle(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'salary_revisions', verb: 'edit' });
+  // Applying writes directly into `CompensationRecord`, a table `compensation`
+  // (not `salary_revisions`) governs — so the caller needs that resource's own
+  // write grant too, not only the revision-cycle grant. Without this a role
+  // holding `salary_revisions:edit` alone could write into a table it has no
+  // grant on at all.
+  await assertCan({ resource: 'compensation', verb: 'edit' });
   const cycle = await prisma.salaryRevisionCycle.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!cycle) throw ApiError.notFound('Salary revision cycle');
   if (cycle.status !== 'approved') throw ApiError.conflict(`Cycle must be approved before it can be applied (currently ${cycle.status}).`);
@@ -714,19 +720,27 @@ export async function listLoans(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'employee_loans', verb: 'view' });
   const visible = await canSeeMoney('employee_loans');
+  // A viewer without `financial` still typed their own loan's numbers in when
+  // they requested it — withholding a person's own figures from themselves is
+  // not a confidentiality control, only a broken screen. `myEmploymentId`
+  // mirrors what `/me/money` itself resolves before calling this.
+  const myId = auth.partyId ? await myEmploymentId() : null;
   const where: Record<string, unknown> = { tenantId: auth.tenantId };
   if (employmentRelationshipId) {
     await assertEmploymentVisible('employee_loans', employmentRelationshipId);
     where.employmentRelationshipId = employmentRelationshipId;
   }
   const rows = await prisma.employeeLoan.findMany({ where, orderBy: { createdAt: 'desc' } });
-  return rows.map((r) => ({
-    ...r,
-    principal: money(r.principal, visible).amount,
-    emi: money(r.emi, visible).amount,
-    outstandingPrincipal: money(r.outstandingPrincipal, visible).amount,
-    moneyWithheldReason: visible ? null : 'no_permission',
-  }));
+  return rows.map((r) => {
+    const rowVisible = visible || (myId !== null && r.employmentRelationshipId === myId);
+    return {
+      ...r,
+      principal: money(r.principal, rowVisible).amount,
+      emi: money(r.emi, rowVisible).amount,
+      outstandingPrincipal: money(r.outstandingPrincipal, rowVisible).amount,
+      moneyWithheldReason: rowVisible ? null : 'no_permission',
+    };
+  });
 }
 
 /** The Self-Dealing Bar on a loan: the approver may be neither the requester nor the employee it is for. */
@@ -767,6 +781,17 @@ export async function rejectLoan(id: string, note: string) {
   const loan = await prisma.employeeLoan.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!loan) throw ApiError.notFound('Employee loan');
   if (loan.status !== 'requested') throw ApiError.conflict(`Loan is already ${loan.status}.`);
+  const subjectPersonId = await employmentPersonId(loan.employmentRelationshipId);
+  if (subjectPersonId === auth.partyId) {
+    throw ApiError.forbidden('A loan for you cannot be decided by you, at any amount.', [
+      { axis: 'WHO', passed: false, reason: 'self_dealing_bar_compensation' },
+    ]);
+  }
+  if (loan.requestedById && loan.requestedById === auth.partyId) {
+    throw ApiError.forbidden('The requester of a loan cannot also decide it (Self-Dealing Bar).', [
+      { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
+    ]);
+  }
   return prisma.employeeLoan.update({ where: { id }, data: { status: 'rejected', approvedById: auth.partyId, decidedAt: new Date(), note } });
 }
 
@@ -856,13 +881,20 @@ export async function listExpenseClaims(employmentRelationshipId?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'expense_claims', verb: 'view' });
   const visible = await canSeeMoney('expense_claims');
+  // Same reasoning as `listLoans`: a claimant already knows the amount they
+  // submitted, so their own claim is not withheld from them even without the
+  // `financial` verb.
+  const myId = auth.partyId ? await myEmploymentId() : null;
   const where: Record<string, unknown> = { tenantId: auth.tenantId };
   if (employmentRelationshipId) {
     await assertEmploymentVisible('expense_claims', employmentRelationshipId);
     where.employmentRelationshipId = employmentRelationshipId;
   }
   const rows = await prisma.expenseClaim.findMany({ where, orderBy: { createdAt: 'desc' } });
-  return rows.map((r) => ({ ...r, amount: money(r.amount, visible).amount, moneyWithheldReason: visible ? null : 'no_permission' }));
+  return rows.map((r) => {
+    const rowVisible = visible || (myId !== null && r.employmentRelationshipId === myId);
+    return { ...r, amount: money(r.amount, rowVisible).amount, moneyWithheldReason: rowVisible ? null : 'no_permission' };
+  });
 }
 
 /** The Self-Dealing Bar on an expense claim: the approver may be neither the submitter nor the employee it is for. */
@@ -902,6 +934,17 @@ export async function rejectExpenseClaim(id: string, note: string) {
   const claim = await prisma.expenseClaim.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!claim) throw ApiError.notFound('Expense claim');
   if (claim.status !== 'submitted') throw ApiError.conflict(`Claim is already ${claim.status}.`);
+  const subjectPersonId = await employmentPersonId(claim.employmentRelationshipId);
+  if (subjectPersonId === auth.partyId) {
+    throw ApiError.forbidden('An expense claim of yours cannot be decided by you, at any amount.', [
+      { axis: 'WHO', passed: false, reason: 'self_dealing_bar_compensation' },
+    ]);
+  }
+  if (claim.submittedById && claim.submittedById === auth.partyId) {
+    throw ApiError.forbidden('The submitter of an expense claim cannot also decide it (Self-Dealing Bar).', [
+      { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
+    ]);
+  }
   const row = await prisma.expenseClaim.update({
     where: { id },
     data: { status: 'rejected', approvedById: auth.partyId, decidedAt: new Date(), note },

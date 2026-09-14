@@ -38,6 +38,7 @@ import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { notify } from '../../platform/exceptions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { transitionEmployment, transitionOffboarding } from '../employment.js';
+import { assetsPendingForEmployment } from './assets.js';
 
 registerGovernedEntities('hcm_separations', [
   'resignation',
@@ -573,18 +574,14 @@ export async function issueNoDues(offboardingId: string) {
 
 /**
  * Asset returns pending for an offboarding. WS11 owns the `Asset` /
- * `AssetAssignment` models and this workstream does not know their table or
- * column names in advance, so the count is `null` ("not measured") until
- * WS11's tables exist — never a guessed query against a schema this file
- * does not own. See docs/hcm/separations.md § Wanted from the scaffold.
+ * `AssetAssignment` models and exports exactly this integration point
+ * (`assetsPendingForEmployment` in `domains/hcm/assets.ts`, written for this
+ * workstream to call); wrapped in a try/catch anyway so a checkout where
+ * WS11 has not landed yet degrades to "not measured" instead of a 500.
  */
 export async function assetsPendingCount(employmentRelationshipId: string): Promise<number | null> {
   try {
-    const rows = await unscopedPrisma.$queryRawUnsafe<Array<{ count: bigint }>>(
-      `select count(*)::bigint as count from hcm_asset_assignments where "employmentRelationshipId" = $1 and "returnedOn" is null`,
-      employmentRelationshipId,
-    );
-    return Number(rows[0]?.count ?? 0);
+    return await assetsPendingForEmployment(employmentRelationshipId);
   } catch {
     return null;
   }

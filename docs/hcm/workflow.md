@@ -125,8 +125,25 @@ Pure logic used by both the domain layer and the tests: `ApprovalChain`/`Approva
   one-time table-existence check cached for the process lifetime
   (`_resetReportingLineTableCache()` is exported for tests that need to force
   a re-check).
-- No gap otherwise — every resource (`hr_requests`, `hr_request_types`,
-  `authority_delegations`), event name
-  (`kz.hr.hr_request.submitted/approved/rejected/closed`,
+- Every resource (`hr_requests`, `hr_request_types`, `authority_delegations`),
+  event name (`kz.hr.hr_request.submitted/approved/rejected/closed`,
   `kz.hr.authority_delegation.created/ended`), and record-code prefix (`HRQ`)
-  this workstream needed was already registered by the scaffold.
+  this workstream needed was already registered by the scaffold. Two of the
+  seeded *grants* on those resources are narrower than this engine actually
+  needs, though, and this workstream cannot edit `grants.ts` to widen them:
+  - **`finance_head` holds only `view` on `hr_requests`, not `approve`** — so
+    a `finance_grant`-resolved level opens correctly, but the real seeded
+    `finance_head` account cannot call `decide()` on it as shipped.
+    `src/tests/hcm/workflow.test.ts` patches the `Grant` row directly in
+    `beforeAll` (the same mechanism `withFixtureRole` uses) so the
+    `finance_grant` resolver and `decide()` path are still exercised
+    end to end; the fix that belongs in the scaffold is adding `approve` to
+    `finance_head`'s `hr_requests` cell.
+  - **The `employee` role's own-scope grant on `hr_requests` is `VC@own`
+    (view + create), with no `edit`/`delete`** — there is no verb that
+    actually names "withdraw your own request". `withdrawRequest()` asserts
+    the closest held verb (`create`) and does the real authorization itself
+    (the row's `requestedById` must equal the caller), documented inline
+    where it does so; the fix that belongs in the scaffold is adding `edit`
+    to `employee`'s `hr_requests` cell so that assertion can name the verb it
+    actually means.

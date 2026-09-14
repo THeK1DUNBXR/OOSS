@@ -33,13 +33,21 @@ import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan, scopeFor } from '../../platform/permissions.js';
+import { assertCan, canSeeMoney, scopeFor } from '../../platform/permissions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { auditWrite, auditExport, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { payrollCostByDivision } from '../payroll.js';
 import { recordTransaction } from '../books.js';
 import { readRegulated } from '../compliance/privacy.js';
+
+/** Withholds a money field for a caller who cannot see it — null, never zero, with a reason. Same shape as `hcm/compensation.ts`'s `money()`. */
+function money(value: unknown, visible: boolean): number | null {
+  return visible ? (num(value as never) ?? null) : null;
+}
+
+/** The account-types a net-pay disbursement may actually be posted from — a costing or equity account is never a cash movement. */
+const CASH_ACCOUNT_TYPES = ['bank', 'cash', 'wallet'];
 
 registerGovernedEntities('hcm_payrollops', [
   'pay_item',
@@ -146,7 +154,9 @@ export async function listAdHocPayLines(filter: { payPeriod?: string; employment
   } else if (filter.employmentRelationshipId) {
     where.employmentRelationshipId = filter.employmentRelationshipId;
   }
-  return prisma.adHocPayLine.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200 });
+  const visible = await canSeeMoney('adhoc_pay');
+  const rows = await prisma.adHocPayLine.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200 });
+  return rows.map((r) => ({ ...r, amount: money(r.amount, visible), moneyWithheldReason: visible ? null : 'no_permission' }));
 }
 
 export async function createAdHocPayLine(input: AdHocPayLineInput) {
@@ -230,7 +240,9 @@ export async function listArrears(filter: { employmentRelationshipId?: string; s
   } else if (filter.employmentRelationshipId) {
     where.employmentRelationshipId = filter.employmentRelationshipId;
   }
-  return prisma.arrear.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200 });
+  const visible = await canSeeMoney('arrears');
+  const rows = await prisma.arrear.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200 });
+  return rows.map((r) => ({ ...r, amount: money(r.amount, visible), moneyWithheldReason: visible ? null : 'no_permission' }));
 }
 
 export async function createArrear(input: ArrearInput) {
@@ -304,10 +316,22 @@ export async function markArrearPaid(id: string, payPeriod: string) {
 // Payroll journal
 // ---------------------------------------------------------------------------
 
+/** Masks a journal's money — its two running totals and every line's debit/credit — leaving the account/cost-centre labels (classification, not money) visible either way. */
+function maskJournal<T extends { totalDebit: unknown; totalCredit: unknown; lines: unknown }>(row: T, visible: boolean) {
+  const lines = (row.lines as Array<Record<string, unknown>>).map((l) => ({
+    ...l,
+    debit: money(l.debit, visible),
+    credit: money(l.credit, visible),
+  }));
+  return { ...row, totalDebit: money(row.totalDebit, visible), totalCredit: money(row.totalCredit, visible), lines, moneyWithheldReason: visible ? null : 'no_permission' };
+}
+
 export async function listPayrollJournals() {
   const auth = currentAuth();
   await assertCan({ resource: 'payroll_journals', verb: 'view' });
-  return prisma.payrollJournal.findMany({ where: { tenantId: auth.tenantId }, orderBy: { payPeriod: 'desc' }, take: 36 });
+  const visible = await canSeeMoney('payroll_journals');
+  const rows = await prisma.payrollJournal.findMany({ where: { tenantId: auth.tenantId }, orderBy: { payPeriod: 'desc' }, take: 36 });
+  return rows.map((r) => maskJournal(r, visible));
 }
 
 export async function getPayrollJournal(id: string) {
@@ -315,7 +339,8 @@ export async function getPayrollJournal(id: string) {
   await assertCan({ resource: 'payroll_journals', verb: 'view' });
   const row = await prisma.payrollJournal.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Payroll journal');
-  return row;
+  const visible = await canSeeMoney('payroll_journals');
+  return maskJournal(row, visible);
 }
 
 /**
@@ -431,24 +456,65 @@ export async function postPayrollJournal(id: string, accountId: string) {
 // Bank advice
 // ---------------------------------------------------------------------------
 
+/** Masks an account number to its last 4 digits — the same shape `compliance/payroll.ts` exposes on a payslip snapshot (`bankLast4`). */
+function maskAccountNumber(accountNumber: string): string {
+  const last4 = accountNumber.slice(-4);
+  return last4 ? `••••${last4}` : '••••';
+}
+
 export async function listBankAdvices() {
   const auth = currentAuth();
   await assertCan({ resource: 'bank_advices', verb: 'view' });
-  return prisma.bankAdvice.findMany({
+  const visible = await canSeeMoney('bank_advices');
+  const rows = await prisma.bankAdvice.findMany({
     where: { tenantId: auth.tenantId },
     orderBy: { generatedAt: 'desc' },
     take: 36,
     select: { id: true, payrollRunId: true, payPeriod: true, format: true, count: true, total: true, generatedAt: true },
   });
+  return rows.map((r) => ({ ...r, total: money(r.total, visible), moneyWithheldReason: visible ? null : 'no_permission' }));
 }
 
+/**
+ * A view of one bank advice for the web — beneficiary rows with the account
+ * number masked to its last 4 digits, never the raw NEFT file. A caller who
+ * needs the full account numbers (to actually pay a bank) calls
+ * `downloadBankAdvice` instead, which is gated on the `export` verb rather
+ * than `view` and is the one path that is audited as an export.
+ */
 export async function getBankAdvice(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'bank_advices', verb: 'view' });
   const row = await prisma.bankAdvice.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Bank advice');
-  await auditExport('bank_advice', 'single', 1);
-  return row;
+  const visible = await canSeeMoney('bank_advices');
+  const rows = (row.rows as unknown as NeftBeneficiary[]).map((r) => ({ ...r, accountNumber: maskAccountNumber(r.accountNumber), amount: money(r.amount, visible) }));
+  return {
+    id: row.id,
+    payrollRunId: row.payrollRunId,
+    payPeriod: row.payPeriod,
+    format: row.format,
+    count: row.count,
+    total: money(row.total, visible),
+    generatedAt: row.generatedAt,
+    rows,
+    moneyWithheldReason: visible ? null : 'no_permission',
+  };
+}
+
+/**
+ * The raw NEFT CSV, full account numbers included — gated on `export`
+ * (never `view` alone, and never held by `employee` at any scope) and
+ * audited every time it is read, since this is the point a regulated field
+ * leaves the system in the clear for a bank to act on.
+ */
+export async function downloadBankAdvice(id: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'bank_advices', verb: 'export' });
+  const row = await prisma.bankAdvice.findFirst({ where: { id, tenantId: auth.tenantId } });
+  if (!row) throw ApiError.notFound('Bank advice');
+  await auditExport('bank_advice', row.id, row.count);
+  return { filename: `bank-advice-${row.payPeriod}-${row.id.slice(-6)}.csv`, csv: row.fileText };
 }
 
 /**
@@ -516,6 +582,7 @@ export async function generateBankAdvice(payrollRunId: string) {
       payPeriod: run.payPeriod,
       format: 'NEFT_CSV',
       fileText,
+      rows: rows as never,
       count: rows.length,
       total,
       generatedById: auth.partyId,

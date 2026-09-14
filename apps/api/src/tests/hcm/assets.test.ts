@@ -130,8 +130,8 @@ describe('Asset assignment and return (HCM-ASSETS-003, 004)', () => {
     await asUser('operations@kaizen.co.in', () => returnAsset(a1.id, { condition: 'good' }));
     await asUser('operations@kaizen.co.in', () => returnAsset(a2.id, { condition: 'poor' }));
 
-    const after1 = await prisma.asset.findUniqueOrThrow({ where: { id: assetGood.id } });
-    const after2 = await prisma.asset.findUniqueOrThrow({ where: { id: assetPoor.id } });
+    const after1 = await asUser('operations@kaizen.co.in', () => prisma.asset.findUniqueOrThrow({ where: { id: assetGood.id } }));
+    const after2 = await asUser('operations@kaizen.co.in', () => prisma.asset.findUniqueOrThrow({ where: { id: assetPoor.id } }));
     expect(after1.status).toBe('in_stock');
     expect(after2.status).toBe('repair');
   });
@@ -182,23 +182,42 @@ describe('Travel requests (HCM-ASSETS-006, 007, 008)', () => {
     expect(request.recordCode).toMatch(/^TRV-/);
   });
 
-  it('HCM-ASSETS-007: the Self-Dealing Bar refuses a traveller deciding their own request', async () => {
-    const { employment, person } = await makeEmployee('travel-self');
-    const request = await asEmployee(person.id, () =>
-      createTravelRequest({
-        employmentRelationshipId: employment.id,
-        purpose: 'Conference',
-        fromLocation: 'Chennai',
-        toLocation: 'Delhi',
-        startDate: new Date(Date.now() + 14 * 86_400_000),
-        endDate: new Date(Date.now() + 16 * 86_400_000),
-        mode: 'flight',
-        estimatedCost: 25000,
-      }),
+  it('HCM-ASSETS-007: the Self-Dealing Bar refuses a traveller deciding their own request, even holding the approve grant', async () => {
+    // An ordinary employee never holds `travel_requests:approve`, so a
+    // self-decide attempt from one would be refused on the WHO axis before
+    // ever reaching the Self-Dealing Bar. To exercise the bar itself, the
+    // fixture principal below actually holds `approve` — and is still barred
+    // because it is also the traveller.
+    await withFixtureRole(
+      { slug: 'travel-approver-self', grants: [{ resource: 'travel_requests', verbs: ['view', 'create', 'approve'] }] },
+      async (p) => {
+        const jobId = (await prisma.job.findFirstOrThrow({ where: { tenantId: TENANT } })).id;
+        const orgUnitId = (await prisma.orgUnit.findFirstOrThrow({ where: { tenantId: TENANT } })).id;
+        const employment = await asUser('operations@kaizen.co.in', async () => {
+          const position = await prisma.position.create({
+            data: { tenantId: TENANT, recordCode: await nextRecordCode('POS'), jobId, orgUnitId, status: 'Open' },
+          });
+          const e = await hire({ personId: p.partyId, positionId: position.id, hireEffectiveDate: new Date() });
+          await transitionEmployment(e.id, 'ACTIVATE');
+          return e;
+        });
+
+        const request = await createTravelRequest({
+          employmentRelationshipId: employment.id,
+          purpose: 'Conference',
+          fromLocation: 'Chennai',
+          toLocation: 'Delhi',
+          startDate: new Date(Date.now() + 14 * 86_400_000),
+          endDate: new Date(Date.now() + 16 * 86_400_000),
+          mode: 'flight',
+          estimatedCost: 25000,
+        });
+
+        const err = await expectReject(() => decideTravelRequest(request.id, 'approved'));
+        expect(err.status).toBe(403);
+        expect(err.message).toMatch(/Self-Dealing Bar/);
+      },
     );
-    const err = await expectReject(() => asEmployee(person.id, () => decideTravelRequest(request.id, 'approved')));
-    expect(err.status).toBe(403);
-    expect(err.message).toMatch(/Self-Dealing Bar/);
   });
 
   it('HCM-ASSETS-008: a different approver may approve, then the request settles against an ExpenseClaim id', async () => {
@@ -258,7 +277,7 @@ describe('Letter requests (HCM-ASSETS-009, 010, 011)', () => {
     expect(fulfilled.status).toBe('fulfilled');
     expect(fulfilled.hrLetterId).not.toBeNull();
 
-    const letter = await prisma.hrLetter.findUniqueOrThrow({ where: { id: fulfilled.hrLetterId! } });
+    const letter = await asUser('operations@kaizen.co.in', () => prisma.hrLetter.findUniqueOrThrow({ where: { id: fulfilled.hrLetterId! } }));
     expect(letter.kind).toBe('experience');
     expect(letter.employmentRelationshipId).toBe(employment.id);
   });
@@ -329,23 +348,13 @@ describe('Cross-tenant isolation (HCM-ASSETS-013)', () => {
     const otherTenant = await unscopedPrisma.tenant.create({
       data: { name: `Other Tenant ${Date.now()}`, slug: `other-assets-${Date.now()}` },
     });
-    const foreignAuth: AuthContext = {
-      tenantId: otherTenant.id,
-      principalType: 'human',
-      partyId: 'foreign-party',
-      userId: null,
-      agentId: null,
-      onBehalfOfPartyId: null,
-      affiliationId: null,
-      roleSlug: 'chairman',
-      branch: null,
-      orgUnitId: null,
-      classificationCeiling: 'regulated',
-      purpose: 'operational',
-      consentCodes: [],
-      stepUpVerified: true,
-    };
-    const err = await expectReject(() => asPrincipal(foreignAuth, () => transitionAsset(asset.id, 'retired')));
+    // A brand-new tenant has no seeded AccessRole/Grant rows, so a `human`
+    // principal there would fail on the WHO axis before ever reaching the
+    // tenant scope check — that would test the grant seed, not tenant
+    // isolation. `system` bypasses the grant lookup by design (always
+    // `allowed`), which is what actually exercises the tenant filter: the
+    // asset genuinely exists, just not in this tenant's rows.
+    const err = await expectReject(() => asSystem(otherTenant.id, () => transitionAsset(asset.id, 'retired')));
     expect(err.status).toBe(404);
   });
 });

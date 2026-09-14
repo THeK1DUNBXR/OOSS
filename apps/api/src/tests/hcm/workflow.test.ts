@@ -245,6 +245,29 @@ describe('Rejection and invalid transitions (HCM-WORKFLOW-004, 007)', () => {
     expect(decided.approvals).toHaveLength(1);
   });
 
+  it('HCM-WORKFLOW-014: two concurrent decide() calls on the same level never both win — one closes it, the other gets a 409', async () => {
+    const { employment, person } = await makeEmployee('race');
+    const type = await makeType('race', [{ level: 1, resolver: 'hr_grant' }]);
+    const request = await asEmployee(person.id, () =>
+      submitRequest({ typeId: type.id, subjectEmploymentId: employment.id, payload: {} }),
+    );
+
+    const results = await Promise.allSettled([
+      asUser('operations@kaizen.co.in', () => decide(request.id, true)),
+      asUser('operations@kaizen.co.in', () => decide(request.id, true)),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason.status).toBe(409);
+
+    const final = await asUser('operations@kaizen.co.in', () => getRequest(request.id));
+    expect(final.status).toBe('closed');
+    expect(final.approvals[0].decision).toBe('approved');
+  });
+
   it('HCM-WORKFLOW-007: deciding an already-closed request is refused as a conflict', async () => {
     const { employment, person } = await makeEmployee('conflict');
     const type = await makeType('conflict', [{ level: 1, resolver: 'hr_grant' }]);

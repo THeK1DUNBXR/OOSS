@@ -161,7 +161,11 @@ function CyclesTab() {
     enabled: !!selected,
   });
 
-  const propose = useMutation({ mutationFn: (id: string) => api.post(`/hcm/compensation/revision-cycles/${id}/propose`), onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-cycles'] }) });
+  const propose = useMutation({
+    mutationFn: (id: string) => api.post(`/hcm/compensation/revision-cycles/${id}/propose`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-cycles'] }),
+    onError: (e) => alert(messageOf(e)),
+  });
   const approveCycleM = useMutation({
     mutationFn: (id: string) => api.post(`/hcm/compensation/revision-cycles/${id}/approve`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-cycles'] }),
@@ -302,7 +306,11 @@ function VariableTab() {
   const payouts = useQuery({ queryKey: ['comp-vp-payouts'], queryFn: () => api.get<VPPayout[]>('/hcm/compensation/variable-payouts') });
 
   const approve = useMutation({ mutationFn: (id: string) => api.post(`/hcm/compensation/variable-payouts/${id}/approve`, {}), onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-vp-payouts'] }), onError: (e) => alert(messageOf(e)) });
-  const pay = useMutation({ mutationFn: (id: string) => api.post(`/hcm/compensation/variable-payouts/${id}/pay`), onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-vp-payouts'] }) });
+  const pay = useMutation({
+    mutationFn: (id: string) => api.post(`/hcm/compensation/variable-payouts/${id}/pay`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-vp-payouts'] }),
+    onError: (e) => alert(messageOf(e)),
+  });
 
   return (
     <div className="space-y-4">
@@ -496,8 +504,16 @@ function LoansTab() {
   const [repayAmount, setRepayAmount] = useState('');
 
   const approve = useMutation({ mutationFn: (id: string) => api.post(`/hcm/compensation/loans/${id}/approve`, {}), onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-loans'] }), onError: (e) => alert(messageOf(e)) });
-  const reject = useMutation({ mutationFn: (id: string) => api.post(`/hcm/compensation/loans/${id}/reject`, { note: 'Declined.' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-loans'] }) });
-  const disburse = useMutation({ mutationFn: (id: string) => api.post(`/hcm/compensation/loans/${id}/disburse`, { startDate: new Date().toISOString() }), onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-loans'] }) });
+  const reject = useMutation({
+    mutationFn: (id: string) => api.post(`/hcm/compensation/loans/${id}/reject`, { note: 'Declined.' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-loans'] }),
+    onError: (e) => alert(messageOf(e)),
+  });
+  const disburse = useMutation({
+    mutationFn: (id: string) => api.post(`/hcm/compensation/loans/${id}/disburse`, { startDate: new Date().toISOString() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-loans'] }),
+    onError: (e) => alert(messageOf(e)),
+  });
   const repay = useMutation({
     mutationFn: () => api.post(`/hcm/compensation/loans/${repayFor}/repay`, { amount: Number(repayAmount) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['comp-loans'] }); setRepayFor(null); setRepayAmount(''); },
@@ -568,8 +584,16 @@ function ExpensesTab() {
   const claims = useQuery({ queryKey: ['comp-expenses'], queryFn: () => api.get<Claim[]>('/hcm/compensation/expense-claims') });
 
   const approve = useMutation({ mutationFn: (id: string) => api.post(`/hcm/compensation/expense-claims/${id}/approve`, {}), onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-expenses'] }), onError: (e) => alert(messageOf(e)) });
-  const reject = useMutation({ mutationFn: (id: string) => api.post(`/hcm/compensation/expense-claims/${id}/reject`, { note: 'Declined.' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-expenses'] }) });
-  const reimburse = useMutation({ mutationFn: (id: string) => api.post(`/hcm/compensation/expense-claims/${id}/reimburse`, {}), onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-expenses'] }) });
+  const reject = useMutation({
+    mutationFn: (id: string) => api.post(`/hcm/compensation/expense-claims/${id}/reject`, { note: 'Declined.' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-expenses'] }),
+    onError: (e) => alert(messageOf(e)),
+  });
+  const reimburse = useMutation({
+    mutationFn: (id: string) => api.post(`/hcm/compensation/expense-claims/${id}/reimburse`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['comp-expenses'] }),
+    onError: (e) => alert(messageOf(e)),
+  });
 
   return (
     <Card title="Expense claims" subtitle="Submitted from My money; reimbursement here records the claim as paid — the actual transfer is payroll's ad-hoc line.">

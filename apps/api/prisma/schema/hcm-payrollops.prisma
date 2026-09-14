@@ -151,6 +151,12 @@ model BankAdvice {
   payPeriod    String
   format       String @default("NEFT_CSV")
   fileText     String @db.Text
+  /// [{ employeeName, accountNumber, ifsc, amount, reference }, ...] — the
+  /// same rows `fileText` was built from, kept structured so a view of this
+  /// advice can mask `accountNumber` to its last 4 digits without reparsing
+  /// the CSV. Only `downloadBankAdvice` (gated on `bank_advices:export`,
+  /// audited) ever reads `fileText` or the unmasked account numbers here.
+  rows         Json
   count        Int
   total        Decimal @db.Decimal(16, 2)
 
