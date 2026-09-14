@@ -631,6 +631,9 @@ export const RECORD_TYPE_CODES = [
   // draft reference can never be mistaken for a tax invoice number — the tax
   // series has to stay consecutive, which means a draft cannot take one.
   'DRF',
+  // Board (equity-portal plan §6, phase 3): a meeting, a board seat, a
+  // resolution and a compliance item — each referred to by its own code.
+  'BRD', 'BDM', 'RES', 'CPL',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

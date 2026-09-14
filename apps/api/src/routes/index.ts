@@ -10,6 +10,7 @@ import educationRoutes from './education.routes.js';
 import hrRoutes from './hr.routes.js';
 import booksRoutes from './books.routes.js';
 import { importsRouter } from './imports.routes.js';
+import boardRoutes from './board.routes.js';
 import metaRoutes from './meta.routes.js';
 import { requireAuth } from '../lib/http.js';
 
@@ -26,6 +27,7 @@ router.use('/education', requireAuth, educationRoutes);
 router.use('/hr', requireAuth, hrRoutes);
 router.use('/books', requireAuth, booksRoutes);
 router.use('/imports', requireAuth, importsRouter);
+router.use('/board', requireAuth, boardRoutes);
 // What is running, and against what data. Signed in, because the seed stamp is
 // about a particular tenant.
 router.use('/meta', requireAuth, metaRoutes);
