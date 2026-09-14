@@ -398,6 +398,10 @@ model Organization {
   /// The learners whose fees this body is paying.
   sponsoredStudents  StudentProfile[]    @relation("StudentSponsor")
 
+  /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
+  migratedToTenantId String?
+  spinOutBatchId     String?
+
   @@unique([tenantId, recordCode])
   @@index([tenantId, name])
   @@index([tenantId, kind, name])
@@ -1999,6 +2003,10 @@ model ShareClass {
   authorisedCount Decimal? @db.Decimal(24, 6)
   status          String   @default("active") // active | closed
 
+  /// Names the spin-out batch that created this class (equity-portal plan
+  /// §6b), for `--revert`.
+  spinOutBatchId String?
+
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2062,6 +2070,9 @@ model Holder {
   /// clientId }` at minimum; kept as free `Json` because the two depositories
   /// (NSDL/CDSL) and an RTA's own reference are not a single fixed shape.
   dematAccount Json?
+  /// Names the spin-out batch that created this holder (equity-portal plan
+  /// §6b), for `--revert`.
+  spinOutBatchId String?
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -2136,6 +2147,10 @@ model ShareTransaction {
   /// columns (most rows never use it).
   meta      Json?
 
+  /// Names the spin-out batch that created this row — the subsidiary's
+  /// opening allotment (equity-portal plan §6b) — for `--revert`.
+  spinOutBatchId String?
+
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2184,6 +2199,10 @@ model ShareCertificate {
 
   stampDutyPaid   Decimal?  @db.Decimal(18, 2)
   stampDutyPaidOn DateTime?
+
+  /// Names the spin-out batch that issued this certificate (equity-portal
+  /// plan §6b), for `--revert`.
+  spinOutBatchId String?
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -3139,6 +3158,10 @@ model Course {
 
   cohorts Cohort[]
 
+  /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
+  migratedToTenantId String?
+  spinOutBatchId     String?
+
   @@unique([tenantId, recordCode])
   @@unique([tenantId, code])
   @@map("courses")
@@ -3164,6 +3187,10 @@ model Cohort {
   updatedAt DateTime @updatedAt
 
   enrollments Enrollment[]
+
+  /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
+  migratedToTenantId String?
+  spinOutBatchId     String?
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, trainerPartyId])
@@ -3215,6 +3242,10 @@ model Enrollment {
   attendance    Attendance[]
   dailyProgress DailyProgress[]
   logs          LearnerLog[]
+
+  /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
+  migratedToTenantId String?
+  spinOutBatchId     String?
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, cohortId, status])
@@ -3925,6 +3956,10 @@ model EmploymentRelationship {
   onboarding          Onboarding?
   offboarding         Offboarding?
 
+  /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
+  migratedToTenantId String?
+  spinOutBatchId     String?
+
   @@unique([tenantId, recordCode])
   @@index([tenantId, status])
   @@index([tenantId, personId])
@@ -4439,6 +4474,13 @@ model LedgerAccount {
   /// Ledger grouping for the balance sheet: asset | liability | equity.
   ledgerGroup      String    @default("asset")
 
+  /// Set by `pnpm division:spin-out` on an account it opened at zero for a
+  /// subsidiary from a carried transaction's account name — cash never moves
+  /// by data migration, so this says so on the account itself.
+  openingNote String?
+  /// Names the spin-out batch that created this account, for `--revert`.
+  spinOutBatchId String?
+
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -4478,6 +4520,10 @@ model LedgerCategory {
   transactions   Transaction[]
   budgetLines    BudgetLine[]
   recurringRules RecurringRule[]
+
+  /// Names the spin-out batch that created this category in a subsidiary
+  /// (equity-portal plan §6b), for `--revert`.
+  spinOutBatchId String?
 
   @@unique([tenantId, name])
   @@index([tenantId, kind])
@@ -4535,6 +4581,13 @@ model Transaction {
   /// Matched against a bank statement line.
   reconciledAt DateTime?
 
+  /// Set when this row was copied into a subsidiary tenant by `pnpm division:spin-out`
+  /// (equity-portal plan §6b) — never edited or deleted otherwise, so the
+  /// holding's history still reads.
+  migratedToTenantId String?
+  /// Set on a row this script created in the subsidiary, naming the batch — the
+  /// only rows `pnpm division:spin-out --revert` may remove.
+  spinOutBatchId     String?
   createdById String?
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())

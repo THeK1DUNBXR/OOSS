@@ -81,6 +81,13 @@ export const EVENTS = {
   /// the moment s.2(85) ends small-company status for it (§1a.1).
   TENANT_KIND_CHANGED: 'kz.sys.tenant.kind_changed',
 
+  // --- Spin-out: a division carved out into its own subsidiary tenant
+  // (equity-portal plan §6b) — emitted in both the holding and the
+  // subsidiary tenant, by `pnpm division:spin-out`.
+  TENANT_SPIN_OUT_PREVIEWED: 'kz.sys.spin_out.previewed',
+  TENANT_SPIN_OUT_COMMITTED: 'kz.sys.spin_out.committed',
+  TENANT_SPIN_OUT_REVERTED: 'kz.sys.spin_out.reverted',
+
   // --- CRM: organisation specialisations ------------------------------------
   CRM_ORGANIZATION_CREATED: 'kz.crm.organization.created',
   CRM_ORGANIZATION_UPDATED: 'kz.crm.organization.updated',

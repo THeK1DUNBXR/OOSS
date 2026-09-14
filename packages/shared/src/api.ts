@@ -127,6 +127,8 @@ export interface TenantConfig {
   /** Set once `reconcileTenantKinds` has raised the small-company-status notice for this tenant, so it fires exactly once — §1a.1. */
   smallCompanyNoticeRaisedAt?: string;
   seed?: { sequence: number; at: string; build: number; commit: string; navNodes: number };
+  /** Set on the subsidiary once `pnpm division:spin-out` has committed — §6b. */
+  spinOut?: { from: string; division: 'software' | 'skill' | 'education'; at: string; batchId: string };
 }
 
 export interface AuthorityGrantView {
