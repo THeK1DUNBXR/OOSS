@@ -44,10 +44,20 @@ let FIXTURE_BASE_DAYS = 300;
 
 beforeAll(async () => {
   TENANT = await tenantId();
-  const latest = await unscopedPrisma.clockEvent.aggregate({ where: { tenantId: TENANT }, _max: { occurredAt: true } });
-  const latestOccurredAt = latest._max.occurredAt;
-  if (latestOccurredAt) {
-    const daysAhead = Math.ceil((latestOccurredAt.getTime() - Date.now()) / 86_400_000) + 7;
+  // Every model this suite writes dates into, so a re-run against the same
+  // persistent test database starts strictly after whatever the last run
+  // left behind in any of them — not just the clock log.
+  const [clock, timesheet, overtime, regularisation] = await Promise.all([
+    unscopedPrisma.clockEvent.aggregate({ where: { tenantId: TENANT }, _max: { occurredAt: true } }),
+    unscopedPrisma.timesheet.aggregate({ where: { tenantId: TENANT }, _max: { weekStart: true } }),
+    unscopedPrisma.overtimeRequest.aggregate({ where: { tenantId: TENANT }, _max: { date: true } }),
+    unscopedPrisma.attendanceRegularisation.aggregate({ where: { tenantId: TENANT }, _max: { date: true } }),
+  ]);
+  const latest = [clock._max.occurredAt, timesheet._max.weekStart, overtime._max.date, regularisation._max.date]
+    .filter((d): d is Date => d !== null)
+    .reduce((max, d) => (d.getTime() > max.getTime() ? d : max), new Date(0));
+  if (latest.getTime() > 0) {
+    const daysAhead = Math.ceil((latest.getTime() - Date.now()) / 86_400_000) + 7;
     FIXTURE_BASE_DAYS = Math.max(FIXTURE_BASE_DAYS, daysAhead);
   }
 });

@@ -18,14 +18,27 @@ export interface EnpsBreakdown {
   passives: number;
   detractors: number;
   responses: number;
-  /** -100..100. `null` when there are no responses to compute a score from. */
+  /** -100..100. `null` when there are no responses, or too few to report without exposing individuals, to compute a score from. */
   score: number | null;
 }
 
 /**
+ * The floor below which a survey result is withheld or narrowed rather than
+ * reported: the same k-anonymity floor `commandCenter.ts` uses for
+ * unit-level capacity. Below it, an eNPS `score` comes back `null` and free
+ * text answers on an anonymous survey are withheld — either would let a
+ * reader read a handful of respondents' individual answers back off an
+ * "aggregate".
+ */
+export const SURVEY_MIN_SAMPLE = 5;
+
+/**
  * Standard NPS math applied to the employee-engagement variant: 9-10 promote,
  * 7-8 are passive, 0-6 detract. `score = (%promoters - %detractors)`, rounded
- * to the nearest whole point, which is how eNPS is conventionally reported.
+ * to the nearest whole point, which is how eNPS is conventionally reported —
+ * but only once there are at least `SURVEY_MIN_SAMPLE` responses; below that
+ * the breakdown is still returned (so a manager can see "too few responses"),
+ * but `score` is withheld as `null`.
  */
 export function computeEnps(scores: number[]): EnpsBreakdown {
   const responses = scores.length;
@@ -40,7 +53,7 @@ export function computeEnps(scores: number[]): EnpsBreakdown {
     else if (s <= 6) detractors += 1;
   }
   const passives = responses - promoters - detractors;
-  const score = Math.round(((promoters - detractors) / responses) * 100);
+  const score = responses < SURVEY_MIN_SAMPLE ? null : Math.round(((promoters - detractors) / responses) * 100);
   return { promoters, passives, detractors, responses, score };
 }
 

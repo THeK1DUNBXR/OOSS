@@ -355,3 +355,147 @@ describe('HCM-ANALYTICS-010 — tenant scoping', () => {
     });
   });
 });
+
+// ===========================================================================
+// HCM-ANALYTICS-011 — compa-ratio distribution, bridged through the shared
+// `level` field between WS1's Grade and WS7's PayGrade
+// ===========================================================================
+
+describe('HCM-ANALYTICS-011 — compa-ratio distribution', () => {
+  it('an employee whose current CTC equals the grade midpoint of the pay grade at their level lands in the 95-110% bucket', async () => {
+    const { employment } = await makeEmployee('comp-ratio', 200, 100_000);
+    fixtureSeq += 1;
+    const stamp = `${Date.now()}-${fixtureSeq}`;
+    const level = 900_000 + fixtureSeq;
+
+    await asUser('operations@kaizen.co.in', async () => {
+      const grade = await prisma.grade.create({
+        data: { tenantId: TENANT, code: `CR-GRADE-${stamp}`, name: `Comp ratio fixture grade ${stamp}`, level },
+      });
+      await prisma.gradeAssignment.create({
+        data: { tenantId: TENANT, employmentRelationshipId: employment.id, gradeId: grade.id, effectiveFrom: new Date() },
+      });
+      await prisma.payGrade.create({
+        data: { tenantId: TENANT, code: `PG-CR-${stamp}`, level, currency: 'INR', minPay: 80_000, midPay: 100_000, maxPay: 120_000 },
+      });
+
+      const result = await compRatioDistribution();
+      expect(result.measured).toBe(true);
+      if (result.measured) {
+        const bucket = result.value.find((b) => b.bucket === '95-110%');
+        expect(bucket?.count).toBeGreaterThanOrEqual(1);
+      }
+    });
+  });
+
+  it('is withheld (not measured, never a wrong number) from a viewer without compensation:financial', async () => {
+    await withFixtureRole(
+      { grants: [{ resource: 'hr_analytics', verbs: ['view'] }, { resource: 'compensation', verbs: ['view'] }] },
+      async () => {
+        const result = await compRatioDistribution();
+        expect(result.measured).toBe(false);
+        expect(result.value).toBeNull();
+      },
+    );
+  });
+});
+
+// ===========================================================================
+// HCM-ANALYTICS-012 — engagement eNPS from PulseSurvey/SurveyResponse
+// ===========================================================================
+
+describe('HCM-ANALYTICS-012 — engagement eNPS', () => {
+  it('two promoters and one detractor score positive, using the shared NPS formula', async () => {
+    fixtureSeq += 1;
+    const stamp = `${Date.now()}-${fixtureSeq}`;
+
+    await asUser('operations@kaizen.co.in', async () => {
+      const survey = await prisma.pulseSurvey.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: `SVY-TEST-${stamp}`,
+          title: `Fixture pulse ${stamp}`,
+          questions: [{ id: 'q1', type: 'enps', text: 'How likely are you to recommend working here?' }],
+          anonymous: true,
+          opensAt: new Date(Date.now() - 86_400_000),
+          closesAt: new Date(Date.now() + 86_400_000),
+          status: 'open',
+        },
+      });
+      await prisma.surveyResponse.create({
+        data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-a`, answers: [{ questionId: 'q1', value: 9 }] },
+      });
+      await prisma.surveyResponse.create({
+        data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-b`, answers: [{ questionId: 'q1', value: 10 }] },
+      });
+      await prisma.surveyResponse.create({
+        data: { tenantId: TENANT, surveyId: survey.id, respondentToken: `tok-${stamp}-c`, answers: [{ questionId: 'q1', value: 3 }] },
+      });
+
+      const result = await engagementEnps();
+      expect(result.measured).toBe(true);
+      if (result.measured) {
+        // 2 promoters, 1 detractor, 3 responses -> (2-1)/3*100 rounded.
+        expect(result.value).toBeCloseTo(33, 0);
+      }
+    });
+  });
+});
+
+// ===========================================================================
+// HCM-ANALYTICS-013 — open cases by SLA, confidential cases excluded
+// ===========================================================================
+
+describe('HCM-ANALYTICS-013 — open cases by SLA', () => {
+  it('an overdue open case buckets as breached', async () => {
+    await asUser('operations@kaizen.co.in', async () => {
+      const person = await prisma.person.findFirstOrThrow({ where: { tenantId: TENANT } });
+      await prisma.hrCase.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('CASE'),
+          category: 'other',
+          priority: 'normal',
+          status: 'open',
+          subject: 'Fixture overdue case',
+          raisedByPartyId: person.id,
+          confidential: false,
+          slaDueAt: new Date(Date.now() - 2 * 86_400_000),
+        },
+      });
+
+      const result = await openCasesBySla();
+      expect(result.measured).toBe(true);
+      if (result.measured) {
+        const breached = result.value.find((b) => b.bucket === 'Breached');
+        expect(breached?.count).toBeGreaterThanOrEqual(1);
+      }
+    });
+  });
+
+  it('a confidential grievance case never moves the SLA breakdown', async () => {
+    await asUser('operations@kaizen.co.in', async () => {
+      const before = await openCasesBySla();
+      const beforeBreached = before.measured ? (before.value.find((b) => b.bucket === 'Breached')?.count ?? 0) : 0;
+
+      const person = await prisma.person.findFirstOrThrow({ where: { tenantId: TENANT } });
+      await prisma.hrCase.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('CASE'),
+          category: 'grievance',
+          priority: 'high',
+          status: 'open',
+          subject: 'Fixture confidential grievance',
+          raisedByPartyId: person.id,
+          confidential: true,
+          slaDueAt: new Date(Date.now() - 2 * 86_400_000),
+        },
+      });
+
+      const after = await openCasesBySla();
+      const afterBreached = after.measured ? (after.value.find((b) => b.bucket === 'Breached')?.count ?? 0) : 0;
+      expect(afterBreached).toBe(beforeBreached);
+    });
+  });
+});

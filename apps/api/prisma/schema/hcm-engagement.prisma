@@ -120,10 +120,13 @@ model PulseSurvey {
 }
 
 /// One row per respondent per survey. When the survey is anonymous,
-/// `employmentRelationshipId` is left null and `respondentToken` — a salted
-/// hash of (tenant, survey, person), never the person id itself — is the only
-/// thing that can stop a second submission; nobody reading this table can
-/// recover the person from the token.
+/// `employmentRelationshipId` is left null and `respondentToken` is a random
+/// id (never derived from who answered) — it identifies the row for
+/// operational purposes only and carries nothing that could be hashed back to
+/// a person. Duplicate-submission checking for an anonymous survey runs
+/// against `SurveyResponseDedupe` instead, a table this one is never joined
+/// to, so even the identity fact "this person responded" cannot be linked to
+/// which answers they gave.
 model SurveyResponse {
   id       String @id @default(cuid())
   tenantId String
@@ -139,9 +142,27 @@ model SurveyResponse {
   submittedAt DateTime @default(now())
 
   @@unique([tenantId, surveyId, employmentRelationshipId])
-  @@unique([tenantId, surveyId, respondentToken])
   @@index([tenantId, surveyId])
   @@map("hcm_engagement_survey_responses")
+}
+
+/// The only record of "this person has already answered this anonymous
+/// survey" — a one-way hash of (tenant, survey, person), stored in a table
+/// that holds nothing else and is never joined to `SurveyResponse`. Deleting
+/// or leaking this table reveals only that a person responded, never what
+/// they answered; the reverse join (which response is theirs) does not exist
+/// anywhere in the schema.
+model SurveyResponseDedupe {
+  id       String @id @default(cuid())
+  tenantId String
+
+  surveyId    String
+  dedupeHash  String
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, surveyId, dedupeHash])
+  @@map("hcm_engagement_survey_response_dedupes")
 }
 
 /// An HR helpdesk ticket. `confidential` is always true for a grievance and

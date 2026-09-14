@@ -316,12 +316,22 @@ export async function markArrearPaid(id: string, payPeriod: string) {
 // Payroll journal
 // ---------------------------------------------------------------------------
 
-/** Masks a journal's money — its two running totals and every line's debit/credit — leaving the account/cost-centre labels (classification, not money) visible either way. */
+/**
+ * Masks a journal's money — its two running totals and every line's
+ * debit/credit — leaving the account/cost-centre labels (classification, not
+ * money) visible either way. A line's unused side is a structural zero, not
+ * a figure, so it stays `0` rather than becoming indistinguishable from a
+ * withheld amount.
+ */
 function maskJournal<T extends { totalDebit: unknown; totalCredit: unknown; lines: unknown }>(row: T, visible: boolean) {
+  const maskSide = (v: unknown) => {
+    const n = num(v as never) ?? 0;
+    return visible || n === 0 ? n : null;
+  };
   const lines = (row.lines as Array<Record<string, unknown>>).map((l) => ({
     ...l,
-    debit: money(l.debit, visible),
-    credit: money(l.credit, visible),
+    debit: maskSide(l.debit),
+    credit: maskSide(l.credit),
   }));
   return { ...row, totalDebit: money(row.totalDebit, visible), totalCredit: money(row.totalCredit, visible), lines, moneyWithheldReason: visible ? null : 'no_permission' };
 }

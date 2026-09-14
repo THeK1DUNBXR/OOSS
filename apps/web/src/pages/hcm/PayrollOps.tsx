@@ -118,6 +118,7 @@ const MILESTONE_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
 };
 
 function CalendarTab() {
+  const { can } = useSession();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ payPeriod: '', attendanceLockAt: '', inputFreezeAt: '', runByAt: '', approveByAt: '', payDate: '', note: '' });
@@ -703,8 +704,8 @@ function JournalTab() {
                     <tr key={idx}>
                       <td className="text-2xs">{l.label} <span className="text-ink-500">({l.ledgerAccountCode})</span></td>
                       <td>{l.costCentre}</td>
-                      <td className="text-right tabular-nums">{l.debit !== null && l.debit > 0 ? money(l.debit) : l.debit === null ? <StatusChip status="withheld" /> : ''}</td>
-                      <td className="text-right tabular-nums">{l.credit !== null && l.credit > 0 ? money(l.credit) : l.credit === null ? <StatusChip status="withheld" /> : ''}</td>
+                      <td className="text-right tabular-nums">{l.debit === null ? <StatusChip status="withheld" /> : l.debit > 0 ? money(l.debit) : ''}</td>
+                      <td className="text-right tabular-nums">{l.credit === null ? <StatusChip status="withheld" /> : l.credit > 0 ? money(l.credit) : ''}</td>
                     </tr>
                   ))}
                   <tr className="font-medium">
@@ -714,15 +715,15 @@ function JournalTab() {
                   </tr>
                 </tbody>
               </table>
-              {j.status === 'Prepared' && (
+              {j.status === 'Prepared' && can('payroll_journals:approve') && (
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="w-64">
                     <SelectInput
                       label="Post net pay from"
                       value={accountId}
                       onChange={setAccountId}
-                      placeholder="Choose an account…"
-                      options={(accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))}
+                      placeholder="Choose a bank, cash or wallet account…"
+                      options={cashAccounts.map((a) => ({ value: a.id, label: a.name }))}
                     />
                   </div>
                   <button className="btn-primary" disabled={!accountId || post.isPending} onClick={() => post.mutate(j.id)}>
@@ -749,20 +750,27 @@ interface BankAdviceSummary {
   payPeriod: string;
   format: string;
   count: number;
-  total: number;
+  total: number | null;
+  moneyWithheldReason?: string | null;
   generatedAt: string;
 }
 
+interface BankAdviceDetail extends BankAdviceSummary {
+  rows: Array<{ employeeName: string; accountNumber: string; ifsc: string; amount: number | null; reference: string }>;
+}
+
 function BankAdviceTab() {
+  const { can } = useSession();
   const qc = useQueryClient();
   const [runId, setRunId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   const advices = useQuery({ queryKey: ['payrollops-advices'], queryFn: () => api.get<BankAdviceSummary[]>('/hcm/payrollops/bank-advices') });
   const detail = useQuery({
     queryKey: ['payrollops-advice-detail', viewingId],
-    queryFn: () => api.get<BankAdviceSummary & { fileText: string }>(`/hcm/payrollops/bank-advices/${viewingId}`),
+    queryFn: () => api.get<BankAdviceDetail>(`/hcm/payrollops/bank-advices/${viewingId}`),
     enabled: Boolean(viewingId),
   });
 
@@ -772,16 +780,30 @@ function BankAdviceTab() {
     onError: (e) => setError(messageOf(e)),
   });
 
+  const download = async (id: string, payPeriod: string) => {
+    setDownloading(id);
+    try {
+      await api.download(`/hcm/payrollops/bank-advices/${id}/download`, `bank-advice-${payPeriod}.csv`);
+      setError(null);
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setDownloading(null);
+    }
+  };
+
   return (
     <Card
       title="Bank advice"
-      subtitle="The NEFT file for a run's net pay. Held only by HR operations and Finance — never at employee scope."
+      subtitle="The NEFT file for a run's net pay. Held only by HR operations and Finance — never at employee scope. Account numbers show only their last 4 digits here; the full CSV is a separate, audited download."
     >
       <div className="mb-4 flex flex-wrap items-end gap-3 border-b border-ink-800 pb-4">
         <div className="w-64"><RunPicker value={runId} onChange={setRunId} onlyApproved /></div>
-        <button className="btn-primary" disabled={!runId || generate.isPending} onClick={() => generate.mutate()}>
-          {generate.isPending ? 'Generating…' : 'Generate bank advice'}
-        </button>
+        {can('bank_advices:export') && (
+          <button className="btn-primary" disabled={!runId || generate.isPending} onClick={() => generate.mutate()}>
+            {generate.isPending ? 'Generating…' : 'Generate bank advice'}
+          </button>
+        )}
       </div>
       {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
 
@@ -806,20 +828,49 @@ function BankAdviceTab() {
                 <td>{a.payPeriod}</td>
                 <td>{a.format}</td>
                 <td className="tabular-nums">{a.count}</td>
-                <td className="tabular-nums">{money(a.total)}</td>
+                <td className="tabular-nums">{a.total === null ? <StatusChip status="withheld" /> : money(a.total)}</td>
                 <td>{dateTime(a.generatedAt)}</td>
                 <td className="text-right">
-                  <button className="btn text-2xs" onClick={() => setViewingId(viewingId === a.id ? null : a.id)}>
-                    {viewingId === a.id ? 'Hide' : 'View file'}
-                  </button>
+                  <div className="flex justify-end gap-1">
+                    <button className="btn text-2xs" onClick={() => setViewingId(viewingId === a.id ? null : a.id)}>
+                      {viewingId === a.id ? 'Hide' : 'View rows'}
+                    </button>
+                    {can('bank_advices:export') && (
+                      <button className="btn text-2xs" disabled={downloading === a.id} onClick={() => download(a.id, a.payPeriod)}>
+                        {downloading === a.id ? 'Downloading…' : 'Download CSV'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {viewingId && detail.isLoading && <Loading />}
       {viewingId && detail.data && (
-        <pre className="mt-3 max-h-64 overflow-auto rounded border border-ink-800 bg-ink-900 p-3 text-2xs">{detail.data.fileText}</pre>
+        <table className="table mt-3">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Account</th>
+              <th>IFSC</th>
+              <th className="text-right">Amount</th>
+              <th>Reference</th>
+            </tr>
+          </thead>
+          <tbody>
+            {detail.data.rows.map((r, idx) => (
+              <tr key={idx}>
+                <td className="text-2xs">{r.employeeName}</td>
+                <td className="text-2xs tabular-nums">{r.accountNumber}</td>
+                <td className="text-2xs tabular-nums">{r.ifsc}</td>
+                <td className="text-right tabular-nums">{r.amount === null ? <StatusChip status="withheld" /> : money(r.amount)}</td>
+                <td className="text-2xs text-ink-500">{r.reference}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </Card>
   );
@@ -844,6 +895,7 @@ interface PayrollQueryRow {
 const QUERY_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { Open: 'warn', Responded: 'good', Closed: 'neutral' };
 
 function QueriesTab() {
+  const { can } = useSession();
   const qc = useQueryClient();
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -872,7 +924,7 @@ function QueriesTab() {
               </div>
               <p className="mb-2 text-xs text-ink-300">{q.message}</p>
               {q.response && <p className="mb-2 rounded bg-ink-900 p-2 text-xs text-ink-300">HR: {q.response}</p>}
-              {q.status !== 'Closed' && (
+              {q.status !== 'Closed' && can('payroll_queries:edit') && (
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="min-w-[16rem] flex-1">
                     <TextArea label="Response" value={responses[q.id] ?? ''} onChange={(v) => setResponses({ ...responses, [q.id]: v })} rows={2} />

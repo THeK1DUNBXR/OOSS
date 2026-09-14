@@ -9,11 +9,12 @@
  * a wider listing.
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   computeEnps,
   inAudience,
   isHrCaseSlaBreached,
+  SURVEY_MIN_SAMPLE,
   validateSurveyAnswers,
   type Audience,
   type AudienceFacts,
@@ -74,16 +75,34 @@ async function managesResource(resource: string): Promise<boolean> {
   return (await scopeFor(resource, 'edit')) !== null;
 }
 
-/** Facts about a party used for audience matching — resolved from their active affiliation. */
+/**
+ * Facts about a party used for audience matching — resolved from their
+ * active affiliation. Division comes from the affiliation's org unit;
+ * location comes from the seat (`Position.location`) the affiliation holds,
+ * not from the org unit — an org unit carries no location of its own, so a
+ * location-targeted announcement or survey would silently match nobody if
+ * this fell back to reading it off the org unit instead.
+ */
 async function audienceFactsFor(tenantId: string, partyId: string | null): Promise<AudienceFacts> {
   if (!partyId) return {};
   const affiliation = await unscopedPrisma.affiliation.findFirst({
     where: { tenantId, partyId, status: 'active' },
-    select: { orgUnitId: true },
+    select: { orgUnitId: true, positionId: true },
   });
-  if (!affiliation?.orgUnitId) return {};
-  const orgUnit = await unscopedPrisma.orgUnit.findFirst({ where: { id: affiliation.orgUnitId }, select: { division: true } });
-  return { orgUnitId: affiliation.orgUnitId, division: orgUnit?.division ?? null };
+  if (!affiliation) return {};
+  const [orgUnit, position] = await Promise.all([
+    affiliation.orgUnitId
+      ? unscopedPrisma.orgUnit.findFirst({ where: { id: affiliation.orgUnitId }, select: { division: true } })
+      : null,
+    affiliation.positionId
+      ? unscopedPrisma.position.findFirst({ where: { id: affiliation.positionId }, select: { location: true } })
+      : null,
+  ]);
+  return {
+    orgUnitId: affiliation.orgUnitId ?? null,
+    division: orgUnit?.division ?? null,
+    location: position?.location ?? null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +320,11 @@ export interface PulseSurveyInput {
 
 export async function createPulseSurvey(input: PulseSurveyInput) {
   const auth = currentAuth();
-  await assertCan({ resource: 'surveys', verb: 'create' });
+  // Deliberately `edit`, not `create`: an ordinary employee holds `surveys:create`
+  // too, but only so `submitSurveyResponse` lets them answer one — defining a
+  // company-wide (or audience-wide) survey is a management action, gated the
+  // same way `openPulseSurvey`/`closePulseSurvey` already are.
+  await assertCan({ resource: 'surveys', verb: 'edit' });
   if (input.questions.length === 0) throw ApiError.badRequest('A survey needs at least one question.');
   if (input.closesAt.getTime() <= input.opensAt.getTime()) throw ApiError.badRequest('closesAt must be after opensAt.');
 
@@ -364,9 +387,25 @@ export async function listPulseSurveys() {
   return rows.filter((r) => r.status !== 'draft' && inAudience(r as unknown as Audience, facts));
 }
 
-/** A deterministic, non-reversible stand-in for identity on an anonymous survey — enough to stop a second submission, never enough to name the respondent. */
-function anonymousToken(tenantId: string, surveyId: string, partyId: string): string {
-  return createHash('sha256').update(`${tenantId}:${surveyId}:${partyId}:kz-anon-survey`).digest('hex');
+/**
+ * The one-way key that stops a second submission to an anonymous survey.
+ * This is stored ONLY in `SurveyResponseDedupe`, a table with no other
+ * column and no relation to `SurveyResponse` — so even someone who could
+ * enumerate every party id in the tenant and recompute this hash (the salt
+ * is a source constant, not a secret) learns only "this person responded",
+ * never which row their answers landed in. `SurveyResponse.respondentToken`
+ * itself is always a plain random id, uncorrelated with identity.
+ */
+function dedupeHash(tenantId: string, surveyId: string, partyId: string): string {
+  return createHash('sha256').update(`${tenantId}:${surveyId}:${partyId}:kz-anon-survey-dedupe`).digest('hex');
+}
+
+async function alreadyRespondedAnonymously(tenantId: string, surveyId: string, partyId: string): Promise<boolean> {
+  const existing = await prisma.surveyResponseDedupe.findFirst({
+    where: { tenantId, surveyId, dedupeHash: dedupeHash(tenantId, surveyId, partyId) },
+    select: { id: true },
+  });
+  return Boolean(existing);
 }
 
 export async function submitSurveyResponse(surveyId: string, employmentRelationshipId: string, answers: SurveyAnswer[]) {
@@ -378,27 +417,46 @@ export async function submitSurveyResponse(surveyId: string, employmentRelations
   if (new Date() > survey.closesAt) throw ApiError.conflict('This survey has closed.');
   if (!auth.partyId) throw ApiError.badRequest('No party on this session to respond as.');
 
+  // A survey's audience is enforced on the write, not merely the read — being
+  // outside the targeted division/org-unit/location means the id cannot be
+  // used to answer it either, the same as it cannot be used to see it.
+  if (!(await managesResource('surveys'))) {
+    const facts = await audienceFactsFor(auth.tenantId, auth.partyId);
+    if (!inAudience(survey as unknown as Audience, facts)) throw ApiError.notFound('Pulse survey');
+  }
+
   const problem = validateSurveyAnswers(survey.questions as unknown as SurveyQuestion[], answers);
   if (problem) throw ApiError.badRequest(problem);
 
-  const data = survey.anonymous
-    ? {
-        tenantId: auth.tenantId,
-        surveyId,
-        employmentRelationshipId: null,
-        respondentToken: anonymousToken(auth.tenantId, surveyId, auth.partyId),
-        answers: answers as never,
+  if (survey.anonymous) {
+    if (await alreadyRespondedAnonymously(auth.tenantId, surveyId, auth.partyId)) {
+      throw ApiError.conflict('You have already answered this survey.');
+    }
+    return prisma.$transaction(async (tx) => {
+      try {
+        await tx.surveyResponseDedupe.create({
+          data: { tenantId: auth.tenantId, surveyId, dedupeHash: dedupeHash(auth.tenantId, surveyId, auth.partyId!) },
+        });
+      } catch (err) {
+        if ((err as { code?: string }).code === 'P2002') throw ApiError.conflict('You have already answered this survey.');
+        throw err;
       }
-    : {
-        tenantId: auth.tenantId,
-        surveyId,
-        employmentRelationshipId,
-        respondentToken: null,
-        answers: answers as never,
-      };
+      return tx.surveyResponse.create({
+        data: {
+          tenantId: auth.tenantId,
+          surveyId,
+          employmentRelationshipId: null,
+          respondentToken: randomUUID(),
+          answers: answers as never,
+        },
+      });
+    });
+  }
 
   try {
-    return await prisma.surveyResponse.create({ data });
+    return await prisma.surveyResponse.create({
+      data: { tenantId: auth.tenantId, surveyId, employmentRelationshipId, respondentToken: null, answers: answers as never },
+    });
   } catch (err) {
     if ((err as { code?: string }).code === 'P2002') {
       throw ApiError.conflict('You have already answered this survey.');

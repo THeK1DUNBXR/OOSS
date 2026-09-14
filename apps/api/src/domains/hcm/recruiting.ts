@@ -34,7 +34,7 @@ import { assertCan, assertScopeAll, canSeeMoney } from '../../platform/permissio
 import { transition } from '../../platform/lifecycle.js';
 import { auditWrite } from '../../platform/audit.js';
 import { findOrCreatePerson, type PersonInput } from '../identity.js';
-import { joinFromApplication } from '../hiring.js';
+import { joinFromApplication, transitionApplication } from '../hiring.js';
 
 function slugify(title: string, stamp: string): string {
   return `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${stamp}`;
@@ -400,6 +400,11 @@ export async function transitionOffer(id: string, event: OfferEvent, input: { no
   }
   if (event === 'DECLINE' && !input.declineReason) {
     throw ApiError.unprocessable('A decline needs a reason — it is what the funnel is answerable from later.');
+  }
+  if (event === 'ACCEPT' && offer.validUntil.getTime() < Date.now()) {
+    throw ApiError.unprocessable(
+      `This offer expired on ${offer.validUntil.toISOString().slice(0, 10)} and can no longer be accepted.`,
+    );
   }
 
   const result = await transition({
