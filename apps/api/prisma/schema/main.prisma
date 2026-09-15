@@ -2697,6 +2697,19 @@ model OptionExercise {
 // Finance (fin-owned)
 // ===========================================================================
 
+/// A generic (non-course) invoice is a real tax document: issued once,
+/// numbered in the `I` series, final from the moment it is handed over.
+///
+/// A course-fee invoice — one raised with `enrollmentDate` set — is
+/// different. It is the internal working record a student's instalments are
+/// tracked against while they pay: numbered in the `temp` series, never
+/// handed to the student, and never reported for tax (`invoiceType` is
+/// forced to `temp` for these). Each instalment still produces its own
+/// receipt, which the student does keep. The document that closes the
+/// course out — the one the student can actually claim tax against — is the
+/// final invoice raised automatically once the instalments are done or the
+/// student withdraws: see `FinalInvoice` and `finalizeCourseFeeInvoice` in
+/// `domains/receipts.ts`.
 model Invoice {
   id       String @id @default(cuid())
   tenantId String
@@ -2801,7 +2814,10 @@ model Invoice {
   createdById       String?
   deletedAt         DateTime?
   // ---- Compliance (workstream B) ----
-  /// tax_invoice | bill_of_supply — a bill of supply carries no tax (Rule 49).
+  /// tax_invoice | bill_of_supply | temp — a bill of supply carries no tax
+  /// (Rule 49); `temp` is the internal course-fee working invoice above,
+  /// forced regardless of what is requested whenever `enrollmentDate` is set,
+  /// and is never a tax document at all.
   invoiceType    String  @default("tax_invoice")
   /// Tax payable by the recipient (Sec 9(3)/9(4)). Printed on the invoice per Rule 46.
   reverseCharge  Boolean @default(false)
@@ -3040,23 +3056,32 @@ model Receipt {
   @@map("receipts")
 }
 
-/// The document raised once the instalments are done.
+/// The document that closes an instalment run out. Two ways to get here,
+/// because the invoice behind it is one of two different things (see `Invoice`).
 ///
-/// A tax invoice is final: it is raised once, states the whole obligation, and
-/// must still read the same in three years. Each instalment against it is a
-/// receipt, which is its own numbered document. Neither of those, on its own,
-/// answers the question a customer asks at the end — "what did I owe, what have
-/// I paid, and against which receipts" — because the invoice predates the
-/// payments and each receipt only knows about itself.
+/// **Against a course-fee (temp) invoice**, this is the tax invoice — the only
+/// one the student ever gets. It does not exist until the moment it locks:
+/// created once, fully formed, either the instant a receipt brings the temp
+/// invoice's balance to zero (`triggerReason: 'settled'`) or the moment the
+/// student's enrolment is marked withdrawn (`triggerReason: 'dropout'`, which
+/// can carry zero receipts — a student who paid nothing still gets a nil tax
+/// invoice for the record). Numbered in the `TI` series at that moment, dated
+/// that day, naming every receipt issued up to then. Nothing supersedes it:
+/// there is nothing left to happen to a course that is finished or withdrawn
+/// from. `raiseFinalInvoice` refuses to raise one of these on demand —
+/// `finalizeCourseFeeInvoice` is the only path in.
 ///
-/// So this is that answer, raised deliberately by whoever is at the counter
-/// rather than rendered on the fly: it has its own number and its own date, it
-/// names every receipt it consolidates, and the figures are snapshotted, because
-/// a document handed to a customer cannot restate itself the next time it is
+/// **Against a generic invoice** (already a real, immediately-final tax
+/// document), this is the older on-demand statement: "what did I owe, what
+/// have I paid, and against which receipts" for a customer paying that
+/// invoice in instalments. Raised deliberately by whoever is at the counter,
+/// callable again after a further instalment, in which case the new one
+/// supersedes the last rather than replacing it — both were true when they
+/// were handed over.
+///
+/// Either way the figures are snapshotted at the moment of raising, because a
+/// document handed to a customer cannot restate itself the next time it is
 /// opened.
-///
-/// Raising a second one after a further instalment supersedes the first rather
-/// than replacing it. Both were true when they were handed over.
 model FinalInvoice {
   id         String @id @default(cuid())
   tenantId   String
@@ -3087,9 +3112,17 @@ model FinalInvoice {
   /// cannot change what an already-issued statement says.
   snapshot Json
 
-  /// The later statement that replaced this one.
+  /// The later statement that replaced this one. Only ever set on a final
+  /// invoice raised on demand against a generic (non-course) invoice — a
+  /// course-fee invoice's final invoice is created once, fully formed, at
+  /// the moment it locks, and nothing supersedes it.
   supersededById String?
   status         String  @default("issued") // issued | superseded
+  /// Why this was raised: `settled` when a receipt brought a course-fee
+  /// invoice's balance to zero, `dropout` when the student withdrew before
+  /// finishing, or null for the on-demand statement raised against a
+  /// generic invoice. See `finalizeCourseFeeInvoice` in `domains/receipts.ts`.
+  triggerReason  String?
   note           String?
 
   createdAt DateTime @default(now())

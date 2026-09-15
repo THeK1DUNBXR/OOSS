@@ -53,7 +53,7 @@ const PASSWORD = 'kaizen2026';
  */
 const DOC_PREFIX = 'KIPL';
 const DOC_YEAR = '26-27';
-const docNumber = (series: 'I' | 'R' | 'F', n: number) =>
+const docNumber = (series: 'I' | 'R' | 'TI', n: number) =>
   `${DOC_PREFIX}/${series}/${DOC_YEAR}/${String(n).padStart(3, '0')}`;
 
 /**
@@ -1611,7 +1611,7 @@ async function seedStudentBillingAndTimelines() {
       await prisma.finalInvoice.create({
         data: {
           tenantId,
-          recordCode: docNumber('F', 1),
+          recordCode: docNumber('TI', 1),
           invoiceId: invoice.id,
           issuedAt: new Date(issuedAt.getTime() + 15 * 86_400_000),
           totalPayable: gst.grandTotal,
@@ -1729,9 +1729,13 @@ async function seedStudentBillingAndTimelines() {
 async function advanceDocumentSeries() {
   const tenantId = (await currentTenant()).id;
   const counts: Array<[string, number]> = [
-    ['DOC:I', await prisma.invoice.count({ where: { tenantId, recordCode: { not: null } } })],
+    ['DOC:I', await prisma.invoice.count({ where: { tenantId, recordCode: { not: null }, enrollmentDate: null } })],
+    // None of this fixture's course-fee invoices carry `enrollmentDate` — they
+    // predate that distinction — so this starts at 0 and only matters once one
+    // does.
+    ['DOC:temp', await prisma.invoice.count({ where: { tenantId, recordCode: { not: null }, enrollmentDate: { not: null } } })],
     ['DOC:R', await prisma.receipt.count({ where: { tenantId } })],
-    ['DOC:F', await prisma.finalInvoice.count({ where: { tenantId } })],
+    ['DOC:TI', await prisma.finalInvoice.count({ where: { tenantId } })],
   ];
 
   for (const [entityType, used] of counts) {

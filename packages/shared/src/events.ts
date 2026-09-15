@@ -218,6 +218,10 @@ export const EVENTS = {
   ENROLLMENT_CREATED: 'kz.edu.enrollment.created',
   ENROLLMENT_CONFIRMED: 'kz.edu.enrollment.confirmed',
   ENROLLMENT_COMPLETED: 'kz.edu.enrollment.completed',
+  /// A student left a course before finishing it. This is also a finance
+  /// fact: it is what closes out that course's temp invoice with a final
+  /// (tax) invoice, dated the day of withdrawal — see `finalizeCourseFeeInvoice`.
+  ENROLLMENT_WITHDRAWN: 'kz.edu.enrollment.withdrawn',
   LEARNER_RISK_DETECTED: 'kz.edu.learner.risk_detected',
   ATTENDANCE_RECORDED: 'kz.edu.attendance.recorded',
   PROGRESS_RECORDED: 'kz.edu.progress.recorded',

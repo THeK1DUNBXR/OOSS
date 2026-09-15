@@ -19,6 +19,9 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { createAffiliation } from './identity.js';
 
+export const ENROLLMENT_STATUSES = ['reserved', 'confirmed', 'active', 'completed', 'withdrawn', 'deferred'] as const;
+export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number];
+
 export async function enrolStudent(input: unknown) {
   await assertCan({ resource: 'education', verb: 'create' });
   const auth = currentAuth();
@@ -202,4 +205,90 @@ export async function enrolStudent(input: unknown) {
     impact: { domains: ['edu'] },
   });
   return enrollment;
+}
+
+/**
+ * Moves an enrolment to a new status, and does what that status implies.
+ *
+ * Lifted out of its route handler for the same reason `enrolStudent` was: a
+ * rule that only exists inside an Express handler is a rule the suite cannot
+ * reach. Withdrawal is the status with judgement in it — it is also a
+ * finance fact, closing out any course-fee invoice this enrolment is billed
+ * against with its final (tax) invoice, dated today, naming whatever
+ * receipts exist even if that is none. See `finalizeCourseFeeInvoice` in
+ * `domains/receipts.ts`.
+ */
+export async function setEnrollmentStatus(enrollmentId: string, status: EnrollmentStatus) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'education', verb: 'edit' });
+
+  const enrollment = await prisma.enrollment.findFirst({ where: { id: enrollmentId }, include: { cohort: true } });
+  if (!enrollment) throw ApiError.notFound('Enrollment');
+
+  // The batch_member narrowing applies to the mutation, evaluated through the
+  // same evaluator as everything else.
+  await assertCan({
+    resource: 'education',
+    verb: 'edit',
+    record: { trainerPartyId: enrollment.cohort.trainerPartyId },
+  });
+
+  const updated = await prisma.enrollment.update({
+    where: { id: enrollmentId },
+    data: {
+      status,
+      ...(status === 'confirmed' ? { enrolledAt: new Date() } : {}),
+      ...(status === 'completed' ? { completedAt: new Date(), progressPct: 100 } : {}),
+    },
+  });
+
+  if (status === 'confirmed') {
+    // Triggers Finance's FEE_INSTALMENT generation — the education-motion
+    // parallel to a signed contract's invoice.
+    await emit({
+      name: EVENTS.ENROLLMENT_CONFIRMED,
+      subject: { entityType: 'enrollment', entityId: updated.id, recordCode: updated.recordCode },
+      newState: { status: 'confirmed', cohortId: updated.cohortId },
+      impact: { domains: ['edu', 'fin'] },
+    });
+  }
+  if (status === 'completed') {
+    await emit({
+      name: EVENTS.ENROLLMENT_COMPLETED,
+      subject: { entityType: 'enrollment', entityId: updated.id, recordCode: updated.recordCode },
+      newState: { status: 'completed' },
+      impact: { domains: ['edu'] },
+    });
+  }
+  if (status === 'withdrawn') {
+    await emit({
+      name: EVENTS.ENROLLMENT_WITHDRAWN,
+      subject: { entityType: 'enrollment', entityId: updated.id, recordCode: updated.recordCode },
+      newState: { status: 'withdrawn' },
+      impact: { domains: ['edu', 'fin'] },
+    });
+
+    // The tax invoice a course-fee student never got mid-way through: this
+    // enrolment's temp invoice, if any, closes out today — naming whatever
+    // receipts exist, even zero of them, rather than being left open with
+    // nothing to ever finalise it now that the course is over for them.
+    const lines = await prisma.invoiceLine.findMany({
+      where: { tenantId: auth.tenantId, enrollmentId: updated.id },
+      select: { invoiceId: true },
+    });
+    const invoiceIds = [...new Set(lines.map((l) => l.invoiceId))];
+    if (invoiceIds.length > 0) {
+      const invoices = await prisma.invoice.findMany({
+        where: { tenantId: auth.tenantId, id: { in: invoiceIds }, enrollmentDate: { not: null } },
+        select: { id: true, status: true },
+      });
+      const { finalizeCourseFeeInvoice } = await import('./receipts.js');
+      for (const inv of invoices) {
+        if (inv.status === 'draft' || inv.status === 'void') continue;
+        await finalizeCourseFeeInvoice(inv.id, 'dropout');
+      }
+    }
+  }
+
+  return updated;
 }

@@ -95,7 +95,7 @@ export function InvoiceDocument() {
   // A discount column is only worth the ink when at least one line actually
   // carries one — an invoice with none should not print a column of dashes.
   const hasDiscount = d.lines.some((l) => l.discountAmount > 0);
-  const docType = d.invoiceType === 'bill_of_supply' ? 'Bill of Supply' : 'Tax Invoice';
+  const docType = d.isTempInvoice ? 'Temp Invoice' : d.invoiceType === 'bill_of_supply' ? 'Bill of Supply' : 'Tax Invoice';
 
   const company: LedgerCompany = {
     name: 'Kaizen Infinities',
@@ -118,6 +118,7 @@ export function InvoiceDocument() {
   const sheet = (
     <>
       {(d.status === 'draft' || d.status === 'void') && <Watermark text={d.status === 'draft' ? 'DRAFT' : 'VOID'} />}
+      {d.status !== 'draft' && d.status !== 'void' && d.isTempInvoice && <Watermark text="INTERNAL — NOT A TAX INVOICE" />}
       <LedgerHead company={company} />
       <InfoGrid>
         <InfoRow k="No." v={d.recordCode ?? 'not yet issued'} />
@@ -221,7 +222,11 @@ export function InvoiceDocument() {
       <TotalsStrip doc={{ amountInWords: d.totals.inWords, grandTotal: d.totals.totalPayable, label: 'Total Payable' }} />
 
       <NoteStrip>
-        {docType === 'Bill of Supply' ? 'Bill of supply — no tax is charged on this document. ' : ''}
+        {d.isTempInvoice
+          ? 'This is an internal working record, not a tax invoice — it is never issued to the student. '
+          : docType === 'Bill of Supply'
+            ? 'Bill of supply — no tax is charged on this document. '
+            : ''}
         {d.payment.type === 'part' &&
           `${money(d.totals.amountPayableNow)} received on issue against a total of ${money(d.totals.totalPayable)}. Balance of ${money(
             d.totals.balanceAtIssue,
@@ -229,7 +234,9 @@ export function InvoiceDocument() {
         {d.payment.type === 'full' && 'Received in full on issue. Nothing further is due on this invoice. '}
         {d.payment.type === 'credit' && `Nothing collected on issue. ${money(d.totals.totalPayable)} payable by ${date(d.dueDate)}. `}
         {modeLabel && `Mode of payment: ${modeLabel}${d.payment.reference ? ` — ${d.payment.reference}` : ''}. `}
-        This invoice is final. Payments received against it are acknowledged by separate numbered receipts.
+        {d.isTempInvoice
+          ? 'Each instalment is acknowledged by its own receipt voucher. The tax invoice for this course is raised automatically once the fees are paid in full or the student withdraws — the student never receives this document.'
+          : 'This invoice is final. Payments received against it are acknowledged by separate numbered receipts.'}
         {d.notes && ` ${d.notes}`}
         {d.supplier.bank &&
           ` Payment details: ${[
@@ -359,7 +366,10 @@ export function InvoiceDocument() {
               {raiseFinal.isPending ? 'Raising…' : 'Raise a final invoice'}
             </button>
           )}
-          {!d.position.canRaiseFinalInvoice && d.status !== 'draft' && (
+          {d.position.finalizeCourseFeeInvoiceNote && (
+            <p className="text-2xs text-ink-500">{d.position.finalizeCourseFeeInvoiceNote}</p>
+          )}
+          {!d.position.canRaiseFinalInvoice && !d.position.finalizeCourseFeeInvoiceNote && d.status !== 'draft' && (
             <p className="text-2xs text-ink-500">Nothing received yet.</p>
           )}
         </div>

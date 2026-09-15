@@ -76,13 +76,16 @@ export function FinalInvoiceDocument() {
     <>
       {d.status === 'superseded' && <Watermark text="SUPERSEDED" />}
       <LedgerHead company={company} />
+      <p style={{ padding: '8px 22px 0', fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textAlign: 'center' }}>
+        {d.isTaxInvoice ? 'TAX INVOICE' : 'STATEMENT OF ACCOUNT'}
+      </p>
       <InfoGrid>
         <InfoRow k="No." v={d.recordCode} />
         <InfoRow k="Date" v={fmtDate(d.issuedAt)} />
         <InfoRow k="Student/Customer Name" v={d.customer.name} />
         <InfoRow k="Contact No." v={d.customer.phone ?? '—'} />
-        <InfoRow k="Against Invoice No." v={d.invoice.recordCode} />
-        <InfoRow k="Invoice Date" v={fmtDate(d.invoice.issuedDate)} />
+        <InfoRow k={d.isTaxInvoice ? 'Internal reference' : 'Against Invoice No.'} v={d.invoice.recordCode} />
+        {!d.isTaxInvoice && <InfoRow k="Invoice Date" v={fmtDate(d.invoice.issuedDate)} />}
       </InfoGrid>
       <DateBoxGrid columns={3}>
         <DateBoxItem k="Total Payable" v={fmtINR(d.totals.totalPayable)} />
@@ -91,7 +94,7 @@ export function FinalInvoiceDocument() {
       </DateBoxGrid>
 
       <p style={{ padding: '8px 22px 0', fontSize: 12, fontWeight: 700 }}>
-        What was billed — tax invoice {d.invoice.recordCode}
+        {d.isTaxInvoice ? 'What was billed' : `What was billed — tax invoice ${d.invoice.recordCode}`}
       </p>
       <div className="ki-ledger-scroll">
         <table className="ki-ledger">
@@ -156,8 +159,11 @@ export function FinalInvoiceDocument() {
       <TotalsStrip doc={{ amountInWords: amountInWords(d.totals.totalPayable), grandTotal: d.totals.totalPayable, label: 'Grand Total (total payable)' }} />
 
       <NoteStrip>
-        This statement restates tax invoice {d.invoice.recordCode} and every receipt against it, as they stood on
-        the day it was raised.
+        {d.isTaxInvoice
+          ? `This is the tax invoice for the course fees above, naming every receipt voucher issued against them${
+              d.totals.instalments > 0 ? '' : ' — none, in this case'
+            }.`
+          : `This statement restates tax invoice ${d.invoice.recordCode} and every receipt against it, as they stood on the day it was raised.`}
         {d.totals.settled ? ' Settled in full — nothing further is due.' : ` Balance of ${money(d.totals.balance)} remains payable.`}
         {d.supersedes.length > 0 && ` Supersedes ${d.supersedes.join(', ')}.`}
         {d.note && ` ${d.note}`}
@@ -195,7 +201,7 @@ export function FinalInvoices() {
     <div>
       <PageHeader
         title="Final invoices"
-        subtitle="Raised once the instalments are done: what was billed, and every receipt."
+        subtitle="What was billed and every receipt against it — a course-fee invoice's tax invoice, locked automatically once it is settled or the student withdraws; a generic invoice's on-demand statement otherwise."
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
@@ -266,7 +272,8 @@ export function FinalInvoices() {
       )}
 
       <p className="mt-3 text-2xs text-ink-600">
-        A later statement supersedes this one. Both stay on file.
+        A course-fee invoice's tax invoice is raised once and locked; nothing supersedes it. A generic invoice's
+        statement can be raised again after a further instalment, which supersedes this one — both stay on file.
       </p>
     </div>
   );

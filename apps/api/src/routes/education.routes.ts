@@ -29,7 +29,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { auditRegulatedRead } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
-import { enrolStudent } from '../domains/education.js';
+import { enrolStudent, setEnrollmentStatus, ENROLLMENT_STATUSES } from '../domains/education.js';
 import {
   listCourses,
   createCourse,
@@ -370,48 +370,9 @@ router.post(
 router.post(
   '/enrollments/:id/status',
   handler(async (req) => {
-    await assertCan({ resource: 'education', verb: 'edit' });
-    const schema = z.object({ status: z.enum(['reserved', 'confirmed', 'active', 'completed', 'withdrawn', 'deferred']) });
+    const schema = z.object({ status: z.enum(ENROLLMENT_STATUSES) });
     const input = schema.parse(req.body);
-
-    const enrollment = await prisma.enrollment.findFirst({ where: { id: req.params.id }, include: { cohort: true } });
-    if (!enrollment) throw ApiError.notFound('Enrollment');
-
-    // The batch_member narrowing applies to the mutation, evaluated through the
-    // same evaluator as everything else.
-    await assertCan({
-      resource: 'education',
-      verb: 'edit',
-      record: { trainerPartyId: enrollment.cohort.trainerPartyId },
-    });
-
-    const updated = await prisma.enrollment.update({
-      where: { id: req.params.id },
-      data: {
-        status: input.status,
-        ...(input.status === 'confirmed' ? { enrolledAt: new Date() } : {}),
-        ...(input.status === 'completed' ? { completedAt: new Date(), progressPct: 100 } : {}),
-      },
-    });
-
-    if (input.status === 'confirmed') {
-      // Triggers Finance's FEE_INSTALMENT generation — the education-motion
-      // parallel to a signed contract's invoice.
-      await emit({
-        name: EVENTS.ENROLLMENT_CONFIRMED,
-        subject: { entityType: 'enrollment', entityId: updated.id, recordCode: updated.recordCode },
-        newState: { status: 'confirmed', cohortId: updated.cohortId },
-        impact: { domains: ['edu', 'fin'] },
-      });
-    }
-    if (input.status === 'completed') {
-      await emit({
-        name: EVENTS.ENROLLMENT_COMPLETED,
-        subject: { entityType: 'enrollment', entityId: updated.id, recordCode: updated.recordCode },
-        newState: { status: 'completed' },
-        impact: { domains: ['edu'] },
-      });
-    }
+    const updated = await setEnrollmentStatus(req.params.id!, input.status);
 
     return updated;
   }),
