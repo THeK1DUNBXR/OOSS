@@ -853,7 +853,13 @@ export interface InvoiceDocumentView {
   notes: string | null;
   division: string | null;
   raisedBy: string | null;
-  /** tax_invoice | bill_of_supply (docs/plan/compliance.md, workstream B). */
+  /**
+   * True for the internal course-fee working invoice — never a tax document,
+   * never handed to the student. Its final (tax) invoice is raised
+   * automatically once it is fully paid or the student withdraws.
+   */
+  isTempInvoice: boolean;
+  /** tax_invoice | bill_of_supply | temp (docs/plan/compliance.md, workstream B). */
   invoiceType: string;
   /** Rule 46(p): tax on this supply is payable by the recipient. */
   reverseCharge: boolean;
@@ -988,7 +994,10 @@ export interface InvoiceDocumentView {
     outstanding: number;
     settled: boolean;
     instalments: number;
+    /** Always false on a course-fee (temp) invoice — see `finalizeCourseFeeInvoiceNote`. */
     canRaiseFinalInvoice: boolean;
+    /** Set on a still-open course-fee invoice, explaining the automatic path in place of a button. */
+    finalizeCourseFeeInvoiceNote: string | null;
   };
 
   /** The instalments since, each its own numbered document. */
@@ -1059,6 +1068,8 @@ export interface ReceiptDocumentView {
     issuedDate: string | null;
     dueDate: string | null;
     status: string;
+    /** True when this is the internal course-fee working invoice, never a tax document itself. */
+    isTempInvoice: boolean;
   };
 
   supplier: {
@@ -1145,6 +1156,15 @@ export interface FinalInvoiceDocumentView {
   currency: string;
   note: string | null;
   supersedes: string[];
+  /** settled | dropout | null — why this was raised. */
+  triggerReason: string | null;
+  /**
+   * True when this final invoice is itself the tax invoice, raised against a
+   * course-fee invoice that was never a tax document on its own. False
+   * against a generic invoice, where this is a statement about a tax invoice
+   * raised separately.
+   */
+  isTaxInvoice: boolean;
 
   supplier: {
     legalName: string;

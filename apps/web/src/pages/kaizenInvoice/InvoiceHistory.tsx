@@ -134,9 +134,12 @@ export function InvoiceHistory() {
             </table>
           </div>
           <p style={{ fontSize: 11, color: 'var(--ki-muted)', marginTop: 14, lineHeight: 1.6 }}>
-            Every invoice here is the same record the rest of the platform reads — it is issued, immutable, and
-            reported in GST returns the same way any other invoice is. &quot;Reprint&quot; opens the invoice&apos;s
-            own printable document; nothing here can be edited or deleted, since an issued tax invoice is final.
+            Every invoice here is the same record the rest of the platform reads. It is the internal working record
+            a course&apos;s instalments are tracked against — never a tax document, never handed to the student, and
+            not reported in GST returns. Each instalment&apos;s own receipt voucher is the student&apos;s document
+            along the way; the &quot;Final Invoice&quot; column links the tax invoice raised automatically once fees
+            are paid in full or the student withdraws. &quot;Reprint&quot; opens the invoice&apos;s own printable
+            document; nothing here can be edited or deleted once issued.
           </p>
         </main>
       </div>

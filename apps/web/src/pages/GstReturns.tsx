@@ -802,6 +802,13 @@ export function CompanyDetails() {
             />
             <TextInput label="PAN" value={value('pan')} onChange={(v) => set('pan')(v.toUpperCase())} />
             <TextInput label="CIN" value={value('cin')} onChange={(v) => set('cin')(v.toUpperCase())} />
+            <TextInput
+              label="Document prefix"
+              value={value('documentPrefix')}
+              onChange={(v) => set('documentPrefix')(v.toUpperCase())}
+              placeholder="Derived from the legal name if left blank"
+              hint="The code every document number starts with — KIPL/R/26-27/001, KIPL/TI/26-27/001, KIPL/temp/26-27/001."
+            />
             {data.stateName && (
               <p className="text-2xs text-ink-500">
                 Registered in {data.stateName} ({data.stateCode}). A customer in the same state is charged CGST and SGST;
@@ -990,7 +997,7 @@ function DocumentSeries({ profile }: { profile: any }) {
                 className={`text-right tabular-nums text-2xs ${s.tooLongForThePortal ? 'text-band-critical' : 'text-ink-500'}`}
               >
                 {s.length}
-                {s.series === 'I' ? ' / 16' : ''}
+                {s.series === 'I' || s.series === 'TI' ? ' / 16' : ''}
               </td>
               <td>
                 <button className="btn-ghost" onClick={() => setEditing(s)}>

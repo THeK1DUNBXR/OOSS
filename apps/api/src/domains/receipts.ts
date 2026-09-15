@@ -35,7 +35,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan, visibilityWhere } from '../platform/permissions.js';
-import { invoiceLabel, loadInvoiceForRead, totalsOf } from './invoicing.js';
+import { invoiceLabel, isCourseFeeInvoice, loadInvoiceForRead, totalsOf } from './invoicing.js';
 import { companyProfile, documentNumbering } from './companyProfile.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
 
@@ -179,6 +179,8 @@ export async function receiptDocument(receiptId: string) {
       issuedDate: invoice.issuedDate?.toISOString() ?? null,
       dueDate: invoice.dueDate?.toISOString() ?? null,
       status: invoice.status,
+      /** True when this is the internal course-fee working invoice, never a tax document itself. */
+      isTempInvoice: isCourseFeeInvoice(invoice),
     },
 
     supplier: {
@@ -265,12 +267,21 @@ export async function receiptDocument(receiptId: string) {
  * Refused when there is nothing to consolidate at all. An invoice with no
  * receipts against it has a final invoice already — the tax invoice, which says
  * the whole amount is owed and is still the only true document.
+ *
+ * Refused outright against a course-fee invoice: that one's final (tax)
+ * invoice is never raised on demand, only automatically — see
+ * `finalizeCourseFeeInvoice` below.
  */
 export async function raiseFinalInvoice(invoiceId: string, input: { note?: string | null } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'create' });
 
   const invoice = await loadInvoiceForRead(invoiceId);
+  if (isCourseFeeInvoice(invoice)) {
+    throw ApiError.unprocessable(
+      `${invoiceLabel(invoice)} is a course-fee invoice. Its final (tax) invoice is raised automatically — the moment it is fully paid, or the moment the student withdraws — never on demand.`,
+    );
+  }
   if (invoice.status === 'draft') {
     throw ApiError.unprocessable(
       `${invoiceLabel(invoice)} is still a draft, so there is nothing to finalise — it does not have an invoice number yet. Issue it, take the instalments, and raise this when they are done.`,
@@ -390,6 +401,121 @@ export async function raiseFinalInvoice(invoiceId: string, input: { note?: strin
   return final;
 }
 
+/**
+ * Raises the one and only final (tax) invoice a course-fee invoice ever
+ * gets, and locks it there — the document that closes the course out, the
+ * only one the student ever receives that is actually a tax invoice.
+ *
+ * Called from exactly two places: `collectInvoicePayment`, the instant a
+ * receipt brings the temp invoice's balance to zero (`trigger: 'settled'`),
+ * and the enrolment-withdrawal handler in `education.routes.ts`, the instant
+ * a student's enrolment is marked withdrawn (`trigger: 'dropout'`). The
+ * dropout path can fire with zero receipts against it — a student who leaves
+ * having paid nothing still gets a nil tax invoice for the record, dated the
+ * day they left, rather than no document at all.
+ *
+ * Idempotent by construction rather than by matching figures the way
+ * `raiseFinalInvoice` does: a course-fee invoice gets exactly one of these,
+ * ever, so if one already exists it is simply handed back rather than
+ * compared against. Nothing calls this a second time with something new to
+ * say — settlement and withdrawal are each a one-time event, and settlement
+ * can only happen once, since there is nothing further to collect once the
+ * balance is at zero.
+ */
+export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'settled' | 'dropout') {
+  const auth = currentAuth();
+  await assertCan({ resource: 'invoices', verb: 'create' });
+
+  const invoice = await loadInvoiceForRead(invoiceId);
+  if (!isCourseFeeInvoice(invoice)) {
+    throw ApiError.unprocessable(`${invoiceLabel(invoice)} is not a course-fee invoice.`);
+  }
+  if (invoice.status === 'void') {
+    throw ApiError.unprocessable(`${invoiceLabel(invoice)} is void.`);
+  }
+
+  const existing = await prisma.finalInvoice.findFirst({ where: { tenantId: auth.tenantId, invoiceId } });
+  if (existing) return existing;
+
+  const receipts = await prisma.receipt.findMany({
+    where: { tenantId: auth.tenantId, invoiceId },
+    include: { payment: { select: { recordCode: true, method: true, gatewayReference: true } } },
+    orderBy: { allocatedAt: 'asc' },
+  });
+
+  const creditNotes = await prisma.creditNote.findMany({ where: { invoiceId } });
+  const totals = totalsOf({ ...invoice, creditNotes });
+
+  const rows = receipts.map((r, i) => ({
+    number: i + 1,
+    recordCode: r.recordCode,
+    issuedAt: r.allocatedAt.toISOString(),
+    amount: num(r.allocatedAmount) ?? 0,
+    mode: r.paymentMode ?? r.payment.method,
+    reference: r.paymentReference ?? r.payment.gatewayReference,
+    paymentCode: r.payment.recordCode,
+    balanceAfter: num(r.balanceAfter) ?? 0,
+  }));
+
+  const totalReceived = round2(rows.reduce((s, r) => s + r.amount, 0));
+  const balance = round2(Math.max(totals.payable - totalReceived - totals.creditNoted, 0));
+
+  const numbering = await documentNumbering();
+  const recordCode = await nextDocumentNumber(
+    DOCUMENT_SERIES.finalInvoice,
+    numbering.prefix,
+    new Date(),
+    numbering.yearFormat,
+  );
+  const final = await prisma.finalInvoice.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode,
+      invoiceId,
+      issuedById: auth.partyId,
+      totalPayable: totals.payable,
+      totalReceived,
+      creditNoted: totals.creditNoted,
+      balance,
+      settled: balance <= 0.001,
+      receiptCodes: rows.map((r) => r.recordCode),
+      receiptCount: rows.length,
+      snapshot: { receipts: rows, supersedes: [] } as never,
+      triggerReason: trigger,
+      note:
+        trigger === 'dropout'
+          ? rows.length === 0
+            ? 'The student withdrew having paid nothing against this course.'
+            : 'The student withdrew before the instalments were complete.'
+          : null,
+    },
+  });
+
+  await auditWrite({
+    action: 'create',
+    subjectType: 'final_invoice',
+    subjectId: final.id,
+    after: { recordCode, against: invoiceLabel(invoice), totalReceived, balance, receipts: rows.length, trigger },
+  });
+  await emit({
+    name: EVENTS.FINAL_INVOICE_RAISED,
+    subject: { entityType: 'final_invoice', entityId: final.id, recordCode },
+    related: [{ relation: 'finalises', entityType: 'invoice', entityId: invoiceId }],
+    newState: {
+      trigger,
+      totalPayable: totals.payable,
+      totalReceived,
+      balance,
+      settled: balance <= 0.001,
+      receipts: rows.map((r) => r.recordCode),
+    },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
+
+  return final;
+}
+
 export async function listFinalInvoices(filter: { invoiceId?: string; limit?: number } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'view' });
@@ -488,6 +614,15 @@ export async function finalInvoiceDocument(finalInvoiceId: string) {
     currency: invoice.currency,
     note: final.note,
     supersedes: snapshot.supersedes ?? [],
+    /** settled | dropout | null — why this was raised. See `finalizeCourseFeeInvoice`. */
+    triggerReason: final.triggerReason,
+    /**
+     * True when this final invoice is itself the tax invoice — raised
+     * against a course-fee invoice, which is never a tax document on its
+     * own. False against a generic invoice, where this is a statement about
+     * a tax invoice raised separately.
+     */
+    isTaxInvoice: isCourseFeeInvoice(invoice),
 
     supplier: {
       legalName: profile.legalName,

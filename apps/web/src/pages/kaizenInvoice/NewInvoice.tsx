@@ -418,7 +418,10 @@ export function NewInvoice() {
 
   return (
     <div>
-      <PageHeader title="New Invoice" subtitle="Raise a course invoice — one course entered here becomes one printed tax invoice." />
+      <PageHeader
+        title="New Invoice"
+        subtitle="Raise a course invoice — an internal working record instalments are tracked against. The tax invoice is raised automatically once fees are settled or the student withdraws."
+      />
       <style>{KI_APP_CSS}</style>
       <div className="ki-app">
         <main className="ki-main">

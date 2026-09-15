@@ -6,8 +6,21 @@
  * carries a `ledger` block, i.e. it was raised with an enrollment date.
  */
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { InvoiceDocumentView } from '@kaizen/shared';
-import { LedgerHead, InfoStrip, ScheduleStrip, LedgerTable, TotalsStrip, NoteStrip, SignStrip, type LedgerCompany, type LedgerInvoiceData } from './LedgerSheet.js';
+import { money } from '../../lib/api.js';
+import {
+  LedgerHead,
+  InfoStrip,
+  ScheduleStrip,
+  LedgerTable,
+  TotalsStrip,
+  NoteStrip,
+  SignStrip,
+  Watermark,
+  type LedgerCompany,
+  type LedgerInvoiceData,
+} from './LedgerSheet.js';
 import { DocumentToolbar, DocumentScreen, TwoCopyPrintPage, PrintPortal } from '../documents/PrintSheet.js';
 
 export function KaizenInvoiceDocument({ doc }: { doc: InvoiceDocumentView }) {
@@ -46,12 +59,31 @@ export function KaizenInvoiceDocument({ doc }: { doc: InvoiceDocumentView }) {
 
   const sheet = (
     <>
+      {doc.isTempInvoice && <Watermark text="INTERNAL — NOT A TAX INVOICE" />}
       <LedgerHead company={company} />
       <InfoStrip doc={ledgerDoc} />
       <ScheduleStrip doc={ledgerDoc} />
       <LedgerTable rows={ledgerDoc.rows} />
       <TotalsStrip doc={ledgerDoc} />
-      <NoteStrip />
+      <NoteStrip>
+        {doc.isTempInvoice && (
+          <>
+            This is an internal working record, not a tax invoice — it is never issued to the student. Each
+            instalment is acknowledged by its own receipt voucher. The tax invoice for this course is raised
+            automatically once the fees are paid in full or the student withdraws.{' '}
+          </>
+        )}
+        Note: GST rate is a placeholder — confirm the applicable rate/exemption for your course category. The
+        &quot;Student is from Tamil Nadu?&quot; field controls the tax split: Yes charges CGST @9% + SGST @9% (18%
+        total, intra-state); No charges IGST @18% instead (inter-state) — whichever doesn&apos;t apply shows as
+        Rs.0.00 rather than being hidden, so the calculation stays auditable either way. SAC code is common across
+        all courses (9983) — confirm with your accountant. Monthly Fee and Discount % are editable per student
+        since pricing is flexible/negotiable; Discount % is set once and applies to the course and its add-ons.
+        Add-ons are priced as a fixed total, split evenly across the tenure chosen. Payment schedule: first payment
+        due within 3 days of enrollment; subsequent payments fall on the 1st of every month after — pushed to the
+        1st of the month after that if fewer than 14 days separate the first payment from the next 1st. Fees once
+        paid are non-refundable and non-transferable unless stated otherwise in the admission agreement.
+      </NoteStrip>
       <SignStrip />
     </>
   );
@@ -59,6 +91,25 @@ export function KaizenInvoiceDocument({ doc }: { doc: InvoiceDocumentView }) {
   return (
     <div>
       <DocumentToolbar backTo="/finance/invoices/history" backLabel="Invoice History" onPrint={handlePrint} />
+
+      {doc.isTempInvoice && (
+        <div className="no-print mb-4 flex flex-wrap items-center gap-4 rounded border-l-2 border-band-watch bg-band-watch/10 px-3 py-2 text-xs">
+          <span className="font-medium text-band-watch">Internal working invoice — not a tax document.</span>
+          <span className="text-ink-400">
+            Received <span className="tabular-nums text-ink-100">{money(doc.position.received)}</span> · Outstanding{' '}
+            <span className="tabular-nums text-ink-100">{money(doc.position.outstanding)}</span> · {doc.position.instalments}{' '}
+            receipt{doc.position.instalments === 1 ? '' : 's'}
+          </span>
+          {doc.statements.length > 0 ? (
+            <Link className="btn-ghost" to={`/finance/final-invoices/${doc.statements[0]!.id}`}>
+              Open the tax invoice
+            </Link>
+          ) : (
+            <span className="text-ink-500">{doc.position.finalizeCourseFeeInvoiceNote}</span>
+          )}
+        </div>
+      )}
+
       <DocumentScreen>{sheet}</DocumentScreen>
 
       {printKey && (
