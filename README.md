@@ -223,6 +223,12 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   drift from the diagram. Leave balances are never written directly: approval
   places a hold, completion settles it, cancellation reverses it, and the
   balance is the sum of its own ledger.
+- **People (HCM)** — the human capital platform. Org chart and directory, time
+  tracking and rosters, leave policies and accrual, recruitment pipeline,
+  performance reviews and talent succession, learning and certification,
+  compensation and benefits, payroll operations, engagement and surveys,
+  separations and alumni, asset assignments and travel, HR analytics, and
+  approval workflows for compensation, offers and requests.
 - **Ledger** — every movement of money, whatever raised it. A transaction has
   no edit control, only *Reverse*, which posts the opposite entry and leaves
   both rows visible.

@@ -221,4 +221,24 @@ export const MODULE_REGISTER: ModuleRegisterEntry[] = [
       "Approve its own campaign or budget — the proposer is never the approver, even the chairman (platform/approvals.ts).",
     ],
   },
+  {
+    code: 'HCM',
+    name: 'Human Capital Management',
+    boundedContext: 'hr',
+    plane: 'P2',
+    owns: [
+      'EMPLOYEE_PROFILE_EXTENSION', 'EMPLOYEE_DOCUMENT', 'REPORTING_LINE', 'SHIFT', 'ROSTER_ASSIGNMENT',
+      'CLOCK_EVENT', 'TIMESHEET', 'LEAVE_POLICY', 'JOB_POSTING', 'CANDIDATE_PROFILE', 'INTERVIEW_ROUND',
+      'OFFER_LETTER', 'REVIEW_CYCLE', 'REVIEW_ASSIGNMENT', 'TRAINING_PROGRAM', 'TRAINING_ENROLLMENT',
+      'PAY_GRADE', 'SALARY_REVISION_CYCLE', 'VARIABLE_PAY_PLAN', 'BENEFIT_PLAN', 'EMPLOYEE_LOAN',
+      'EXPENSE_CLAIM', 'PAY_ITEM', 'PAYROLL_JOURNAL', 'BANK_ADVICE', 'ANNOUNCEMENT', 'HR_CASE',
+      'RESIGNATION', 'EXIT_CLEARANCE', 'ASSET', 'TRAVEL_REQUEST', 'HR_REQUEST', 'HR_REQUEST_TYPE',
+    ],
+    neverDoes: [
+      'Post a ledger entry directly — a payroll journal, once approved, hands off into the books through the same transaction-creation path any other module uses; HCM never writes a Transaction row itself.',
+      "Let a proposer approve their own act — a salary revision, an offer, a resignation acceptance, a travel or expense claim all go through the Self-Dealing Bar (platform/approvals.ts) or an explicit proposer-ne-approver check, never a self-sign-off.",
+      'Compare a role slug in service code — authority is a grant (apps/api/src/seed/grants.ts), never a hardcoded role name.',
+      "Own the employment lifecycle machines themselves — EmploymentRelationship, Onboarding, Offboarding and the other ten machines in hr.ts stay hr-owned; HCM extends them by *Id reference, never by editing hr.ts.",
+    ],
+  },
 ];

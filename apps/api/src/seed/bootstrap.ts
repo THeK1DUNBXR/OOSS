@@ -140,6 +140,21 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'fin_budget', label: 'Budget', icon: 'calculator', path: '/finance/budget', group: 'money', position: 20, requiredPermission: 'budgets:V', synonyms: ['plan', 'variance', 'overspend'] },
   { nodeKey: 'fin_assets', label: 'Assets & Loans', icon: 'package', path: '/finance/assets', group: 'money', position: 21, requiredPermission: 'assets:V', synonyms: ['depreciation', 'borrowing', 'emi', 'fixed assets'] },
 
+  // ---- Me (self-service, docs/plan/hcm.md) ------------------------------
+  // Every node here reads at `@own` scope off a grant an employee already
+  // holds — the same shape `my_options` above already takes. `archetypes` is
+  // explicit because this is the ERP-shell self-service surface, not the
+  // shareholder/director portal.
+  { nodeKey: 'me_home', label: 'My Home', icon: 'home', path: '/me/home', group: 'me', position: 10, requiredPermission: 'announcements:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['my day', 'announcements', 'kudos', 'my requests inbox'] },
+  { nodeKey: 'me_leave', label: 'My Leave', icon: 'clock', path: '/me/leave', group: 'me', position: 11, requiredPermission: 'leave_accruals:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['apply leave', 'balance', 'time off'] },
+  { nodeKey: 'me_attendance', label: 'My Attendance', icon: 'clipboard', path: '/me/attendance', group: 'me', position: 12, requiredPermission: 'clock_events:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['clock in', 'clock out', 'my hours'] },
+  { nodeKey: 'me_payslips', label: 'My Payslips', icon: 'receipt', path: '/me/payslips', group: 'me', position: 13, requiredPermission: 'payslips:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['pay', 'salary slip'] },
+  { nodeKey: 'me_performance', label: 'My Performance', icon: 'target', path: '/me/performance', group: 'me', position: 14, requiredPermission: 'reviews:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['my review', 'my goals', 'feedback'] },
+  { nodeKey: 'me_learning', label: 'My Learning', icon: 'graduation', path: '/me/learning', group: 'me', position: 15, requiredPermission: 'training_enrollments:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['my courses', 'certifications', 'my development'] },
+  { nodeKey: 'me_money', label: 'My Money', icon: 'coins', path: '/me/money', group: 'me', position: 16, requiredPermission: 'expense_claims:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['my expenses', 'my loans', 'my benefits'] },
+  { nodeKey: 'me_requests', label: 'My Requests', icon: 'inbox', path: '/me/requests', group: 'me', position: 17, requiredPermission: 'hr_requests:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['my assets', 'my travel', 'letter request'] },
+  { nodeKey: 'me_exit', label: 'My Exit', icon: 'doorexit', path: '/me/exit', group: 'me', position: 18, requiredPermission: 'resignations:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['resignation', 'notice period', 'clearance'] },
+
   // ---- People ----------------------------------------------------------
   { nodeKey: 'hr_people', label: 'Employees', icon: 'users', path: '/people/employees', group: 'people', position: 20, requiredPermission: 'employees:V', synonyms: ['staff', 'team', 'headcount', 'who works here', 'directory'] },
   { nodeKey: 'hr_leave', label: 'Leave', icon: 'clock', path: '/people/leave', group: 'people', position: 21, requiredPermission: 'leave:V', synonyms: ['holiday', 'time off', 'absence', 'casual leave'] },
@@ -151,6 +166,23 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   // register's own `eq_esop` node, the same way a payslip is separate from
   // the payroll screen it is drawn from.
   { nodeKey: 'my_options', label: 'My Options', icon: 'coins', path: '/me/options', group: 'people', position: 26, requiredPermission: 'option_grants:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['esop', 'stock options', 'vesting', 'my grants'] },
+
+  // ---- HCM/HRMS (docs/plan/hcm.md) --------------------------------------
+  { nodeKey: 'hcm_org_chart', label: 'Org Chart', icon: 'network', path: '/people/org-chart', group: 'people', position: 27, requiredPermission: 'reporting_lines:V', synonyms: ['reporting lines', 'hierarchy', 'who reports to whom'] },
+  { nodeKey: 'hcm_directory', label: 'Directory', icon: 'users', path: '/people/directory', group: 'people', position: 28, requiredPermission: 'employee_profiles:V', synonyms: ['staff directory', 'find a colleague', 'employee 360'] },
+  { nodeKey: 'hcm_time', label: 'Time', icon: 'clock', path: '/people/time', group: 'people', position: 29, requiredPermission: 'shifts:V', synonyms: ['shifts', 'roster', 'timesheets', 'overtime', 'comp-off'] },
+  { nodeKey: 'hcm_leave_policies', label: 'Leave Policies', icon: 'scroll', path: '/people/leave-policies', group: 'people', position: 30, requiredPermission: 'leave_policies:V', synonyms: ['accrual', 'carry forward', 'leave rules'] },
+  { nodeKey: 'hcm_leave_calendar', label: 'Leave Calendar', icon: 'calendar', path: '/people/leave-calendar', group: 'people', position: 31, requiredPermission: 'leave_accruals:V', synonyms: ['team calendar', 'who is on leave'] },
+  { nodeKey: 'hcm_recruiting', label: 'Recruiting', icon: 'inbox', path: '/people/recruiting', group: 'people', position: 32, requiredPermission: 'job_postings:V', synonyms: ['ats', 'candidates', 'interviews', 'offers', 'referrals', 'bgv'] },
+  { nodeKey: 'hcm_performance', label: 'Performance', icon: 'target', path: '/people/performance', group: 'people', position: 33, requiredPermission: 'review_cycles:V', synonyms: ['reviews', 'calibration', '9-box', 'feedback', '1:1', 'pip', 'succession'] },
+  { nodeKey: 'hcm_learning', label: 'Learning', icon: 'graduation', path: '/people/learning', group: 'people', position: 34, requiredPermission: 'training_programs:V', synonyms: ['training', 'certifications', 'idp', 'l&d'] },
+  { nodeKey: 'hcm_compensation', label: 'Compensation', icon: 'wallet', path: '/people/compensation', group: 'people', position: 35, requiredPermission: 'pay_grades:V', synonyms: ['salary revision', 'variable pay', 'benefits', 'loans', 'expenses'] },
+  { nodeKey: 'hcm_payroll_ops', label: 'Payroll Ops', icon: 'coins', path: '/people/payroll-ops', group: 'people', position: 36, requiredPermission: 'payroll_journals:V', synonyms: ['pay items', 'arrears', 'bank advice', 'reconciliation', 'payroll calendar'] },
+  { nodeKey: 'hcm_engagement', label: 'Engagement', icon: 'message', path: '/people/engagement', group: 'people', position: 37, requiredPermission: 'announcements:V', synonyms: ['recognition', 'surveys', 'helpdesk', 'policies'] },
+  { nodeKey: 'hcm_separations', label: 'Separations', icon: 'lock', path: '/people/separations', group: 'people', position: 38, requiredPermission: 'resignations:V', synonyms: ['resignation', 'exit', 'clearance', 'no dues', 'alumni'] },
+  { nodeKey: 'hcm_assets', label: 'Assets & Requests', icon: 'package', path: '/people/assets', group: 'people', position: 39, requiredPermission: 'hcm_assets:V', synonyms: ['inventory', 'travel', 'letter request'] },
+  { nodeKey: 'hcm_analytics', label: 'Analytics', icon: 'chart', path: '/people/analytics', group: 'people', position: 40, requiredPermission: 'hr_analytics:V', synonyms: ['headcount', 'attrition', 'reports'] },
+  { nodeKey: 'hcm_approvals', label: 'Approvals', icon: 'shield', path: '/people/approvals', group: 'people', position: 41, requiredPermission: 'hr_requests:V', synonyms: ['waiting on me', 'inbox', 'sign off'] },
 
   // ---- Customers -------------------------------------------------------
   { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'customers', position: 30, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },

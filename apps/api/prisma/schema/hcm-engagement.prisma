@@ -1,0 +1,292 @@
+// HCM — WS9 engagement: announcements, recognition, pulse surveys, the HR
+// helpdesk and policy acknowledgements (docs/hcm/engagement.md).
+//
+// Every cross-workstream reference (person, employment, org unit, offboarding)
+// is a plain id field, never a Prisma relation — the referenced model lives in
+// a file this workstream does not own and must not edit.
+
+/// A company/division/org-unit/location broadcast. `pinned` announcements
+/// stay at the top of the feed regardless of `publishAt` recency;
+/// `acknowledgementRequired` ones feed the "pending acknowledgements" widget
+/// on /me/home until the reader acks them.
+model Announcement {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  title String
+  body  String
+
+  /// all | division | org_unit | location
+  audienceType      String  @default("all")
+  audienceDivision  String?
+  audienceOrgUnitId String?
+  audienceLocation  String?
+
+  publishAt DateTime
+  expiresAt DateTime?
+  pinned    Boolean   @default(false)
+
+  acknowledgementRequired Boolean @default(false)
+
+  /// draft | published | withdrawn
+  status String @default("draft")
+
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  acks AnnouncementAck[]
+
+  @@index([tenantId, status, publishAt])
+  @@map("hcm_engagement_announcements")
+}
+
+/// One row per reader who acknowledged a required announcement.
+model AnnouncementAck {
+  id       String @id @default(cuid())
+  tenantId String
+
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id])
+
+  partyId String
+  ackedAt DateTime @default(now())
+
+  @@unique([tenantId, announcementId, partyId])
+  @@map("hcm_engagement_announcement_acks")
+}
+
+/// A public or private kudos, given by one person to another with an optional
+/// point value. `public` controls whether it shows on a shared wall; it is
+/// still only ever listed to its two parties or to HR (own-scope grants), so
+/// "public" is a display preference within that visibility, not a wider one.
+model Recognition {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  fromPartyId String
+  toPartyId   String
+
+  badge   String
+  message String
+  points  Int     @default(0)
+  public  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, toPartyId])
+  @@index([tenantId, fromPartyId])
+  @@map("hcm_engagement_recognitions")
+}
+
+/// A pulse or eNPS survey. `questions` is `SurveyQuestion[]` (packages/shared
+/// hcm/engagement.ts). `anonymous` surveys never record who answered — see
+/// `SurveyResponse.employmentRelationshipId`.
+model PulseSurvey {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  title     String
+  questions Json
+  anonymous Boolean @default(false)
+
+  opensAt  DateTime
+  closesAt DateTime
+
+  audienceType      String  @default("all")
+  audienceDivision  String?
+  audienceOrgUnitId String?
+  audienceLocation  String?
+
+  /// draft | open | closed
+  status String @default("draft")
+
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  responses SurveyResponse[]
+
+  @@index([tenantId, status])
+  @@map("hcm_engagement_pulse_surveys")
+}
+
+/// One row per respondent per survey. When the survey is anonymous,
+/// `employmentRelationshipId` is left null and `respondentToken` is a random
+/// id (never derived from who answered) — it identifies the row for
+/// operational purposes only and carries nothing that could be hashed back to
+/// a person. Duplicate-submission checking for an anonymous survey runs
+/// against `SurveyResponseDedupe` instead, a table this one is never joined
+/// to, so even the identity fact "this person responded" cannot be linked to
+/// which answers they gave.
+model SurveyResponse {
+  id       String @id @default(cuid())
+  tenantId String
+
+  surveyId String
+  survey   PulseSurvey @relation(fields: [surveyId], references: [id])
+
+  employmentRelationshipId String?
+  respondentToken          String?
+
+  answers Json
+
+  submittedAt DateTime @default(now())
+
+  @@unique([tenantId, surveyId, employmentRelationshipId])
+  @@index([tenantId, surveyId])
+  @@map("hcm_engagement_survey_responses")
+}
+
+/// The only record of "this person has already answered this anonymous
+/// survey" — a one-way hash of (tenant, survey, person), stored in a table
+/// that holds nothing else and is never joined to `SurveyResponse`. Deleting
+/// or leaking this table reveals only that a person responded, never what
+/// they answered; the reverse join (which response is theirs) does not exist
+/// anywhere in the schema.
+model SurveyResponseDedupe {
+  id       String @id @default(cuid())
+  tenantId String
+
+  surveyId    String
+  dedupeHash  String
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, surveyId, dedupeHash])
+  @@map("hcm_engagement_survey_response_dedupes")
+}
+
+/// An HR helpdesk ticket. `confidential` is always true for a grievance and
+/// may be set on any other category too — the field the domain layer checks
+/// explicitly before folding a case into a general listing or count, the same
+/// discipline `PoshComplaint.concealed` uses in compliance/labour.ts.
+model HrCase {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  /// payroll | leave | policy | it | grievance | other
+  category String
+  /// low | normal | high | urgent
+  priority String @default("normal")
+  /// open | in_progress | waiting | resolved | closed
+  status   String @default("open")
+
+  subject String
+
+  raisedByPartyId String
+  assigneePartyId String?
+
+  confidential Boolean @default(false)
+
+  slaDueAt   DateTime
+  resolvedAt DateTime?
+  closedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages HrCaseMessage[]
+
+  @@index([tenantId, status, confidential])
+  @@index([tenantId, raisedByPartyId])
+  @@map("hcm_engagement_hr_cases")
+}
+
+/// One conversation turn on a case — the employee, the assignee, or any
+/// HR holder of the all-scope grant.
+model HrCaseMessage {
+  id       String @id @default(cuid())
+  tenantId String
+
+  caseId String
+  case   HrCase @relation(fields: [caseId], references: [id])
+
+  authorPartyId String
+  body          String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, caseId])
+  @@map("hcm_engagement_hr_case_messages")
+}
+
+/// A versioned company policy. `effectiveFrom` in the future is a scheduled
+/// publish; `status` moves draft -> published -> superseded (a later version
+/// of the same policy is its own row, referencing nothing — the acknowledgement
+/// ledger is what shows who read which version).
+model PolicyDocument {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  title   String
+  version String
+  body    String
+
+  effectiveFrom           DateTime
+  acknowledgementRequired Boolean  @default(true)
+
+  /// draft | published | superseded
+  status String @default("draft")
+
+  createdById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  acks PolicyAcknowledgement[]
+
+  @@index([tenantId, status])
+  @@map("hcm_engagement_policy_documents")
+}
+
+/// One row per reader who acknowledged a policy version.
+model PolicyAcknowledgement {
+  id       String @id @default(cuid())
+  tenantId String
+
+  policyDocumentId String
+  policyDocument   PolicyDocument @relation(fields: [policyDocumentId], references: [id])
+
+  partyId String
+  ackedAt DateTime @default(now())
+
+  @@unique([tenantId, policyDocumentId, partyId])
+  @@map("hcm_engagement_policy_acknowledgements")
+}
+
+/// The exit interview conducted against an offboarding (WS10 owns
+/// `Offboarding`; referenced here by id only). `themes` is a plain string
+/// array HR tags onto the questionnaire afterwards, for the aggregate report.
+model ExitInterview {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  offboardingId             String
+  employmentRelationshipId String
+
+  questionnaire Json
+  themes        Json @default("[]")
+
+  conductedById String?
+  conductedAt   DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_engagement_exit_interviews")
+}

@@ -162,6 +162,24 @@ export const ALL_RESOURCES = [
   'campaigns', 'audiences', 'marketing_templates', 'marketing_sends', 'marketing_journeys',
   'marketing_forms', 'marketing_events', 'marketing_assets', 'marketing_budgets',
   'marketing_referrals', 'marketing_analytics', 'marketing_settings',
+  // HCM/HRMS (docs/plan/hcm.md), one group per workstream. Kept in lockstep
+  // with RESOURCES in `@kaizen/shared/permissions.ts`. `hcm_one_on_ones` and
+  // `hcm_policy_documents`, not `one_on_ones`/`policy_documents`: those are
+  // already the Chairman's Office's own resources (above) — a distinct
+  // grant cell from an HR manager's 1:1s and HR's policy library.
+  'employee_profiles', 'employee_documents', 'reporting_lines', 'org_design', 'employee_changes', // WS1 workforce
+  'shifts', 'rosters', 'clock_events', 'timesheets', 'overtime_requests', 'comp_offs', 'attendance_regularisations', // WS2 time
+  'leave_policies', 'leave_accruals', 'leave_approval_chains', // WS3 leavepolicy
+  'job_postings', 'candidates', 'interviews', 'scorecards', 'offers', 'referrals', 'background_verifications', 'onboarding_tasks', // WS4 recruiting
+  'review_cycles', 'reviews', 'calibrations', 'feedback', 'hcm_one_on_ones', 'pips', 'succession_plans', // WS5 performance
+  'training_programs', 'training_sessions', 'training_enrollments', 'certifications', 'idps', 'training_budgets', // WS6 learning
+  'pay_grades', 'salary_revisions', 'variable_pay', 'benefit_plans', 'benefit_enrollments', 'employee_loans', 'expense_claims', // WS7 compensation
+  'pay_items', 'adhoc_pay', 'arrears', 'payroll_journals', 'bank_advices', 'payroll_reconciliations', 'payroll_calendar', 'payroll_queries', // WS8 payrollops
+  'announcements', 'recognitions', 'surveys', 'hr_cases', 'hcm_policy_documents', 'exit_interviews', // WS9 engagement
+  'resignations', 'exit_clearances', 'no_dues', 'alumni', 'notice_policies', // WS10 separations
+  'hcm_assets', 'asset_assignments', 'travel_requests', 'letter_requests', // WS11 assets
+  'hr_analytics', 'hr_reports', // WS12 analytics
+  'hr_requests', 'hr_request_types', 'authority_delegations', // WS13 workflow
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */
@@ -371,6 +389,89 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'marketing_referrals', cell: 'VCEDXF' },
   { resource: 'marketing_analytics', cell: 'VXF' },
   { resource: 'marketing_settings', cell: 'VCED' },
+
+  // ---- HCM/HRMS (docs/plan/hcm.md) ---------------------------------------
+  // Same shape as the rest of this role: runs the operation end to end and
+  // proposes money without approving it. `approve` held only where the other
+  // party in the approval is a colleague or manager rather than money — the
+  // Self-Dealing Bar still applies (requester ≠ approver at the record level).
+  { resource: 'employee_profiles', cell: 'VCEDA' },
+  { resource: 'employee_documents', cell: 'VCEDA' },
+  { resource: 'reporting_lines', cell: 'VCEDA' },
+  { resource: 'org_design', cell: 'VCEDA' },
+  { resource: 'employee_changes', cell: 'VCEDA,approve' },
+  { resource: 'shifts', cell: 'VCEDA' },
+  { resource: 'rosters', cell: 'VCEDA' },
+  { resource: 'clock_events', cell: 'VCEDA' },
+  { resource: 'timesheets', cell: 'VCEDA,approve' },
+  { resource: 'overtime_requests', cell: 'VCEDA,approve' },
+  { resource: 'comp_offs', cell: 'VCEDA,approve' },
+  { resource: 'attendance_regularisations', cell: 'VCEDA,approve' },
+  { resource: 'leave_policies', cell: 'VCEDA' },
+  { resource: 'leave_accruals', cell: 'VCEDA' },
+  { resource: 'leave_approval_chains', cell: 'VCEDA' },
+  { resource: 'job_postings', cell: 'VCEDA' },
+  { resource: 'candidates', cell: 'VCEDA' },
+  { resource: 'interviews', cell: 'VCEDA' },
+  { resource: 'scorecards', cell: 'VCE' },
+  // Proposes an offer; Finance approves it — the same two-party shape as
+  // compensation.
+  { resource: 'offers', cell: 'VCED' },
+  { resource: 'referrals', cell: 'VCEDA' },
+  { resource: 'background_verifications', cell: 'VCEDA' },
+  { resource: 'onboarding_tasks', cell: 'VCEDA' },
+  { resource: 'review_cycles', cell: 'VCEDA' },
+  { resource: 'reviews', cell: 'VCEDA' },
+  { resource: 'calibrations', cell: 'VCEDA' },
+  { resource: 'feedback', cell: 'VCEDA' },
+  { resource: 'hcm_one_on_ones', cell: 'VCEDA' },
+  { resource: 'pips', cell: 'VCE' },
+  { resource: 'succession_plans', cell: 'VCEDA' },
+  { resource: 'training_programs', cell: 'VCEDA' },
+  { resource: 'training_sessions', cell: 'VCEDA' },
+  { resource: 'training_enrollments', cell: 'VCEDA,approve' },
+  { resource: 'certifications', cell: 'VCEDA' },
+  { resource: 'idps', cell: 'VCEDA' },
+  { resource: 'training_budgets', cell: 'V' },
+  // WS7 owns PayGrade; hrOps administers the bands, Finance approves the
+  // ceilings and never proposes a revision.
+  { resource: 'pay_grades', cell: 'VCEDA' },
+  { resource: 'salary_revisions', cell: 'VCEDX' },
+  { resource: 'variable_pay', cell: 'VCEDX' },
+  { resource: 'benefit_plans', cell: 'VCEDA' },
+  { resource: 'benefit_enrollments', cell: 'VCEDA' },
+  { resource: 'employee_loans', cell: 'VCEDX' },
+  { resource: 'expense_claims', cell: 'VCEDX' },
+  { resource: 'pay_items', cell: 'VCEDX' },
+  { resource: 'adhoc_pay', cell: 'VCEDX' },
+  { resource: 'arrears', cell: 'VCEDX' },
+  { resource: 'payroll_journals', cell: 'VCEDX' },
+  { resource: 'bank_advices', cell: 'VX' },
+  { resource: 'payroll_reconciliations', cell: 'V' },
+  { resource: 'payroll_calendar', cell: 'VCEDA' },
+  { resource: 'payroll_queries', cell: 'VCEDA' },
+  { resource: 'announcements', cell: 'VCEDA' },
+  { resource: 'recognitions', cell: 'VCEDA' },
+  { resource: 'surveys', cell: 'VCEDA' },
+  { resource: 'hr_cases', cell: 'VCEDA' },
+  { resource: 'hcm_policy_documents', cell: 'VCEDA' },
+  { resource: 'exit_interviews', cell: 'VCE' },
+  // Accepts a resignation (never their own — the check is at the record
+  // level: `acceptedBy` must differ from the resigning employment).
+  { resource: 'resignations', cell: 'VCEDA,approve' },
+  { resource: 'exit_clearances', cell: 'VCEDA' },
+  { resource: 'no_dues', cell: 'VCEDA' },
+  { resource: 'alumni', cell: 'VCEDA' },
+  { resource: 'notice_policies', cell: 'VCEDA' },
+  { resource: 'hcm_assets', cell: 'VCEDA' },
+  { resource: 'asset_assignments', cell: 'VCEDA' },
+  { resource: 'travel_requests', cell: 'VCEDA,approve' },
+  { resource: 'letter_requests', cell: 'VCEDA' },
+  { resource: 'hr_analytics', cell: 'V' },
+  { resource: 'hr_reports', cell: 'VX' },
+  { resource: 'hr_requests', cell: 'VCEDA,approve' },
+  { resource: 'hr_request_types', cell: 'VCEDA' },
+  { resource: 'authority_delegations', cell: 'VCEDA' },
 ];
 
 /**
@@ -584,6 +685,83 @@ const financeHead: GrantSpec[] = [
   { resource: 'marketing_assets', cell: 'V' },
   { resource: 'marketing_referrals', cell: 'V' },
   { resource: 'marketing_settings', cell: 'V' },
+
+  // ---- HCM/HRMS (docs/plan/hcm.md) ---------------------------------------
+  // Sees the establishment's operational surfaces read-only, the same shape
+  // it already takes with `employees`/`leave`/`attendance`, and approves —
+  // never creates or edits — everywhere HR proposes money.
+  { resource: 'employee_profiles', cell: 'V' },
+  { resource: 'employee_documents', cell: 'V' },
+  { resource: 'reporting_lines', cell: 'V' },
+  { resource: 'org_design', cell: 'V' },
+  { resource: 'employee_changes', cell: 'V' },
+  { resource: 'shifts', cell: 'V' },
+  { resource: 'rosters', cell: 'V' },
+  { resource: 'clock_events', cell: 'V' },
+  { resource: 'timesheets', cell: 'V' },
+  { resource: 'overtime_requests', cell: 'V' },
+  { resource: 'comp_offs', cell: 'V' },
+  { resource: 'attendance_regularisations', cell: 'V' },
+  { resource: 'leave_policies', cell: 'V' },
+  { resource: 'leave_accruals', cell: 'V' },
+  { resource: 'leave_approval_chains', cell: '-' },
+  { resource: 'job_postings', cell: 'V' },
+  { resource: 'candidates', cell: '-' },
+  { resource: 'interviews', cell: '-' },
+  { resource: 'scorecards', cell: '-' },
+  // Approves what HR proposes. No `create`: the signatory does not author.
+  { resource: 'offers', cell: 'VXF,approve' },
+  { resource: 'referrals', cell: 'V' },
+  { resource: 'background_verifications', cell: '-' },
+  { resource: 'onboarding_tasks', cell: '-' },
+  { resource: 'review_cycles', cell: 'V' },
+  { resource: 'reviews', cell: '-' },
+  { resource: 'calibrations', cell: '-' },
+  { resource: 'feedback', cell: '-' },
+  { resource: 'hcm_one_on_ones', cell: '-' },
+  { resource: 'pips', cell: '-' },
+  { resource: 'succession_plans', cell: '-' },
+  { resource: 'training_programs', cell: 'V' },
+  { resource: 'training_sessions', cell: 'V' },
+  { resource: 'training_enrollments', cell: 'V' },
+  { resource: 'certifications', cell: '-' },
+  { resource: 'idps', cell: '-' },
+  { resource: 'training_budgets', cell: 'VCEDXF' },
+  { resource: 'pay_grades', cell: 'VXF,approve' },
+  { resource: 'salary_revisions', cell: 'VXF,approve' },
+  { resource: 'variable_pay', cell: 'VXF,approve' },
+  { resource: 'benefit_plans', cell: 'V' },
+  { resource: 'benefit_enrollments', cell: 'V' },
+  { resource: 'employee_loans', cell: 'VXF,approve' },
+  { resource: 'expense_claims', cell: 'VXF,approve' },
+  { resource: 'pay_items', cell: 'VCEDXF,approve' },
+  { resource: 'adhoc_pay', cell: 'VXF,approve' },
+  { resource: 'arrears', cell: 'VXF,approve' },
+  { resource: 'payroll_journals', cell: 'VXF,approve' },
+  { resource: 'bank_advices', cell: 'VXF,approve' },
+  { resource: 'payroll_reconciliations', cell: 'VCEDXF' },
+  { resource: 'payroll_calendar', cell: 'V' },
+  { resource: 'payroll_queries', cell: 'V' },
+  { resource: 'announcements', cell: 'V' },
+  { resource: 'recognitions', cell: '-' },
+  { resource: 'surveys', cell: '-' },
+  { resource: 'hr_cases', cell: '-' },
+  { resource: 'hcm_policy_documents', cell: 'V' },
+  { resource: 'exit_interviews', cell: '-' },
+  { resource: 'resignations', cell: 'V' },
+  { resource: 'exit_clearances', cell: 'V' },
+  { resource: 'no_dues', cell: 'V' },
+  { resource: 'alumni', cell: '-' },
+  { resource: 'notice_policies', cell: 'V' },
+  { resource: 'hcm_assets', cell: 'V' },
+  { resource: 'asset_assignments', cell: 'V' },
+  { resource: 'travel_requests', cell: 'V' },
+  { resource: 'letter_requests', cell: '-' },
+  { resource: 'hr_analytics', cell: 'V' },
+  { resource: 'hr_reports', cell: 'VX' },
+  { resource: 'hr_requests', cell: 'V' },
+  { resource: 'hr_request_types', cell: 'V' },
+  { resource: 'authority_delegations', cell: 'V' },
 ];
 
 /**
@@ -751,6 +929,84 @@ const employee: GrantSpec[] = [
   { resource: 'marketing_analytics', cell: 'V' },
   { resource: 'marketing_forms', cell: 'V' },
   { resource: 'marketing_sends', cell: 'V@own' },
+  // ---- HCM/HRMS (docs/plan/hcm.md): self-service, `@own` throughout -------
+  { resource: 'employee_profiles', cell: 'VE@own' },
+  { resource: 'employee_documents', cell: 'VC@own' },
+  { resource: 'reporting_lines', cell: 'V@own' },
+  // Who reports to whom, and the grade/location/cost-centre reference data —
+  // company-wide facts, the same shape `people:V@all` already takes.
+  { resource: 'org_design', cell: 'V@all' },
+  { resource: 'employee_changes', cell: 'V@own' },
+  { resource: 'shifts', cell: 'V@all' },
+  { resource: 'rosters', cell: 'V@own' },
+  { resource: 'clock_events', cell: 'VC@own' },
+  { resource: 'timesheets', cell: 'VCE@own' },
+  { resource: 'overtime_requests', cell: 'VC@own' },
+  { resource: 'comp_offs', cell: 'V@own' },
+  { resource: 'attendance_regularisations', cell: 'VC@own' },
+  { resource: 'leave_policies', cell: 'V@all' },
+  { resource: 'leave_accruals', cell: 'V@own' },
+  { resource: 'leave_approval_chains', cell: '-' },
+  // The internal job board is company-wide; applying is expressed through
+  // `applications:VCE@own`, already held above.
+  { resource: 'job_postings', cell: 'V@all' },
+  { resource: 'candidates', cell: '-' },
+  // Their own interview rounds, when they are the one being interviewed or
+  // the one interviewing.
+  { resource: 'interviews', cell: 'V@own' },
+  { resource: 'scorecards', cell: 'VC@own' },
+  { resource: 'offers', cell: '-' },
+  { resource: 'referrals', cell: 'VC@own' },
+  { resource: 'background_verifications', cell: '-' },
+  { resource: 'onboarding_tasks', cell: 'VE@own' },
+  { resource: 'review_cycles', cell: 'V@all' },
+  { resource: 'reviews', cell: 'VCE@own' },
+  { resource: 'calibrations', cell: '-' },
+  { resource: 'feedback', cell: 'VC@own' },
+  { resource: 'hcm_one_on_ones', cell: 'VCE@own' },
+  { resource: 'pips', cell: 'V@own' },
+  { resource: 'succession_plans', cell: '-' },
+  { resource: 'training_programs', cell: 'V@all' },
+  { resource: 'training_sessions', cell: 'V@all' },
+  { resource: 'training_enrollments', cell: 'VC@own' },
+  { resource: 'certifications', cell: 'VCE@own' },
+  { resource: 'idps', cell: 'VCE@own' },
+  { resource: 'training_budgets', cell: '-' },
+  { resource: 'pay_grades', cell: '-' },
+  { resource: 'salary_revisions', cell: 'VF@own' },
+  { resource: 'variable_pay', cell: 'VF@own' },
+  { resource: 'benefit_plans', cell: 'V@all' },
+  { resource: 'benefit_enrollments', cell: 'VCE@own' },
+  { resource: 'employee_loans', cell: 'VC@own' },
+  { resource: 'expense_claims', cell: 'VCE@own' },
+  { resource: 'pay_items', cell: '-' },
+  { resource: 'adhoc_pay', cell: '-' },
+  { resource: 'arrears', cell: 'V@own' },
+  { resource: 'payroll_journals', cell: '-' },
+  { resource: 'bank_advices', cell: '-' },
+  { resource: 'payroll_reconciliations', cell: '-' },
+  { resource: 'payroll_calendar', cell: 'V@all' },
+  { resource: 'payroll_queries', cell: 'VC@own' },
+  { resource: 'announcements', cell: 'V@all' },
+  { resource: 'recognitions', cell: 'VC@own' },
+  { resource: 'surveys', cell: 'VC@all' },
+  { resource: 'hr_cases', cell: 'VC@own' },
+  { resource: 'hcm_policy_documents', cell: 'V@all' },
+  { resource: 'exit_interviews', cell: '-' },
+  { resource: 'resignations', cell: 'VC@own' },
+  { resource: 'exit_clearances', cell: 'V@own' },
+  { resource: 'no_dues', cell: 'V@own' },
+  { resource: 'alumni', cell: '-' },
+  { resource: 'notice_policies', cell: 'V@all' },
+  { resource: 'hcm_assets', cell: '-' },
+  { resource: 'asset_assignments', cell: 'V@own' },
+  { resource: 'travel_requests', cell: 'VC@own' },
+  { resource: 'letter_requests', cell: 'VC@own' },
+  { resource: 'hr_analytics', cell: '-' },
+  { resource: 'hr_reports', cell: '-' },
+  { resource: 'hr_requests', cell: 'VC@own' },
+  { resource: 'hr_request_types', cell: 'V@all' },
+  { resource: 'authority_delegations', cell: 'VC@own' },
 ];
 
 // ---------------------------------------------------------------------------

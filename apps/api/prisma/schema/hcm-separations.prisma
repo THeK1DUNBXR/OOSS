@@ -1,0 +1,161 @@
+// HCM — J. Separations & exit management (docs/hcm/separations.md).
+//
+// New models only. The employment/offboarding lifecycle itself is
+// `EmploymentRelationship` / `Offboarding` in main.prisma, owned by
+// employment.ts; these models sit beside it — a resignation is the
+// employee-initiated request that starts the notice period, an exit
+// clearance tracks who has to sign off before the money moves, a no-dues
+// certificate is the closing document, an alumni record is what survives
+// after the employment row itself is long since `Alumni`, and a notice
+// policy is the table `noticeDays` should come from rather than the flat
+// default `EmploymentRelationship.noticePeriodDays` carries today.
+//
+// Every model: plain `*Id` String columns referencing employment/person by id
+// (no `@relation` into main.prisma), `tenantId String` + `@@index([tenantId])`,
+// per compliance-labour.prisma's convention.
+
+/// An employee-initiated resignation. `acceptedById` is the HR ops principal
+/// who accepted it — never the employee themselves, which is the
+/// Self-Dealing Bar on this record: nobody accepts their own resignation.
+/// Accepting one is what actually moves `EmploymentRelationship` into
+/// `NoticePeriod` (via `transitionEmployment(..., 'SUBMIT_RESIGNATION')`) —
+/// the resignation row is the request and its paper trail, the employment
+/// state machine is the fact of it.
+model Resignation {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  employmentRelationshipId String
+
+  submittedOn        DateTime
+  requestedLastDay    DateTime
+  /// Copied from the notice policy (or the employment's flat default) at
+  /// submission time — a fact about what applied then, not a live lookup.
+  noticeDays          Int
+  /// personal | career_growth | compensation | relocation | health | conduct | other
+  reasonCategory      String
+  reasonNote          String?
+
+  /// submitted | accepted | withdrawn | rejected
+  status String @default("submitted")
+
+  acceptedById   String?
+  acceptedAt     DateTime?
+  /// The last working day actually agreed once accepted — may differ from
+  /// `requestedLastDay` when HR and the employee settle on another date.
+  agreedLastDay  DateTime?
+  rejectedReason String?
+  withdrawnAt    DateTime?
+
+  offboardingId String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, status])
+  @@map("hcm_sep_resignations")
+}
+
+/// Notice-period policy by grade/engagement type. `notice(...)` in
+/// packages/shared/src/hcm/separations.ts picks the most specific matching
+/// row; `null` on `grade` or `engagementType` means "applies regardless".
+model NoticePolicy {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name           String
+  grade          String?
+  engagementType String?
+  noticeDays     Int
+  buyoutAllowed  Boolean @default(true)
+  active         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, active])
+  @@map("hcm_sep_notice_policies")
+}
+
+/// One row per (offboarding, department) sign-off. `allCleared` on the
+/// offboarding parent is derived from these, never stored — asking "is this
+/// clearance complete" always re-reads the rows behind it. `clearedById` is
+/// never the employment's own personId (nobody signs off their own
+/// clearance).
+model ExitClearance {
+  id       String @id @default(cuid())
+  tenantId String
+
+  offboardingId            String
+  employmentRelationshipId String
+
+  /// it | finance | admin | manager | hr
+  department String
+  /// pending | cleared | blocked
+  status     String @default("pending")
+  note       String?
+  clearedById String?
+  clearedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, offboardingId, department])
+  @@index([tenantId, offboardingId])
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_sep_exit_clearances")
+}
+
+/// The closing document, issued once every department in `ExitClearance` is
+/// `cleared`. A snapshot rather than a live view — final once issued, a
+/// correction is a new row, same as an `HrLetter`.
+model NoDuesCertificate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  offboardingId            String @unique
+  employmentRelationshipId String
+
+  issuedOn   DateTime @default(now())
+  issuedById String
+
+  /// The clearance snapshot at issue time — department/status/clearedBy —
+  /// so the certificate still reads correctly even if a clearance row is
+  /// later edited for some unrelated reason.
+  clearanceSnapshot Json
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_sep_no_dues_certificates")
+}
+
+/// What survives a separation once the employment row itself is `Alumni`:
+/// the last thing they held, when they left, whether the company would hire
+/// them again, and whether they consented to being contacted about it.
+model AlumniRecord {
+  id       String @id @default(cuid())
+  tenantId String
+
+  personId                 String
+  employmentRelationshipId String @unique
+
+  lastDesignation String
+  exitDate        DateTime
+  separationType  String
+  rehireEligible  Boolean?
+  rehireNote      String?
+  contactConsent  Boolean @default(false)
+  contactEmail    String?
+  contactPhone    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, personId])
+  @@map("hcm_sep_alumni_records")
+}

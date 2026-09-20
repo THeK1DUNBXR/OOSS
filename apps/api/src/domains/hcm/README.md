@@ -1,0 +1,3 @@
+# domains/hcm
+
+Domain logic for the 13 HCM/HRMS workstreams (docs/plan/hcm.md) lands here, one file per workstream — `workforce.ts`, `time.ts`, `leavepolicy.ts`, `recruiting.ts`, `performance.ts`, `learning.ts`, `compensation.ts`, `payrollops.ts`, `engagement.ts`, `separations.ts`, `assets.ts`, `analytics.ts`, `workflow.ts` — created by the owning workstream agent, never by the scaffold. Each file holds that workstream's Prisma-backed reads/writes, permission checks via `evaluate()`, event emission via `emit()`, and record-code allocation via `nextRecordCode()`, called from the matching router in `apps/api/src/routes/hcm/<ws>.routes.ts`.

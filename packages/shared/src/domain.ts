@@ -672,6 +672,12 @@ export const RECORD_TYPE_CODES = [
   // tables (touchpoints, attributions, recipients, …) that were left off this
   // list on purpose — those are never referred to by a human-facing code.
   'CHN', 'AUD', 'TPL', 'SND', 'JRN', 'FRM', 'EVT', 'AST', 'PST', 'LNK', 'RFP', 'REF', 'BDG', 'SPN', 'PLN', 'CPG', 'CAA', 'VND',
+  // HCM/HRMS (docs/plan/hcm.md): the records a human refers to by number.
+  // `RES` is already the board Resolution code (above), so a resignation is
+  // `RSG`; `LN` is already the finance borrowing code, so an employee loan is
+  // `LOAN`, a distinct string. `AST` is already marketing's asset code
+  // (above), so an HCM asset request is `HAS` instead.
+  'TSH', 'OFR', 'RVW', 'LOAN', 'RSG', 'CASE', 'HAS', 'TRV', 'HRQ', 'JPST', 'CERT', 'SREV',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

@@ -246,6 +246,26 @@ export const RESOURCES = [
   'marketing_referrals',
   'marketing_analytics',
   'marketing_settings',
+  // HCM/HRMS (docs/plan/hcm.md), one group per workstream. `hcm_one_on_ones`
+  // and `hcm_policy_documents`, not `one_on_ones`/`policy_documents`: those
+  // are already the Chairman's Office's own resources (above).
+  'employee_profiles', 'employee_documents', 'reporting_lines', 'org_design', 'employee_changes', // WS1 workforce
+  'shifts', 'rosters', 'clock_events', 'timesheets', 'overtime_requests', 'comp_offs', 'attendance_regularisations', // WS2 time
+  'leave_policies', 'leave_accruals', 'leave_approval_chains', // WS3 leavepolicy
+  'job_postings', 'candidates', 'interviews', 'scorecards', 'offers', 'referrals', 'background_verifications', 'onboarding_tasks', // WS4 recruiting
+  'review_cycles', 'reviews', 'calibrations', 'feedback', 'hcm_one_on_ones', 'pips', 'succession_plans', // WS5 performance
+  'training_programs', 'training_sessions', 'training_enrollments', 'certifications', 'idps', 'training_budgets', // WS6 learning
+  'pay_grades', 'salary_revisions', 'variable_pay', 'benefit_plans', 'benefit_enrollments', 'employee_loans', 'expense_claims', // WS7 compensation
+  'pay_items', 'adhoc_pay', 'arrears', 'payroll_journals', 'bank_advices', 'payroll_reconciliations', 'payroll_calendar', 'payroll_queries', // WS8 payrollops
+  'announcements', 'recognitions', 'surveys', 'hr_cases', 'hcm_policy_documents', 'exit_interviews', // WS9 engagement
+  'resignations', 'exit_clearances', 'no_dues', 'alumni', 'notice_policies', // WS10 separations
+  // `hcm_assets`, not `assets`: `assets` is already the finance fixed-asset
+  // register (depreciation, borrowing) — a distinct resource from an HR
+  // laptop/ID-card inventory, and sharing the name would silently widen
+  // finance_head's existing `assets:VCEDAXF` onto HR's asset desk.
+  'hcm_assets', 'asset_assignments', 'travel_requests', 'letter_requests', // WS11 assets
+  'hr_analytics', 'hr_reports', // WS12 analytics
+  'hr_requests', 'hr_request_types', 'authority_delegations', // WS13 workflow
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];
