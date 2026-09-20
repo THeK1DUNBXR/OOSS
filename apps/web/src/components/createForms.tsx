@@ -714,7 +714,6 @@ export function NewInstitution({
     f.schoolProps.setStudentCount(profile?.studentCount ? String(profile.studentCount) : '');
     // f's setters are stable across renders; re-running this on every render
     // of f would fight with what somebody is typing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, institution]);
 
   const toggle = (e: InstitutionEngagement) =>
@@ -962,7 +961,6 @@ export function AddBillingDetails({
     f.billingProps.setTier(existing?.tier ?? '');
     f.billingProps.setBillingEmail(existing?.billingEmail ?? '');
     f.billingProps.setPaymentTermsDays(existing?.paymentTermsDays ? String(existing.paymentTermsDays) : '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, existing]);
 
   return (
@@ -1015,7 +1013,6 @@ export function AddSchoolDetails({
     f.schoolProps.setDistrict(existing?.district ?? '');
     f.schoolProps.setState(existing?.state ?? '');
     f.schoolProps.setStudentCount(existing?.studentCount ? String(existing.studentCount) : '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, existing]);
 
   return (

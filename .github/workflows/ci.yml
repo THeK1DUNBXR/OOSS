@@ -32,7 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -67,13 +66,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @kaizen/shared build
       - run: pnpm --filter @kaizen/api exec prisma db push --skip-generate
       - run: pnpm --filter @kaizen/api exec prisma generate
+      # The acceptance suite runs against a real dataset, not mocks — see
+      # apps/api/vitest.config.ts and scripts/test-db.sh, which this mirrors.
+      - run: pnpm --filter @kaizen/api seed:demo
       - run: pnpm --filter @kaizen/api test
 
   build:
@@ -82,7 +83,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -120,7 +120,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
