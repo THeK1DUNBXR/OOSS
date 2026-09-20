@@ -98,6 +98,25 @@ import { Leadership as CeoLeadership } from './pages/ceo/Leadership.js';
 import { OneOnOnes as CeoOneOnOnes } from './pages/ceo/OneOnOnes.js';
 import { Succession as CeoSuccession } from './pages/ceo/Succession.js';
 import { TimeAudit as CeoTimeAudit } from './pages/ceo/TimeAudit.js';
+import { MarketingShell } from './pages/marketing/MarketingShell.js';
+import { MarketingOverview } from './pages/marketing/MarketingOverview.js';
+import { Campaigns as MarketingCampaigns } from './pages/marketing/Campaigns.js';
+import { CampaignDetail as MarketingCampaignDetail } from './pages/marketing/CampaignDetail.js';
+import { Calendar as MarketingCalendar } from './pages/marketing/Calendar.js';
+import { Budget as MarketingBudget } from './pages/marketing/Budget.js';
+import { Plans as MarketingPlans } from './pages/marketing/Plans.js';
+import { Analytics as MarketingAnalytics } from './pages/marketing/Analytics.js';
+import { MarketingSettings } from './pages/marketing/MarketingSettings.js';
+import { Forms as MarketingForms } from './pages/marketing/Forms.js';
+import { MarketingEvents, MarketingEventDetail } from './pages/marketing/MarketingEvents.js';
+import { Assets as MarketingAssets } from './pages/marketing/Assets.js';
+import { Social as MarketingSocial } from './pages/marketing/Social.js';
+import { Referrals as MarketingReferrals } from './pages/marketing/Referrals.js';
+import { Audiences as MarketingAudiences } from './pages/marketing/Audiences.js';
+import { Consent as MarketingConsent } from './pages/marketing/Consent.js';
+import { Templates as MarketingTemplates } from './pages/marketing/Templates.js';
+import { Sends as MarketingSends, SendDetail as MarketingSendDetail } from './pages/marketing/Sends.js';
+import { Journeys as MarketingJourneys } from './pages/marketing/Journeys.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -359,6 +378,30 @@ function Routed() {
         <Route path="/ceo/one-on-ones" element={<CeoOneOnOnes />} />
         <Route path="/ceo/succession" element={<CeoSuccession />} />
         <Route path="/ceo/time-audit" element={<CeoTimeAudit />} />
+        {/* marketing */}
+        <Route path="/marketing" element={<MarketingShell />}>
+          <Route index element={<MarketingOverview />} />
+          <Route path="campaigns" element={<MarketingCampaigns />} />
+          <Route path="campaigns/:id" element={<MarketingCampaignDetail />} />
+          <Route path="calendar" element={<MarketingCalendar />} />
+          <Route path="budget" element={<MarketingBudget />} />
+          <Route path="plans" element={<MarketingPlans />} />
+          <Route path="analytics" element={<MarketingAnalytics />} />
+          <Route path="settings" element={<MarketingSettings />} />
+          <Route path="forms" element={<MarketingForms />} />
+          <Route path="events" element={<MarketingEvents />} />
+          <Route path="events/:id" element={<MarketingEventDetail />} />
+          <Route path="assets" element={<MarketingAssets />} />
+          <Route path="social" element={<MarketingSocial />} />
+          <Route path="referrals" element={<MarketingReferrals />} />
+          <Route path="audiences" element={<MarketingAudiences />} />
+          <Route path="consent" element={<MarketingConsent />} />
+          <Route path="templates" element={<MarketingTemplates />} />
+          <Route path="sends" element={<MarketingSends />} />
+          <Route path="sends/:id" element={<MarketingSendDetail />} />
+          <Route path="journeys" element={<MarketingJourneys />} />
+        </Route>
+        {/* end marketing */}
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

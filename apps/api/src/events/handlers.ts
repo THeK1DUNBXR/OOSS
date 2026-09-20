@@ -22,6 +22,7 @@ import { computeSensitivity } from '../domains/interactions.js';
 import { markSnapshotDirty } from '../domains/group.js';
 import { handleEmploymentExit } from '../domains/esop.js';
 import { handleAllotmentEffectiveForFema, handleTransferEffectiveForFema } from '../domains/filings.js';
+import { onLeadCreated, onEnrolment, onEventRegistered } from '../domains/marketing/journeys.js';
 
 let registered = false;
 
@@ -234,5 +235,31 @@ export function registerSubscribers(): void {
         claimRefs: [event.eventId],
       },
     });
+  });
+
+  // ---------------------------------------------------------------------
+  // Marketing journeys — enrolment triggers this module does not own.
+  // `capture.ts` already calls `journeys.onFormSubmitted` directly on
+  // submission conversion, so `MKT_FORM_SUBMISSION_CONVERTED` is
+  // deliberately not subscribed here (it would double-enrol).
+  // ---------------------------------------------------------------------
+
+  /** A new lead may enrol a person into any `lead_created`-triggered journey. */
+  subscribe(EVENTS.LEAD_CREATED, 'mkt.journey.on_lead_created', async (event: EventEnvelope) => {
+    await onLeadCreated(event.subject.entityId);
+  });
+
+  /** A confirmed education enrolment may enrol the same person into an `enrolment`-triggered journey. */
+  subscribe(EVENTS.ENROLLMENT_CREATED, 'mkt.journey.on_enrolment', async (event: EventEnvelope) => {
+    const personId = event.related.find((r) => r.relation === 'about' && r.entityType === 'person')?.entityId;
+    if (!personId) return;
+    await onEnrolment(personId);
+  });
+
+  /** An event registration may enrol the registrant into an `event_registered`-triggered journey. */
+  subscribe(EVENTS.MKT_EVENT_REGISTERED, 'mkt.journey.on_event_registered', async (event: EventEnvelope) => {
+    const personId = event.related.find((r) => r.relation === 'registrant' && r.entityType === 'person')?.entityId;
+    if (!personId) return;
+    await onEventRegistered(personId);
   });
 }

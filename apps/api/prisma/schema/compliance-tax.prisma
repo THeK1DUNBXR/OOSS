@@ -22,15 +22,15 @@ model TdsSectionRate {
   /// reads on its own rather than through a lookup table in a screen.
   label String
 
-  ratePercent Decimal @db.Decimal(5, 2)
+  ratePercent             Decimal @db.Decimal(5, 2)
   /// Below this on a single transaction, nothing is deducted.
   thresholdPerTransaction Decimal @default(0) @db.Decimal(14, 2)
   /// Once cumulative payments to the payee in the FY cross this, the
   /// exemption stops applying even to transactions under the per-transaction line.
-  thresholdPerFy Decimal @default(0) @db.Decimal(14, 2)
+  thresholdPerFy          Decimal @default(0) @db.Decimal(14, 2)
   /// Sec 206AA: the flat rate that applies when the payee has furnished no PAN,
   /// overriding the section rate whenever it is higher.
-  panMissingRatePercent Decimal @default(20) @db.Decimal(5, 2)
+  panMissingRatePercent   Decimal @default(20) @db.Decimal(5, 2)
 
   effectiveFrom DateTime
   note          String?
@@ -95,18 +95,18 @@ model TdsChallan {
   recordCode String
 
   /// YYYY-MM the liability was deducted in.
-  month String
+  month        String
   /// The section group deposited together — vendor sections use the section
   /// code, salary TDS deposits as "192".
   sectionGroup String
 
-  amount         Decimal @default(0) @db.Decimal(14, 2)
-  deducteeCount  Int     @default(0)
-  bsrCode        String?
-  challanNo      String?
-  paidOn         DateTime?
+  amount        Decimal   @default(0) @db.Decimal(14, 2)
+  deducteeCount Int       @default(0)
+  bsrCode       String?
+  challanNo     String?
+  paidOn        DateTime?
   /// pending | paid
-  status String @default("pending")
+  status        String    @default("pending")
 
   preparedById String?
   paidById     String?
@@ -129,10 +129,10 @@ model TaxDeclaration {
   fy                       String // "2026-27"
 
   /// old | new
-  regime String @default("new")
+  regime             String @default("new")
   /// 80C, 80D, HRA rent paid, home-loan interest, etc. — shaped by the regime,
   /// so held as Json rather than one column per section.
-  declaredDeductions Json @default("{}")
+  declaredDeductions Json   @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -148,7 +148,7 @@ model IncomeTaxSlabTable {
   id       String @id @default(cuid())
   tenantId String
 
-  fy String
+  fy     String
   /// old | new
   regime String
 
@@ -156,7 +156,7 @@ model IncomeTaxSlabTable {
   /// entry's `upTo` is null, meaning "and above".
   slabs Json
 
-  standardDeduction Decimal @default(0) @db.Decimal(12, 2)
+  standardDeduction  Decimal @default(0) @db.Decimal(12, 2)
   rebate87ALimit     Decimal @default(0) @db.Decimal(12, 2)
   rebate87AMaxAmount Decimal @default(0) @db.Decimal(12, 2)
   cessPercent        Decimal @default(4) @db.Decimal(5, 2)
@@ -179,10 +179,10 @@ model CorporateTaxRate {
   tenantId String
 
   /// 115BAA | normal — which regime the rate is computed under.
-  regime         String  @default("115BAA")
-  effectiveRatePercent Decimal @db.Decimal(5, 2)
-  effectiveFrom  DateTime
-  note           String?
+  regime               String   @default("115BAA")
+  effectiveRatePercent Decimal  @db.Decimal(5, 2)
+  effectiveFrom        DateTime
+  note                 String?
 
   createdAt DateTime @default(now())
 
@@ -246,7 +246,7 @@ model TdsCertificate {
   tenantId String
 
   /// 16 | 16A
-  form String
+  form         String
   /// The vendor bill's vendor identity (PAN) for 16A, the employment
   /// relationship id for 16.
   deducteeRef  String
@@ -255,9 +255,9 @@ model TdsCertificate {
   fy      String
   quarter String?
 
-  snapshot  Json
-  number    String
-  issuedAt  DateTime @default(now())
+  snapshot   Json
+  number     String
+  issuedAt   DateTime @default(now())
   issuedById String?
 
   supersedesId String?

@@ -185,7 +185,7 @@ model CompanyProfile {
   boardMeetingsRequiredPerYear Int?
 
   /// SS-1's minimum notice period for a board meeting, in clear days.
-  noticeDays Int @default(7)
+  noticeDays            Int     @default(7)
   // ---- Compliance registrations (docs/plan/compliance.md, workstreams A, C, E, G) ----
   /// Tax Deduction and Collection Account Number (Income-tax Act Sec 203A).
   tan                   String?
@@ -276,6 +276,15 @@ model Person {
   employmentRelationships EmploymentRelationship[]
   candidateApplications   Application[]            @relation("ApplicationCandidate")
 
+  marketingPreferences         MarketingPreference[]
+  marketingSendRecipients      MarketingSendRecipient[]
+  marketingJourneyRuns         MarketingJourneyRun[]
+  marketingFormSubmissions     MarketingFormSubmission[]
+  marketingTouchpoints         MarketingTouchpoint[]
+  marketingEventRegistrations  MarketingEventRegistration[]
+  marketingReferralsAsReferrer MarketingReferral[]          @relation("MarketingReferralReferrer")
+  marketingReferralsAsReferred MarketingReferral[]          @relation("MarketingReferralReferred")
+
   @@unique([tenantId, recordCode])
   @@index([tenantId, primaryPhoneNormalised])
   @@index([tenantId, primaryEmailNormalised])
@@ -316,13 +325,13 @@ model Affiliation {
   branch     String?
   positionId String?
 
-  deletedAt DateTime?
+  deletedAt     DateTime?
   // ---- Access revocation on exit (workstream G) ----
   revokedAt     DateTime?
   revokedReason String?
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId, partyId, status])
   @@index([tenantId, affiliationType, status])
@@ -418,6 +427,12 @@ model Organization {
   students           StudentProfile[]    @relation("StudentInstitution")
   /// The learners whose fees this body is paying.
   sponsoredStudents  StudentProfile[]    @relation("StudentSponsor")
+
+  marketingTouchpoints             MarketingTouchpoint[]
+  marketingEvents                  MarketingEvent[]
+  marketingReferralsAsOrganization MarketingReferral[]
+  marketingSpends                  MarketingSpend[]
+  marketingVendors                 MarketingVendor[]
 
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
@@ -593,15 +608,15 @@ model StudentProfile {
   placeOfSupply String?
   gstin         String?
 
-  attachedById String?
-  deletedAt    DateTime?
+  attachedById      String?
+  deletedAt         DateTime?
   // ---- DPDP: a minor's guardian and the consent recorded from them (workstream G). ----
   guardianName      String?
   guardianPhone     String?
   guardianConsentId String?
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, registrationNumber])
   @@index([tenantId, status])
@@ -1065,7 +1080,7 @@ model User {
   /// Server-side carriage. Never client-trusted.
   activeAffiliationId String?
 
-  lastLoginAt DateTime?
+  lastLoginAt       DateTime?
   // ---- Security hygiene (workstream H) ----
   mfaSecret         String?
   mfaEnabledAt      DateTime?
@@ -1073,8 +1088,8 @@ model User {
   failedLoginCount  Int       @default(0)
   lockedUntil       DateTime?
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1398,16 +1413,31 @@ model Lead {
   untouchedNotifiedAt    DateTime?
   convertedOpportunityId String?
 
+  /// Marketing attribution join — the campaign this lead is attributed to,
+  /// the channel it arrived through, and the raw UTM payload captured at
+  /// creation. Populated by the marketing capture pipeline, never required.
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  channelKey String?
+  utm        Json?
+
   createdById String?
   updatedById String?
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  marketingFormSubmissions    MarketingFormSubmission[]
+  marketingTouchpoints        MarketingTouchpoint[]
+  marketingAttributions       MarketingAttribution[]
+  marketingEventRegistrations MarketingEventRegistration[]
+  marketingReferrals          MarketingReferral[]
+
   @@unique([tenantId, recordCode])
   @@index([tenantId, leadStatus, ownerPartyId])
   @@index([tenantId, pipelineId, stageKey])
   @@index([tenantId, createdAt])
+  @@index([tenantId, campaignId])
   @@map("leads")
 }
 
@@ -1473,6 +1503,8 @@ model Opportunity {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  marketingAttributions MarketingAttribution[]
+
   @@unique([tenantId, recordCode])
   @@index([tenantId, pipelineId, stageKey])
   @@index([tenantId, forecastCategory])
@@ -1509,9 +1541,10 @@ model Offering {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  priceBookEntries PriceBookEntry[]
-  leads            Lead[]
-  opportunities    Opportunity[]
+  priceBookEntries   PriceBookEntry[]
+  leads              Lead[]
+  opportunities      Opportunity[]
+  marketingCampaigns MarketingCampaign[]
 
   @@unique([tenantId, offeringCode])
   @@index([tenantId, status, vertical])
@@ -1976,8 +2009,8 @@ model Document {
   label            String?
   sensitivityClass String  @default("internal")
 
-  uploadedById String?
-  deletedAt    DateTime?
+  uploadedById    String?
+  deletedAt       DateTime?
   // ---- Retention, stamp duty and e-signature (workstream H) ----
   retainUntil     DateTime?
   stampDutyAmount Decimal?  @db.Decimal(14, 2)
@@ -1986,8 +2019,8 @@ model Document {
   eSignRef        String?
   eSignedAt       DateTime?
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, attachedToType, attachedToId])
@@ -2104,10 +2137,10 @@ model Holder {
   /// MGT-1 fields (Rule 3, Mgmt & Admin Rules) not needed for anything else
   /// in the register and left blank rather than guessed — "not recorded" is
   /// never a fabricated address.
-  address                String?
-  occupation             String?
-  nationality            String?
-  guardianOrSpouseName   String?
+  address              String?
+  occupation           String?
+  nationality          String?
+  guardianOrSpouseName String?
 
   /// Rule 9B / PAS-6: the holder's demat account, when their holding is
   /// dematerialised. Held once per holder rather than per certificate — a
@@ -2115,7 +2148,7 @@ model Holder {
   /// this holder holds is treated as demat when this is set. `{ dpId,
   /// clientId }` at minimum; kept as free `Json` because the two depositories
   /// (NSDL/CDSL) and an RTA's own reference are not a single fixed shape.
-  dematAccount Json?
+  dematAccount   Json?
   /// Names the spin-out batch that created this holder (equity-portal plan
   /// §6b), for `--revert`.
   spinOutBatchId String?
@@ -2470,11 +2503,11 @@ model EntitySnapshot {
   /// can match a snapshot to the "not yet incorporated" node it replaces.
   originDivision String?
 
-  asOf              DateTime
+  asOf            DateTime
   /// The hash of the last `EventRecord` in the source tenant at publish
   /// time — what tells the group screen how far behind a stale snapshot is,
   /// rather than silently blending an old figure with a fresh one.
-  sourceEventHash   String?
+  sourceEventHash String?
 
   capTable     Json // CapTableView, holders carrying heldByTenantId and holderKey
   shareClasses Json
@@ -2561,7 +2594,7 @@ model EsopPlan {
 
   exercisePriceDefault Decimal? @db.Decimal(18, 2)
   /// `{cliffMonths, totalMonths, frequency: 'monthly'|'quarterly'|'annual'}`.
-  vestingDefault Json
+  vestingDefault       Json
 
   exerciseWindowMonthsAfterExit Int @default(3)
 
@@ -2602,8 +2635,8 @@ model OptionGrant {
   exercised Decimal @default(0) @db.Decimal(24, 6)
   lapsed    Decimal @default(0) @db.Decimal(24, 6)
 
-  lapsedOn     DateTime?
-  lapseReason  String?
+  lapsedOn             DateTime?
+  lapseReason          String?
   /// Set on the exit event for a grant with a vested-unexercised balance: the
   /// exit date plus the plan's `exerciseWindowMonthsAfterExit`. The daily
   /// lapse check compares against this rather than recomputing it, so a later
@@ -2669,8 +2702,8 @@ model OptionExercise {
   count         Decimal  @db.Decimal(24, 6)
   exercisePrice Decimal  @db.Decimal(18, 2)
 
-  fmvPerShare   Decimal? @db.Decimal(18, 2)
-  fmvBasis      String   @default("none") // merchant_banker | none
+  fmvPerShare    Decimal? @db.Decimal(18, 2)
+  fmvBasis       String   @default("none") // merchant_banker | none
   fmvValuationId String?
 
   perquisite     Decimal? @db.Decimal(18, 2)
@@ -2818,19 +2851,19 @@ model Invoice {
   /// (Rule 49); `temp` is the internal course-fee working invoice above,
   /// forced regardless of what is requested whenever `enrollmentDate` is set,
   /// and is never a tax document at all.
-  invoiceType    String  @default("tax_invoice")
+  invoiceType       String    @default("tax_invoice")
   /// Tax payable by the recipient (Sec 9(3)/9(4)). Printed on the invoice per Rule 46.
-  reverseCharge  Boolean @default(false)
+  reverseCharge     Boolean   @default(false)
   /// e-invoicing: the IRP's registration number and acknowledgement, and the signed QR.
-  irn            String?
-  irnAckNo       String?
-  irnAckAt       DateTime?
-  signedQrCode   String?
+  irn               String?
+  irnAckNo          String?
+  irnAckAt          DateTime?
+  signedQrCode      String?
   /// not_applicable | pending | registered | cancelled | failed
-  eInvoiceStatus String  @default("not_applicable")
+  eInvoiceStatus    String    @default("not_applicable")
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   lines         InvoiceLine[]
   receipts      Receipt[]
@@ -3284,6 +3317,8 @@ model Course {
   feePlans CourseFeePlan[]
   addons   CourseAddon[]
 
+  marketingCampaigns MarketingCampaign[]
+
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
   spinOutBatchId     String?
@@ -3418,6 +3453,8 @@ model Enrollment {
   attendance    Attendance[]
   dailyProgress DailyProgress[]
   logs          LearnerLog[]
+
+  marketingAttributions MarketingAttribution[]
 
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
@@ -4116,7 +4153,7 @@ model EmploymentRelationship {
   aadhaarReference String?
   uanNumber        String?
 
-  deletedAt DateTime?
+  deletedAt                       DateTime?
   // ---- Compliance (workstreams C, E, F, G) ----
   /// employee | contractor | consultant | intern | apprentice — drives Sec 192 vs 194C/194J.
   engagementType                  String    @default("employee")
@@ -4134,8 +4171,8 @@ model EmploymentRelationship {
   backgroundVerificationConsentAt DateTime?
   codeOfConductAcknowledgedAt     DateTime?
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   assignments         Assignment[]
   compensationRecords CompensationRecord[]
@@ -4567,18 +4604,18 @@ model PayrollInstruction {
   paymentId   String?
 
   // ---- Statutory lines (workstream E). Zero until computed; `computedFrom` names the rate-table versions used. ----
-  basicPay        Decimal @default(0) @db.Decimal(14, 2)
-  hra             Decimal @default(0) @db.Decimal(14, 2)
-  otherAllowances Decimal @default(0) @db.Decimal(14, 2)
-  pfEmployee      Decimal @default(0) @db.Decimal(14, 2)
-  pfEmployer      Decimal @default(0) @db.Decimal(14, 2)
-  epsEmployer     Decimal @default(0) @db.Decimal(14, 2)
-  esiEmployee     Decimal @default(0) @db.Decimal(14, 2)
-  esiEmployer     Decimal @default(0) @db.Decimal(14, 2)
-  professionalTax Decimal @default(0) @db.Decimal(14, 2)
-  tdsAmount       Decimal @default(0) @db.Decimal(14, 2)
-  lwfEmployee     Decimal @default(0) @db.Decimal(14, 2)
-  lwfEmployer     Decimal @default(0) @db.Decimal(14, 2)
+  basicPay        Decimal   @default(0) @db.Decimal(14, 2)
+  hra             Decimal   @default(0) @db.Decimal(14, 2)
+  otherAllowances Decimal   @default(0) @db.Decimal(14, 2)
+  pfEmployee      Decimal   @default(0) @db.Decimal(14, 2)
+  pfEmployer      Decimal   @default(0) @db.Decimal(14, 2)
+  epsEmployer     Decimal   @default(0) @db.Decimal(14, 2)
+  esiEmployee     Decimal   @default(0) @db.Decimal(14, 2)
+  esiEmployer     Decimal   @default(0) @db.Decimal(14, 2)
+  professionalTax Decimal   @default(0) @db.Decimal(14, 2)
+  tdsAmount       Decimal   @default(0) @db.Decimal(14, 2)
+  lwfEmployee     Decimal   @default(0) @db.Decimal(14, 2)
+  lwfEmployer     Decimal   @default(0) @db.Decimal(14, 2)
   computedFrom    Json?
   /// A payslip, once issued, is final — like a tax invoice. Number from the `P` series.
   payslipNumber   String?
@@ -4655,11 +4692,11 @@ model Offboarding {
   settlementAmount Decimal? @db.Decimal(14, 2)
 
   // ---- Full-and-final components (workstreams E, F). `settlementAmount` stays the total. ----
-  gratuityAmount          Decimal?  @db.Decimal(14, 2)
-  leaveEncashmentAmount   Decimal?  @db.Decimal(14, 2)
-  bonusAmount             Decimal?  @db.Decimal(14, 2)
-  noticeRecoveryAmount    Decimal?  @db.Decimal(14, 2)
-  settlementComputedAt    DateTime?
+  gratuityAmount            Decimal?  @db.Decimal(14, 2)
+  leaveEncashmentAmount     Decimal?  @db.Decimal(14, 2)
+  bonusAmount               Decimal?  @db.Decimal(14, 2)
+  noticeRecoveryAmount      Decimal?  @db.Decimal(14, 2)
+  settlementComputedAt      DateTime?
   relievingLetterDocumentId String?
 
   createdAt DateTime @default(now())
@@ -4705,7 +4742,7 @@ model LedgerAccount {
   /// Set by `pnpm division:spin-out` on an account it opened at zero for a
   /// subsidiary from a carried transaction's account name — cash never moves
   /// by data migration, so this says so on the account itself.
-  openingNote String?
+  openingNote    String?
   /// Names the spin-out batch that created this account, for `--revert`.
   spinOutBatchId String?
 
@@ -4816,10 +4853,10 @@ model Transaction {
   /// Set on a row this script created in the subsidiary, naming the batch — the
   /// only rows `pnpm division:spin-out --revert` may remove.
   spinOutBatchId     String?
-  createdById String?
-  deletedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdById        String?
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, txnDate])
@@ -4861,25 +4898,25 @@ model VendorBill {
   createdById       String?
   deletedAt         DateTime?
   // ---- Compliance (workstreams B, C) ----
-  vendorPan          String?
+  vendorPan         String?
   /// Reverse charge on this inward supply: tax the company pays on the vendor's behalf.
-  rcmApplicable      Boolean  @default(false)
-  rcmTaxAmount       Decimal  @default(0) @db.Decimal(18, 2)
+  rcmApplicable     Boolean   @default(false)
+  rcmTaxAmount      Decimal   @default(0) @db.Decimal(18, 2)
   /// TDS deducted at approval, from the dated section-rate table.
-  tdsSection         String?
-  tdsRate            Decimal? @db.Decimal(5, 2)
-  tdsAmount          Decimal  @default(0) @db.Decimal(18, 2)
+  tdsSection        String?
+  tdsRate           Decimal?  @db.Decimal(5, 2)
+  tdsAmount         Decimal   @default(0) @db.Decimal(18, 2)
   /// A lower/nil-deduction certificate (Sec 197) reference, when one overrides the table.
-  tdsCertificateRef  String?
-  tdsChallanId       String?
+  tdsCertificateRef String?
+  tdsChallanId      String?
   /// MSME (Sec 43B(h)): a Udyam-registered vendor must be paid within the agreed term or 45 days.
-  vendorUdyamNumber  String?
-  agreedTermDays     Int?
-  msmeDueAt          DateTime?
-  msmeNotifiedAt     DateTime?
+  vendorUdyamNumber String?
+  agreedTermDays    Int?
+  msmeDueAt         DateTime?
+  msmeNotifiedAt    DateTime?
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, status, dueDate])

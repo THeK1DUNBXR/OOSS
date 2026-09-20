@@ -157,6 +157,11 @@ export const ALL_RESOURCES = [
   'it_risks', 'it_policies', 'it_policy_acknowledgements', 'it_controls', 'it_access_reviews', 'it_findings', // F
   'it_initiatives', 'it_budgets', 'it_tech_debt',             // G
   'it_continuity',                                            // H
+  // Marketing (mkt, Canon H_MKT). Kept in lockstep with RESOURCES in
+  // `@kaizen/shared/permissions.ts`.
+  'campaigns', 'audiences', 'marketing_templates', 'marketing_sends', 'marketing_journeys',
+  'marketing_forms', 'marketing_events', 'marketing_assets', 'marketing_budgets',
+  'marketing_referrals', 'marketing_analytics', 'marketing_settings',
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */
@@ -348,6 +353,24 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'one_on_ones', cell: '-' },
   { resource: 'succession_candidates', cell: '-' },
   { resource: 'time_audit', cell: '-' },
+
+  // ---- Marketing (mkt, Canon H_MKT) ---------------------------------------
+  // Proposes campaigns end to end and never approves its own — the same
+  // proposer/approver split compensation already keeps with Finance.
+  { resource: 'campaigns', cell: 'VCEDAXF' },
+  { resource: 'audiences', cell: 'VCEDXF' },
+  // Reviews template content, so `approve` sits here.
+  { resource: 'marketing_templates', cell: 'VCEDXF,approve' },
+  { resource: 'marketing_sends', cell: 'VCEDXF' },
+  { resource: 'marketing_journeys', cell: 'VCEDXF' },
+  { resource: 'marketing_forms', cell: 'VCEDXF' },
+  { resource: 'marketing_events', cell: 'VCEDAXF' },
+  { resource: 'marketing_assets', cell: 'VCEDXF,approve' },
+  // Proposes a budget; Finance approves it — the same split as `compensation`.
+  { resource: 'marketing_budgets', cell: 'VCE' },
+  { resource: 'marketing_referrals', cell: 'VCEDXF' },
+  { resource: 'marketing_analytics', cell: 'VXF' },
+  { resource: 'marketing_settings', cell: 'VCED' },
 ];
 
 /**
@@ -545,6 +568,22 @@ const financeHead: GrantSpec[] = [
   { resource: 'one_on_ones', cell: '-' },
   { resource: 'succession_candidates', cell: '-' },
   { resource: 'time_audit', cell: '-' },
+
+  // ---- Marketing (mkt, Canon H_MKT) ---------------------------------------
+  // Approves campaigns and budgets — the money-side sign-off — but proposes
+  // neither, the same shape it holds over `compensation`.
+  { resource: 'campaigns', cell: 'V,approve' },
+  { resource: 'marketing_budgets', cell: 'VCEDXF,approve' },
+  { resource: 'marketing_analytics', cell: 'VXF' },
+  { resource: 'marketing_sends', cell: 'V' },
+  { resource: 'audiences', cell: 'V' },
+  { resource: 'marketing_templates', cell: 'V' },
+  { resource: 'marketing_journeys', cell: 'V' },
+  { resource: 'marketing_forms', cell: 'V' },
+  { resource: 'marketing_events', cell: 'V' },
+  { resource: 'marketing_assets', cell: 'V' },
+  { resource: 'marketing_referrals', cell: 'V' },
+  { resource: 'marketing_settings', cell: 'V' },
 ];
 
 /**
@@ -702,6 +741,16 @@ const employee: GrantSpec[] = [
   { resource: 'one_on_ones', cell: '-' },
   { resource: 'succession_candidates', cell: '-' },
   { resource: 'time_audit', cell: '-' },
+  // ---- Marketing (mkt, Canon H_MKT) ---------------------------------------
+  { resource: 'campaigns', cell: 'V' },
+  // Sees every event on the calendar, and may propose/run their own.
+  { resource: 'marketing_events', cell: 'V@all' },
+  { resource: 'marketing_events', cell: 'VCE@own' },
+  { resource: 'marketing_referrals', cell: 'VC@own' },
+  { resource: 'marketing_assets', cell: 'V' },
+  { resource: 'marketing_analytics', cell: 'V' },
+  { resource: 'marketing_forms', cell: 'V' },
+  { resource: 'marketing_sends', cell: 'V@own' },
 ];
 
 // ---------------------------------------------------------------------------

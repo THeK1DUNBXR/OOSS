@@ -38,6 +38,7 @@ import { runCeoDetectors } from '../domains/ceo/detectors.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
 import { COMPLIANCE_JOBS } from './compliance/index.js';
 import { IT_JOBS } from './it/index.js';
+import { MARKETING_JOBS } from './marketing.js';
 
 export interface JobResult {
   processed: number;
@@ -265,6 +266,7 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   ...COMPLIANCE_JOBS,
   ...IT_JOBS,
+  ...MARKETING_JOBS,
 ];
 
 // ---------------------------------------------------------------------------

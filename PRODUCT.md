@@ -31,9 +31,9 @@ make that separation visible, not just rely on the server to enforce it.
 
 KaiERP is the ERP platform Kaizen Infinities runs its own company on. CRM,
 HRM and Finance are the three domains the company runs on; Education,
-Projects, Commercial, Governance and a Command Center ship alongside them
-because the product's premise is that all of it is one system that shares
-identity, permissions and an event history — not nine tools that happen to
+Projects, Commercial, Marketing, Governance and a Command Center ship
+alongside them because the product's premise is that all of it is one system
+that shares identity, permissions and an event history — not nine tools that happen to
 integrate. Success means the company's own day-to-day work (sales pipeline,
 staff lifecycle, invoicing, GST filing, course delivery, partnership
 management) runs on this platform with figures that tie back to the books

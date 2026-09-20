@@ -10,8 +10,8 @@ model Holiday {
   id       String @id @default(cuid())
   tenantId String
 
-  date DateTime
-  name String
+  date  DateTime
+  name  String
   /// national | state | restricted
   kind  String
   /// The state the holiday applies in, when `kind` is not national.
@@ -52,8 +52,8 @@ model LeaveEncashment {
   tenantId String
 
   employmentRelationshipId String
-  leaveTypeId               String
-  leaveTransactionId        String?
+  leaveTypeId              String
+  leaveTransactionId       String?
 
   days   Decimal @db.Decimal(6, 2)
   amount Decimal @db.Decimal(14, 2)
@@ -77,14 +77,14 @@ model WorkingHoursRule {
   effectiveFrom DateTime
 
   dailyCapHours        Decimal @db.Decimal(5, 2)
-  weeklyCapHours        Decimal @db.Decimal(5, 2)
-  spreadOverHours       Decimal @db.Decimal(5, 2)
-  otMultiplier          Decimal @db.Decimal(4, 2)
-  otCapPerQuarterHours  Decimal @db.Decimal(6, 2)
+  weeklyCapHours       Decimal @db.Decimal(5, 2)
+  spreadOverHours      Decimal @db.Decimal(5, 2)
+  otMultiplier         Decimal @db.Decimal(4, 2)
+  otCapPerQuarterHours Decimal @db.Decimal(6, 2)
   /// Checked against the live TN notification, not just this plan's reading
   /// of the Act.
-  confirmed             Boolean @default(false)
-  note                  String?
+  confirmed            Boolean @default(false)
+  note                 String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -102,7 +102,7 @@ model OvertimeAccrual {
 
   employmentRelationshipId String
   /// "2026-W37"
-  isoWeek                   String
+  isoWeek                  String
 
   hours  Decimal @db.Decimal(6, 2)
   rate   Decimal @db.Decimal(10, 2)
@@ -126,7 +126,7 @@ model InternalCommitteeMember {
 
   /// presiding | member | external
   role        String
-  isWoman     Boolean  @default(false)
+  isWoman     Boolean   @default(false)
   appointedOn DateTime
   /// Null while the term is current.
   termEnds    DateTime?
@@ -156,9 +156,9 @@ model PoshComplaint {
   /// received | inquiry | report_submitted | closed | withdrawn
   status     String   @default("received")
 
-  inquiryDueAt   DateTime
+  inquiryDueAt    DateTime
   inquiryClosedAt DateTime?
-  reportDueAt    DateTime?
+  reportDueAt     DateTime?
 
   findings String?
   action   String?
@@ -202,7 +202,7 @@ model PoshAnnualReport {
   /// prepared | filed
   status   String @default("prepared")
 
-  preparedAt   DateTime @default(now())
+  preparedAt   DateTime  @default(now())
   preparedById String?
   filedAt      DateTime?
   filedById    String?
@@ -257,7 +257,7 @@ model HrLetter {
   kind String
 
   employmentRelationshipId String?
-  applicationId             String?
+  applicationId            String?
 
   number   String
   snapshot Json

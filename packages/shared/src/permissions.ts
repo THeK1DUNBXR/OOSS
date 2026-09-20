@@ -231,6 +231,21 @@ export const RESOURCES = [
   'risks', 'policy_documents',                                        // Phase 7
   'financial_scenarios', 'headcount_plans',                           // Phase 8
   'seats', 'one_on_ones', 'succession_candidates', 'time_audit',      // Phase 9
+  // Marketing (mkt, Canon H_MKT). `channels`, score rules, vendors, claims and
+  // plans live under `marketing_settings` rather than each taking a resource
+  // of their own — none of them differ in who may touch them.
+  'campaigns',
+  'audiences',
+  'marketing_templates',
+  'marketing_sends',
+  'marketing_journeys',
+  'marketing_forms',
+  'marketing_events',
+  'marketing_assets',
+  'marketing_budgets',
+  'marketing_referrals',
+  'marketing_analytics',
+  'marketing_settings',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

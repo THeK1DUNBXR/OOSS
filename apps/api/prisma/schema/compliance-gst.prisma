@@ -109,9 +109,9 @@ model EInvoiceConfig {
   id       String @id @default(cuid())
   tenantId String @unique
 
-  provider          String
-  credentialsRef    String?
-  active            Boolean @default(true)
+  provider       String
+  credentialsRef String?
+  active         Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -128,7 +128,7 @@ model Gstr2bImport {
 
   period String
   /// The b2b document rows from the offline JSON, as given.
-  rows Json
+  rows   Json
 
   importedAt   DateTime @default(now())
   importedById String?
@@ -149,7 +149,7 @@ model Gstr2bMatch {
   vendorBillId String?
 
   /// matched | missing_in_2b | missing_in_books | mismatch
-  status String
+  status     String
   /// 2B value less books value, positive where the portal shows more than the
   /// books claim.
   difference Decimal @default(0) @db.Decimal(18, 2)
@@ -176,14 +176,14 @@ model GstRateTable {
   /// The ceiling on the late fee for a single return, per the notification in
   /// force (varies by return type and by nil/non-nil; kept as one cap here,
   /// the platform's simplification, stated in docs/compliance/gst.md).
-  cap Decimal @db.Decimal(10, 2)
+  cap               Decimal @db.Decimal(10, 2)
   /// Annualised, simple interest on the net cash tax liability (Sec 50(1)).
-  interestPct Decimal @db.Decimal(5, 2)
+  interestPct       Decimal @db.Decimal(5, 2)
   /// The day of the following month each return type is due by — also a
   /// notified figure, not a constant: GSTR-1 the 11th, GSTR-3B the 20th, as
   /// notified today.
-  gstr1DueDay Int @default(11)
-  gstr3bDueDay Int @default(20)
+  gstr1DueDay       Int     @default(11)
+  gstr3bDueDay      Int     @default(20)
 
   createdAt DateTime @default(now())
 

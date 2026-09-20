@@ -507,6 +507,139 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     return finalise(domainCode, buildFactors(domainCode, raw));
   }
 
+  if (domainCode === 'H_MKT') {
+    // "Ever been live" is the falsifiable gate: a campaign that has reached
+    // live (whatever its current status) is evidence the marketing motion has
+    // actually run, not merely been drafted.
+    const everLive = await prisma.marketingCampaign.count({
+      where: { tenantId: auth.tenantId, status: { in: ['live', 'paused', 'completed', 'archived'] } },
+    });
+    if (everLive === 0) return notYetMeasured(domainCode);
+
+    const now = new Date();
+    const period = (days: number) => new Date(now.getTime() - days * 86_400_000);
+    const thisWindowStart = period(30);
+    const priorWindowStart = period(60);
+
+    const [leadsLast30, spendThis30, spendPrior30, consented, contacted, sendsLast30] = await Promise.all([
+      prisma.lead.findMany({
+        where: { tenantId: auth.tenantId, deletedAt: null, createdAt: { gte: thisWindowStart } },
+        select: { id: true, campaignId: true, channelKey: true },
+      }),
+      prisma.marketingSpend.aggregate({
+        where: { tenantId: auth.tenantId, deletedAt: null, spendDate: { gte: thisWindowStart, lte: now } },
+        _sum: { amount: true },
+      }),
+      prisma.marketingSpend.aggregate({
+        where: { tenantId: auth.tenantId, deletedAt: null, spendDate: { gte: priorWindowStart, lt: thisWindowStart } },
+        _sum: { amount: true },
+      }),
+      prisma.consent.count({ where: { tenantId: auth.tenantId, purposeCode: 'marketing', status: 'granted' } }),
+      prisma.marketingTouchpoint.findMany({
+        where: { tenantId: auth.tenantId, deletedAt: null, personId: { not: null }, occurredAt: { gte: period(90) } },
+        distinct: ['personId'],
+        select: { personId: true },
+      }),
+      prisma.marketingSend.findMany({
+        where: { tenantId: auth.tenantId, deletedAt: null, status: 'sent', sentAt: { gte: thisWindowStart } },
+        select: { recipientCount: true, deliveredCount: true, bouncedCount: true },
+      }),
+    ]);
+
+    const attributedLeads = leadsLast30.filter((l) => l.campaignId || l.channelKey);
+    const attributedShare = leadsLast30.length > 0 ? attributedLeads.length / leadsLast30.length : 0;
+
+    const attributedLeadIds = attributedLeads.map((l) => l.id);
+    const oppsFromAttributed = attributedLeadIds.length
+      ? await prisma.opportunity.count({ where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: attributedLeadIds } } })
+      : 0;
+    const conversionRate = attributedLeadIds.length > 0 ? oppsFromAttributed / attributedLeadIds.length : 0;
+
+    // Leads attributed in the prior 30-day window, for the cost-per-lead trend.
+    const priorAttributedLeads = await prisma.lead.count({
+      where: {
+        tenantId: auth.tenantId,
+        deletedAt: null,
+        createdAt: { gte: priorWindowStart, lt: thisWindowStart },
+        OR: [{ campaignId: { not: null } }, { channelKey: { not: null } }],
+      },
+    });
+    const spendThis = num(spendThis30._sum.amount) ?? 0;
+    const spendPrior = num(spendPrior30._sum.amount) ?? 0;
+    const cplThis = attributedLeads.length > 0 ? spendThis / attributedLeads.length : null;
+    const cplPrior = priorAttributedLeads > 0 ? spendPrior / priorAttributedLeads : null;
+    // Neutral (ratio 1) when either side cannot be computed — never a
+    // fabricated improvement or regression.
+    const cplRatio = cplThis !== null && cplPrior !== null && cplPrior > 0 ? cplThis / cplPrior : 1;
+
+    const contactedCount = contacted.length;
+    const consentCoverage = contactedCount > 0 ? Math.min(consented / contactedCount, 1) : 0;
+
+    const recipients = sendsLast30.reduce((s, r) => s + r.recipientCount, 0);
+    const delivered = sendsLast30.reduce((s, r) => s + r.deliveredCount, 0);
+    const bounced = sendsLast30.reduce((s, r) => s + r.bouncedCount, 0);
+    const deliverableBase = recipients - bounced;
+    const deliverability = deliverableBase > 0 ? delivered / deliverableBase : 0;
+
+    const factors = buildFactors(domainCode, [
+      {
+        code: 'attributed_lead_share',
+        label: 'Leads with a known marketing source',
+        weight: 25,
+        value: Number((attributedShare * 100).toFixed(1)),
+        target: 70,
+        higherIsBetter: true,
+        narrative: `${attributedLeads.length} of ${leadsLast30.length} leads in the last 30 days carry a campaign or channel attribution.`,
+        drill: '/marketing/analytics?view=funnel&range=30d',
+      },
+      {
+        code: 'campaign_to_opportunity',
+        label: 'Attributed leads becoming opportunities',
+        weight: 25,
+        value: Number((conversionRate * 100).toFixed(1)),
+        target: 25,
+        higherIsBetter: true,
+        narrative: `${oppsFromAttributed} of ${attributedLeadIds.length} attributed leads have become an opportunity.`,
+        drill: '/marketing/analytics?view=funnel&stage=opportunities',
+      },
+      {
+        code: 'cost_per_lead_trend',
+        label: 'Cost per lead versus the prior 30 days',
+        weight: 20,
+        value: Number(cplRatio.toFixed(2)),
+        target: 1.0,
+        higherIsBetter: false,
+        narrative:
+          cplThis !== null && cplPrior !== null
+            ? `Cost per lead is ${fmt(cplThis)} this period against ${fmt(cplPrior)} the period before — a ratio of ${cplRatio.toFixed(2)}.`
+            : 'Not enough attributed leads or spend in one of the two periods to trend cost per lead yet.',
+        drill: '/marketing/analytics?view=channels&range=30d',
+      },
+      {
+        code: 'consent_coverage',
+        label: 'Contacted people with recorded marketing consent',
+        weight: 15,
+        value: Number((consentCoverage * 100).toFixed(1)),
+        target: 95,
+        higherIsBetter: true,
+        narrative: `${consented} of ${contactedCount} people touched in the last 90 days have a granted marketing consent on file.`,
+        drill: '/marketing/analytics?view=consent',
+      },
+      {
+        code: 'send_deliverability',
+        label: 'Messages actually reaching people',
+        weight: 15,
+        value: Number((deliverability * 100).toFixed(1)),
+        target: 97,
+        higherIsBetter: true,
+        narrative: `${delivered} delivered of ${deliverableBase} non-bounced recipients across sends in the last 30 days.`,
+        drill: '/marketing/analytics?view=sends&range=30d',
+      },
+    ]);
+
+    return finalise(domainCode, factors);
+  }
+
   // Domains whose modules have not landed report honestly.
   return notYetMeasured(domainCode);
 }
@@ -600,6 +733,7 @@ async function domainOwner(domainCode: string): Promise<string | null> {
     H_EDU: ['hr_ops_manager', 'chairman'],
     H_DLV: ['hr_ops_manager', 'chairman'],
     H_PPL: ['hr_ops_manager', 'chairman'],
+    H_MKT: ['hr_ops_manager', 'chairman'],
     H_OPS: ['hr_ops_manager', 'chairman'],
     H_RSK: ['chairman'],
     H_TEC: ['hr_ops_manager', 'chairman'],
