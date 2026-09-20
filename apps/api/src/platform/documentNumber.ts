@@ -35,7 +35,13 @@ import { ApiError } from './errors.js';
 export const DOCUMENT_SERIES = {
   invoice: 'I',
   receipt: 'R',
-  finalInvoice: 'F',
+  /// The tax invoice raised at the end of a fee-instalment run — see
+  /// `finalizeCourseFeeInvoice` in `domains/receipts.ts`. `KIPL/TI/26-27/001`.
+  finalInvoice: 'TI',
+  /// The internal working invoice a course-fee student's instalments are
+  /// tracked against. Never handed to the student and never reported for
+  /// tax — see the `Invoice` doc comment. `KIPL/temp/26-27/001`.
+  tempInvoice: 'temp',
   // Added with the compliance work (docs/plan/compliance.md): each is a
   // document that is final once issued, so each gets a gapless series.
   creditNote: 'C',
@@ -55,7 +61,8 @@ export type DocumentSeries = (typeof DOCUMENT_SERIES)[keyof typeof DOCUMENT_SERI
 export const SERIES_LABELS: Record<DocumentSeries, string> = {
   I: 'Tax invoices',
   R: 'Receipts',
-  F: 'Final invoices',
+  TI: 'Final (tax) invoices',
+  temp: 'Temporary invoices (internal)',
   C: 'Credit notes',
   D: 'Debit notes',
   P: 'Payslips',
@@ -169,10 +176,14 @@ export async function peekNextNumbers(prefix: string, at: Date = new Date(), yea
       example,
       length: example.length,
       /**
-       * Only the invoice series is reported to the portal, so only it is capped.
-       * A receipt number can be as long as the company likes.
+       * Only the two series that are actually reported to the portal are
+       * capped: a generic tax invoice, and the final (tax) invoice a
+       * fee-instalment run closes with. A receipt or a temp invoice number
+       * can be as long as the company likes — neither is filed.
        */
-      tooLongForThePortal: series === DOCUMENT_SERIES.invoice && example.length > MAX_INVOICE_NUMBER_LENGTH,
+      tooLongForThePortal:
+        (series === DOCUMENT_SERIES.invoice || series === DOCUMENT_SERIES.finalInvoice) &&
+        example.length > MAX_INVOICE_NUMBER_LENGTH,
     };
   });
 }

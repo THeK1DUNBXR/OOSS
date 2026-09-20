@@ -5,10 +5,12 @@ import { contextMiddleware, errorMiddleware } from './lib/http.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { registerSubscribers } from './events/handlers.js';
 import { prisma } from './platform/db.js';
+import { config } from './platform/config.js';
 import { BUILD, STARTED_AT, buildLabel } from './platform/build.js';
 import { reconcileNavForAllTenants } from './platform/navSync.js';
 import { addMissingGrantsForAllTenants } from './platform/grantSync.js';
 import { reconcileTenantKinds } from './platform/tenantKind.js';
+import { reconcileMarketingDefaultsForAllTenants } from './platform/marketingSync.js';
 import { assertProductionSecrets } from './lib/auth.js';
 
 export function createApp() {
@@ -43,14 +45,15 @@ export function createApp() {
   return app;
 }
 
-const port = Number(process.env.PORT ?? 4000);
+const port = config.PORT;
 
-if (process.env.NODE_ENV !== 'test') {
+if (config.NODE_ENV !== 'test') {
   // CMP-COR-001, stated again explicitly right before the process actually
   // starts serving traffic — `lib/auth.ts` already checks this at module
   // load, which covers every import path; this is the last chance before a
   // socket opens.
   assertProductionSecrets();
+
 
   const app = createApp();
   // Cross-domain subscribers register once at boot, against canonical names only.
@@ -101,6 +104,20 @@ if (process.env.NODE_ENV !== 'test') {
     })
     .catch((error: unknown) => {
       console.error('Tenant kinds could not be reconciled at boot:', error);
+    });
+
+  // Marketing's own per-tenant defaults (channels, starter score rules) —
+  // same idempotent every-boot reconcile shape as nav and grants above.
+  void reconcileMarketingDefaultsForAllTenants()
+    .then(({ tenants, channelsCreated, scoreRulesCreated }) => {
+      if (channelsCreated > 0 || scoreRulesCreated > 0) {
+        console.log(
+          `Marketing defaults reconciled across ${tenants} tenant(s): ${channelsCreated} channel(s), ${scoreRulesCreated} score rule(s) created`,
+        );
+      }
+    })
+    .catch((error: unknown) => {
+      console.error('Marketing defaults could not be reconciled at boot:', error);
     });
 
   app.listen(port, () => {

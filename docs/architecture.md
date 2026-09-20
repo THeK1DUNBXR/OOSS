@@ -280,6 +280,29 @@ would let it approve a commercial decision.
 
 ---
 
+## HCM
+
+The Human Capital Management platform sits on planes P2, P7, and P9 — world model (the entities that exist: roles, shifts, policies), governance (who approves and who sees what), and experience (the screens staff and managers use). It shares P0 tenancy, P1 identity and P4 event fabric with every other domain.
+
+**Schema files.** Every HCM workstream (workforce, time, leave-policy, recruiting, performance, learning, compensation, payroll-ops, engagement, separations, assets, analytics, workflow) creates a new `apps/api/prisma/schema/hcm-<workstream>.prisma` file, never edits to `main.prisma`. Each new model carries:
+
+```
+id String @id @default(cuid())
+tenantId String
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+
+@@index([tenantId])
+```
+
+A reference to an existing model (Employee, Person, User, EmploymentRelationship, etc.) is a plain `<model>Id String` column, never a `@relation` to main.prisma. References between HCM models use the same pattern.
+
+**The Me surface.** A new navigation group `me` placed before `people` in GROUP_ORDER exposes self-service screens: /me/home, /me/attendance, /me/leave, /me/payslips, /me/performance, /me/learning, /me/money, /me/requests, /me/exit. Employees hold grants at `own` scope and see only their own data. The navigation is gated by grants — the `my_leave:view@own` grant appears only for employees.
+
+**What HCM never does:** It never posts to the ledger except via the payroll journal handoff (Books ingests PayrollJournal). It never files with a government portal, submits a return, or transmits a form without human recording (prepared and exported, never invented). It never approves its own records — the Self-Dealing Bar holds on every privileged transition. It never holds regulated identifiers in responses — PAN, Aadhaar, bank account, ESIC number are structurally absent unless the grant allows.
+
+---
+
 ## Health scores
 
 `apps/api/src/domains/health.ts`

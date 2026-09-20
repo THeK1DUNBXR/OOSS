@@ -84,13 +84,13 @@ model ComplianceObligation {
   /// upcoming | due | filed | overdue | waived
   status String @default("upcoming")
 
-  filedAt             DateTime?
-  filedById           String?
-  evidenceDocumentId  String?
+  filedAt            DateTime?
+  filedById          String?
+  evidenceDocumentId String?
   /// The portal's acknowledgement — ARN, challan number, acknowledgement
   /// number. A filing with none was not filed (mirrors `GstFiling.arn`).
-  reference           String?
-  note                String?
+  reference          String?
+  note               String?
 
   /// Every ladder rung already notified for this obligation (e.g. `[30, 7,
   /// 1]`), so the daily job never re-notifies a rung it already fired —

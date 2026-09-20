@@ -218,6 +218,54 @@ export const RESOURCES = [
   'it_risks', 'it_policies', 'it_policy_acknowledgements', 'it_controls', 'it_access_reviews', 'it_findings',
   'it_initiatives', 'it_budgets', 'it_tech_debt',
   'it_continuity',
+  // Chairman's Office (docs/plan/ceo-office.md §6, Phase 0 — the resources for
+  // phases 1-9 are declared here up front so nine phases can build in
+  // parallel; §1/§3.4 of that plan name which non-chairman role, if any,
+  // holds a cell on each).
+  'kpi_definitions', 'ceo_cockpit',                                   // Phase 1
+  'strategic_themes', 'objectives', 'key_results',                    // Phase 2
+  'initiatives',                                                      // Phase 3
+  'meeting_series', 'meeting_instances',                              // Phase 4
+  'doa_matrix', 'ceo_approvals_inbox',                                // Phase 5
+  'board_packs', 'investor_updates', 'stakeholders',                  // Phase 6
+  'risks', 'policy_documents',                                        // Phase 7
+  'financial_scenarios', 'headcount_plans',                           // Phase 8
+  'seats', 'one_on_ones', 'succession_candidates', 'time_audit',      // Phase 9
+  // Marketing (mkt, Canon H_MKT). `channels`, score rules, vendors, claims and
+  // plans live under `marketing_settings` rather than each taking a resource
+  // of their own — none of them differ in who may touch them.
+  'campaigns',
+  'audiences',
+  'marketing_templates',
+  'marketing_sends',
+  'marketing_journeys',
+  'marketing_forms',
+  'marketing_events',
+  'marketing_assets',
+  'marketing_budgets',
+  'marketing_referrals',
+  'marketing_analytics',
+  'marketing_settings',
+  // HCM/HRMS (docs/plan/hcm.md), one group per workstream. `hcm_one_on_ones`
+  // and `hcm_policy_documents`, not `one_on_ones`/`policy_documents`: those
+  // are already the Chairman's Office's own resources (above).
+  'employee_profiles', 'employee_documents', 'reporting_lines', 'org_design', 'employee_changes', // WS1 workforce
+  'shifts', 'rosters', 'clock_events', 'timesheets', 'overtime_requests', 'comp_offs', 'attendance_regularisations', // WS2 time
+  'leave_policies', 'leave_accruals', 'leave_approval_chains', // WS3 leavepolicy
+  'job_postings', 'candidates', 'interviews', 'scorecards', 'offers', 'referrals', 'background_verifications', 'onboarding_tasks', // WS4 recruiting
+  'review_cycles', 'reviews', 'calibrations', 'feedback', 'hcm_one_on_ones', 'pips', 'succession_plans', // WS5 performance
+  'training_programs', 'training_sessions', 'training_enrollments', 'certifications', 'idps', 'training_budgets', // WS6 learning
+  'pay_grades', 'salary_revisions', 'variable_pay', 'benefit_plans', 'benefit_enrollments', 'employee_loans', 'expense_claims', // WS7 compensation
+  'pay_items', 'adhoc_pay', 'arrears', 'payroll_journals', 'bank_advices', 'payroll_reconciliations', 'payroll_calendar', 'payroll_queries', // WS8 payrollops
+  'announcements', 'recognitions', 'surveys', 'hr_cases', 'hcm_policy_documents', 'exit_interviews', // WS9 engagement
+  'resignations', 'exit_clearances', 'no_dues', 'alumni', 'notice_policies', // WS10 separations
+  // `hcm_assets`, not `assets`: `assets` is already the finance fixed-asset
+  // register (depreciation, borrowing) — a distinct resource from an HR
+  // laptop/ID-card inventory, and sharing the name would silently widen
+  // finance_head's existing `assets:VCEDAXF` onto HR's asset desk.
+  'hcm_assets', 'asset_assignments', 'travel_requests', 'letter_requests', // WS11 assets
+  'hr_analytics', 'hr_reports', // WS12 analytics
+  'hr_requests', 'hr_request_types', 'authority_delegations', // WS13 workflow
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

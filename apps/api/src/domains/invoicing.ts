@@ -186,6 +186,20 @@ export function invoiceLabel(invoice: { recordCode?: string | null; draftReferen
   return invoice.recordCode ?? invoice.draftReference ?? 'this draft';
 }
 
+/**
+ * Whether an invoice is the internal course-fee working record rather than a
+ * real tax document — see the `Invoice` doc comment in the schema.
+ *
+ * `enrollmentDate` is the same signal that already switches an invoice's
+ * printed shape to the Kaizen course ledger (`ledger` in `invoiceDocument`),
+ * so it is reused here rather than adding a second flag that could disagree
+ * with it: a course-fee invoice is exactly the one raised with an enrolment
+ * date, and nothing else is.
+ */
+export function isCourseFeeInvoice(invoice: { enrollmentDate?: Date | string | null }): boolean {
+  return Boolean(invoice.enrollmentDate);
+}
+
 // ---------------------------------------------------------------------------
 // Totals — one reading of them, for every caller
 // ---------------------------------------------------------------------------
@@ -510,7 +524,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
     let hsnSac = line.hsnSac ?? null;
     let revenueMethod: RevenueTreatment = 'point_in_time';
     let courseId = line.courseId ?? null;
-    let courseAddonId = line.courseAddonId ?? null;
+    const courseAddonId = line.courseAddonId ?? null;
     let enrollmentId: string | null = null;
 
     // The enrolment is the student on the course, which is the thing being
@@ -724,9 +738,21 @@ export async function createInvoice(input: InvoiceInput) {
   // from the platform's own series instead: the tax series has to be
   // consecutive, and a number sitting on a draft nobody issued is a gap the
   // return cannot explain.
+  //
+  // A course-fee invoice (`enrollmentDate` set) is never that document — it is
+  // the internal working record instalments are tracked against — so it draws
+  // from the `temp` series instead and its `invoiceType` is forced regardless
+  // of what was asked for, the same way `paymentType` below is derived rather
+  // than trusted.
+  const courseFee = isCourseFeeInvoice(input);
   const numbering = await documentNumbering();
   const recordCode = issue
-    ? await nextDocumentNumber(DOCUMENT_SERIES.invoice, numbering.prefix, issuedDate, numbering.yearFormat)
+    ? await nextDocumentNumber(
+        courseFee ? DOCUMENT_SERIES.tempInvoice : DOCUMENT_SERIES.invoice,
+        numbering.prefix,
+        issuedDate,
+        numbering.yearFormat,
+      )
     : null;
   const draftReference = await nextRecordCode('DRF');
 
@@ -995,11 +1021,17 @@ export async function issueInvoiceDraft(
 
   // Here is where the invoice number is allocated, and nowhere else: at the
   // moment the draft becomes a document. Allocating it inside the same update
-  // as the status means the two cannot come apart.
+  // as the status means the two cannot come apart. A course-fee draft draws
+  // from the `temp` series instead — see `createInvoice`.
   const numbering = await documentNumbering();
   const recordCode =
     existing.recordCode ??
-    (await nextDocumentNumber(DOCUMENT_SERIES.invoice, numbering.prefix, issuedDate, numbering.yearFormat));
+    (await nextDocumentNumber(
+      isCourseFeeInvoice(existing) ? DOCUMENT_SERIES.tempInvoice : DOCUMENT_SERIES.invoice,
+      numbering.prefix,
+      issuedDate,
+      numbering.yearFormat,
+    ));
 
   const issued = await prisma.invoice.update({
     where: { id: invoiceId },
@@ -1295,17 +1327,26 @@ export async function collectInvoicePayment(
 
   await rehydrateReceivablesFor(invoice.organizationId ?? invoice.accountId);
 
-  // The moment a receipt brings the balance to zero, the statement naming every
-  // receipt is raised in the same breath — full payment at issue included, since
-  // that receipt settles the invoice too. Imported dynamically because the final
+  // The moment a receipt brings the balance to zero, the closing document is
+  // raised in the same breath — full payment at issue included, since that
+  // receipt settles the invoice too. Which function depends on what kind of
+  // invoice this is: a course-fee invoice gets its one-and-only final (tax)
+  // invoice, locked for the first and only time; a generic invoice gets the
+  // on-demand statement, as before. Imported dynamically because the final
   // invoice reads receipts and invoices back (`receipts.ts` imports from this
   // file already); doing it at call time rather than at module load avoids
   // that cycle mattering.
   let finalInvoice: { id: string; recordCode: string } | null = null;
   if (settled) {
-    const { raiseFinalInvoice } = await import('./receipts.js');
-    const final = await raiseFinalInvoice(invoice.id, {});
-    finalInvoice = { id: final.id, recordCode: final.recordCode };
+    if (isCourseFeeInvoice(invoice)) {
+      const { finalizeCourseFeeInvoice } = await import('./receipts.js');
+      const final = await finalizeCourseFeeInvoice(invoice.id, 'settled');
+      finalInvoice = { id: final.id, recordCode: final.recordCode };
+    } else {
+      const { raiseFinalInvoice } = await import('./receipts.js');
+      const final = await raiseFinalInvoice(invoice.id, {});
+      finalInvoice = { id: final.id, recordCode: final.recordCode };
+    }
   }
 
   return {
@@ -1516,8 +1557,13 @@ export async function invoiceDocument(invoiceId: string) {
     notes: invoice.notes,
     division: invoice.division,
     raisedBy: raisedBy?.fullName ?? null,
+    /**
+     * True for the internal course-fee working invoice — never a tax
+     * document, never handed to the student. See the `Invoice` doc comment.
+     */
+    isTempInvoice: isCourseFeeInvoice(invoice),
     // ---- Compliance (workstream B) ----
-    /** tax_invoice | bill_of_supply — Rule 49: a bill of supply carries no tax. */
+    /** tax_invoice | bill_of_supply | temp — Rule 49: a bill of supply carries no tax. */
     invoiceType: invoice.invoiceType,
     /** Rule 46(p): printed when tax on this supply is payable by the recipient. */
     reverseCharge: invoice.reverseCharge,
@@ -1689,8 +1735,20 @@ export async function invoiceDocument(invoiceId: string) {
       outstanding: totals.outstanding,
       settled: totals.outstanding <= 0.001,
       instalments: receipts.length,
-      /** True once there is something for a final invoice to consolidate. */
-      canRaiseFinalInvoice: receipts.length > 0 && invoice.status !== 'draft' && invoice.status !== 'void',
+      /**
+       * True once there is something for a final invoice to consolidate.
+       * Always false on a course-fee (temp) invoice: its final (tax) invoice
+       * is never raised on demand, only automatically — see
+       * `finalizeCourseFeeInvoiceNote` below.
+       */
+      canRaiseFinalInvoice:
+        !isCourseFeeInvoice(invoice) && receipts.length > 0 && invoice.status !== 'draft' && invoice.status !== 'void',
+      /** Explains the automatic path, for the screen to show in place of the button. */
+      finalizeCourseFeeInvoiceNote: isCourseFeeInvoice(invoice)
+        ? statements.length > 0
+          ? null
+          : 'Finalised automatically as a tax invoice once fully paid, or the moment the student withdraws — not raised on demand.'
+        : null,
     },
 
     /**

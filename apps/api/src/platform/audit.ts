@@ -96,6 +96,13 @@ registerGovernedEntities('fin', ['company_profile', 'gst_filing', 'invoice_line'
 // customers are charged; and a student's timeline carries complaints, which is
 // the last place an untraceable edit belongs.
 registerGovernedEntities('edu', ['course', 'cohort', 'learner_log']);
+// The cashbook. Every one of these was outside the audit log entirely: not
+// because a call was forgotten, but because `auditWrite` no-ops on an
+// unregistered subjectType, so even an explicit call would have done nothing.
+// Rule 3(1) of the Companies (Accounts) Rules requires an audit trail of each
+// and every transaction, and Rule 11(g) makes the auditor report on whether it
+// operated all year. These are the rows that rule is about.
+registerGovernedEntities('books', ['transaction', 'ledger_account', 'ledger_category', 'vendor_bill']);
 
 /** Fields dropped from every diff — noise, never signal. */
 const NOISE_FIELDS = new Set(['updatedAt', 'createdAt', 'id', 'tenantId', '__v']);

@@ -1,0 +1,138 @@
+# There was no CI of any kind in this repository. The 382-test suite existed and
+# ran only where somebody remembered to run it, which meant a change could merge
+# green with the suite broken and nobody would know until the next person tried.
+#
+# Everything here is a gate that has already caught something, or is the cheapest
+# possible guard against a class of failure the project has already had:
+# a stale MAP (every session re-discovers the repo) and an unknown Tailwind
+# token (two dead classes shipped for two releases). Schema changes still go
+# through `db:push`; there is no migration history to check yet.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # So `BuildFootnote` stops rendering `known: false` and a deployed bundle can
+  # say which build it is. See apps/api/src/platform/build.ts.
+  BUILD_SEQUENCE: ${{ github.run_number }}
+  GIT_SHA: ${{ github.sha }}
+
+jobs:
+  static:
+    name: typecheck · lint · map
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kaizen/shared build
+      - run: pnpm --filter @kaizen/api exec prisma generate
+      - run: pnpm typecheck
+      - run: pnpm lint
+      # The map is the index every session reads instead of searching. A stale
+      # one is worse than none, because it is believed.
+      - run: pnpm map:check
+
+  test:
+    name: api tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kaizen
+          POSTGRES_PASSWORD: kaizen
+          POSTGRES_DB: kaizen_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public
+      TEST_DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public
+      NODE_ENV: test
+      # Supplied, never defaulted: the API has no fallback secret any more.
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kaizen/shared build
+      - run: pnpm --filter @kaizen/api exec prisma db push --skip-generate
+      - run: pnpm --filter @kaizen/api exec prisma generate
+      - run: pnpm --filter @kaizen/api test
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kaizen/shared build
+      - run: pnpm --filter @kaizen/api exec prisma generate
+      - name: build
+        env:
+          BUILT_AT: ${{ github.event.repository.updated_at }}
+        run: pnpm build
+
+  e2e:
+    name: browser smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kaizen
+          POSTGRES_PASSWORD: kaizen
+          POSTGRES_DB: kaizen
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen?schema=public
+      NODE_ENV: development
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+      # The suite signs in as a real account; the seed reads these names, so the
+      # password is known rather than generated and printed once.
+      OWNER_EMAIL: chairman@kaizen.co.in
+      OWNER_PASSWORD: ci-only-password-not-used-anywhere-else
+      E2E_EMAIL: chairman@kaizen.co.in
+      E2E_PASSWORD: ci-only-password-not-used-anywhere-else
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kaizen/shared build
+      - run: pnpm --filter @kaizen/api exec prisma db push --skip-generate
+      - run: pnpm --filter @kaizen/api exec prisma generate
+      - run: pnpm db:seed
+      - run: pnpm --filter @kaizen/e2e exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 7

@@ -1,0 +1,11 @@
+// HCM — WS12 analytics (docs/hcm/analytics.md).
+//
+// No new models. This workstream is a read-only reporting layer over tables
+// other workstreams already own — EmploymentRelationship, Assignment,
+// LeaveBalance, WorkAttendance, PayrollInstruction, Application, Requisition,
+// OvertimeAccrual, LearningRecord — plus, where they have landed, a handful
+// of other workstreams' tables (compensation bands, engagement surveys, HR
+// cases) read defensively so a metric this dashboard has no data for yet
+// reports "not measured" instead of crashing the page. Computing and storing
+// a second copy of any of that data here would just be one more place for it
+// to go stale against the tables that actually own it.

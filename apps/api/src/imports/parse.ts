@@ -123,7 +123,10 @@ export function toAmount(input: string | number | null | undefined): number | nu
   if (input == null) return null;
   if (typeof input === 'number') return Number.isFinite(input) ? input : null;
 
-  let s = input.replace(/[\s \t]/g, '').replace(/[₹$€£,]/g, '');
+  // The \u00A0 is deliberate and is written as an escape so it is visible:
+  // spreadsheet exports routinely use a non-breaking space as the thousands
+  // separator, and a literal one here reads as an ordinary space.
+  let s = input.replace(/[\s\u00A0\t]/g, '').replace(/[₹$€£,]/g, '');
   if (s === '' || s === '-') return null;
 
   let sign = 1;

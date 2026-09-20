@@ -59,6 +59,9 @@ export function ReceiptDocument() {
   const sheet = (
     <>
       <LedgerHead company={company} />
+      <p style={{ padding: '8px 22px 0', fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textAlign: 'center' }}>
+        RECEIPT VOUCHER
+      </p>
       <InfoGrid>
         <InfoRow k="Receipt No." v={d.recordCode} />
         <InfoRow k="Date" v={fmtDate(d.issuedAt)} />
@@ -106,8 +109,9 @@ export function ReceiptDocument() {
       />
 
       <NoteStrip>
-        This receipt acknowledges money received against the invoice named above; the tax invoice remains the tax
-        document.
+        {d.invoice.isTempInvoice
+          ? 'This receipt voucher acknowledges money received toward the course fee. It is a tax document in its own right; the tax invoice consolidating every receipt against this course is raised once the fees are paid in full or on withdrawal.'
+          : 'This receipt acknowledges money received against the invoice named above; the tax invoice remains the tax document.'}
         {d.payment.reference && ` Reference: ${d.payment.reference}.`}
         {d.payment.note && ` ${d.payment.note}`}
         {d.footnote && ` ${d.footnote}`}

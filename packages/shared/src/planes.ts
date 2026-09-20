@@ -47,6 +47,7 @@ export const BOUNDED_CONTEXTS = [
   'agt', // agent principals
   'xdm', // cross-domain / health
   'eqt', // equity, shareholder & board register
+  'ceo', // chairman's office (on-screen name; code prefix stays `ceo`, docs/plan/ceo-office.md §1)
 ] as const;
 
 export type BoundedContext = (typeof BOUNDED_CONTEXTS)[number];
@@ -160,6 +161,84 @@ export const MODULE_REGISTER: ModuleRegisterEntry[] = [
       'Hold money movement itself — an allotment references the FIN Transaction that already lifted cash; EQT never posts beside the books.',
       'Approve its own allotment or transfer — that goes through the approval gate, whose self-dealing bar reroutes an interested approver.',
       "Read another tenant's tables — the group view is built from EntitySnapshot rows published upward, never a cross-tenant query.",
+    ],
+  },
+  {
+    code: 'CEO',
+    name: "Chairman's Office",
+    boundedContext: 'ceo',
+    plane: 'P2',
+    owns: [
+      // Phase 1
+      'KPI_DEFINITION', 'KPI_FORMULA_VERSION', 'KPI_TARGET_BAND', 'KPI_VALUE', 'KPI_REFERENCE',
+      'NORTH_STAR_METRIC', 'COCKPIT_VIEW', 'COCKPIT_SNAPSHOT',
+      // Phase 2
+      'VISION_STATEMENT', 'THREE_YEAR_PICTURE', 'ANNUAL_OPERATING_PLAN', 'STRATEGIC_THEME',
+      'PLAN_ASSUMPTION', 'OBJECTIVE', 'KEY_RESULT', 'CHECK_IN', 'OKR_CYCLE',
+      // Phase 3
+      'INITIATIVE', 'INITIATIVE_MILESTONE', 'INITIATIVE_DEPENDENCY',
+      // Phase 4
+      'MEETING_SERIES', 'MEETING_INSTANCE', 'AGENDA_ITEM', 'ISSUE_ITEM', 'ACTION_ITEM',
+      'MEETING_DECISION_LINK',
+      // Phase 5
+      'DOA_MATRIX_ENTRY', 'DELEGATION_LOG',
+      // Phase 6
+      'BOARD_PACK', 'BOARD_PACK_VERSION', 'INVESTOR_UPDATE', 'INVESTOR_UPDATE_VERSION',
+      'DOCUMENT_CIRCULATION', 'STAKEHOLDER', 'STAKEHOLDER_TOUCH',
+      // Phase 7
+      'RISK_ITEM', 'POLICY_DOCUMENT', 'POLICY_ACKNOWLEDGEMENT',
+      // Phase 8
+      'FINANCIAL_SCENARIO', 'HEADCOUNT_PLAN', 'HEADCOUNT_PLAN_LINE',
+      // Phase 9
+      'SEAT', 'SUCCESSION_CANDIDATE', 'ONE_ON_ONE_SERIES', 'ONE_ON_ONE_INSTANCE', 'TIME_AUDIT_ENTRY',
+    ],
+    neverDoes: [
+      'Hold money movement — FIN owns that; this module references Transaction/BudgetLine rows, it never posts one.',
+      "Hold statutory board records — BoardMeeting/Resolution stay eqt-owned; the Board Pack is a narrative document that cites a BoardMeeting, it does not replace one.",
+      'Write a second Decision-like record — every state transition that needs sign-off reuses GOV\'s Decision via raiseDecision/disposeDecision.',
+      "Read another tenant's tables directly — any group-wide chairman view extends group.ts's snapshot-publish pattern, never a new cross-tenant read.",
+    ],
+  },
+  {
+    code: 'MKT',
+    name: 'Marketing',
+    boundedContext: 'mkt',
+    plane: 'P2',
+    owns: [
+      'MARKETING_CAMPAIGN', 'MARKETING_CHANNEL', 'MARKETING_AUDIENCE', 'MARKETING_PREFERENCE',
+      'MARKETING_TEMPLATE', 'MARKETING_SEND', 'MARKETING_JOURNEY', 'MARKETING_FORM',
+      'MARKETING_TOUCHPOINT', 'MARKETING_ATTRIBUTION', 'MARKETING_LEAD_SCORE_RULE',
+      'MARKETING_EVENT', 'MARKETING_ASSET', 'MARKETING_SOCIAL_POST', 'MARKETING_SHORT_LINK',
+      'MARKETING_REFERRAL_PROGRAM', 'MARKETING_REFERRAL', 'MARKETING_BUDGET', 'MARKETING_SPEND',
+      'MARKETING_VENDOR', 'MARKETING_CLAIM', 'MARKETING_PLAN',
+    ],
+    neverDoes: [
+      "Write Lead.ownerPartyId or route a lead — that stays CRM's routing engine.",
+      'Create a PERSON directly — it calls findOrCreatePerson, the same as every other module.',
+      "Record money movement itself — a MarketingSpend references Finance's Transaction; marketing never posts beside the books.",
+      'Set a pipeline stage on a lead or opportunity — stage authority is CRM\'s.',
+      "Send to a person without a granted 'marketing' Consent — the compliance Consent model, never a marketing-owned duplicate.",
+      "Approve its own campaign or budget — the proposer is never the approver, even the chairman (platform/approvals.ts).",
+    ],
+  },
+  {
+    code: 'HCM',
+    name: 'Human Capital Management',
+    boundedContext: 'hr',
+    plane: 'P2',
+    owns: [
+      'EMPLOYEE_PROFILE_EXTENSION', 'EMPLOYEE_DOCUMENT', 'REPORTING_LINE', 'SHIFT', 'ROSTER_ASSIGNMENT',
+      'CLOCK_EVENT', 'TIMESHEET', 'LEAVE_POLICY', 'JOB_POSTING', 'CANDIDATE_PROFILE', 'INTERVIEW_ROUND',
+      'OFFER_LETTER', 'REVIEW_CYCLE', 'REVIEW_ASSIGNMENT', 'TRAINING_PROGRAM', 'TRAINING_ENROLLMENT',
+      'PAY_GRADE', 'SALARY_REVISION_CYCLE', 'VARIABLE_PAY_PLAN', 'BENEFIT_PLAN', 'EMPLOYEE_LOAN',
+      'EXPENSE_CLAIM', 'PAY_ITEM', 'PAYROLL_JOURNAL', 'BANK_ADVICE', 'ANNOUNCEMENT', 'HR_CASE',
+      'RESIGNATION', 'EXIT_CLEARANCE', 'ASSET', 'TRAVEL_REQUEST', 'HR_REQUEST', 'HR_REQUEST_TYPE',
+    ],
+    neverDoes: [
+      'Post a ledger entry directly — a payroll journal, once approved, hands off into the books through the same transaction-creation path any other module uses; HCM never writes a Transaction row itself.',
+      "Let a proposer approve their own act — a salary revision, an offer, a resignation acceptance, a travel or expense claim all go through the Self-Dealing Bar (platform/approvals.ts) or an explicit proposer-ne-approver check, never a self-sign-off.",
+      'Compare a role slug in service code — authority is a grant (apps/api/src/seed/grants.ts), never a hardcoded role name.',
+      "Own the employment lifecycle machines themselves — EmploymentRelationship, Onboarding, Offboarding and the other ten machines in hr.ts stay hr-owned; HCM extends them by *Id reference, never by editing hr.ts.",
     ],
   },
 ];

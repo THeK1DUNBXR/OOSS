@@ -36,8 +36,8 @@ model NoticeAcknowledgement {
   id       String @id @default(cuid())
   tenantId String
 
-  personId      String
-  noticeVersion Int
+  personId       String
+  noticeVersion  Int
   acknowledgedAt DateTime @default(now())
   /// portal | in_app | paper | verbal — how the acknowledgement was captured.
   channel        String
@@ -55,7 +55,7 @@ model Consent {
   id       String @id @default(cuid())
   tenantId String
 
-  personId   String
+  personId    String
   purposeCode String
 
   /// granted | withdrawn | expired
@@ -97,14 +97,14 @@ model DataPrincipalRequest {
   /// received | verifying | fulfilled | refused
   status String @default("received")
 
-  receivedAt   DateTime  @default(now())
-  dueAt        DateTime
-  fulfilledAt  DateTime?
+  receivedAt    DateTime  @default(now())
+  dueAt         DateTime
+  fulfilledAt   DateTime?
   refusalReason String?
   /// The correction patch requested, or free-text detail for access/erasure.
   requestDetail Json?
   /// The access export, or the erasure/correction outcome, once acted on.
-  response Json?
+  response      Json?
 
   raisedById String?
 
@@ -123,12 +123,12 @@ model DataBreach {
   tenantId   String
   recordCode String
 
-  detectedAt  DateTime
-  description String
-  categories  String[] @default([])
-  principalsAffected Int @default(0)
+  detectedAt         DateTime
+  description        String
+  categories         String[] @default([])
+  principalsAffected Int      @default(0)
   /// S0_STANDARD .. S4_CRITICAL, mirroring ExceptionRecord's severity vocabulary.
-  severity    String
+  severity           String
 
   /// open | contained | notified_board | notified_principals | closed
   status String @default("open")
@@ -190,7 +190,7 @@ model AccessReview {
   generatedAt DateTime @default(now())
   /// [{partyId, fullName, affiliationId, employmentStatus}]
   findings    Json
-  staleCount  Int @default(0)
+  staleCount  Int      @default(0)
 
   createdAt DateTime @default(now())
 
@@ -204,11 +204,11 @@ model EncryptionBackfillRun {
   id       String @id @default(cuid())
   tenantId String
 
-  ranAt          DateTime @default(now())
-  fieldsScanned  Int      @default(0)
-  valuesEncrypted Int     @default(0)
-  alreadyEncrypted Int    @default(0)
-  runById        String?
+  ranAt            DateTime @default(now())
+  fieldsScanned    Int      @default(0)
+  valuesEncrypted  Int      @default(0)
+  alreadyEncrypted Int      @default(0)
+  runById          String?
 
   createdAt DateTime @default(now())
 

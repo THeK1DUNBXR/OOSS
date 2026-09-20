@@ -31,11 +31,12 @@ import { asSystem, runWithContext, newRequestContext, type AuthContext } from '.
 import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
 import { resolveGrants } from '../platform/permissions.js';
+import { config } from '../platform/config.js';
 import { formatGrant } from '@kaizen/shared';
 import { generateTotpSecret, otpauthUri, verifyTotp } from '../domains/compliance/corporate/totp.js';
 import { createChainedAuditRecord } from '../platform/audit.js';
 
-const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me';
+const JWT_SECRET = config.JWT_SECRET;
 const TOKEN_TTL = '12h';
 const MFA_CHALLENGE_TTL = '5m';
 const SELECTION_TOKEN_TTL = '5m';

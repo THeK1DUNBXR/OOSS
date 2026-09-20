@@ -212,8 +212,20 @@ export async function unclassifiedLines() {
  * wrong thing on its face.
  */
 async function beforeIssueClassification(payload: Record<string, unknown>) {
-  const invoice = payload.invoice as { id: string; invoiceType: string; reverseCharge: boolean };
+  const invoice = payload.invoice as { id: string; invoiceType: string; reverseCharge: boolean; enrollmentDate: Date | string | null };
   const lines = payload.lines as Array<{ id: string; supplyType: string; gstRate: unknown; taxAmount: unknown }>;
+
+  // A course-fee invoice is never a tax document (see the `Invoice` doc
+  // comment) — it is not a bill of supply either, it is neither, so it is
+  // never classified and never queued for e-invoicing.
+  if (invoice.enrollmentDate) {
+    await prisma.invoice.update({
+      where: { id: invoice.id },
+      data: { invoiceType: 'temp', eInvoiceStatus: 'not_applicable' },
+    });
+    return;
+  }
+
   const profile = await companyProfile();
 
   for (const line of lines) {

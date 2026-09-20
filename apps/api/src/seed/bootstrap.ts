@@ -33,6 +33,7 @@ import { seedCompliance } from './compliance/index.js';
 import { seedIt } from './it/index.js';
 import { AI_TOUCHPOINTS, EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../platform/db.js';
+import { config } from '../platform/config.js';
 import { asSystem } from '../platform/context.js';
 import { hashPassword } from '../lib/auth.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -42,9 +43,10 @@ import { registerSubscribers } from '../events/handlers.js';
 import { runBackfills } from './backfill.js';
 import { BUILD } from '../platform/build.js';
 import { reconcileTenantKinds } from '../platform/tenantKind.js';
+import { reconcileMarketingDefaults } from '../platform/marketingSync.js';
 
-export const TENANT_SLUG = process.env.TENANT_SLUG ?? 'kaizen';
-const TENANT_NAME = process.env.TENANT_NAME ?? 'Kaizen Infinities';
+export const TENANT_SLUG = config.TENANT_SLUG;
+const TENANT_NAME = config.TENANT_NAME;
 
 /**
  * `TENANT_KIND`/`PARENT_TENANT_SLUG` name the group relationship at bootstrap
@@ -138,6 +140,21 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'fin_budget', label: 'Budget', icon: 'calculator', path: '/finance/budget', group: 'money', position: 20, requiredPermission: 'budgets:V', synonyms: ['plan', 'variance', 'overspend'] },
   { nodeKey: 'fin_assets', label: 'Assets & Loans', icon: 'package', path: '/finance/assets', group: 'money', position: 21, requiredPermission: 'assets:V', synonyms: ['depreciation', 'borrowing', 'emi', 'fixed assets'] },
 
+  // ---- Me (self-service, docs/plan/hcm.md) ------------------------------
+  // Every node here reads at `@own` scope off a grant an employee already
+  // holds — the same shape `my_options` above already takes. `archetypes` is
+  // explicit because this is the ERP-shell self-service surface, not the
+  // shareholder/director portal.
+  { nodeKey: 'me_home', label: 'My Home', icon: 'home', path: '/me/home', group: 'me', position: 10, requiredPermission: 'announcements:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['my day', 'announcements', 'kudos', 'my requests inbox'] },
+  { nodeKey: 'me_leave', label: 'My Leave', icon: 'clock', path: '/me/leave', group: 'me', position: 11, requiredPermission: 'leave_accruals:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['apply leave', 'balance', 'time off'] },
+  { nodeKey: 'me_attendance', label: 'My Attendance', icon: 'clipboard', path: '/me/attendance', group: 'me', position: 12, requiredPermission: 'clock_events:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['clock in', 'clock out', 'my hours'] },
+  { nodeKey: 'me_payslips', label: 'My Payslips', icon: 'receipt', path: '/me/payslips', group: 'me', position: 13, requiredPermission: 'payslips:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['pay', 'salary slip'] },
+  { nodeKey: 'me_performance', label: 'My Performance', icon: 'target', path: '/me/performance', group: 'me', position: 14, requiredPermission: 'reviews:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['my review', 'my goals', 'feedback'] },
+  { nodeKey: 'me_learning', label: 'My Learning', icon: 'graduation', path: '/me/learning', group: 'me', position: 15, requiredPermission: 'training_enrollments:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['my courses', 'certifications', 'my development'] },
+  { nodeKey: 'me_money', label: 'My Money', icon: 'coins', path: '/me/money', group: 'me', position: 16, requiredPermission: 'expense_claims:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['my expenses', 'my loans', 'my benefits'] },
+  { nodeKey: 'me_requests', label: 'My Requests', icon: 'inbox', path: '/me/requests', group: 'me', position: 17, requiredPermission: 'hr_requests:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['my assets', 'my travel', 'letter request'] },
+  { nodeKey: 'me_exit', label: 'My Exit', icon: 'doorexit', path: '/me/exit', group: 'me', position: 18, requiredPermission: 'resignations:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['resignation', 'notice period', 'clearance'] },
+
   // ---- People ----------------------------------------------------------
   { nodeKey: 'hr_people', label: 'Employees', icon: 'users', path: '/people/employees', group: 'people', position: 20, requiredPermission: 'employees:V', synonyms: ['staff', 'team', 'headcount', 'who works here', 'directory'] },
   { nodeKey: 'hr_leave', label: 'Leave', icon: 'clock', path: '/people/leave', group: 'people', position: 21, requiredPermission: 'leave:V', synonyms: ['holiday', 'time off', 'absence', 'casual leave'] },
@@ -149,6 +166,23 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   // register's own `eq_esop` node, the same way a payslip is separate from
   // the payroll screen it is drawn from.
   { nodeKey: 'my_options', label: 'My Options', icon: 'coins', path: '/me/options', group: 'people', position: 26, requiredPermission: 'option_grants:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['esop', 'stock options', 'vesting', 'my grants'] },
+
+  // ---- HCM/HRMS (docs/plan/hcm.md) --------------------------------------
+  { nodeKey: 'hcm_org_chart', label: 'Org Chart', icon: 'network', path: '/people/org-chart', group: 'people', position: 27, requiredPermission: 'reporting_lines:V', synonyms: ['reporting lines', 'hierarchy', 'who reports to whom'] },
+  { nodeKey: 'hcm_directory', label: 'Directory', icon: 'users', path: '/people/directory', group: 'people', position: 28, requiredPermission: 'employee_profiles:V', synonyms: ['staff directory', 'find a colleague', 'employee 360'] },
+  { nodeKey: 'hcm_time', label: 'Time', icon: 'clock', path: '/people/time', group: 'people', position: 29, requiredPermission: 'shifts:V', synonyms: ['shifts', 'roster', 'timesheets', 'overtime', 'comp-off'] },
+  { nodeKey: 'hcm_leave_policies', label: 'Leave Policies', icon: 'scroll', path: '/people/leave-policies', group: 'people', position: 30, requiredPermission: 'leave_policies:V', synonyms: ['accrual', 'carry forward', 'leave rules'] },
+  { nodeKey: 'hcm_leave_calendar', label: 'Leave Calendar', icon: 'calendar', path: '/people/leave-calendar', group: 'people', position: 31, requiredPermission: 'leave_accruals:V', synonyms: ['team calendar', 'who is on leave'] },
+  { nodeKey: 'hcm_recruiting', label: 'Recruiting', icon: 'inbox', path: '/people/recruiting', group: 'people', position: 32, requiredPermission: 'job_postings:V', synonyms: ['ats', 'candidates', 'interviews', 'offers', 'referrals', 'bgv'] },
+  { nodeKey: 'hcm_performance', label: 'Performance', icon: 'target', path: '/people/performance', group: 'people', position: 33, requiredPermission: 'review_cycles:V', synonyms: ['reviews', 'calibration', '9-box', 'feedback', '1:1', 'pip', 'succession'] },
+  { nodeKey: 'hcm_learning', label: 'Learning', icon: 'graduation', path: '/people/learning', group: 'people', position: 34, requiredPermission: 'training_programs:V', synonyms: ['training', 'certifications', 'idp', 'l&d'] },
+  { nodeKey: 'hcm_compensation', label: 'Compensation', icon: 'wallet', path: '/people/compensation', group: 'people', position: 35, requiredPermission: 'pay_grades:V', synonyms: ['salary revision', 'variable pay', 'benefits', 'loans', 'expenses'] },
+  { nodeKey: 'hcm_payroll_ops', label: 'Payroll Ops', icon: 'coins', path: '/people/payroll-ops', group: 'people', position: 36, requiredPermission: 'payroll_journals:V', synonyms: ['pay items', 'arrears', 'bank advice', 'reconciliation', 'payroll calendar'] },
+  { nodeKey: 'hcm_engagement', label: 'Engagement', icon: 'message', path: '/people/engagement', group: 'people', position: 37, requiredPermission: 'announcements:V', synonyms: ['recognition', 'surveys', 'helpdesk', 'policies'] },
+  { nodeKey: 'hcm_separations', label: 'Separations', icon: 'lock', path: '/people/separations', group: 'people', position: 38, requiredPermission: 'resignations:V', synonyms: ['resignation', 'exit', 'clearance', 'no dues', 'alumni'] },
+  { nodeKey: 'hcm_assets', label: 'Assets & Requests', icon: 'package', path: '/people/assets', group: 'people', position: 39, requiredPermission: 'hcm_assets:V', synonyms: ['inventory', 'travel', 'letter request'] },
+  { nodeKey: 'hcm_analytics', label: 'Analytics', icon: 'chart', path: '/people/analytics', group: 'people', position: 40, requiredPermission: 'hr_analytics:V', synonyms: ['headcount', 'attrition', 'reports'] },
+  { nodeKey: 'hcm_approvals', label: 'Approvals', icon: 'shield', path: '/people/approvals', group: 'people', position: 41, requiredPermission: 'hr_requests:V', synonyms: ['waiting on me', 'inbox', 'sign off'] },
 
   // ---- Customers -------------------------------------------------------
   { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'customers', position: 30, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },
@@ -182,6 +216,24 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'edu_enrollments', label: 'Enrolments', icon: 'badge', path: '/education/enrollments', group: 'delivery', position: 48, requiredPermission: 'education:V', synonyms: ['enrollments', 'class register', 'who is on a course', 'attendance', 'progress', 'timeline'] },
   { nodeKey: 'edu_queries', label: 'Student Queries', icon: 'message', path: '/education/queries', group: 'delivery', position: 49, requiredPermission: 'education:V', synonyms: ['complaints', 'issues', 'feedback', 'questions', 'grievance'] },
   { nodeKey: 'com_winloss', label: 'Win / Loss', icon: 'clipboard', path: '/commercial/win-loss', group: 'delivery', position: 50, requiredPermission: 'win_loss_reviews:V', synonyms: ['post mortem', 'lessons'] },
+
+  // ---- Marketing (docs/plan/marketing-api-contract.md) ------------------
+  { nodeKey: 'mkt_overview', label: 'Overview', icon: 'gauge', path: '/marketing', group: 'marketing', position: 60, requiredPermission: 'campaigns:V', synonyms: ['marketing', 'marketing home', 'campaign performance'] },
+  { nodeKey: 'mkt_campaigns', label: 'Campaigns', icon: 'target', path: '/marketing/campaigns', group: 'marketing', position: 61, requiredPermission: 'campaigns:V', synonyms: ['campaign', 'brief', 'launch'] },
+  { nodeKey: 'mkt_calendar', label: 'Calendar', icon: 'clock', path: '/marketing/calendar', group: 'marketing', position: 62, requiredPermission: 'campaigns:V', synonyms: ['marketing calendar', 'schedule'] },
+  { nodeKey: 'mkt_audiences', label: 'Audiences', icon: 'users', path: '/marketing/audiences', group: 'marketing', position: 63, requiredPermission: 'audiences:V', synonyms: ['segment', 'segmentation', 'list'] },
+  { nodeKey: 'mkt_consent', label: 'Consent', icon: 'shield', path: '/marketing/consent', group: 'marketing', position: 64, requiredPermission: 'audiences:V', synonyms: ['preferences', 'opt-in', 'opt-out', 'do not contact', 'unsubscribe'] },
+  { nodeKey: 'mkt_templates', label: 'Templates', icon: 'file', path: '/marketing/templates', group: 'marketing', position: 65, requiredPermission: 'marketing_templates:V', synonyms: ['email template', 'sms template', 'whatsapp template', 'copy'] },
+  { nodeKey: 'mkt_sends', label: 'Sends', icon: 'message', path: '/marketing/sends', group: 'marketing', position: 66, requiredPermission: 'marketing_sends:V', synonyms: ['campaign send', 'blast', 'broadcast', 'email blast'] },
+  { nodeKey: 'mkt_journeys', label: 'Journeys', icon: 'columns', path: '/marketing/journeys', group: 'marketing', position: 67, requiredPermission: 'marketing_journeys:V', synonyms: ['drip', 'automation', 'nurture'] },
+  { nodeKey: 'mkt_forms', label: 'Forms', icon: 'clipboard', path: '/marketing/forms', group: 'marketing', position: 68, requiredPermission: 'marketing_forms:V', synonyms: ['landing form', 'web form', 'lead capture'] },
+  { nodeKey: 'mkt_events', label: 'Events', icon: 'graduation', path: '/marketing/events', group: 'marketing', position: 69, requiredPermission: 'marketing_events:V', synonyms: ['webinar', 'seminar', 'open day', 'demo', 'college visit', 'placement drive'] },
+  { nodeKey: 'mkt_assets', label: 'Assets', icon: 'package', path: '/marketing/assets', group: 'marketing', position: 70, requiredPermission: 'marketing_assets:V', synonyms: ['content library', 'brochure', 'creative', 'deck'] },
+  { nodeKey: 'mkt_social', label: 'Social', icon: 'sparkle', path: '/marketing/social', group: 'marketing', position: 71, requiredPermission: 'marketing_assets:V', synonyms: ['social post', 'social media'] },
+  { nodeKey: 'mkt_referrals', label: 'Referrals', icon: 'badge', path: '/marketing/referrals', group: 'marketing', position: 72, requiredPermission: 'marketing_referrals:V', synonyms: ['referral program', 'affiliate'] },
+  { nodeKey: 'mkt_budget', label: 'Budget', icon: 'calculator', path: '/marketing/budget', group: 'marketing', position: 73, requiredPermission: 'marketing_budgets:V', synonyms: ['spend', 'vendor', 'marketing spend'] },
+  { nodeKey: 'mkt_analytics', label: 'Analytics', icon: 'chart', path: '/marketing/analytics', group: 'marketing', position: 74, requiredPermission: 'marketing_analytics:V', synonyms: ['funnel', 'attribution', 'cost per lead', 'roi', 'romi'] },
+  { nodeKey: 'mkt_settings', label: 'Marketing Settings', icon: 'settings', path: '/marketing/settings', group: 'marketing', position: 75, requiredPermission: 'marketing_settings:V', synonyms: ['channel', 'adapter', 'claim', 'policy'] },
 
   // ---- Set up ----------------------------------------------------------
   // ---- Compliance (docs/plan/compliance.md) --------------------------------
@@ -244,6 +296,31 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'eq_board', label: 'Board', icon: 'shield', path: '/equity/board', group: 'equity', position: 91, requiredPermission: 'board_meetings:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['meetings', 'minutes', 'agenda', 'directors', 'quorum'] },
   { nodeKey: 'eq_resolutions', label: 'Resolutions', icon: 'scale', path: '/equity/resolutions', group: 'equity', position: 92, requiredPermission: 'resolutions:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['circular resolution', 'vote', 'mgt-14', 'circulation'] },
   { nodeKey: 'eq_compliance', label: 'Compliance', icon: 'clipboard', path: '/equity/compliance', group: 'equity', position: 93, requiredPermission: 'compliance:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['calendar', 'due dates', 'filings', 'ss-1', 'agm', 'mbp-1'] },
+
+  // ---- Chairman's Office (docs/plan/ceo-office.md §6, Phase 0) -----------
+  // On-screen label is "Chairman's Office"; the engineering group key stays
+  // `ceo` (§1). `archetypes` is explicit on every row — this module is
+  // ERP-only, and a node with no `archetypes` leaks into the portal shell.
+  { nodeKey: 'ceo_cockpit', label: 'Cockpit', icon: 'gauge', path: '/ceo/cockpit', group: 'ceo', position: 100, requiredPermission: 'ceo_cockpit:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['ceo dashboard', 'executive summary', 'scorecard'] },
+  { nodeKey: 'ceo_kpi_library', label: 'KPI Library', icon: 'chart', path: '/ceo/kpi-library', group: 'ceo', position: 101, requiredPermission: 'kpi_definitions:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['metrics', 'definitions'] },
+  { nodeKey: 'ceo_strategy', label: 'Strategy', icon: 'target', path: '/ceo/strategy', group: 'ceo', position: 102, requiredPermission: 'strategic_themes:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['vision', 'three year picture', 'annual operating plan', 'aop'] },
+  { nodeKey: 'ceo_okrs', label: 'OKRs', icon: 'target', path: '/ceo/okrs', group: 'ceo', position: 103, requiredPermission: 'objectives:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['objectives', 'key results', 'goals', 'check-in'] },
+  { nodeKey: 'ceo_initiatives', label: 'Initiatives', icon: 'kanban', path: '/ceo/initiatives', group: 'ceo', position: 104, requiredPermission: 'initiatives:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['rocks', 'portfolio'] },
+  { nodeKey: 'ceo_meetings', label: 'Meeting Rhythm', icon: 'clock', path: '/ceo/meetings', group: 'ceo', position: 105, requiredPermission: 'meeting_series:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['l10', 'mbr', 'qbr', 'annual planning', 'issues list', 'to-dos'] },
+  { nodeKey: 'ceo_delegation', label: 'Delegation Of Authority', icon: 'shield', path: '/ceo/delegation', group: 'ceo', position: 106, requiredPermission: 'doa_matrix:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['doa', 'authority ceiling'] },
+  { nodeKey: 'ceo_approvals', label: 'Approvals Inbox', icon: 'inbox', path: '/ceo/approvals', group: 'ceo', position: 107, requiredPermission: 'ceo_approvals_inbox:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['pending approval', 'sign off'] },
+  { nodeKey: 'ceo_board_pack', label: 'Board Pack', icon: 'file', path: '/ceo/board-pack', group: 'ceo', position: 108, requiredPermission: 'board_packs:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_investor_updates', label: 'Investor Updates', icon: 'file', path: '/ceo/investor-updates', group: 'ceo', position: 109, requiredPermission: 'investor_updates:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_stakeholders', label: 'Stakeholders', icon: 'users', path: '/ceo/stakeholders', group: 'ceo', position: 110, requiredPermission: 'stakeholders:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['investors', 'key customers', 'regulators', 'partners'] },
+  { nodeKey: 'ceo_risks', label: 'Risk Register', icon: 'alert', path: '/ceo/risks', group: 'ceo', position: 111, requiredPermission: 'risks:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_policies', label: 'Policy Register', icon: 'scale', path: '/ceo/policies', group: 'ceo', position: 112, requiredPermission: 'policy_documents:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_governance', label: 'Governance Overview', icon: 'shield', path: '/ceo/governance', group: 'ceo', position: 113, requiredPermission: 'risks:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['open risks', 'policy review', 'doa summary', 'board compliance'] },
+  { nodeKey: 'ceo_financial_plan', label: 'Financial Plan', icon: 'chart', path: '/ceo/financial-plan', group: 'ceo', position: 114, requiredPermission: 'financial_scenarios:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['scenario', 'runway', 'budget', '13-week cash flow'] },
+  { nodeKey: 'ceo_headcount_plan', label: 'Headcount Plan', icon: 'users', path: '/ceo/headcount-plan', group: 'ceo', position: 115, requiredPermission: 'headcount_plans:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_leadership', label: 'Leadership', icon: 'building', path: '/ceo/leadership', group: 'ceo', position: 116, requiredPermission: 'seats:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['accountability chart', 'org chart', 'seats'] },
+  { nodeKey: 'ceo_one_on_ones', label: '1:1s', icon: 'message', path: '/ceo/one-on-ones', group: 'ceo', position: 117, requiredPermission: 'one_on_ones:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['skip level', 'one on one'] },
+  { nodeKey: 'ceo_succession', label: 'Succession', icon: 'badge', path: '/ceo/succession', group: 'ceo', position: 118, requiredPermission: 'succession_candidates:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_time_audit', label: 'Time Audit', icon: 'clock', path: '/ceo/time-audit', group: 'ceo', position: 119, requiredPermission: 'time_audit:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['calendar audit', 'where the chairman spends time'] },
 
   // ---- The equity & board portal ----------------------------------------
   // `archetypes: ['portal']` is what actually keeps these off the ERP shell —
@@ -308,6 +385,10 @@ async function seedSensitivityRegistrations() {
     { contextCode: 'prj', entityType: 'project', sensitivityClass: 'internal' },
     { contextCode: 'hr', entityType: 'performance_note', sensitivityClass: 'confidential' },
     { contextCode: 'hr', entityType: 'compensation_record', sensitivityClass: 'regulated' },
+    { contextCode: 'mkt', entityType: 'marketing_campaign', sensitivityClass: 'internal' },
+    { contextCode: 'mkt', entityType: 'marketing_send', sensitivityClass: 'confidential' },
+    { contextCode: 'mkt', entityType: 'marketing_form_submission', sensitivityClass: 'confidential' },
+    { contextCode: 'mkt', entityType: 'marketing_event', sensitivityClass: 'internal' },
     // Deliberately absent: hr.ICC_CASE. Its existence is the sensitive fact, so
     // it is concealed rather than classified — and any unregistered type that
     // reaches the interaction log fails closed at `confidential` anyway.
@@ -679,6 +760,20 @@ async function seedAgents() {
       tools: ['tool.xdm.answer_from_composition', 'tool.mem.render_narrative'],
       countCeiling: null,
     },
+    {
+      // Kept in lockstep with `domains/marketing/ai.ts`'s own
+      // `ensureMarketingAssistant()`, which upserts the identical row the
+      // first time `POST /marketing/ai/draft` runs — seeded here too so the
+      // agent is visible on the Admin > AI Agents screen from day one rather
+      // than only after somebody has asked for a first draft.
+      agentKey: 'marketing-assistant',
+      name: 'Marketing Assistant',
+      purpose:
+        'Drafts campaign briefs, message copy, subject lines, audience suggestions and next-best-actions from structured data. Never sends a message, never creates or evaluates an audience, never approves a budget or a send.',
+      tier: 'DRAFT',
+      tools: ['tool.mkt.draft_campaign_brief', 'tool.mkt.suggest_message_copy', 'tool.mkt.suggest_audience', 'tool.mkt.suggest_next_action'],
+      countCeiling: null,
+    },
   ];
 
   for (const a of agents) {
@@ -913,7 +1008,7 @@ const FOUNDING_ACCOUNTS: FoundingAccount[] = [
   },
 ];
 
-const EMAIL_DOMAIN = process.env.SEED_EMAIL_DOMAIN ?? 'kaizen.co.in';
+const EMAIL_DOMAIN = config.SEED_EMAIL_DOMAIN;
 
 export interface SeededAccount {
   roleSlug: string;
@@ -925,6 +1020,15 @@ export interface SeededAccount {
   created: boolean;
 }
 
+/**
+ * The one place that still reads `process.env` directly.
+ *
+ * These keys are computed per founding role (`OWNER_EMAIL`, `FINANCE_EMAIL`,
+ * …), so there is no fixed set for `config.ts` to declare. They are also
+ * seed-only, optional, and carry no secret that has a usable default — an
+ * absent password is generated and printed once, never guessed. Adding a
+ * variable here does not need a schema change, which is the point.
+ */
 async function seedAccount(spec: FoundingAccount): Promise<SeededAccount> {
   const tenantId = (await currentTenant()).id;
   const email = (
@@ -1083,6 +1187,12 @@ export async function seedBootstrap(opts: SeedBootstrapOptions = {}): Promise<{
     await seedIt();
     accounts = await seedFoundingAccounts();
   });
+
+  // Marketing's per-tenant defaults (channels, starter score rules) — the
+  // same idempotent reconcile `reconcileMarketingDefaultsForAllTenants` runs
+  // at every API boot, called here too so a freshly bootstrapped tenant has
+  // them from the first run rather than only after the API restarts once.
+  await reconcileMarketingDefaults(tenant.id);
 
   // Rows written under an older shape, brought up to the current one. Safe to
   // re-run: each backfill changes only what still carries the old shape.

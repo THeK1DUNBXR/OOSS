@@ -1183,7 +1183,7 @@ describe('GSTR-1 reports a registered customer by invoice and an unregistered on
       expect(receipt.recordCode).toMatch(/^KIPL\/R\/\d{2}-\d{2}\/\d{3,}$/);
 
       const final = await raiseFinalInvoice(invoice.id);
-      expect(final.recordCode).toMatch(/^KIPL\/F\/\d{2}-\d{2}\/\d{3,}$/);
+      expect(final.recordCode).toMatch(/^KIPL\/TI\/\d{2}-\d{2}\/\d{3,}$/);
     });
   });
 

@@ -1,0 +1,750 @@
+/**
+ * HCM — J. Separations & exit management (docs/hcm/separations.md).
+ *
+ * A resignation is the employee-initiated request; accepting it is what
+ * actually rides the employment relationship into `NoticePeriod` (via
+ * `transitionEmployment(..., 'SUBMIT_RESIGNATION')`, defined in
+ * `domains/employment.ts` against the machine in `packages/shared/src/hr.ts`)
+ * and opens the `Offboarding` row that machine creates alongside it. From
+ * there this module owns exit clearance (five departments that each have to
+ * sign off), the no-dues certificate issued once they have, notice policy
+ * (what `noticeDays` should come from, rather than the flat default on
+ * `EmploymentRelationship`), and the alumni record that survives once the
+ * employment itself reaches `Alumni`.
+ */
+
+import {
+  EVENTS,
+  offboardingMachine,
+  type OffboardingState,
+  allClearancesComplete,
+  blockedClearanceCount,
+  CLEARANCE_DEPARTMENTS,
+  canTransitionResignation,
+  resolveNoticePolicy,
+  noticeShortfallDays,
+  RESIGNATION_REASON_CATEGORIES,
+  type NoticePolicyFact,
+  type ResignationReasonCategory,
+  type ResignationState,
+} from '@kaizen/shared';
+import { prisma, unscopedPrisma } from '../../platform/db.js';
+import { currentAuth } from '../../platform/context.js';
+import { emit } from '../../platform/eventBus.js';
+import { nextRecordCode } from '../../platform/recordCode.js';
+import { ApiError } from '../../platform/errors.js';
+import { assertCan, scopeFor } from '../../platform/permissions.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { notify } from '../../platform/exceptions.js';
+import { assertEmploymentVisible } from '../../platform/recordScope.js';
+import { transitionEmployment, transitionOffboarding } from '../employment.js';
+import { assetsPendingForEmployment } from './assets.js';
+
+registerGovernedEntities('hcm_separations', [
+  'resignation',
+  'notice_policy',
+  'exit_clearance',
+  'no_dues_certificate',
+  'alumni_record',
+]);
+
+/** The HR operations manager, resolved by role — the deterministic default reviewer when nobody more specific is named. */
+async function hrOpsOwnerId(tenantId: string): Promise<string | null> {
+  const affiliation = await unscopedPrisma.affiliation.findFirst({
+    where: { tenantId, roleSlug: 'hr_ops_manager', status: 'active' },
+    select: { partyId: true },
+  });
+  return affiliation?.partyId ?? null;
+}
+
+/**
+ * Fetches the employment row underneath an id, structurally checked against
+ * `employees:view` first via `assertEmploymentVisible` — the same guard
+ * `employment.ts` puts in front of `leaveBalances`/`currentCompensation`, so
+ * an own-scoped caller cannot use a resignation or notice-policy lookup as a
+ * side door onto a colleague's employment record.
+ */
+async function requireEmployment(employmentRelationshipId: string) {
+  const auth = currentAuth();
+  await assertEmploymentVisible('employees', employmentRelationshipId, 'view');
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { id: employmentRelationshipId, tenantId: auth.tenantId },
+    include: { person: { select: { fullName: true } } },
+  });
+  if (!employment) throw ApiError.notFound('Employment relationship');
+  return employment;
+}
+
+/**
+ * The employment behind a Resignation/ExitClearance/NoDuesCertificate row.
+ * These are new models in `hcm-separations.prisma` and, per the multi-file
+ * schema convention, hold `employmentRelationshipId` as a plain String
+ * column with no Prisma relation into `main.prisma` — so a caller needs this
+ * rather than an `include`. Unscoped because the row it came from was
+ * already fetched tenant-scoped; this is just following the id.
+ */
+async function employmentBrief(employmentRelationshipId: string) {
+  const employment = await unscopedPrisma.employmentRelationship.findFirst({
+    where: { id: employmentRelationshipId },
+    include: { person: { select: { fullName: true, recordCode: true } } },
+  });
+  if (!employment) throw ApiError.notFound('Employment relationship');
+  return employment;
+}
+
+/** The active employment behind the calling user's own account — what every `/me/exit` endpoint resolves against, mirroring `time.ts`'s `myEmploymentId`. */
+export async function myEmploymentId(): Promise<string> {
+  const auth = currentAuth();
+  if (!auth.partyId) throw ApiError.unprocessable('No person is attached to this account.');
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { tenantId: auth.tenantId, personId: auth.partyId, deletedAt: null, status: { notIn: ['OfferRescinded', 'NoShow'] } },
+    orderBy: { hireEffectiveDate: 'desc' },
+    select: { id: true },
+  });
+  if (!employment) throw ApiError.unprocessable('No employment record is attached to this account.');
+  return employment.id;
+}
+
+// ---------------------------------------------------------------------------
+// Notice policy
+// ---------------------------------------------------------------------------
+
+export async function listNoticePolicies() {
+  const auth = currentAuth();
+  await assertCan({ resource: 'notice_policies', verb: 'view' });
+  return prisma.noticePolicy.findMany({ where: { tenantId: auth.tenantId }, orderBy: { createdAt: 'desc' } });
+}
+
+export async function createNoticePolicy(input: {
+  name: string;
+  grade?: string | null;
+  engagementType?: string | null;
+  noticeDays: number;
+  buyoutAllowed?: boolean;
+}) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'notice_policies', verb: 'create' });
+  // Defining what notice period applies to everyone else is never a
+  // self-service action, regardless of what scope a future grant change
+  // might hand out at `create` — the coarse check above only proves the verb
+  // is held at some scope, not that it is held widely enough to legislate for
+  // the whole tenant.
+  if ((await scopeFor('notice_policies', 'create')) !== 'all') {
+    throw ApiError.forbidden('Defining a notice policy needs an all-scope grant on notice_policies.');
+  }
+  if (input.noticeDays < 0) throw ApiError.badRequest('Notice days cannot be negative.');
+
+  const row = await prisma.noticePolicy.create({
+    data: {
+      tenantId: auth.tenantId,
+      name: input.name,
+      grade: input.grade ?? null,
+      engagementType: input.engagementType ?? null,
+      noticeDays: input.noticeDays,
+      buyoutAllowed: input.buyoutAllowed ?? true,
+    },
+  });
+  await auditWrite({ action: 'create', subjectType: 'notice_policy', subjectId: row.id, after: row });
+  return row;
+}
+
+export async function setNoticePolicyActive(id: string, active: boolean) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'notice_policies', verb: 'edit' });
+  if ((await scopeFor('notice_policies', 'edit')) !== 'all') {
+    throw ApiError.forbidden('Changing a notice policy needs an all-scope grant on notice_policies.');
+  }
+  const before = await prisma.noticePolicy.findFirst({ where: { id, tenantId: auth.tenantId } });
+  if (!before) throw ApiError.notFound('Notice policy');
+  const row = await prisma.noticePolicy.update({ where: { id }, data: { active } });
+  await auditWrite({ action: 'update', subjectType: 'notice_policy', subjectId: id, before, after: row });
+  return row;
+}
+
+/** What notice period applies to this employment right now — the policy table first, the employment's own flat default otherwise. */
+export async function noticeDaysFor(employmentRelationshipId: string): Promise<{ noticeDays: number; buyoutAllowed: boolean; source: 'policy' | 'employment_default' }> {
+  const employment = await requireEmployment(employmentRelationshipId);
+  const auth = currentAuth();
+  const policies = await prisma.noticePolicy.findMany({ where: { tenantId: auth.tenantId, active: true }, orderBy: { createdAt: 'desc' } });
+  const facts: NoticePolicyFact[] = policies.map((p) => ({
+    id: p.id,
+    grade: p.grade,
+    engagementType: p.engagementType,
+    noticeDays: p.noticeDays,
+    buyoutAllowed: p.buyoutAllowed,
+    active: p.active,
+  }));
+  const resolved = resolveNoticePolicy(facts, null, employment.engagementType ?? null);
+  if (resolved) return { noticeDays: resolved.noticeDays, buyoutAllowed: resolved.buyoutAllowed, source: 'policy' };
+  return { noticeDays: employment.noticePeriodDays, buyoutAllowed: true, source: 'employment_default' };
+}
+
+// ---------------------------------------------------------------------------
+// Resignation
+// ---------------------------------------------------------------------------
+
+export async function listResignations(filter: { status?: string } = {}) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'resignations', verb: 'view' });
+  const scope = await scopeFor('resignations', 'view');
+  const rows = await prisma.resignation.findMany({
+    where: { tenantId: auth.tenantId, ...(filter.status ? { status: filter.status } : {}) },
+    orderBy: { createdAt: 'desc' },
+  });
+  const withEmployment = await Promise.all(
+    rows.map(async (row) => ({ ...row, employment: await employmentBrief(row.employmentRelationshipId) })),
+  );
+  // Filtered in application code rather than the query, because the scope
+  // narrows on `Person.id` — a fact that lives on the other side of an id
+  // this model deliberately holds as a plain column, not a joinable one.
+  return scope === 'all' ? withEmployment : withEmployment.filter((r) => r.employment.personId === auth.partyId);
+}
+
+export async function getResignation(id: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'resignations', verb: 'view' });
+  const row = await prisma.resignation.findFirst({ where: { id, tenantId: auth.tenantId } });
+  if (!row) throw ApiError.notFound('Resignation');
+  const employment = await employmentBrief(row.employmentRelationshipId);
+  const scope = await scopeFor('resignations', 'view');
+  if (scope !== 'all' && employment.personId !== auth.partyId) {
+    throw ApiError.notFound('Resignation');
+  }
+  return { ...row, employment };
+}
+
+export async function submitResignation(input: {
+  employmentRelationshipId: string;
+  requestedLastDay: Date;
+  reasonCategory: ResignationReasonCategory;
+  reasonNote?: string | null;
+}) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'resignations', verb: 'create' });
+
+  const employment = await requireEmployment(input.employmentRelationshipId);
+  // At `@own` scope an employee may only resign for themselves; at `all`
+  // scope HR may file one on somebody's behalf (a resignation tendered in
+  // person and recorded for them).
+  await assertCan({ resource: 'resignations', verb: 'create', record: { ownerPartyId: employment.personId } });
+
+  if (!['Active', 'OnLeave'].includes(employment.status)) {
+    throw ApiError.conflict(`A resignation cannot be filed while employment is ${employment.status}.`);
+  }
+  const existing = await prisma.resignation.findFirst({
+    where: { tenantId: auth.tenantId, employmentRelationshipId: input.employmentRelationshipId, status: 'submitted' },
+  });
+  if (existing) throw ApiError.conflict('A resignation is already pending on this employment.', { resignationId: existing.id });
+  if (!RESIGNATION_REASON_CATEGORIES.includes(input.reasonCategory)) {
+    throw ApiError.badRequest(`"${input.reasonCategory}" is not a resignation reason category.`);
+  }
+
+  const { noticeDays } = await noticeDaysFor(input.employmentRelationshipId);
+  const recordCode = await nextRecordCode('RSG');
+  const submittedOn = new Date();
+
+  const row = await prisma.resignation.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode,
+      employmentRelationshipId: input.employmentRelationshipId,
+      submittedOn,
+      requestedLastDay: input.requestedLastDay,
+      noticeDays,
+      reasonCategory: input.reasonCategory,
+      reasonNote: input.reasonNote ?? null,
+      status: 'submitted',
+      createdById: auth.partyId,
+    },
+  });
+
+  await emit({
+    name: EVENTS.RESIGNATION_SUBMITTED,
+    subject: { entityType: 'resignation', entityId: row.id, recordCode },
+    related: [{ relation: 'resigns_from', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+    newState: { status: 'submitted', requestedLastDay: input.requestedLastDay, reasonCategory: input.reasonCategory },
+    owner: { partyId: employment.personId },
+    impact: { domains: ['hr'] },
+  });
+
+  const hrOwner = await hrOpsOwnerId(auth.tenantId);
+  if (hrOwner) {
+    await notify({
+      recipientPartyId: hrOwner,
+      priority: 'N2_NORMAL',
+      title: `Resignation filed: ${employment.person.fullName}`,
+      body: `Requested last day ${input.requestedLastDay.toISOString().slice(0, 10)}, ${noticeDays} days' notice.`,
+      subjectType: 'resignation',
+      subjectId: row.id,
+      drillPath: `/people/separations`,
+    });
+  }
+
+  return row;
+}
+
+function assertResignationTransition(from: ResignationState, to: ResignationState) {
+  if (!canTransitionResignation(from, to)) {
+    throw ApiError.conflict(`A resignation in "${from}" cannot become "${to}".`);
+  }
+}
+
+/**
+ * Accepting a resignation is a distinct grant (`resignations:approve`) from
+ * filing or editing one, and the Self-Dealing Bar applies exactly as it does
+ * on a compensation record: the person the resignation is about can never be
+ * the one who accepts it.
+ */
+export async function acceptResignation(id: string, agreedLastDay?: Date, note?: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'resignations', verb: 'approve' });
+  // `approve` carries no `@own` cell in the shipped matrix, but the coarse
+  // check above only proves the verb is held at *some* scope — never rely on
+  // today's grants.ts to keep an own-scope `approve` from becoming a way to
+  // accept a colleague's resignation.
+  if ((await scopeFor('resignations', 'approve')) !== 'all') {
+    throw ApiError.forbidden('Accepting a resignation needs an all-scope grant on resignations.');
+  }
+
+  const row = await prisma.resignation.findFirst({ where: { id, tenantId: auth.tenantId } });
+  if (!row) throw ApiError.notFound('Resignation');
+  assertResignationTransition(row.status as ResignationState, 'accepted');
+  const employment = await employmentBrief(row.employmentRelationshipId);
+
+  if (employment.personId === auth.partyId) {
+    throw ApiError.forbidden(
+      'A resignation cannot be accepted by the person who filed it (Self-Dealing Bar).',
+      [{ axis: 'WHO', passed: false, reason: 'self_dealing_bar_resignation' }],
+    );
+  }
+
+  const finalLastDay = agreedLastDay ?? row.requestedLastDay;
+
+  await prisma.resignation.update({
+    where: { id },
+    data: { status: 'accepted', acceptedById: auth.partyId, acceptedAt: new Date(), agreedLastDay: finalLastDay },
+  });
+
+  // The employment relationship's own transition — this is what actually
+  // starts the notice period and opens the Offboarding row (see
+  // `transitionEmployment` in domains/employment.ts).
+  await transitionEmployment(row.employmentRelationshipId, 'SUBMIT_RESIGNATION', { note: note ?? undefined });
+
+  const offboarding = await prisma.offboarding.findUnique({ where: { employmentRelationshipId: row.employmentRelationshipId } });
+  const linked = offboarding
+    ? await prisma.resignation.update({ where: { id }, data: { offboardingId: offboarding.id } })
+    : await prisma.resignation.findUniqueOrThrow({ where: { id } });
+
+  await emit({
+    name: EVENTS.RESIGNATION_ACCEPTED,
+    subject: { entityType: 'resignation', entityId: id, recordCode: row.recordCode },
+    related: offboarding ? [{ relation: 'opens', entityType: 'offboarding', entityId: offboarding.id }] : [],
+    previousState: { status: 'submitted' },
+    newState: { status: 'accepted', agreedLastDay: finalLastDay },
+    owner: { partyId: employment.personId },
+    impact: { domains: ['hr'] },
+  });
+
+  return linked;
+}
+
+export async function rejectResignation(id: string, reason: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'resignations', verb: 'approve' });
+  if ((await scopeFor('resignations', 'approve')) !== 'all') {
+    throw ApiError.forbidden('Rejecting a resignation needs an all-scope grant on resignations.');
+  }
+
+  const row = await prisma.resignation.findFirst({ where: { id, tenantId: auth.tenantId } });
+  if (!row) throw ApiError.notFound('Resignation');
+  assertResignationTransition(row.status as ResignationState, 'rejected');
+  const employment = await employmentBrief(row.employmentRelationshipId);
+  if (employment.personId === auth.partyId) {
+    throw ApiError.forbidden(
+      'A resignation cannot be rejected by the person who filed it (Self-Dealing Bar).',
+      [{ axis: 'WHO', passed: false, reason: 'self_dealing_bar_resignation' }],
+    );
+  }
+  if (!reason?.trim()) throw ApiError.badRequest('A rejection needs a reason.');
+
+  const updated = await prisma.resignation.update({
+    where: { id },
+    data: { status: 'rejected', rejectedReason: reason },
+  });
+
+  await emit({
+    name: EVENTS.RESIGNATION_REJECTED,
+    subject: { entityType: 'resignation', entityId: id, recordCode: row.recordCode },
+    previousState: { status: 'submitted' },
+    newState: { status: 'rejected', reason },
+    owner: { partyId: employment.personId },
+    impact: { domains: ['hr'] },
+  });
+
+  return updated;
+}
+
+/** Withdrawing your own resignation while it is still pending — the one mutation `resignations:create @own` is asked to carry, since a withdrawal is the requester's own act on their own not-yet-decided request. */
+export async function withdrawResignation(id: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'resignations', verb: 'create' });
+
+  const row = await prisma.resignation.findFirst({ where: { id, tenantId: auth.tenantId } });
+  if (!row) throw ApiError.notFound('Resignation');
+  const employment = await employmentBrief(row.employmentRelationshipId);
+  await assertCan({ resource: 'resignations', verb: 'create', record: { ownerPartyId: employment.personId } });
+  assertResignationTransition(row.status as ResignationState, 'withdrawn');
+
+  const updated = await prisma.resignation.update({ where: { id }, data: { status: 'withdrawn', withdrawnAt: new Date() } });
+
+  await emit({
+    name: EVENTS.RESIGNATION_WITHDRAWN,
+    subject: { entityType: 'resignation', entityId: id, recordCode: row.recordCode },
+    previousState: { status: 'submitted' },
+    newState: { status: 'withdrawn' },
+    owner: { partyId: employment.personId },
+    impact: { domains: ['hr'] },
+  });
+
+  return updated;
+}
+
+/** Days short of full notice, for the screen that shows what a buyout would cover — pure arithmetic, exported so a payroll ad-hoc line can call it without re-deriving. */
+export function resignationNoticeShortfall(resignation: { noticeDays: number; submittedOn: Date; agreedLastDay: Date | null; requestedLastDay: Date }): number {
+  const lastDay = resignation.agreedLastDay ?? resignation.requestedLastDay;
+  return noticeShortfallDays(resignation.noticeDays, resignation.submittedOn, lastDay);
+}
+
+// ---------------------------------------------------------------------------
+// Exit clearance
+// ---------------------------------------------------------------------------
+
+async function requireOffboarding(offboardingId: string) {
+  const auth = currentAuth();
+  const offboarding = await prisma.offboarding.findFirst({
+    where: { id: offboardingId, tenantId: auth.tenantId },
+    include: { employmentRelationship: true },
+  });
+  if (!offboarding) throw ApiError.notFound('Offboarding');
+  return offboarding;
+}
+
+export async function listExitClearances(offboardingId: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'exit_clearances', verb: 'view' });
+  const offboarding = await requireOffboarding(offboardingId);
+  const scope = await scopeFor('exit_clearances', 'view');
+  if (scope !== 'all' && offboarding.employmentRelationship.personId !== auth.partyId) {
+    throw ApiError.notFound('Offboarding');
+  }
+  return prisma.exitClearance.findMany({ where: { tenantId: auth.tenantId, offboardingId }, orderBy: { department: 'asc' } });
+}
+
+/** Opens the five-department clearance for an offboarding, once its last working day is reached — idempotent, so calling it twice never duplicates a row. */
+export async function initiateClearance(offboardingId: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'exit_clearances', verb: 'create' });
+  // Opening someone's clearance (and, along the way, driving their
+  // offboarding through REACH_LWD/BEGIN_CLEARANCE) is never a self-service
+  // action — an own-scope `create` on exit_clearances is not enough.
+  if ((await scopeFor('exit_clearances', 'create')) !== 'all') {
+    throw ApiError.forbidden('Opening exit clearance needs an all-scope grant on exit_clearances.');
+  }
+  const offboarding = await requireOffboarding(offboardingId);
+
+  if (offboarding.status === 'NoticePeriodActive') {
+    await transitionOffboarding(offboardingId, 'REACH_LWD');
+  }
+  const current = await prisma.offboarding.findFirst({ where: { id: offboardingId, tenantId: auth.tenantId } });
+  if (!current || (current.status !== 'LastWorkingDayReached' && current.status !== 'ClearancePending')) {
+    throw ApiError.conflict(`Clearance cannot be opened while offboarding is ${current?.status ?? 'missing'}.`);
+  }
+  if (current.status === 'LastWorkingDayReached') {
+    await transitionOffboarding(offboardingId, 'BEGIN_CLEARANCE');
+  }
+
+  const existing = await prisma.exitClearance.findMany({ where: { tenantId: auth.tenantId, offboardingId } });
+  const have = new Set(existing.map((e) => e.department));
+  const toCreate = CLEARANCE_DEPARTMENTS.filter((d) => !have.has(d));
+  for (const department of toCreate) {
+    await prisma.exitClearance.create({
+      data: {
+        tenantId: auth.tenantId,
+        offboardingId,
+        employmentRelationshipId: offboarding.employmentRelationshipId,
+        department,
+        status: 'pending',
+      },
+    });
+  }
+  return listExitClearances(offboardingId);
+}
+
+async function afterClearanceChange(offboardingId: string) {
+  const auth = currentAuth();
+  const rows = await prisma.exitClearance.findMany({ where: { tenantId: auth.tenantId, offboardingId } });
+  const complete = allClearancesComplete(rows);
+  const offboarding = await prisma.offboarding.findFirst({ where: { id: offboardingId, tenantId: auth.tenantId } });
+  if (!offboarding) return;
+
+  if (complete && offboarding.status === 'ClearancePending') {
+    await transitionOffboarding(offboardingId, 'CLEARANCE_COMPLETE');
+    await emit({
+      name: EVENTS.EXIT_CLEARANCE_COMPLETED,
+      subject: { entityType: 'offboarding', entityId: offboardingId },
+      related: [{ relation: 'clears', entityType: 'employment_relationship', entityId: offboarding.employmentRelationshipId }],
+      newState: { status: 'complete', departments: rows.map((r) => r.department) },
+      impact: { domains: ['hr'] },
+    });
+  } else if (!complete && offboarding.status === 'ClearancePending' && blockedClearanceCount(rows) > 0) {
+    await transitionOffboarding(offboardingId, 'DISPUTE', 'A department blocked clearance.');
+  } else if (offboarding.status === 'BlockedDisputed' && blockedClearanceCount(rows) === 0) {
+    await transitionOffboarding(offboardingId, 'RESOLVE');
+  }
+}
+
+export async function clearDepartment(id: string, note?: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'exit_clearances', verb: 'edit' });
+  // Signing off a department is a departmental authority, not an own-scope
+  // action on your own record — the Self-Dealing Bar below only stops the
+  // departing employee from clearing themselves, it does not on its own stop
+  // some other own-scoped employee from clearing someone else's department.
+  if ((await scopeFor('exit_clearances', 'edit')) !== 'all') {
+    throw ApiError.forbidden('Clearing a department needs an all-scope grant on exit_clearances.');
+  }
+
+  const row = await prisma.exitClearance.findFirst({ where: { id, tenantId: auth.tenantId } });
+  if (!row) throw ApiError.notFound('Exit clearance');
+  const employment = await employmentBrief(row.employmentRelationshipId);
+  if (employment.personId === auth.partyId) {
+    throw ApiError.forbidden(
+      'A department cannot clear its own exit (Self-Dealing Bar): the departing employee may not sign off their own clearance.',
+      [{ axis: 'WHO', passed: false, reason: 'self_dealing_bar_clearance' }],
+    );
+  }
+
+  const before = row;
+  const updated = await prisma.exitClearance.update({
+    where: { id },
+    data: { status: 'cleared', clearedById: auth.partyId, clearedAt: new Date(), note: note ?? row.note },
+  });
+  await auditWrite({ action: 'update', subjectType: 'exit_clearance', subjectId: id, before, after: updated });
+  await afterClearanceChange(row.offboardingId);
+  return updated;
+}
+
+export async function blockDepartment(id: string, note: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'exit_clearances', verb: 'edit' });
+  if ((await scopeFor('exit_clearances', 'edit')) !== 'all') {
+    throw ApiError.forbidden('Blocking a department needs an all-scope grant on exit_clearances.');
+  }
+  if (!note?.trim()) throw ApiError.badRequest('Blocking a department needs a reason.');
+
+  const row = await prisma.exitClearance.findFirst({ where: { id, tenantId: auth.tenantId } });
+  if (!row) throw ApiError.notFound('Exit clearance');
+
+  const before = row;
+  const updated = await prisma.exitClearance.update({
+    where: { id },
+    data: { status: 'blocked', note, clearedById: null, clearedAt: null },
+  });
+  await auditWrite({ action: 'update', subjectType: 'exit_clearance', subjectId: id, before, after: updated });
+  await afterClearanceChange(row.offboardingId);
+  return updated;
+}
+
+// ---------------------------------------------------------------------------
+// No-dues certificate
+// ---------------------------------------------------------------------------
+
+export async function getNoDues(offboardingId: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'no_dues', verb: 'view' });
+  const offboarding = await requireOffboarding(offboardingId);
+  const scope = await scopeFor('no_dues', 'view');
+  if (scope !== 'all' && offboarding.employmentRelationship.personId !== auth.partyId) {
+    throw ApiError.notFound('Offboarding');
+  }
+  return prisma.noDuesCertificate.findUnique({ where: { offboardingId } });
+}
+
+/** Issued only once every department has cleared — asserted structurally, not just by convention. */
+export async function issueNoDues(offboardingId: string) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'no_dues', verb: 'create' });
+  if ((await scopeFor('no_dues', 'create')) !== 'all') {
+    throw ApiError.forbidden('Issuing a no-dues certificate needs an all-scope grant on no_dues.');
+  }
+
+  const existing = await prisma.noDuesCertificate.findUnique({ where: { offboardingId } });
+  if (existing) throw ApiError.conflict('A no-dues certificate has already been issued for this offboarding.');
+
+  const offboarding = await requireOffboarding(offboardingId);
+  const rows = await prisma.exitClearance.findMany({ where: { tenantId: auth.tenantId, offboardingId } });
+  if (!allClearancesComplete(rows)) {
+    const outstanding = CLEARANCE_DEPARTMENTS.filter((d) => !rows.some((r) => r.department === d && r.status === 'cleared'));
+    throw ApiError.conflict(
+      `No-dues cannot be issued while ${outstanding.length === 1 ? 'a department is' : 'departments are'} outstanding: ${outstanding.join(', ')}.`,
+    );
+  }
+
+  const row = await prisma.noDuesCertificate.create({
+    data: {
+      tenantId: auth.tenantId,
+      offboardingId,
+      employmentRelationshipId: offboarding.employmentRelationshipId,
+      issuedById: auth.partyId ?? 'system',
+      clearanceSnapshot: rows.map((r) => ({ department: r.department, status: r.status, clearedById: r.clearedById, clearedAt: r.clearedAt })) as never,
+    },
+  });
+
+  await emit({
+    name: EVENTS.NO_DUES_ISSUED,
+    subject: { entityType: 'no_dues_certificate', entityId: row.id },
+    related: [{ relation: 'for', entityType: 'offboarding', entityId: offboardingId }],
+    newState: { issuedOn: row.issuedOn },
+    owner: { partyId: offboarding.employmentRelationship.personId },
+    impact: { domains: ['hr'] },
+  });
+
+  return row;
+}
+
+/**
+ * Asset returns pending for an offboarding. WS11 owns the `Asset` /
+ * `AssetAssignment` models and exports exactly this integration point
+ * (`assetsPendingForEmployment` in `domains/hcm/assets.ts`, written for this
+ * workstream to call); wrapped in a try/catch anyway so a checkout where
+ * WS11 has not landed yet degrades to "not measured" instead of a 500.
+ */
+export async function assetsPendingCount(employmentRelationshipId: string): Promise<number | null> {
+  try {
+    return await assetsPendingForEmployment(employmentRelationshipId);
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Alumni
+// ---------------------------------------------------------------------------
+
+export async function listAlumni() {
+  const auth = currentAuth();
+  await assertCan({ resource: 'alumni', verb: 'view' });
+  return prisma.alumniRecord.findMany({ where: { tenantId: auth.tenantId }, orderBy: { exitDate: 'desc' } });
+}
+
+/**
+ * Moves the employment relationship from `Terminated` into `Alumni` (the
+ * only outbound arrow that state has) and writes the record that survives
+ * it. Not automatic on `ClosedArchived`: whether somebody is rehire-eligible
+ * and whether they consented to being contacted is a judgement HR makes once,
+ * deliberately, not a default the settlement machinery should assume.
+ */
+export async function recordAlumni(input: {
+  employmentRelationshipId: string;
+  rehireEligible?: boolean | null;
+  rehireNote?: string | null;
+  contactConsent?: boolean;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+}) {
+  const auth = currentAuth();
+  await assertCan({ resource: 'alumni', verb: 'create' });
+  if ((await scopeFor('alumni', 'create')) !== 'all') {
+    throw ApiError.forbidden('Recording an alumni entry needs an all-scope grant on alumni.');
+  }
+
+  const employment = await requireEmployment(input.employmentRelationshipId);
+  const existing = await prisma.alumniRecord.findUnique({ where: { employmentRelationshipId: input.employmentRelationshipId } });
+  if (existing) throw ApiError.conflict('An alumni record already exists for this employment.');
+
+  if (employment.status === 'Terminated') {
+    await transitionEmployment(input.employmentRelationshipId, 'RETENTION_TRANSITION');
+  } else if (employment.status !== 'Alumni') {
+    throw ApiError.conflict(`An alumni record can only be written once employment is Terminated or Alumni (currently ${employment.status}).`);
+  }
+
+  const lastAssignment = await prisma.assignment.findFirst({
+    where: { tenantId: auth.tenantId, employmentRelationshipId: input.employmentRelationshipId },
+    include: { position: { include: { job: true } } },
+    orderBy: { effectiveFrom: 'desc' },
+  });
+
+  const row = await prisma.alumniRecord.create({
+    data: {
+      tenantId: auth.tenantId,
+      personId: employment.personId,
+      employmentRelationshipId: input.employmentRelationshipId,
+      lastDesignation: lastAssignment?.position.job.title ?? 'Not on record',
+      exitDate: employment.separationDate ?? new Date(),
+      separationType: employment.separationType ?? 'resignation',
+      rehireEligible: input.rehireEligible ?? employment.rehireEligible ?? null,
+      rehireNote: input.rehireNote ?? employment.rehireIneligibleReason ?? null,
+      contactConsent: input.contactConsent ?? false,
+      contactEmail: input.contactEmail ?? null,
+      contactPhone: input.contactPhone ?? null,
+    },
+  });
+
+  await auditWrite({ action: 'create', subjectType: 'alumni_record', subjectId: row.id, after: row });
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// Offboarding read helper (a view this workstream's screens need; the machine
+// itself is owned by employment.ts)
+// ---------------------------------------------------------------------------
+
+export async function getOffboardingForEmployment(employmentRelationshipId: string) {
+  const auth = currentAuth();
+  // `requireEmployment` already runs `assertEmploymentVisible('employees', ...)`,
+  // which is the narrowing this read actually needs — own-scope employees see
+  // their own offboarding, nothing else does.
+  const employment = await requireEmployment(employmentRelationshipId);
+  const offboarding = await prisma.offboarding.findUnique({ where: { employmentRelationshipId: employment.id } });
+  if (!offboarding) return null;
+  const clearances = await prisma.exitClearance.findMany({ where: { tenantId: auth.tenantId, offboardingId: offboarding.id }, orderBy: { department: 'asc' } });
+  const noDues = await prisma.noDuesCertificate.findUnique({ where: { offboardingId: offboarding.id } });
+  return {
+    ...offboarding,
+    clearances,
+    allCleared: allClearancesComplete(clearances),
+    noDues,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// "Mine" — the shape `/me/exit` calls, resolving the caller's own employment
+// rather than asking the client to know its id.
+// ---------------------------------------------------------------------------
+
+export async function myResignations() {
+  const employmentId = await myEmploymentId();
+  return listResignations().then((rows) => rows.filter((r) => r.employmentRelationshipId === employmentId));
+}
+
+export async function mySubmitResignation(input: {
+  requestedLastDay: Date;
+  reasonCategory: ResignationReasonCategory;
+  reasonNote?: string | null;
+}) {
+  const employmentRelationshipId = await myEmploymentId();
+  return submitResignation({ ...input, employmentRelationshipId });
+}
+
+export async function myOffboarding() {
+  const employmentId = await myEmploymentId();
+  return getOffboardingForEmployment(employmentId);
+}
+
+export async function myNoticeDays() {
+  const employmentId = await myEmploymentId();
+  return noticeDaysFor(employmentId);
+}
+
+export const OFFBOARDING_STATE_MACHINE = offboardingMachine;
+export type { OffboardingState };

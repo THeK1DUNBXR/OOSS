@@ -185,7 +185,7 @@ model CompanyProfile {
   boardMeetingsRequiredPerYear Int?
 
   /// SS-1's minimum notice period for a board meeting, in clear days.
-  noticeDays Int @default(7)
+  noticeDays            Int     @default(7)
   // ---- Compliance registrations (docs/plan/compliance.md, workstreams A, C, E, G) ----
   /// Tax Deduction and Collection Account Number (Income-tax Act Sec 203A).
   tan                   String?
@@ -276,6 +276,15 @@ model Person {
   employmentRelationships EmploymentRelationship[]
   candidateApplications   Application[]            @relation("ApplicationCandidate")
 
+  marketingPreferences         MarketingPreference[]
+  marketingSendRecipients      MarketingSendRecipient[]
+  marketingJourneyRuns         MarketingJourneyRun[]
+  marketingFormSubmissions     MarketingFormSubmission[]
+  marketingTouchpoints         MarketingTouchpoint[]
+  marketingEventRegistrations  MarketingEventRegistration[]
+  marketingReferralsAsReferrer MarketingReferral[]          @relation("MarketingReferralReferrer")
+  marketingReferralsAsReferred MarketingReferral[]          @relation("MarketingReferralReferred")
+
   @@unique([tenantId, recordCode])
   @@index([tenantId, primaryPhoneNormalised])
   @@index([tenantId, primaryEmailNormalised])
@@ -316,13 +325,13 @@ model Affiliation {
   branch     String?
   positionId String?
 
-  deletedAt DateTime?
+  deletedAt     DateTime?
   // ---- Access revocation on exit (workstream G) ----
   revokedAt     DateTime?
   revokedReason String?
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId, partyId, status])
   @@index([tenantId, affiliationType, status])
@@ -418,6 +427,12 @@ model Organization {
   students           StudentProfile[]    @relation("StudentInstitution")
   /// The learners whose fees this body is paying.
   sponsoredStudents  StudentProfile[]    @relation("StudentSponsor")
+
+  marketingTouchpoints             MarketingTouchpoint[]
+  marketingEvents                  MarketingEvent[]
+  marketingReferralsAsOrganization MarketingReferral[]
+  marketingSpends                  MarketingSpend[]
+  marketingVendors                 MarketingVendor[]
 
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
@@ -593,15 +608,15 @@ model StudentProfile {
   placeOfSupply String?
   gstin         String?
 
-  attachedById String?
-  deletedAt    DateTime?
+  attachedById      String?
+  deletedAt         DateTime?
   // ---- DPDP: a minor's guardian and the consent recorded from them (workstream G). ----
   guardianName      String?
   guardianPhone     String?
   guardianConsentId String?
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, registrationNumber])
   @@index([tenantId, status])
@@ -920,6 +935,14 @@ model Delegation {
 /// writes one. Reads never emit events — a read of confidential or regulated
 /// data produces an AUDIT_RECORD instead.
 model EventRecord {
+  /// Append order, and the only unambiguous way to find the chain head.
+  ///
+  /// The head used to be read with `orderBy: { recordedAt: 'desc' }`. Under a
+  /// burst, several records share a millisecond, so that ordering is arbitrary
+  /// and the "head" could be a record that already had a successor — the next
+  /// writer then chained onto the wrong one and collided. A sequence is
+  /// monotonic by construction.
+  seq BigInt @default(autoincrement())
   id       String @id @default(cuid())
   tenantId String
 
@@ -973,6 +996,20 @@ model EventRecord {
   @@index([tenantId, eventName, occurredAt])
   @@index([tenantId, subjectEntityType, subjectEntityId])
   @@index([tenantId, correlationId])
+  /// Two events cannot share a predecessor.
+  ///
+  /// The chain used to be built by reading the head with an unlocked
+  /// `findFirst` and inserting afterwards, outside any transaction. Two
+  /// concurrent emits in one tenant both read head H and both wrote
+  /// `prevHash: H`, forking the chain — and `verifyChain` then reported it
+  /// permanently broken with no way back. Tamper-evidence was the entire point
+  /// of the design and it did not survive two requests arriving together.
+  ///
+  /// This is the real fix: the second writer's insert fails loudly and retries
+  /// against the new head instead of silently forking. NULL is exempt in
+  /// Postgres, so the genesis event of a tenant is not covered — that is one
+  /// row, written once, and the serializable transaction covers it.
+  @@unique([tenantId, prevHash])
   @@map("event_records")
 }
 
@@ -995,6 +1032,38 @@ model EventDeadLetter {
 
   @@index([tenantId, state, createdAt])
   @@map("event_dead_letters")
+}
+
+/// One claim per (job, tenant, cron occurrence) — the durable substrate that
+/// replaces an in-process setInterval, which lost its queue state on every
+/// restart and could not be distributed across more than one process.
+model JobClaim {
+  id       String @id @default(cuid())
+  tenantId String
+
+  jobName String
+  /// The occurrence being claimed, derived from the job's cron. Not "now" —
+  /// two instances ticking a second apart must compute the same value.
+  scheduledFor DateTime
+
+  status    String    @default("claimed") // claimed | completed | failed | dead
+  attempt   Int       @default(1)
+  claimedAt DateTime  @default(now())
+  /// Extended by the heartbeat while the job runs; a claim past this with no
+  /// finish is abandoned and may be retaken.
+  leaseUntil   DateTime
+  heartbeatAt  DateTime?
+  finishedAt   DateTime?
+  durationMs   Int?
+  lastError    String?
+  /// Set when retries are exhausted. This is the dead-letter row: it is not
+  /// deleted and it is not retried, so a job that keeps failing is visible
+  /// rather than silently absent.
+  deadAt DateTime?
+
+  @@unique([tenantId, jobName, scheduledFor])
+  @@index([tenantId, status, scheduledFor])
+  @@map("job_claims")
 }
 
 // ===========================================================================
@@ -1065,7 +1134,7 @@ model User {
   /// Server-side carriage. Never client-trusted.
   activeAffiliationId String?
 
-  lastLoginAt DateTime?
+  lastLoginAt       DateTime?
   // ---- Security hygiene (workstream H) ----
   mfaSecret         String?
   mfaEnabledAt      DateTime?
@@ -1073,8 +1142,8 @@ model User {
   failedLoginCount  Int       @default(0)
   lockedUntil       DateTime?
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1398,16 +1467,31 @@ model Lead {
   untouchedNotifiedAt    DateTime?
   convertedOpportunityId String?
 
+  /// Marketing attribution join — the campaign this lead is attributed to,
+  /// the channel it arrived through, and the raw UTM payload captured at
+  /// creation. Populated by the marketing capture pipeline, never required.
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  channelKey String?
+  utm        Json?
+
   createdById String?
   updatedById String?
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  marketingFormSubmissions    MarketingFormSubmission[]
+  marketingTouchpoints        MarketingTouchpoint[]
+  marketingAttributions       MarketingAttribution[]
+  marketingEventRegistrations MarketingEventRegistration[]
+  marketingReferrals          MarketingReferral[]
+
   @@unique([tenantId, recordCode])
   @@index([tenantId, leadStatus, ownerPartyId])
   @@index([tenantId, pipelineId, stageKey])
   @@index([tenantId, createdAt])
+  @@index([tenantId, campaignId])
   @@map("leads")
 }
 
@@ -1473,6 +1557,8 @@ model Opportunity {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  marketingAttributions MarketingAttribution[]
+
   @@unique([tenantId, recordCode])
   @@index([tenantId, pipelineId, stageKey])
   @@index([tenantId, forecastCategory])
@@ -1509,9 +1595,10 @@ model Offering {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  priceBookEntries PriceBookEntry[]
-  leads            Lead[]
-  opportunities    Opportunity[]
+  priceBookEntries   PriceBookEntry[]
+  leads              Lead[]
+  opportunities      Opportunity[]
+  marketingCampaigns MarketingCampaign[]
 
   @@unique([tenantId, offeringCode])
   @@index([tenantId, status, vertical])
@@ -1976,8 +2063,8 @@ model Document {
   label            String?
   sensitivityClass String  @default("internal")
 
-  uploadedById String?
-  deletedAt    DateTime?
+  uploadedById    String?
+  deletedAt       DateTime?
   // ---- Retention, stamp duty and e-signature (workstream H) ----
   retainUntil     DateTime?
   stampDutyAmount Decimal?  @db.Decimal(14, 2)
@@ -1986,8 +2073,8 @@ model Document {
   eSignRef        String?
   eSignedAt       DateTime?
 
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, attachedToType, attachedToId])
@@ -2104,10 +2191,10 @@ model Holder {
   /// MGT-1 fields (Rule 3, Mgmt & Admin Rules) not needed for anything else
   /// in the register and left blank rather than guessed — "not recorded" is
   /// never a fabricated address.
-  address                String?
-  occupation             String?
-  nationality            String?
-  guardianOrSpouseName   String?
+  address              String?
+  occupation           String?
+  nationality          String?
+  guardianOrSpouseName String?
 
   /// Rule 9B / PAS-6: the holder's demat account, when their holding is
   /// dematerialised. Held once per holder rather than per certificate — a
@@ -2115,7 +2202,7 @@ model Holder {
   /// this holder holds is treated as demat when this is set. `{ dpId,
   /// clientId }` at minimum; kept as free `Json` because the two depositories
   /// (NSDL/CDSL) and an RTA's own reference are not a single fixed shape.
-  dematAccount Json?
+  dematAccount   Json?
   /// Names the spin-out batch that created this holder (equity-portal plan
   /// §6b), for `--revert`.
   spinOutBatchId String?
@@ -2470,11 +2557,11 @@ model EntitySnapshot {
   /// can match a snapshot to the "not yet incorporated" node it replaces.
   originDivision String?
 
-  asOf              DateTime
+  asOf            DateTime
   /// The hash of the last `EventRecord` in the source tenant at publish
   /// time — what tells the group screen how far behind a stale snapshot is,
   /// rather than silently blending an old figure with a fresh one.
-  sourceEventHash   String?
+  sourceEventHash String?
 
   capTable     Json // CapTableView, holders carrying heldByTenantId and holderKey
   shareClasses Json
@@ -2561,7 +2648,7 @@ model EsopPlan {
 
   exercisePriceDefault Decimal? @db.Decimal(18, 2)
   /// `{cliffMonths, totalMonths, frequency: 'monthly'|'quarterly'|'annual'}`.
-  vestingDefault Json
+  vestingDefault       Json
 
   exerciseWindowMonthsAfterExit Int @default(3)
 
@@ -2602,8 +2689,8 @@ model OptionGrant {
   exercised Decimal @default(0) @db.Decimal(24, 6)
   lapsed    Decimal @default(0) @db.Decimal(24, 6)
 
-  lapsedOn     DateTime?
-  lapseReason  String?
+  lapsedOn             DateTime?
+  lapseReason          String?
   /// Set on the exit event for a grant with a vested-unexercised balance: the
   /// exit date plus the plan's `exerciseWindowMonthsAfterExit`. The daily
   /// lapse check compares against this rather than recomputing it, so a later
@@ -2669,8 +2756,8 @@ model OptionExercise {
   count         Decimal  @db.Decimal(24, 6)
   exercisePrice Decimal  @db.Decimal(18, 2)
 
-  fmvPerShare   Decimal? @db.Decimal(18, 2)
-  fmvBasis      String   @default("none") // merchant_banker | none
+  fmvPerShare    Decimal? @db.Decimal(18, 2)
+  fmvBasis       String   @default("none") // merchant_banker | none
   fmvValuationId String?
 
   perquisite     Decimal? @db.Decimal(18, 2)
@@ -2697,6 +2784,19 @@ model OptionExercise {
 // Finance (fin-owned)
 // ===========================================================================
 
+/// A generic (non-course) invoice is a real tax document: issued once,
+/// numbered in the `I` series, final from the moment it is handed over.
+///
+/// A course-fee invoice — one raised with `enrollmentDate` set — is
+/// different. It is the internal working record a student's instalments are
+/// tracked against while they pay: numbered in the `temp` series, never
+/// handed to the student, and never reported for tax (`invoiceType` is
+/// forced to `temp` for these). Each instalment still produces its own
+/// receipt, which the student does keep. The document that closes the
+/// course out — the one the student can actually claim tax against — is the
+/// final invoice raised automatically once the instalments are done or the
+/// student withdraws: see `FinalInvoice` and `finalizeCourseFeeInvoice` in
+/// `domains/receipts.ts`.
 model Invoice {
   id       String @id @default(cuid())
   tenantId String
@@ -2801,20 +2901,23 @@ model Invoice {
   createdById       String?
   deletedAt         DateTime?
   // ---- Compliance (workstream B) ----
-  /// tax_invoice | bill_of_supply — a bill of supply carries no tax (Rule 49).
-  invoiceType    String  @default("tax_invoice")
+  /// tax_invoice | bill_of_supply | temp — a bill of supply carries no tax
+  /// (Rule 49); `temp` is the internal course-fee working invoice above,
+  /// forced regardless of what is requested whenever `enrollmentDate` is set,
+  /// and is never a tax document at all.
+  invoiceType       String    @default("tax_invoice")
   /// Tax payable by the recipient (Sec 9(3)/9(4)). Printed on the invoice per Rule 46.
-  reverseCharge  Boolean @default(false)
+  reverseCharge     Boolean   @default(false)
   /// e-invoicing: the IRP's registration number and acknowledgement, and the signed QR.
-  irn            String?
-  irnAckNo       String?
-  irnAckAt       DateTime?
-  signedQrCode   String?
+  irn               String?
+  irnAckNo          String?
+  irnAckAt          DateTime?
+  signedQrCode      String?
   /// not_applicable | pending | registered | cancelled | failed
-  eInvoiceStatus String  @default("not_applicable")
+  eInvoiceStatus    String    @default("not_applicable")
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   lines         InvoiceLine[]
   receipts      Receipt[]
@@ -3040,23 +3143,32 @@ model Receipt {
   @@map("receipts")
 }
 
-/// The document raised once the instalments are done.
+/// The document that closes an instalment run out. Two ways to get here,
+/// because the invoice behind it is one of two different things (see `Invoice`).
 ///
-/// A tax invoice is final: it is raised once, states the whole obligation, and
-/// must still read the same in three years. Each instalment against it is a
-/// receipt, which is its own numbered document. Neither of those, on its own,
-/// answers the question a customer asks at the end — "what did I owe, what have
-/// I paid, and against which receipts" — because the invoice predates the
-/// payments and each receipt only knows about itself.
+/// **Against a course-fee (temp) invoice**, this is the tax invoice — the only
+/// one the student ever gets. It does not exist until the moment it locks:
+/// created once, fully formed, either the instant a receipt brings the temp
+/// invoice's balance to zero (`triggerReason: 'settled'`) or the moment the
+/// student's enrolment is marked withdrawn (`triggerReason: 'dropout'`, which
+/// can carry zero receipts — a student who paid nothing still gets a nil tax
+/// invoice for the record). Numbered in the `TI` series at that moment, dated
+/// that day, naming every receipt issued up to then. Nothing supersedes it:
+/// there is nothing left to happen to a course that is finished or withdrawn
+/// from. `raiseFinalInvoice` refuses to raise one of these on demand —
+/// `finalizeCourseFeeInvoice` is the only path in.
 ///
-/// So this is that answer, raised deliberately by whoever is at the counter
-/// rather than rendered on the fly: it has its own number and its own date, it
-/// names every receipt it consolidates, and the figures are snapshotted, because
-/// a document handed to a customer cannot restate itself the next time it is
+/// **Against a generic invoice** (already a real, immediately-final tax
+/// document), this is the older on-demand statement: "what did I owe, what
+/// have I paid, and against which receipts" for a customer paying that
+/// invoice in instalments. Raised deliberately by whoever is at the counter,
+/// callable again after a further instalment, in which case the new one
+/// supersedes the last rather than replacing it — both were true when they
+/// were handed over.
+///
+/// Either way the figures are snapshotted at the moment of raising, because a
+/// document handed to a customer cannot restate itself the next time it is
 /// opened.
-///
-/// Raising a second one after a further instalment supersedes the first rather
-/// than replacing it. Both were true when they were handed over.
 model FinalInvoice {
   id         String @id @default(cuid())
   tenantId   String
@@ -3087,9 +3199,17 @@ model FinalInvoice {
   /// cannot change what an already-issued statement says.
   snapshot Json
 
-  /// The later statement that replaced this one.
+  /// The later statement that replaced this one. Only ever set on a final
+  /// invoice raised on demand against a generic (non-course) invoice — a
+  /// course-fee invoice's final invoice is created once, fully formed, at
+  /// the moment it locks, and nothing supersedes it.
   supersededById String?
   status         String  @default("issued") // issued | superseded
+  /// Why this was raised: `settled` when a receipt brought a course-fee
+  /// invoice's balance to zero, `dropout` when the student withdrew before
+  /// finishing, or null for the on-demand statement raised against a
+  /// generic invoice. See `finalizeCourseFeeInvoice` in `domains/receipts.ts`.
+  triggerReason  String?
   note           String?
 
   createdAt DateTime @default(now())
@@ -3236,6 +3356,11 @@ model Course {
   /// (a 1/3/6/8-month tenure, each its own monthly rate) prices from
   /// `feePlans` rather than this single figure — see `CourseFeePlan`.
   feeAmount Decimal? @db.Decimal(18, 2)
+  /// A share/dueInDays instalment schedule for `feeAmount` (see
+  /// `events/handlers.ts`'s `instalmentPlan`) — a flat course billed in parts,
+  /// distinct from `feePlans`/`CourseFeePlan`, which prices a course sold on
+  /// tenure-based rates instead of a single `feeAmount`.
+  feePlan Json?
   gstRate   Decimal  @default(18) @db.Decimal(5, 2)
   hsnSac    String?
   /// Contact hours the course runs for. Shown on the catalogue beside the
@@ -3250,6 +3375,8 @@ model Course {
   cohorts  Cohort[]
   feePlans CourseFeePlan[]
   addons   CourseAddon[]
+
+  marketingCampaigns MarketingCampaign[]
 
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
@@ -3385,6 +3512,8 @@ model Enrollment {
   attendance    Attendance[]
   dailyProgress DailyProgress[]
   logs          LearnerLog[]
+
+  marketingAttributions MarketingAttribution[]
 
   /// Spin-out provenance (equity-portal plan §6b) — see `Transaction` above.
   migratedToTenantId String?
@@ -4083,7 +4212,7 @@ model EmploymentRelationship {
   aadhaarReference String?
   uanNumber        String?
 
-  deletedAt DateTime?
+  deletedAt                       DateTime?
   // ---- Compliance (workstreams C, E, F, G) ----
   /// employee | contractor | consultant | intern | apprentice — drives Sec 192 vs 194C/194J.
   engagementType                  String    @default("employee")
@@ -4101,8 +4230,8 @@ model EmploymentRelationship {
   backgroundVerificationConsentAt DateTime?
   codeOfConductAcknowledgedAt     DateTime?
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   assignments         Assignment[]
   compensationRecords CompensationRecord[]
@@ -4534,18 +4663,18 @@ model PayrollInstruction {
   paymentId   String?
 
   // ---- Statutory lines (workstream E). Zero until computed; `computedFrom` names the rate-table versions used. ----
-  basicPay        Decimal @default(0) @db.Decimal(14, 2)
-  hra             Decimal @default(0) @db.Decimal(14, 2)
-  otherAllowances Decimal @default(0) @db.Decimal(14, 2)
-  pfEmployee      Decimal @default(0) @db.Decimal(14, 2)
-  pfEmployer      Decimal @default(0) @db.Decimal(14, 2)
-  epsEmployer     Decimal @default(0) @db.Decimal(14, 2)
-  esiEmployee     Decimal @default(0) @db.Decimal(14, 2)
-  esiEmployer     Decimal @default(0) @db.Decimal(14, 2)
-  professionalTax Decimal @default(0) @db.Decimal(14, 2)
-  tdsAmount       Decimal @default(0) @db.Decimal(14, 2)
-  lwfEmployee     Decimal @default(0) @db.Decimal(14, 2)
-  lwfEmployer     Decimal @default(0) @db.Decimal(14, 2)
+  basicPay        Decimal   @default(0) @db.Decimal(14, 2)
+  hra             Decimal   @default(0) @db.Decimal(14, 2)
+  otherAllowances Decimal   @default(0) @db.Decimal(14, 2)
+  pfEmployee      Decimal   @default(0) @db.Decimal(14, 2)
+  pfEmployer      Decimal   @default(0) @db.Decimal(14, 2)
+  epsEmployer     Decimal   @default(0) @db.Decimal(14, 2)
+  esiEmployee     Decimal   @default(0) @db.Decimal(14, 2)
+  esiEmployer     Decimal   @default(0) @db.Decimal(14, 2)
+  professionalTax Decimal   @default(0) @db.Decimal(14, 2)
+  tdsAmount       Decimal   @default(0) @db.Decimal(14, 2)
+  lwfEmployee     Decimal   @default(0) @db.Decimal(14, 2)
+  lwfEmployer     Decimal   @default(0) @db.Decimal(14, 2)
   computedFrom    Json?
   /// A payslip, once issued, is final — like a tax invoice. Number from the `P` series.
   payslipNumber   String?
@@ -4622,11 +4751,11 @@ model Offboarding {
   settlementAmount Decimal? @db.Decimal(14, 2)
 
   // ---- Full-and-final components (workstreams E, F). `settlementAmount` stays the total. ----
-  gratuityAmount          Decimal?  @db.Decimal(14, 2)
-  leaveEncashmentAmount   Decimal?  @db.Decimal(14, 2)
-  bonusAmount             Decimal?  @db.Decimal(14, 2)
-  noticeRecoveryAmount    Decimal?  @db.Decimal(14, 2)
-  settlementComputedAt    DateTime?
+  gratuityAmount            Decimal?  @db.Decimal(14, 2)
+  leaveEncashmentAmount     Decimal?  @db.Decimal(14, 2)
+  bonusAmount               Decimal?  @db.Decimal(14, 2)
+  noticeRecoveryAmount      Decimal?  @db.Decimal(14, 2)
+  settlementComputedAt      DateTime?
   relievingLetterDocumentId String?
 
   createdAt DateTime @default(now())
@@ -4672,7 +4801,7 @@ model LedgerAccount {
   /// Set by `pnpm division:spin-out` on an account it opened at zero for a
   /// subsidiary from a carried transaction's account name — cash never moves
   /// by data migration, so this says so on the account itself.
-  openingNote String?
+  openingNote    String?
   /// Names the spin-out batch that created this account, for `--revert`.
   spinOutBatchId String?
 
@@ -4783,10 +4912,10 @@ model Transaction {
   /// Set on a row this script created in the subsidiary, naming the batch — the
   /// only rows `pnpm division:spin-out --revert` may remove.
   spinOutBatchId     String?
-  createdById String?
-  deletedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdById        String?
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, txnDate])
@@ -4828,25 +4957,25 @@ model VendorBill {
   createdById       String?
   deletedAt         DateTime?
   // ---- Compliance (workstreams B, C) ----
-  vendorPan          String?
+  vendorPan         String?
   /// Reverse charge on this inward supply: tax the company pays on the vendor's behalf.
-  rcmApplicable      Boolean  @default(false)
-  rcmTaxAmount       Decimal  @default(0) @db.Decimal(18, 2)
+  rcmApplicable     Boolean   @default(false)
+  rcmTaxAmount      Decimal   @default(0) @db.Decimal(18, 2)
   /// TDS deducted at approval, from the dated section-rate table.
-  tdsSection         String?
-  tdsRate            Decimal? @db.Decimal(5, 2)
-  tdsAmount          Decimal  @default(0) @db.Decimal(18, 2)
+  tdsSection        String?
+  tdsRate           Decimal?  @db.Decimal(5, 2)
+  tdsAmount         Decimal   @default(0) @db.Decimal(18, 2)
   /// A lower/nil-deduction certificate (Sec 197) reference, when one overrides the table.
-  tdsCertificateRef  String?
-  tdsChallanId       String?
+  tdsCertificateRef String?
+  tdsChallanId      String?
   /// MSME (Sec 43B(h)): a Udyam-registered vendor must be paid within the agreed term or 45 days.
-  vendorUdyamNumber  String?
-  agreedTermDays     Int?
-  msmeDueAt          DateTime?
-  msmeNotifiedAt     DateTime?
+  vendorUdyamNumber String?
+  agreedTermDays    Int?
+  msmeDueAt         DateTime?
+  msmeNotifiedAt    DateTime?
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, recordCode])
   @@index([tenantId, status, dueDate])
