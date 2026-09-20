@@ -1,0 +1,168 @@
+// HCM — WS11 assets (docs/hcm/assets.md).
+//
+// Physical inventory issued against an employment (Asset, AssetAssignment),
+// travel requests with an approver distinct from the traveller, letter
+// requests fulfilled either through compliance labour's HrLetter issuer (for
+// the kinds it knows) or a snapshot of our own, and ID card issuance.
+
+/// A physical item the company issues and reclaims. `cost` is money and is
+/// masked at read time for a viewer without `hcm_assets:financial` — never
+/// dropped from the shape, nulled in place like every other money field on
+/// this platform.
+model Asset {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  tag      String
+  /// laptop | phone | access_card | other
+  category String
+  serial   String?
+
+  purchaseDate DateTime?
+  cost         Decimal?  @db.Decimal(12, 2)
+
+  /// in_stock | assigned | repair | retired
+  status String @default("in_stock")
+  note   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments AssetAssignment[]
+
+  @@unique([tenantId, tag])
+  @@index([tenantId, status])
+  @@map("hcm_assets_assets")
+}
+
+/// One spell of an asset being held by an employment. `returnedOn` null means
+/// still out. A second open assignment on the same asset cannot be created —
+/// the domain layer checks the asset is `in_stock` before issuing.
+model AssetAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  assetId                  String
+  asset                    Asset  @relation(fields: [assetId], references: [id])
+  employmentRelationshipId String
+
+  issuedOn   DateTime @default(now())
+  returnedOn DateTime?
+  /// Recorded at issue: good | fair | poor. Recorded again at return, since
+  /// the condition an asset comes back in is the fact the next assignment's
+  /// issue condition is compared against.
+  condition  String   @default("good")
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, assetId])
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_assets_asset_assignments")
+}
+
+/// A travel request. `approverPartyId` records who decided — the Self-Dealing
+/// Bar means it can never equal the travelling employment's own person.
+model TravelRequest {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  employmentRelationshipId String
+
+  purpose      String
+  fromLocation String
+  toLocation   String
+  startDate    DateTime
+  endDate      DateTime
+  /// flight | train | road | other
+  mode         String
+
+  estimatedCost    Decimal  @db.Decimal(12, 2)
+  advanceRequested Decimal? @db.Decimal(12, 2)
+
+  /// submitted | approved | rejected | settled
+  status String @default("submitted")
+
+  approverPartyId String?
+  decidedAt       DateTime?
+  decisionNote    String?
+
+  /// The settlement, once travelled — a bare id into WS7's ExpenseClaim.
+  /// Never a relation: this workstream does not own that model and reaches
+  /// it only by id, the way the plan requires.
+  expenseClaimId String?
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, status])
+  @@map("hcm_assets_travel_requests")
+}
+
+/// A request for a letter. Fulfilment either issues a real HrLetter (for the
+/// kinds `compliance/labour.ts` knows how to write) or, for a kind that
+/// package does not carry, records its own snapshot the same way — final
+/// once fulfilled, a fact this row's `status` protects.
+model LetterRequest {
+  id     String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  requestedById            String?
+
+  /// address_proof | salary_certificate | noc | visa | experience
+  kind String
+
+  /// requested | fulfilled | rejected
+  status String @default("requested")
+
+  number String?
+
+  /// Set only when fulfilment went through compliance labour's issuer.
+  hrLetterId String?
+  /// Set only when fulfilment used this workstream's own snapshot path —
+  /// `{ body, issuedOn }`.
+  snapshot   Json?
+
+  decisionNote String?
+  fulfilledAt  DateTime?
+  fulfilledById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, status])
+  @@map("hcm_assets_letter_requests")
+}
+
+/// An ID card issued against an employment. `status` tracks the card itself,
+/// not the employment — a lost card gets reissued under a new `cardNumber`
+/// while the old row stays as the record of what happened to it.
+model IdCard {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  cardNumber               String
+
+  /// issued | lost | reissued | returned
+  status String @default("issued")
+
+  issuedOn   DateTime  @default(now())
+  returnedOn DateTime?
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, cardNumber])
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_assets_id_cards")
+}

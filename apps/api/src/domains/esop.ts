@@ -309,7 +309,7 @@ export async function proposeGrant(input: ProposeGrantInput) {
 
   const issuedTotal = await issuedShareCapitalTotal();
   const grantPct = issuedTotal > 0 ? (input.count / issuedTotal) * 100 : 0;
-  let resolutionRef = input.resolutionRef ?? null;
+  const resolutionRef = input.resolutionRef ?? null;
   if (grantPct >= ESOP_SINGLE_GRANT_RESOLUTION_THRESHOLD_PCT && !resolutionRef) {
     throw ApiError.unprocessable(
       `Rule 12(4) requires its own shareholder resolution for a single grant of one percent or more of the issued capital. ` +

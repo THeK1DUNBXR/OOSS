@@ -515,6 +515,9 @@ export function EmployeeDetail() {
                 Change salary
               </button>
             )}
+            <Link className="btn-ghost" to={`/people/employees/${data.id}/360`}>
+              Full profile
+            </Link>
             <button className="btn-ghost" onClick={() => setEditOpen(true)}>
               Edit
             </button>

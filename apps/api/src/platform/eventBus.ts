@@ -24,7 +24,8 @@ import {
   type SensitivityClass,
   type SeverityCode,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma } from './db.js';
+import { prisma, unscopedPrisma, type DbTx } from './db.js';
+import { config } from './config.js';
 import { getContext, currentAuth, requireContext } from './context.js';
 
 const MAX_ATTEMPTS = 3;
@@ -59,7 +60,7 @@ const registry = new Map<string, Registration[]>();
 
 /** Test hook: every event emitted in-process, in order. */
 export const emittedEvents: EventEnvelope[] = [];
-let captureEvents = process.env.NODE_ENV === 'test';
+let captureEvents = config.NODE_ENV === 'test';
 
 export function setEventCapture(on: boolean) {
   captureEvents = on;
@@ -101,13 +102,102 @@ export function computeHash(payload: Record<string, unknown>, prevHash: string |
     .digest('hex');
 }
 
-async function headHash(tenantId: string): Promise<string | null> {
-  const last = await prisma.eventRecord.findFirst({
-    where: { tenantId },
-    orderBy: { recordedAt: 'desc' },
-    select: { hash: true },
-  });
-  return last?.hash ?? null;
+/**
+ * Retries left over after the lock. Small on purpose: with the advisory lock
+ * below, a conflict should be rare rather than routine.
+ */
+const CHAIN_RETRIES = 5;
+
+/**
+ * Namespace for the per-tenant append lock, so it cannot collide with any other
+ * advisory lock this application might take later.
+ */
+const CHAIN_LOCK_NAMESPACE = 4711;
+
+/**
+ * Append one record to the tenant's hash chain, atomically.
+ *
+ * The head was read with an unlocked `findFirst` and the insert happened later,
+ * outside any transaction. Two emits arriving together in one tenant both read
+ * head H, both computed `prevHash: H`, and both inserted — a fork. `verifyChain`
+ * then reported the chain permanently broken, with no recovery path, and
+ * tamper-evidence is the entire point of the design.
+ *
+ * Two things fix it, and both are needed. A per-tenant advisory lock makes the
+ * read-then-insert one operation, so appends queue instead of racing.
+ * `@@unique([tenantId, prevHash])` makes a fork impossible at the database
+ * rather than merely unlikely in the application, and is what would catch any
+ * path that ever bypassed this function. The hash is computed per attempt
+ * because a retry must chain onto whatever the head has become.
+ */
+async function appendToChain(
+  tenantId: string,
+  body: Record<string, unknown>,
+  build: (prevHash: string | null, hash: string) => { data: Record<string, unknown> },
+): Promise<{ record: { id: string }; prevHash: string | null; hash: string }> {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < CHAIN_RETRIES; attempt++) {
+    try {
+      return await prisma.$transaction(
+        async (tx: DbTx) => {
+          // Queue, rather than collide.
+          //
+          // Optimistic retry alone is quadratic here: every emit in a tenant
+          // contends for one row — the chain head — so in a burst of N, each
+          // round admits exactly one writer and the other N-1 all fail and
+          // retry. Forty concurrent emits exhausted sixty retries.
+          //
+          // A transaction-scoped advisory lock makes the append a queue: the
+          // second writer waits for the first to commit and then reads a head
+          // that is already current. It is released automatically when the
+          // transaction ends, including on rollback. The unique constraint
+          // stays as the guarantee — this is what stops it being hit.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CHAIN_LOCK_NAMESPACE}::int, hashtext(${tenantId}))`;
+
+          const last = await tx.eventRecord.findFirst({
+            where: { tenantId },
+            // By sequence, not by timestamp. `recordedAt desc` is ambiguous
+            // when several records share a millisecond — and in a fast suite
+            // many do — so the "head" could be a record that already had a
+            // successor, and the next writer would chain onto the wrong link
+            // and collide. A sequence is monotonic by construction.
+            orderBy: { seq: 'desc' },
+            select: { hash: true },
+          });
+          const prevHash = last?.hash ?? null;
+          const hash = computeHash(body, prevHash);
+          const record = await tx.eventRecord.create(
+            build(prevHash, hash) as Parameters<typeof tx.eventRecord.create>[0],
+          );
+          return { record, prevHash, hash };
+        },
+        // READ COMMITTED, deliberately, *because* of the lock above.
+        //
+        // Under SERIALIZABLE the transaction's snapshot is taken when its first
+        // statement runs — which is the lock acquisition itself. A writer that
+        // then waits its turn still reads the head from before the winner
+        // committed, so it computes the same `prevHash` and collides anyway.
+        // The lock provides the mutual exclusion; READ COMMITTED is what lets
+        // the next writer actually see what the previous one wrote.
+        { isolationLevel: 'ReadCommitted' },
+      );
+    } catch (err) {
+      lastError = err;
+      // A serialization failure or a unique violation both mean the same thing:
+      // somebody else appended first. Recompute against the new head.
+      const code = (err as { code?: string })?.code;
+      if (code !== 'P2002' && code !== 'P2034' && !/could not serialize/i.test(String(err))) throw err;
+      // Jittered, not just growing: a fixed backoff makes two losers collide
+      // again on the same schedule, which is how a retry storm sustains itself.
+      const base = Math.min(2 * (attempt + 1), 40);
+      await new Promise((r) => setTimeout(r, base + Math.random() * base));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? new Error(`Could not append to the event chain after ${CHAIN_RETRIES} attempts: ${lastError.message}`)
+    : new Error(`Could not append to the event chain after ${CHAIN_RETRIES} attempts.`);
 }
 
 /**
@@ -125,7 +215,8 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
   const occurredAt = input.occurredAt ?? now;
   const eventId = ulid();
 
-  const prevHash = await headHash(auth.tenantId);
+  // Computed inside the retry loop below: the head can move between the read
+  // and the insert, and that is the race this used to lose.
 
   const body = {
     eventId,
@@ -147,7 +238,7 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
     causationId: ctx.causationId,
   };
 
-  const hash = computeHash(body as Record<string, unknown>, prevHash);
+  // hash depends on prevHash, so both are computed per attempt.
 
   const impact: EventImpact = {
     domains: input.impact?.domains ?? [input.name.split('.')[1] ?? 'crm'],
@@ -155,7 +246,7 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
     materiality: input.impact?.materiality ?? null,
   };
 
-  const record = await prisma.eventRecord.create({
+  const { record, prevHash, hash } = await appendToChain(auth.tenantId, body as Record<string, unknown>, (prevHash, hash) => ({
     data: {
       tenantId: auth.tenantId,
       eventId,
@@ -194,7 +285,7 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
       prevHash,
       hash,
     },
-  });
+  }));
 
   // Dual-publish during the migration window: both writes share the same
   // eventId and correlationId, so they are recognisable as the same fact under
@@ -338,7 +429,12 @@ export async function verifyChain(tenantId: string, limit = 5000): Promise<{
   // wrote the chain, so an auditor can verify it out of band.
   const events = await unscopedPrisma.eventRecord.findMany({
     where: { tenantId, legacyName: null },
-    orderBy: { recordedAt: 'asc' },
+    // By sequence, for the same reason the append reads the head that way:
+    // several records share a millisecond, so `recordedAt asc` walks them in an
+    // arbitrary order and reports a perfectly sound chain as broken. The
+    // verifier had the same ambiguity as the writer, and it is worse here —
+    // a false "tamper detected" on an audit trail is not a small bug.
+    orderBy: { seq: 'asc' },
     take: limit,
     select: { eventId: true, prevHash: true, hash: true },
   });

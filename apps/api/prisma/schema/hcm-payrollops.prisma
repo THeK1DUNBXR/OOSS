@@ -1,0 +1,239 @@
+// HCM — payrollops (docs/hcm/payrollops.md, workstream WS8).
+//
+// `payroll.ts` instructs payroll and settles it; `compliance/payroll.ts` makes
+// the statutory numbers correct. This file is what happens around a run once
+// the numbers exist: the ad-hoc lines and arrears somebody proposed for it,
+// the double-entry breakdown finance reads it as, the bank file it becomes,
+// the delta report that catches a run gone wrong before the money leaves, the
+// calendar that says when each of those steps falls due, and the question an
+// employee raises about their own payslip.
+//
+// Every reference to a pre-existing model (PayrollRun, PayrollInstruction,
+// EmploymentRelationship, Payslip) is a plain id column with no `@relation` —
+// the back side cannot be added here without editing a model this workstream
+// does not own.
+
+/// One configured pay component. `glAccountCode` is a plain string, not a
+/// foreign key into the books' LedgerAccount — the books use bank/cash
+/// accounts for cash movements, and a payroll GL code (e.g. "6010-SALARIES")
+/// is a costing label, not something anyone deposits into.
+model PayItem {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code String
+  name String
+  /// earning | deduction | reimbursement | employer_contribution
+  kind String
+  /// Whether this component is subject to income tax.
+  taxable Boolean @default(true)
+  /// Whether this component counts toward the PF/ESI wage basis
+  /// (workstream E computes the statutory lines themselves; this only flags
+  /// which ad-hoc components should be added to that basis if a run recomputes).
+  statutoryBasis Boolean @default(false)
+  glAccountCode  String
+  active         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("hcm_pay_items")
+}
+
+/// A one-off addition or deduction against an employee's pay for a period —
+/// a bonus, a shortfall recovery, a relocation payment. Proposed by whoever
+/// holds `adhoc_pay:create` (hrOps), approved by a different partyId holding
+/// `adhoc_pay:approve` (financeHead): the Self-Dealing Bar, same shape as
+/// `SalaryStructure`. `payrollRunId` is set once a run has picked it up;
+/// applying its amount into that run's instruction is a manual step today
+/// (see docs/hcm/payrollops.md "What this does not do") — `payroll.ts`'s
+/// `setInstructionAmounts` is the applying end, not owned here.
+model AdHocPayLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  payItemId                String
+  payrollRunId             String?
+  payPeriod                String // YYYY-MM
+  amount                   Decimal @db.Decimal(14, 2)
+  reason                   String
+
+  /// Proposed | Approved | Rejected | Applied
+  status String @default("Proposed")
+
+  proposedById String?
+  approvedById String?
+  approvedAt   DateTime?
+  appliedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, payPeriod])
+  @@index([tenantId, status])
+  @@map("hcm_adhoc_pay_lines")
+}
+
+/// A pay adjustment owed for a past period — a delayed increment, a
+/// corrected shortfall. Same proposer/approver split as `AdHocPayLine`.
+/// `paidInPayPeriod` is set once it has actually gone out in a run.
+model Arrear {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  fromPeriod               String // YYYY-MM the arrear is owed for
+  amount                   Decimal @db.Decimal(14, 2)
+  reason                   String
+
+  /// Proposed | Approved | Rejected | Paid
+  status String @default("Proposed")
+
+  proposedById    String?
+  approvedById    String?
+  approvedAt      DateTime?
+  paidInPayPeriod String?
+  paidAt          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, status])
+  @@map("hcm_arrears")
+}
+
+/// The double-entry breakdown a payroll run posts as, by division cost
+/// centre. One row per approved run. `transactionId` is set when the net-pay
+/// disbursement leg was also recorded in the books as a `Transaction`
+/// (`recordTransaction`, `apps/api/src/domains/books.ts`) — the books have no
+/// multi-line journal-entry primitive, only single cash movements, so the
+/// full debit/credit breakdown lives here and only the net cash leg reaches
+/// the books. `status` stays "Prepared" until that leg is posted.
+model PayrollJournal {
+  id       String @id @default(cuid())
+  tenantId String
+
+  payrollRunId String @unique
+  payPeriod    String
+
+  /// [{ ledgerAccountCode, label, costCentre, debit, credit }, ...]
+  lines       Json
+  totalDebit  Decimal @db.Decimal(16, 2)
+  totalCredit Decimal @db.Decimal(16, 2)
+
+  /// Prepared | Posted
+  status        String    @default("Prepared")
+  transactionId String?
+  preparedById  String?
+  postedById    String?
+  postedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, payPeriod])
+  @@map("hcm_payroll_journals")
+}
+
+/// The NEFT file generated for a run's net-pay disbursement, kept verbatim —
+/// an audited export (CMP-AUD-style), never regenerated silently once a
+/// bank has acted on one.
+model BankAdvice {
+  id       String @id @default(cuid())
+  tenantId String
+
+  payrollRunId String
+  payPeriod    String
+  format       String @default("NEFT_CSV")
+  fileText     String @db.Text
+  /// [{ employeeName, accountNumber, ifsc, amount, reference }, ...] — the
+  /// same rows `fileText` was built from, kept structured so a view of this
+  /// advice can mask `accountNumber` to its last 4 digits without reparsing
+  /// the CSV. Only `downloadBankAdvice` (gated on `bank_advices:export`,
+  /// audited) ever reads `fileText` or the unmasked account numbers here.
+  rows         Json
+  count        Int
+  total        Decimal @db.Decimal(16, 2)
+
+  generatedById String?
+  generatedAt   DateTime @default(now())
+
+  @@index([tenantId, payrollRunId])
+  @@map("hcm_bank_advices")
+}
+
+/// A per-employee delta report between two runs, generated before a run is
+/// disbursed so an unexplained swing is caught while it is still reversible.
+model PayrollReconciliation {
+  id       String @id @default(cuid())
+  tenantId String
+
+  payrollRunId         String
+  previousPayrollRunId String?
+
+  /// [{ employmentRelationshipId, previousNet, currentNet, delta, deltaPct, unexplained, note }, ...]
+  deltas           Json
+  unexplainedCount Int @default(0)
+
+  generatedById String?
+  generatedAt   DateTime @default(now())
+
+  @@index([tenantId, payrollRunId])
+  @@map("hcm_payroll_reconciliations")
+}
+
+/// The cutoffs a period runs against: when attendance locks, when other
+/// ad-hoc input freezes, the planned run/approve dates and the pay date.
+/// One row per period; HR sets these ahead of the period they govern.
+model PayrollCalendar {
+  id       String @id @default(cuid())
+  tenantId String
+
+  payPeriod        String // YYYY-MM
+  attendanceLockAt DateTime
+  inputFreezeAt    DateTime
+  runByAt          DateTime
+  approveByAt      DateTime
+  payDate          DateTime
+  note             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, payPeriod])
+  @@map("hcm_payroll_calendar")
+}
+
+/// A question an employee raises against their own payslip — "why is this
+/// lower than last month" — routed to HR for a response. Not a grievance
+/// (that is POSH/disciplinary territory in compliance/labour.ts); a plain
+/// payroll question with an open/responded/closed lifecycle.
+model PayrollQuery {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  payslipId                String?
+  payPeriod                String
+  subject                  String
+  message                  String
+
+  /// Open | Responded | Closed
+  status String @default("Open")
+
+  response     String?
+  respondedById String?
+  respondedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, status])
+  @@map("hcm_payroll_queries")
+}

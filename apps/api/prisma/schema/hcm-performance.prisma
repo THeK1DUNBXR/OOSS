@@ -1,0 +1,276 @@
+// HCM — WS5 performance (docs/hcm/performance.md).
+//
+// Review cycles and talent management, built alongside — never replacing —
+// packages/shared's Goal/PerformanceEvidence pair in domains/performance.ts.
+// New models only, referencing employment/person by plain `*Id` String
+// columns (no @relation into main.prisma), tenant-scoped throughout.
+
+/// One review cycle (annual/half/quarter/probation), moving through a fixed
+/// phase order: self -> manager -> calibration -> closed. `closed` is
+/// terminal; ratings for the cycle are hidden from the employee until the
+/// cycle is closed AND their FinalRating row is individually `released`.
+model ReviewCycle {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  name        String
+  /// annual | half | quarter | probation
+  kind        String
+  periodLabel String
+
+  /// self | manager | calibration | closed
+  phase String @default("self")
+
+  startsOn DateTime
+  endsOn   DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, phase])
+  @@map("hcm_performance_review_cycles")
+}
+
+/// A rating scale + weighted competency sections, reusable across cycles.
+model ReviewTemplate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name String
+  /// [{ key, label, weight, competencies: [{ key, label }] }]
+  sections    Json
+  /// [{ value, label }] — e.g. 1..5 with words
+  ratingScale Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("hcm_performance_review_templates")
+}
+
+/// One reviewer's assignment against one subject for one cycle. `kind =
+/// 'self'` requires reviewerPartyId === subjectPartyId; every other kind
+/// requires the opposite — a reviewer never reviews themselves except on the
+/// self form.
+model ReviewAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  cycleId    String
+  templateId String?
+
+  employmentRelationshipId String
+  subjectPartyId           String
+
+  reviewerEmploymentRelationshipId String
+  /// The scope-axis owner: whose "own" this record is, for the person filling
+  /// it in.
+  reviewerPartyId                  String
+
+  /// self | manager | peer | upward | skip
+  kind String
+
+  /// pending | submitted
+  status String    @default("pending")
+  dueAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, cycleId])
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, reviewerPartyId])
+  @@map("hcm_performance_review_assignments")
+}
+
+/// The reviewer's submitted answer. One per assignment, append-only —
+/// resubmitting is refused once submitted, the same way a filed document is
+/// final elsewhere on this platform.
+model ReviewResponse {
+  id       String @id @default(cuid())
+  tenantId String
+
+  assignmentId String @unique
+
+  /// [{ sectionKey, competencyKey, score, note? }]
+  ratings  Json
+  comments String?
+
+  submittedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, assignmentId])
+  @@map("hcm_performance_review_responses")
+}
+
+/// A calibration meeting for a cycle. `decisions` is the working set the
+/// facilitator edits while open; closing it snapshots each decision into a
+/// FinalRating row and the session becomes immutable.
+model CalibrationSession {
+  id       String @id @default(cuid())
+  tenantId String
+
+  cycleId            String
+  facilitatorPartyId String?
+
+  /// [{ employmentRelationshipId }]
+  participants Json
+  /// [{ employmentRelationshipId, rating, potential, band?, promotionRecommended?, incrementRecommendedPct?, note? }]
+  decisions    Json?
+
+  /// open | closed
+  status   String    @default("open")
+  closedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, cycleId])
+  @@map("hcm_performance_calibration_sessions")
+}
+
+/// One person's rating for one cycle, produced by closing a calibration
+/// session. Withheld from the employee (`released = false`) until an HR
+/// action explicitly releases it — releasing is a distinct grant from editing
+/// and is barred from being done by the subject themselves.
+model FinalRating {
+  id       String @id @default(cuid())
+  tenantId String
+
+  cycleId                  String
+  employmentRelationshipId String
+  subjectPartyId           String
+
+  rating     String?
+  /// low | medium | high — the second axis of the 9-box, alongside `rating`.
+  potential  String?
+  band       String?
+  promotionRecommended    Boolean  @default(false)
+  incrementRecommendedPct Decimal? @db.Decimal(5, 2)
+
+  released   Boolean   @default(false)
+  releasedAt DateTime?
+  releasedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, cycleId, employmentRelationshipId])
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_performance_final_ratings")
+}
+
+/// Continuous feedback, outside any cycle. `toPartyId` is the record's owner
+/// for scope purposes — the recipient's own feedback about themselves.
+model Feedback {
+  id       String @id @default(cuid())
+  tenantId String
+
+  fromEmploymentRelationshipId String
+  fromPartyId                  String
+
+  toEmploymentRelationshipId String
+  toPartyId                  String
+
+  /// praise | constructive
+  kind    String
+  message String
+
+  /// private (recipient + manager) | manager | public
+  visibility String @default("private")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, toEmploymentRelationshipId])
+  @@index([tenantId, fromPartyId])
+  @@map("hcm_performance_feedback")
+}
+
+/// A manager/report check-in. Owned (for scope) by the report, since it is
+/// their record of what was discussed and agreed as much as the manager's.
+model OneOnOne {
+  id       String @id @default(cuid())
+  tenantId String
+
+  managerEmploymentRelationshipId String
+  managerPartyId                  String
+
+  reportEmploymentRelationshipId String
+  reportPartyId                  String
+
+  scheduledAt DateTime
+  agenda      Json?
+  notes       Json?
+  actions     Json?
+
+  /// scheduled | completed | cancelled
+  status String @default("scheduled")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, reportEmploymentRelationshipId])
+  @@index([tenantId, managerPartyId])
+  @@map("hcm_performance_one_on_ones")
+}
+
+/// A Performance Improvement Plan. Closing it (`outcome` away from `open`)
+/// needs a decider who is not the subject — the Self-Dealing Bar applied to a
+/// process that is corrective rather than financial.
+model Pip {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  subjectPartyId           String
+
+  managerEmploymentRelationshipId String?
+  managerPartyId                  String?
+
+  startsOn DateTime
+  endsOn   DateTime
+
+  /// [{ description, dueOn? }]
+  objectives  Json
+  /// [{ at, note, onTrack }]
+  checkpoints Json?
+
+  /// open | successful | extended | exited
+  outcome  String    @default("open")
+  closedAt DateTime?
+  closedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_performance_pips")
+}
+
+/// A succession plan for one position/role, with a ranked bench of
+/// successors and their readiness. Read-restricted to HR ops in practice
+/// (the `succession_plans` grant carries no `employee` row) since it names
+/// candidates who have not been told.
+model SuccessionPlan {
+  id       String @id @default(cuid())
+  tenantId String
+
+  positionTitle String
+  positionId    String?
+
+  /// [{ employmentRelationshipId, readiness: 'now'|'1yr'|'2yr', note? }]
+  successors Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("hcm_performance_succession_plans")
+}

@@ -78,6 +78,70 @@ import { ItIncidents, ItIncidentDetail, ItProblems, ItProblemDetail, ItChanges, 
 import { ItRisks, ItRiskDetail, ItPolicies, ItPolicyDetail, ItControls, ItAccessReviews, ItAccessReviewDetail, ItFindings } from './pages/it/Governance.js';
 import { ItPortfolio, ItInitiativeDetail, ItRoadmap, ItBudget, ItTechDebt } from './pages/it/Portfolio.js';
 import { ItContinuity, ItAvailability, ItMaintenance } from './pages/it/Continuity.js';
+import { Cockpit as CeoCockpit } from './pages/ceo/Cockpit.js';
+import { KpiLibrary as CeoKpiLibrary } from './pages/ceo/KpiLibrary.js';
+import { Strategy as CeoStrategy } from './pages/ceo/Strategy.js';
+import { Okrs as CeoOkrs } from './pages/ceo/Okrs.js';
+import { Initiatives as CeoInitiatives } from './pages/ceo/Initiatives.js';
+import { Rhythm as CeoRhythm } from './pages/ceo/Rhythm.js';
+import { Doa as CeoDoa } from './pages/ceo/Doa.js';
+import { Approvals as CeoApprovals } from './pages/ceo/Approvals.js';
+import { BoardPack as CeoBoardPack } from './pages/ceo/BoardPack.js';
+import { InvestorUpdates as CeoInvestorUpdates } from './pages/ceo/InvestorUpdates.js';
+import { Stakeholders as CeoStakeholders } from './pages/ceo/Stakeholders.js';
+import { Risk as CeoRisk } from './pages/ceo/Risk.js';
+import { Policies as CeoPolicies } from './pages/ceo/Policies.js';
+import { Governance as CeoGovernance } from './pages/ceo/Governance.js';
+import { FinancialPlan as CeoFinancialPlan } from './pages/ceo/FinancialPlan.js';
+import { Headcount as CeoHeadcount } from './pages/ceo/Headcount.js';
+import { Leadership as CeoLeadership } from './pages/ceo/Leadership.js';
+import { OneOnOnes as CeoOneOnOnes } from './pages/ceo/OneOnOnes.js';
+import { Succession as CeoSuccession } from './pages/ceo/Succession.js';
+import { TimeAudit as CeoTimeAudit } from './pages/ceo/TimeAudit.js';
+import { MarketingShell } from './pages/marketing/MarketingShell.js';
+import { MarketingOverview } from './pages/marketing/MarketingOverview.js';
+import { Campaigns as MarketingCampaigns } from './pages/marketing/Campaigns.js';
+import { CampaignDetail as MarketingCampaignDetail } from './pages/marketing/CampaignDetail.js';
+import { Calendar as MarketingCalendar } from './pages/marketing/Calendar.js';
+import { Budget as MarketingBudget } from './pages/marketing/Budget.js';
+import { Plans as MarketingPlans } from './pages/marketing/Plans.js';
+import { Analytics as MarketingAnalytics } from './pages/marketing/Analytics.js';
+import { MarketingSettings } from './pages/marketing/MarketingSettings.js';
+import { Forms as MarketingForms } from './pages/marketing/Forms.js';
+import { MarketingEvents, MarketingEventDetail } from './pages/marketing/MarketingEvents.js';
+import { Assets as MarketingAssets } from './pages/marketing/Assets.js';
+import { Social as MarketingSocial } from './pages/marketing/Social.js';
+import { Referrals as MarketingReferrals } from './pages/marketing/Referrals.js';
+import { Audiences as MarketingAudiences } from './pages/marketing/Audiences.js';
+import { Consent as MarketingConsent } from './pages/marketing/Consent.js';
+import { Templates as MarketingTemplates } from './pages/marketing/Templates.js';
+import { Sends as MarketingSends, SendDetail as MarketingSendDetail } from './pages/marketing/Sends.js';
+import { Journeys as MarketingJourneys } from './pages/marketing/Journeys.js';
+import { OrgChart } from './pages/hcm/OrgChart.js';
+import { Directory } from './pages/hcm/Directory.js';
+import { Employee360 } from './pages/hcm/Employee360.js';
+import { Time as HcmTime } from './pages/hcm/Time.js';
+import { LeavePolicies } from './pages/hcm/LeavePolicies.js';
+import { LeaveCalendar } from './pages/hcm/LeaveCalendar.js';
+import { Recruiting } from './pages/hcm/Recruiting.js';
+import { Performance as HcmPerformance } from './pages/hcm/Performance.js';
+import { Learning as HcmLearning } from './pages/hcm/Learning.js';
+import { Compensation } from './pages/hcm/Compensation.js';
+import { PayrollOps } from './pages/hcm/PayrollOps.js';
+import { Engagement } from './pages/hcm/Engagement.js';
+import { Separations } from './pages/hcm/Separations.js';
+import { Assets as HcmAssets } from './pages/hcm/Assets.js';
+import { Analytics as HcmAnalytics } from './pages/hcm/Analytics.js';
+import { Approvals as HcmApprovals } from './pages/hcm/Approvals.js';
+import { Home as MeHome } from './pages/me/Home.js';
+import { Leave as MeLeave } from './pages/me/Leave.js';
+import { Attendance as MeAttendance } from './pages/me/Attendance.js';
+import { Payslips as MePayslips } from './pages/me/Payslips.js';
+import { Performance as MePerformance } from './pages/me/Performance.js';
+import { Learning as MeLearning } from './pages/me/Learning.js';
+import { Money as MeMoney } from './pages/me/Money.js';
+import { Requests as MeRequests } from './pages/me/Requests.js';
+import { Exit as MeExit } from './pages/me/Exit.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -238,6 +302,33 @@ function Routed() {
         <Route path="/people/payroll" element={<Payroll />} />
         <Route path="/people/hiring" element={<Hiring />} />
         <Route path="/people/skills" element={<Skills />} />
+        <Route path="/people/employees/:id/360" element={<Employee360 />} />
+
+        <Route path="/people/org-chart" element={<OrgChart />} />
+        <Route path="/people/directory" element={<Directory />} />
+        <Route path="/people/time" element={<HcmTime />} />
+        <Route path="/people/leave-policies" element={<LeavePolicies />} />
+        <Route path="/people/leave-calendar" element={<LeaveCalendar />} />
+        <Route path="/people/recruiting" element={<Recruiting />} />
+        <Route path="/people/performance" element={<HcmPerformance />} />
+        <Route path="/people/learning" element={<HcmLearning />} />
+        <Route path="/people/compensation" element={<Compensation />} />
+        <Route path="/people/payroll-ops" element={<PayrollOps />} />
+        <Route path="/people/engagement" element={<Engagement />} />
+        <Route path="/people/separations" element={<Separations />} />
+        <Route path="/people/assets" element={<HcmAssets />} />
+        <Route path="/people/analytics" element={<HcmAnalytics />} />
+        <Route path="/people/approvals" element={<HcmApprovals />} />
+
+        <Route path="/me/home" element={<MeHome />} />
+        <Route path="/me/leave" element={<MeLeave />} />
+        <Route path="/me/attendance" element={<MeAttendance />} />
+        <Route path="/me/payslips" element={<MePayslips />} />
+        <Route path="/me/performance" element={<MePerformance />} />
+        <Route path="/me/learning" element={<MeLearning />} />
+        <Route path="/me/money" element={<MeMoney />} />
+        <Route path="/me/requests" element={<MeRequests />} />
+        <Route path="/me/exit" element={<MeExit />} />
 
         <Route path="/education/courses" element={<Courses />} />
         <Route path="/education/cohorts" element={<Cohorts />} />
@@ -313,6 +404,56 @@ function Routed() {
         <Route path="/admin/jobs" element={<Jobs />} />
         <Route path="/admin/audit" element={<Audit />} />
         <Route path="/admin/platform" element={<PlatformModel />} />
+
+        {/* ---- Chairman's Office (docs/plan/ceo-office.md §6, Phase 0) ---- */}
+        <Route path="/ceo/cockpit" element={<CeoCockpit />} />
+        <Route path="/ceo/kpi-library" element={<CeoKpiLibrary />} />
+        <Route path="/ceo/strategy" element={<CeoStrategy />} />
+        <Route path="/ceo/okrs" element={<CeoOkrs />} />
+        <Route path="/ceo/initiatives" element={<CeoInitiatives />} />
+        <Route path="/ceo/initiatives/:id" element={<CeoInitiatives />} />
+        <Route path="/ceo/meetings" element={<CeoRhythm />} />
+        <Route path="/ceo/meetings/:id" element={<CeoRhythm />} />
+        <Route path="/ceo/delegation" element={<CeoDoa />} />
+        <Route path="/ceo/approvals" element={<CeoApprovals />} />
+        <Route path="/ceo/board-pack" element={<CeoBoardPack />} />
+        <Route path="/ceo/board-pack/:id/document" element={<CeoBoardPack />} />
+        <Route path="/ceo/investor-updates" element={<CeoInvestorUpdates />} />
+        <Route path="/ceo/investor-updates/:id/document" element={<CeoInvestorUpdates />} />
+        <Route path="/ceo/stakeholders" element={<CeoStakeholders />} />
+        <Route path="/ceo/risks" element={<CeoRisk />} />
+        <Route path="/ceo/policies" element={<CeoPolicies />} />
+        <Route path="/ceo/governance" element={<CeoGovernance />} />
+        <Route path="/ceo/financial-plan" element={<CeoFinancialPlan />} />
+        <Route path="/ceo/headcount-plan" element={<CeoHeadcount />} />
+        <Route path="/ceo/leadership" element={<CeoLeadership />} />
+        <Route path="/ceo/one-on-ones" element={<CeoOneOnOnes />} />
+        <Route path="/ceo/succession" element={<CeoSuccession />} />
+        <Route path="/ceo/time-audit" element={<CeoTimeAudit />} />
+        {/* marketing */}
+        <Route path="/marketing" element={<MarketingShell />}>
+          <Route index element={<MarketingOverview />} />
+          <Route path="campaigns" element={<MarketingCampaigns />} />
+          <Route path="campaigns/:id" element={<MarketingCampaignDetail />} />
+          <Route path="calendar" element={<MarketingCalendar />} />
+          <Route path="budget" element={<MarketingBudget />} />
+          <Route path="plans" element={<MarketingPlans />} />
+          <Route path="analytics" element={<MarketingAnalytics />} />
+          <Route path="settings" element={<MarketingSettings />} />
+          <Route path="forms" element={<MarketingForms />} />
+          <Route path="events" element={<MarketingEvents />} />
+          <Route path="events/:id" element={<MarketingEventDetail />} />
+          <Route path="assets" element={<MarketingAssets />} />
+          <Route path="social" element={<MarketingSocial />} />
+          <Route path="referrals" element={<MarketingReferrals />} />
+          <Route path="audiences" element={<MarketingAudiences />} />
+          <Route path="consent" element={<MarketingConsent />} />
+          <Route path="templates" element={<MarketingTemplates />} />
+          <Route path="sends" element={<MarketingSends />} />
+          <Route path="sends/:id" element={<MarketingSendDetail />} />
+          <Route path="journeys" element={<MarketingJourneys />} />
+        </Route>
+        {/* end marketing */}
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

@@ -24,7 +24,9 @@ export default defineConfig({
         process.env.TEST_DATABASE_URL ??
         'postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public',
       NODE_ENV: 'test',
-      TENANT_ENFORCE_MODE: 'enforce',
+      // Not a fallback: the API has none any more, so the suite supplies its
+      // own. Long enough to satisfy the same rule production is held to.
+      JWT_SECRET: 'test-only-secret-not-used-anywhere-else-0123456789',
       JOBS_ENABLED: 'false',
     },
   },

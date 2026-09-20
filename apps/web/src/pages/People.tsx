@@ -54,7 +54,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 const ROLE_TONE: Record<string, string> = {
   student: 'border-accent/40 text-accent-soft',
-  employee: 'border-band-good/40 text-band-good',
+  employee: 'border-band-strong/40 text-band-strong',
 };
 
 type PeopleGroup = 'all' | 'student' | 'employee' | 'contact' | 'none';

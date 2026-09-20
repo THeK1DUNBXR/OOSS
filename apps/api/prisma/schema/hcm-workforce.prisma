@@ -1,0 +1,246 @@
+// HCM — WS1 workforce (docs/hcm/workforce.md).
+//
+// New models only, referencing EmploymentRelationship/Person/OrgUnit from
+// main.prisma by plain `*Id` String columns (no cross-schema-file relation),
+// exactly as compliance-labour.prisma does. `dateOfBirth` and `bloodGroup`
+// already live on `Person` (main.prisma) — not duplicated here.
+
+/// The personal-record fields an employee master carries beyond `Person`:
+/// one row per employment. Everything here that is a government identifier
+/// or otherwise sensitive is masked to non-holders by the domain layer
+/// (`redactProfileExtension`), never nulled on write.
+model EmployeeProfileExtension {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String @unique
+
+  /// self-declared, free text — never a closed enum a person is forced into.
+  gender String?
+  maritalStatus String?
+  nationality   String?
+
+  /// Regulated (a government travel identifier). Structurally masked to the
+  /// last four characters for any caller not viewing their own record at
+  /// `employee_profiles:view@all` scope.
+  passportNumber String?
+  passportExpiry DateTime?
+
+  /// [{name, relationship, phone}]
+  emergencyContacts Json @default("[]")
+  /// {line1, line2, city, state, pincode, country}
+  currentAddress    Json?
+  /// {line1, line2, city, state, pincode, country}
+  permanentAddress  Json?
+  /// [{institution, degree, field, year}]
+  educationHistory  Json @default("[]")
+  /// [{employer, designation, from, to}]
+  previousEmployment Json @default("[]")
+  /// [{name, relationship, dob}]
+  dependants        Json @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("hcm_workforce_profile_extensions")
+}
+
+/// A document held against an employment: proof-of-identity, education,
+/// offer/contract, etc. Content is stored as base64 text — the same pattern
+/// as the main `Document` model's storage key, sized for HR paperwork rather
+/// than large binaries.
+model EmployeeDocument {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+
+  /// id_proof | address_proof | education | offer | contract | other
+  kind     String
+  filename String
+  mimeType String
+  /// Base64-encoded file content.
+  content  String
+
+  verified     Boolean   @default(false)
+  verifiedById String?
+  verifiedAt   DateTime?
+  expiresOn    DateTime?
+
+  uploadedById String?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, kind])
+  @@map("hcm_workforce_documents")
+}
+
+/// Who an employment reports to, dated. `kind` distinguishes the one
+/// authoritative `primary` line from any number of `dotted` lines open at
+/// once; a new primary line closes the previous one (`effectiveTo` set),
+/// never leaves two primaries open at the same moment.
+model ReportingLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId        String
+  managerEmploymentRelationshipId String
+
+  /// primary | dotted
+  kind String @default("primary")
+
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, managerEmploymentRelationshipId])
+  @@map("hcm_workforce_reporting_lines")
+}
+
+/// A cost centre — the unit ledger entries and payroll journals (WS8) code
+/// against, independent of the org-unit tree.
+model CostCentre {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code String
+  name String
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, code])
+  @@map("hcm_workforce_cost_centres")
+}
+
+/// Dated cost-centre membership for an employment.
+model CostCentreAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  costCentreId             String
+
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_workforce_cost_centre_assignments")
+}
+
+/// A work location — an office, a registered establishment, or a declared
+/// work-from-home state — carrying the state used to determine Professional
+/// Tax and Labour Welfare Fund liability (compliance/payroll, WS8).
+model Location {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name  String
+  kind  String  @default("office") // office | client_site | wfh
+  city  String?
+  state String?
+  address String?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@map("hcm_workforce_locations")
+}
+
+/// Dated location assignment for an employment — what a transfer moves.
+model LocationAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  locationId               String
+
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_workforce_location_assignments")
+}
+
+/// An org-level grade/band — a code and a level only. Pay ranges belong to
+/// WS7's `PayGrade`; this is the organisational rung a promotion moves
+/// someone up, independent of what it pays.
+model Grade {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code  String
+  name  String
+  level Int
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, level])
+  @@map("hcm_workforce_grades")
+}
+
+/// Dated grade assignment for an employment — what a promotion/demotion moves.
+model GradeAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  gradeId                  String
+
+  effectiveFrom DateTime @default(now())
+  effectiveTo   DateTime?
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_workforce_grade_assignments")
+}
+
+/// A transfer, promotion, demotion or redesignation, proposed then decided
+/// (Self-Dealing Bar: `decidedById` may never equal `proposedById`) then
+/// applied — applying is what actually writes the new grade/cost-centre/
+/// location assignment or designation, so a decision and its effect are two
+/// separately-auditable facts.
+model EmployeeStatusChange {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+
+  /// transfer | promotion | demotion | redesignation
+  kind String
+
+  /// {designation?, gradeId?, costCentreId?, locationId?} — the fields this
+  /// change moves, target values only; the domain layer reads the current
+  /// value for the audit diff at apply time.
+  changes Json
+
+  reason        String
+  effectiveDate DateTime
+
+  /// pending_approval | approved | rejected | applied
+  status String @default("pending_approval")
+
+  proposedById String
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+  appliedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, status])
+  @@map("hcm_workforce_employee_status_changes")
+}

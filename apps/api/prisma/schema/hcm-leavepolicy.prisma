@@ -1,0 +1,195 @@
+// HCM — leavepolicy: the leave policy engine (docs/hcm/leavepolicy.md).
+//
+// New models only. `LeaveType`, `LeaveBalance`, `LeaveTransaction` and
+// `LeaveRequest` already live in main.prisma (owned by the base HR
+// workstream) and are referenced here by plain `*Id` String columns — no
+// `@relation` into a file this workstream does not own — per the
+// multi-file-schema convention compliance-labour.prisma sets.
+//
+// None of these carry a `recordCode`: like Holiday, WorkingHoursRule and
+// LeaveYearClose in compliance-labour.prisma, they are configuration and
+// job-log rows nobody refers to by number out loud. The leave request itself
+// keeps the only human-facing code (`LVR`).
+
+/// A named leave policy: which leave types it governs (via `LeavePolicyRule`)
+/// and who it applies to. Applicability is expressed as inclusion lists —
+/// empty means "everybody" for that axis, so a policy with no lists at all is
+/// the company-wide default.
+///
+/// `gradeCodes` is carried for when an org-level Grade model lands (workstream
+/// A); until then it is accepted and stored but never matched against, which
+/// `docs/hcm/leavepolicy.md` records under "Wanted from the scaffold".
+model LeavePolicy {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name        String
+  description String?
+
+  /// employee | contractor | consultant | intern | apprentice. Empty = all.
+  engagementTypes String[] @default([])
+  /// OrgUnit ids, the closest applicability proxy to "location" this schema
+  /// has today. Empty = all.
+  orgUnitIds      String[] @default([])
+  /// Reserved for a future Grade model. Empty = all; never matched today.
+  gradeCodes      String[] @default([])
+
+  effectiveFrom DateTime
+  /// Null while current.
+  effectiveTo   DateTime?
+  /// active | retired
+  status        String    @default("active")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rules LeavePolicyRule[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, effectiveFrom])
+  @@map("hcm_leavepolicy_policies")
+}
+
+/// One leave type's rules under one policy: how it accrues and the guard
+/// rails a request against it is checked against
+/// (`validateLeaveRequestAgainstPolicy` in `@kaizen/shared`).
+model LeavePolicyRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  leavePolicyId String
+  leavePolicy   LeavePolicy @relation(fields: [leavePolicyId], references: [id])
+  /// main.prisma LeaveType id — plain reference, no cross-file relation.
+  leaveTypeId   String
+
+  /// monthly | quarterly | yearly | none
+  accrualFrequency String  @default("monthly")
+  /// Days credited per accrual event at this frequency (not an annual figure).
+  accrualDays      Decimal @default(0) @db.Decimal(6, 2)
+  /// Whether a mid-period join/exit earns a fraction of the period's credit.
+  prorateOnJoin    Boolean @default(true)
+
+  maxBalanceDays       Decimal? @db.Decimal(6, 2)
+  carryForwardCapDays  Decimal? @db.Decimal(6, 2)
+  /// Whether the balance may be taken below zero.
+  negativeAllowed      Boolean  @default(false)
+
+  minNoticeDays             Int      @default(0)
+  maxConsecutiveDays        Int?
+  /// Whether a bracketed weekend/holiday between two leave days is charged too.
+  sandwichRule              Boolean  @default(false)
+  requiresDocumentAfterDays Int?
+  /// male | female | any (null = any)
+  applicableGender          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accrualRuns AccrualRun[]
+
+  @@unique([leavePolicyId, leaveTypeId])
+  @@index([tenantId, leaveTypeId])
+  @@map("hcm_leavepolicy_rules")
+}
+
+/// One accrual firing for one rule for one period. The idempotency guard for
+/// the monthly accrual job: a re-run for a period already closed here finds
+/// this row and returns it rather than crediting twice — the same discipline
+/// `LeaveYearClose` keeps for the FY-close job.
+model AccrualRun {
+  id       String @id @default(cuid())
+  tenantId String
+
+  leavePolicyRuleId String
+  leavePolicyRule   LeavePolicyRule @relation(fields: [leavePolicyRuleId], references: [id])
+  leaveTypeId       String
+  /// "2026-09" (monthly), "2026-Q3" (quarterly) or "2026" (yearly).
+  period            String
+
+  /// completed — a run that raced past the idempotency guard never gets here.
+  status             String   @default("completed")
+  employeesProcessed Int      @default(0)
+  totalDaysAccrued   Decimal  @default(0) @db.Decimal(10, 2)
+
+  runAt       DateTime @default(now())
+  createdById String?
+
+  @@unique([tenantId, leavePolicyRuleId, period])
+  @@index([tenantId, period])
+  @@map("hcm_leavepolicy_accrual_runs")
+}
+
+/// A named approval chain: an ordered list of levels, each resolved to an
+/// approver at the point a leave request is created. `levels` is
+/// `[{level, kind, approverPartyId?}]`, `kind` one of manager | hr |
+/// custom_grant.
+model LeaveApprovalChain {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name          String
+  /// Null = applies wherever no policy-specific chain matches.
+  leavePolicyId String?
+  levels        Json
+  isDefault     Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  approvals LeaveRequestApproval[]
+
+  @@index([tenantId])
+  @@map("hcm_leavepolicy_approval_chains")
+}
+
+/// One level row of one leave request's approval chain. `leaveRequestId` is a
+/// plain reference to main.prisma's `LeaveRequest` — this table augments it
+/// with multi-level tracking without owning the request's own status machine,
+/// which stays exactly where it is in `domains/leave.ts`.
+model LeaveRequestApproval {
+  id       String @id @default(cuid())
+  tenantId String
+
+  leaveRequestId String
+  chainId        String
+  chain          LeaveApprovalChain @relation(fields: [chainId], references: [id])
+
+  level Int
+  /// manager | hr | custom_grant
+  kind  String
+  /// Resolved at chain-initiation time; null when nobody could be resolved.
+  approverPartyId String?
+
+  /// pending | approved | rejected | skipped
+  decision  String    @default("pending")
+  decidedAt DateTime?
+  note      String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, leaveRequestId, level])
+  @@index([tenantId, leaveRequestId])
+  @@index([tenantId, approverPartyId, decision])
+  @@map("hcm_leavepolicy_request_approvals")
+}
+
+/// One employee's election of one restricted holiday for one financial year
+/// (`RESTRICTED_HOLIDAY_ANNUAL_LIMIT` in `@kaizen/shared` bounds the count).
+/// `holidayId` is a plain reference to compliance-labour.prisma's `Holiday`
+/// id — cross-workstream, by id only, no `@relation`.
+model RestrictedHolidayElection {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  holidayId                String
+  /// "2026-27"
+  fy                       String
+
+  electedAt   DateTime @default(now())
+  createdById String?
+
+  @@unique([tenantId, employmentRelationshipId, holidayId])
+  @@index([tenantId, employmentRelationshipId, fy])
+  @@map("hcm_leavepolicy_restricted_holiday_elections")
+}

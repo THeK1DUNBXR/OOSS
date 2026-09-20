@@ -17,11 +17,21 @@ import groupRoutes from './group.routes.js';
 import esopRoutes from './esop.routes.js';
 import complianceRoutes from './compliance/index.js';
 import itRoutes from './it/index.js';
+import ceoRoutes from './ceo/index.js';
+import { marketingRouter, marketingPublicRouter } from './marketing/index.js';
+import hcmRoutes from './hcm/index.js';
 import { requireAuth } from '../lib/http.js';
 
 const router = Router();
 
 router.use('/auth', authRoutes);
+// Marketing's public surface (form submissions, short-link redirects, inbound
+// webhooks, unsubscribe) resolves its own tenant per-request and must never
+// go through requireAuth — mounted first so it is matched before the
+// authenticated marketing router below. Its own routes already spell out the
+// `/public/...` segment, so this sits at `/marketing`, not `/marketing/public`.
+router.use('/marketing', marketingPublicRouter);
+router.use('/marketing', requireAuth, marketingRouter);
 router.use('/crm', requireAuth, crmRoutes);
 router.use('/pipelines', requireAuth, pipelineRoutes);
 router.use('/commercial', requireAuth, commercialRoutes);
@@ -38,6 +48,8 @@ router.use('/esop', requireAuth, esopRoutes);
 router.use('/board', requireAuth, boardRoutes);
 router.use('/compliance', requireAuth, complianceRoutes);
 router.use('/it', requireAuth, itRoutes);
+router.use('/ceo', requireAuth, ceoRoutes);
+router.use('/hcm', requireAuth, hcmRoutes);
 // What is running, and against what data. Signed in, because the seed stamp is
 // about a particular tenant.
 router.use('/meta', requireAuth, metaRoutes);

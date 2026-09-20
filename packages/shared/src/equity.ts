@@ -615,7 +615,7 @@ export function apportionPercent(shares: number[], total: number): number[] {
   const remainders = raw.map((r, i) => ({ i, rem: r * 100 - Math.floor(r * 100) }));
 
   const targetHundredths = 10000; // 100.00 expressed in hundredths
-  let flooredHundredths = floors.reduce((acc, f) => acc + Math.round(f * 100), 0);
+  const flooredHundredths = floors.reduce((acc, f) => acc + Math.round(f * 100), 0);
   let short = targetHundredths - flooredHundredths;
 
   remainders.sort((a, b) => b.rem - a.rem);

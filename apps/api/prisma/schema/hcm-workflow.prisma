@@ -1,0 +1,130 @@
+// HCM — WS13 workflow (docs/hcm/workflow.md).
+//
+// The generic HR request & approval engine other workstreams reach by id
+// only: a request type carries a JSON approval chain, a request walks that
+// chain one level at a time, and each level's decision is its own row so the
+// history of who decided what is never overwritten in place.
+
+/// A kind of HR request (e.g. "Address change", "WFH exception"). The
+/// approval chain is JSON — `[{ level, resolver, partyId? }]` — where
+/// `resolver` is one of `manager | hr_grant | finance_grant | specific`;
+/// `specific` carries a fixed `partyId`, the other three resolve dynamically
+/// at submit/decide time so a role change never leaves a stale approver
+/// baked into an open request.
+model HrRequestType {
+  id       String @id @default(cuid())
+  tenantId String
+
+  code String
+  name String
+
+  /// `[{ level: number, resolver: 'manager'|'hr_grant'|'finance_grant'|'specific', partyId?: string }]`,
+  /// ordered by level ascending, level 1 first.
+  approvalChain Json
+
+  slaHours Int     @default(48)
+  active   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requests HrRequest[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+  @@map("hcm_workflow_request_types")
+}
+
+/// One instance of a request type, raised against a subject employment.
+/// `currentLevel` is the chain position awaiting a decision — 0 once every
+/// level has decided (closed, approved or rejected).
+model HrRequest {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  typeId String
+  type   HrRequestType @relation(fields: [typeId], references: [id])
+
+  subjectEmploymentId String
+
+  /// Free-form request detail (WS-specific shape) — WS13 never interprets
+  /// this, only carries it through the chain.
+  payload Json
+
+  /// draft | submitted | approved | rejected | withdrawn | closed
+  status String @default("submitted")
+
+  /// The chain level currently awaiting a decision. 1-based; 0 once the
+  /// request has left the chain (closed/approved/rejected/withdrawn).
+  currentLevel Int @default(1)
+
+  requestedById String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  closedAt  DateTime?
+
+  approvals HrRequestApproval[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, subjectEmploymentId])
+  @@index([tenantId, requestedById])
+  @@map("hcm_workflow_requests")
+}
+
+/// One row per chain level a request has reached. Created when the request
+/// arrives at that level (`decision = 'pending'`) and updated in place once
+/// decided — history lives across rows, one per level, never overwritten.
+model HrRequestApproval {
+  id       String @id @default(cuid())
+  tenantId String
+
+  requestId String
+  request   HrRequest @relation(fields: [requestId], references: [id])
+
+  level Int
+
+  /// Resolved at the time the level opened. Null when resolution failed to
+  /// find anybody (the request is then flagged via the exception engine
+  /// rather than left silently unapproveable).
+  approverPartyId String?
+
+  /// pending | approved | rejected
+  decision String @default("pending")
+  note     String?
+
+  decidedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([tenantId, requestId, level])
+  @@index([tenantId, approverPartyId, decision])
+  @@map("hcm_workflow_request_approvals")
+}
+
+/// A time-boxed handoff of approval authority from one party to another —
+/// consulted when resolving `manager`/`hr_grant`/`finance_grant` levels so a
+/// person on leave does not stall every request routed to them.
+model DelegationOfAuthority {
+  id       String @id @default(cuid())
+  tenantId String
+
+  fromPartyId String
+  toPartyId   String
+
+  fromDate DateTime
+  toDate   DateTime
+
+  /// The resolver kind this delegation covers (`manager`, `hr_grant`,
+  /// `finance_grant`), or `all` for every kind.
+  scope String @default("all")
+
+  note String?
+
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  @@index([tenantId, fromPartyId, toDate])
+  @@map("hcm_workflow_delegations")
+}

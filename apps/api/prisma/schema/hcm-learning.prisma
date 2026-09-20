@@ -1,0 +1,200 @@
+// HCM — G. Learning & development (docs/hcm/learning.md).
+//
+// New models only. Employment/person are referenced by plain `*Id` String
+// columns (no @relation into main.prisma), per the multi-file schema
+// convention compliance-labour.prisma sets. Completed training feeds the
+// existing capability system (apps/api/src/domains/capability.ts) rather than
+// duplicating its tier/evidence logic — that domain file owns CapabilityClaim
+// and Evidence, and this schema never redefines them.
+
+/// A course, workshop or certification track the company runs or sponsors.
+/// `skillIds` link to the existing `Skill` model (apps/api/src/domains/capability.ts)
+/// so completing the program can assert a capability claim against a real
+/// skill row, not a free-text guess.
+model TrainingProgram {
+  id       String @id @default(cuid())
+  tenantId String
+
+  title    String
+  /// classroom | online | certification | mandatory
+  kind     String
+  provider String?
+
+  durationHours   Decimal? @db.Decimal(6, 2)
+  cost            Decimal  @default(0) @db.Decimal(12, 2)
+  skillIds        String[] @default([])
+  /// Null for a program with no expiry — most classroom/online courses.
+  /// Set for a certification-kind program whose completion issues a
+  /// Certification row that itself expires.
+  validityMonths  Int?
+  isActive        Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions TrainingSession[]
+  rules    MandatoryTrainingRule[]
+
+  @@index([tenantId, isActive])
+  @@map("hcm_learning_training_programs")
+}
+
+/// A scheduled running of a program — a batch, a live cohort, a booked seat.
+model TrainingSession {
+  id       String @id @default(cuid())
+  tenantId String
+
+  programId String
+  program   TrainingProgram @relation(fields: [programId], references: [id])
+
+  startsAt DateTime
+  endsAt   DateTime
+  trainer  String?
+  seats    Int      @default(0)
+  location String?
+  link     String?
+  /// scheduled | completed | cancelled
+  status   String   @default("scheduled")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enrollments TrainingEnrollment[]
+
+  @@index([tenantId, programId])
+  @@index([tenantId, startsAt])
+  @@map("hcm_learning_training_sessions")
+}
+
+/// One employee's booking against one session. `nominatedById` and
+/// `approvedById` are deliberately separate columns — approving your own
+/// nomination is the Self-Dealing Bar case this record exists to catch.
+model TrainingEnrollment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  sessionId                String
+  session                  TrainingSession @relation(fields: [sessionId], references: [id])
+  employmentRelationshipId String
+
+  /// nominated | approved | attended | completed | no_show | rejected
+  status String @default("nominated")
+
+  nominatedById String?
+  approvedById  String?
+  approvedAt    DateTime?
+  completedAt   DateTime?
+
+  score    Decimal? @db.Decimal(5, 2)
+  feedback String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, sessionId, employmentRelationshipId])
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, status])
+  @@map("hcm_learning_training_enrollments")
+}
+
+/// A credential held against an employee — earned through a program here or
+/// entered directly (a certification the person already held on joining).
+model Certification {
+  id       String @id @default(cuid())
+  tenantId String
+
+  recordCode String
+
+  employmentRelationshipId String
+  name                     String
+  issuer                   String?
+  issuedOn                 DateTime
+  expiresOn                DateTime?
+  documentRef              String?
+  /// True once someone other than the certificate holder has checked it.
+  verified                 Boolean   @default(false)
+  verifiedById             String?
+  verifiedAt               DateTime?
+
+  /// Set when this certification was issued by completing a
+  /// TrainingEnrollment rather than entered directly.
+  sourceEnrollmentId String?
+
+  /// Idempotency guard for the expiry-ladder job — the rung (90/30/7) most
+  /// recently notified, so a re-run does not raise the same exception twice.
+  lastExpiryRungDays Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, employmentRelationshipId])
+  @@index([tenantId, expiresOn])
+  @@map("hcm_learning_certifications")
+}
+
+/// Ties a program to who must take it and by when. `applicability` is a
+/// closed keyword for now (`all`), not a rule engine — a workstream that
+/// needs a narrower audience records the gap rather than half-building one.
+model MandatoryTrainingRule {
+  id       String @id @default(cuid())
+  tenantId String
+
+  programId String
+  program   TrainingProgram @relation(fields: [programId], references: [id])
+
+  /// all — every active employee. Recorded under "Wanted from the scaffold"
+  /// as a gap: a grade/orgUnit-scoped audience needs a resolver this
+  /// workstream does not have its own copy of.
+  applicability      String @default("all")
+  dueWithinDaysOfJoin Int?
+  recurrenceMonths    Int?
+  isActive            Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, isActive])
+  @@map("hcm_learning_mandatory_training_rules")
+}
+
+/// One employee's development plan — mentor, goals and a review cadence, kept
+/// separate from performance.ts's Goal model because an IDP goal is a growth
+/// intention, not a measured commitment for the current cycle.
+model IndividualDevelopmentPlan {
+  id       String @id @default(cuid())
+  tenantId String
+
+  employmentRelationshipId String
+  goals                    Json
+  mentorId                 String?
+  reviewDate               DateTime?
+  /// active | closed
+  status                   String    @default("active")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, employmentRelationshipId])
+  @@map("hcm_learning_idps")
+}
+
+/// A financial-year training budget, scoped optionally to a division. `spent`
+/// is deliberately not a stored column — the domain layer derives it from
+/// completed enrollments so it can never drift from the ledger of what
+/// actually happened.
+model TrainingBudget {
+  id       String @id @default(cuid())
+  tenantId String
+
+  fy       String
+  division String?
+  amount   Decimal @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, fy, division])
+  @@index([tenantId, fy])
+  @@map("hcm_learning_training_budgets")
+}

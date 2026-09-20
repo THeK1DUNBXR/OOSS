@@ -29,13 +29,13 @@ model BackupRun {
   id       String @id @default(cuid())
   tenantId String
 
-  status   String @default("running") // running | completed | failed
-  path     String?
+  status    String  @default("running") // running | completed | failed
+  path      String?
   sizeBytes Int?
-  sha256   String?
-  error    String?
+  sha256    String?
+  error     String?
 
-  startedAt  DateTime @default(now())
+  startedAt  DateTime  @default(now())
   finishedAt DateTime?
 
   @@index([tenantId, startedAt])
@@ -88,9 +88,9 @@ model ComplianceBoardMeeting {
   heldOn     DateTime
   noticeOn   DateTime?
   quorum     String?
-  attendees  Json    @default("[]")
+  attendees  Json      @default("[]")
   minutes    String?
-  status     String  @default("draft") // draft | recorded
+  status     String    @default("draft") // draft | recorded
 
   createdById String?
   createdAt   DateTime @default(now())
@@ -142,7 +142,7 @@ model McaFiling {
   fy         String // "2025-26"
   srn        String?
   filedOn    DateTime?
-  status     String  @default("pending") // pending | filed
+  status     String    @default("pending") // pending | filed
 
   createdById String?
   createdAt   DateTime @default(now())
@@ -259,7 +259,7 @@ model Refund {
   approvedById  String?
   paidPaymentId String? // set once paid: the transaction id booked through recordTransaction
 
-  requestedAt DateTime @default(now())
+  requestedAt DateTime  @default(now())
   approvedAt  DateTime?
   paidAt      DateTime?
 
@@ -282,7 +282,7 @@ model Certificate {
   enrollmentId     String
   kind             String // completion | participation
   snapshot         Json
-  verificationCode String @unique
+  verificationCode String  @unique
   issuedById       String?
 
   issuedAt DateTime @default(now())

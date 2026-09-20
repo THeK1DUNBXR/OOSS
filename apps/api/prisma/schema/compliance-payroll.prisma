@@ -62,7 +62,7 @@ model ProfessionalTaxSlabTable {
   id       String @id @default(cuid())
   tenantId String
 
-  state         String   @default("TN")
+  state         String    @default("TN")
   effectiveFrom DateTime
   effectiveTo   DateTime?
 
@@ -83,7 +83,7 @@ model LwfRateTable {
   id       String @id @default(cuid())
   tenantId String
 
-  state         String   @default("TN")
+  state         String    @default("TN")
   effectiveFrom DateTime
   effectiveTo   DateTime?
 
@@ -108,7 +108,7 @@ model MinimumWageTable {
 
   state         String
   category      String // e.g. "unskilled", "semi-skilled", "skilled", "clerical"
-  monthlyAmount Decimal  @db.Decimal(10, 2)
+  monthlyAmount Decimal   @db.Decimal(10, 2)
   effectiveFrom DateTime
   effectiveTo   DateTime?
 
@@ -131,13 +131,13 @@ model SalaryStructure {
   effectiveFrom DateTime
   status        String   @default("Proposed") // Proposed | Approved
 
-  ctcAnnual         Decimal @db.Decimal(14, 2)
-  basic             Decimal @db.Decimal(14, 2)
-  hra               Decimal @db.Decimal(14, 2)
-  specialAllowance  Decimal @default(0) @db.Decimal(14, 2)
-  conveyance        Decimal @default(0) @db.Decimal(14, 2)
+  ctcAnnual          Decimal @db.Decimal(14, 2)
+  basic              Decimal @db.Decimal(14, 2)
+  hra                Decimal @db.Decimal(14, 2)
+  specialAllowance   Decimal @default(0) @db.Decimal(14, 2)
+  conveyance         Decimal @default(0) @db.Decimal(14, 2)
   /// { label: amount, ... } — anything beyond the named components above.
-  otherAllowances   Json    @default("{}")
+  otherAllowances    Json    @default("{}")
   employerPfMonthly  Decimal @default(0) @db.Decimal(14, 2)
   employerEsiMonthly Decimal @default(0) @db.Decimal(14, 2)
 
@@ -159,14 +159,14 @@ model Payslip {
   id       String @id @default(cuid())
   tenantId String
 
-  instructionId             String
-  employmentRelationshipId  String
-  payPeriod                 String // YYYY-MM
+  instructionId            String
+  employmentRelationshipId String
+  payPeriod                String // YYYY-MM
 
   number   String
   snapshot Json
 
-  issuedAt      DateTime @default(now())
+  issuedAt       DateTime @default(now())
   supersededById String?
 
   createdAt DateTime @default(now())

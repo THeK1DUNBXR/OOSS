@@ -1,0 +1,955 @@
+// Marketing — campaigns, audiences, messaging, journeys, capture, attribution,
+// events, assets, referrals and budget. Owned by workstream `marketing`.
+// Vocabulary (model names, table names, fields, enums) is fixed by
+// docs/plan/marketing-skeleton.md — do not rename or restructure without
+// updating that document first.
+//
+// Consent is NOT modelled here: MarketingPreference is channel-level opt-out
+// bookkeeping, while lawful basis for the `marketing` purpose is the existing
+// `Consent` model in compliance-privacy.prisma (purposeCode = "marketing").
+//
+// Every model below follows the house convention: id cuid, tenantId,
+// recordCode (unique per tenant), createdById?, updatedById?, deletedAt?,
+// createdAt, updatedAt.
+
+// ===========================================================================
+// Campaigns
+// ===========================================================================
+
+model MarketingCampaign {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name       String
+  objective  String
+  channelMix String[] @default([])
+  division   String
+  vertical   String?
+
+  startAt DateTime
+  endAt   DateTime
+
+  status String @default("draft")
+
+  budgetPlanned   Decimal @default(0) @db.Decimal(18, 2)
+  budgetCommitted Decimal @default(0) @db.Decimal(18, 2)
+  /// Computed from MarketingSpend rows, never written directly by request code.
+  budgetActual    Decimal @default(0) @db.Decimal(18, 2)
+  currency        String  @default("INR")
+
+  ownerPartyId     String?
+  approvedById     String?
+  approvedAt       DateTime?
+  approvalRequired Boolean   @default(false)
+
+  utmCampaign String
+
+  targetLeads         Int?
+  targetEnrolments    Int?
+  targetPipelineValue Decimal? @db.Decimal(18, 2)
+
+  offeringId String?
+  offering   Offering?          @relation(fields: [offeringId], references: [id])
+  courseId   String?
+  course     Course?            @relation(fields: [courseId], references: [id])
+  audienceId String?
+  audience   MarketingAudience? @relation(fields: [audienceId], references: [id])
+
+  contentBrief String?
+  tags         String[] @default([])
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  approvals    MarketingCampaignApproval[]
+  sends        MarketingSend[]
+  forms        MarketingForm[]
+  touchpoints  MarketingTouchpoint[]
+  attributions MarketingAttribution[]
+  events       MarketingEvent[]
+  assets       MarketingAsset[]
+  socialPosts  MarketingSocialPost[]
+  shortLinks   MarketingShortLink[]
+  budgets      MarketingBudget[]
+  spends       MarketingSpend[]
+  leads        Lead[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, division])
+  @@index([tenantId, startAt])
+  @@map("mkt_campaigns")
+}
+
+model MarketingCampaignApproval {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  campaignId String
+  campaign   MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  requestedById   String
+  decidedById     String?
+  decision        String   @default("pending")
+  reason          String?
+  thresholdAmount Decimal? @db.Decimal(18, 2)
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, decision])
+  @@map("mkt_campaign_approvals")
+}
+
+// ===========================================================================
+// Channels, audiences, preferences
+// ===========================================================================
+
+model MarketingChannel {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  key   String
+  label String
+  kind  String
+
+  /// null = not configured — see EX-MKT-011.
+  providerAdapter String?
+  active          Boolean  @default(true)
+  config          Json     @default("{}")
+  dltEntityId     String?
+  senderIds       String[] @default([])
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, key])
+  @@index([tenantId, active])
+  @@map("mkt_channels")
+}
+
+model MarketingAudience {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name       String
+  kind       String @default("dynamic")
+  entityType String
+
+  /// The rule tree evaluated to (re)compute membership.
+  rules           Json      @default("{}")
+  memberCount     Int?
+  lastEvaluatedAt DateTime?
+  description     String?
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members   MarketingAudienceMember[]
+  campaigns MarketingCampaign[]
+  sends     MarketingSend[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, kind])
+  @@map("mkt_audiences")
+}
+
+model MarketingAudienceMember {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  audienceId String
+  audience   MarketingAudience @relation(fields: [audienceId], references: [id], onDelete: Cascade)
+
+  entityType String
+  entityId   String
+  addedAt    DateTime @default(now())
+  source     String   @default("rule")
+  suppressed Boolean  @default(false)
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, audienceId])
+  @@index([tenantId, entityType, entityId])
+  @@map("mkt_audience_members")
+}
+
+/// Channel-level opt-out bookkeeping. Lawful basis lives on `Consent`
+/// (purposeCode = "marketing") in compliance-privacy.prisma; this model is
+/// the finer-grained "which channel, and why" record layered on top of it.
+model MarketingPreference {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  personId String
+  person   Person @relation(fields: [personId], references: [id])
+
+  channelKey   String
+  optedIn      Boolean  @default(true)
+  source       String   @default("manual")
+  changedAt    DateTime @default(now())
+  doNotContact Boolean  @default(false)
+  reason       String?
+  evidence     Json     @default("{}")
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, personId])
+  @@index([tenantId, channelKey])
+  @@map("mkt_preferences")
+}
+
+// ===========================================================================
+// Templates, sends, journeys
+// ===========================================================================
+
+model MarketingTemplate {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  channelKey  String
+  name        String
+  subject     String?
+  /// The body, carrying `{{merge}}` fields resolved at send time.
+  body        String
+  mergeFields String[] @default([])
+
+  status         String  @default("draft")
+  dltTemplateId  String?
+  waTemplateName String?
+  approvedById   String?
+  version        Int     @default(1)
+  language       String  @default("en")
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  sends MarketingSend[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, channelKey])
+  @@index([tenantId, status])
+  @@map("mkt_templates")
+}
+
+model MarketingSend {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  templateId String
+  template   MarketingTemplate  @relation(fields: [templateId], references: [id])
+  channelKey String
+  audienceId String?
+  audience   MarketingAudience? @relation(fields: [audienceId], references: [id])
+
+  status      String    @default("draft")
+  scheduledAt DateTime?
+  sentAt      DateTime?
+
+  recipientCount    Int @default(0)
+  deliveredCount    Int @default(0)
+  openedCount       Int @default(0)
+  clickedCount      Int @default(0)
+  bouncedCount      Int @default(0)
+  unsubscribedCount Int @default(0)
+
+  requestedById String?
+  approvedById  String?
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  recipients MarketingSendRecipient[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, campaignId])
+  @@map("mkt_sends")
+}
+
+model MarketingSendRecipient {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  sendId   String
+  send     MarketingSend @relation(fields: [sendId], references: [id], onDelete: Cascade)
+  personId String
+  person   Person        @relation(fields: [personId], references: [id])
+
+  status            String  @default("queued")
+  reason            String?
+  providerMessageId String?
+  /// Raw provider callback events, appended as they arrive.
+  events            Json    @default("[]")
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, sendId])
+  @@index([tenantId, personId])
+  @@index([tenantId, status])
+  @@map("mkt_send_recipients")
+}
+
+model MarketingJourney {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name        String
+  triggerKind String
+  /// [{delayDays, templateId, channelKey, condition}]
+  steps       Json   @default("[]")
+  status      String @default("draft")
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  runs MarketingJourneyRun[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@map("mkt_journeys")
+}
+
+model MarketingJourneyRun {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  journeyId String
+  journey   MarketingJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  personId  String
+  person    Person           @relation(fields: [personId], references: [id])
+
+  currentStep  Int       @default(0)
+  status       String    @default("active")
+  nextAt       DateTime?
+  startedAt    DateTime  @default(now())
+  exitedReason String?
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, journeyId])
+  @@index([tenantId, personId])
+  @@index([tenantId, status])
+  @@map("mkt_journey_runs")
+}
+
+// ===========================================================================
+// Capture: forms, touchpoints, attribution, scoring
+// ===========================================================================
+
+model MarketingForm {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name     String
+  slug     String
+  /// The field definitions rendered on the public form.
+  fields   Json    @default("[]")
+  vertical String?
+
+  defaultCampaignId String?
+  defaultCampaign   MarketingCampaign? @relation(fields: [defaultCampaignId], references: [id])
+
+  thankYouMessage String?
+  active          Boolean @default(true)
+  publicToken     String
+  submissionCount Int     @default(0)
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  submissions MarketingFormSubmission[]
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, slug])
+  @@unique([tenantId, publicToken])
+  @@index([tenantId, active])
+  @@map("mkt_forms")
+}
+
+model MarketingFormSubmission {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  formId String
+  form   MarketingForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  payload Json @default("{}")
+  utm     Json @default("{}")
+
+  personId String?
+  person   Person? @relation(fields: [personId], references: [id])
+  leadId   String?
+  lead     Lead?   @relation(fields: [leadId], references: [id])
+
+  status     String   @default("received")
+  ip         String?
+  userAgent  String?
+  receivedAt DateTime @default(now())
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, formId])
+  @@index([tenantId, status])
+  @@index([tenantId, receivedAt])
+  @@map("mkt_form_submissions")
+}
+
+/// An immutable attribution log entry. Never updated after creation — a
+/// correction is a new row, the way a ledger entry would be.
+model MarketingTouchpoint {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  personId       String?
+  person         Person?            @relation(fields: [personId], references: [id])
+  organizationId String?
+  organization   Organization?      @relation(fields: [organizationId], references: [id])
+  leadId         String?
+  lead           Lead?              @relation(fields: [leadId], references: [id])
+  campaignId     String?
+  campaign       MarketingCampaign? @relation(fields: [campaignId], references: [id])
+
+  channelKey String
+  touchKind  String
+  occurredAt DateTime @default(now())
+  utm        Json     @default("{}")
+  sourceRef  String?
+  cost       Decimal? @db.Decimal(18, 2)
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, personId])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, occurredAt])
+  @@map("mkt_touchpoints")
+}
+
+model MarketingAttribution {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  leadId        String?
+  lead          Lead?        @relation(fields: [leadId], references: [id])
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id])
+  enrollmentId  String?
+  enrollment    Enrollment?  @relation(fields: [enrollmentId], references: [id])
+
+  /// first_touch | last_touch | linear | position_based
+  model      String
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  channelKey String
+  weight     Decimal            @default(1) @db.Decimal(18, 2)
+  computedAt DateTime           @default(now())
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, leadId])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, computedAt])
+  @@map("mkt_attributions")
+}
+
+model MarketingLeadScoreRule {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name      String
+  condition Json    @default("{}")
+  points    Int     @default(0)
+  active    Boolean @default(true)
+  order     Int     @default(0)
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, active])
+  @@map("mkt_lead_score_rules")
+}
+
+// ===========================================================================
+// Events
+// ===========================================================================
+
+model MarketingEvent {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name String
+  kind String
+
+  campaignId    String?
+  campaign      MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  institutionId String?
+  institution   Organization?      @relation(fields: [institutionId], references: [id])
+
+  venue    String?
+  isOnline Boolean   @default(false)
+  startAt  DateTime
+  endAt    DateTime?
+  capacity Int?
+
+  status String @default("planned")
+
+  costPlanned Decimal @default(0) @db.Decimal(18, 2)
+  costActual  Decimal @default(0) @db.Decimal(18, 2)
+  division    String  @default("education")
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  registrations MarketingEventRegistration[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, startAt])
+  @@index([tenantId, campaignId])
+  @@map("mkt_events")
+}
+
+model MarketingEventRegistration {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  eventId  String
+  event    MarketingEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  personId String
+  person   Person         @relation(fields: [personId], references: [id])
+
+  status       String    @default("registered")
+  source       String    @default("manual")
+  leadId       String?
+  lead         Lead?     @relation(fields: [leadId], references: [id])
+  checkedInAt  DateTime?
+  followUpDone Boolean   @default(false)
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, eventId])
+  @@index([tenantId, personId])
+  @@index([tenantId, status])
+  @@map("mkt_event_registrations")
+}
+
+// ===========================================================================
+// Assets, social, links, claims
+// ===========================================================================
+
+model MarketingAsset {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name String
+  kind String
+
+  url        String?
+  storageRef String?
+  version    Int     @default(1)
+  status     String  @default("draft")
+
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+
+  usageRights  String?
+  expiresAt    DateTime?
+  approvedById String?
+  tags         String[]  @default([])
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, campaignId])
+  @@map("mkt_assets")
+}
+
+model MarketingSocialPost {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  channelKey String
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+
+  body        String
+  assetIds    String[]  @default([])
+  scheduledAt DateTime
+  publishedAt DateTime?
+  status      String    @default("draft")
+  externalUrl String?
+  metrics     Json      @default("{}")
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@index([tenantId, campaignId])
+  @@map("mkt_social_posts")
+}
+
+model MarketingShortLink {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  slug       String
+  targetUrl  String
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  channelKey String?
+  utm        Json               @default("{}")
+  clickCount Int                @default(0)
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, slug])
+  @@index([tenantId, campaignId])
+  @@map("mkt_short_links")
+}
+
+// ===========================================================================
+// Referrals
+// ===========================================================================
+
+model MarketingReferralProgram {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  name         String
+  kind         String
+  rewardKind   String   @default("none")
+  rewardAmount Decimal? @db.Decimal(18, 2)
+  active       Boolean  @default(true)
+  terms        String?
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  referrals MarketingReferral[]
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, active])
+  @@map("mkt_referral_programs")
+}
+
+model MarketingReferral {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  programId String
+  program   MarketingReferralProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  referrerPersonId       String?
+  referrerPerson         Person?       @relation("MarketingReferralReferrer", fields: [referrerPersonId], references: [id])
+  referrerOrganizationId String?
+  referrerOrganization   Organization? @relation(fields: [referrerOrganizationId], references: [id])
+
+  code String
+
+  referredPersonId String?
+  referredPerson   Person? @relation("MarketingReferralReferred", fields: [referredPersonId], references: [id])
+  leadId           String?
+  lead             Lead?   @relation(fields: [leadId], references: [id])
+
+  status               String  @default("issued")
+  rewardTransactionRef String?
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, code])
+  @@index([tenantId, programId])
+  @@index([tenantId, status])
+  @@map("mkt_referrals")
+}
+
+// ===========================================================================
+// Budget, spend, vendors, claims, plans
+// ===========================================================================
+
+model MarketingBudget {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  /// "YYYY-MM" or "YYYY-Qn".
+  period     String
+  division   String
+  channelKey String?
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+
+  planned   Decimal @default(0) @db.Decimal(18, 2)
+  committed Decimal @default(0) @db.Decimal(18, 2)
+  note      String?
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, period])
+  @@index([tenantId, division])
+  @@index([tenantId, campaignId])
+  @@map("mkt_budgets")
+}
+
+model MarketingSpend {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  campaignId String?
+  campaign   MarketingCampaign? @relation(fields: [campaignId], references: [id])
+  channelKey String
+  division   String
+
+  amount    Decimal  @db.Decimal(18, 2)
+  spendDate DateTime
+
+  vendorOrganizationId String?
+  vendorOrganization   Organization? @relation(fields: [vendorOrganizationId], references: [id])
+
+  description   String?
+  /// Link to books Transaction, when reconciled against the ledger.
+  transactionId String?
+  vendorBillId  String?
+  status        String  @default("recorded")
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, spendDate])
+  @@index([tenantId, status])
+  @@map("mkt_spends")
+}
+
+model MarketingVendor {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  services    String[] @default([])
+  contractRef String?
+  active      Boolean  @default(true)
+  rating      Decimal? @db.Decimal(3, 2)
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, organizationId])
+  @@index([tenantId, active])
+  @@map("mkt_vendors")
+}
+
+/// The claims register — ASCI / brand-compliance review of marketing copy.
+model MarketingClaim {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  text         String
+  evidenceRef  String?
+  status       String   @default("proposed")
+  approvedById String?
+  assetIds     String[] @default([])
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, status])
+  @@map("mkt_claims")
+}
+
+model MarketingPlan {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  period      String
+  division    String
+  theme       String?
+  goals       Json     @default("{}")
+  campaignIds String[] @default([])
+  status      String   @default("draft")
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, period])
+  @@index([tenantId, division])
+  @@index([tenantId, status])
+  @@map("mkt_plans")
+}
+
+// ===========================================================================
+// Inbound integration
+// ===========================================================================
+
+model MarketingWebhookInbound {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  provider    String
+  eventKind   String
+  payload     Json      @default("{}")
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  status      String    @default("received")
+  error       String?
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@index([tenantId, provider])
+  @@index([tenantId, status])
+  @@index([tenantId, receivedAt])
+  @@map("mkt_webhooks_inbound")
+}

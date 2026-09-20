@@ -223,6 +223,12 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   drift from the diagram. Leave balances are never written directly: approval
   places a hold, completion settles it, cancellation reverses it, and the
   balance is the sum of its own ledger.
+- **People (HCM)** — the human capital platform. Org chart and directory, time
+  tracking and rosters, leave policies and accrual, recruitment pipeline,
+  performance reviews and talent succession, learning and certification,
+  compensation and benefits, payroll operations, engagement and surveys,
+  separations and alumni, asset assignments and travel, HR analytics, and
+  approval workflows for compensation, offers and requests.
 - **Ledger** — every movement of money, whatever raised it. A transaction has
   no edit control, only *Reverse*, which posts the opposite entry and leaves
   both rows visible.
@@ -296,6 +302,16 @@ bank ₹12,965.36, cash ₹56,730, income ₹427,930.00, expenses ₹1,002,060.0
   typed in.
 - **Contacts** — an open merge candidate, raised by the resolver refusing a
   partial match rather than guessing.
+- **Marketing** — campaigns, budgets, audiences, consent, sends, journeys,
+  forms, events, assets and referrals, feeding scored, attributed leads into
+  CRM. A campaign above the tenant's own threshold needs a second person's
+  approval, and never the proposer's own, even the chairman. A send is honest
+  about what it can do: it excludes anyone without marketing consent before it
+  counts a recipient, and if no channel adapter is configured it says so and
+  stays in draft rather than pretending to have sent. Every touchpoint, once
+  recorded, is immutable, and a lead with no attributable source is shown as
+  *Unattributed* rather than assigned one. **H_MKT** reads *Not yet measured*
+  until a campaign has actually gone live.
 
 Every one of those surfaces starts empty, because the seed creates structure and
 not records. What fills them is your own data: import a Tally export, a bank
