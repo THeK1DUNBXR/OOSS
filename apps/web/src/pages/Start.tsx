@@ -97,7 +97,7 @@ function Checklist({ state }: { state: ReturnType<typeof useQuery<State>> }) {
             key={step.key}
             className={`flex flex-wrap items-start gap-3 border-l-2 px-3 py-3 ${
               step.done
-                ? 'border-band-healthy bg-band-healthy/5'
+                ? 'border-band-strong bg-band-strong/5'
                 : step === next
                   ? 'border-accent bg-accent/5'
                   : 'border-ink-800'
@@ -106,7 +106,7 @@ function Checklist({ state }: { state: ReturnType<typeof useQuery<State>> }) {
             <span
               aria-hidden
               className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-2xs ${
-                step.done ? 'border-band-healthy text-band-healthy' : 'border-ink-600 text-ink-500'
+                step.done ? 'border-band-strong text-band-strong' : 'border-ink-600 text-ink-500'
               }`}
             >
               {step.done ? '✓' : ''}

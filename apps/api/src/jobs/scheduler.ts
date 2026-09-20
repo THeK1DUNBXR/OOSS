@@ -17,6 +17,8 @@
 
 import { EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../platform/db.js';
+import { config } from '../platform/config.js';
+import { MAX_ATTEMPTS, TICK_MS, backoffMs, dueOccurrence, isValidCron, leaseFor } from './schedule.js';
 import { asSystem, currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { detectUntouchedLeads } from '../domains/leads.js';
@@ -418,9 +420,20 @@ export interface RunOptions {
 }
 
 /**
- * Records the idempotency key before executing. A firing whose key is already
- * present is a no-op, which makes two substrate instances firing the same job
- * concurrently safe.
+ * Per-record idempotency, for use inside a job body.
+ *
+ * Its comment used to say this "makes two substrate instances firing the same
+ * job concurrently safe". That was false in two ways: nothing called it — one
+ * grep hit, its own definition — and its key is per *record*
+ * (`automationVersionId, subjectRef, triggerFingerprint, ladderRung`), so it
+ * could not express "this occurrence of this job for this tenant" even if it
+ * had been called.
+ *
+ * Concurrent firing is now genuinely safe, and it is `claimOccurrence` below
+ * that makes it so: a unique insert on `(tenantId, jobName, scheduledFor)`.
+ * This remains the finer-grained guard a job body uses to avoid re-notifying
+ * one record — still uncalled, because wiring it means touching all sixteen
+ * job bodies, which is its own change.
  */
 export async function claimFiring(
   automationVersionId: string,
@@ -544,26 +557,206 @@ export async function runAllTenants(opts: RunOptions = {}): Promise<Record<strin
 
 let timer: NodeJS.Timeout | null = null;
 
+/** How long a single job may run before it is abandoned and retried. */
+const JOB_TIMEOUT_MS = 5 * 60_000;
+/** The heartbeat extends the lease while a job is genuinely still working. */
+const HEARTBEAT_MS = 30_000;
+
+export interface TickOutcome {
+  /** Occurrences this process claimed and ran. */
+  ran: Array<{ tenantId: string; jobName: string; scheduledFor: Date }>;
+  /** Due, but another instance already held the claim. */
+  skipped: number;
+  /** Retries exhausted; left as a dead-letter row for somebody to look at. */
+  deadLettered: number;
+}
+
 /**
- * A lightweight in-process tick that dispatches against the durable substrate.
- * The idempotency key makes it safe to run several instances of this process;
- * `npm run jobs:run` points at the same substrate so manual and scheduled
- * execution can never diverge.
+ * Claim one occurrence of one job for one tenant.
+ *
+ * The insert is the lock. `@@unique([tenantId, jobName, scheduledFor])` means a
+ * second scheduler computing the same occurrence — and it will compute the same
+ * one, because the value comes from the cron rather than from `now` — gets a
+ * unique violation and stands down. No advisory lock, no SELECT ... FOR UPDATE,
+ * no window between checking and acting.
+ *
+ * A claim is also *retaken* in two cases, both of which read as "nobody is
+ * working on this and it is not finished": the holder crashed and its lease
+ * expired, or the run failed and its backoff has elapsed. `leaseUntil` carries
+ * both meanings — while running it is a lease, and after a failure it is
+ * "do not retry before". One field, because two would have to be kept
+ * consistent with each other.
  */
-export function startScheduler(intervalMs = 3_600_000): void {
-  if (process.env.JOBS_ENABLED !== 'true' || process.env.NODE_ENV === 'test') return;
+async function claimOccurrence(
+  tenantId: string,
+  jobName: string,
+  scheduledFor: Date,
+  now: Date,
+): Promise<{ id: string; attempt: number } | null> {
+  try {
+    const created = await unscopedPrisma.jobClaim.create({
+      data: { tenantId, jobName, scheduledFor, leaseUntil: leaseFor(now, JOB_TIMEOUT_MS) },
+      select: { id: true, attempt: true },
+    });
+    return created;
+  } catch {
+    // Already claimed by somebody. Take it over only if it is genuinely stalled.
+    const { count } = await unscopedPrisma.jobClaim.updateMany({
+      where: {
+        tenantId,
+        jobName,
+        scheduledFor,
+        status: { in: ['claimed', 'failed'] },
+        leaseUntil: { lte: now },
+        attempt: { lt: MAX_ATTEMPTS },
+      },
+      data: {
+        status: 'claimed',
+        attempt: { increment: 1 },
+        claimedAt: now,
+        leaseUntil: leaseFor(now, JOB_TIMEOUT_MS),
+      },
+    });
+    if (count === 0) return null;
+    const taken = await unscopedPrisma.jobClaim.findFirst({
+      where: { tenantId, jobName, scheduledFor },
+      select: { id: true, attempt: true },
+    });
+    return taken;
+  }
+}
+
+/** A job that hangs must not hold its lease forever. */
+function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} exceeded ${ms}ms and was abandoned`)), ms);
+    work.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+/**
+ * One scheduler tick: fire exactly what is due, once.
+ *
+ * Exported and taking an explicit `now` so a test can drive a simulated day
+ * through it rather than waiting for one.
+ */
+export async function tickOnce(now: Date = new Date(), windowMs: number = TICK_MS): Promise<TickOutcome> {
+  const outcome: TickOutcome = { ran: [], skipped: 0, deadLettered: 0 };
+  const notBefore = new Date(now.getTime() - windowMs);
+
+  const tenants = await unscopedPrisma.tenant.findMany({
+    where: { status: 'active' },
+    select: { id: true },
+  });
+
+  for (const tenant of tenants) {
+    for (const job of ALL_JOBS) {
+      const due = dueOccurrence(job.cron, now, notBefore);
+      if (!due) continue;
+
+      const claim = await claimOccurrence(tenant.id, job.name, due, now);
+      if (!claim) {
+        outcome.skipped++;
+        continue;
+      }
+
+      // Keeps the lease alive while the job is genuinely working, so a slow
+      // run is not mistaken for a dead one and taken over.
+      const heartbeat = setInterval(() => {
+        void unscopedPrisma.jobClaim
+          .update({
+            where: { id: claim.id },
+            data: { heartbeatAt: new Date(), leaseUntil: leaseFor(new Date(), JOB_TIMEOUT_MS) },
+          })
+          .catch(() => {
+            /* a failed heartbeat is not worth failing the job over */
+          });
+      }, HEARTBEAT_MS);
+
+      const startedAt = Date.now();
+      try {
+        await withTimeout(runJobsForTenant(tenant.id, { jobNames: [job.name] }), JOB_TIMEOUT_MS, job.name);
+        clearInterval(heartbeat);
+        await unscopedPrisma.jobClaim.update({
+          where: { id: claim.id },
+          data: {
+            status: 'completed',
+            finishedAt: new Date(),
+            durationMs: Date.now() - startedAt,
+            lastError: null,
+          },
+        });
+        outcome.ran.push({ tenantId: tenant.id, jobName: job.name, scheduledFor: due });
+      } catch (err) {
+        clearInterval(heartbeat);
+        const message = err instanceof Error ? err.message : String(err);
+        const exhausted = claim.attempt >= MAX_ATTEMPTS;
+        await unscopedPrisma.jobClaim.update({
+          where: { id: claim.id },
+          data: {
+            status: exhausted ? 'dead' : 'failed',
+            deadAt: exhausted ? new Date() : null,
+            finishedAt: new Date(),
+            durationMs: Date.now() - startedAt,
+            lastError: message.slice(0, 2000),
+            // On a failure this is "do not retry before"; on the last attempt
+            // it is moot, because a dead claim is never retaken.
+            leaseUntil: new Date(Date.now() + backoffMs(claim.attempt)),
+          },
+        });
+        if (exhausted) {
+          outcome.deadLettered++;
+          console.error(`[scheduler] ${job.name} dead-lettered for tenant ${tenant.id}: ${message}`);
+        }
+      }
+    }
+  }
+
+  return outcome;
+}
+
+/**
+ * The loop.
+ *
+ * It used to be `setInterval(tick, 3_600_000)` firing every job on every tick,
+ * which is why a daily job ran twenty-four times a day. It now wakes once a
+ * minute and fires only what the job's own cron says is due.
+ */
+export function startScheduler(tickMs: number = TICK_MS): void {
+  if (!config.JOBS_ENABLED || config.NODE_ENV === 'test') return;
   if (timer) return;
+
+  // A malformed cron would silently never fire, which is the same invisible
+  // failure this whole rewrite is about. Fail at boot instead.
+  const bad = ALL_JOBS.filter((j) => !isValidCron(j.cron));
+  if (bad.length) {
+    throw new Error(`Unparseable cron on: ${bad.map((j) => `${j.name} (${j.cron})`).join(', ')}`);
+  }
 
   const tick = async () => {
     try {
-      await runAllTenants();
+      const outcome = await tickOnce(new Date(), tickMs);
+      if (outcome.ran.length || outcome.deadLettered) {
+        console.log(
+          `[scheduler] ran ${outcome.ran.length}, skipped ${outcome.skipped}, dead-lettered ${outcome.deadLettered}`,
+        );
+      }
     } catch (err) {
       console.error('[scheduler] tick failed', err);
     }
   };
 
   setTimeout(tick, 15_000);
-  timer = setInterval(tick, intervalMs);
+  timer = setInterval(tick, tickMs);
 }
 
 export function stopScheduler(): void {

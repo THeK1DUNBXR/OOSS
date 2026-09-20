@@ -22,6 +22,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { config } from './config.js';
 
 export interface BuildStamp {
   /** From package.json. Changes rarely; here because a release has a name. */
@@ -75,18 +76,18 @@ function packageVersion(): string {
  * checkout gets the same answer from git without setting anything.
  */
 function resolve(): BuildStamp {
-  const envSequence = Number(process.env.BUILD_SEQUENCE ?? '');
+  const envSequence = Number(config.BUILD_SEQUENCE ?? '');
   const sequence = Number.isFinite(envSequence) && envSequence > 0
     ? envSequence
     : Number(fromGit(['rev-list', '--count', 'HEAD']) ?? '0');
 
-  const commit = process.env.GIT_SHA?.slice(0, 7) ?? fromGit(['rev-parse', '--short', 'HEAD']) ?? '';
+  const commit = config.GIT_SHA?.slice(0, 7) ?? fromGit(['rev-parse', '--short', 'HEAD']) ?? '';
 
   return {
     version: packageVersion(),
     sequence: Number.isFinite(sequence) ? sequence : 0,
     commit,
-    builtAt: process.env.BUILT_AT ?? null,
+    builtAt: config.BUILT_AT ?? null,
     known: Boolean(commit) || sequence > 0,
   };
 }

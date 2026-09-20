@@ -342,6 +342,12 @@ export async function recordTransaction(input: TransactionInput) {
     impact: { domains: ['fin'] },
   });
 
+  await auditWrite({
+    action: 'create',
+    subjectType: 'transaction',
+    subjectId: txn.id,
+    after: { recordCode: txn.recordCode, amount: input.amount, direction: input.direction, accountId: input.accountId },
+  });
   return txn;
 }
 
@@ -390,6 +396,13 @@ export async function reverseTransaction(id: string, reason: string) {
       },
     });
     await tx.transaction.update({ where: { id: original.id }, data: { reversedById: created.id } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'transaction',
+      subjectId: original.id,
+      before: { status: 'posted', reversedById: null },
+      after: { status: 'reversed', reversedById: created.id, reason },
+    });
     return created;
   });
 

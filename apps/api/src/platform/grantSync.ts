@@ -33,6 +33,7 @@
 
 import { EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from './db.js';
+import { config } from './config.js';
 import { asSystem } from './context.js';
 import { emit } from '../platform/eventBus.js';
 import { ROLE_GRANT_MATRIX, parseCell } from '../seed/grants.js';
@@ -115,7 +116,7 @@ export async function addMissingGrants(tenantId: string): Promise<GrantAddition[
 
 /** Every tenant, at boot, unless the operator has turned it off. */
 export async function addMissingGrantsForAllTenants(): Promise<{ tenants: number; added: GrantAddition[] }> {
-  if ((process.env.GRANT_AUTOSYNC ?? '').toLowerCase() === 'off') {
+  if (!config.GRANT_AUTOSYNC) {
     return { tenants: 0, added: [] };
   }
   const tenants = await unscopedPrisma.tenant.findMany({ select: { id: true } });

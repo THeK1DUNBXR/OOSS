@@ -151,14 +151,27 @@ export async function recordPayment(input: {
   return payment;
 }
 
-/** A correction is a NEW row, never an update in place. */
+/**
+ * A correction is a NEW row, never an update in place.
+ *
+ * This used to write a negative-amount payment with no `assertCan`, no
+ * `auditWrite` and no `emit` — so any principal who could reach the route could
+ * reverse money and leave no trace anywhere, while `recordPayment` twenty lines
+ * above did all three. Money moving is exactly the event that has to be
+ * permitted, recorded and announced.
+ */
 export async function reversePayment(paymentId: string, reason: string) {
   const auth = currentAuth();
+  await assertCan({ resource: 'payments', verb: 'edit' });
+
   const original = await prisma.payment.findFirst({ where: { id: paymentId } });
   if (!original) throw ApiError.notFound('Payment');
+  if (original.reversalOfPaymentId) {
+    throw ApiError.unprocessable('This payment is itself a reversal. Reversing it would restore the original error.');
+  }
 
   const recordCode = await nextRecordCode('PAY');
-  return prisma.payment.create({
+  const reversal = await prisma.payment.create({
     data: {
       tenantId: auth.tenantId,
       recordCode,
@@ -172,6 +185,30 @@ export async function reversePayment(paymentId: string, reason: string) {
       note: reason,
     },
   });
+
+  await auditWrite({
+    action: 'create',
+    subjectType: 'payment',
+    subjectId: reversal.id,
+    before: { reversedPaymentId: paymentId, amount: num(original.amount) },
+    after: { recordCode, amount: num(reversal.amount), reason },
+  });
+
+  await emit({
+    name: EVENTS.PAYMENT_RECEIVED,
+    subject: { entityType: 'payment', entityId: reversal.id, recordCode },
+    previousState: { paymentId, amount: num(original.amount) },
+    newState: { amount: num(reversal.amount), currency: reversal.currency, reversalOf: paymentId },
+    reason: { reasonCode: 'payment_reversed', note: reason },
+    impact: {
+      domains: ['fin'],
+      severity: 'S2_WARNING',
+      materiality: { measure: 'payment_amount', value: num(reversal.amount) ?? 0, currency: reversal.currency },
+    },
+    confidentiality: 'confidential',
+  });
+
+  return reversal;
 }
 
 // ---------------------------------------------------------------------------

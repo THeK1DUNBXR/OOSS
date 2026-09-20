@@ -33,6 +33,7 @@ import { seedCompliance } from './compliance/index.js';
 import { seedIt } from './it/index.js';
 import { AI_TOUCHPOINTS, EVENTS } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../platform/db.js';
+import { config } from '../platform/config.js';
 import { asSystem } from '../platform/context.js';
 import { hashPassword } from '../lib/auth.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -43,8 +44,8 @@ import { runBackfills } from './backfill.js';
 import { BUILD } from '../platform/build.js';
 import { reconcileTenantKinds } from '../platform/tenantKind.js';
 
-export const TENANT_SLUG = process.env.TENANT_SLUG ?? 'kaizen';
-const TENANT_NAME = process.env.TENANT_NAME ?? 'Kaizen Infinities';
+export const TENANT_SLUG = config.TENANT_SLUG;
+const TENANT_NAME = config.TENANT_NAME;
 
 /**
  * `TENANT_KIND`/`PARENT_TENANT_SLUG` name the group relationship at bootstrap
@@ -913,7 +914,7 @@ const FOUNDING_ACCOUNTS: FoundingAccount[] = [
   },
 ];
 
-const EMAIL_DOMAIN = process.env.SEED_EMAIL_DOMAIN ?? 'kaizen.co.in';
+const EMAIL_DOMAIN = config.SEED_EMAIL_DOMAIN;
 
 export interface SeededAccount {
   roleSlug: string;
@@ -925,6 +926,15 @@ export interface SeededAccount {
   created: boolean;
 }
 
+/**
+ * The one place that still reads `process.env` directly.
+ *
+ * These keys are computed per founding role (`OWNER_EMAIL`, `FINANCE_EMAIL`,
+ * …), so there is no fixed set for `config.ts` to declare. They are also
+ * seed-only, optional, and carry no secret that has a usable default — an
+ * absent password is generated and printed once, never guessed. Adding a
+ * variable here does not need a schema change, which is the point.
+ */
 async function seedAccount(spec: FoundingAccount): Promise<SeededAccount> {
   const tenantId = (await currentTenant()).id;
   const email = (

@@ -36,4 +36,29 @@ export default defineConfig({
     video: 'off',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+
+  /**
+   * The suite used to assume somebody had already started both servers, which
+   * is fine on a developer's machine and useless in CI. Playwright starts them
+   * itself now, and reuses whatever is already listening locally so a running
+   * `pnpm dev` is not restarted underneath you.
+   */
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : [
+        {
+          command: 'pnpm --filter @kaizen/api dev',
+          url: 'http://127.0.0.1:4000/health',
+          reuseExistingServer: !process.env.CI,
+          timeout: 120_000,
+          cwd: '..',
+        },
+        {
+          command: 'pnpm --filter @kaizen/web dev',
+          url: 'http://127.0.0.1:5173',
+          reuseExistingServer: !process.env.CI,
+          timeout: 120_000,
+          cwd: '..',
+        },
+      ],
 });

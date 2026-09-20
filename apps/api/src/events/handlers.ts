@@ -13,7 +13,7 @@
  * an event it is itself downstream of, and refuses.
  */
 
-import { EVENTS, type EventEnvelope } from '@kaizen/shared';
+import { EVENTS, round2, type EventEnvelope } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { subscribe, wouldLoop } from '../platform/eventBus.js';
 import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../domains/finance.js';
@@ -24,6 +24,40 @@ import { handleEmploymentExit } from '../domains/esop.js';
 import { handleAllotmentEffectiveForFema, handleTransferEffectiveForFema } from '../domains/filings.js';
 
 let registered = false;
+
+/** One instalment of a course's fee plan. */
+interface FeePlanPart {
+  share: number;
+  dueInDays: number;
+}
+
+/**
+ * The default schedule, used when a course does not carry its own.
+ *
+ * 40/30/30 at 7/45/90 days is what the hardcoded handler did, kept so existing
+ * behaviour is unchanged for courses that have not been given a plan — the
+ * defect was the hardcoded *amount*, not this shape.
+ */
+const DEFAULT_FEE_PLAN: FeePlanPart[] = [
+  { share: 0.4, dueInDays: 7 },
+  { share: 0.3, dueInDays: 45 },
+  { share: 0.3, dueInDays: 90 },
+];
+
+/** A course's plan when it has a usable one, the default otherwise. */
+export function instalmentPlan(raw: unknown): FeePlanPart[] {
+  if (!Array.isArray(raw) || raw.length === 0) return DEFAULT_FEE_PLAN;
+  const parts = raw
+    .filter((p): p is FeePlanPart => !!p && typeof p === 'object' && 'share' in p && 'dueInDays' in p)
+    .map((p) => ({ share: Number(p.share), dueInDays: Number(p.dueInDays) }))
+    .filter((p) => Number.isFinite(p.share) && p.share > 0 && Number.isFinite(p.dueInDays));
+  if (!parts.length) return DEFAULT_FEE_PLAN;
+  // A plan that does not add up to the fee would under- or over-bill silently,
+  // which is the same class of bug as the one being fixed.
+  const total = parts.reduce((s, p) => s + p.share, 0);
+  if (Math.abs(total - 1) > 0.001) return DEFAULT_FEE_PLAN;
+  return parts;
+}
 
 export function registerSubscribers(): void {
   if (registered) return;
@@ -86,13 +120,28 @@ export function registerSubscribers(): void {
     });
     if (!enrollment) return;
 
-    const total = 60_000;
+    // The fee is the course's. This used to be `const total = 60_000`, applied
+    // to every confirmed enrolment regardless of what the learner had actually
+    // enrolled on — the handler loaded `cohort.course` three lines above and
+    // then ignored its price. A ₹25,000 course raised a ₹60,000 fee plan, and
+    // `priceLines` two files away (`invoicing.ts:465`) had been reading the
+    // right field the whole time.
+    const total = num(enrollment.cohort?.course?.feeAmount) ?? 0;
+    if (total <= 0) {
+      // No price on the course is not a reason to invent one. The enrolment
+      // stands; somebody prices the course and the plan is raised then.
+      return;
+    }
+
+    const plan = instalmentPlan(enrollment.cohort?.course?.feePlan);
     const now = Date.now();
-    await issueFeeInstalments(enrollment.id, [
-      { amount: total * 0.4, dueDate: new Date(now + 7 * 86_400_000) },
-      { amount: total * 0.3, dueDate: new Date(now + 45 * 86_400_000) },
-      { amount: total * 0.3, dueDate: new Date(now + 90 * 86_400_000) },
-    ]);
+    await issueFeeInstalments(
+      enrollment.id,
+      plan.map((part) => ({
+        amount: round2(total * part.share),
+        dueDate: new Date(now + part.dueInDays * 86_400_000),
+      })),
+    );
   });
 
   /** Finance -> CRM flows back only as a read-only projection. */
