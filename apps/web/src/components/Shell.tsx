@@ -57,6 +57,10 @@ const GROUP_LABELS: Record<string, string> = {
   // parties, and only one of them is buying anything on any given day.
   customers: 'Who We Deal With',
   delivery: 'Selling & Delivering',
+  // Engineering group key stays `ceo` (docs/plan/ceo-office.md §1) — same
+  // split the codebase already keeps for `eqt`/"Equity" and `xdm`/"Command
+  // Center".
+  ceo: "Chairman's Office",
   compliance: 'Compliance',
   // The CIO's office: the estate, the desk, the risks and the spend behind
   // the systems the company runs on.
@@ -244,7 +248,7 @@ export function Shell() {
 
 // Fixed group order, so the shell reads the way the work reads: your own
 // surface first, then the domains, then the platform underneath them.
-const GROUP_ORDER = ['main', 'money', 'equity', 'people', 'customers', 'delivery', 'compliance', 'technology', 'setup'];
+const GROUP_ORDER = ['main', 'money', 'equity', 'ceo', 'people', 'customers', 'delivery', 'compliance', 'technology', 'setup'];
 
 /** The sidebar's content, shared between its desktop in-flow rendering and
  *  its mobile drawer overlay — one nav, two placements. */

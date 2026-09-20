@@ -11,3 +11,4 @@ export * from './esop.js';
 export * from './board.js';
 export * from './compliance/index.js';
 export * from './it/index.js';
+export * from './ceo.js';

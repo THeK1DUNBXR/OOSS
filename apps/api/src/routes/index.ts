@@ -17,6 +17,7 @@ import groupRoutes from './group.routes.js';
 import esopRoutes from './esop.routes.js';
 import complianceRoutes from './compliance/index.js';
 import itRoutes from './it/index.js';
+import ceoRoutes from './ceo/index.js';
 import { requireAuth } from '../lib/http.js';
 
 const router = Router();
@@ -38,6 +39,7 @@ router.use('/esop', requireAuth, esopRoutes);
 router.use('/board', requireAuth, boardRoutes);
 router.use('/compliance', requireAuth, complianceRoutes);
 router.use('/it', requireAuth, itRoutes);
+router.use('/ceo', requireAuth, ceoRoutes);
 // What is running, and against what data. Signed in, because the seed stamp is
 // about a particular tenant.
 router.use('/meta', requireAuth, metaRoutes);

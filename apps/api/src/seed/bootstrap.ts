@@ -246,6 +246,31 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'eq_resolutions', label: 'Resolutions', icon: 'scale', path: '/equity/resolutions', group: 'equity', position: 92, requiredPermission: 'resolutions:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['circular resolution', 'vote', 'mgt-14', 'circulation'] },
   { nodeKey: 'eq_compliance', label: 'Compliance', icon: 'clipboard', path: '/equity/compliance', group: 'equity', position: 93, requiredPermission: 'compliance:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['calendar', 'due dates', 'filings', 'ss-1', 'agm', 'mbp-1'] },
 
+  // ---- Chairman's Office (docs/plan/ceo-office.md §6, Phase 0) -----------
+  // On-screen label is "Chairman's Office"; the engineering group key stays
+  // `ceo` (§1). `archetypes` is explicit on every row — this module is
+  // ERP-only, and a node with no `archetypes` leaks into the portal shell.
+  { nodeKey: 'ceo_cockpit', label: 'Cockpit', icon: 'gauge', path: '/ceo/cockpit', group: 'ceo', position: 100, requiredPermission: 'ceo_cockpit:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['ceo dashboard', 'executive summary', 'scorecard'] },
+  { nodeKey: 'ceo_kpi_library', label: 'KPI Library', icon: 'chart', path: '/ceo/kpi-library', group: 'ceo', position: 101, requiredPermission: 'kpi_definitions:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['metrics', 'definitions'] },
+  { nodeKey: 'ceo_strategy', label: 'Strategy', icon: 'target', path: '/ceo/strategy', group: 'ceo', position: 102, requiredPermission: 'strategic_themes:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['vision', 'three year picture', 'annual operating plan', 'aop'] },
+  { nodeKey: 'ceo_okrs', label: 'OKRs', icon: 'target', path: '/ceo/okrs', group: 'ceo', position: 103, requiredPermission: 'objectives:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['objectives', 'key results', 'goals', 'check-in'] },
+  { nodeKey: 'ceo_initiatives', label: 'Initiatives', icon: 'kanban', path: '/ceo/initiatives', group: 'ceo', position: 104, requiredPermission: 'initiatives:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['rocks', 'portfolio'] },
+  { nodeKey: 'ceo_meetings', label: 'Meeting Rhythm', icon: 'clock', path: '/ceo/meetings', group: 'ceo', position: 105, requiredPermission: 'meeting_series:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['l10', 'mbr', 'qbr', 'annual planning', 'issues list', 'to-dos'] },
+  { nodeKey: 'ceo_delegation', label: 'Delegation Of Authority', icon: 'shield', path: '/ceo/delegation', group: 'ceo', position: 106, requiredPermission: 'doa_matrix:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['doa', 'authority ceiling'] },
+  { nodeKey: 'ceo_approvals', label: 'Approvals Inbox', icon: 'inbox', path: '/ceo/approvals', group: 'ceo', position: 107, requiredPermission: 'ceo_approvals_inbox:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['pending approval', 'sign off'] },
+  { nodeKey: 'ceo_board_pack', label: 'Board Pack', icon: 'file', path: '/ceo/board-pack', group: 'ceo', position: 108, requiredPermission: 'board_packs:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_investor_updates', label: 'Investor Updates', icon: 'file', path: '/ceo/investor-updates', group: 'ceo', position: 109, requiredPermission: 'investor_updates:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_stakeholders', label: 'Stakeholders', icon: 'users', path: '/ceo/stakeholders', group: 'ceo', position: 110, requiredPermission: 'stakeholders:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['investors', 'key customers', 'regulators', 'partners'] },
+  { nodeKey: 'ceo_risks', label: 'Risk Register', icon: 'alert', path: '/ceo/risks', group: 'ceo', position: 111, requiredPermission: 'risks:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_policies', label: 'Policy Register', icon: 'scale', path: '/ceo/policies', group: 'ceo', position: 112, requiredPermission: 'policy_documents:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_governance', label: 'Governance Overview', icon: 'shield', path: '/ceo/governance', group: 'ceo', position: 113, requiredPermission: 'risks:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['open risks', 'policy review', 'doa summary', 'board compliance'] },
+  { nodeKey: 'ceo_financial_plan', label: 'Financial Plan', icon: 'chart', path: '/ceo/financial-plan', group: 'ceo', position: 114, requiredPermission: 'financial_scenarios:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['scenario', 'runway', 'budget', '13-week cash flow'] },
+  { nodeKey: 'ceo_headcount_plan', label: 'Headcount Plan', icon: 'users', path: '/ceo/headcount-plan', group: 'ceo', position: 115, requiredPermission: 'headcount_plans:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_leadership', label: 'Leadership', icon: 'building', path: '/ceo/leadership', group: 'ceo', position: 116, requiredPermission: 'seats:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['accountability chart', 'org chart', 'seats'] },
+  { nodeKey: 'ceo_one_on_ones', label: '1:1s', icon: 'message', path: '/ceo/one-on-ones', group: 'ceo', position: 117, requiredPermission: 'one_on_ones:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['skip level', 'one on one'] },
+  { nodeKey: 'ceo_succession', label: 'Succession', icon: 'badge', path: '/ceo/succession', group: 'ceo', position: 118, requiredPermission: 'succession_candidates:V', archetypes: ['command', 'workspace', 'console'] },
+  { nodeKey: 'ceo_time_audit', label: 'Time Audit', icon: 'clock', path: '/ceo/time-audit', group: 'ceo', position: 119, requiredPermission: 'time_audit:V', archetypes: ['command', 'workspace', 'console'], synonyms: ['calendar audit', 'where the chairman spends time'] },
+
   // ---- The equity & board portal ----------------------------------------
   // `archetypes: ['portal']` is what actually keeps these off the ERP shell —
   // `navigationFor()` filters by the active role's archetype, so an ERP role

@@ -78,6 +78,26 @@ import { ItIncidents, ItIncidentDetail, ItProblems, ItProblemDetail, ItChanges, 
 import { ItRisks, ItRiskDetail, ItPolicies, ItPolicyDetail, ItControls, ItAccessReviews, ItAccessReviewDetail, ItFindings } from './pages/it/Governance.js';
 import { ItPortfolio, ItInitiativeDetail, ItRoadmap, ItBudget, ItTechDebt } from './pages/it/Portfolio.js';
 import { ItContinuity, ItAvailability, ItMaintenance } from './pages/it/Continuity.js';
+import { Cockpit as CeoCockpit } from './pages/ceo/Cockpit.js';
+import { KpiLibrary as CeoKpiLibrary } from './pages/ceo/KpiLibrary.js';
+import { Strategy as CeoStrategy } from './pages/ceo/Strategy.js';
+import { Okrs as CeoOkrs } from './pages/ceo/Okrs.js';
+import { Initiatives as CeoInitiatives } from './pages/ceo/Initiatives.js';
+import { Rhythm as CeoRhythm } from './pages/ceo/Rhythm.js';
+import { Doa as CeoDoa } from './pages/ceo/Doa.js';
+import { Approvals as CeoApprovals } from './pages/ceo/Approvals.js';
+import { BoardPack as CeoBoardPack } from './pages/ceo/BoardPack.js';
+import { InvestorUpdates as CeoInvestorUpdates } from './pages/ceo/InvestorUpdates.js';
+import { Stakeholders as CeoStakeholders } from './pages/ceo/Stakeholders.js';
+import { Risk as CeoRisk } from './pages/ceo/Risk.js';
+import { Policies as CeoPolicies } from './pages/ceo/Policies.js';
+import { Governance as CeoGovernance } from './pages/ceo/Governance.js';
+import { FinancialPlan as CeoFinancialPlan } from './pages/ceo/FinancialPlan.js';
+import { Headcount as CeoHeadcount } from './pages/ceo/Headcount.js';
+import { Leadership as CeoLeadership } from './pages/ceo/Leadership.js';
+import { OneOnOnes as CeoOneOnOnes } from './pages/ceo/OneOnOnes.js';
+import { Succession as CeoSuccession } from './pages/ceo/Succession.js';
+import { TimeAudit as CeoTimeAudit } from './pages/ceo/TimeAudit.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -313,6 +333,32 @@ function Routed() {
         <Route path="/admin/jobs" element={<Jobs />} />
         <Route path="/admin/audit" element={<Audit />} />
         <Route path="/admin/platform" element={<PlatformModel />} />
+
+        {/* ---- Chairman's Office (docs/plan/ceo-office.md §6, Phase 0) ---- */}
+        <Route path="/ceo/cockpit" element={<CeoCockpit />} />
+        <Route path="/ceo/kpi-library" element={<CeoKpiLibrary />} />
+        <Route path="/ceo/strategy" element={<CeoStrategy />} />
+        <Route path="/ceo/okrs" element={<CeoOkrs />} />
+        <Route path="/ceo/initiatives" element={<CeoInitiatives />} />
+        <Route path="/ceo/initiatives/:id" element={<CeoInitiatives />} />
+        <Route path="/ceo/meetings" element={<CeoRhythm />} />
+        <Route path="/ceo/meetings/:id" element={<CeoRhythm />} />
+        <Route path="/ceo/delegation" element={<CeoDoa />} />
+        <Route path="/ceo/approvals" element={<CeoApprovals />} />
+        <Route path="/ceo/board-pack" element={<CeoBoardPack />} />
+        <Route path="/ceo/board-pack/:id/document" element={<CeoBoardPack />} />
+        <Route path="/ceo/investor-updates" element={<CeoInvestorUpdates />} />
+        <Route path="/ceo/investor-updates/:id/document" element={<CeoInvestorUpdates />} />
+        <Route path="/ceo/stakeholders" element={<CeoStakeholders />} />
+        <Route path="/ceo/risks" element={<CeoRisk />} />
+        <Route path="/ceo/policies" element={<CeoPolicies />} />
+        <Route path="/ceo/governance" element={<CeoGovernance />} />
+        <Route path="/ceo/financial-plan" element={<CeoFinancialPlan />} />
+        <Route path="/ceo/headcount-plan" element={<CeoHeadcount />} />
+        <Route path="/ceo/leadership" element={<CeoLeadership />} />
+        <Route path="/ceo/one-on-ones" element={<CeoOneOnOnes />} />
+        <Route path="/ceo/succession" element={<CeoSuccession />} />
+        <Route path="/ceo/time-audit" element={<CeoTimeAudit />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

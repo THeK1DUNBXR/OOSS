@@ -47,6 +47,7 @@ export const BOUNDED_CONTEXTS = [
   'agt', // agent principals
   'xdm', // cross-domain / health
   'eqt', // equity, shareholder & board register
+  'ceo', // chairman's office (on-screen name; code prefix stays `ceo`, docs/plan/ceo-office.md §1)
 ] as const;
 
 export type BoundedContext = (typeof BOUNDED_CONTEXTS)[number];
@@ -160,6 +161,42 @@ export const MODULE_REGISTER: ModuleRegisterEntry[] = [
       'Hold money movement itself — an allotment references the FIN Transaction that already lifted cash; EQT never posts beside the books.',
       'Approve its own allotment or transfer — that goes through the approval gate, whose self-dealing bar reroutes an interested approver.',
       "Read another tenant's tables — the group view is built from EntitySnapshot rows published upward, never a cross-tenant query.",
+    ],
+  },
+  {
+    code: 'CEO',
+    name: "Chairman's Office",
+    boundedContext: 'ceo',
+    plane: 'P2',
+    owns: [
+      // Phase 1
+      'KPI_DEFINITION', 'KPI_FORMULA_VERSION', 'KPI_TARGET_BAND', 'KPI_VALUE', 'KPI_REFERENCE',
+      'NORTH_STAR_METRIC', 'COCKPIT_VIEW', 'COCKPIT_SNAPSHOT',
+      // Phase 2
+      'VISION_STATEMENT', 'THREE_YEAR_PICTURE', 'ANNUAL_OPERATING_PLAN', 'STRATEGIC_THEME',
+      'PLAN_ASSUMPTION', 'OBJECTIVE', 'KEY_RESULT', 'CHECK_IN', 'OKR_CYCLE',
+      // Phase 3
+      'INITIATIVE', 'INITIATIVE_MILESTONE', 'INITIATIVE_DEPENDENCY',
+      // Phase 4
+      'MEETING_SERIES', 'MEETING_INSTANCE', 'AGENDA_ITEM', 'ISSUE_ITEM', 'ACTION_ITEM',
+      'MEETING_DECISION_LINK',
+      // Phase 5
+      'DOA_MATRIX_ENTRY', 'DELEGATION_LOG',
+      // Phase 6
+      'BOARD_PACK', 'BOARD_PACK_VERSION', 'INVESTOR_UPDATE', 'INVESTOR_UPDATE_VERSION',
+      'DOCUMENT_CIRCULATION', 'STAKEHOLDER', 'STAKEHOLDER_TOUCH',
+      // Phase 7
+      'RISK_ITEM', 'POLICY_DOCUMENT', 'POLICY_ACKNOWLEDGEMENT',
+      // Phase 8
+      'FINANCIAL_SCENARIO', 'HEADCOUNT_PLAN', 'HEADCOUNT_PLAN_LINE',
+      // Phase 9
+      'SEAT', 'SUCCESSION_CANDIDATE', 'ONE_ON_ONE_SERIES', 'ONE_ON_ONE_INSTANCE', 'TIME_AUDIT_ENTRY',
+    ],
+    neverDoes: [
+      'Hold money movement — FIN owns that; this module references Transaction/BudgetLine rows, it never posts one.',
+      "Hold statutory board records — BoardMeeting/Resolution stay eqt-owned; the Board Pack is a narrative document that cites a BoardMeeting, it does not replace one.",
+      'Write a second Decision-like record — every state transition that needs sign-off reuses GOV\'s Decision via raiseDecision/disposeDecision.',
+      "Read another tenant's tables directly — any group-wide chairman view extends group.ts's snapshot-publish pattern, never a new cross-tenant read.",
     ],
   },
 ];
