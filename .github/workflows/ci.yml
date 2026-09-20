@@ -72,6 +72,9 @@ jobs:
       - run: pnpm --filter @kaizen/shared build
       - run: pnpm --filter @kaizen/api exec prisma db push --skip-generate
       - run: pnpm --filter @kaizen/api exec prisma generate
+      # The acceptance suite runs against a real dataset, not mocks — see
+      # apps/api/vitest.config.ts and scripts/test-db.sh, which this mirrors.
+      - run: pnpm --filter @kaizen/api seed:demo
       - run: pnpm --filter @kaizen/api test
 
   build:

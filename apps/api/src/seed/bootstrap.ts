@@ -181,8 +181,8 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'hcm_engagement', label: 'Engagement', icon: 'message', path: '/people/engagement', group: 'people', position: 37, requiredPermission: 'announcements:V', synonyms: ['recognition', 'surveys', 'helpdesk', 'policies'] },
   { nodeKey: 'hcm_separations', label: 'Separations', icon: 'lock', path: '/people/separations', group: 'people', position: 38, requiredPermission: 'resignations:V', synonyms: ['resignation', 'exit', 'clearance', 'no dues', 'alumni'] },
   { nodeKey: 'hcm_assets', label: 'Assets & Requests', icon: 'package', path: '/people/assets', group: 'people', position: 39, requiredPermission: 'hcm_assets:V', synonyms: ['inventory', 'travel', 'letter request'] },
-  { nodeKey: 'hcm_analytics', label: 'Analytics', icon: 'chart', path: '/people/analytics', group: 'people', position: 40, requiredPermission: 'hr_analytics:V', synonyms: ['headcount', 'attrition', 'reports'] },
-  { nodeKey: 'hcm_approvals', label: 'Approvals', icon: 'shield', path: '/people/approvals', group: 'people', position: 41, requiredPermission: 'hr_requests:V', synonyms: ['waiting on me', 'inbox', 'sign off'] },
+  { nodeKey: 'hcm_analytics', label: 'People Analytics', icon: 'chart', path: '/people/analytics', group: 'people', position: 40, requiredPermission: 'hr_analytics:V', synonyms: ['headcount', 'attrition', 'reports', 'analytics'] },
+  { nodeKey: 'hcm_approvals', label: 'HR Approvals', icon: 'shield', path: '/people/approvals', group: 'people', position: 41, requiredPermission: 'hr_requests:V', synonyms: ['waiting on me', 'inbox', 'sign off', 'approvals'] },
 
   // ---- Customers -------------------------------------------------------
   { nodeKey: 'crm_leads', label: 'Leads', icon: 'inbox', path: '/crm/leads', group: 'customers', position: 30, requiredPermission: 'leads:V', synonyms: ['enquiries', 'prospects'] },
@@ -228,11 +228,11 @@ export const NAV_REGISTRY: NavNodeSpec[] = [
   { nodeKey: 'mkt_journeys', label: 'Journeys', icon: 'columns', path: '/marketing/journeys', group: 'marketing', position: 67, requiredPermission: 'marketing_journeys:V', synonyms: ['drip', 'automation', 'nurture'] },
   { nodeKey: 'mkt_forms', label: 'Forms', icon: 'clipboard', path: '/marketing/forms', group: 'marketing', position: 68, requiredPermission: 'marketing_forms:V', synonyms: ['landing form', 'web form', 'lead capture'] },
   { nodeKey: 'mkt_events', label: 'Events', icon: 'graduation', path: '/marketing/events', group: 'marketing', position: 69, requiredPermission: 'marketing_events:V', synonyms: ['webinar', 'seminar', 'open day', 'demo', 'college visit', 'placement drive'] },
-  { nodeKey: 'mkt_assets', label: 'Assets', icon: 'package', path: '/marketing/assets', group: 'marketing', position: 70, requiredPermission: 'marketing_assets:V', synonyms: ['content library', 'brochure', 'creative', 'deck'] },
+  { nodeKey: 'mkt_assets', label: 'Content Assets', icon: 'package', path: '/marketing/assets', group: 'marketing', position: 70, requiredPermission: 'marketing_assets:V', synonyms: ['content library', 'brochure', 'creative', 'deck'] },
   { nodeKey: 'mkt_social', label: 'Social', icon: 'sparkle', path: '/marketing/social', group: 'marketing', position: 71, requiredPermission: 'marketing_assets:V', synonyms: ['social post', 'social media'] },
   { nodeKey: 'mkt_referrals', label: 'Referrals', icon: 'badge', path: '/marketing/referrals', group: 'marketing', position: 72, requiredPermission: 'marketing_referrals:V', synonyms: ['referral program', 'affiliate'] },
-  { nodeKey: 'mkt_budget', label: 'Budget', icon: 'calculator', path: '/marketing/budget', group: 'marketing', position: 73, requiredPermission: 'marketing_budgets:V', synonyms: ['spend', 'vendor', 'marketing spend'] },
-  { nodeKey: 'mkt_analytics', label: 'Analytics', icon: 'chart', path: '/marketing/analytics', group: 'marketing', position: 74, requiredPermission: 'marketing_analytics:V', synonyms: ['funnel', 'attribution', 'cost per lead', 'roi', 'romi'] },
+  { nodeKey: 'mkt_budget', label: 'Marketing Budget', icon: 'calculator', path: '/marketing/budget', group: 'marketing', position: 73, requiredPermission: 'marketing_budgets:V', synonyms: ['spend', 'vendor', 'marketing spend', 'budget'] },
+  { nodeKey: 'mkt_analytics', label: 'Marketing Analytics', icon: 'chart', path: '/marketing/analytics', group: 'marketing', position: 74, requiredPermission: 'marketing_analytics:V', synonyms: ['funnel', 'attribution', 'cost per lead', 'roi', 'romi', 'analytics'] },
   { nodeKey: 'mkt_settings', label: 'Marketing Settings', icon: 'settings', path: '/marketing/settings', group: 'marketing', position: 75, requiredPermission: 'marketing_settings:V', synonyms: ['channel', 'adapter', 'claim', 'policy'] },
 
   // ---- Set up ----------------------------------------------------------
