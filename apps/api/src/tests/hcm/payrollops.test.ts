@@ -208,7 +208,7 @@ describe('ad-hoc pay lines', () => {
       createPayItem({ code: `ADH-${Date.now()}`, name: 'Ad-hoc bonus', kind: 'earning', glAccountCode: '6020-BONUS' }),
     );
     const line = await asUser('operations@kaizen.co.in', () =>
-      createAdHocPayLine({ employmentRelationshipId: employment.id, payItemId: item.id, payPeriod: '2031-01', amount: 5_000, reason: 'Referral bonus' }),
+      createAdHocPayLine({ employmentRelationshipId: employment.id, payItemId: item.id, payPeriod: '2032-01', amount: 5_000, reason: 'Referral bonus' }),
     );
     expect(line.status).toBe('Proposed');
 
@@ -220,7 +220,7 @@ describe('ad-hoc pay lines', () => {
     // Chairman holds every verb, so a chairman-proposed line is the shape
     // that actually reaches the Self-Dealing Bar's own-record check.
     const chairmanLine = await asUser('chairman@kaizen.co.in', () =>
-      createAdHocPayLine({ employmentRelationshipId: employment.id, payItemId: item.id, payPeriod: '2031-01', amount: 1_500, reason: 'Second line' }),
+      createAdHocPayLine({ employmentRelationshipId: employment.id, payItemId: item.id, payPeriod: '2032-01', amount: 1_500, reason: 'Second line' }),
     );
     const selfApprove = await expectReject(() => asUser('chairman@kaizen.co.in', () => approveAdHocPayLine(chairmanLine.id)));
     expect(selfApprove.message).toMatch(/Self-Dealing Bar/);
@@ -240,7 +240,7 @@ describe('ad-hoc pay lines', () => {
       createPayItem({ code: `MONEY-${Date.now()}`, name: 'Money-masked bonus', kind: 'earning', glAccountCode: '6020-BONUS' }),
     );
     await asUser('operations@kaizen.co.in', () =>
-      createAdHocPayLine({ employmentRelationshipId: employment.id, payItemId: item.id, payPeriod: '2031-01', amount: 7_777, reason: 'Masking check' }),
+      createAdHocPayLine({ employmentRelationshipId: employment.id, payItemId: item.id, payPeriod: '2032-01', amount: 7_777, reason: 'Masking check' }),
     );
 
     const asOps = await asUser('operations@kaizen.co.in', () => listAdHocPayLines({ employmentRelationshipId: employment.id }));
@@ -258,7 +258,7 @@ describe('ad-hoc pay lines', () => {
       createPayItem({ code: `REJ-${Date.now()}`, name: 'Rejectable', kind: 'deduction', glAccountCode: '2420-DEDUCT' }),
     );
     const line = await asUser('operations@kaizen.co.in', () =>
-      createAdHocPayLine({ employmentRelationshipId: employment.id, payItemId: item.id, payPeriod: '2031-01', amount: 1_000, reason: 'Shortfall recovery' }),
+      createAdHocPayLine({ employmentRelationshipId: employment.id, payItemId: item.id, payPeriod: '2032-01', amount: 1_000, reason: 'Shortfall recovery' }),
     );
     const rejected = await asUser('finance@kaizen.co.in', () => rejectAdHocPayLine(line.id, 'Not this cycle'));
     expect(rejected.status).toBe('Rejected');
@@ -297,7 +297,7 @@ describe('payroll journal', () => {
   it('HCM-PAYROLLOPS-006: a journal generated from an approved run balances and its lines sum to the run totals', async () => {
     const a = await makeEmployee('journal-a');
     const b = await makeEmployee('journal-b');
-    const run = await makeRun('2031-02', [
+    const run = await makeRun('2032-02', [
       { employmentRelationshipId: a.employment.id, division: 'software', gross: 100_000, net: 85_000 },
       { employmentRelationshipId: b.employment.id, division: 'skill', gross: 60_000, net: 60_000 },
     ]);
@@ -313,7 +313,7 @@ describe('payroll journal', () => {
 
   it('HCM-PAYROLLOPS-007: the preparer cannot also post the journal (Self-Dealing Bar); posting records a Transaction', async () => {
     const a = await makeEmployee('journal-post-a');
-    const run = await makeRun('2031-03', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 40_000, net: 34_000 }]);
+    const run = await makeRun('2032-03', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 40_000, net: 34_000 }]);
 
     const bankAccount = await unscopedPrisma.ledgerAccount.findFirstOrThrow({ where: { tenantId: TENANT, accountType: 'bank' } });
 
@@ -344,7 +344,7 @@ describe('payroll journal', () => {
 
   it('HCM-PAYROLLOPS-014: net pay cannot be posted from a non-cash account', async () => {
     const a = await makeEmployee('journal-noncash');
-    const run = await makeRun('2031-10', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 15_000, net: 13_000 }]);
+    const run = await makeRun('2032-10', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 15_000, net: 13_000 }]);
     const journal = await asUser('operations@kaizen.co.in', () => generatePayrollJournal(run.id));
     const nonCash = await unscopedPrisma.ledgerAccount.findFirst({ where: { tenantId: TENANT, accountType: { notIn: ['bank', 'cash', 'wallet'] } } });
     if (nonCash) {
@@ -355,7 +355,7 @@ describe('payroll journal', () => {
 
   it('a cross-tenant journal id is 404, not 403', async () => {
     const a = await makeEmployee('cross-tenant');
-    const run = await makeRun('2031-04', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 10_000, net: 9_000 }]);
+    const run = await makeRun('2032-04', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 10_000, net: 9_000 }]);
     const journal = await asUser('operations@kaizen.co.in', () => generatePayrollJournal(run.id));
 
     const otherTenant = await unscopedPrisma.tenant.findFirst({ where: { id: { not: TENANT } } });
@@ -391,7 +391,7 @@ describe('bank advice', () => {
         data: { bankAccountNumber: '000123456789', bankIfsc: 'HDFC0000123' },
       }),
     );
-    const run = await makeRun('2031-05', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 30_000, net: 27_000 }]);
+    const run = await makeRun('2032-05', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 30_000, net: 27_000 }]);
 
     const advice = await asUser('operations@kaizen.co.in', () => generateBankAdvice(run.id));
     expect(advice.count).toBe(1);
@@ -411,7 +411,7 @@ describe('bank advice', () => {
         data: { bankAccountNumber: '000198765432', bankIfsc: 'HDFC0000456' },
       }),
     );
-    const run = await makeRun('2031-09', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 20_000, net: 18_000 }]);
+    const run = await makeRun('2032-09', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 20_000, net: 18_000 }]);
     const advice = await asUser('operations@kaizen.co.in', () => generateBankAdvice(run.id));
 
     const viewed = await asUser('operations@kaizen.co.in', () => getBankAdvice(advice.id));
@@ -435,8 +435,8 @@ describe('bank advice', () => {
 describe('payroll reconciliation', () => {
   it('HCM-PAYROLLOPS-009: an unexplained swing between two runs raises an exception and flags the row', async () => {
     const a = await makeEmployee('recon-a');
-    const prev = await makeRun('2031-06', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 50_000, net: 45_000 }]);
-    const curr = await makeRun('2031-07', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 20_000, net: 18_000 }]);
+    const prev = await makeRun('2032-06', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 50_000, net: 45_000 }]);
+    const curr = await makeRun('2032-07', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 20_000, net: 18_000 }]);
 
     // hrOps holds only `payroll_reconciliations:view`; generating one is
     // financeHead's call, the last check before disbursal.
@@ -459,12 +459,12 @@ describe('payroll calendar', () => {
     const outOfOrder = await expectReject(() =>
       asUser('operations@kaizen.co.in', () =>
         upsertPayrollCalendarEntry({
-          payPeriod: '2031-08',
-          attendanceLockAt: new Date('2031-08-10'),
-          inputFreezeAt: new Date('2031-08-05'), // before the lock — invalid
-          runByAt: new Date('2031-08-15'),
-          approveByAt: new Date('2031-08-18'),
-          payDate: new Date('2031-08-20'),
+          payPeriod: '2032-08',
+          attendanceLockAt: new Date('2032-08-10'),
+          inputFreezeAt: new Date('2032-08-05'), // before the lock — invalid
+          runByAt: new Date('2032-08-15'),
+          approveByAt: new Date('2032-08-18'),
+          payDate: new Date('2032-08-20'),
         }),
       ),
     );
@@ -472,18 +472,18 @@ describe('payroll calendar', () => {
 
     const ok = await asUser('operations@kaizen.co.in', () =>
       upsertPayrollCalendarEntry({
-        payPeriod: '2031-08',
-        attendanceLockAt: new Date('2031-08-01'),
-        inputFreezeAt: new Date('2031-08-05'),
-        runByAt: new Date('2031-08-10'),
-        approveByAt: new Date('2031-08-15'),
-        payDate: new Date('2031-08-20'),
+        payPeriod: '2032-08',
+        attendanceLockAt: new Date('2032-08-01'),
+        inputFreezeAt: new Date('2032-08-05'),
+        runByAt: new Date('2032-08-10'),
+        approveByAt: new Date('2032-08-15'),
+        payDate: new Date('2032-08-20'),
       }),
     );
-    expect(ok.payPeriod).toBe('2031-08');
+    expect(ok.payPeriod).toBe('2032-08');
 
     const list = await asUser('operations@kaizen.co.in', () => listPayrollCalendar());
-    const found = list.find((c) => c.payPeriod === '2031-08') as { milestone?: string } | undefined;
+    const found = list.find((c) => c.payPeriod === '2032-08') as { milestone?: string } | undefined;
     expect(found?.milestone).toBeTruthy();
   });
 });
@@ -496,7 +496,7 @@ describe('payroll queries', () => {
   it('HCM-PAYROLLOPS-011: an employee raises a query on their own employment; another employee cannot raise one on it', async () => {
     const ravi = await employmentFor('ravi@kaizen.co.in');
     const query = await asUser('ravi@kaizen.co.in', () =>
-      createPayrollQuery({ employmentRelationshipId: ravi.id, payPeriod: '2031-01', subject: 'Lower than expected', message: 'My net pay looks off this month.' }),
+      createPayrollQuery({ employmentRelationshipId: ravi.id, payPeriod: '2032-01', subject: 'Lower than expected', message: 'My net pay looks off this month.' }),
     );
     expect(query.status).toBe('Open');
 
@@ -504,7 +504,7 @@ describe('payroll queries', () => {
     if (divya) {
       const err = await expectReject(() =>
         asUser('divya@kaizen.co.in', () =>
-          createPayrollQuery({ employmentRelationshipId: ravi.id, payPeriod: '2031-01', subject: 'Not mine', message: 'x' }),
+          createPayrollQuery({ employmentRelationshipId: ravi.id, payPeriod: '2032-01', subject: 'Not mine', message: 'x' }),
         ),
       );
       expect(err.status).toBe(404);
@@ -519,14 +519,14 @@ describe('payroll queries', () => {
 
   it('financeHead holds view-only on payroll queries — no create grant at all, whoever the subject is', async () => {
     const err = await expectReject(() =>
-      asUser('finance@kaizen.co.in', () => createPayrollQuery({ employmentRelationshipId: 'does-not-exist', payPeriod: '2031-01', subject: 'x', message: 'y' })),
+      asUser('finance@kaizen.co.in', () => createPayrollQuery({ employmentRelationshipId: 'does-not-exist', payPeriod: '2032-01', subject: 'x', message: 'y' })),
     );
     expect(err.status).toBe(403);
   });
 
   it('hrOps raising a query against an employment that does not exist gets a 404, not a silent create', async () => {
     const err = await expectReject(() =>
-      asUser('operations@kaizen.co.in', () => createPayrollQuery({ employmentRelationshipId: 'does-not-exist', payPeriod: '2031-01', subject: 'x', message: 'y' })),
+      asUser('operations@kaizen.co.in', () => createPayrollQuery({ employmentRelationshipId: 'does-not-exist', payPeriod: '2032-01', subject: 'x', message: 'y' })),
     );
     expect(err.status).toBe(404);
   });
