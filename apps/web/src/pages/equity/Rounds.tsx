@@ -263,7 +263,7 @@ export function Rounds() {
                     </tr>
                     {openId === r.id && detail && (
                       <tr>
-                        <td colSpan={7} className="bg-ink-page/60 p-4">
+                        <td colSpan={7} className="bg-ink-950/60 p-4">
                           <div className="grid gap-3 sm:grid-cols-3">
                             <div>
                               <div className="label">Pre-money</div>

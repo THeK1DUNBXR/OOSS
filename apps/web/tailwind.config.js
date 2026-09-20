@@ -23,6 +23,7 @@ export default {
       colors: {
         ink: {
           950: '#F2F2F4', // the page itself
+          925: '#F8F8F9', // between the page and a raised surface
           900: '#ffffff', // a surface raised off the page
           850: '#F2F2F4', // a hovered or recessed surface
           800: '#e7e7eb', // hairline — a whisper, not a rule
@@ -44,6 +45,9 @@ export default {
         band: {
           strong: '#1a7a4c', stable: '#3d8f68', watch: '#b5570c',
           strained: '#a8481a', critical: '#ad2c22',
+          // Aliases for the plain good/warn/bad vocabulary several screens
+          // reach for instead of the five-step scale above.
+          good: '#1a7a4c', warn: '#b5570c', warning: '#b5570c', bad: '#ad2c22',
         },
         /**
          * The three divisions the company runs, plus the shared function.
