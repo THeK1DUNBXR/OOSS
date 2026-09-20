@@ -4,9 +4,9 @@
 #
 # Everything here is a gate that has already caught something, or is the cheapest
 # possible guard against a class of failure the project has already had:
-# a stale MAP (every session re-discovers the repo), an unknown Tailwind token
-# (two dead classes shipped for two releases), and schema drift (the project ran
-# on `db:push` with no migration history at all until Phase 0.8).
+# a stale MAP (every session re-discovers the repo) and an unknown Tailwind
+# token (two dead classes shipped for two releases). Schema changes still go
+# through `db:push`; there is no migration history to check yet.
 
 name: CI
 
@@ -75,44 +75,6 @@ jobs:
       - run: pnpm --filter @kaizen/api exec prisma db push --skip-generate
       - run: pnpm --filter @kaizen/api exec prisma generate
       - run: pnpm --filter @kaizen/api test
-
-  migrations:
-    name: schema ↔ migrations
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: kaizen
-          POSTGRES_PASSWORD: kaizen
-          POSTGRES_DB: kaizen_shadow
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready --health-interval 10s
-          --health-timeout 5s --health-retries 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 9 }
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      # The migration history must reproduce the schema exactly. Phase 1 adds a
-      # hand-written migration for the ledger invariants, and this is what stops
-      # it drifting from the models.
-      - name: migrations reproduce the schema
-        working-directory: apps/api
-        run: |
-          DIFF=$(pnpm exec prisma migrate diff \
-            --from-migrations prisma/migrations \
-            --to-schema-datamodel prisma/schema \
-            --shadow-database-url "postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_shadow?schema=public" \
-            --script)
-          echo "$DIFF"
-          if ! echo "$DIFF" | grep -q "This is an empty migration"; then
-            echo "::error::The schema and the migration history disagree. Add a migration."
-            exit 1
-          fi
 
   build:
     name: build
