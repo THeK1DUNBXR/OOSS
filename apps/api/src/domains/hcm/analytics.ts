@@ -308,7 +308,7 @@ export async function leaveLiability(): Promise<LeaveLiabilityResult> {
     include: { leaveType: true },
   });
 
-  let dailyRateByEmployment = new Map<string, number>();
+  const dailyRateByEmployment = new Map<string, number>();
   if (money && balances.length > 0) {
     const employmentIds = [...new Set(balances.map((b) => b.employmentRelationshipId))];
     const comp = await prisma.compensationRecord.findMany({
@@ -797,7 +797,7 @@ export async function exportLeaveLiabilityReport(): Promise<CsvExport> {
     orderBy: { balanceDays: 'desc' },
   });
 
-  let dailyRateByEmployment = new Map<string, number>();
+  const dailyRateByEmployment = new Map<string, number>();
   if (money && balances.length > 0) {
     const employmentIds = [...new Set(balances.map((b) => b.employmentRelationshipId))];
     const comp = await prisma.compensationRecord.findMany({

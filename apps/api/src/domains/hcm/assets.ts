@@ -21,7 +21,7 @@ import {
   TRAVEL_MODES,
   type AssetCategory,
   type AssetCondition,
-  type AssetStatus,
+  type HcmAssetStatus,
   type LetterRequestKind,
   type LetterRequestStatus,
   type TravelMode,
@@ -155,12 +155,12 @@ async function loadAsset(id: string) {
 }
 
 /** Any non-assignment status move: `in_stock -> retired`, `repair -> in_stock`, `repair -> retired`. Never touches `assigned` — that only changes via assign/return. */
-export async function transitionAsset(id: string, to: Exclude<AssetStatus, 'assigned'>) {
+export async function transitionAsset(id: string, to: Exclude<HcmAssetStatus, 'assigned'>) {
   const auth = currentAuth();
   await assertCan({ resource: 'hcm_assets', verb: 'edit' });
   await assertAllScope('hcm_assets', 'edit');
   const asset = await loadAsset(id);
-  const from = asset.status as AssetStatus;
+  const from = asset.status as HcmAssetStatus;
   if (!canTransitionAsset(from, to)) {
     throw ApiError.unprocessable(`An asset in "${from}" cannot move to "${to}".`);
   }

@@ -524,17 +524,17 @@ export const CLAIM_TRANSITIONS: Record<ClaimStatus, ClaimStatus[]> = {
   retired: [],
 };
 
-export const PLAN_STATUSES = ['draft', 'approved', 'active', 'closed'] as const;
-export type PlanStatus = (typeof PLAN_STATUSES)[number];
+export const MARKETING_PLAN_STATUSES = ['draft', 'approved', 'active', 'closed'] as const;
+export type MarketingPlanStatus = (typeof MARKETING_PLAN_STATUSES)[number];
 
-export const PLAN_STATUS_LABELS: Record<PlanStatus, string> = {
+export const MARKETING_PLAN_STATUS_LABELS: Record<MarketingPlanStatus, string> = {
   draft: 'Draft',
   approved: 'Approved',
   active: 'Active',
   closed: 'Closed',
 };
 
-export const PLAN_TRANSITIONS: Record<PlanStatus, PlanStatus[]> = {
+export const MARKETING_PLAN_TRANSITIONS: Record<MarketingPlanStatus, MarketingPlanStatus[]> = {
   draft: ['approved'],
   approved: ['active'],
   active: ['closed'],
@@ -945,7 +945,7 @@ export interface PlanView {
   theme: string;
   goals: unknown;
   campaignIds: string[];
-  status: PlanStatus;
+  status: MarketingPlanStatus;
 }
 
 export interface ChannelView {

@@ -3,14 +3,14 @@
  */
 
 import { useState } from 'react';
-import { DIVISIONS, DIVISION_LABELS, PLAN_STATUS_LABELS, PLAN_TRANSITIONS, type PlanStatus } from '@kaizen/shared';
+import { DIVISIONS, DIVISION_LABELS, MARKETING_PLAN_STATUS_LABELS, MARKETING_PLAN_TRANSITIONS, type MarketingPlanStatus } from '@kaizen/shared';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip } from '../../components/ui.js';
 import { CreateModal, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 import { titleCase } from '../../lib/api.js';
 import { useApprovePlan, useClosePlan, useCreatePlan, usePlans } from '../../lib/marketingApi.js';
 
-const STATUS_TONE: Record<PlanStatus, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'> = {
+const STATUS_TONE: Record<MarketingPlanStatus, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'> = {
   draft: 'neutral',
   approved: 'accent',
   active: 'good',
@@ -58,14 +58,14 @@ export function Plans() {
             </thead>
             <tbody>
               {data.items.map((p) => {
-                const allowed = new Set(PLAN_TRANSITIONS[p.status]);
+                const allowed = new Set(MARKETING_PLAN_TRANSITIONS[p.status]);
                 return (
                   <tr key={p.id}>
                     <td className="text-xs">{p.period}</td>
                     <td className="text-xs">{titleCase(p.division)}</td>
                     <td className="text-xs font-medium text-ink-200">{p.theme}</td>
                     <td>
-                      <StatusChip status={PLAN_STATUS_LABELS[p.status]} tone={STATUS_TONE[p.status]} />
+                      <StatusChip status={MARKETING_PLAN_STATUS_LABELS[p.status]} tone={STATUS_TONE[p.status]} />
                     </td>
                     <td className="text-right tabular-nums text-xs">{p.campaignIds.length}</td>
                     <td className="text-right">

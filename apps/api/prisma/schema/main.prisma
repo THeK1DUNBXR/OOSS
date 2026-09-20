@@ -935,6 +935,14 @@ model Delegation {
 /// writes one. Reads never emit events — a read of confidential or regulated
 /// data produces an AUDIT_RECORD instead.
 model EventRecord {
+  /// Append order, and the only unambiguous way to find the chain head.
+  ///
+  /// The head used to be read with `orderBy: { recordedAt: 'desc' }`. Under a
+  /// burst, several records share a millisecond, so that ordering is arbitrary
+  /// and the "head" could be a record that already had a successor — the next
+  /// writer then chained onto the wrong one and collided. A sequence is
+  /// monotonic by construction.
+  seq BigInt @default(autoincrement())
   id       String @id @default(cuid())
   tenantId String
 
@@ -988,6 +996,20 @@ model EventRecord {
   @@index([tenantId, eventName, occurredAt])
   @@index([tenantId, subjectEntityType, subjectEntityId])
   @@index([tenantId, correlationId])
+  /// Two events cannot share a predecessor.
+  ///
+  /// The chain used to be built by reading the head with an unlocked
+  /// `findFirst` and inserting afterwards, outside any transaction. Two
+  /// concurrent emits in one tenant both read head H and both wrote
+  /// `prevHash: H`, forking the chain — and `verifyChain` then reported it
+  /// permanently broken with no way back. Tamper-evidence was the entire point
+  /// of the design and it did not survive two requests arriving together.
+  ///
+  /// This is the real fix: the second writer's insert fails loudly and retries
+  /// against the new head instead of silently forking. NULL is exempt in
+  /// Postgres, so the genesis event of a tenant is not covered — that is one
+  /// row, written once, and the serializable transaction covers it.
+  @@unique([tenantId, prevHash])
   @@map("event_records")
 }
 
@@ -1010,6 +1032,38 @@ model EventDeadLetter {
 
   @@index([tenantId, state, createdAt])
   @@map("event_dead_letters")
+}
+
+/// One claim per (job, tenant, cron occurrence) — the durable substrate that
+/// replaces an in-process setInterval, which lost its queue state on every
+/// restart and could not be distributed across more than one process.
+model JobClaim {
+  id       String @id @default(cuid())
+  tenantId String
+
+  jobName String
+  /// The occurrence being claimed, derived from the job's cron. Not "now" —
+  /// two instances ticking a second apart must compute the same value.
+  scheduledFor DateTime
+
+  status    String    @default("claimed") // claimed | completed | failed | dead
+  attempt   Int       @default(1)
+  claimedAt DateTime  @default(now())
+  /// Extended by the heartbeat while the job runs; a claim past this with no
+  /// finish is abandoned and may be retaken.
+  leaseUntil   DateTime
+  heartbeatAt  DateTime?
+  finishedAt   DateTime?
+  durationMs   Int?
+  lastError    String?
+  /// Set when retries are exhausted. This is the dead-letter row: it is not
+  /// deleted and it is not retried, so a job that keeps failing is visible
+  /// rather than silently absent.
+  deadAt DateTime?
+
+  @@unique([tenantId, jobName, scheduledFor])
+  @@index([tenantId, status, scheduledFor])
+  @@map("job_claims")
 }
 
 // ===========================================================================
@@ -3302,6 +3356,11 @@ model Course {
   /// (a 1/3/6/8-month tenure, each its own monthly rate) prices from
   /// `feePlans` rather than this single figure — see `CourseFeePlan`.
   feeAmount Decimal? @db.Decimal(18, 2)
+  /// A share/dueInDays instalment schedule for `feeAmount` (see
+  /// `events/handlers.ts`'s `instalmentPlan`) — a flat course billed in parts,
+  /// distinct from `feePlans`/`CourseFeePlan`, which prices a course sold on
+  /// tenure-based rates instead of a single `feeAmount`.
+  feePlan Json?
   gstRate   Decimal  @default(18) @db.Decimal(5, 2)
   hsnSac    String?
   /// Contact hours the course runs for. Shown on the catalogue beside the

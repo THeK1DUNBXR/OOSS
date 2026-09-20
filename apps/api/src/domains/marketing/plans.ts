@@ -10,7 +10,7 @@
  * single view — it writes nothing.
  */
 
-import { EVENTS, PLAN_TRANSITIONS, type PlanStatus, type PlanView, type MarketingCalendarItem } from '@kaizen/shared';
+import { EVENTS, MARKETING_PLAN_TRANSITIONS, type MarketingPlanStatus, type PlanView, type MarketingCalendarItem } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -44,7 +44,7 @@ function toPlanView(row: {
     theme: row.theme ?? '',
     goals: row.goals,
     campaignIds: row.campaignIds,
-    status: row.status as PlanStatus,
+    status: row.status as MarketingPlanStatus,
   };
 }
 
@@ -125,7 +125,7 @@ export async function approvePlan(id: string): Promise<PlanView> {
 
   const row = await prisma.marketingPlan.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!row) throw ApiError.notFound('Plan');
-  if (!PLAN_TRANSITIONS[row.status as PlanStatus]?.includes('approved')) {
+  if (!MARKETING_PLAN_TRANSITIONS[row.status as MarketingPlanStatus]?.includes('approved')) {
     throw ApiError.conflict(`Cannot approve: plan is ${row.status}, not draft.`);
   }
   if (row.createdById && auth.partyId && row.createdById === auth.partyId) {
@@ -146,7 +146,7 @@ export async function approvePlan(id: string): Promise<PlanView> {
 /**
  * Closes a plan. Reachable from `approved` or `active` — the API contract
  * exposes no separate "activate" step, so a plan quietly becomes `active`
- * (PLAN_TRANSITIONS' intermediate state) the moment its period is under way,
+ * (MARKETING_PLAN_TRANSITIONS' intermediate state) the moment its period is under way,
  * and `close` accepts either as its starting point.
  */
 export async function closePlan(id: string): Promise<PlanView> {

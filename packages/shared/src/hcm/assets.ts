@@ -16,21 +16,21 @@ export const HCM_ASSETS_MODULE = 'assets' as const;
 export const ASSET_CATEGORIES = ['laptop', 'phone', 'access_card', 'other'] as const;
 export type AssetCategory = (typeof ASSET_CATEGORIES)[number];
 
-export const ASSET_STATUSES = ['in_stock', 'assigned', 'repair', 'retired'] as const;
-export type AssetStatus = (typeof ASSET_STATUSES)[number];
+export const HCM_ASSET_STATUSES = ['in_stock', 'assigned', 'repair', 'retired'] as const;
+export type HcmAssetStatus = (typeof HCM_ASSET_STATUSES)[number];
 
 export const ASSET_CONDITIONS = ['good', 'fair', 'poor'] as const;
 export type AssetCondition = (typeof ASSET_CONDITIONS)[number];
 
 /** `from -> to` pairs a plain status field on Asset is allowed to move through. */
-const ASSET_TRANSITIONS: Record<AssetStatus, AssetStatus[]> = {
+const ASSET_TRANSITIONS: Record<HcmAssetStatus, HcmAssetStatus[]> = {
   in_stock: ['assigned', 'retired'],
   assigned: ['in_stock', 'repair'],
   repair: ['in_stock', 'retired'],
   retired: [],
 };
 
-export function canTransitionAsset(from: AssetStatus, to: AssetStatus): boolean {
+export function canTransitionAsset(from: HcmAssetStatus, to: HcmAssetStatus): boolean {
   return ASSET_TRANSITIONS[from]?.includes(to) ?? false;
 }
 

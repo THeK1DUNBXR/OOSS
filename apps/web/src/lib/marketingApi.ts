@@ -43,7 +43,7 @@ import type {
   MarketingEventKind,
   MarketingEventStatus,
   MarketingEventView,
-  PlanStatus,
+  MarketingPlanStatus,
   PlanView,
   PreferenceChangeSource,
   PreferenceView,

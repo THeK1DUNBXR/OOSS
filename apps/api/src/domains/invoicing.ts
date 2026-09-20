@@ -524,7 +524,7 @@ async function priceLines(lines: InvoiceLineInput[], customer: ResolvedCustomer)
     let hsnSac = line.hsnSac ?? null;
     let revenueMethod: RevenueTreatment = 'point_in_time';
     let courseId = line.courseId ?? null;
-    let courseAddonId = line.courseAddonId ?? null;
+    const courseAddonId = line.courseAddonId ?? null;
     let enrollmentId: string | null = null;
 
     // The enrolment is the student on the course, which is the thing being

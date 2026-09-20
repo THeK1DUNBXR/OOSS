@@ -28,6 +28,7 @@ export default tseslint.config(
       'apps/web/public/**',
       'packages/*/dist/**',
       'docs/**',
+      '.claude/**',
     ],
   },
 
