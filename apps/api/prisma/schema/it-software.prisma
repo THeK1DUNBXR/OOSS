@@ -133,11 +133,11 @@ model ItLicence {
   /// Who is proposing the open renewal, and what they proposed — carried on
   /// the row so `approveRenewal`/`cancel` can find it and so the Self-Dealing
   /// Bar has a proposer to compare the decider against. Cleared once decided.
-  pendingRenewalProposedById String?
+  pendingRenewalProposedById   String?
   pendingRenewalApprovalStepId String?
-  pendingRenewalTermEnd       DateTime?
-  pendingRenewalCostPerPeriod Decimal?  @db.Decimal(18, 2)
-  pendingRenewalNote          String?
+  pendingRenewalTermEnd        DateTime?
+  pendingRenewalCostPerPeriod  Decimal?  @db.Decimal(18, 2)
+  pendingRenewalNote           String?
 
   cancelledAt     DateTime?
   cancelledReason String?
@@ -192,12 +192,12 @@ model ItSoftwareThreshold {
   id       String @id @default(cuid())
   tenantId String
 
-  code           String
-  effectiveFrom  DateTime
+  code          String
+  effectiveFrom DateTime
 
   /// A licence is under-used when `seatsInUse / seatsPurchased * 100` falls
   /// below this percentage.
-  underUsePercent Int
+  underUsePercent  Int
   /// Only licences with at least this many seats purchased are judged for
   /// under-use — a two-seat licence at 50% utilisation is not a finding.
   underUseMinSeats Int

@@ -24,6 +24,7 @@ import {
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { assertCan } from '../../platform/permissions.js';
+import { ApiError } from '../../platform/errors.js';
 
 /** Compliance — privacy (docs/plan/compliance.md §G). Mounted at /api/compliance/privacy. */
 const router = Router();
@@ -119,6 +120,35 @@ router.post(
     });
     const input = schema.parse(req.body);
     return raiseDataRequest(input);
+  }),
+);
+
+router.post(
+  '/rights/export-my-data',
+  handler(async () => {
+    const personId = currentAuth().partyId;
+    if (!personId) throw ApiError.badRequest('The authenticated principal has no data-principal identity.');
+    return raiseDataRequest({ personId, kind: 'access', note: 'Data principal access export' });
+  }),
+);
+
+router.post(
+  '/rights/correct',
+  handler(async (req) => {
+    const schema = z.object({ correction: z.record(z.unknown()) });
+    const input = schema.parse(req.body);
+    const personId = currentAuth().partyId;
+    if (!personId) throw ApiError.badRequest('The authenticated principal has no data-principal identity.');
+    return raiseDataRequest({ personId, kind: 'correction', note: JSON.stringify(input.correction) });
+  }),
+);
+
+router.post(
+  '/rights/erase',
+  handler(async () => {
+    const personId = currentAuth().partyId;
+    if (!personId) throw ApiError.badRequest('The authenticated principal has no data-principal identity.');
+    return raiseDataRequest({ personId, kind: 'erasure', note: 'Data principal erasure request' });
   }),
 );
 

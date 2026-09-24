@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { Component, StrictMode, Suspense, lazy, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -149,6 +149,31 @@ const queryClient = new QueryClient({
   },
 });
 
+class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-ink-950 p-6 text-center">
+          <div className="max-w-md rounded-lg border border-band-critical/40 bg-band-critical/5 p-6">
+            <p className="text-lg font-semibold text-band-critical">Something went wrong.</p>
+            <p className="mt-2 text-sm text-ink-400">Refresh the page or return to the app shell.</p>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+const LoginRoute = lazy(() => import('./pages/Login.js').then((module) => ({ default: module.Login })));
+
 /**
  * An old `/crm/accounts/:id` link. The record is the same row, so it resolves to
  * whichever of the two screens now owns it rather than guessing.
@@ -196,11 +221,17 @@ function Routed() {
   const surface = useSurface(user);
 
   if (loading) return <Loading label="Resolving your session" />;
-  if (!user) return <Login />;
+  if (!user)
+    return (
+      <Suspense fallback={<Loading label="Opening sign-in" />}>
+        <LoginRoute />
+      </Suspense>
+    );
   if (surface === 'portal') return <PortalRouted />;
 
   return (
-    <Routes>
+    <Suspense fallback={<Loading label="Preparing the workspace" />}>
+      <Routes>
       <Route element={<Shell />}>
         {/* The landing surface follows the archetype the role resolves to. */}
         <Route path="/" element={<Navigate to={user.archetype === 'command' ? '/command' : '/workspace'} replace />} />
@@ -457,18 +488,21 @@ function Routed() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <SessionProvider>
-          <Routed />
-        </SessionProvider>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <SessionProvider>
+            <Routed />
+          </SessionProvider>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   </StrictMode>,
 );

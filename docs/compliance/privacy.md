@@ -26,6 +26,10 @@ that pins each requirement. Tests live in
   Before this, `permissions.ts`'s WHY axis always evaluated `requiredConsent`
   against an empty array — CMP-DPD-001 pins that it now denies without a
   matching `Consent` row and allows with one.
+  `ConsentLedger` is the append-only evidence stream for each grant and
+  withdrawal; the mutable `Consent` row is only the current-state projection.
+  Purpose tags in `permissions.ts` feed the generated field-level data map in
+  access exports.
 
 - **Minor / guardian consent gate.** `students.ts`'s `attachStudentProfile`
   (which both `createStudent` and the direct-attach path go through) calls
@@ -65,10 +69,22 @@ that pins each requirement. Tests live in
 
 - **Retention.** `RetentionSchedule` (retentionClass → years, dated by
   `effectiveFrom` — never a constant). Seeded: `standard` (3y),
-  `employee_record` (8y), `student_record` (5y). A monthly job
-  (`runRetentionReport`) reads `EventRecord.retentionClass`, counts what is
-  past each class's window, and snapshots a `RetentionReport` — it reports,
-  it never deletes. `GET /compliance/privacy/retention`.
+  `employee_record` (8y), `student_record` (5y), `audit_record` (8y). A monthly
+  job (`runRetentionReport`) reads event and audit retention classes, counts
+  what is past each class's window, and snapshots a `RetentionReport` — it
+  reports, it never deletes. `GET /compliance/privacy/retention`.
+
+- **Audit spine.** `AuditRecord` carries the eight-year `audit_record`
+  retention class and is database append-only: update/delete are rejected by a
+  trigger except for the one-time null-hash backfill. `GET
+  /compliance/books/audit/verify?from=...&to=...` independently recomputes the
+  tenant hash chain. Audit rows have no tenant foreign key, so tenant removal
+  cannot cascade-delete statutory evidence.
+
+- **Named data-principal rights.** `POST /rights/export-my-data`,
+  `/rights/correct`, and `/rights/erase` create the same auditable,
+  retention-aware `DataPrincipalRequest` workflow as the HR-operated request
+  endpoints.
 
 - **Access revocation.** A hook registered on `offboarding.completed`
   (`apps/api/src/platform/hooks.ts`, called from

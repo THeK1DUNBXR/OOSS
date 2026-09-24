@@ -23,9 +23,9 @@ model ItRiskScoringBand {
   /// Groups the rows of one version of the table — every row sharing this id
   /// shares the same `effectiveFrom` and together covers the full 1..25
   /// range.
-  setId String
+  setId    String
   /// low | medium | high | critical
-  band String
+  band     String
   /// The lowest score (inclusive) this band applies to within its set.
   minScore Int
 
@@ -49,8 +49,8 @@ model ItRisk {
 
   recordCode String?
 
-  title    String
-  category String
+  title        String
+  category     String
   ownerPartyId String
 
   likelihoodInherent Int
@@ -61,7 +61,7 @@ model ItRisk {
   likelihoodResidual Int?
   impactResidual     Int?
   scoreResidual      Int?
-  bandResidual        String?
+  bandResidual       String?
 
   /// The `ItRiskScoringBand.setId` in force when the (most recent) score was
   /// computed.
@@ -108,7 +108,7 @@ model ItPolicyDocument {
   code    String
   title   String
   body    String
-  version Int @default(1)
+  version Int    @default(1)
 
   /// draft -> published -> superseded | retired, via platform/lifecycle.
   status String @default("draft")
@@ -175,12 +175,12 @@ model ItControl {
   /// [{ "framework": "ISO27001", "ref": "A.8.1" }, ...]
   frameworkRefs Json
 
-  ownerPartyId String
+  ownerPartyId  String
   frequencyDays Int
 
-  lastTestedAt DateTime?
+  lastTestedAt       DateTime?
   /// pass | fail | partial
-  lastResult   String?
+  lastResult         String?
   evidenceDocumentId String?
 
   /// active | retired
@@ -210,10 +210,10 @@ model ItControlTest {
   controlId String
   control   ItControl @relation(fields: [controlId], references: [id])
 
-  testedAt      DateTime @default(now())
-  result        String // pass | fail | partial
-  testerPartyId String
-  notes         String?
+  testedAt           DateTime @default(now())
+  result             String // pass | fail | partial
+  testerPartyId      String
+  notes              String?
   evidenceDocumentId String?
 
   createdAt DateTime @default(now())
@@ -231,15 +231,15 @@ model ItAccessReview {
 
   recordCode String?
 
-  name String
+  name     String
   /// all | role | application
   scope    String
   /// The role slug or applicationId the scope narrows to; null when scope is `all`.
   scopeRef String?
 
-  dueAt DateTime
+  dueAt  DateTime
   /// open | in_progress | closed
-  status String @default("open")
+  status String   @default("open")
 
   openedById String
 
@@ -285,9 +285,9 @@ model ItAccessReviewItem {
 
   reviewerPartyId String?
   /// keep | revoke | modify
-  decision String?
-  decidedAt DateTime?
-  note      String?
+  decision        String?
+  decidedAt       DateTime?
+  note            String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -11,8 +11,8 @@ model PayGrade {
   id       String @id @default(cuid())
   tenantId String
 
-  code  String
-  level Int
+  code     String
+  level    Int
   currency String @default("INR")
 
   minPay Decimal @db.Decimal(14, 2)
@@ -39,7 +39,7 @@ model SalaryRevisionCycle {
 
   name          String
   effectiveDate DateTime
-  budgetPct     Decimal @db.Decimal(6, 2)
+  budgetPct     Decimal  @db.Decimal(6, 2)
 
   /// draft | proposed | approved | applied
   status String @default("draft")
@@ -65,9 +65,9 @@ model SalaryRevisionLine {
   cycleId                  String
   employmentRelationshipId String
 
-  currentCtc  Decimal @db.Decimal(14, 2)
-  proposedPct Decimal @db.Decimal(6, 2)
-  proposedCtc Decimal @db.Decimal(14, 2)
+  currentCtc  Decimal  @db.Decimal(14, 2)
+  proposedPct Decimal  @db.Decimal(6, 2)
+  proposedCtc Decimal  @db.Decimal(14, 2)
   /// A free-text pointer to the rating/cycle that justified the number — not
   /// a foreign key, since WS5 performance owns that table.
   ratingLink  String?
@@ -76,10 +76,10 @@ model SalaryRevisionLine {
   /// proposed | approved | rejected | applied
   status String @default("proposed")
 
-  proposedById String?
-  approvedById String?
-  decidedAt    DateTime?
-  appliedAt    DateTime?
+  proposedById         String?
+  approvedById         String?
+  decidedAt            DateTime?
+  appliedAt            DateTime?
   /// The CompensationRecord this line wrote into, once applied.
   compensationRecordId String?
   note                 String?

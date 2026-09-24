@@ -138,7 +138,7 @@ async function recomputeAttribution(): Promise<JobResult> {
 }
 
 async function applyLeadScores(): Promise<JobResult> {
-  const r = await callDetector('capture', 'applyScores');
+  const r = await callDetector('attribution', 'applyScores');
   return summarise([r]);
 }
 
@@ -149,7 +149,7 @@ async function runDetectors(): Promise<JobResult> {
     callDetector('budget', 'detectOverBudget'),
     callDetector('budget', 'detectSpendWithoutBudget'),
     callDetector('capture', 'detectUnconvertedSubmissions'),
-    callDetector('capture', 'detectUnattributedLeads'),
+    callDetector('attribution', 'detectUnattributedLeads'),
     callDetector('journeys', 'detectStuckRuns'),
     callDetector('events', 'detectFollowUpsOutstanding'),
     callDetector('assets', 'detectExpiredAssetsInUse'),

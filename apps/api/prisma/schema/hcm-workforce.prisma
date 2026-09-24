@@ -16,7 +16,7 @@ model EmployeeProfileExtension {
   employmentRelationshipId String @unique
 
   /// self-declared, free text — never a closed enum a person is forced into.
-  gender String?
+  gender        String?
   maritalStatus String?
   nationality   String?
 
@@ -27,17 +27,17 @@ model EmployeeProfileExtension {
   passportExpiry DateTime?
 
   /// [{name, relationship, phone}]
-  emergencyContacts Json @default("[]")
+  emergencyContacts  Json  @default("[]")
   /// {line1, line2, city, state, pincode, country}
-  currentAddress    Json?
+  currentAddress     Json?
   /// {line1, line2, city, state, pincode, country}
-  permanentAddress  Json?
+  permanentAddress   Json?
   /// [{institution, degree, field, year}]
-  educationHistory  Json @default("[]")
+  educationHistory   Json  @default("[]")
   /// [{employer, designation, from, to}]
-  previousEmployment Json @default("[]")
+  previousEmployment Json  @default("[]")
   /// [{name, relationship, dob}]
-  dependants        Json @default("[]")
+  dependants         Json  @default("[]")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -92,7 +92,7 @@ model ReportingLine {
   /// primary | dotted
   kind String @default("primary")
 
-  effectiveFrom DateTime @default(now())
+  effectiveFrom DateTime  @default(now())
   effectiveTo   DateTime?
 
   createdById String?
@@ -128,7 +128,7 @@ model CostCentreAssignment {
   employmentRelationshipId String
   costCentreId             String
 
-  effectiveFrom DateTime @default(now())
+  effectiveFrom DateTime  @default(now())
   effectiveTo   DateTime?
 
   @@index([tenantId, employmentRelationshipId])
@@ -142,10 +142,10 @@ model Location {
   id       String @id @default(cuid())
   tenantId String
 
-  name  String
-  kind  String  @default("office") // office | client_site | wfh
-  city  String?
-  state String?
+  name    String
+  kind    String  @default("office") // office | client_site | wfh
+  city    String?
+  state   String?
   address String?
 
   deletedAt DateTime?
@@ -164,7 +164,7 @@ model LocationAssignment {
   employmentRelationshipId String
   locationId               String
 
-  effectiveFrom DateTime @default(now())
+  effectiveFrom DateTime  @default(now())
   effectiveTo   DateTime?
 
   @@index([tenantId, employmentRelationshipId])
@@ -199,7 +199,7 @@ model GradeAssignment {
   employmentRelationshipId String
   gradeId                  String
 
-  effectiveFrom DateTime @default(now())
+  effectiveFrom DateTime  @default(now())
   effectiveTo   DateTime?
 
   @@index([tenantId, employmentRelationshipId])

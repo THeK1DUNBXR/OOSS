@@ -37,6 +37,7 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @kaizen/shared build
+      - run: pnpm --filter @kaizen/semantic build
       - run: pnpm --filter @kaizen/api exec prisma generate
       - run: pnpm typecheck
       - run: pnpm lint
@@ -72,8 +73,12 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @kaizen/shared build
+      - run: pnpm --filter @kaizen/semantic build
       - run: pnpm --filter @kaizen/api exec prisma db push --skip-generate
       - run: pnpm --filter @kaizen/api exec prisma generate
+      # The suite looks up the seeded `kaizen` tenant and its four accounts
+      # (tests/helpers.ts); without the seed every principalFor() throws.
+      - run: pnpm db:seed
       - run: pnpm --filter @kaizen/api test
 
   build:
@@ -87,6 +92,7 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @kaizen/shared build
+      - run: pnpm --filter @kaizen/semantic build
       - run: pnpm --filter @kaizen/api exec prisma generate
       - name: build
         env:
@@ -125,6 +131,7 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @kaizen/shared build
+      - run: pnpm --filter @kaizen/semantic build
       - run: pnpm --filter @kaizen/api exec prisma db push --skip-generate
       - run: pnpm --filter @kaizen/api exec prisma generate
       - run: pnpm db:seed

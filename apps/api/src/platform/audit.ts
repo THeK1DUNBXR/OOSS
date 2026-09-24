@@ -102,7 +102,17 @@ registerGovernedEntities('edu', ['course', 'cohort', 'learner_log']);
 // Rule 3(1) of the Companies (Accounts) Rules requires an audit trail of each
 // and every transaction, and Rule 11(g) makes the auditor report on whether it
 // operated all year. These are the rows that rule is about.
-registerGovernedEntities('books', ['transaction', 'ledger_account', 'ledger_category', 'vendor_bill']);
+registerGovernedEntities('books', [
+  'transaction',
+  'ledger_account',
+  'ledger_category',
+  'vendor_bill',
+  'ledger_entity',
+  'accounting_period',
+  'journal_entry',
+  'journal_line',
+]);
+registerGovernedEntities('cmp_privacy', ['consent_ledger']);
 
 /** Fields dropped from every diff — noise, never signal. */
 const NOISE_FIELDS = new Set(['updatedAt', 'createdAt', 'id', 'tenantId', '__v']);
@@ -237,7 +247,14 @@ export async function createChainedAuditRecord(
       prevHash,
     );
     await tx.auditRecord.create({
-      data: { ...(data as object), diff: storedDiff as never, timestamp, prevHash, hash } as never,
+      data: {
+        ...(data as object),
+        diff: storedDiff as never,
+        timestamp,
+        prevHash,
+        hash,
+        retentionClass: (data as { retentionClass?: string }).retentionClass ?? 'audit_record',
+      } as never,
     });
   });
 }
@@ -253,10 +270,14 @@ export async function createChainedAuditRecord(
 export async function verifyAuditChain(
   tenantId: string,
   limit = 10_000,
+  from?: Date,
+  to?: Date,
 ): Promise<{ ok: boolean; checked: number; brokenAt: string | null }> {
   await assertCan({ resource: 'audit', verb: 'view' });
   const rows = await unscopedPrisma.auditRecord.findMany({
-    where: { tenantId },
+    // Walk from genesis through the requested end so a bounded verification
+    // still proves the first in-range row links to its predecessor.
+    where: { tenantId, ...(to ? { timestamp: { lte: to } } : {}) },
     orderBy: { timestamp: 'asc' },
     take: limit,
   });
@@ -265,7 +286,8 @@ export async function verifyAuditChain(
   let checked = 0;
   for (const row of rows) {
     if (!row.hash) continue;
-    checked += 1;
+    const inRange = !from || row.timestamp >= from;
+    if (inRange) checked += 1;
     const expectedHash = computeAuditHash(
       hashPayloadOf({
         tenantId: row.tenantId,

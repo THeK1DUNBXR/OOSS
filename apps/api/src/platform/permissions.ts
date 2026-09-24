@@ -450,9 +450,27 @@ export interface FilterOptions {
   ceiling: SensitivityClass;
   /** Field-level classifications, keyed by field name. */
   fieldClassifications?: Record<string, SensitivityClass>;
+  /** Statutory/business purpose for each field, used by data maps and exports. */
+  fieldPurposes?: Record<string, string>;
   /** Paths to withhold with a reason rather than null. */
   withholdPaths?: Array<{ path: string; reason: WithholdReason }>;
 }
+
+/** Purpose tags shared by field-level visibility and data-principal exports. */
+export const FIELD_PURPOSES: Record<string, string> = {
+  fullName: 'employment|education_delivery|invoicing',
+  email: 'employment|education_delivery|marketing',
+  phone: 'employment|education_delivery|marketing',
+  dateOfBirth: 'employment|education_delivery',
+  panNumber: 'employment|statutory_filing',
+  aadhaarReference: 'employment|statutory_filing',
+  bankAccountNumber: 'employment|invoicing',
+  bankAccountName: 'employment|invoicing',
+  bankIfsc: 'employment|invoicing',
+  guardianName: 'education_delivery',
+  guardianPhone: 'education_delivery',
+  guardianConsentId: 'education_delivery',
+};
 
 /**
  * Masking nulls a value in place; withholding replaces it with a reason code;

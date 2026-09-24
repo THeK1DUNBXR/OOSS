@@ -7,6 +7,7 @@ import { seedPayroll } from './payroll.js';
 import { seedLabour } from './labour.js';
 import { seedPrivacy } from './privacy.js';
 import { seedCorporate } from './corporate.js';
+import { seedStatutory } from './statutory.js';
 
 export async function seedCompliance(): Promise<void> {
   await seedCalendar();
@@ -17,4 +18,5 @@ export async function seedCompliance(): Promise<void> {
   await seedLabour();
   await seedPrivacy();
   await seedCorporate();
+  await seedStatutory();
 }

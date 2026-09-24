@@ -21,31 +21,31 @@ model ItVendor {
 
   recordCode String
 
-  name             String
-  organizationId   String?
-  category         String
+  name           String
+  organizationId String?
+  category       String
   /// 1 (critical) .. 4 (low) — the same scale `ItApplication.tier` will use.
-  tier             Int     @default(3)
+  tier           Int     @default(3)
 
   /// low | medium | high | critical, dated: `riskRatedAt` is set every time
   /// this changes, never silently overwritten.
-  riskRating   String    @default("medium")
-  riskRatedAt  DateTime?
+  riskRating  String    @default("medium")
+  riskRatedAt DateTime?
 
   /// not_assessed | in_progress | passed | failed | expired. Moves only
   /// through `recordAssessment` (in_progress/passed/failed) or the
   /// assessment-overdue job (expired) — never a bare field edit.
-  assessmentStatus String    @default("not_assessed")
+  assessmentStatus        String    @default("not_assessed")
   /// When the next assessment is due. Recomputed from the assessment-cadence
   /// table (dated, seeded by tier) every time an assessment is recorded.
-  assessmentDueAt  DateTime?
+  assessmentDueAt         DateTime?
   /// Every 30/7/0-day rung of the assessment-overdue ladder already fired on
   /// this vendor, so the daily job never re-notifies a rung it already raised
   /// (IT-VEN-001).
-  assessmentNotifiedRungs Int[] @default([])
+  assessmentNotifiedRungs Int[]     @default([])
 
-  dpaSigned     Boolean   @default(false)
-  dpaSignedAt   DateTime?
+  dpaSigned   Boolean   @default(false)
+  dpaSignedAt DateTime?
 
   contactName  String?
   contactEmail String?
@@ -101,13 +101,13 @@ model ItVendorRiskAssessment {
   vendorId String
   vendor   ItVendor @relation(fields: [vendorId], references: [id])
 
-  assessedAt      DateTime
-  assessorPartyId String
-  score           Int?
+  assessedAt         DateTime
+  assessorPartyId    String
+  score              Int?
   /// in_progress | passed | failed
-  outcome         String
-  questionnaire   Json?
-  notes           String?
+  outcome            String
+  questionnaire      Json?
+  notes              String?
   evidenceDocumentId String?
 
   createdAt DateTime @default(now())

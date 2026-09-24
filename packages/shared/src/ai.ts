@@ -86,6 +86,12 @@ export const HARD_PROHIBITIONS = [
     statement: 'No employee-communication surveillance.',
     rationale: 'Reading employee communications to score or monitor individuals is categorically out of scope.',
   },
+  {
+    code: 'no_autonomous_journal_or_tax_actions',
+    statement: 'No autonomous journal posting, IRN generation, GST/other filings, payroll execution or outbound email sends.',
+    rationale:
+      'These are irreversible or externally visible actions with statutory or customer impact; only a named human approver may initiate them.',
+  },
 ] as const;
 
 export type ProhibitionCode = (typeof HARD_PROHIBITIONS)[number]['code'];
@@ -103,6 +109,19 @@ export const AI_PROHIBITED_ACTIONS = [
   'decision.decide',
   'decision.delegate',
   'authority_grant.revoke',
+  'journal.post',
+  'journal_entry.post',
+  'journal.post_entry',
+  'irn.generate',
+  'irn.create',
+  'filing.submit',
+  'filing.file',
+  'filing.submit_return',
+  'payroll.run',
+  'payroll.execute',
+  'email.send',
+  'email.dispatch',
+  'email.queue_send',
 ];
 
 export interface AiTouchpoint {

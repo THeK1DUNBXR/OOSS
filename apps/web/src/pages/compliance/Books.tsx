@@ -204,9 +204,25 @@ function AuditTab() {
       {verify.error && <ErrorBox error={verify.error} />}
       {verify.data && (
         <div className="flex flex-wrap gap-6">
-          <Metric label="Result" value={verify.data.ok ? 'Intact' : 'Broken'} tone={verify.data.ok ? 'good' : 'bad'} />
-          <Metric label="Records checked" value={String(verify.data.checked)} />
-          {!verify.data.ok && <Metric label="Broken at" value={verify.data.brokenAt ?? '—'} tone="bad" />}
+          <Metric
+            label="Result"
+            value={verify.data.ok ? 'Intact' : 'Broken'}
+            tone={verify.data.ok ? 'good' : 'bad'}
+            noActionReason="This status is informational; use the detailed verification output to investigate any issues."
+          />
+          <Metric
+            label="Records checked"
+            value={String(verify.data.checked)}
+            noActionReason="This count is informational; review the audit log to understand the checked scope."
+          />
+          {!verify.data.ok && (
+            <Metric
+              label="Broken at"
+              value={verify.data.brokenAt ?? '—'}
+              tone="bad"
+              noActionReason="Use the broken record detail to investigate and repair the hash chain."
+            />
+          )}
         </div>
       )}
     </Card>

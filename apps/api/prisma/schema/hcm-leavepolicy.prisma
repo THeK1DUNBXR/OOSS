@@ -69,15 +69,15 @@ model LeavePolicyRule {
   /// Whether a mid-period join/exit earns a fraction of the period's credit.
   prorateOnJoin    Boolean @default(true)
 
-  maxBalanceDays       Decimal? @db.Decimal(6, 2)
-  carryForwardCapDays  Decimal? @db.Decimal(6, 2)
+  maxBalanceDays      Decimal? @db.Decimal(6, 2)
+  carryForwardCapDays Decimal? @db.Decimal(6, 2)
   /// Whether the balance may be taken below zero.
-  negativeAllowed      Boolean  @default(false)
+  negativeAllowed     Boolean  @default(false)
 
-  minNoticeDays             Int      @default(0)
+  minNoticeDays             Int     @default(0)
   maxConsecutiveDays        Int?
   /// Whether a bracketed weekend/holiday between two leave days is charged too.
-  sandwichRule              Boolean  @default(false)
+  sandwichRule              Boolean @default(false)
   requiresDocumentAfterDays Int?
   /// male | female | any (null = any)
   applicableGender          String?
@@ -107,9 +107,9 @@ model AccrualRun {
   period            String
 
   /// completed — a run that raced past the idempotency guard never gets here.
-  status             String   @default("completed")
-  employeesProcessed Int      @default(0)
-  totalDaysAccrued   Decimal  @default(0) @db.Decimal(10, 2)
+  status             String  @default("completed")
+  employeesProcessed Int     @default(0)
+  totalDaysAccrued   Decimal @default(0) @db.Decimal(10, 2)
 
   runAt       DateTime @default(now())
   createdById String?
@@ -154,9 +154,9 @@ model LeaveRequestApproval {
   chainId        String
   chain          LeaveApprovalChain @relation(fields: [chainId], references: [id])
 
-  level Int
+  level           Int
   /// manager | hr | custom_grant
-  kind  String
+  kind            String
   /// Resolved at chain-initiation time; null when nobody could be resolved.
   approverPartyId String?
 

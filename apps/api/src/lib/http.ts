@@ -5,7 +5,7 @@
 import type { NextFunction, Request, Response, RequestHandler } from 'express';
 import { ROLE_CLASSIFICATION_CEILING, type SensitivityClass } from '@kaizen/shared';
 import { unscopedPrisma } from '../platform/db.js';
-import { newRequestContext, runWithContext, type RequestContext } from '../platform/context.js';
+import { getContext, newRequestContext, runWithContext, type RequestContext } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { TenantScopeError } from '../platform/db.js';
 import { toAuthContext, verifyToken } from './auth.js';
@@ -115,14 +115,15 @@ export function errorMiddleware(err: unknown, _req: Request, res: Response, _nex
   if (err instanceof TenantScopeError) {
     // A query that escaped the tenant gate is a 500 in staging, caught before
     // production cutover — never a silently unscoped result.
-    console.error('[tenant-scope]', err.message);
-    res.status(500).json({ error: { code: err.code, message: err.message } });
+    const requestId = getContext()?.requestId;
+    console.error('[tenant-scope]', { requestId, err });
+    res.status(500).json({ error: { code: err.code, requestId } });
     return;
   }
 
-  const message = err instanceof Error ? err.message : 'Unexpected error';
-  console.error('[error]', err);
-  res.status(500).json({ error: { code: 'INTERNAL', message } });
+  const requestId = getContext()?.requestId;
+  console.error('[error]', { requestId, err });
+  res.status(500).json({ error: { code: 'INTERNAL', requestId } });
 }
 
 export function parsePaging(req: Request) {

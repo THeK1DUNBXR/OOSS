@@ -18,12 +18,12 @@ model JobPosting {
   title         String
   description   String
   /// internal | external | referral
-  channel     String    @default("internal")
+  channel       String    @default("internal")
   /// Draft | Published | Closed | Cancelled
-  status      String    @default("Draft")
-  slug        String
-  publishedAt DateTime?
-  closesAt    DateTime?
+  status        String    @default("Draft")
+  slug          String
+  publishedAt   DateTime?
+  closesAt      DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -46,16 +46,16 @@ model CandidateProfile {
   id       String @id @default(cuid())
   tenantId String
 
-  personId String
+  personId    String
   /// direct | referral | agency | job_board | campus
-  source      String  @default("direct")
+  source      String   @default("direct")
   resumeText  String?
   /// Money withheld = null + reason for anyone lacking `candidates:financial`,
   /// never a masked zero.
   currentCtc  Decimal? @db.Decimal(14, 2)
   expectedCtc Decimal? @db.Decimal(14, 2)
   noticeDays  Int?
-  tags        Json    @default("[]")
+  tags        Json     @default("[]")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -122,12 +122,12 @@ model OfferLetter {
   tenantId   String
   recordCode String
 
-  applicationId String
-  ctc           Decimal   @db.Decimal(14, 2)
-  joiningDate   DateTime
-  validUntil    DateTime
+  applicationId     String
+  ctc               Decimal   @db.Decimal(14, 2)
+  joiningDate       DateTime
+  validUntil        DateTime
   /// Draft | ApprovalPending | Approved | Sent | Accepted | Declined | Rescinded
-  status        String    @default("Draft")
+  status            String    @default("Draft")
   proposedByPartyId String?
   approvedByPartyId String?
   approvedAt        DateTime?
@@ -224,16 +224,16 @@ model OnboardingTask {
   id       String @id @default(cuid())
   tenantId String
 
-  employmentId    String
-  templateId      String?
-  title           String
+  employmentId       String
+  templateId         String?
+  title              String
   /// hr | it | manager | employee
-  assignee        String
-  assigneePartyId String?
-  dueDate         DateTime?
+  assignee           String
+  assigneePartyId    String?
+  dueDate            DateTime?
   /// Pending | Done | Skipped
-  status          String    @default("Pending")
-  completedAt     DateTime?
+  status             String    @default("Pending")
+  completedAt        DateTime?
   completedByPartyId String?
 
   createdAt DateTime @default(now())

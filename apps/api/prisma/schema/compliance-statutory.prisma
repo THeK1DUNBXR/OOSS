@@ -1,0 +1,73 @@
+/// Versioned statutory parameters. Values are data, not application constants.
+/// A null tenantId is a platform pack row; tenant overrides remain possible.
+model StatutoryRule {
+  id            String    @id @default(cuid())
+  tenantId      String?
+  domain        String
+  key           String
+  jurisdiction  String
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+  value         Json
+  source        String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, domain, key, jurisdiction, effectiveFrom])
+  @@map("statutory_rules")
+}
+
+/// Provider-independent e-invoice lifecycle record. The signed response is
+/// retained as a snapshot; corrections after cancellation eligibility are new
+/// documents, not mutations to this record.
+model EInvoiceSubmission {
+  id        String @id @default(cuid())
+  tenantId  String
+  invoiceId String
+
+  provider         String
+  providerInstance String
+  idempotencyKey   String
+  status           String  @default("pending") // pending | submitted | failed | cancelled
+  requestPayload   Json
+  responsePayload  Json?
+  errorCode        String?
+  errorMessage     String?
+
+  irn                   String?
+  acknowledgementNumber String?
+  acknowledgedAt        DateTime?
+  submittedAt           DateTime?
+  cancelledAt           DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, invoiceId])
+  @@index([tenantId, status])
+  @@map("einvoice_submissions")
+}
+
+/// A payroll statutory line keeps statutory and voluntary contributions
+/// separately identifiable for payslips and future filing exports.
+model PayrollStatutoryLine {
+  id                       String @id @default(cuid())
+  tenantId                 String
+  payrollRunId             String
+  employmentRelationshipId String
+  payPeriod                String
+
+  statute          String
+  contributionKind String // statutory | voluntary
+  component        String
+  amount           Decimal @db.Decimal(14, 2)
+  ruleId           String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, payrollRunId])
+  @@index([tenantId, employmentRelationshipId, payPeriod])
+  @@map("payroll_statutory_lines")
+}

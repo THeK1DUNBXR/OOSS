@@ -20,14 +20,14 @@ model TrainingProgram {
   kind     String
   provider String?
 
-  durationHours   Decimal? @db.Decimal(6, 2)
-  cost            Decimal  @default(0) @db.Decimal(12, 2)
-  skillIds        String[] @default([])
+  durationHours  Decimal? @db.Decimal(6, 2)
+  cost           Decimal  @default(0) @db.Decimal(12, 2)
+  skillIds       String[] @default([])
   /// Null for a program with no expiry — most classroom/online courses.
   /// Set for a certification-kind program whose completion issues a
   /// Certification row that itself expires.
-  validityMonths  Int?
-  isActive        Boolean  @default(true)
+  validityMonths Int?
+  isActive       Boolean  @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -146,7 +146,7 @@ model MandatoryTrainingRule {
   /// all — every active employee. Recorded under "Wanted from the scaffold"
   /// as a gap: a grade/orgUnit-scoped audience needs a resolver this
   /// workstream does not have its own copy of.
-  applicability      String @default("all")
+  applicability       String  @default("all")
   dueWithinDaysOfJoin Int?
   recurrenceMonths    Int?
   isActive            Boolean @default(true)

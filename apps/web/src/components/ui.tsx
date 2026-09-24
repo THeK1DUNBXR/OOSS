@@ -12,7 +12,7 @@
  */
 
 import { Link } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { Lock, X } from 'lucide-react';
 import type { SensitivityClass, SeverityCode } from '@kaizen/shared';
 import {
@@ -129,26 +129,22 @@ export function RecordCode({ code, to }: { code: string | null | undefined; to?:
   return <span className="mono">{code}</span>;
 }
 
-/**
- * A metric is one interaction away from doing something about it. `drillTo` is
- * required unless `noActionReason` explains why none exists — a dead number is
- * a defect, not a layout choice.
- */
-export function Metric({
-  label,
-  value,
-  sub,
-  drillTo,
-  noActionReason,
-  tone = 'neutral',
-}: {
+export type MetricProps = {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
   drillTo?: string;
   noActionReason?: string;
   tone?: 'neutral' | 'good' | 'warn' | 'bad';
-}) {
+};
+
+/**
+ * Metrics are best when they point to action, but some KPIs are intentionally
+ * informational snapshots. When no drill target exists, `noActionReason` can
+ * explain the boundary instead of leaving the number floating without context.
+ */
+export function Metric(props: MetricProps) {
+  const { label, value, sub, tone = 'neutral', drillTo, noActionReason } = props;
   const toneClass = {
     neutral: 'text-ink-100',
     good: 'text-band-strong',
@@ -161,7 +157,7 @@ export function Metric({
       <p className="text-2xs font-medium uppercase tracking-wide text-ink-400">{label}</p>
       <p className={`mt-1.5 text-2xl font-semibold tabular-nums ${toneClass}`}>{value}</p>
       {sub && <p className="mt-1 text-2xs text-ink-400">{sub}</p>}
-      {!drillTo && noActionReason && <p className="mt-1 text-2xs italic text-ink-500">{noActionReason}</p>}
+      {noActionReason && <p className="mt-1 text-2xs italic text-ink-500">{noActionReason}</p>}
     </div>
   );
 
@@ -260,22 +256,37 @@ export function Tabs<T extends string>({
   active: T;
   onChange: (key: T) => void;
 }) {
+  const ordered = tabs.map((t, index) => ({ ...t, index }));
+
   return (
-    <div className="mb-4 flex flex-wrap gap-1 border-b border-ink-800">
-      {tabs.map((t) => (
-        <button
-          key={t.key}
-          onClick={() => onChange(t.key)}
-          className={`-mb-px border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
-            active === t.key
-              ? 'border-accent text-ink-50'
-              : 'border-transparent text-ink-400 hover:border-ink-700 hover:text-ink-200'
-          }`}
-        >
-          {t.label}
-          {t.count !== undefined && <span className="ml-1.5 text-2xs text-ink-500">{t.count}</span>}
-        </button>
-      ))}
+    <div className="mb-4 flex flex-wrap gap-1 border-b border-ink-800" role="tablist" aria-label="Tab selector">
+      {ordered.map((t) => {
+        const selected = active === t.key;
+        return (
+          <button
+            key={t.key}
+            id={`tab-${String(t.key)}`}
+            role="tab"
+            type="button"
+            aria-selected={selected}
+            aria-controls={`panel-${String(t.key)}`}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(t.key)}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+              event.preventDefault();
+              const nextIndex = event.key === 'ArrowRight' ? (t.index + 1) % ordered.length : (t.index - 1 + ordered.length) % ordered.length;
+              onChange(ordered[nextIndex].key);
+            }}
+            className={`-mb-px border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
+              selected ? 'border-accent text-ink-50' : 'border-transparent text-ink-400 hover:border-ink-700 hover:text-ink-200'
+            }`}
+          >
+            {t.label}
+            {t.count !== undefined && <span className="ml-1.5 text-2xs text-ink-500">{t.count}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -304,13 +315,54 @@ export function Modal({
   footer?: ReactNode;
   width?: string;
 }) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    const firstFocusable = panelRef.current?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    firstFocusable?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Tab' || !panelRef.current) return;
+      const focusables = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => !el.hasAttribute('disabled'));
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-100/30 p-4 pt-16 backdrop-blur-sm">
-      <div className={`glass w-full ${width} rounded-lg`}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-100/30 p-4 pt-16 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={`glass w-full ${width} rounded-lg`}
+      >
         <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <h2 className="text-sm font-semibold text-ink-50">{title}</h2>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-100" aria-label="Close">
+          <h2 id={titleId} className="text-sm font-semibold text-ink-50">{title}</h2>
+          <button type="button" onClick={onClose} className="text-ink-400 hover:text-ink-100" aria-label="Close">
             <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
           </button>
         </header>
@@ -322,6 +374,71 @@ export function Modal({
 }
 
 /** A small inline sparkline-ish bar for factor contributions. */
+export type ColumnDefinition<T> = {
+  key: keyof T | string;
+  header: ReactNode;
+  render?: (row: T) => ReactNode;
+  className?: string;
+  headerClassName?: string;
+};
+
+export function DataTable<T extends Record<string, unknown>>({
+  columns,
+  rows,
+  getRowKey,
+  emptyState,
+  loading = false,
+  stickyHeader = false,
+  className = '',
+}: {
+  columns: Array<ColumnDefinition<T>>;
+  rows: T[];
+  getRowKey: (row: T, index: number) => string | number;
+  emptyState?: ReactNode;
+  loading?: boolean;
+  stickyHeader?: boolean;
+  className?: string;
+}) {
+  if (loading) {
+    return <div className={`rounded-lg border border-ink-800 bg-ink-900 p-4 text-sm text-ink-400 ${className}`}>Loading…</div>;
+  }
+
+  if (!rows.length) {
+    return (
+      <div className={`rounded-lg border border-ink-800 bg-ink-900 p-4 ${className}`}>
+        {emptyState ?? <EmptyState message="No rows yet." />}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`overflow-x-auto rounded-lg border border-ink-800 bg-ink-900 ${className}`}>
+      <table className="table">
+        <thead className={stickyHeader ? 'sticky top-0 z-10 bg-ink-900' : ''}>
+          <tr>
+            {columns.map((column, index) => (
+              <th key={`${String(column.key)}-${index}`} className={column.headerClassName ?? ''}>
+                {column.header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={String(getRowKey(row, rowIndex))}>
+              {columns.map((column, index) => (
+                <td key={`${String(column.key)}-${rowIndex}-${index}`} className={column.className ?? ''}>
+                  {column.render ? column.render(row) : (row[String(column.key)] as ReactNode) ?? '—'}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function ContributionBar({ value, max, tone = 'accent' }: { value: number; max: number; tone?: 'accent' | 'warn' | 'bad' }) {
   const pct = max > 0 ? Math.max(0, Math.min((value / max) * 100, 100)) : 0;
   const colour = { accent: 'bg-accent', warn: 'bg-band-watch', bad: 'bg-band-critical' }[tone];

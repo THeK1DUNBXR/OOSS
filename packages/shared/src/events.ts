@@ -428,6 +428,8 @@ export const EVENTS = {
   LOAN_RECORDED: 'kz.fin.loan.recorded',
   INVOICE_TAX_PRICED: 'kz.fin.invoice.tax_priced',
   PAYROLL_POSTED_TO_BOOKS: 'kz.fin.payroll.posted',
+  JOURNAL_POSTED: 'kz.fin.journal.posted',
+  JOURNAL_REVERSED: 'kz.fin.journal.reversed',
 
   // GST returns. Preparing one and filing it are separate events because they
   // are separate acts with different consequences: the first is arithmetic, the
