@@ -32,7 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -68,7 +67,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -76,9 +74,11 @@ jobs:
       - run: pnpm --filter @kaizen/semantic build
       - run: pnpm --filter @kaizen/api exec prisma db push --skip-generate
       - run: pnpm --filter @kaizen/api exec prisma generate
-      # The suite looks up the seeded `kaizen` tenant and its four accounts
-      # (tests/helpers.ts); without the seed every principalFor() throws.
+      # The suite looks up the seeded `kaizen` tenant and the demo staff
+      # (tests/helpers.ts principalFor, fixtures/run.ts); without both, every
+      # principal lookup throws and the suite fails before it asserts anything.
       - run: pnpm db:seed
+      - run: pnpm --filter @kaizen/api seed:demo
       - run: pnpm --filter @kaizen/api test
 
   build:
@@ -87,7 +87,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -126,7 +125,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
