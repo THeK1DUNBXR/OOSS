@@ -108,7 +108,7 @@ model ItAssetAssignment {
   /// The person the asset was handed to.
   partyId String
 
-  assignedAt   DateTime  @default(now())
+  assignedAt   DateTime @default(now())
   assignedById String?
   conditionOut String?
 

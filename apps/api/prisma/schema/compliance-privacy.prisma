@@ -55,8 +55,9 @@ model Consent {
   id       String @id @default(cuid())
   tenantId String
 
-  personId    String
-  purposeCode String
+  personId      String
+  purposeCode   String
+  noticeVersion Int?
 
   /// granted | withdrawn | expired
   status String @default("granted")
@@ -82,6 +83,28 @@ model Consent {
   @@index([tenantId, purposeCode, status])
   @@index([tenantId, guardianOfPersonId])
   @@map("consents")
+}
+
+/// Immutable consent history. `Consent` is the current-state projection used by
+/// permission checks; this ledger is the evidence that a grant or withdrawal
+/// happened and cannot be rewritten to hide the earlier state.
+model ConsentLedger {
+  id              String    @id @default(cuid())
+  tenantId        String
+  dataPrincipalId String
+  consentId       String?
+  purpose         String
+  noticeVersion   Int?
+  channel         String
+  event           String
+  givenAt         DateTime?
+  withdrawnAt     DateTime?
+  evidence        Json      @default("{}")
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId, dataPrincipalId, purpose, createdAt])
+  @@index([tenantId, consentId, createdAt])
+  @@map("consent_ledger")
 }
 
 /// Access, correction, erasure, nomination — DPDP Act data-principal rights.

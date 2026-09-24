@@ -6,6 +6,7 @@ export * from './ai.js';
 export * from './api.js';
 export * from './hr.js';
 export * from './finance.js';
+export * from './time.js';
 export * from './equity.js';
 export * from './esop.js';
 export * from './board.js';

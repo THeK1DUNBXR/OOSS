@@ -544,8 +544,34 @@ export async function requestEInvoice(invoiceId: string) {
   }
 
   const provider = await resolveProvider();
+  const providerInstance = provider.name;
+  const idempotencyKey = `${invoice.id}:${providerInstance}`;
+  const submission = await prisma.eInvoiceSubmission.upsert({
+    where: { tenantId_idempotencyKey: { tenantId: auth.tenantId, idempotencyKey } },
+    create: {
+      tenantId: auth.tenantId,
+      invoiceId: invoice.id,
+      provider: providerInstance,
+      providerInstance,
+      idempotencyKey,
+      status: 'pending',
+      requestPayload: { invoiceId: invoice.id, recordCode: invoice.recordCode },
+    },
+    update: { status: 'pending', errorCode: null, errorMessage: null },
+  });
   try {
     const reg = await provider.registerIrn({ id: invoice.id, recordCode: invoice.recordCode });
+    await prisma.eInvoiceSubmission.update({
+      where: { id: submission.id },
+      data: {
+        status: 'submitted',
+        irn: reg.irn,
+        acknowledgementNumber: reg.ackNo,
+        acknowledgedAt: reg.ackAt,
+        submittedAt: reg.ackAt,
+        responsePayload: { irn: reg.irn, ackNo: reg.ackNo, signedQr: reg.signedQr },
+      },
+    });
     const updated = await prisma.invoice.update({
       where: { id: invoiceId },
       data: {
@@ -563,9 +589,17 @@ export async function requestEInvoice(invoiceId: string) {
       // Not actually a failed call — nothing to retry — so the status stays
       // `pending`, and the error carries its own named code.
       await prisma.invoice.update({ where: { id: invoiceId }, data: { eInvoiceStatus: 'pending' } });
+      await prisma.eInvoiceSubmission.update({
+        where: { id: submission.id },
+        data: { status: 'pending', errorCode: err.code, errorMessage: err.message },
+      });
       throw err;
     }
     await prisma.invoice.update({ where: { id: invoiceId }, data: { eInvoiceStatus: 'failed' } });
+    await prisma.eInvoiceSubmission.update({
+      where: { id: submission.id },
+      data: { status: 'failed', errorMessage: err instanceof Error ? err.message : 'Provider request failed.' },
+    });
     throw err;
   }
 }

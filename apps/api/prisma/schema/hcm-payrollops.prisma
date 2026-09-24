@@ -21,12 +21,12 @@ model PayItem {
   id       String @id @default(cuid())
   tenantId String
 
-  code String
-  name String
+  code           String
+  name           String
   /// earning | deduction | reimbursement | employer_contribution
-  kind String
+  kind           String
   /// Whether this component is subject to income tax.
-  taxable Boolean @default(true)
+  taxable        Boolean @default(true)
   /// Whether this component counts toward the PF/ESI wage basis
   /// (workstream E computes the statutory lines themselves; this only flags
   /// which ad-hoc components should be added to that basis if a run recomputes).
@@ -149,8 +149,8 @@ model BankAdvice {
 
   payrollRunId String
   payPeriod    String
-  format       String @default("NEFT_CSV")
-  fileText     String @db.Text
+  format       String  @default("NEFT_CSV")
+  fileText     String  @db.Text
   /// [{ employeeName, accountNumber, ifsc, amount, reference }, ...] — the
   /// same rows `fileText` was built from, kept structured so a view of this
   /// advice can mask `accountNumber` to its last 4 digits without reparsing
@@ -178,7 +178,7 @@ model PayrollReconciliation {
 
   /// [{ employmentRelationshipId, previousNet, currentNet, delta, deltaPct, unexplained, note }, ...]
   deltas           Json
-  unexplainedCount Int @default(0)
+  unexplainedCount Int  @default(0)
 
   generatedById String?
   generatedAt   DateTime @default(now())
@@ -226,9 +226,9 @@ model PayrollQuery {
   /// Open | Responded | Closed
   status String @default("Open")
 
-  response     String?
+  response      String?
   respondedById String?
-  respondedAt  DateTime?
+  respondedAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

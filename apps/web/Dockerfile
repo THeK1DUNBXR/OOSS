@@ -5,6 +5,10 @@
 FROM node:22-slim AS build
 RUN corepack enable
 WORKDIR /app
+ARG BUILD_SEQUENCE=1
+ARG GIT_SHA=docker-local
+ARG BUILT_AT=2026-09-20T00:00:00Z
+ENV BUILD_SEQUENCE=${BUILD_SEQUENCE} GIT_SHA=${GIT_SHA} BUILT_AT=${BUILT_AT}
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json packages/shared/

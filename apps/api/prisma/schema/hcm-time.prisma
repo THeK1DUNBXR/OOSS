@@ -16,12 +16,12 @@ model Shift {
   code String
   name String
 
-  startTime      String
-  endTime        String
-  graceMinutes   Int     @default(0)
-  breakMinutes   Int     @default(0)
-  nightShift     Boolean @default(false)
-  active         Boolean @default(true)
+  startTime    String
+  endTime      String
+  graceMinutes Int     @default(0)
+  breakMinutes Int     @default(0)
+  nightShift   Boolean @default(false)
+  active       Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -69,7 +69,7 @@ model ClockEvent {
   occurredAt DateTime
 
   /// web | mobile | biometric_import
-  source   String  @default("web")
+  source   String   @default("web")
   ip       String?
   deviceId String?
   lat      Decimal? @db.Decimal(9, 6)
@@ -99,12 +99,12 @@ model Timesheet {
   /// draft | submitted | approved | rejected
   status String @default("draft")
 
-  totalHours Decimal @db.Decimal(6, 2) @default(0)
+  totalHours Decimal @default(0) @db.Decimal(6, 2)
 
-  submittedAt    DateTime?
-  decidedById    String?
-  decidedAt      DateTime?
-  decisionNote   String?
+  submittedAt  DateTime?
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -125,8 +125,8 @@ model TimesheetEntry {
   date      DateTime
   projectId String?
   taskRef   String?
-  hours     Decimal @db.Decimal(5, 2)
-  billable  Boolean @default(false)
+  hours     Decimal  @db.Decimal(5, 2)
+  billable  Boolean  @default(false)
   note      String?
 
   createdAt DateTime @default(now())

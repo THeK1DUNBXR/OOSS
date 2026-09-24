@@ -44,6 +44,74 @@ export interface Filtered<T> {
   withheld: WithheldEntry[];
 }
 
+export const FIELD_PURPOSES = {
+  fullName: 'identity',
+  email: 'identity',
+  phone: 'identity',
+  dateOfBirth: 'identity',
+  panNumber: 'tax',
+  aadhaarReference: 'identity',
+  bankAccountNumber: 'finance',
+  bankAccountName: 'finance',
+  bankIfsc: 'finance',
+  guardianName: 'identity',
+  guardianPhone: 'identity',
+  guardianConsentId: 'consent',
+} as const;
+
+export function applyFieldVisibility<T extends Record<string, unknown>>(
+  payload: T,
+  options: {
+    canSeeMoney?: boolean;
+    ceiling?: SensitivityClass;
+    fieldClassifications?: Record<string, SensitivityClass>;
+    fieldPurposes?: Record<string, string>;
+    withholdPaths?: Array<{ path: string; reason: 'classification_ceiling' | 'no_permission' }>;
+  },
+): { data: T; withheld: Array<{ path: string; reason: 'classification_ceiling' | 'no_permission' }> } {
+  const withholdPaths = options.withholdPaths ?? [];
+  const seen = new Set<string>();
+
+  const walk = (value: unknown, path: string): unknown => {
+    if (value === null || value === undefined) return value;
+    if (Array.isArray(value)) return value.map((item, index) => walk(item, `${path}[${index}]`));
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const [key, child] of Object.entries(record)) {
+        const nextPath = path ? `${path}.${key}` : key;
+        const classification = options.fieldClassifications?.[key] ?? 'public';
+        const purpose = options.fieldPurposes?.[key] ?? 'general';
+        const canReveal =
+          classification === 'public' ||
+          (classification === 'internal' && options.ceiling !== 'public') ||
+          (classification === 'restricted' && options.canSeeMoney) ||
+          (classification === 'confidential' && purpose !== 'finance') ||
+          (classification === 'regulated' && purpose === 'identity');
+
+        if (!canReveal) {
+          const reason = options.ceiling === 'regulated' ? 'classification_ceiling' : 'no_permission';
+          withholdPaths.push({ path: nextPath, reason });
+          seen.add(nextPath);
+          continue;
+        }
+        out[key] = walk(child, nextPath);
+      }
+      return out;
+    }
+    return value;
+  };
+
+  const data = walk(payload, '') as T;
+  return {
+    data,
+    withheld: withholdPaths.filter((entry) => {
+      if (seen.has(entry.path)) return true;
+      return !seen.has(entry.path);
+    }),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Session & identity
 // ---------------------------------------------------------------------------
@@ -129,6 +197,98 @@ export interface TenantConfig {
   seed?: { sequence: number; at: string; build: number; commit: string; navNodes: number };
   /** Set on the subsidiary once `pnpm division:spin-out` has committed — §6b. */
   spinOut?: { from: string; division: 'software' | 'skill' | 'education'; at: string; batchId: string };
+  /** Product tier on the tenant, used to gate features and enforcement. */
+  tier?: TenantTier;
+  /** A tenant can choose to keep its books and model inference in India. */
+  dataResidency?: 'india' | 'global';
+  /** The region a tenant's inference requests may use. India-resident tenants are limited to an India region. */
+  inferenceRegion?: InferenceRegion | null;
+  /** Explicit overrides for the tenant's feature gates, each keyed by a capability. */
+  featureGates?: Partial<Record<TenantFeature, boolean>>;
+  /** Product onboarding status and last step, kept in the existing `tenant.config` JSON. */
+  onboarding?: TenantOnboardingStateRecord;
+}
+
+export const TENANT_TIERS = ['starter', 'growth', 'enterprise', 'sovereign'] as const;
+export type TenantTier = (typeof TENANT_TIERS)[number];
+
+export const TENANT_FEATURES = [
+  'invoicing',
+  'payroll',
+  'statutory',
+  'analytics',
+  'ai',
+  'india_residency',
+  'database_per_tenant',
+  'byok',
+  'irn_sandbox',
+] as const;
+export type TenantFeature = (typeof TENANT_FEATURES)[number];
+
+export const INDIA_INFERENCE_REGIONS = ['ap-south-1', 'ap-south-2'] as const;
+export const GLOBAL_INFERENCE_REGIONS = ['ap-south-1', 'ap-south-2', 'us-east-1', 'eu-west-1'] as const;
+export type IndiaInferenceRegion = (typeof INDIA_INFERENCE_REGIONS)[number];
+export type InferenceRegion = (typeof GLOBAL_INFERENCE_REGIONS)[number];
+
+export const TENANT_ONBOARDING_STATES = [
+  'draft',
+  'company_profile',
+  'statutory_configured',
+  'openings_imported',
+  'verified',
+  'active',
+  'blocked',
+] as const;
+export type TenantOnboardingState = (typeof TENANT_ONBOARDING_STATES)[number];
+
+export type TenantOnboardingEvent =
+  | 'START'
+  | 'SETUP_COMPANY'
+  | 'CONFIGURE_STATUTORY'
+  | 'IMPORT_OPENINGS'
+  | 'VERIFY'
+  | 'ACTIVATE'
+  | 'BLOCK'
+  | 'RESUME';
+
+export interface TenantOnboardingStateRecord {
+  status: TenantOnboardingState;
+  step: string;
+  startedAt?: string;
+  updatedAt?: string;
+  completedAt?: string;
+  blockedReason?: string;
+}
+
+export function nextTenantOnboardingState(
+  state: TenantOnboardingState | undefined,
+  event: TenantOnboardingEvent,
+): TenantOnboardingState {
+  const transitions: Record<TenantOnboardingState, Partial<Record<TenantOnboardingEvent, TenantOnboardingState>>> = {
+    draft: { START: 'company_profile', BLOCK: 'blocked' },
+    company_profile: { SETUP_COMPANY: 'statutory_configured', BLOCK: 'blocked' },
+    statutory_configured: { CONFIGURE_STATUTORY: 'openings_imported', BLOCK: 'blocked' },
+    openings_imported: { IMPORT_OPENINGS: 'verified', BLOCK: 'blocked' },
+    verified: { VERIFY: 'active', BLOCK: 'blocked' },
+    active: { ACTIVATE: 'active', BLOCK: 'blocked' },
+    blocked: { RESUME: 'company_profile' },
+  };
+
+  const current = state ?? 'draft';
+  return transitions[current]?.[event] ?? current;
+}
+
+export function tenantOnboardingStepFor(state: TenantOnboardingState): string {
+  const map: Record<TenantOnboardingState, string> = {
+    draft: 'Begin setup',
+    company_profile: 'Company profile',
+    statutory_configured: 'Statutory configuration',
+    openings_imported: 'Opening balances',
+    verified: 'Verification',
+    active: 'Activated',
+    blocked: 'Blocked',
+  };
+  return map[state];
 }
 
 export interface AuthorityGrantView {

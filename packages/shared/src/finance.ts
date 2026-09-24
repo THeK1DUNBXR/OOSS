@@ -74,9 +74,11 @@ export type LedgerGroup = (typeof LEDGER_GROUPS)[number];
 // Periods. The Indian financial year runs April to March.
 // ---------------------------------------------------------------------------
 
-/** `YYYY-MM` for a date, in UTC. */
+import { istFinancialYear, istMonthKey } from './time.js';
+
+/** `YYYY-MM` for a date, in IST. */
 export function monthKey(d: Date): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  return istMonthKey(d);
 }
 
 export function monthRange(period: string): { from: Date; to: Date } {
@@ -86,9 +88,7 @@ export function monthRange(period: string): { from: Date; to: Date } {
 
 /** The label a financial year is referred to by: FY2026-27. */
 export function financialYearOf(d: Date): string {
-  const y = d.getUTCFullYear();
-  const start = d.getUTCMonth() >= 3 ? y : y - 1;
-  return `FY${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+  return istFinancialYear(d);
 }
 
 export function financialYearRange(fyStartYear: number): { from: Date; to: Date } {

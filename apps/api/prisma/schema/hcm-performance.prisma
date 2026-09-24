@@ -39,7 +39,7 @@ model ReviewTemplate {
   id       String @id @default(cuid())
   tenantId String
 
-  name String
+  name        String
   /// [{ key, label, weight, competencies: [{ key, label }] }]
   sections    Json
   /// [{ value, label }] — e.g. 1..5 with words
@@ -147,15 +147,15 @@ model FinalRating {
   employmentRelationshipId String
   subjectPartyId           String
 
-  rating     String?
+  rating                  String?
   /// low | medium | high — the second axis of the 9-box, alongside `rating`.
-  potential  String?
-  band       String?
+  potential               String?
+  band                    String?
   promotionRecommended    Boolean  @default(false)
   incrementRecommendedPct Decimal? @db.Decimal(5, 2)
 
-  released   Boolean   @default(false)
-  releasedAt DateTime?
+  released     Boolean   @default(false)
+  releasedAt   DateTime?
   releasedById String?
 
   createdAt DateTime @default(now())
@@ -243,8 +243,8 @@ model Pip {
   checkpoints Json?
 
   /// open | successful | extended | exited
-  outcome  String    @default("open")
-  closedAt DateTime?
+  outcome    String    @default("open")
+  closedAt   DateTime?
   closedById String?
 
   createdAt DateTime @default(now())

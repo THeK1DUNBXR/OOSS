@@ -43,9 +43,9 @@ model ItIncident {
   breachId  String?
   problemId String?
 
-  reviewRequired     Boolean   @default(false)
-  reviewBody         String?
-  reviewPublishedAt  DateTime?
+  reviewRequired      Boolean   @default(false)
+  reviewBody          String?
+  reviewPublishedAt   DateTime?
   reviewPublishedById String?
 
   /// The stale-commander ladder (a rung already fired) and the
@@ -81,9 +81,9 @@ model ItIncidentUpdate {
   incidentId String
   incident   ItIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
-  body         String
+  body          String
   authorPartyId String?
-  at           DateTime @default(now())
+  at            DateTime @default(now())
 
   @@index([tenantId, incidentId])
   @@map("it_incident_updates")
@@ -145,17 +145,17 @@ model ItChange {
   /// propose, never theirs to approve (the Self-Dealing Bar).
   requesterPartyId String
 
-  approvedById      String?
-  approvedAt        DateTime?
-  scheduledAt       DateTime?
-  implementedAt     DateTime?
+  approvedById       String?
+  approvedAt         DateTime?
+  scheduledAt        DateTime?
+  implementedAt      DateTime?
   /// Set once, by `implement` — a fact recorded, never revised.
   implementationNote String?
   reviewedAt         DateTime?
   /// Set once, by `review` — final.
-  reviewNote          String?
-  rejectionReason     String?
-  failureReason       String?
+  reviewNote         String?
+  rejectionReason    String?
+  failureReason      String?
 
   /// The change scheduled inside a freeze window it should not have been
   /// (never happens through the API, but a job can still flag drift) and the
@@ -184,7 +184,7 @@ model ItChangeFreeze {
   startsAt       DateTime
   endsAt         DateTime
   reason         String
-  allowEmergency Boolean @default(false)
+  allowEmergency Boolean  @default(false)
 
   declaredById String?
   createdAt    DateTime @default(now())
@@ -201,7 +201,7 @@ model ItItsmPolicy {
   id       String @id @default(cuid())
   tenantId String @unique
 
-  staleMinutes            Int      @default(60)
+  staleMinutes             Int      @default(60)
   reviewOverdueDays        Int      @default(5)
   reviewRequiredSeverities String[] @default(["sev1", "sev2"])
 

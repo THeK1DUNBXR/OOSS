@@ -36,7 +36,7 @@ model ItInitiative {
   /// the one who must never sign off their own funding.
   sponsorPartyId String
   /// The delivery owner. May be the sponsor, or may not.
-  ownerPartyId String
+  ownerPartyId   String
 
   businessCase    String?
   expectedBenefit String?
@@ -109,9 +109,9 @@ model ItRoadmapItem {
   tenantId String
 
   /// e.g. `FY2026-27 Q3`.
-  quarter String
+  quarter      String
   /// run | grow | transform
-  theme String
+  theme        String
   /// Bare id, optional — a roadmap item need not be tied to a funded initiative yet.
   initiativeId String?
 
@@ -143,7 +143,7 @@ model ItBudgetLine {
   /// software | skill | education | shared — the fixed division colours.
   division String?
   /// run | grow
-  kind String
+  kind     String
 
   planned  Decimal @db.Decimal(18, 2)
   currency String  @default("INR")
@@ -158,7 +158,7 @@ model ItBudgetLine {
   /// since a budget line has no commercial-value gate of its own.
   status String @default("draft")
 
-  createdById String?
+  createdById  String?
   approvedById String?
   approvedAt   DateTime?
 
@@ -182,7 +182,7 @@ model ItTechDebtItem {
   tenantId   String
   recordCode String
 
-  title String
+  title         String
   /// Bare id — the `ItApplication` this debt sits in, when one is named.
   applicationId String?
 
@@ -190,7 +190,7 @@ model ItTechDebtItem {
   severity   String
   effortDays Int?
   /// What it costs to leave unresolved — read for a person, not a number.
-  interest String?
+  interest   String?
 
   /// open | planned | in_progress | retired | accepted
   status String @default("open")

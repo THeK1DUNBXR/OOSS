@@ -37,7 +37,7 @@ import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { auditWrite, auditExport, auditBulkOperation, registerGovernedEntities } from '../../platform/audit.js';
-import { assertCan } from '../../platform/permissions.js';
+import { assertCan, FIELD_PURPOSES } from '../../platform/permissions.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { registerHook } from '../../platform/hooks.js';
 
@@ -201,6 +201,7 @@ export async function grantConsent(input: {
       tenantId: auth.tenantId,
       personId: input.personId,
       purposeCode: input.purposeCode,
+      noticeVersion: (await getCurrentNotice()).version,
       status: 'granted',
       grantedAt: new Date(),
       channel: input.channel,
@@ -210,6 +211,20 @@ export async function grantConsent(input: {
     },
   });
 
+  await prisma.consentLedger.create({
+    data: {
+      tenantId: auth.tenantId,
+      dataPrincipalId: input.personId,
+      consentId: consent.id,
+      purpose: input.purposeCode,
+      noticeVersion: consent.noticeVersion,
+      channel: input.channel,
+      event: 'granted',
+      givenAt: consent.grantedAt,
+      evidence: (input.evidence ?? {}) as never,
+    },
+  });
+  await auditWrite({ action: 'create', subjectType: 'consent_ledger', subjectId: consent.id, after: { event: 'granted', purpose: input.purposeCode } });
   await auditWrite({ action: 'create', subjectType: 'consent', subjectId: consent.id, after: { purposeCode: input.purposeCode, status: 'granted' } });
   await emit({
     name: 'kz.cmp.consent.granted',
@@ -236,6 +251,20 @@ export async function withdrawConsent(id: string, reason?: string) {
     data: { status: 'withdrawn', withdrawnAt: new Date() },
   });
 
+  await prisma.consentLedger.create({
+    data: {
+      tenantId: auth.tenantId,
+      dataPrincipalId: existing.personId,
+      consentId: existing.id,
+      purpose: existing.purposeCode,
+      noticeVersion: existing.noticeVersion,
+      channel: existing.channel,
+      event: 'withdrawn',
+      withdrawnAt: updated.withdrawnAt,
+      evidence: { reason: reason ?? null } as never,
+    },
+  });
+  await auditWrite({ action: 'create', subjectType: 'consent_ledger', subjectId: existing.id, after: { event: 'withdrawn', purpose: existing.purposeCode } });
   await auditWrite({
     action: 'update',
     subjectType: 'consent',
@@ -318,6 +347,7 @@ export async function requireGuardianConsentForMinor(input: MinorGateInput): Pro
       tenantId: auth.tenantId,
       personId: input.personId,
       purposeCode: 'education_delivery',
+      noticeVersion: (await getCurrentNotice()).version,
       status: 'granted',
       grantedAt: new Date(),
       channel: 'guardian_intake',
@@ -326,6 +356,20 @@ export async function requireGuardianConsentForMinor(input: MinorGateInput): Pro
     },
   });
 
+  await prisma.consentLedger.create({
+    data: {
+      tenantId: auth.tenantId,
+      dataPrincipalId: input.personId,
+      consentId: consent.id,
+      purpose: 'education_delivery',
+      noticeVersion: consent.noticeVersion,
+      channel: 'guardian_intake',
+      event: 'granted',
+      givenAt: consent.grantedAt,
+      evidence: { guardianName: input.guardianName, guardianPhone: input.guardianPhone } as never,
+    },
+  });
+  await auditWrite({ action: 'create', subjectType: 'consent_ledger', subjectId: consent.id, after: { event: 'granted', purpose: 'education_delivery' } });
   await auditWrite({
     action: 'create',
     subjectType: 'consent',
@@ -459,7 +503,19 @@ async function assembleAccessExport(tenantId: string, personId: string) {
     bankIfsc: readRegulated(e.bankIfsc),
   }));
 
-  return { person, affiliations, employments: employmentsDecrypted, studentProfile, exportedAt: new Date().toISOString() };
+  return {
+    person,
+    affiliations,
+    employments: employmentsDecrypted,
+    studentProfile,
+    dataMap: [
+      { source: 'person', fields: ['fullName', 'email', 'phone', 'dateOfBirth'].map((field) => ({ field, purpose: FIELD_PURPOSES[field] })) },
+      { source: 'affiliations', purpose: 'employment|education_delivery', fields: ['roleSlug', 'status', 'effectiveFrom', 'effectiveTo'] },
+      { source: 'employments', purpose: 'employment|statutory_filing', fields: ['status', 'panNumber', 'aadhaarReference', 'bankAccountNumber', 'bankAccountName', 'bankIfsc'] },
+      { source: 'studentProfile', purpose: 'education_delivery', fields: ['guardianName', 'guardianPhone', 'guardianConsentId'] },
+    ],
+    exportedAt: new Date().toISOString(),
+  };
 }
 
 /**
@@ -753,10 +809,16 @@ export async function runRetentionReport(): Promise<{ generatedAt: Date; snapsho
     if (!schedule) continue;
     const cutoff = new Date(now);
     cutoff.setUTCFullYear(cutoff.getUTCFullYear() - schedule.years);
-    const [totalCount, pastWindowCount] = await Promise.all([
-      prisma.eventRecord.count({ where: { tenantId: auth.tenantId, retentionClass } }),
-      prisma.eventRecord.count({ where: { tenantId: auth.tenantId, retentionClass, occurredAt: { lt: cutoff } } }),
-    ]);
+    const [totalCount, pastWindowCount] =
+      retentionClass === 'audit_record'
+        ? await Promise.all([
+            prisma.auditRecord.count({ where: { tenantId: auth.tenantId, retentionClass } }),
+            prisma.auditRecord.count({ where: { tenantId: auth.tenantId, retentionClass, timestamp: { lt: cutoff } } }),
+          ])
+        : await Promise.all([
+            prisma.eventRecord.count({ where: { tenantId: auth.tenantId, retentionClass } }),
+            prisma.eventRecord.count({ where: { tenantId: auth.tenantId, retentionClass, occurredAt: { lt: cutoff } } }),
+          ]);
     snapshot.push({ retentionClass, years: schedule.years, totalCount, pastWindowCount, cutoff: cutoff.toISOString() });
   }
 

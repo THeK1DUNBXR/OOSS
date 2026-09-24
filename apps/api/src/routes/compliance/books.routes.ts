@@ -69,9 +69,11 @@ router.post(
 
 router.get(
   '/audit/verify',
-  handler(async () => {
+  handler(async (req) => {
     const auth = currentAuth();
-    return verifyAuditChain(auth.tenantId);
+    const from = str(req.query.from);
+    const to = str(req.query.to);
+    return verifyAuditChain(auth.tenantId, 10_000, from ? new Date(from) : undefined, to ? new Date(to) : undefined);
   }),
 );
 

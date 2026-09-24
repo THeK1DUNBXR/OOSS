@@ -92,7 +92,7 @@ model HrRequestApproval {
   approverPartyId String?
 
   /// pending | approved | rejected
-  decision String @default("pending")
+  decision String  @default("pending")
   note     String?
 
   decidedAt DateTime?

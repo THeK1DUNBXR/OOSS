@@ -156,8 +156,8 @@ model SurveyResponseDedupe {
   id       String @id @default(cuid())
   tenantId String
 
-  surveyId    String
-  dedupeHash  String
+  surveyId   String
+  dedupeHash String
 
   createdAt DateTime @default(now())
 
@@ -276,7 +276,7 @@ model ExitInterview {
 
   recordCode String
 
-  offboardingId             String
+  offboardingId            String
   employmentRelationshipId String
 
   questionnaire Json

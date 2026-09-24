@@ -10,8 +10,13 @@
 /// GST's own period lock (`assertPeriodOpen`) — a period can be GST-open and
 /// books-closed, or the reverse.
 model AccountingPeriod {
-  id       String @id @default(cuid())
+  id       String         @id @default(cuid())
   tenantId String
+  entityId String?
+  startsOn DateTime?      @db.Date
+  endsOn   DateTime?      @db.Date
+  entity   LedgerEntity?  @relation(fields: [entityId], references: [id])
+  entries  JournalEntry[]
 
   /// "2025-26" (Apr-Mar).
   fy     String
@@ -39,8 +44,77 @@ model AccountingPeriod {
   updatedAt DateTime @updatedAt
 
   @@unique([tenantId, period])
+  @@unique([tenantId, entityId, startsOn])
   @@index([tenantId, status])
   @@map("cmp_accounting_periods")
+}
+
+/// A registered legal entity. It is explicit even for single-entity tenants so
+/// journal history does not need an expensive retrofit when a group is formed.
+model LedgerEntity {
+  id           String             @id @default(cuid())
+  tenantId     String
+  code         String
+  legalName    String
+  gstin        String?
+  pan          String?
+  tan          String?
+  stateCode    String
+  baseCurrency String             @default("INR")
+  periods      AccountingPeriod[]
+  entries      JournalEntry[]
+
+  @@unique([tenantId, code])
+  @@map("ledger_entities")
+}
+
+model JournalEntry {
+  id             String           @id @default(cuid())
+  tenantId       String
+  entityId       String
+  periodId       String
+  entryNumber    String
+  entryDate      DateTime         @db.Date
+  postedAt       DateTime?
+  status         String           @default("posted")
+  narration      String
+  sourceType     String
+  sourceId       String?
+  reversalOfId   String?
+  reversedById   String?
+  idempotencyKey String?
+  entity         LedgerEntity     @relation(fields: [entityId], references: [id])
+  period         AccountingPeriod @relation(fields: [periodId], references: [id])
+  lines          JournalLine[]
+
+  @@unique([tenantId, entityId, entryNumber])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, entityId, entryDate])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id              String        @id @default(cuid())
+  tenantId        String
+  entryId         String
+  entry           JournalEntry  @relation(fields: [entryId], references: [id])
+  lineNo          Int
+  accountId       String
+  account         LedgerAccount @relation(fields: [accountId], references: [id])
+  amountMinor     BigInt
+  currency        String        @default("INR")
+  baseAmountMinor BigInt
+  fxRate          Decimal?      @db.Decimal(18, 8)
+  division        String?
+  costCentreId    String?
+  projectId       String?
+  partyId         String?
+  taxCodeId       String?
+  memo            String?
+
+  @@index([tenantId, accountId, entryId])
+  @@index([tenantId, partyId])
+  @@map("journal_lines")
 }
 
 /// How long a class of record must be kept, and under what statute. Dated data

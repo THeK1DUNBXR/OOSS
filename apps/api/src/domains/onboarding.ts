@@ -15,6 +15,14 @@
  * dashboard, the tutorial and the empty states all want to know.
  */
 
+import {
+  nextTenantOnboardingState,
+  tenantOnboardingStepFor,
+  type TenantConfig,
+  type TenantOnboardingEvent,
+  type TenantOnboardingState,
+  type TenantOnboardingStateRecord,
+} from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { can } from '../platform/permissions.js';
@@ -171,4 +179,65 @@ export async function onboardingState(): Promise<OnboardingState> {
 export async function hasImported(): Promise<boolean> {
   const auth = currentAuth();
   return (await prisma.importBatch.count({ where: { tenantId: auth.tenantId, status: 'committed' } })) > 0;
+}
+
+export function applyTenantOnboardingTransition(
+  current: Partial<TenantOnboardingStateRecord> | null | undefined,
+  event: TenantOnboardingEvent,
+): TenantOnboardingStateRecord {
+  const status = (current?.status ?? 'draft') as TenantOnboardingState;
+  const nextStatus = nextTenantOnboardingState(status, event);
+  const now = new Date().toISOString();
+
+  return {
+    status: nextStatus,
+    step: tenantOnboardingStepFor(nextStatus),
+    startedAt: current?.startedAt ?? now,
+    updatedAt: now,
+    completedAt: nextStatus === 'active' ? current?.completedAt ?? now : current?.completedAt,
+    blockedReason: nextStatus === 'blocked' ? current?.blockedReason ?? 'Awaiting a required step.' : undefined,
+  };
+}
+
+export async function tenantOnboardingState(): Promise<TenantOnboardingStateRecord> {
+  const auth = currentAuth();
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: auth.tenantId },
+    select: { config: true },
+  });
+
+  const config = (tenant?.config as TenantConfig | null) ?? {};
+  const saved = config.onboarding ?? {
+    status: 'draft',
+    step: 'Begin setup',
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const companyProfileCount = await prisma.companyProfile.count({ where: { tenantId: auth.tenantId } });
+  const ledgerAccountCount = await prisma.ledgerAccount.count({ where: { tenantId: auth.tenantId } });
+  const importCount = await prisma.importBatch.count({ where: { tenantId: auth.tenantId, status: 'committed' } });
+
+  let status: TenantOnboardingState = saved.status;
+  if (status === 'draft' && companyProfileCount > 0) status = 'company_profile';
+  if (status === 'company_profile' && ledgerAccountCount > 0) status = 'statutory_configured';
+  if (status === 'statutory_configured' && importCount > 0) status = 'openings_imported';
+  if (status === 'openings_imported' && companyProfileCount > 0 && ledgerAccountCount > 0) status = 'verified';
+  if (status === 'verified' && importCount > 0) status = 'active';
+
+  const next: TenantOnboardingStateRecord = {
+    status,
+    step: tenantOnboardingStepFor(status),
+    startedAt: saved.startedAt ?? new Date().toISOString(),
+    updatedAt: saved.updatedAt ?? new Date().toISOString(),
+    completedAt: status === 'active' ? saved.completedAt ?? new Date().toISOString() : saved.completedAt,
+  };
+
+  await prisma.tenant.update({
+    where: { id: auth.tenantId },
+    data: { config: { ...config, onboarding: next } as never },
+  });
+
+  return next;
 }

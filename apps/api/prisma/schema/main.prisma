@@ -942,7 +942,7 @@ model EventRecord {
   /// and the "head" could be a record that already had a successor — the next
   /// writer then chained onto the wrong one and collided. A sequence is
   /// monotonic by construction.
-  seq BigInt @default(autoincrement())
+  seq      BigInt @default(autoincrement())
   id       String @id @default(cuid())
   tenantId String
 
@@ -992,10 +992,6 @@ model EventRecord {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, eventId, eventName])
-  @@index([tenantId, recordedAt])
-  @@index([tenantId, eventName, occurredAt])
-  @@index([tenantId, subjectEntityType, subjectEntityId])
-  @@index([tenantId, correlationId])
   /// Two events cannot share a predecessor.
   ///
   /// The chain used to be built by reading the head with an unlocked
@@ -1010,6 +1006,10 @@ model EventRecord {
   /// Postgres, so the genesis event of a tenant is not covered — that is one
   /// row, written once, and the serializable transaction covers it.
   @@unique([tenantId, prevHash])
+  @@index([tenantId, recordedAt])
+  @@index([tenantId, eventName, occurredAt])
+  @@index([tenantId, subjectEntityType, subjectEntityId])
+  @@index([tenantId, correlationId])
   @@map("event_records")
 }
 
@@ -1041,25 +1041,25 @@ model JobClaim {
   id       String @id @default(cuid())
   tenantId String
 
-  jobName String
+  jobName      String
   /// The occurrence being claimed, derived from the job's cron. Not "now" —
   /// two instances ticking a second apart must compute the same value.
   scheduledFor DateTime
 
-  status    String    @default("claimed") // claimed | completed | failed | dead
-  attempt   Int       @default(1)
-  claimedAt DateTime  @default(now())
+  status      String    @default("claimed") // claimed | completed | failed | dead
+  attempt     Int       @default(1)
+  claimedAt   DateTime  @default(now())
   /// Extended by the heartbeat while the job runs; a claim past this with no
   /// finish is abandoned and may be retaken.
-  leaseUntil   DateTime
-  heartbeatAt  DateTime?
-  finishedAt   DateTime?
-  durationMs   Int?
-  lastError    String?
+  leaseUntil  DateTime
+  heartbeatAt DateTime?
+  finishedAt  DateTime?
+  durationMs  Int?
+  lastError   String?
   /// Set when retries are exhausted. This is the dead-letter row: it is not
   /// deleted and it is not retried, so a job that keeps failing is visible
   /// rather than silently absent.
-  deadAt DateTime?
+  deadAt      DateTime?
 
   @@unique([tenantId, jobName, scheduledFor])
   @@index([tenantId, status, scheduledFor])
@@ -1096,6 +1096,9 @@ model AuditRecord {
   /// previous record's hash, the way `EventRecord` already does.
   hash     String?
   prevHash String?
+
+  /// Companies Act r.3(1) audit evidence is retained for eight financial years.
+  retentionClass String @default("audit_record")
 
   timestamp DateTime @default(now())
 
@@ -1145,7 +1148,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sessions Session[]
 
   @@unique([tenantId, email])
   @@index([tenantId, personId])
@@ -1177,6 +1181,43 @@ model Principal {
   users User[]
 
   @@map("principals")
+}
+
+/// One issued refresh credential — the 30-day, rotating secret behind the
+/// httpOnly cookie (phase-0 §0.2). The access token itself is never stored;
+/// only its `jti`, so `requireAuth` can reject a still-unexpired access token
+/// the moment its session is revoked, rather than waiting up to fifteen
+/// minutes for the token to expire on its own.
+///
+/// Not in `TENANT_EXEMPT_MODELS`: like `User`, a session is a tenant-scoped
+/// fact once a login has resolved one, and every route-time read goes through
+/// the normal scoped client. The three moments that run before a tenant
+/// context exists — login, `contextMiddleware`, `/auth/refresh` — use
+/// `unscopedPrisma` explicitly, the same way `User` is already read in those
+/// same three places.
+model Session {
+  id       String @id @default(cuid())
+  tenantId String
+  userId   String
+
+  jti String @unique
+
+  /// Hashed the same way a password is (`hashPassword`) — a database read
+  /// must not be enough to replay the cookie; only the browser holding the
+  /// httpOnly cookie itself can.
+  refreshTokenHash String
+
+  issuedAt  DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ip        String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([expiresAt])
+  @@map("sessions")
 }
 
 /// Watermark-relative delta state. `reachSignature` — a hash over resolved
@@ -3360,7 +3401,7 @@ model Course {
   /// `events/handlers.ts`'s `instalmentPlan`) — a flat course billed in parts,
   /// distinct from `feePlans`/`CourseFeePlan`, which prices a course sold on
   /// tenure-based rates instead of a single `feeAmount`.
-  feePlan Json?
+  feePlan   Json?
   gstRate   Decimal  @default(18) @db.Decimal(5, 2)
   hsnSac    String?
   /// Contact hours the course runs for. Shown on the catalogue beside the
@@ -4787,16 +4828,26 @@ model LedgerAccount {
   id       String @id @default(cuid())
   tenantId String
 
-  name             String
-  accountType      String    @default("bank") // bank | cash | card | loan | wallet
+  name               String
+  accountType        String            @default("bank") // bank | cash | card | loan | wallet
   /// Last four digits at most. The full number is never held here.
-  displayReference String?
-  openingBalance   Decimal   @default(0) @db.Decimal(18, 2)
-  openingDate      DateTime?
-  currency         String    @default("INR")
-  active           Boolean   @default(true)
+  displayReference   String?
+  openingBalance     Decimal           @default(0) @db.Decimal(18, 2)
+  openingDate        DateTime?
+  currency           String            @default("INR")
+  active             Boolean           @default(true)
   /// Ledger grouping for the balance sheet: asset | liability | equity.
-  ledgerGroup      String    @default("asset")
+  ledgerGroup        String            @default("asset")
+  /// Canonical chart-of-accounts class. `accountType` remains the legacy
+  /// cashbook instrument kind until the cashbook projection is retired.
+  accountClass       LedgerAccountType @default(asset)
+  normalBalance      String            @default("debit")
+  isPostable         Boolean           @default(true)
+  parentId           String?
+  parent             LedgerAccount?    @relation("LedgerAccountTree", fields: [parentId], references: [id])
+  children           LedgerAccount[]   @relation("LedgerAccountTree")
+  requiresParty      Boolean           @default(false)
+  requiresCostCentre Boolean           @default(false)
 
   /// Set by `pnpm division:spin-out` on an account it opened at zero for a
   /// subsidiary from a carried transaction's account name — cash never moves
@@ -4810,10 +4861,19 @@ model LedgerAccount {
   updatedAt DateTime  @updatedAt
 
   transactions Transaction[]
+  journalLines JournalLine[]
 
   @@unique([tenantId, name])
   @@index([tenantId, active])
   @@map("ledger_accounts")
+}
+
+enum LedgerAccountType {
+  asset
+  liability
+  equity
+  income
+  expense
 }
 
 /// What money is earned or spent under. A shallow tree — the company's own

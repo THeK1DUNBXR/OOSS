@@ -29,14 +29,14 @@ model Resignation {
 
   employmentRelationshipId String
 
-  submittedOn        DateTime
-  requestedLastDay    DateTime
+  submittedOn      DateTime
+  requestedLastDay DateTime
   /// Copied from the notice policy (or the employment's flat default) at
   /// submission time — a fact about what applied then, not a live lookup.
-  noticeDays          Int
+  noticeDays       Int
   /// personal | career_growth | compensation | relocation | health | conduct | other
-  reasonCategory      String
-  reasonNote          String?
+  reasonCategory   String
+  reasonNote       String?
 
   /// submitted | accepted | withdrawn | rejected
   status String @default("submitted")
@@ -94,10 +94,10 @@ model ExitClearance {
   employmentRelationshipId String
 
   /// it | finance | admin | manager | hr
-  department String
+  department  String
   /// pending | cleared | blocked
-  status     String @default("pending")
-  note       String?
+  status      String    @default("pending")
+  note        String?
   clearedById String?
   clearedAt   DateTime?
 
@@ -149,7 +149,7 @@ model AlumniRecord {
   separationType  String
   rehireEligible  Boolean?
   rehireNote      String?
-  contactConsent  Boolean @default(false)
+  contactConsent  Boolean  @default(false)
   contactEmail    String?
   contactPhone    String?
 

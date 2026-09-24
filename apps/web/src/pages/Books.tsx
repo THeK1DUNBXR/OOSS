@@ -371,11 +371,12 @@ export function Payables() {
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Open bills" value={open.length} />
+        <Metric label="Open bills" value={open.length} noActionReason="Review the bill list below to decide which payments to schedule." />
         <Metric
           label="Outstanding"
           value={amountsVisible ? money(outstanding) : <Withheld reason="no_permission" />}
           tone={outstanding > 0 ? 'warn' : 'good'}
+          noActionReason="Review the ledger and payment queue before approving more vendor actions."
         />
         <Metric label="Overdue" value={overdue.length} tone={overdue.length > 0 ? 'bad' : 'good'} drillTo="/exceptions" />
       </div>
@@ -545,13 +546,22 @@ export function Budget() {
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Planned" value={data?.budgetTotal === null ? <Withheld reason="no_permission" /> : money(data?.budgetTotal ?? 0)} />
-        <Metric label="Spent" value={data?.actualTotal === null ? <Withheld reason="no_permission" /> : money(data?.actualTotal ?? 0)} />
+        <Metric
+          label="Planned"
+          value={data?.budgetTotal === null ? <Withheld reason="no_permission" /> : money(data?.budgetTotal ?? 0)}
+          noActionReason="Check the budget line list to adjust the planned amount before the next period."
+        />
+        <Metric
+          label="Spent"
+          value={data?.actualTotal === null ? <Withheld reason="no_permission" /> : money(data?.actualTotal ?? 0)}
+          noActionReason="Review the line variance table to explain or correct the spend."
+        />
         <Metric
           label="Lines over plan"
           value={over.length}
           tone={over.length > 0 ? 'warn' : 'good'}
           sub={over.length ? 'Including anything spent with no line to sit against' : undefined}
+          noActionReason="Review the over-plan lines below to decide whether to rebalance or approve exceptions."
         />
       </div>
 
@@ -658,12 +668,17 @@ export function Assets() {
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Assets" value={assets.data?.length ?? 0} />
-        <Metric label="Carrying value" value={visible ? money(bookValue) : <Withheld reason="no_permission" />} />
+        <Metric label="Assets" value={assets.data?.length ?? 0} noActionReason="Use the asset table below to review the full portfolio and follow up on any actions." />
+        <Metric
+          label="Carrying value"
+          value={visible ? money(bookValue) : <Withheld reason="no_permission" />}
+          noActionReason="Review the asset register below to confirm valuation and upkeep decisions."
+        />
         <Metric
           label="Still owed"
           value={loans.data?.every((l) => l.outstanding !== null) ? money(owed) : <Withheld reason="no_permission" />}
           tone={owed > 0 ? 'warn' : 'good'}
+          noActionReason="Review the borrowing schedule to decide whether refinancing or repayment is needed."
         />
       </div>
 

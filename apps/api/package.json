@@ -17,6 +17,7 @@
     "seed:course-catalog": "tsx src/seed/courseCatalog.ts",
     "grants:reconcile": "tsx src/seed/reconcileGrants.ts",
     "jobs:run": "tsx src/jobs/runOnce.ts",
+    "statutory-pack": "tsx src/cli/statutoryPack.ts",
     "test": "vitest run",
     "test:quick": "vitest run --reporter=dot --bail=1",
     "test:books": "vitest run src/tests/books.test.ts",
@@ -29,6 +30,7 @@
     "wipe": "tsx src/seed/wipe.ts"
   },
   "dependencies": {
+    "@kaizen/semantic": "workspace:*",
     "@kaizen/shared": "workspace:*",
     "@prisma/client": "^6.1.0",
     "bcryptjs": "^2.4.3",

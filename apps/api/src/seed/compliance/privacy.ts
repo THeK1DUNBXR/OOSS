@@ -45,6 +45,7 @@ const RETENTION_SCHEDULE = [
   { retentionClass: 'standard', years: 3 },
   { retentionClass: 'employee_record', years: 8 },
   { retentionClass: 'student_record', years: 5 },
+  { retentionClass: 'audit_record', years: 8 },
 ];
 
 export async function seedPrivacy(): Promise<void> {

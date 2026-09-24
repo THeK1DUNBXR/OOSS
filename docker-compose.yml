@@ -30,6 +30,10 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      args:
+        BUILD_SEQUENCE: "1"
+        GIT_SHA: docker-local
+        BUILT_AT: "2026-09-20T00:00:00Z"
     container_name: kaizen-api
     depends_on:
       postgres:
@@ -38,9 +42,12 @@ services:
       # `postgres` is the compose service name; inside the network it resolves
       # to the database container, not to localhost.
       DATABASE_URL: postgresql://kaizen:kaizen@postgres:5432/kaizen?schema=public
+      BUILD_SEQUENCE: "1"
+      GIT_SHA: docker-local
+      BUILT_AT: "2026-09-20T00:00:00Z"
       # Development only. A real deployment injects a secret rather than
       # carrying one in a file that lives in the repository.
-      JWT_SECRET: docker-development-secret-not-for-production
+      JWT_SECRET: kaizen-local-dev-secret-2026-do-not-use-in-prod
       # The first account, so `docker compose up` gives you credentials you can
       # actually type. Without these the seed generates a random password and
       # prints it once into this container's log — correct for a real install,
@@ -50,7 +57,7 @@ services:
       OWNER_EMAIL: chairman@kaizen.co.in
       OWNER_PASSWORD: kaizen2026
       PORT: "4000"
-      NODE_ENV: production
+      NODE_ENV: development
       JOBS_ENABLED: "true"
       TENANT_ENFORCE_MODE: enforce
     ports:
@@ -66,12 +73,32 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        BUILD_SEQUENCE: "1"
+        GIT_SHA: docker-local
+        BUILT_AT: "2026-09-20T00:00:00Z"
     container_name: kaizen-web
     depends_on:
       api:
         condition: service_healthy
     ports:
       - "8080:80"
+
+  test:
+    image: node:22-slim
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TEST_DATABASE_URL: postgresql://kaizen:kaizen@postgres:5432/kaizen_test?schema=public
+      NODE_ENV: test
+      JWT_SECRET: test-only-secret-not-used-anywhere-else-0123456789
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: ["sh", "-c", "corepack enable; pnpm install --frozen-lockfile; pnpm --filter @kaizen/shared build; pnpm --filter @kaizen/semantic build; pnpm --filter @kaizen/api exec prisma generate; pnpm --filter @kaizen/api test:quick"]
+    profiles:
+      - test
 
 volumes:
   kaizen-pgdata:

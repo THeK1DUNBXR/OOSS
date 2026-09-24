@@ -126,9 +126,9 @@ model ItTicketComment {
   ticketId String
   ticket   ItTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
-  body           String
-  internal       Boolean @default(false)
-  authorPartyId  String
+  body          String
+  internal      Boolean @default(false)
+  authorPartyId String
 
   createdAt DateTime @default(now())
 
@@ -154,7 +154,7 @@ model ItKnowledgeArticle {
   /// draft | published | retired
   status String @default("draft")
 
-  helpfulCount Int @default(0)
+  helpfulCount Int       @default(0)
   publishedAt  DateTime?
 
   createdAt DateTime @default(now())

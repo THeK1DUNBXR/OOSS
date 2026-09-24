@@ -57,8 +57,8 @@ model ItContinuityPlan {
 
   note String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
   tests ItContinuityTest[]
@@ -95,9 +95,9 @@ model ItContinuityTest {
   actualRecoveryMinutes Int?
   actualDataLossMinutes Int?
 
-  notes               String?
-  evidenceDocumentId  String?
-  recordedById        String?
+  notes              String?
+  evidenceDocumentId String?
+  recordedById       String?
 
   createdAt DateTime @default(now())
 
