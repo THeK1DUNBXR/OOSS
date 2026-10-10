@@ -24,8 +24,13 @@ import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
-import { resolveAuthorityCeiling } from '../platform/permissions.js';
+import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
 import { notify } from '../platform/exceptions.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+
+// Without this registration auditWrite silently skips agent_action, which is
+// how a human accepting an AI proposal left no trace.
+registerGovernedEntities('agt', ['agent_action']);
 
 export interface ProposeInput {
   agentKey: string;
@@ -256,6 +261,13 @@ export async function decideAgentAction(actionId: string, accept: boolean, note?
 
   const action = await prisma.agentAction.findFirst({ where: { id: actionId } });
   if (!action) throw ApiError.notFound('Agent action');
+
+  // Accepting a proposal is what makes it 'executed', so it needs the same
+  // distinct grant as any other commitment on the agents resource. `decide` is
+  // not a verb in the grant matrix; `approve` is the one that is held apart
+  // from edit (packages/shared/src/permissions.ts DISTINCT_GRANT_VERBS).
+  await assertCan({ resource: 'agents', verb: 'approve' });
+
   if (action.state !== 'proposed') throw ApiError.conflict(`Action is already ${action.state}.`);
 
   const updated = await prisma.agentAction.update({
@@ -266,6 +278,14 @@ export async function decideAgentAction(actionId: string, accept: boolean, note?
       decidedAt: new Date(),
       blockedReason: accept ? null : (note ?? 'Rejected by a human reviewer.'),
     },
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'agent_action',
+    subjectId: actionId,
+    before: { state: 'proposed' },
+    after: { state: updated.state, humanActorId: auth.partyId },
   });
 
   await emit({
