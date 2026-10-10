@@ -343,3 +343,33 @@ Still open after round 9 (supersedes the round 8 list):
 - Expense receipt storage location: object storage on the company's own server, deferred.
 - D-11 numbers after the one-month measurement.
 - Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+
+## Owner answers, round 10 (recorded 2026-10-10)
+
+Answers given by the owner in a tenth round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged. This round supersedes the round 9 "Still open" list at the end of the round 9 section. Where no answer is recorded here, the recommendation in `docs/plan/zen360/CI-GATES-DRAFT.md` stands, and that draft's status line says what is approved.
+
+- **Ledger gate tests (owner answer, item 1).** L1 (ten-thousand-operation property test), L2 (migration equivalence) and L3 (200 concurrent allocations) are approved as the required ledger gate. Budget: the short run of the property test on each pull request; the full ten-thousand-operation test and the full concurrency runs at phase end.
+- **CI migration baseline (owner answer, item 2).** The CI migration baseline sits in Wave 0. Draft G3 in `docs/plan/zen360/CI-GATES-DRAFT.md` is corrected from "from Wave B" to Wave 0, and the draft's open question 11 is resolved. Who owns the baseline is not recorded.
+- **Governed writes (owner answer, item 3).** BOTH checks are required: the registry scan (static, blocks the build) and a runtime test that a write leaves an audit row. This resolves the draft's check (b) and its open question 4.
+- **Ordered plan location (owner answer, item 4).** The final ordered plan is committed to the repository branch as `docs/plan/zen360/ORDERED-PLAN.md`. It is not published as a separate document.
+- **Access levels by stakeholder type (owner answer, item 5; extends the round 9 access-model answer).** Levels are split by stakeholder type:
+  - Employees: Head, Manager, Staff.
+  - Founders and owners.
+  - Contractors and freelancers.
+  - External auditors and accountants.
+  - Board and investors.
+  The levels are a template that ships with the app. Each tenant can edit the template at onboarding. Each person holds one level, plus named extra duties.
+- **Maker-checker: the founder is exempt (owner answer, item 6).** The founder may approve the founder's own requests. No extra flag is recorded beyond the normal audit row.
+  - Implication (label): this departs from the CLAUDE.md-style maker-checker rule, where the requester never approves.
+  - Implication (label): this departs from the Phase 1A draft test "maker equals checker is refused". That test must exempt the founder level.
+  - Implication (label, recorded as a risk, not an objection): self-approval by the founder is traceable only through the ordinary audit row. Segregation of duties is weaker for founder-only classes: payroll run, large payments and statutory filings.
+  - Still undefined after this answer: the exact duties per level; whether contractors, auditors and board members are users of the same tenant; and the read scope for each level.
+
+Still open after round 10 (supersedes round 9):
+
+- Statutory sign-off by a qualified person. Statutory values stay DRAFT.
+- Duties per level, and read scope of the non-employee levels (founders and owners, contractors, external auditors and accountants, board and investors), including whether they are users of the same tenant.
+- IT owner: a level assignment at onboarding. The name is not recorded.
+- Expense receipt storage location: object storage on the company's own server, deferred.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).

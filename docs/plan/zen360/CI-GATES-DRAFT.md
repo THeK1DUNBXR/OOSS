@@ -2,7 +2,7 @@ Drafted by Claude; approved by owner 2026-10-10 (see Status). 00-BRIEF.md sectio
 
 # CI gates and ledger gate tests: draft
 
-Status: Approved by owner 2026-10-10 with the decisions below; still uses UNVERIFIED markers where flagged. Decisions: DECISIONS.md "Owner answers, round 9 (recorded 2026-10-10)". Approval covers gates G1 to G12 (G11 and G12 added in round 9). The ledger gate tests L1 to L3 are not approved as a set by round 9; see section 5. Adding a gate to `.github/workflows/ci.yml`, `eslint.config.js` or the test suite is still a separate change, made in its own pull request.
+Status: Approved by owner 2026-10-10 with the decisions below; still uses UNVERIFIED markers where flagged. Decisions: DECISIONS.md "Owner answers, round 9 (recorded 2026-10-10)" and "Owner answers, round 10 (recorded 2026-10-10)". Approval covers gates G1 to G12 (G11 and G12 added in round 9). Round 10 approves the ledger gate tests L1 to L3 as the required ledger gate, requires both governed-write checks (G8 checks a and b), and places the CI migration baseline in Wave 0 (G3); see section 5. Adding a gate to `.github/workflows/ci.yml`, `eslint.config.js` or the test suite is still a separate change, made in its own pull request.
 
 Scope: the ten CI gates that DECISIONS.md "Owner answers, round 5" asked Claude to define fresh, plus the three ledger gate tests named in `docs/plan/phase-1-ledger.md` (gate line) and `docs/plan/phase-8-proof.md`. The round 5 answer is: "The ten CI gates and the ledger gate tests are to be defined fresh. Claude will draft them for owner approval."
 
@@ -48,7 +48,7 @@ What exists in the repository today is noted per gate, so the owner can see how 
 - **Protects:** CLAUDE.md "Working" ("Schema changes: also `pnpm prisma migrate diff`"); phase-0-stabilise.md 0.7 and 0.8 (baseline before `migrate diff` goes into CI).
 - **Exists today:** partly. The migrations directory exists with three migrations (`20260920173000_ledger_invariants`, `20260920180000_audit_spine_dpdp`, `20260920220000_session_hardening`). But `ci.yml` still runs `prisma db push --skip-generate` in the `test` and `e2e` jobs, and its header says there is no migration history. That is drift against phase-0 0.8. The gate cannot be enforced until CI stops using `db push`.
 - **Not verified:** whether the three migrations form a complete baseline of the current schema. UNVERIFIED.
-- **First mandatory:** Wave B, after the baseline is accepted and CI switches from `db push`.
+- **First mandatory:** Wave 0 (owner answer, round 10, item 2): the migration baseline is built and CI moves off `db push`. The drift check applies once that baseline is accepted.
 
 ### G4. API tests on real Postgres, no mocks
 
@@ -99,7 +99,7 @@ What exists in the repository today is noted per gate, so the owner can see how 
 - **Checks (b), runtime test:** for each governed entity, one write through its route produces an audit row. A silent no-op (FX-20) fails this test.
 - **Fails the build:** a write with no `assertCan`; an unregistered `subjectType`; `force: true` anywhere; a write with no `auditWrite`; a runtime write that produces no audit row.
 - **Protects:** CLAUDE.md rule 5 and its note that `force` must not be used to bypass registration; phase-0-stabilise.md 0.6 "Audit gaps" and "Add `assertCan` + `auditWrite` + `emit` to `reversePayment`"; stop-ship FX-01, FX-02, FX-03, FX-04, FX-05, FX-20, FX-21, FX-22 (DECISIONS round 4 and Phase 0 fix items).
-- **Exists today:** no. The static scan is heuristic and can miss writes made through helper functions. The runtime test is the authoritative check. Owner decides which is required (open question 4).
+- **Exists today:** no. The static scan is heuristic and can miss writes made through helper functions. The runtime test is the authoritative check. Both checks are required (owner answer, round 10, item 3).
 - **First mandatory:** Wave A.
 
 ### G9. Money, period and ledger-write lint rules
@@ -258,7 +258,7 @@ Runs in the concurrency suite, not the serial suite. Latency budget is an owner 
 |---|---|---|---|---|
 | G1 Static checks | from A (exists) | carried | carried | carried |
 | G2 Map freshness | from A (exists) | carried | carried | carried |
-| G3 Schema and migration drift | n/a until baseline accepted | from B (after baseline; CI off `db push`) | carried | carried |
+| G3 Schema and migration drift | from Wave 0 (baseline built; CI off `db push`) | carried | carried | carried |
 | G4 Real Postgres, no mocks | from A (test job exists; mock scan new) | carried | carried | carried |
 | G5 Boot refusal for secrets | from A (0.1, FX-60) | carried | carried; CI must supply `FIELD_ENCRYPTION_KEY` | carried |
 | G6 Failing-test-first for FX fixes | from A | carried | carried | carried |
@@ -287,19 +287,19 @@ Drift to note: `ci.yml` header says the suite is "382-test"; `docs/plan/phase-8-
 
 ## 5. Open questions for owner approval
 
-Status after round 9 (owner answers recorded in DECISIONS.md, "Owner answers, round 9"). Each question keeps its answer. Questions with no answer stay open.
+Status after round 10 (owner answers recorded in DECISIONS.md, "Owner answers, round 9" and "Owner answers, round 10"). Each question keeps its answer. Questions with no answer stay open.
 
-1. **Gates G1 to G10 and ledger tests L1 to L3.** RESOLVED for G1 to G10: approved as the required set. G11 (log redaction) and G12 (axe) added as required gates, so twelve checks in total. The ledger tests L1 to L3 are NOT approved as a set in round 9. Owner to confirm L2 and L3 explicitly.
+1. **Gates G1 to G10 and ledger tests L1 to L3.** RESOLVED for G1 to G10: approved as the required set. G11 (log redaction) and G12 (axe) added as required gates, so twelve checks in total. RESOLVED in round 10 (item 1) for L1 to L3: approved as the required ledger gate, with the short-run and phase-end budget in question 8.
 2. **Mock policy (G4).** RESOLVED in part: the mock scan fails the build. No allowlist was recorded, so no non-database stub is allowed until the owner names one.
 3. **Failing-test-first (G6).** RESOLVED: the failing test is in a separate first commit that fails on the old code. CI checks that this commit exists and that it fails on the old code.
-4. **Governed-write check (G8).** RESOLVED in part: the scan is registry-driven and blocks the build (unregistered writes and `force: true` fail). Whether the runtime audit-row test is also required is not recorded; check (b) stands until the owner says otherwise.
+4. **Governed-write check (G8).** RESOLVED (round 10, item 3): both checks are required. The registry-driven scan blocks the build (unregistered writes and `force: true` fail). The runtime audit-row test (check b) is also required: one write per governed entity must produce an audit row.
 5. **Order within each wave.** RESOLVED: gates are listed per wave only. The team sequences work within a wave.
 6. **Log redaction and axe.** RESOLVED: both are required gates (G11, G12). Neither replaces a gate above.
 7. **Dependency licence check.** RESOLVED: report only. The check lists licences and never fails the build. Enforcement of the clean-room rule moves to review. The GPL, AGPL, LGPL, MPL and BUSL list and the exception owner are not recorded and remain open.
 8. **Ledger test budgets.** PARTLY RESOLVED: short runs of L1 on every pull request; the full ten-thousand-operation test and full concurrency runs at phase end. Still open: the runtime ceiling for L1, the latency ceiling for L3, and whether 200 is the right concurrency for L3.
 9. **Fixture sign-off (L2).** OPEN in part. Under round 9 item 11, sign-off duties (including the 1.5 account-mapping review) attach to access levels, not named people. The interim holder is the internal finance head. Still open: whether the Kaizen book figures (1,123 vouchers, 66 accounts, the window) are checked by a human before the fixture is committed (`docs/plan/README.md:68`), and the level model (open after round 9).
 10. **Statutory gate (G10).** RESOLVED: G10 checks structure only and fails on hard-coded rates. It never checks values. Values, sign-off and ownership stay with the internal finance head (DECISIONS round 3, D-02). Statutory sign-off still needs a real qualified person, even when the duty is held by a level.
-11. **CI database approach (G3).** PARTLY RESOLVED: CI moves from `prisma db push` to real migrations in Wave 0. Open: the G3 row in section 3 says "from B", and the owner places the move in "Wave 0", which this draft does not define. Owner or team to reconcile. Who owns the baseline is not recorded.
+11. **CI database approach (G3).** RESOLVED (round 10, item 2): the CI migration baseline sits in Wave 0, and the G3 row in section 3 and the G3 section now say Wave 0 (previously "from B"). Still open: who owns the baseline; the owner did not name an owner in round 10.
 12. **Fast-check.** RESOLVED: fast-check (MIT) approved as a test-only dependency.
 
 ---
