@@ -26,6 +26,8 @@ import {
   JOURNAL_ACCOUNT_NAME, JOURNAL_ACCOUNT_TYPE,
 } from './classify.js';
 import { UNSTATED_LEDGER_KIND } from './chart.js';
+import { openStagedNormalised, purgeStagedRaw } from './sealing.js';
+import { logger } from '../platform/logger.js';
 
 /**
  * Where the cash half of a split voucher is filed.
@@ -100,7 +102,10 @@ export async function commitImport(id: string): Promise<CommitResult> {
   };
 
   for (const row of rows) {
-    const data = row.normalised as Record<string, unknown> | null;
+    // Opened here, and only here: the domain functions below seal what they
+    // are given for their own records, so a staged ciphertext would be sealed
+    // a second time and come out unreadable.
+    const data = openStagedNormalised(row.normalised);
     if (!data) {
       result.skipped += 1;
       continue;
@@ -199,6 +204,16 @@ export async function commitImport(id: string): Promise<CommitResult> {
     newState: { kind: batch.kind, ...result.created, errors: result.errors.length },
     impact: { domains: ['fin'] },
   });
+
+  // After the commit, not before: the books now hold what the file said, so
+  // the file's own cells are no longer needed. A failure here is logged and
+  // does not undo the commit, which has already happened; the cells stay until
+  // someone purges them, and the log says which batch.
+  try {
+    await purgeStagedRaw(id);
+  } catch (err) {
+    logger.error({ component: 'imports', tenantId: auth.tenantId, batchId: id, err }, 'staged cells not purged after commit');
+  }
 
   return result;
 }

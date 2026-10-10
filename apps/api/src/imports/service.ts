@@ -15,13 +15,8 @@ import { assertCan } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { emit } from '../platform/eventBus.js';
-import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
-import { encryptField, readRegulated } from '../domains/compliance/privacy.js';
-import {
-  EVENTS, REGULATED_EXCLUDED_FIELDS, SENSITIVITY_RANK, isEncryptedFieldValue,
-  type SensitivityClass,
-} from '@kaizen/shared';
-import { commitImport } from './commit.js';
+import { auditWrite } from '../platform/audit.js';
+import { EVENTS } from '@kaizen/shared';
 import { parseCsv, readWorkbook, type Grid } from './parse.js';
 import {
   detectGrid, detectSourceFormat, detectWorkbook, isTallyLedgerSheet,
@@ -34,116 +29,13 @@ import {
 } from './extract.js';
 import { extractTallyXml } from './tallyXml.js';
 import { buildChart, type LedgerChart } from './chart.js';
-import { templateByKind, type TemplateSpec } from './templates.js';
+import { templateByKind } from './templates.js';
+import {
+  isRegulatedCell, isRegulatedField, sealNormalised, sealRawCells, viewStagedObject,
+} from './sealing.js';
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
-// ---------------------------------------------------------------------------
-// Regulated cells
-// ---------------------------------------------------------------------------
-
-/**
- * What a staged row shows in place of a regulated value for a caller below
- * the regulated ceiling. Full mask, not the last four characters: the tail of
- * a guardian's phone or a PAN is enough to be someone's identifier, and a
- * viewer who only needs to tell two rows apart can read the file itself.
- */
-const MASKED = '••••••';
-
-/**
- * Field names that hold regulated values wherever they appear in a normalised
- * row. The shared list says which projections must never carry them; the
- * import adds the guardian name, bank account and IFSC, which an import brings
- * in and that list does not yet name.
- */
-const REGULATED_STAGED_FIELDS = new Set<string>([
-  ...REGULATED_EXCLUDED_FIELDS,
-  'guardianName',
-  'bankAccountNumber',
-  'bankAccountName',
-  'bankIfsc',
-]);
-
-/**
- * For a file that is not one of the templates, the heading is all there is to
- * go on. Matched on words so "Pan" in a name does not seal it. The templates
- * use their own column definitions, which carry the field name, and so do not
- * come through here.
- */
-const REGULATED_HEADING = /\b(pan|aadhaar|aadhar|uan|pf|esi|ifsc|account (no|number)|bank account|guardian|blood group)\b/i;
-
-/** Whether a raw cell holds a regulated value, judged from its heading. */
-function isRegulatedCell(heading: string, spec: TemplateSpec | undefined): boolean {
-  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-  const column = spec?.columns.find((c) => norm(c.name) === norm(heading));
-  if (column) return REGULATED_STAGED_FIELDS.has(column.field);
-  return REGULATED_HEADING.test(heading);
-}
-
-const isBlankValue = (v: unknown) => v === null || v === undefined || v === '';
-
-/** Seals the regulated cells of a raw row. Blank cells stay blank: an empty string says nothing about the person. */
-function sealRawCells(raw: Record<string, unknown>, spec: TemplateSpec | undefined): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(raw).map(([heading, value]) => [
-      heading,
-      isRegulatedCell(heading, spec) && !isBlankValue(value) ? encryptField(String(value)) : value,
-    ]),
-  );
-}
-
-/** Seals the regulated fields of a normalised row, which is what the commit reads. */
-function sealNormalised(normalised: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-  if (!normalised) return normalised;
-  return Object.fromEntries(
-    Object.entries(normalised).map(([key, value]) => [
-      key,
-      REGULATED_STAGED_FIELDS.has(key) && typeof value !== 'object' && !isBlankValue(value)
-        ? encryptField(String(value))
-        : value,
-    ]),
-  );
-}
-
-/**
- * Opens the regulated fields of a staged normalised row for the commit. The
- * commit writes what it reads, so a sealed guardian phone must come back out
- * here or it lands in a student record as ciphertext.
- */
-export function openStagedNormalised(normalised: unknown): Record<string, unknown> | null {
-  if (!normalised || typeof normalised !== 'object') return null;
-  return Object.fromEntries(
-    Object.entries(normalised as Record<string, unknown>).map(([key, value]) => [
-      key,
-      typeof value === 'string' && isEncryptedFieldValue(value) ? readRegulated(value) : value,
-    ]),
-  );
-}
-
-/**
- * What a caller at this ceiling is shown for one staged object. A regulated
- * value is opened only for a ceiling that reaches regulated data, and masked
- * otherwise. A value still in clear is masked too, which covers rows staged
- * before sealing existed: they are not rewritten, so the read is the only
- * place they can be protected.
- */
-function viewStagedObject(
-  obj: unknown,
-  ceiling: SensitivityClass,
-  isRegulatedKey: (key: string, value: unknown) => boolean,
-): unknown {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
-  const cleared = SENSITIVITY_RANK[ceiling] >= SENSITIVITY_RANK.regulated;
-  return Object.fromEntries(
-    Object.entries(obj as Record<string, unknown>).map(([key, value]) => {
-      const sealed = typeof value === 'string' && isEncryptedFieldValue(value);
-      if (!sealed && !isRegulatedKey(key, value)) return [key, value];
-      if (isBlankValue(value)) return [key, value];
-      if (!cleared) return [key, MASKED];
-      return [key, sealed ? readRegulated(value as string) : value];
-    }),
-  );
-}
 
 export interface StageResult {
   batchId: string;
@@ -432,92 +324,26 @@ export async function importRows(id: string, filter: { status?: string; limit?: 
     orderBy: { rowNumber: 'asc' },
     take: Math.min(filter.limit ?? 200, 1000),
   });
-  const ceiling = auth.classificationCeiling;
-  return rows.map((row) => ({
+  const counter = { opened: 0 };
+  const shown = rows.map((row) => ({
     ...row,
-    raw: viewStagedObject(row.raw, ceiling, (heading) => isRegulatedCell(heading, spec)),
-    normalised: viewStagedObject(row.normalised, ceiling, (key) => REGULATED_STAGED_FIELDS.has(key)),
+    raw: viewStagedObject(row.raw, auth.classificationCeiling, (heading) => isRegulatedCell(heading, spec), counter),
+    normalised: viewStagedObject(row.normalised, auth.classificationCeiling, (key) => isRegulatedField(key), counter),
   }));
-}
-
-// ---------------------------------------------------------------------------
-// After the commit
-// ---------------------------------------------------------------------------
-
-registerGovernedEntities('fin', ['import_batch']);
-
-/**
- * Blanks the staged cells of a committed import. The rows stay, with their
- * status and their errors, because the audit of an import needs to say which
- * rows were skipped and why; what is removed is the file's own contents, which
- * the books no longer need once they hold what those contents said.
- *
- * Order per CLAUDE.md rule 5: permitted, written, audited, emitted.
- */
-export async function purgeStagedRaw(id: string): Promise<{ rows: number }> {
-  const auth = currentAuth();
-  await assertCan({ resource: 'imports', verb: 'edit' });
-  const batch = await prisma.importBatch.findFirst({ where: { id, tenantId: auth.tenantId } });
-  if (!batch) throw ApiError.notFound('Import');
-  if (batch.status !== 'committed') {
-    throw ApiError.conflict('Only a committed import has its staged cells purged. This one is not committed yet.');
+  // One audit row per request that showed a regulated value in clear, not one
+  // per value: the question an auditor asks is who looked at this batch's
+  // guardian and PAN data, and when, and a request is that answer.
+  if (counter.opened > 0) {
+    await auditWrite({
+      action: 'read',
+      subjectType: 'import_batch',
+      subjectId: id,
+      meta: { rowsShown: rows.length, regulatedValuesShown: counter.opened },
+    });
   }
-
-  const rows = await prisma.importRow.findMany({
-    where: { tenantId: auth.tenantId, batchId: id },
-    select: { id: true, normalised: true },
-  });
-  // Keeps every key, nulls the regulated values: a normalised row that loses
-  // its keys reads differently from one whose guardian contact is now blank.
-  const normalisedUpdates = rows.flatMap((r) => {
-    if (!r.normalised || typeof r.normalised !== 'object') return [];
-    const n = r.normalised as Record<string, unknown>;
-    const hasRegulated = Object.keys(n).some((k) => REGULATED_STAGED_FIELDS.has(k) && !isBlankValue(n[k]));
-    if (!hasRegulated) return [];
-    const blanked = Object.fromEntries(
-      Object.entries(n).map(([k, v]) => [k, REGULATED_STAGED_FIELDS.has(k) ? null : v]),
-    );
-    return [{ id: r.id, normalised: blanked }];
-  });
-
-  await prisma.$transaction([
-    prisma.importRow.updateMany({
-      where: { tenantId: auth.tenantId, batchId: id },
-      data: { raw: {} as never },
-    }),
-    ...normalisedUpdates.map((u) =>
-      prisma.importRow.update({ where: { id: u.id }, data: { normalised: u.normalised as never } }),
-    ),
-  ]);
-
-  await auditWrite({
-    action: 'update',
-    subjectType: 'import_batch',
-    subjectId: id,
-    meta: { rowsPurged: rows.length, fields: ['raw', 'normalised.regulated'] },
-  });
-
-  await emit({
-    name: EVENTS.IMPORT_PURGED,
-    subject: { entityType: 'import_batch', entityId: id },
-    newState: { rowsPurged: rows.length },
-    impact: { domains: ['fin'] },
-  });
-
-  return { rows: rows.length };
+  return shown;
 }
 
-/**
- * Commits a staged import and then blanks what it staged. The route calls this
- * rather than `commitImport` directly, so no path commits and leaves the file
- * behind. A failed commit throws before the purge, so the file stays for
- * another try.
- */
-export async function commitStagedImport(id: string) {
-  const result = await commitImport(id);
-  await purgeStagedRaw(id);
-  return result;
-}
 
 /** Options the commit will honour — target account, division, and so on. */
 export async function setImportOptions(id: string, options: Record<string, unknown>) {

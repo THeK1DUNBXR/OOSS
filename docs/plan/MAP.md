@@ -312,7 +312,7 @@
 
 **`apps/api/src/imports/classify.ts`** (109 lines) — LedgerClass:15 · classifyLedger:19 · isAccountName:77 · divisionFor:88 · JOURNAL_ACCOUNT_NAME:107 · JOURNAL_ACCOUNT_TYPE:108
 
-**`apps/api/src/imports/commit.ts`** (1617 lines) — CommitResult:39 · commitImport:79 · revertImport:729
+**`apps/api/src/imports/commit.ts`** (1632 lines) — CommitResult:41 · commitImport:81 · revertImport:744
 
 **`apps/api/src/imports/detect.ts`** (286 lines) — ImportKind:18 · Detection:47 · findHeaderRow:73 · detectGrid:106 · detectWorkbook:219 · isTallyLedgerSheet:255 · countLedgers:259 · detectSourceFormat:269
 
@@ -322,7 +322,9 @@
 
 **`apps/api/src/imports/parse.ts`** (250 lines) — Grid:13 · parseCsv:27 · SheetGrid:83 · readWorkbook:97 · toAmount:122 · toDate:166 · inferDayFirst:224 · nonEmpty:243 · isBlank:247
 
-**`apps/api/src/imports/service.ts`** (548 lines) — MAX_UPLOAD_BYTES:39 · openStagedNormalised:113 · StageResult:148 · stageImport:170 · listImports:399 · getImport:409 · importRows:417 · purgeStagedRaw:457 · commitStagedImport:516 · setImportOptions:523 · setRowStatus:538
+**`apps/api/src/imports/sealing.ts`** (207 lines) — MASKED:36 · isRegulatedCell:63 · isRegulatedField:70 · sealRawCells:75 · sealNormalised:85 · openStagedNormalised:102 · viewStagedObject:127 · purgeStagedRaw:155
+
+**`apps/api/src/imports/service.ts`** (374 lines) — MAX_UPLOAD_BYTES:37 · StageResult:40 · stageImport:62 · listImports:291 · getImport:301 · importRows:309 · setImportOptions:349 · setRowStatus:364
 
 **`apps/api/src/imports/tallyXml.ts`** (162 lines) — extractTallyXml:51 · looksLikeTallyXml:158
 
