@@ -66,12 +66,9 @@ describe('POST /crm/people/:id/affiliations — access role', () => {
   });
 
   it('a permitted assigner writes a registered role, and the create is audited', async () => {
-    // The chairman, not hr_ops_manager: employee holds invoices, payments and
-    // payslips:financial that hr_ops_manager does not hold, so under the
-    // no-escalation rule only the chairman may name it.
-    const chairman = await principalFor('chairman@kaizen.co.in');
+    const ops = await principalFor('operations@kaizen.co.in');
     await withFixtureRole({ slug: 'w1a_aff_target', grants: [] }, async (fixture) => {
-      const res = await postAffiliation(chairman, fixture.partyId, { roleSlug: 'employee' });
+      const res = await postAffiliation(ops, fixture.partyId, { roleSlug: 'employee' });
       expect(res.ok).toBe(true);
       const created = (await res.json()) as { id: string; roleSlug: string | null };
       expect(created.roleSlug).toBe('employee');
@@ -125,6 +122,17 @@ describe('POST /crm/people/:id/affiliations — no escalation', () => {
     await withFixtureRole({ slug: 'w1a_aff_low', grants: [{ resource: 'people', verbs: ['view'], scope: 'own' }] }, async (low) => {
       await withFixtureRole({ slug: 'w1a_aff_low_target', grants: [] }, async (target) => {
         const res = await postAffiliation(ops, target.partyId, { roleSlug: low.roleSlug });
+        expect(res.ok).toBe(true);
+      });
+    });
+  });
+
+  it('lets an assigner name a role whose only grants are own-scoped, though they hold none of its resources', async () => {
+    const ops = await principalFor('operations@kaizen.co.in');
+    const ownOnly = [{ resource: 'invoices', verbs: ['view', 'create', 'edit', 'financial'], scope: 'own' }];
+    await withFixtureRole({ slug: 'w1a_aff_own_only', grants: ownOnly }, async (role) => {
+      await withFixtureRole({ slug: 'w1a_aff_own_target', grants: [] }, async (target) => {
+        const res = await postAffiliation(ops, target.partyId, { roleSlug: role.roleSlug });
         expect(res.ok).toBe(true);
       });
     });
