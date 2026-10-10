@@ -288,3 +288,28 @@ Still open after round 7 (supersedes the round 6 list):
 - Name of the internal IT owner for server operations and off-site backup.
 - Large-payment threshold value and other thresholds, to be set at onboarding.
 - Expense receipt storage. Object storage remains deferred.
+
+## Owner answers, round 8 (recorded 2026-10-10)
+
+Answers given by the owner in an eighth round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged. This round supersedes the round 7 "Still open" list at the end of the round 7 section. Where no answer is recorded here, the recommendation above stands.
+
+- **Tenant setup data (owner answer).** Where a decision is tenant setup data, it is closed as "tbd during onboard" (to be entered during onboarding). It is entered as data, not hardcoded. Closed this way, and only these:
+  - **Large-payment threshold and other approval thresholds (D-09).** Status: tbd during onboard.
+  - **Reserved matters list (D-09).** The founder names them at onboarding. Status: tbd during onboard.
+  - **Named alternates and delegates per role (D-09).** Status: tbd during onboard.
+  - **Per-tenant practice labels, careers model and client-file summary rules (D-18).** Already deferred in the round 5 answer ("D-18 client files summaries-only, careers model and practice labels are all DEFERRED"). Status: tbd during onboard / deferred.
+- **Not closed by this answer.** These stay open, and are not tenant setup data:
+  - Real statutory sign-off (D-02). Statutory values stay DRAFT.
+  - The internal IT owner's name (server operations and off-site backup, round 7).
+  - D-11 numbers. Measure first, set later (round 7); the one-month measurement has not been collected.
+  - Legal checks: the chat-retention counsel check (D-14) and the Resend data-hosting check (round 7). Both are done by the internal finance head before the first outside user.
+- **CI gates and ledger tests (implication, not an owner statement).** Claude drafted the ten CI gates and the three ledger gate tests for owner approval in `docs/plan/zen360/CI-GATES-DRAFT.md`. That file carries the draft status line that `00-BRIEF.md` section 5 is missing from the branch and is not reconstructed. Nothing in the draft is in force until the owner approves it.
+
+Still open after round 8 (supersedes the round 7 list):
+
+- Real statutory sign-off beyond the internal finance head (D-02). Statutory values stay DRAFT.
+- Name of the internal IT owner for server operations and off-site backup.
+- Ten CI gates and ledger gate tests: awaiting owner approval of `docs/plan/zen360/CI-GATES-DRAFT.md`.
+- Expense receipt storage location: object storage on the company's own server, deferred.
+- D-11 numbers after the one-month measurement.
+- Legal checks carried over from round 7, not closed by this round: the chat-retention counsel check (D-14) and the Resend data-hosting check. Both are due before the first outside user.
