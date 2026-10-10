@@ -270,30 +270,10 @@ export async function formEmbedInfo(id: string): Promise<{ publicUrl: string; em
 // Public submission — no auth, tenant resolved from the token
 // ---------------------------------------------------------------------------
 
-interface RateLimitState {
-  timestamps: number[];
-}
-
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 30;
-const rateLimitByIp = new Map<string, RateLimitState>();
-
-function checkRateLimit(ip: string): void {
-  const now = Date.now();
-  const state = rateLimitByIp.get(ip) ?? { timestamps: [] };
-  state.timestamps = state.timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-  if (state.timestamps.length >= RATE_LIMIT_MAX) {
-    rateLimitByIp.set(ip, state);
-    throw new ApiError(429, 'RATE_LIMITED', 'Too many submissions from this address. Try again in a minute.');
-  }
-  state.timestamps.push(now);
-  rateLimitByIp.set(ip, state);
-}
-
-/** Test-only: clears the in-memory rate-limit table between test cases. */
-export function resetRateLimitForTests(): void {
-  rateLimitByIp.clear();
-}
+// The per-address limit lives on the route (routes/marketing/public.routes.ts),
+// where it is counted in Postgres and keyed on the proxy-derived address. A
+// counter here would be per process, and keyed on whatever the caller put in
+// X-Forwarded-For.
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
@@ -336,8 +316,6 @@ export async function submitPublicForm(
   payload: Record<string, unknown>,
   meta: SubmitMeta = {},
 ): Promise<{ ok: true; message: string }> {
-  checkRateLimit(meta.ip ?? 'unknown');
-
   const form = await unscopedPrisma.marketingForm.findFirst({ where: { publicToken } });
   if (!form || !form.active || form.deletedAt) throw ApiError.notFound('Form');
 

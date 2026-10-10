@@ -21,7 +21,6 @@ import {
   formEmbedInfo,
   loadForm,
   submitPublicForm,
-  resetRateLimitForTests,
   detectUnconvertedSubmissions,
   createShortLink,
   resolveAndClick,
@@ -45,7 +44,6 @@ const CHAIRMAN = 'chairman@kaizen.co.in'; // superadmin
 const FINANCE = 'finance@kaizen.co.in'; // finance_head: holds leads VCEDAXF — createLead runs as this account below
 
 beforeEach(() => {
-  resetRateLimitForTests();
   resetAdapterCacheForTests();
 });
 
@@ -190,31 +188,6 @@ describe('duplicate detection — an identical payload within 10 minutes is not 
     expect(submissions).toHaveLength(2);
     expect(submissions[0].status).toBe('converted');
     expect(submissions[1].status).toBe('duplicate');
-  });
-});
-
-describe('rate limiting — 30 submissions per minute per IP', () => {
-  it('the 31st submission from the same IP in a minute is rejected with 429', async () => {
-    const form = await publishedForm();
-    const ip = '203.0.113.7';
-
-    for (let i = 0; i < 30; i += 1) {
-      await submitPublicForm(form.publicToken, { fullName: `Person ${i}`, email: `rl-${i}-${Date.now()}@example.com` }, { ip });
-    }
-
-    const err = await expectReject(() =>
-      submitPublicForm(form.publicToken, { fullName: 'One too many', email: `rl-31-${Date.now()}@example.com` }, { ip }),
-    );
-    expect(err.status).toBe(429);
-  });
-
-  it('a different IP is unaffected by another IP exhausting its limit', async () => {
-    const form = await publishedForm();
-    for (let i = 0; i < 30; i += 1) {
-      await submitPublicForm(form.publicToken, { fullName: `Person ${i}`, email: `x-${i}-${Date.now()}@example.com` }, { ip: '198.51.100.1' });
-    }
-    const result = await submitPublicForm(form.publicToken, { fullName: 'Fresh IP', email: `fresh-${Date.now()}@example.com` }, { ip: '198.51.100.2' });
-    expect(result.ok).toBe(true);
   });
 });
 
