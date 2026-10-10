@@ -373,3 +373,23 @@ Still open after round 10 (supersedes round 9):
 - Expense receipt storage location: object storage on the company's own server, deferred.
 - D-11 numbers after the one-month measurement.
 - Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+
+## Owner answers, round 11 (recorded 2026-10-10)
+
+Answers given by the owner in an eleventh round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, except where this round says it supersedes an earlier answer. This round resolves the four conflicts flagged in `docs/plan/zen360/ROADMAP.md`. Where no answer is recorded here, the earlier rounds and the drafts stand.
+
+- **Restricted funds (owner answer, conflict 1).** Restricted-fund tracking is DEFERRED until D-17, which follows `docs/plan/zen360/README.md`. The round 2 answer that restricted funds are "tracked in the ledger from Phase 1" is superseded.
+- **Intercompany pairing (owner answer, conflict 2).** Intercompany pairing and reciprocal entries are DEFERRED together with the holding-company link between tenants (D-01). The round 2 answer to "pair both sides now" is superseded.
+- **E-invoicing route (owner answer, conflict 3).** The route is direct to the government invoice registration portal (IRP), not through a GSP. The round 2 answer stands.
+  - Implication (label): `docs/plan/zen360/` Phase 3 file and `docs/plan/README.md` decision B recommend a GSP and now disagree with the owner. They are not edited in this round. They are flagged for update when Phase 3 is scheduled.
+- **Own-server operations in Phase 0 (owner answer, conflict 4).** The own-server operations in `docs/plan/zen360/ORDERED-PLAN.md` Wave 4 are in Phase 0. The Phase 0 selection line that says "real API deployment is out" is superseded for the own-server operations. The deploy manifest and deploy pipeline are not changed by this answer and stay as recorded in the earlier rounds.
+
+Still open after round 11 (supersedes round 10):
+
+- Statutory sign-off by a qualified person. Statutory values stay DRAFT.
+- Duties per level, and read scope of the non-employee levels (founders and owners, contractors, external auditors and accountants, board and investors), including whether they are users of the same tenant.
+- IT owner: a level assignment at onboarding. The name is not recorded.
+- Expense receipt storage location: object storage on the company's own server, deferred.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+- Owner of the CI migration baseline (Wave 0). Round 10 recorded that the owner is not recorded; it remains unrecorded.
