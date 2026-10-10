@@ -13,6 +13,17 @@ Work in this order.
 4. **0.8 CI.** ESLint and Prettier. Remove the dead classes at `Start.tsx:100,109` and `People.tsx:56`. Build identity. Replace `db push` with a migration baseline.
 5. **Hosting.** Remove the Cloudflare Worker (`worker/index.ts`). Serve everything from the own server behind Caddy.
 
+## Status (2026-10-10)
+
+Implemented on `claude/laughing-maxwell-kmxu5l`, pending CI on the PR:
+
+- 0.7: schema split, genmap and scoped tests were already done. Added `db:validate` and the `db:drift` no-drift check.
+- 0.1: `FIELD_ENCRYPTION_KEY` is required in production (FX-60). The marketing unsubscribe secret has no literal fallback. `TENANT_ENFORCE_MODE` and the `auth.ts` fallback were already gone (the file is `lib/auth.ts`).
+- Time: FX-40, FX-41 and FX-42 are fixed, plus about 20 further UTC-derived periods. Month and FY bounds and the period-close snapshot now start at IST midnight.
+- 0.8: the dead classes and the build identity were already fixed. A migration baseline replaces `db push`. The three earlier hand-written migrations had never been applied anywhere, because `db push` ignores them. Their ledger and audit immutability triggers are now live. Their RLS block is parked in `apps/api/prisma/pending/ledger_rls.sql` for FX-51, because it was a syntax error and was never live.
+- Hosting: the Worker is removed. See `deploy/Caddyfile` and `WEB_DIST_DIR`.
+- Deferred to the end of Wave 1: a Prettier reformat of 555 files and a `format:check` step in CI. Reformatting now would conflict with every in-flight branch.
+
 ## Exit criteria (Wave 0)
 
 - Boot without `JWT_SECRET` exits, naming the variable. Production without `FIELD_ENCRYPTION_KEY` throws.
