@@ -141,3 +141,118 @@ describe('0.2 sessions', () => {
     expect(logoutRows).toHaveLength(1);
   });
 });
+
+/**
+ * Fix round 1: the refresh secret moves out of the body into an httpOnly
+ * cookie, a rotation has a ten-second grace for the second tab, and step-up
+ * survives a refresh for its own window. Session timestamps are set directly
+ * in the test database because the clock is real and these windows are short.
+ */
+type Res = Awaited<ReturnType<typeof fetch>>;
+const COOKIE = 'kz_refresh';
+const setCookieOf = (res: Res): string | undefined => res.headers.getSetCookie().find((c) => c.startsWith(`${COOKIE}=`));
+const cookieValueOf = (setCookie: string): string => setCookie.split(';')[0]!.slice(COOKIE.length + 1);
+const sessionIdOf = (cookieValue: string): string => cookieValue.slice(0, cookieValue.indexOf('.'));
+const refreshWithCookie = (cookieValue: string) =>
+  fetch(`${base}/api/auth/refresh`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: `${COOKIE}=${cookieValue}` },
+    body: '{}',
+  });
+async function signInCookie(): Promise<string> {
+  const res = await post('/auth/login', { email, password: PASSWORD });
+  expect(res.status).toBe(200);
+  const set = setCookieOf(res);
+  expect(set).toBeTruthy();
+  return cookieValueOf(set!);
+}
+
+describe('0.2 fix round 1: cookie, grace and step-up', () => {
+  it('login sets the refresh secret as an httpOnly, strict, /api/auth cookie of session length, and keeps it out of the body', async () => {
+    const res = await post('/auth/login', { email, password: PASSWORD });
+    expect(res.status).toBe(200);
+    const set = setCookieOf(res);
+    expect(set).toBeTruthy();
+    expect(set).toMatch(/;\s*HttpOnly/i);
+    expect(set).toMatch(/;\s*SameSite=Strict/i);
+    expect(set).toMatch(/;\s*Path=\/api\/auth/);
+    const maxAge = Number(/;\s*Max-Age=(\d+)/i.exec(set!)?.[1]);
+    expect(maxAge).toBeGreaterThan(30 * 24 * 60 * 60 - 60);
+    expect(maxAge).toBeLessThanOrEqual(30 * 24 * 60 * 60);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('refreshToken');
+  });
+
+  it('refresh runs on the cookie alone and rotates it', async () => {
+    const cookie = await signInCookie();
+    const res = await refreshWithCookie(cookie);
+    expect(res.status).toBe(200);
+    const next = setCookieOf(res);
+    expect(next).toBeTruthy();
+    expect(cookieValueOf(next!)).not.toBe(cookie);
+  });
+
+  it('a refresh secret sent in the body is ignored', async () => {
+    const cookie = await signInCookie();
+    const res = await fetch(`${base}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken: cookie }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('a replay inside the ten-second grace is answered without rotating or revoking', async () => {
+    const first = await signInCookie();
+    const rotated = await refreshWithCookie(first);
+    expect(rotated.status).toBe(200);
+    const second = cookieValueOf(setCookieOf(rotated)!);
+
+    const replay = await refreshWithCookie(first);
+    expect(replay.status).toBe(200);
+    expect(((await replay.json()) as { token: string }).token).toBeTruthy();
+    expect(setCookieOf(replay)).toBeUndefined();
+
+    // The winner's secret is still the current one: the session was not revoked or rotated again.
+    expect((await refreshWithCookie(second)).status).toBe(200);
+  });
+
+  it('the same replay after the grace window is reuse, and revokes the session', async () => {
+    const first = await signInCookie();
+    const rotated = await refreshWithCookie(first);
+    const second = cookieValueOf(setCookieOf(rotated)!);
+    await unscopedPrisma.$executeRawUnsafe(
+      `UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`,
+      sessionIdOf(first),
+    );
+
+    expect((await refreshWithCookie(first)).status).toBe(401);
+    expect((await refreshWithCookie(second)).status).toBe(401);
+  });
+
+  it('step-up survives a refresh while its window is open', async () => {
+    const cookie = await signInCookie();
+    await unscopedPrisma.$executeRawUnsafe(`UPDATE sessions SET "stepUpAt" = now() - interval '1 minute' WHERE id = $1`, sessionIdOf(cookie));
+    const res = await refreshWithCookie(cookie);
+    expect(res.status).toBe(200);
+    const claims = jwt.decode(((await res.json()) as { token: string }).token) as { stepUp: boolean };
+    expect(claims.stepUp).toBe(true);
+  });
+
+  it('step-up lapses on refresh once its window has passed', async () => {
+    const cookie = await signInCookie();
+    await unscopedPrisma.$executeRawUnsafe(`UPDATE sessions SET "stepUpAt" = now() - interval '2 hours' WHERE id = $1`, sessionIdOf(cookie));
+    const res = await refreshWithCookie(cookie);
+    expect(res.status).toBe(200);
+    const claims = jwt.decode(((await res.json()) as { token: string }).token) as { stepUp: boolean };
+    expect(claims.stepUp).toBe(false);
+  });
+
+  it('logout with only the cookie revokes the session and clears the cookie', async () => {
+    const cookie = await signInCookie();
+    const res = await fetch(`${base}/api/auth/logout`, { method: 'POST', headers: { cookie: `${COOKIE}=${cookie}` } });
+    expect(res.status).toBe(200);
+    expect(setCookieOf(res)).toMatch(/Max-Age=0/i);
+    expect((await refreshWithCookie(cookie)).status).toBe(401);
+  });
+});
