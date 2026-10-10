@@ -11,8 +11,14 @@
 
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { unscopedPrisma } from '../platform/db.js';
-import { ruleAt, StatutoryRuleNotFoundError } from '../domains/statutory.js';
-import { asUser, tenantId } from './helpers.js';
+import {
+  approveStatutoryRule,
+  createStatutoryRule,
+  holdStatutoryRule,
+  ruleAt,
+  StatutoryRuleNotFoundError,
+} from '../domains/statutory.js';
+import { asUser, expectReject, tenantId, withFixtureRole } from './helpers.js';
 
 const JURISDICTION = 'TEST-W1K';
 const KEY = 'test.example_rate';
@@ -151,5 +157,187 @@ describe('StatutoryRule structure (3.1)', () => {
         asUser('chairman@kaizen.co.in', () => ruleAt(KEY, JURISDICTION, new Date('2026-07-01T00:00:00.000Z'))),
       ).rejects.toBeInstanceOf(StatutoryRuleNotFoundError);
     });
+  });
+});
+
+/**
+ * Drafting and approval (FIXES P2, P3). The creator is the chairman, who holds
+ * every grant; the approver is a fixture role that holds `approve` on
+ * rate_tables and nothing else. Maker and checker must be different people.
+ */
+const FX_JURISDICTION = 'TEST-W1K-FX';
+const CREATOR = 'chairman@kaizen.co.in';
+const APPROVER_GRANTS = [{ resource: 'rate_tables', verbs: ['view', 'edit', 'approve'] }];
+
+async function clearFx() {
+  await unscopedPrisma.statutoryRule.deleteMany({ where: { jurisdiction: FX_JURISDICTION } });
+}
+
+describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
+  beforeEach(async () => {
+    tid = await tenantId();
+    await clearFx();
+  });
+
+  afterAll(clearFx);
+
+  it('stages a DRAFT over an open-ended APPROVED rule (exclusion covers APPROVED rows only)', async () => {
+    await seed({ jurisdiction: FX_JURISDICTION, effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null });
+    await expect(
+      seed({
+        jurisdiction: FX_JURISDICTION,
+        effectiveFrom: dateOnly('2027-04-01'),
+        effectiveTo: null,
+        status: 'DRAFT',
+        approvedBy: null,
+        approvedAt: null,
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it('createStatutoryRule stages next year\'s rate as a DRAFT while this year\'s open-ended rule is APPROVED', async () => {
+    await seed({ jurisdiction: FX_JURISDICTION, effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null });
+    const draft = await asUser(CREATOR, (p) =>
+      createStatutoryRule({
+        domain: 'test',
+        key: KEY,
+        jurisdiction: FX_JURISDICTION,
+        effectiveFrom: dateOnly('2027-04-01'),
+        value: 2,
+        source: 'fixture: obviously fake, W1K',
+      }).then((row) => ({ row, creatorPartyId: p.partyId })),
+    );
+    expect(draft.row.status).toBe('DRAFT');
+    expect(draft.row.createdBy).toBe(draft.creatorPartyId);
+  });
+
+  it('two domains with the same key and jurisdiction over the same days coexist', async () => {
+    await seed({ jurisdiction: FX_JURISDICTION, domain: 'test', effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null });
+    await expect(
+      seed({ jurisdiction: FX_JURISDICTION, domain: 'other', effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null }),
+    ).resolves.toBeDefined();
+  });
+
+  it('refuses approval by the creator, and leaves the row a DRAFT', async () => {
+    const draft = await asUser(CREATOR, () =>
+      createStatutoryRule({
+        domain: 'test',
+        key: KEY,
+        jurisdiction: FX_JURISDICTION,
+        effectiveFrom: dateOnly('2026-04-01'),
+        value: 2,
+        source: 'fixture: obviously fake, W1K',
+      }),
+    );
+    const err = await expectReject(() => asUser(CREATOR, () => approveStatutoryRule(draft.id)));
+    expect(err.status).toBe(403);
+    const after = await unscopedPrisma.statutoryRule.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(after.status).toBe('DRAFT');
+    expect(after.approvedBy).toBeNull();
+  });
+
+  it('refuses approval by a principal without the approve verb, and leaves the row a DRAFT', async () => {
+    const draft = await asUser(CREATOR, () =>
+      createStatutoryRule({
+        domain: 'test',
+        key: KEY,
+        jurisdiction: FX_JURISDICTION,
+        effectiveFrom: dateOnly('2026-04-01'),
+        value: 2,
+        source: 'fixture: obviously fake, W1K',
+      }),
+    );
+    await withFixtureRole({ grants: [{ resource: 'rate_tables', verbs: ['view', 'edit'] }] }, async () => {
+      const err = await expectReject(() => approveStatutoryRule(draft.id));
+      expect(err.status).toBe(403);
+    });
+    const after = await unscopedPrisma.statutoryRule.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(after.status).toBe('DRAFT');
+  });
+
+  it('approval by another person closes the open-ended prior rule at the new effectiveFrom, and ruleAt switches on the IST day', async () => {
+    const prior = await seed({
+      jurisdiction: FX_JURISDICTION,
+      effectiveFrom: dateOnly('2026-01-01'),
+      effectiveTo: null,
+      value: 1,
+    });
+    const draft = await asUser(CREATOR, () =>
+      createStatutoryRule({
+        domain: 'test',
+        key: KEY,
+        jurisdiction: FX_JURISDICTION,
+        effectiveFrom: dateOnly('2026-04-01'),
+        value: 2,
+        source: 'fixture: obviously fake, W1K',
+      }),
+    );
+
+    const approved = await withFixtureRole({ grants: APPROVER_GRANTS }, (approver) =>
+      approveStatutoryRule(draft.id).then((row) => ({ row, approverPartyId: approver.partyId })),
+    );
+    expect(approved.row.status).toBe('APPROVED');
+    expect(approved.row.approvedBy).toBe(approved.approverPartyId);
+
+    const closed = await unscopedPrisma.statutoryRule.findUniqueOrThrow({ where: { id: prior.id } });
+    expect(closed.effectiveTo).toEqual(dateOnly('2026-04-01'));
+
+    // 2026-03-31T18:30Z is 00:00 IST on 1 April. 18:29Z is still 31 March IST.
+    const before = await asUser(CREATOR, () => ruleAt(KEY, FX_JURISDICTION, new Date('2026-03-31T18:29:00.000Z')));
+    expect(before.value).toBe(1);
+    const onTheDay = await asUser(CREATOR, () => ruleAt(KEY, FX_JURISDICTION, new Date('2026-03-31T18:30:00.000Z')));
+    expect(onTheDay.value).toBe(2);
+  });
+
+  it('approval writes an audit record for both the new row and the closed prior row', async () => {
+    const prior = await seed({ jurisdiction: FX_JURISDICTION, effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null });
+    const draft = await asUser(CREATOR, () =>
+      createStatutoryRule({
+        domain: 'test',
+        key: KEY,
+        jurisdiction: FX_JURISDICTION,
+        effectiveFrom: dateOnly('2026-04-01'),
+        value: 2,
+        source: 'fixture: obviously fake, W1K',
+      }),
+    );
+    await withFixtureRole({ grants: APPROVER_GRANTS }, () => approveStatutoryRule(draft.id));
+    const audited = await unscopedPrisma.auditRecord.findMany({
+      where: { subjectType: 'statutory_rule', subjectId: { in: [prior.id, draft.id] } },
+    });
+    expect(new Set(audited.map((a) => a.subjectId))).toEqual(new Set([prior.id, draft.id]));
+  });
+
+  it('refuses approval that would overlap an approved bounded rule, as a conflict', async () => {
+    await seed({
+      jurisdiction: FX_JURISDICTION,
+      effectiveFrom: dateOnly('2026-01-01'),
+      effectiveTo: dateOnly('2026-06-01'),
+    });
+    const draft = await asUser(CREATOR, () =>
+      createStatutoryRule({
+        domain: 'test',
+        key: KEY,
+        jurisdiction: FX_JURISDICTION,
+        effectiveFrom: dateOnly('2026-03-01'),
+        value: 2,
+        source: 'fixture: obviously fake, W1K',
+      }),
+    );
+    await withFixtureRole({ grants: APPROVER_GRANTS }, async () => {
+      const err = await expectReject(() => approveStatutoryRule(draft.id));
+      expect(err.status).toBe(409);
+    });
+    const after = await unscopedPrisma.statutoryRule.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(after.status).toBe('DRAFT');
+  });
+
+  it('holding an approved rule takes it out of ruleAt', async () => {
+    const rule = await seed({ jurisdiction: FX_JURISDICTION, effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null });
+    const held = await asUser(CREATOR, () => holdStatutoryRule(rule.id));
+    expect(held.status).toBe('HOLD');
+    await expect(
+      asUser(CREATOR, () => ruleAt(KEY, FX_JURISDICTION, new Date('2026-06-01T00:00:00.000Z'))),
+    ).rejects.toBeInstanceOf(StatutoryRuleNotFoundError);
   });
 });
