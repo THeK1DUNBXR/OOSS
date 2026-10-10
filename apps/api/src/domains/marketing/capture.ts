@@ -806,10 +806,15 @@ export async function receiveWebhook(inbound: InboundWebhook, meta: WebhookMeta 
       // A failed first attempt is retried, so a transient error does not lose the event.
       // Anything else is already applied or still in flight, and must not run twice.
       if (prior.status !== 'failed') return { accepted: true as const, status: 'duplicate' as const, duplicate: true };
-      row = await prisma.marketingWebhookInbound.update({
-        where: { id: prior.id },
+      // The status check is repeated in the write. Two replays that both read
+      // 'failed' would otherwise both claim it; only the one whose update
+      // matches a row still 'failed' gets to apply the event.
+      const claimed = await prisma.marketingWebhookInbound.updateMany({
+        where: { id: prior.id, status: 'failed' },
         data: { status: 'received', error: null },
       });
+      if (claimed.count === 0) return { accepted: true as const, status: 'duplicate' as const, duplicate: true };
+      row = { id: prior.id, recordCode: prior.recordCode };
     }
 
     try {
