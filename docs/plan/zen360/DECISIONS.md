@@ -558,6 +558,7 @@ Still open after round 18:
 - The function and vertical list, and the role template for each (telecalling, training, and others).
 - Whether an interim hire-time role, before Wave 6, matches the Staff baseline. This is under check against the existing `employee` role.
 - Whether `sysadmin@` should hold the chairman role in the seed. The FX-01 tests routed a chairman step to it.
+
 ## Owner answers, round 19 (recorded 2026-10-10, access-model plan review)
 
 Context: the access-model plan draft (`docs/plan/zen360/ACCESS-MODEL-PLAN.md`, DRAFT v2) and the owner's corrections given during its drafting.
@@ -569,3 +570,15 @@ Context: the access-model plan draft (`docs/plan/zen360/ACCESS-MODEL-PLAN.md`, D
 - **(e) The vertical structure is researched, not inherited.** The owner directs that verticals must not rely on the list defined at inception (`packages/shared/src/domain.ts:9-20`). The verticals must be researched and fixed firmly, so that growth of the app or the company does not break records, access or reports. Research is under way; a vertical taxonomy proposal follows for approval.
 - **(f) Multiple placements are allowed.** A person may hold placements in more than one vertical or unit, each with its own level.
 - **(g) Who confirms access.** HR answers. The vertical Head confirms placements in their vertical. The founder confirms sensitive extra duties, Head placements and HR's own mapping (owner answer to plan question 5: "yes").
+
+## Owner answers, round 20 (recorded 2026-10-10, vertical taxonomy)
+
+Context: the vertical taxonomy proposal (`docs/plan/zen360/VERTICAL-TAXONOMY.md`), which answers round 19 (e). The owner approved all five decisions ("yes to all 5").
+
+- **(a) Five business lines.** SKL Skill Development, EDU Education, CLR Corporate Learning, TEC Technology Services and WFS Workforce Solutions. Media & Marketing stays a shared function until it earns external revenue; the five-question test in the taxonomy decides when it graduates.
+- **(b) The registry is group-level.** `BusinessLine` IDs are immutable and shared across the group's legal entities. A split or merge creates successors through a dated mapping. History stays as it was booked, never rewritten.
+- **(c) The payer decides the line.** Revenue goes to the line of the customer who pays, not the team that delivers. Shared delivery cost is distributed in basis points that total 10,000.
+- **(d) SAP work splits by payer.** SAP consulting is TEC. SAP training sold to companies is CLR.
+- **(e) Five things are not lines.** Research is a cost centre. Partnerships is a channel. Telecalling is a unit or channel. Ventures are legal entities. The Foundation is a separate Section 8 entity.
+
+Consequence for the plan: the registry and its foreign keys land in Waves 2–3, before the ledger, so `JournalLine` carries `lineId` and `costCentreId` from its first posting.
