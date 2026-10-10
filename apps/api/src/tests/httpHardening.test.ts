@@ -123,6 +123,32 @@ describe('unexpected errors (http.ts errorMiddleware)', () => {
   });
 });
 
+describe('body parser errors (http.ts errorMiddleware)', () => {
+  it('answers a malformed JSON body with 400, not a generic 500', async () => {
+    const res = await fetch(`${base}/health`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"email": "person@kaizen.test",',
+    });
+    const body = (await res.json()) as { error: { code: string; message?: string; requestId?: string } };
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe('BAD_REQUEST');
+    expect(body.error.requestId).toBeTruthy();
+    expect(JSON.stringify(body)).not.toContain('person@kaizen.test');
+  });
+
+  it('answers a body over the 2mb limit with 413, not a generic 500', async () => {
+    const res = await fetch(`${base}/health`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ blob: 'x'.repeat(2_500_000) }),
+    });
+    const body = (await res.json()) as { error: { code: string } };
+    expect(res.status).toBe(413);
+    expect(body.error.code).toBe('PAYLOAD_TOO_LARGE');
+  });
+});
+
 describe('structured logging (platform/logger.ts)', () => {
   it('drops fields that are not on the allowlist, such as email and password', () => {
     const chunks: string[] = [];
