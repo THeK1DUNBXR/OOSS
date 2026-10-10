@@ -6,7 +6,7 @@
  * decide()-time defence in depth), delegation, and cross-tenant isolation.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { asSystem } from '../../platform/context.js';
 import type { AuthContext } from '../../platform/context.js';
 import { asPrincipal, asUser, expectReject, prisma, tenantId, unscopedPrisma, withFixtureRole } from '../helpers.js';
@@ -27,6 +27,24 @@ import {
 
 let TENANT: string;
 let fixtureSeq = 0;
+/**
+ * What the beforeAll patch touched on the real seeded finance_head role, so the
+ * afterAll can put it back. Left in place, `finance_head` kept `approve` on
+ * `hr_requests` for every later file in the run, and the CRM-FOUND-003 drift
+ * check (grants must match ROLE_GRANT_MATRIX) failed in acceptance.test.ts.
+ */
+let patchedGrantId: string | null = null;
+let patchedGrantVerbs: string[] | null = null;
+let createdGrantId: string | null = null;
+
+afterAll(async () => {
+  if (createdGrantId) {
+    await unscopedPrisma.grant.delete({ where: { id: createdGrantId } });
+  } else if (patchedGrantId && patchedGrantVerbs) {
+    await unscopedPrisma.grant.update({ where: { id: patchedGrantId }, data: { verbs: patchedGrantVerbs } });
+  }
+  invalidateGrantCache();
+});
 
 beforeAll(async () => {
   TENANT = await tenantId();
@@ -46,12 +64,15 @@ beforeAll(async () => {
   const existing = await unscopedPrisma.grant.findFirst({ where: { tenantId: TENANT, roleId: financeRole.id, resource: 'hr_requests' } });
   if (existing) {
     if (!existing.verbs.includes('approve' as never)) {
+      patchedGrantId = existing.id;
+      patchedGrantVerbs = [...existing.verbs];
       await unscopedPrisma.grant.update({ where: { id: existing.id }, data: { verbs: [...existing.verbs, 'approve'] } });
     }
   } else {
-    await unscopedPrisma.grant.create({
+    const created = await unscopedPrisma.grant.create({
       data: { tenantId: TENANT, principalType: 'role', roleId: financeRole.id, resource: 'hr_requests', verbs: ['view', 'approve'], scope: 'all' },
     });
+    createdGrantId = created.id;
   }
   invalidateGrantCache();
 });
