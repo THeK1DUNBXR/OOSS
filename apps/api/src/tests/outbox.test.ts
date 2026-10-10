@@ -10,7 +10,8 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { unscopedPrisma, prisma } from '../platform/db.js';
 import { asSystem } from '../platform/context.js';
 import { emit, subscribe, clearSubscribers } from '../platform/eventBus.js';
-import { drainOutbox, OUTBOX_MAX_ATTEMPTS } from '../platform/outbox.js';
+import { drainOutbox, OUTBOX_MAX_ATTEMPTS, startOutboxDispatcher, stopOutboxDispatcher } from '../platform/outbox.js';
+import { isCanonicalEventName } from '@kaizen/shared';
 import { tenantId } from './helpers.js';
 
 let TENANT: string;
@@ -105,5 +106,75 @@ describe('FX-24 outbox', () => {
     const r = await drainOutbox({ tenantId: TENANT });
     expect(r.dead).toBe(1);
     await unscopedPrisma.outboxEvent.deleteMany({ where: { tenantId: TENANT, eventName: 'NotCanonical' } });
+  });
+});
+
+describe('FX-24 dispatcher and past-tense grammar', () => {
+  it('a delivery that fails once is retried by the running dispatcher after its backoff', async () => {
+    let calls = 0;
+    const seenIds: string[] = [];
+    subscribe(NAME, 'probe', (e) => {
+      calls += 1;
+      if (calls === 1) throw new Error('transient');
+      seenIds.push(e.subject.entityId);
+    });
+    await asSystem(TENANT, async () => {
+      // Inline delivery at emit fails once; the row stays pending behind its backoff.
+      await emit(probe('retried'));
+    });
+    expect(seenIds).toEqual([]);
+    const pending = await unscopedPrisma.outboxEvent.findFirstOrThrow({ where: { tenantId: TENANT, eventName: NAME } });
+    expect(pending.state).toBe('pending');
+    expect(pending.nextAttemptAt.getTime()).toBeGreaterThan(Date.now());
+
+    // The backoff has elapsed: make the row due rather than sleeping for it.
+    await unscopedPrisma.outboxEvent.updateMany({
+      where: { tenantId: TENANT, eventName: NAME },
+      data: { nextAttemptAt: new Date(Date.now() - 1000) },
+    });
+
+    startOutboxDispatcher({ intervalMs: 25 });
+    try {
+      const deadline = Date.now() + 10_000;
+      while (seenIds.length === 0 && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+    } finally {
+      stopOutboxDispatcher();
+    }
+    expect(seenIds).toEqual(['retried']);
+    const row = await unscopedPrisma.outboxEvent.findFirstOrThrow({ where: { tenantId: TENANT, eventName: NAME } });
+    expect(row.state).toBe('dispatched');
+    expect(row.attempts).toBe(2);
+  });
+
+  it('a present-tense verb is refused at emit and dead-lettered at dispatch', async () => {
+    await asSystem(TENANT, async () => {
+      await expect(
+        emit({ name: 'kz.crm.outboxprobe.create', subject: { entityType: 'X', entityId: '1' } }),
+      ).rejects.toThrow(/grammar/);
+    });
+    await unscopedPrisma.outboxEvent.create({
+      data: {
+        tenantId: TENANT,
+        eventRecordId: 'none',
+        eventName: 'kz.crm.outboxprobe.create',
+        payload: {},
+        nextAttemptAt: new Date(0),
+      },
+    });
+    const r = await drainOutbox({ tenantId: TENANT });
+    expect(r.dead).toBe(1);
+    await unscopedPrisma.outboxEvent.deleteMany({ where: { tenantId: TENANT, eventName: 'kz.crm.outboxprobe.create' } });
+  });
+
+  it('accepts past participles and the irregular verbs, refuses present forms', () => {
+    expect(isCanonicalEventName('kz.crm.outboxprobe.created')).toBe(true);
+    expect(isCanonicalEventName('kz.crm.lead.untouched_detected')).toBe(true);
+    expect(isCanonicalEventName('kz.fin.payment.paid')).toBe(true);
+    expect(isCanonicalEventName('kz.crm.opportunity.won')).toBe(true);
+    expect(isCanonicalEventName('kz.crm.opportunity.lost')).toBe(true);
+    expect(isCanonicalEventName('kz.crm.outboxprobe.create')).toBe(false);
+    expect(isCanonicalEventName('kz.crm.outboxprobe.pay')).toBe(false);
   });
 });
