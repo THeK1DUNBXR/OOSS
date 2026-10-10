@@ -15,7 +15,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { asUser, tenantId, unscopedPrisma } from './helpers.js';
 import { createPolicyDraft, publishPolicy } from '../domains/it/governance.js';
-import { reconcileApprovalGatePolicies } from '../platform/approvalPolicySync.js';
+import { reconcileApprovalGatePolicies, reconcileApprovalGatePoliciesForAllTenants } from '../platform/approvalPolicySync.js';
 
 const POLICY_CODE = 'POL-IT-POLICY-PUBLISH';
 const LEGACY_LADDER = ['chairman', 'finance_head'];
@@ -76,5 +76,58 @@ describe('approval gate convergence for tenants seeded before FX-01', () => {
 
     const versions = await unscopedPrisma.policyVersion.findMany({ where: { policyId }, orderBy: { version: 'asc' } });
     expect(versions.map((v) => v.version)).toEqual([1, 2]);
+  });
+  it('a current-version pointer left on v1 is repaired even though the latest version already has the chairman ladder', async () => {
+    const policy = await unscopedPrisma.policy.findFirstOrThrow({ where: { id: policyId } });
+    const v1 = await unscopedPrisma.policyVersion.findFirstOrThrow({ where: { policyId, version: 1 } });
+    const v2 = await unscopedPrisma.policyVersion.findFirstOrThrow({ where: { policyId, version: 2 } });
+    // The state a crash between the version insert and the pointer update leaves behind.
+    await unscopedPrisma.policy.update({ where: { id: policy.id }, data: { currentVersionId: v1.id } });
+
+    const repaired = await reconcileApprovalGatePolicies(kaizen);
+    expect(repaired.published).toEqual([]);
+
+    const after = await unscopedPrisma.policy.findFirstOrThrow({ where: { id: policy.id } });
+    expect(after.currentVersionId).toBe(v2.id);
+    expect(await unscopedPrisma.policyVersion.count({ where: { policyId } })).toBe(2);
+  });
+
+  it('one tenant that throws does not stop the tenants after it from converging', async () => {
+    const stampB = stamp();
+    const tenantB = await unscopedPrisma.tenant.create({ data: { name: 'Convergence probe B', slug: `conv-b-${stampB}` } });
+    const policyB = await unscopedPrisma.policy.create({
+      data: { tenantId: tenantB.id, policyCode: POLICY_CODE, name: 'Technology policy publication', kind: 'approval_gate' },
+    });
+    const v1B = await unscopedPrisma.policyVersion.create({
+      data: {
+        tenantId: tenantB.id,
+        policyId: policyB.id,
+        version: 1,
+        content: {
+          requiredPermission: 'it_policies:approve',
+          authorityClass: 'it_policy_publish',
+          approverResolution: LEGACY_LADDER,
+          escalateToTopTierWhen: { strategicValue: 'high', termMonthsOver: 36 },
+          selfDealingBar: true,
+          excludedRoles: ['system_admin'],
+          appliesTo: { principalTypes: ['human'] },
+          escalationGraceBusinessDays: 3,
+        },
+      },
+    });
+    await unscopedPrisma.policy.update({ where: { id: policyB.id }, data: { currentVersionId: v1B.id } });
+
+    // kaizen is made to throw; the run must report it and still converge tenant B.
+    const run = (tenant: string) => {
+      if (tenant === kaizen) throw new Error('simulated tenant failure');
+      return reconcileApprovalGatePolicies(tenant);
+    };
+    const summary = await reconcileApprovalGatePoliciesForAllTenants(run);
+    expect(summary.failed).toBe(1);
+
+    const latestB = await unscopedPrisma.policyVersion.findFirstOrThrow({ where: { policyId: policyB.id, version: 2 } });
+    expect((latestB.content as { approverResolution: string[] }).approverResolution).toEqual(['chairman']);
+    const pointerB = await unscopedPrisma.policy.findFirstOrThrow({ where: { id: policyB.id } });
+    expect(pointerB.currentVersionId).toBe(latestB.id);
   });
 });
