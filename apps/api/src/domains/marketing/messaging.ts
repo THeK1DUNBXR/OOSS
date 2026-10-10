@@ -917,6 +917,32 @@ export async function dispatchSend(id: string): Promise<SendView> {
 }
 
 /**
+ * Rank order for a recipient's status. Provider callbacks arrive out of order,
+ * so a late `sent` or `delivered` must not undo an `opened`, and a bounce must
+ * not be undone by a `delivered` that was queued behind it (FX-50 follow-up).
+ * Terminal outcomes share the top rank, so the first one recorded sticks.
+ */
+const RECIPIENT_STATUS_RANK: Record<string, number> = {
+  queued: 0,
+  sent: 1,
+  delivered: 2,
+  opened: 3,
+  clicked: 4,
+  bounced: 5,
+  failed: 5,
+  unsubscribed: 5,
+};
+const TERMINAL_RECIPIENT_RANK = 5;
+
+export function advancesRecipientStatus(current: string, next: string): boolean {
+  const to = RECIPIENT_STATUS_RANK[next];
+  if (to === undefined) return false;
+  const from = RECIPIENT_STATUS_RANK[current] ?? -1;
+  if (from >= TERMINAL_RECIPIENT_RANK) return false;
+  return to > from;
+}
+
+/**
  * Maps a channel's inbound webhook delivery events onto recipient rows and
  * rolls the counts up onto the send. Exported for the webhook route another
  * agent writes.
@@ -936,6 +962,7 @@ export async function applyDeliveryEvents(channelKey: string, events: InboundDel
     if (!send) continue;
 
     const statusMap: Record<InboundDeliveryEvent['kind'], string | null> = {
+      sent: 'sent',
       delivered: 'delivered',
       opened: 'opened',
       clicked: 'clicked',
@@ -947,12 +974,22 @@ export async function applyDeliveryEvents(channelKey: string, events: InboundDel
     const nextStatus = statusMap[event.kind];
     if (!nextStatus) continue;
 
-    const existingEvents = Array.isArray(recipient.events) ? (recipient.events as unknown[]) : [];
+    // A provider that retries the same event under the same id must not count twice.
+    // The id is recorded on the recipient's event log, so the check needs no extra table.
+    const existingEvents = Array.isArray(recipient.events) ? (recipient.events as Array<{ kind?: string; eventId?: string | null }>) : [];
+    if (event.eventId && existingEvents.some((e) => e.eventId === event.eventId && e.kind === event.kind)) continue;
+
+    // The event is always logged, but the status only moves forward (see RECIPIENT_STATUS_RANK).
+    const statusAdvances = advancesRecipientStatus(recipient.status, nextStatus);
+    const resultingStatus = statusAdvances ? nextStatus : recipient.status;
     await prisma.marketingSendRecipient.update({
       where: { id: recipient.id },
       data: {
-        status: nextStatus,
-        events: [...existingEvents, { kind: event.kind, at: event.at.toISOString(), detail: event.detail ?? null }] as never,
+        ...(statusAdvances ? { status: nextStatus } : {}),
+        events: [
+          ...existingEvents,
+          { kind: event.kind, eventId: event.eventId ?? null, at: event.at.toISOString(), detail: event.detail ?? null },
+        ] as never,
       },
     });
     applied += 1;
@@ -987,7 +1024,7 @@ export async function applyDeliveryEvents(channelKey: string, events: InboundDel
         name: eventName,
         subject: { entityType: 'marketing_send_recipient', entityId: recipient.id },
         related: [{ relation: 'send', entityType: 'marketing_send', entityId: send.id }, { relation: 'person', entityType: 'person', entityId: recipient.personId }],
-        newState: { status: nextStatus },
+        newState: { status: resultingStatus },
       });
     }
 
