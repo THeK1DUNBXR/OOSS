@@ -16,9 +16,10 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { agentContext } from '../platform/context.js';
-import { applyFieldVisibility, scopeWhere } from '../platform/permissions.js';
+import { applyFieldVisibility, evaluate, scopeWhere } from '../platform/permissions.js';
+import type { AuthContext } from '../platform/context.js';
 import { ceilingForRole } from '../lib/http.js';
-import { unscopedPrisma } from './helpers.js';
+import { asPrincipal, unscopedPrisma } from './helpers.js';
 
 const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const TENANT_SLUG = `fc-perm-${stamp}`;
@@ -53,6 +54,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Grants reference roles, so they go first; the tenant is last.
+  await unscopedPrisma.grant.deleteMany({ where: { tenantId } });
+  await unscopedPrisma.accessRole.deleteMany({ where: { tenantId } });
   await unscopedPrisma.itContinuityPlan.deleteMany({ where: { tenantId } });
   await unscopedPrisma.tenant.deleteMany({ where: { id: tenantId } });
 });
@@ -112,5 +116,96 @@ describe('a roleSlug that names no defined role gets the lowest ceiling', () => 
     });
     expect(await ceilingForRole(tenantId, `fc-role-${stamp}`)).toBe('confidential');
     await unscopedPrisma.accessRole.delete({ where: { id: role.id } });
+  });
+});
+
+describe('the single-record check and the list filter give the same answer', () => {
+  const cases: Array<{ scope: 'own' | 'own_or_unowned'; partyId: string | null; branch: string | null }> = [
+    { scope: 'own', partyId: null, branch: null },
+    { scope: 'own', partyId: OWNER, branch: null },
+    { scope: 'own_or_unowned', partyId: null, branch: null },
+    { scope: 'own_or_unowned', partyId: OWNER, branch: null },
+  ];
+
+  cases.forEach((c, i) => {
+    it(`${c.scope}, party ${c.partyId ? 'set' : 'null'}, branch ${c.branch ?? 'null'}`, async () => {
+      const slug = `fc-agree-${stamp}-${i}`;
+      const role = await unscopedPrisma.accessRole.create({
+        data: { tenantId, slug, name: slug, classificationCeiling: 'internal', isSystem: false },
+      });
+      await unscopedPrisma.grant.create({
+        data: {
+          tenantId,
+          principalType: 'role',
+          roleId: role.id,
+          resource: 'it_continuity_plan',
+          verbs: ['view'],
+          scope: c.scope,
+        },
+      });
+      const auth: AuthContext = {
+        ...agentContext(tenantId, `agt-${stamp}`).auth!,
+        principalType: 'human',
+        agentId: null,
+        roleSlug: slug,
+        partyId: c.partyId,
+        branch: c.branch,
+      };
+
+      const listed = await listPlanIds(scopeWhere(c.scope, auth, 'ownerPartyId'));
+      const rows: Array<[string, string | null]> = [
+        [ownedPlanId, OWNER],
+        [unownedPlanId, null],
+      ];
+      for (const [id, owner] of rows) {
+        const decision = await asPrincipal(auth, () =>
+          evaluate({
+            resource: 'it_continuity_plan',
+            verb: 'view',
+            record: { ownerPartyId: owner, branch: null },
+            auth,
+          }),
+        );
+        expect(decision.allowed, `single-record decision for row ${id}`).toBe(listed.includes(id));
+      }
+    });
+  });
+
+  it('an unowned row with no branch is refused to a branch-holding caller by the evaluator', async () => {
+    const slug = `fc-agree-branch-${stamp}`;
+    const role = await unscopedPrisma.accessRole.create({
+      data: { tenantId, slug, name: slug, classificationCeiling: 'internal', isSystem: false },
+    });
+    await unscopedPrisma.grant.create({
+      data: {
+        tenantId,
+        principalType: 'role',
+        roleId: role.id,
+        resource: 'it_continuity_plan',
+        verbs: ['view'],
+        scope: 'own_or_unowned',
+      },
+    });
+    const auth: AuthContext = {
+      ...agentContext(tenantId, `agt-${stamp}`).auth!,
+      principalType: 'human',
+      agentId: null,
+      roleSlug: slug,
+      partyId: OWNER,
+      branch: 'Chennai',
+    };
+    // The filter's unowned clause is `{ owner: null, branch: 'Chennai' }`. In
+    // SQL that never matches a row whose branch is NULL. No model in the schema
+    // has both an owner and a branch column, so this half of the matrix is
+    // checked against the evaluator alone.
+    const decision = await asPrincipal(auth, () =>
+      evaluate({
+        resource: 'it_continuity_plan',
+        verb: 'view',
+        record: { ownerPartyId: null, branch: null },
+        auth,
+      }),
+    );
+    expect(decision.allowed).toBe(false);
   });
 });
