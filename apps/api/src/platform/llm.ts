@@ -16,7 +16,7 @@ export type LlmRegion = 'india' | 'us' | 'eu' | 'global' | 'local';
 export type LlmTask = 'briefing' | 'ask_kaizen' | 'drafting' | 'extraction' | 'forecasting';
 export type ApprovalClassification = 'read_only' | 'reversible_single_record' | 'irreversible_external';
 
-const PERSONAL_DATA_FIELDS = new Set([
+export const PERSONAL_DATA_FIELDS = new Set([
   'fullName',
   'email',
   'phone',
