@@ -18,7 +18,7 @@ import { PURPOSE_CODES } from '@kaizen/shared';
 import { resetAdapterCacheForTests } from '../domains/marketing/adapters/registry.js';
 import { createTemplate, submitForReview, approveTemplate, createSend, requestSend, dispatchSend, listSendRecipients, loadSend } from '../domains/marketing/messaging.js';
 import { createWebhookEndpoint } from '../domains/marketing/capture.js';
-import { applyDeliveryEvents } from '../domains/marketing/messaging.js';
+import { applyDeliveryEvents, markRecipientDispatched } from '../domains/marketing/messaging.js';
 import { createApp } from '../server.js';
 
 const CREATOR = 'operations@kaizen.co.in';
@@ -250,6 +250,22 @@ describe('FX-50 follow-up — delivery status only moves forward', () => {
     await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at, eventId: `d-${Date.now()}` }]));
     await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'sent', at, eventId: `s-${Date.now()}` }]));
     expect(await recipientStatus(providerMessageId)).toBe('delivered');
+  });
+});
+
+describe('FX-50 follow-up — dispatch write cannot regress a recipient', () => {
+  it('a dispatch write after delivered keeps delivered and keeps the first providerMessageId', async () => {
+    const { providerMessageId } = await dispatchedRecipient();
+    await asUser(APPROVER, () =>
+      applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at: new Date(), eventId: `dd-${Date.now()}` }]),
+    );
+    const row = await unscopedPrisma.marketingSendRecipient.findFirstOrThrow({ where: { providerMessageId } });
+
+    await asUser(CREATOR, () => markRecipientDispatched(row.id, `second-${Date.now()}`));
+
+    const after = await unscopedPrisma.marketingSendRecipient.findFirstOrThrow({ where: { id: row.id } });
+    expect(after.status).toBe('delivered');
+    expect(after.providerMessageId).toBe(providerMessageId);
   });
 });
 
