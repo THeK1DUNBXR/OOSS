@@ -200,7 +200,7 @@ describe('structured logging (platform/logger.ts)', () => {
       const line = chunks.join('');
       expect(line).toContain('"requestId":');
       expect(line).toContain('"tenantId":null');
-      expect(line).toContain('"path":"/ping"');
+      expect(line).toContain('"route":"/ping"');
       expect(line).not.toContain('secret-token-value');
     } finally {
       await new Promise<void>((resolve) => s.close(() => resolve()));

@@ -21,10 +21,11 @@ export const SAFE_FIELDS: ReadonlySet<string> = new Set([
   'requestId',
   'correlationId',
   'tenantId',
-  // Request shape. The path, never the query string: query strings carry
-  // tokens and search terms.
+  // Request shape. The route pattern, never the raw path: public routes carry
+  // a form token and a webhook endpoint token in the path, and a query string
+  // carries tokens and search terms.
   'method',
-  'path',
+  'route',
   'status',
   'durationMs',
   // Errors. The whole error is logged server-side on purpose (Phase 0.3);
