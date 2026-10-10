@@ -469,3 +469,34 @@ describe('cross-tenant isolation', () => {
     expect(err.status).toBe(404);
   });
 });
+
+describe('inbound webhook replay of a failed delivery (concurrent)', () => {
+  it('two replays of one failed delivery apply it once; the loser is a duplicate', async () => {
+    const tid = await tenantId();
+    await unscopedPrisma.marketingWebhookEndpoint.deleteMany({ where: { tenantId: tid, provider: 'forms' } });
+    const endpoint = await asUser(CHAIRMAN, () => createWebhookEndpoint('forms'));
+    const form = await makeForm();
+    const eventId = `replay-race-${Date.now()}`;
+    const email = `replay-${Date.now()}@example.com`;
+    const rawBody = Buffer.from(JSON.stringify({ eventId, formToken: form.publicToken, fullName: 'Replay', email }));
+    const inbound = () => {
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      const signature = `sha256=${createHmac('sha256', endpoint.signingSecret).update(`${timestamp}.`).update(rawBody).digest('hex')}`;
+      return { provider: 'forms', endpointToken: endpoint.token, rawBody, timestamp, signature };
+    };
+
+    // The form is still a draft, so the first delivery fails and is recorded as failed.
+    await expectReject(() => receiveWebhook(inbound()));
+    await asUser(OPS, () => publishForm(form.id));
+
+    // Two replays of the failed delivery, started together: both read it as failed.
+    const outcomes = await Promise.allSettled([receiveWebhook(inbound()), receiveWebhook(inbound())]);
+    const statuses = outcomes.map((o) => (o.status === 'fulfilled' ? o.value.status : 'rejected'));
+    expect(statuses.sort()).toEqual(['duplicate', 'processed']);
+
+    const submissions = await unscopedPrisma.marketingFormSubmission.count({
+      where: { formId: form.id, status: { not: 'duplicate' } },
+    });
+    expect(submissions).toBe(1);
+  });
+});
