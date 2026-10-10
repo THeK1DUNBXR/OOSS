@@ -294,13 +294,16 @@ describe('Data-principal requests', () => {
   it('a correction to a correctable field is applied and the normalised phone follows it', async () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('correction-ok'));
     const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+    // A number no other active person holds: the collision guard (FX-63) refuses
+    // a number already on file, and this suite's database keeps rows across runs.
+    const phone = `9${String(Date.now()).slice(-9)}`;
     const fulfilled = await asUser('operations@kaizen.co.in', () =>
-      fulfilDataRequest(request.id, { correction: { primaryPhone: '+91 98765 43210' } }),
+      fulfilDataRequest(request.id, { correction: { primaryPhone: `+91 ${phone}` } }),
     );
     expect(fulfilled.status).toBe('fulfilled');
     const after = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
-    expect(after.primaryPhone).toBe('+91 98765 43210');
-    expect(after.primaryPhoneNormalised).toBe('9876543210');
+    expect(after.primaryPhone).toBe(`+91 ${phone}`);
+    expect(after.primaryPhoneNormalised).toBe(phone);
   });
 
   it('fulfilling an access request assembles an export and audits it as an export', async () => {
@@ -682,12 +685,11 @@ describe('FX-63: a date-of-birth correction re-runs the minor gate on the enrolm
       makePerson(label, { dateOfBirth: new Date(Date.now() - 30 * 365.25 * 86_400_000) }),
     );
     const cohort = await unscopedPrisma.cohort.findFirstOrThrow({ where: { tenantId: TENANT } });
-    const recordCode = await nextRecordCode('ENR');
-    const enrollment = await asUser('operations@kaizen.co.in', () =>
+    const enrollment = await asUser('operations@kaizen.co.in', async () =>
       prisma.enrollment.create({
         data: {
           tenantId: TENANT,
-          recordCode,
+          recordCode: await nextRecordCode('ENR'),
           personId: person.id,
           cohortId: cohort.id,
           status: 'reserved',

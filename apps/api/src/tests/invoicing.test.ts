@@ -21,6 +21,8 @@ import {
   amountInWords,
   computeGst,
   gstinCheckDigit,
+  istDateKey,
+  istMidnight,
   invoicePayable,
   isValidGstin,
   paymentTypeFor,
@@ -903,6 +905,7 @@ describe('the invoice says which of the three it is addressed to', () => {
       const college = await createOrganization({ kind: 'institution', name: `Billed Polytechnic ${tag}` });
       const firm = await createOrganization({ kind: 'organization', name: `Billed Traders ${tag}` });
       const student = await createStudent({
+        adultAttested: true,
         fullName: `Billed Learner ${tag}`,
         primaryPhone: `92${tag.slice(-8)}`,
         registrationNumber: `KI-BILL/${tag}`,
@@ -936,6 +939,7 @@ describe('the invoice says which of the three it is addressed to', () => {
       const { createStudent } = await import('../domains/students.js');
       const tag = stamp();
       const student = await createStudent({
+        adultAttested: true,
         fullName: `Kerala Learner ${tag}`,
         primaryPhone: `91${tag.slice(-8)}`,
         // Ours is Tamil Nadu, so this one is an inter-state supply and carries
@@ -1463,6 +1467,7 @@ describe('a course can be assigned to a customer', () => {
       const course = await createCourse({ name: 'Rolling Programme', code, feeAmount: 5000 });
 
       const enrollment = await assignCourse({
+        adultAttested: true,
         courseId: course.id,
         fullName: `Walk In ${stamp()}`,
         primaryPhone: `98${String(Date.now()).slice(-8)}`,
@@ -1476,6 +1481,7 @@ describe('a course can be assigned to a customer', () => {
       // A second walk-in joins the same rolling batch rather than producing a
       // second batch of one.
       const second = await assignCourse({
+        adultAttested: true,
         courseId: course.id,
         fullName: `Walk In Two ${stamp()}`,
         primaryPhone: `97${String(Date.now()).slice(-8)}`,
@@ -1489,7 +1495,7 @@ describe('a course can be assigned to a customer', () => {
       const cohort = await prisma.cohort.findFirstOrThrow({});
       const other = await prisma.course.findFirstOrThrow({ where: { id: { not: cohort.courseId }, active: true } });
       const err = await expectReject(() =>
-        assignCourse({ courseId: other.id, cohortId: cohort.id, fullName: 'Nobody' }),
+        assignCourse({ adultAttested: true, courseId: other.id, cohortId: cohort.id, fullName: 'Nobody' }),
       );
       expect(err.message).toMatch(/not a batch of the course/);
     });
@@ -1500,11 +1506,11 @@ describe('a course can be assigned to a customer', () => {
       const code = `TWICE-${stamp()}`.slice(0, 16);
       const course = await createCourse({ name: 'Twice', code, feeAmount: 100 });
       const phone = `96${String(Date.now()).slice(-8)}`;
-      const first = await assignCourse({ courseId: course.id, fullName: 'Repeat Student', primaryPhone: phone });
+      const first = await assignCourse({ adultAttested: true, courseId: course.id, fullName: 'Repeat Student', primaryPhone: phone });
       expect(first.id).toBeTruthy();
 
       const err = await expectReject(() =>
-        assignCourse({ courseId: course.id, fullName: 'Repeat Student', primaryPhone: phone }),
+        assignCourse({ adultAttested: true, courseId: course.id, fullName: 'Repeat Student', primaryPhone: phone }),
       );
       expect(err.message).toMatch(/already on/);
     });
@@ -1622,8 +1628,10 @@ describe('a student’s timeline is one record made of four kinds of day', () =>
       // The same day again is a correction, not a second row.
       await recordDailyProgress(enrollmentId, { progressDate: day, score: 90 });
 
+      // A progress day is the IST day the score is for, starting at IST midnight. P1.
+      const [dy, dm, dd] = istDateKey(day).split('-').map(Number);
       const rows = await prisma.dailyProgress.findMany({
-        where: { enrollmentId, progressDate: new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate())) },
+        where: { enrollmentId, progressDate: istMidnight(dy, dm, dd) },
       });
       expect(rows).toHaveLength(1);
       expect(rows[0].score).toBe(90);
@@ -1903,11 +1911,16 @@ describe('the student register reads what a company already keeps', () => {
       const XLSX = await import('xlsx');
 
       const tag = stamp();
+      // The register has no date of birth, so each learner is attested as an
+      // adult here. This test is about the prices and the enrolments; the age
+      // rule has its own test in importEnrolmentAgeBasis.test.ts. FX-64.
+      const withAttestation = (rows: string[][]) =>
+        rows.map((r, i) => (i === 0 ? [...r, 'Adult (18 or over)'] : [...r, 'Yes']));
       const sheet = XLSX.utils.aoa_to_sheet(
-        grid(
+        withAttestation(grid(
           ['Register Student One', `KI-TEST/${tag}/1`, `98${tag.slice(-8)}`, '', `Register Course ${tag}`, '24000', '15000', '2700', '6300', '26.25%', '17700', '7/8/26', '7/8/26', '9/9/26', '10000', '7/8/26', `KIPL/T/${tag}/1`, '', '', '', '', '', ''],
           ['Register Student Two', `KI-TEST/${tag}/2`, `97${tag.slice(-8)}`, '', `Register Course ${tag}`, '24000', '15000', '2700', '6300', '26.25%', '17700', '7/9/26', '7/9/26', '9/9/26', '2000', '7/9/26', `KIPL/T/${tag}/2`, '', '', '', '', '', ''],
-        ),
+        )),
       );
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, sheet, 'Sheet1');

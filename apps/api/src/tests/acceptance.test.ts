@@ -874,6 +874,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       const { createStudent, listStudents } = await import('../domains/students.js');
       const tag = Date.now();
       const student = await createStudent({
+        adultAttested: true,
         fullName: `Ilakkiya ${tag}`,
         primaryPhone: `98${String(tag).slice(-8)}`,
         registrationNumber: `KI-TEST/${tag}`,
@@ -898,6 +899,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
 
       const err = await expectReject(async () =>
         createStudent({
+          adultAttested: true,
           fullName: `Wrong Origin ${tag}`,
           primaryPhone: `97${String(tag).slice(-8)}`,
           institutionId: firm.id,
@@ -914,6 +916,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       const tag = Date.now();
       const number = `KI-DUP/${tag}`;
       const first = await createStudent({
+        adultAttested: true,
         fullName: `First Holder ${tag}`,
         primaryPhone: `96${String(tag).slice(-8)}`,
         registrationNumber: number,
@@ -921,6 +924,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
 
       const err = await expectReject(async () =>
         createStudent({
+          adultAttested: true,
           fullName: `Second Holder ${tag}`,
           primaryPhone: `95${String(tag).slice(-8)}`,
           registrationNumber: number,
@@ -947,7 +951,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
         },
       });
 
-      const student = await createStudent({ fullName: `Already Known ${tag}`, primaryPhone: phone });
+      const student = await createStudent({ adultAttested: true, fullName: `Already Known ${tag}`, primaryPhone: phone });
       expect(student.personId).toBe(contact.id);
 
       const people = await prisma.person.count({ where: { primaryPhoneNormalised: phone, deletedAt: null } });
@@ -959,7 +963,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
     const tag = Date.now();
     const created = await asUser('employee@kaizen.co.in', async () => {
       const { createStudent } = await import('../domains/students.js');
-      return createStudent({ fullName: `Walk In ${tag}`, primaryPhone: `93${String(tag).slice(-8)}` });
+      return createStudent({ adultAttested: true, fullName: `Walk In ${tag}`, primaryPhone: `93${String(tag).slice(-8)}` });
     });
     expect(created.fullName).toBe(`Walk In ${tag}`);
 
@@ -979,7 +983,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       // "Sponsored" with nobody named is the row that later gets billed to the
       // learner by mistake, so it does not get written.
       const err = await expectReject(async () =>
-        createStudent({ fullName: `Unpaid ${tag}`, primaryPhone: `89${String(tag).slice(-8)}`, funding: 'sponsor' }),
+        createStudent({ adultAttested: true, fullName: `Unpaid ${tag}`, primaryPhone: `89${String(tag).slice(-8)}`, funding: 'sponsor' }),
       );
       expect(err.status).toBe(400);
       expect(err.message).toMatch(/needs the organisation that is paying/i);
@@ -989,6 +993,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
       const college = await createOrganization({ kind: 'institution', name: `Paying College ${tag}` });
       const wrong = await expectReject(async () =>
         createStudent({
+          adultAttested: true,
           fullName: `Miscoded ${tag}`,
           primaryPhone: `88${String(tag).slice(-8)}`,
           funding: 'sponsor',
@@ -999,7 +1004,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
 
       // A scheme without its framework reports as nothing, so it is refused too.
       const noFramework = await expectReject(async () =>
-        createStudent({ fullName: `Schemeless ${tag}`, primaryPhone: `87${String(tag).slice(-8)}`, funding: 'scheme' }),
+        createStudent({ adultAttested: true, fullName: `Schemeless ${tag}`, primaryPhone: `87${String(tag).slice(-8)}`, funding: 'scheme' }),
       );
       expect(noFramework.status).toBe(400);
       expect(noFramework.message).toMatch(/Naan Mudhalvan/);
@@ -1019,6 +1024,7 @@ describe('CRM-IDN-002 — a body is an institution or an organisation, never bot
         roles: ['sponsor'],
       });
       const learner = await createStudent({
+        adultAttested: true,
         fullName: `Funded Beneficiary ${tag}`,
         primaryPhone: `86${String(tag).slice(-8)}`,
         funding: 'sponsor',
@@ -2425,6 +2431,7 @@ describe('A college, a client and a student are three different facts', () => {
         fullName: 'Affiliation Subject',
         primaryPhone: aPhone(),
         institutionId: college.id,
+        adultAttested: true,
       });
 
       const affiliation = await prisma.affiliation.findFirstOrThrow({
@@ -2461,7 +2468,8 @@ describe('A college, a client and a student are three different facts', () => {
       // A minor with no guardian contact is refused. The person must not have
       // been created on the way to the refusal: an error message is not a
       // reason for a stranger to appear in the directory.
-      await expectReject(() => enrolStudent({ cohortId: cohort.id, fullName: name, isMinor: true }));
+      const fifteenYearsAgo = new Date(Date.now() - 15 * 365.25 * 86_400_000).toISOString().slice(0, 10);
+      await expectReject(() => enrolStudent({ cohortId: cohort.id, fullName: name, dateOfBirth: fifteenYearsAgo }));
       expect(await prisma.person.findFirst({ where: { fullName: name } })).toBeNull();
     });
   });
@@ -2475,8 +2483,8 @@ describe('A college, a client and a student are three different facts', () => {
       const phone = aPhone();
 
       const before = await prisma.mergeCandidate.count();
-      const one = await enrolStudent({ cohortId: first.id, fullName: 'Returning Student', primaryPhone: phone });
-      const two = await enrolStudent({ cohortId: second.id, fullName: 'Returning Student', primaryPhone: phone });
+      const one = await enrolStudent({ cohortId: first.id, fullName: 'Returning Student', primaryPhone: phone, adultAttested: true });
+      const two = await enrolStudent({ cohortId: second.id, fullName: 'Returning Student', primaryPhone: phone, adultAttested: true });
 
       expect(two.personId).toBe(one.personId);
       // Enrolling somebody a second time is not a merge of two records, so it
@@ -2495,9 +2503,9 @@ describe('A college, a client and a student are three different facts', () => {
       const { cohort } = await aCollegeAndABatch(`DUP${Date.now()}`);
       const phone = aPhone();
 
-      const first = await enrolStudent({ cohortId: cohort.id, fullName: 'Twice Over', primaryPhone: phone });
+      const first = await enrolStudent({ cohortId: cohort.id, fullName: 'Twice Over', primaryPhone: phone, adultAttested: true });
       const err = await expectReject(() =>
-        enrolStudent({ cohortId: cohort.id, fullName: 'Twice Over', primaryPhone: phone }),
+        enrolStudent({ cohortId: cohort.id, fullName: 'Twice Over', primaryPhone: phone, adultAttested: true }),
       );
       expect(err.status).toBe(409);
       expect(err.message).toContain(first.recordCode);
@@ -2514,6 +2522,7 @@ describe('A college, a client and a student are three different facts', () => {
         fullName: 'Sent From Here',
         primaryPhone: aPhone(),
         institutionId: college.id,
+        adultAttested: true,
       });
 
       const view = await assembleOrganization360(college.id);
@@ -2556,10 +2565,10 @@ describe('The import templates', () => {
     const book = XLSX.read(blank, { type: 'buffer' });
     XLSX.utils.sheet_add_aoa(
       book.Sheets.Data,
-      [['Fill Test', '9876500001', '', 'Some Batch', 'Some College', 'No', '', '']],
+      [['Fill Test', '9876500001', '', 'Some Batch', 'Some College', '02/06/2008', 'No', '', '']],
       { origin: 'A2' },
     );
-    book.Sheets.Data['!ref'] = 'A1:H2';
+    book.Sheets.Data['!ref'] = 'A1:I2';
     const filled = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 
     const sheets = readWorkbook(filled);
@@ -2576,7 +2585,7 @@ describe('The import templates', () => {
       primaryPhone: '9876500001',
       cohortName: 'Some Batch',
       institutionName: 'Some College',
-      isMinor: false,
+      adultAttested: false,
     });
   });
 
@@ -2607,10 +2616,10 @@ describe('The import templates', () => {
       const book = XLSX.read(buildTemplateWorkbook(spec), { type: 'buffer' });
       XLSX.utils.sheet_add_aoa(
         book.Sheets.Data,
-        [['Nowhere Student', `98765${Date.now() % 100000}`, '', 'No Such Batch At All', '', 'No', '', '']],
+        [['Nowhere Student', `98765${Date.now() % 100000}`, '', 'No Such Batch At All', '', '', 'No', '', '']],
         { origin: 'A2' },
       );
-      book.Sheets.Data['!ref'] = 'A1:H2';
+      book.Sheets.Data['!ref'] = 'A1:I2';
 
       const staged = await stageImport({
         fileName: 'students.xlsx',

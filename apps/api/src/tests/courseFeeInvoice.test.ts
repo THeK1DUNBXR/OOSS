@@ -40,7 +40,12 @@ describe('the course-fee invoice lifecycle', () => {
         capacity: 30,
       },
     });
-    const enrollment = await enrolStudent({ cohortId: cohort.id, fullName: `${tag} Student`, primaryPhone: `9${Date.now()}`.slice(0, 10) });
+    const enrollment = await enrolStudent({
+      cohortId: cohort.id,
+      fullName: `${tag} Student`,
+      primaryPhone: `9${Date.now()}`.slice(0, 10),
+      adultAttested: true,
+    });
     return { course, cohort, enrollment };
   }
 
