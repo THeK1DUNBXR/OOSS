@@ -70,6 +70,25 @@ Logs land in `.dev/api.log` and `.dev/web.log`.
 
 Point the suite elsewhere with `TEST_DATABASE_URL`.
 
+### Moving an existing db-pushed database onto migrations
+
+Databases built with `prisma db push` already have the tables that the baseline
+creates, so `migrate deploy` would fail on them. Mark the baseline as applied,
+then deploy the rest:
+
+```bash
+cd apps/api
+npx prisma migrate resolve --applied 20260901000000_baseline
+npx prisma migrate deploy
+```
+
+Warning: the three later migrations install triggers and immutability
+boundaries (journal balance, closed-period guard, audit and consent
+append-only) that `db push` never installed. Run them on a copy of the
+database first, and look at the failures before pointing the real database at
+them. Tenant row-level security is not in these migrations; it is held in
+`apps/api/prisma/pending/ledger_rls.sql` until FX-51 owns it.
+
 ## Seeding
 
 ```bash
