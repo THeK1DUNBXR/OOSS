@@ -35,12 +35,6 @@ const captureLimit = rateLimit({
 // its own urlencoded parser rather than widening every other route's intake.
 router.use(express.urlencoded({ extended: true }));
 
-function clientIp(req: express.Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length) return forwarded.split(',')[0].trim();
-  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
-}
-
 router.post(
   '/public/forms/:publicToken/submit',
   captureLimit,
@@ -52,7 +46,7 @@ router.post(
       if (v) utm[key] = v;
     }
     const result = await submitPublicForm(req.params.publicToken, payload, {
-      ip: clientIp(req),
+      ip: req.ip ?? 'unknown',
       userAgent: req.headers['user-agent'],
       utm,
     });
@@ -64,7 +58,7 @@ router.post(
 router.get(
   '/public/l/:slug',
   handler(async (req, res) => {
-    const { targetUrl } = await resolveAndClick(req.params.slug, { ip: clientIp(req), userAgent: req.headers['user-agent'] });
+    const { targetUrl } = await resolveAndClick(req.params.slug, { ip: req.ip ?? 'unknown', userAgent: req.headers['user-agent'] });
     res.redirect(302, targetUrl);
     return undefined;
   }),
@@ -85,7 +79,7 @@ router.post(
         timestamp: str(req.headers['x-kai-timestamp']),
         signature: str(req.headers['x-kai-signature']),
       },
-      { ip: clientIp(req), userAgent: req.headers['user-agent'] },
+      { ip: req.ip ?? 'unknown', userAgent: req.headers['user-agent'] },
     );
     res.status(result.duplicate ? 200 : 202);
     return result;
