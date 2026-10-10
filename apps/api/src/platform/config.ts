@@ -65,6 +65,22 @@ export const envSchema = z.object({
    */
   JWT_SECRET: z.string().min(32, 'must be at least 32 characters — generate one, do not invent it'),
 
+  /**
+   * Keys AES-256-GCM encryption of PAN, Aadhaar and bank values (privacy.ts).
+   * Required in production because the only other option is a constant that
+   * is printed in this repository: encryption under it protects nothing from
+   * anyone who has read the source. Outside production the development key is
+   * allowed, with a warning, so a laptop does not need a secret to boot.
+   */
+  FIELD_ENCRYPTION_KEY: z.string().min(32, 'must be at least 32 characters — generate one, do not invent it').optional(),
+
+  /**
+   * Signs the public unsubscribe links. Optional because JWT_SECRET is a
+   * working fallback; a separate secret means rotating one does not
+   * invalidate the other's links.
+   */
+  MARKETING_UNSUBSCRIBE_SECRET: z.string().min(32, 'must be at least 32 characters — generate one, do not invent it').optional(),
+
   PORT: z.coerce.number().int().positive().default(4000),
 
   /**
@@ -89,6 +105,14 @@ export const envSchema = z.object({
   TENANT_SLUG: z.string().default('kaizen'),
   TENANT_NAME: z.string().default('Kaizen Infinities'),
   SEED_EMAIL_DOMAIN: z.string().default('kaizen.co.in'),
+}).superRefine((env, ctx) => {
+  if (env.NODE_ENV === 'production' && !env.FIELD_ENCRYPTION_KEY) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['FIELD_ENCRYPTION_KEY'],
+      message: 'is required when NODE_ENV is production — it keys encryption of PAN, Aadhaar and bank values',
+    });
+  }
 });
 
 export type Config = Readonly<z.infer<typeof envSchema>>;
