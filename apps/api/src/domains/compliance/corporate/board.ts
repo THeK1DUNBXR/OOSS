@@ -10,8 +10,13 @@ import { prisma } from '../../../platform/db.js';
 import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { assertCan } from '../../../platform/permissions.js';
-import { auditWrite } from '../../../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
 import { nextCorporateCode } from './codes.js';
+
+// Registered here, not only in compliance/corporate.ts: that registrar is
+// reached through the barrel, and a caller importing this module directly
+// (a job, a script) would otherwise throw "not registered" on its first write.
+registerGovernedEntities('cmp_corporate', ['board_meeting', 'board_resolution']);
 
 export async function listBoardMeetings() {
   await assertCan({ resource: 'board_resolutions', verb: 'view' });

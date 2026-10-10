@@ -10,8 +10,11 @@ import { prisma } from '../../../platform/db.js';
 import { currentAuth } from '../../../platform/context.js';
 import { ApiError } from '../../../platform/errors.js';
 import { assertCan } from '../../../platform/permissions.js';
-import { auditWrite } from '../../../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
 import { nextCorporateCode } from './codes.js';
+
+// Registered beside the writer for the reason given in corporate/board.ts.
+registerGovernedEntities('cmp_corporate', ['register_entry']);
 
 export interface RegisterEntryInput {
   registerKind: RegisterKind;

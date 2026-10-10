@@ -11,18 +11,9 @@
  * file nobody reads end to end before changing it.
  */
 
-import { registerGovernedEntities } from '../../platform/audit.js';
-
-registerGovernedEntities('cmp_corporate', [
-  'security_policy',
-  'register_entry',
-  'board_meeting',
-  'board_resolution',
-  'mca_filing',
-  'refund',
-  'refund_policy',
-  'certificate',
-]);
+// Each corporate/* writer registers its own subjects (see corporate/board.ts for
+// why): a caller importing one of them directly must not depend on this barrel
+// having been loaded first.
 
 export * from './corporate/totp.js';
 export * from './corporate/rateLimit.js';

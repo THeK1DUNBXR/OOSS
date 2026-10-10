@@ -43,7 +43,12 @@ import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { registerHook } from '../../platform/hooks.js';
 
+// payroll_run is owned by domains/payroll.ts, but apply-salary-TDS (below)
+// audits an update to it from here. Registered here too, so a job importing
+// only this module does not throw on that audit; the registry is a set, so the
+// second registration is harmless.
 registerGovernedEntities('cmp_tax', [
+  'payroll_run',
   'tds_section_rate',
   'tds_applicability_rule',
   'tds_decision',
