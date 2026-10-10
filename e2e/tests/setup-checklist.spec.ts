@@ -63,6 +63,17 @@ test.describe('the getting-started checklist', () => {
         .poll(() => pathOf(page.url()), { message: `the "${step.title}" step went somewhere else` })
         .toBe(pathOf(destinationOf(step)));
 
+      // A step whose job is a form arrives with the form open, which is the
+      // point of `?new=1`. The dialog's backdrop covers the sidebar, so a person
+      // closes it before going back, and so does this test; leaving it open made
+      // every step after a form-opening one time out on the click, not the route.
+      const dialog = page.getByRole('dialog');
+      await dialog.waitFor({ state: 'visible', timeout: 1_000 }).catch(() => undefined);
+      if (await dialog.count()) {
+        await page.keyboard.press('Escape');
+        await expect(dialog).toHaveCount(0);
+      }
+
       // Back through the sidebar rather than by reloading: the checklist is one
       // click away from everywhere, and a full page load per step turns this
       // into a minute of waiting for the browser rather than a test.
@@ -74,10 +85,14 @@ test.describe('the getting-started checklist', () => {
 
 test.describe('the setup banner', () => {
   /**
-   * The banner only exists while setup is unfinished, and a working company's
-   * is finished — so the checklist the client is handed is edited on the way in
-   * to put one step back to undone. Everything under test is on the client side
-   * of that response, and this is the state a company is in on its first day.
+   * The banner only exists while setup is unfinished, and it names the first
+   * required step that is not done. The minimal seed leaves the books and the
+   * accounts undone, so without help the banner would name "Bring your books
+   * in" and the students assertions would test the wrong step. The checklist
+   * the client is handed is therefore edited on the way in so that `key` is the
+   * first required step still undone: the steps ahead of it are marked done and
+   * `key` is marked undone. Everything under test is on the client side of that
+   * response.
    */
   async function withUnfinishedSetup(
     page: import('@playwright/test').Page,
@@ -86,7 +101,11 @@ test.describe('the setup banner', () => {
     await page.route('**/api/auth/onboarding', async (route) => {
       const response = await route.fetch();
       const state = (await response.json()) as OnboardingState;
-      for (const step of state.steps) if (step.key === key) step.done = false;
+      const at = state.steps.findIndex((s) => s.key === key);
+      state.steps.forEach((step, i) => {
+        if (i < at && !step.optional) step.done = true;
+        if (i === at) step.done = false;
+      });
       state.done = state.steps.filter((s) => s.done).length;
       state.complete = false;
       await route.fulfill({ response, json: state });

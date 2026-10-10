@@ -83,6 +83,8 @@ export async function signIn(page: Page): Promise<void> {
   await expect(page.getByRole('link', { name: 'Getting Started' })).toBeVisible();
 }
 
+let apiToken: string | undefined;
+
 /**
  * The checklist as the server computes it, read straight from the API.
  *
@@ -91,10 +93,17 @@ export async function signIn(page: Page): Promise<void> {
  * the answer.
  */
 export async function onboardingState(request: APIRequestContext): Promise<OnboardingState> {
-  const { email, password } = credentials();
-  const login = await request.post(`${API_URL}/api/auth/login`, { data: { email, password } });
-  expect(login.ok(), `signing in to ${API_URL} failed: ${login.status()}`).toBe(true);
-  const { token } = (await login.json()) as { token: string };
+  // Signed in once per run, not once per call: the API limits sign-ins to five
+  // a minute per address, and every test here already signs in through the
+  // form. A second sign-in per test trips that limit and fails the test on a
+  // 429, which says nothing about the checklist.
+  if (!apiToken) {
+    const { email, password } = credentials();
+    const login = await request.post(`${API_URL}/api/auth/login`, { data: { email, password } });
+    expect(login.ok(), `signing in to ${API_URL} failed: ${login.status()}`).toBe(true);
+    apiToken = ((await login.json()) as { token: string }).token;
+  }
+  const token = apiToken;
 
   const res = await request.get(`${API_URL}/api/auth/onboarding`, {
     headers: { authorization: `Bearer ${token}` },
