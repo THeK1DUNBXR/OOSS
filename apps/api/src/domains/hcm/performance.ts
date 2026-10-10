@@ -58,6 +58,8 @@ registerGovernedEntities('hcm_performance', ['succession_plan', 'final_rating'])
 // Helpers
 // ---------------------------------------------------------------------------
 
+registerGovernedEntities('hcm_performance', ['review_cycle', 'review_assignment', 'calibration_session']);
+
 async function employmentOrThrow(employmentRelationshipId: string): Promise<{ id: string; personId: string }> {
   const auth = currentAuth();
   const employment = await prisma.employmentRelationship.findFirst({

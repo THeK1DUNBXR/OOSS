@@ -347,7 +347,16 @@ export interface AuditWriteInput {
 }
 
 export async function auditWrite(input: AuditWriteInput): Promise<void> {
-  if (!input.force && !isGoverned(input.subjectType)) return;
+  // Refused, not skipped: a silent return let a write succeed with no audit row
+  // (the cashbook was outside the log for this reason). Throwing everywhere,
+  // including production, is deliberate: an unaudited write is a defect to fix
+  // in the owning module's registerGovernedEntities call, not a state to run in.
+  if (!isGoverned(input.subjectType)) {
+    throw new Error(
+      `auditWrite: subjectType '${input.subjectType}' is not registered. ` +
+        `Add it to registerGovernedEntities in its owning domain module.`,
+    );
+  }
   const auth = currentAuth();
   const diff = input.action === 'update' ? diffForAudit(input.before ?? null, input.after ?? null) : null;
 

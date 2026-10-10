@@ -15,7 +15,7 @@ import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
-import { auditWrite } from '../../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { assertCan } from '../../platform/permissions.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { eligibleForChannel } from './preferences.js';
@@ -24,6 +24,8 @@ import { createSend, requestSend, dispatchSend } from './messaging.js';
 // ============================================================================
 // Types & schemas
 // ============================================================================
+
+registerGovernedEntities('mkt', ['marketing_journey']);
 
 export interface JourneyView {
   id: string;

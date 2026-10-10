@@ -23,6 +23,8 @@ registerGovernedEntities('mkt', ['channel', 'claim']);
 // Channels
 // ---------------------------------------------------------------------------
 
+registerGovernedEntities('mkt', ['tenant']);
+
 /** `owned | paid | earned | direct`, per the skeleton — distinct from the adapter registry's `email|sms|whatsapp|social|ads` kind. */
 const DEFAULT_CHANNEL_KIND: Record<ChannelKey, string> = {
   email: 'owned',

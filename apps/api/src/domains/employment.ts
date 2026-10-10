@@ -49,7 +49,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan, can, canSeeMoney, assertScopeAll, scopeFor } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
@@ -61,6 +61,18 @@ import { encryptField, readRegulated } from './compliance/privacy.js';
 // ---------------------------------------------------------------------------
 // Org structure
 // ---------------------------------------------------------------------------
+
+// Registered here, not only in compliance/payroll.ts: compensation and
+// employment writes run in tests and jobs that never load the compliance
+// modules, and an unregistered subject is refused.
+registerGovernedEntities('hcm_employment', [
+  'position',
+  'assignment',
+  'compensation_record',
+  'onboarding',
+  'offboarding',
+  'employment_relationship',
+]);
 
 export async function listOrgUnits() {
   const auth = currentAuth();

@@ -27,10 +27,13 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { hire } from './employment.js';
+import { registerGovernedEntities } from '../platform/audit.js';
 
 // ---------------------------------------------------------------------------
 // Requisitions
 // ---------------------------------------------------------------------------
+
+registerGovernedEntities('hcm_hiring', ['requisition', 'application']);
 
 export async function listRequisitions(filter: { status?: string } = {}) {
   const auth = currentAuth();

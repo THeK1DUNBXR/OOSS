@@ -33,10 +33,13 @@ import { assertCan } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
 import { assertEmploymentVisible, employmentVisibilityWhere } from '../platform/recordScope.js';
+import { registerGovernedEntities } from '../platform/audit.js';
 
 // ---------------------------------------------------------------------------
 // Leave types and balances
 // ---------------------------------------------------------------------------
+
+registerGovernedEntities('hcm_leave', ['leave_request', 'work_attendance']);
 
 export async function listLeaveTypes() {
   const auth = currentAuth();

@@ -53,6 +53,8 @@ registerGovernedEntities('cmp_privacy', [
 // Privacy notice
 // ---------------------------------------------------------------------------
 
+registerGovernedEntities('cmp_privacy', ['affiliation']);
+
 export interface NoticePurpose {
   code: string;
   label: string;

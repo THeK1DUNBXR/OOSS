@@ -29,8 +29,12 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
+
+// board_meeting is also registered by compliance/corporate.ts; this module writes
+// it too, and board.test.ts loads this module without the compliance tree.
+registerGovernedEntities('board', ['board_member', 'board_meeting', 'resolution']);
 
 const DAY_MS = 86_400_000;
 

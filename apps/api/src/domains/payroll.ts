@@ -22,6 +22,9 @@ import { transition } from '../platform/lifecycle.js';
 import { currentCompensation } from './employment.js';
 import { runHooks } from '../platform/hooks.js';
 import { computeInstruction } from './compliance/payroll.js';
+import { registerGovernedEntities } from '../platform/audit.js';
+
+registerGovernedEntities('hcm_payroll', ['payroll_run']);
 
 const PAY_PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 

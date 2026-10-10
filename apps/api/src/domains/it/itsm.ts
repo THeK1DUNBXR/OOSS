@@ -48,6 +48,8 @@ import type { Machine, Resource, Verb } from '@kaizen/shared';
 
 registerGovernedEntities('it_itsm', ['it_incident', 'it_problem', 'it_change', 'it_change_freeze']);
 
+registerGovernedEntities('it_itsm', ['it_incident_update']);
+
 /**
  * `platform/lifecycle.transition` composes its event name as
  * `kz.hr.<object>.<verb>` unconditionally (`hrTransitionEvent`) — it is an

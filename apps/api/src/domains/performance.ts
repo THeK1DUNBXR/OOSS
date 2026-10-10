@@ -28,13 +28,15 @@ import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, can, scopeFor, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
-import { auditRegulatedRead } from '../platform/audit.js';
+import { auditRegulatedRead, registerGovernedEntities } from '../platform/audit.js';
 import { claimFromLearningCompletion } from './capability.js';
 import { assertEmploymentVisible, employmentVisibilityWhere } from '../platform/recordScope.js';
 
 // ---------------------------------------------------------------------------
 // Goals
 // ---------------------------------------------------------------------------
+
+registerGovernedEntities('performance', ['goal']);
 
 export async function listGoals(employmentRelationshipId: string) {
   const auth = currentAuth();

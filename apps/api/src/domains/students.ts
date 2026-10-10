@@ -32,10 +32,12 @@ import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { findOrCreatePerson, normalisePhone, normaliseEmail } from './identity.js';
 import { requireGuardianConsentForMinor } from './compliance/privacy.js';
+
+registerGovernedEntities('edu', ['student_profile']);
 
 export const STUDENT_STATUSES = ['prospective', 'active', 'alumni', 'withdrawn'] as const;
 export type StudentStatus = (typeof STUDENT_STATUSES)[number];

@@ -37,8 +37,10 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, can } from '../platform/permissions.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertScopeAll } from '../platform/permissions.js';
+
+registerGovernedEntities('capability', ['capability_claim']);
 
 /** Domain rule violations from the shared model become 422s at the boundary. */
 function asApiError(err: unknown): never {

@@ -33,9 +33,11 @@ import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, assertScopeAll, canSeeMoney, scopeFor } from '../../platform/permissions.js';
 import { transition } from '../../platform/lifecycle.js';
-import { auditWrite } from '../../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { findOrCreatePerson, type PersonInput } from '../identity.js';
 import { joinFromApplication, transitionApplication } from '../hiring.js';
+
+registerGovernedEntities('hcm_recruiting', ['job_posting', 'offer_letter', 'referral']);
 
 function slugify(title: string, stamp: string): string {
   return `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${stamp}`;
