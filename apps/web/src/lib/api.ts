@@ -7,6 +7,7 @@
 import type { EntitySelectionResponse, SessionUser } from '@kaizen/shared';
 
 const TOKEN_KEY = 'kaizen.token';
+const REFRESH_KEY = 'kaizen.refreshToken';
 
 export function getToken(): string | null {
   try {
@@ -16,10 +17,30 @@ export function getToken(): string | null {
   }
 }
 
+/** Clearing the access token also forgets the refresh secret: a signed-out browser must not keep the means to sign back in. */
 export function setToken(token: string | null) {
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
+    else {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(REFRESH_KEY);
+    }
+  } catch {
+    /* private window */
+  }
+}
+
+function getRefreshToken(): string | null {
+  try {
+    return localStorage.getItem(REFRESH_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setRefreshToken(refreshToken: string) {
+  try {
+    localStorage.setItem(REFRESH_KEY, refreshToken);
   } catch {
     /* private window */
   }
@@ -66,7 +87,39 @@ export function onUnauthorized(listener: (() => void) | null) {
 /** Paths where a 401 is an expected outcome, not an expired session. */
 const AUTH_PATHS = new Set(['/auth/login', '/auth/switch-entity']);
 
-async function request<T>(path: string, init?: RequestInit, tokenOverride?: string): Promise<T> {
+/** Paths that must never trigger a refresh: refreshing to end a session would loop, and a sign-in has no session to refresh. */
+const NO_REFRESH_PATHS = new Set([...AUTH_PATHS, '/auth/refresh', '/auth/logout', '/auth/mfa/verify']);
+
+/**
+ * One refresh in flight at a time. Five requests failing together on an expired
+ * access token must present the same secret once; a second presentation of a
+ * rotated secret is read by the server as reuse and ends the session.
+ */
+let refreshing: Promise<boolean> | null = null;
+
+function refreshAccessToken(): Promise<boolean> {
+  if (!refreshing) {
+    refreshing = (async () => {
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) return false;
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return false;
+      const issued = (await res.json()) as SessionIssued;
+      setToken(issued.token);
+      if (issued.refreshToken) setRefreshToken(issued.refreshToken);
+      return true;
+    })().finally(() => {
+      refreshing = null;
+    });
+  }
+  return refreshing;
+}
+
+async function request<T>(path: string, init?: RequestInit, tokenOverride?: string, retried = false): Promise<T> {
   const token = tokenOverride ?? getToken();
   const res = await fetch(`/api${path}`, {
     ...init,
@@ -83,6 +136,11 @@ async function request<T>(path: string, init?: RequestInit, tokenOverride?: stri
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    // The access token lives fifteen minutes. An expired one is renewed once
+    // and the request retried, so the user sees a slow page at most, not a sign-in.
+    if (res.status === 401 && !retried && tokenOverride === undefined && !NO_REFRESH_PATHS.has(path)) {
+      if (await refreshAccessToken()) return request<T>(path, init, undefined, true);
+    }
     if (res.status === 401 && !AUTH_PATHS.has(path)) {
       setToken(null);
       unauthorizedListener?.();
@@ -203,11 +261,15 @@ function encodeHeader(value: string): string {
 
 /** A session, or one of the two half-way states a sign-in can stop at. */
 export type MfaRequired = { mfaRequired: true; challengeToken: string };
-export type SessionIssued = { token: string; user: SessionUser };
+export type SessionIssued = { token: string; refreshToken?: string; user: SessionUser };
 export type LoginOutcome = SessionIssued | MfaRequired | EntitySelectionResponse;
 
 function storeIfSession<T extends SessionIssued | MfaRequired | EntitySelectionResponse>(res: T): T {
-  if ('token' in res) setToken(res.token);
+  if ('token' in res) {
+    setToken(res.token);
+    const { refreshToken } = res as Partial<SessionIssued>;
+    if (refreshToken) setRefreshToken(refreshToken);
+  }
   return res;
 }
 
@@ -224,8 +286,7 @@ export async function login(email: string, password: string): Promise<LoginOutco
 /** Completes a login that stopped at `{ mfaRequired: true }`. */
 export async function verifyMfa(challengeToken: string, code: string) {
   const res = await api.post<SessionIssued>('/auth/mfa/verify', { challengeToken, code });
-  setToken(res.token);
-  return res;
+  return storeIfSession(res);
 }
 
 /** Completes the entity picker shown at sign-in, authorised by the
@@ -250,8 +311,37 @@ export async function switchContext(affiliationId: string, stepUpPassword?: stri
   return res;
 }
 
+/**
+ * Ends the session on the server as well as in the browser. The access token
+ * may already have expired, in which case the refresh secret is the only thing
+ * left that can name the session, so it is spent once to reach the revoke call.
+ */
 export function logout() {
+  const token = getToken();
+  const refreshToken = getRefreshToken();
   setToken(null);
+  void revokeSession(token, refreshToken);
+}
+
+async function revokeSession(token: string | null, refreshToken: string | null): Promise<void> {
+  const revoke = (bearer: string) =>
+    fetch('/api/auth/logout', {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bearer}` },
+    });
+  try {
+    if (token && (await revoke(token)).ok) return;
+    if (!refreshToken) return;
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (res.ok) await revoke(((await res.json()) as SessionIssued).token);
+  } catch {
+    // Offline: the server session still lapses at its own thirty-day limit.
+  }
 }
 
 // ---------------------------------------------------------------------------

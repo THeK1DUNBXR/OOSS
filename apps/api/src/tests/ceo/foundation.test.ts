@@ -15,8 +15,7 @@ import { describe, expect, it, afterAll } from 'vitest';
 import { RESOURCES, EVENTS, isCanonicalEventName, BOUNDED_CONTEXTS, MODULE_REGISTER } from '@kaizen/shared';
 import { ALL_RESOURCES, ROLE_GRANT_MATRIX } from '../../seed/grants.js';
 import { NAV_REGISTRY } from '../../seed/bootstrap.js';
-import { asUser } from '../helpers.js';
-import { signToken } from '../../lib/auth.js';
+import { asUser, sessionToken } from '../helpers.js';
 import { createApp } from '../../server.js';
 import type { Server } from 'node:http';
 
@@ -168,7 +167,7 @@ describe('CEO-FOUND-006 — every stub route answers the way a phase can build a
 
     const { principalFor } = await import('../helpers.js');
     const p = await principalFor('chairman@kaizen.co.in');
-    const token = signToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
+    const token = await sessionToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
     const headers = { Authorization: `Bearer ${token}` };
 
     for (const area of STUB_AREAS) {

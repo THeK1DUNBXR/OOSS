@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
-  buildSessionUser, changePassword, confirmMfa, enrolMfa, entitiesForToken, identifySwitchCaller, login, switchContext, switchEntity, verifyMfaAndLogin,
+  buildSessionUser, changePassword, confirmMfa, enrolMfa, entitiesForToken, identifySwitchCaller, login, logoutSession, refreshSession, switchContext, switchEntity, verifyMfaAndLogin,
 } from '../lib/auth.js';
 import { onboardingState } from '../domains/onboarding.js';
 import { handler, requireAuth } from '../lib/http.js';
@@ -26,6 +26,31 @@ router.post(
   handler(async (req) => {
     const input = loginSchema.parse(req.body);
     return login(input.email, input.password, input.tenantSlug);
+  }),
+);
+
+/**
+ * Trades a live refresh secret for a new access token and a rotated secret.
+ * Unauthenticated by design: the refresh secret is the credential, and the
+ * access token it replaces may already have expired.
+ */
+router.post(
+  '/refresh',
+  handler(async (req) => {
+    const schema = z.object({ refreshToken: z.string().min(1) });
+    const input = schema.parse(req.body);
+    return refreshSession(input.refreshToken);
+  }),
+);
+
+/** Ends the caller's session. The access token stops working on its next request. */
+router.post(
+  '/logout',
+  requireAuth,
+  handler(async (req) => {
+    const auth = req.ctx!.auth!;
+    if (auth.sessionId) await logoutSession(auth.sessionId);
+    return { ok: true };
   }),
 );
 
@@ -107,7 +132,7 @@ router.post(
       if (!stepUpProvided) throw ApiError.unauthorized('Step-up verification failed.');
     }
 
-    return switchContext(auth.userId!, auth.tenantId, input.affiliationId, stepUpProvided);
+    return switchContext(auth.userId!, auth.tenantId, input.affiliationId, stepUpProvided, auth.sessionId!);
   }),
 );
 

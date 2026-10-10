@@ -8,7 +8,7 @@ import { unscopedPrisma } from '../platform/db.js';
 import { getContext, newRequestContext, runWithContext, type RequestContext } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { TenantScopeError } from '../platform/db.js';
-import { toAuthContext, verifyToken } from './auth.js';
+import { liveSessionFor, toAuthContext, verifyToken } from './auth.js';
 import { grantedConsentCodes, resolvePurpose } from '../domains/compliance/privacy.js';
 import { logger } from '../platform/logger.js';
 
@@ -34,11 +34,16 @@ export async function contextMiddleware(req: Request, res: Response, next: NextF
   if (header?.startsWith('Bearer ')) {
     try {
       const payload = verifyToken(header.slice(7));
-      const user = await unscopedPrisma.user.findFirst({
-        where: { id: payload.userId, status: 'active' },
-        select: { id: true, personId: true, tenantId: true, branch: true },
-      });
-      if (user) {
+      // A token whose Session is revoked, expired or absent is no credential,
+      // whatever its signature and expiry say. Logout takes effect here.
+      const session = await liveSessionFor(payload);
+      const user = session
+        ? await unscopedPrisma.user.findFirst({
+            where: { id: payload.userId, status: 'active' },
+            select: { id: true, personId: true, tenantId: true, branch: true },
+          })
+        : null;
+      if (session && user) {
         const affiliation = await unscopedPrisma.affiliation.findFirst({
           where: { id: payload.affiliationId, tenantId: user.tenantId, status: 'active' },
         });
@@ -73,6 +78,7 @@ export async function contextMiddleware(req: Request, res: Response, next: NextF
           // names it, never invented by the header.
           ctx.auth.consentCodes = user.personId ? await grantedConsentCodes(user.tenantId, user.personId) : [];
           ctx.auth.purpose = await resolvePurpose(user.tenantId, req.headers['x-purpose'] as string | undefined);
+          ctx.auth.sessionId = session.id;
         }
       }
     } catch {

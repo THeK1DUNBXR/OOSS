@@ -10,8 +10,7 @@
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../server.js';
-import { signToken } from '../lib/auth.js';
-import { asUser, principalFor, tenantId, unscopedPrisma, type TestPrincipal } from './helpers.js';
+import { asUser, principalFor, sessionToken, tenantId, unscopedPrisma, type TestPrincipal } from './helpers.js';
 import { assertClaim } from '../domains/capability.js';
 
 let server: Server;
@@ -28,14 +27,14 @@ afterAll(() => {
   server?.close();
 });
 
-function tokenFor(p: TestPrincipal): string {
-  return signToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
+async function tokenFor(p: TestPrincipal): Promise<string> {
+  return sessionToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
 }
 
-function verifyOverHttp(verifier: TestPrincipal, claimId: string, body: Record<string, unknown>) {
+async function verifyOverHttp(verifier: TestPrincipal, claimId: string, body: Record<string, unknown>) {
   return fetch(`${base}/hr/capabilities/${claimId}/verify`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${tokenFor(verifier)}`, 'content-type': 'application/json' },
+    headers: { Authorization: `Bearer ${await tokenFor(verifier)}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
 }

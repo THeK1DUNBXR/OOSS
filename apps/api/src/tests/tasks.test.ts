@@ -7,9 +7,8 @@
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../server.js';
-import { signToken } from '../lib/auth.js';
 import { emittedEvents, setEventCapture } from '../platform/eventBus.js';
-import { principalFor, tenantId, unscopedPrisma, withFixtureRole, type TestPrincipal } from './helpers.js';
+import { principalFor, sessionToken, tenantId, unscopedPrisma, withFixtureRole, type TestPrincipal } from './helpers.js';
 
 let server: Server;
 let base: string;
@@ -25,8 +24,8 @@ afterAll(() => {
   server?.close();
 });
 
-function tokenFor(p: TestPrincipal): string {
-  return signToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
+async function tokenFor(p: TestPrincipal): Promise<string> {
+  return sessionToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
 }
 
 async function openTask(tid: string, title: string) {
@@ -47,7 +46,7 @@ describe('POST /crm/tasks/:id/complete — governance', () => {
       async (p) => {
         const res = await fetch(`${base}/crm/tasks/${task.id}/complete`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${tokenFor(p)}` },
+          headers: { Authorization: `Bearer ${await tokenFor(p)}` },
         });
         return res.status;
       },
@@ -69,7 +68,7 @@ describe('POST /crm/tasks/:id/complete — governance', () => {
 
     const res = await fetch(`${base}/crm/tasks/${task.id}/complete`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${tokenFor(ops)}` },
+      headers: { Authorization: `Bearer ${await tokenFor(ops)}` },
     });
     expect(res.status).toBe(200);
 

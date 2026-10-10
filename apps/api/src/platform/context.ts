@@ -31,6 +31,8 @@ export interface AuthContext {
   consentCodes: string[];
   /** True only for a step-up-authenticated session. */
   stepUpVerified: boolean;
+  /** The Session row behind a human bearer token; absent for system and agent contexts. */
+  sessionId?: string | null;
 }
 
 export interface RequestContext {

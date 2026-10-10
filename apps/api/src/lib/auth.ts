@@ -11,7 +11,7 @@
  * grants. Switching mutates the existing session; no new session is issued.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import {
@@ -34,10 +34,21 @@ import { resolveGrants } from '../platform/permissions.js';
 import { config } from '../platform/config.js';
 import { formatGrant } from '@kaizen/shared';
 import { generateTotpSecret, otpauthUri, verifyTotp } from '../domains/compliance/corporate/totp.js';
-import { createChainedAuditRecord } from '../platform/audit.js';
+import { auditWrite, createChainedAuditRecord } from '../platform/audit.js';
 
 const JWT_SECRET = config.JWT_SECRET;
-const TOKEN_TTL = '12h';
+/**
+ * The access token is short because it is the only thing a stolen copy can
+ * use, and the Session row is what makes even this window closeable: logout
+ * and reuse detection take effect on the next request, not on expiry.
+ */
+const TOKEN_TTL = '15m';
+/**
+ * Lifetime of a whole session, measured from sign-in. Rotation does not extend
+ * it: a session that keeps refreshing still ends thirty days after the login
+ * that started it, so a forgotten browser cannot stay signed in indefinitely.
+ */
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MFA_CHALLENGE_TTL = '5m';
 const SELECTION_TOKEN_TTL = '5m';
 
@@ -98,6 +109,8 @@ export interface TokenPayload {
   tenantId: string;
   affiliationId: string;
   stepUp: boolean;
+  /** Names the Session row this access token belongs to. Tokens without one are refused. */
+  jti: string;
 }
 
 /**
@@ -113,6 +126,50 @@ export interface SelectionTokenPayload {
 
 export function signToken(payload: TokenPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_TTL });
+}
+
+/** SHA-256 hex of a refresh secret. See the Session model for why this is not `hashPassword`. */
+export function hashRefreshSecret(secret: string): string {
+  return createHash('sha256').update(secret).digest('hex');
+}
+
+/**
+ * The Session behind an access token, or null when the token must not be
+ * honoured: no `jti` (issued before sessions existed), no row, revoked, past
+ * its lifetime, or not the user and tenant the token was minted for.
+ */
+export async function liveSessionFor(payload: TokenPayload) {
+  if (!payload.jti) return null;
+  const session = await unscopedPrisma.session.findUnique({ where: { jti: payload.jti } });
+  if (!session || session.revokedAt || session.expiresAt <= new Date()) return null;
+  if (session.userId !== payload.userId || session.tenantId !== payload.tenantId) return null;
+  return session;
+}
+
+/**
+ * Audit and event writes made before a request context exists (login, refresh)
+ * run as the signed-in human, not as the system, so the record names who
+ * actually acted. `auditWrite` and `emit` both read the context they are given.
+ */
+function actingAs(tenantId: string, partyId: string | null, roleSlug: string | null) {
+  return newRequestContext({
+    auth: {
+      tenantId,
+      principalType: 'human',
+      partyId,
+      userId: null,
+      agentId: null,
+      onBehalfOfPartyId: null,
+      affiliationId: null,
+      roleSlug,
+      branch: null,
+      orgUnitId: null,
+      classificationCeiling: 'internal',
+      purpose: 'operational',
+      consentCodes: [],
+      stepUpVerified: false,
+    },
+  });
 }
 
 export function verifyToken(token: string): TokenPayload {
@@ -256,7 +313,10 @@ export function assertPasswordAllowed(password: string, email?: string | null): 
   }
 }
 
-/** Finishes a login: audits it, resets the failure counters, issues the real token. */
+/**
+ * Finishes a login: opens the Session, audits and emits it, resets the failure
+ * counters, and issues the access token and the first refresh secret.
+ */
 async function completeLogin(
   user: { id: string; tenantId: string; personId: string },
   active: { id: string; roleSlug: string | null },
@@ -272,26 +332,39 @@ async function completeLogin(
     },
   });
 
-  await asSystem(user.tenantId, async () => {
-    // Through the chained writer, so a sign-in is a link in the audit chain
-    // rather than a row that breaks it.
-    await createChainedAuditRecord({
+  const refreshSecret = randomBytes(32).toString('base64url');
+  const jti = randomUUID();
+  const session = await unscopedPrisma.session.create({
+    data: {
       tenantId: user.tenantId,
-      action: 'login',
-      subjectType: 'user',
-      subjectId: user.id,
-      actorType: 'human',
-      actorId: user.personId,
-      actorLabel: active.roleSlug,
+      userId: user.id,
+      jti,
+      refreshTokenHash: hashRefreshSecret(refreshSecret),
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+    },
+  });
+
+  await runWithContext(actingAs(user.tenantId, user.personId, active.roleSlug), async () => {
+    await auditWrite({ action: 'login', subjectType: 'session', subjectId: session.id, meta: { userId: user.id } });
+    await emit({
+      name: EVENTS.SESSION_ISSUED,
+      subject: { entityType: 'session', entityId: session.id },
+      newState: { userId: user.id, affiliationId: active.id },
     });
   });
 
-  const token = signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp });
-  return { token, user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp) };
+  const token = signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp, jti });
+  return {
+    token,
+    refreshToken: `${session.id}.${refreshSecret}`,
+    user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp),
+  };
 }
 
 export interface LoginResult {
   token: string;
+  /** `<sessionId>.<secret>`. Rotates on every refresh; the old one is then reuse. */
+  refreshToken: string;
   user: SessionUser;
 }
 
@@ -508,7 +581,7 @@ export async function changePassword(userId: string, currentPassword: string, ne
 }
 
 /** `GET /auth/entities` — the same list `login()` would have offered, for a principal already holding a normal token. */
-export async function entitiesForToken(payload: TokenPayload): Promise<EntityOption[]> {
+export async function entitiesForToken(payload: Omit<TokenPayload, 'jti'>): Promise<EntityOption[]> {
   const user = await unscopedPrisma.user.findFirstOrThrow({ where: { id: payload.userId } });
   if (!user.principalId) throw ApiError.unauthorized('This account has no principal — sign-in cannot resolve its entities. Contact whoever created the account.');
   return entitiesFor(user.principalId);
@@ -520,7 +593,9 @@ export async function entitiesForToken(payload: TokenPayload): Promise<EntityOpt
  * are told apart by shape (`purpose: 'select-entity'` versus `userId`), not by
  * which header carried them, so one route handles both.
  */
-export async function identifySwitchCaller(token: string): Promise<{ principalId: string; sourceTenantId?: string; sourceUserId?: string }> {
+export async function identifySwitchCaller(
+  token: string,
+): Promise<{ principalId: string; sourceTenantId?: string; sourceUserId?: string; sourceSessionId?: string }> {
   let decoded: unknown;
   try {
     decoded = jwt.verify(token, JWT_SECRET);
@@ -533,9 +608,17 @@ export async function identifySwitchCaller(token: string): Promise<{ principalId
     return { principalId: payload.principalId };
   }
   if (payload.userId && payload.tenantId) {
+    // A revoked session cannot be used to reach another entity either.
+    const session = await liveSessionFor(payload as TokenPayload);
+    if (!session) throw ApiError.unauthorized('Session token is invalid or expired.');
     const user = await unscopedPrisma.user.findFirst({ where: { id: payload.userId, status: 'active' } });
     if (!user?.principalId) throw ApiError.unauthorized('This account has no principal.');
-    return { principalId: user.principalId, sourceTenantId: payload.tenantId, sourceUserId: payload.userId };
+    return {
+      principalId: user.principalId,
+      sourceTenantId: payload.tenantId,
+      sourceUserId: payload.userId,
+      sourceSessionId: session.id,
+    };
   }
   throw ApiError.unauthorized('Not a recognised session token.');
 }
@@ -548,7 +631,7 @@ export async function identifySwitchCaller(token: string): Promise<{ principalId
  * posture the tenant gate itself takes for a cross-tenant reach.
  */
 export async function switchEntity(
-  caller: { principalId: string; sourceTenantId?: string; sourceUserId?: string },
+  caller: { principalId: string; sourceTenantId?: string; sourceUserId?: string; sourceSessionId?: string },
   targetTenantId: string,
 ) {
   const target = await unscopedPrisma.user.findFirst({
@@ -583,6 +666,16 @@ export async function switchEntity(
   const issued = await issueSessionFor(target, false);
   if ('mfaRequired' in issued) return issued;
 
+  // The session the caller arrived on is replaced by the one just opened, so a
+  // principal does not keep two live sessions from one sign-in. Only a caller
+  // holding a session token has one; the selection-token path does not.
+  if (caller.sourceSessionId) {
+    await unscopedPrisma.session.updateMany({
+      where: { id: caller.sourceSessionId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   await asSystem(target.tenantId, async () => {
     await emit({
       name: EVENTS.ENTITY_SWITCHED,
@@ -591,6 +684,96 @@ export async function switchEntity(
     });
   });
   return issued;
+}
+
+/**
+ * `POST /auth/refresh`. Rotates the refresh secret and issues a new access
+ * token under a new jti, which the Session row now records as the live one.
+ *
+ * Presenting the secret rotated away from is reuse: either the browser was
+ * copied, or the legitimate holder is replaying a stale copy. The two cannot
+ * be told apart, so the whole session is revoked and the event audited, and
+ * the caller signs in again. There is no grace window; a rotated secret is
+ * dead the moment it is replaced.
+ */
+export async function refreshSession(refreshToken: string): Promise<LoginResult> {
+  const refused = () => ApiError.unauthorized('This session has ended. Sign in again.');
+  const dot = refreshToken.indexOf('.');
+  if (dot <= 0 || dot === refreshToken.length - 1) throw refused();
+  const sessionId = refreshToken.slice(0, dot);
+  const presented = hashRefreshSecret(refreshToken.slice(dot + 1));
+
+  const session = await unscopedPrisma.session.findUnique({ where: { id: sessionId } });
+  if (!session || session.revokedAt || session.expiresAt <= new Date()) throw refused();
+
+  const user = await unscopedPrisma.user.findFirst({ where: { id: session.userId, status: 'active' } });
+  if (!user) throw refused();
+
+  if (presented === session.refreshTokenHash) {
+    const active = user.activeAffiliationId
+      ? await unscopedPrisma.affiliation.findFirst({ where: { id: user.activeAffiliationId, tenantId: user.tenantId, status: 'active' } })
+      : null;
+    if (!active) throw refused();
+
+    const nextSecret = randomBytes(32).toString('base64url');
+    const jti = randomUUID();
+    // Conditional on the hash still being current, so two requests racing with
+    // the same secret cannot both rotate it: the loser falls through to reuse.
+    const rotated = await unscopedPrisma.session.updateMany({
+      where: { id: session.id, refreshTokenHash: session.refreshTokenHash, revokedAt: null },
+      data: { refreshTokenHash: hashRefreshSecret(nextSecret), previousRefreshTokenHash: session.refreshTokenHash, jti },
+    });
+    if (rotated.count === 1) {
+      const token = signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp: false, jti });
+      return {
+        token,
+        refreshToken: `${session.id}.${nextSecret}`,
+        user: await buildSessionUser(user.id, user.tenantId, active.id, false),
+      };
+    }
+    throw await refuseReuse(session.id, user.tenantId, user.personId, active.roleSlug);
+  }
+
+  if (session.previousRefreshTokenHash && presented === session.previousRefreshTokenHash) {
+    throw await refuseReuse(session.id, user.tenantId, user.personId, null);
+  }
+
+  // A secret this session never issued: refused, and the session is left alone,
+  // because whoever sent it has learned nothing about the session.
+  throw refused();
+}
+
+/** Revokes the session on a reused refresh secret, audits and emits it, and returns the error to throw. */
+async function refuseReuse(sessionId: string, tenantId: string, personId: string, roleSlug: string | null) {
+  const revoked = await unscopedPrisma.session.updateMany({
+    where: { id: sessionId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (revoked.count === 1) {
+    await runWithContext(actingAs(tenantId, personId, roleSlug), async () => {
+      await auditWrite({ action: 'refresh_reuse', subjectType: 'session', subjectId: sessionId });
+      await emit({ name: EVENTS.SESSION_REFRESH_REUSED, subject: { entityType: 'session', entityId: sessionId } });
+    });
+  }
+  return ApiError.unauthorized('This session has ended. Sign in again.');
+}
+
+/**
+ * `POST /auth/logout`. Revokes the caller's own session, so the access token
+ * still within its fifteen minutes stops working on its next request.
+ *
+ * No `assertCan`: the session is the caller's own, and the bearer token that
+ * reached this point is the authority for ending it. Refusing a sign-out on a
+ * grant would leave a user unable to close a session they are holding.
+ */
+export async function logoutSession(sessionId: string): Promise<void> {
+  const revoked = await unscopedPrisma.session.updateMany({
+    where: { id: sessionId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (revoked.count !== 1) return;
+  await auditWrite({ action: 'logout', subjectType: 'session', subjectId: sessionId });
+  await emit({ name: EVENTS.SESSION_REVOKED, subject: { entityType: 'session', entityId: sessionId } });
 }
 
 export async function buildSessionUser(
@@ -668,7 +851,7 @@ export async function buildSessionUser(
 }
 
 export function toAuthContext(
-  payload: TokenPayload,
+  payload: Omit<TokenPayload, 'jti'>,
   partyId: string,
   roleSlug: string | null,
   branch: string | null,
@@ -699,7 +882,13 @@ export function toAuthContext(
  * Reach never unions across contexts. Switching re-composes the screen against
  * the new affiliation's grants alone.
  */
-export async function switchContext(userId: string, tenantId: string, affiliationId: string, stepUpProvided: boolean) {
+export async function switchContext(
+  userId: string,
+  tenantId: string,
+  affiliationId: string,
+  stepUpProvided: boolean,
+  sessionId: string,
+) {
   const affiliation = await unscopedPrisma.affiliation.findFirst({ where: { id: affiliationId, tenantId } });
   if (!affiliation) throw ApiError.notFound('Affiliation');
 
@@ -719,8 +908,11 @@ export async function switchContext(userId: string, tenantId: string, affiliatio
     );
   }
 
-  // Mutates the existing session; no new session is issued.
+  // Mutates the existing session; no new session is issued. The access token
+  // is re-keyed to a fresh jti, so the Session row is told which token is live.
+  const jti = randomUUID();
   await unscopedPrisma.user.update({ where: { id: userId }, data: { activeAffiliationId: affiliationId } });
+  await unscopedPrisma.session.update({ where: { id: sessionId }, data: { jti } });
 
   await asSystem(tenantId, async () => {
     await emit({
@@ -730,6 +922,6 @@ export async function switchContext(userId: string, tenantId: string, affiliatio
     });
   });
 
-  const token = signToken({ userId, tenantId, affiliationId, stepUp: stepUpProvided });
+  const token = signToken({ userId, tenantId, affiliationId, stepUp: stepUpProvided, jti });
   return { token, user: await buildSessionUser(userId, tenantId, affiliationId, stepUpProvided) };
 }

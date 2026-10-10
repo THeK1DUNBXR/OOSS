@@ -9,8 +9,8 @@
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../server.js';
-import { buildSessionUser, signToken } from '../lib/auth.js';
-import { unscopedPrisma } from './helpers.js';
+import { buildSessionUser } from '../lib/auth.js';
+import { sessionToken, unscopedPrisma } from './helpers.js';
 
 const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 const TENANT_SLUG = `w1a-roleless-${stamp}`;
@@ -88,7 +88,7 @@ describe('a null role grants nothing', () => {
   });
 
   it('listing leads is refused with 403, not answered from the sales grant', async () => {
-    const token = signToken({ userId, tenantId, affiliationId, stepUp: true });
+    const token = await sessionToken({ userId, tenantId, affiliationId, stepUp: true });
     const res = await fetch(`${base}/crm/leads`, { headers: { Authorization: `Bearer ${token}` } });
     expect(res.status).toBe(403);
   });
