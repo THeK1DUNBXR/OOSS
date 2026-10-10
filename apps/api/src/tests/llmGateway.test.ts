@@ -76,3 +76,32 @@ describe('FX-65: the personal fields that leave the gateway', () => {
     expect(redacted.teamNote ?? null).toBeNull();
   });
 });
+
+describe('the model ceiling is capped at restricted, whatever the caller holds', () => {
+  const REGULATED_CALLER_PAYLOAD = {
+    fullName: 'Asha Rao',
+    emergencyContactName: 'Ravi Rao',
+    emergencyContactPhone: '9711122233',
+    nationalId: 'NID-778899',
+    panNumber: 'ABCDE1234F',
+  };
+
+  it('a regulated-ceiling caller sends no emergency contact to the model', () => {
+    const gateway = new ModelGateway({ ...BASE, classificationCeiling: 'regulated' });
+    const { redacted } = gateway.preparePayload('briefing', { ...REGULATED_CALLER_PAYLOAD }, 'read_only_summary');
+    expect(JSON.stringify(redacted)).not.toContain('Ravi Rao');
+    expect(JSON.stringify(redacted)).not.toContain('9711122233');
+  });
+
+  it('a regulated-ceiling caller sends no regulated structural field to the model', () => {
+    const gateway = new ModelGateway({ ...BASE, classificationCeiling: 'regulated' });
+    const { redacted } = gateway.preparePayload('briefing', { ...REGULATED_CALLER_PAYLOAD }, 'read_only_summary');
+    expect('nationalId' in redacted).toBe(false);
+    expect(JSON.stringify(redacted)).not.toContain('NID-778899');
+  });
+
+  it('the emergency contact fields are on the personal list', () => {
+    expect(PERSONAL_DATA_FIELDS.has('emergencyContactName')).toBe(true);
+    expect(PERSONAL_DATA_FIELDS.has('emergencyContactPhone')).toBe(true);
+  });
+});
