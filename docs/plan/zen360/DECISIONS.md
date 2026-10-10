@@ -127,7 +127,7 @@ Phase 1 scope chosen:
 - Attendance and remote work: remote and field attendance (HRM-06); WFH and hybrid policy (HRM-28); leave approval with backup approver (HRM-19); access revoked at exit (HRM-15).
 - Time and projects: time against engagement (CON-09); work logs (DEL-07); project with owner and acceptance (DEL-01); milestones and acceptance (DEL-02).
 - Delivery: estimates (DEL-03); change requests (DEL-04); release records (DEL-05); exit gates (DEL-06); sales-to-delivery handoff (CRM-13); single engagement with packages (CON-05); allocation calendar and capacity ledger (HRM-18).
-- Sprints, backlog, standups and internal chat: `planned-features.md` Feature 1, phases A (work items), B (discussion), C (realtime and delivery), D (automation).
+- Sprints, backlog, ~~standups~~ (dropped per round 4) and internal chat: `planned-features.md` Feature 1, phases A (work items), B (discussion), C (realtime and delivery), D (automation).
 - Communication: shared inboxes (COM-02); meetings and minutes (COM-11); response SLA (COM-13); notifications (COM-15).
 - Staff expense claims: no capability row exists.
 - Voice calls: open-source LiveKit (Apache-2.0) under the existing API; no recordings; recording service not deployed.
@@ -176,3 +176,29 @@ Still open after round 3:
 - Feature 1: transactional email decision.
 - CLAUDE.md vs PRODUCT.md commercial conflict (see the conflict note in the first-round answers).
 - D-04: build vs integrate per capability.
+
+## Owner answers, round 4 (recorded 2026-10-10)
+
+Answers given by the owner in a fourth round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, except the one in-place annotation to the Phase 1 scope list (standups). Where no answer is recorded here, the recommendation above stands.
+
+- **Task-complete fix (owner answer).** `POST /tasks/:id/complete` (`crm.routes.ts:1109`; no `assertCan`, audit or emit) is moved into Phase 0 as a stop-ship-class fix. Write the failing test first.
+- **3.1 statutory master pack (owner answer).** Placed early in Phase 0 (owner override).
+  - Implication, not an owner statement: this departs from the repo README's "do not reorder" rule and from the "1 before 3" sequencing rule. It is recorded here as an explicit owner override of both.
+- **Phase length (owner answer).** Each phase has a stop rule: a phase ends when its done-criteria pass. The one-week label for Phase 0 no longer applies. Each wave is sized when it starts.
+- **Added to Phase 0 (owner answer).** FX-24 (outbox); FX-51 (RLS on every table); FX-42 (UTC financial period at `invoicing.ts:266-269`); FX-06 and FX-07; FX-62 to FX-65.
+- **Phase 1 items (owner answers).**
+  - COM-02 shared inboxes: internal-only inbox. No external email or WhatsApp provider.
+  - Work logs: per person, plus project aggregates for insights (D-12). This answers the round 3 question on aggregate versus per person.
+  - Field and remote attendance: self-declared request plus manager approval. No location, device ID or IP is stored.
+  - Staff expense claims: claim, approve, then post to the ledger on approval via `post()`. Desktop capture only.
+  - Counsel owner (D-14): the internal finance head, for now.
+  - Statutory sign-off (D-02): the internal finance head only. Statutory values stay DRAFT until signed off.
+  - Standups: dropped from Phase 1. They had no spec in `planned-features.md`.
+- **Product aim (D-05, owner answer).** Internal first, product later. The multi-tenant design is kept. `PRODUCT.md` (Capabilities and Constraints, audience bullet) and `CLAUDE.md` (line 3) were edited minimally so the commercial-versus-internal wording no longer conflicts. This resolves the conflict noted in the first-round answers.
+
+Still open after round 4:
+
+- D-04: build vs integrate per capability.
+- D-18: summaries-only client evidence, careers launch model, practice labels vs separate companies.
+- Feature 1: transactional email decision.
+- D-10: break-glass details.

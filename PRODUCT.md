@@ -107,10 +107,12 @@ could not truthfully copy without the same discipline:
   business vocabulary (lead, pipeline, quote, forecast), which stays as is.
 - Audience is internal-only: Kaizen Infinities' own staff, across the four
   roles above. KaiERP is not currently sold or licensed to other companies
-  — multi-tenancy is an architectural property (and used for the test
-  database and any future internal separation), not a go-to-market plan.
-  Design should not assume an external-customer onboarding flow, pricing
-  surface, or multi-company marketing story.
+  — internal first, product later (owner answer, round 4). Multi-tenancy is an
+  architectural property and is kept on purpose (test database, internal
+  separation, and the later product phase), not a go-to-market plan today.
+  Until that product phase is scheduled, design should not assume an
+  external-customer onboarding flow, pricing surface, or multi-company
+  marketing story.
 
 ## Brand Commitments
 
