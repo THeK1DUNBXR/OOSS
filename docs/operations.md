@@ -143,6 +143,7 @@ that runs twice does not act twice.
 | `DATABASE_URL` | — | required |
 | `JWT_SECRET` | — | required |
 | `PORT` | `4000` | |
+| `WEB_DIST_DIR` | *(unset)* | path to the built client (`apps/web/dist`). Set in production so the API serves the client as well as `/api`; Caddy proxies to it (`deploy/Caddyfile`) |
 | `JOBS_ENABLED` | `true` | in-process scheduler |
 | `TENANT_ENFORCE_MODE` | `enforce` | `warn` logs an unscoped query instead of throwing — for migration only |
 | `PORTAL_HOSTS` | *(empty)* | comma-separated hostnames the equity portal shell serves — read into `surfaceHosts.portal` by `/api/meta/version` |
@@ -153,17 +154,12 @@ that runs twice does not act twice.
 in production means a service that forgets a tenant predicate returns another
 tenant's rows.
 
-**`PORTAL_HOSTS` is set in two places, for two different reasons.** The API
-*serves* it — it is the source `/api/meta/version` reads into
-`surfaceHosts.portal`, which is what the client actually checks to render the
-portal shell (equity-portal plan §3.1). The Worker's own `PORTAL_HOSTS` (in
-`wrangler.jsonc`, `vars`) does nothing at request time — the Worker does not
-route by host, it forwards every `/api/*` request to `API_ORIGIN` regardless
-of which hostname it arrived on — it exists only to document the same intent
-next to the config that actually needs a hostname: once the portal hostname
-is chosen, add a matching `routes` entry to `wrangler.jsonc` so this Worker
-answers on it too (a commented example sits beside the var). Keep both
-values in agreement by hand; neither is read from the other.
+**`PORTAL_HOSTS` is read by the API alone.** It is the source `/api/meta/version`
+reads into `surfaceHosts.portal` (`routes/meta.routes.ts`), which is what the
+client checks to render the portal shell (equity-portal plan §3.1). It is read
+from `process.env` directly rather than through the Zod config, so a hostname
+change needs no code. The Caddy site block in `deploy/Caddyfile` must also
+answer on that hostname, since Caddy is what routes by host now.
 
 
 ---

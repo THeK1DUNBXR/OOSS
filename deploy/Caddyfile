@@ -11,6 +11,9 @@
 # Required:  ZEN_DOMAIN   the public hostname, e.g. zen.example.co.in
 # Optional:  API_PORT     where the API listens on loopback (default 4000)
 
+# Once the equity portal hostname is chosen, add it to the site address below
+# (space-separated) so this block answers on it too. The API's
+# PORTAL_HOSTS must list the same name; nothing reads one from the other.
 {$ZEN_DOMAIN} {
 	# Caddy obtains and renews the certificate itself. Port 80 must be reachable
 	# for the ACME challenge, or the first request will fail with a TLS error.

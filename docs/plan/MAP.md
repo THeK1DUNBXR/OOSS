@@ -878,5 +878,5 @@ Generated or lock files. Nothing in them answers a question worth the tokens.
 - `.claude/worktrees/agent-a267cf0c53718b422/pnpm-lock.yaml` (6006 lines)
 - `.claude/worktrees/agent-a348c13968dfc4ee9/pnpm-lock.yaml` (6006 lines)
 - `.claude/worktrees/agent-a63fd5466e71683b1/pnpm-lock.yaml` (6006 lines)
-- `pnpm-lock.yaml` (6006 lines)
 - `.claude/worktrees/agent-a889deee29e46c1b3/pnpm-lock.yaml` (5169 lines)
+- `pnpm-lock.yaml` (5169 lines)
