@@ -40,6 +40,7 @@ import { ApiError } from '../../platform/errors.js';
 import { auditWrite, auditExport, auditBulkOperation, registerGovernedEntities } from '../../platform/audit.js';
 import { assertCan, FIELD_PURPOSES } from '../../platform/permissions.js';
 import { raiseException } from '../../platform/exceptions.js';
+import { normaliseEmail, normalisePhone } from '../identity.js';
 import { registerHook } from '../../platform/hooks.js';
 
 registerGovernedEntities('cmp_privacy', [
@@ -552,6 +553,45 @@ async function erasureBlockers(tenantId: string, personId: string): Promise<{ re
   return blockers;
 }
 
+/**
+ * The Person fields a data principal may correct. Everything else on Person is
+ * platform state (dedupe, merge pointer, soft delete, codes, classifications).
+ * Add a field here only when a principal can legitimately be the authority on
+ * it; the normalised twins are derived below, never accepted from the caller.
+ */
+const CORRECTABLE_PERSON_FIELDS = [
+  'fullName',
+  'primaryPhone',
+  'primaryEmail',
+  'additionalPhones',
+  'additionalEmails',
+  'dateOfBirth',
+  'bloodGroup',
+] as const;
+type CorrectablePersonField = (typeof CORRECTABLE_PERSON_FIELDS)[number];
+
+/**
+ * Builds the write for an allowlisted correction. The normalised columns are
+ * what identity matching reads (identity.ts), so a corrected phone or email
+ * must move them too or the person is unfindable by the number they gave us.
+ */
+function correctionData(correction: Partial<Record<CorrectablePersonField, unknown>>): Record<string, unknown> {
+  const data: Record<string, unknown> = { ...correction };
+  if (typeof correction.primaryPhone === 'string' || correction.primaryPhone === null) {
+    data.primaryPhoneNormalised = normalisePhone(correction.primaryPhone as string | null);
+  }
+  if (typeof correction.primaryEmail === 'string' || correction.primaryEmail === null) {
+    data.primaryEmailNormalised = normaliseEmail(correction.primaryEmail as string | null);
+  }
+  if (Array.isArray(correction.additionalPhones)) {
+    data.additionalPhonesNormalised = (correction.additionalPhones as string[]).map((p) => normalisePhone(p)).filter((p): p is string => !!p);
+  }
+  if (Array.isArray(correction.additionalEmails)) {
+    data.additionalEmailsNormalised = (correction.additionalEmails as string[]).map((e) => normaliseEmail(e)).filter((e): e is string => !!e);
+  }
+  return data;
+}
+
 export async function fulfilDataRequest(id: string, input: { correction?: Record<string, unknown> } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'data_requests', verb: 'edit' });
@@ -573,8 +613,20 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
     if (!input.correction || Object.keys(input.correction).length === 0) {
       throw ApiError.badRequest('A correction request is fulfilled by giving the corrected fields.');
     }
+    // FX-63. A principal corrects the personal values they are the subject
+    // of. Dedupe state, the merge pointer, the soft delete and the record code
+    // are the platform's to set, so they are refused by name rather than
+    // dropped silently: a silent drop would look like a correction that
+    // succeeded.
+    const disallowed = Object.keys(input.correction).filter((k) => !CORRECTABLE_PERSON_FIELDS.includes(k as CorrectablePersonField));
+    if (disallowed.length) {
+      throw ApiError.badRequest(`These fields cannot be corrected by a data-principal request: ${disallowed.join(', ')}.`);
+    }
     const before = await unscopedPrisma.person.findFirst({ where: { id: request.personId, tenantId: auth.tenantId } });
-    const after = await prisma.person.update({ where: { id: request.personId }, data: input.correction as never });
+    const after = await prisma.person.update({
+      where: { id: request.personId },
+      data: correctionData(input.correction as Partial<Record<CorrectablePersonField, unknown>>) as never,
+    });
     await auditWrite({
       action: 'update',
       subjectType: 'person',
