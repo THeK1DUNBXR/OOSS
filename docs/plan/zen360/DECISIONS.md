@@ -70,3 +70,109 @@ Answers given by the owner in a second round. Existing rows and the first-round 
 - **D-17 (restricted funds).** Owner answer: restricted funds are tracked in the ledger from Phase 1.
   - Implication to confirm, not an owner statement: this adds a fund dimension to the ledger design. The legal form (for example Section 8, 12A, 80G) still needs professional advice.
 - **Still open, not asked yet (later phases).** D-07, D-10, D-11, D-12, D-16, D-18, and the list of live inbound providers under D-13.
+
+## Owner phase definitions and scope (recorded 2026-10-10)
+
+Owner's definitions, paraphrased:
+
+- **Phase 0** = streamline and fix the existing workflow without adding new features.
+- **Phase 1** = complete the features that let software developers work from home with no issues (daily workflow tools and delivery/project work).
+- These are not the plan's phases 0-8 (`docs/plan/README.md`) nor the zen360 tracks Z0-Z4. The mapping is the lists below.
+- The owner chose to include some new-build items in Phase 0. That departs from "no new features" and is the owner's choice.
+
+Phase 0, fix items (all kept):
+
+- Plan P0 0.1, 0.3, all of 0.6 (including FX-40 and FX-41, UTC financial-year fixes), and the 0.8 fixes (two dead style classes, build identity).
+- Stop-ship: FX-01, 02, 03, 04, 05, 20, 21, 22, 50, 60, 61, 80 (internal only: verification requires sign-in, no public verify endpoint), 81.
+- Ledger defects: FX-30 to 35 and FX-70 to 73.
+- Interface fixes: code splitting, 401 handling, 4.2a metric rule.
+
+Phase 0, new or replace items chosen:
+
+- 0.2 session hardening; 0.4 structured logging; 0.5 scheduler; 0.7 schema split, map and scoped test scripts; 0.8 CI pipeline, lint and migration baseline.
+- P1 ledger 1.1, 1.2, 1.3, 1.4, 1.5, 1.6.
+- P3 3.1 statutory master pack.
+- P4 error boundaries, token storage (httpOnly cookie), typed client, component library, forms, 4.5 feel, 4.3 accessibility, 4.6 frontend tests.
+- P7 onboarding state machine, per-state statutory packs, static egress IPs.
+- P8 concurrency test suite, tenant-leakage fuzzer, ten CI gates.
+- Z2 commitment record, one document store, typed task source, decision links, founder exception view.
+- Z3 continuity and handover gate.
+
+Phase 0, out or undecided:
+
+- P2 (2.1 audit trail, 2.2 DPDP): undecided.
+- P3: 3.2 e-invoicing out; 3.3, 3.4, 3.5 undecided.
+- P4: 4.4 mobile out.
+- P5: 5.2 undecided; 5.3 dropped.
+- P6: all dropped for now (needs 6.1, P2, P5).
+- P7: per-tenant encryption, noisy-neighbour controls and India residency undecided; tiering, billing and real API deployment out.
+- P8: load tests, monthly restore drill, SOC 2 / ISO 27001, annual pentest out.
+- Z2: customer case out (could be reconsidered now that D-12 is answered).
+- Z3: lifecycles out.
+- Z4: all undecided.
+
+Phase 0 prerequisite notes:
+
+- Onboarding and per-state packs need 3.1 (added for that reason).
+- 1.5 needs a named accountant (D-02), the Kaizen book figures and a named human reviewer.
+- FX-70 to 73 likely need 1.1 to 1.3 (implication from the docs, not an owner statement).
+- 1.2 needs PgBouncer transaction mode and a non-owner database role.
+- Token storage needs 0.2; error boundaries need 0.4; accessibility and frontend tests need 0.8 CI.
+- Tenant-leakage fuzzer needs a second tenant's test data and D-07 (now answered).
+- P8 ten CI gates are defined in `00-BRIEF.md` section 5, which was not read for this record.
+
+Phase 1 scope chosen:
+
+- Approvals: single approvals inbox (CAP-DEC-08); one delegation record (DEC-06); maker-checker (DEC-07); routing and authority matrix (DEC-05).
+- Attendance and remote work: remote and field attendance (HRM-06); WFH and hybrid policy (HRM-28); leave approval with backup approver (HRM-19); access revoked at exit (HRM-15).
+- Time and projects: time against engagement (CON-09); work logs (DEL-07); project with owner and acceptance (DEL-01); milestones and acceptance (DEL-02).
+- Delivery: estimates (DEL-03); change requests (DEL-04); release records (DEL-05); exit gates (DEL-06); sales-to-delivery handoff (CRM-13); single engagement with packages (CON-05); allocation calendar and capacity ledger (HRM-18).
+- Sprints, backlog, standups and internal chat: `planned-features.md` Feature 1, phases A (work items), B (discussion), C (realtime and delivery), D (automation).
+- Communication: shared inboxes (COM-02); meetings and minutes (COM-11); response SLA (COM-13); notifications (COM-15).
+- Staff expense claims: no capability row exists.
+- Voice calls: open-source LiveKit (Apache-2.0) under the existing API; no recordings; recording service not deployed.
+- Out of Phase 1 or not chosen: device custody, issued kit, exit asset return (TEC-13, HRM-29, HRM-14); object storage for chat attachments (decision deferred).
+
+Phase 1 prerequisite notes:
+
+- Phase 1 sits on the Phase 0 selection above.
+- Feature 1 needs: the Task completion route fix at `crm.routes.ts:1109` first; tenant row-level security on new work tables (CLAUDE.md rule 6); legal review before Phase B; a check against CAP-HRM-32 (no covert monitoring); SSE tested first for realtime; chat kept under the 8-year retention rule (needs counsel confirmation); and the doc's decisions on transactional email and object storage (email open, storage deferred).
+- DEL-04, CON-05, CRM-13 and DEL-07 depend on D-12 (now answered).
+- DEL-03 depends on HRM-18. DEL-02 needs the one document store and an exact money type. COM-13 depends on D-11 (service levels after a baseline).
+- Conflict to resolve: COM-02 shared inboxes depend on D-13 provider decisions, but email and WhatsApp capture are deferred.
+- HRM-28 WFH policy was on the proposal's defer list under D-04, but the owner included it in Phase 1.
+- Effort: the docs give per-phase effort totals only (plan P0 1 week, P1 3-4 weeks, P3 6-8 weeks, P4 4-6 weeks, P5 3 weeks, P6 4-6 weeks, P7 3-4 weeks), with no per-item sizes.
+
+## Owner answers, round 3 (recorded 2026-10-10)
+
+Answers given by the owner in a third round. Existing rows and the earlier answers above are unchanged. Where no answer is recorded here, the recommendation above stands.
+
+- **D-02 (accounting and tax sign-off).** Owner answer: for now an internal finance head signs off. No outside accountant or tax/legal adviser is named. Every statutory item (GST, TDS, labour codes, revenue recognition, consolidation, Income-tax Act 2025 mapping) remains awaiting professional sign-off. CLAUDE.md "statutory uncertainty means stop and flag" still applies.
+- **D-07 (identity and tenancy).** Owner answer: confirmed. One login per person; separate permissions per company; an explicit share record for any cross-company read; access and tenant checks in place before any external user.
+- **D-11 (ownership and service levels).** Owner answer: owners and backups required on pilot processes only. Service-level numbers wait for a measured baseline. "Settlement without handover" and "forecast with unverified receipts": warn only, do not block.
+  - Interpretation, not an owner statement: the system warns the user; it neither blocks the settlement nor silently excludes receipts.
+- **D-12 (customer case and acceptance).** Owner answer: a new Case record, from which an exception can be raised. "Won" means a signed contract; an MoU counts only when executed and typed. One named delivery owner at sales-to-delivery handoff. Customer acceptance, separate from technical completion, triggers billing.
+  - Implication, not an owner statement: revenue and invoicing rules need professional sign-off under D-02.
+  - Not answered: whether work logs are aggregate or per person.
+- **D-04 (first-release scope).** Owner answer: the defer list is adopted. CCTV, pantry, MSP catalogue, hybrid desk booking, ventures platform and logistics are out of this programme's first release. Phase order: the owner's own Phase 0 and Phase 1 definitions (see the section above) apply.
+  - Not answered: build vs integrate per capability.
+- **D-05 (resourcing).** Owner answer: one senior person plus AI-assisted developers, funded phase by phase with a stop rule. This resolves the staffing and funding part. The 25% product-design extra remains per the "internal first, product later" answer.
+- **D-10 (privileged access and review).** Owner answer: an authorised director is the independent reviewer of related-party and founder deals. Platform admins have no default access to HR or finance content.
+  - Not answered: break-glass details.
+- **D-13 (voice, email and WhatsApp).** Owner answer: voice calls via open-source LiveKit in Phase 1, with no recordings or transcripts. Email and WhatsApp capture are deferred; chat comes from Feature 1. Providers for email, WhatsApp and telephony remain unnamed. Recordings stay out until counsel signs off.
+  - LiveKit notes, unverified: recording is a separate egress service and is not deployed; per-tenant key separation, end-to-end encryption, release years and Indian data-hosting obligations are unverified.
+- **D-14 (privacy, erasure and residency).** Owner answer: erasure is handled by minimised audit facts plus an erasable content store. The audit chain keeps facts and a salted subject token; personal content lives in a separate erasable store. Legal hold is deferred: for now the software only warns the user that something looks illegal.
+  - Not answered: counsel owner. Every DPDP, retention and residency item awaits counsel; no DPDP date is stated as fact.
+- **D-16 (integrity claims).** Owner answer: Postgres outbox for event delivery. The audit trail is called an "integrity log" until the checker recomputes content fingerprints across the whole chain (FX-81). Anchor-key holder: not needed until an auditor-facing claim is planned.
+- **D-18 (practice offers).** Owner answer: CCTV stays deferred. When built, it is live view only, with no recording.
+  - Not answered: summaries-only client evidence, the careers launch model, and practice labels vs separate companies.
+- **Feature 1 decisions (`planned-features.md`).** Owner answers: realtime transport, test SSE first. Chat retention, keep with the 8-year rule, subject to counsel. Object storage, deferred. Transactional email, open.
+
+Still open after round 3:
+
+- D-02: real statutory sign-off (no named accountant or tax/legal adviser).
+- D-14: counsel owner.
+- D-18: remaining items (summaries-only client evidence, careers launch model, practice labels vs separate companies).
+- Feature 1: transactional email decision.
+- CLAUDE.md vs PRODUCT.md commercial conflict (see the conflict note in the first-round answers).
+- D-04: build vs integrate per capability.
