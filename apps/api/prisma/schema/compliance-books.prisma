@@ -15,7 +15,10 @@ model AccountingPeriod {
   entityId String?
   startsOn DateTime?      @db.Date
   endsOn   DateTime?      @db.Date
-  entity   LedgerEntity?  @relation(fields: [entityId], references: [id])
+  // Restrict, not Prisma's SET NULL default: a period detached from its entity
+  // would be an orphan the books can no longer be read against. The baseline
+  // migration (20260901000000_baseline) carries the same RESTRICT.
+  entity   LedgerEntity?  @relation(fields: [entityId], references: [id], onDelete: Restrict)
   entries  JournalEntry[]
 
   /// "2025-26" (Apr-Mar).

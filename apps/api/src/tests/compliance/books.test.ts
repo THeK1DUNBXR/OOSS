@@ -23,6 +23,25 @@ import {
 } from '../../domains/compliance/books.js';
 import { extractTallyXml } from '../../imports/tallyXml.js';
 
+/**
+ * Writes to an audit record as an operator with database access would. The
+ * trigger is disabled inside one transaction, so a failed update rolls the
+ * DISABLE back with it; the ENABLE in `finally` covers the case where the
+ * transaction machinery itself fails. Table-level, so it blocks other writers
+ * for the window — acceptable only because this suite runs serially.
+ */
+async function tamperAuditRecordBypassingTrigger(id: string, data: Record<string, unknown>) {
+  try {
+    await unscopedPrisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`ALTER TABLE "audit_records" DISABLE TRIGGER "audit_record_immutable"`);
+      await tx.auditRecord.update({ where: { id }, data: data as never });
+      await tx.$executeRawUnsafe(`ALTER TABLE "audit_records" ENABLE TRIGGER "audit_record_immutable"`);
+    });
+  } finally {
+    await unscopedPrisma.$executeRawUnsafe(`ALTER TABLE "audit_records" ENABLE TRIGGER "audit_record_immutable"`);
+  }
+}
+
 let TENANT: string;
 
 beforeAll(async () => {
@@ -144,18 +163,28 @@ describe('CMP-AUD-002 — the AuditRecord hash chain', () => {
     });
 
     // Tampered directly, the way an operator bypassing the application would —
-    // the diff is rewritten but the hash is left as it was.
-    await unscopedPrisma.auditRecord.update({ where: { id: record.id }, data: { diff: { tampered: true } as never } });
+    // the diff is rewritten but the hash is left as it was. The immutability
+    // trigger is what stops the application from doing this; verifyAuditChain
+    // is what catches someone who can disable it. So the trigger is disabled
+    // for exactly this write, inside a transaction, and never weakened.
+    await tamperAuditRecordBypassingTrigger(record.id, { diff: { tampered: true } });
 
     const result = await asUser('finance@kaizen.co.in', () => verifyAuditChain(TENANT));
     expect(result.ok).toBe(false);
     expect(result.brokenAt).toBe(record.id);
 
     // Left tampered for the rest of the suite would break every subsequent
-    // verify call — restore it.
-    await unscopedPrisma.auditRecord.update({ where: { id: record.id }, data: { diff: record.diff as never } });
+    // verify call — restore it, the same way.
+    await tamperAuditRecordBypassingTrigger(record.id, { diff: record.diff });
     const restored = await asUser('finance@kaizen.co.in', () => verifyAuditChain(TENANT));
     expect(restored.ok).toBe(true);
+
+    // The invariant the bypass above exists to get around: a plain update
+    // through the ORM is refused by the live trigger.
+    const refused = await expectReject(() =>
+      unscopedPrisma.auditRecord.update({ where: { id: record.id }, data: { diff: { again: true } as never } }),
+    );
+    expect(refused.message).toContain('audit records are immutable');
   });
 
   it('a viewer without audit:view cannot call verify', async () => {
