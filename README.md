@@ -1,6 +1,6 @@
 # KaiERP — ERP Platform of Kaizen Infinities
 
-An AI-native, multi-tenant ERP for Kaizen Infinities. CRM, HRM and Finance are
+A multi-tenant ERP with AI features on the roadmap for Kaizen Infinities. CRM, HRM and Finance are
 the three domains the company runs on; Education, Projects, Commercial,
 Governance, Technology (the CIO office) and the Command Center ship alongside
 them because the platform's premise is that they are one system, not nine
