@@ -172,7 +172,7 @@
 
 **`apps/api/src/domains/marketing/adapters/console.ts`** (50 lines) — ConsoleAdapter:17
 
-**`apps/api/src/domains/marketing/adapters/httpEmail.ts`** (129 lines) — HttpEmailAdapter:48
+**`apps/api/src/domains/marketing/adapters/httpEmail.ts`** (141 lines) — HttpEmailAdapter:56
 
 **`apps/api/src/domains/marketing/adapters/merge.ts`** (94 lines) — extractMergeFields:45 · renderMergeFields:80
 
@@ -182,7 +182,7 @@
 
 **`apps/api/src/domains/marketing/adapters/registry.ts`** (100 lines) — getAdapter:76 · adapterStatus:85 · resetAdapterCacheForTests:97
 
-**`apps/api/src/domains/marketing/adapters/types.ts`** (94 lines) — ChannelKey:15 · ChannelKind:32 · OutboundMessage:34 · SendResult:51 · RenderedMessage:57 · InboundDeliveryEvent:64 · ChannelAdapter:71
+**`apps/api/src/domains/marketing/adapters/types.ts`** (100 lines) — ChannelKey:15 · ChannelKind:32 · OutboundMessage:34 · SendResult:51 · RenderedMessage:57 · InboundDeliveryEvent:64 · ChannelAdapter:77
 
 **`apps/api/src/domains/marketing/adapters/whatsappCloud.ts`** (165 lines) — WhatsAppCloudAdapter:57
 
@@ -206,7 +206,7 @@
 
 **`apps/api/src/domains/marketing/journeys.ts`** (480 lines) — JourneyView:30 · JourneyRunView:42 · JourneyInputSchema:71 · JourneyInput:76 · createJourney:178 · listJourneys:199 · loadJourney:206 · updateJourney:215 · activateJourney:251 · pauseJourney:256 · resumeJourney:261 · retireJourney:266 · listJourneyRuns:271 · enrolPerson:285 · exitRun:323 · tick:341 · detectStuckRuns:428 · onLeadCreated:462 · onFormSubmitted:469 · onEventRegistered:473 · onEnrolment:477
 
-**`apps/api/src/domains/marketing/messaging.ts`** (1085 lines) — TemplateView:55 · SendRecipientView:74 · SendView:82 · TemplateInputSchema:104 · TemplateInput:113 · SendInputSchema:115 · SendInput:124 · createTemplate:246 · listTemplates:282 · loadTemplate:298 · updateTemplate:308 · submitForReview:370 · approveTemplate:393 · rejectTemplate:449 · retireTemplate:461 · mergeFieldsCatalogue:479 · previewTemplate:512 · createSend:550 · listSends:619 · loadSend:634 · listSendRecipients:647 · dryRunSend:657 · requestSend:675 · approveSend:751 · cancelSend:787 · dispatchSend:809 · applyDeliveryEvents:924 · checkSendHealth:1022 · sendTest:1063
+**`apps/api/src/domains/marketing/messaging.ts`** (1122 lines) — TemplateView:55 · SendRecipientView:74 · SendView:82 · TemplateInputSchema:104 · TemplateInput:113 · SendInputSchema:115 · SendInput:124 · createTemplate:246 · listTemplates:282 · loadTemplate:298 · updateTemplate:308 · submitForReview:370 · approveTemplate:393 · rejectTemplate:449 · retireTemplate:461 · mergeFieldsCatalogue:479 · previewTemplate:512 · createSend:550 · listSends:619 · loadSend:634 · listSendRecipients:647 · dryRunSend:657 · requestSend:675 · approveSend:751 · cancelSend:787 · dispatchSend:809 · advancesRecipientStatus:937 · applyDeliveryEvents:950 · checkSendHealth:1059 · sendTest:1100
 
 **`apps/api/src/domains/marketing/plans.ts`** (242 lines) — PlanInput:21 · createPlan:51 · listPlans:80 · updatePlan:95 · approvePlan:121 · closePlan:152 · calendar:176
 
