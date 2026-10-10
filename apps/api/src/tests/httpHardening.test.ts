@@ -163,6 +163,29 @@ describe('structured logging (platform/logger.ts)', () => {
     expect(line).not.toContain('"password"');
   });
 
+  it('logs the route pattern, never the raw path, so a public token in the path stays out of the log', async () => {
+    // The public form and webhook routes carry their token in the path itself.
+    // A raw path in the log would hand every token to anyone who can read logs.
+    const chunks: string[] = [];
+    const log = createLogger({ destination: { write: (s: string) => void chunks.push(s) } });
+    const app = express();
+    app.use(contextMiddleware);
+    app.use(requestLog(log));
+    app.post('/public/forms/:publicToken/submit', (_req, res) => void res.json({ ok: true }));
+    const s = app.listen(0);
+    const port = (s.address() as { port: number }).port;
+    try {
+      await fetch(`http://127.0.0.1:${port}/public/forms/tok-SECRET-form-token-9f8e7d/submit`, { method: 'POST' });
+      await fetch(`http://127.0.0.1:${port}/no/such/tok-SECRET-form-token-9f8e7d`);
+      const line = chunks.join('');
+      expect(line).not.toContain('tok-SECRET-form-token-9f8e7d');
+      expect(line).toContain('"route":"/public/forms/:publicToken/submit"');
+      expect(line).toContain('"route":"unmatched"');
+    } finally {
+      await new Promise<void>((resolve) => s.close(() => resolve()));
+    }
+  });
+
   it('puts tenantId and requestId on the request line, and never the query string', async () => {
     const chunks: string[] = [];
     const log = createLogger({ destination: { write: (s: string) => void chunks.push(s) } });
