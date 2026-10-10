@@ -19,20 +19,17 @@ const GUARDIAN_PHONE = '9876543210';
 const GUARDIAN_NAME = 'Lakshmi Guardian';
 const MASK = '••••••';
 
-/** Stages a minor student whose guardian contact is the regulated part of the row. */
+/**
+ * Stages a minor student whose guardian contact is the regulated part of the row.
+ * The students template asks for a date of birth (or an adult attestation); a
+ * 2012 birth makes the student a minor, so the guardian columns are required and
+ * are the ones under test.
+ */
 async function stageMinorStudent(guardianPhone: string) {
-  const book = XLSX.read(buildTemplateWorkbook(TEMPLATES.students), { type: 'buffer' });
   const name = `Minor Student ${Date.now()}${Math.floor(Math.random() * 1000)}`;
-  XLSX.utils.sheet_add_aoa(
-    book.Sheets.Data,
-    [[name, '', '', 'FSD — Sept 2026, Madurai', '', 'Yes', GUARDIAN_NAME, guardianPhone]],
-    { origin: 'A2' },
-  );
-  book.Sheets.Data['!ref'] = 'A1:H2';
-  return stageImport({
-    fileName: 'students.xlsx',
-    buffer: XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
-  });
+  return stageRows(TEMPLATES.students, [
+    [name, '', '', 'FSD — Sept 2026, Madurai', '', '15/03/2012', '', GUARDIAN_NAME, guardianPhone],
+  ]);
 }
 
 /** Stages rows under a template's own headings, so the file is recognised as that template. */
@@ -56,6 +53,17 @@ describe('Staged import rows and regulated cells', () => {
       const stored = JSON.stringify(rows.map((r) => ({ raw: r.raw, normalised: r.normalised })));
       expect(stored).not.toContain(GUARDIAN_PHONE);
       expect(stored).not.toContain(GUARDIAN_NAME);
+    });
+  });
+
+  it('every template column marked regulated is sealed in both the raw cell and the normalised field', async () => {
+    const name = `Staff ${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    await asUser('chairman@kaizen.co.in', async () => {
+      const staged = await stageRows(TEMPLATES.staff, [[name, '', '', 'Software', 'Madurai', '', '', '', '', 'O+']]);
+      const [row] = await prisma.importRow.findMany({ where: { batchId: staged.batchId } });
+      const heading = TEMPLATES.staff.columns.find((c) => c.field === 'bloodGroup')!.name;
+      expect(String((row.raw as Record<string, unknown>)[heading])).toMatch(/^enc:v1:/);
+      expect(String((row.normalised as Record<string, unknown>).bloodGroup)).toMatch(/^enc:v1:/);
     });
   });
 
@@ -106,7 +114,7 @@ describe('Staged import rows and regulated cells', () => {
       expect((await commitImport(batch.batchId)).errors).toEqual([]);
 
       const staged = await stageRows(TEMPLATES.students, [
-        [`Minor ${stamp}`, '', '', batchName, '', 'Yes', GUARDIAN_NAME, GUARDIAN_PHONE],
+        [`Minor ${stamp}`, '', '', batchName, '', '15/03/2012', '', GUARDIAN_NAME, GUARDIAN_PHONE],
       ]);
       const result = await commitImport(staged.batchId);
       expect(result.errors).toEqual([]);
