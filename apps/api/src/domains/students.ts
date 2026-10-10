@@ -24,6 +24,7 @@
 import {
   EVENTS,
   FUNDING_FRAMEWORKS,
+  istDateKey,
   FUNDING_SOURCES,
   type FundingFramework,
   type FundingSource,
@@ -35,7 +36,12 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { findOrCreatePerson, normalisePhone, normaliseEmail } from './identity.js';
-import { encryptField, requireGuardianConsentForMinor } from './compliance/privacy.js';
+import {
+  assertMinorHasGuardian,
+  encryptField,
+  parseStatedDateOfBirth,
+  requireGuardianConsentForMinor,
+} from './compliance/privacy.js';
 
 registerGovernedEntities('edu', ['student_profile']);
 
@@ -44,6 +50,8 @@ export type StudentStatus = (typeof STUDENT_STATUSES)[number];
 
 export interface StudentInput {
   fullName: string;
+  /** Stated date of birth, recorded on the person when none is on file. FX-64. */
+  dateOfBirth?: string | null;
   /** The enrolling user's attestation that the learner is 18 or over, for a
    * person with no date of birth on file. FX-64. */
   adultAttested?: boolean;
@@ -244,13 +252,35 @@ export async function attachStudentProfile(personId: string, input: StudentInput
     input.institutionId ?? null,
   );
 
+  // A date of birth typed here is recorded on the person when none is on file,
+  // as enrolStudent does. One on file that differs is refused, not preferred:
+  // the minor rule turns on it. FX-64.
+  const statedDob = input.dateOfBirth ? parseStatedDateOfBirth(input.dateOfBirth) : null;
+  if (person.dateOfBirth && statedDob && istDateKey(statedDob) !== istDateKey(person.dateOfBirth)) {
+    throw ApiError.conflict('This person already has a different date of birth on file. Correct it on their record first.');
+  }
+  const dateOfBirth = person.dateOfBirth ?? statedDob;
+  const adultAttested = input.adultAttested === true;
+  // Refused before the date of birth is written, so a refusal changes nothing.
+  assertMinorHasGuardian({ dateOfBirth, adultAttested, guardianName: input.guardianName, guardianPhone: input.guardianPhone });
+  if (!person.dateOfBirth && statedDob) {
+    await prisma.person.update({ where: { id: personId }, data: { dateOfBirth: statedDob } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'person',
+      subjectId: personId,
+      before: { dateOfBirth: null },
+      after: { dateOfBirth: statedDob },
+    });
+  }
+
   // DPDP: a minor cannot be enrolled without a named guardian and a recorded
   // guardian consent (CMP-DPD-003). `null` when the person is not (measurably)
   // a minor — nothing to gate, nothing to stamp.
   const guardianConsentId = await requireGuardianConsentForMinor({
     personId,
-    dateOfBirth: person.dateOfBirth,
-    adultAttested: input.adultAttested === true,
+    dateOfBirth,
+    adultAttested,
     guardianName: input.guardianName,
     guardianPhone: input.guardianPhone,
   });
@@ -284,7 +314,7 @@ export async function attachStudentProfile(personId: string, input: StudentInput
     after: { registrationNumber: profile.registrationNumber, status: profile.status },
     // Who said the learner was an adult, when the rule was released on that
     // statement rather than on a date of birth. FX-64.
-    meta: input.adultAttested === true && !person.dateOfBirth ? { adultAttestedBy: auth.partyId } : undefined,
+    meta: adultAttested && dateOfBirth === null ? { adultAttestedBy: auth.partyId } : undefined,
   });
   await emit({
     name: EVENTS.PERSON_CREATED,

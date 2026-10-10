@@ -295,7 +295,10 @@ router.post(
         primaryPhone: z.string().nullish(),
         primaryEmail: z.string().nullish(),
         institutionId: z.string().nullish(),
-        isMinor: z.boolean().optional(),
+        // The age basis (FX-64): a stated date of birth decides the minor rule;
+        // with none, the rule holds unless the staff member attests adulthood.
+        dateOfBirth: z.string().nullish(),
+        adultAttested: z.boolean().optional(),
         guardianName: z.string().nullish(),
         guardianPhone: z.string().nullish(),
         guardianEmail: z.string().nullish(),

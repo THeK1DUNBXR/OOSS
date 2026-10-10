@@ -121,7 +121,7 @@ describe('HTTP: POST /education/courses/:id/assign carries the age basis', () =>
       primaryPhone: phone(),
     });
     expect(res.status).toBe(422);
-    expect(JSON.stringify(await res.json())).toMatch(/no date of birth and no guardian/);
+    expect(JSON.stringify(await res.json())).toMatch(/No date of birth is on file and no adult has been attested/);
     expect(await unscopedPrisma.person.count({ where: { tenantId: TENANT, fullName: name } })).toBe(0);
   });
 });
@@ -133,14 +133,23 @@ describe('HTTP: POST /crm/people/:id/student-record carries the age basis', () =
     expect(res.status).toBe(201);
   });
 
-  it('a date of birth stated on attach is recorded on the person, and then measured', async () => {
+  it('a date of birth stated on attach is measured: a refused attach records nothing, and an accepted one records it', async () => {
     const person = await aPerson('dob-on-attach', null);
-    const res = await post(`/crm/people/${person.id}/student-record`, {
+    // A 15-year-old with no guardian is refused, and the date is not written on
+    // a refusal.
+    const refused = await post(`/crm/people/${person.id}/student-record`, { fullName: person.fullName, dateOfBirth: yearsAgo(15) });
+    expect(refused.status).toBe(422);
+    const untouched = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
+    expect(untouched.dateOfBirth).toBeNull();
+
+    // With the guardian named, the same date is accepted and recorded.
+    const accepted = await post(`/crm/people/${person.id}/student-record`, {
       fullName: person.fullName,
       dateOfBirth: yearsAgo(15),
+      guardianName: 'Parent Name',
+      guardianPhone: '9800000009',
     });
-    // A 15-year-old with no guardian is refused: the stated date was measured.
-    expect(res.status).toBe(422);
+    expect(accepted.status).toBe(201);
     const stored = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
     expect(stored.dateOfBirth).not.toBeNull();
   });
@@ -160,7 +169,7 @@ describe('HTTP: POST /crm/people/:id/student-record carries the age basis', () =
     const person = await aPerson('unattested-on-attach', null);
     const res = await post(`/crm/people/${person.id}/student-record`, { fullName: person.fullName });
     expect(res.status).toBe(422);
-    expect(JSON.stringify(await res.json())).toMatch(/no date of birth and no guardian/);
+    expect(JSON.stringify(await res.json())).toMatch(/No date of birth is on file and no adult has been attested/);
     expect(await unscopedPrisma.studentProfile.count({ where: { personId: person.id } })).toBe(0);
   });
 });

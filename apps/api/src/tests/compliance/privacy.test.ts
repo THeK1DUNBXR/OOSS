@@ -335,7 +335,7 @@ describe('CMP-DPD-003: a minor StudentProfile needs a guardian consent', () => {
     const err = await expectReject(() =>
       asUser('operations@kaizen.co.in', () => attachStudentProfile(minor.id, { fullName: minor.fullName })),
     );
-    expect(err.status).toBe(400);
+    expect(err.status).toBe(422);
   });
 
   it('attaches, and stamps guardianConsentId, once a guardian name and phone are given', async () => {
@@ -385,7 +385,7 @@ describe('CMP-DPD-003: a minor StudentProfile needs a guardian consent', () => {
         return enrolStudent({ cohortId: cohort.id, personId: minor.id, isMinor: false });
       }),
     );
-    expect(err.status).toBe(400);
+    expect(err.status).toBe(422);
   });
 
   // FX-64. A minor's enrolment rests on a recorded guardian consent, as the
@@ -708,7 +708,7 @@ describe('FX-63: a date-of-birth correction re-runs the minor gate on the enrolm
     const err = await expectReject(() =>
       asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id, { correction: { dateOfBirth: fifteenYearsAgo() } })),
     );
-    expect(err.status).toBe(400);
+    expect(err.status).toBe(422);
     const p = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
     expect(Date.now() - p.dateOfBirth!.getTime()).toBeGreaterThan(20 * 365 * 86_400_000);
     const e = await unscopedPrisma.enrollment.findFirstOrThrow({ where: { id: enrollment.id } });

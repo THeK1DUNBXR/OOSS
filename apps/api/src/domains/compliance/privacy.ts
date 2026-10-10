@@ -338,6 +338,18 @@ export interface MinorGateInput {
 }
 
 /**
+ * A date of birth as typed on a form. A date with no time is read as the IST
+ * day it names: `new Date('2008-05-10')` is UTC midnight, which is 05:30 IST on
+ * the same day. Refuses a value that does not parse or lies in the future. FX-64.
+ */
+export function parseStatedDateOfBirth(value: string): Date {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) throw ApiError.badRequest('The date of birth is not a valid date.');
+  if (d.getTime() > Date.now()) throw ApiError.badRequest('The date of birth is in the future.');
+  return d;
+}
+
+/**
  * Whether the minor rule applies, and if it does, refuses unless a guardian
  * name and phone are given. Pure, so a caller can refuse before anything is
  * written; the consent row is written only by `requireGuardianConsentForMinor`.
@@ -352,8 +364,10 @@ export function assertMinorHasGuardian(input: Omit<MinorGateInput, 'personId'>):
     const basis =
       measured === true
         ? `This student is under 18 (age ${ageInYears(input.dateOfBirth)})`
-        : 'No date of birth is on file and no adult has been attested, so the minor rule applies';
-    throw ApiError.badRequest(
+        : 'No date of birth is on file and no adult has been attested, so the minor rule applies. Give a date of birth, or a guardian name and phone, or confirm they are 18 or over';
+    // 422, not 400: the request is well formed and the learner's record is what is
+    // missing, so the caller can supply it and retry. FX-64.
+    throw ApiError.unprocessable(
       `${basis}. A minor cannot be enrolled without a named guardian and a recorded guardian consent — give a guardian name and phone.`,
       { reason: 'MINOR_GUARDIAN_CONSENT_REQUIRED' },
     );

@@ -543,6 +543,13 @@ const studentSchema = z.object({
   primaryEmail: z.string().nullish(),
   registrationNumber: z.string().nullish(),
   institutionId: z.string().nullish(),
+  // The age basis (FX-64): recorded on the person when none is on file; with
+  // no date of birth, the minor rule holds unless the staff member attests.
+  dateOfBirth: z.string().nullish(),
+  adultAttested: z.boolean().optional(),
+  // Regulated (DPDP): stored encrypted by the service. FX-64.
+  guardianName: z.string().nullish(),
+  guardianPhone: z.string().nullish(),
   address: z.string().nullish(),
   placeOfSupply: z.string().nullish(),
   gstin: z.string().nullish(),

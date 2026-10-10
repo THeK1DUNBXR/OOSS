@@ -19,22 +19,18 @@ import { auditWrite } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { createAffiliation } from './identity.js';
-import { assertMinorHasGuardian, encryptField, readRegulated, requireGuardianConsentForMinor } from './compliance/privacy.js';
+import {
+  assertMinorHasGuardian,
+  encryptField,
+  parseStatedDateOfBirth,
+  readRegulated,
+  requireGuardianConsentForMinor,
+} from './compliance/privacy.js';
 
 type PersonRow = NonNullable<Awaited<ReturnType<typeof prisma.person.findFirst>>>;
 
 export const ENROLLMENT_STATUSES = ['reserved', 'confirmed', 'active', 'completed', 'withdrawn', 'deferred'] as const;
 export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number];
-
-/** A date of birth as typed on the enrolment form. A date with no time is
- * read as the IST day it names, since `new Date('2008-05-10')` is UTC
- * midnight, which is 05:30 IST on the same day. */
-function parseDateOfBirth(value: string): Date {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) throw ApiError.badRequest('The date of birth is not a valid date.');
-  if (d.getTime() > Date.now()) throw ApiError.badRequest('The date of birth is in the future.');
-  return d;
-}
 
 export async function enrolStudent(input: unknown) {
   await assertCan({ resource: 'education', verb: 'create' });
@@ -91,7 +87,7 @@ export async function enrolStudent(input: unknown) {
   // Guardian contact is DPDP-covered and stored encrypted. Minority is measured
   // from the date of birth, stated here or on file; with neither, the minor
   // rule holds unless the caller attests adulthood (assertMinorHasGuardian). FX-64.
-  const statedDob = body.dateOfBirth ? parseDateOfBirth(body.dateOfBirth) : null;
+  const statedDob = body.dateOfBirth ? parseStatedDateOfBirth(body.dateOfBirth) : null;
   const guardianName = body.guardianName?.trim() || null;
   const guardianPhone = body.guardianPhone?.trim() || null;
   const guardianEmail = body.guardianEmail?.trim() || null;

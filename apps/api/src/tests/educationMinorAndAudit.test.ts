@@ -52,7 +52,7 @@ describe('FX-64: enrolment with no date of birth holds the minor rule', () => {
     const err = await expectReject(() =>
       asUser(CHAIRMAN, () => enrolStudent({ cohortId: cohort.id, fullName: name, primaryPhone: aPhone() })),
     );
-    expect(err.status).toBe(400);
+    expect(err.status).toBe(422);
     expect(err.message).toMatch(/guardian/i);
     expect(await unscopedPrisma.person.count({ where: { tenantId: TENANT, fullName: name } })).toBe(0);
   });
@@ -83,7 +83,7 @@ describe('FX-64: enrolment with no date of birth holds the minor rule', () => {
     const err = await expectReject(() =>
       asUser(CHAIRMAN, () => enrolStudent({ cohortId: cohort.id, fullName: name, primaryPhone: aPhone(), dateOfBirth: dob })),
     );
-    expect(err.status).toBe(400);
+    expect(err.status).toBe(422);
     expect(await unscopedPrisma.person.count({ where: { tenantId: TENANT, fullName: name } })).toBe(0);
 
     const enrollment = await asUser(CHAIRMAN, () =>
