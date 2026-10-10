@@ -4,10 +4,10 @@ From the advisor notes in findings 01–12, deduplicated, most consequential fir
 
 ## 1. Conflicts with the existing plan or CLAUDE.md
 
-- Phase numbering collides: proposal Phase 0–4 (discovery, operations pilot) vs plan Phase 0–8 (defects, ledger); proposal "Phase 1" is operations, plan Phase 1 is the journal. Rename to R0–R4 (`README.md:45`, `phase-1-ledger.md:3`).
+- Phase numbering collides: proposal Phase 0–4 (discovery, operations pilot) vs plan Phase 0–8 (defects, ledger); proposal "Phase 1" is operations, plan Phase 1 is the journal. Rename to R0–R4 (`README.md:45`, `docs/plan/archive/phase-1-ledger.md:3`).
 - Proposal Phase 0 wants tenancy and access resolved before external exposure; plan defers tenancy to Phase 7 ("when a second tenant is real"). Ordering conflict (D-07).
 - Plan gates are engineering-only ("Done means", `README.md:45-57`); the proposal's operating gate (owner, scenario, negative test, support, training, export, rollback) is absent from the plan. Ten proposal scenarios have no plan Done item (absence test, broken detector, provider replay, bank-change, group close).
-- Staffing conflict: plan assumes the most senior person plus AI-assisted developers on the ledger (`sequencing.md:8`); the proposal costs 4–6 FTE not dedicated to the work (D-05).
+- Staffing conflict: plan assumes the most senior person plus AI-assisted developers on the ledger (`docs/plan/archive/sequencing.md:8`); the proposal costs 4–6 FTE not dedicated to the work (D-05).
 - Proposal says "bounded AI" while naming OpenAI Responses, Codex and Claude Team as runtimes; CLAUDE.md says zero model calls exist and forbids claiming it. The README "AI-native" line is unsupported (`README.md:3`).
 - Proposal never states the money rule (signed bigint paise) or the ledger-only write rule; many of its capabilities touch money while the schema is Decimal/number (CLAUDE.md rules 1 and 2).
 - Proposal "legal entity" implies several entities under one group; CLAUDE.md and `CompanyProfile.tenantId @unique` make one tenant one company. README decision A ("put entityId on the journal now") is already satisfied in schema but unused (`compliance-books.prisma:74`).
@@ -15,7 +15,7 @@ From the advisor notes in findings 01–12, deduplicated, most consequential fir
 - Proposal bans AI actions softly ("may propose"); CLAUDE.md requires hard prohibitions in `packages/shared/src/ai.ts` (journal, IRN, filing, payroll, customer email). Several proposed AI tasks (refund, salary, credential, grant submission) have no prohibition code.
 - Test policy: proposal scenarios need provider doubles (outage, 429, bank timeout); CLAUDE.md forbids mocks in the API suite (D-15).
 - Plan drift to fix, not code: `README.md:39` cites `schema.prisma:81` (actual `main.prisma:97`); CLAUDE.md cites `db.ts:150` (actual `db.ts:166`); phase 6 counts agents, prohibitions and line numbers wrongly (finding 06 F25); `marketing.md:87` describes an adapter directory and providers that do not exist.
-- DPDP commencement: plan states 14 May 2027, proposal says do not assume (`phase-2-audit.md:22`). ⚠️ Counsel to confirm before any date appears in copy.
+- DPDP commencement: plan states 14 May 2027, proposal says do not assume (`docs/plan/archive/phase-2-audit.md:22`). ⚠️ Counsel to confirm before any date appears in copy.
 - Plan 1.5 book figures (1,123 vouchers, ₹40,500 gap) are listed as unverifiable; the proposal's pilot finance gate must not inherit them.
 
 ## 2. Money, ledger and statutory
@@ -92,7 +92,7 @@ From the advisor notes in findings 01–12, deduplicated, most consequential fir
 
 ## 8. Rollout, migration and cost
 
-- Migration plan covers data, not schema: the project runs on `db:push` with no migrations directory (`phase-0-stabilise.md:71`).
+- Migration plan covers data, not schema: the project runs on `db:push` with no migrations directory (`docs/plan/archive/phase-0-stabilise.md:71`).
 - Migration of historical communications needs provider permission and has no import kind; imports today hard-delete on revert, skip period checks and are non-transactional.
 - Cost model (p62) gives formulas without rates; no build-vs-integrate TCO for any integration (README B answers one case only).
 - Product naming: proposal says "Zen 360", code is KaiERP; confirm before any external use.

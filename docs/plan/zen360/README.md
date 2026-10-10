@@ -97,8 +97,8 @@ These block work. **D-01** (multi-entity), **D-03** (ledger cutover and money ty
 
 | Where | Says | Actual |
 |---|---|---|
-| `docs/plan/README.md` decision A | `schema.prisma:81` | `apps/api/prisma/schema/main.prisma:97` |
-| `phase-0-stabilise.md:51` | `financialYearStart` at `documentNumber.ts:67` | `:92-94`; also `compliance/tax.ts:60` `fyOf`, missing from the list |
+| `docs/plan/archive/README-old-index.md` decision A | `schema.prisma:81` | `apps/api/prisma/schema/main.prisma:97` |
+| `docs/plan/archive/phase-0-stabilise.md:51` | `financialYearStart` at `documentNumber.ts:67` | `:92-94`; also `compliance/tax.ts:60` `fyOf`, missing from the list |
 | `CLAUDE.md` | `num()` at `platform/db.ts:150`; hard delete at `imports/commit.ts:721` | `:166`; `:733` |
 | `CLAUDE.md` rule 5 | unregistered `subjectType` silently no-ops | true. Separately, `force:true` is used at 10+ sites, e.g. `platform/lifecycle.ts:113` (requisition, application, position) and `compliance/payroll.ts:87-320` (every statutory rate table) (FX-21), which the rule forbids |
 

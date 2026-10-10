@@ -10,7 +10,7 @@
 - **Groups are multi-tenant.** `Tenant.parentTenantId` (main.prisma:53) and computed `Tenant.kind` holding|subsidiary|standalone (main.prisma:55; `reconcileTenantKinds` platform/tenantKind.ts:39-52). Cross-tenant reads only via `EntitySnapshot` (main.prisma:2587), written by the publisher (domains/group.ts:171-364, `buildEntitySnapshot` :203, `publishEntitySnapshot` :279). Group sees only snapshots (group.ts:558-625).
 - **Within-tenant multi-entity exists in schema only.** `LedgerEntity` (compliance-books.prisma:54), `JournalEntry.entityId` required (compliance-books.prisma:74), `AccountingPeriod.entityId` nullable (compliance-books.prisma:15). Migration `20260920173000_ledger_invariants` creates `ledger_entities` with RLS. Nothing creates a LedgerEntity: grep for `ledgerEntity|LedgerEntity` in apps/api/src finds only `audit.ts:110` (governed registration). The only journal writer is `platform/ledger.ts:128` (`tx.journalEntry.create`), and it has no domain caller (only the reversal at ledger.ts:203 calls `post`).
 - **Live books are not on the journal.** Money lives in `Transaction` (main.prisma:4920) and `LedgerAccount` (main.prisma:4827). `Transaction` carries no entity id. Two parallel ledgers, no bridge.
-- Plan drift: docs/plan/README.md:39 cites `schema.prisma:81` for CompanyProfile.tenantId. Actual: main.prisma:97 (schema is split into files). The README's recommendation "put entityId on the journal now" is already done in the schema (compliance-books.prisma:74), but unused.
+- Plan drift: docs/plan/archive/README-old-index.md:39 cites `schema.prisma:81` for CompanyProfile.tenantId. Actual: main.prisma:97 (schema is split into files). The README's recommendation "put entityId on the journal now" is already done in the schema (compliance-books.prisma:74), but unused.
 
 ## Capability table
 
@@ -86,8 +86,8 @@ Counts (rows above): EXISTS 1, PARTIAL 15, MISSING 30, FIX 0 as rows (fixes F1-F
 - F4. Intercompany flag only checked on create. `books.ts:292-294` validates `intercompanyTenantId` on create. Whether the update path re-validates is UNVERIFIED (not opened).
 - F5. Shared-cost comment and schema disagree. books.ts:282-284 and main.prisma:4822-4826 say a shared cost split is a judgement "made at the time". `Transaction.division` (main.prisma:4938) holds one value. A shared cost cannot be split on one row; the `shared` division (finance.ts:19) becomes a catch-all. Fix requires a split table, not the comment.
 - F6. AccountingPeriod entity is nullable. `AccountingPeriod.entityId` is `String?` (compliance-books.prisma:15) while `JournalEntry.entityId` is required (:74). The unique key `[tenantId, entityId, startsOn]` (:47) does not stop duplicate periods where entityId is NULL (Postgres NULLs are distinct). `post()` looks periods up by entityId (ledger.ts ~L74-80). Make entityId required before any writer exists.
-- F7. Plan drift. docs/plan/README.md:39 cites `schema.prisma:81`; actual main.prisma:97. README decision A says "put entityId on the journal now" which is already in the schema; the open decision is the group model (tenant tree vs LedgerEntity), not the column.
-- F8. Journal immutability grant. Migration `20260920173000_ledger_invariants` line 139 is `REVOKE UPDATE, DELETE ON journal_entries, journal_lines FROM PUBLIC`. docs/plan/phase-1-ledger.md:102 asks for the revoke against the app role. Whether the app role holds direct grants is UNVERIFIED. Verify before relying on immutability. (Finance path: trial-balance assertion required per CLAUDE.md.)
+- F7. Plan drift. docs/plan/archive/README-old-index.md:39 cites `schema.prisma:81`; actual main.prisma:97. README decision A says "put entityId on the journal now" which is already in the schema; the open decision is the group model (tenant tree vs LedgerEntity), not the column.
+- F8. Journal immutability grant. Migration `20260920173000_ledger_invariants` line 139 is `REVOKE UPDATE, DELETE ON journal_entries, journal_lines FROM PUBLIC`. docs/plan/archive/phase-1-ledger.md:102 asks for the revoke against the app role. Whether the app role holds direct grants is UNVERIFIED. Verify before relying on immutability. (Finance path: trial-balance assertion required per CLAUDE.md.)
 - F9. Own-entity figures. `pnlFyToDate: null` for the holding (group.ts:581) is correct "not measured ≠ zero" practice. Keep it.
 
 ## Advisor notes (what the proposal misses)
@@ -109,14 +109,14 @@ Controls to attach to every item:
 
 Indian statutory and regulatory angle (flagged, not encoded):
 - Companies Act s.129(3) consolidated statements and AOC-1: already partly built (group.ts:700-839, the statement of subsidiaries). Consolidation rules themselves: accountant to confirm applicable framework (Ind AS 110 / 103 for acquisitions and NCI; accountant to confirm).
-- Transfer pricing and related-party: applies to intercompany service pricing. The Income-tax Act 2025 took effect 1 April 2026 and renumbers sections (docs/plan/phase-3-statutory.md:35). Do not hardcode any margin, safe harbour or form number. Requires StatutoryRule rows (CLAUDE.md rule 4) and tax-adviser sign-off.
+- Transfer pricing and related-party: applies to intercompany service pricing. The Income-tax Act 2025 took effect 1 April 2026 and renumbers sections (docs/plan/archive/phase-3-statutory.md:35). Do not hardcode any margin, safe harbour or form number. Requires StatutoryRule rows (CLAUDE.md rule 4) and tax-adviser sign-off.
 - GST on inter-unit services between registered persons where a related-person relationship exists. Treatment UNVERIFIED; do not encode.
 - Cross-entity GST and TDS: each entity has its own GSTIN/TAN. LedgerEntity carries gstin/tan (compliance-books.prisma:57-62), but invoices issued by a group entity must use that entity's GSTIN; no check found in invoicing.ts (UNVERIFIED for every invoice path).
 - DPDP: cross-tenant projections containing personal data are a transfer if the recipient tenant is elsewhere. CLAUDE.md "Never" bullet applies to any projection that carries personal data.
 - Trust and foundation funds (p11): restricted-fund and trust control are legal questions. Do not assume they belong to the holding company (proposal p11 says the same).
 
 Dependencies on plan phases:
-- Pairing, elimination, and any posted intercompany entry need Phase 1 `post()` and the period invariants (docs/plan/phase-1-ledger.md:102-103).
+- Pairing, elimination, and any posted intercompany entry need Phase 1 `post()` and the period invariants (docs/plan/archive/phase-1-ledger.md:102-103).
 - Group consolidation needs Phase 1.6 money helper (`packages/shared/src/money.ts`, not yet written per CLAUDE.md rule 1) before F1 can be fixed cleanly.
 - Activation readiness uses Phase 4 decision/approval surfaces (docs/plan/ceo-office.md:203).
 

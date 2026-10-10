@@ -237,4 +237,4 @@ The level template ships with the app and is editable per tenant at onboarding. 
 - Item 3.1 (statutory master pack, Wave 1) is pulled early by the owner, overriding the "do not reorder" rule.
 - The founder's exemption from maker-checker is a segregation-of-duties risk for founder-only classes (payroll run, large payments, statutory filings).
 - On-premises, single-site risk: everything runs on one own server.
-- Test counts differ across documents: `ci.yml` says 382, `phase-8-proof.md` says 370, `phase-0-stabilise.md` says 372. There is no single source of truth yet.
+- Test counts differ across documents: `ci.yml` says 382, `docs/plan/archive/phase-8-proof.md` says 370, `docs/plan/archive/phase-0-stabilise.md` says 372. There is no single source of truth yet.

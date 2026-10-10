@@ -1,3 +1,5 @@
+> SUPERSEDED (2026-10-11): kept for item specs and history only. The source of truth is docs/plan/zen360/ORDERED-PLAN.md. Old phase labels (P0-P8) are retired; item numbers here (e.g. 0.7, 1.6) remain valid references.
+
 # Why this plan is shaped this way
 
 Read once. Not needed during execution — `docs/plan/README.md` and the phase files carry everything operative.

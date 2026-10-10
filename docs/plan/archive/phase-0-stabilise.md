@@ -1,3 +1,5 @@
+> SUPERSEDED (2026-10-11): kept for item specs and history only. The source of truth is docs/plan/zen360/ORDERED-PLAN.md. Old phase labels (P0-P8) are retired; item numbers here (e.g. 0.7, 1.6) remain valid references.
+
 > One phase per session. Read only this file plus `CLAUDE.md`. `README.md` has the audit point and the known line-number drift.
 
 # PHASE 0 — Stop the bleeding

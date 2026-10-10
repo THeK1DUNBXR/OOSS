@@ -177,13 +177,13 @@ Each item names the consequence, per CLAUDE.md Rule 8. Before claiming any fix, 
 
 5. **Scheme claims are external.** Portal status, acknowledgements and query cycles are the scheme's records. Store them as imported facts with timestamps, not as internal truth.
 
-6. **Learner data to sponsors and funders.** Sharing learner identifiers or outcomes with a sponsor or donor is a disclosure with a purpose. The privacy module has purpose codes per published notice (`compliance/privacy.ts:55-62`); I did not verify whether the current notice covers funder reporting. Phase 2 requires verifiable guardian consent for children's data (`docs/plan/phase-2-audit.md:29`). Counsel to confirm.
+6. **Learner data to sponsors and funders.** Sharing learner identifiers or outcomes with a sponsor or donor is a disclosure with a purpose. The privacy module has purpose codes per published notice (`compliance/privacy.ts:55-62`); I did not verify whether the current notice covers funder reporting. Phase 2 requires verifiable guardian consent for children's data (`docs/plan/archive/phase-2-audit.md:29`). Counsel to confirm.
 
 7. **Outputs are not outcomes.** Attendance, DailyProgress and LearnerLog are outputs. The proposal's "verified outcome" needs an outcome definition, an owner and evidence. No such entity exists.
 
 8. **Competency standards.** The proposal cites public SFIA guidance (p17). The codebase has no competency framework model. Any framework should be imported as data with its version, not hard-coded.
 
-9. **Retention.** Scheme and donor audits will need records for the periods in the Phase 2 retention decision (`docs/plan/README.md` Phase 2, 8-year retention). Enrolment and attendance cascades (FIX-18) conflict with that.
+9. **Retention.** Scheme and donor audits will need records for the periods in the Phase 2 retention decision (`docs/plan/archive/README-old-index.md` Phase 2, 8-year retention). Enrolment and attendance cascades (FIX-18) conflict with that.
 
 10. **AI feedback.** If built, AI output is a draft. A competent human must make the judgement (CLAUDE.md, `packages/shared/src/ai.ts` prohibitions). Any inference call carries learner data and must pass `applyFieldVisibility` and India-region routing (CLAUDE.md Never list).
 

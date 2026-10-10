@@ -1,71 +1,23 @@
 # Plan index
 
-**Read one phase file per session.** Each is self-contained. Reading all nine costs ~11k tokens to find ~1.5k of instruction.
+The plan is owner Phase 0 and owner Phase 1. Start here, then read only the item you are working on.
 
-| Phase | File | Delivers | Size |
-|---|---|---|---|
-| 0 | `phase-0-stabilise.md` | Nine verified defects, security headers, logging, CI | 1 week |
-| 1 | `phase-1-ledger.md` | Double-entry journal, integer paise, DB-enforced balance, append-only | 3–4 weeks |
-| 2 | `phase-2-audit.md` | Rule 3(1) audit spine, 8-year retention, DPDP consent + erasure | 2 weeks |
-| 3 | `phase-3-statutory.md` | Statutory pack, e-invoicing, GSTR-1/1A/3B/IMS, payroll, TDS | 6–8 weeks |
-| 4 | `phase-4-interface.md` | Design system, `DataTable`, splitting, a11y, mobile | 4–6 weeks |
-| 5 | `phase-5-semantic.md` | Typed metric graph, deterministic SQL compiler, evals | 3 weeks |
-| 6 | `phase-6-intelligence.md` | Model gateway, the Briefing, Ask Kaizen, approval gates | 4–6 weeks |
-| 7 | `phase-7-product.md` | Onboarding state machine, tenancy tiers, India residency | 3–4 weeks |
-| 8 | `phase-8-proof.md` | Concurrency tests, leakage fuzzer, restore drills, SOC 2 | ongoing |
-| — | `planned-features.md` | Features not yet scheduled into a phase: researched, argued, open decisions | not scheduled |
+**Read in this order:**
 
-`planned-features.md` — features beyond the phases, each with status, rationale and open decisions. Add to it; move a feature into a phase file when it is scheduled. Not read during phase execution.
+1. [`CURRENT.md`](CURRENT.md): the active wave, its exit criteria and the rules for it.
+2. [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md): the source of truth. Every item, in order, with file and line references.
+3. [`zen360/ROADMAP.md`](zen360/ROADMAP.md): stop rules per wave, and the deferred list (section 2).
+4. [`zen360/DECISIONS.md`](zen360/DECISIONS.md): owner answers by round. Governs where it differs from ORDERED-PLAN.
 
-`zen360/` — verified gap analysis of the Zen 360 group-platform proposal (10 Oct 2026): stop-ship P0 defects, 379-capability register, missing interconnections, 20 leadership decisions, and how the proposal's rollout maps onto these phases. **Read `zen360/README.md` only**; the registers are lookups.
+**Other plan documents:**
 
-`MAP.md` — generated index of every model, symbol, route and page with `file:line`. **Look here before searching.** `EFFICIENCY.md` — how to execute this plan without wasting tokens; read once at setup. `prompts.md` — kick-off prompt per session. `rationale.md` — why the plan is shaped this way; read once, never during execution. `sequencing.md` — who does what, in what order.
+- [`zen360/CI-GATES-DRAFT.md`](zen360/CI-GATES-DRAFT.md): the CI gates (G1 to G12), draft.
+- [`zen360/QUESTIONNAIRE-DRAFT.md`](zen360/QUESTIONNAIRE-DRAFT.md): onboarding questionnaire, draft.
+- [`zen360/README.md`](zen360/README.md): the Zen 360 overview.
+- Reference docs cited by ORDERED-PLAN: [`CAPABILITIES.md`](zen360/CAPABILITIES.md), [`FIXES.md`](zen360/FIXES.md), [`INTERCONNECTS.md`](zen360/INTERCONNECTS.md), [`GAPS-IN-PROPOSAL.md`](zen360/GAPS-IN-PROPOSAL.md), and [`zen360/evidence/`](zen360/evidence/).
+- [`planned-features.md`](planned-features.md): Feature 1 (work management and team communication) and other planned features.
+- Domain specs: [`ceo-office.md`](ceo-office.md), [`cio.md`](cio.md), [`compliance.md`](compliance.md), [`equity-portal.md`](equity-portal.md), [`hcm.md`](hcm.md), [`marketing.md`](marketing.md), and [`ceo-office-asbuilt/`](ceo-office-asbuilt/). These are item specs for domains. Their status against the owner plan is not yet decided.
+- [`MAP.md`](MAP.md): generated index of models, symbols, routes and pages with `file:line`. Use `/where` to look things up. Regenerate with `node scripts/genmap.mjs`.
+- [`EFFICIENCY.md`](EFFICIENCY.md): why the working rules are shaped as they are.
 
-**Ordering is dependency-driven.** 1 before 3. 1, 2 and 5 before 6. Do not reorder.
-
-## Audit point
-
-All `file:line` citations were read at `origin/main` @ `1656498`, verified by a Session-0 pass on 12 September 2026. Two commits have landed since (`fef1870`, `dc2c05f`, PR #6). No defect moved. These citations are stale:
-
-| Written | At `1656498` | At `dc2c05f` |
-|---|---|---|
-| `server.ts` `app.use(cors())` | :14 | **:18** |
-| `server.ts` `startScheduler()` | :72 | **:88** |
-| API test count | 370 | **372** |
-| `platform/*` file count | 14 | **15** |
-| `createForms.tsx` `role=sponsor` | :881 | **:878** |
-
-If a citation does not match, re-locate it — do not assume the plan describes a different file.
-
-## Three decisions needed before Phase 1
-
-Not engineering decisions; do not default them silently.
-
-**A. Multi-entity.** `CompanyProfile.tenantId` is `@unique` (`main.prisma:97`; written as `schema.prisma:81` before the schema split) — one tenant is one registered company. Kaizen has two branches, a separate WFaaS business and a planned JV. Retrofitting `entityId` onto a journal with history is the most expensive migration in this plan. **Put it on the journal now even with one entity.** A column today; a quarter later.
-
-**B. GSP vs direct IRP.** Direct NIC access whitelists four static IPs per GSTIN at ~₹5 lakh all-in — it does not scale to a tenant roster and fights elastic infrastructure. **Go GSP.** Commercial decision with a monthly cost; gates Phase 3.
-
-**C. Tenant-zero or product.** If Kaizen is the customer: hardcode Tamil Nadu, ship faster. If the product is the point: PT per local body from line one, versioned statutory packs, onboarding as a state machine on day one. **This plan assumes the second** — ~25% more work, and the difference between an internal tool and an asset.
-
-## Done means
-
-1. 10,000 random operations; trial balance sums to zero after every one.
-2. Legacy `Transaction` replay equals old cashbook balances to the paisa.
-3. 200 concurrent allocations against one payment allocate exactly the available amount.
-4. 200 concurrent emissions in one tenant; `verifyChain()` clean.
-5. Leakage fuzzer: every route, job, cache key and export, tenant A's token + tenant B's ids → 404.
-6. `UPDATE`/`DELETE` on a posted journal line fails at the DB as the app role.
-7. 200+ golden questions per module, scored on exact numeric match, including fan-out, NULLs, FY boundaries, leakage probes and injection payloads in note fields.
-8. Zero axe-core violations; Lighthouse a11y ≥ 95.
-9. Full invoice flow usable at 390px.
-10. Monthly automated restore from the India-region backup reproduces a bit-identical trial balance.
-11. Every `<Metric>` carries `drillTo` or `noActionReason`, enforced by the type system.
-
-## Not verifiable from this repository
-
-Flagged so they are not mistaken for checked facts:
-
-- **The Kaizen book figures** the Phase 1.5 gate depends on — 1 Feb–27 Aug 2026, 1,123 vouchers, 66 ledger accounts, the ~₹40,500 inherited reconciliation gap, the 12-person roster at ₹2,15,000/month. **Confirm with a human before relying on that gate**; it is what decides when `model Transaction` may be deleted.
-- Every statutory claim in Phase 3. Legal facts, not codebase facts. The riskiest carry ⚠️.
-- The Spider 1.0/2.0 benchmark figures in Phase 5.
-- The Platform Canon at `A:\Kai-ZEN\OS` — outside the repo, and nothing in `docs/` references it. Phase 0 copies it into `docs/canon/`.
+**Archive:** [`archive/`](archive/README.md) holds the superseded P0 to P8 plan. Its item numbers (for example `0.7`, `1.6`) are still valid references. Its phase labels are retired. Do not start work from it.
