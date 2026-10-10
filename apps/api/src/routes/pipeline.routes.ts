@@ -12,8 +12,11 @@ import {
   assertGraphReachable,
   assertPipelineUsable,
   createPipeline,
+  deleteTransition,
   retireStage,
+  updateStage,
 } from '../domains/pipelines.js';
+import { createTerritory, updateRoutingRule } from '../domains/routing.js';
 
 const router = Router();
 
@@ -126,7 +129,6 @@ router.post(
 router.patch(
   '/stages/:stageId',
   handler(async (req) => {
-    await assertCan({ resource: 'pipeline_stages', verb: 'edit' });
     const schema = z.object({
       label: z.string().optional(),
       stageAgeBudgetDays: z.number().int().nullish(),
@@ -144,7 +146,7 @@ router.patch(
       );
     }
 
-    return prisma.pipelineStage.update({ where: { id: req.params.stageId }, data: input as never });
+    return updateStage(req.params.stageId, input);
   }),
 );
 
@@ -171,11 +173,7 @@ router.post(
 
 router.delete(
   '/transitions/:transitionId',
-  handler(async (req) => {
-    await assertCan({ resource: 'pipeline_transitions', verb: 'delete' });
-    await prisma.pipelineTransition.delete({ where: { id: req.params.transitionId } });
-    return { ok: true };
-  }),
+  handler(async (req) => deleteTransition(req.params.transitionId)),
 );
 
 /** The Kanban read path, scoped to one pipeline. */
@@ -277,8 +275,6 @@ router.get(
 router.post(
   '/territories/all',
   handler(async (req, res) => {
-    await assertCan({ resource: 'territories', verb: 'create' });
-    const auth = currentAuth();
     const schema = z.object({
       name: z.string().min(1),
       geoAreaRef: z.array(z.string()).optional(),
@@ -288,21 +284,7 @@ router.post(
       ownerPartyId: z.string().nullish(),
       capacityCeiling: z.number().int().optional(),
     });
-    const input = schema.parse(req.body);
-    const { nextRecordCode } = await import('../platform/recordCode.js');
-    const territory = await prisma.territory.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode: await nextRecordCode('TER'),
-        name: input.name,
-        geoAreaRef: input.geoAreaRef ?? [],
-        appliesToVerticals: input.appliesToVerticals ?? [],
-        appliesToAccountKind: input.appliesToAccountKind ?? 'any',
-        ownerPositionId: input.ownerPositionId ?? null,
-        ownerPartyId: input.ownerPartyId ?? null,
-        capacityCeiling: input.capacityCeiling ?? 50,
-      },
-    });
+    const territory = await createTerritory(schema.parse(req.body));
     res.status(201).json(territory);
     return undefined;
   }),
@@ -320,13 +302,12 @@ router.get(
 router.patch(
   '/routing-rules/:id',
   handler(async (req) => {
-    await assertCan({ resource: 'routing_rules', verb: 'edit' });
     const schema = z.object({
       factorWeights: z.record(z.number()).optional(),
       tieBreakMarginPoints: z.number().int().optional(),
       active: z.boolean().optional(),
     });
-    return prisma.routingRule.update({ where: { id: req.params.id }, data: schema.parse(req.body) as never });
+    return updateRoutingRule(req.params.id, schema.parse(req.body));
   }),
 );
 

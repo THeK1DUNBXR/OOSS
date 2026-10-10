@@ -42,7 +42,7 @@
 
 **`apps/api/src/domains/commandCenter.ts`** (629 lines) — computeReachSignature:90 · whatChanged:129 · attentionQueue:244 · liveAndHandled:324 · peopleAndCapability:433 · touchWatermark:482 · banner:499 · commandCenter:532 · drillPathFor:615
 
-**`apps/api/src/domains/commercial.ts`** (649 lines) — OfferingInput:32 · suggestRevenueTreatment:47 · createOffering:65 · publishOffering:106 · retireOffering:118 · detectOfferingCoverageGaps:136 · PriceInput:165 · publishPrice:182 · createProposal:254 · sendProposal:298 · respondToProposal:330 · detectStalledProposals:371 · QuoteLineInput:425 · createQuote:431 · QuoteIssueResult:518 · issueQuote:534
+**`apps/api/src/domains/commercial.ts`** (713 lines) — OfferingInput:38 · suggestRevenueTreatment:53 · createOffering:71 · publishOffering:112 · retireOffering:124 · detectOfferingCoverageGaps:142 · PriceInput:171 · publishPrice:188 · createProposal:260 · sendProposal:313 · respondToProposal:354 · detectStalledProposals:395 · QuoteLineInput:449 · createQuote:455 · QuoteIssueResult:571 · issueQuote:587
 
 **`apps/api/src/domains/companyProfile.ts`** (294 lines) — CompanyProfileInput:37 · companyProfile:89 · updateCompanyProfile:100 · documentPrefix:240 · documentNumbering:251 · supplyingParty:266 · assertRegistered:285
 
@@ -84,7 +84,7 @@
 
 **`apps/api/src/domains/courses.ts`** (475 lines) — CourseFeePlanInput:33 · CourseAddonInput:38 · CourseInput:46 · listCourses:67 · createCourse:179 · updateCourse:250 · retireCourse:350 · AssignCourseInput:419 · assignCourse:443
 
-**`apps/api/src/domains/decisions.ts`** (425 lines) — RaiseDecisionInput:28 · raiseDecision:42 · decisionQueue:163 · DispositionInput:209 · disposeDecision:221 · reviewDecision:366 · decisionCalibration:402
+**`apps/api/src/domains/decisions.ts`** (440 lines) — RaiseDecisionInput:34 · raiseDecision:48 · decisionQueue:170 · DispositionInput:216 · disposeDecision:228 · reviewDecision:378 · decisionCalibration:417
 
 **`apps/api/src/domains/education.ts`** (331 lines) — ENROLLMENT_STATUSES:25 · EnrollmentStatus:26 · enrolStudent:28 · setEnrollmentStatus:257
 
@@ -226,7 +226,7 @@
 
 **`apps/api/src/domains/performance.ts`** (352 lines) — listGoals:41 · createGoal:50 · transitionGoal:90 · listEvidence:134 · recordEvidence:170 · listLearningActivities:244 · createLearningActivity:250 · enrolInLearning:269 · completeLearning:295 · outstandingCompliance:332
 
-**`apps/api/src/domains/pipelines.ts`** (396 lines) — StageInput:25 · PipelineInput:38 · createPipeline:50 · addStage:104 · addTransition:143 · assertPipelineUsable:169 · assertGraphReachable:188 · TransitionCheck:232 · validateTransition:245 · retireStage:321 · pipelineForVertical:351 · entryStage:370 · loadPipelineWithStages:379 · stageFor:391
+**`apps/api/src/domains/pipelines.ts`** (447 lines) — StageInput:25 · PipelineInput:38 · createPipeline:50 · addStage:104 · addTransition:143 · updateStage:169 · deleteTransition:192 · assertPipelineUsable:220 · assertGraphReachable:239 · TransitionCheck:283 · validateTransition:296 · retireStage:372 · pipelineForVertical:402 · entryStage:421 · loadPipelineWithStages:430 · stageFor:442
 
 **`apps/api/src/domains/receipts.ts`** (690 lines) — listReceipts:53 · receiptDocument:117 · raiseFinalInvoice:275 · finalizeCourseFeeInvoice:425 · listFinalInvoices:519 · finalInvoiceDocument:563
 
@@ -234,7 +234,7 @@
 
 **`apps/api/src/domains/rounds.ts`** (1093 lines) — FundingRoundInput:49 · createRound:68 · updateRound:108 · listRounds:143 · round:150 · openRound:179 · closeRound:283 · cancelRound:330 · fundingRoundView:348 · FreeReservesResult:394 · freeReservesProxy:410 · BuybackTests:440 · buybackTests:461 · ProposeConversionInput:554 · proposeConversion:572 · ProposeRedemptionInput:630 · proposeRedemption:640 · ProposeBuybackInput:694 · proposeBuyback:710 · ProposeBonusInput:787 · proposeBonus:801 · CreateRightsOffersInput:904 · createRightsOffers:913 · listRightsOffers:948 · acceptRightsOffer:954 · renounceRightsOffer:998 · scenarioRound:1076 · scenarioWaterfall:1082
 
-**`apps/api/src/domains/routing.ts`** (369 lines) — RoutingSubject:25 · RoutingOutcome:34 · routeLead:141 · raiseUnroutedException:322 · routingAuditFor:362
+**`apps/api/src/domains/routing.ts`** (433 lines) — RoutingSubject:29 · RoutingOutcome:38 · routeLead:145 · raiseUnroutedException:326 · routingAuditFor:366 · createTerritory:380 · updateRoutingRule:415
 
 **`apps/api/src/domains/signIns.ts`** (104 lines) — SignInRole:22 · CreateSignInInput:24 · SignInResult:32 · createOrResetSignIn:51
 
@@ -422,7 +422,7 @@
 
 **`packages/shared/src/esop.ts`** (203 lines) — ESOP_PLAN_STATUSES:13 · EsopPlanStatus:14 · VESTING_FREQUENCIES:16 · VestingFrequency:17 · VESTING_FREQUENCY_MONTHS:19 · OPTION_GRANT_STATUSES:25 · OptionGrantStatus:28 · VESTING_EVENT_STATUSES:30 · VestingEventStatus:31 · OPTION_EXERCISE_STATUSES:33 · OptionExerciseStatus:34 · FMV_BASES:36 · FmvBasis:37 · ESOP_MIN_CLIFF_MONTHS:40 · ESOP_SINGLE_GRANT_RESOLUTION_THRESHOLD_PCT:43 · ESOP_FMV_VALIDITY_DAYS:46 · VestingScheduleInput:52 · VestingTranche:58 · firstVestingIsRuleTwelveCompliant:76 · generateVestingTranches:86 · EsopPlanPoolView:112 · EsopPlanView:121 · PromoterCheck:138 · OptionGrantView:144 · OptionExerciseView:169 · esopTaxLine:191
 
-**`packages/shared/src/events.ts`** (928 lines) — EventName:11 · EVENT_NAME_PATTERN:19 · TENSE_GRANDFATHERED:38 · isPastTenseVerb:61 · isCanonicalEventName:67 · LEGACY_EVENT_CROSSWALK:79 · CANONICAL_TO_LEGACY:106 · EVENTS:111 · hrTransitionEvent:780 · KnownEventName:784 · ActorType:791 · EventActor:793 · EventSubject:801 · EventRelatedRef:807 · EventReason:813 · EventSource:821 · EventMateriality:829 · EventImpact:835 · EventOwner:841 · EventIntegrity:846 · EventEnvelope:851 · SEVERITIES:880 · SeverityCode:881 · SEVERITY_RANK:883 · NOTIFICATION_PRIORITIES:891 · NotificationPriority:892 · ESCALATION_TRIGGERS:895 · EscalationTrigger:896 · SENSITIVITY_CLASSES:902 · SensitivityClass:903 · SENSITIVITY_RANK:905 · maxSensitivity:913 · WITHHOLD_REASONS:919 · WithholdReason:927
+**`packages/shared/src/events.ts`** (936 lines) — EventName:11 · EVENT_NAME_PATTERN:19 · TENSE_GRANDFATHERED:38 · isPastTenseVerb:61 · isCanonicalEventName:67 · LEGACY_EVENT_CROSSWALK:79 · CANONICAL_TO_LEGACY:106 · EVENTS:111 · hrTransitionEvent:788 · KnownEventName:792 · ActorType:799 · EventActor:801 · EventSubject:809 · EventRelatedRef:815 · EventReason:821 · EventSource:829 · EventMateriality:837 · EventImpact:843 · EventOwner:849 · EventIntegrity:854 · EventEnvelope:859 · SEVERITIES:888 · SeverityCode:889 · SEVERITY_RANK:891 · NOTIFICATION_PRIORITIES:899 · NotificationPriority:900 · ESCALATION_TRIGGERS:903 · EscalationTrigger:904 · SENSITIVITY_CLASSES:910 · SensitivityClass:911 · SENSITIVITY_RANK:913 · maxSensitivity:921 · WITHHOLD_REASONS:927 · WithholdReason:935
 
 **`packages/shared/src/finance.ts`** (729 lines) — DIVISIONS:19 · Division:20 · DIVISION_LABELS:22 · isDivision:29 · CATEGORY_KINDS:37 · CategoryKind:40 · NON_TRADING_KINDS:51 · isTrading:53 · CATEGORY_BEHAVIOURS:62 · CategoryBehaviour:63 · TRANSACTION_SOURCES:65 · TransactionSource:68 · LEDGER_GROUPS:70 · LedgerGroup:71 · monthKey:80 · monthRange:90 · financialYearOf:96 · financialYearRange:101 · monthsBack:106 · GstLineInput:120 · GstBreakdown:127 · round2:139 · computeGst:155 · isInterState:195 · GST_RATES:201 · GST_STATE_CODES:215 · stateNameFor:258 · placeOfSupplyLabel:264 · stateCodeOf:271 · isValidGstin:289 · gstinCheckDigit:306 · supplyTypeOf:327 · GstHeads:335 · GstSetOff:341 · setOffInputCredit:363 · outstandingOf:416 · paymentTypeFor:428 · invoicePayable:445 · amountInWords:476 · PaymentSchedule:533 · computePaymentSchedule:545 · DepreciationPeriod:558 · DepreciationInput:565 · depreciationSchedule:583 · bookValueAt:620 · AmortisationPeriod:635 · emi:645 · amortisationSchedule:655 · loanBalanceAt:694 · runwayMonths:724
 
@@ -526,7 +526,7 @@
 
 **`apps/api/src/routes/crm.routes.ts`** (1115 lines) — GET /search:77 · GET /organizations:434 · GET /institutions:435 · GET /organizations/:id:437 · GET /institutions/:id:438 · DELETE /organizations/:id/account:530 · GET ${l.pipelineId}:${l.stageKey}:712 · GET /leads/:id/routing-audit:830 · GET ${o.pipelineId}:${o.stageKey}:860 · GET /forecast:1036
 
-**`apps/api/src/routes/education.routes.ts`** (690 lines) — POST /courses/:id/retire:276
+**`apps/api/src/routes/education.routes.ts`** (708 lines) — POST /courses/:id/retire:276
 
 **`apps/api/src/routes/equity.routes.ts`** (407 lines) — GET /share-classes:35 · GET /holders:78 · GET /holders/:id:79 · GET /ledger:121 · POST /ledger/:id/approve:160 · POST /ledger/:id/effective:170 · GET /cap-table:182 · GET /holdings/me:184 · GET /holdings/:holderId:185 · GET /certificates:189 · GET /certificates/:id:190 · GET /certificates/:id/document:191 · GET /valuations:195 · GET /documents:219 · GET /rounds:264 · GET /rounds/:id:265 · PATCH /rounds/:id:275 · POST /rounds/:id/open:277 · POST /rounds/:id/close:278 · POST /rounds/:id/cancel:279 · GET /rounds/:id/rights:306
 
@@ -612,7 +612,7 @@
 
 **`apps/api/src/routes/marketing/settings.routes.ts`** (118 lines) — GET /channels:23 · GET /adapters:55 · GET /policy:57 · GET /webhooks:74 · GET /ai-touchpoints:86 · POST /claims/:id/approve:104 · POST /claims/:id/retire:115
 
-**`apps/api/src/routes/pipeline.routes.ts`** (334 lines) — DELETE /stages/:stageId:151
+**`apps/api/src/routes/pipeline.routes.ts`** (315 lines) — DELETE /stages/:stageId:153
 
 ## Web pages
 

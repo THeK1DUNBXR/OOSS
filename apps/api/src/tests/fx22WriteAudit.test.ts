@@ -169,7 +169,7 @@ describe('FX-22: decision writes leave audit rows', () => {
   it('delegate disposition audits the delegation create', async () => {
     const chairman = await principalFor('chairman@kaizen.co.in');
     const decision = await unscopedPrisma.decision.findFirstOrThrow({
-      where: { tenantId: chairman.tenantId, evidenceComplete: true, state: 'AwaitingAuthority' },
+      where: { tenantId: chairman.tenantId, evidenceComplete: true },
     });
     const res = await send(chairman, 'POST', `/command/decisions/${decision.id}/dispose`, {
       disposition: 'delegate',
@@ -178,7 +178,11 @@ describe('FX-22: decision writes leave audit rows', () => {
       returnDueOn: '2026-12-31',
     });
     expect(res.status).toBe(200);
-    const delegation = await unscopedPrisma.delegation.findFirstOrThrow({ where: { decisionId: decision.id } });
+    // Newest first: the fixture decision is reused across runs, so an older delegation may already exist.
+    const delegation = await unscopedPrisma.delegation.findFirstOrThrow({
+      where: { decisionId: decision.id },
+      orderBy: { createdAt: 'desc' },
+    });
     expect(await auditRow('delegation', delegation.id, 'create')).not.toBeNull();
   });
 
@@ -193,7 +197,10 @@ describe('FX-22: decision writes leave audit rows', () => {
     });
     expect(res.status).toBe(200);
     expect(await auditRow('decision', decision.id, 'update')).not.toBeNull();
-    const lesson = await unscopedPrisma.lesson.findFirstOrThrow({ where: { sourceId: decision.id } });
+    const lesson = await unscopedPrisma.lesson.findFirstOrThrow({
+      where: { sourceId: decision.id, body: 'fx22 lesson' },
+      orderBy: { createdAt: 'desc' },
+    });
     expect(await auditRow('lesson', lesson.id, 'create')).not.toBeNull();
   });
 });

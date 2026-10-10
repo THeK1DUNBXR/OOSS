@@ -353,6 +353,12 @@ router.post(
       },
     });
     await auditWrite({ action: 'create', subjectType: 'cohort', subjectId: cohort.id, after: cohort });
+    await emit({
+      name: EVENTS.COHORT_CREATED,
+      subject: { entityType: 'cohort', entityId: cohort.id, recordCode: cohort.recordCode },
+      related: [{ relation: 'belongs_to', entityType: 'course', entityId: course.id }],
+      newState: { status: cohort.status, startDate: cohort.startDate, capacity: cohort.capacity },
+    });
     res.status(201).json(cohort);
     return undefined;
   }),
@@ -655,6 +661,12 @@ router.post(
       data: { handoffAcceptedAt: new Date(), status: 'active', managerPartyId: auth.partyId },
     });
     await auditWrite({ action: 'update', subjectType: 'project', subjectId: after.id, before, after });
+    await emit({
+      name: EVENTS.PROJECT_UPDATED,
+      subject: { entityType: 'project', entityId: after.id, recordCode: after.recordCode },
+      previousState: { status: before.status },
+      newState: { status: after.status, handoffAccepted: after.handoffAcceptedAt !== null },
+    });
     return after;
   }),
 );
@@ -682,6 +694,12 @@ router.patch(
       },
     });
     await auditWrite({ action: 'update', subjectType: 'project', subjectId: after.id, before, after });
+    await emit({
+      name: EVENTS.PROJECT_UPDATED,
+      subject: { entityType: 'project', entityId: after.id, recordCode: after.recordCode },
+      previousState: { status: before.status },
+      newState: { status: after.status, healthBand: after.healthBand, scheduleVariancePct: after.scheduleVariancePct },
+    });
     return after;
   }),
 );

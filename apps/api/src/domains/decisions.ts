@@ -24,6 +24,12 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
 import { drillPathFor } from './commandCenter.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+
+// A lesson is what closes the decision loop (see reviewDecision). Without a
+// registration here its create would be silently unaudited, leaving a review
+// that closed a decision with no record of the lesson it was closed on.
+registerGovernedEntities('gov', ['lesson']);
 
 export interface RaiseDecisionInput {
   question: string;
@@ -66,6 +72,7 @@ export async function raiseDecision(input: RaiseDecisionInput) {
       slaDueAt: new Date(Date.now() + 3 * 86_400_000),
     },
   });
+  await auditWrite({ action: 'create', subjectType: 'decision', subjectId: decision.id, after: decision });
 
   await emit({
     name: EVENTS.DECISION_RAISED,
@@ -271,6 +278,7 @@ export async function disposeDecision(input: DispositionInput) {
         reviewDueOn: new Date(Date.now() + 30 * 86_400_000),
       },
     });
+    await auditWrite({ action: 'update', subjectType: 'decision', subjectId: input.decisionId, before: decision, after: updated });
 
     await emit({
       name: EVENTS.DECISION_DECIDED,
@@ -288,7 +296,7 @@ export async function disposeDecision(input: DispositionInput) {
     if (!input.delegateToPartyId) throw ApiError.badRequest('Delegate requires a target principal.');
     if (!input.returnDueOn) throw ApiError.badRequest('Delegate requires a mandatory return date.');
 
-    await prisma.delegation.create({
+    const delegation = await prisma.delegation.create({
       data: {
         tenantId: auth.tenantId,
         decisionId: input.decisionId,
@@ -299,11 +307,13 @@ export async function disposeDecision(input: DispositionInput) {
         returnDueOn: input.returnDueOn,
       },
     });
+    await auditWrite({ action: 'create', subjectType: 'delegation', subjectId: delegation.id, after: delegation });
 
     const updated = await prisma.decision.update({
       where: { id: input.decisionId },
       data: { state: 'Delegated', routedToPartyId: input.delegateToPartyId, rationale: input.rationale },
     });
+    await auditWrite({ action: 'update', subjectType: 'decision', subjectId: input.decisionId, before: decision, after: updated });
 
     await emit({
       name: EVENTS.DECISION_DELEGATED,
@@ -331,6 +341,7 @@ export async function disposeDecision(input: DispositionInput) {
       where: { id: input.decisionId },
       data: { state: 'Deferred', deferUntil: input.deferUntil, rationale: input.rationale, slaDueAt: input.deferUntil },
     });
+    await auditWrite({ action: 'update', subjectType: 'decision', subjectId: input.decisionId, before: decision, after: updated });
 
     await emit({
       name: EVENTS.DECISION_DEFERRED,
@@ -348,6 +359,7 @@ export async function disposeDecision(input: DispositionInput) {
     where: { id: input.decisionId },
     data: { state: 'EvidenceRequested', rationale: input.rationale },
   });
+  await auditWrite({ action: 'update', subjectType: 'decision', subjectId: input.decisionId, before: decision, after: updated });
 
   await emit({
     name: EVENTS.DECISION_EVIDENCE_REQUESTED,
@@ -371,7 +383,7 @@ export async function reviewDecision(
   const decision = await prisma.decision.findFirst({ where: { id: decisionId } });
   if (!decision) throw ApiError.notFound('Decision');
 
-  await prisma.lesson.create({
+  const lesson = await prisma.lesson.create({
     data: {
       tenantId: auth.tenantId,
       sourceType: 'decision',
@@ -382,8 +394,9 @@ export async function reviewDecision(
       createdById: auth.partyId,
     },
   });
+  await auditWrite({ action: 'create', subjectType: 'lesson', subjectId: lesson.id, after: lesson });
 
-  return prisma.decision.update({
+  const updated = await prisma.decision.update({
     where: { id: decisionId },
     data: {
       state: 'Reviewed',
@@ -393,6 +406,8 @@ export async function reviewDecision(
       changeCommitmentResolved: true,
     },
   });
+  await auditWrite({ action: 'update', subjectType: 'decision', subjectId: decisionId, before: decision, after: updated });
+  return updated;
 }
 
 /**

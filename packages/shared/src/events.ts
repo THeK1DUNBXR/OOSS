@@ -286,6 +286,14 @@ export const EVENTS = {
   /// question, a piece of feedback, a problem, a note.
   LEARNER_LOG_RECORDED: 'kz.edu.learner_log.recorded',
   LEARNER_LOG_RESOLVED: 'kz.edu.learner_log.resolved',
+  /// A batch is the unit that attendance, progress and fees are booked against,
+  /// so its creation is a fact the rest of the platform has to be able to see.
+  COHORT_CREATED: 'kz.edu.cohort.created',
+  /// Projects carry delivery status and hand-off, and are governed under the
+  /// `prj` domain (registered in routes/education.routes.ts), so their events
+  /// use that domain too rather than `edu`.
+  PROJECT_CREATED: 'kz.prj.project.created',
+  PROJECT_UPDATED: 'kz.prj.project.updated',
 
   // --- Governance -----------------------------------------------------------
   POLICY_VERSION_PUBLISHED: 'kz.gov.policy_version.published',

@@ -20,7 +20,13 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+
+// A discount over ceiling opens an approval_step from this module. Its
+// registration lives in platform/approvals.ts, which this module does not
+// import, so a job that loads only commercial would hit "not registered" on
+// the step's audit row. The Set-backed registry makes the second declaration harmless.
+registerGovernedEntities('gov', ['approval_step']);
 import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
 import { notify, raiseException } from '../platform/exceptions.js';
 import { advanceStage } from './opportunities.js';
@@ -281,9 +287,18 @@ export async function createProposal(input: {
     },
   });
 
+  await auditWrite({ action: 'create', subjectType: 'proposal', subjectId: proposal.id, after: proposal });
+
   // CRM holds a single FK into PCT's entity. Every other proposal fact is read
   // from the referenced record, never duplicated as parallel fields.
   await prisma.opportunity.update({ where: { id: input.opportunityId }, data: { proposalId: proposal.id } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'opportunity',
+    subjectId: input.opportunityId,
+    before: { proposalId: opportunity.proposalId },
+    after: { proposalId: proposal.id },
+  });
 
   await emit({
     name: EVENTS.PROPOSAL_CREATED,
@@ -305,12 +320,21 @@ export async function sendProposal(proposalId: string) {
     where: { id: proposalId },
     data: { sentAt, response: 'pending' },
   });
+  await auditWrite({ action: 'update', subjectType: 'proposal', subjectId: proposalId, before: proposal, after: updated });
 
   // CRM's read-model mirror is hydrated from the PCT event, never written
   // directly by CRM service code. This IS the event handler path.
-  await prisma.opportunity.update({
+  const opportunityBefore = await prisma.opportunity.findFirst({ where: { id: proposal.opportunityId } });
+  const opportunityAfter = await prisma.opportunity.update({
     where: { id: proposal.opportunityId },
     data: { proposalSentAt: sentAt, proposalPendingNotifiedAt: null },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'opportunity',
+    subjectId: proposal.opportunityId,
+    before: opportunityBefore ?? undefined,
+    after: opportunityAfter,
   });
 
   await emit({
@@ -466,6 +490,7 @@ export async function createQuote(opportunityId: string, lines: QuoteLineInput[]
       createdById: auth.partyId,
     },
   });
+  await auditWrite({ action: 'create', subjectType: 'quote', subjectId: quote.id, after: quote });
 
   let subtotal = 0;
   let discountTotal = 0;
@@ -503,6 +528,13 @@ export async function createQuote(opportunityId: string, lines: QuoteLineInput[]
     where: { id: quote.id },
     data: { subtotal, discountTotal, grandTotal: subtotal - discountTotal },
   });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'quote',
+    subjectId: quote.id,
+    before: { subtotal: quote.subtotal, discountTotal: quote.discountTotal, grandTotal: quote.grandTotal },
+    after: { subtotal, discountTotal, grandTotal: subtotal - discountTotal },
+  });
 
   await emit({
     name: EVENTS.QUOTE_CREATED,
@@ -513,6 +545,27 @@ export async function createQuote(opportunityId: string, lines: QuoteLineInput[]
   });
 
   return updated;
+}
+
+/**
+ * The fields an issue or block changes. The loaded quote carries its lines and
+ * the update returns the bare row, so diffing whole objects would put every
+ * line in the audit diff as a spurious from/to on each issue.
+ */
+function quoteState(q: {
+  status: string;
+  blockedReason: string | null;
+  issuedAt: Date | null;
+  validUntil: Date | null;
+  approvalStepId: string | null;
+}) {
+  return {
+    status: q.status,
+    blockedReason: q.blockedReason,
+    issuedAt: q.issuedAt,
+    validUntil: q.validUntil,
+    approvalStepId: q.approvalStepId,
+  };
 }
 
 export interface QuoteIssueResult {
@@ -586,6 +639,7 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
         slaDueAt: new Date(Date.now() + 3 * 86_400_000),
       },
     });
+    await auditWrite({ action: 'create', subjectType: 'approval_step', subjectId: step.id, after: step });
 
     const blocked = await prisma.quote.update({
       where: { id: quoteId },
@@ -597,6 +651,7 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
         approvalStepId: step.id,
       },
     });
+    await auditWrite({ action: 'update', subjectType: 'quote', subjectId: quoteId, before: quoteState(quote), after: quoteState(blocked) });
 
     await emit({
       name: EVENTS.QUOTE_DISCOUNT_BLOCKED,
@@ -633,8 +688,17 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
       blockedReason: null,
     },
   });
+  await auditWrite({ action: 'update', subjectType: 'quote', subjectId: quoteId, before: quoteState(quote), after: quoteState(issued) });
 
-  await prisma.opportunity.update({ where: { id: quote.opportunityId }, data: { quoteId } });
+  const opportunityBefore = await prisma.opportunity.findFirst({ where: { id: quote.opportunityId } });
+  const opportunityAfter = await prisma.opportunity.update({ where: { id: quote.opportunityId }, data: { quoteId } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'opportunity',
+    subjectId: quote.opportunityId,
+    before: { quoteId: opportunityBefore?.quoteId ?? null },
+    after: { quoteId: opportunityAfter.quoteId },
+  });
 
   await emit({
     name: EVENTS.QUOTE_ISSUED,
