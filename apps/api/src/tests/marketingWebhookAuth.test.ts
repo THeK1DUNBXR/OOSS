@@ -18,6 +18,7 @@ import { PURPOSE_CODES } from '@kaizen/shared';
 import { resetAdapterCacheForTests } from '../domains/marketing/adapters/registry.js';
 import { createTemplate, submitForReview, approveTemplate, createSend, requestSend, dispatchSend, listSendRecipients, loadSend } from '../domains/marketing/messaging.js';
 import { createWebhookEndpoint } from '../domains/marketing/capture.js';
+import { applyDeliveryEvents } from '../domains/marketing/messaging.js';
 import { createApp } from '../server.js';
 
 const CREATOR = 'operations@kaizen.co.in';
@@ -217,6 +218,48 @@ describe('FX-50 — signature, timestamp and replay', () => {
     const second = await postWebhook(endpoint.token, body, headers);
     expect(second.status).toBe(200);
 
+    expect((await asUser(APPROVER, () => loadSend(sendId))).deliveredCount).toBe(1);
+  });
+});
+
+describe('FX-50 follow-up — delivery status only moves forward', () => {
+  async function recipientStatus(providerMessageId: string): Promise<string> {
+    const row = await unscopedPrisma.marketingSendRecipient.findFirstOrThrow({ where: { providerMessageId } });
+    return row.status;
+  }
+
+  it('a late delivered after opened does not move the recipient back', async () => {
+    const { providerMessageId } = await dispatchedRecipient();
+    const at = new Date();
+    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'opened', at, eventId: `o-${Date.now()}` }]));
+    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at, eventId: `d-${Date.now()}` }]));
+    expect(await recipientStatus(providerMessageId)).toBe('opened');
+  });
+
+  it('a late delivered after bounced leaves the recipient bounced (a terminal failure is not overwritten)', async () => {
+    const { providerMessageId } = await dispatchedRecipient();
+    const at = new Date();
+    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'bounced', at, eventId: `b-${Date.now()}` }]));
+    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at, eventId: `d-${Date.now()}` }]));
+    expect(await recipientStatus(providerMessageId)).toBe('bounced');
+  });
+
+  it('delivered then a late sent stays delivered', async () => {
+    const { providerMessageId } = await dispatchedRecipient();
+    const at = new Date();
+    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at, eventId: `d-${Date.now()}` }]));
+    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'sent', at, eventId: `s-${Date.now()}` }]));
+    expect(await recipientStatus(providerMessageId)).toBe('delivered');
+  });
+});
+
+describe('FX-50 follow-up — a provider event applied twice changes state once', () => {
+  it('the same eventId and kind applied twice counts delivered once', async () => {
+    const { sendId, providerMessageId } = await dispatchedRecipient();
+    const event = { providerMessageId, kind: 'delivered' as const, at: new Date(), eventId: `dup-${Date.now()}` };
+    await asUser(APPROVER, () => applyDeliveryEvents('email', [event]));
+    const second = await asUser(APPROVER, () => applyDeliveryEvents('email', [event]));
+    expect(second.applied).toBe(0);
     expect((await asUser(APPROVER, () => loadSend(sendId))).deliveredCount).toBe(1);
   });
 });
