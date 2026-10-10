@@ -406,8 +406,13 @@ parsing — checks for that null and reports it as `EX-MKT-011` /
 `blockedReason`, not as a false success. `GET /settings/adapters` exposes
 adapter status directly so this is visible before anyone tries to send.
 
-**Delivery webhooks** land at `POST /public/webhooks/:provider`
-(unauthenticated, provider-keyed: email/sms/whatsapp/forms), are stored
+**Delivery webhooks** land at `POST /public/webhooks/:provider/:endpointToken`.
+The token names the tenant (provision one with `POST /webhook-endpoints`, which
+returns the signing secret once). Each request must carry `X-Kai-Timestamp` and
+`X-Kai-Signature: sha256=<HMAC-SHA256 of "<timestamp>.<raw body>">`, with a JSON
+body that has a string `eventId`; a bad or stale signature is 401 and changes
+nothing, and a replayed `eventId` answers 200 without being applied again.
+Provider-keyed: email/sms/whatsapp/forms. Stored
 verbatim as `MarketingWebhookInbound`, and — when the adapter can parse
 them — update the matching `MarketingSendRecipient` rows (delivered, opened,
 clicked, bounced, unsubscribed). A send whose bounce rate crosses 5% is
@@ -756,8 +761,8 @@ purpose `marketing`) — `GET /preferences`; `POST /preferences/consent`
 /public/forms/:publicToken/submit` (honeypot, rate limit, dedupe); `GET/POST
 /touchpoints`; `POST /attribution/recompute`, `GET /attribution/lead/:leadId`;
 `GET/POST/PATCH/DELETE /score-rules`, `POST /score-rules/preview|apply`;
-`GET/POST /links`, unauthenticated `GET /public/l/:slug`; unauthenticated
-`POST /public/webhooks/:provider`.
+`GET/POST /links`, unauthenticated `GET /public/l/:slug`; signed
+`POST /public/webhooks/:provider/:endpointToken` (see Delivery webhooks above).
 
 **Events** (`marketing_events`) — `GET/POST /events`, `GET/PATCH
 /events/:id`; `open`, `close`, `start`, `complete`, `cancel`; `GET

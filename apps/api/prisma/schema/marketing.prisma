@@ -935,6 +935,9 @@ model MarketingWebhookInbound {
 
   provider    String
   eventKind   String
+  /// The provider's id for this delivery. A replay of the same id is answered
+  /// without being applied again (FX-50). Null on rows written before dedupe.
+  eventId     String?
   payload     Json      @default("{}")
   receivedAt  DateTime  @default(now())
   processedAt DateTime?
@@ -948,8 +951,34 @@ model MarketingWebhookInbound {
   updatedAt   DateTime  @updatedAt
 
   @@unique([tenantId, recordCode])
+  @@unique([tenantId, provider, eventId])
   @@index([tenantId, provider])
   @@index([tenantId, status])
   @@index([tenantId, receivedAt])
   @@map("mkt_webhooks_inbound")
+}
+
+/// The signing endpoint for one provider in one tenant. `token` is the public
+/// routing key in the webhook URL: it names the tenant but authenticates nothing.
+/// The HMAC over the body is what authenticates, so `secretCipher` must be
+/// reversible (AES-GCM via privacy.ts encryptField), not a hash.
+model MarketingWebhookEndpoint {
+  id         String @id @default(cuid())
+  tenantId   String
+  recordCode String
+
+  provider     String
+  token        String   @unique
+  secretCipher String
+  active       Boolean  @default(true)
+
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, provider])
+  @@map("mkt_webhook_endpoints")
 }

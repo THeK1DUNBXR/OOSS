@@ -11,6 +11,7 @@
 import express, { Router } from 'express';
 import { handler, str } from '../../lib/http.js';
 import { submitPublicForm, resolveAndClick, receiveWebhook } from '../../domains/marketing/capture.js';
+import { rawBodyOf } from '../../lib/webhookSignature.js';
 
 const router = Router();
 
@@ -53,16 +54,24 @@ router.get(
   }),
 );
 
+// The endpoint token in the path is what names the tenant; the HMAC over the raw
+// body is what authenticates the request. A tenant header is not read here at all.
+// A replay of an applied event answers 200 rather than 202, so a provider can tell
+// "already had it" from "accepted now" without the body being applied twice.
 router.post(
-  '/public/webhooks/:provider',
+  '/public/webhooks/:provider/:endpointToken',
   handler(async (req, res) => {
-    const tenantSlug = str(req.headers['x-kai-tenant']) ?? str(req.query.tenant);
-    const result = await receiveWebhook(req.params.provider, (req.body ?? {}) as Record<string, unknown>, {
-      tenantSlug,
-      ip: clientIp(req),
-      userAgent: req.headers['user-agent'],
-    });
-    res.status(202);
+    const result = await receiveWebhook(
+      {
+        provider: req.params.provider,
+        endpointToken: req.params.endpointToken,
+        rawBody: rawBodyOf(req),
+        timestamp: str(req.headers['x-kai-timestamp']),
+        signature: str(req.headers['x-kai-signature']),
+      },
+      { ip: clientIp(req), userAgent: req.headers['user-agent'] },
+    );
+    res.status(result.duplicate ? 200 : 202);
     return result;
   }),
 );

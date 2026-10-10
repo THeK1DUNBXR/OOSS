@@ -16,6 +16,7 @@ import {
   recentWebhooks,
   aiTouchpoints,
 } from '../../domains/marketing/settings.js';
+import { createWebhookEndpoint } from '../../domains/marketing/capture.js';
 
 const router = Router();
 
@@ -71,6 +72,16 @@ router.patch(
 );
 
 router.get('/webhooks', handler(async () => recentWebhooks()));
+
+// The secret comes back once, in this response. It is not retrievable afterwards.
+router.post(
+  '/webhook-endpoints',
+  handler(async (req, res) => {
+    const provider = z.object({ provider: z.string().min(1) }).parse(req.body).provider;
+    res.status(201);
+    return createWebhookEndpoint(provider);
+  }),
+);
 
 router.get('/ai-touchpoints', handler(async () => aiTouchpoints()));
 

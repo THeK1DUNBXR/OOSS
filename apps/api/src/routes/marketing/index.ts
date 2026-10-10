@@ -62,7 +62,7 @@ export const marketingRouter = router;
 const publicRouterAggregate = Router();
 
 // public.routes.ts already spells out /public/forms/:publicToken/submit,
-// /public/l/:slug and /public/webhooks/:provider — those paths already
+// /public/l/:slug and /public/webhooks/:provider/:endpointToken — those paths already
 // include the `/public` segment, so mount it at root of this aggregate and
 // mount the aggregate itself at `/api/marketing` (NOT `/api/marketing/public`).
 publicRouterAggregate.use('/', publicRoutes);

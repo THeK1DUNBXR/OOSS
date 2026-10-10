@@ -25,7 +25,10 @@ import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
+import { verifyWebhookSignature } from '../../lib/webhookSignature.js';
+import { decryptField, encryptField } from '../compliance/privacy.js';
 import { findOrCreatePerson, type PersonInput } from '../identity.js';
 import { createLead } from '../leads.js';
 import { recordTouchpoint } from './attribution.js';
@@ -696,45 +699,139 @@ export async function resolveAndClick(slug: string, meta: SubmitMeta = {}): Prom
 
 const KNOWN_WEBHOOK_PROVIDERS = new Set(['email', 'sms', 'whatsapp', 'forms']);
 
+registerGovernedEntities('mkt', ['webhook_endpoint']);
+
+export interface InboundWebhook {
+  provider: string;
+  /** From the URL path. It names the endpoint, and through the endpoint the tenant. */
+  endpointToken: string | undefined;
+  /** The exact bytes received. The signature covers these, not a re-serialised body. */
+  rawBody: Buffer | undefined;
+  timestamp: string | undefined;
+  signature: string | undefined;
+}
+
 export interface WebhookMeta {
-  tenantSlug?: string;
   ip?: string;
   userAgent?: string;
 }
 
 /**
- * Tenant resolution for a provider webhook: the `X-Kai-Tenant` header or a
- * `tenant` query param, carrying the tenant's slug — documented here because
- * there is no session to resolve it from. A tenant that does not resolve is a
- * 400 (the caller's webhook is misconfigured, not a marketing-domain concern);
- * an unrecognised *provider*, once the tenant IS known, is what stores as
- * `status: 'unrouted'` and still answers 202 — never silently dropped.
+ * One refusal for every authentication failure. Saying which check failed, or
+ * whether the token exists, would tell a prober which half of a forgery is right.
  */
-export async function receiveWebhook(provider: string, payload: Record<string, unknown>, meta: WebhookMeta = {}) {
-  if (!meta.tenantSlug) throw ApiError.badRequest('Webhook requires X-Kai-Tenant header or ?tenant= query param.');
-  const tenant = await unscopedPrisma.tenant.findFirst({ where: { slug: meta.tenantSlug, status: 'active' } });
-  if (!tenant) throw ApiError.badRequest(`Unknown tenant '${meta.tenantSlug}'.`);
+function webhookUnauthenticated(): ApiError {
+  return ApiError.unauthorized('Webhook signature could not be verified.');
+}
 
-  return asSystem(tenant.id, async () => {
-    const row = await prisma.marketingWebhookInbound.create({
-      data: {
-        tenantId: tenant.id,
-        recordCode: internalCode('WHK'),
-        provider,
-        eventKind: typeof payload.event === 'string' ? payload.event : 'unknown',
-        payload: payload as never,
-        status: 'received',
-      },
-    });
+/**
+ * Provisions the signing endpoint for one provider. The secret is returned once
+ * and stored only encrypted: the HMAC needs the key itself, so a hash would not
+ * do. It appears neither in the URL the provider is given nor in the audit row.
+ */
+export async function createWebhookEndpoint(provider: string) {
+  if (!KNOWN_WEBHOOK_PROVIDERS.has(provider)) throw ApiError.badRequest(`Unknown webhook provider '${provider}'.`);
+  await assertCan({ resource: 'marketing_settings', verb: 'create' });
+  const auth = currentAuth();
 
-    if (!KNOWN_WEBHOOK_PROVIDERS.has(provider)) {
-      await prisma.marketingWebhookInbound.update({ where: { id: row.id }, data: { status: 'unrouted' } });
-      await emit({
-        name: EVENTS.MKT_WEBHOOK_RECEIVED,
-        subject: { entityType: 'marketing_webhook_inbound', entityId: row.id, recordCode: row.recordCode },
-        newState: { provider, status: 'unrouted' },
+  const existing = await prisma.marketingWebhookEndpoint.findFirst({ where: { tenantId: auth.tenantId, provider, deletedAt: null } });
+  if (existing) throw ApiError.conflict(`A webhook endpoint for '${provider}' already exists.`);
+
+  const signingSecret = randomBytes(32).toString('hex');
+  const token = randomBytes(24).toString('base64url');
+  const recordCode = internalCode('WHE');
+  const endpoint = await prisma.marketingWebhookEndpoint.create({
+    data: {
+      tenantId: auth.tenantId,
+      recordCode,
+      provider,
+      token,
+      secretCipher: encryptField(signingSecret),
+      createdById: auth.partyId,
+    },
+  });
+
+  await auditWrite({ action: 'create', subjectType: 'webhook_endpoint', subjectId: endpoint.id, after: { provider, active: true } });
+  await emit({
+    name: EVENTS.MKT_WEBHOOK_ENDPOINT_PROVISIONED,
+    subject: { entityType: 'marketing_webhook_endpoint', entityId: endpoint.id, recordCode },
+    newState: { provider },
+  });
+
+  return { id: endpoint.id, provider, token, path: `/api/marketing/public/webhooks/${provider}/${token}`, signingSecret };
+}
+
+function parseWebhookBody(rawBody: Buffer): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody.toString('utf8'));
+  } catch {
+    throw ApiError.badRequest('Webhook body is not valid JSON.');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw ApiError.badRequest('Webhook body must be a JSON object.');
+  }
+  return parsed as Record<string, unknown>;
+}
+
+/**
+ * Applies one signed provider delivery. The tenant is the one the endpoint
+ * belongs to, found from the URL token; no header or body field can pick it.
+ * The signature is checked before any row is written, so a refused request
+ * changes no state. A provider event id already applied answers `duplicate`
+ * without applying again, so a provider retry cannot double count (FX-50).
+ */
+export async function receiveWebhook(inbound: InboundWebhook, meta: WebhookMeta = {}) {
+  if (!KNOWN_WEBHOOK_PROVIDERS.has(inbound.provider)) throw webhookUnauthenticated();
+  if (!inbound.endpointToken || !inbound.rawBody || !inbound.timestamp || !inbound.signature) throw webhookUnauthenticated();
+
+  // Unscoped on purpose: there is no session yet, and the token is what finds the tenant.
+  const endpoint = await unscopedPrisma.marketingWebhookEndpoint.findFirst({
+    where: { token: inbound.endpointToken, provider: inbound.provider, active: true, deletedAt: null },
+  });
+  if (!endpoint) throw webhookUnauthenticated();
+
+  const verified = verifyWebhookSignature({
+    secret: decryptField(endpoint.secretCipher),
+    timestamp: inbound.timestamp,
+    rawBody: inbound.rawBody,
+    signature: inbound.signature,
+  });
+  if (!verified) throw webhookUnauthenticated();
+
+  const payload = parseWebhookBody(inbound.rawBody);
+  const eventId = payload.eventId;
+  if (typeof eventId !== 'string' || eventId.length === 0 || eventId.length > 200) {
+    throw ApiError.badRequest('A webhook payload requires a string eventId.');
+  }
+
+  const { tenantId } = endpoint;
+  const { provider } = inbound;
+  return asSystem(tenantId, async () => {
+    let row: { id: string; recordCode: string };
+    try {
+      row = await prisma.marketingWebhookInbound.create({
+        data: {
+          tenantId,
+          recordCode: internalCode('WHK'),
+          provider,
+          eventId,
+          eventKind: typeof payload.event === 'string' ? payload.event : 'unknown',
+          payload: payload as never,
+          status: 'received',
+        },
       });
-      return { accepted: true, status: 'unrouted' as const };
+    } catch (err) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002')) throw err;
+      const prior = await prisma.marketingWebhookInbound.findFirst({ where: { tenantId, provider, eventId } });
+      if (!prior) throw err;
+      // A failed first attempt is retried, so a transient error does not lose the event.
+      // Anything else is already applied or still in flight, and must not run twice.
+      if (prior.status !== 'failed') return { accepted: true as const, status: 'duplicate' as const, duplicate: true };
+      row = await prisma.marketingWebhookInbound.update({
+        where: { id: prior.id },
+        data: { status: 'received', error: null },
+      });
     }
 
     try {
@@ -750,7 +847,7 @@ export async function receiveWebhook(provider: string, payload: Record<string, u
         await applyDeliveryEvents(provider, events);
       }
 
-      const processed = await prisma.marketingWebhookInbound.update({
+      await prisma.marketingWebhookInbound.update({
         where: { id: row.id },
         data: { status: 'processed', processedAt: new Date() },
       });
@@ -761,7 +858,7 @@ export async function receiveWebhook(provider: string, payload: Record<string, u
         newState: { provider, status: 'processed' },
       });
 
-      return { accepted: true, status: processed.status };
+      return { accepted: true as const, status: 'processed' as const, duplicate: false };
     } catch (err) {
       await prisma.marketingWebhookInbound.update({
         where: { id: row.id },

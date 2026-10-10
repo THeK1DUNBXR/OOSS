@@ -3,6 +3,7 @@ import cors from 'cors';
 import { extname, join, sep } from 'node:path';
 import routes from './routes/index.js';
 import { contextMiddleware, errorMiddleware } from './lib/http.js';
+import { captureWebhookRawBody } from './lib/webhookSignature.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { registerSubscribers } from './events/handlers.js';
 import { prisma } from './platform/db.js';
@@ -23,7 +24,9 @@ export function createApp({ webDistDir = config.WEB_DIST_DIR }: { webDistDir?: s
   // internet as one client.
   app.set('trust proxy', 'loopback');
   app.use(cors());
-  app.use(express.json({ limit: '2mb' }));
+  // The webhook route verifies an HMAC over the exact bytes sent, so it needs the
+  // raw body. `verify` runs alongside the normal parse and leaves it unchanged.
+  app.use(express.json({ limit: '2mb', verify: captureWebhookRawBody }));
   app.use(contextMiddleware);
 
   // The build is on /health as well as behind the login, so "did my deploy land"

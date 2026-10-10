@@ -8,6 +8,7 @@
  * chain are all genuinely exercised.
  */
 
+import { createHmac } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -25,6 +26,7 @@ import {
   createShortLink,
   resolveAndClick,
   receiveWebhook,
+  createWebhookEndpoint,
 } from '../domains/marketing/capture.js';
 import {
   recordTouchpoint,
@@ -423,25 +425,31 @@ describe('MKT-CAP-005 — attribution is computed and stored per model, never de
 });
 
 describe('inbound webhooks', () => {
-  it('stores an unrouted row for an unrecognised provider, tenant resolved via X-Kai-Tenant', async () => {
+  const signedInbound = (endpointToken: string | undefined, secret: string, body: string, provider = 'email') => {
+    const rawBody = Buffer.from(body);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = `sha256=${createHmac('sha256', secret).update(`${timestamp}.`).update(rawBody).digest('hex')}`;
+    return { provider, endpointToken, rawBody, timestamp, signature };
+  };
+
+  it('refuses an unrecognised provider with 401 and stores nothing', async () => {
     const tid = await tenantId();
-    const tenant = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: tid } });
-
-    const result = await receiveWebhook('mystery-provider', { hello: 'world' }, { tenantSlug: tenant.slug });
-    expect(result.status).toBe('unrouted');
-
-    const row = await unscopedPrisma.marketingWebhookInbound.findFirstOrThrow({ where: { tenantId: tid, provider: 'mystery-provider' } });
-    expect(row.status).toBe('unrouted');
+    const err = await expectReject(() => receiveWebhook(signedInbound('any-token', 'secret', '{"eventId":"e1"}', 'mystery-provider')));
+    expect(err.status).toBe(401);
+    const rows = await unscopedPrisma.marketingWebhookInbound.count({ where: { tenantId: tid, provider: 'mystery-provider' } });
+    expect(rows).toBe(0);
   });
 
-  it('rejects a webhook with no resolvable tenant', async () => {
-    const err = await expectReject(() => receiveWebhook('email', {}, {}));
-    expect(err.status).toBe(400);
+  it('refuses a webhook with no endpoint token with 401', async () => {
+    const err = await expectReject(() => receiveWebhook(signedInbound(undefined, 'secret', '{"eventId":"e2"}')));
+    expect(err.status).toBe(401);
   });
 
   it('an email delivery webhook is parsed by the console adapter and applied via messaging.applyDeliveryEvents', async () => {
     const tid = await tenantId();
-    const tenant = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: tid } });
+    // The test DB persists between runs; an endpoint left by an earlier run would make provisioning conflict.
+    await unscopedPrisma.marketingWebhookEndpoint.deleteMany({ where: { tenantId: tid, provider: 'email' } });
+    const endpoint = await asUser(CHAIRMAN, () => createWebhookEndpoint('email'));
 
     const original = process.env.MARKETING_EMAIL_ADAPTER;
     process.env.MARKETING_EMAIL_ADAPTER = 'console';
@@ -451,10 +459,11 @@ describe('inbound webhooks', () => {
       // any payload shape (it has no real provider format) — the contract
       // under test is that the row is stored and marked processed, and that
       // the messaging pipeline is invoked without throwing.
-      const result = await receiveWebhook('email', { events: [] }, { tenantSlug: tenant.slug });
+      const eventId = `capture-console-${Date.now()}`;
+      const result = await receiveWebhook(signedInbound(endpoint.token, endpoint.signingSecret, JSON.stringify({ eventId, events: [] })));
       expect(result.status).toBe('processed');
 
-      const row = await unscopedPrisma.marketingWebhookInbound.findFirstOrThrow({ where: { tenantId: tid, provider: 'email' } });
+      const row = await unscopedPrisma.marketingWebhookInbound.findFirstOrThrow({ where: { tenantId: tid, provider: 'email', eventId } });
       expect(row.processedAt).toBeTruthy();
     } finally {
       if (original === undefined) delete process.env.MARKETING_EMAIL_ADAPTER;

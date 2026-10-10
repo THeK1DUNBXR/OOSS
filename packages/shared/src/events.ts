@@ -595,6 +595,7 @@ export const EVENTS = {
   MKT_PLAN_APPROVED: 'kz.mkt.plan.approved',
   MKT_PLAN_CLOSED: 'kz.mkt.plan.closed',
   MKT_WEBHOOK_RECEIVED: 'kz.mkt.webhook.received',
+  MKT_WEBHOOK_ENDPOINT_PROVISIONED: 'kz.mkt.webhook.endpoint_provisioned',
 
   // --- Filings, demat, FEMA (eqt), phase 6a ---------------------------------
   FILING_RECORDED: 'kz.eqt.filing.recorded',
