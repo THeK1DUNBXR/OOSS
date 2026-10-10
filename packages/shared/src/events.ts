@@ -16,7 +16,10 @@ export type EventName = string;
  * happened, so the verb is past tense, and a present-tense name is refused at
  * both ends (emit and outbox dispatch) rather than stored.
  */
-export const EVENT_NAME_PATTERN = /^kz\.[a-z]{2,4}\.[a-z_]+\.([a-z_]+)$/;
+export const EVENT_NAME_PATTERN = /^kz\.[a-z]{2,4}\.[a-z_]+\.([a-z0-9_]+)$/;
+// The verb admits digits because `onboarding.day1_activated` is a fact the
+// onboarding machine already emits (ACTIVATE_DAY1). Refusing the digit made the
+// outbox dead-letter that event as permanent; renaming it would orphan history.
 
 /**
  * Past-tense verbs that do not end in -ed. Listed rather than inferred: a rule
@@ -36,6 +39,13 @@ const IRREGULAR_PAST = new Set([
  * with a dual-publish window (CRM-FOUND-002 pattern), not just editing this list.
  */
 export const TENSE_GRANDFATHERED: ReadonlySet<string> = new Set([
+  // Lifecycle names whose verb is the state the record moved into, not a past
+  // participle. Emitted by `platform/lifecycle.transition` from the machine's
+  // verb map, so they are the names on the wire today. Each is a state, which
+  // is why none has a participle to find.
+  'kz.hr.compensation.effective', // CompensationRecord ACTIVATE (employment.ts:1036)
+  'kz.hr.leave.extension_in_progress', // LeaveRequest EXTENSION_RUNNING (leave.ts:341)
+  'kz.hr.ticket.waiting', // IT ticket WAIT (it/servicedesk.ts, via lifecycle.transition)
   'kz.ceo.key_result.checked_in',
   'kz.crm.contract.expiring',
   'kz.crm.opportunity.handed_off',
@@ -57,11 +67,19 @@ const ED_BASE_FORMS = new Set([
   'bleed', 'breed', 'embed', 'exceed', 'feed', 'heed', 'need', 'proceed', 'seed', 'shed', 'speed', 'succeed', 'weed',
 ]);
 
-/** The verb is judged by its last underscore-separated word: `untouched_detected`. */
-export function isPastTenseVerb(verb: string): boolean {
-  const word = verb.split('_').pop() ?? '';
+function isPastTenseWord(word: string): boolean {
   if (IRREGULAR_PAST.has(word)) return true;
   return word.length > 2 && word.endsWith('ed') && !ED_BASE_FORMS.has(word);
+}
+
+/**
+ * A verb is past tense when any of its underscore-separated words is: the
+ * participle is not always last (`submitted_for_review`, `routed_for_approval`,
+ * `day1_activated`, `status_changed`). A present-tense verb has no past word
+ * anywhere, so `create` and `pay` are still refused.
+ */
+export function isPastTenseVerb(verb: string): boolean {
+  return verb.split('_').some(isPastTenseWord);
 }
 
 export function isCanonicalEventName(name: string): boolean {
