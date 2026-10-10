@@ -292,7 +292,7 @@
 
 **`apps/api/src/platform/outbox.ts`** (265 lines) — OUTBOX_MAX_ATTEMPTS:30 · DrainOptions:43 · DrainResult:52 · drainOutbox:79 · backoffMs:102 · dispatchDueOutbox:221 · startOutboxDispatcher:243 · stopOutboxDispatcher:261
 
-**`apps/api/src/platform/permissions.ts`** (555 lines) — ResolvedGrant:36 · invalidateGrantCache:50 · resolveGrants:54 · ScopedRecord:100 · EvaluateInput:113 · evaluate:131 · resolveAuthorityCeiling:295 · assertCan:317 · can:330 · holdsScopeResolver:344 · scopeFor:356 · scopeWhere:377 · assertScopeAll:407 · visibilityWhere:434 · FilterResult:452 · FilterOptions:457 · FIELD_PURPOSES:478 · applyFieldVisibility:499 · canSeeMoney:550
+**`apps/api/src/platform/permissions.ts`** (557 lines) — ResolvedGrant:36 · invalidateGrantCache:50 · resolveGrants:54 · ScopedRecord:100 · EvaluateInput:113 · evaluate:131 · resolveAuthorityCeiling:297 · assertCan:319 · can:332 · holdsScopeResolver:346 · scopeFor:358 · scopeWhere:379 · assertScopeAll:409 · visibilityWhere:436 · FilterResult:454 · FilterOptions:459 · FIELD_PURPOSES:480 · applyFieldVisibility:501 · canSeeMoney:552
 
 **`apps/api/src/platform/rateLimitStore.ts`** (108 lines) — purgeExpiredRateLimitBuckets:37 · PostgresRateLimitStore:45
 

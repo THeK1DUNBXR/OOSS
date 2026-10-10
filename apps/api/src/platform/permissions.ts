@@ -284,10 +284,12 @@ function checkScope(grant: ResolvedGrant, record: ScopedRecord, auth: AuthContex
   }
 
   // own_or_unowned: the requester's own records, or records with no assigned
-  // owner — with a same-branch check applied ONLY in the unowned case.
+  // owner within the requester's branch. This mirrors scopeWhere: the list
+  // filter and this check must give the same answer for the same row, so a
+  // null branch on either side matches nothing. The earlier "allow when either
+  // branch is null" let a row the list hides be read by id.
   if (owner === null) {
-    if (!record.branch || !auth.branch) return true;
-    return record.branch === auth.branch;
+    return !!auth.branch && record.branch === auth.branch;
   }
   return owner === auth.partyId;
 }
