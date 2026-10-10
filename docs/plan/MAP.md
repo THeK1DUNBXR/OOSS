@@ -254,7 +254,7 @@
 
 **`apps/api/src/platform/approvalPolicySync.ts`** (168 lines) — LADDER_CONVERGENCES:46 · ApprovalPolicySyncResult:55 · reconcileApprovalGatePolicies:63 · reconcileApprovalGatePoliciesForAllTenants:147
 
-**`apps/api/src/platform/approvals.ts`** (411 lines) — ApprovalPolicyContent:36 · DEFAULT_APPROVAL_POLICY:52 · GateSubject:65 · GateResult:88 · evaluateApprovalGate:115 · decideApprovalStep:316
+**`apps/api/src/platform/approvals.ts`** (429 lines) — ApprovalPolicyContent:36 · DEFAULT_APPROVAL_POLICY:52 · GateSubject:65 · GateResult:88 · evaluateApprovalGate:115 · decideApprovalStep:316
 
 **`apps/api/src/platform/audit.ts`** (443 lines) — AUDIT_ACTIONS:19 · AuditAction:30 · registerGovernedEntities:39 · governedEntities:45 · isGoverned:51 · diffForAudit:126 · computeAuditHash:190 · createChainedAuditRecord:224 · verifyAuditChain:276 · chainUnhashedAuditRecords:322 · AuditWriteInput:344 · auditWrite:353 · auditRegulatedRead:387 · auditExport:410 · auditBulkOperation:425
 
@@ -330,7 +330,7 @@
 
 ## API jobs / events / agents
 
-**`apps/api/src/agents/index.ts`** (410 lines) — ProposeInput:47 · ProposeResult:60 · propose:78 · decideAgentAction:272 · agentRoster:327 · revokeAuthority:374 · pauseAgent:402
+**`apps/api/src/agents/index.ts`** (443 lines) — ProposeInput:47 · ProposeResult:60 · propose:78 · decideAgentAction:272 · agentRoster:332 · revokeAuthority:379 · pauseAgent:412
 
 **`apps/api/src/events/handlers.ts`** (266 lines) — instalmentPlan:49 · registerSubscribers:63
 
@@ -382,7 +382,7 @@
 
 **`apps/api/src/jobs/schedule.ts`** (122 lines) — SCHEDULE_TZ:20 · TICK_MS:23 · MAX_ATTEMPTS:26 · isValidCron:46 · nextFireAfter:56 · dueOccurrence:73 · occurrencesBetween:93 · backoffMs:111 · leaseFor:117
 
-**`apps/api/src/jobs/scheduler.ts`** (776 lines) — JobResult:43 · JobDefinition:50 · ALL_JOBS:68 · RunOptions:426 · claimFiring:448 · runJobsForTenant:473 · runAllTenants:556 · TickOutcome:575 · tickOnce:662 · startScheduler:744 · stopScheduler:772
+**`apps/api/src/jobs/scheduler.ts`** (798 lines) — JobResult:43 · JobDefinition:50 · ALL_JOBS:68 · escalateApprovalStep:361 · RunOptions:448 · claimFiring:470 · runJobsForTenant:495 · runAllTenants:578 · TickOutcome:597 · tickOnce:684 · startScheduler:766 · stopScheduler:794
 
 **`apps/api/src/lib/auth.ts`** (736 lines) — assertProductionSecrets:64 · TokenPayload:96 · SelectionTokenPayload:109 · signToken:114 · verifyToken:118 · MfaChallengePayload:126 · hashPassword:157 · ensureSignInPrincipal:177 · EntitySelectionResult:241 · assertPasswordAllowed:252 · LoginResult:293 · MfaRequiredResult:298 · login:321 · verifyMfaAndLogin:446 · enrolMfa:471 · confirmMfa:477 · changePassword:493 · entitiesForToken:511 · identifySwitchCaller:523 · switchEntity:550 · buildSessionUser:596 · toAuthContext:670 · switchContext:702
 
@@ -424,7 +424,7 @@
 
 **`packages/shared/src/esop.ts`** (203 lines) — ESOP_PLAN_STATUSES:13 · EsopPlanStatus:14 · VESTING_FREQUENCIES:16 · VestingFrequency:17 · VESTING_FREQUENCY_MONTHS:19 · OPTION_GRANT_STATUSES:25 · OptionGrantStatus:28 · VESTING_EVENT_STATUSES:30 · VestingEventStatus:31 · OPTION_EXERCISE_STATUSES:33 · OptionExerciseStatus:34 · FMV_BASES:36 · FmvBasis:37 · ESOP_MIN_CLIFF_MONTHS:40 · ESOP_SINGLE_GRANT_RESOLUTION_THRESHOLD_PCT:43 · ESOP_FMV_VALIDITY_DAYS:46 · VestingScheduleInput:52 · VestingTranche:58 · firstVestingIsRuleTwelveCompliant:76 · generateVestingTranches:86 · EsopPlanPoolView:112 · EsopPlanView:121 · PromoterCheck:138 · OptionGrantView:144 · OptionExerciseView:169 · esopTaxLine:191
 
-**`packages/shared/src/events.ts`** (936 lines) — EventName:11 · EVENT_NAME_PATTERN:19 · TENSE_GRANDFATHERED:38 · isPastTenseVerb:61 · isCanonicalEventName:67 · LEGACY_EVENT_CROSSWALK:79 · CANONICAL_TO_LEGACY:106 · EVENTS:111 · hrTransitionEvent:788 · KnownEventName:792 · ActorType:799 · EventActor:801 · EventSubject:809 · EventRelatedRef:815 · EventReason:821 · EventSource:829 · EventMateriality:837 · EventImpact:843 · EventOwner:849 · EventIntegrity:854 · EventEnvelope:859 · SEVERITIES:888 · SeverityCode:889 · SEVERITY_RANK:891 · NOTIFICATION_PRIORITIES:899 · NotificationPriority:900 · ESCALATION_TRIGGERS:903 · EscalationTrigger:904 · SENSITIVITY_CLASSES:910 · SensitivityClass:911 · SENSITIVITY_RANK:913 · maxSensitivity:921 · WITHHOLD_REASONS:927 · WithholdReason:935
+**`packages/shared/src/events.ts`** (937 lines) — EventName:11 · EVENT_NAME_PATTERN:19 · TENSE_GRANDFATHERED:38 · isPastTenseVerb:61 · isCanonicalEventName:67 · LEGACY_EVENT_CROSSWALK:79 · CANONICAL_TO_LEGACY:106 · EVENTS:111 · hrTransitionEvent:789 · KnownEventName:793 · ActorType:800 · EventActor:802 · EventSubject:810 · EventRelatedRef:816 · EventReason:822 · EventSource:830 · EventMateriality:838 · EventImpact:844 · EventOwner:850 · EventIntegrity:855 · EventEnvelope:860 · SEVERITIES:889 · SeverityCode:890 · SEVERITY_RANK:892 · NOTIFICATION_PRIORITIES:900 · NotificationPriority:901 · ESCALATION_TRIGGERS:904 · EscalationTrigger:905 · SENSITIVITY_CLASSES:911 · SensitivityClass:912 · SENSITIVITY_RANK:914 · maxSensitivity:922 · WITHHOLD_REASONS:928 · WithholdReason:936
 
 **`packages/shared/src/finance.ts`** (729 lines) — DIVISIONS:19 · Division:20 · DIVISION_LABELS:22 · isDivision:29 · CATEGORY_KINDS:37 · CategoryKind:40 · NON_TRADING_KINDS:51 · isTrading:53 · CATEGORY_BEHAVIOURS:62 · CategoryBehaviour:63 · TRANSACTION_SOURCES:65 · TransactionSource:68 · LEDGER_GROUPS:70 · LedgerGroup:71 · monthKey:80 · monthRange:90 · financialYearOf:96 · financialYearRange:101 · monthsBack:106 · GstLineInput:120 · GstBreakdown:127 · round2:139 · computeGst:155 · isInterState:195 · GST_RATES:201 · GST_STATE_CODES:215 · stateNameFor:258 · placeOfSupplyLabel:264 · stateCodeOf:271 · isValidGstin:289 · gstinCheckDigit:306 · supplyTypeOf:327 · GstHeads:335 · GstSetOff:341 · setOffInputCredit:363 · outstandingOf:416 · paymentTypeFor:428 · invoicePayable:445 · amountInWords:476 · PaymentSchedule:533 · computePaymentSchedule:545 · DepreciationPeriod:558 · DepreciationInput:565 · depreciationSchedule:583 · bookValueAt:620 · AmortisationPeriod:635 · emi:645 · amortisationSchedule:655 · loanBalanceAt:694 · runwayMonths:724
 

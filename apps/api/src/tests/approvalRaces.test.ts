@@ -55,15 +55,15 @@ describe('concurrent decisions on one approval step', () => {
     // Results are paired [approve, decline] per step, in the order built above.
     for (let k = 0; k < steps.length; k += 1) {
       const pair = [results[2 * k], results[2 * k + 1]];
-      const won = pair.filter((r): r is PromiseFulfilledResult<{ state: string }> => r.status === 'fulfilled');
-      const lost = pair.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      const won = pair.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+      const lost = pair.flatMap((r) => (r.status === 'rejected' ? [r.reason as unknown] : []));
       expect(won).toHaveLength(1);
       expect(lost).toHaveLength(1);
       // The loser was authorised; the step had already moved, so this is a conflict.
-      expect(statusOf(lost[0].reason)).toBe(409);
+      expect(statusOf(lost[0])).toBe(409);
 
       const row = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: steps[k].id } });
-      expect(row.state).toBe(won[0].value.state);
+      expect(row.state).toBe(won[0].state);
       expect(row.decidedById).toBe(finance.partyId);
 
       const audits = await unscopedPrisma.auditRecord.findMany({
@@ -154,7 +154,7 @@ describe('agent pause and resume are audited', () => {
 
     const audits = await unscopedPrisma.auditRecord.findMany({
       where: { subjectType: 'agent_principal', subjectId: agentId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { timestamp: 'asc' },
     });
     expect(audits).toHaveLength(2);
     expect(audits.every((a) => a.actorId === chairman.partyId)).toBe(true);

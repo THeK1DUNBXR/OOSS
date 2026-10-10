@@ -318,10 +318,21 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
   const step = await prisma.approvalStep.findFirst({ where: { id: stepId } });
   if (!step) throw ApiError.notFound('Approval step');
 
+  // Rows opened before `resource` was recorded have no grant to check against.
+  // Deriving one from subjectType checked the wrong grant for share_transaction
+  // (share_transactions, not share_ledger), so a null resource is refused rather
+  // than guessed. The backfill migration fills what it can; the rest need an
+  // operator to set the resource before anyone can decide them.
+  if (step.resource == null) {
+    throw ApiError.conflict(
+      'This approval step was opened before its permission resource was recorded, so no grant can be checked. It cannot be decided until the resource is set.',
+    );
+  }
+
   // The same `approve` grant the gate required to open the step, on the same
   // resource. Checked before the state, so an ungranted caller learns nothing
   // about a step they may not decide.
-  await assertCan({ resource: step.resource ?? `${step.subjectType}s`, verb: 'approve' });
+  await assertCan({ resource: step.resource, verb: 'approve' });
 
   if (step.state !== 'open' && step.state !== 'escalated') {
     throw ApiError.conflict(`Approval step is already ${step.state}.`);
@@ -353,8 +364,11 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
     );
   }
 
-  const updated = await prisma.approvalStep.update({
-    where: { id: stepId },
+  // The state check above reads the row; two approvers can both pass it. The
+  // guard lives in the UPDATE's WHERE, so only one transition can land, and the
+  // loser is refused before it writes an audit row or emits an event.
+  const { count } = await prisma.approvalStep.updateMany({
+    where: { id: stepId, state: { in: ['open', 'escalated'] } },
     data: {
       state: approve ? 'approved' : 'declined',
       decidedById: auth.partyId,
@@ -362,6 +376,10 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
       decisionNote: note,
     },
   });
+  if (count !== 1) {
+    throw ApiError.conflict('Approval step was decided by someone else while you were deciding it.');
+  }
+  const updated = await prisma.approvalStep.findFirstOrThrow({ where: { id: stepId } });
 
   await auditWrite({
     action: 'update',

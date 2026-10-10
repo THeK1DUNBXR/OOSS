@@ -324,6 +324,7 @@ export const EVENTS = {
   AGENT_ACTION_EXECUTED: 'kz.agt.action.executed',
   AGENT_ACTION_REJECTED: 'kz.agt.action.rejected',
   AGENT_AUTHORITY_SHORTFALL: 'kz.agt.action.authority_shortfall_detected',
+  AGENT_PRINCIPAL_STATUS_CHANGED: 'kz.agt.principal.status_changed',
 
   // --- People (hr) ----------------------------------------------------------
   // Every §14.3 lifecycle transition also publishes

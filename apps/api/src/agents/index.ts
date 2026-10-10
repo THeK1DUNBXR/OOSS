@@ -30,7 +30,7 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 
 // Without this registration auditWrite silently skips agent_action, which is
 // how a human accepting an AI proposal left no trace.
-registerGovernedEntities('agt', ['agent_action']);
+registerGovernedEntities('agt', ['agent_action', 'agent_principal']);
 
 // Ordered by how much the tier lets an agent do unattended, least first. The
 // array order in packages/shared/src/ai.ts is not this order: PROHIBITED sits
@@ -286,8 +286,11 @@ export async function decideAgentAction(actionId: string, accept: boolean, note?
 
   if (action.state !== 'proposed') throw ApiError.conflict(`Action is already ${action.state}.`);
 
-  const updated = await prisma.agentAction.update({
-    where: { id: actionId },
+  // Same guard as decideApprovalStep: the state read above is not enough on its
+  // own, or two reviewers both execute the same proposal and the humanActorId
+  // of record is whoever wrote last.
+  const { count } = await prisma.agentAction.updateMany({
+    where: { id: actionId, state: 'proposed' },
     data: {
       state: accept ? 'executed' : 'rejected',
       humanActorId: auth.partyId,
@@ -295,6 +298,8 @@ export async function decideAgentAction(actionId: string, accept: boolean, note?
       blockedReason: accept ? null : (note ?? 'Rejected by a human reviewer.'),
     },
   });
+  if (count !== 1) throw ApiError.conflict('Action was decided by someone else while you were deciding it.');
+  const updated = await prisma.agentAction.findFirstOrThrow({ where: { id: actionId } });
 
   await auditWrite({
     action: 'update',
@@ -399,11 +404,39 @@ export async function revokeAuthority(grantId: string, reason: string) {
   return { revoked, wentDark: dependents.map((d) => d.name) };
 }
 
+/**
+ * Pausing an agent stops every action it would take, so it is a governed write
+ * like any other: the agents grant is checked here, not only at the route, and
+ * the audit row names the human who paused or resumed it (FX-22).
+ */
 export async function pauseAgent(agentId: string, paused: boolean) {
-  return prisma.agentPrincipal.update({
+  const auth = currentAuth();
+  await assertCan({ resource: 'agents', verb: 'edit' });
+  const existing = await prisma.agentPrincipal.findFirst({ where: { id: agentId } });
+  if (!existing) throw ApiError.notFound('Agent');
+
+  const updated = await prisma.agentPrincipal.update({
     where: { id: agentId },
     data: { status: paused ? 'paused' : 'active' },
   });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'agent_principal',
+    subjectId: agentId,
+    before: { status: existing.status },
+    after: { status: updated.status, actorPartyId: auth.partyId },
+  });
+
+  await emit({
+    name: EVENTS.AGENT_PRINCIPAL_STATUS_CHANGED,
+    subject: { entityType: 'agent_principal', entityId: agentId },
+    previousState: { status: existing.status },
+    newState: { status: updated.status },
+    reason: { reasonCode: paused ? 'agent_paused' : 'agent_resumed' },
+  });
+
+  return updated;
 }
 
 export { AI_TOUCHPOINTS, HARD_PROHIBITIONS };
