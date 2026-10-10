@@ -35,8 +35,15 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA "public" TO "kaizen_app";
 ALTER DEFAULT PRIVILEGES IN SCHEMA "public" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "kaizen_app";
 ALTER DEFAULT PRIVILEGES IN SCHEMA "public" GRANT USAGE, SELECT ON SEQUENCES TO "kaizen_app";
 
--- The migration history is not application data.
-REVOKE ALL ON "_prisma_migrations" FROM "kaizen_app";
+-- The migration history is not application data. Guarded: a shadow database
+-- replayed by `migrate diff --from-migrations` has no such table yet.
+DO $$
+BEGIN
+  IF to_regclass('public._prisma_migrations') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON "_prisma_migrations" FROM "kaizen_app"';
+  END IF;
+END
+$$;
 
 -- Posted journal lines are never changed or removed (CLAUDE.md rule 2). The
 -- entry-level trigger guards journal_entries; these grants are the role's
