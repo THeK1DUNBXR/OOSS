@@ -11,8 +11,9 @@ import { describe, expect, it } from 'vitest';
 import { createPolicyDraft, publishPolicy } from '../domains/it/governance.js';
 import { decideApprovalStep } from '../platform/approvals.js';
 import { decideAgentAction, propose } from '../agents/index.js';
+import type { AiTierCode } from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
-import { asUser, expectReject, unscopedPrisma, withFixtureRole } from './helpers.js';
+import { asUser, expectReject, tenantId, unscopedPrisma, withFixtureRole } from './helpers.js';
 
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -129,5 +130,42 @@ describe('FX-04 — accepting or rejecting an agent proposal requires a grant an
       where: { subjectType: 'agent_action', subjectId: actionId },
     });
     expect(audit).not.toBeNull();
+  });
+});
+
+describe('FX-05 — an action is classified no higher than the agent ceiling', () => {
+  it('a READ-ceiling agent calling an AUTONOMOUS touchpoint is clamped to READ and never auto-executes', async () => {
+    const tid = await tenantId();
+    const agentKey = `fx05.reader.${Date.now()}`;
+    const agent = await unscopedPrisma.agentPrincipal.create({
+      data: {
+        tenantId: tid,
+        agentKey,
+        name: 'FX-05 reader',
+        purpose: 'Test-only READ-ceiling agent declaring an AUTONOMOUS tool.',
+        tier: 'READ' satisfies AiTierCode,
+        declaredTools: ['tool.crm.route_lead'],
+      },
+    });
+
+    try {
+      const result = await asUser('chairman@kaizen.co.in', () =>
+        propose({
+          agentKey,
+          tool: 'tool.crm.route_lead',
+          action: 'lead.route',
+          subjectType: 'lead',
+          subjectId: 'fx05-subject',
+          proposal: {},
+          rationale: 'FX-05 probe: READ ceiling, AUTONOMOUS touchpoint.',
+        }),
+      );
+      expect(result.tier).toBe('READ');
+      expect(result.state).toBe('proposed');
+      expect(result.autoExecuted).toBe(false);
+    } finally {
+      await unscopedPrisma.agentAction.deleteMany({ where: { agentId: agent.id } });
+      await unscopedPrisma.agentPrincipal.delete({ where: { id: agent.id } });
+    }
   });
 });
