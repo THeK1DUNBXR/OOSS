@@ -1,0 +1,251 @@
+# 07 — CRM, Finance ERP, Reconciliation, Close and Cash (proposal pp. 29–33)
+
+Repo root: `/home/user/OOSS`. All citations are repo-relative `file:line`, verified by opening the lines. `MAP` = `docs/plan/MAP.md`. Read-only pass; no repo files changed.
+
+## Pages covered
+
+- p29 CRM and commercial control (leads, opportunities, forecast, offerings/price book, quotes, proposals, contracts, handoff, referral/partner, duplicates, lost deals, pipeline report)
+- p30 Finance ERP and accounting integrity (ledger per entity, COA/dimensions, journals, AR/AP, invoice vs payment vs allocation, manual journals, immutability, period lock)
+- p31 GST and transaction completeness (register reconciliation, tax versioning, tax-inclusive values, IRP reporting window)
+- p32 Reconciliation, close and cash decisions (bank rec, close checklist, cash command view, 13-week forecast, procurement, beneficiary change control)
+- p33 Cashbook and custody; bank API and payment automation
+
+**Headline:** the journal (`platform/ledger.ts` `post()`) has zero callers. Every money movement the app records (invoice, payment, receipt, credit note, refund, vendor bill, payroll) lands in the legacy `transaction` table, and the trial balance, P&L, cash position and period-close snapshot are built from that table. The "ledger" is compliant on its own terms and disconnected from the business.
+
+## Capability table
+
+Status key: EXISTS · PARTIAL · MISSING · FIX (existing code wrong for this purpose; detail in `## Fixes`) · INTERCONNECT (see `## Interconnections`) · PLANNED (in `docs/plan`) · UNVERIFIED. Size: S < 1 wk, M 1–3 wk, L > 3 wk, excluding Phase 1 dependencies.
+
+| Proposal item | p. | Status | Evidence file:line | Gap / action | Size |
+|---|---|---|---|---|---|
+| Single lead/account/contact register, deduplicated, with source, owner, purpose | 29 | PARTIAL | `apps/api/prisma/schema/main.prisma:1464` Lead (`ownerPartyId` :1492, `source` :1502, `channelKey` :1516); `Person` main.prisma:222; `domains/identity.ts:90` findDedupCandidates, :182 findOrCreatePerson; `domains/leads.ts:100` | Person-level only. Lead has no duplicate check of its own, and no purpose/permission field. Consent lives on `Consent` (`compliance-privacy.prisma:54`), not linked to Lead. | M |
+| Duplicate candidates reviewed, sensitive histories not silently merged | 29 | EXISTS (Person) | `identity.ts:182-215`: exact in-scope match resolves silently; ambiguous, cross-scope or statutory-floor match raises MERGE_CANDIDATE. `identity.ts:299` mergePersons needs `people.merge` grant; agents barred (:318) | Extend the same gate to Lead/Organization. | S |
+| Unowned enquiry: primary and backup owner; escalate missed response window | 29 | PARTIAL | `domains/routing.ts:141` routeLead (weights only); `leads.ts:205` raiseUnroutedException; `leads.ts:400` detectUntouchedLeads (3-day default argument) | No backup owner (grep `backup|secondary` in routing/leads: none). 3-day threshold is hard-coded, not per motion. | S |
+| Dated next action on an enquiry | 29 | PARTIAL | `main.prisma:2010-2011` `nextAction`/`nextActionDue` on **Interaction** (model at :1980), not Lead | Lead has no next-action field of its own. Add a FK or a denormalised `nextActionDue` on Lead. | S |
+| Stage movement requires evidence appropriate to the pipeline | 29 | PARTIAL | `domains/opportunities.ts:132` advanceStage; `domains/pipelines.ts:245` validateTransition (required fields); `opportunities.ts:150` proposal gate | Required-field gates exist; no per-motion evidence-type rules (e.g. college intro vs signed course). | M |
+| A won deal = signed commitment; intro is not a course; demo is not a subscription | 29 | FIX | `opportunities.ts:160-166`: won gate passes if `contractId` **or** `mouId` is set | An MoU satisfies the won gate without checking it is executed. See Fixes F8. | S |
+| Opportunity: value range, timing, probability rationale, qualification evidence, competitors, dependencies, decision-maker, delivery feasibility | 29 | PARTIAL | Single `expectedValue` + `expectedCloseDate` on `main.prisma` Opportunity (:1539-1651); stage probability `opportunities.ts:437-447`; `competitorName`/`decisionMakerPersonId` only on WinLossReview `main.prisma:1944-1945` | MISSING: value range, probability rationale, dependencies, feasibility, competitors and decision-makers on the open opportunity. | M |
+| Forecast categories: controlled definitions, authorised owner | 29 | PARTIAL | `opportunities.ts:278` changeForecastCategory; `:295` FORECAST_TRANSITIONS; `:300` assertCan with `record.ownerPartyId` | Transition table exists. Owner authority is the opportunity owner only; no evidence-gap state. | S |
+| Unsupported forecast marked as evidence gap, excluded from confirmed cash | 29 | MISSING | `opportunities.ts:418-460` forecastRollup: `expectedValue × stage defaultProbability` (floats, :447) | Add evidence flag and a `confirmed` vs `weighted` split. | M |
+| Approved offerings and versioned price book | 29 | EXISTS | `domains/commercial.ts:65` createOffering; :106 publishOffering; :182 publishPrice (version :212, `maxDiscountPct` required :186-190); `main.prisma:1652` PriceBookEntry | None material. | — |
+| Proposal generation from versioned templates with approved terms | 29 | PARTIAL | `commercial.ts:254` createProposal, :298 sendProposal, :330 respondToProposal; quote versioning `:431-457` (`version = count+1`) | No template model (grep `template` in commercial/proposal: none). | M |
+| Discounts pass through authority rules | 29 | EXISTS (at issue) | `commercial.ts:529-560` issueQuote blocks any line over `maxDiscountPct`, opens approval via `resolveAuthorityCeiling` (:558) | Gate fires at issue, not at createQuote (:431). Acceptable by design, but see F6 for the missing audit call. | — |
+| Free changes / scope change requests with approval before work | 29 | MISSING | Grep `change.?request|change_order|free change`: only IT `itsm.ts` and `hr.ts` | New commercial entity: ChangeOrder linked to Contract and Opportunity, with scope impact and authority. | M |
+| Credit terms and payment terms | 29 | PARTIAL | `domains/invoicing.ts:1379` declarePaymentTerms (not read in full) | UNVERIFIED depth. | S |
+| Revenue shares | 29 | MISSING | Grep `revenue.?share`: none. `main.prisma:1886,1898` PartnerAgreement comment: "Explicitly not a commission engine" / "commission calculation is deferred" | Decision needed (see Decisions D6). | L |
+| Refunds pass through authority rules | 29 | PARTIAL / FIX | `domains/compliance/corporate/refunds.ts:34-66` requestRefund, :70-91 approveRefund (`self_approval_barred`), :98-125 payRefund; `compliance-corporate.prisma:244` Refund (`invoiceId` :250) | Payer not constrained against approver; pay is not atomic and not idempotent; amount goes through `Number()`. See F12. | S |
+| Contract record: executed document, parties, scope, IP, milestones, payment triggers, tax treatment, service commitments, renewal/termination | 29 | PARTIAL | `main.prisma:1836` Contract (`documentId`, `signedDate`, `signedById`, `scope`, `termMonths`, `renewedFromId`, `terminatedAt`); `domains/agreements.ts:110` createContract | MISSING: IP position, milestones (0 matches in schema), payment triggers, tax treatment, service commitments as structured fields. | M |
+| Sales-to-delivery handoff with named owner and acknowledgement of what was promised | 29 | FIX | `opportunities.ts:238-262` handoffOnWin creates Project with no owner and no promise record; `routes/education.routes.ts:609-614` accept-handoff sets `managerPartyId` to whoever accepts; `main.prisma:3680` `handoffAcceptedAt`; `domains/health.ts:281` counts unaccepted | Project created without a named delivery owner. Acceptance records a manager, not what was promised. See F9. | S |
+| Finance owns monetary obligation; sales sees payment status without second ledger | 29 | PARTIAL | `Invoice.opportunityId` (`main.prisma:2841-2976`); `invoicing.ts:1801-1857` rehydrateReceivablesFor → `ReceivablesProjection` (`main.prisma:3355`); `invoicing.ts:1469` invoiceSummary | Projection exists. No sales-facing payment view verified (UNVERIFIED in web). | S |
+| Referral / partner agreement status, introduction history, conflict handling | 29 | PARTIAL | `domains/agreements.ts:179` createPartnerAgreement; `:220-264` dual-channel conflict (partner vs partner); `domains/marketing/referrals.ts:201-217` redeem, self-redeem blocked (:217) | No introduction-history record. Conflict check is partner-vs-partner only. | M |
+| Partner claiming an account already owned by a direct salesperson creates a review case | 29 | MISSING | `agreements.ts:262` checks agreements only, not opportunity/account ownership | New conflict check on Account/Opportunity owner vs partner. | S |
+| Commission from approved scheme, verified qualifying events, clawback on refund | 29 | MISSING | `marketing/referrals.ts:289-300` rewardReferral stores a free-text `rewardTransactionRef`, no amount; grep `clawback`: none | Commission engine deferred (`main.prisma:1898`). Needs Phase 1 ledger and TDS treatment. | L |
+| Lost deal: reason, evidence, consent-aware future contact, lessons | 29 | EXISTS (review) / PARTIAL (consent) | `opportunities.ts` advanceStage terminal-lost branch → `winLoss.ts:37` ensureWinLossReview; `winLoss.ts:101` completeWinLossReview; `winLoss.ts:162` detectOverdueReviews | Consent is not checked on future contact (Consent `compliance-privacy.prisma:54` not joined to opportunity). | S |
+| Pipeline report: enquiry → qualified → accepted → signed → delivered → billed → cash collected | 29 | PARTIAL | `opportunities.ts:418` forecastRollup (stage-only, no billed or cash) | Join to Invoice and ReceivablesProjection needed. | M |
+| Duplicate-free relationship database that propagates corrections to authorised views | 29 | UNVERIFIED | `identity.ts:299` mergePersons; no propagation mechanism found | Verify before claiming. | M |
+| Pipelines per motion (direct sales, admissions, institutional, subscription) | 29 | PARTIAL | `main.prisma:1247` PipelineDefinition, :1281 PipelineStage; `pipelines.ts:351` pipelineForVertical | Vertical-keyed pipelines exist. Stage evidence rules are not per motion. | S |
+| Shared ledger per legal entity; system-of-record map | 30 | PARTIAL | `compliance-books.prisma:54` LedgerEntity; `:71` JournalEntry (`entityId`); Invoice has no `entityId` (`main.prisma:2841-2976`); CompanyProfile is tenant-unique (`docs/plan/README.md` decision A) | No SoR map artifact. Invoice, Payment and Transaction are not entity-scoped. | L |
+| Entity close, intercompany matching, eliminations, consolidation | 30 | PARTIAL | `domains/books.ts:68-80` isInSameGroup; `:292` intercompany guard; `routes/group.routes.ts:18-27` (structure, financials, publish) | No counterpart matching, no eliminations (UNVERIFIED by grep). | L |
+| Chart of accounts, control accounts, dimensions (division, cost centre, project, party) | 30 | PARTIAL | `main.prisma:4827` LedgerAccount; `platform/ledger.ts:22-33` JournalLineInput dimensions; `ledger.ts:100-112` postable and required-dimension checks; `hcm-workforce.prisma:108` CostCentre | Dimensions exist only on JournalLine, which is never written (I1). | M |
+| Opening balances | 30 | PARTIAL | `ledger.ts:17` sourceType `opening_balance` | No writer. `apps/api/src/migrations/` does not exist (plan 1.5 `cashbookToJournal.ts` not built). | M |
+| Accounts receivable | 30 | PARTIAL | `main.prisma:2841` Invoice; `:3355` ReceivablesProjection; `invoicing.ts:1801` | No AR control account posting (I1). | M |
+| Accounts payable | 30 | PARTIAL | `main.prisma:4993` VendorBill; `books.ts:485` recordVendorBill; `:548` payVendorBill; `:600` payablesAgeing | Not journaled. | M |
+| Bank and cash accounts | 30 | PARTIAL | `compliance-books.prisma:216` BankStatementLine; `compliance/books.ts:709` importBankStatement; `:739` matchBankLines | Cash is the `transaction` table, not the journal (I1). | M |
+| Fixed assets and depreciation inputs | 30 | PARTIAL | `books.ts:932` createAsset; `:992` assetSchedule; `compliance/books.ts:447` depreciationReport | `depreciation` sourceType exists (`ledger.ts:14`) but nothing posts it. | M |
+| Accruals, prepayments, advances, deposits | 30 | MISSING | `ledger.ts:19` sourceType `accrual` only. `AccrualRun` (`hcm-leavepolicy.prisma:99`) is leave, not finance | New finance accrual/prepayment register. | M |
+| Payroll liabilities | 30 | PARTIAL | `books.ts:1353` postPayrollToBooks → `recordTransaction` (`:1389-1393`); `compliance-statutory.prisma:55` PayrollStatutoryLine; `hcm-payrollops.prisma:117` PayrollJournal | Payroll posts to the legacy cashbook, not to the journal (I1). | M |
+| Shareholder and founder loan schedules | 30 | PARTIAL | `main.prisma:5132` Loan; `books.ts:1043` createLoan; `:1078` loanSchedule; `routes/books.routes.ts:638` | No related-party flag on Loan. | S |
+| Invoice, payment and allocation are distinct | 30 | EXISTS | `main.prisma:2841` Invoice, `:3078` Payment, `:3132` Receipt (`allocatedAmount` :3145); `domains/finance.ts:218` allocatePayment; `invoicing.ts:1139` collectInvoicePayment | Structure is right. Money is Decimal, not bigint (F2). | — |
+| Invoice issue minimum controls: approved contract or fee plan, entity, sequence, tax basis, due date, delivery trigger | 30 | PARTIAL / FIX | `invoicing.ts:1003` issueInvoiceDraft (`assertPeriodOpen` :1018, `auditWrite` ~:1041, `emit`); `invoicing.ts:266-268` period check uses UTC; `Invoice.contractId` optional (`main.prisma:2841-2976`) | No entity; no delivery trigger; contract not required. UTC period bug (F5). | M |
+| Payment received: authoritative reference, duplicate check, allocation review | 30 | PARTIAL / FIX | `main.prisma:3078-3110` `@@unique([tenantId, gatewayReference])`; `finance.ts:99-115` recordPayment idempotent on gatewayReference; `invoicing.ts:1175-1186` counter-payment reference synthesised from `receivedAt.toISOString()` when none given | Counter-payment duplicate check is weak (F10). No allocation review step. | S |
+| Credit note: linked invoice, reason, authority, tax/accounting effect, customer notification | 30 | FIX | `domains/finance.ts:372-420` issueCreditNote; `routes/finance.routes.ts:399-401` (`z.number().positive()` only); `gst.ts:454` setCreditNoteReason | No invoice existence check, no cap against outstanding, no authority ceiling, no ledger or tax effect, no notification. See F13. | S |
+| Manual journal: evidence, balanced, preparer and independent approver | 30 | PARTIAL | `ledger.ts:61-69` `post()` balance check, `:63` single permission `transactions.create`; no approval step; no caller route | Needs approver step and evidence attachment. | M |
+| Posted entries immutable; corrections by reversal | 30 | EXISTS (journal) | `apps/api/prisma/migrations/20260920173000_ledger_invariants/migration.sql:139` REVOKE UPDATE, DELETE; `journal_entry_immutable` trigger (same file, after :139); `ledger.ts:191` reverse | Good design. Unused (I1). Legacy `transaction` table: `books.ts:361` reverseTransaction (audited :409-416) but `commit.ts:733` hard-deletes (F3). | — |
+| Period lock without reopen authority and impact review | 30 | PARTIAL / FIX | `compliance/books.ts:98` requestClosePeriod, :117 closePeriod (self-approval barred), :144 reopenPeriod (reason required); `ledger.ts:90` and migration `20260920173000` (`journal_entry_period_open`) block only `closed` | No impact review on reopen. `closing` and `reopened` accept postings at DB and app level. F19. | S |
+| Profit dashboards only after validated posting | 30 | FIX | `books.ts:1165` ProfitAndLoss, `:1244` monthlyTrend, read `transaction` (not journal) | Reports cannot be validated against posting until I1 is closed. | M |
+| Accounting policy decides recognition; payment alone does not imply revenue | 30 | PARTIAL | `commercial.ts:47` suggestRevenueTreatment; no deferred-income model | Recognition is not posted anywhere (I1). | M |
+| GST register reconciliation: invoices, credit notes, receipts, cashbook, bank settlements, ledger | 31 | PARTIAL | `compliance/books.ts:779` reconciliationReport (bank vs Transaction only); `gst.ts:701` gstr2bMatches | Only bank-to-cashbook and GSTR-2B-to-bill exist. No invoice-to-receipt or ledger tie-out. | M |
+| Cash payment mode does not determine GST treatment | 31 | UNVERIFIED | No code keyed on payment mode for GST found | Verify in `gst.ts` classify path before claiming. | S |
+| Versioned tax applicability, exemptions, registration and thresholds by entity and date, accountant-approved | 31 | PARTIAL / FIX | `compliance-gst.prisma:168` GstRateTable (`effectiveFrom`); `compliance-statutory.prisma:3` StatutoryRule with overlap check `domains/statutory.ts:39`; `gst.ts:51` courseGstExemptionFor, :59 setCourseGstExemption | `domains/courses.ts:201,214,302` default GST rate `18` hard-coded (CLAUDE rule 4). Accountant approval step UNVERIFIED. F15. | M |
+| Tax-inclusive vs tax-exclusive values; no double tax on receipt | 31 | PARTIAL | `invoicing.ts:232-245` totalsOf; `packages/shared/src/finance.ts:132` round2 (float) | Float arithmetic. Double-count risk on receipt vs invoice UNVERIFIED. F2. | M |
+| IRP reporting window for eligible entities; verify applicability before enabling | 31 | MISSING (PLANNED) | `domains/compliance/gst.ts:483` provider boundary, `:490` NotConfiguredProvider, `:533` requestEInvoice (no date check); plan `phase-3-statutory.md` §3.2 (30-day rule, cited as a hard limit) | Do not enable without accountant confirmation of applicability (proposal W13). Rule must be a StatutoryRule row. | M |
+| Bank statement import with stable references and duplicate controls | 32 | FIX | `compliance/books.ts:710-735` importBankStatement: plain `create` per row, `auditExport` only; `:821` `fingerprint` defined but unused; `compliance-books.prisma:216` no unique key | Re-importing a statement doubles lines. F11. | S |
+| Suggested matches; unmatched, ambiguous and partial items stay visible | 32 | FIX | `compliance/books.ts:739-776` matchBankLines: first candidate wins (`transactions.find`), sets `matchedAt` (:768) and `reconciledAt` (:770) with no review; `shared/src/compliance/books.ts:127` isLikelyMatch | Auto-commits. No ambiguity state. F10-b. | S |
+| Reconciliation reviewed by someone independent of payment preparation | 32 | MISSING | `routes/compliance/books.routes.ts:199` match route uses `transactions.edit` only | Separate permission, maker ≠ checker. | S |
+| Monthly close checklist with owner, evidence, due date and exception disposition | 32 | MISSING (PARTIAL via calendar) | `domains/compliance/calendar.ts:30` registers `compliance_obligation` | Generic obligations exist; no close checklist model. | M |
+| Closed period retains approved statements and source snapshot | 32 | PARTIAL | `compliance-books.prisma:41` `snapshot Json` on AccountingPeriod; snapshot from `compliance/books.ts:540-560` (`prisma.transaction.groupBy`) | Snapshot is a trial balance from the cashbook; no statements, no source extract. | S |
+| Cash command view separates verified, committed, overdue, expected, contingent and funding | 32 | FIX | `books.ts:1277` cashPosition (cash = bank/cash/wallet balances from `transaction`); `:1308` cashForecast | No verified vs unreconciled split. Forecast has outflows only. F14. | M |
+| 13-week cash forecast with last reconciliation timestamp, evidence gaps, downside, change log | 32 | MISSING | `books.ts:1308` cashForecast: monthly, default 6 months; `:1325` `setUTCMonth` overflow | Weekly horizon, scenarios, versioning and recon timestamp all absent. F20. | M |
+| Payroll entitlement, deferred salary and actual payment shown separately | 32 | PARTIAL | `main.prisma:4733` PayrollRun; `hcm-payrollops.prisma:146` BankAdvice; `hcm/payrollops.ts:414` postPayrollJournal | Separation not verified (UNVERIFIED). | M |
+| Founder loans and reimbursements: related-party treatment, independent approval | 32 | PARTIAL | `compliance-corporate.prisma:59` registerKind `related_party`; `compliance/corporate/registers.ts:2` | Register exists; not linked to Loan or reimbursements. | S |
+| Procurement: purchase request, budget, order, receipt confirmation, invoice matching | 32 | PARTIAL / MISSING | `books.ts:777` setBudgetLine, `:829` budgetVariance; `books.ts:485` recordVendorBill; grep `purchaseOrder|purchaseRequest|goodsReceipt|grn`: none | No PR, PO or GRN. Budget and vendor bill exist. | L |
+| High-risk beneficiary change verified via known contact, not the requesting email | 32 | MISSING | Grep `beneficiary` finds only payroll and invoicing display fields | New vendor/beneficiary change control with out-of-band verification and dual approval. | S |
+| Payment approval separate from vendor-master maintenance | 32 | MISSING | No enforced separation found (UNVERIFIED in `books.ts:548`) | Separate permissions and approval rule. | S |
+| Review views: daily liquidity, collections, commitments, project economics, monthly pack | 32 | PARTIAL | `books.ts:1277` cashPosition; `finance.ts:434` detectOverduePayments; `ReceivablesProjection` (`main.prisma:3355`) | Commitments and project economics not verified as views. | M |
+| GST and TDS classification accountant-reviewed; filing evidence; reconciliation | 32 | PARTIAL | `gst.ts:119-185` classifyInvoiceLine, unclassifiedLines; TDS: `compliance-tax.prisma:70` TdsDecision, :92 TdsChallan, :214 TdsReturn | Accountant review step UNVERIFIED. | M |
+| Direct bank payment initiation and automated statutory filing out of first release | 32 | MISSING (decision) | Grep payment-initiation / mandate: none. `gst.ts:483` says "Nothing here calls out" | Consistent with the proposal. Confirm as a leadership decision (D4). | — |
+| Cashbook receipt numbered and linked to invoice or purpose; payer, date, entity, site, custodian | 33 | PARTIAL | `main.prisma:3132` Receipt; receipt numbering `invoicing.ts` (nextDocumentNumber); `main.prisma:4956` Transaction.`invoiceId` | No site, custodian or entity on Receipt or Transaction. | M |
+| Drawer opening balance, petty-cash payments, vouchers, denomination count | 33 | MISSING | Grep `denomination|cashCount|drawer`: none. `petty|imprest` only in `imports/classify.ts` | New cash-drawer and count model. | M |
+| Custody separate from review; daily physical count reconciles to cashbook; deposits to bank | 33 | MISSING | None found | New. | M |
+| Corrections by authorised reversal; closed periods not silently backdated | 33 | PARTIAL / FIX | `books.ts:361-430` reverseTransaction (audited :409-416, emit :423); `books.ts:266-268` period check via `runHooks('transaction.before_record')`; `imports/commit.ts:267`, `:329` `transaction.create` bypasses both | Import path skips period gate and audit. F4. | S |
+| Historically unrecorded transactions go to a restricted accountant-led remediation case | 33 | MISSING | No case model found (grep `remediation`: none in finance path) | New restricted case type, separate permission. | M |
+| Never split receipts or fabricate documents to evade limits | 33 | MISSING | Grep `269ST|200000|2,00,000|cash.?limit`: none | Needs detection rule, configured as StatutoryRule. | M |
+| Cash receipt and payment restrictions configured under the law applicable on the transaction date (Income-tax Act 2025 from 1 Apr 2026) | 33 | MISSING | `compliance-statutory.prisma:3` StatutoryRule exists; `seed/compliance/statutory.ts` seeds other rules; no cash-restriction key found. Section number not verified here | Add as StatutoryRule rows with source citation. Do not hard-code any section number (CLAUDE rule 4). Accountant to confirm the provision. | S (rule) / M (enforcement) |
+| Bank APIs: statement feeds first, then collections and payroll APIs with mandates, maker-checker, idempotency, instruction states, unknown-outcome reconciliation, callback validation | 33 | MISSING (foundations PARTIAL) | Foundations: `main.prisma:3078-3110` Payment `gatewayReference` unique; `finance.ts:99-115` webhook replay is a no-op; `main.prisma:4685` PayrollInstruction; `hcm-payrollops.prisma:146` BankAdvice (file-based); `hcm/payrollops.ts:543` generateBankAdvice. Refunds: `refunds.ts:98-125` has no idempotency key | Large L-size programme. Needs state machine (prepared, approved, submitted, pending/unknown, settled, failed, reversed), instruction IDs, provider evidence. Bank onboarding is the bank's responsibility (proposal). | L |
+| Employee salary-account facilitation via bank-approved route with consent | 33 | MISSING (PARTIAL data) | `compliance/payroll.ts:843` setBankDetails | Consent and bank route not modelled. | L |
+| "Chapter 26" employee account-change, batch-version and payment-resolution workflow | 33 | UNVERIFIED | Referenced by the proposal (p33; also p56). Not in `docs/plan` | Cannot evaluate: the referenced chapter is not in the pages assigned to me. | — |
+
+## Interconnections
+
+| ID | Ends (file:line) | Missing link | Consequence |
+|---|---|---|---|
+| I1 | `platform/ledger.ts:61` `post()` ↔ `domains/finance.ts` (recordPayment :99, allocatePayment :218, issueCreditNote :372), `domains/invoicing.ts` (issueInvoiceDraft :1003, collectInvoicePayment :1139), `domains/receipts.ts`, `domains/compliance/corporate/refunds.ts:98`, `domains/books.ts:1353` | **No caller of `post()` exists.** Grep `post\(\{` and the import of `platform/ledger` outside ledger.ts: none. Only `ledger.ts:128` and `:167` write journal rows. | The journal is empty for every business event. Trial balance, P&L and cash all read `transaction` instead. |
+| I2 | `domains/books.ts:169` accountBalances, `:1277` cashPosition, `:1165` ProfitAndLoss, `compliance/books.ts:540-560` trialBalance, `:607` trialBalanceCsv, `:653` tallyExportXml ↔ `main.prisma:4920` Transaction | The statutory outputs are built from the legacy cashbook, not from journal lines. | Audit-facing reports cannot tie to the posting layer. Phase 1.5 equivalence test cannot pass as the code stands. |
+| I3 | `invoicing.ts:1139` collectInvoicePayment / `finance.ts:99` recordPayment ↔ `books.ts:169` cash balances (`transaction` table) | No link: customer receipts create Payment and Receipt rows, never Transaction rows. Grep `transaction.create` in invoicing.ts, finance.ts, receipts.ts: none. | Cash position and cash forecast exclude customer collections. Opening cash is understated. |
+| I4 | `main.prisma:4956` Transaction.`invoiceId` ↔ Invoice | Field exists. Writer not found in finance paths; `source` enum includes `invoice` (`main.prisma:4954`) but no writer verified (UNVERIFIED). | Cashbook to invoice traceability depends on a writer that was not found. |
+| I5 | `compliance-books.prisma:216` BankStatementLine.`matchedTransactionId` ↔ `main.prisma:4920` Transaction.`reconciledAt` ↔ JournalLine | Bank reconciliation links to the cashbook only. No journal line link. | A reconciled bank line cannot be traced to a posted entry. |
+| I6 | `gst.ts:701` gstr2bMatches ↔ `main.prisma:4993` VendorBill (`vendorBillId`, `gst.ts:629-701`) | Linked. Matches are recomputed and deleted on each run (`gst.ts:684`). | Matches are not versioned. See F21. |
+| I7 | `opportunities.ts:238` handoffOnWin → `main.prisma:3661` Project ↔ `education.routes.ts:609` accept-handoff | Project has no owner at creation; acceptance sets `managerPartyId` only. No link to the contract promise. | Delivery ownership is decided after the fact. |
+| I8 | `opportunities.ts` (won gate :160) ↔ `agreements.ts` MoU / Contract | MoU ID accepted without execution state. | A won deal can rest on an unsigned MoU. |
+| I9 | `main.prisma:2841` Invoice.`opportunityId` ↔ `opportunities.ts:418` forecastRollup | No billed or cash stage in rollup. | Sales growth can look healthy with unpaid work (proposal's own concern). |
+| I10 | `compliance-corporate.prisma:250` Refund.`invoiceId` and `paidPaymentId` ↔ Transaction (`refunds.ts:104-122`) ↔ JournalEntry | Refund reaches cashbook, not journal. | Same as I1. |
+| I11 | `marketing/referrals.ts:289` rewardReferral.`rewardTransactionRef` ↔ Transaction | Free-text reference; no FK. | Reward cannot be traced to a payment. |
+| I12 | `identity.ts` (Person) ↔ `main.prisma` Lead ↔ `compliance-privacy.prisma:54` Consent | Consent is not checked for lead or opportunity contact. | Future-contact consent from lost deals is not enforced. |
+| I13 | `compliance/books.ts:117` closePeriod snapshot ↔ JournalEntry | Snapshot is from Transaction (see I2). | A closed period is "closed" on the cashbook, not the ledger. |
+
+## Fixes
+
+Items are ranked by consequence. Each has a test that should fail on the current code before the fix is claimed (CLAUDE working rule).
+
+**F1. The journal has no writers (CRITICAL, architectural).** `platform/ledger.ts:61` `post()` is the only writer by design, but no domain calls it (see I1). Consequence: every statutory output (TB, P&L, close snapshot, cash) is computed on the legacy cashbook. The Phase 1.5 migration (`cashbookToJournal.ts`, plan `phase-1-ledger.md` §1.5) does not exist in `apps/api/src/migrations/`. Test: post an invoice and a receipt, assert journal lines balance and the TB moves. Fails today.
+
+**F2. Float money in the finance path (CRITICAL, CLAUDE rule 1).**
+- `platform/db.ts:166` `num()` converts `Decimal` to JS `number`. Used in 54 files (grep `\bnum\(`), including `domains/finance.ts:178-238`, `domains/invoicing.ts:212-243`, `domains/books.ts:1277-1306`.
+- `packages/shared/src/finance.ts:132` `round2(n: number)`.
+- Epsilon comparisons: `domains/finance.ts:239`, `:333`, `:356`; `domains/invoicing.ts:486`, `:719`, `:1160`, `:1203`. Plan §1.6 cites `finance.ts:296` and `:202`, which no longer match.
+- Input types: `books.ts:216` `TransactionInput.amount: number`; `compliance/books.ts:704` `BankLineInput.amount: number`; `finance.ts:372` `issueCreditNote(amount: number)`; `imports/commit.ts:213,335` `Number(data.amount)`; `refunds.ts:111` `Number(refund.amount)`.
+- DB columns are `Decimal(18,2)` (e.g. `main.prisma:2892-3059`, `:3078-3145`, `:4928`). Only `JournalLine.amountMinor` is `BigInt` (`compliance-books.prisma:104`).
+- `packages/shared/src/money.ts` does not exist. Plan 1.6 not started.
+- Test: a 0.1 + 0.2 style fixture through `allocatePayment` and `collectInvoicePayment` with `Decimal` in and out, asserting exact paise.
+
+**F3. Hard deletes in the cashbook and reconciliation path (CRITICAL, CLAUDE rule "never hard-delete in accounting or audit path").**
+- `imports/commit.ts:733` `prisma.transaction.delete` inside `revertImport` (`:715`). Also no `auditWrite` in `commit.ts` (none found anywhere in the file). Hard-deleting a reconciled transaction leaves `BankStatementLine.matchedTransactionId` dangling (I5).
+- `domains/compliance/gst.ts:684` `gstr2bMatch.deleteMany` on every re-run. Consequence: prior reconciliation evidence disappears. This is derived data, but it is the ITC audit trail.
+- CLAUDE.md cites `imports/commit.ts:721`; actual line is `:733`. Record the drift.
+- Test: revert an import with a reconciled line; assert the transaction is soft-deleted or reversed, the audit record exists, and the bank line remains resolvable.
+
+**F4. Unaudited and ungated cashbook writes in the import path (CRITICAL, CLAUDE rules 3 and 5).**
+- `imports/commit.ts:267` and `:329` create `Transaction` rows directly, bypassing `books.ts:266-268` (`runHooks('transaction.before_record')`, the closed-period veto) and `books.ts:324` (`auditWrite`). `commit.ts` contains no `auditWrite` call.
+- Consequence: a bulk import can backdate into a closed period, and the rows carry no audit record. The brief's "unaudited cashbook" finding is this path. The single-row path (`recordTransaction`) is audited; this bulk path is not.
+- `compliance/books.ts:770` set `reconciledAt` on a `transaction` with no audit record.
+- `bank_statement_line` is not in the governed registry (`platform/audit.ts:105-114`), so `auditWrite` no-ops on it; `importBankStatement` uses `auditExport` only (`compliance/books.ts:729`).
+- Test: import a transaction dated inside a closed period; assert refusal. Import, then assert an audit record exists per row.
+
+**F5. Period and financial-year derivation uses UTC (HIGH, CLAUDE rule 3).**
+- `domains/invoicing.ts:268` `assertPeriodOpen` builds the period from `getUTCFullYear/getUTCMonth`. An invoice issued 00:00–05:30 IST on the 1st is tested against the previous month's filing.
+- `platform/documentNumber.ts:92-94` `financialYearStart` uses `getUTCMonth() >= 3`. It drives the **invoice number series** (`:136`, `:161`, `:201`). On 1 April 00:00–05:30 IST, invoices take the previous FY's series. This is exactly the defect CLAUDE rule 3 names.
+- Same pattern: `domains/compliance/gst.ts:315` (bill period), `:276`, `:839-840`; `domains/compliance/tax.ts:61-62` (`fyOf`), `:560-561`, `:703`; `domains/compliance/books.ts:495` (asset FY).
+- Test: an invoice numbered at `2026-03-31T19:00:00Z` (= 1 Apr 00:30 IST) must use FY2026-27.
+
+**F6. Unaudited proposal and quote writes (HIGH, CLAUDE rule 5).** `domains/commercial.ts` calls `auditWrite` only at `:95` (offering create) and `:232` (price entry publish). `createProposal` (:254), `sendProposal` (:298), `respondToProposal` (:330), `createQuote` (:431) and `issueQuote` (:534) have no audit call. `quote` and `proposal` are registered governed (`platform/audit.ts:87`), so the call would have worked. Test: issue a quote, assert an AuditRecord exists.
+
+**F7. Discount ceiling enforced at issue, not at draft (LOW, design note).** `commercial.ts:548` blocks over-ceiling lines at issue. Drafts can hold any discount. Acceptable if drafts are not sent; add a server-side cap at `createQuote:431` to avoid a rendered draft that exceeds the cap.
+
+**F8. MoU satisfies "won" without execution check (HIGH, proposal p29 explicit).** `domains/opportunities.ts:160-166`: `Boolean(contractId || mouId)`. An MoU, even unsigned, moves the deal to won and triggers handoff (`:218`). Proposal says a college introduction must not count. Fix: require `Contract.signedDate` or MoU executed status. Test: move to won with an unsigned MoU; expect refusal.
+
+**F9. Handoff creates a project with no owner and no record of the promise (MEDIUM).** `opportunities.ts:238-262` creates `Project` with `name`, `organizationId`, `opportunityId`, `contractId`, `status: 'planned'`, no `managerPartyId`. Acceptance (`education.routes.ts:609-614`) assigns whoever accepts. Fix: required `deliveryOwnerPartyId` on won; capacity and budget check (proposal p29 table: "unfunded delivery promise").
+
+**F10. Weak duplicate control on counter payments, and bank matching auto-commits (HIGH).**
+- (a) `invoicing.ts:1175-1186`: for counter payments with no reference, `gatewayReference` is `${label}/${mode}/${receivedAt.toISOString()}`. Two identical cash receipts at different milliseconds pass the unique check. Proposal p30: "duplicate check". Fix: require a reference for bank and cheque; for cash, dedupe on invoice + amount + date + payer within a window and flag.
+- (b) `compliance/books.ts:755-770` (`matchBankLines`): first candidate from `transactions.find` is committed, sets `matchedAt` and `reconciledAt`. No ambiguous state; proposal p32 says suggested matches must stay visible. Fix: separate `suggested` from `confirmed`.
+
+**F11. Bank statement re-import duplicates lines (HIGH).** `compliance/books.ts:710-735`: each line is a plain `create`. `fingerprint` (`:821`) is defined but unused in this path (grep `fingerprint\(`: definition only). `cmp_bank_statement_lines` has no unique key (`compliance-books.prisma:216-233`). Fix: unique on `(tenantId, accountId, date, amount, direction, reference, fingerprint(narration))`, and batch import in a transaction.
+
+**F12. Refund payment is non-atomic, unconstrained and not idempotent (HIGH, proposal p29/p33).** `domains/compliance/corporate/refunds.ts:104-122`: `recordTransaction` runs, then `refund.update`. If the update fails, the cashbook has a payment and the refund stays `approved`; a retry pays again. `payRefund` does not check payer ≠ approver (only approval checks requester ≠ approver, `:81`). Amount is `Number(...)` (`:115`). Fix: one `$transaction`, `idempotencyKey = refund.id`, payer ≠ approver, beneficiary verified, `Decimal` throughout.
+
+**F13. Credit notes have no invoice, cap or authority checks (HIGH, proposal p30).** `domains/finance.ts:372-420` and route `routes/finance.routes.ts:399-401`: amount is any positive number. The domain never loads the invoice, so the invoice reference is checked only by the FK and the tenant extension (UNVERIFIED that a cross-tenant `invoiceId` is rejected). Not capped against outstanding. No authority ceiling. No tax or ledger effect. Fix: load invoice with tenant scope; cap at `outstanding`; route through authority ceiling above a threshold; GST credit-note reason (`gst.ts:454`) required.
+
+**F14. Cash position and forecast are misleading (HIGH, proposal p32 "cash command view").** `books.ts:1277-1306` cashPosition sums balances from `transaction` (I2, I3), so customer collections recorded through Payment/Receipt are excluded. There is no verified vs unreconciled split. `books.ts:1308-1345` cashForecast projects monthly from average net and bills due; it has no receivables inflow, no contingent receipts, and no scenarios. Fix: after I1, cash from journal cash accounts; separate `verified` (reconciled) from `unverified`; add expected collections from ReceivablesProjection, labelled as expected.
+
+**F15. Statutory and policy constants in code (HIGH for statutory, CLAUDE rule 4).**
+- Statutory: `packages/shared/src/compliance/tax.ts:251-255` `msmeDueDate` hard-codes 45 days (s.43B(h)); `domains/filings.ts:752` stamp duty `0.00015`; `domains/courses.ts:201,214,302` GST default `18`.
+- Policy (lower): `domains/finance.ts:457,466` overdue thresholds 45 and 15 days; `domains/invoicing.ts:1828-1829` dunning stages 15 and 45 days; `domains/leads.ts:400` untouched threshold 3 days.
+- Fix: statutory items become `StatutoryRule` rows (`compliance-statutory.prisma:3`); policy items become tenant settings.
+
+**F16. Plan and code drift to correct before Phase 1 (MEDIUM).**
+- Plan §1.6 cites `finance.ts:296`, `:202`, `db.ts:150`; actual `domains/finance.ts:333`, `:239`, `platform/db.ts:166`.
+- Plan §1.3 says `books.ts:264` has reversal logic; actual reversal is `books.ts:361` `reverseTransaction`. `:264` is `recordTransaction`.
+- CLAUDE.md cites `imports/commit.ts:721`; actual `:733`. `revertImport` at `:715` (MAP agrees).
+- Plan §1.1 `AccountingPeriod.status` is `open | soft_closed | closed`; code uses `open | closing | closed | reopened` (`compliance/books.ts:98-170`).
+- Plan §1.1 `JournalEntry.status` default `pending`; `ledger.ts:131` writes `posted` directly.
+
+**F17. Phase 1 gate tests do not exist (HIGH for planning).** No test imports `platform/ledger` (grep `platform/ledger` in `apps/api/src/tests`: none). Plan gate requires the ten-thousand-operation property test and the migration-equivalence test. The only ledger-adjacent test is `books.test.ts`, which tests the legacy path.
+
+**F18. Period close does not block `closing` or `reopened` for postings (MEDIUM).** `platform/ledger.ts:90` checks `status === 'closed'`. Migration `20260920173000_ledger_invariants` trigger `journal_entry_period_open` checks `'closed'` only. Entries can be posted into a period in `closing` (after the request, before approval), which can then be snapshotted without them. Fix: block `closing` for posting, or snapshot at request time and reject later postings.
+
+**F19. Reopen has no impact review (MEDIUM, proposal p30).** `compliance/books.ts:144-170` reopenPeriod requires `approve` and a reason but no impact review. Proposal: "explicit reopen authority and a recorded impact review".
+
+**F20. Cash forecast month arithmetic overflows (LOW-MEDIUM).** `books.ts:1325` `d.setUTCMonth(d.getUTCMonth() + i + 1)` on the current day-of-month. On 29–31 of a month, the overflow can skip a period, because `setUTCMonth` carries into the following month. Also UTC for a period that should be IST. Fix: build periods from year-month integers. Test: run on 31 Oct and assert six consecutive month keys.
+
+**F21. GSTR-2B import overwrites raw upload (MEDIUM).** `domains/compliance/gst.ts:~646` `gstr2bImport.upsert` with `update: { rows: ... }` replaces the raw portal file; `:684` deletes all matches. No version history. Fix: append-only imports with a version number; matches reference the import version.
+
+**F22. Customer-facing money not via a reviewed decision (LOW).** `domains/finance.ts:434` detectOverduePayments raises internal tasks to `createdById` (invoice creator), not an AR owner. Fine for now; collections owner should be a field.
+
+## Advisor notes (what the proposal misses)
+
+Missing or underspecified in the proposal, with a minimal model and controls. Sizes are for the feature, not the fix.
+
+1. **Collections case (MISSING, M).** Proposal p29 says "collections" and p32 says "who owns the next action", but there is no collection case. Model: `CollectionCase { id, tenantId, subjectType('account'|'opportunity'), subjectId, ownerPartyId, stage, nextActionDue, promisedAmount, promisedDate, disputeReason?, status }`. Controls: `invoices.edit` for stage change; dispute opens a case that suspends automated reminders; no customer email without human approval (CLAUDE rule AI prohibitions). Dependency: Phase 1 for AR control. Indian angle: none direct; GST on credit notes after dispute is a tax-effect decision for the accountant.
+
+2. **Change orders (MISSING, M).** "Free change" and "scope impact" have no model. `ChangeOrder { id, contractId, opportunityId, scopeDelta, priceDelta, taxDelta, status, requestedById, approvedById, approvalBasis }`. Controls: authority ceiling by value; no work before approval (enforced at project level).
+
+3. **Delivery promise record (MISSING, S).** The handoff needs `DeliveryCommitment { projectId, promiseText, deliveryOwnerPartyId, capacityCheckedAt, budgetCheckedAt, acknowledgedById, acknowledgedAt }`.
+
+4. **Commission and referral payouts (MISSING, L).** Proposal says "approved scheme and verified qualifying events, with clawback". Model: `CommissionScheme` (versioned, rate table, qualifying event), `CommissionAccrual` (event FK, amount Decimal, status: accrued/approved/paid/clawed_back), `Clawback` (refund FK). Controls: scheme approval by a different person; accrual only on verified event (payment received, not invoice issued). Indian angle: TDS on commission (s.194H before the 2025 Act, now a consolidated section per plan §3.1; section numbers UNVERIFIED here). Depends on Phase 1 ledger for posting.
+
+5. **Opportunity qualification evidence (PARTIAL → M).** Value range, probability rationale, dependencies, competitors and decision-makers on the open opportunity. Suggest `OpportunityQualification` (one per stage change): `valueMin`, `valueMax`, `probabilityRationale`, `decisionMakerPersonIds[]`, `competitors[]`, `dependencies[]`, `feasibilityCheckedById`. Controls: stage gate reads this record. Proposal's "probability rationale" needs a human-written text field, not a computed number.
+
+6. **Forecast evidence states (MISSING, M).** `forecastCategory` values exist (`opportunities.ts:278-295`). Proposal adds "evidence gap, excluded from confirmed cash." Add `evidenceStatus('complete'|'gap')` and report `confirmed` and `weighted` separately.
+
+7. **Procurement (MISSING, L).** PR, PO, goods receipt (GRN) and three-way match. The proposal correctly says "order or justified exception". Model: `PurchaseRequest`, `PurchaseOrder`, `GoodsReceipt`, `VendorBillMatch`. Controls: PR approval by budget holder; PO approval by authority; payment approval ≠ vendor-master maintenance (proposal p32). Dependency: budget (`books.ts:777`) exists.
+
+8. **Beneficiary change control (MISSING, S).** `BeneficiaryChangeRequest { vendorId, oldAccountHash, newAccountHash, requestedById, verifiedById, verificationMethod('known_contact_callback'), verifiedAt, status }`. Controls: verification by known contact route, never the requesting email (proposal p32). Payment blocked until verified. Indian angle: no statute invented; this is a fraud control. Store account numbers masked (DPDP).
+
+9. **Cash drawer and count (MISSING, M).** `CashDrawer { id, custodianPartyId, siteId, entityId, openingMinor }`, `CashCount { drawerId, date, denominations Json, countedMinor, countedById, reviewedById }`, `CashReceipt` with numbering from the document series. Controls: custodian ≠ reviewer; count reconciles to cashbook; deposit reconciles to bank statement line.
+
+10. **Cash receipt limit rule (MISSING, S to rule, M to enforce).** Proposal p33 says restrictions "must be configured under the law applicable to the transaction date". Do as `StatutoryRule` (`compliance-statutory.prisma:3`) with `domain='tax'`, `key='cash.receipt.limit'`, `effectiveFrom`, `source`. The rule value and section number need accountant confirmation; none is verified here. Enforcement: aggregate by payer and FY across related receipts (detect splits, do not auto-accuse).
+
+11. **Bank payment automation (MISSING, L, not in first release).** Proposal p33 is right to defer. Minimum state machine for when it is built: `prepared → approved → submitted → pending_unknown → settled | failed | reversed`. Timeouts go to `pending_unknown` and are reconciled before retry. Idempotency key = instruction ID. Callback signature validated. Store provider evidence. Maker-checker enforced by permission, not UI. Bank onboarding is the bank's responsibility; the product must not imply account-opening powers (proposal).
+
+12. **Entity on Invoice and Payment (MISSING, L, decision).** The schema has `LedgerEntity` but Invoice, Payment, Receipt and Transaction carry no `entityId`. Plan README decision A says put it on the journal now. The same argument applies to the commercial documents, because invoice series and GSTIN are per entity.
+
+13. **Recognition policy (MISSING, M).** "Payment alone must not imply revenue" needs `RevenueRecognitionRule` per offering (point-in-time vs over-time, milestone) and deferred income. `commercial.ts:47` suggestRevenueTreatment is a suggestion only. Accountant owns the policy; the product records it.
+
+14. **Data-quality gate on profit dashboards (MISSING, S).** Proposal says profit dashboards follow validated posting. Model: `DataQualityGate { period, unpostedCount, unmatchedBankCount, unreconciledCount, status }`. Dashboard shows `unverified` when any gate is open. Matches the "not measured ≠ zero ≠ withheld" rule (CLAUDE rule 7).
+
+15. **Missing from the proposal entirely.**
+- Currency: Quote refuses mixed currencies (`commercial.ts:448-455`), but FX revaluation (`ledger.ts:18` sourceType `fx_revaluation`) has no owner. Foreign receipts exist (`main.prisma:3112` `foreignAmount`).
+- Tax on advances and deposits (GST on advance receipts) is not mentioned. This is accountant territory; do not invent.
+- Customer-data retention for CRM records: `consent` and erasure exist (Phase 2 plan) but the proposal does not connect CRM retention to the lead lifecycle.
+- The proposal's naming ("Zen 360") differs from the codebase (KaiERP). Confirm the product name before any external use.
+
+16. **Statutory uncertainty flagged (per CLAUDE working rule).**
+- IRP 30-day reporting rule (plan `phase-3-statutory.md` §3.2) and the proposal's "reporting window for eligible entities" (W13). Applicability is not confirmed. Do not enable (D5).
+- Income-tax Act 2025 section numbers (plan §3.1 says s.392/393/394). Not verified here. The proposal's "legacy section references must not be assumed" is correct.
+- Cash receipt limit and its section: not verified.
+- MSME 45-day rule (s.43B(h)): hard-coded at `packages/shared/src/compliance/tax.ts:251-255`. Confirm the current text before moving it to a rule row.
+
+## Decisions for leadership
+
+- **D1. Ledger cutover.** Do we route invoice, receipt, payment, credit note, refund, vendor bill and payroll to `post()` now (Phase 1.5), and retire `Transaction` as the reporting source? Recommendation: yes; until then, do not present TB, P&L or cash as statutory. Cost: L. Blocks F1, F14, I2, I3.
+- **D2. Money type.** Confirm bigint paise end to end (CLAUDE rule 1), with `Decimal` only at the DB boundary. Cost: L; F2 is a prerequisite for D1.
+- **D3. Entity model.** One entity or multiple from day one? Plan decision A. Adding `entityId` later costs more than now.
+- **D4. Bank payment automation.** Confirm: statement feeds and reconciliation in release 1; payment initiation later. Consistent with proposal p33.
+- **D5. IRP reporting window.** Who (accountant or GSP provider) confirms applicability before any e-invoice rule is enabled? Until confirmed, no rule.
+- **D6. Commission and revenue share.** Build now, or defer with a pointer (current state)? Recommendation: defer until D1 is done; then build with approved schemes only.
+- **D7. Won definition.** Is an executed MoU a won deal, or only a signed contract? Current code accepts either unverified (F8).
+- **D8. Cash receipt limits and the cash custody model.** Is physical cash accepted at all? If yes, who is the custodian and who reviews. The proposal is silent on whether Kaizen accepts cash for courses.
+- **D9. Reopen authority.** Who may reopen a closed period, and what impact review is mandatory (proposal p30)?
+- **D10. Import backdating.** Should bulk historical imports be allowed into closed periods at all? Recommendation: no; use a reopen with reason and impact review (F4).
+- **D11. Owner of the handoff.** Who is the accountable delivery owner on a won deal: sales, delivery or finance? The proposal says a named owner; it does not say which function.
+- **D12. Accountant engagement.** GST classification, cash restrictions, recognition policy and TDS on commission all need a named accountant reviewer. The proposal says "accountant-reviewed" but does not name the reviewer or the approval record.

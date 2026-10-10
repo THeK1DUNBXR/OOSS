@@ -1,0 +1,207 @@
+# 04 Skill Development, Education and Foundation grants: gap analysis (proposal pp. 16-18)
+
+## Pages covered
+- p16: Skill Development and sponsor programme operations
+- p17: Education and competency evidence
+- p18: Foundation grants and social impact
+
+Code checked: `apps/api/prisma/schema/main.prisma` (Course, Cohort, Enrollment, StudentProfile, Attendance, DailyProgress, LearnerLog, Mou, FeeInstalment, Grant, AuthorityGrant, Payment, Receipt, Organization), `compliance-corporate.prisma` (Certificate), `compliance-gst.prisma` (CourseGstExemption), `compliance-books.prisma` (JournalLine), `hcm-learning.prisma` (Certification, TrainingProgram), `hcm-workforce.prisma` (CostCentre); `domains/education.ts`, `courses.ts`, `students.ts`, `capability.ts`, `learnerTimeline.ts`, `invoicing.ts`, `finance.ts`, `health.ts`, `compliance/gst.ts`, `compliance/privacy.ts`, `compliance/corporate/certificates.ts`, `events/handlers.ts`, `platform/audit.ts`, `seed/spinOutEngine.ts`; `routes/education.routes.ts`, `routes/hr.routes.ts`, `routes/compliance/corporate.routes.ts`; `packages/shared/src/{domain,hr,finance}.ts`, `packages/shared/src/compliance/gst.ts`; `docs/plan/{README,compliance,phase-2-audit,equity-portal}.md`.
+
+Headline correction to the proposal's vocabulary: the schema's `Grant` (main.prisma:744) is an RBAC permission row, and `AuthorityGrant` (main.prisma:779) is an approval ceiling. Neither is a funding grant. No donor, award, restricted-fund or scheme-claim entity exists.
+
+Status counts (capability table rows): EXISTS 1 · PARTIAL 17 · MISSING 31. Interconnections I1-I12. Fixes FIX-1 to FIX-22 (FIX items are not table rows).
+
+---
+
+## Capability table
+
+Columns: Proposal item | p. | Status | Evidence file:line | Gap / action | Size
+
+### Skill Development and sponsor programme operations (p16)
+
+| Proposal item | p. | Status | Evidence | Gap / action | Size |
+|---|---|---|---|---|---|
+| Versioned eligibility and evidence configuration per programme | 16 | MISSING | No programme or scheme model in `schema/*.prisma`. `FUNDING_FRAMEWORKS` is a hard-coded const, `packages/shared/src/domain.ts:73-82`. | Add `SchemeProgramme` plus dated `SchemeVersion` rows: criteria, evidence formats, outcome definitions, source reference. Versioning follows CLAUDE.md Rule 4 pattern, though these are not statutory. Phase 1 dependency for money fields. | L |
+| Programme record: sponsor, executing entity, site scope, cost categories, deadlines, claim values, cash assumptions | 16 | MISSING | `Course` (main.prisma:3379-3430) and `Cohort` (main.prisma:3481-3500) carry no sponsor, scheme or claim field. `Cohort.institutionId` only. | New `Programme` entity linked to Cohort. Money fields must be bigint paise (Rule 1); `Course.feeAmount` is `Decimal` (main.prisma:3399). | L |
+| Funding source per learner (self / sponsor / scheme / institution) with coherence checks | 16 | EXISTS | `FUNDING_SOURCES` `domain.ts:55`; `StudentProfile.funding` `main.prisma:584`, `sponsorId` :589, `fundingFramework` :596; `assertFundingCoherent` `students.ts:107-163`. | Works at person level only. See FIX-4. | S |
+| Funded learner is not invoiced | 16 | PARTIAL | Guard at `invoicing.ts:365-370`. Comment at `invoicing.ts:351` says an invoice still goes out when no student profile exists. `enrolStudent` never creates a profile (`education.ts:155-168`; only `attachStudentProfile`, `students.ts:221`). `assignCourse` takes no funding (`courses.ts:443-470`). | Guard is bypassed for every enrolment created through the course-assignment path. See FIX-3. | M |
+| Duplicate-funded participation check | 16 | MISSING | Duplicate check is same person + same cohort only: `education.ts:146-153`. | Cross-programme check on StudentProfile funding/framework across active enrolments. Needs scheme rules (see Advisor notes). | M |
+| Participant eligibility criteria validated against scheme | 16 | MISSING | `enrolStudent` (`education.ts:25-208`) validates identity and minor status only. The only eligibility check is the minor gate, `education.ts:76-78`. | Eligibility rule engine per `SchemeVersion`, evaluated at enrolment, with an exception when criteria change. | L |
+| Mobilisation counts kept separate from completed or payable outcomes | 16 | PARTIAL | Single status field: `ENROLLMENT_STATUSES` `education.ts:22`; `reserved` at enrolment. Fee instalments raised on confirmation, not completion: `events/handlers.ts:112-143`. Completion does not move cash (`education.ts:255-262`). | Cash-separation rule holds. But there is no mobilised / eligible / completed / payable breakdown. Health counts mix them (`health.ts:264-266`). | M |
+| Batch, site and trainer readiness (facilities, qualified cover, roster, approved plan) | 16 | PARTIAL | `Cohort.trainerPartyId` (main.prisma:3492), `capacity Int @default(30)` (:3494). Capacity is never checked: no reference in `education.ts`. Rolling intake sets capacity 9,999 as a sentinel (`courses.ts:413`). | Enforce capacity; add trainer qualification check (see Interconnections I11) and site readiness record. | M |
+| Attendance, including biometric capture and outage handling | 16 | PARTIAL | Manual upsert only: `routes/education.routes.ts:380-458`. No biometric integration. | Biometric adapter is a separate integration; define outage fallback and disputed-attendance workflow. | L |
+| Learner-level exceptions: transfer, disputed attendance, missing employer proof, duplicate funding, rejected claim, ineligible expenditure, delayed disbursement | 16 | PARTIAL | Exception mechanism exists: `raiseException` used at `routes/education.routes.ts:427-435` (EX-EDU-001 only). | Eight of nine exception types have no detector. Add detectors and an owner per exception. | M |
+| Assessment against scheme-approved evidence with named reviewer | 16 | MISSING | No assessment model. Only `DailyProgress.score` (main.prisma:3592-3604) and `LearnerLog` (main.prisma:3620). | See p17 assessment row. | L |
+| Credential issued on completion | 16 | PARTIAL | `Certificate` `compliance-corporate.prisma:277-291`; `issueCertificate` `compliance/corporate/certificates.ts:40-62`. No enrolment-completed check. | See p17 credential row and FIX-12. | M |
+| Placement and retention outcome where scheme requires | 16 | MISSING | `StudentProfile.status` enum `prospective/active/alumni/withdrawn` (main.prisma:574). No placement record. `AlumniRecord` (hcm-separations.prisma:140) is for employees. | Placement record with employer, date, verification evidence, and retention checkpoints per scheme version. | M |
+| Claim dossier: frozen evidence, portal submission, acknowledgement | 16 | MISSING | No model. `ExpenseClaim`, `JobClaim`, `MarketingClaim` are unrelated. | `SchemeClaim` with immutable snapshot (hash), submission and acknowledgement references, version chain. | L |
+| Query response with retained prior version | 16 | MISSING | No versioning on submissions. | Append-only `SchemeClaimVersion` + query thread. Immutability must match Rule 2 spirit (corrections are new versions). | M |
+| Disbursement reconciled to claim, allocation and remaining claim | 16 | PARTIAL | Payment carries `payerOrganizationId` (main.prisma:3093). Allocation exists to Invoice and FeeInstalment via Receipt (main.prisma:3132-3150, `allocatedAmount`). | No link from Payment allocation to a claim, and no remaining-claim balance. Add `claimId` on allocation or a claim-settlement table. | M |
+| External portal authoritative; Zen 360 keeps internal copies | 16 | MISSING | No portal integration. Proposal correctly disclaims replacing portals (p16). | Store portal references and acknowledgement evidence; treat portal status as imported fact with timestamp. | S |
+| Founder view: programme outcome, claim readiness, restrictions, unrecovered cost, ownership | 16 | MISSING | Education health score only: `health.ts:255-275`. No cost side. Cost centres exist (`hcm-workforce.prisma:108`) and `JournalLine.costCentreId` (`compliance-books.prisma:109`), but no programme cost categories. | Dashboard depends on Programme and cost model. Must carry `drillTo` or `noActionReason` (Rule 7). | M |
+| New scheme version preserves rules under which older batch was approved | 16 | MISSING | `Course` has no version (main.prisma:3379-3430). `Cohort` does not pin a version (main.prisma:3481-3500). `updateCourse` edits in place with before/after audit (`courses.ts:312-318`). | Pin `SchemeVersion` and `CourseVersion` on Cohort at creation. | M |
+
+### Education and competency evidence (p17)
+
+| Proposal item | p. | Status | Evidence | Gap / action | Size |
+|---|---|---|---|---|---|
+| Approved programme versions: outcomes, prerequisites, assessment, duration, evidence, progression | 17 | MISSING | `Course` fields: name, code, durationWeeks, feeAmount, gstRate (main.prisma:3379-3420). No outcomes, prerequisites, rubric or progression. `TrainingProgram` (hcm-learning.prisma:14) is a separate HR model. | Add `ProgrammeVersion` with outcome list, prerequisite graph, assessment plan, approval record. | L |
+| Brand, programme and legal contracting entity kept separate | 17 | PARTIAL | `Course.division` default "education" (main.prisma:3411). Subsidiary split planned: `docs/plan/equity-portal.md:37-46`. | No contracting-entity field on course. Add `contractingEntityId`. Invoices issue from the tenant's company profile. | S |
+| Competency claim: scope, context, evidence, assessor, confidence, review status | 17 | PARTIAL | `CapabilityClaim` (main.prisma:1420-1462): `skillId`, `vertical`, `tier`, `confidenceScore`, `state`, `assertedById`. `Evidence` (main.prisma:4647-4660): `description`, `sourceRef` only. | Add `context`, `assessorPartyId` on evidence, rubric reference. | M |
+| Assessment: submission, rubric version, feedback, judgement, moderation, appeal | 17 | MISSING | No model. `grep -i rubric|appeal|moderat` over schema returns only vendor-assessment hits (it-vendors.prisma:36-42). | New `Assessment`, `AssessmentSubmission`, `Judgement`, `Moderation`, `Appeal` models. Original and revised judgements both retained. | L |
+| Progression with sufficiency rules, spacing and transfer evidence, named approval | 17 | MISSING | Verification enforces segregation of duties only: `assertVerificationAllowed` `packages/shared/src/hr.ts:706-730`. No sufficiency check. `verifyClaim` (`capability.ts:218-290`) does not count `Evidence` rows. See FIX-2. | Sufficiency rule per tier and skill. Spacing evidence is a dated-evidence rule. | L |
+| Credential: verified achievement, issuer, scope, date, correction and revocation | 17 | PARTIAL | `Certificate` (compliance-corporate.prisma:277-291) has number, kind, snapshot, verificationCode, issuedAt. No status, revokedAt or correction fields. `verifyCertificate` always returns `valid: true` (`compliance/corporate/certificates.ts:67-79`). | See FIX-12. | M |
+| Corporate learning: client needs, baseline, attendance, learning transfer, accepted report | 17 | PARTIAL | `TrainingProgram`/`TrainingEnrollment` (hcm-learning.prisma:14, :72); `markAttendance` `domains/hcm/learning.ts:370`; `completeEnrollment` :391. | No baseline, no transfer measure, no client-accepted report entity. | M |
+| Research or open-source initiative (question, sponsor, data/ethics/IP, budget, outputs) | 17 | MISSING | No model. `Projects` page exists (`apps/web/src/pages/Education.tsx:262`), its data model UNVERIFIED for this use. | Treat as a separate `ResearchInitiative` record linked to ethics approval and data-use permissions. Do not reuse the `Projects` model without checking. | M |
+| Learner and employee capability share taxonomy without exposing private evaluations | 17 | PARTIAL | `CapabilityClaim.partyId` is generic across people (main.prisma:1421). Score withheld unless viewer holds the financial-grade verb or is the owner (`capability.ts:68-100`). `PerformanceEvidence` is separate (main.prisma:4563). | Shared taxonomy exists. Confirm evidence visibility for learner data separately from employee data. | S |
+| Career guidance without auto-certifying readiness | 17 | MISSING | `findCapableParties` ranks by tier with default `minTier = 'assessed'` (`capability.ts:406-415`). A completed course yields Assessed (`hr.ts:736-738`; `capability.ts:385-386`). | See FIX-13. | S |
+| Faculty and trainer allocation: preparation, feedback, assessment, mentoring | 17 | MISSING | Single `Cohort.trainerPartyId` (main.prisma:3492). No allocation model, no hours. | `CohortStaffing` (party, role, hours, qualification). | M |
+| Rooms, labs, licences, equipment, travel, accessibility as scheduled dependencies | 17 | MISSING | No scheduling in the education domain. `Asset` model exists (hcm-assets.prisma:12), not linked to cohorts. | Resource booking linked to Cohort sessions, reusing Asset. | L |
+| AI-suggested feedback under a bounded design; final judgement by a competent human | 17 | MISSING | No model call in education code. Human-principal requirement for verification exists: `capability.ts:218-232` (`verifyClaim` rejects non-human principal). | If built: AI output stored as draft, human judgement mandatory, `applyFieldVisibility` before any inference call (CLAUDE.md Never list). | M |
+| Appeals retaining original and revised judgements | 17 | MISSING | No appeal model. | Covered by the Assessment row. | M |
+| Acceptance: conflicting evidence, appeal, revoked credential, programme-version change, trainer replacement | 17 | MISSING | No revocation, no appeal, no programme version. Cohort has no update path: only `cohort.create` writes in `courses.ts:402`, `imports/commit.ts:882`, seed (grep of `prisma.cohort.(create|update)` in src). | Trainer replacement needs an update path with continuity record. | M |
+
+### Foundation grants and social impact (p18)
+
+| Proposal item | p. | Status | Evidence | Gap / action | Size |
+|---|---|---|---|---|---|
+| Beneficiary need, permitted purpose, donor agreement | 18 | MISSING | No model. Organization kinds `institution` / `organization` (main.prisma:374-383); comment says "trust, foundation" falls under `organization`. | Separate legal entity required first (see Advisor notes). Then `FundingAgreement` with purpose, restrictions, conditions. | L |
+| Grant award with approved purpose, conditions, amount, acceptance evidence | 18 | MISSING | `Grant` (main.prisma:744-775) is an RBAC permission row (`resource`, `verbs`, `scope`). `AuthorityGrant` (main.prisma:779) is an approval ceiling. Name collision. | Name the funding model `FundingAward`. Do not reuse `Grant`. | M |
+| Restricted budget that follows expenditure | 18 | MISSING | `JournalLine` has `costCentreId` only (compliance-books.prisma:109). `BudgetLine` has `division` only (main.prisma:5049-5058). | Fund dimension on journal lines, which is a Phase 1 ledger change. Rule 2: postings through `post()` only. | L |
+| Beneficiary selection with criteria, conflicts, reviewer, appeal | 18 | MISSING | No model. `enrolStudent` has no selection step (`education.ts:25-208`). | `SelectionDecision` with conflict declaration and reviewer. | M |
+| Disbursement to verified beneficiary with independent authority and receipt | 18 | PARTIAL | Receipt and allocation model exist (main.prisma:3078-3150). Approval ladder exists for payments via `AuthorityGrant`. | No beneficiary disbursement entity. Independent authority: use two-person pattern from `assertVerificationAllowed`. | M |
+| Cross-company service with valid terms, delivery evidence, allocation and tax treatment | 18 | PARTIAL | Sponsor-billed course path: `invoicing.ts:365-370`. Sponsor role: `Organization.roles` (main.prisma:391-400), `domain.ts:103-115`. | Tax treatment is the open question. Related-party flag absent (grep `related.?party` found only the statutory registers, `corporate/registers.ts:2`). | M |
+| Outcome reporting distinguishing activity, reach and outcome | 18 | PARTIAL | Counts by status: `routes/education.routes.ts:100-117`. Verified tier exists (`hr.ts:590`). No outcome definition. | Outcome entity with definition version and evidence link. | M |
+| Donor report: frozen evidence, utilisation, exceptions, approved submission | 18 | MISSING | No donor-facing export or report model. | Frozen snapshot with hash, approval step, submission record. | M |
+| Full cost versus funder-covered cost; unfunded overhead visible | 18 | MISSING | No cost categories. Cost centres (hcm-workforce.prisma:108) not linked to programmes. | Cost allocation per programme with covered / uncovered split. | L |
+| Related-party procurement, beneficiary complaints, double funding, overlapping programmes | 18 | MISSING | Complaints exist for learners only: `LearnerLog` kind `query|feedback|issue|note` (main.prisma:3620-3650). No related-party marker. Double funding: see p16 row. | Add complaint category for beneficiaries and related-party declaration. | M |
+| Staff see service exposure and next action without beneficiary-sensitive data | 18 | PARTIAL | `applyFieldVisibility` (`platform/permissions.ts:481`); `FIELD_PURPOSES` (`permissions.ts:460`). Learner guardian fields are regulated and read-audited (main.prisma:3545-3548). | Field-level purposes for beneficiary data are not yet defined per funding context. | S |
+| Charitable and tax status (Section 8, 12A, 80G, CSR eligibility) | 18 | MISSING | Grep for `12A|80G|section ?8|charitable` over schema and src: no hits. CSR appears only as `FUNDING_FRAMEWORKS` value (`domain.ts:78`) and in `StudentProfile.fundingFramework` comment (main.prisma:593-595). | Not modelled. Do not hard-code any eligibility rule. Requires tax adviser sign-off and dated `StatutoryRule`-style records if ever built (Rule 4). See Advisor notes. | L |
+| Restricted funds cannot cover company payroll or product development | 18 | MISSING | No restriction model; depends on fund dimension above. | Enforce at posting (Phase 1), not in UI. | L |
+| Scholarship with conflict disclosure | 18 | MISSING | No scholarship model. `StudentProfile.funding` has no `scholarship` value (`domain.ts:55`). | Add funding source plus selection record. | M |
+
+### Cross-cutting capabilities found in the code, not in the proposal
+
+| Item | p. | Status | Evidence | Gap / action | Size |
+|---|---|---|---|---|---|
+| Education GST exemption, per course, by notification | 17 | PARTIAL | `CourseGstExemption` (compliance-gst.prisma:15-33). Set via `setCourseGstExemption` (`compliance/gst.ts:59-90`). Applied at invoice line `invoicing.ts:628-641`. | Exemption keyed by course, not by recipient or payer. Compliance plan says each offering must be checked, not assumed (`docs/plan/compliance.md:114-116`, `:480-481`). Counsel question. See FIX-14. | S |
+
+---
+
+## Interconnections
+
+| ID | Ends (file:line) | Missing link | Consequence |
+|---|---|---|---|
+| I1 | `Enrollment` created in `education.ts:155-168` ↔ `StudentProfile` in `students.ts:221-270` | No automatic profile or funding on enrolment | Funded learner invoiced as self (FIX-3) |
+| I2 | `ENROLLMENT_CONFIRMED` emitted `education.ts:248-253` → fee plan subscriber `events/handlers.ts:112-143` ↔ `StudentProfile.funding` | Subscriber does not read funding | Receivable raised against a learner whose fee is sponsor-paid (FIX-5) |
+| I3 | `Enrollment.status='completed'` `education.ts:255-262` ↔ `CapabilityClaim` via `claimFromLearningCompletion` `capability.ts:380-395` | Education path does not call it; only HCM (`domains/hcm/learning.ts:426`) and `performance.ts:319` do | Student completions produce no competency record. Adding the call without FIX-13 would surface unassessed learners in staffing search |
+| I4 | `Attendance` upsert `routes/education.routes.ts:402` → `Enrollment.attendancePct` :424 → `health.ts:265` | Linked, but unmeasured defaults to 100 (FIX-8) | Health score reports perfect attendance for unmeasured cohorts |
+| I5 | `Certificate.enrollmentId` (compliance-corporate.prisma:280) ↔ `Enrollment` | No relation declared; no completion check at `corporate/certificates.ts:40-62` | Certificates for non-completed enrolments; no FK integrity |
+| I6 | `Certificate` ↔ `Certification` (hcm-learning.prisma:102-124, `sourceEnrollmentId`) ↔ `CapabilityClaim` | Two credential models; no link between student certificate and competency claim | Credential and competency can disagree |
+| I7 | `Payment.payerOrganizationId` (main.prisma:3093) ↔ `Receipt` allocation (main.prisma:3132-3150) ↔ `SchemeClaim` (missing) | No claim entity | Sponsor cash cannot be reconciled to a claim |
+| I8 | `Cohort.trainerPartyId` (main.prisma:3492) ↔ `Certification` / `TrainingEnrollment` | No check on trainer qualification | Unqualified trainer assignable |
+| I9 | `Cohort.capacity` (main.prisma:3494) ↔ `enrolStudent` | No check | Over-enrolment; capacity field is decorative |
+| I10 | `Mou` (main.prisma:1787) ↔ `Cohort` / `Enrollment` / funding | No link from partnership agreement to cohorts or funded places | Sponsor MoU cannot be tied to the places it funds |
+| I11 | `Asset` (hcm-assets.prisma:12) ↔ `Cohort` sessions | No link | Lab and equipment dependencies untracked |
+| I12 | `platform/audit.ts` registry (`:57-101`) ↔ education writes | `student_profile`, `certificate`, `capability_claim` (forced), `attendance`, `daily_progress`, `skill`, `evidence`, `verification_event` not registered or not audited | See FIX-11 |
+
+---
+
+## Fixes
+
+Each item names the consequence, per CLAUDE.md Rule 8. Before claiming any fix, write the test that fails on the current code.
+
+**FIX-1 (High). Two-person rule can be switched off by the caller.** `routes/hr.routes.ts:844-856` takes `feedsCompensationOrPromotionOrMobility` and `verifierIsManagerOnly` from the request body. `capability.ts:240` passes `?? false` into `assertVerificationAllowed` (`packages/shared/src/hr.ts:706-730`). A verifier who sends `feedsCompensationOrPromotionOrMobility: false` verifies alone. Fix: derive the consequence flag from the skill or claim type on the server. Test: verifier sends `false` on a claim whose skill feeds pay; expect 422.
+
+**FIX-2 (High). A claim can reach Verified with zero evidence.** `verifyClaim` (`capability.ts:218-290`) writes `tier: 'verified'` without counting `Evidence` rows. Fix: require at least one evidence row, and later a sufficiency rule per tier. Test: verify a claim with no evidence; expect 422.
+
+**FIX-3 (High). Funding guard is bypassed on the course-assignment path.** `invoicing.ts:351-370` only blocks a funded learner who has a `StudentProfile`. `enrolStudent` (`education.ts:155`) and `assignCourse` (`courses.ts:443-470`) create enrolments with no profile and no funding parameter. A sponsor-funded learner assigned via the customer form is invoiced. Fix: either refuse enrolment when the person is not `self` or unknown, or carry funding on the enrolment (see FIX-4). Test: sponsor-funded person enrolled via `assignCourse`, then invoice attempt; expect refusal.
+
+**FIX-4 (High). Funding is a person attribute, not an enrolment attribute.** `StudentProfile.funding` (main.prisma:584) applies to every enrolment the person has. The schema comment (main.prisma:576-583) says funding "belongs on the learner and not on the course", but one learner can be self-paid on one cohort and sponsor-funded on another. Enrollment (main.prisma:3511-3560) has no funding field. Fix: move funding to `Enrollment` with `StudentProfile` as default. This is a schema change and needs `prisma migrate diff`.
+
+**FIX-5 (High). Fee instalments are raised regardless of funding.** `events/handlers.ts:112-143` issues `FeeInstalment` rows on every confirmation (`finance.ts:62-75`) with no funding check. Fix: skip or re-address to the sponsor when funding is not `self`. Test: confirm a sponsor-funded enrolment; expect no learner-addressed instalment.
+
+**FIX-6 (High). Minor gate in batch enrolment is weaker than in student creation.** `education.ts:76-78` accepts `isMinor` as a caller-supplied boolean and checks only that a guardian phone or email exists. `students.ts:245` uses `requireGuardianConsentForMinor` (`compliance/privacy.ts:334`), which derives minority from date of birth (`Person.dateOfBirth`, main.prisma:242) and stamps `guardianConsentId`. `Enrollment` has no consent reference (main.prisma:3545-3548). Consequence: a child can be enrolled with no recorded guardian consent through the batch path. Fix: call `requireGuardianConsentForMinor` from `enrolStudent`; store `guardianConsentId` on Enrollment.
+
+**FIX-7 (High). Money in the fee path is float, against Rule 1.** `packages/shared/src/finance.ts:132-134` defines `round2` as `Math.round((n + Number.EPSILON) * 100) / 100`, which CLAUDE.md prohibits. `events/handlers.ts:129` takes `num(course.feeAmount)` (`platform/db.ts:166`), and `:142` computes `round2(total * part.share)`. `finance.ts:62-64` types instalment `amount` as `number`. `courses.ts:223-227` writes `num(course.feeAmount)` to the audit log. Fix: bigint paise end to end in this path, via the Phase 1.6 helper. Trial-balance assertion required under the finance-PR rules.
+
+**FIX-8 (High). Unmeasured attendance and progress display as perfect or zero.** `Enrollment.attendancePct @default(100)` (main.prisma:3540) and `atRisk @default(false)` (:3541). `routes/education.routes.ts:419` sets `pct = 100` when there are no sessions, so an unmeasured learner reads 100% and not at risk. `health.ts:265` averages all active enrolments including unmeasured ones, and returns `0` when there are none (`:265`, `: 0`). `progressPct @default(0)` (:3539) reads as zero progress when unmeasured. Also `routes/education.routes.ts:418` counts only `present` and `late` as attended, so `excused` (vocabulary `domain.ts:565`) lowers attendance and can trigger EX-EDU-001. Consequence: CLAUDE.md Rule 7 triad breached (not measured ≠ zero ≠ withheld). Fix: nullable percentages; exclude excused sessions from the denominator per a policy row; health aggregates over measured records only and reports `noActionReason` when none.
+
+**FIX-9 (High, Rule 3). Daily progress dates are UTC, not IST.** `learnerTimeline.ts:283-285` `startOfDay` uses `getUTCFullYear/Month/Date`. A score entered 00:00-05:30 IST lands on the previous day, and the find-or-update key at `learnerTimeline.ts:235` then overwrites the wrong day. The attendance route parses `sessionDate` raw (`routes/education.routes.ts:401`). Fix: use `packages/shared/src/time.ts`.
+
+**FIX-10 (Medium). Progress equals mean daily score and completion sets 100 without evidence.** `learnerTimeline.ts:262-269` sets `progressPct` to the mean of `DailyProgress.score`. `education.ts:236-242` sets `progressPct: 100` and `completedAt` on `completed` with no assessment check. Consequence: "progress" is a score average, and completion does not require demonstrated competence. Fix: separate `progressPct` (coverage) from assessment outcome; completion gated by the assessment model.
+
+**FIX-11 (High, Rule 5). Audit gaps and ordering.**
+- `capability.ts:280-290` writes `auditWrite({... force: true})` for `capability_claim`. Rule 5 forbids `force` as a bypass. Register `capability_claim` in `platform/audit.ts` and remove `force`.
+- `capability.ts:270-278` emits before `auditWrite` at `:280`. Rule 5 order is assertCan → write → auditWrite → emit.
+- `students.ts:273` and `:354` write `subjectType: 'student_profile'`. The registry has `'student'` only (`platform/audit.ts:65`). `auditWrite` silently no-ops (`audit.ts:350`).
+- `compliance/corporate/certificates.ts:62` writes `subjectType: 'certificate'`. Not registered. Silent no-op.
+- `education.ts:25-208` (`enrolStudent`) and `:221-294` (`setEnrollmentStatus`) write no audit record at all, although `enrollment` is registered (`audit.ts:66`).
+- `routes/education.routes.ts:402-424` (attendance) and `learnerTimeline.ts:240-268` (daily progress) write no audit record; `attendance` and `daily_progress` are not registered.
+- `addEvidence` (`capability.ts:190-215`) and `assertClaim` (`:137-185`) write no audit record; `skill`, `evidence`, `verification_event` are not registered.
+- Test: change student funding; assert an audit row exists. Fails today.
+
+**FIX-12 (High). Certificates cannot be revoked and verification always passes.** `Certificate` (compliance-corporate.prisma:277-291) has no status, revocation or correction fields and no relation to `Enrollment` (I5). `issueCertificate` (`corporate/certificates.ts:40-62`) does not check that the enrolment is completed. `verifyCertificate` (`:67-79`) returns `valid: true` unconditionally. The verification response includes `snapshot` (free JSON) without `applyFieldVisibility`. Consequence: a revoked or wrong credential verifies as genuine. Fix: status and revocation model; completion guard; field-visibility on the verify response; move education credentials out of the `compliance` module.
+
+**FIX-13 (High). Completion of training is assessed competence in staffing search.** `tierForLearningCompletion` returns `'assessed'` (`packages/shared/src/hr.ts:736-738`) and `claimFromLearningCompletion` asserts at that tier (`capability.ts:385-386`). `findCapableParties` defaults `minTier` to `'assessed'` (`capability.ts:406`). The hr.ts comment says sitting training "is evidence that you were taught, not that you can do it", yet the tier name asserts assessment. Fix: complete-without-assessment asserts `'claimed'` or `'inferred'`.
+
+**FIX-14 (Medium, Rule 4). Statutory-type values are constants.** `EDUCATION_EXEMPTION_NOTIFICATION` (`packages/shared/src/compliance/gst.ts:23`) and the schema default `notification @default("12/2017-CT(R) entry 66")` (`compliance-gst.prisma:20`) hard-code the notification reference. `Course.gstRate @default(18)` (main.prisma:3405) and `CourseAddon.gstRate @default(18)` (:3469) hard-code the rate. Rule 4 requires dated `StatutoryRule` rows. Separately, the exemption applies to every line on a course regardless of recipient (`invoicing.ts:628-641`); `docs/plan/compliance.md:114-116` says this must be checked per offering. Flag to counsel; do not auto-resolve.
+
+**FIX-15 (Medium). Capacity is not enforced.** `Cohort.capacity` (main.prisma:3494) is read only for display (`courses.ts:75`, `:125`). `enrolStudent` never compares count to capacity. Rolling intake uses 9,999 as a sentinel (`courses.ts:413`), which is a magic number that hides the gate entirely.
+
+**FIX-16 (Medium). Enrolment status has no transition table.** `setEnrollmentStatus` (`education.ts:221-242`) accepts any value in `ENROLLMENT_STATUSES` (`:22`). Withdrawn to active and completed to reserved are both allowed. HCM has the pattern (`ENROLLMENT_TRANSITIONS`, `packages/shared/src/hcm/learning.ts:30-43`, `assertEnrollmentTransition` :43). Reuse it.
+
+**FIX-17 (Medium). Duplicate check is same-cohort only.** `education.ts:146-153` blocks a second enrolment on the same cohort only. Two concurrent enrolments on different cohorts with different funding are both allowed (see p16 duplicate-funding row). Also the check is not in a transaction, so concurrent requests can race.
+
+**FIX-18 (Medium). Spin-out revert hard-deletes learner records without audit.** `seed/spinOutEngine.ts:775-779` `deleteMany` on enrollments, cohorts and courses. Enrollment cascades to Attendance, DailyProgress and LearnerLog (`Cascade` on those relations, main.prisma:3573-3650). No audit record. Not an accounting path, but learner conduct and complaints disappear without trace. Consider soft-delete or a logged reversal.
+
+**FIX-19 (Low). Attendance logic lives in a route handler.** `routes/education.routes.ts:380-458` contains the pct, at-risk and exception logic. `education.ts:2-10` explains why such logic is moved into domains. Move it.
+
+**FIX-20 (Low). At-risk threshold is hard-coded.** `routes/education.routes.ts:420` `pct < 70`. It is a programme policy, not statute, so it belongs on the programme version (p17), not in code.
+
+**FIX-21 (Medium). Scheme names are code constants and are asserted as selectable.** `packages/shared/src/domain.ts:73-82` lists `naan_mudhalvan`, `vetri_nichayam`, `tnsdc_other`, `nsdc_linked`, `csr`. The proposal (p16) says no scheme is asserted; the code already selects these names. Frameworks are data that change, so move to versioned rows.
+
+**FIX-22 (Medium, Rule 7). Cohort and course performance counts without a drill or reason.** `routes/education.routes.ts:100-117` returns `atRiskCount` and enrolment counts with no `drillTo` or `noActionReason`. Apply the Phase 4.2a rule when it lands.
+
+---
+
+## Advisor notes (what the proposal misses)
+
+1. **Name collision.** `Grant` (main.prisma:744) is an access grant and `AuthorityGrant` (main.prisma:779) an approval ceiling. A donor or scheme award model must use a distinct name (`FundingAward`). The proposal uses "grant" for money. Leadership should agree the term before schema work.
+
+2. **Legal form before model.** Pages 16 and 18 presuppose a charitable or trust entity (p18: "legal and tax advisers must approve the actual charitable relationship"). Kaizen holds the subsidiary plan (`docs/plan/equity-portal.md:37-46`). A for-profit tenant cannot hold restricted donor money in its own books without a fund-accounting design. Decide which legal entity receives donations and CSR money, and whether it is a separate tenant. The proposal does not say this.
+
+3. **Tax status: flag, do not model.** The proposal omits Section 8, 12A and 80G entirely. They are the usual reference points for whether a body can receive donations at concessional treatment, and whether CSR money can flow. I did not verify current provisions, thresholds or eligibility rules, and this analysis does not state any. Any future model must hold these as dated `StatutoryRule` rows with source references (CLAUDE.md Rule 4), and a tax adviser must confirm before activation.
+
+4. **Restricted-fund accounting.** Requires a fund dimension on journal lines. Only `costCentreId` exists (compliance-books.prisma:109). This is a Phase 1 ledger item and must go through `post()` (Rule 2). It is not a UI feature.
+
+5. **Scheme claims are external.** Portal status, acknowledgements and query cycles are the scheme's records. Store them as imported facts with timestamps, not as internal truth.
+
+6. **Learner data to sponsors and funders.** Sharing learner identifiers or outcomes with a sponsor or donor is a disclosure with a purpose. The privacy module has purpose codes per published notice (`compliance/privacy.ts:55-62`); I did not verify whether the current notice covers funder reporting. Phase 2 requires verifiable guardian consent for children's data (`docs/plan/phase-2-audit.md:29`). Counsel to confirm.
+
+7. **Outputs are not outcomes.** Attendance, DailyProgress and LearnerLog are outputs. The proposal's "verified outcome" needs an outcome definition, an owner and evidence. No such entity exists.
+
+8. **Competency standards.** The proposal cites public SFIA guidance (p17). The codebase has no competency framework model. Any framework should be imported as data with its version, not hard-coded.
+
+9. **Retention.** Scheme and donor audits will need records for the periods in the Phase 2 retention decision (`docs/plan/README.md` Phase 2, 8-year retention). Enrolment and attendance cascades (FIX-18) conflict with that.
+
+10. **AI feedback.** If built, AI output is a draft. A competent human must make the judgement (CLAUDE.md, `packages/shared/src/ai.ts` prohibitions). Any inference call carries learner data and must pass `applyFieldVisibility` and India-region routing (CLAUDE.md Never list).
+
+11. **Proposal omissions.** Learner placement evidence; learner complaint routes for beneficiaries; cost of delivery per programme (faculty, room, travel); partial-funding splits per learner; what happens to a learner whose sponsor withdraws mid-cohort.
+
+12. **Proposal wording risk.** p16 says "No scheme, funding relationship or empanelment is asserted here." The code selects named schemes (FIX-21). Align before publication.
+
+---
+
+## Decisions for leadership
+
+1. **Scope of Skill Development operations.** Build scheme-specific claim workflows now (L, several weeks, needs Phase 1), or keep sponsor and self billing with correct funding guards only (FIX-3 to FIX-6)? Recommend the second until a scheme is contracted.
+2. **Funding term and entity.** Confirm the name `FundingAward` and which legal entity receives donor and CSR money. Blocks any p18 build.
+3. **Tax and legal review.** Engage a tax adviser on Section 8, 12A, 80G and CSR treatment before any p18 model. Record the outcome as a decision, not a constant.
+4. **Education GST exemption.** Ask counsel whether entry 66 applies per course or per recipient and payer. Until answered, the exemption should stay a per-course assertion with a visible flag on each invoice (FIX-14).
+5. **Verification policy.** Who may verify at Verified, and what evidence is sufficient (FIX-1, FIX-2). Confirm that completion asserts Claimed, not Assessed (FIX-13).
+6. **Credential revocation and public verification.** Define revocation rules and whether employers outside the tenant can verify (FIX-12). Current verify is authenticated and tenant-scoped (`corporate.routes.ts:302-304`).
+7. **Attendance policy.** Excused sessions: in or out of the denominator? Manual only, or biometric? (FIX-8, p16 biometric row.)
+8. **Learner data to funders.** Confirm whether funder reporting is an approved purpose and what consent is needed (Advisor note 6).
+9. **Enrolment-level funding.** Approve the schema change in FIX-4 before any more sponsor data is entered, since existing rows are person-level.
+10. **Programme versioning.** Confirm that Cohorts pin versions from creation (p16, p17 acceptance).
