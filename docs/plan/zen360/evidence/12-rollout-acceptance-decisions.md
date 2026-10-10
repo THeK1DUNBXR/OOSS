@@ -12,7 +12,7 @@
 - p67 Decisions required before commitment (12-row register, recommended discovery pilot)
 - p68 Shareable evidence boundaries
 
-Plan references: `docs/plan/README.md` (A/B/C at :35–43, "Done means" 1–11 at :45–57), `phase-0-stabilise.md`, `phase-1-ledger.md`, `phase-2-audit.md`, `phase-3-statutory.md`, `phase-4-interface.md`, `phase-6-intelligence.md`, `phase-7-product.md`, `phase-8-proof.md`, `sequencing.md`. Code cited from `docs/plan/MAP.md` and opened line ranges. Test names marked "(name)" were seen via grep of `it(` titles without opening the file; "UNVERIFIED" means not opened.
+Plan references: `docs/plan/archive/README-old-index.md` (A/B/C at :35–43, "Done means" 1–11 at :45–57), `docs/plan/archive/phase-0-stabilise.md`, `docs/plan/archive/phase-1-ledger.md`, `docs/plan/archive/phase-2-audit.md`, `docs/plan/archive/phase-3-statutory.md`, `docs/plan/archive/phase-4-interface.md`, `docs/plan/archive/phase-6-intelligence.md`, `docs/plan/archive/phase-7-product.md`, `docs/plan/archive/phase-8-proof.md`, `docs/plan/archive/sequencing.md`. Code cited from `docs/plan/MAP.md` and opened line ranges. Test names marked "(name)" were seen via grep of `it(` titles without opening the file; "UNVERIFIED" means not opened.
 
 Status key: EXISTS / PARTIAL / MISSING / FIX / INTERCONNECT / PLANNED / UNVERIFIED.
 
@@ -28,7 +28,7 @@ Status key: EXISTS / PARTIAL / MISSING / FIX / INTERCONNECT / PLANNED / UNVERIFI
 | Vendor impersonation: independent bank-change verification, payment segregation | 60 | PARTIAL | Self-approval guards `platform/approvals.ts:322`, `domains/compliance/corporate/refunds.ts:80`, `domains/compliance/books.ts:125`; refund proposer test `tests/compliance/corporate.test.ts:389-390` | Bank-change verification: 0 hits for bank-change/beneficiary-change in `apps/api/src`. Vendor master has no verified-change workflow found (UNVERIFIED for `ItVendor`/`VendorBill` main.prisma:4993). | M |
 | Client IP reused incorrectly: rights register, contributor assignment, reuse approval | 60 | MISSING | 0 hits for "rights register", "licence register", "IP register" in code or plan | New register + Media pack. Phase 4 pack per p61. | M |
 | Evidence silently changes: pinned versions, correction history | 60 | PARTIAL | Versioned policy `schema/main.prisma:717` PolicyVersion; approval policy version pick `platform/approvals.ts:93-101`; supersede pattern `tests/compliance/tax.test.ts:330` (TDS returns); correction-as-new-row `tests/acceptance.test.ts:2308` | No generic pinned-version for submissions (college evidence). Approval payload hashing absent: `contentHash`/`payloadHash` only in `imports/service.ts:80` and `domains/marketing/capture.ts:365`. | M |
-| Empty dashboard conceals failure: detector and connector freshness | 60 | MISSING | 0 hits for "freshness", "lastSyncedAt", "last_synced" | Monitored-detector health, connector freshness, "missing data" state. Raw data exists: `JobRun` main.prisma:3799, `JobFiringLog` :3824, `HealthScore` :3921. Plan phase-0 retry/dead-letter (phase-0-stabilise.md job section) is a precursor. | M |
+| Empty dashboard conceals failure: detector and connector freshness | 60 | MISSING | 0 hits for "freshness", "lastSyncedAt", "last_synced" | Monitored-detector health, connector freshness, "missing data" state. Raw data exists: `JobRun` main.prisma:3799, `JobFiringLog` :3824, `HealthScore` :3921. Plan phase-0 retry/dead-letter (docs/plan/archive/phase-0-stabilise.md job section) is a precursor. | M |
 | Customer disputes ignored by reminders: linked case/invoice state, policy pause | 60 | MISSING | 0 hits for "reminder pause/suspend"; "dispute" appears in 11 code files (UNVERIFIED which) | Dispute state on invoice; reminder suppression rule. | S–M |
 | Employee exit with relationships: acknowledged handover | 60 | PARTIAL | `schema/main.prisma:4782` Offboarding; `tests/hcm/separations.test.ts:289` dispute blocks clearance (name) | 0 hits for "handover" (knowledge/account). Handover acknowledgement missing. | M |
 | Guardian relationship changes: verified link, expiry, revocation, age transition | 60 | PARTIAL | Guardian fields `schema/main.prisma:613-614` (DPDP minor guardian, consent); 18 code files match "guardian" | No verified link, expiry, revocation or age-transition model (UNVERIFIED beyond the two fields). | M |
@@ -42,10 +42,10 @@ Status key: EXISTS / PARTIAL / MISSING / FIX / INTERCONNECT / PLANNED / UNVERIFI
 
 | Proposal item | p. | Status | Evidence | Gap / action | Size |
 |---|---|---|---|---|---|
-| Phase gate: operating owner, scenario, negative test, support, training, export, rollback | 61 | MISSING (plan) | `docs/plan/README.md:45-57` Done means = engineering only (11 items) | Add operating gate per phase to plan. Document, not code. | S |
-| Funding released phase by phase; phase 1 has standalone value | 61 | PLANNED (partial) | `docs/plan/sequencing.md:4-13` (phase cadence only, no value test) | Silent on standalone value. | S |
+| Phase gate: operating owner, scenario, negative test, support, training, export, rollback | 61 | MISSING (plan) | `docs/plan/archive/README-old-index.md:45-57` Done means = engineering only (11 items) | Add operating gate per phase to plan. Document, not code. | S |
+| Funding released phase by phase; phase 1 has standalone value | 61 | PLANNED (partial) | `docs/plan/archive/sequencing.md:4-13` (phase cadence only, no value test) | Silent on standalone value. | S |
 | Cost formula, usage limits, alerts, graceful degradation | 62 | MISSING | 0 hits for usage limit / budget alert in plan; `marketing` has budgets `schema/marketing.prisma:790` MarketingBudget (marketing only) | Usage-budget module across AI/telephony/storage. | M |
-| Build vs integrate TCO | 62 | MISSING | `docs/plan/README.md:41` (B: GSP vs direct IRP) addresses one instance only | No TCO model for any integration. | S |
+| Build vs integrate TCO | 62 | MISSING | `docs/plan/archive/README-old-index.md:41` (B: GSP vs direct IRP) addresses one instance only | No TCO model for any integration. | S |
 
 ### C. Migration, adoption, operating change (p63) — see Migration section for ImportBatch/ImportRow detail
 
@@ -59,7 +59,7 @@ Status key: EXISTS / PARTIAL / MISSING / FIX / INTERCONNECT / PLANNED / UNVERIFI
 | Stabilisation: support queue, adoption metrics | 63 | MISSING | — | Adoption metrics per p63/p65 not defined in code. | M |
 | Historical communications import with coverage period and exclusions | 63 | MISSING | `imports/detect.ts:18-30` ImportKind has no mail/WhatsApp/call kind; 0 `mailbox` hits in `apps/api/src` | New connector + import kind. Provider permission needed. | L |
 | Controlled fallback log (maker/checker, unique refs, timestamps, later reconciliation) | 63 | PARTIAL | `imports/*` offline grep hit only GST offline-utility (`domains/gstReturns.ts:31`); `platform/ledger.ts:65-76` idempotencyKey gives uniqueness for posting | No outage log model. Idempotent post exists — reuse for recovery reconciliation. | L |
-| Backups restore-tested before production dependence | 63 | MISSING | `domains/compliance/corporate/security.ts` `runBackup` returns `skipped` when `BACKUP_DIR` unset (quiet no-op, same file ~:105-119); 0 "restore" test names. Plan Done #10 + `phase-8-proof.md:11` monthly restore drill | Restore drill not built (FIX F8). | L |
+| Backups restore-tested before production dependence | 63 | MISSING | `domains/compliance/corporate/security.ts` `runBackup` returns `skipped` when `BACKUP_DIR` unset (quiet no-op, same file ~:105-119); 0 "restore" test names. Plan Done #10 + `docs/plan/archive/phase-8-proof.md:11` monthly restore drill | Restore drill not built (FIX F8). | L |
 
 ### D. Acceptance scenarios (p64–p66) — testability today
 
@@ -128,23 +128,23 @@ p66 stakeholder, salary and home-work:
 
 | Proposal item | p. | Status | Evidence | Gap / action | Size |
 |---|---|---|---|---|---|
-| Recommended discovery pilot with named owners | 67 | PLANNED (partial) | `docs/plan/README.md:45-57`, `phase-0-stabilise.md` | Plan's Phase 0 is defect work, not discovery. See Phase mapping. | S |
-| Shareable evidence boundaries | 68 | PLANNED (policy) | `docs/plan/README.md` "Not verifiable from this repository" section | Consistent with plan. | S |
+| Recommended discovery pilot with named owners | 67 | PLANNED (partial) | `docs/plan/archive/README-old-index.md:45-57`, `docs/plan/archive/phase-0-stabilise.md` | Plan's Phase 0 is defect work, not discovery. See Phase mapping. | S |
+| Shareable evidence boundaries | 68 | PLANNED (policy) | `docs/plan/archive/README-old-index.md` "Not verifiable from this repository" section | Consistent with plan. | S |
 
 ## Phase mapping (proposal p61 vs plan)
 
 | Proposal phase (elapsed) | Plan counterpart | Verdict | Note |
 |---|---|---|---|
-| 0 Discovery and foundation (2–4 wk) | `phase-0-stabilise.md` (1 wk, nine defects) | CONFLICT | Plan Phase 0 has no discovery, authority, funding, baseline or migration plan. Proposal Phase 0 does not include the nine defects. Both should run: discovery then defects, or defects inside discovery. |
-| 0 "resolve tenancy and access before wider external exposure" | `phase-7-product.md` tenancy tiers (later) | CONFLICT (ordering) | Plan defers tenancy to Phase 7 ("when a second tenant is real"). Proposal requires it before exposure. Decision R-T2. |
-| 1 Operating control pilot (6–10 wk) | `phase-1-ledger.md` (3–4 wk, ledger) | CONFLICT (meaning of "Phase 1") | Proposal Phase 1 is operations (register, collections, work queue, founder view). Plan Phase 1 is the journal. Proposal's "reconcile pilot finance" depends on plan Phase 1 (Done #1–2). |
-| 1 collections, work queue, founder view, customer register | none | SILENT (plan) | No plan phase covers CRM-collections work queues. `phase-4-interface.md` covers DataTable only. |
-| 2 Connected commercial delivery (8–12 wk) | `phase-2-audit.md` (audit spine, DPDP), event fabric CRM-FOUND-002 `tests/acceptance.test.ts:118-166` | PARTIAL | Lead→contract→delivery→invoice cross-module chain not planned. Events precede automation: AGREE with p61 ordering. |
-| 3 Full people and finance operations (8–14 wk) | `phase-3-statutory.md` (payroll, TDS, GST) | PARTIAL AGREE | Payroll and reconciliation overlap. Proposal's month-end parallel run and two-entity consolidation: plan silent (no intercompany/elimination in any phase file, grep). |
-| 4 Portals, intelligence and scale (8–16 wk) | `phase-4..7`; `phase-6-intelligence.md` depends on 1, 2, 5 | AGREE on order | "Stable workflows precede dashboards and AI" matches plan 1,2,5 → 6. Customer/learner/institution portals: plan SILENT (only tenancy in phase 7). |
-| Gate content: owner, scenario, negative test, support, training, export, rollback | `docs/plan/README.md:45-57` Done means | SILENT (plan) | Plan gates are engineering-only. Adopt proposal's operating gate. |
-| Elapsed total | Plan sequential sum of phase ranges ≈ 26–34 wk (P0 1 + P1 3–4 + P2 2 + P3 6–8 + P4 4–6 + P5 3 + P6 4–6 + P7 3–4; `sequencing.md:4-13` runs 2/3/4 in parallel) | CONFLICT (scope) | Proposal sums 32–56 wk for operations plus build. Not comparable; proposal covers pilots and operating packs. Pick one horizon. |
-| Staffing: 0.5–1 product, 1 senior, 2–3 app eng, 0.5–1 QA (p62) | `sequencing.md:8` "most senior person + Claude Code alone for Phase 1"; "four developers … guiding AI-written code" | CONFLICT | Plan assumes one senior person for the ledger and interns elsewhere. Proposal assumes 4–6 FTE and says existing staff are not dedicated. Decision S-1. |
+| 0 Discovery and foundation (2–4 wk) | `docs/plan/archive/phase-0-stabilise.md` (1 wk, nine defects) | CONFLICT | Plan Phase 0 has no discovery, authority, funding, baseline or migration plan. Proposal Phase 0 does not include the nine defects. Both should run: discovery then defects, or defects inside discovery. |
+| 0 "resolve tenancy and access before wider external exposure" | `docs/plan/archive/phase-7-product.md` tenancy tiers (later) | CONFLICT (ordering) | Plan defers tenancy to Phase 7 ("when a second tenant is real"). Proposal requires it before exposure. Decision R-T2. |
+| 1 Operating control pilot (6–10 wk) | `docs/plan/archive/phase-1-ledger.md` (3–4 wk, ledger) | CONFLICT (meaning of "Phase 1") | Proposal Phase 1 is operations (register, collections, work queue, founder view). Plan Phase 1 is the journal. Proposal's "reconcile pilot finance" depends on plan Phase 1 (Done #1–2). |
+| 1 collections, work queue, founder view, customer register | none | SILENT (plan) | No plan phase covers CRM-collections work queues. `docs/plan/archive/phase-4-interface.md` covers DataTable only. |
+| 2 Connected commercial delivery (8–12 wk) | `docs/plan/archive/phase-2-audit.md` (audit spine, DPDP), event fabric CRM-FOUND-002 `tests/acceptance.test.ts:118-166` | PARTIAL | Lead→contract→delivery→invoice cross-module chain not planned. Events precede automation: AGREE with p61 ordering. |
+| 3 Full people and finance operations (8–14 wk) | `docs/plan/archive/phase-3-statutory.md` (payroll, TDS, GST) | PARTIAL AGREE | Payroll and reconciliation overlap. Proposal's month-end parallel run and two-entity consolidation: plan silent (no intercompany/elimination in any phase file, grep). |
+| 4 Portals, intelligence and scale (8–16 wk) | `phase-4..7`; `docs/plan/archive/phase-6-intelligence.md` depends on 1, 2, 5 | AGREE on order | "Stable workflows precede dashboards and AI" matches plan 1,2,5 → 6. Customer/learner/institution portals: plan SILENT (only tenancy in phase 7). |
+| Gate content: owner, scenario, negative test, support, training, export, rollback | `docs/plan/archive/README-old-index.md:45-57` Done means | SILENT (plan) | Plan gates are engineering-only. Adopt proposal's operating gate. |
+| Elapsed total | Plan sequential sum of phase ranges ≈ 26–34 wk (P0 1 + P1 3–4 + P2 2 + P3 6–8 + P4 4–6 + P5 3 + P6 4–6 + P7 3–4; `docs/plan/archive/sequencing.md:4-13` runs 2/3/4 in parallel) | CONFLICT (scope) | Proposal sums 32–56 wk for operations plus build. Not comparable; proposal covers pilots and operating packs. Pick one horizon. |
+| Staffing: 0.5–1 product, 1 senior, 2–3 app eng, 0.5–1 QA (p62) | `docs/plan/archive/sequencing.md:8` "most senior person + Claude Code alone for Phase 1"; "four developers … guiding AI-written code" | CONFLICT | Plan assumes one senior person for the ledger and interns elsewhere. Proposal assumes 4–6 FTE and says existing staff are not dedicated. Decision S-1. |
 | Ledger is "do not parallelise" | Proposal p61 "Phase 1 ... Phase 2–4 parallel" not stated | AGREE on sequencing rule; SILENT on staffing | |
 
 ## Plan "Done means" (README :45-57) vs proposal scenarios
@@ -152,16 +152,16 @@ p66 stakeholder, salary and home-work:
 | Plan Done # | Proposal scenario it covers | Today |
 |---|---|---|
 | 1 10,000 ops, TB zero | Financial integrity p65 | MISSING (no property test file in list) |
-| 2 Legacy replay to paisa | Financial integrity p65, migration reconcile p63 | PLANNED (`phase-1-ledger.md:147-152`) |
+| 2 Legacy replay to paisa | Financial integrity p65, migration reconcile p63 | PLANNED (`docs/plan/archive/phase-1-ledger.md:147-152`) |
 | 3 200 concurrent allocations | Lead to cash p64 | PARTIAL (`tests/concurrency.test.ts` covers event chain only, names at :26-55) |
 | 4 200 concurrent emissions, verifyChain | Cross-module recorded once p65 | PARTIAL (`tests/concurrency.test.ts:27`) |
 | 5 Leakage fuzzer | Cross-role/tenant p64, external denial p66 | MISSING (no fuzzer file) |
-| 6 UPDATE/DELETE fails as app role | Correction history p60 | PLANNED (`phase-1-ledger.md:99-107`) |
+| 6 UPDATE/DELETE fails as app role | Correction history p60 | PLANNED (`docs/plan/archive/phase-1-ledger.md:99-107`) |
 | 7 200+ golden questions | Dashboard reconstruction p64 | MISSING |
-| 8 axe, Lighthouse | Tamil/accessible intake p66 | PLANNED (`phase-4-interface.md`) |
+| 8 axe, Lighthouse | Tamil/accessible intake p66 | PLANNED (`docs/plan/archive/phase-4-interface.md`) |
 | 9 Invoice flow at 390px | Mobile capture p60 | PLANNED |
 | 10 Restore reproduces TB | Recovery rehearsal p64 | MISSING (FIX F8) |
-| 11 Metric drillTo/noActionReason | Dashboard p64, "no silent empty" p60 | PLANNED (`phase-4-interface.md:29-35`); not enforced today (`apps/web/src/components/ui.tsx:136`, per plan) |
+| 11 Metric drillTo/noActionReason | Dashboard p64, "no silent empty" p60 | PLANNED (`docs/plan/archive/phase-4-interface.md:29-35`); not enforced today (`apps/web/src/components/ui.tsx:136`, per plan) |
 
 Proposal scenarios with no plan Done item: approval evidence change, broken detector, provider outage replay, connector edge cases, founder absence, group close and restricted funds, consultancy and specialist packs, AI false commitment, salary bank-change, stakeholder feedback. Plan silent on all of them.
 
@@ -188,7 +188,7 @@ Tests: `tests/acceptance.test.ts:2530-2710` (template round-trip, staging, commi
 
 | From | To | Missing link | Evidence |
 |---|---|---|---|
-| `imports/commit.ts` transaction writes (`:267`, `:329`) | `platform/ledger.ts` `post()` (`:61`) | Imports write legacy `Transaction` only. After Phase 1 this diverges from the journal and breaks Done #2 unless commit uses `post()`. | `imports/commit.ts:267,329`; plan `phase-1-ledger.md:11,147-152` |
+| `imports/commit.ts` transaction writes (`:267`, `:329`) | `platform/ledger.ts` `post()` (`:61`) | Imports write legacy `Transaction` only. After Phase 1 this diverges from the journal and breaks Done #2 unless commit uses `post()`. | `imports/commit.ts:267,329`; plan `docs/plan/archive/phase-1-ledger.md:11,147-152` |
 | `imports` commit | `platform/audit.ts` `auditWrite` | `transaction` is governed (`audit.ts:106`) but `imports/commit.ts` never calls `auditWrite`. Events only (`:195`, `:790`). | grep |
 | `imports/commit.ts` | `invoicing.ts:266` `assertPeriodOpen` | Not called in import path; plan phase-0 asks for it. | grep (none in commit.ts) |
 | `revertImport` | audit / evidence | Hard-deletes target rows (`:733-746`); no reversal, no tombstone. | `imports/commit.ts:733-746` |
@@ -210,7 +210,7 @@ Tests: `tests/acceptance.test.ts:2530-2710` (template round-trip, staging, commi
 | F3 | `imports/parse.ts:122` (`toAmount` returns `number`); `imports/commit.ts:213,335,607,630,1335,1395` (`Number(...)`) | Money as float. CLAUDE rule 1 violation via `num()`-style path. | Rounding in opening balances and salary. Fix: bigint paise helper (`packages/shared/src/money.ts` does not exist). | M |
 | F4 | `imports/commit.ts` | Governed entities written without `auditWrite`. | Audit trail gap for imported transactions. Fix: call `auditWrite` after write (rule 5). | S |
 | F5 | `imports/commit.ts` | No `assertPeriodOpen`. Import can write into closed periods. Plan phase-0 names this. | Closed-period integrity. Fix: add check. | S |
-| F6 | `imports/commit.ts:267,329` | Writes legacy Transaction, bypassing `post()`. CLAUDE rule 2 says journal writes only via `post()`; here the write is to Transaction, not journal, so the rule is not broken yet, but Phase 1 projection breaks. | Fix in Phase 1 with `cashbookToJournal` (`phase-1-ledger.md:147`). | M |
+| F6 | `imports/commit.ts:267,329` | Writes legacy Transaction, bypassing `post()`. CLAUDE rule 2 says journal writes only via `post()`; here the write is to Transaction, not journal, so the rule is not broken yet, but Phase 1 projection breaks. | Fix in Phase 1 with `cashbookToJournal` (`docs/plan/archive/phase-1-ledger.md:147`). | M |
 | F7 | `imports/commit.ts:80` vs `:717` | Commit and revert both gated by single permission; no maker/checker. | Revert of a 1-year import by one person. Fix: approval step. | S |
 | F8 | `domains/compliance/corporate/security.ts` `runBackup` | Returns `skipped` when `BACKUP_DIR` unset (quiet by design, per comment). No restore path. Plan Done #10 requires restore. | "Empty dashboard conceals failure": backup silently absent. Fix: surface `skipped` as a health exception in production. | S |
 
@@ -218,9 +218,9 @@ Tests: `tests/acceptance.test.ts:2530-2710` (template round-trip, staging, commi
 
 1. Phase naming collides with the plan. The proposal's "Phase 0–4" and the plan's "Phase 0–8" are different things. Rename proposal phases R0–R4 in leadership material.
 2. Pilot finance depends on unverified figures. Plan README "Not verifiable" lists the Phase 1.5 book figures (1,123 vouchers, ₹40,500 gap). The proposal's pilot reconciliation should not inherit them until confirmed.
-3. India residency is absent from the proposal. CLAUDE says no personal data to non-India inference for India-required tenants. The proposal costs AI and transcription (p62) but states no region rule. Add: transcription and AI providers must be India-region or excluded. Plan `phase-7-product.md:12` covers Rule 3(5) backups; inference residency needs the same treatment. Specialist review needed; do not assume the rule's scope.
-4. Legal hold is missing (0 hits). Retention and purge (p67, p68) need holds that override purge. Plan `phase-2-audit.md` covers 8-year retention and erasure; holds are not in the plan.
-5. Schema migration plan is missing. Plan `phase-0-stabilise.md:71` says there is no `prisma/migrations` directory and the project runs on `db:push`. The proposal's "migration plan" covers data, not schema. Add baseline and rollback for schema.
+3. India residency is absent from the proposal. CLAUDE says no personal data to non-India inference for India-required tenants. The proposal costs AI and transcription (p62) but states no region rule. Add: transcription and AI providers must be India-region or excluded. Plan `docs/plan/archive/phase-7-product.md:12` covers Rule 3(5) backups; inference residency needs the same treatment. Specialist review needed; do not assume the rule's scope.
+4. Legal hold is missing (0 hits). Retention and purge (p67, p68) need holds that override purge. Plan `docs/plan/archive/phase-2-audit.md` covers 8-year retention and erasure; holds are not in the plan.
+5. Schema migration plan is missing. Plan `docs/plan/archive/phase-0-stabilise.md:71` says there is no `prisma/migrations` directory and the project runs on `db:push`. The proposal's "migration plan" covers data, not schema. Add baseline and rollback for schema.
 6. Recording and transcription law. p65 plans 50 consented calls across Tamil, English and mixed. The proposal says "consented" but does not name the consent mechanism. DPDP applicability and phased commencement are flagged by the proposal itself (p68); do not state a legal conclusion here.
 7. WhatsApp and SMS opt-in. p68 says a contractual basis does not permit a WhatsApp send. Code has WhatsApp/DLT gating (`domains/marketing/messaging.ts:2,15`). Good; the proposal's service-notice rule needs the same gate.
 8. Customer portals are silent in the plan. Phase 4 of the proposal includes permission-limited customer, learner and institution views. The plan has no phase for external users. This is the largest silent item.
@@ -249,7 +249,7 @@ Merged register: plan README A/B/C first, then proposal p67 items, then the deci
 | R-8 | India residency for inference and transcription | CLAUDE rule | Phase 7 for backups only | Silent | Decide region for each provider; specialist review. | Senior technical owner and legal |
 | R-9 | Recording and privacy policy | p67 | Phase 2 DPDP | Competent legal owner | Decide before any call capture. | Legal/privacy owner |
 | R-10 | Recovery and backup coverage | p67, plan Done #10 | Restore drill (phase-8) | Restore rehearsal | Decide RTO/RPO and who runs the drill; fix F8 first. | Technical and operating owners |
-| S-1 | Staffing: plan vs proposal | p62 vs `sequencing.md:8` | One senior for Phase 1 | 2–3 app eng, 1 senior, 0.5–1 QA | Decide actual allocation; measure productive hours first. | Founder and delivery leads |
+| S-1 | Staffing: plan vs proposal | p62 vs `docs/plan/archive/sequencing.md:8` | One senior for Phase 1 | 2–3 app eng, 1 senior, 0.5–1 QA | Decide actual allocation; measure productive hours first. | Founder and delivery leads |
 | S-2 | Phase budget and funding gate | p61, p67 | Silent | Phase-by-phase release | Decide first-phase budget and stop rule. | Founder |
 | T-1 | Test double policy for outage, bank timeout, 429 | CLAUDE "no mock" | Real Postgres only | Scenario tests | Decide sandbox or recorded-contract approach. | Senior technical owner |
 | T-2 | Numeric performance targets | p64 | Silent | Approve in discovery | Set from load and hours. | Operating owners |

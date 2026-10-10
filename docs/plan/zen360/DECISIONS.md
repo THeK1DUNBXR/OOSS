@@ -530,3 +530,16 @@ Still open after round 16 (supersedes round 15):
 - Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
 - Guest-account design (invitation, authentication, tenant scoping, expiry, audit). Deferred with freelancer management (round 16 item 1).
 - Freelancer management scope, phase and statutory sign-off for tax on freelancer payments. Deferred (round 16 item 1).
+
+## Owner answers, round 17 (recorded 2026-10-11)
+
+- **(a) Archive the superseded plan.** The old index, `phase-0-stabilise.md` to `phase-8-proof.md`, `sequencing.md`, `rationale.md` and `prompts.md` move to `docs/plan/archive/`, each with a SUPERSEDED banner. `zen360/ORDERED-PLAN.md` is the source of truth. `docs/plan/archive/README.md` maps each old phase to the owner plan.
+- **(b) Naming.** From now on the phases are called "owner Phase 0" and "owner Phase 1" only. The old P0 to P8 labels are retired. Old item numbers (for example 0.7, 1.6, 3.1) stay valid as references into the archive.
+- **(c) Entry point.** `CLAUDE.md` now starts at `docs/plan/CURRENT.md` and `zen360/ORDERED-PLAN.md`. `docs/plan/CURRENT.md` records the active wave (owner Phase 0, Wave 0) and is updated when a wave closes. `docs/plan/README.md` is a short index.
+- **(d) Method.** Done on a branch, `docs/plan-archive-superseded`, with a PR for owner review. Owner words: "Just do it on a branch, owner reviews the PR."
+
+Consequences and open points:
+
+- Old path references in earlier rounds (1 to 16) point to files now in `docs/plan/archive/`. For example, "`docs/plan/README.md` decisions A, B and C" now means `docs/plan/archive/README-old-index.md`. The text of those rounds is not rewritten. Round 16 and earlier are otherwise unchanged.
+- The domain specs `ceo-office.md`, `cio.md`, `compliance.md`, `equity-portal.md`, `hcm.md`, `marketing.md` and `ceo-office-asbuilt/` are not phase files and are not moved. Code comments and the zen360 reference docs cite them. Whether they are superseded, and by what, is **open for owner decision**. The `docs/plan/ceo-office-asbuilt/phase-0.md` file also uses the word "Phase 0" for a CEO-office build record, which is not the owner Phase 0.
+- Old phase labels without a file path (for example "phase-0 0.4" in the zen360 reference docs) are not rewritten in this round. They are read as old item references into the archive.

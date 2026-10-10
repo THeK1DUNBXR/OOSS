@@ -74,7 +74,7 @@ pnpm build 2>&1 | tail -20
 
 The phase files give exact line numbers. An agent that re-audits the repository to confirm them has paid twice for the same fact.
 
-**The rule:** confirm one line with a targeted `grep -n`, not a survey. If it does not match, `README.md` has the known drift table — check there before concluding the plan is wrong about the file.
+**The rule:** confirm one line with a targeted `grep -n`, not a survey. If it does not match, `docs/plan/archive/README-old-index.md` has the known drift table — check there before concluding the plan is wrong about the file.
 
 The corollary matters more: when a claim about existing code *is* load-bearing, cite `file:line` and confirm it. Roughly one description in ten is of code that would be reasonable rather than code that is there — which is how the `Metric` error got into this plan in the first place. Confirming one line is cheap; building on a wrong one is not.
 
