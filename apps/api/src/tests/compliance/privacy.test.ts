@@ -257,6 +257,51 @@ describe('Data-principal requests', () => {
     expect(err.status).toBe(403);
   });
 
+  // FX-63. A correction is a request by the data principal to fix a personal
+  // value. The old code passed the body straight to person.update, so a
+  // correction could set the dedupe state, the merge pointer or the soft
+  // delete. Those are system fields and are not the principal's to set.
+  it('a correction naming a system field (mergedIntoId) is refused and the person is unchanged', async () => {
+    const person = await asUser('operations@kaizen.co.in', () => makePerson('correction-merge'));
+    const other = await asUser('operations@kaizen.co.in', () => makePerson('correction-merge-target'));
+    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id, { correction: { mergedIntoId: other.id } })),
+    );
+    expect(err.status).toBe(400);
+
+    const after = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
+    expect(after.mergedIntoId).toBeNull();
+    expect(after.dedupeStatus).toBe('active');
+    const stillOpen = await unscopedPrisma.dataPrincipalRequest.findFirstOrThrow({ where: { id: request.id } });
+    expect(stillOpen.status).not.toBe('fulfilled');
+  });
+
+  it('a correction naming deletedAt or recordCode is refused', async () => {
+    const person = await asUser('operations@kaizen.co.in', () => makePerson('correction-system'));
+    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id, { correction: { deletedAt: new Date(), recordCode: 'PER-HIJACK' } })),
+    );
+    expect(err.status).toBe(400);
+    const after = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
+    expect(after.deletedAt).toBeNull();
+    expect(after.recordCode).not.toBe('PER-HIJACK');
+  });
+
+  it('a correction to a correctable field is applied and the normalised phone follows it', async () => {
+    const person = await asUser('operations@kaizen.co.in', () => makePerson('correction-ok'));
+    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+    const fulfilled = await asUser('operations@kaizen.co.in', () =>
+      fulfilDataRequest(request.id, { correction: { primaryPhone: '+91 98765 43210' } }),
+    );
+    expect(fulfilled.status).toBe('fulfilled');
+    const after = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
+    expect(after.primaryPhone).toBe('+91 98765 43210');
+    expect(after.primaryPhoneNormalised).toBe('9876543210');
+  });
+
   it('fulfilling an access request assembles an export and audits it as an export', async () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('access-export'));
     const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'access' }));
