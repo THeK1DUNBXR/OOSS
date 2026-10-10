@@ -630,6 +630,9 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
         subjectId: quoteId,
         subjectLabel: quote.recordCode,
         action: 'quote.issue',
+        // The grant the decide path checks `approve` against. The discount is
+        // approved on the quote, which `quotes:approve` covers (seed/grants.ts).
+        resource: 'quotes',
         requestedById: auth.partyId ?? 'system',
         requestedValue: quote.grandTotal ?? undefined,
         currency: quote.currency,

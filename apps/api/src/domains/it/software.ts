@@ -556,6 +556,8 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
       subjectId: id,
       subjectLabel: licence.recordCode ?? id,
       action: 'it_licence.renew',
+      // approveRenewal checks `it_licences:approve`; the step must carry the same grant.
+      resource: 'it_licences',
       requestedById: auth.partyId ?? 'system',
       requestedValue: annualised,
       currency: licence.currency,
