@@ -89,7 +89,7 @@ export function financialYearLabel(at: Date, format: YearFormat = 'short'): stri
 /** The longest a tax invoice number may be before the portal refuses it. */
 export const MAX_INVOICE_NUMBER_LENGTH = 16;
 
-function financialYearStart(at: Date): number {
+export function financialYearStart(at: Date): number {
   const year = at.getUTCFullYear();
   return at.getUTCMonth() >= 3 ? year : year - 1;
 }

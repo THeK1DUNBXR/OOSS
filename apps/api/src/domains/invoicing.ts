@@ -263,9 +263,14 @@ export function totalsOf(invoice: {
  * lawful correction after filing is a credit or debit note in the current
  * period, which this platform issues through `issueCreditNote`.
  */
+/** The month an instant falls in, as the GST filing period names it. */
+export function filingPeriodOf(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 export async function assertPeriodOpen(date: Date, what: string): Promise<void> {
   const auth = currentAuth();
-  const period = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  const period = filingPeriodOf(date);
   const filed = await prisma.gstFiling.findFirst({
     where: { tenantId: auth.tenantId, period, status: 'filed' },
     orderBy: { filedAt: 'desc' },
