@@ -70,6 +70,12 @@ export async function createSkill(input: { name: string; halfLifeMonths?: number
     subjectId: skill.id,
     after: { name: skill.name, halfLifeMonths: skill.halfLifeMonths },
   });
+  await emit({
+    name: EVENTS.SKILL_CREATED,
+    subject: { entityType: 'skill', entityId: skill.id },
+    newState: { name: skill.name, halfLifeMonths: skill.halfLifeMonths },
+    impact: { domains: ['hr'] },
+  });
   return skill;
 }
 
@@ -229,14 +235,17 @@ export async function addEvidence(claimId: string, input: { description: string;
     after: { capabilityClaimId: claimId, sourceRef: evidence.sourceRef },
   });
 
+  await emit({
+    name: EVENTS.EVIDENCE_ADDED,
+    subject: { entityType: 'evidence', entityId: evidence.id },
+    related: [{ relation: 'supports', entityType: 'capability_claim', entityId: claimId }],
+    newState: { capabilityClaimId: claimId, sourceRef: evidence.sourceRef },
+    impact: { domains: ['hr'] },
+  });
+
   return evidence;
 }
 
-/**
- * Verification. The segregation-of-duties rules live in shared and are
- * enforced here before anything is written, so a rejected attempt leaves no
- * trace of having nearly succeeded.
- */
 /**
  * The two-person rule's inputs are derived here, never taken from the caller.
  * A flag the caller can send is a flag the caller can send as false: that was
@@ -315,6 +324,13 @@ async function assertSecondVerifierQualified(secondPartyId: string): Promise<voi
   throw ApiError.forbidden('The second verifier does not hold capabilities:approve in this tenant [Canon §14.6.4].');
 }
 
+/**
+ * Verification is server-validated end to end. The request supplies only a
+ * second verifier's id and a note: the two-person inputs (pay-feeding and
+ * manager-only) are derived above, and the second verifier's `approve` right is
+ * checked by assertSecondVerifierQualified before any verificationEvent is
+ * written, so a refused attempt leaves no trace.
+ */
 export async function verifyClaim(
   claimId: string,
   input: {

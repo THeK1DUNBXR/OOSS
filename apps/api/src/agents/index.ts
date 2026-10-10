@@ -378,6 +378,10 @@ export async function agentRoster() {
  */
 export async function revokeAuthority(grantId: string, reason: string) {
   const auth = currentAuth();
+  // The grants edit verb is the one the route already requires (admin.routes.ts
+  // revoke handler). The check lives here too so a second caller cannot skip it.
+  // The grant matrix has no separate revoke verb to use instead.
+  await assertCan({ resource: 'grants', verb: 'edit' });
   const grant = await prisma.authorityGrant.findFirst({ where: { id: grantId } });
   if (!grant) throw ApiError.notFound('Authority grant');
 
@@ -389,6 +393,14 @@ export async function revokeAuthority(grantId: string, reason: string) {
   const revoked = await prisma.authorityGrant.update({
     where: { id: grantId },
     data: { status: 'revoked', revokedAt: new Date(), revokedReason: reason },
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'authority_grant',
+    subjectId: grantId,
+    before: { status: grant.status },
+    after: { status: 'revoked', revokedReason: reason, actorPartyId: auth.partyId },
   });
 
   await emit({

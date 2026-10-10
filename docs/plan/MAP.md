@@ -18,7 +18,7 @@
 
 **`apps/api/src/domains/books.ts`** (1411 lines) — listAccounts:86 · createAccount:95 · listCategories:125 · createCategory:134 · accountBalances:169 · TransactionInput:213 · groupCounterpartyOptions:240 · recordTransaction:264 · reverseTransaction:361 · listTransactions:437 · listVendorBills:471 · recordVendorBill:485 · payVendorBill:548 · payablesAgeing:600 · detectOverdueBills:631 · priceInvoiceGst:674 · gstSummary:729 · setBudgetLine:777 · budgetVariance:829 · listAssets:899 · createAsset:932 · assetSchedule:992 · listLoans:1009 · createLoan:1043 · loanSchedule:1078 · generateRecurring:1105 · ProfitAndLoss:1165 · profitAndLoss:1181 · monthlyTrend:1244 · cashPosition:1277 · cashForecast:1308 · postPayrollToBooks:1353
 
-**`apps/api/src/domains/capability.ts`** (566 lines) — listSkills:50 · createSkill:56 · CapabilityView:76 · capabilitiesForParty:98 · assertClaim:145 · addEvidence:205 · verifyClaim:318 · recordContradiction:411 · changeClaimState:467 · claimFromLearningCompletion:510 · findCapableParties:536
+**`apps/api/src/domains/capability.ts`** (582 lines) — listSkills:50 · createSkill:56 · CapabilityView:82 · capabilitiesForParty:104 · assertClaim:151 · addEvidence:211 · verifyClaim:334 · recordContradiction:427 · changeClaimState:483 · claimFromLearningCompletion:526 · findCapableParties:552
 
 **`apps/api/src/domains/ceo/board.detectors.ts`** (11 lines) — detectors:10
 
@@ -332,7 +332,7 @@
 
 ## API jobs / events / agents
 
-**`apps/api/src/agents/index.ts`** (443 lines) — ProposeInput:47 · ProposeResult:60 · propose:78 · decideAgentAction:272 · agentRoster:332 · revokeAuthority:379 · pauseAgent:412
+**`apps/api/src/agents/index.ts`** (455 lines) — ProposeInput:47 · ProposeResult:60 · propose:78 · decideAgentAction:272 · agentRoster:332 · revokeAuthority:379 · pauseAgent:424
 
 **`apps/api/src/events/handlers.ts`** (266 lines) — instalmentPlan:49 · registerSubscribers:63
 
@@ -384,7 +384,7 @@
 
 **`apps/api/src/jobs/schedule.ts`** (122 lines) — SCHEDULE_TZ:20 · TICK_MS:23 · MAX_ATTEMPTS:26 · isValidCron:46 · nextFireAfter:56 · dueOccurrence:73 · occurrencesBetween:93 · backoffMs:111 · leaseFor:117
 
-**`apps/api/src/jobs/scheduler.ts`** (798 lines) — JobResult:43 · JobDefinition:50 · ALL_JOBS:68 · escalateApprovalStep:361 · RunOptions:448 · claimFiring:470 · runJobsForTenant:495 · runAllTenants:578 · TickOutcome:597 · tickOnce:684 · startScheduler:766 · stopScheduler:794
+**`apps/api/src/jobs/scheduler.ts`** (810 lines) — JobResult:44 · JobDefinition:51 · ALL_JOBS:69 · escalateApprovalStep:362 · RunOptions:460 · claimFiring:482 · runJobsForTenant:507 · runAllTenants:590 · TickOutcome:609 · tickOnce:696 · startScheduler:778 · stopScheduler:806
 
 **`apps/api/src/lib/auth.ts`** (1008 lines) — assertProductionSecrets:89 · TokenPayload:121 · SelectionTokenPayload:136 · signToken:141 · hashRefreshSecret:146 · liveSessionFor:155 · verifyToken:189 · MfaChallengePayload:197 · hashPassword:228 · ensureSignInPrincipal:248 · EntitySelectionResult:312 · assertPasswordAllowed:323 · LoginResult:380 · MfaRequiredResult:388 · login:411 · verifyMfaAndLogin:536 · enrolMfa:561 · confirmMfa:567 · changePassword:583 · entitiesForToken:601 · identifySwitchCaller:613 · switchEntity:650 · SessionRefresh:707 · refreshSession:734 · logoutWithRefreshCookie:804 · logoutSession:846 · buildSessionUser:856 · toAuthContext:930 · switchContext:962
 
@@ -428,7 +428,7 @@
 
 **`packages/shared/src/esop.ts`** (203 lines) — ESOP_PLAN_STATUSES:13 · EsopPlanStatus:14 · VESTING_FREQUENCIES:16 · VestingFrequency:17 · VESTING_FREQUENCY_MONTHS:19 · OPTION_GRANT_STATUSES:25 · OptionGrantStatus:28 · VESTING_EVENT_STATUSES:30 · VestingEventStatus:31 · OPTION_EXERCISE_STATUSES:33 · OptionExerciseStatus:34 · FMV_BASES:36 · FmvBasis:37 · ESOP_MIN_CLIFF_MONTHS:40 · ESOP_SINGLE_GRANT_RESOLUTION_THRESHOLD_PCT:43 · ESOP_FMV_VALIDITY_DAYS:46 · VestingScheduleInput:52 · VestingTranche:58 · firstVestingIsRuleTwelveCompliant:76 · generateVestingTranches:86 · EsopPlanPoolView:112 · EsopPlanView:121 · PromoterCheck:138 · OptionGrantView:144 · OptionExerciseView:169 · esopTaxLine:191
 
-**`packages/shared/src/events.ts`** (950 lines) — EventName:11 · EVENT_NAME_PATTERN:19 · TENSE_GRANDFATHERED:38 · isPastTenseVerb:61 · isCanonicalEventName:67 · LEGACY_EVENT_CROSSWALK:79 · CANONICAL_TO_LEGACY:106 · EVENTS:111 · hrTransitionEvent:802 · KnownEventName:806 · ActorType:813 · EventActor:815 · EventSubject:823 · EventRelatedRef:829 · EventReason:835 · EventSource:843 · EventMateriality:851 · EventImpact:857 · EventOwner:863 · EventIntegrity:868 · EventEnvelope:873 · SEVERITIES:902 · SeverityCode:903 · SEVERITY_RANK:905 · NOTIFICATION_PRIORITIES:913 · NotificationPriority:914 · ESCALATION_TRIGGERS:917 · EscalationTrigger:918 · SENSITIVITY_CLASSES:924 · SensitivityClass:925 · SENSITIVITY_RANK:927 · maxSensitivity:935 · WITHHOLD_REASONS:941 · WithholdReason:949
+**`packages/shared/src/events.ts`** (952 lines) — EventName:11 · EVENT_NAME_PATTERN:19 · TENSE_GRANDFATHERED:38 · isPastTenseVerb:61 · isCanonicalEventName:67 · LEGACY_EVENT_CROSSWALK:79 · CANONICAL_TO_LEGACY:106 · EVENTS:111 · hrTransitionEvent:804 · KnownEventName:808 · ActorType:815 · EventActor:817 · EventSubject:825 · EventRelatedRef:831 · EventReason:837 · EventSource:845 · EventMateriality:853 · EventImpact:859 · EventOwner:865 · EventIntegrity:870 · EventEnvelope:875 · SEVERITIES:904 · SeverityCode:905 · SEVERITY_RANK:907 · NOTIFICATION_PRIORITIES:915 · NotificationPriority:916 · ESCALATION_TRIGGERS:919 · EscalationTrigger:920 · SENSITIVITY_CLASSES:926 · SensitivityClass:927 · SENSITIVITY_RANK:929 · maxSensitivity:937 · WITHHOLD_REASONS:943 · WithholdReason:951
 
 **`packages/shared/src/finance.ts`** (729 lines) — DIVISIONS:19 · Division:20 · DIVISION_LABELS:22 · isDivision:29 · CATEGORY_KINDS:37 · CategoryKind:40 · NON_TRADING_KINDS:51 · isTrading:53 · CATEGORY_BEHAVIOURS:62 · CategoryBehaviour:63 · TRANSACTION_SOURCES:65 · TransactionSource:68 · LEDGER_GROUPS:70 · LedgerGroup:71 · monthKey:80 · monthRange:90 · financialYearOf:96 · financialYearRange:101 · monthsBack:106 · GstLineInput:120 · GstBreakdown:127 · round2:139 · computeGst:155 · isInterState:195 · GST_RATES:201 · GST_STATE_CODES:215 · stateNameFor:258 · placeOfSupplyLabel:264 · stateCodeOf:271 · isValidGstin:289 · gstinCheckDigit:306 · supplyTypeOf:327 · GstHeads:335 · GstSetOff:341 · setOffInputCredit:363 · outstandingOf:416 · paymentTypeFor:428 · invoicePayable:445 · amountInWords:476 · PaymentSchedule:533 · computePaymentSchedule:545 · DepreciationPeriod:558 · DepreciationInput:565 · depreciationSchedule:583 · bookValueAt:620 · AmortisationPeriod:635 · emi:645 · amortisationSchedule:655 · loanBalanceAt:694 · runwayMonths:724
 

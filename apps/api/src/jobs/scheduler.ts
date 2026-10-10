@@ -21,6 +21,7 @@ import { config } from '../platform/config.js';
 import { MAX_ATTEMPTS, TICK_MS, backoffMs, dueOccurrence, isValidCron, leaseFor } from './schedule.js';
 import { asSystem, currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
+import { auditWrite } from '../platform/audit.js';
 import { detectUntouchedLeads } from '../domains/leads.js';
 import { detectStageAgeBreaches, demoteStaleCommits, detectChronicRecommits } from '../domains/opportunities.js';
 import { detectStalledProposals, detectOfferingCoverageGaps } from '../domains/commercial.js';
@@ -381,6 +382,17 @@ export async function escalateApprovalStep(step: {
     },
   });
   if (count !== 1) return false;
+
+  // The actor is the principal the tick runs under (asSystem, in the job runner
+  // below), so the row records the system, not a person. Without it an
+  // approval could move tiers with no trace of which automation moved it.
+  await auditWrite({
+    action: 'update',
+    subjectType: 'approval_step',
+    subjectId: step.id,
+    before: { state: 'open', escalationRung: step.escalationRung },
+    after: { state: 'escalated', escalationRung: step.escalationRung + 1, approverRole: nextTier },
+  });
 
   await emit({
     name: EVENTS.APPROVAL_STEP_ESCALATED,

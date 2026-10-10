@@ -350,6 +350,8 @@ export const EVENTS = {
   PERFORMANCE_EVIDENCE_RECORDED: 'kz.hr.performance_evidence.recorded',
   LEARNING_RECORD_ENROLLED: 'kz.hr.learning_record.enrolled',
   LEARNING_RECORD_COMPLETED: 'kz.hr.learning_record.completed',
+  SKILL_CREATED: 'kz.hr.skill.created',
+  EVIDENCE_ADDED: 'kz.hr.evidence.added',
   CAPABILITY_CLAIM_ASSERTED: 'kz.hr.capability_claim.asserted',
   CAPABILITY_CLAIM_VERIFIED: 'kz.hr.capability_claim.verified',
   CAPABILITY_CLAIM_CONTRADICTED: 'kz.hr.capability_claim.contradicted',
