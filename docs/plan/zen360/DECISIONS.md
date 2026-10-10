@@ -446,3 +446,39 @@ Still open after round 13 (supersedes round 12):
 - D-11 numbers after the one-month measurement.
 - Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
 - Questionnaire content and mapping rules.
+
+## Owner answers, round 14: access mapping design (recorded 2026-10-11)
+
+Owner answers:
+
+1. **Hybrid design adopted (owner answer, item 1).** Identity type is decided first: employee, founder, contractor, external auditor, or board/investor. Level (Head, Manager or Staff) and function are stored as attributes. The attributes select a role template. The template grants a low-risk baseline. Sensitive permissions (approvals, payroll, bank, user administration, company-wide data) are never defaults. Each needs an explicit request, a named approver and a conflict check. A reviewer confirms, adds or removes. Each change records a reason and the rule version.
+2. **Blocked conflicts (owner answer, item 2).** One person may not hold both sides of these pairs:
+   - create and approve payments;
+   - run payroll and approve payroll;
+   - manage access levels and approve own access. Only the founder may approve their own access.
+
+   Not selected, so not a blocked conflict: edit statutory rules and sign them off.
+3. **On conflict (owner answer, item 3).** A conflict is blocked. The founder can override it with a reason. Overrides are logged and shown in the exceptions view.
+4. **Non-employee levels (owner answer, item 4).** Contractor, auditor and board levels require an end date, with a maximum of 12 months. Renewal needs reviewer confirmation.
+5. **Recertification (owner answer, item 5).** Sensitive access is recertified quarterly. Everything else is recertified annually.
+6. **No response to a scheduled review (owner answer, item 6).** Access is kept. A warning is raised and escalated to the founder. Overdue reviews show in the exceptions view.
+7. **Leavers (owner answer, item 7).** Access is removed on the marked leave date. The date is marked by the founder or the onboarding owner. Sessions end, history is kept, and the removal is audited.
+8. **Questionnaire (owner answer, item 8).** About 8 to 12 yes/no questions plus one scope choice. The questions ask about tasks, not permission names.
+
+Implications (labelled, not owner statements):
+
+- **Single point of control (implication).** The founder override (round 10 rule) and the founder self-approval exemption (round 10) make the founder the single point of control. Segregation of duties for founder-only classes therefore rests on the audit rows and the exceptions view, not on a second person.
+- **Statutory rule edit and sign-off (implication, open).** The pair "edit statutory rules and sign them off" is not a blocked conflict. The same person could therefore change a rule and sign it off, unless the level duties prevent it. This is open.
+
+Research basis (implication, the research itself is not an owner statement): the research covered NIST RBAC and ABAC, OWASP least privilege, birthright access, Entra access reviews, Frappe role profiles and midPoint exclusion rules. Some items were **UNVERIFIED**: ISACA, SANS and NIST AC-5 and AC-6 were not read, and Okta, Rippling and Odoo were not verified. No third-party code was copied.
+
+Still open after round 14 (supersedes round 13):
+
+- The exact questions and mapping rules (the questionnaire wording and the rules that map answers to levels and duties).
+- Staff level default duties.
+- Whether statutory rule edit and sign-off should be separated.
+- Qualified holder of statutory sign-off, named per tenant at onboarding. Statutory values stay DRAFT.
+- Whether auditors, board members and contractors are users of the same tenant.
+- IT owner as a level assignment at onboarding. The name is not recorded.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
