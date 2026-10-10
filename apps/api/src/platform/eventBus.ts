@@ -1,11 +1,12 @@
 /**
  * P4 — the durable, hash-chained event bus.
  *
- * `emit()` constructs the full envelope, computes `integrity.hash` from the
- * event's serialisation plus `integrity.prevHash`, and writes durably before
- * returning. Subscribers are then invoked; a handler's third failure writes to
- * durable dead-letter storage rather than only logging, so a process restart
- * does not lose an in-flight retry.
+ * `emit()` computes `integrity.hash` from the event's serialisation plus
+ * `integrity.prevHash`, and writes the chain link and an outbox row in one
+ * transaction (FX-24, D-16). Delivery to subscribers is the outbox dispatcher's
+ * job (platform/outbox.ts): a failing handler is retried with backoff and
+ * dead-lettered after OUTBOX_MAX_ATTEMPTS, and the retry state is in Postgres,
+ * so a process restart does not lose it.
  *
  * Reads are never events. A read of confidential or regulated data produces an
  * AUDIT_RECORD instead — a future PR emitting an event for a read is a
@@ -26,9 +27,8 @@ import {
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma, type DbTx } from './db.js';
 import { config } from './config.js';
-import { getContext, currentAuth, requireContext } from './context.js';
-
-const MAX_ATTEMPTS = 3;
+import { currentAuth, requireContext } from './context.js';
+import { drainOutbox } from './outbox.js';
 
 export interface EmitInput {
   name: string;
@@ -46,11 +46,19 @@ export interface EmitInput {
   dualPublish?: boolean;
   severity?: SeverityCode | null;
   channel?: string;
+  /**
+   * The caller's transaction. When given, the EventRecord and the outbox row
+   * are written inside it, so the event commits or vanishes with the business
+   * write, and delivery waits for the dispatcher (the transaction has not
+   * committed yet, so delivering now could announce a write that then rolls
+   * back). Without it, emit opens its own transaction and delivers inline.
+   */
+  tx?: DbTx;
 }
 
 export type Subscriber = (event: EventEnvelope) => Promise<void> | void;
 
-interface Registration {
+export interface Registration {
   key: string;
   eventName: string;
   handler: Subscriber;
@@ -78,6 +86,11 @@ export function subscribe(eventName: string, key: string, handler: Subscriber): 
   if (list.some((r) => r.key === key)) return;
   list.push({ key, eventName, handler });
   registry.set(eventName, list);
+}
+
+/** The in-process subscribers for an event, in registration order. Read by the outbox dispatcher. */
+export function subscribersFor(eventName: string): Registration[] {
+  return registry.get(eventName) ?? [];
 }
 
 export function subscriberCount(eventName: string): number {
@@ -130,48 +143,69 @@ const CHAIN_LOCK_NAMESPACE = 4711;
  * path that ever bypassed this function. The hash is computed per attempt
  * because a retry must chain onto whatever the head has become.
  */
-async function appendToChain(
+type EventRecordRow = Awaited<ReturnType<DbTx['eventRecord']['create']>>;
+
+interface Appended<T> {
+  record: EventRecordRow;
+  prevHash: string | null;
+  hash: string;
+  extra: T;
+}
+
+async function appendToChain<T>(
   tenantId: string,
   body: Record<string, unknown>,
   build: (prevHash: string | null, hash: string) => { data: Record<string, unknown> },
-): Promise<{ record: { id: string }; prevHash: string | null; hash: string }> {
+  after: (tx: DbTx, appended: Omit<Appended<T>, 'extra'>) => Promise<T>,
+  callerTx?: DbTx,
+): Promise<Appended<T>> {
   let lastError: unknown = null;
+
+  const run = async (tx: DbTx): Promise<Appended<T>> => {
+    // Queue, rather than collide.
+    //
+    // Optimistic retry alone is quadratic here: every emit in a tenant
+    // contends for one row — the chain head — so in a burst of N, each
+    // round admits exactly one writer and the other N-1 all fail and
+    // retry. Forty concurrent emits exhausted sixty retries.
+    //
+    // A transaction-scoped advisory lock makes the append a queue: the
+    // second writer waits for the first to commit and then reads a head
+    // that is already current. It is released automatically when the
+    // transaction ends, including on rollback. The unique constraint
+    // stays as the guarantee — this is what stops it being hit.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CHAIN_LOCK_NAMESPACE}::int, hashtext(${tenantId}))`;
+
+    const last = await tx.eventRecord.findFirst({
+      where: { tenantId },
+      // By sequence, not by timestamp. `recordedAt desc` is ambiguous
+      // when several records share a millisecond — and in a fast suite
+      // many do — so the "head" could be a record that already had a
+      // successor, and the next writer would chain onto the wrong link
+      // and collide. A sequence is monotonic by construction.
+      orderBy: { seq: 'desc' },
+      select: { hash: true },
+    });
+    const prevHash = last?.hash ?? null;
+    const hash = computeHash(body, prevHash);
+    const record = await tx.eventRecord.create(build(prevHash, hash) as Parameters<typeof tx.eventRecord.create>[0]);
+    // The outbox row (and any legacy dual-publish row) is written here, under
+    // the same lock and in the same transaction as the chain link, so a
+    // rollback removes the event entirely.
+    const extra = await after(tx, { record, prevHash, hash });
+    return { record, prevHash, hash, extra };
+  };
+
+  // A caller's transaction is not retried here: a failed statement aborts it,
+  // so the caller owns the outcome. The advisory lock still queues appenders
+  // for as long as that transaction runs, so business transactions that emit
+  // should stay short.
+  if (callerTx) return run(callerTx);
 
   for (let attempt = 0; attempt < CHAIN_RETRIES; attempt++) {
     try {
       return await prisma.$transaction(
-        async (tx: DbTx) => {
-          // Queue, rather than collide.
-          //
-          // Optimistic retry alone is quadratic here: every emit in a tenant
-          // contends for one row — the chain head — so in a burst of N, each
-          // round admits exactly one writer and the other N-1 all fail and
-          // retry. Forty concurrent emits exhausted sixty retries.
-          //
-          // A transaction-scoped advisory lock makes the append a queue: the
-          // second writer waits for the first to commit and then reads a head
-          // that is already current. It is released automatically when the
-          // transaction ends, including on rollback. The unique constraint
-          // stays as the guarantee — this is what stops it being hit.
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CHAIN_LOCK_NAMESPACE}::int, hashtext(${tenantId}))`;
-
-          const last = await tx.eventRecord.findFirst({
-            where: { tenantId },
-            // By sequence, not by timestamp. `recordedAt desc` is ambiguous
-            // when several records share a millisecond — and in a fast suite
-            // many do — so the "head" could be a record that already had a
-            // successor, and the next writer would chain onto the wrong link
-            // and collide. A sequence is monotonic by construction.
-            orderBy: { seq: 'desc' },
-            select: { hash: true },
-          });
-          const prevHash = last?.hash ?? null;
-          const hash = computeHash(body, prevHash);
-          const record = await tx.eventRecord.create(
-            build(prevHash, hash) as Parameters<typeof tx.eventRecord.create>[0],
-          );
-          return { record, prevHash, hash };
-        },
+        run,
         // READ COMMITTED, deliberately, *because* of the lock above.
         //
         // Under SERIALIZABLE the transaction's snapshot is taken when its first
@@ -201,8 +235,17 @@ async function appendToChain(
 }
 
 /**
- * Publishes one event. The durable write happens first; subscriber dispatch
- * follows and never blocks the originating request from having succeeded.
+ * Publishes one event.
+ *
+ * The EventRecord (the hash-chain link) and its outbox row are written in one
+ * transaction, so an event exists if and only if the write that caused it
+ * committed. Delivery then goes through the outbox (see `drainOutbox`).
+ *
+ * With the caller's `tx`, nothing is delivered here: the transaction has not
+ * committed, and a subscriber must not act on a write that may still roll back.
+ * Without it, emit commits its own transaction and makes one delivery attempt
+ * before returning, so callers that have not been moved to `tx` still see their
+ * subscribers run synchronously. A failed attempt stays in the outbox to retry.
  */
 export async function emit(input: EmitInput): Promise<EventEnvelope> {
   if (!isCanonicalEventName(input.name)) {
@@ -215,9 +258,8 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
   const occurredAt = input.occurredAt ?? now;
   const eventId = ulid();
 
-  // Computed inside the retry loop below: the head can move between the read
-  // and the insert, and that is the race this used to lose.
-
+  // The chain hash covers prevHash, which is only known inside the append
+  // transaction, so the envelope is built there, from the head it chained onto.
   const body = {
     eventId,
     eventName: input.name,
@@ -238,72 +280,15 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
     causationId: ctx.causationId,
   };
 
-  // hash depends on prevHash, so both are computed per attempt.
-
   const impact: EventImpact = {
     domains: input.impact?.domains ?? [input.name.split('.')[1] ?? 'crm'],
     severity: input.severity ?? input.impact?.severity ?? null,
     materiality: input.impact?.materiality ?? null,
   };
 
-  const { record, prevHash, hash } = await appendToChain(auth.tenantId, body as Record<string, unknown>, (prevHash, hash) => ({
-    data: {
-      tenantId: auth.tenantId,
-      eventId,
-      eventName: input.name,
-      eventVersion: 1,
-      occurredAt,
-      recordedAt: now,
-      actorType: auth.principalType,
-      actorPartyId: auth.partyId,
-      actorAccessRole: auth.roleSlug,
-      actorAgentId: auth.agentId,
-      onBehalfOfPartyId: auth.onBehalfOfPartyId,
-      subjectEntityType: input.subject.entityType,
-      subjectEntityId: input.subject.entityId,
-      subjectRecordCode: input.subject.recordCode ?? null,
-      related: (input.related ?? []) as never,
-      previousState: (input.previousState ?? undefined) as never,
-      newState: (input.newState ?? undefined) as never,
-      reason: (input.reason ?? undefined) as never,
-      source: {
-        system: 'kaizen',
-        channel: input.channel ?? (auth.principalType === 'system' ? 'scheduler' : 'api'),
-        requestId: ctx.requestId,
-        integrationId: null,
-        ingestBatchId: null,
-      } as never,
-      impactDomains: impact.domains,
-      impactSeverity: impact.severity ?? null,
-      impactMateriality: (impact.materiality ?? undefined) as never,
-      ownerPartyId: input.owner?.partyId ?? null,
-      ownerPositionId: input.owner?.positionId ?? null,
-      correlationId: ctx.correlationId,
-      causationId: ctx.causationId,
-      confidentiality: input.confidentiality ?? 'internal',
-      retentionClass: input.retentionClass ?? 'standard',
-      prevHash,
-      hash,
-    },
-  }));
+  const channel = input.channel ?? (auth.principalType === 'system' ? 'scheduler' : 'api');
 
-  // Dual-publish during the migration window: both writes share the same
-  // eventId and correlationId, so they are recognisable as the same fact under
-  // two names.
-  const legacyName = CANONICAL_TO_LEGACY[input.name];
-  if (input.dualPublish && legacyName) {
-    await prisma.eventRecord.create({
-      data: {
-        ...stripId(record),
-        eventName: legacyName,
-        legacyName,
-        prevHash: hash,
-        hash: computeHash({ ...body, eventName: legacyName }, hash),
-      } as never,
-    });
-  }
-
-  const envelope: EventEnvelope = {
+  const envelopeFor = (prevHash: string | null, hash: string): EventEnvelope => ({
     eventId,
     eventName: input.name,
     eventVersion: 1,
@@ -328,7 +313,7 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
     reason: input.reason ?? null,
     source: {
       system: 'kaizen',
-      channel: input.channel ?? (auth.principalType === 'system' ? 'scheduler' : 'api'),
+      channel,
       requestId: ctx.requestId,
       integrationId: null,
       ingestBatchId: null,
@@ -340,11 +325,89 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
     confidentiality: input.confidentiality ?? 'internal',
     retentionClass: input.retentionClass ?? 'standard',
     integrity: { prevHash, hash },
-  };
+  });
 
+  const legacyName = CANONICAL_TO_LEGACY[input.name];
+
+  const appended = await appendToChain<{ outboxId: string; envelope: EventEnvelope }>(
+    auth.tenantId,
+    body as Record<string, unknown>,
+    (prevHash, hash) => ({
+      data: {
+        tenantId: auth.tenantId,
+        eventId,
+        eventName: input.name,
+        eventVersion: 1,
+        occurredAt,
+        recordedAt: now,
+        actorType: auth.principalType,
+        actorPartyId: auth.partyId,
+        actorAccessRole: auth.roleSlug,
+        actorAgentId: auth.agentId,
+        onBehalfOfPartyId: auth.onBehalfOfPartyId,
+        subjectEntityType: input.subject.entityType,
+        subjectEntityId: input.subject.entityId,
+        subjectRecordCode: input.subject.recordCode ?? null,
+        related: (input.related ?? []) as never,
+        previousState: (input.previousState ?? undefined) as never,
+        newState: (input.newState ?? undefined) as never,
+        reason: (input.reason ?? undefined) as never,
+        source: {
+          system: 'kaizen',
+          channel,
+          requestId: ctx.requestId,
+          integrationId: null,
+          ingestBatchId: null,
+        } as never,
+        impactDomains: impact.domains,
+        impactSeverity: impact.severity ?? null,
+        impactMateriality: (impact.materiality ?? undefined) as never,
+        ownerPartyId: input.owner?.partyId ?? null,
+        ownerPositionId: input.owner?.positionId ?? null,
+        correlationId: ctx.correlationId,
+        causationId: ctx.causationId,
+        confidentiality: input.confidentiality ?? 'internal',
+        retentionClass: input.retentionClass ?? 'standard',
+        prevHash,
+        hash,
+      },
+    }),
+    async (tx, { record, prevHash, hash }) => {
+      const envelope = envelopeFor(prevHash, hash);
+      const outbox = await tx.outboxEvent.create({
+        data: {
+          tenantId: auth.tenantId,
+          eventRecordId: record.id,
+          eventName: input.name,
+          payload: envelope as never,
+        },
+      });
+      // Dual-publish during the migration window: both chain records share the
+      // eventId and correlationId, so they are recognisable as the same fact
+      // under two names. Written here, not after commit, so the legacy name
+      // cannot outlive a rolled-back write.
+      if (input.dualPublish && legacyName) {
+        await tx.eventRecord.create({
+          data: {
+            ...stripId(record),
+            eventName: legacyName,
+            legacyName,
+            prevHash: hash,
+            hash: computeHash({ ...body, eventName: legacyName }, hash),
+          } as never,
+        });
+      }
+      return { outboxId: outbox.id, envelope };
+    },
+    input.tx,
+  );
+
+  const envelope = appended.extra.envelope;
   if (captureEvents) emittedEvents.push(envelope);
 
-  await dispatch(envelope, record.id);
+  if (!input.tx) {
+    await drainOutbox({ tenantId: auth.tenantId, ids: [appended.extra.outboxId] });
+  }
   return envelope;
 }
 
@@ -373,46 +436,6 @@ export async function wouldLoop(envelope: EventEnvelope, candidateEventName: str
     steps += 1;
   }
   return false;
-}
-
-async function dispatch(envelope: EventEnvelope, eventRecordId: string): Promise<void> {
-  const subs = registry.get(envelope.eventName) ?? [];
-  for (const sub of subs) {
-    let attempt = 0;
-    let lastError: unknown = null;
-    while (attempt < MAX_ATTEMPTS) {
-      attempt += 1;
-      try {
-        // Handlers run with the causation chain extended, so anything they emit
-        // points back at the event that caused it.
-        const ctx = getContext();
-        const prevCausation = ctx?.causationId ?? null;
-        if (ctx) ctx.causationId = envelope.eventId;
-        try {
-          await sub.handler(envelope);
-        } finally {
-          if (ctx) ctx.causationId = prevCausation;
-        }
-        lastError = null;
-        break;
-      } catch (err) {
-        lastError = err;
-      }
-    }
-    if (lastError) {
-      await prisma.eventDeadLetter.create({
-        data: {
-          tenantId: envelope.tenantId,
-          eventRecordId,
-          eventName: envelope.eventName,
-          subscriberKey: sub.key,
-          attempts: MAX_ATTEMPTS,
-          lastError: lastError instanceof Error ? lastError.message : String(lastError),
-          payload: envelope as never,
-        },
-      });
-    }
-  }
 }
 
 /**

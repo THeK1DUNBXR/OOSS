@@ -1039,6 +1039,30 @@ model EventDeadLetter {
   @@map("event_dead_letters")
 }
 
+/// Transactional outbox (FX-24, D-16). Written in the same transaction as the
+/// business write and its EventRecord, so an event exists if and only if the
+/// write committed. A dispatcher claims rows with FOR UPDATE SKIP LOCKED and
+/// delivers to in-process subscribers; `deliveredTo` records which subscribers
+/// already succeeded so a retry never re-fires one that did not fail.
+model OutboxEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  eventRecordId String
+  eventName     String
+  payload       Json
+  state         String   @default("pending") // pending | dispatched | dead
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+  deliveredTo   String[] @default([])
+  lastError     String?
+  createdAt     DateTime @default(now())
+  dispatchedAt  DateTime?
+
+  @@index([state, nextAttemptAt])
+  @@index([tenantId, state])
+  @@map("outbox_events")
+}
+
 /// One claim per (job, tenant, cron occurrence) — the durable substrate that
 /// replaces an in-process setInterval, which lost its queue state on every
 /// restart and could not be distributed across more than one process.
