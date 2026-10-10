@@ -28,8 +28,9 @@ import {
   backfillEncryptAtRest,
   readRegulated,
   encryptField,
+  assertMinorHasGuardian,
 } from '../../domains/compliance/privacy.js';
-import { requestDueAt, DATA_REQUEST_DUE_DAYS, ENCRYPTED_FIELD_PREFIX } from '@kaizen/shared';
+import { requestDueAt, DATA_REQUEST_DUE_DAYS, ENCRYPTED_FIELD_PREFIX, ageInYears } from '@kaizen/shared';
 
 let TENANT: string;
 let fixtureSeq = 0;
@@ -545,5 +546,191 @@ describe('Access review: stale access flagged, CMP_DPD_STALE_ACCESS', () => {
       where: { tenantId: TENANT, code: 'CMP_DPD_STALE_ACCESS', subjectLabel: person.fullName },
     });
     expect(exception).not.toBeNull();
+  });
+});
+
+// ===========================================================================
+// Review fixes: IST age, unknown-DOB minor rule, erasure reach, correction
+// guards. Each block names the finding it pins.
+// ===========================================================================
+
+describe('P3 rule 3: age is measured on the IST calendar, not UTC', () => {
+  // 10 May 00:00 IST is 9 May 18:30 UTC. A UTC reader still has the learner
+  // at 17 for the first five and a half hours of their birthday.
+  it('a learner born on 10 May is 18 at 00:00 IST, which is 18:30 UTC on 9 May', () => {
+    expect(ageInYears(new Date('2008-05-10T00:00:00Z'), new Date('2026-05-09T18:30:00Z'))).toBe(18);
+  });
+
+  it('and is still 17 at 23:59:59 IST on the day before', () => {
+    expect(ageInYears(new Date('2008-05-10T00:00:00Z'), new Date('2026-05-09T18:29:59Z'))).toBe(17);
+  });
+
+  it('a date of birth stored as IST midnight is read as the IST day it names', () => {
+    // Stored as 9 May 18:30 UTC, which a UTC reader files under the 9th.
+    expect(ageInYears(new Date('2008-05-09T18:30:00Z'), new Date('2026-05-09T18:29:59Z'))).toBe(17);
+  });
+});
+
+describe('FX-64: an unknown date of birth holds the minor rule unless an adult is attested', () => {
+  it('no date of birth and no attestation: the minor rule applies, so a guardian is required', () => {
+    expect(() => assertMinorHasGuardian({ dateOfBirth: null })).toThrow(/guardian/i);
+    expect(assertMinorHasGuardian({ dateOfBirth: null, guardianName: 'Parent Name', guardianPhone: '9800000000' })).toBe(true);
+  });
+
+  it('an explicit adult attestation releases the rule when there is no date of birth', () => {
+    expect(assertMinorHasGuardian({ dateOfBirth: null, adultAttested: true })).toBe(false);
+  });
+
+  it('a measured minor is not released by an attestation', () => {
+    const dob = new Date(Date.now() - 15 * 365.25 * 86_400_000);
+    expect(() => assertMinorHasGuardian({ dateOfBirth: dob, adultAttested: true })).toThrow(/guardian/i);
+  });
+});
+
+describe('FX-62: erasure reaches the guardian and contact values on dependent rows', () => {
+  it('blanks enrolment guardian contact, consent evidence, notes and external ids in the same erasure', async () => {
+    const person = await asUser('operations@kaizen.co.in', () =>
+      makePerson('erase-guardian', { notes: 'Called about fees', externalIds: [{ system: 'lms', id: 'L-1' }] }),
+    );
+    const cohort = await unscopedPrisma.cohort.findFirstOrThrow({ where: { tenantId: TENANT } });
+    const enrollment = await asUser('operations@kaizen.co.in', async () =>
+      prisma.enrollment.create({
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('ENR'),
+          personId: person.id,
+          cohortId: cohort.id,
+          status: 'reserved',
+          guardianName: encryptField('Parent Name'),
+          guardianPhone: encryptField('9800000003'),
+          guardianEmail: encryptField('parent@example.com'),
+        },
+      }),
+    );
+    const consent = await asUser('operations@kaizen.co.in', () =>
+      prisma.consent.create({
+        data: {
+          tenantId: TENANT,
+          personId: person.id,
+          purposeCode: 'education_delivery',
+          status: 'granted',
+          channel: 'guardian_intake',
+          evidence: { guardianName: 'Parent Name', guardianPhone: '9800000003' },
+          guardianOfPersonId: person.id,
+        },
+      }),
+    );
+
+    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'erasure' }));
+    const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
+    expect(fulfilled.status).toBe('fulfilled');
+
+    const e = await unscopedPrisma.enrollment.findFirstOrThrow({ where: { id: enrollment.id } });
+    expect(e.guardianName).toBeNull();
+    expect(e.guardianPhone).toBeNull();
+    expect(e.guardianEmail).toBeNull();
+    const c = await unscopedPrisma.consent.findFirstOrThrow({ where: { id: consent.id } });
+    expect(c.evidence).toEqual({});
+    const p = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
+    expect(p.notes).toBeNull();
+    expect(p.externalIds).toEqual([]);
+  });
+});
+
+describe('FX-62: an active affiliation blocks erasure even without a statutory floor', () => {
+  it('refuses while the affiliation is active, and the person is left unscrubbed', async () => {
+    const person = await asUser('operations@kaizen.co.in', () => makePerson('erase-active-affiliation'));
+    await asUser('operations@kaizen.co.in', () =>
+      prisma.affiliation.create({
+        data: { tenantId: TENANT, partyId: person.id, affiliationType: 'customer_contact', status: 'active' },
+      }),
+    );
+    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'erasure' }));
+    const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
+
+    expect(fulfilled.status).toBe('refused');
+    expect(fulfilled.refusalReason).toMatch(/active/);
+    const untouched = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
+    expect(untouched.fullName).not.toBe(`erased:${person.id}`);
+    expect(untouched.deletedAt).toBeNull();
+  });
+});
+
+describe('FX-63: a correction cannot take a contact another active person holds', () => {
+  it('refuses an email held by another active person, whatever its case, and changes nothing', async () => {
+    await asUser('operations@kaizen.co.in', () =>
+      makePerson('holder', { primaryEmail: 'Holder.Taken@Example.com', primaryEmailNormalised: 'holder.taken@example.com' }),
+    );
+    const person = await asUser('operations@kaizen.co.in', () => makePerson('collider'));
+    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id, { correction: { primaryEmail: 'HOLDER.TAKEN@example.com' } })),
+    );
+    expect(err.status).toBe(409);
+    const after = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
+    expect(after.primaryEmail).toBe(person.primaryEmail);
+    expect(after.primaryEmailNormalised).toBe(person.primaryEmailNormalised);
+  });
+});
+
+describe('FX-63: a date-of-birth correction re-runs the minor gate on the enrolments', () => {
+  const fifteenYearsAgo = () => new Date(Date.now() - 15 * 365.25 * 86_400_000).toISOString();
+
+  async function adultWithEnrolment(label: string, guardian: boolean) {
+    const person = await asUser('operations@kaizen.co.in', () =>
+      makePerson(label, { dateOfBirth: new Date(Date.now() - 30 * 365.25 * 86_400_000) }),
+    );
+    const cohort = await unscopedPrisma.cohort.findFirstOrThrow({ where: { tenantId: TENANT } });
+    const recordCode = await nextRecordCode('ENR');
+    const enrollment = await asUser('operations@kaizen.co.in', () =>
+      prisma.enrollment.create({
+        data: {
+          tenantId: TENANT,
+          recordCode,
+          personId: person.id,
+          cohortId: cohort.id,
+          status: 'reserved',
+          isMinor: false,
+          ...(guardian ? { guardianName: encryptField('Parent Name'), guardianPhone: encryptField('9800000004') } : {}),
+        },
+      }),
+    );
+    return { person, enrollment };
+  }
+
+  it('refuses a correction that makes the learner a minor when the enrolment has no guardian on file', async () => {
+    const { person, enrollment } = await adultWithEnrolment('dob-no-guardian', false);
+    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id, { correction: { dateOfBirth: fifteenYearsAgo() } })),
+    );
+    expect(err.status).toBe(400);
+    const p = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
+    expect(Date.now() - p.dateOfBirth!.getTime()).toBeGreaterThan(20 * 365 * 86_400_000);
+    const e = await unscopedPrisma.enrollment.findFirstOrThrow({ where: { id: enrollment.id } });
+    expect(e.isMinor).toBe(false);
+  });
+
+  it('a correction to a minor, with guardian contact on the enrolment, updates isMinor and stamps the consent (audited)', async () => {
+    const { person, enrollment } = await adultWithEnrolment('dob-with-guardian', true);
+    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+
+    const fulfilled = await asUser('operations@kaizen.co.in', () =>
+      fulfilDataRequest(request.id, { correction: { dateOfBirth: fifteenYearsAgo() } }),
+    );
+    expect(fulfilled.status).toBe('fulfilled');
+
+    const e = await unscopedPrisma.enrollment.findFirstOrThrow({ where: { id: enrollment.id } });
+    expect(e.isMinor).toBe(true);
+    expect(e.guardianConsentId).toBeTruthy();
+    const consent = await unscopedPrisma.consent.findFirstOrThrow({ where: { id: e.guardianConsentId! } });
+    expect(consent.guardianOfPersonId).toBe(person.id);
+
+    const audit = await unscopedPrisma.auditRecord.findFirst({
+      where: { tenantId: TENANT, subjectType: 'enrollment', subjectId: enrollment.id, action: 'update' },
+    });
+    expect(audit).not.toBeNull();
   });
 });
