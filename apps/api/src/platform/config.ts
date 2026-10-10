@@ -84,6 +84,13 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
 
   /**
+   * Built client (apps/web/dist). When set, the API serves it so the whole app
+   * is one origin behind Caddy — see deploy/Caddyfile. Unset in development,
+   * where Vite serves the client.
+   */
+  WEB_DIST_DIR: z.string().min(1).optional(),
+
+  /**
    * Where the browser client is served from. Read by the CORS allowlist; a
    * comma-separated list so one deployment can serve a staging and a preview
    * origin without a code change.

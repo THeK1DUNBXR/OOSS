@@ -256,7 +256,7 @@
 
 **`apps/api/src/platform/build.ts`** (121 lines) — BuildStamp:27 · BUILD:95 · STARTED_AT:98 · buildsBehind:108 · buildLabel:115
 
-**`apps/api/src/platform/config.ts`** (171 lines) — envSchema:54 · Config:118 · ConfigError:121 · parseEnv:139 · config:170
+**`apps/api/src/platform/config.ts`** (178 lines) — envSchema:54 · Config:125 · ConfigError:128 · parseEnv:146 · config:177
 
 **`apps/api/src/platform/context.ts`** (157 lines) — PrincipalType:13 · AuthContext:15 · RequestContext:36 · runWithContext:53 · getContext:57 · requireContext:61 · currentAuth:72 · currentTenantId:78 · maybeTenantId:83 · newRequestContext:87 · systemContext:104 · agentContext:125 · asSystem:154
 

@@ -1,0 +1,36 @@
+# Caddy v2 in front of the API, which also serves the built client.
+#
+# The app runs on one server we own, in India. Nothing here sends a request,
+# a log line or a TLS handshake to a third-party edge: the Cloudflare Worker
+# that used to serve the client sat between every user and our data, and that
+# is a cross-border path DPDP makes us account for. Caddy terminates TLS on
+# our box; the Node process behind it (WEB_DIST_DIR set, PORT defaults to 4000)
+# serves both /api and the client, so there is one origin and no CORS between
+# them.
+#
+# Required:  ZEN_DOMAIN   the public hostname, e.g. zen.example.co.in
+# Optional:  API_PORT     where the API listens on loopback (default 4000)
+
+{$ZEN_DOMAIN} {
+	# Caddy obtains and renews the certificate itself. Port 80 must be reachable
+	# for the ACME challenge, or the first request will fail with a TLS error.
+	encode zstd gzip
+
+	header {
+		# The Worker set no security headers, so these are new. No CSP is set
+		# here: the client loads its own bundle and a CSP written from memory
+		# breaks the app in ways that only show on the screens nobody tests.
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Everything goes to Node. Express serves /assets and index.html itself, and
+	# owns the 404 for unknown /api paths, so Caddy does not need to know which
+	# paths are which. app.listen(PORT) binds every interface, not loopback. The
+	# API trusts X-Forwarded-For only from a loopback peer, so a client that
+	# bypasses Caddy cannot spoof its IP; the port should still be firewalled so
+	# that bypass is not possible at all.
+	reverse_proxy 127.0.0.1:{$API_PORT:4000}
+}
