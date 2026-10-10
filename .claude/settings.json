@@ -15,7 +15,8 @@
       "Bash(node scripts/genmap.mjs*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(git push:*)"
     ]
   }
 }
