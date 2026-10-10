@@ -140,7 +140,11 @@ jobs:
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
     env:
-      DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen?schema=public
+      # Same split as the api tests (FX-51): the app connects as the role RLS
+      # binds; migrations, the seed and cross-tenant jobs use the owner.
+      DATABASE_URL: postgresql://kaizen_app:kaizen_app@127.0.0.1:5432/kaizen?schema=public
+      MIGRATION_DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen?schema=public
+      UNSCOPED_DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen?schema=public
       NODE_ENV: development
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
       # The suite signs in as a real account; the seed reads these names, so the
@@ -157,9 +161,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @kaizen/shared build
       - run: pnpm --filter @kaizen/semantic build
+      - name: Create the application role
+        env:
+          PGPASSWORD: kaizen
+        run: psql -h 127.0.0.1 -U kaizen -d kaizen -v ON_ERROR_STOP=1 -f scripts/app-role.sql
       - run: pnpm --filter @kaizen/api db:deploy
       - run: pnpm --filter @kaizen/api exec prisma generate
       - run: pnpm db:seed
+        env:
+          DATABASE_URL: postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen?schema=public
       - run: pnpm --filter @kaizen/e2e exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v4
