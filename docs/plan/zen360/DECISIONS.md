@@ -229,3 +229,37 @@ Still open after round 5:
 - D-11: service-level numbers.
 - Expense receipt storage (object storage deferred).
 - VPS provider for LiveKit.
+
+## Owner answers, round 6: hosting (recorded 2026-10-10)
+
+Answers given by the owner in a sixth round, on hosting. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, including the round 5 "Still open" list, which is superseded by the list at the end of this section. Where no answer is recorded here, the recommendation above stands.
+
+- **Hosting (owner answer).** The application is hosted on the company's own server, located in India, on-premises.
+- **Cloudflare Worker (owner answer).** `worker/index.ts` is to be removed. Everything is served from the company's own server.
+  - Implication, not an owner statement: `CLAUDE.md` (line 4) and the repo README still describe `worker/` as the serving layer. Not edited here.
+  - Implication, not an owner statement: SSE is served directly by the Express API. The Feature 1 Phase C "SSE through the Worker" spike gate no longer applies.
+  - Implication, not an owner statement: removing the Worker removes Cloudflare as the TLS, DDoS and rate-limit front. A reverse proxy and network protection must be chosen for the own server.
+- **Operations wave in Phase 0 (owner answer).** An operations wave is added to Phase 0 with four items: database backups with tested restores; monitoring and alerts; TLS certificate renewal; non-owner application database role setup.
+  - Implication, not an owner statement: the non-owner app role (blocking 1.2) and PgBouncer in transaction mode are now the own server's setup.
+- **LiveKit hosting (owner answer, by implication of the hosting answer).** LiveKit self-hosting runs on the own server.
+  - Implication, not an owner statement: needs TCP 7880 and 7881, UDP 50000-60000, and TURN/TLS on 443 open at the on-premises network edge, plus a public IP. The VPS provider question is superseded.
+  - Implication, not an owner statement: video (round 5) adds bandwidth load on the on-premises connection.
+- **P7 static egress IPs (implication).** These depend on the office or ISP providing static IPs.
+- **Single-site risk (implication).** On-premises raises single-site risk: power, internet, hardware failure and off-site backup each need a named owner.
+- **Data location and email (implication).** Indian data hosting is simpler for in-India storage. Resend (round 5) still processes data outside India, so the round 5 data-hosting check still applies.
+- **Object storage (implication).** Object storage, still deferred, would also be on the own server. Receipts and attachments remain deferred.
+
+Still open after round 6 (supersedes the round 5 list; the round 5 item "VPS provider for LiveKit" is closed by the hosting answer):
+
+- D-02: real statutory sign-off (internal finance head only; statutory values stay DRAFT).
+- 00-BRIEF gates: draft pending Claude's draft and owner approval.
+- D-14: chat-retention counsel check.
+- Resend: data-hosting check (cross-border processing and domain verification).
+- D-03: payments scope and cutover timing.
+- D-09: open items (founder-only classes, reserved matters, 24-hour absence test).
+- D-11: service-level numbers.
+- Expense receipt storage (object storage deferred).
+- Owner of server operations and off-site backup.
+- Reverse proxy and network protection choice.
+- Static public IP availability (office or ISP).
+- Internet and power redundancy.
