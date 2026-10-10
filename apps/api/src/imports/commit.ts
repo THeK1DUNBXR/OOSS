@@ -1003,6 +1003,7 @@ async function commitStudentRow(data: Record<string, unknown>) {
   // Through the same function the form calls, so an imported student and a
   // typed one are the same act: the same college check, the same guardian rule,
   // the same student affiliation, the same refusal to enrol somebody twice.
+  const ageBasis = learnerAgeBasis(data);
   const { enrolStudent } = await import('../domains/education.js');
   const enrollment = await enrolStudent({
     cohortId: cohort.id,
@@ -1010,11 +1011,40 @@ async function commitStudentRow(data: Record<string, unknown>) {
     primaryPhone: text(data.primaryPhone),
     primaryEmail: text(data.primaryEmail),
     institutionId,
-    isMinor: data.isMinor === true,
+    dateOfBirth: ageBasis.dateOfBirth,
+    adultAttested: ageBasis.adultAttested,
     guardianName: text(data.guardianName),
     guardianPhone: text(data.guardianPhone),
   });
   return { entityType: 'enrollment', entityId: enrollment.id };
+}
+
+/**
+ * The age basis an imported learner row brings, checked before anything is
+ * written. A row with no date of birth and no guardian is refused as a row
+ * error unless the template's adult-attestation column says Yes: the same rule
+ * `enrolStudent` applies to a typed enrolment, stated here so the import reports
+ * it in the row's own terms. FX-64.
+ */
+function learnerAgeBasis(data: Record<string, unknown>): {
+  dateOfBirth: string | null;
+  adultAttested: boolean;
+} {
+  const raw = data.dateOfBirth;
+  let dateOfBirth: string | null = null;
+  if (raw) {
+    const d = raw instanceof Date ? raw : new Date(String(raw));
+    if (Number.isNaN(d.getTime())) throw new Error('The date of birth is not a valid date. Use DD/MM/YYYY.');
+    dateOfBirth = d.toISOString();
+  }
+  const adultAttested = data.adultAttested === true;
+  const hasGuardian = !!(text(data.guardianName) && text(data.guardianPhone));
+  if (!dateOfBirth && !hasGuardian && !adultAttested) {
+    throw new Error(
+      'This learner has no date of birth and no guardian. Give a date of birth, or a guardian name and phone, or mark "Adult (18 or over)" Yes if you have confirmed they are an adult.',
+    );
+  }
+  return { dateOfBirth, adultAttested };
 }
 
 /**
@@ -1045,6 +1075,9 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
   const fullName = text(data.fullName);
   const courseName = text(data.courseName);
   if (!fullName || !courseName) return null;
+  // Before the course and batch are created: a refused learner must not leave
+  // a course behind that nobody enrolled anyone on. FX-64.
+  const ageBasis = learnerAgeBasis(data);
 
   // ---- The course ---------------------------------------------------------
   //
@@ -1111,6 +1144,10 @@ async function commitStudentRegisterRow(data: Record<string, unknown>) {
     fullName,
     primaryPhone: text(data.primaryPhone),
     primaryEmail: text(data.primaryEmail),
+    dateOfBirth: ageBasis.dateOfBirth,
+    adultAttested: ageBasis.adultAttested,
+    guardianName: text(data.guardianName),
+    guardianPhone: text(data.guardianPhone),
   });
 
   // The register's own identifiers and dates, which the enrolment is the right
