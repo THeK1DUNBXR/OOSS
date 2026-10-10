@@ -44,3 +44,29 @@ Answers given by the owner. Existing rows above are unchanged. Where no answer i
   - Open: all other D-15 items (autonomy touchpoints, provider, spend caps, India-region rule, evaluation owner) remain open; the recommendation stands, unconfirmed.
 
 Conflict to resolve: CLAUDE.md says the platform is intended for commercialisation and PRODUCT.md says it is internal-only; the D-05 answer (internal first, product later) is consistent with both only if the multi-tenant design is kept. Not edited here.
+
+## Owner answers, round 2 (recorded 2026-10-10)
+
+Answers given by the owner in a second round. Existing rows and the first-round answers above are unchanged. Where no answer is recorded here, the recommendation above stands.
+
+- **Status of the work.** Owner answer: planning only for now; nothing is to be built yet.
+  - Not answered: D-04 (Z0 stop-ship before the discovery pilot). The question was therefore not answered and stays open.
+- **D-01 (intercompany).** Owner answer: pair the two sides now; post reciprocal ledger entries once Phase 1 lands.
+- **D-03 (cutover).** Owner answer: retire the legacy `Transaction` table at cutover (Phase 1.5). Imports into a closed period require reopening the period, with a reason. Combined with the first-round answer, money is bigint paise end to end.
+  - Implication to confirm, not an owner statement: existing `Decimal(18,2)` columns need a migration plan (see FIXES.md FX-31).
+- **FX-31 (paise remainder).** Owner answer: the leftover paise go to the first allocation line, so allocations always sum to the total.
+- **Plan decisions A and C.** Owner answer: `entityId` goes on the journal now, and Phase 1 is built for many companies.
+- **D-09 (authority store).** Owner answer: one new delegation model. Thresholds are entered as data at onboarding, consistent with the first-round answer. The two existing stores (decision `Delegation` at `main.prisma:905` and HR `DelegationOfAuthority`) are to be replaced or folded into the new model.
+  - Not stated by the owner: the migration path for the two existing stores.
+- **D-15 and FX-04.** Owner answer: nobody holds the `agents:decide` permission for now, so no agent proposal can be accepted until the AI phase. The other D-15 items stay open.
+- **D-13 and FX-50.** Owner answer: inbound webhooks are authenticated with a per-tenant HMAC. The live WhatsApp, email and telephony providers are not yet named.
+- **FX-02.** Owner answer: no skill or score feeds pay or promotion automatically; a human decision is always required.
+- **D-19 and D-08.** Owner answer: certificate verification is internal only (requires sign-in) for now; no external users at launch.
+- **D-20.** Owner answer: no approval bypass on a spin-out's opening allotment (FX-22).
+- **D-02.** Owner answer: the accountant and the tax/legal adviser are not yet named. Every statutory item (revenue, cash, payables, GST, TDS, Ind AS 110/103 consolidation, Income-tax Act 2025 mapping) remains awaiting professional sign-off. Nothing here asserts law.
+- **D-06 and plan decision B.** Owner answer: direct to the government e-invoice portal (IRP), not a GSP. This differs from the recommendation above, which is a GSP. Whether and when e-invoicing applies still needs the tax adviser.
+- **D-14 (encryption key).** Owner answer: the encryption key is platform-held, one per tenant; boot refuses to start without it (FX-60).
+- **D-05 (staffing and funding).** Not decided yet. The doc says to measure productive hours before committing.
+- **D-17 (restricted funds).** Owner answer: restricted funds are tracked in the ledger from Phase 1.
+  - Implication to confirm, not an owner statement: this adds a fund dimension to the ledger design. The legal form (for example Section 8, 12A, 80G) still needs professional advice.
+- **Still open, not asked yet (later phases).** D-07, D-10, D-11, D-12, D-16, D-18, and the list of live inbound providers under D-13.
