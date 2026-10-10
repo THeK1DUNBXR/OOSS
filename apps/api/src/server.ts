@@ -10,8 +10,8 @@ import { requestLog } from './lib/requestLog.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { startOutboxDispatcher, stopOutboxDispatcher } from './platform/outbox.js';
 import { registerSubscribers } from './events/handlers.js';
-import { prisma } from './platform/db.js';
-import { assertAppRoleRestricted } from './platform/rlsGuard.js';
+import { prisma, unscopedPrisma } from './platform/db.js';
+import { assertAppRoleRestricted, assertUnscopedRoleBypasses } from './platform/rlsGuard.js';
 import { config } from './platform/config.js';
 import { logger } from './platform/logger.js';
 import { PostgresRateLimitStore } from './platform/rateLimitStore.js';
@@ -184,6 +184,8 @@ if (config.NODE_ENV !== 'test') {
   // FX-51: refuse to serve as a role that row-level security does not bind.
   // Checked on the scoped client, because that is the connection requests use.
   await assertAppRoleRestricted(prisma);
+  // And the role behind the cross-tenant jobs must be one that bypasses RLS.
+  await assertUnscopedRoleBypasses(unscopedPrisma);
 
   const app = createApp();
   // Cross-domain subscribers register once at boot, against canonical names only.

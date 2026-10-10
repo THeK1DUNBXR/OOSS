@@ -20,6 +20,8 @@ services:
       - "5432:5432"
     volumes:
       - kaizen-pgdata:/var/lib/postgresql/data
+      # Creates the application role the API connects as (FX-51) on first start.
+      - ./scripts/app-role.sql:/docker-entrypoint-initdb.d/10-app-role.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kaizen -d kaizen"]
       interval: 3s
@@ -41,7 +43,10 @@ services:
     environment:
       # `postgres` is the compose service name; inside the network it resolves
       # to the database container, not to localhost.
-      DATABASE_URL: postgresql://kaizen:kaizen@postgres:5432/kaizen?schema=public
+      # The application role: row-level security binds it (FX-51).
+      DATABASE_URL: postgresql://kaizen_app:kaizen_app@postgres:5432/kaizen?schema=public
+      MIGRATION_DATABASE_URL: postgresql://kaizen:kaizen@postgres:5432/kaizen?schema=public
+      UNSCOPED_DATABASE_URL: postgresql://kaizen:kaizen@postgres:5432/kaizen?schema=public
       BUILD_SEQUENCE: "1"
       GIT_SHA: docker-local
       BUILT_AT: "2026-09-20T00:00:00Z"

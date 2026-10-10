@@ -98,9 +98,21 @@ append-only) that `db push` never installed. Run them on a copy of the
 database first, and look at the failures before pointing the real database at
 them. Tenant row-level security is in `20261010210000_tenant_rls` (FX-51): every
 table with a `tenantId` column is forced under a policy keyed on
-`app.tenant_id`. The API must connect as the application role `kaizen_app`
-(`scripts/app-role.sql` creates it with no superuser or BYPASSRLS), and the
-server refuses to start otherwise (`platform/rlsGuard.ts`).
+`app.tenant_id`. Two database roles carry this, and both are checked at boot
+(`platform/rlsGuard.ts`):
+
+| Role | Connects as | Required privilege | Used for | Boot check |
+|---|---|---|---|---|
+| Application role `kaizen_app` | `DATABASE_URL` | neither `rolsuper` nor `rolbypassrls`; row-level security binds it | every request, through the scoped client | refuses to start with either privilege |
+| Unscoped role (the owner, `kaizen` in development) | `UNSCOPED_DATABASE_URL` | `rolbypassrls` or `rolsuper` | the cross-tenant jobs (outbox drain, scheduler, audit chain), the seed, and the session lookup by token before a tenant is known | refuses to start without either privilege |
+| Migration owner | `MIGRATION_DATABASE_URL` | owns the tables | `prisma migrate` only | none; it is never the request role |
+
+`UNSCOPED_DATABASE_URL` is required when `NODE_ENV=production`. Outside
+production it must still be set for the server to start, because the check
+applies to every non-test run. `scripts/app-role.sql` creates `kaizen_app`
+with no superuser and no BYPASSRLS; `scripts/setup.sh` and `docker-compose.yml`
+run it. Every tenant table has the `tenant_isolation` policy, and
+`rls.test.ts` (RLS-003) fails if one is missing.
 
 ## Seeding
 
@@ -190,9 +202,9 @@ that runs twice does not act twice.
 
 | Variable | Default | |
 |---|---|---|
-| `DATABASE_URL` | — | required. The application role (`kaizen_app`); row-level security binds it, and the server refuses to start as a superuser or BYPASSRLS role |
+| `DATABASE_URL` | — | required. The application role (`kaizen_app`); see the database roles above |
 | `MIGRATION_DATABASE_URL` | — | the owner, for `prisma migrate` (schema `directUrl`) |
-| `UNSCOPED_DATABASE_URL` | *(falls back to `DATABASE_URL`)* | the role for seed, cross-tenant jobs and the audit hash chain. It needs BYPASSRLS; on the fallback those paths see no tenant rows |
+| `UNSCOPED_DATABASE_URL` | — | required in production; the unscoped role above. Without a `rolbypassrls` or `rolsuper` role the server refuses to start |
 | `JWT_SECRET` | — | required |
 | `PORT` | `4000` | |
 | `WEB_DIST_DIR` | *(unset)* | path to the built client (`apps/web/dist`). Set in production so the API serves the client as well as `/api`; Caddy proxies to it (`deploy/Caddyfile`) |

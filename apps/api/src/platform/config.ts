@@ -137,6 +137,17 @@ export const envSchema = z.object({
       message: 'is required when NODE_ENV is production — it keys encryption of PAN, Aadhaar and bank values',
     });
   }
+  // Without a role that bypasses RLS, the cross-tenant jobs (outbox drain, audit
+  // chain, scheduler) and the seed see no rows and do not say so. Production
+  // refuses to start rather than run them that way.
+  if (env.NODE_ENV === 'production' && !env.UNSCOPED_DATABASE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['UNSCOPED_DATABASE_URL'],
+      message:
+        'is required when NODE_ENV is production — the jobs and the audit chain read across tenants and need a role with BYPASSRLS',
+    });
+  }
 });
 
 export type Config = Readonly<z.infer<typeof envSchema>>;

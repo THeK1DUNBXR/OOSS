@@ -25,7 +25,7 @@ import {
   type ApprovalResolverKind,
   type DelegationFact,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma } from '../../platform/db.js';
+import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, scopeFor } from '../../platform/permissions.js';
@@ -52,7 +52,8 @@ let reportingLineTableExists = false;
 async function reportingLineTablePresent(): Promise<boolean> {
   if (reportingLineTableChecked) return reportingLineTableExists;
   try {
-    const rows = await unscopedPrisma.$queryRaw<Array<{ present: string | null }>>`
+    // The catalog, not a tenant table: no tenant setting is needed for it.
+    const rows = await prisma.$queryRaw<Array<{ present: string | null }>>`
       SELECT to_regclass('public.hcm_workforce_reporting_lines')::text AS present
     `;
     reportingLineTableExists = Boolean(rows[0]?.present);
@@ -72,17 +73,14 @@ export function _resetReportingLineTableCache(): void {
 async function managerEmploymentIdViaReportingLine(tenantId: string, employmentId: string): Promise<string | null> {
   if (!(await reportingLineTablePresent())) return null;
   try {
-    const rows = await unscopedPrisma.$queryRaw<Array<{ managerEmploymentRelationshipId: string }>>`
-      SELECT "managerEmploymentRelationshipId"
-      FROM hcm_workforce_reporting_lines
-      WHERE "tenantId" = ${tenantId}
-        AND "employmentRelationshipId" = ${employmentId}
-        AND kind = 'primary'
-        AND "effectiveTo" IS NULL
-      ORDER BY "effectiveFrom" DESC
-      LIMIT 1
-    `;
-    return rows[0]?.managerEmploymentRelationshipId ?? null;
+    // Through the scoped model, so the tenant filter and row-level security both
+    // apply. It was an unscoped raw read, which saw every tenant's lines.
+    const row = await prisma.reportingLine.findFirst({
+      where: { tenantId, employmentRelationshipId: employmentId, kind: 'primary', effectiveTo: null },
+      orderBy: { effectiveFrom: 'desc' },
+      select: { managerEmploymentRelationshipId: true },
+    });
+    return row?.managerEmploymentRelationshipId ?? null;
   } catch {
     // The table exists but the query failed (shape drift mid-build across
     // workstreams) — fall back rather than fail the request.
@@ -100,7 +98,7 @@ async function partyIdForEmployment(tenantId: string, employmentId: string): Pro
 
 /** The active affiliate holding `roleSlug`, excluding `excludePartyId`. */
 async function partyIdForRole(tenantId: string, roleSlug: string, excludePartyId: string | null): Promise<string | null> {
-  const affiliation = await unscopedPrisma.affiliation.findFirst({
+  const affiliation = await prisma.affiliation.findFirst({
     where: {
       tenantId,
       roleSlug,

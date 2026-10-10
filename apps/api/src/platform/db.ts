@@ -33,11 +33,16 @@ import { config } from './config.js';
 const TENANT_SETTING = 'app.tenant_id';
 
 /**
- * True while the current async call is inside a `$transaction` whose tenant
+ * Set while the current async call runs inside a `$transaction` whose tenant
  * setting has already been applied. Ops in that scope run on the transaction
  * and must not open a transaction of their own, or they would leave it.
+ *
+ * 'interactive' is a callback; 'batch' is an array, whose operations run later
+ * but inside the same transaction. Only the interactive kind forbids the outer
+ * client (see `refuseOuterClientInTransaction`): a batch's operations are the
+ * outer client's own, created before the transaction began.
  */
-const insideTenantTransaction = new AsyncLocalStorage<true>();
+const insideTenantTransaction = new AsyncLocalStorage<'interactive' | 'batch'>();
 
 /**
  * Models that legitimately have no tenant key.
@@ -199,6 +204,25 @@ const tenantScoped = basePrisma.$extends({
 });
 
 /**
+ * The outer client, used inside an interactive transaction's callback, is a
+ * mistake the database cannot report. Its statement runs on a pooled connection
+ * outside the transaction that set the tenant, so row-level security returns
+ * zero rows with no error, and a "not found" is then written as if it were
+ * true. Refusing it here is the only visible failure. The callback's own
+ * client (`tx`) is built from `tenantScoped`, which does not carry this hook,
+ * so the transaction's operations are not affected.
+ */
+function refuseOuterClientInTransaction(): void {
+  if (insideTenantTransaction.getStore() === 'interactive') {
+    throw new Error(
+      'The scoped client (prisma) was used inside an interactive transaction. ' +
+        'Use the transaction client passed to the callback: its statements run on the transaction that set the tenant, ' +
+        'and this one would read zero rows without an error.',
+    );
+  }
+}
+
+/**
  * Transactions carry the tenant setting. An interactive transaction sets it
  * first and runs its callback inside `insideTenantTransaction`, so the ops it
  * makes do not each open another. A batch array gets the setting as its first
@@ -209,6 +233,12 @@ const tenantScoped = basePrisma.$extends({
  */
 export const prisma = tenantScoped.$extends({
   name: 'tenantTransaction',
+  query: {
+    $allOperations({ args, query }: { args: unknown; query: (args: unknown) => Promise<unknown> }) {
+      refuseOuterClientInTransaction();
+      return query(args);
+    },
+  },
   client: {
     $transaction: ((arg: unknown, options?: unknown) => {
       const tenantId = maybeTenantId();
@@ -217,13 +247,13 @@ export const prisma = tenantScoped.$extends({
       if (typeof arg === 'function') {
         return tenantScoped.$transaction(async (tx) => {
           await tx.$executeRaw`SELECT set_config(${TENANT_SETTING}, ${tenantId}, true)`;
-          return insideTenantTransaction.run(true, () => (arg as (t: unknown) => unknown)(tx));
+          return insideTenantTransaction.run('interactive', () => (arg as (t: unknown) => unknown)(tx));
         }, options as never);
       }
 
       const setting = tenantScoped.$executeRaw`SELECT set_config(${TENANT_SETTING}, ${tenantId}, true)`;
       return insideTenantTransaction
-        .run(true, () => tenantScoped.$transaction([setting, ...(arg as unknown[])] as never, options as never))
+        .run('batch', () => tenantScoped.$transaction([setting, ...(arg as unknown[])] as never, options as never))
         .then((results) => (results as unknown[]).slice(1));
     }) as unknown as typeof tenantScoped.$transaction,
   },

@@ -23,3 +23,21 @@ export async function assertAppRoleRestricted(client: Pick<PrismaClient, '$query
     );
   }
 }
+
+/**
+ * The opposite check, for the client behind `unscopedPrisma`. The cross-tenant
+ * jobs read every tenant's rows through it, which only works if its role
+ * bypasses RLS. A superuser bypasses RLS too, so it is accepted.
+ */
+export async function assertUnscopedRoleBypasses(client: Pick<PrismaClient, '$queryRaw'>): Promise<void> {
+  const rows = await client.$queryRaw<{ role: string; rolsuper: boolean; rolbypassrls: boolean }[]>`
+    SELECT current_user::text AS role, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`;
+  const row = rows[0];
+  if (!row) throw new Error('The database role behind the unscoped client could not be read from pg_roles.');
+  if (!row.rolsuper && !row.rolbypassrls) {
+    throw new Error(
+      `Refusing to start: the unscoped client connects as "${row.role}", which has neither rolbypassrls nor rolsuper. ` +
+        'The cross-tenant jobs and the audit chain would see no rows. Set UNSCOPED_DATABASE_URL to the owner role.',
+    );
+  }
+}
