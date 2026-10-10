@@ -324,13 +324,13 @@
 
 **`apps/api/src/imports/parse.ts`** (250 lines) — Grid:13 · parseCsv:27 · SheetGrid:83 · readWorkbook:97 · toAmount:122 · toDate:166 · inferDayFirst:224 · nonEmpty:243 · isBlank:247
 
-**`apps/api/src/imports/sealing.ts`** (207 lines) — MASKED:36 · isRegulatedCell:63 · isRegulatedField:70 · sealRawCells:75 · sealNormalised:85 · openStagedNormalised:102 · viewStagedObject:127 · purgeStagedRaw:155
+**`apps/api/src/imports/sealing.ts`** (221 lines) — MASKED:36 · isRegulatedCell:77 · isRegulatedField:84 · sealRawCells:89 · sealNormalised:99 · openStagedNormalised:116 · viewStagedObject:141 · purgeStagedRaw:169
 
 **`apps/api/src/imports/service.ts`** (374 lines) — MAX_UPLOAD_BYTES:37 · StageResult:40 · stageImport:62 · listImports:291 · getImport:301 · importRows:309 · setImportOptions:349 · setRowStatus:364
 
 **`apps/api/src/imports/tallyXml.ts`** (162 lines) — extractTallyXml:51 · looksLikeTallyXml:158
 
-**`apps/api/src/imports/templates.ts`** (395 lines) — TemplateKind:34 · TemplateColumn:47 · TemplateSpec:60 · TEMPLATES:293 · templateBySlug:295 · templateByKind:297 · listTemplates:301 · buildTemplateWorkbook:325 · detectTemplate:371
+**`apps/api/src/imports/templates.ts`** (403 lines) — TemplateKind:34 · TemplateColumn:47 · TemplateSpec:68 · TEMPLATES:301 · templateBySlug:303 · templateByKind:305 · listTemplates:309 · buildTemplateWorkbook:333 · detectTemplate:379
 
 ## API jobs / events / agents
 

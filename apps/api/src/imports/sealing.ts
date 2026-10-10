@@ -23,7 +23,7 @@ import {
   EVENTS, REGULATED_EXCLUDED_FIELDS, SENSITIVITY_RANK, isEncryptedFieldValue,
   type SensitivityClass,
 } from '@kaizen/shared';
-import type { TemplateSpec } from './templates.js';
+import { TEMPLATES, type TemplateSpec } from './templates.js';
 
 registerGovernedEntities('fin', ['import_batch']);
 
@@ -36,17 +36,31 @@ registerGovernedEntities('fin', ['import_batch']);
 export const MASKED = '••••••';
 
 /**
- * Field names that hold regulated values wherever they appear in a normalised
- * row. The shared list says which projections must never carry them; the
- * import adds the guardian name, bank account and IFSC, which an import brings
- * in and that list does not yet name.
+ * The fields a template marks regulated. Derived from the template definitions
+ * rather than copied here, so a column that starts to carry a PAN or a guardian
+ * contact is sealed by the same edit that adds it. A hand copy of this list is
+ * how a field gets missed.
+ */
+const REGULATED_TEMPLATE_FIELDS = Object.values(TEMPLATES).flatMap((spec) =>
+  spec.columns.filter((c) => c.regulated).map((c) => c.field),
+);
+
+/**
+ * Bank fields, for files that are not templates. No template carries a bank
+ * account yet; the generic importers can see one in a payroll sheet, and the
+ * shared list does not name these.
+ */
+const GENERIC_BANK_FIELDS = ['bankAccountNumber', 'bankAccountName', 'bankIfsc'];
+
+/**
+ * Every field name that holds a regulated value in a normalised row: the
+ * template-marked fields, the shared classification that projections already
+ * exclude, and the bank fields above.
  */
 const REGULATED_STAGED_FIELDS = new Set<string>([
   ...REGULATED_EXCLUDED_FIELDS,
-  'guardianName',
-  'bankAccountNumber',
-  'bankAccountName',
-  'bankIfsc',
+  ...REGULATED_TEMPLATE_FIELDS,
+  ...GENERIC_BANK_FIELDS,
 ]);
 
 /**
@@ -63,7 +77,7 @@ const isBlankValue = (v: unknown) => v === null || v === undefined || v === '';
 export function isRegulatedCell(heading: string, spec: TemplateSpec | undefined): boolean {
   const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
   const column = spec?.columns.find((c) => norm(c.name) === norm(heading));
-  if (column) return REGULATED_STAGED_FIELDS.has(column.field);
+  if (column) return column.regulated === true || REGULATED_STAGED_FIELDS.has(column.field);
   return REGULATED_HEADING.test(heading);
 }
 

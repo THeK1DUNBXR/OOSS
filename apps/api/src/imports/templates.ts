@@ -55,6 +55,14 @@ export interface TemplateColumn {
   example: string;
   /** How to read the cell. Dates and numbers are coerced; everything else is text. */
   as?: 'text' | 'number' | 'date' | 'yesno';
+  /**
+   * A value the regulation restricts (DPDP personal data of a minor, a PAN,
+   * health data). A staged import seals it while it waits, and the read path
+   * masks it below the regulated ceiling. Set here rather than in a list
+   * elsewhere, so the template that asks for the value is the one that says
+   * how to hold it.
+   */
+  regulated?: true;
 }
 
 export interface TemplateSpec {
@@ -154,8 +162,8 @@ const SPECS: TemplateSpec[] = [
       { name: 'From (college)', field: 'institutionName', note: 'The college they came from. Leave blank for a direct enrolment.', example: 'Thiagarajar College of Engineering' },
       { name: 'Date of birth', field: 'dateOfBirth', note: 'DD/MM/YYYY. Decides whether the student is under 18.', example: '02/06/2008', as: 'date' },
       { name: 'Adult (18 or over)', field: 'adultAttested', note: 'Yes only if you have confirmed, with no date of birth, that they are 18 or over. Your name is recorded against it.', example: '', as: 'yesno' },
-      { name: 'Guardian name', field: 'guardianName', note: 'Required for a student under 18 with no date of birth above.', example: '' },
-      { name: 'Guardian phone', field: 'guardianPhone', note: 'Required for a student under 18 with no date of birth above.', example: '' },
+      { name: 'Guardian name', field: 'guardianName', note: 'Required for a student under 18 with no date of birth above.', example: '', regulated: true },
+      { name: 'Guardian phone', field: 'guardianPhone', note: 'Required for a student under 18 with no date of birth above.', example: '', regulated: true },
     ],
     notes: [
       'A phone or email that matches somebody already on file enrols that person rather than creating a second copy of them.',
@@ -195,7 +203,7 @@ const SPECS: TemplateSpec[] = [
       { name: 'Email', field: 'email', note: '', example: 'anitha@kaizen.co.in' },
       { name: 'Date of birth', field: 'dateOfBirth', note: 'DD/MM/YYYY.', example: '02/06/1994', as: 'date' },
       { name: 'Joining date', field: 'joiningDate', note: 'DD/MM/YYYY.', example: '01/04/2024', as: 'date' },
-      { name: 'Blood group', field: 'bloodGroup', note: '', example: 'O+' },
+      { name: 'Blood group', field: 'bloodGroup', note: '', example: 'O+', regulated: true },
     ],
     notes: [
       'Pay is deliberately not on this list. A salary is a separate act with its own approval, and a spreadsheet of them arriving through an import is how pay changes without anybody signing for them.',
@@ -269,7 +277,7 @@ const SPECS: TemplateSpec[] = [
       { name: 'Holder kind', field: 'holderKind', required: true, note: 'Person or Organisation.', example: 'Person' },
       { name: 'Email', field: 'email', note: '', example: 'karthik@example.com' },
       { name: 'Phone', field: 'phone', note: '', example: '9843012345' },
-      { name: 'PAN', field: 'panNumber', note: 'Optional.', example: 'ABCDE1234F' },
+      { name: 'PAN', field: 'panNumber', note: 'Optional.', example: 'ABCDE1234F', regulated: true },
       { name: 'Residency', field: 'residency', note: 'Resident or Non-resident. Leave blank for Resident.', example: 'Resident' },
       { name: 'Investment basis', field: 'investmentBasis', note: 'Repatriable or Non-repatriable. Required only for a non-resident holder.', example: '' },
       { name: 'Share class', field: 'shareClassName', required: true, note: 'A new class is created if this name is not already on file, provided face value and instrument are also given.', example: 'Equity' },
