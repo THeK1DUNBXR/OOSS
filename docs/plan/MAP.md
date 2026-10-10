@@ -78,7 +78,7 @@
 
 **`apps/api/src/domains/compliance/payroll.ts`** (868 lines) — listPfRateTables:66 · PfRateTableInput:72 · createPfRateTable:83 · currentPfRateTable:92 · listEsiRateTables:114 · EsiRateTableInput:120 · createEsiRateTable:127 · currentEsiRateTable:140 · listPtSlabTables:146 · PtSlabTableInput:152 · createPtSlabTable:159 · currentPtSlabs:174 · listLwfRateTables:180 · LwfRateTableInput:186 · createLwfRateTable:195 · currentLwfRateTable:218 · listMinimumWageTables:224 · MinimumWageTableInput:230 · createMinimumWageTable:237 · listSalaryStructures:267 · SalaryStructureInput:279 · proposeSalaryStructure:291 · approveSalaryStructure:325 · computeInstruction:373 · listPayslips:624 · getPayslip:662 · payslipDocument:677 · exportEcr:686 · exportEsic:722 · settleOffboarding:754 · setEngagementType:820 · BankDetailsInput:834 · setBankDetails:843
 
-**`apps/api/src/domains/compliance/privacy.ts`** (1056 lines) — NoticePurpose:55 · getCurrentNotice:63 · publishNotice:77 · acknowledgeNotice:120 · currentNoticePurposeCodes:151 · resolvePurpose:171 · grantConsent:181 · withdrawConsent:241 · listConsentsForPerson:287 · grantedConsentCodes:303 · MinorGateInput:321 · requireGuardianConsentForMinor:334 · flagMajorityTransitions:387 · raiseDataRequest:420 · listDataRequests:452 · fulfilDataRequest:548 · refuseDataRequest:636 · detectOverdueDataRequests:647 · raiseBreach:676 · transitionBreach:720 · listBreaches:750 · runBreachLadder:765 · runRetentionReport:800 · getRetention:829 · runAccessReview:869 · encryptField:960 · decryptField:969 · readRegulated:982 · backfillEncryptAtRest:992 · encryptionStatus:1031
+**`apps/api/src/domains/compliance/privacy.ts`** (1065 lines) — NoticePurpose:56 · getCurrentNotice:64 · publishNotice:78 · acknowledgeNotice:121 · currentNoticePurposeCodes:152 · resolvePurpose:172 · grantConsent:182 · withdrawConsent:242 · listConsentsForPerson:288 · grantedConsentCodes:304 · MinorGateInput:322 · requireGuardianConsentForMinor:335 · flagMajorityTransitions:388 · raiseDataRequest:421 · listDataRequests:453 · fulfilDataRequest:549 · refuseDataRequest:637 · detectOverdueDataRequests:648 · raiseBreach:677 · transitionBreach:721 · listBreaches:751 · runBreachLadder:766 · runRetentionReport:801 · getRetention:830 · runAccessReview:870 · encryptField:969 · decryptField:978 · readRegulated:991 · backfillEncryptAtRest:1001 · encryptionStatus:1040
 
 **`apps/api/src/domains/compliance/tax.ts`** (1067 lines) — fyOf:66 · fyStartYear:70 · fyRange:74 · fyMonths:80 · Quarter:91 · quarterOf:93 · periodsOfQuarter:101 · depositDueDate:106 · ComputeVendorTdsInput:153 · computeVendorTds:164 · waiveVendorTds:231 · listVendorBillsForTds:300 · tdsSectionRates:314 · listApplicabilityRules:320 · setApplicabilityRule:326 · setMsmeTerms:340 · msmeExposure:368 · runMsmeLadder:389 · pendingTdsLiability:430 · listChallans:455 · CreateChallanInput:470 · createChallan:479 · MarkChallanPaidInput:504 · markChallanPaid:515 · runTdsDepositDueJob:561 · upsertDeclaration:620 · SalaryProjection:647 · salaryProjection:669 · applySalaryTds:716 · advanceTaxRate:749 · AdvanceTaxEstimate:756 · advanceTaxEstimateFor:765 · recordAdvanceTaxPayment:806 · TdsReturnRow:828 · prepareTdsReturn:881 · fileTdsReturn:914 · listTdsReturns:936 · tdsReturnDetail:945 · exportTdsReturnCsv:954 · IssueCertificateInput:968 · issueCertificate:982 · listCertificates:1040 · certificateDocument:1050
 
@@ -210,7 +210,7 @@
 
 **`apps/api/src/domains/marketing/plans.ts`** (242 lines) — PlanInput:21 · createPlan:51 · listPlans:80 · updatePlan:95 · approvePlan:121 · closePlan:152 · calendar:176
 
-**`apps/api/src/domains/marketing/preferences.ts`** (336 lines) — recordMarketingConsent:35 · withdrawMarketingConsent:45 · setChannelPreference:65 · setDoNotContact:96 · getPreferences:151 · consentCoverage:173 · EligibilitySkip:199 · eligibleForChannel:204 · unsubscribeToken:276 · withdrawByToken:297
+**`apps/api/src/domains/marketing/preferences.ts`** (340 lines) — recordMarketingConsent:36 · withdrawMarketingConsent:46 · setChannelPreference:66 · setDoNotContact:97 · getPreferences:152 · consentCoverage:174 · EligibilitySkip:200 · eligibleForChannel:205 · unsubscribeToken:280 · withdrawByToken:301
 
 **`apps/api/src/domains/marketing/referrals.ts`** (403 lines) — ReferralProgramInput:26 · createReferralProgram:34 · listReferralPrograms:54 · loadReferralProgram:63 · updateReferralProgram:71 · activateReferralProgram:97 · deactivateReferralProgram:98 · IssueReferralInput:119 · issueReferral:125 · listReferrals:173 · RedeemReferralInput:187 · redeemReferral:201 · qualifyReferral:276 · rewardReferral:289 · voidReferral:312 · LeaderboardRow:327 · leaderboard:335 · detectRewardsPending:372 · ReferralInput:399
 
@@ -256,7 +256,7 @@
 
 **`apps/api/src/platform/build.ts`** (121 lines) — BuildStamp:27 · BUILD:95 · STARTED_AT:98 · buildsBehind:108 · buildLabel:115
 
-**`apps/api/src/platform/config.ts`** (147 lines) — envSchema:54 · Config:94 · ConfigError:97 · parseEnv:115 · config:146
+**`apps/api/src/platform/config.ts`** (171 lines) — envSchema:54 · Config:118 · ConfigError:121 · parseEnv:139 · config:170
 
 **`apps/api/src/platform/context.ts`** (157 lines) — PrincipalType:13 · AuthContext:15 · RequestContext:36 · runWithContext:53 · getContext:57 · requireContext:61 · currentAuth:72 · currentTenantId:78 · maybeTenantId:83 · newRequestContext:87 · systemContext:104 · agentContext:125 · asSystem:154
 
@@ -875,7 +875,8 @@
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
 - `.claude/worktrees/agent-a19bd5e2d7e0bc5ae/pnpm-lock.yaml` (6006 lines)
+- `.claude/worktrees/agent-a267cf0c53718b422/pnpm-lock.yaml` (6006 lines)
 - `.claude/worktrees/agent-a348c13968dfc4ee9/pnpm-lock.yaml` (6006 lines)
 - `.claude/worktrees/agent-a63fd5466e71683b1/pnpm-lock.yaml` (6006 lines)
-- `.claude/worktrees/agent-a889deee29e46c1b3/pnpm-lock.yaml` (6006 lines)
 - `pnpm-lock.yaml` (6006 lines)
+- `.claude/worktrees/agent-a889deee29e46c1b3/pnpm-lock.yaml` (5169 lines)
