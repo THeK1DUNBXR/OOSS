@@ -169,3 +169,17 @@ describe('FX-20: every audited subject type literal is registered', () => {
     expect(missing).toEqual([]);
   });
 });
+
+describe('FX-21: no auditWrite or transition call passes force', () => {
+  it('no call site sets force', () => {
+    const forced = [...new Set(auditCalls().filter((c) => c.forced).map((c) => c.file))];
+    expect(forced).toEqual([]);
+  });
+
+  it('AuditWriteInput has no force option', () => {
+    const src = readFileSync(join(SRC, 'platform', 'audit.ts'), 'utf8');
+    const iface = /export interface AuditWriteInput \{[\s\S]*?\n\}/.exec(src);
+    expect(iface?.[0]).toBeDefined();
+    expect(iface![0]).not.toMatch(/\bforce\??:/);
+  });
+});
