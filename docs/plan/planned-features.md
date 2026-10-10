@@ -34,6 +34,7 @@ Rules that apply to every feature here:
 | # | Feature | Status | Researched | Target |
 |---|---|---|---|---|
 | 1 | Native work management & team communication (Jira- and Slack-style) | proposed | 2026-10-10 | not scheduled |
+| 2 | Product rename: KaiERP → Zen 360 | accepted | 2026-10-10 | not scheduled (Tier 1 first) |
 
 ## Feature 1: Native work management & team communication (Jira- and Slack-style workflows)
 
@@ -141,3 +142,34 @@ Sourced from secondary commentary. Verify every point against the Gazette before
 - https://zulip.com/for/business/
 - https://github.com/makeplane/plane
 - https://www.scconline.com/blog/post/2025/12/26/digital-personal-data-protection-rules-2025-key-highlights/
+
+## Feature 2: Product rename: KaiERP → Zen 360
+
+- **Status:** accepted (decided by product owner 2026-10-10). Not scheduled. Nothing is renamed yet; this entry records the decision and the scope so execution can be sequenced later.
+- **Owner:** TBD — product
+- **Depends on:** none for Tier 1. Tier 2 needs infra coordination (worker name, domains). Tier 3 is optional and needs a migration plan where noted.
+- **Reuses:** nothing in code. There is no product-name constant; the brand is hardcoded (grep `APP_NAME|PRODUCT_NAME|appName|productName|BRAND` over `apps packages worker` returns nothing, 2026-10-10). Introducing one is the first step of Tier 1 for the UI strings.
+- **Gaps:** the brand is literal in 24 lines across 18 files (survey on `origin/claude/planned-features-doc`, 2026-10-10, `git grep -i "kaierp|kai erp|kai-erp"`). Company name "Kaizen Infinities" (50 lines) and company domain `kaizen.co.in` are not part of the rename and must stay.
+- **Phases:**
+  - **Tier 1 — user-visible strings and docs (do first).** No behaviour change, no data change.
+    - UI: `apps/web/index.html:15` (`<title>`), `apps/web/src/components/Shell.tsx:295` (sidebar brand), `apps/web/src/pages/Login.tsx:130` (login heading).
+    - Authenticator label: `apps/api/src/domains/compliance/corporate/totp.ts:100` (`issuer = 'KaiERP'` default). Changing it changes the label shown in users' authenticator apps for enrolments made after the change; existing entries keep the old label. Exit test: the issuer produced by `otpauthUri` equals the product name; a test fails on the old string.
+    - Metadata: `package.json:5` (description), `wrangler.jsonc:2` (comment).
+    - Docs: `CLAUDE.md:3`, `README.md:1`, `PRODUCT.md:32,109,130`, `apps/web/DESIGN.md:2,73,79`, `apps/web/.impeccable/design.json:4,111`, `docs/it/README.md:8`, `docs/plan/{ceo-office:10, cio:4, compliance:4, hcm:3, marketing:4}.md`.
+    - Exit test: `git grep -i "kaierp\|kai erp\|kai-erp"` returns only this file's history and deliberate references to the old name.
+    - Not found in the repo, so nothing to change: PDF/document headers (`apps/web/src/pages/*Document*.tsx`, `documentSheet.tsx` have no product literal), email sender names, manifest, favicon text. Re-check these when the email and PDF templates are built, since they may be added later.
+  - **Tier 2 — deploy names (infra coordination).** Worker name is `ooss` (`wrangler.jsonc:9`; `worker/index.ts:62` refers to it). The name is not "KaiERP", so renaming it is a deploy decision, not a find-and-replace. A rename changes the `*.workers.dev` hostname and any bound custom domain; no domain is recorded in the repo. Exit test: the new worker deploys and `/api` proxies to the API, verified on the deployed URL.
+  - **Tier 3 — internal identifiers (recommend not renaming).**
+    - `kz.*` event names: `packages/shared/src/events.ts:14` (`EVENT_NAME_PATTERN = /^kz\.[a-z]{2,4}\.[a-z_]+\.[a-z_]+$/`) and the registry from `events.ts:53` onward. About 550 distinct `kz.*` strings across `apps` and `packages`. The canonical name is written into the hashed body (`apps/api/src/platform/eventBus.ts:223` sets `eventName: input.name`; hashed at `:169` via `computeHash`, `:96-103`; the dual-publish path hashes the legacy name at `:301`), so renaming them breaks `verifyChain` for existing records and the emission grammar. Recommendation: keep `kz.*`. The `kz` is an internal namespace, not the product name.
+    - Storage key `kaizen.token` at `apps/web/src/lib/api.ts:9`. Renaming it signs every logged-in user out on deploy. Only rename with a migration that reads the old key once and copies it across. Recommendation: leave it.
+    - Tenant slug default `'kaizen'` at `apps/api/src/platform/config.ts:89` and `parentTenantSlug: 'kaizen'` in several tests. Renaming it touches existing tenant rows. Recommendation: leave it; it names the company, not the product.
+    - Package names `@kaizen/{api,web,shared,semantic,e2e}` (their `package.json` `name` fields). Cosmetic, private packages. Optional, and it is the company name, so probably keep.
+    - Root package name `kaierp` at `package.json:2` (private package). Safe to rename to `zen-360` or similar in Tier 1 if wanted; no publish, no consumers outside the repo.
+- **Decisions:**
+  - Logo and brand assets. Owner: product. Default: keep `apps/web/public/kaizen-logo.png` (the company logo, used at `apps/web/src/pages/kaizenInvoice/LedgerSheet.tsx:63`). Add a Zen 360 mark only when supplied.
+  - Domain name. Owner: infra. Default: none chosen. Blocks Tier 2 only.
+  - Tenant-facing name or white-label. Owner: product. Default: show "Zen 360" as the product name, and the tenant's own legal name from tenant data. Note `PRODUCT.md:109` says the product is not sold or licensed to other companies yet, so white-label is not in scope now.
+  - Whether the git repository `THeK1DUNBXR/OOSS` is renamed. Owner: product. Default: no; it is not part of the product name in the UI.
+  - Tier 3 items above. Owner: engineering. Default: do not rename.
+- **Compliance:** The legal entity KIPL (`PRODUCT.md:130`; document numbering `KIPL/I/26-27/001`) and the GST and e-invoicing identifiers on documents are the company's, not the product's, and must not change. ⚠️ Unverified: confirm with finance that no statutory document or e-invoice field requires the product name, before Tier 1 changes any invoice or receipt header. The TOTP issuer label is not a statutory field, but it is shown to staff who use two-factor authentication, so the change needs a note to users.
+- **Sources:** none. Internal repository survey on `origin/claude/planned-features-doc`, 2026-10-10.
