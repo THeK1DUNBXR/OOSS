@@ -20,6 +20,7 @@
  * `IncomeTaxSlabTable`, dated and seeded — never a literal in this file.
  */
 
+import { istEndOfDay, istMidnight, istMonthKey, istYearMonth } from '@kaizen/shared';
 import {
   istFinancialYear,
   computeTds,
@@ -73,7 +74,7 @@ export function fyStartYear(fy: string): number {
 
 export function fyRange(fy: string): { from: Date; to: Date } {
   const start = fyStartYear(fy);
-  return { from: new Date(Date.UTC(start, 3, 1)), to: new Date(Date.UTC(start + 1, 3, 1)) };
+  return { from: istMidnight(start, 4, 1), to: istMidnight(start + 1, 4, 1) };
 }
 
 /** The twelve YYYY-MM periods of an FY, April first. */
@@ -561,8 +562,8 @@ export async function markChallanPaid(id: string, input: MarkChallanPaidInput) {
 export async function runTdsDepositDueJob(today: Date = new Date()): Promise<number> {
   const auth = currentAuth();
   const owner = await financeHeadPartyId();
-  const prevMonthDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
-  const month = `${prevMonthDate.getUTCFullYear()}-${String(prevMonthDate.getUTCMonth() + 1).padStart(2, '0')}`;
+  const todayIst = istYearMonth(today);
+  const month = istMonthKey(istMidnight(todayIst.year, todayIst.month - 1, 1));
   const due = depositDueDate(month);
   const daysUntil = Math.round((due.getTime() - today.getTime()) / 86_400_000);
   if (daysUntil > 3) return 0;
@@ -703,8 +704,7 @@ export async function salaryProjection(employmentId: string, fy?: string): Promi
 }
 
 function currentPeriod(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  return istMonthKey(new Date());
 }
 
 /**
@@ -784,10 +784,11 @@ export async function advanceTaxEstimateFor(fy: string, profitAndLoss: (period: 
   const startYear = fyStartYear(fy);
   const buckets = [0, 0, 0, 0];
   const windows = [
-    new Date(Date.UTC(startYear, 5, 15)),
-    new Date(Date.UTC(startYear, 8, 15)),
-    new Date(Date.UTC(startYear, 11, 15)),
-    new Date(Date.UTC(startYear + 1, 2, 15)),
+    // Instalments are due 'on or before' these dates, so the window closes at the end of the IST day.
+    istEndOfDay(startYear, 6, 15),
+    istEndOfDay(startYear, 9, 15),
+    istEndOfDay(startYear, 12, 15),
+    istEndOfDay(startYear + 1, 3, 15),
   ];
   for (const payment of payments) {
     const idx = windows.findIndex((w) => payment.paidOn <= w);

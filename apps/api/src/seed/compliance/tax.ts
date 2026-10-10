@@ -11,6 +11,7 @@
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { fyOf } from '../../domains/compliance/tax.js';
+import { istMidnight, istYearMonth } from '@kaizen/shared';
 
 const RATE_EFFECTIVE_FROM = new Date(Date.UTC(2020, 3, 1));
 
@@ -75,7 +76,8 @@ export async function seedTax(): Promise<void> {
   // Both current and next FY, so a test or a screen that reads a few weeks
   // ahead of a FY boundary is never left without a table.
   const now = new Date();
-  const fys = [fyOf(now), fyOf(new Date(Date.UTC(now.getUTCFullYear() + 1, now.getUTCMonth(), 1)))];
+  const { year: nowYear, month: nowMonth } = istYearMonth(now);
+  const fys = [fyOf(now), fyOf(istMidnight(nowYear + 1, nowMonth, 1))];
 
   for (const fy of fys) {
     const startYear = Number(fy.split('-')[0]);

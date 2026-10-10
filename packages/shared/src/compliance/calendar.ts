@@ -10,6 +10,7 @@
  */
 
 import { financialYearOf, monthKey } from '../finance.js';
+import { istYearMonth } from '../time.js';
 
 export const COMPLIANCE_DOMAINS = ['fin', 'hr', 'gov', 'edu'] as const;
 export type ComplianceDomain = (typeof COMPLIANCE_DOMAINS)[number];
@@ -74,8 +75,14 @@ function utc(year: number, month1: number, day: number): Date {
   return new Date(Date.UTC(year, month1 - 1, day));
 }
 
+/**
+ * Steps by whole months from the IST month of `d`, anchored on the 1st at
+ * 00:00 UTC. That anchor is 05:30 IST on the 1st, so the cursor's UTC month
+ * is its IST month and the scan phase (quarter starts) is calendar-true.
+ */
 function addMonthsUtc(d: Date, n: number): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1));
+  const { year, month } = istYearMonth(d);
+  return new Date(Date.UTC(year, month - 1 + n, 1));
 }
 
 function inHorizon(dueAt: Date, from: Date, to: Date): boolean {
@@ -166,8 +173,8 @@ export function nextDueDates(
   }
 
   if (recurrence === 'annual' && 'month' in rule && 'day' in rule) {
-    let year = fromDate.getUTCFullYear() - 1;
-    const endYear = horizonEnd.getUTCFullYear() + 1;
+    let year = istYearMonth(fromDate).year - 1;
+    const endYear = istYearMonth(horizonEnd).year + 1;
     while (year <= endYear) {
       const due = utc(year, rule.month, rule.day);
       if (inHorizon(due, fromDate, horizonEnd)) {
@@ -181,8 +188,8 @@ export function nextDueDates(
   if (recurrence === 'annual' && 'monthsAfterFyEnd' in rule) {
     // The financial year ends 31 March; `monthsAfterFyEnd` months after that,
     // on `rule.day`.
-    let fyStartYear = fromDate.getUTCFullYear() - 2;
-    const endYear = horizonEnd.getUTCFullYear() + 1;
+    let fyStartYear = istYearMonth(fromDate).year - 2;
+    const endYear = istYearMonth(horizonEnd).year + 1;
     while (fyStartYear <= endYear) {
       const fyEnd = utc(fyStartYear + 1, 3, 31);
       const dueMonthDate = addMonthsUtc(fyEnd, rule.monthsAfterFyEnd);

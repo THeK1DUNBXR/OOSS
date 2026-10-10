@@ -53,10 +53,12 @@ describe('portfolio arithmetic (pure, no DB)', () => {
     expect(parseFy('not a fy')).toBeNull();
   });
 
-  it('fyWindow: FY2026-27 runs 1 April 2026 (inclusive) to 1 April 2027 (exclusive)', () => {
+  it('fyWindow: FY2026-27 runs 1 April 2026 (inclusive) to 1 April 2027 (exclusive), IST midnights', () => {
+    // 1 April IST midnight is 31 March 18:30 UTC; a UTC midnight would
+    // put 00:00-05:30 IST on 1 April into the year before.
     const { start, end } = fyWindow('FY2026-27');
-    expect(start.toISOString()).toBe('2026-04-01T00:00:00.000Z');
-    expect(end.toISOString()).toBe('2027-04-01T00:00:00.000Z');
+    expect(start.toISOString()).toBe('2026-03-31T18:30:00.000Z');
+    expect(end.toISOString()).toBe('2027-03-31T18:30:00.000Z');
   });
 
   it('fyElapsedFraction is clamped to [0, 1] and roughly linear inside the year', () => {

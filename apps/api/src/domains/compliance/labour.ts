@@ -26,7 +26,7 @@ import {
   type HrLetterKind,
   type IccMemberFact,
 } from '@kaizen/shared';
-import { financialYearOf } from '@kaizen/shared';
+import { financialYearOf, istYearMonth } from '@kaizen/shared';
 import { prisma, num, unscopedPrisma, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -75,7 +75,7 @@ function ymd(d: Date): string {
 export async function listHolidays(year?: number) {
   const auth = currentAuth();
   await assertCan({ resource: 'holidays', verb: 'view' });
-  const y = year ?? new Date().getUTCFullYear();
+  const y = year ?? istYearMonth(new Date()).year;
   return prisma.holiday.findMany({
     where: { tenantId: auth.tenantId, date: { gte: new Date(Date.UTC(y, 0, 1)), lt: new Date(Date.UTC(y + 1, 0, 1)) } },
     orderBy: { date: 'asc' },
@@ -574,7 +574,7 @@ export async function validateCommittee() {
 
 async function nextLabourNumber(entity: string): Promise<string> {
   const auth = currentAuth();
-  const year = new Date().getUTCFullYear();
+  const year = istYearMonth(new Date()).year;
   const row = await prisma.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId: auth.tenantId, entityType: `LAB:${entity}`, year } },
     create: { tenantId: auth.tenantId, entityType: `LAB:${entity}`, year, nextSequence: 2 },

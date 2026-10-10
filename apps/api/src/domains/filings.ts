@@ -35,6 +35,7 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { istEndOfDay, istYearMonth } from '@kaizen/shared';
 import { raiseException, resolveException } from '../platform/exceptions.js';
 import { companyProfile } from './companyProfile.js';
 import { effectiveBalance, holderView, outgoingCount } from './equity.js';
@@ -225,9 +226,11 @@ export async function runFlaReturn(): Promise<number> {
   const now = new Date();
   // The most recently completed 31 March: this year's if we are already past
   // it, last year's otherwise.
-  const marchThisYear = new Date(Date.UTC(now.getUTCFullYear(), 2, 31, 23, 59, 59));
-  const cutoff = now >= marchThisYear ? marchThisYear : new Date(Date.UTC(now.getUTCFullYear() - 1, 2, 31, 23, 59, 59));
-  const flaYear = cutoff.getUTCFullYear();
+  // 31 March ends at 23:59:59 IST, which is 18:29:59 UTC; a UTC cutoff would run into 1 April IST.
+  const nowYear = istYearMonth(now).year;
+  const marchThisYear = istEndOfDay(nowYear, 3, 31);
+  const flaYear = now >= marchThisYear ? nowYear : nowYear - 1;
+  const cutoff = istEndOfDay(flaYear, 3, 31);
 
   const holders = await prisma.holder.findMany({
     where: { tenantId: auth.tenantId, residency: 'non_resident', investmentBasis: 'repatriable', deletedAt: null },
@@ -366,12 +369,12 @@ export async function checkDematRequirements(): Promise<number> {
 }
 
 /** The half-year boundary, 30 September and 31 March, most recently reached on or before `now`. */
-function latestHalfYearEnd(now: Date): Date {
-  const y = now.getUTCFullYear();
-  const sep30 = new Date(Date.UTC(y, 8, 30, 23, 59, 59));
-  const mar31 = new Date(Date.UTC(y, 2, 31, 23, 59, 59));
+export function latestHalfYearEnd(now: Date): Date {
+  const y = istYearMonth(now).year;
+  const sep30 = istEndOfDay(y, 9, 30);
+  const mar31 = istEndOfDay(y, 3, 31);
   const candidates = [
-    new Date(Date.UTC(y - 1, 8, 30, 23, 59, 59)),
+    istEndOfDay(y - 1, 9, 30),
     mar31,
     sep30,
   ].filter((d) => d <= now);

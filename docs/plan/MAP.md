@@ -46,7 +46,7 @@
 
 **`apps/api/src/domains/companyProfile.ts`** (294 lines) — CompanyProfileInput:37 · companyProfile:89 · updateCompanyProfile:100 · documentPrefix:240 · documentNumbering:251 · supplyingParty:266 · assertRegistered:285
 
-**`apps/api/src/domains/compliance/books.ts`** (824 lines) — listPeriods:69 · periodStatus:90 · requestClosePeriod:98 · closePeriod:117 · reopenPeriod:144 · sweepRetention:202 · retentionReport:258 · statementForFy:321 · classifyAssetClass:414 · depreciationReport:447 · trialBalance:540 · trialBalanceCsv:607 · generalLedgerCsv:615 · tallyExportXml:653 · BankLineInput:702 · importBankStatement:710 · matchBankLines:739 · reconciliationReport:779 · fingerprint:821
+**`apps/api/src/domains/compliance/books.ts`** (825 lines) — listPeriods:70 · periodStatus:91 · requestClosePeriod:99 · closePeriod:118 · reopenPeriod:145 · sweepRetention:203 · retentionReport:259 · statementForFy:322 · classifyAssetClass:415 · depreciationReport:448 · trialBalance:541 · trialBalanceCsv:608 · generalLedgerCsv:616 · tallyExportXml:654 · BankLineInput:703 · importBankStatement:711 · matchBankLines:740 · reconciliationReport:780 · fingerprint:822
 
 **`apps/api/src/domains/compliance/calendar.ts`** (345 lines) — resolveOwnerPartyId:36 · GenerateResult:72 · generateObligations:85 · ObligationFilter:153 · listTypes:160 · listObligations:166 · obligationDetail:182 · MarkFiledInput:197 · markFiled:212 · waive:271 · summary:310
 
@@ -54,7 +54,7 @@
 
 **`apps/api/src/domains/compliance/corporate/certificates.ts`** (80 lines) — listCertificates:31 · issueCertificate:40 · verifyCertificate:67
 
-**`apps/api/src/domains/compliance/corporate/codes.ts`** (28 lines) — CorporatePrefix:12 · nextCorporateCode:14
+**`apps/api/src/domains/compliance/corporate/codes.ts`** (29 lines) — CorporatePrefix:13 · nextCorporateCode:15
 
 **`apps/api/src/domains/compliance/corporate/contracts.ts`** (195 lines) — assertStampDutySatisfied:32 · listStampDutyRules:59 · ESignSigner:71 · ESignRequestResult:76 · ESignStatusResult:80 · ESignProvider:84 · NotConfiguredProvider:96 · resolveESignProvider:110 · requestESignature:117 · markESigned:142 · listRetentionRules:153 · applyRetention:166
 
@@ -72,7 +72,7 @@
 
 **`apps/api/src/domains/compliance/corporate/totp.ts`** (111 lines) — base32Encode:14 · base32Decode:30 · generateTotpSecret:49 · hotpRaw:58 · totpRaw:72 · totp:77 · verifyTotp:86 · otpauthUri:100
 
-**`apps/api/src/domains/compliance/gst.ts`** (869 lines) — courseGstExemptionFor:51 · setCourseGstExemption:59 · ClassifyLineInput:119 · classifyInvoiceLine:132 · unclassifiedLines:185 · registerGstComplianceHooks:264 · RcmInput:287 · applyReverseCharge:298 · listRcmSelfInvoices:348 · flaggedRcmBills:356 · rcmLiabilityFor:370 · DebitNoteInput:388 · issueDebitNote:395 · listDebitNotes:435 · listCreditNotesWithReason:443 · setCreditNoteReason:454 · EInvoiceRegistration:476 · EInvoiceProvider:484 · NotConfiguredProvider:490 · registerEInvoiceProvider:500 · setEInvoiceConfig:511 · eInvoiceConfig:523 · requestEInvoice:533 · eInvoiceStatusList:607 · Gstr2bImportInput:629 · importGstr2b:635 · gstr2bMatches:701 · gstr2bSummary:707 · gstExposure:750 · detectLateGstFilings:834
+**`apps/api/src/domains/compliance/gst.ts`** (872 lines) — courseGstExemptionFor:53 · setCourseGstExemption:61 · ClassifyLineInput:121 · classifyInvoiceLine:134 · unclassifiedLines:187 · registerGstComplianceHooks:266 · RcmInput:289 · applyReverseCharge:300 · listRcmSelfInvoices:350 · flaggedRcmBills:358 · rcmLiabilityFor:372 · DebitNoteInput:390 · issueDebitNote:397 · listDebitNotes:437 · listCreditNotesWithReason:445 · setCreditNoteReason:456 · EInvoiceRegistration:478 · EInvoiceProvider:486 · NotConfiguredProvider:492 · registerEInvoiceProvider:502 · setEInvoiceConfig:513 · eInvoiceConfig:525 · requestEInvoice:535 · eInvoiceStatusList:609 · Gstr2bImportInput:631 · importGstr2b:637 · gstr2bMatches:703 · gstr2bSummary:709 · gstExposure:752 · detectLateGstFilings:836
 
 **`apps/api/src/domains/compliance/labour.ts`** (1081 lines) — listHolidays:75 · createHoliday:85 · deleteHoliday:105 · holidayDatesInRange:116 · leaveWorkingDayCount:126 · runLeaveYearClose:173 · encashLeave:227 · listWorkingHoursRules:296 · createWorkingHoursRule:302 · runWeeklyHoursCheck:335 · overtimeAccruals:403 · RegisterExport:416 · registerWages:421 · registerLeave:448 · registerMusterRoll:463 · registerEmployees:482 · listIccMembers:510 · appointIccMember:516 · endIccMemberTerm:547 · validateCommittee:558 · listPoshComplaints:587 · createPoshComplaint:595 · transitionPoshComplaint:630 · runPoshOverdueCheck:662 · createPoshWorkshop:694 · listPoshWorkshops:702 · poshAnnualReport:709 · markPoshAnnualReportFiled:746 · listDisciplinaryCases:760 · openDisciplinaryCase:780 · advanceDisciplinaryCase:820 · issueLetter:925 · listLetters:963 · letterDocument:977 · recordBgvConsent:989 · recordCodeOfConductAck:1008 · handleOffboardingCompleted:1031
 
@@ -80,7 +80,7 @@
 
 **`apps/api/src/domains/compliance/privacy.ts`** (1065 lines) — NoticePurpose:56 · getCurrentNotice:64 · publishNotice:78 · acknowledgeNotice:121 · currentNoticePurposeCodes:152 · resolvePurpose:172 · grantConsent:182 · withdrawConsent:242 · listConsentsForPerson:288 · grantedConsentCodes:304 · MinorGateInput:322 · requireGuardianConsentForMinor:335 · flagMajorityTransitions:388 · raiseDataRequest:421 · listDataRequests:453 · fulfilDataRequest:549 · refuseDataRequest:637 · detectOverdueDataRequests:648 · raiseBreach:677 · transitionBreach:721 · listBreaches:751 · runBreachLadder:766 · runRetentionReport:801 · getRetention:830 · runAccessReview:870 · encryptField:969 · decryptField:978 · readRegulated:991 · backfillEncryptAtRest:1001 · encryptionStatus:1040
 
-**`apps/api/src/domains/compliance/tax.ts`** (1067 lines) — fyOf:66 · fyStartYear:70 · fyRange:74 · fyMonths:80 · Quarter:91 · quarterOf:93 · periodsOfQuarter:101 · depositDueDate:106 · ComputeVendorTdsInput:153 · computeVendorTds:164 · waiveVendorTds:231 · listVendorBillsForTds:300 · tdsSectionRates:314 · listApplicabilityRules:320 · setApplicabilityRule:326 · setMsmeTerms:340 · msmeExposure:368 · runMsmeLadder:389 · pendingTdsLiability:430 · listChallans:455 · CreateChallanInput:470 · createChallan:479 · MarkChallanPaidInput:504 · markChallanPaid:515 · runTdsDepositDueJob:561 · upsertDeclaration:620 · SalaryProjection:647 · salaryProjection:669 · applySalaryTds:716 · advanceTaxRate:749 · AdvanceTaxEstimate:756 · advanceTaxEstimateFor:765 · recordAdvanceTaxPayment:806 · TdsReturnRow:828 · prepareTdsReturn:881 · fileTdsReturn:914 · listTdsReturns:936 · tdsReturnDetail:945 · exportTdsReturnCsv:954 · IssueCertificateInput:968 · issueCertificate:982 · listCertificates:1040 · certificateDocument:1050
+**`apps/api/src/domains/compliance/tax.ts`** (1068 lines) — fyOf:67 · fyStartYear:71 · fyRange:75 · fyMonths:81 · Quarter:92 · quarterOf:94 · periodsOfQuarter:102 · depositDueDate:107 · ComputeVendorTdsInput:154 · computeVendorTds:165 · waiveVendorTds:232 · listVendorBillsForTds:301 · tdsSectionRates:315 · listApplicabilityRules:321 · setApplicabilityRule:327 · setMsmeTerms:341 · msmeExposure:369 · runMsmeLadder:390 · pendingTdsLiability:431 · listChallans:456 · CreateChallanInput:471 · createChallan:480 · MarkChallanPaidInput:505 · markChallanPaid:516 · runTdsDepositDueJob:562 · upsertDeclaration:621 · SalaryProjection:648 · salaryProjection:670 · applySalaryTds:716 · advanceTaxRate:749 · AdvanceTaxEstimate:756 · advanceTaxEstimateFor:765 · recordAdvanceTaxPayment:807 · TdsReturnRow:829 · prepareTdsReturn:882 · fileTdsReturn:915 · listTdsReturns:937 · tdsReturnDetail:946 · exportTdsReturnCsv:955 · IssueCertificateInput:969 · issueCertificate:983 · listCertificates:1041 · certificateDocument:1051
 
 **`apps/api/src/domains/courses.ts`** (475 lines) — CourseFeePlanInput:33 · CourseAddonInput:38 · CourseInput:46 · listCourses:67 · createCourse:179 · updateCourse:250 · retireCourse:350 · AssignCourseInput:419 · assignCourse:443
 
@@ -94,11 +94,11 @@
 
 **`apps/api/src/domains/esop.ts`** (978 lines) — EsopPlanInput:48 · createPlan:57 · ActivatePlanInput:103 · activatePlan:110 · listPlans:181 · plan:188 · ProposeGrantInput:248 · proposeGrant:259 · approveGrant:386 · cancelGrant:427 · lapseGrant:451 · listGrants:512 · grant:521 · runVesting:548 · runExpiredExerciseWindows:581 · handleEmploymentExit:623 · RequestExerciseInput:683 · requestExercise:689 · rejectExercise:759 · approveExercise:786 · listExercises:880 · myGrants:894 · sh6Register:923 · sh6Export:953
 
-**`apps/api/src/domains/filings.ts`** (883 lines) — assertDematCompliant:58 · assertFemaPricingFloor:97 · handleAllotmentEffectiveForFema:154 · handleTransferEffectiveForFema:180 · runFlaReturn:223 · checkDematRequirements:308 · runPas6HalfYearly:382 · pas6:417 · mgt1Register:517 · mgt2Register:537 · mgt1Export:563 · mgt2Export:580 · pas3AllotteeList:600 · pas3Export:678 · sh4Data:707 · RecordFilingInput:775 · recordFiling:787 · listFilings:852
+**`apps/api/src/domains/filings.ts`** (886 lines) — assertDematCompliant:59 · assertFemaPricingFloor:98 · handleAllotmentEffectiveForFema:155 · handleTransferEffectiveForFema:181 · runFlaReturn:224 · checkDematRequirements:311 · latestHalfYearEnd:372 · runPas6HalfYearly:385 · pas6:420 · mgt1Register:520 · mgt2Register:540 · mgt1Export:566 · mgt2Export:583 · pas3AllotteeList:603 · pas3Export:681 · sh4Data:710 · RecordFilingInput:778 · recordFiling:790 · listFilings:855
 
 **`apps/api/src/domains/finance.ts`** (481 lines) — issueFeeInstalments:62 · recordPayment:99 · reversePayment:163 · allocatePayment:218 · issueCreditNote:372 · rehydrateReceivables:423 · detectOverduePayments:434
 
-**`apps/api/src/domains/group.ts`** (1159 lines) — buildEntitySnapshot:203 · publishEntitySnapshot:279 · publishNow:338 · refreshGroup:351 · groupStructure:371 · groupHolders:456 · groupFinancials:558 · groupCompliance:628 · entitySnapshotView:675 · aoc1:718 · aoc1Export:805 · groupBenCandidates:1055 · benCandidatesExport:1101 · publishDirtySnapshots:1135 · publishNightlySnapshot:1145 · markSnapshotDirty:1152
+**`apps/api/src/domains/group.ts`** (1160 lines) — lastCompleteMonthKey:102 · buildEntitySnapshot:204 · publishEntitySnapshot:280 · publishNow:339 · refreshGroup:352 · groupStructure:372 · groupHolders:457 · groupFinancials:559 · groupCompliance:629 · entitySnapshotView:676 · aoc1:719 · aoc1Export:806 · groupBenCandidates:1056 · benCandidatesExport:1102 · publishDirtySnapshots:1136 · publishNightlySnapshot:1146 · markSnapshotDirty:1153
 
 **`apps/api/src/domains/gstReturns.ts`** (1268 lines) — FilingCheck:71 · Gstr1B2bInvoice:96 · Gstr1RateLine:112 · Gstr1HsnLine:120 · computeGstr1:140 · computeGstr3b:560 · computeReturn:813 · prepareReturn:824 · filingBlockers:944 · markReturnFiled:958 · listFilings:1049 · filingDetail:1064 · periodStatus:1079 · exportFilingJson:1109
 
@@ -140,7 +140,7 @@
 
 **`apps/api/src/domains/it/assets.ts`** (807 lines) — AssetThresholds:67 · currentThresholds:75 · CreateAssetInput:89 · createAsset:107 · UpdateAssetInput:155 · updateAsset:173 · AssetFilter:204 · listAssets:223 · myAssets:260 · assetDetail:271 · AssignAssetInput:333 · assignAsset:346 · ReturnAssetInput:399 · returnAsset:411 · transitionAsset:484 · AddAssetEventInput:535 · addAssetEvent:540 · listAssetEvents:556 · resolveDeskOwnerPartyId:571 · WarrantyLadderResult:580 · runWarrantyLadder:586 · RepairDetectorResult:641 · runInRepairTooLongDetector:646 · OrphanedAssetResult:677 · runOrphanedAssetDetector:685 · summary:729
 
-**`apps/api/src/domains/it/continuity.ts`** (641 lines) — CreatePlanInput:71 · createPlan:97 · UpdatePlanInput:140 · updatePlan:151 · availablePlanTransitions:204 · transitionPlan:208 · PlanFilter:231 · listPlans:236 · planDetail:250 · RecordTestInput:265 · recordTest:275 · listTests:347 · RecordAvailabilityInput:359 · recordAvailabilityReading:369 · AvailabilityFilter:413 · listAvailabilityReadings:418 · CreateMaintenanceWindowInput:436 · createMaintenanceWindow:445 · MaintenanceFilter:487 · listMaintenanceWindows:492 · maintenanceWindowDetail:507 · cancelMaintenanceWindow:518 · continuitySummary:566 · availabilitySummary:636
+**`apps/api/src/domains/it/continuity.ts`** (640 lines) — CreatePlanInput:72 · createPlan:98 · UpdatePlanInput:141 · updatePlan:152 · availablePlanTransitions:205 · transitionPlan:209 · PlanFilter:232 · listPlans:237 · planDetail:251 · RecordTestInput:266 · recordTest:276 · listTests:348 · RecordAvailabilityInput:360 · recordAvailabilityReading:370 · AvailabilityFilter:414 · listAvailabilityReadings:419 · CreateMaintenanceWindowInput:437 · createMaintenanceWindow:446 · MaintenanceFilter:488 · listMaintenanceWindows:493 · maintenanceWindowDetail:508 · cancelMaintenanceWindow:519 · continuitySummary:567 · lastFullMonthPeriod:612 · availabilitySummary:635
 
 **`apps/api/src/domains/it/governance/accessReviews.ts`** (349 lines) — OpenCampaignInput:42 · openCampaign:49 · CampaignFilter:112 · listCampaigns:116 · campaignDetail:142 · DecideItemInput:167 · decideItem:172 · closeCampaign:236 · CampaignOverdueResult:272 · runCampaignOverdueDetector:287 · accessReviewsSummary:327
 
@@ -196,7 +196,7 @@
 
 **`apps/api/src/domains/marketing/audiences.ts`** (576 lines) — audienceFields:99 · evaluateRules:172 · AudienceInput:240 · createAudience:253 · listAudiences:284 · loadAudience:306 · updateAudience:317 · deleteAudience:340 · previewAudience:357 · evaluateAudience:372 · addAudienceMember:423 · removeAudienceMember:458 · suppressMember:472 · listAudienceMembers:490 · audiencePersonIds:514 · suppressedPersonIds:552
 
-**`apps/api/src/domains/marketing/budget.ts`** (606 lines) — BudgetInput:32 · createBudget:142 · updateBudget:172 · listBudgets:203 · approveBudget:224 · SpendInput:255 · recordSpend:309 · listSpend:354 · reconcileSpend:377 · budgetVariance:420 · detectOverBudget:455 · detectSpendWithoutBudget:487 · VendorInput:540 · createVendor:559 · updateVendor:580 · listVendors:598
+**`apps/api/src/domains/marketing/budget.ts`** (606 lines) — BudgetInput:32 · createBudget:142 · updateBudget:172 · listBudgets:203 · approveBudget:224 · SpendInput:255 · periodFor:267 · recordSpend:309 · listSpend:354 · reconcileSpend:377 · budgetVariance:420 · detectOverBudget:455 · detectSpendWithoutBudget:487 · VendorInput:540 · createVendor:559 · updateVendor:580 · listVendors:598
 
 **`apps/api/src/domains/marketing/campaigns.ts`** (792 lines) — MarketingPolicy:43 · getMarketingPolicy:61 · setMarketingPolicy:68 · CampaignCreateInput:83 · CampaignUpdateInput:104 · CampaignListFilters:106 · recomputeCampaignActual:226 · createCampaign:253 · listCampaigns:303 · getCampaign:343 · updateCampaign:383 · deleteCampaign:424 · submitCampaign:464 · approveCampaign:509 · rejectCampaign:538 · launchCampaign:597 · pauseCampaign:601 · resumeCampaign:605 · completeCampaign:609 · archiveCampaign:613 · cancelCampaign:617 · CampaignTimelineEntry:637 · campaignTimeline:644 · CampaignUtmView:693 · campaignUtm:700 · autoCompleteExpiredCampaigns:724 · detectStaleCampaigns:753
 
@@ -286,7 +286,7 @@
 
 **`apps/api/src/platform/permissions.ts`** (537 lines) — ResolvedGrant:36 · invalidateGrantCache:50 · resolveGrants:54 · ScopedRecord:100 · EvaluateInput:113 · evaluate:131 · resolveAuthorityCeiling:295 · assertCan:317 · can:330 · holdsScopeResolver:344 · scopeFor:356 · scopeWhere:369 · assertScopeAll:396 · visibilityWhere:423 · FilterResult:441 · FilterOptions:446 · FIELD_PURPOSES:460 · applyFieldVisibility:481 · canSeeMoney:532
 
-**`apps/api/src/platform/recordCode.ts`** (85 lines) — SequenceExhaustedError:18 · nextRecordCode:33 · nextRecordCodes:53 · rejectRecordCodeEdit:78
+**`apps/api/src/platform/recordCode.ts`** (93 lines) — SequenceExhaustedError:18 · recordCodeYear:37 · nextRecordCode:41 · nextRecordCodes:61 · rejectRecordCodeEdit:86
 
 **`apps/api/src/platform/recordScope.ts`** (74 lines) — assertEmploymentVisible:36 · employmentVisibilityWhere:65
 
@@ -334,7 +334,7 @@
 
 **`apps/api/src/jobs/compliance/labour.ts`** (28 lines) — JOBS:5
 
-**`apps/api/src/jobs/compliance/payroll.ts`** (70 lines) — runGratuityAccrual:16 · JOBS:61
+**`apps/api/src/jobs/compliance/payroll.ts`** (72 lines) — runGratuityAccrual:17 · JOBS:63
 
 **`apps/api/src/jobs/compliance/privacy.ts`** (53 lines) — JOBS:13
 
@@ -388,7 +388,7 @@
 
 **`packages/shared/src/compliance/books.ts`** (161 lines) — ScheduleIIIStatement:15 · ScheduleIIIHead:17 · defaultScheduleIIIHeadForCategory:28 · defaultScheduleIIIHeadForLedgerGroup:51 · companiesActAnnualCharge:73 · incomeTaxWdvCharge:102 · retentionDueDate:116 · isLikelyMatch:127 · toCsv:153
 
-**`packages/shared/src/compliance/calendar.ts`** (261 lines) — COMPLIANCE_DOMAINS:14 · ComplianceDomain:15 · COMPLIANCE_RECURRENCES:17 · ComplianceRecurrence:18 · COMPLIANCE_OBLIGATION_STATUSES:20 · ComplianceObligationStatus:21 · MonthDay:24 · ComplianceDueRule:54 · DueDateOccurrence:62 · nextDueDates:101 · ComplianceObligationTypeView:213 · ComplianceObligationView:228 · ComplianceCalendarSummary:249 · CALENDAR_LADDER_RUNGS:260
+**`packages/shared/src/compliance/calendar.ts`** (268 lines) — COMPLIANCE_DOMAINS:15 · ComplianceDomain:16 · COMPLIANCE_RECURRENCES:18 · ComplianceRecurrence:19 · COMPLIANCE_OBLIGATION_STATUSES:21 · ComplianceObligationStatus:22 · MonthDay:25 · ComplianceDueRule:55 · DueDateOccurrence:63 · nextDueDates:108 · ComplianceObligationTypeView:220 · ComplianceObligationView:235 · ComplianceCalendarSummary:256 · CALENDAR_LADDER_RUNGS:267
 
 **`packages/shared/src/compliance/corporate.ts`** (200 lines) — TAN_PATTERN:14 · CIN_PATTERN:15 · UDYAM_PATTERN:16 · CIN_LENGTH:17 · isValidTan:19 · isValidCin:24 · isValidUdyam:30 · panMatchesGstin:42 · PanGstinCheckResult:50 · checkPanAgainstGstin:57 · PASSWORD_MIN_LENGTH:70 · COMMON_PASSWORDS:73 · PasswordCheckResult:80 · validatePassword:86 · McaFilingForm:103 · McaFilingType:105 · MCA_FILINGS:114 · REGISTER_KINDS:163 · RegisterKind:164 · REGISTER_KIND_LABELS:166 · BOARD_MEETING_KINDS:178 · BoardMeetingKind:179 · BOARD_MEETING_STATUSES:181 · BoardMeetingStatus:182 · BOARD_RESOLUTION_KINDS:184 · BoardResolutionKind:185 · REFUND_STATUSES:191 · RefundStatus:192 · CERTIFICATE_KINDS:198 · CertificateKind:199
 
@@ -412,7 +412,7 @@
 
 **`packages/shared/src/finance.ts`** (722 lines) — DIVISIONS:19 · Division:20 · DIVISION_LABELS:22 · isDivision:29 · CATEGORY_KINDS:37 · CategoryKind:40 · NON_TRADING_KINDS:51 · isTrading:53 · CATEGORY_BEHAVIOURS:62 · CategoryBehaviour:63 · TRANSACTION_SOURCES:65 · TransactionSource:68 · LEDGER_GROUPS:70 · LedgerGroup:71 · monthKey:80 · monthRange:84 · financialYearOf:90 · financialYearRange:94 · monthsBack:99 · GstLineInput:113 · GstBreakdown:120 · round2:132 · computeGst:148 · isInterState:188 · GST_RATES:194 · GST_STATE_CODES:208 · stateNameFor:251 · placeOfSupplyLabel:257 · stateCodeOf:264 · isValidGstin:282 · gstinCheckDigit:299 · supplyTypeOf:320 · GstHeads:328 · GstSetOff:334 · setOffInputCredit:356 · outstandingOf:409 · paymentTypeFor:421 · invoicePayable:438 · amountInWords:469 · PaymentSchedule:526 · computePaymentSchedule:538 · DepreciationPeriod:551 · DepreciationInput:558 · depreciationSchedule:576 · bookValueAt:613 · AmortisationPeriod:628 · emi:638 · amortisationSchedule:648 · loanBalanceAt:687 · runwayMonths:717
 
-**`packages/shared/src/hcm/analytics.ts`** (225 lines) — HCM_ANALYTICS_MODULE:17 · Measured:23 · NotMeasured:28 · Metric:36 · measured:38 · notMeasured:42 · ANALYTICS_REPORTS:50 · AnalyticsReport:57 · trailingMonths:69 · TENURE_BUCKETS:77 · TenureBucket:78 · tenureYears:81 · tenureBucket:86 · dailyRateFromBasic:100 · annualizedAttritionRate:111 · isEarlyAttrition:117 · absenteeismRate:123 · hiringOfferAcceptanceRate:139 · averageTimeToHireDays:145 · SpanOfControlStats:158 · spanOfControlStats:166 · distribution:182 · distributionList:189 · COMP_RATIO_BUCKETS:198 · CompRatioBucket:199 · compRatioBucket:202 · SLA_BUCKETS:215 · SlaBucket:216 · slaBucket:219
+**`packages/shared/src/hcm/analytics.ts`** (227 lines) — HCM_ANALYTICS_MODULE:18 · Measured:24 · NotMeasured:29 · Metric:37 · measured:39 · notMeasured:43 · ANALYTICS_REPORTS:51 · AnalyticsReport:58 · trailingMonths:70 · TENURE_BUCKETS:79 · TenureBucket:80 · tenureYears:83 · tenureBucket:88 · dailyRateFromBasic:102 · annualizedAttritionRate:113 · isEarlyAttrition:119 · absenteeismRate:125 · hiringOfferAcceptanceRate:141 · averageTimeToHireDays:147 · SpanOfControlStats:160 · spanOfControlStats:168 · distribution:184 · distributionList:191 · COMP_RATIO_BUCKETS:200 · CompRatioBucket:201 · compRatioBucket:204 · SLA_BUCKETS:217 · SlaBucket:218 · slaBucket:221
 
 **`packages/shared/src/hcm/assets.ts`** (123 lines) — HCM_ASSETS_MODULE:10 · ASSET_CATEGORIES:16 · AssetCategory:17 · HCM_ASSET_STATUSES:19 · HcmAssetStatus:20 · ASSET_CONDITIONS:22 · AssetCondition:23 · canTransitionAsset:33 · TRAVEL_MODES:41 · TravelMode:42 · TRAVEL_REQUEST_STATUSES:44 · TravelRequestStatus:45 · canTransitionTravelRequest:48 · isSelfDealingApproval:59 · LETTER_REQUEST_KINDS:67 · LetterRequestKind:68 · LETTER_REQUEST_STATUSES:70 · LetterRequestStatus:71 · canTransitionLetterRequest:73 · fulfilsViaHrLetter:86 · buildOwnLetterBody:91
 
@@ -450,7 +450,7 @@
 
 **`packages/shared/src/it/itsm.ts`** (185 lines) — IT_INCIDENT_SEVERITIES:17 · ItIncidentSeverity:18 · ItIncidentState:20 · ItIncidentEvent:21 · ItProblemState:23 · ItProblemEvent:24 · IT_CHANGE_KINDS:26 · ItChangeKind:27 · IT_CHANGE_RISKS:29 · ItChangeRisk:30 · ItChangeState:32 · ItChangeEvent:35 · itIncidentMachine:45 · ITSM_INCIDENT_VERBS:53 · itProblemMachine:62 · ITSM_PROBLEM_VERBS:70 · itChangeMachine:82 · ITSM_CHANGE_VERBS:94 · mttrMinutes:111 · changeSuccessRate:126 · ItFreezeWindow:133 · isInFreeze:145 · isWindowInFreeze:167
 
-**`packages/shared/src/it/portfolio.ts`** (261 lines) — IT_THEMES:18 · ItTheme:19 · IT_RAG_STATUSES:21 · ItRagStatus:22 · IT_BUDGET_CATEGORIES:24 · ItBudgetCategory:25 · IT_BUDGET_KINDS:27 · ItBudgetKind:28 · IT_BUDGET_LINE_STATUSES:30 · ItBudgetLineStatus:31 · IT_TECH_DEBT_SEVERITIES:33 · ItTechDebtSeverity:34 · ItInitiativeStage:40 · ItInitiativeEvent:43 · IT_INITIATIVE_VERBS:46 · itInitiativeMachine:61 · ItTechDebtStatus:78 · ItTechDebtEvent:79 · IT_TECH_DEBT_VERBS:81 · itTechDebtMachine:89 · parseFy:105 · formatFy:115 · fyFor:120 · FyWindow:126 · fyWindow:132 · fyElapsedFraction:145 · BurnAheadResult:152 · burnAhead:166 · ParsedQuarter:172 · parseQuarter:178 · formatQuarter:185 · RagCounts:193 · ragRollup:205 · ItPortfolioSummary:220 · ItBudgetCategoryLine:231 · ItBudgetDivisionLine:238 · ItBudgetSummary:247 · ItTechDebtSummary:257
+**`packages/shared/src/it/portfolio.ts`** (260 lines) — IT_THEMES:19 · ItTheme:20 · IT_RAG_STATUSES:22 · ItRagStatus:23 · IT_BUDGET_CATEGORIES:25 · ItBudgetCategory:26 · IT_BUDGET_KINDS:28 · ItBudgetKind:29 · IT_BUDGET_LINE_STATUSES:31 · ItBudgetLineStatus:32 · IT_TECH_DEBT_SEVERITIES:34 · ItTechDebtSeverity:35 · ItInitiativeStage:41 · ItInitiativeEvent:44 · IT_INITIATIVE_VERBS:47 · itInitiativeMachine:62 · ItTechDebtStatus:79 · ItTechDebtEvent:80 · IT_TECH_DEBT_VERBS:82 · itTechDebtMachine:90 · parseFy:106 · formatFy:116 · fyFor:121 · FyWindow:125 · fyWindow:131 · fyElapsedFraction:144 · BurnAheadResult:151 · burnAhead:165 · ParsedQuarter:171 · parseQuarter:177 · formatQuarter:184 · RagCounts:192 · ragRollup:204 · ItPortfolioSummary:219 · ItBudgetCategoryLine:230 · ItBudgetDivisionLine:237 · ItBudgetSummary:246 · ItTechDebtSummary:256
 
 **`packages/shared/src/it/servicedesk.ts`** (180 lines) — IT_TICKET_PRIORITIES:17 · ItTicketPriority:18 · IT_TICKET_CATEGORIES:20 · ItTicketCategory:21 · IT_KNOWLEDGE_STATUSES:23 · ItKnowledgeStatus:24 · ItTicketStatus:30 · ItTicketEvent:32 · ticketMachine:46 · TICKET_EVENT_VERB:58 · dueFrom:114 · SlaAttainmentRow:146 · slaAttainment:153 · medianMinutes:160 · backlogAgeBuckets:169
 
@@ -464,7 +464,7 @@
 
 **`packages/shared/src/planes.ts`** (245 lines) — PLANES:8 · PlaneCode:21 · BOUNDED_CONTEXTS:28 · BoundedContext:53 · ModuleRegisterEntry:60 · MODULE_REGISTER:69
 
-**`packages/shared/src/time.ts`** (43 lines) — IST:7 · istMonthKey:21 · istFinancialYearStart:30 · istFinancialYear:35 · istPeriodOf:40
+**`packages/shared/src/time.ts`** (65 lines) — IST:7 · istMonthKey:23 · istYearMonth:29 · istFinancialYearStart:38 · istMidnight:48 · istEndOfDay:53 · istFinancialYear:57 · istPeriodOf:62
 
 ## HTTP routes
 
@@ -878,5 +878,13 @@ Generated or lock files. Nothing in them answers a question worth the tokens.
 - `.claude/worktrees/agent-a267cf0c53718b422/pnpm-lock.yaml` (6006 lines)
 - `.claude/worktrees/agent-a348c13968dfc4ee9/pnpm-lock.yaml` (6006 lines)
 - `.claude/worktrees/agent-a63fd5466e71683b1/pnpm-lock.yaml` (6006 lines)
+- `.claude/worktrees/agent-a8c1a316b0acb1bdc/pnpm-lock.yaml` (5293 lines)
+- `.claude/worktrees/agent-a060d09e4eb532b47/pnpm-lock.yaml` (5169 lines)
+- `.claude/worktrees/agent-a0a9b0dd671ce5ac2/pnpm-lock.yaml` (5169 lines)
+- `.claude/worktrees/agent-a277db7fa361cf1f6/pnpm-lock.yaml` (5169 lines)
+- `.claude/worktrees/agent-a3eb7624f960ee016/pnpm-lock.yaml` (5169 lines)
+- `.claude/worktrees/agent-a6846beaf45ab3c61/pnpm-lock.yaml` (5169 lines)
 - `.claude/worktrees/agent-a889deee29e46c1b3/pnpm-lock.yaml` (5169 lines)
+- `.claude/worktrees/agent-a9110a4117f27a259/pnpm-lock.yaml` (5169 lines)
+- `.claude/worktrees/agent-afd22e077572a2f7e/pnpm-lock.yaml` (5169 lines)
 - `pnpm-lock.yaml` (5169 lines)

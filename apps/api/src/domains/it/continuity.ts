@@ -35,6 +35,7 @@ import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
+import { istYearMonth } from '@kaizen/shared';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
@@ -608,12 +609,10 @@ export async function continuitySummary(): Promise<ContinuitySummary> {
   };
 }
 
-function lastFullMonthPeriod(now: Date): string {
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth(); // 0-based; previous month index
-  const prevMonth = m === 0 ? 12 : m;
-  const prevYear = m === 0 ? y - 1 : y;
-  return `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+export function lastFullMonthPeriod(now: Date): string {
+  const { year, month } = istYearMonth(now);
+  const prev = new Date(Date.UTC(year, month - 2, 1));
+  return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 async function availabilitySummaryInternal(tenantId: string, now: Date): Promise<ContinuitySummary['availabilityLastMonth']> {

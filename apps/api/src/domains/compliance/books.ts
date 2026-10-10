@@ -13,6 +13,7 @@
  * everything else.
  */
 
+import { istFinancialYearStart } from '@kaizen/shared';
 import { createHash } from 'node:crypto';
 import {
   round2,
@@ -492,7 +493,7 @@ export async function depreciationReport(fyStartYear: number) {
     let itCharge: number | null = null;
     let itOpeningWdv: number | null = null;
     if (block) {
-      const acquisitionFyStart = asset.purchaseDate.getUTCMonth() >= 3 ? asset.purchaseDate.getUTCFullYear() : asset.purchaseDate.getUTCFullYear() - 1;
+      const acquisitionFyStart = istFinancialYearStart(asset.purchaseDate);
       let wdv = cost;
       for (let y = acquisitionFyStart; y <= fyStartYear; y += 1) {
         const { to: yearTo } = financialYearRange(y);
