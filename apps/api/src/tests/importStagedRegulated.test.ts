@@ -11,7 +11,9 @@ import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { asUser, prisma, withFixtureRole } from './helpers.js';
 import { stageImport, importRows } from '../imports/service.js';
-import { TEMPLATES, buildTemplateWorkbook } from '../imports/templates.js';
+import { commitImport } from '../imports/commit.js';
+import { TEMPLATES, buildTemplateWorkbook, type TemplateSpec } from '../imports/templates.js';
+import { readRegulated } from '../domains/compliance/privacy.js';
 
 const GUARDIAN_PHONE = '9876543210';
 const GUARDIAN_NAME = 'Lakshmi Guardian';
@@ -29,6 +31,17 @@ async function stageMinorStudent(guardianPhone: string) {
   book.Sheets.Data['!ref'] = 'A1:H2';
   return stageImport({
     fileName: 'students.xlsx',
+    buffer: XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+  });
+}
+
+/** Stages rows under a template's own headings, so the file is recognised as that template. */
+async function stageRows(spec: TemplateSpec, rows: unknown[][]) {
+  const book = XLSX.read(buildTemplateWorkbook(spec), { type: 'buffer' });
+  XLSX.utils.sheet_add_aoa(book.Sheets.Data, rows, { origin: 'A2' });
+  book.Sheets.Data['!ref'] = `A1:${XLSX.utils.encode_col(spec.columns.length - 1)}${rows.length + 1}`;
+  return stageImport({
+    fileName: `${spec.slug}.xlsx`,
     buffer: XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
   });
 }
@@ -63,14 +76,12 @@ describe('Staged import rows and regulated cells', () => {
     });
   });
 
-  it('committing purges the raw cells, keeps the rows and their status, and audits the purge', async () => {
-    const { commitStagedImport } = await import('../imports/service.js');
-
+  it('committing purges the raw cells when commitImport itself is called, keeps the rows, and audits the purge', async () => {
     await asUser('chairman@kaizen.co.in', async () => {
       const staged = await stageMinorStudent(GUARDIAN_PHONE);
       const before = await prisma.importRow.count({ where: { batchId: staged.batchId } });
 
-      await commitStagedImport(staged.batchId);
+      await commitImport(staged.batchId);
 
       const rows = await prisma.importRow.findMany({ where: { batchId: staged.batchId } });
       expect(rows).toHaveLength(before);
@@ -82,5 +93,55 @@ describe('Staged import rows and regulated cells', () => {
       });
       expect(audit).not.toBeNull();
     });
+  });
+
+  it('a committed guardian phone reaches the enrolment encrypted once, as the original value', async () => {
+    const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const courseCode = `FSD${stamp}`;
+    const batchName = `Batch ${stamp}`;
+    await asUser('chairman@kaizen.co.in', async () => {
+      const course = await stageRows(TEMPLATES.courses, [[`Course ${stamp}`, courseCode, '12', '']]);
+      expect((await commitImport(course.batchId)).errors).toEqual([]);
+      const batch = await stageRows(TEMPLATES.batches, [[courseCode, batchName, '15/09/2026', '', '', '']]);
+      expect((await commitImport(batch.batchId)).errors).toEqual([]);
+
+      const staged = await stageRows(TEMPLATES.students, [
+        [`Minor ${stamp}`, '', '', batchName, '', 'Yes', GUARDIAN_NAME, GUARDIAN_PHONE],
+      ]);
+      const result = await commitImport(staged.batchId);
+      expect(result.errors).toEqual([]);
+
+      const cohort = await prisma.cohort.findFirst({ where: { name: batchName } });
+      const enrollment = await prisma.enrollment.findFirst({ where: { cohortId: cohort!.id } });
+      const stored = enrollment!.guardianPhone!;
+      expect(stored.match(/enc:v1:/g)?.length).toBe(1);
+      expect(readRegulated(stored)).toBe(GUARDIAN_PHONE);
+    });
+  });
+
+  it('a committed blood group reaches the person as the original value, not as staging ciphertext', async () => {
+    const name = `Staff ${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    await asUser('chairman@kaizen.co.in', async () => {
+      const staged = await stageRows(TEMPLATES.staff, [[name, '', '', 'Software', 'Madurai', '', '', '', '', 'O+']]);
+      const result = await commitImport(staged.batchId);
+      expect(result.errors).toEqual([]);
+      const person = await prisma.person.findFirst({ where: { fullName: name } });
+      expect(person?.bloodGroup).toBe('O+');
+    });
+  });
+
+  it('a read of unmasked staged values writes one read audit per request, and a masked read writes none', async () => {
+    const staged = await asUser('chairman@kaizen.co.in', () => stageMinorStudent(GUARDIAN_PHONE));
+    const readsAudited = () =>
+      prisma.auditRecord.count({ where: { subjectType: 'import_batch', subjectId: staged.batchId, action: 'read' } });
+
+    const before = await asUser('chairman@kaizen.co.in', readsAudited);
+    await asUser('chairman@kaizen.co.in', () => importRows(staged.batchId));
+    expect(await asUser('chairman@kaizen.co.in', readsAudited)).toBe(before + 1);
+
+    await withFixtureRole({ slug: 'import_viewer_audit', grants: [{ resource: 'imports', verbs: ['view'] }] }, () =>
+      importRows(staged.batchId),
+    );
+    expect(await asUser('chairman@kaizen.co.in', readsAudited)).toBe(before + 1);
   });
 });
