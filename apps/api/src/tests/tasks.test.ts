@@ -82,7 +82,7 @@ describe('POST /crm/tasks/:id/complete — governance', () => {
     });
     expect(audit.map((r) => r.action)).toContain('update');
 
-    const events = emittedEvents.filter((e) => e.name === 'kz.wfl.task.completed' && e.subject.entityId === task.id);
+    const events = emittedEvents.filter((e) => e.eventName === 'kz.wfl.task.completed' && e.subject.entityId === task.id);
     expect(events).toHaveLength(1);
   });
 });

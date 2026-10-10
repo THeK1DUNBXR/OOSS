@@ -246,13 +246,15 @@
 
 **`apps/api/src/domains/surfaces.ts`** (245 lines) — navigationFor:33 · surfaceCompositionFor:88 · universalSearch:167
 
+**`apps/api/src/domains/tasks.ts`** (47 lines) — completeTask:16
+
 **`apps/api/src/domains/winLoss.ts`** (205 lines) — ensureWinLossReview:37 · WinLossInput:92 · completeWinLossReview:101 · detectOverdueReviews:162
 
 ## API platform
 
 **`apps/api/src/platform/approvals.ts`** (373 lines) — ApprovalPolicyContent:30 · DEFAULT_APPROVAL_POLICY:46 · GateSubject:59 · GateResult:82 · evaluateApprovalGate:109 · decideApprovalStep:309
 
-**`apps/api/src/platform/audit.ts`** (430 lines) — AUDIT_ACTIONS:19 · AuditAction:30 · registerGovernedEntities:39 · governedEntities:45 · isGoverned:51 · diffForAudit:120 · computeAuditHash:184 · createChainedAuditRecord:218 · verifyAuditChain:270 · chainUnhashedAuditRecords:316 · AuditWriteInput:338 · auditWrite:349 · auditRegulatedRead:374 · auditExport:397 · auditBulkOperation:412
+**`apps/api/src/platform/audit.ts`** (433 lines) — AUDIT_ACTIONS:19 · AuditAction:30 · registerGovernedEntities:39 · governedEntities:45 · isGoverned:51 · diffForAudit:123 · computeAuditHash:187 · createChainedAuditRecord:221 · verifyAuditChain:273 · chainUnhashedAuditRecords:319 · AuditWriteInput:341 · auditWrite:352 · auditRegulatedRead:377 · auditExport:400 · auditBulkOperation:415
 
 **`apps/api/src/platform/build.ts`** (121 lines) — BuildStamp:27 · BUILD:95 · STARTED_AT:98 · buildsBehind:108 · buildLabel:115
 
@@ -510,7 +512,7 @@
 
 **`apps/api/src/routes/compliance/tax.routes.ts`** (177 lines) — GET /vendor-bills:44 · GET /rates:45 · GET /applicability-rules:46 · GET /msme/exposure:79 · GET /challans:83 · GET /salary/:employmentId/projection:116 · POST /salary/apply/:payrollRunId:117 · GET /returns:135 · GET /returns/:id:136 · GET /certificates:162 · GET /certificates/:id/document:170 · GET /current-fy:174
 
-**`apps/api/src/routes/crm.routes.ts`** (1120 lines) — GET /search:76 · GET /organizations:433 · GET /institutions:434 · GET /organizations/:id:436 · GET /institutions/:id:437 · DELETE /organizations/:id/account:529 · GET ${l.pipelineId}:${l.stageKey}:711 · GET /leads/:id/routing-audit:829 · GET ${o.pipelineId}:${o.stageKey}:859 · GET /forecast:1035
+**`apps/api/src/routes/crm.routes.ts`** (1115 lines) — GET /search:77 · GET /organizations:434 · GET /institutions:435 · GET /organizations/:id:437 · GET /institutions/:id:438 · DELETE /organizations/:id/account:530 · GET ${l.pipelineId}:${l.stageKey}:712 · GET /leads/:id/routing-audit:830 · GET ${o.pipelineId}:${o.stageKey}:860 · GET /forecast:1036
 
 **`apps/api/src/routes/education.routes.ts`** (642 lines) — POST /courses/:id/retire:263
 

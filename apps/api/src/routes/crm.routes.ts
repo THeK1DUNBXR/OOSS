@@ -65,6 +65,7 @@ import {
   openRenewalOpportunity,
 } from '../domains/opportunities.js';
 import { logInteraction, timelineFor, recentInteractions } from '../domains/interactions.js';
+import { completeTask } from '../domains/tasks.js';
 import { universalSearch } from '../domains/surfaces.js';
 
 const router = Router();
@@ -1107,13 +1108,7 @@ router.get(
 
 router.post(
   '/tasks/:id/complete',
-  handler(async (req) => {
-    const auth = currentAuth();
-    return prisma.task.update({
-      where: { id: req.params.id },
-      data: { status: 'done', completedAt: new Date(), ownerPartyId: auth.partyId },
-    });
-  }),
+  handler(async (req) => completeTask(req.params.id)),
 );
 
 export default router;

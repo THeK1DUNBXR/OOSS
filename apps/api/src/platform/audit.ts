@@ -87,6 +87,9 @@ registerGovernedEntities('crm', [
 registerGovernedEntities('pct', ['contract', 'partner_agreement', 'proposal', 'quote']);
 registerGovernedEntities('gov', ['policy', 'policy_version', 'grant', 'authority_grant', 'decision', 'delegation']);
 registerGovernedEntities('fin', ['invoice', 'receipt', 'credit_note', 'fee_instalment']);
+// A task closed is a commitment someone made good on or didn't; closing it
+// unaudited left no trace of who marked a follow-up done.
+registerGovernedEntities('crm', ['task']);
 // Added with invoicing and the returns: the company's own registration, which
 // every invoice is printed from, and a filed return, which is a statement to
 // the government. Both are things somebody will one day have to prove who
