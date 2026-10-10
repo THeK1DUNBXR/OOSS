@@ -363,18 +363,29 @@ export async function scopeFor(resource: string, verb: Verb, auth?: AuthContext)
 }
 
 /**
+ * A filter no row satisfies. Not a sentinel string: Postgres rejects a NUL byte
+ * in text (22021), so a `'\u0000…'` value turned an empty list into a 500.
+ */
+function matchNothing(ownerField: string): Record<string, unknown> {
+  return { [ownerField]: { in: [] } };
+}
+
+/**
  * Builds a Prisma `where` fragment implementing the WHERE axis for a list
  * query.
  */
 export function scopeWhere(scope: Scope, auth: AuthContext, ownerField = 'ownerPartyId'): Record<string, unknown> {
   if (scope === 'all') return {};
-  if (scope === 'own') return { [ownerField]: auth.partyId };
-  return {
-    OR: [
-      { [ownerField]: auth.partyId },
-      { [ownerField]: null, ...(auth.branch ? { branch: auth.branch } : {}) },
-    ],
-  };
+  // Fail closed. A principal with no party (an agent) owns nothing, and
+  // `{ owner: null }` is exactly the set of unowned rows, so it must not be
+  // built from a null partyId. Likewise an unowned row is reachable only
+  // within a branch: with no branch there is nothing to match it against.
+  const clauses: Record<string, unknown>[] = [
+    ...(auth.partyId ? [{ [ownerField]: auth.partyId }] : []),
+    ...(scope === 'own' || !auth.branch ? [] : [{ [ownerField]: null, branch: auth.branch }]),
+  ];
+  if (clauses.length === 0) return matchNothing(ownerField);
+  return clauses.length === 1 ? clauses[0] : { OR: clauses };
 }
 
 
@@ -430,7 +441,7 @@ export async function visibilityWhere(
   // No grant at all: the caller should have asserted first. Returning an
   // unsatisfiable filter rather than `{}` means a missing assertion degrades to
   // an empty list instead of to the whole table.
-  if (scope === null) return { [ownerField]: '\u0000no-grant' };
+  if (scope === null) return matchNothing(ownerField);
   return scopeWhere(scope, a, ownerField);
 }
 
@@ -452,9 +463,9 @@ export interface FilterOptions {
   fieldClassifications?: Record<string, SensitivityClass>;
   /**
    * The class a field with no entry in `fieldClassifications` is treated as.
-   * Unset keeps the legacy behaviour for route callers (an unclassified field
-   * is not checked). The model gateway sets it to `regulated`, so a field
-   * nobody has classified is withheld from a model rather than passed on. FX-65.
+   * Unset means `internal`: a field nobody classified is withheld from a public
+   * caller rather than passed to it. The model gateway sets `regulated`, so a
+   * field nobody has classified never reaches a model. FX-65.
    */
   unclassifiedAs?: SensitivityClass;
   /** Statutory/business purpose for each field, used by data maps and exports. */
@@ -516,7 +527,7 @@ function walk(
       }
     }
 
-    const fieldClass = options.fieldClassifications?.[key] ?? options.unclassifiedAs;
+    const fieldClass = options.fieldClassifications?.[key] ?? options.unclassifiedAs ?? 'internal';
     if (fieldClass && SENSITIVITY_RANK[options.ceiling] < SENSITIVITY_RANK[fieldClass]) {
       withheld.push({ path: childPath, reason: 'classification_ceiling' });
       out[key] = null;

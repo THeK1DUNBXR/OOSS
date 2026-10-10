@@ -22,6 +22,21 @@ declare global {
 }
 
 /**
+ * The classification ceiling a roleSlug confers. A slug that names no defined
+ * role (neither a tenant role nor a built-in one) is treated as no role: the
+ * lowest ceiling. Falling back to `internal` gave an undefined role more than
+ * a roleless holder gets (rolelessAccess.test.ts).
+ */
+export async function ceilingForRole(tenantId: string, roleSlug: string | null): Promise<SensitivityClass> {
+  if (!roleSlug) return 'public';
+  const role = await unscopedPrisma.accessRole.findFirst({
+    where: { tenantId, slug: roleSlug },
+    select: { classificationCeiling: true },
+  });
+  return (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'public') as SensitivityClass;
+}
+
+/**
  * Establishes the request context. `tenantId` is resolved from the session
  * token's user record — never from a request parameter or header.
  */
@@ -54,20 +69,11 @@ export async function contextMiddleware(req: Request, res: Response, next: NextF
           // 'sales' gave the sales seat to every affiliation whose role was
           // never set, so the holder could read what sales can read. With no
           // role there are no grants, and the ceiling is the lowest class.
-          const roleSlug = affiliation.roleSlug;
-          const role = roleSlug
-            ? await unscopedPrisma.accessRole.findFirst({
-                where: { tenantId: user.tenantId, slug: roleSlug },
-                select: { classificationCeiling: true },
-              })
-            : null;
-          const ceiling = (
-            roleSlug ? (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'internal') : 'public'
-          ) as SensitivityClass;
+          const ceiling = await ceilingForRole(user.tenantId, affiliation.roleSlug);
           ctx.auth = toAuthContext(
             { ...payload, tenantId: user.tenantId },
             user.personId,
-            roleSlug,
+            affiliation.roleSlug,
             user.branch,
             affiliation.orgUnitId,
             ceiling,

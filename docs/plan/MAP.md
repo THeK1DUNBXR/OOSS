@@ -282,7 +282,7 @@
 
 **`apps/api/src/platform/lifecycle.ts`** (144 lines) — TransitionInput:25 · TransitionResult:58 · transition:74 · availableTransitions:127 · assertNotTerminal:135
 
-**`apps/api/src/platform/llm.ts`** (300 lines) — LlmRegion:11 · LlmTask:12 · ApprovalClassification:13 · PERSONAL_DATA_FIELDS:22 · ModelGatewayConfig:54 · ModelGatewayCall:75 · ModelGatewayResult:82 · BriefingMetricSpec:91 · normalizeAction:97 · classifyAction:101 · assertActionAllowed:116 · isIndiaRegionRequired:127 · allowInferenceRegion:131 · redactPersonalFields:142 · sanitizeForModel:165 · ModelGateway:183 · createGateway:273 · safeBriefingComposition:277 · assertAllowedSemanticQuery:290
+**`apps/api/src/platform/llm.ts`** (315 lines) — LlmRegion:11 · LlmTask:12 · ApprovalClassification:13 · PERSONAL_DATA_FIELDS:22 · ModelGatewayConfig:69 · ModelGatewayCall:90 · ModelGatewayResult:97 · BriefingMetricSpec:106 · normalizeAction:112 · classifyAction:116 · assertActionAllowed:131 · isIndiaRegionRequired:142 · allowInferenceRegion:146 · redactPersonalFields:157 · sanitizeForModel:180 · ModelGateway:198 · createGateway:288 · safeBriefingComposition:292 · assertAllowedSemanticQuery:305
 
 **`apps/api/src/platform/logger.ts`** (69 lines) — SAFE_FIELDS:14 · allowlistFields:39 · LoggerOptions:47 · createLogger:52 · logger:68
 
@@ -292,7 +292,7 @@
 
 **`apps/api/src/platform/outbox.ts`** (265 lines) — OUTBOX_MAX_ATTEMPTS:30 · DrainOptions:43 · DrainResult:52 · drainOutbox:79 · backoffMs:102 · dispatchDueOutbox:221 · startOutboxDispatcher:243 · stopOutboxDispatcher:261
 
-**`apps/api/src/platform/permissions.ts`** (544 lines) — ResolvedGrant:36 · invalidateGrantCache:50 · resolveGrants:54 · ScopedRecord:100 · EvaluateInput:113 · evaluate:131 · resolveAuthorityCeiling:295 · assertCan:317 · can:330 · holdsScopeResolver:344 · scopeFor:356 · scopeWhere:369 · assertScopeAll:396 · visibilityWhere:423 · FilterResult:441 · FilterOptions:446 · FIELD_PURPOSES:467 · applyFieldVisibility:488 · canSeeMoney:539
+**`apps/api/src/platform/permissions.ts`** (555 lines) — ResolvedGrant:36 · invalidateGrantCache:50 · resolveGrants:54 · ScopedRecord:100 · EvaluateInput:113 · evaluate:131 · resolveAuthorityCeiling:295 · assertCan:317 · can:330 · holdsScopeResolver:344 · scopeFor:356 · scopeWhere:377 · assertScopeAll:407 · visibilityWhere:434 · FilterResult:452 · FilterOptions:457 · FIELD_PURPOSES:478 · applyFieldVisibility:499 · canSeeMoney:550
 
 **`apps/api/src/platform/rateLimitStore.ts`** (108 lines) — purgeExpiredRateLimitBuckets:37 · PostgresRateLimitStore:45
 
@@ -388,7 +388,7 @@
 
 **`apps/api/src/lib/auth.ts`** (1008 lines) — assertProductionSecrets:89 · TokenPayload:121 · SelectionTokenPayload:136 · signToken:141 · hashRefreshSecret:146 · liveSessionFor:155 · verifyToken:189 · MfaChallengePayload:197 · hashPassword:228 · ensureSignInPrincipal:248 · EntitySelectionResult:312 · assertPasswordAllowed:323 · LoginResult:380 · MfaRequiredResult:388 · login:411 · verifyMfaAndLogin:536 · enrolMfa:561 · confirmMfa:567 · changePassword:583 · entitiesForToken:601 · identifySwitchCaller:613 · switchEntity:650 · SessionRefresh:707 · refreshSession:734 · logoutWithRefreshCookie:804 · logoutSession:846 · buildSessionUser:856 · toAuthContext:930 · switchContext:962
 
-**`apps/api/src/lib/http.ts`** (193 lines) — contextMiddleware:28 · requireAuth:93 · handler:99 · errorMiddleware:115 · parsePaging:166 · str:172 · bool:176 · date:182 · numeric:188
+**`apps/api/src/lib/http.ts`** (199 lines) — ceilingForRole:30 · contextMiddleware:43 · requireAuth:99 · handler:105 · errorMiddleware:121 · parsePaging:172 · str:178 · bool:182 · date:188 · numeric:194
 
 **`apps/api/src/lib/refreshCookie.ts`** (51 lines) — REFRESH_COOKIE:16 · readRefreshCookie:19 · setRefreshCookie:44 · clearRefreshCookie:48
 

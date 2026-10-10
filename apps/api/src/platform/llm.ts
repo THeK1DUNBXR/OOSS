@@ -1,4 +1,4 @@
-import { AI_PROHIBITED_ACTIONS, type SensitivityClass } from '@kaizen/shared';
+import { AI_PROHIBITED_ACTIONS, SENSITIVITY_RANK, type SensitivityClass } from '@kaizen/shared';
 import { applyFieldVisibility } from './permissions.js';
 import {
   compileMetricQuery,
@@ -47,7 +47,22 @@ export const PERSONAL_DATA_FIELDS = new Set([
   'guardianPhone',
   'guardianEmail',
   'guardianConsentId',
+  // EmploymentRelationship columns (main.prisma). A third party's name and
+  // number, held for emergencies, not for a model to summarise.
+  'emergencyContactName',
+  'emergencyContactPhone',
 ]);
+
+/**
+ * The most sensitive class any payload may carry to a model, whatever the
+ * caller's grant says. Regulated data never goes to a model (Opus decision,
+ * security review), so a regulated-ceiling caller is capped here as well.
+ */
+const MODEL_CEILING_CAP: SensitivityClass = 'restricted';
+
+function capForModel(ceiling: SensitivityClass): SensitivityClass {
+  return SENSITIVITY_RANK[ceiling] > SENSITIVITY_RANK[MODEL_CEILING_CAP] ? MODEL_CEILING_CAP : ceiling;
+}
 
 const PROHIBITED_ACTION_PREFIXES = ['journal.', 'journal_entry.', 'irn.', 'filing.', 'payroll.', 'email.'];
 
@@ -61,8 +76,8 @@ export interface ModelGatewayConfig {
   fieldClassifications?: Record<string, SensitivityClass>;
   /**
    * The most sensitive class the caller's grant lets reach the model. Taken from
-   * the caller's auth (classificationCeiling), never a constant. Unset means the
-   * most restrictive class, `public`. FX-65.
+   * the caller's auth (classificationCeiling), never a constant, and capped at
+   * `restricted` before it is applied. Unset means `public`. FX-65.
    */
   classificationCeiling?: SensitivityClass;
   maxInputTokens?: number;
@@ -171,7 +186,7 @@ export function sanitizeForModel<T extends Record<string, unknown>>(
   // restrictive class, not as public. FX-65.
   const result = applyFieldVisibility(payload, {
     canSeeMoney: config.canSeeMoney ?? false,
-    ceiling: config.classificationCeiling ?? 'public',
+    ceiling: capForModel(config.classificationCeiling ?? 'public'),
     fieldClassifications: config.fieldClassifications ?? {},
     unclassifiedAs: 'regulated',
   });
