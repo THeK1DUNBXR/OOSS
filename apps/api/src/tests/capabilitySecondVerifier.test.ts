@@ -55,13 +55,15 @@ describe('verifyClaim — the second verifier must be a real, qualified person i
     expect(await verificationRows(claim.id)).toBe(0);
   });
 
-  it('a second verifier who holds no capabilities:approve is refused 403 and nothing is written', async () => {
+  it('a finance head, who approves pay but holds no capabilities:approve, is refused 403 and nothing is written', async () => {
     const tid = await tenantId();
     const claim = await arunClaim(tid);
-    const ops = await principalFor('operations@kaizen.co.in');
+    // finance_head has no capabilities grant in the matrix (seed/grants.ts), so
+    // a real senior person with a signing role is still not a second verifier.
+    const finance = await principalFor('bhead@kaizen.co.in');
 
     const err = await asUser('hr@kaizen.co.in', () =>
-      expectReject(() => verifyClaim(claim.id, { secondVerifierPartyId: ops.partyId })),
+      expectReject(() => verifyClaim(claim.id, { secondVerifierPartyId: finance.partyId })),
     );
     expect(err.status).toBe(403);
 
@@ -73,17 +75,21 @@ describe('verifyClaim — the second verifier must be a real, qualified person i
   it('a second verifier who holds capabilities:approve in this tenant is accepted and the claim verifies', async () => {
     const tid = await tenantId();
     const claim = await arunClaim(tid);
-    const secondPartyId = await withFixtureRole(
-      { slug: 'w1c_second_verifier', grants: [{ resource: 'capabilities', verbs: ['approve'] }] },
-      async (p) => p.partyId,
-    );
 
-    await asUser('hr@kaizen.co.in', () => verifyClaim(claim.id, { secondVerifierPartyId: secondPartyId }));
+    // The fixture is torn down when withFixtureRole returns, so the verify call
+    // runs inside it. Its affiliation is the only thing that makes the second
+    // verifier qualified, so the grant is the variable under test.
+    await withFixtureRole(
+      { slug: 'w1c_second_verifier', grants: [{ resource: 'capabilities', verbs: ['approve'] }] },
+      async (second) => {
+        await asUser('hr@kaizen.co.in', () => verifyClaim(claim.id, { secondVerifierPartyId: second.partyId }));
+        const event = await unscopedPrisma.verificationEvent.findFirstOrThrow({ where: { capabilityClaimId: claim.id } });
+        expect(event.secondVerifierPartyId).toBe(second.partyId);
+      },
+    );
 
     const after = await unscopedPrisma.capabilityClaim.findFirstOrThrow({ where: { id: claim.id } });
     expect(after.tier).toBe('verified');
-    const event = await unscopedPrisma.verificationEvent.findFirstOrThrow({ where: { capabilityClaimId: claim.id } });
-    expect(event.secondVerifierPartyId).toBe(secondPartyId);
   });
 });
 

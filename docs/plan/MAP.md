@@ -18,7 +18,7 @@
 
 **`apps/api/src/domains/books.ts`** (1411 lines) — listAccounts:86 · createAccount:95 · listCategories:125 · createCategory:134 · accountBalances:169 · TransactionInput:213 · groupCounterpartyOptions:240 · recordTransaction:264 · reverseTransaction:361 · listTransactions:437 · listVendorBills:471 · recordVendorBill:485 · payVendorBill:548 · payablesAgeing:600 · detectOverdueBills:631 · priceInvoiceGst:674 · gstSummary:729 · setBudgetLine:777 · budgetVariance:829 · listAssets:899 · createAsset:932 · assetSchedule:992 · listLoans:1009 · createLoan:1043 · loanSchedule:1078 · generateRecurring:1105 · ProfitAndLoss:1165 · profitAndLoss:1181 · monthlyTrend:1244 · cashPosition:1277 · cashForecast:1308 · postPayrollToBooks:1353
 
-**`apps/api/src/domains/capability.ts`** (467 lines) — listSkills:51 · createSkill:57 · CapabilityView:70 · capabilitiesForParty:92 · assertClaim:139 · addEvidence:192 · verifyClaim:244 · recordContradiction:332 · changeClaimState:377 · claimFromLearningCompletion:411 · findCapableParties:437
+**`apps/api/src/domains/capability.ts`** (566 lines) — listSkills:50 · createSkill:56 · CapabilityView:76 · capabilitiesForParty:98 · assertClaim:145 · addEvidence:205 · verifyClaim:318 · recordContradiction:411 · changeClaimState:467 · claimFromLearningCompletion:510 · findCapableParties:536
 
 **`apps/api/src/domains/ceo/board.detectors.ts`** (11 lines) — detectors:10
 
@@ -246,7 +246,7 @@
 
 **`apps/api/src/domains/surfaces.ts`** (245 lines) — navigationFor:33 · surfaceCompositionFor:88 · universalSearch:167
 
-**`apps/api/src/domains/tasks.ts`** (47 lines) — completeTask:16
+**`apps/api/src/domains/tasks.ts`** (63 lines) — completeTask:15
 
 **`apps/api/src/domains/winLoss.ts`** (205 lines) — ensureWinLossReview:37 · WinLossInput:92 · completeWinLossReview:101 · detectOverdueReviews:162
 

@@ -33,14 +33,13 @@ import {
   type ContradictionType,
 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
-import { currentAuth } from '../platform/context.js';
+import { currentAuth, type AuthContext } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, can } from '../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
-import { assertScopeAll } from '../platform/permissions.js';
 
-registerGovernedEntities('capability', ['capability_claim']);
+registerGovernedEntities('capability', ['capability_claim', 'skill', 'evidence']);
 
 /** Domain rule violations from the shared model become 422s at the boundary. */
 function asApiError(err: unknown): never {
@@ -57,7 +56,7 @@ export async function listSkills() {
 export async function createSkill(input: { name: string; halfLifeMonths?: number; proficiencyScale?: unknown }) {
   const auth = currentAuth();
   await assertCan({ resource: 'capabilities', verb: 'create' });
-  return prisma.skill.create({
+  const skill = await prisma.skill.create({
     data: {
       tenantId: auth.tenantId,
       name: input.name,
@@ -65,6 +64,13 @@ export async function createSkill(input: { name: string; halfLifeMonths?: number
       proficiencyScale: (input.proficiencyScale ?? []) as never,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'skill',
+    subjectId: skill.id,
+    after: { name: skill.name, halfLifeMonths: skill.halfLifeMonths },
+  });
+  return skill;
 }
 
 export interface CapabilityView {
@@ -177,6 +183,13 @@ export async function assertClaim(input: {
     },
   });
 
+  await auditWrite({
+    action: 'create',
+    subjectType: 'capability_claim',
+    subjectId: claim.id,
+    after: { partyId: input.partyId, skillId: input.skillId ?? null, tier: input.tier, source: claim.source },
+  });
+
   await emit({
     name: EVENTS.CAPABILITY_CLAIM_ASSERTED,
     subject: { entityType: 'capability_claim', entityId: claim.id },
@@ -209,6 +222,13 @@ export async function addEvidence(claimId: string, input: { description: string;
   // recording it.
   await prisma.capabilityClaim.update({ where: { id: claimId }, data: { lastEvidencedAt: new Date() } });
 
+  await auditWrite({
+    action: 'create',
+    subjectType: 'evidence',
+    subjectId: evidence.id,
+    after: { capabilityClaimId: claimId, sourceRef: evidence.sourceRef },
+  });
+
   return evidence;
 }
 
@@ -239,6 +259,60 @@ async function verifierIsClaimantsManager(claimantPartyId: string, verifierParty
     select: { id: true },
   });
   return Boolean(line);
+}
+
+/**
+ * The second verifier is a person whose verify right is checked, not a string
+ * the caller supplies. Before this, any cuid satisfied the two-person rule on
+ * paper, so a pay-feeding skill verified with a second signature from nobody.
+ *
+ * The right is evaluated through the same evaluator as the first verifier's,
+ * under the second person's own affiliation, so a change to the matrix moves
+ * both checks together. Refused before anything is written: a rejected second
+ * verifier leaves no verificationEvent behind.
+ */
+async function assertSecondVerifierQualified(secondPartyId: string): Promise<void> {
+  const auth = currentAuth();
+  const now = new Date();
+  const affiliations = await prisma.affiliation.findMany({
+    where: {
+      tenantId: auth.tenantId,
+      partyId: secondPartyId,
+      status: 'active',
+      effectiveFrom: { lte: now },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
+    },
+  });
+  if (affiliations.length === 0) {
+    throw ApiError.unprocessable('The second verifier must be an active person in this tenant [Canon §14.6.4].');
+  }
+
+  for (const affiliation of affiliations) {
+    if (!affiliation.roleSlug) continue;
+    const role = await prisma.accessRole.findFirst({
+      where: { tenantId: auth.tenantId, slug: affiliation.roleSlug },
+      select: { classificationCeiling: true },
+    });
+    const candidate: AuthContext = {
+      ...auth,
+      principalType: 'human',
+      partyId: secondPartyId,
+      userId: null,
+      agentId: null,
+      onBehalfOfPartyId: null,
+      affiliationId: affiliation.id,
+      roleSlug: affiliation.roleSlug,
+      branch: affiliation.branch,
+      orgUnitId: affiliation.orgUnitId,
+      classificationCeiling: (role?.classificationCeiling ?? 'internal') as AuthContext['classificationCeiling'],
+      purpose: null,
+      consentCodes: [],
+      stepUpVerified: false,
+    };
+    if (await can({ resource: 'capabilities', verb: 'approve', auth: candidate })) return;
+  }
+
+  throw ApiError.forbidden('The second verifier does not hold capabilities:approve in this tenant [Canon §14.6.4].');
 }
 
 export async function verifyClaim(
@@ -275,6 +349,7 @@ export async function verifyClaim(
   } catch (err) {
     asApiError(err);
   }
+  if (input.secondVerifierPartyId) await assertSecondVerifierQualified(input.secondVerifierPartyId);
 
   const updated = await prisma.$transaction(async (tx) => {
     await tx.verificationEvent.create({
@@ -299,6 +374,19 @@ export async function verifyClaim(
     });
   });
 
+  // Audit before emit, so an event subscriber never acts on a verification the
+  // register does not yet show. The write has already committed above, so a
+  // failed audit here leaves a verified claim with no row: the two belong in
+  // one transaction, which is a platform change rather than this function's.
+  await auditWrite({
+    action: 'update',
+    subjectType: 'capability_claim',
+    subjectId: claimId,
+    before: { tier: claim.tier },
+    after: { tier: 'verified' },
+    meta: { verifierPartyId: auth.partyId, secondVerifierPartyId: input.secondVerifierPartyId ?? null },
+  });
+
   await emit({
     name: EVENTS.CAPABILITY_CLAIM_VERIFIED,
     subject: { entityType: 'capability_claim', entityId: claimId },
@@ -307,15 +395,6 @@ export async function verifyClaim(
     newState: { tier: 'verified', twoPerson: Boolean(input.secondVerifierPartyId) },
     owner: { partyId: claim.partyId },
     impact: { domains: ['hr'] },
-  });
-
-  await auditWrite({
-    action: 'update',
-    subjectType: 'capability_claim',
-    subjectId: claimId,
-    before: { tier: claim.tier },
-    after: { tier: 'verified' },
-    meta: { verifierPartyId: auth.partyId, secondVerifierPartyId: input.secondVerifierPartyId ?? null },
   });
 
   return updated;
@@ -361,6 +440,17 @@ export async function recordContradiction(
       ? claim
       : await prisma.capabilityClaim.update({ where: { id: claimId }, data: { state: newState } });
 
+  // Audited even when the state does not change: a contradiction recorded and
+  // left for a human is still a decision about the claim, and the register
+  // should show it was made.
+  await auditWrite({
+    action: 'update',
+    subjectType: 'capability_claim',
+    subjectId: claimId,
+    before: { state: claim.state },
+    after: { state: newState, contradictionType: input.type, score: input.score, region },
+  });
+
   await emit({
     name: EVENTS.CAPABILITY_CLAIM_CONTRADICTED,
     subject: { entityType: 'capability_claim', entityId: claimId },
@@ -389,6 +479,15 @@ export async function changeClaimState(claimId: string, target: NonTierState, no
   }
 
   const updated = await prisma.capabilityClaim.update({ where: { id: claimId }, data: { state: state! } });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'capability_claim',
+    subjectId: claimId,
+    before: { state: claim.state },
+    after: { state: state! },
+    meta: note ? { note } : undefined,
+  });
 
   await emit({
     name: EVENTS.CAPABILITY_CLAIM_STATE_CHANGED,

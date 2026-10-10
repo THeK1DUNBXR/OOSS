@@ -1141,10 +1141,13 @@ describe('§14.6 — verification is structurally two people', () => {
     );
     expect(err.status).toBe(422);
 
-    const bhead = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'bhead@kaizen.co.in' } });
+    // The second verifier must hold capabilities:approve (domains/capability.ts
+    // assertSecondVerifierQualified). finance_head does not, so the operations
+    // head (hr_ops_manager, which does) is the independent second person here.
+    const operations = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in' } });
     const verified = await asUser('hr@kaizen.co.in', () =>
       verifyClaim(claim.id, {
-        secondVerifierPartyId: bhead.personId,
+        secondVerifierPartyId: operations.personId,
       }),
     );
     expect(verified.tier).toBe('verified');
