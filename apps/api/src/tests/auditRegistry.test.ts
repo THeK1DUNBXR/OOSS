@@ -16,7 +16,7 @@
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { auditWrite, isGoverned } from '../platform/audit.js';
@@ -181,5 +181,81 @@ describe('FX-21: no auditWrite or transition call passes force', () => {
     const iface = /export interface AuditWriteInput \{[\s\S]*?\n\}/.exec(src);
     expect(iface?.[0]).toBeDefined();
     expect(iface![0]).not.toMatch(/\bforce\??:/);
+  });
+});
+
+/**
+ * FX-22 — registration closure per writer module.
+ *
+ * The global check above passes if *some* module registers a subject. A
+ * job or script that imports only the writer, not the module holding the
+ * registration, then throws at runtime ("not registered") on its first audited
+ * write. So for each module that audits a subject, the registration must sit in
+ * that module or in one it reaches through a static import. Dynamic `import()`
+ * does not count: it is not guaranteed to have run when the write happens.
+ */
+function staticImportsOf(file: string, code: string, byFile: Map<string, string>): string[] {
+  const out: string[] = [];
+  const re = /\b(?:import|export)\b[^'"`;]*?\bfrom\s*'(\.{1,2}\/[^']+)'|^\s*import\s*'(\.{1,2}\/[^']+)'/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(code))) {
+    const spec = (m[1] ?? m[2])!.replace(/\.js$/, '');
+    const base = resolve(dirname(file), spec);
+    for (const candidate of [`${base}.ts`, join(base, 'index.ts')]) {
+      if (byFile.has(candidate)) {
+        out.push(candidate);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+function registeredIn(code: string): string[] {
+  const names: string[] = [];
+  const re = /registerGovernedEntities\(\s*'[^']+'\s*,\s*\[/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(code))) {
+    const open = m.index + m[0].length - 1;
+    for (const s of code.slice(open, closeIndex(code, open)).matchAll(/'([^']+)'/g)) names.push(s[1]!);
+  }
+  return names;
+}
+
+describe('FX-22: each writer module has its subjects registered in its own import closure', () => {
+  it('no audited subject is registered only in a module the writer does not statically import', () => {
+    const calls = auditCalls();
+    const byFile = new Map(FILES.map(({ file, code }) => [file, code]));
+    const missing: string[] = [];
+    for (const { file } of FILES) {
+      const subjects = new Set(calls.filter((c) => c.file === relative(SRC, file)).map((c) => c.literalSubject).filter((s): s is string => !!s));
+      if (subjects.size === 0) continue;
+      const reach = new Set<string>();
+      const stack = [file];
+      while (stack.length) {
+        const f = stack.pop()!;
+        if (reach.has(f)) continue;
+        reach.add(f);
+        stack.push(...staticImportsOf(f, byFile.get(f)!, byFile));
+      }
+      const have = new Set<string>();
+      for (const f of reach) for (const s of registeredIn(byFile.get(f)!)) have.add(s);
+      for (const s of subjects) if (!have.has(s)) missing.push(`${relative(SRC, file)}: ${s}`);
+    }
+    expect(missing).toEqual([]);
+  });
+});
+
+describe('FX-22: lifecycle transition audits before it emits', () => {
+  it('auditWrite precedes emit inside transition()', () => {
+    // Audit-then-emit, as in CLAUDE.md rule 5: an event that reaches a subscriber
+    // for a change the audit log never recorded is the state the log exists to rule out.
+    const code = codeOnly(readFileSync(join(SRC, 'platform', 'lifecycle.ts'), 'utf8'));
+    const body = code.slice(code.indexOf('export async function transition'));
+    const audit = body.indexOf('await auditWrite(');
+    const emitAt = body.indexOf('await emit(');
+    expect(audit).toBeGreaterThan(-1);
+    expect(emitAt).toBeGreaterThan(-1);
+    expect(audit).toBeLessThan(emitAt);
   });
 });
