@@ -40,6 +40,7 @@ import {
   type FundingSource,
   type InstitutionEngagement,
   type OrganizationRole,
+  ageInYears,
 } from '@kaizen/shared';
 import { api, titleCase } from '../lib/api.js';
 import { CreateModal, MoneyInput, Row, SelectInput, TextArea, TextInput } from './forms.js';
@@ -2289,9 +2290,19 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
   const [primaryPhone, setPhone] = useState('');
   const [primaryEmail, setEmail] = useState('');
   const [institutionId, setInstitutionId] = useState('');
-  const [isMinor, setIsMinor] = useState(false);
+  const [learnerDob, setLearnerDob] = useState('');
+  // Unchecked by default: an unknown age is held to the minor rule until
+  // somebody says, on the record, that the learner is an adult. FX-64.
+  const [adultAttested, setAdultAttested] = useState(false);
   const [guardianName, setGuardianName] = useState('');
   const [guardianPhone, setGuardianPhone] = useState('');
+
+  const dobDate = learnerDob ? new Date(learnerDob) : null;
+  const dobKnown = !!dobDate && !Number.isNaN(dobDate.getTime());
+  // Mirrors the server's rule: a date of birth decides when there is one,
+  // otherwise the attestation does. The server has the final word.
+  const adultByRecord = dobDate && dobKnown ? (ageInYears(dobDate) ?? 0) >= 18 : adultAttested;
+  const guardianRequired = !adultByRecord;
 
   return (
     <CreateModal
@@ -2311,7 +2322,8 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
                 primaryEmail: primaryEmail || null,
               }),
           institutionId: institutionId || null,
-          isMinor,
+          dateOfBirth: learnerDob || null,
+          adultAttested: !learnerDob && adultAttested,
           guardianName: guardianName || null,
           guardianPhone: guardianPhone || null,
         })
@@ -2379,20 +2391,29 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
         options={colleges.rows.map((c) => ({ value: c.id, label: c.name }))}
       />
 
-      <label className="flex items-center gap-2 text-sm text-ink-200">
-        <input type="checkbox" checked={isMinor} onChange={(e) => setIsMinor(e.target.checked)} />
-        Under 18
-      </label>
-      {isMinor && (
-        <Row>
-          <TextInput label="Guardian name" value={guardianName} onChange={setGuardianName} />
-          <TextInput label="Guardian phone" required type="tel" value={guardianPhone} onChange={setGuardianPhone} />
-        </Row>
+      <TextInput label="Date of birth" type="date" value={learnerDob} onChange={setLearnerDob} />
+      {!learnerDob && (
+        <>
+          <label className="flex items-center gap-2 text-sm text-ink-200">
+            <input type="checkbox" checked={adultAttested} onChange={(e) => setAdultAttested(e.target.checked)} />
+            I attest they are 18 or over
+          </label>
+          <p className="text-2xs text-ink-500">
+            With no date of birth, a learner is treated as under 18 until you attest otherwise. Your attestation is
+            recorded against your name.
+          </p>
+        </>
       )}
-      {isMinor && (
-        <p className="text-2xs text-ink-500">
-          Guardian contact is protected. Every look at it is recorded.
-        </p>
+      {guardianRequired && (
+        <>
+          <Row>
+            <TextInput label="Guardian name" required value={guardianName} onChange={setGuardianName} />
+            <TextInput label="Guardian phone" required type="tel" value={guardianPhone} onChange={setGuardianPhone} />
+          </Row>
+          <p className="text-2xs text-ink-500">
+            A guardian is required for a learner under 18. Guardian contact is protected. Every look at it is recorded.
+          </p>
+        </>
       )}
     </CreateModal>
   );

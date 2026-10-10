@@ -44,6 +44,9 @@ export type StudentStatus = (typeof STUDENT_STATUSES)[number];
 
 export interface StudentInput {
   fullName: string;
+  /** The enrolling user's attestation that the learner is 18 or over, for a
+   * person with no date of birth on file. FX-64. */
+  adultAttested?: boolean;
   primaryPhone?: string | null;
   primaryEmail?: string | null;
   registrationNumber?: string | null;
@@ -247,6 +250,7 @@ export async function attachStudentProfile(personId: string, input: StudentInput
   const guardianConsentId = await requireGuardianConsentForMinor({
     personId,
     dateOfBirth: person.dateOfBirth,
+    adultAttested: input.adultAttested === true,
     guardianName: input.guardianName,
     guardianPhone: input.guardianPhone,
   });
@@ -278,6 +282,9 @@ export async function attachStudentProfile(personId: string, input: StudentInput
     subjectType: 'student_profile',
     subjectId: profile.id,
     after: { registrationNumber: profile.registrationNumber, status: profile.status },
+    // Who said the learner was an adult, when the rule was released on that
+    // statement rather than on a date of birth. FX-64.
+    meta: input.adultAttested === true && !person.dateOfBirth ? { adultAttestedBy: auth.partyId } : undefined,
   });
   await emit({
     name: EVENTS.PERSON_CREATED,

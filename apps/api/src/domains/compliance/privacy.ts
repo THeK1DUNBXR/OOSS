@@ -327,13 +327,14 @@ export interface MinorGateInput {
   guardianName?: string | null;
   guardianPhone?: string | null;
   /**
-   * A caller's claim that the student is a minor. Consulted only when no date
-   * of birth is on file: a measured age always wins, so a claim can never make
-   * somebody with a known adult age subject to the minor's rule, and a claim
-   * with no age to check against is held to the minor's rule rather than
-   * waved through. FX-64.
+   * The enrolling user's explicit attestation that the learner is 18 or over.
+   * Consulted only when no date of birth is on file. Without a date the rule
+   * is held, not waived: an unknown age is not an adult age, so the guardian
+   * requirement stands unless somebody says, on the record, that they are an
+   * adult. A measured age always wins, so an attestation can never release a
+   * measured minor. FX-64.
    */
-  assumeMinor?: boolean;
+  adultAttested?: boolean;
 }
 
 /**
@@ -344,14 +345,14 @@ export interface MinorGateInput {
  */
 export function assertMinorHasGuardian(input: Omit<MinorGateInput, 'personId'>): boolean {
   const measured = isMinor(input.dateOfBirth);
-  const applies = measured === true || (measured === null && input.assumeMinor === true);
+  const applies = measured === true || (measured === null && input.adultAttested !== true);
   if (!applies) return false;
 
   if (!input.guardianName?.trim() || !input.guardianPhone?.trim()) {
     const basis =
       measured === true
         ? `This student is under 18 (age ${ageInYears(input.dateOfBirth)})`
-        : 'This student is recorded as a minor, and no date of birth is on file to show otherwise';
+        : 'No date of birth is on file and no adult has been attested, so the minor rule applies';
     throw ApiError.badRequest(
       `${basis}. A minor cannot be enrolled without a named guardian and a recorded guardian consent — give a guardian name and phone.`,
       { reason: 'MINOR_GUARDIAN_CONSENT_REQUIRED' },
@@ -557,30 +558,55 @@ async function assembleAccessExport(tenantId: string, personId: string) {
  * Everything an erasure request can be blocked by, named rather than merely
  * refused. CMP-DPD-002.
  */
-async function erasureBlockers(tenantId: string, personId: string): Promise<{ retentionClass: string; earliestErasable: Date | null }[]> {
-  const affiliations = await unscopedPrisma.affiliation.findMany({
-    where: { tenantId, partyId: personId, statutoryRetentionFloor: true },
-  });
+export interface ErasureBlocker {
+  retentionClass: string;
+  /** Set when the statutory floor is measured and still running. */
+  earliestErasable: Date | null;
+  /** The floor has no schedule to measure it against. */
+  unmeasured: boolean;
+  /** An affiliation is still running, so there is no end to measure from. */
+  active: boolean;
+}
+
+/**
+ * Everything an erasure request can be blocked by, named rather than merely
+ * refused. CMP-DPD-002.
+ *
+ * An affiliation that has not ended blocks erasure whether or not it carries
+ * the statutory floor: a live relationship has no end date to measure the
+ * window from, so a floor anchored on its start would clear it early.
+ * Suspended counts as live. FX-62.
+ */
+async function erasureBlockers(tenantId: string, personId: string): Promise<ErasureBlocker[]> {
+  const affiliations = await unscopedPrisma.affiliation.findMany({ where: { tenantId, partyId: personId } });
   if (!affiliations.length) return [];
 
   const schedules = await unscopedPrisma.retentionSchedule.findMany({ where: { tenantId }, orderBy: { effectiveFrom: 'desc' } });
-  const blockers: { retentionClass: string; earliestErasable: Date | null }[] = [];
+  const blockers: ErasureBlocker[] = [];
   const now = new Date();
 
   for (const aff of affiliations) {
     const retentionClass = aff.affiliationType === 'student' ? 'student_record' : 'employee_record';
-    const schedule = schedules.find((s) => s.retentionClass === retentionClass && s.effectiveFrom <= now);
-    // No schedule means the window cannot be measured. That is a block, not a
-    // clearance: erasing now would destroy records the floor still holds.
-    // FX-62.
-    if (!schedule) {
-      blockers.push({ retentionClass, earliestErasable: null });
-      continue;
+    const active = aff.status !== 'ended';
+    if (!aff.statutoryRetentionFloor && !active) continue;
+
+    let earliestErasable: Date | null = null;
+    let unmeasured = false;
+    if (aff.statutoryRetentionFloor) {
+      const schedule = schedules.find((s) => s.retentionClass === retentionClass && s.effectiveFrom <= now);
+      // No schedule means the window cannot be measured. That is a block, not a
+      // clearance: erasing now would destroy records the floor still holds.
+      // FX-62.
+      if (!schedule) {
+        unmeasured = true;
+      } else {
+        const anchor = aff.effectiveTo ?? aff.effectiveFrom;
+        const window = { retentionClass, years: schedule.years, anchor };
+        if (!isPastRetentionWindow(window, now)) earliestErasable = earliestErasableDate(window);
+      }
     }
-    const anchor = aff.effectiveTo ?? aff.effectiveFrom;
-    const window = { retentionClass, years: schedule.years, anchor };
-    if (!isPastRetentionWindow(window, now)) {
-      blockers.push({ retentionClass, earliestErasable: earliestErasableDate(window) });
+    if (active || unmeasured || earliestErasable) {
+      blockers.push({ retentionClass, earliestErasable, unmeasured, active });
     }
   }
   return blockers;
@@ -625,6 +651,80 @@ function correctionData(correction: Partial<Record<CorrectablePersonField, unkno
   return data;
 }
 
+/**
+ * A contact another active person already holds cannot be given to this one.
+ * Identity matching reads the normalised key, so two active people on one key
+ * makes either unfindable by it, and the next enrolment on that number is
+ * refused as ambiguous. Holders are matched on the normalised twin, so the
+ * same address in another case still collides. FX-63.
+ *
+ * The message names no other person: the requester is an operator, not the
+ * principal, and a refusal should not tell them whose record it is.
+ */
+async function assertContactsFree(tenantId: string, personId: string, correction: Record<string, unknown>): Promise<void> {
+  const emails = [
+    ...(typeof correction.primaryEmail === 'string' ? [correction.primaryEmail] : []),
+    ...(Array.isArray(correction.additionalEmails) ? (correction.additionalEmails as string[]) : []),
+  ]
+    .map((e) => normaliseEmail(e))
+    .filter((k): k is string => !!k);
+  const phones = [
+    ...(typeof correction.primaryPhone === 'string' ? [correction.primaryPhone] : []),
+    ...(Array.isArray(correction.additionalPhones) ? (correction.additionalPhones as string[]) : []),
+  ]
+    .map((p) => normalisePhone(p))
+    .filter((k): k is string => !!k);
+
+  const base = { tenantId, id: { not: personId }, deletedAt: null, dedupeStatus: { not: 'merged' } };
+  for (const key of emails) {
+    const holder = await unscopedPrisma.person.findFirst({
+      where: { ...base, OR: [{ primaryEmailNormalised: key }, { additionalEmailsNormalised: { has: key } }] },
+      select: { id: true },
+    });
+    if (holder) throw ApiError.conflict('That email address is already held by another active person on file, so it cannot be given to this one.');
+  }
+  for (const key of phones) {
+    const holder = await unscopedPrisma.person.findFirst({
+      where: { ...base, OR: [{ primaryPhoneNormalised: key }, { additionalPhonesNormalised: { has: key } }] },
+      select: { id: true },
+    });
+    if (holder) throw ApiError.conflict('That phone number is already held by another active person on file, so it cannot be given to this one.');
+  }
+}
+
+/**
+ * A corrected date of birth. It can be changed but not removed: with no date
+ * on file the minor rule applies, so clearing it would silently change what
+ * the enrolments rest on. FX-63.
+ */
+function correctedDateOfBirth(value: unknown): Date {
+  if (value === null || value === undefined || value === '') {
+    throw ApiError.badRequest('A date of birth can be corrected but not removed. With none on file the minor rule applies to the enrolments.');
+  }
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(d.getTime())) throw ApiError.badRequest('The corrected date of birth is not a valid date.');
+  if (d.getTime() > Date.now()) throw ApiError.badRequest('The corrected date of birth is in the future.');
+  return d;
+}
+
+/**
+ * Runs the minor gate for each of the person's enrolments against the
+ * corrected date of birth, before anything is written. A learner the
+ * correction makes a minor must have a guardian name and phone on each
+ * enrolment, or the correction is refused. FX-63.
+ */
+async function reRunMinorGateForEnrolments(tenantId: string, personId: string, dateOfBirth: Date) {
+  const enrollments = await unscopedPrisma.enrollment.findMany({ where: { tenantId, personId } });
+  for (const e of enrollments) {
+    assertMinorHasGuardian({
+      dateOfBirth,
+      guardianName: readRegulated(e.guardianName),
+      guardianPhone: readRegulated(e.guardianPhone),
+    });
+  }
+  return enrollments;
+}
+
 export async function fulfilDataRequest(id: string, input: { correction?: Record<string, unknown> } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'data_requests', verb: 'edit' });
@@ -655,10 +755,34 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
     if (disallowed.length) {
       throw ApiError.badRequest(`These fields cannot be corrected by a data-principal request: ${disallowed.join(', ')}.`);
     }
+    // Every refusal below happens before the first write, so a refused
+    // correction leaves the person, the enrolments and the request as they were.
+    await assertContactsFree(auth.tenantId, request.personId, input.correction);
+    let newDob: Date | undefined;
+    if ('dateOfBirth' in input.correction) newDob = correctedDateOfBirth(input.correction.dateOfBirth);
+    const enrollments = newDob ? await reRunMinorGateForEnrolments(auth.tenantId, request.personId, newDob) : [];
+
+    // A learner the correction makes a minor needs the guardian consent their
+    // enrolment rests on. The guardian contact is already on the enrolment (the
+    // gate above checked), so the consent is recorded from it.
+    const minorNow = newDob ? isMinor(newDob) === true : false;
+    let consentId: string | null = null;
+    if (newDob && minorNow && enrollments.some((e) => !e.guardianConsentId)) {
+      const source = enrollments[0];
+      consentId = await requireGuardianConsentForMinor({
+        personId: request.personId,
+        dateOfBirth: newDob,
+        guardianName: readRegulated(source.guardianName),
+        guardianPhone: readRegulated(source.guardianPhone),
+      });
+    }
+
     const before = await unscopedPrisma.person.findFirst({ where: { id: request.personId, tenantId: auth.tenantId } });
+    const personData = correctionData(input.correction as Partial<Record<CorrectablePersonField, unknown>>);
+    if (newDob) personData.dateOfBirth = newDob;
     const after = await prisma.person.update({
       where: { id: request.personId },
-      data: correctionData(input.correction as Partial<Record<CorrectablePersonField, unknown>>) as never,
+      data: personData as never,
     });
     await auditWrite({
       action: 'update',
@@ -667,6 +791,22 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
       before: before as never,
       after: after as never,
     });
+
+    for (const e of enrollments) {
+      const data: { isMinor?: boolean; guardianConsentId?: string } = {};
+      if (e.isMinor !== minorNow) data.isMinor = minorNow;
+      if (minorNow && !e.guardianConsentId && consentId) data.guardianConsentId = consentId;
+      if (Object.keys(data).length === 0) continue;
+      await prisma.enrollment.update({ where: { id: e.id }, data });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'enrollment',
+        subjectId: e.id,
+        before: { isMinor: e.isMinor, guardianConsentId: e.guardianConsentId },
+        after: { isMinor: minorNow, guardianConsentId: data.guardianConsentId ?? e.guardianConsentId },
+      });
+    }
+
     const updated = await prisma.dataPrincipalRequest.update({
       where: { id },
       data: { status: 'fulfilled', fulfilledAt: new Date(), response: { corrected: input.correction } as never },
@@ -678,12 +818,16 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
   // erasure
   const blockers = await erasureBlockers(auth.tenantId, request.personId);
   if (blockers.length) {
-    const dated = blockers.filter((b): b is { retentionClass: string; earliestErasable: Date } => b.earliestErasable !== null);
-    const unmeasured = blockers.filter((b) => b.earliestErasable === null).map((b) => b.retentionClass);
+    const active = [...new Set(blockers.filter((b) => b.active).map((b) => b.retentionClass))];
+    const dated = blockers.filter((b): b is ErasureBlocker & { earliestErasable: Date } => b.earliestErasable !== null);
+    const unmeasured = [...new Set(blockers.filter((b) => b.unmeasured).map((b) => b.retentionClass))];
     const parts: string[] = [];
+    if (active.length) {
+      parts.push(`An affiliation is still active (${active.join(', ')}), so erasure cannot proceed until it has ended.`);
+    }
     if (dated.length) {
       const earliest = dated.reduce((min, b) => (b.earliestErasable < min ? b.earliestErasable : min), dated[0].earliestErasable);
-      parts.push(`Blocked by the statutory retention floor on ${dated.map((b) => b.retentionClass).join(', ')}. Not erasable before ${earliest.toISOString().slice(0, 10)}.`);
+      parts.push(`Blocked by the statutory retention floor on ${[...new Set(dated.map((b) => b.retentionClass))].join(', ')}. Not erasable before ${earliest.toISOString().slice(0, 10)}.`);
     }
     if (unmeasured.length) {
       parts.push(`No retention schedule is recorded for ${unmeasured.join(', ')}, so the floor cannot be measured and erasure cannot proceed.`);
@@ -698,36 +842,75 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
   }
 
   const token = `erased:${request.personId}`;
-  await prisma.person.update({
-    where: { id: request.personId },
-    data: {
-      fullName: token,
-      primaryPhone: null,
-      primaryEmail: null,
-      primaryPhoneNormalised: null,
-      primaryEmailNormalised: null,
-      additionalPhones: [],
-      additionalEmails: [],
-      additionalPhonesNormalised: [],
-      additionalEmailsNormalised: [],
-      bloodGroup: null,
-      dateOfBirth: null,
-      deletedAt: new Date(),
-    } as never,
-  });
-  // Nested writes bypass the tenant extension (CLAUDE.md rule 6), so the
-  // dependent store is written on its own, scoped by tenant explicitly.
-  // Its personal values are blanked here too; the StudentProfile row itself
-  // survives because the enrolment and funding history is not personal data.
-  await prisma.studentProfile.updateMany({
-    where: { tenantId: auth.tenantId, personId: request.personId },
-    data: { guardianName: null, guardianPhone: null, address: null },
+  // One transaction for the scrub, so the Person is never blanked while its
+  // guardian contact survives on an enrolment or a consent. FX-62. Nested
+  // writes bypass the tenant extension (CLAUDE.md rule 6), so each dependent
+  // write names the tenant itself. Rows are blanked, never deleted: the
+  // enrolment and funding history is not personal data and must survive.
+  const dependents = await prisma.$transaction(async (tx) => {
+    await tx.person.update({
+      where: { id: request.personId },
+      data: {
+        fullName: token,
+        primaryPhone: null,
+        primaryEmail: null,
+        primaryPhoneNormalised: null,
+        primaryEmailNormalised: null,
+        additionalPhones: [],
+        additionalEmails: [],
+        additionalPhonesNormalised: [],
+        additionalEmailsNormalised: [],
+        bloodGroup: null,
+        dateOfBirth: null,
+        notes: null,
+        externalIds: [],
+        deletedAt: new Date(),
+      } as never,
+    });
+    // The StudentProfile row survives; its personal values are blanked.
+    await tx.studentProfile.updateMany({
+      where: { tenantId: auth.tenantId, personId: request.personId },
+      data: { guardianName: null, guardianPhone: null, address: null },
+    });
+    const enrollmentIds = (
+      await tx.enrollment.findMany({ where: { tenantId: auth.tenantId, personId: request.personId }, select: { id: true } })
+    ).map((e) => e.id);
+    await tx.enrollment.updateMany({
+      where: { tenantId: auth.tenantId, id: { in: enrollmentIds } },
+      data: { guardianName: null, guardianPhone: null, guardianEmail: null },
+    });
+    // A minor's guardian consent names the guardian in its evidence, and is
+    // matched on either the minor (personId) or the guardian link.
+    const consentIds = (
+      await tx.consent.findMany({
+        where: { tenantId: auth.tenantId, OR: [{ personId: request.personId }, { guardianOfPersonId: request.personId }] },
+        select: { id: true },
+      })
+    ).map((c) => c.id);
+    await tx.consent.updateMany({
+      where: { tenantId: auth.tenantId, id: { in: consentIds } },
+      data: { evidence: {} as never },
+    });
+    return { enrollmentIds, consentIds };
   });
   const updated = await prisma.dataPrincipalRequest.update({
     where: { id },
     data: { status: 'fulfilled', fulfilledAt: new Date(), response: { erased: true, token } as never },
   });
-  await auditWrite({ action: 'delete', subjectType: 'person', subjectId: request.personId, after: { erased: true, dependents: ['student_profile'] } });
+  // Audited per dependent row, without the values: the audit log is kept
+  // longer than the record and must not become the place the value survives.
+  for (const enrollmentId of dependents.enrollmentIds) {
+    await auditWrite({ action: 'update', subjectType: 'enrollment', subjectId: enrollmentId, after: { guardianContactErased: true } });
+  }
+  for (const consentId of dependents.consentIds) {
+    await auditWrite({ action: 'update', subjectType: 'consent', subjectId: consentId, after: { evidenceErased: true } });
+  }
+  await auditWrite({
+    action: 'delete',
+    subjectType: 'person',
+    subjectId: request.personId,
+    after: { erased: true, dependents: ['student_profile', 'enrollment', 'consent'] },
+  });
   await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'fulfilled' } });
   await emit({
     name: 'kz.cmp.data_request.fulfilled',

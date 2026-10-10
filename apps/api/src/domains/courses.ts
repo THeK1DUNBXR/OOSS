@@ -425,7 +425,11 @@ export interface AssignCourseInput {
   primaryPhone?: string | null;
   primaryEmail?: string | null;
   institutionId?: string | null;
-  isMinor?: boolean;
+  /** Stated date of birth; decides the minor rule when there is one. */
+  dateOfBirth?: string | null;
+  /** The enrolling user's attestation that the learner is 18 or over, for a
+   * learner with no date of birth. FX-64. */
+  adultAttested?: boolean;
   guardianName?: string | null;
   guardianPhone?: string | null;
   guardianEmail?: string | null;
@@ -466,7 +470,8 @@ export async function assignCourse(input: AssignCourseInput) {
     primaryPhone: input.primaryPhone ?? null,
     primaryEmail: input.primaryEmail ?? null,
     institutionId: input.institutionId ?? null,
-    isMinor: input.isMinor ?? false,
+    dateOfBirth: input.dateOfBirth ?? null,
+    adultAttested: input.adultAttested === true,
     guardianName: input.guardianName ?? null,
     guardianPhone: input.guardianPhone ?? null,
     guardianEmail: input.guardianEmail ?? null,

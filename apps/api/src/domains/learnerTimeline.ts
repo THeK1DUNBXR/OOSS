@@ -25,6 +25,8 @@ import {
   EVENTS,
   LEARNER_LOG_KINDS,
   LEARNER_LOG_KINDS_NEEDING_CLOSURE,
+  istDateKey,
+  istMidnight,
   type LearnerLogKind,
   type LearnerLogSeverity,
 } from '@kaizen/shared';
@@ -290,7 +292,7 @@ export async function recordDailyProgress(
     name: EVENTS.PROGRESS_RECORDED,
     subject: { entityType: 'daily_progress', entityId: row.id },
     related: [{ relation: 'for', entityType: 'enrollment', entityId: enrollmentId }],
-    newState: { score: row.score, progressDate: progressDate.toISOString().slice(0, 10) },
+    newState: { score: row.score, progressDate: istDateKey(progressDate) },
     owner: { partyId: enrollment.personId },
     impact: { domains: ['edu'] },
   });
@@ -298,8 +300,14 @@ export async function recordDailyProgress(
   return row;
 }
 
+/**
+ * The instant IST midnight starts the Indian calendar day `d` falls on. On the
+ * UTC calendar a score recorded at 01:30 IST on 10 May is filed under 9 May,
+ * the day the learner's teacher did not record it on. Rule 3, P1.
+ */
 function startOfDay(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const [year, month, day] = istDateKey(d).split('-').map(Number);
+  return istMidnight(year, month, day);
 }
 
 // ---------------------------------------------------------------------------
