@@ -8,9 +8,9 @@ Plan: `docs/plan/README.md` — index, audit point, known drift. **Read only the
 
 ## Rules
 
-**1. Money is signed `bigint` minor units (paise).** Never `number`, `float`, or `Decimal` in application code. Use `packages/shared/src/money.ts`; splits go through `allocate()`. No `Math.round`, no epsilon comparisons — `>= x - 0.001` means you used the wrong type. Root cause of the existing float bug: `num()` at `apps/api/src/platform/db.ts:150`.
+**1. Money is signed `bigint` minor units (paise).** Never `number`, `float`, or `Decimal` in application code. The money helper is not yet written (Phase 1.6): `packages/shared/src/money.ts` and `allocate()` must be created there before any money code lands. Today `packages/shared/src/finance.ts` still uses `number`. No `Math.round`, no epsilon comparisons — `>= x - 0.001` means you used the wrong type. Root cause of the existing float bug: `num()` at `apps/api/src/platform/db.ts:150`.
 
-**2. Only `platform/ledger.ts` writes to the journal.** No domain, route, job, script, seed or migration inserts into `journal_entries` / `journal_lines` except via `post()`. There is a lint rule; do not disable it. Posted entries are immutable — the app DB role has no `UPDATE`/`DELETE`. A correction is a reversal. Wanting to edit a posted entry means you found a modelling error.
+**2. Only `platform/ledger.ts` writes to the journal.** No domain, route, job, script, seed or migration inserts into `journal_entries` / `journal_lines` except via `post()`. The lint rule is planned and not yet in `eslint.config.js`; when added, do not disable it. Posted entries are immutable — the app DB role has no `UPDATE`/`DELETE`. A correction is a reversal. Wanting to edit a posted entry means you found a modelling error.
 
 **3. Dates are IST.** Use `packages/shared/src/time.ts`. Never `getUTCMonth()`/`getUTCFullYear()` for a tax period, financial year or document series — IST is UTC+5:30, so 00:00–05:30 on the 1st lands in the previous month, and on 1 April the previous FY and the wrong invoice series. FY is 1 April–31 March. Store instants UTC; derive periods IST.
 
@@ -45,7 +45,6 @@ Cite `file:line` for any claim about existing code — one time in ten the plaus
 Every PR: what changed and why, which phase item, tests added, migration plan if the schema moved, and — anything in the finance path — the trial-balance assertion.
 
 Before commit: `pnpm typecheck && pnpm lint && pnpm test`. Schema changes: also `pnpm prisma migrate diff`.
-⚠️ Neither `lint` nor a migrations directory exists yet — Phase 0.8 creates both. Until it merges, run `pnpm typecheck && pnpm test`.
 
 Statutory uncertainty: stop and flag it. A wrong constant in payroll is a wrong payslip for every employee of every tenant, discovered via a notice.
 
