@@ -514,6 +514,10 @@ export const EVENTS = {
   IMPORT_STAGED: 'kz.fin.import.staged',
   IMPORT_COMMITTED: 'kz.fin.import.committed',
   IMPORT_REVERTED: 'kz.fin.import.reverted',
+  // The staged cells of a committed import are blanked once the books hold
+  // what they said. A separate event, not IMPORT_COMMITTED again, so a
+  // subscriber counting commits does not count the purge as a second one.
+  IMPORT_PURGED: 'kz.fin.import.purged',
 
   // --- Equity register (eqt), phase 1 ---------------------------------------
   SHARE_CLASS_CREATED: 'kz.eqt.share_class.created',

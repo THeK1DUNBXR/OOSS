@@ -14,10 +14,10 @@ import { z } from 'zod';
 import { handler } from '../lib/http.js';
 import { ApiError } from '../platform/errors.js';
 import {
-  MAX_UPLOAD_BYTES, getImport, importRows, listImports,
+  MAX_UPLOAD_BYTES, commitStagedImport, getImport, importRows, listImports,
   setImportOptions, setRowStatus, stageImport,
 } from '../imports/service.js';
-import { commitImport, revertImport } from '../imports/commit.js';
+import { revertImport } from '../imports/commit.js';
 import type { ImportKind } from '../imports/detect.js';
 import { TEMPLATES, buildTemplateWorkbook, listTemplates, templateBySlug } from '../imports/templates.js';
 
@@ -132,6 +132,6 @@ importsRouter.patch(
   }),
 );
 
-importsRouter.post('/:id/commit', handler(async (req) => commitImport(req.params.id)));
+importsRouter.post('/:id/commit', handler(async (req) => commitStagedImport(req.params.id)));
 
 importsRouter.post('/:id/revert', handler(async (req) => revertImport(req.params.id)));
