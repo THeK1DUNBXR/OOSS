@@ -13,6 +13,9 @@
 | 6 | `phase-6-intelligence.md` | Model gateway, the Briefing, Ask Kaizen, approval gates | 4–6 weeks |
 | 7 | `phase-7-product.md` | Onboarding state machine, tenancy tiers, India residency | 3–4 weeks |
 | 8 | `phase-8-proof.md` | Concurrency tests, leakage fuzzer, restore drills, SOC 2 | ongoing |
+| — | `planned-features.md` | Features not yet scheduled into a phase: researched, argued, open decisions | not scheduled |
+
+`planned-features.md` — features beyond the phases, each with status, rationale and open decisions. Add to it; move a feature into a phase file when it is scheduled. Not read during phase execution.
 
 `MAP.md` — generated index of every model, symbol, route and page with `file:line`. **Look here before searching.** `EFFICIENCY.md` — how to execute this plan without wasting tokens; read once at setup. `prompts.md` — kick-off prompt per session. `rationale.md` — why the plan is shaped this way; read once, never during execution. `sequencing.md` — who does what, in what order.
 
