@@ -10,16 +10,17 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { journalTotals, reconciliationDiff, unexplainedCount, payrollCalendarMilestone } from '@kaizen/shared';
-import { asUser, expectReject, prisma, unscopedPrisma, tenantId } from '../helpers.js';
+import { asPrincipal, asUser, authFor, expectReject, prisma, unscopedPrisma, tenantId, withFixtureRole } from '../helpers.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
-import { encryptField } from '../../domains/compliance/privacy.js';
+import { encryptField, readRegulated } from '../../domains/compliance/privacy.js';
+import { asSystem } from '../../platform/context.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
   createPayItem, listPayItems, setPayItemActive,
   createAdHocPayLine, approveAdHocPayLine, rejectAdHocPayLine, listAdHocPayLines,
   createArrear, approveArrear, listArrears,
   generatePayrollJournal, postPayrollJournal, getPayrollJournal,
-  generateBankAdvice, getBankAdvice, downloadBankAdvice,
+  generateBankAdvice, getBankAdvice, downloadBankAdvice, encryptBankAdvicesAtRest,
   generatePayrollReconciliation,
   upsertPayrollCalendarEntry, listPayrollCalendar,
   createPayrollQuery, respondToPayrollQuery, listPayrollQueries,
@@ -444,6 +445,91 @@ describe('bank advice', () => {
     // financeHead can view and download too (holds `export`); an employee holds neither.
     const employeeDenied = await expectReject(() => asUser('ravi@kaizen.co.in', () => getBankAdvice(advice.id)));
     expect(employeeDenied.status).toBe(403);
+  });
+
+  it('P1: a stored advice holds no plaintext account number or IFSC, in the CSV or in the structured rows', async () => {
+    const a = await makeEmployee('bank-at-rest');
+    await asUser('chairman@kaizen.co.in', () =>
+      prisma.employmentRelationship.update({
+        where: { id: a.employment.id },
+        data: { bankAccountNumber: encryptField('000246813579'), bankIfsc: encryptField('HDFC0000246') },
+      }),
+    );
+    const run = await makeRun('2033-02', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 26_000, net: 23_000 }]);
+    const advice = await asUser('operations@kaizen.co.in', () => generateBankAdvice(run.id));
+
+    const raw = await unscopedPrisma.bankAdvice.findFirstOrThrow({ where: { id: advice.id } });
+    const atRest = JSON.stringify({ fileText: raw.fileText, rows: raw.rows });
+    expect(atRest).not.toContain('000246813579');
+    expect(atRest).not.toContain('HDFC0000246');
+    const [stored] = raw.rows as unknown as Array<{ accountNumber: string; ifsc: string; employeeName: string }>;
+    expect(stored.accountNumber.startsWith('enc:v1:')).toBe(true);
+    expect(stored.ifsc.startsWith('enc:v1:')).toBe(true);
+    // Non-sensitive fields stay readable, so a list or audit view does not need the key.
+    expect(stored.employeeName).toContain('Payrollops Fixture bank-at-rest');
+
+    // The download still returns the plaintext file to an authorised caller.
+    const { csv } = await asUser('operations@kaizen.co.in', () => downloadBankAdvice(advice.id));
+    expect(csv).toContain('000246813579');
+    expect(csv).toContain('HDFC0000246');
+  });
+
+  it('P3: a view-only holder sees the IFSC masked to its last 4 characters, as the account number is, and cannot download the file', async () => {
+    const a = await makeEmployee('bank-ifsc-mask');
+    await asUser('chairman@kaizen.co.in', () =>
+      prisma.employmentRelationship.update({
+        where: { id: a.employment.id },
+        data: { bankAccountNumber: encryptField('000311122233'), bankIfsc: encryptField('HDFC0000456') },
+      }),
+    );
+    const run = await makeRun('2033-03', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 21_000, net: 19_000 }]);
+    const advice = await asUser('operations@kaizen.co.in', () => generateBankAdvice(run.id));
+
+    await withFixtureRole({ slug: 'bank_viewer', grants: [{ resource: 'bank_advices', verbs: ['view'] }] }, async (p) => {
+      const viewed = await asPrincipal(authFor(p), () => getBankAdvice(advice.id));
+      expect(viewed.rows[0].ifsc).not.toContain('HDFC');
+      expect(viewed.rows[0].ifsc.endsWith('0456')).toBe(true);
+      expect(viewed.rows[0].accountNumber).not.toContain('11122233');
+      expect(viewed.rows[0].accountNumber.endsWith('2233')).toBe(true);
+
+      const denied = await expectReject(() => asPrincipal(authFor(p), () => downloadBankAdvice(advice.id)));
+      expect(denied.status).toBe(403);
+    });
+  });
+
+  it('P1: the one-off re-encryption converts a plaintext advice once; a second run converts nothing', async () => {
+    // A row the pre-fix code would have written: CSV and structured rows both in clear.
+    const legacyCsv = 'Name,Account,IFSC,Amount,Reference\nLegacy Person,000135791113,HDFC0000135,100,LEG/1\n';
+    const legacy = await unscopedPrisma.bankAdvice.create({
+      data: {
+        tenantId: TENANT,
+        payrollRunId: `legacy-run-${Date.now()}`,
+        payPeriod: '2033-04',
+        format: 'NEFT_CSV',
+        fileText: legacyCsv,
+        rows: [{ employeeName: 'Legacy Person', accountNumber: '000135791113', ifsc: 'HDFC0000135', amount: 100, reference: 'LEG/1' }] as never,
+        count: 1,
+        total: 100,
+      },
+    });
+
+    const first = await asSystem(TENANT, () => encryptBankAdvicesAtRest());
+    expect(first.advicesConverted).toBeGreaterThanOrEqual(1);
+
+    const converted = await unscopedPrisma.bankAdvice.findFirstOrThrow({ where: { id: legacy.id } });
+    expect(converted.fileText.startsWith('enc:v1:')).toBe(true);
+    expect(JSON.stringify(converted.rows)).not.toContain('000135791113');
+    expect(readRegulated(converted.fileText)).toBe(legacyCsv);
+
+    const second = await asSystem(TENANT, () => encryptBankAdvicesAtRest());
+    expect(second.advicesConverted).toBe(0);
+    const again = await unscopedPrisma.bankAdvice.findFirstOrThrow({ where: { id: legacy.id } });
+    expect(again.fileText).toBe(converted.fileText);
+    expect(again.rows).toEqual(converted.rows);
+
+    // The download path still reads a row that was converted after the fact.
+    const { csv } = await asUser('operations@kaizen.co.in', () => downloadBankAdvice(legacy.id));
+    expect(csv).toBe(legacyCsv);
   });
 });
 
