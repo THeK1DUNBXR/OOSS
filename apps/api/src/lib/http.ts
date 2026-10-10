@@ -128,6 +128,20 @@ export function errorMiddleware(err: unknown, req: Request, res: Response, _next
   const requestId = getContext()?.requestId ?? req.ctx?.requestId;
   const tenantId = req.ctx?.auth?.tenantId ?? null;
 
+  // express.json and express.urlencoded reject a bad body before any route runs,
+  // with an error that carries a `type` but is not an ApiError. The caller caused
+  // these, so they are 4xx with fixed text. Left to the 500 branch they would
+  // page on-call for every client that sends malformed JSON.
+  const errType = typeof err === 'object' && err !== null ? (err as { type?: unknown }).type : undefined;
+  if (errType === 'entity.parse.failed') {
+    res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'The request body is not valid JSON.', requestId } });
+    return;
+  }
+  if (errType === 'entity.too.large') {
+    res.status(413).json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large.', requestId } });
+    return;
+  }
+
   if (err instanceof TenantScopeError) {
     // A query that escaped the tenant gate is a 500 in staging, caught before
     // production cutover — never a silently unscoped result.

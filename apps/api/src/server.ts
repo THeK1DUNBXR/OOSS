@@ -83,10 +83,12 @@ export function createApp({
       origin: (origin, done) => done(null, origin !== undefined && allowed.has(origin) ? origin : false),
     }),
   );
+  // The request context goes before the body parser so that a 400 or 413 from
+  // the parser still carries a request id the on-call person can search for.
+  app.use(contextMiddleware);
   // The webhook route verifies an HMAC over the exact bytes sent, so it needs the
   // raw body. `verify` runs alongside the normal parse and leaves it unchanged.
   app.use(express.json({ limit: '2mb', verify: captureWebhookRawBody }));
-  app.use(contextMiddleware);
   app.use(requestLog());
 
   // A per-address ceiling on the whole API. It is generous on purpose: an
