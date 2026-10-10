@@ -482,3 +482,32 @@ Still open after round 14 (supersedes round 13):
 - IT owner as a level assignment at onboarding. The name is not recorded.
 - D-11 numbers after the one-month measurement.
 - Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+
+## Owner answers, round 15 (recorded 2026-10-11)
+
+Owner answers. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, except where this round says it supersedes an earlier answer. This round supersedes the round 14 "Still open" list. Where no answer is recorded here, the earlier rounds and the drafts stand.
+
+1. **Statutory rule change and sign-off are separate people (owner answer, item 1).** Changing a statutory rule and signing it off are a BLOCKED conflict pair. The founder can override it with a logged reason, as for the other pairs (round 14, items 2 and 3). This adds to the round 14 blocked pairs and supersedes the round 14 note that this pair was not blocked.
+   - Implication (label): the round 14 open item "whether statutory rule edit and sign-off should be separated" is resolved by this answer.
+   - Implication (label): the round 14 implication that the same person could change a rule and sign it off no longer stands.
+2. **Staff level default duties (owner answer, item 2).** A Staff employee has these default duties:
+   - see and edit own records: profile, attendance, leave requests and expense requests;
+   - log own time and tasks: timesheets and assigned work items;
+   - use chat and notifications.
+   Not selected, so not a default: company directory read. The directory is an explicit extra duty only.
+   - Implication (label): Head and Manager default duties are still tbd during onboard (round 12).
+3. **Auditors, board members and contractors are guest accounts (owner answer, item 3).** They are separate guest accounts, not users in the employee list of the tenant. This supersedes the open question whether auditors, board members and contractors are users of the same tenant.
+   - Owner statement: "We need to add freelancers management features."
+   - Implication (label): a guest-account type is needed. It needs a design for invitation, authentication, tenant scoping (CLAUDE.md rule 6), expiry (maximum 12 months, round 14 item 4) and audit. No design exists yet.
+   - Implication (label): freelancer management is NEW SCOPE. It has no phase, capability row or placement yet. Its scope is OPEN: onboarding, contracts, timesheets, invoices and payments to freelancers, and tax deducted at source on contractor payments. Tax on contractor payments needs statutory sign-off, and no statutory values are stated here. Its phase is OPEN and it is not scheduled.
+   - Implication (label): contractors' timesheets and tasks in ORDERED-PLAN Phase 1C and 1D must be reconciled with the guest-account model before those items are built.
+4. **Questionnaire draft (owner request, item 4).** The owner asked for the questionnaire questions and the mapping rules to be drafted for review. The draft is `docs/plan/zen360/QUESTIONNAIRE-DRAFT.md`. It is NOT approved. Its content and rules are not owner decisions until the owner approves them.
+
+Still open after round 15 (supersedes round 14):
+
+- Freelancer management: scope, phase, and the guest-account design (invitation, authentication, tenant scoping, expiry, audit).
+- Questionnaire content and mapping rules: owner approval of `docs/plan/zen360/QUESTIONNAIRE-DRAFT.md`.
+- Qualified holder of statutory sign-off, named per tenant at onboarding. Statutory values stay DRAFT.
+- IT owner as a level assignment at onboarding. The name is not recorded.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).

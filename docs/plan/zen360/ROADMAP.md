@@ -109,6 +109,8 @@ Each row is an owner deferral or drop, or a repo phase item the owner did not ta
 | Worker-based SSE spike and Durable Object WebSocket option | Dropped. SSE served by the Express API | None | DECISIONS.md round 6; planned-features.md Feature 1 Decision 1 |
 | E2EE and per-tenant LiveKit isolation | **UNVERIFIED.** Not confirmed in the docs | Verification of LiveKit facts | DECISIONS.md round 3 (D-13); ORDERED-PLAN Wave 6 |
 | Service-level numbers (D-11) | Measure first, set later | About one month of real data, then owner sets numbers | DECISIONS.md round 3, round 7 (D-11) |
+| Freelancer management (new scope) | **OPEN, not scheduled.** Owner asked for it in round 15. No phase, capability row or placement yet. Scope (onboarding, contracts, timesheets, payments to freelancers, tax on contractor payments) not decided | Owner scope decision; phase decision; statutory sign-off for any tax on contractor payments | DECISIONS.md round 15 (item 3) |
+| Guest accounts (auditors, board members, contractors) | **OPEN, not scheduled.** Separate guest accounts, not employee-list users (round 15). Design not started: invitation, authentication, tenant scoping, expiry (max 12 months), audit. Contractor timesheets and tasks in Phase 1C and 1D must be reconciled with this model | Guest-account design; Phase 1C and 1D reconciliation | DECISIONS.md round 15 (item 3), round 14 (item 4) |
 
 ---
 
@@ -123,6 +125,7 @@ These are tenant setup data. They are entered as data at onboarding, not hardcod
 - **Per-tenant assignment of duties to levels** (round 9 and round 10).
 - **IT owner** as a level assignment at onboarding. The name is not recorded.
 - **Head and Manager default duties** (round 12). Entered as data per tenant.
+- **Staff default duties** (round 15). **Resolved:** see and edit own records (profile, attendance, leave and expense requests); log own time and tasks; use chat and notifications. Company directory read is not a default.
 - **Questionnaire content and mapping rules** (round 13). The questions and the rules that map answers to levels and duties. Not yet designed.
 - **Statutory sign-off holder** (round 12). A level duty, named per tenant at onboarding.
 - **Per-tenant practice labels, careers model and client-file summary rules** (D-18). Also deferred (round 5).
