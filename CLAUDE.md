@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-KaiERP — Kaizen Infinities' operating platform. CRM, HRM, Finance, Education, Command Centre. Multi-tenant, Indian statutory, intended for commercialisation.
+Zen 360 (formerly KaiERP) — Kaizen Infinities' operating platform. CRM, HRM, Finance, Education, Command Centre. Multi-tenant, Indian statutory, intended for commercialisation.
 
 TypeScript pnpm monorepo: `apps/api` (Express + Prisma + Postgres), `apps/web` (React + Vite + Tailwind + TanStack Query), `packages/shared` (vocabulary both tiers import), `worker/` (Cloudflare Worker: serves the built client, proxies `/api`).
 
