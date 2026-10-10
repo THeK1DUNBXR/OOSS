@@ -17,6 +17,8 @@
 
 `planned-features.md` — features beyond the phases, each with status, rationale and open decisions. Add to it; move a feature into a phase file when it is scheduled. Not read during phase execution.
 
+`zen360/` — verified gap analysis of the Zen 360 group-platform proposal (10 Oct 2026): stop-ship P0 defects, 379-capability register, missing interconnections, 20 leadership decisions, and how the proposal's rollout maps onto these phases. **Read `zen360/README.md` only**; the registers are lookups.
+
 `MAP.md` — generated index of every model, symbol, route and page with `file:line`. **Look here before searching.** `EFFICIENCY.md` — how to execute this plan without wasting tokens; read once at setup. `prompts.md` — kick-off prompt per session. `rationale.md` — why the plan is shaped this way; read once, never during execution. `sequencing.md` — who does what, in what order.
 
 **Ordering is dependency-driven.** 1 before 3. 1, 2 and 5 before 6. Do not reorder.
@@ -39,7 +41,7 @@ If a citation does not match, re-locate it — do not assume the plan describes 
 
 Not engineering decisions; do not default them silently.
 
-**A. Multi-entity.** `CompanyProfile.tenantId` is `@unique` (`schema.prisma:81`) — one tenant is one registered company. Kaizen has two branches, a separate WFaaS business and a planned JV. Retrofitting `entityId` onto a journal with history is the most expensive migration in this plan. **Put it on the journal now even with one entity.** A column today; a quarter later.
+**A. Multi-entity.** `CompanyProfile.tenantId` is `@unique` (`main.prisma:97`; written as `schema.prisma:81` before the schema split) — one tenant is one registered company. Kaizen has two branches, a separate WFaaS business and a planned JV. Retrofitting `entityId` onto a journal with history is the most expensive migration in this plan. **Put it on the journal now even with one entity.** A column today; a quarter later.
 
 **B. GSP vs direct IRP.** Direct NIC access whitelists four static IPs per GSTIN at ~₹5 lakh all-in — it does not scale to a tenant roster and fights elastic infrastructure. **Go GSP.** Commercial decision with a monthly cost; gates Phase 3.
 

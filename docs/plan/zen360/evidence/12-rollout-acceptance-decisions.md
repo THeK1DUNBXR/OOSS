@@ -1,0 +1,268 @@
+# 12 Rollout, acceptance, migration and decisions (proposal p60–p68)
+
+## Pages covered
+
+- p60 Operational gaps designed in advance (17 gap rows, continuity, tamil/english, metric gaming)
+- p61 Phased rollout with acceptance gates (phases 0–4, gate rules, funding)
+- p62 Staffing and cost model
+- p63 Migration, adoption and operating change (migration stages, cutover, fallback log)
+- p64 Measurable acceptance scenarios (14 scenarios + operating metrics)
+- p65 Pilot gate, pilot evidence plan, additional scenarios
+- p66 Stakeholder feedback, salary accounts, home-work acceptance
+- p67 Decisions required before commitment (12-row register, recommended discovery pilot)
+- p68 Shareable evidence boundaries
+
+Plan references: `docs/plan/README.md` (A/B/C at :35–43, "Done means" 1–11 at :45–57), `phase-0-stabilise.md`, `phase-1-ledger.md`, `phase-2-audit.md`, `phase-3-statutory.md`, `phase-4-interface.md`, `phase-6-intelligence.md`, `phase-7-product.md`, `phase-8-proof.md`, `sequencing.md`. Code cited from `docs/plan/MAP.md` and opened line ranges. Test names marked "(name)" were seen via grep of `it(` titles without opening the file; "UNVERIFIED" means not opened.
+
+Status key: EXISTS / PARTIAL / MISSING / FIX / INTERCONNECT / PLANNED / UNVERIFIED.
+
+## Capability table
+
+### A. Operational gaps (p60)
+
+| Proposal item | p. | Status | Evidence file:line | Gap / action | Size |
+|---|---|---|---|---|---|
+| Founder sole approver: delegated thresholds, alternates, measured absence test | 60 | PARTIAL | `schema/main.prisma:905` Delegation; `schema/hcm-workflow.prisma:109` DelegationOfAuthority; `domains/hcm/workflow.ts:146` candidate may not equal requester; test "HCM-WORKFLOW-012 active delegation reroutes" (name, hcm/workflow.test.ts) | No monetary thresholds found in this pass (UNVERIFIED for finance). No absence-triggered delegation (no clock). Need absence test. | M |
+| Staff bypass the app: mobile capture, useful work queues, friction review | 60 | MISSING | MAP has no work-queue model and no mobile-capture test in the test list. Capture exists only for marketing (`domains/marketing/capture.ts:365-371`). | Work queue + mobile capture + friction metric. Depends on Phase 4 DataTable/mobile. | L |
+| Same person counted twice for capacity | 60 | PARTIAL | Seat over-allocation `tests/it/software.test.ts:165`; ESOP pool over-allocation `tests/esop.test.ts:137` | No cross-domain allocation ledger across teaching, projects, support. | L |
+| Vendor impersonation: independent bank-change verification, payment segregation | 60 | PARTIAL | Self-approval guards `platform/approvals.ts:322`, `domains/compliance/corporate/refunds.ts:80`, `domains/compliance/books.ts:125`; refund proposer test `tests/compliance/corporate.test.ts:389-390` | Bank-change verification: 0 hits for bank-change/beneficiary-change in `apps/api/src`. Vendor master has no verified-change workflow found (UNVERIFIED for `ItVendor`/`VendorBill` main.prisma:4993). | M |
+| Client IP reused incorrectly: rights register, contributor assignment, reuse approval | 60 | MISSING | 0 hits for "rights register", "licence register", "IP register" in code or plan | New register + Media pack. Phase 4 pack per p61. | M |
+| Evidence silently changes: pinned versions, correction history | 60 | PARTIAL | Versioned policy `schema/main.prisma:717` PolicyVersion; approval policy version pick `platform/approvals.ts:93-101`; supersede pattern `tests/compliance/tax.test.ts:330` (TDS returns); correction-as-new-row `tests/acceptance.test.ts:2308` | No generic pinned-version for submissions (college evidence). Approval payload hashing absent: `contentHash`/`payloadHash` only in `imports/service.ts:80` and `domains/marketing/capture.ts:365`. | M |
+| Empty dashboard conceals failure: detector and connector freshness | 60 | MISSING | 0 hits for "freshness", "lastSyncedAt", "last_synced" | Monitored-detector health, connector freshness, "missing data" state. Raw data exists: `JobRun` main.prisma:3799, `JobFiringLog` :3824, `HealthScore` :3921. Plan phase-0 retry/dead-letter (phase-0-stabilise.md job section) is a precursor. | M |
+| Customer disputes ignored by reminders: linked case/invoice state, policy pause | 60 | MISSING | 0 hits for "reminder pause/suspend"; "dispute" appears in 11 code files (UNVERIFIED which) | Dispute state on invoice; reminder suppression rule. | S–M |
+| Employee exit with relationships: acknowledged handover | 60 | PARTIAL | `schema/main.prisma:4782` Offboarding; `tests/hcm/separations.test.ts:289` dispute blocks clearance (name) | 0 hits for "handover" (knowledge/account). Handover acknowledgement missing. | M |
+| Guardian relationship changes: verified link, expiry, revocation, age transition | 60 | PARTIAL | Guardian fields `schema/main.prisma:613-614` (DPDP minor guardian, consent); 18 code files match "guardian" | No verified link, expiry, revocation or age-transition model (UNVERIFIED beyond the two fields). | M |
+| Customer/learner counted as success without evidence: outcome definitions | 60 | PARTIAL | `schema/hcm-learning.prisma:102` Certification; `schema/main.prisma:3379` Course; `schema/main.prisma:3620` LearnerLog | Outcome definition + source + unresolved state absent (51 code files say "outcome", none is an outcome model) — UNVERIFIED depth. | M |
+| Refund or chargeback corrupts reporting: credit, money movement, allocation separate | 60 | PARTIAL | `schema/compliance-corporate.prisma:244` Refund; `schema/main.prisma:3267` CreditNote; allocation distinct from obligation `tests/acceptance.test.ts:2297-2323`; 0 "chargeback" hits | Chargeback not modelled. Refund paid = outward Movement `corporate.test.ts:390`. | M |
+| Sensitive complaint exposed to subject: independent restricted routing | 60 | PARTIAL | `schema/compliance-labour.prisma:144` PoshComplaint; concealed-complaints view test `tests/compliance/labour.test.ts:307`; need-to-know `tests/acceptance.test.ts:317` | Generic restricted-complaint routing for customers/staff absent; grievance code 9 files (UNVERIFIED). | M |
+| Subscription and provider costs drift: usage budgets, expiry register | 60 | PARTIAL | `schema/it-software.prisma:84` ItLicence (renewal ladder `tests/it/software.test.ts`, IT-LIC-001 name) | Usage-budget limits (AI, telephony, transcription, storage) absent; no cost monitor. | M |
+| Programme sold without qualified trainer: readiness gate | 60 | MISSING | `schema/hcm-learning.prisma:43` TrainingSession exists; no readiness gate found | Gate before commitment. | S |
+
+### B. Rollout structure, staffing, cost (p61–p62)
+
+| Proposal item | p. | Status | Evidence | Gap / action | Size |
+|---|---|---|---|---|---|
+| Phase gate: operating owner, scenario, negative test, support, training, export, rollback | 61 | MISSING (plan) | `docs/plan/README.md:45-57` Done means = engineering only (11 items) | Add operating gate per phase to plan. Document, not code. | S |
+| Funding released phase by phase; phase 1 has standalone value | 61 | PLANNED (partial) | `docs/plan/sequencing.md:4-13` (phase cadence only, no value test) | Silent on standalone value. | S |
+| Cost formula, usage limits, alerts, graceful degradation | 62 | MISSING | 0 hits for usage limit / budget alert in plan; `marketing` has budgets `schema/marketing.prisma:790` MarketingBudget (marketing only) | Usage-budget module across AI/telephony/storage. | M |
+| Build vs integrate TCO | 62 | MISSING | `docs/plan/README.md:41` (B: GSP vs direct IRP) addresses one instance only | No TCO model for any integration. | S |
+
+### C. Migration, adoption, operating change (p63) — see Migration section for ImportBatch/ImportRow detail
+
+| Proposal item | p. | Status | Evidence | Gap / action | Size |
+|---|---|---|---|---|---|
+| Source inventory: owner, coverage, date, authority, privacy basis | 63 | MISSING | `schema/main.prisma:5172` ImportBatch has fileName, contentHash, kind, sourceFormat, sourceLabel only | Add source register model. | M |
+| Mapping and cleaning: field map, dedupe decisions, exclusions | 63 | PARTIAL | `schema/main.prisma:5172` `mapping Json`; `schema/main.prisma:5221` ImportRow `dedupeKey`, `status`; `imports/service.ts:141-148,183-185` | No dedupe-decision record or exclusion reason table. Person matching `imports/matchName.ts:81` (not opened in full — UNVERIFIED whether it auto-merges). | M |
+| Trial import: row counts, totals, sample, rejected report | 63 | PARTIAL | `imports/service.ts:176` stats counts; ImportRow.status error/message | No control totals vs source file, no sample verification step, no rejected-report view (UNVERIFIED UI). | S |
+| Parallel operation: comparison period, discrepancies, sign-off | 63 | MISSING | 0 hits | New workflow. | M |
+| Cutover: frozen snapshot, approved opening state, cut-off, rollback | 63 | PARTIAL | Opening balance/date `imports/templates.ts:212-213`, `imports/commit.ts:1335-1336`; revert `imports/commit.ts:715` | No frozen snapshot, no cut-off check (`assertPeriodOpen` absent in `imports/commit.ts`); revert is destructive (FIX F1). | M |
+| Stabilisation: support queue, adoption metrics | 63 | MISSING | — | Adoption metrics per p63/p65 not defined in code. | M |
+| Historical communications import with coverage period and exclusions | 63 | MISSING | `imports/detect.ts:18-30` ImportKind has no mail/WhatsApp/call kind; 0 `mailbox` hits in `apps/api/src` | New connector + import kind. Provider permission needed. | L |
+| Controlled fallback log (maker/checker, unique refs, timestamps, later reconciliation) | 63 | PARTIAL | `imports/*` offline grep hit only GST offline-utility (`domains/gstReturns.ts:31`); `platform/ledger.ts:65-76` idempotencyKey gives uniqueness for posting | No outage log model. Idempotent post exists — reuse for recovery reconciliation. | L |
+| Backups restore-tested before production dependence | 63 | MISSING | `domains/compliance/corporate/security.ts` `runBackup` returns `skipped` when `BACKUP_DIR` unset (quiet no-op, same file ~:105-119); 0 "restore" test names. Plan Done #10 + `phase-8-proof.md:11` monthly restore drill | Restore drill not built (FIX F8). | L |
+
+### D. Acceptance scenarios (p64–p66) — testability today
+
+Each row: scenario | repo today | anchor test or code | fixture or test needed.
+
+| Scenario (p.) | Today | Anchor | Fixture / test needed |
+|---|---|---|---|
+| Lead to cash with partial payment (64) | PARTIAL | `tests/invoicing.test.ts:526,544,576` (instalments, settles on last); `tests/acceptance.test.ts:2298` idempotent gateway ref; `:2323` allocation beyond unallocated refused | Chain lead → quote (`schema/main.prisma:1722`) → contract (:1836) → project (:3661) → invoice → 2 receipts; assert remaining balance and no duplicate money. Cross-module links UNVERIFIED. |
+| Complaint and refund (64) | PARTIAL | `tests/compliance/corporate.test.ts:389-390` | Complaint model (none), reminder pause (none), entitlement/credit link, verified beneficiary (none). Needs new model. |
+| Hire to exit with open cases (64) | PARTIAL | `tests/hcm/separations.test.ts:289`; offboarding ends affiliations (name); HR-only employment fields (name) | Successor acknowledgement and account revocation test (0 "revoke" hits in exit tests). |
+| College evidence correction (64) | PARTIAL | `tests/acceptance.test.ts:2308` correction is new row; courseInvoicing tests | Versioned submission preserved, acceptance-triggered invoice, partial/final receipt reconciliation. Fixture: course enrolment with evidence v1/v2. |
+| Founder unavailable 24 hours (64) | PARTIAL | HCM-WORKFLOW-012/016 (name, `tests/hcm/workflow.test.ts`); "fires once per rung" ladder tests (name) | Simulated 24h clock; critical-case owner and clock; no silent elevation test. |
+| Dashboard reconstruction (64) | MISSING | 0 as-of/drill reconstruction tests; `KpiReading` main.prisma:3905, `DailyMetric` :3946 exist | Sample 5 metrics, trace to source rows and as-of stamp. Also needs `drillTo`/`noActionReason` (CLAUDE rule 7; plan Done #11). |
+| Broken detector (64) | MISSING | Detectors fire once per rung (IT-LIC-001, IT-DR-003 names); `scheduler.test.ts:95` no backlog replay after outage | Disable a monitored job, advance clock, expect visible health exception. |
+| Provider outage and replay (64) | PARTIAL | `scheduler.test.ts:95`; `tests/marketingMessaging.test.ts` (exists, no replay test name); `schema/main.prisma:1018` EventDeadLetter | Duplicate-send test under replay. Requires a provider double — conflicts with CLAUDE "no mock in API suite" (decision R-T1). |
+| Connector edge cases: 429, webhook expiry, resync, out-of-order, excluded mailbox (64) | MISSING | No mailbox connector (0 `gmail|imap|graph|mailbox` hits). `tests/marketingCapture.test.ts:195` 429 is our inbound rate limit, not provider quota. | Build connector first. Not testable today. |
+| Cross-role and tenant access (64) | PARTIAL | `tests/acceptance.test.ts:60` cross-tenant direct id; `:187-293` scope/fail-closed; `:308` WHY axis | Leakage fuzzer over routes, jobs, cache, exports, search, AI retrieval (plan Done #5; no fuzzer file in test list). External-user inference test. |
+| Approval evidence changes: amount, beneficiary, document version (64) | MISSING | `platform/approvals.ts:93-101` versioned policy; `:322` self-approval guard; 0 "reapprov" hits | Approval must snapshot payload hash; test that a changed field invalidates approval. |
+| AI false commitment (64) | PARTIAL | `tests/phase6-intelligence.test.ts:12` autonomous journal/IRN/filing/payroll/email kept out of model path; `:28` India-region + personal-data strip | No transcript-to-obligation path exists (UNVERIFIED for transcript code: 29 files mention transcript/recording). Test: model-proposed obligation cannot be created without human confirm. |
+| Recovery rehearsal (64) | MISSING | `security.ts` runBackup no-op without BACKUP_DIR; no restore code or test | Restore into clean DB, assert trial balance bit-identical (plan Done #10). |
+| Group close and restricted funds (64) | MISSING | `tests/equityGroup.test.ts:231` labels group totals before eliminations (ownership, not accounting); 0 "restricted fund" hits | Two `LedgerEntity` (`schema/compliance-books.prisma:54`) with intercompany pair and elimination; prohibited Foundation use denied. Plan silent (see Interconnections). |
+| Consultancy and specialist packs (64) | MISSING | 1 code file mentions "consultant" (`domains/compliance/payroll.ts:17,365`, contractor TDS hint only) | Pack-specific gates; each needs owner per p61. |
+
+p65 additional scenarios:
+
+| Scenario | Today | Anchor | Needed |
+|---|---|---|---|
+| Revoked viewer loses live camera and export | UNVERIFIED | 2 code files match "cctv|camera" (not opened) | Likely MISSING; confirm before scoping. |
+| Employee sees only own CTC and requests correction | PARTIAL | `schema/main.prisma:4384` CompensationRecord; HR-only fields (name) | Correction request workflow not found. |
+| Cashier count variance becomes finance exception with reversal trail | PARTIAL | `schema/main.prisma:3132` Receipt; reversal via `post()` `platform/ledger.ts:184,204` | Cash-count model not found (UNVERIFIED). |
+| Bank timeout does not duplicate debit | PARTIAL | `platform/ledger.ts:65-76` idempotent post; `tests/acceptance.test.ts:2298`; `tests/hcm/payrollops.test.ts` HCM-PAYROLLOPS-008 bank advice (name) | Bank lookup by reference after timeout: MISSING. |
+| Fee calculator separates margin from markup and GST from revenue | MISSING | "markup|margin" appears in 8 code files (not opened); no test name | New test; check math uses bigint paise (CLAUDE rule 1). |
+| Learner versioned course, assessment, certificate; transcript correction visible | PARTIAL | `schema/hcm-learning.prisma:102` Certification; `schema/main.prisma:3620` LearnerLog | Course version pinning UNVERIFIED. |
+| Unapproved campaign cannot publish or overspend | PARTIAL | `schema/marketing.prisma:88` MarketingCampaignApproval; `:790` MarketingBudget; `tests/marketingCampaigns.test.ts` (exists) | Overspend guard UNVERIFIED. |
+| Grant recommendation shows deadline and eligibility evidence | MISSING | "grant deadline|eligibility" 3 code files (not opened) | New model; `schema/main.prisma:744` Grant is UNVERIFIED as the same concept. |
+| MSP alert becomes one owned incident with service entitlement | PARTIAL | `schema/it-itsm.prisma:18` ItIncident; `schema/it-servicedesk.prisma:19` ItSlaPolicy | Alert dedupe into incident and entitlement check: MISSING. |
+| Exited employee loses Team, VM and assistant access | MISSING | `schema/it-assets.prisma:101` ItAssetAssignment exists; no Team/VM/assistant model | Exit → access revocation link. |
+| Cross-module action recorded once, visible only in authorised views | PARTIAL | Event hash chain `tests/acceptance.test.ts:127-154`; idempotent post | Cross-module dedupe not tested. |
+
+p66 stakeholder, salary and home-work:
+
+| Scenario | Today | Anchor | Needed |
+|---|---|---|---|
+| Same issue via client portal and company channel → one owned issue | MISSING | 0 customer-complaint model; `schema/main.prisma:1980` Interaction; dedupe precedent `domains/marketing/capture.ts:365-371` | Issue model with multi-source events. |
+| Sponsor/admin/end-user views; restricted comments not leaked | PARTIAL | `tests/acceptance.test.ts:317` need-to-know; `tests/compliance/labour.test.ts:307` | Multi-stakeholder visibility matrix. |
+| Urgent complaint escalates despite low count | MISSING | 0 hits | Severity rule independent of count. |
+| Implicated manager cannot control independent grievance | PARTIAL | `domains/hcm/workflow.ts:146` requester cannot decide own; PoshComplaint `schema/compliance-labour.prisma:144` | Conflict rule for grievance routing. |
+| Customer acknowledgement, target, reopen; no response ≠ satisfaction | MISSING | 0 hits | Model + rules. |
+| Opt-out and frequency suppression | PARTIAL | `schema/marketing.prisma:205` MarketingPreference; `tests/marketingMessaging.test.ts` | Frequency cap UNVERIFIED. |
+| Tamil/English accessible intake | PARTIAL | "tamil|i18n|locale" in 12–20 code files (not opened) | Verify depth before scoping. |
+| Anonymous-route identity disclosure | MISSING | — | New. |
+| Another customer's records denied | PARTIAL | `tests/acceptance.test.ts:60` | Customer-principal tests (none). |
+| Recurring theme traced to SOP change and outcome | MISSING | — | New. |
+| Employee sees only own masked account; requests correction | PARTIAL | `domains/hcm/payrollops.ts:475-484` last-4 mask, `canSeeMoney` | Correction workflow absent. |
+| Fraudulent bank-change fails trusted-channel check | MISSING | 0 hits | New control (NEW, not a fix to existing code). |
+| Beneficiary changer cannot release payment | PARTIAL | `platform/approvals.ts:322` generic requester≠approver | Not beneficiary-specific; needs explicit rule. |
+| Post-cutoff update cannot silently change frozen batch | PARTIAL | "frozen" in 5 code files; `schema/main.prisma:4733` PayrollRun; `schema/main.prisma:810` ApprovalStep | Freeze/version on batch UNVERIFIED. |
+| Settled, returned, unknown bank result per item | MISSING | `schema/hcm-payrollops.prisma:146` BankAdvice; `:172` PayrollReconciliation | Per-item bank result states not verified; likely MISSING. |
+| Approved file route: control totals and acknowledgement | PARTIAL | HCM-PAYROLLOPS-008 (name) | Control total and acknowledgement evidence. |
+| Home-work kit custody, scoped licences, tested remote access | PARTIAL | `schema/it-assets.prisma:101`; `schema/it-software.prisma:84` | Remote access MISSING (2 code hits, UNVERIFIED). |
+| Connectivity outage linked to support and team coverage | PARTIAL | `schema/it-itsm.prisma:18` ItIncident; `schema/it-servicedesk.prisma:144` knowledge | Coverage roster absent. |
+| Assistance needs consent; BYOD removal cannot access private content | MISSING | Consent model exists for DPDP (`schema/compliance-privacy.prisma:54`); no MDM/BYOD model (2 hits) | New. |
+| Exit revokes access; device collection not used for wage withholding | PARTIAL | `schema/hcm-separations.prisma:89` ExitClearance; "refuses clear" tests (name) | No guard test against withholding (40 code files match "withh"; UNVERIFIED). |
+
+### E. Stakeholder and governance items (p67–p68)
+
+| Proposal item | p. | Status | Evidence | Gap / action | Size |
+|---|---|---|---|---|---|
+| Recommended discovery pilot with named owners | 67 | PLANNED (partial) | `docs/plan/README.md:45-57`, `phase-0-stabilise.md` | Plan's Phase 0 is defect work, not discovery. See Phase mapping. | S |
+| Shareable evidence boundaries | 68 | PLANNED (policy) | `docs/plan/README.md` "Not verifiable from this repository" section | Consistent with plan. | S |
+
+## Phase mapping (proposal p61 vs plan)
+
+| Proposal phase (elapsed) | Plan counterpart | Verdict | Note |
+|---|---|---|---|
+| 0 Discovery and foundation (2–4 wk) | `phase-0-stabilise.md` (1 wk, nine defects) | CONFLICT | Plan Phase 0 has no discovery, authority, funding, baseline or migration plan. Proposal Phase 0 does not include the nine defects. Both should run: discovery then defects, or defects inside discovery. |
+| 0 "resolve tenancy and access before wider external exposure" | `phase-7-product.md` tenancy tiers (later) | CONFLICT (ordering) | Plan defers tenancy to Phase 7 ("when a second tenant is real"). Proposal requires it before exposure. Decision R-T2. |
+| 1 Operating control pilot (6–10 wk) | `phase-1-ledger.md` (3–4 wk, ledger) | CONFLICT (meaning of "Phase 1") | Proposal Phase 1 is operations (register, collections, work queue, founder view). Plan Phase 1 is the journal. Proposal's "reconcile pilot finance" depends on plan Phase 1 (Done #1–2). |
+| 1 collections, work queue, founder view, customer register | none | SILENT (plan) | No plan phase covers CRM-collections work queues. `phase-4-interface.md` covers DataTable only. |
+| 2 Connected commercial delivery (8–12 wk) | `phase-2-audit.md` (audit spine, DPDP), event fabric CRM-FOUND-002 `tests/acceptance.test.ts:118-166` | PARTIAL | Lead→contract→delivery→invoice cross-module chain not planned. Events precede automation: AGREE with p61 ordering. |
+| 3 Full people and finance operations (8–14 wk) | `phase-3-statutory.md` (payroll, TDS, GST) | PARTIAL AGREE | Payroll and reconciliation overlap. Proposal's month-end parallel run and two-entity consolidation: plan silent (no intercompany/elimination in any phase file, grep). |
+| 4 Portals, intelligence and scale (8–16 wk) | `phase-4..7`; `phase-6-intelligence.md` depends on 1, 2, 5 | AGREE on order | "Stable workflows precede dashboards and AI" matches plan 1,2,5 → 6. Customer/learner/institution portals: plan SILENT (only tenancy in phase 7). |
+| Gate content: owner, scenario, negative test, support, training, export, rollback | `docs/plan/README.md:45-57` Done means | SILENT (plan) | Plan gates are engineering-only. Adopt proposal's operating gate. |
+| Elapsed total | Plan sequential sum of phase ranges ≈ 26–34 wk (P0 1 + P1 3–4 + P2 2 + P3 6–8 + P4 4–6 + P5 3 + P6 4–6 + P7 3–4; `sequencing.md:4-13` runs 2/3/4 in parallel) | CONFLICT (scope) | Proposal sums 32–56 wk for operations plus build. Not comparable; proposal covers pilots and operating packs. Pick one horizon. |
+| Staffing: 0.5–1 product, 1 senior, 2–3 app eng, 0.5–1 QA (p62) | `sequencing.md:8` "most senior person + Claude Code alone for Phase 1"; "four developers … guiding AI-written code" | CONFLICT | Plan assumes one senior person for the ledger and interns elsewhere. Proposal assumes 4–6 FTE and says existing staff are not dedicated. Decision S-1. |
+| Ledger is "do not parallelise" | Proposal p61 "Phase 1 ... Phase 2–4 parallel" not stated | AGREE on sequencing rule; SILENT on staffing | |
+
+## Plan "Done means" (README :45-57) vs proposal scenarios
+
+| Plan Done # | Proposal scenario it covers | Today |
+|---|---|---|
+| 1 10,000 ops, TB zero | Financial integrity p65 | MISSING (no property test file in list) |
+| 2 Legacy replay to paisa | Financial integrity p65, migration reconcile p63 | PLANNED (`phase-1-ledger.md:147-152`) |
+| 3 200 concurrent allocations | Lead to cash p64 | PARTIAL (`tests/concurrency.test.ts` covers event chain only, names at :26-55) |
+| 4 200 concurrent emissions, verifyChain | Cross-module recorded once p65 | PARTIAL (`tests/concurrency.test.ts:27`) |
+| 5 Leakage fuzzer | Cross-role/tenant p64, external denial p66 | MISSING (no fuzzer file) |
+| 6 UPDATE/DELETE fails as app role | Correction history p60 | PLANNED (`phase-1-ledger.md:99-107`) |
+| 7 200+ golden questions | Dashboard reconstruction p64 | MISSING |
+| 8 axe, Lighthouse | Tamil/accessible intake p66 | PLANNED (`phase-4-interface.md`) |
+| 9 Invoice flow at 390px | Mobile capture p60 | PLANNED |
+| 10 Restore reproduces TB | Recovery rehearsal p64 | MISSING (FIX F8) |
+| 11 Metric drillTo/noActionReason | Dashboard p64, "no silent empty" p60 | PLANNED (`phase-4-interface.md:29-35`); not enforced today (`apps/web/src/components/ui.tsx:136`, per plan) |
+
+Proposal scenarios with no plan Done item: approval evidence change, broken detector, provider outage replay, connector edge cases, founder absence, group close and restricted funds, consultancy and specialist packs, AI false commitment, salary bank-change, stakeholder feedback. Plan silent on all of them.
+
+## Migration: ImportBatch / ImportRow capability check (p63)
+
+Schema: `apps/api/prisma/schema/main.prisma:5172` ImportBatch, `:5221` ImportRow (`batchId` cascade, `rowNumber`, `raw`, `normalised`, `status` pending/ready/duplicate/error/committed/skipped, `entityType`/`entityId` at `:5242`, `dedupeKey`).
+
+Kinds supported (`imports/detect.ts:18-30`, `:44`, `:246`): tally_ledger, bank_statement, employees, salary, attendance, transactions, chart_of_accounts, student_register, template_* (students, contacts, staff, opening_register). Not supported: contracts, documents, CRM export generic, mailboxes, WhatsApp/call history, business-number records, repositories.
+
+| p63 stage | Required evidence | Repo | Status | Gap |
+|---|---|---|---|---|
+| Inventory and classification | owner, coverage, date, authority, privacy basis | `ImportBatch.fileName/contentHash/kind/sourceLabel` (`main.prisma:5172`) | MISSING for owner/authority/privacy | Add fields or SourceRegister. |
+| Mapping and cleaning | field map, dedupe decisions, exclusions, unresolved | `mapping Json`; `dedupeKey`; `imports/service.ts:141-148,183-185` | PARTIAL | No dedupe decision record; unresolved items only as row status. |
+| Trial import | row counts, totals, sample verify, rejected report | `stats Json` counts (`service.ts:176`) | PARTIAL | No control totals vs source, no sample step. |
+| Parallel operation | comparison period, discrepancy log, sign-off | none | MISSING | New. |
+| Cutover | frozen snapshot, opening state, cut-off, rollback | opening fields `templates.ts:212-213`, `commit.ts:1335-1336`; `revertImport` `commit.ts:715` | PARTIAL, with FIX | No snapshot or cut-off guard; revert hard-deletes. |
+| Stabilisation | support queue, adoption metrics | none | MISSING | |
+
+Provenance and ID mapping: `raw` and `rowNumber` (`main.prisma:5221+`) and `entityType/entityId` provide old-row to new-record provenance. Source-system IDs have no dedicated field. PARTIAL.
+
+Tests: `tests/acceptance.test.ts:2530-2710` (template round-trip, staging, commit, duplicate re-upload at :2665-2671 and :2726-2730, parent/child category tree at :2682-2702). No test for revert, for partial-commit recovery, for money as bigint, or for period-closed refusal. Test file list has no `imports*.test.ts`.
+
+## Interconnections
+
+| From | To | Missing link | Evidence |
+|---|---|---|---|
+| `imports/commit.ts` transaction writes (`:267`, `:329`) | `platform/ledger.ts` `post()` (`:61`) | Imports write legacy `Transaction` only. After Phase 1 this diverges from the journal and breaks Done #2 unless commit uses `post()`. | `imports/commit.ts:267,329`; plan `phase-1-ledger.md:11,147-152` |
+| `imports` commit | `platform/audit.ts` `auditWrite` | `transaction` is governed (`audit.ts:106`) but `imports/commit.ts` never calls `auditWrite`. Events only (`:195`, `:790`). | grep |
+| `imports/commit.ts` | `invoicing.ts:266` `assertPeriodOpen` | Not called in import path; plan phase-0 asks for it. | grep (none in commit.ts) |
+| `revertImport` | audit / evidence | Hard-deletes target rows (`:733-746`); no reversal, no tombstone. | `imports/commit.ts:733-746` |
+| ImportRow `entityId` (`main.prisma:5242`) | revert switch (`commit.ts:723-746`) | Link exists; revert destroys the target it points to. | |
+| BankAdvice (`hcm-payrollops.prisma:146`) | bank result (settled/returned/unknown) | No result model or ingestion. | grep |
+| Approval (`platform/approvals.ts`) | payload content | No payload hash, so a changed amount or beneficiary does not invalidate approval. | `approvals.ts:93-101` |
+| Delegation (`main.prisma:905`) | absence clock | Delegation is manual; no absence trigger. | |
+| JobRun (`main.prisma:3799`) / JobFiringLog (`:3824`) | health surface | Raw run data exists; no health exception or dashboard tile. | |
+| ConsentLedger (`compliance-privacy.prisma:91`) | MarketingPreference (`marketing.prisma:205`) | Two consent stores; link UNVERIFIED. | |
+| Customer/student dispute | invoice reminders | No link (0 "reminder pause"). | grep |
+| `security.ts` runBackup | restore drill | Backup writes BackupRun (`compliance-corporate.prisma:28`); nothing restores. | `security.ts` |
+
+## Fixes
+
+| ID | Location | Problem | Consequence and fix | Size |
+|---|---|---|---|---|
+| F1 | `apps/api/src/imports/commit.ts:715-746` (CLAUDE.md cites :721; drifted) | `revertImport` hard-deletes Transaction, CompensationRecord, ShareTransaction, WorkAttendance rows. | Breaks CLAUDE "no hard-delete in accounting/audit path" and erases evidence. Fix: reversal entries or void status with tombstone; restrict to imports:delete plus approver. Needs test that fails on old code: revert then assert row still exists. | M |
+| F2 | `imports/commit.ts:78` | No `$transaction` anywhere in imports (grep). A crash mid-batch leaves partial commit. Plan phase-0 wants 500-row chunks with checkpoint, and `ImportBatch` has no `lastCommittedRowIndex` (0 hits in schema). | Re-run duplicates or half-applies. Fix per phase-0 item. | M |
+| F3 | `imports/parse.ts:122` (`toAmount` returns `number`); `imports/commit.ts:213,335,607,630,1335,1395` (`Number(...)`) | Money as float. CLAUDE rule 1 violation via `num()`-style path. | Rounding in opening balances and salary. Fix: bigint paise helper (`packages/shared/src/money.ts` does not exist). | M |
+| F4 | `imports/commit.ts` | Governed entities written without `auditWrite`. | Audit trail gap for imported transactions. Fix: call `auditWrite` after write (rule 5). | S |
+| F5 | `imports/commit.ts` | No `assertPeriodOpen`. Import can write into closed periods. Plan phase-0 names this. | Closed-period integrity. Fix: add check. | S |
+| F6 | `imports/commit.ts:267,329` | Writes legacy Transaction, bypassing `post()`. CLAUDE rule 2 says journal writes only via `post()`; here the write is to Transaction, not journal, so the rule is not broken yet, but Phase 1 projection breaks. | Fix in Phase 1 with `cashbookToJournal` (`phase-1-ledger.md:147`). | M |
+| F7 | `imports/commit.ts:80` vs `:717` | Commit and revert both gated by single permission; no maker/checker. | Revert of a 1-year import by one person. Fix: approval step. | S |
+| F8 | `domains/compliance/corporate/security.ts` `runBackup` | Returns `skipped` when `BACKUP_DIR` unset (quiet by design, per comment). No restore path. Plan Done #10 requires restore. | "Empty dashboard conceals failure": backup silently absent. Fix: surface `skipped` as a health exception in production. | S |
+
+## Advisor notes (what the proposal misses)
+
+1. Phase naming collides with the plan. The proposal's "Phase 0–4" and the plan's "Phase 0–8" are different things. Rename proposal phases R0–R4 in leadership material.
+2. Pilot finance depends on unverified figures. Plan README "Not verifiable" lists the Phase 1.5 book figures (1,123 vouchers, ₹40,500 gap). The proposal's pilot reconciliation should not inherit them until confirmed.
+3. India residency is absent from the proposal. CLAUDE says no personal data to non-India inference for India-required tenants. The proposal costs AI and transcription (p62) but states no region rule. Add: transcription and AI providers must be India-region or excluded. Plan `phase-7-product.md:12` covers Rule 3(5) backups; inference residency needs the same treatment. Specialist review needed; do not assume the rule's scope.
+4. Legal hold is missing (0 hits). Retention and purge (p67, p68) need holds that override purge. Plan `phase-2-audit.md` covers 8-year retention and erasure; holds are not in the plan.
+5. Schema migration plan is missing. Plan `phase-0-stabilise.md:71` says there is no `prisma/migrations` directory and the project runs on `db:push`. The proposal's "migration plan" covers data, not schema. Add baseline and rollback for schema.
+6. Recording and transcription law. p65 plans 50 consented calls across Tamil, English and mixed. The proposal says "consented" but does not name the consent mechanism. DPDP applicability and phased commencement are flagged by the proposal itself (p68); do not state a legal conclusion here.
+7. WhatsApp and SMS opt-in. p68 says a contractual basis does not permit a WhatsApp send. Code has WhatsApp/DLT gating (`domains/marketing/messaging.ts:2,15`). Good; the proposal's service-notice rule needs the same gate.
+8. Customer portals are silent in the plan. Phase 4 of the proposal includes permission-limited customer, learner and institution views. The plan has no phase for external users. This is the largest silent item.
+9. "Empty dashboard conceals failure" is a principle with no test. Add a standard: every connector and detector has a freshness field, and stale state renders as missing, not zero (plan triad: not measured ≠ zero ≠ withheld, CLAUDE rule 7).
+10. Metric gaming (p60) has no measure. Message counts and closed tickets are named, but no metric definition or owner is in the plan.
+11. Test harness conflict. Outage, timeout, 429 and bank-lookup tests need a provider double. CLAUDE "Never: add a mock to the API test suite". Decide a sandbox or contract-recording approach (R-T1).
+12. Pilot sample sizes (20 decisions, 100 messages/channel, 50 calls, one payroll cycle) are reasonable starting points; the proposal already says approve them in discovery. Keep.
+13. Cost ranges and TCO are unquantified. p62 gives formulas without rates. Fine for discovery; needs quotes (phone numbers, minutes, storage).
+
+## Decisions for leadership
+
+Merged register: plan README A/B/C first, then proposal p67 items, then the decisions this pass found (R-*, S-*, T-*).
+
+| ID | Decision | Source | Plan position | Proposal position | Verdict and what to decide | Owner (proposal) |
+|---|---|---|---|---|---|---|
+| A | Multi-entity: journal entity dimension | README :39 | Put `entityId` on journal now | p61: Phase 0 models all group dimensions; Phase 3 proves two-entity | AGREE on direction. Note: `JournalEntry.entityId` already exists (`compliance-books.prisma:74`) and `post()` requires it (`platform/ledger.ts:35,84`). Decide entity list, intercompany rules and elimination scope before Phase 3. | Leadership and professional adviser (p67) |
+| B | GSP vs direct IRP | README :41 | Go GSP, commercial, gates Phase 3 | Silent. p62 asks for build-vs-integrate TCO | Plan answers one case; proposal supplies the method. Decide with TCO table. | Finance and operations |
+| C | Tenant-zero vs product | README :43 | Product (~25% more work) | p62: do not fund from speculative product revenue; p67: expansion contingent on use | CONFLICT. Decide whether Kaizen is first customer or the product is the point. Decides Phase 7 timing and whether plan's 25% is funded. | Founder and leadership |
+| R-1 | Rollout gate content | p61 | Engineering Done means only | Operating owner, negative test, support, training, export, rollback | Adopt operating gate per phase. | Operating owners |
+| R-2 | Tenancy before external exposure | p61 | Phase 7 | Phase 0 | Decide: move tenancy/access checks into Phase 0 or delay external access. | Senior technical owner |
+| R-3 | Phase 1 meaning and scope | p61 | Journal | Operations pilot | Decide whether pilot is "ledger first" or "operations first". Recommend ledger first (plan) with proposal's operating gates. | Founder and product owner |
+| R-4 | Customer and learner portals | p61 | Silent | Phase 4 | Decide whether external views are in scope for this programme. | Product owner |
+| R-5 | Intercompany and consolidation | p61 | Silent in phase files | Phase 3 | Add to plan or drop; ties to A. | Finance and adviser |
+| R-6 | Restricted funds (Foundation) | p64 | 0 code, 0 plan | Denial scenario | Decide scope; needs legal review. | Adviser |
+| R-7 | Legal holds | p67 | Missing | Retention and holds | Decide hold authority and purge override. Specialist review. | Legal, finance, HR, data owners |
+| R-8 | India residency for inference and transcription | CLAUDE rule | Phase 7 for backups only | Silent | Decide region for each provider; specialist review. | Senior technical owner and legal |
+| R-9 | Recording and privacy policy | p67 | Phase 2 DPDP | Competent legal owner | Decide before any call capture. | Legal/privacy owner |
+| R-10 | Recovery and backup coverage | p67, plan Done #10 | Restore drill (phase-8) | Restore rehearsal | Decide RTO/RPO and who runs the drill; fix F8 first. | Technical and operating owners |
+| S-1 | Staffing: plan vs proposal | p62 vs `sequencing.md:8` | One senior for Phase 1 | 2–3 app eng, 1 senior, 0.5–1 QA | Decide actual allocation; measure productive hours first. | Founder and delivery leads |
+| S-2 | Phase budget and funding gate | p61, p67 | Silent | Phase-by-phase release | Decide first-phase budget and stop rule. | Founder |
+| T-1 | Test double policy for outage, bank timeout, 429 | CLAUDE "no mock" | Real Postgres only | Scenario tests | Decide sandbox or recorded-contract approach. | Senior technical owner |
+| T-2 | Numeric performance targets | p64 | Silent | Approve in discovery | Set from load and hours. | Operating owners |
+| P-1 | First pilot workflows and users | p67 | Silent | Founder + product owner | Decide: collections and delivery (per p61 Phase 1). | Founder |
+| P-2 | Current financial baseline and cut-off | p67 | Phase 1.5 gate (unverified figures) | Bank evidence, cut-off | Confirm figures before pilot finance gate. | Finance and authorised accountant |
+| P-3 | Accounting and payroll systems of record | p67 | Silent | Existing tools and integration map | Decide system of record per domain. | Finance and HR |
+| P-4 | Candidate component reuse (db.ts, permissions.ts, etc.) | p67 | Do not rewrite listed platform files (CLAUDE "Never") | Assessment before reuse | Confirm reuse without rewrite. | Senior technical owner |
+| P-5 | Authority limits and alternates | p67 | Delegation exists (`main.prisma:905`) | Valid decision rights | Decide thresholds and absence rule. | Directors and unit owners |
+| P-6 | Business numbers and mailbox ownership | p67 | Silent (no mailbox connector) | Account control and provider eligibility | Decide ownership before any mailbox import. | Operations and channel owner |
+| P-7 | Historical communications import scope | p63 | Silent | Only where provider and retention permit | Decide coverage and exclusions. | Operations, legal |
+| P-8 | Migration: source register and stop-rule | p63 | Silent | Inventory | Decide owner per source; approve F1–F7 before cutover. | Data owners |
+| P-9 | First-phase metric targets and baseline | p67 | Silent | Baseline observations | Set after baseline. | Operating owners |
+| P-10 | Pilot sample and tolerance | p65 | Silent | 20 decisions, etc. | Approve exact sample and tolerance. | Operating owners |
+| P-11 | Build vs integrate per capability | p62 | Silent | TCO | Decide with cost scenarios. | Founder and finance |
+
+Recommended immediate authorisation (p67) is a time-limited discovery pilot with product owner, senior technical owner, finance owner and sponsor. It conflicts with plan Phase 0 as written (one senior developer, one week). Reconcile: discovery then R0.

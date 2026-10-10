@@ -48,7 +48,7 @@ Rewrite `apps/api/src/jobs/scheduler.ts`:
 - **Invoice numbering** (the `nextDocumentNumber` call at `domains/invoicing.ts:584`, outside the transaction that starts at `:588`). Move `nextDocumentNumber` *inside* the transaction that creates the invoice, so a rollback does not consume a number in a series whose entire justification is gaplessness.
 - **Period close.** `assertPeriodOpen` must be called from every write that affects a tax period. Better: move the check into the ledger posting path in Phase 1 so it cannot be forgotten. For now, add it to `recordTransaction`, `issueCreditNote`, vendor bill creation and `commitImport`.
 - **Audit gaps.** Register `'transaction'`, `'ledger_account'`, `'ledger_category'` and `'vendor_bill'` through `registerGovernedEntities('books', [...])` (`platform/audit.ts:37`) — **not** in `AUDIT_ACTIONS` (`:17`), which is the list of *verbs* (`create|update|delete|merge|export|login|permission_change|read`) and has nothing to do with the no-op. The gate is `isGoverned(input.subjectType)` at `:134`. Then add `auditWrite` calls throughout `domains/books.ts`. Add `assertCan` + `auditWrite` + `emit` to `reversePayment` (`domains/finance.ts:155`).
-- **Timezone.** Create `packages/shared/src/time.ts` with `IST` as an explicit zone and functions `istMonthKey(date)`, `istFinancialYear(date)`, `istPeriodOf(date)`. Replace every `getUTCMonth()` / `getUTCFullYear()` used for a tax period or financial year — `invoicing.ts:225`, `packages/shared/src/finance.ts:78`, and `financialYearStart` at `platform/documentNumber.ts:67`. **Today, an invoice raised at 2am IST on 1 September is an August invoice for period close, GSTR-1, and the document-number series; on 1 April it lands in the wrong financial year.**
+- **Timezone.** Create `packages/shared/src/time.ts` with `IST` as an explicit zone and functions `istMonthKey(date)`, `istFinancialYear(date)`, `istPeriodOf(date)`. Replace every `getUTCMonth()` / `getUTCFullYear()` used for a tax period or financial year — `invoicing.ts:225`, `packages/shared/src/finance.ts:78`, and `financialYearStart` at `platform/documentNumber.ts:92` (was :67), `fyOf` at `domains/compliance/tax.ts:60` (found in the Zen 360 review; same defect, drives TDS/payroll FY). **Today, an invoice raised at 2am IST on 1 September is an August invoice for period close, GSTR-1, and the document-number series; on 1 April it lands in the wrong financial year.**
 - **The ₹60,000.** `events/handlers.ts:86` — read the fee from `enrollment.cohort.course` (already loaded at `:80-83`), and take the instalment schedule from a `FeePlanTemplate` on the course rather than a hardcoded 40/30/30.
 
 ## 0.7 Split the schema, and build the map
@@ -73,3 +73,18 @@ Two things do not exist yet and must be created before CI can reference them:
 Add `eslint-plugin-tailwindcss` with `no-custom-classname` so an unknown token is a build error, then fix the two that ship dead today: `Start.tsx:100,109` and `People.tsx:56`.
 
 Set `BUILD_SEQUENCE`, `GIT_SHA` and `BUILT_AT` in CI so `BuildFootnote` stops rendering `known: false`.
+
+## 0.9 Stop-ship additions from the Zen 360 review
+
+Found while verifying the Zen 360 proposal. Read in code, not inferred. Details, the rule each breaks, and the test that must fail on old code are in `zen360/FIXES.md`. These come before any pilot, external user or second tenant: the proposal's approval, review and evidence claims depend on them.
+
+- **FX-01** `decideApprovalStep` (`platform/approvals.ts:309`) has no `assertCan`, no approver-authority check and no audit, so anyone but the requester approves anything.
+- **FX-02** `/capabilities/:id/verify` takes the two-person-rule flags from the body (`routes/hr.routes.ts:844`).
+- **FX-03** Affiliation create accepts any `roleSlug` as an access role (`routes/crm.routes.ts:243`).
+- **FX-04** `decideAgentAction` (`agents/index.ts:251`) and exception acknowledge/resolve (`platform/exceptions.ts:149,163`) have no `assertCan` and no audit.
+- **FX-05** The agent tier takes the touchpoint tier even above the agent's ceiling (`agents/index.ts:95-98`), against its own comment.
+- **FX-50** The marketing webhook resolves its tenant from a header or query param and verifies no signature (`domains/marketing/capture.ts:~705`).
+- **FX-60** `FIELD_ENCRYPTION_KEY` falls back to a public dev key. Make it a 0.1 boot assertion (`domains/compliance/privacy.ts:944`).
+- **FX-61** The NEFT advice writes the encrypted IFSC as ciphertext (`domains/hcm/payrollops.ts:~585`).
+- **FX-80** `verifyCertificate` always returns `valid:true` (`compliance/corporate/certificates.ts:67`).
+- **FX-81** `verifyChain` never recomputes hashes and reports valid past its 5,000-row limit (`platform/eventBus.ts:422`).
