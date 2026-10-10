@@ -58,32 +58,55 @@ function credentials(): { email: string; password: string } {
 /** Sign in through the form, the way a person does. */
 export async function signIn(page: Page): Promise<void> {
   const { email, password } = credentials();
-
-  // The one-off orientation modal covers the screen on a first visit. It is
-  // dismissed by hand once by a real user and would otherwise be dismissed by
-  // hand in every test here.
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem('kaizen.seenIntro', '1');
-    } catch {
-      /* a browser without storage still shows the modal; nothing to do */
-    }
-  });
+  await useSessionToken(page, await sessionToken(page.request, email, password));
 
   await page.goto('/');
-  // The sign-in form's labels are not wired to their inputs, so the fields are
-  // found by type rather than by name. Worth fixing in the client one day; not
-  // worth failing this suite over in the meantime.
-  await page.locator('input[type=email]').fill(email);
-  await page.locator('input[type=password]').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
 
   // The landing screen depends on the role, so wait for the shell rather than
   // for a path: every signed-in person has the sidebar and nobody else does.
   await expect(page.getByRole('link', { name: 'Getting Started' })).toBeVisible();
 }
 
-let apiToken: string | undefined;
+const sessionTokens = new Map<string, string>();
+
+/**
+ * One API sign-in per account per run, shared by every test that needs it.
+ *
+ * Signing in through the form in every test used up the API's sign-in budget
+ * (five a minute per address, `rateLimit.ts`) partway through the suite, and the
+ * next test to sign in failed on a 429 that looked like a broken sidebar. The
+ * session is the token the app itself keeps, so handing it over is the same
+ * session a form sign-in would have produced.
+ */
+export async function sessionToken(
+  request: APIRequestContext,
+  email: string,
+  password: string,
+): Promise<string> {
+  const cached = sessionTokens.get(email);
+  if (cached) return cached;
+  const login = await request.post(`${API_URL}/api/auth/login`, { data: { email, password } });
+  expect(login.ok(), `signing in to ${API_URL} failed: ${login.status()}`).toBe(true);
+  const { token } = (await login.json()) as { token: string };
+  sessionTokens.set(email, token);
+  return token;
+}
+
+/**
+ * Puts a session token where the app reads it on load, before any page script
+ * runs. The one-off orientation modal is dismissed here too, as a real user
+ * would dismiss it once.
+ */
+export async function useSessionToken(page: Page, token: string): Promise<void> {
+  await page.addInitScript((t: string) => {
+    try {
+      window.localStorage.setItem('kaizen.seenIntro', '1');
+      window.localStorage.setItem('kaizen.token', t);
+    } catch {
+      /* a browser without storage shows the modal and signs out; nothing to do */
+    }
+  }, token);
+}
 
 /**
  * The checklist as the server computes it, read straight from the API.
@@ -93,17 +116,8 @@ let apiToken: string | undefined;
  * the answer.
  */
 export async function onboardingState(request: APIRequestContext): Promise<OnboardingState> {
-  // Signed in once per run, not once per call: the API limits sign-ins to five
-  // a minute per address, and every test here already signs in through the
-  // form. A second sign-in per test trips that limit and fails the test on a
-  // 429, which says nothing about the checklist.
-  if (!apiToken) {
-    const { email, password } = credentials();
-    const login = await request.post(`${API_URL}/api/auth/login`, { data: { email, password } });
-    expect(login.ok(), `signing in to ${API_URL} failed: ${login.status()}`).toBe(true);
-    apiToken = ((await login.json()) as { token: string }).token;
-  }
-  const token = apiToken;
+  const { email, password } = credentials();
+  const token = await sessionToken(request, email, password);
 
   const res = await request.get(`${API_URL}/api/auth/onboarding`, {
     headers: { authorization: `Bearer ${token}` },
