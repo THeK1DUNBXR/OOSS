@@ -1,9 +1,5 @@
-import {
-  AI_PROHIBITED_ACTIONS,
-  FIELD_PURPOSES,
-  applyFieldVisibility,
-  type SensitivityClass,
-} from '@kaizen/shared';
+import { AI_PROHIBITED_ACTIONS, type SensitivityClass } from '@kaizen/shared';
+import { applyFieldVisibility } from './permissions.js';
 import {
   compileMetricQuery,
   type CompileRequest,
@@ -16,18 +12,40 @@ export type LlmRegion = 'india' | 'us' | 'eu' | 'global' | 'local';
 export type LlmTask = 'briefing' | 'ask_kaizen' | 'drafting' | 'extraction' | 'forecasting';
 export type ApprovalClassification = 'read_only' | 'reversible_single_record' | 'irreversible_external';
 
+/**
+ * Every personal value the gateway strips before a payload leaves for a model.
+ * Keyed by the names the platform actually uses (the Person and Employment
+ * columns), not by aliases. The completeness test in llmGateway.test.ts fails
+ * when a Person column is neither here nor on its explicit non-personal list.
+ * FX-65.
+ */
 export const PERSONAL_DATA_FIELDS = new Set([
   'fullName',
   'email',
   'phone',
+  'primaryEmail',
+  'primaryPhone',
+  'primaryEmailNormalised',
+  'primaryPhoneNormalised',
+  'additionalEmails',
+  'additionalPhones',
+  'additionalEmailsNormalised',
+  'additionalPhonesNormalised',
   'dateOfBirth',
+  'bloodGroup',
+  'notes',
+  'externalIds',
   'panNumber',
   'aadhaarReference',
+  'uanNumber',
+  'esicNumber',
   'bankAccountNumber',
   'bankAccountName',
   'bankIfsc',
+  'nomineeName',
   'guardianName',
   'guardianPhone',
+  'guardianEmail',
   'guardianConsentId',
 ]);
 
@@ -41,6 +59,12 @@ export interface ModelGatewayConfig {
   requireIndiaRegion?: boolean;
   canSeeMoney?: boolean;
   fieldClassifications?: Record<string, SensitivityClass>;
+  /**
+   * The most sensitive class the caller's grant lets reach the model. Taken from
+   * the caller's auth (classificationCeiling), never a constant. Unset means the
+   * most restrictive class, `public`. FX-65.
+   */
+  classificationCeiling?: SensitivityClass;
   maxInputTokens?: number;
   maxOutputTokens?: number;
   maxSteps?: number;
@@ -140,16 +164,16 @@ export function redactPersonalFields<T extends Record<string, unknown>>(payload:
 
 export function sanitizeForModel<T extends Record<string, unknown>>(
   payload: T,
-  config: Pick<ModelGatewayConfig, 'canSeeMoney' | 'fieldClassifications'>,
+  config: Pick<ModelGatewayConfig, 'canSeeMoney' | 'fieldClassifications' | 'classificationCeiling'>,
 ): { data: T; redactedFields: string[] } {
-  const fieldClassifications = config.fieldClassifications ?? {};
-  const withholdPaths: Array<{ path: string; reason: 'classification_ceiling' | 'no_permission' }> = [];
+  // One walker for the whole platform (permissions.ts). The gateway's only
+  // difference is that a field nobody classified is treated as the most
+  // restrictive class, not as public. FX-65.
   const result = applyFieldVisibility(payload, {
     canSeeMoney: config.canSeeMoney ?? false,
-    ceiling: 'restricted',
-    fieldClassifications,
-    fieldPurposes: FIELD_PURPOSES,
-    withholdPaths,
+    ceiling: config.classificationCeiling ?? 'public',
+    fieldClassifications: config.fieldClassifications ?? {},
+    unclassifiedAs: 'regulated',
   });
 
   const redactedFields = result.withheld.map((entry) => entry.path);
@@ -201,6 +225,7 @@ export class ModelGateway {
     const filtered = sanitizeForModel(payload, {
       canSeeMoney: this.config.canSeeMoney ?? false,
       fieldClassifications: this.config.fieldClassifications,
+      classificationCeiling: this.config.classificationCeiling,
     });
 
     const redactedResult = redactPersonalFields(filtered.data as T);

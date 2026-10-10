@@ -450,6 +450,13 @@ export interface FilterOptions {
   ceiling: SensitivityClass;
   /** Field-level classifications, keyed by field name. */
   fieldClassifications?: Record<string, SensitivityClass>;
+  /**
+   * The class a field with no entry in `fieldClassifications` is treated as.
+   * Unset keeps the legacy behaviour for route callers (an unclassified field
+   * is not checked). The model gateway sets it to `regulated`, so a field
+   * nobody has classified is withheld from a model rather than passed on. FX-65.
+   */
+  unclassifiedAs?: SensitivityClass;
   /** Statutory/business purpose for each field, used by data maps and exports. */
   fieldPurposes?: Record<string, string>;
   /** Paths to withhold with a reason rather than null. */
@@ -509,7 +516,7 @@ function walk(
       }
     }
 
-    const fieldClass = options.fieldClassifications?.[key];
+    const fieldClass = options.fieldClassifications?.[key] ?? options.unclassifiedAs;
     if (fieldClass && SENSITIVITY_RANK[options.ceiling] < SENSITIVITY_RANK[fieldClass]) {
       withheld.push({ path: childPath, reason: 'classification_ceiling' });
       out[key] = null;
