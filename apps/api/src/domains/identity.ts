@@ -23,6 +23,7 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
 import { assertCan } from '../platform/permissions.js';
+import { assertCanAssignRole } from '../platform/roleAssignment.js';
 
 // A merge candidate's resolution decides whether two person rows become one,
 // so every resolution is a governed write like the merge it may trigger.
@@ -589,11 +590,13 @@ export async function createAffiliation(input: AffiliationInput) {
   // An affiliation's role is the access role the evaluator reads for this
   // person, so naming one is granting access. Checked only when a role is
   // named: the education and import callers create affiliations with none,
-  // and that is not a grant.
+  // and that is not a grant. people:assign alone is not enough: hr_ops_manager
+  // holds it, and without the coverage check it could name chairman and
+  // become superadmin. assertCanAssignRole stops self-assignment and any role
+  // broader than the caller's own grants.
   if (input.roleSlug) {
     await assertCan({ resource: 'people', verb: 'assign' });
-    const role = await prisma.accessRole.findFirst({ where: { slug: input.roleSlug }, select: { id: true } });
-    if (!role) throw ApiError.unprocessable(`Access role '${input.roleSlug}' is not defined for this tenant.`);
+    await assertCanAssignRole({ roleSlug: input.roleSlug, targetPartyId: input.partyId });
   }
   const affiliation = await prisma.affiliation.create({
     data: {

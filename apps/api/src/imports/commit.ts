@@ -15,6 +15,7 @@
 import { prisma, dec } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan } from '../platform/permissions.js';
+import { assertCanAssignRole } from '../platform/roleAssignment.js';
 import { ApiError } from '../platform/errors.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { emit } from '../platform/eventBus.js';
@@ -543,6 +544,18 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
   if (matched.kind === 'ambiguous') throw new Error(matchFailure(fullName, matched));
   const existing = matched.kind === 'matched' ? candidates.find((p) => p.id === matched.id) : undefined;
 
+  // The employee affiliation written below carries roleSlug 'employee' when it
+  // is created, which is a role assignment. Checked before any person write
+  // here, so a refused row writes nothing; the importer must cover the role.
+  const existingEmployee = existing
+    ? await prisma.affiliation.findFirst({
+        where: { tenantId: auth.tenantId, partyId: existing.id, affiliationType: 'employee' },
+      })
+    : null;
+  if (!existingEmployee) {
+    await assertCanAssignRole({ roleSlug: 'employee', targetPartyId: existing?.id ?? null });
+  }
+
   // Only fields the file actually carried are written. A staff list that omits
   // a birthday must not blank one somebody typed in.
   const held = {
@@ -577,9 +590,10 @@ async function commitEmployeeRow(data: Record<string, unknown>) {
         partyId: person.id,
         affiliationType: 'employee',
         counterpartyName: 'Kaizen Infinities',
-        // Everybody imported from a staff list is an employee. Authority is a
-        // separate decision, made in the product by somebody who holds it — an
-        // import must never be a way to grant somebody a role.
+        // Everybody imported from a staff list is an employee, so the row names
+        // the employee role. That is a grant, and assertCanAssignRole above is
+        // what stops an importer naming a role they do not cover. Authority
+        // beyond employee stays a separate decision made in the product.
         roleSlug: 'employee',
         primaryFlag: true,
         status: 'active',

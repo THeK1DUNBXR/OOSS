@@ -31,6 +31,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
+import { assertCanAssignRole } from '../platform/roleAssignment.js';
 
 // board_meeting is also registered by compliance/corporate.ts; this module writes
 // it too, and board.test.ts loads this module without the compliance tree.
@@ -67,6 +68,19 @@ export async function addBoardMember(input: AddBoardMemberInput) {
   const person = await prisma.person.findFirst({ where: { id: input.personId } });
   if (!person) throw ApiError.notFound('Person');
 
+  // A director-family seat also writes a 'director' affiliation, which carries
+  // the role. Checked before the board member row below, so a refusal writes
+  // nothing; board_meetings:create alone does not cover the director role.
+  const directorFamily = DIRECTOR_FAMILY_ROLES.includes(input.role);
+  const existingDirector = directorFamily
+    ? await prisma.affiliation.findFirst({
+        where: { partyId: input.personId, affiliationType: 'director', roleSlug: 'director' },
+      })
+    : null;
+  if (directorFamily && (!existingDirector || existingDirector.status !== 'active')) {
+    await assertCanAssignRole({ roleSlug: 'director', targetPartyId: input.personId });
+  }
+
   const recordCode = await nextRecordCode('BDM');
   const member = await prisma.boardMember.create({
     data: {
@@ -85,10 +99,8 @@ export async function addBoardMember(input: AddBoardMemberInput) {
   // relationship to this entity — the same affiliation-on-creation pattern
   // `signIns.ts` uses for a sign-in. This never creates a User or a
   // Principal; that stays the sign-in action's job.
-  if (DIRECTOR_FAMILY_ROLES.includes(input.role)) {
-    const existing = await prisma.affiliation.findFirst({
-      where: { partyId: input.personId, affiliationType: 'director', roleSlug: 'director' },
-    });
+  if (directorFamily) {
+    const existing = existingDirector;
     if (!existing) {
       await prisma.affiliation.create({
         data: {

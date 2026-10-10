@@ -14,7 +14,7 @@
 
 **`apps/api/src/domains/agreements.ts`** (595 lines) — AgreementKind:37 · createMou:43 · createContract:110 · createPartnerAgreement:179 · TransitionResult:301 · transitionAgreement:308 · runExpiryLadder:439 · renewAgreement:524 · auditWonWithoutContract:571
 
-**`apps/api/src/domains/board.ts`** (1104 lines) — AddBoardMemberInput:55 · addBoardMember:63 · ceaseBoardMember:117 · DeclareInterestsInput:137 · declareInterests:142 · listBoardMembers:169 · CallMeetingInput:204 · callMeeting:215 · AgendaItemInput:273 · updateAgenda:280 · AttendanceInput:286 · recordAttendance:292 · markHeld:305 · draftMinutes:329 · circulateMinutes:345 · EnterMinutesInput:364 · enterMinutes:369 · signMinutes:414 · cancelMeeting:431 · listMeetings:452 · meeting:459 · BoardPackItemInput:464 · addBoardPackItem:471 · boardPack:489 · ProposeResolutionInput:503 · proposeResolution:513 · OpenForCirculationInput:557 · openForCirculation:562 · CastVoteInput:598 · castVote:606 · closeCirculation:645 · PassAtMeetingVoteInput:691 · passAtMeeting:697 · withdraw:749 · recordMgt14:767 · listResolutions:788 · resolution:801 · complianceCalendar:823 · ResolveComplianceItemInput:831 · resolveComplianceItem:837 · runBoardComplianceJob:925
+**`apps/api/src/domains/board.ts`** (1116 lines) — AddBoardMemberInput:56 · addBoardMember:64 · ceaseBoardMember:129 · DeclareInterestsInput:149 · declareInterests:154 · listBoardMembers:181 · CallMeetingInput:216 · callMeeting:227 · AgendaItemInput:285 · updateAgenda:292 · AttendanceInput:298 · recordAttendance:304 · markHeld:317 · draftMinutes:341 · circulateMinutes:357 · EnterMinutesInput:376 · enterMinutes:381 · signMinutes:426 · cancelMeeting:443 · listMeetings:464 · meeting:471 · BoardPackItemInput:476 · addBoardPackItem:483 · boardPack:501 · ProposeResolutionInput:515 · proposeResolution:525 · OpenForCirculationInput:569 · openForCirculation:574 · CastVoteInput:610 · castVote:618 · closeCirculation:657 · PassAtMeetingVoteInput:703 · passAtMeeting:709 · withdraw:761 · recordMgt14:779 · listResolutions:800 · resolution:813 · complianceCalendar:835 · ResolveComplianceItemInput:843 · resolveComplianceItem:849 · runBoardComplianceJob:937
 
 **`apps/api/src/domains/books.ts`** (1411 lines) — listAccounts:86 · createAccount:95 · listCategories:125 · createCategory:134 · accountBalances:169 · TransactionInput:213 · groupCounterpartyOptions:240 · recordTransaction:264 · reverseTransaction:361 · listTransactions:437 · listVendorBills:471 · recordVendorBill:485 · payVendorBill:548 · payablesAgeing:600 · detectOverdueBills:631 · priceInvoiceGst:674 · gstSummary:729 · setBudgetLine:777 · budgetVariance:829 · listAssets:899 · createAsset:932 · assetSchedule:992 · listLoans:1009 · createLoan:1043 · loanSchedule:1078 · generateRecurring:1105 · ProfitAndLoss:1165 · profitAndLoss:1181 · monthlyTrend:1244 · cashPosition:1277 · cashForecast:1308 · postPayrollToBooks:1353
 
@@ -132,7 +132,7 @@
 
 **`apps/api/src/domains/hiring.ts`** (336 lines) — listRequisitions:38 · createRequisition:56 · transitionRequisition:93 · listApplications:120 · createApplication:143 · transitionApplication:202 · joinFromApplication:277 · hiringFunnel:319
 
-**`apps/api/src/domains/identity.ts`** (651 lines) — normalisePhone:35 · normaliseEmail:43 · maskPhone:49 · maskEmail:54 · ResolutionScope:68 · crmResolutionScope:75 · PersonInput:79 · findDedupCandidates:94 · ResolveResult:175 · findOrCreatePerson:186 · sanctionedCreatePerson:308 · mergePersons:339 · personIdChain:381 · resolveMergeCandidate:395 · sweepStaleMergeCandidates:542 · AffiliationInput:573 · createAffiliation:587 · endAffiliation:638
+**`apps/api/src/domains/identity.ts`** (654 lines) — normalisePhone:36 · normaliseEmail:44 · maskPhone:50 · maskEmail:55 · ResolutionScope:69 · crmResolutionScope:76 · PersonInput:80 · findDedupCandidates:95 · ResolveResult:176 · findOrCreatePerson:187 · sanctionedCreatePerson:309 · mergePersons:340 · personIdChain:382 · resolveMergeCandidate:396 · sweepStaleMergeCandidates:543 · AffiliationInput:574 · createAffiliation:588 · endAffiliation:641
 
 **`apps/api/src/domains/interactions.ts`** (452 lines) — RelatedReference:33 · classificationFor:55 · computeSensitivity:69 · InteractionInput:90 · logInteraction:105 · VisibleInteraction:259 · timelineFor:289 · recentInteractions:412
 
@@ -236,7 +236,7 @@
 
 **`apps/api/src/domains/routing.ts`** (433 lines) — RoutingSubject:29 · RoutingOutcome:38 · routeLead:145 · raiseUnroutedException:326 · routingAuditFor:366 · createTerritory:380 · updateRoutingRule:415
 
-**`apps/api/src/domains/signIns.ts`** (104 lines) — SignInRole:22 · CreateSignInInput:24 · SignInResult:32 · createOrResetSignIn:51
+**`apps/api/src/domains/signIns.ts`** (112 lines) — SignInRole:23 · CreateSignInInput:25 · SignInResult:33 · createOrResetSignIn:52
 
 **`apps/api/src/domains/spinOutPreview.ts`** (71 lines) — spinOutPreview:22 · SpinOutDivisionSummary:33 · SpinOutDivisionsView:40 · spinOutDivisionsSummary:46
 
@@ -300,6 +300,8 @@
 
 **`apps/api/src/platform/recordScope.ts`** (74 lines) — assertEmploymentVisible:36 · employmentVisibilityWhere:65
 
+**`apps/api/src/platform/roleAssignment.ts`** (133 lines) — GrantShape:26 · GrantGap:28 · grantsOfRole:40 · uncoveredGrants:66 · RoleAssignment:97 · assertCanAssignRole:108
+
 **`apps/api/src/platform/tenantKind.ts`** (100 lines) — TenantKindChange:25 · reconcileTenantKinds:39
 
 **`apps/api/src/platform/tenantPolicy.ts`** (161 lines) — DEFAULT_TENANT_TIER:20 · resolveTenantTier:69 · getTenantFeatureGate:74 · assertAllowedInferenceRegion:83 · TenantRuntimePolicy:104 · resolveTenantRuntimePolicy:112 · syncTenantPolicy:129
@@ -310,7 +312,7 @@
 
 **`apps/api/src/imports/classify.ts`** (109 lines) — LedgerClass:15 · classifyLedger:19 · isAccountName:77 · divisionFor:88 · JOURNAL_ACCOUNT_NAME:107 · JOURNAL_ACCOUNT_TYPE:108
 
-**`apps/api/src/imports/commit.ts`** (1566 lines) — CommitResult:38 · commitImport:78 · revertImport:715
+**`apps/api/src/imports/commit.ts`** (1580 lines) — CommitResult:39 · commitImport:79 · revertImport:729
 
 **`apps/api/src/imports/detect.ts`** (286 lines) — ImportKind:18 · Detection:47 · findHeaderRow:73 · detectGrid:106 · detectWorkbook:219 · isTallyLedgerSheet:255 · countLedgers:259 · detectSourceFormat:269
 
