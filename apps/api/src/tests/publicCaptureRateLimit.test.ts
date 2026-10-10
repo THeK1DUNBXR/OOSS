@@ -86,6 +86,21 @@ describe('public lead capture rate limit (per IP, Postgres-backed)', () => {
     expect(rows[0].hits).toBeGreaterThanOrEqual(31);
   });
 
+  it('stores the address Caddy saw, not the one a caller forged into X-Forwarded-For', async () => {
+    const token = await publishedToken();
+    const email = `forged-ip-${Date.now()}@example.com`;
+    const res = await fetch(`${base}/api/marketing/public/forms/${token}/submit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'X-Forwarded-For': '198.51.100.99, 203.0.113.44' },
+      body: JSON.stringify({ fullName: 'Forged', email }),
+    });
+    expect(res.status).toBe(200);
+    const row = await unscopedPrisma.marketingFormSubmission.findFirst({
+      where: { payload: { path: ['email'], equals: email } },
+    });
+    expect(row?.ip).toBe('203.0.113.44');
+  });
+
   it('a different address is unaffected by another exhausting its limit', async () => {
     const token = await publishedToken();
     for (let i = 0; i < 30; i += 1) {
