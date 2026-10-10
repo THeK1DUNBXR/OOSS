@@ -523,20 +523,26 @@ async function assembleAccessExport(tenantId: string, personId: string) {
  * Everything an erasure request can be blocked by, named rather than merely
  * refused. CMP-DPD-002.
  */
-async function erasureBlockers(tenantId: string, personId: string): Promise<{ retentionClass: string; earliestErasable: Date }[]> {
+async function erasureBlockers(tenantId: string, personId: string): Promise<{ retentionClass: string; earliestErasable: Date | null }[]> {
   const affiliations = await unscopedPrisma.affiliation.findMany({
     where: { tenantId, partyId: personId, statutoryRetentionFloor: true },
   });
   if (!affiliations.length) return [];
 
   const schedules = await unscopedPrisma.retentionSchedule.findMany({ where: { tenantId }, orderBy: { effectiveFrom: 'desc' } });
-  const blockers: { retentionClass: string; earliestErasable: Date }[] = [];
+  const blockers: { retentionClass: string; earliestErasable: Date | null }[] = [];
   const now = new Date();
 
   for (const aff of affiliations) {
     const retentionClass = aff.affiliationType === 'student' ? 'student_record' : 'employee_record';
     const schedule = schedules.find((s) => s.retentionClass === retentionClass && s.effectiveFrom <= now);
-    if (!schedule) continue; // Unmeasured, not "clear to erase" — but nothing to compare a date against either.
+    // No schedule means the window cannot be measured. That is a block, not a
+    // clearance: erasing now would destroy records the floor still holds.
+    // FX-62.
+    if (!schedule) {
+      blockers.push({ retentionClass, earliestErasable: null });
+      continue;
+    }
     const anchor = aff.effectiveTo ?? aff.effectiveFrom;
     const window = { retentionClass, years: schedule.years, anchor };
     if (!isPastRetentionWindow(window, now)) {
@@ -587,10 +593,17 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
   // erasure
   const blockers = await erasureBlockers(auth.tenantId, request.personId);
   if (blockers.length) {
-    const earliest = blockers.reduce((min, b) => (b.earliestErasable < min ? b.earliestErasable : min), blockers[0].earliestErasable);
-    const refusalReason =
-      `Blocked by the statutory retention floor on ${blockers.map((b) => b.retentionClass).join(', ')}. ` +
-      `Not erasable before ${earliest.toISOString().slice(0, 10)}.`;
+    const dated = blockers.filter((b): b is { retentionClass: string; earliestErasable: Date } => b.earliestErasable !== null);
+    const unmeasured = blockers.filter((b) => b.earliestErasable === null).map((b) => b.retentionClass);
+    const parts: string[] = [];
+    if (dated.length) {
+      const earliest = dated.reduce((min, b) => (b.earliestErasable < min ? b.earliestErasable : min), dated[0].earliestErasable);
+      parts.push(`Blocked by the statutory retention floor on ${dated.map((b) => b.retentionClass).join(', ')}. Not erasable before ${earliest.toISOString().slice(0, 10)}.`);
+    }
+    if (unmeasured.length) {
+      parts.push(`No retention schedule is recorded for ${unmeasured.join(', ')}, so the floor cannot be measured and erasure cannot proceed.`);
+    }
+    const refusalReason = parts.join(' ');
     const updated = await prisma.dataPrincipalRequest.update({
       where: { id },
       data: { status: 'refused', refusalReason },
@@ -617,11 +630,19 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
       deletedAt: new Date(),
     } as never,
   });
+  // Nested writes bypass the tenant extension (CLAUDE.md rule 6), so the
+  // dependent store is written on its own, scoped by tenant explicitly.
+  // Its personal values are blanked here too; the StudentProfile row itself
+  // survives because the enrolment and funding history is not personal data.
+  await prisma.studentProfile.updateMany({
+    where: { tenantId: auth.tenantId, personId: request.personId },
+    data: { guardianName: null, guardianPhone: null, address: null },
+  });
   const updated = await prisma.dataPrincipalRequest.update({
     where: { id },
     data: { status: 'fulfilled', fulfilledAt: new Date(), response: { erased: true, token } as never },
   });
-  await auditWrite({ action: 'delete', subjectType: 'person', subjectId: request.personId, after: { erased: true } });
+  await auditWrite({ action: 'delete', subjectType: 'person', subjectId: request.personId, after: { erased: true, dependents: ['student_profile'] } });
   await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'fulfilled' } });
   await emit({
     name: 'kz.cmp.data_request.fulfilled',
