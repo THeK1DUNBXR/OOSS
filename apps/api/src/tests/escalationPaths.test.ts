@@ -48,7 +48,11 @@ describe('import path — no escalation', () => {
         grants: [{ resource: 'imports', verbs: ['view', 'create', 'edit'] }],
       },
       async (importer) => {
-        const name = `W1A Escalation ${Date.now()}`;
+        // A random name, because commitEmployeeRow matches people by fuzzy name.
+        // A repeated fixed name matches an earlier run's person, who already has
+        // an employee affiliation, and the row then takes the update path, which
+        // is correctly not an assignment.
+        const name = `Zq${Math.random().toString(36).slice(2, 10)}Import`;
         const email = `w1a-import-${Date.now()}@fixture.test`;
         const book = XLSX.read(buildTemplateWorkbook(TEMPLATES.staff!), { type: 'buffer' });
         // Staff template columns, in order: name, code, designation, division,

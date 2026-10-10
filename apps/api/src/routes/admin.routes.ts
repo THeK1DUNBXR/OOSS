@@ -20,6 +20,7 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, invalidateGrantCache } from '../platform/permissions.js';
 import { verifyChain } from '../platform/eventBus.js';
 import { governedEntities } from '../platform/audit.js';
+import { assertCanWriteGrant } from '../platform/roleAssignment.js';
 import { agentRoster, decideAgentAction, pauseAgent, revokeAuthority, propose } from '../agents/index.js';
 import { ALL_JOBS, runJobsForTenant } from '../jobs/scheduler.js';
 
@@ -128,6 +129,17 @@ router.post(
 
     const role = await prisma.accessRole.findFirst({ where: { tenantId: auth.tenantId, slug: input.roleSlug } });
     if (!role) throw ApiError.notFound('Role');
+
+    // grants:create alone would let a holder write invoices:approve to any role,
+    // including their own, and so grant themselves what they do not hold. The
+    // check runs before the upsert below, so a refusal writes nothing.
+    await assertCanWriteGrant({
+      roleSlug: input.roleSlug,
+      resource: input.resource,
+      verbs: input.verbs,
+      scope: input.scope,
+      scopeResolver: input.scopeResolver,
+    });
 
     const policyVersion = await prisma.policyVersion.findFirst({
       where: { tenantId: auth.tenantId },

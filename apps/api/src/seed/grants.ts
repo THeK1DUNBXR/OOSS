@@ -472,6 +472,10 @@ const hrOpsManager: GrantSpec[] = [
   { resource: 'hr_requests', cell: 'VCEDA,approve' },
   { resource: 'hr_request_types', cell: 'VCEDA' },
   { resource: 'authority_delegations', cell: 'VCEDA' },
+  // Read across the company, because the employee role carries offerings:view@all
+  // and the no-escalation rule (platform/roleAssignment.ts) stops Operations
+  // naming a role it does not cover. A view, not an edit.
+  { resource: 'offerings', cell: 'V@all' },
 ];
 
 /**

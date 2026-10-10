@@ -300,7 +300,7 @@
 
 **`apps/api/src/platform/recordScope.ts`** (74 lines) — assertEmploymentVisible:36 · employmentVisibilityWhere:65
 
-**`apps/api/src/platform/roleAssignment.ts`** (133 lines) — GrantShape:26 · GrantGap:28 · grantsOfRole:40 · uncoveredGrants:66 · RoleAssignment:97 · assertCanAssignRole:108
+**`apps/api/src/platform/roleAssignment.ts`** (181 lines) — GrantShape:29 · GrantGap:31 · grantsOfRole:43 · uncoveredGrants:71 · RoleAssignment:103 · assertCanAssignRole:114 · GrantWrite:140 · assertCanWriteGrant:155
 
 **`apps/api/src/platform/tenantKind.ts`** (100 lines) — TenantKindChange:25 · reconcileTenantKinds:39
 

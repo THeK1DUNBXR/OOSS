@@ -14,7 +14,10 @@
  *     by the assigner's own effective grants: same resource and verb, a scope
  *     at least as broad, and no resolver or condition the assigner lacks.
  *     Coverage is checked per verb, so a role cannot widen one verb by riding
- *     on another the assigner holds.
+ *     on another the assigner holds. An own-scoped grant is exempt: it reaches
+ *     only the assignee's own records, so it gives nobody access to anyone
+ *     else's data. Refusing it would stop HR assigning employee, and HR runs
+ *     onboarding (DECISIONS round 19 a).
  */
 
 import type { Scope, Verb } from '@kaizen/shared';
@@ -62,10 +65,13 @@ export async function grantsOfRole(tenantId: string, roleSlug: string): Promise<
  * A held grant with a scopeResolver covers only a target with the same
  * resolver, because a resolver narrows the rows it reaches. A held grant with
  * conditions covers only a target with the same conditions, for the same reason.
+ *
+ * A target grant at scope 'own' is never a gap: see the note on rule 2 above.
  */
 export function uncoveredGrants(target: GrantShape[], held: GrantShape[]): GrantGap[] {
   const gaps: GrantGap[] = [];
   for (const g of target) {
+    if (g.scope === 'own') continue;
     for (const verb of g.verbs) {
       const covered = held.some(
         (h) =>
@@ -127,6 +133,48 @@ export async function assertCanAssignRole(input: RoleAssignment, auth: AuthConte
     const more = gaps.length > 3 ? ` and ${gaps.length - 3} more` : '';
     throw ApiError.forbidden(
       `'${input.roleSlug}' confers ${named}${more}, which your own grants do not cover. You cannot assign a role broader than your own.`,
+    );
+  }
+}
+
+export interface GrantWrite {
+  roleSlug: string;
+  resource: string;
+  verbs: string[];
+  scope: Scope;
+  scopeResolver?: string | null;
+}
+
+/**
+ * Throws 403 when the current caller may not write this grant to this role.
+ * Writing a grant hands its verbs to the role, so the writer must cover them.
+ * A grant written to the caller's own role is refused outright: that is
+ * self-escalation, whatever the caller already holds. A verb nobody holds
+ * (a typo, say) fails the coverage check, so it refuses too.
+ */
+export async function assertCanWriteGrant(input: GrantWrite, auth: AuthContext = currentAuth()): Promise<void> {
+  if (auth.principalType === 'system') return;
+
+  if (auth.roleSlug && auth.roleSlug === input.roleSlug) {
+    throw ApiError.forbidden(
+      `A grant cannot be written to '${input.roleSlug}', the role you hold. Someone holding a different role must write it.`,
+    );
+  }
+
+  const target: GrantShape[] = [
+    {
+      resource: input.resource,
+      verbs: input.verbs as Verb[],
+      scope: input.scope,
+      scopeResolver: input.scopeResolver ?? null,
+      conditions: {},
+    },
+  ];
+  const gaps = uncoveredGrants(target, await resolveGrants(auth));
+  if (gaps.length > 0) {
+    const named = gaps.map((g) => `${g.resource}:${g.verb}@${g.scope}`).join(', ');
+    throw ApiError.forbidden(
+      `This grant confers ${named}, which your own grants do not cover. You cannot write a grant broader than your own.`,
     );
   }
 }
