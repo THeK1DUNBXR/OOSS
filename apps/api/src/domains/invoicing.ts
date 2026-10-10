@@ -62,6 +62,7 @@ import {
   computePaymentSchedule,
   invoicePayable,
   isInterState,
+  istMonthKey,
   isValidGstin,
   paymentTypeFor,
   placeOfSupplyLabel,
@@ -263,9 +264,14 @@ export function totalsOf(invoice: {
  * lawful correction after filing is a credit or debit note in the current
  * period, which this platform issues through `issueCreditNote`.
  */
-/** The month an instant falls in, as the GST filing period names it. */
+/**
+ * The GST period an invoice falls in, in IST. A UTC month here checks the lock
+ * against March for an invoice dated 1 April, so an April invoice issued in the
+ * first five and a half hours of the day could be edited after April's GSTR-1
+ * was filed, or refused because March's was (FX-42).
+ */
 export function filingPeriodOf(date: Date): string {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  return istMonthKey(date);
 }
 
 export async function assertPeriodOpen(date: Date, what: string): Promise<void> {

@@ -23,9 +23,17 @@ export function istMonthKey(date: Date): string {
   return `${year}-${String(month).padStart(2, '0')}`;
 }
 
-export function istFinancialYear(date: Date): string {
+/**
+ * The calendar year a financial year starts in: 2026 for FY2026-27. Starts on
+ * 1 April IST, so 00:30 IST on 1 April is already the new year.
+ */
+export function istFinancialYearStart(date: Date): number {
   const { year, month } = istParts(date);
-  const start = month >= 4 ? year : year - 1;
+  return month >= 4 ? year : year - 1;
+}
+
+export function istFinancialYear(date: Date): string {
+  const start = istFinancialYearStart(date);
   return `FY${start}-${String((start + 1) % 100).padStart(2, '0')}`;
 }
 

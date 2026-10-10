@@ -21,6 +21,7 @@
  */
 
 import {
+  istFinancialYear,
   computeTds,
   computeAnnualTax,
   monthlyTds,
@@ -57,10 +58,13 @@ registerGovernedEntities('cmp_tax', [
 // what a vendor's PAN, a payroll run and a challan all get filed against.
 // ---------------------------------------------------------------------------
 
+/**
+ * Derived in IST: 00:30 IST on 1 April is already the new year. A UTC reading
+ * files that day's tax period, TDS challan and advance-tax instalment one year
+ * early (FX-41).
+ */
 export function fyOf(d: Date): string {
-  const y = d.getUTCFullYear();
-  const start = d.getUTCMonth() >= 3 ? y : y - 1;
-  return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+  return istFinancialYear(d).replace(/^FY/, '');
 }
 
 export function fyStartYear(fy: string): number {

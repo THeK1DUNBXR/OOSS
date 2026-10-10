@@ -80,7 +80,7 @@
 
 **`apps/api/src/domains/compliance/privacy.ts`** (1056 lines) — NoticePurpose:55 · getCurrentNotice:63 · publishNotice:77 · acknowledgeNotice:120 · currentNoticePurposeCodes:151 · resolvePurpose:171 · grantConsent:181 · withdrawConsent:241 · listConsentsForPerson:287 · grantedConsentCodes:303 · MinorGateInput:321 · requireGuardianConsentForMinor:334 · flagMajorityTransitions:387 · raiseDataRequest:420 · listDataRequests:452 · fulfilDataRequest:548 · refuseDataRequest:636 · detectOverdueDataRequests:647 · raiseBreach:676 · transitionBreach:720 · listBreaches:750 · runBreachLadder:765 · runRetentionReport:800 · getRetention:829 · runAccessReview:869 · encryptField:960 · decryptField:969 · readRegulated:982 · backfillEncryptAtRest:992 · encryptionStatus:1031
 
-**`apps/api/src/domains/compliance/tax.ts`** (1063 lines) — fyOf:60 · fyStartYear:66 · fyRange:70 · fyMonths:76 · Quarter:87 · quarterOf:89 · periodsOfQuarter:97 · depositDueDate:102 · ComputeVendorTdsInput:149 · computeVendorTds:160 · waiveVendorTds:227 · listVendorBillsForTds:296 · tdsSectionRates:310 · listApplicabilityRules:316 · setApplicabilityRule:322 · setMsmeTerms:336 · msmeExposure:364 · runMsmeLadder:385 · pendingTdsLiability:426 · listChallans:451 · CreateChallanInput:466 · createChallan:475 · MarkChallanPaidInput:500 · markChallanPaid:511 · runTdsDepositDueJob:557 · upsertDeclaration:616 · SalaryProjection:643 · salaryProjection:665 · applySalaryTds:712 · advanceTaxRate:745 · AdvanceTaxEstimate:752 · advanceTaxEstimateFor:761 · recordAdvanceTaxPayment:802 · TdsReturnRow:824 · prepareTdsReturn:877 · fileTdsReturn:910 · listTdsReturns:932 · tdsReturnDetail:941 · exportTdsReturnCsv:950 · IssueCertificateInput:964 · issueCertificate:978 · listCertificates:1036 · certificateDocument:1046
+**`apps/api/src/domains/compliance/tax.ts`** (1067 lines) — fyOf:66 · fyStartYear:70 · fyRange:74 · fyMonths:80 · Quarter:91 · quarterOf:93 · periodsOfQuarter:101 · depositDueDate:106 · ComputeVendorTdsInput:153 · computeVendorTds:164 · waiveVendorTds:231 · listVendorBillsForTds:300 · tdsSectionRates:314 · listApplicabilityRules:320 · setApplicabilityRule:326 · setMsmeTerms:340 · msmeExposure:368 · runMsmeLadder:389 · pendingTdsLiability:430 · listChallans:455 · CreateChallanInput:470 · createChallan:479 · MarkChallanPaidInput:504 · markChallanPaid:515 · runTdsDepositDueJob:561 · upsertDeclaration:620 · SalaryProjection:647 · salaryProjection:669 · applySalaryTds:716 · advanceTaxRate:749 · AdvanceTaxEstimate:756 · advanceTaxEstimateFor:765 · recordAdvanceTaxPayment:806 · TdsReturnRow:828 · prepareTdsReturn:881 · fileTdsReturn:914 · listTdsReturns:936 · tdsReturnDetail:945 · exportTdsReturnCsv:954 · IssueCertificateInput:968 · issueCertificate:982 · listCertificates:1040 · certificateDocument:1050
 
 **`apps/api/src/domains/courses.ts`** (475 lines) — CourseFeePlanInput:33 · CourseAddonInput:38 · CourseInput:46 · listCourses:67 · createCourse:179 · updateCourse:250 · retireCourse:350 · AssignCourseInput:419 · assignCourse:443
 
@@ -136,7 +136,7 @@
 
 **`apps/api/src/domains/interactions.ts`** (452 lines) — RelatedReference:33 · classificationFor:55 · computeSensitivity:69 · InteractionInput:90 · logInteraction:105 · VisibleInteraction:259 · timelineFor:289 · recentInteractions:412
 
-**`apps/api/src/domains/invoicing.ts`** (1857 lines) — InvoiceLineInput:91 · CollectedPaymentInput:130 · InvoiceInput:144 · invoiceLabel:185 · isCourseFeeInvoice:199 · lineTotalOf:211 · InvoiceTotals:215 · totalsOf:232 · assertPeriodOpen:266 · CUSTOMER_KINDS:292 · CustomerKind:293 · createInvoice:692 · updateInvoice:900 · issueInvoiceDraft:1003 · voidInvoice:1080 · collectInvoicePayment:1139 · declarePaymentTerms:1379 · loadInvoiceForRead:1453 · invoiceSummary:1469 · invoiceDocument:1494 · rehydrateReceivablesFor:1801
+**`apps/api/src/domains/invoicing.ts`** (1868 lines) — InvoiceLineInput:92 · CollectedPaymentInput:131 · InvoiceInput:145 · invoiceLabel:186 · isCourseFeeInvoice:200 · lineTotalOf:212 · InvoiceTotals:216 · totalsOf:233 · filingPeriodOf:273 · assertPeriodOpen:277 · CUSTOMER_KINDS:303 · CustomerKind:304 · createInvoice:703 · updateInvoice:911 · issueInvoiceDraft:1014 · voidInvoice:1091 · collectInvoicePayment:1150 · declarePaymentTerms:1390 · loadInvoiceForRead:1464 · invoiceSummary:1480 · invoiceDocument:1505 · rehydrateReceivablesFor:1812
 
 **`apps/api/src/domains/it/assets.ts`** (807 lines) — AssetThresholds:67 · currentThresholds:75 · CreateAssetInput:89 · createAsset:107 · UpdateAssetInput:155 · updateAsset:173 · AssetFilter:204 · listAssets:223 · myAssets:260 · assetDetail:271 · AssignAssetInput:333 · assignAsset:346 · ReturnAssetInput:399 · returnAsset:411 · transitionAsset:484 · AddAssetEventInput:535 · addAssetEvent:540 · listAssetEvents:556 · resolveDeskOwnerPartyId:571 · WarrantyLadderResult:580 · runWarrantyLadder:586 · RepairDetectorResult:641 · runInRepairTooLongDetector:646 · OrphanedAssetResult:677 · runOrphanedAssetDetector:685 · summary:729
 
@@ -262,7 +262,7 @@
 
 **`apps/api/src/platform/db.ts`** (175 lines) — TenantScopeError:50 · prisma:80 · Db:145 · DbTx:155 · unscopedPrisma:161 · num:166 · dec:171
 
-**`apps/api/src/platform/documentNumber.ts`** (224 lines) — DOCUMENT_SERIES:35 · DocumentSeries:59 · SERIES_LABELS:61 · YearFormat:74 · financialYearLabel:84 · MAX_INVOICE_NUMBER_LENGTH:90 · prefixFrom:104 · nextDocumentNumber:129 · peekNextNumbers:159 · setNextNumber:199
+**`apps/api/src/platform/documentNumber.ts`** (228 lines) — DOCUMENT_SERIES:35 · DocumentSeries:59 · SERIES_LABELS:61 · YearFormat:74 · financialYearLabel:84 · MAX_INVOICE_NUMBER_LENGTH:90 · financialYearStart:97 · prefixFrom:108 · nextDocumentNumber:133 · peekNextNumbers:163 · setNextNumber:203
 
 **`apps/api/src/platform/errors.ts`** (61 lines) — ApiError:3
 
@@ -464,7 +464,7 @@
 
 **`packages/shared/src/planes.ts`** (245 lines) — PLANES:8 · PlaneCode:21 · BOUNDED_CONTEXTS:28 · BoundedContext:53 · ModuleRegisterEntry:60 · MODULE_REGISTER:69
 
-**`packages/shared/src/time.ts`** (35 lines) — IST:7 · istMonthKey:21 · istFinancialYear:26 · istPeriodOf:32
+**`packages/shared/src/time.ts`** (43 lines) — IST:7 · istMonthKey:21 · istFinancialYearStart:30 · istFinancialYear:35 · istPeriodOf:40
 
 ## HTTP routes
 
