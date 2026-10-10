@@ -419,3 +419,114 @@ Still open after round 12 (supersedes round 11):
 - IT owner: a level assignment at onboarding. The name is not recorded.
 - D-11 numbers after the one-month measurement.
 - Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+
+## Owner answers, round 13 (recorded 2026-10-10)
+
+Answers given by the owner in a thirteenth round. Each item is an owner answer unless it is marked as an implication or proposed design. Existing rows and the earlier answers above are unchanged. This round supersedes the round 12 "Still open" list. Where no answer is recorded here, the earlier rounds and the drafts stand.
+
+- **Level assignment by guided questionnaire (owner answer, item 1).** Access levels are assigned to employees during onboarding through a guided stakeholder-mapping questionnaire. The reviewer then reviews the final result and can add or remove access before it takes effect.
+- **Who answers (owner answer, item 2).** The questionnaire is answered by the founder or the onboarding owner for each employee.
+- **Review step (owner answer, item 3).** The review step shows a plain-language summary of what each person will be able to see and do, with per-duty toggles.
+- **Reuse for joiners and role changes (owner answer, item 4).** The same flow is reused for new joiners and role changes.
+- **Placement (owner answer, item 5).** The guided level-mapping flow is in Phase 0 Wave 6, built with the onboarding state machine and level assignment (ROADMAP.md Wave 6).
+- **Fixed rules, not AI (implication, proposed design, not an owner statement).** The mapping uses fixed rules. AI-assisted mapping features remain on the roadmap and are not part of this round.
+- **Suggestion only until confirmed (implication, proposed design).** The flow proposes a level and duties. Nothing takes effect until a named confirmer confirms it.
+- **Least access when unclear (implication, proposed design).** When an answer is unclear or missing, the flow assigns the least access that still lets the person work.
+- **Audit row per confirmed assignment (implication, proposed design).** Each confirmed assignment writes the usual audit row, including the answers given and the confirmer.
+- **No self-confirmation (implication, proposed design).** The person being mapped cannot confirm their own level.
+- **Founder-only classes (implication, proposed design).** Founder-only classes (payroll run, large payments, statutory filings) need explicit founder confirmation before they are assigned.
+- **Open, not decided.** The exact questions in the questionnaire, the rules that map answers to levels and duties, and the Staff level default duties.
+
+Still open after round 13 (supersedes round 12):
+
+- Qualified holder of statutory sign-off, named per tenant at onboarding. Statutory values stay DRAFT.
+- Whether auditors, board members and contractors are users of the same tenant.
+- Staff level default duties.
+- IT owner: a level assignment at onboarding. The name is not recorded.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+- Questionnaire content and mapping rules.
+
+## Owner answers, round 14: access mapping design (recorded 2026-10-11)
+
+Owner answers:
+
+1. **Hybrid design adopted (owner answer, item 1).** Identity type is decided first: employee, founder, contractor, external auditor, or board/investor. Level (Head, Manager or Staff) and function are stored as attributes. The attributes select a role template. The template grants a low-risk baseline. Sensitive permissions (approvals, payroll, bank, user administration, company-wide data) are never defaults. Each needs an explicit request, a named approver and a conflict check. A reviewer confirms, adds or removes. Each change records a reason and the rule version.
+2. **Blocked conflicts (owner answer, item 2).** One person may not hold both sides of these pairs:
+   - create and approve payments;
+   - run payroll and approve payroll;
+   - manage access levels and approve own access. Only the founder may approve their own access.
+
+   Not selected, so not a blocked conflict: edit statutory rules and sign them off.
+3. **On conflict (owner answer, item 3).** A conflict is blocked. The founder can override it with a reason. Overrides are logged and shown in the exceptions view.
+4. **Non-employee levels (owner answer, item 4).** Contractor, auditor and board levels require an end date, with a maximum of 12 months. Renewal needs reviewer confirmation.
+5. **Recertification (owner answer, item 5).** Sensitive access is recertified quarterly. Everything else is recertified annually.
+6. **No response to a scheduled review (owner answer, item 6).** Access is kept. A warning is raised and escalated to the founder. Overdue reviews show in the exceptions view.
+7. **Leavers (owner answer, item 7).** Access is removed on the marked leave date. The date is marked by the founder or the onboarding owner. Sessions end, history is kept, and the removal is audited.
+8. **Questionnaire (owner answer, item 8).** About 8 to 12 yes/no questions plus one scope choice. The questions ask about tasks, not permission names.
+
+Implications (labelled, not owner statements):
+
+- **Single point of control (implication).** The founder override (round 10 rule) and the founder self-approval exemption (round 10) make the founder the single point of control. Segregation of duties for founder-only classes therefore rests on the audit rows and the exceptions view, not on a second person.
+- **Statutory rule edit and sign-off (implication, open).** The pair "edit statutory rules and sign them off" is not a blocked conflict. The same person could therefore change a rule and sign it off, unless the level duties prevent it. This is open.
+
+Research basis (implication, the research itself is not an owner statement): the research covered NIST RBAC and ABAC, OWASP least privilege, birthright access, Entra access reviews, Frappe role profiles and midPoint exclusion rules. Some items were **UNVERIFIED**: ISACA, SANS and NIST AC-5 and AC-6 were not read, and Okta, Rippling and Odoo were not verified. No third-party code was copied.
+
+Still open after round 14 (supersedes round 13):
+
+- The exact questions and mapping rules (the questionnaire wording and the rules that map answers to levels and duties).
+- Staff level default duties.
+- Whether statutory rule edit and sign-off should be separated.
+- Qualified holder of statutory sign-off, named per tenant at onboarding. Statutory values stay DRAFT.
+- Whether auditors, board members and contractors are users of the same tenant.
+- IT owner as a level assignment at onboarding. The name is not recorded.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+
+## Owner answers, round 15 (recorded 2026-10-11)
+
+Owner answers. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, except where this round says it supersedes an earlier answer. This round supersedes the round 14 "Still open" list. Where no answer is recorded here, the earlier rounds and the drafts stand.
+
+1. **Statutory rule change and sign-off are separate people (owner answer, item 1).** Changing a statutory rule and signing it off are a BLOCKED conflict pair. The founder can override it with a logged reason, as for the other pairs (round 14, items 2 and 3). This adds to the round 14 blocked pairs and supersedes the round 14 note that this pair was not blocked.
+   - Implication (label): the round 14 open item "whether statutory rule edit and sign-off should be separated" is resolved by this answer.
+   - Implication (label): the round 14 implication that the same person could change a rule and sign it off no longer stands.
+2. **Staff level default duties (owner answer, item 2).** A Staff employee has these default duties:
+   - see and edit own records: profile, attendance, leave requests and expense requests;
+   - log own time and tasks: timesheets and assigned work items;
+   - use chat and notifications.
+   Not selected, so not a default: company directory read. The directory is an explicit extra duty only.
+   - Implication (label): Head and Manager default duties are still tbd during onboard (round 12).
+3. **Auditors, board members and contractors are guest accounts (owner answer, item 3).** They are separate guest accounts, not users in the employee list of the tenant. This supersedes the open question whether auditors, board members and contractors are users of the same tenant.
+   - Owner statement: "We need to add freelancers management features."
+   - Implication (label): a guest-account type is needed. It needs a design for invitation, authentication, tenant scoping (CLAUDE.md rule 6), expiry (maximum 12 months, round 14 item 4) and audit. No design exists yet.
+   - Implication (label): freelancer management is NEW SCOPE. It has no phase, capability row or placement yet. Its scope is OPEN: onboarding, contracts, timesheets, invoices and payments to freelancers, and tax deducted at source on contractor payments. Tax on contractor payments needs statutory sign-off, and no statutory values are stated here. Its phase is OPEN and it is not scheduled.
+   - Implication (label): contractors' timesheets and tasks in ORDERED-PLAN Phase 1C and 1D must be reconciled with the guest-account model before those items are built.
+4. **Questionnaire draft (owner request, item 4).** The owner asked for the questionnaire questions and the mapping rules to be drafted for review. The draft is `docs/plan/zen360/QUESTIONNAIRE-DRAFT.md`. It is NOT approved. Its content and rules are not owner decisions until the owner approves them.
+
+Still open after round 15 (supersedes round 14):
+
+- Freelancer management: scope, phase, and the guest-account design (invitation, authentication, tenant scoping, expiry, audit).
+- Questionnaire content and mapping rules: owner approval of `docs/plan/zen360/QUESTIONNAIRE-DRAFT.md`.
+- Qualified holder of statutory sign-off, named per tenant at onboarding. Statutory values stay DRAFT.
+- IT owner as a level assignment at onboarding. The name is not recorded.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+
+## Owner answers, round 16 (recorded 2026-10-11)
+
+Owner answers. This round supersedes the round 15 "Still open" list, and only the freelancer management part of round 15 item 3. Round 15 items 1, 2 and 4 are unchanged.
+
+1. **Freelancer management is deferred (owner answer, item 1).** Freelancer management is not in Phase 0 or Phase 1. It has no phase and is not scheduled. Its scope is not decided.
+   - Guest accounts for auditors, board members and contractors (round 15 item 3) stay as the access model. Their design is deferred together with freelancer management, unless an earlier phase needs them.
+   - Implication (label): contractors' timesheets and tasks in ORDERED-PLAN Phase 1C and 1D must work for employees only until guest accounts are designed. Contractor access is not built in those phases.
+   - Implication (label): tax on freelancer payments would need statutory sign-off when freelancer management is scheduled. No statutory value is stated here, and the deferral adds none.
+
+Still open after round 16 (supersedes round 15):
+
+- Questionnaire content and mapping rules: owner approval of `docs/plan/zen360/QUESTIONNAIRE-DRAFT.md`.
+- Qualified holder of statutory sign-off, named per tenant at onboarding. Statutory values stay DRAFT.
+- IT owner as a level assignment at onboarding. The name is not recorded.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+- Guest-account design (invitation, authentication, tenant scoping, expiry, audit). Deferred with freelancer management (round 16 item 1).
+- Freelancer management scope, phase and statutory sign-off for tax on freelancer payments. Deferred (round 16 item 1).
