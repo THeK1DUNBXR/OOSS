@@ -10,7 +10,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { assertAppRoleRestricted } from '../platform/rlsGuard.js';
+import { assertAppRoleRestricted, assertUnscopedRoleBypasses } from '../platform/rlsGuard.js';
 import { asUser, tenantId } from './helpers.js';
 import { prisma } from '../platform/db.js';
 
@@ -80,15 +80,43 @@ describe('RLS-002 tenant isolation', () => {
 });
 
 describe('RLS-003 every tenant table is covered', () => {
-  it('has ENABLE and FORCE on every table that carries a tenantId column', async () => {
+  // Checked against the database, not the migration files: a table added by a
+  // later migration without RLS fails here, in CI, rather than in production.
+  it('has ENABLE, FORCE and the tenant_isolation policy on every table that carries a tenantId column', async () => {
     const uncovered = await owner.$queryRaw<{ t: string }[]>`
       SELECT c.table_name AS t
         FROM information_schema.columns c
         JOIN pg_class k ON k.relname = c.table_name AND k.relkind = 'r'
         JOIN pg_namespace n ON n.oid = k.relnamespace AND n.nspname = c.table_schema
        WHERE c.table_schema = 'public' AND c.column_name = 'tenantId'
-         AND NOT (k.relrowsecurity AND k.relforcerowsecurity)`;
+         AND NOT (
+           k.relrowsecurity AND k.relforcerowsecurity
+           AND EXISTS (
+             SELECT 1 FROM pg_policies p
+              WHERE p.schemaname = 'public' AND p.tablename = c.table_name AND p.policyname = 'tenant_isolation'
+           )
+         )`;
     expect(uncovered.map((r) => r.t)).toEqual([]);
+  });
+});
+
+describe('RLS-007 the scoped client is refused inside an interactive transaction', () => {
+  // The outer client's statement would run on the pool, outside the transaction
+  // that set the tenant, and read zero rows without an error. Refusing it is the
+  // only way the mistake is visible.
+  it('throws for prisma.* used inside prisma.$transaction, and does not return an empty result', async () => {
+    await expect(
+      asUser('chairman@kaizen.co.in', async () =>
+        prisma.$transaction(async () => prisma.user.count()),
+      ),
+    ).rejects.toThrow(/interactive transaction/i);
+  });
+
+  it('still counts rows through the transaction client', async () => {
+    const count = await asUser('chairman@kaizen.co.in', async () =>
+      prisma.$transaction(async (tx) => tx.user.count()),
+    );
+    expect(count).toBeGreaterThan(0);
   });
 });
 
@@ -111,5 +139,18 @@ describe('RLS-005 boot check', () => {
     // not, there is nothing here to refuse and the assertion would be vacuous.
     expect(rolsuper || rolbypassrls).toBe(true);
     await expect(assertAppRoleRestricted(owner)).rejects.toThrow(/rolsuper|rolbypassrls/);
+  });
+});
+
+describe('RLS-006 the unscoped role must bypass RLS', () => {
+  // The jobs, the audit hash chain and the outbox drain read across tenants
+  // through the unscoped client. Under the application role they would see no
+  // rows and fail silently, so the boot check requires the bypass to be there.
+  it('accepts the owner, which has BYPASSRLS', async () => {
+    await expect(assertUnscopedRoleBypasses(owner)).resolves.toBeUndefined();
+  });
+
+  it('refuses the application role, which does not', async () => {
+    await expect(assertUnscopedRoleBypasses(app)).rejects.toThrow(/rolbypassrls/);
   });
 });

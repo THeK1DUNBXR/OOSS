@@ -49,6 +49,18 @@ describe('environment config', () => {
     expect(parsed).toBeNull();
   });
 
+  it('refuses to boot in production without UNSCOPED_DATABASE_URL, and names it', () => {
+    // Without it the cross-tenant jobs, the audit hash chain and the outbox
+    // drain have no role that can read across tenants, so they see nothing.
+    const production = { ...valid, NODE_ENV: 'production', FIELD_ENCRYPTION_KEY: 'k'.repeat(32) };
+    expect(() => parseEnv(production)).toThrow(/UNSCOPED_DATABASE_URL/);
+    expect(() => parseEnv({ ...production, UNSCOPED_DATABASE_URL: valid.DATABASE_URL })).not.toThrow();
+  });
+
+  it('allows an absent UNSCOPED_DATABASE_URL outside production', () => {
+    expect(() => parseEnv(valid)).not.toThrow();
+  });
+
   it('refuses a missing DATABASE_URL', () => {
     const { DATABASE_URL: _omitted, ...withoutDb } = valid;
     expect(() => parseEnv(withoutDb)).toThrow(/DATABASE_URL/);
