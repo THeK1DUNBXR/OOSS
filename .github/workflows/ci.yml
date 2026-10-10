@@ -42,6 +42,9 @@ jobs:
       - run: pnpm --filter @kaizen/api db:validate
       - run: pnpm typecheck
       - run: pnpm lint
+      # Formatting is enforced from Wave 1 on. The one reformat commit is in
+      # .git-blame-ignore-revs so blame still points at real changes.
+      - run: pnpm format:check
       # The map is the index every session reads instead of searching. A stale
       # one is worse than none, because it is believed.
       - run: pnpm map:check
