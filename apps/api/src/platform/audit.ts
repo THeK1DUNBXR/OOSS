@@ -23,6 +23,8 @@ export const AUDIT_ACTIONS = [
   'merge',
   'export',
   'login',
+  'logout',
+  'refresh_reuse',
   'permission_change',
   'read',
 ] as const;
@@ -52,6 +54,10 @@ export function isGoverned(entityType: string): boolean {
   for (const set of governedRegistry.values()) if (set.has(entityType)) return true;
   return false;
 }
+
+// A login session is a governed subject: login, logout and refresh reuse are
+// the events an incident review needs to reconstruct who held a credential.
+registerGovernedEntities('identity', ['session']);
 
 // CRM's original 12-entity contribution, preserved verbatim.
 registerGovernedEntities('crm', [

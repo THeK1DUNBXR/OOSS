@@ -1231,10 +1231,16 @@ model Session {
 
   jti String @unique
 
-  /// Hashed the same way a password is (`hashPassword`) — a database read
-  /// must not be enough to replay the cookie; only the browser holding the
-  /// httpOnly cookie itself can.
+  /// SHA-256 of the current refresh secret. Not `hashPassword`: the secret is
+  /// 256 bits of randomness, so a slow password hash buys nothing against
+  /// guessing and costs ~70ms on every refresh. A database read still cannot
+  /// replay the credential, because the preimage is not recoverable.
   refreshTokenHash String
+
+  /// SHA-256 of the secret this session rotated away from. Presenting it again
+  /// is the reuse signal: a stolen copy and the legitimate browser cannot both
+  /// keep refreshing, so the whole session is revoked (lib/auth.ts refreshSession).
+  previousRefreshTokenHash String?
 
   issuedAt  DateTime  @default(now())
   expiresAt DateTime

@@ -121,6 +121,10 @@ export const EVENTS = {
   AFFILIATION_ENDED: 'kz.idn.affiliation.ended',
   ORGANIZATION_CREATED: 'kz.idn.organization.created',
   SESSION_CONTEXT_SWITCHED: 'kz.idn.session.context_switched',
+  SESSION_ISSUED: 'kz.idn.session.issued',
+  SESSION_REVOKED: 'kz.idn.session.revoked',
+  /// A rotated-away refresh secret was presented again: the whole session is revoked.
+  SESSION_REFRESH_REUSED: 'kz.idn.session.refresh_reused',
   /// A sign-in created for an outsider — a shareholder or board member with no
   /// employment here (§1.10). Never fires on the founding-account seed path.
   SIGN_IN_CREATED: 'kz.idn.sign_in.created',
