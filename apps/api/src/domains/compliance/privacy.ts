@@ -138,7 +138,6 @@ export async function acknowledgeNotice(input: { personId?: string; channel: str
     subjectType: 'privacy_notice',
     subjectId: notice.id,
     after: { acknowledgedBy: personId, version: notice.version },
-    force: true,
   });
   return ack;
 }
@@ -378,7 +377,6 @@ export async function requireGuardianConsentForMinor(input: MinorGateInput): Pro
     subjectType: 'consent',
     subjectId: consent.id,
     after: { purposeCode: 'education_delivery', guardianOfPersonId: input.personId },
-    force: true,
   });
 
   return consent.id;
@@ -577,7 +575,6 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
       subjectId: request.personId,
       before: before as never,
       after: after as never,
-      force: true,
     });
     const updated = await prisma.dataPrincipalRequest.update({
       where: { id },
@@ -624,7 +621,7 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
     where: { id },
     data: { status: 'fulfilled', fulfilledAt: new Date(), response: { erased: true, token } as never },
   });
-  await auditWrite({ action: 'delete', subjectType: 'person', subjectId: request.personId, after: { erased: true }, force: true });
+  await auditWrite({ action: 'delete', subjectType: 'person', subjectId: request.personId, after: { erased: true } });
   await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'fulfilled' } });
   await emit({
     name: 'kz.cmp.data_request.fulfilled',
@@ -862,7 +859,6 @@ registerHook('offboarding.completed', 'privacy.revoke_access', async (payload) =
       subjectId: aff.id,
       before: { status: 'active' },
       after: { status: 'ended', revokedReason: 'offboarding' },
-      force: true,
     });
   }
 });

@@ -84,7 +84,7 @@ export async function createPfRateTable(input: PfRateTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
   const row = await prisma.pfRateTable.create({ data: { tenantId: auth.tenantId, ...input } });
-  await auditWrite({ action: 'create', subjectType: 'pf_rate_table', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'pf_rate_table', subjectId: row.id, after: row });
   return row;
 }
 
@@ -128,7 +128,7 @@ export async function createEsiRateTable(input: EsiRateTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
   const row = await prisma.esiRateTable.create({ data: { tenantId: auth.tenantId, ...input } });
-  await auditWrite({ action: 'create', subjectType: 'esi_rate_table', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'esi_rate_table', subjectId: row.id, after: row });
   return row;
 }
 
@@ -162,7 +162,7 @@ export async function createPtSlabTable(input: PtSlabTableInput) {
   const row = await prisma.professionalTaxSlabTable.create({
     data: { tenantId: auth.tenantId, state: input.state ?? 'TN', effectiveFrom: input.effectiveFrom, slabs: input.slabs as never, confirmNote: input.confirmNote },
   });
-  await auditWrite({ action: 'create', subjectType: 'pt_slab_table', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'pt_slab_table', subjectId: row.id, after: row });
   return row;
 }
 
@@ -206,7 +206,7 @@ export async function createLwfRateTable(input: LwfRateTableInput) {
       confirmNote: input.confirmNote,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'lwf_rate_table', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'lwf_rate_table', subjectId: row.id, after: row });
   return row;
 }
 
@@ -238,7 +238,7 @@ export async function createMinimumWageTable(input: MinimumWageTableInput) {
   const auth = currentAuth();
   await assertRateTableEdit();
   const row = await prisma.minimumWageTable.create({ data: { tenantId: auth.tenantId, ...input } });
-  await auditWrite({ action: 'create', subjectType: 'minimum_wage_table', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'minimum_wage_table', subjectId: row.id, after: row });
   return row;
 }
 
@@ -317,7 +317,7 @@ export async function proposeSalaryStructure(input: SalaryStructureInput) {
       proposedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'salary_structure', subjectId: row.id, after: row, force: true });
+  await auditWrite({ action: 'create', subjectType: 'salary_structure', subjectId: row.id, after: row });
   return row;
 }
 
@@ -341,7 +341,7 @@ export async function approveSalaryStructure(id: string) {
     where: { id },
     data: { status: 'Approved', approvedById: auth.partyId, approvedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'salary_structure', subjectId: row.id, before, after: row, force: true });
+  await auditWrite({ action: 'update', subjectType: 'salary_structure', subjectId: row.id, before, after: row });
   return row;
 }
 
@@ -617,7 +617,7 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
       },
     });
     await prisma.payrollInstruction.update({ where: { id: instruction.id }, data: { payslipNumber: number, payslipIssuedAt: payslip.issuedAt } });
-    await auditWrite({ action: 'create', subjectType: 'payslip', subjectId: payslip.id, after: payslip, force: true });
+    await auditWrite({ action: 'create', subjectType: 'payslip', subjectId: payslip.id, after: payslip });
   }
 }
 
@@ -807,7 +807,7 @@ export async function settleOffboarding(offboardingId: string) {
       settlementComputedAt: new Date(),
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'offboarding', subjectId: row.id, before, after: row, force: true });
+  await auditWrite({ action: 'update', subjectType: 'offboarding', subjectId: row.id, before, after: row });
   return { ...row, gratuityYears: grat.years, gratuityEligible: grat.eligible, encashDays };
 }
 
@@ -827,7 +827,7 @@ export async function setEngagementType(employmentRelationshipId: string, engage
   if (!before) throw ApiError.notFound('Employment relationship');
 
   const row = await prisma.employmentRelationship.update({ where: { id: employmentRelationshipId }, data: { engagementType } });
-  await auditWrite({ action: 'update', subjectType: 'employment_relationship', subjectId: row.id, before: { engagementType: before.engagementType }, after: { engagementType: row.engagementType }, force: true });
+  await auditWrite({ action: 'update', subjectType: 'employment_relationship', subjectId: row.id, before: { engagementType: before.engagementType }, after: { engagementType: row.engagementType } });
   return { id: row.id, engagementType: row.engagementType };
 }
 
@@ -861,7 +861,6 @@ export async function setBankDetails(employmentRelationshipId: string, input: Ba
     subjectType: 'employment_relationship',
     subjectId: row.id,
     meta: { fieldsChanged: Object.keys(input) },
-    force: true,
   });
   return { id: row.id, ok: true };
 }

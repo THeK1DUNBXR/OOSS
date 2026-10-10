@@ -110,7 +110,6 @@ export async function transition<S extends string, E extends string>(
     before: { status: input.from },
     after: { status: to, ...input.detail },
     meta: { transition: input.event, machine: input.machine.name },
-    force: true,
   });
 
   return { from: input.from, to, eventName };

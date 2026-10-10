@@ -738,7 +738,7 @@ export async function applySalaryTds(payrollRunId: string) {
     updated.push(row);
   }
 
-  await auditWrite({ action: 'update', subjectType: 'payroll_run', subjectId: run.id, meta: { operation: 'apply_salary_tds', count: updated.length }, force: true });
+  await auditWrite({ action: 'update', subjectType: 'payroll_run', subjectId: run.id, meta: { operation: 'apply_salary_tds', count: updated.length } });
   return updated;
 }
 

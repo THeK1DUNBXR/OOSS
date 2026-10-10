@@ -86,7 +86,6 @@ async function checkedTransition<S extends string, E extends string>(input: {
     before: { status: input.from },
     after: { status: to },
     meta: { transition: input.event, machine: input.machine.name },
-    force: true,
   });
 
   return { from: input.from, to };
@@ -716,7 +715,6 @@ async function autoApproveStandardChange(change: { id: string; status: string; r
     before: { status: from },
     after: { status: to },
     meta: { transition: 'APPROVE', machine: itChangeMachine.name, autoApproved: true },
-    force: true,
   });
   await emit({
     name: EVENTS.IT_CHANGE_TRANSITIONED,

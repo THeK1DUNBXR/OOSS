@@ -54,7 +54,6 @@ export async function setForeignReceiptDetails(paymentId: string, input: Foreign
       fircNumber: updated.fircNumber,
       fircDate: updated.fircDate,
     },
-    force: true,
   });
 
   return updated;

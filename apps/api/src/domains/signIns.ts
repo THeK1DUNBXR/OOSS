@@ -90,7 +90,6 @@ export async function createOrResetSignIn(input: CreateSignInInput): Promise<Sig
     subjectType: 'user',
     subjectId: user.id,
     after: { email, roleSlug: input.roleSlug, affiliationId: affiliation.id },
-    force: true,
   });
 
   await emit({

@@ -177,7 +177,7 @@ export async function patchPolicy(patch: Partial<MarketingPolicy>) {
   const next = { ...current, ...patch };
 
   await prisma.tenant.update({ where: { id: auth.tenantId }, data: { config: { ...config, marketing: next } as never } });
-  await auditWrite({ action: 'update', subjectType: 'tenant', subjectId: auth.tenantId, before: { marketingPolicy: current }, after: { marketingPolicy: next }, force: true });
+  await auditWrite({ action: 'update', subjectType: 'tenant', subjectId: auth.tenantId, before: { marketingPolicy: current }, after: { marketingPolicy: next } });
   return next;
 }
 

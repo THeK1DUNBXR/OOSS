@@ -108,7 +108,7 @@ export async function requestClosePeriod(period: string) {
     where: { id: row.id },
     data: { status: 'closing', requestedById: auth.partyId, requestedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'accounting_period', subjectId: row.id, before: { status: row.status }, after: { status: 'closing', requestedById: auth.partyId }, force: true });
+  await auditWrite({ action: 'update', subjectType: 'accounting_period', subjectId: row.id, before: { status: row.status }, after: { status: 'closing', requestedById: auth.partyId } });
   return updated;
 }
 
@@ -141,7 +141,7 @@ export async function closePeriod(period: string) {
     where: { id: row.id },
     data: { status: 'closed', closedById: auth.partyId, closedAt: new Date(), snapshot: snapshot as never },
   });
-  await auditWrite({ action: 'update', subjectType: 'accounting_period', subjectId: row.id, before: { status: 'closing' }, after: { status: 'closed', closedById: auth.partyId }, force: true });
+  await auditWrite({ action: 'update', subjectType: 'accounting_period', subjectId: row.id, before: { status: 'closing' }, after: { status: 'closed', closedById: auth.partyId } });
   return updated;
 }
 
@@ -163,7 +163,6 @@ export async function reopenPeriod(period: string, reason: string) {
     subjectId: row.id,
     before: { status: 'closed' },
     after: { status: 'reopened', reopenReason: reason },
-    force: true,
   });
   return updated;
 }

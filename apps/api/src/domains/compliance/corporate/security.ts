@@ -55,7 +55,6 @@ export async function updateSecurityPolicy(input: {
     subjectId: updated.id,
     before: { mfaRequiredForRoleSlugs: current.mfaRequiredForRoleSlugs },
     after: { mfaRequiredForRoleSlugs: updated.mfaRequiredForRoleSlugs },
-    force: true,
   });
   return updated;
 }

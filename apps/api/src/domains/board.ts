@@ -161,7 +161,6 @@ export async function declareInterests(id: string, input: DeclareInterestsInput)
     subjectType: 'board_member',
     subjectId: id,
     after: { interestsDeclaredOn: declaredOn },
-    force: true,
   });
 
   return updated;
@@ -397,7 +396,6 @@ export async function enterMinutes(meetingId: string, input: EnterMinutesInput =
       subjectType: 'board_meeting',
       subjectId: meetingId,
       after: { minutesEnteredOn: now, late: true, daysSinceHeld: Math.floor(daysSinceHeld), reason: input.reason },
-      force: true,
     });
   }
 
@@ -782,7 +780,6 @@ export async function recordMgt14(resolutionId: string, srn: string, filedOn: Da
     subjectType: 'resolution',
     subjectId: resolutionId,
     after: { mgt14Srn: srn, mgt14FiledOn: filedOn },
-    force: true,
   });
 
   return updated;

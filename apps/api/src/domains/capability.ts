@@ -286,7 +286,6 @@ export async function verifyClaim(
     before: { tier: claim.tier },
     after: { tier: 'verified' },
     meta: { verifierPartyId: auth.partyId, secondVerifierPartyId: input.secondVerifierPartyId ?? null },
-    force: true,
   });
 
   return updated;

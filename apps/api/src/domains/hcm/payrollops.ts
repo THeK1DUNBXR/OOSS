@@ -181,7 +181,7 @@ export async function createAdHocPayLine(input: AdHocPayLineInput) {
       proposedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'adhoc_pay_line', subjectId: row.id, after: row as never, force: true });
+  await auditWrite({ action: 'create', subjectType: 'adhoc_pay_line', subjectId: row.id, after: row as never });
   return row;
 }
 
@@ -202,7 +202,7 @@ async function decideAdHocPayLine(id: string, approve: boolean, note?: string) {
     where: { id },
     data: { status: approve ? 'Approved' : 'Rejected', approvedById: auth.partyId, approvedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'adhoc_pay_line', subjectId: id, before: before as never, after: row as never, force: true });
+  await auditWrite({ action: 'update', subjectType: 'adhoc_pay_line', subjectId: id, before: before as never, after: row as never });
   if (approve) {
     await emit({
       name: EVENTS.ADHOC_PAY_APPROVED,
@@ -263,7 +263,7 @@ export async function createArrear(input: ArrearInput) {
       proposedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'arrear', subjectId: row.id, after: row as never, force: true });
+  await auditWrite({ action: 'create', subjectType: 'arrear', subjectId: row.id, after: row as never });
   return row;
 }
 
@@ -284,7 +284,7 @@ async function decideArrear(id: string, approve: boolean) {
     where: { id },
     data: { status: approve ? 'Approved' : 'Rejected', approvedById: auth.partyId, approvedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'arrear', subjectId: id, before: before as never, after: row as never, force: true });
+  await auditWrite({ action: 'update', subjectType: 'arrear', subjectId: id, before: before as never, after: row as never });
   if (approve) {
     await emit({
       name: EVENTS.ARREAR_APPROVED,
@@ -308,7 +308,7 @@ export async function markArrearPaid(id: string, payPeriod: string) {
   if (!before) throw ApiError.notFound('Arrear');
   if (before.status !== 'Approved') throw ApiError.unprocessable(`Only an Approved arrear can be marked paid; this one is ${before.status}.`);
   const row = await prisma.arrear.update({ where: { id }, data: { status: 'Paid', paidInPayPeriod: payPeriod, paidAt: new Date() } });
-  await auditWrite({ action: 'update', subjectType: 'arrear', subjectId: id, before: before as never, after: row as never, force: true });
+  await auditWrite({ action: 'update', subjectType: 'arrear', subjectId: id, before: before as never, after: row as never });
   return row;
 }
 
@@ -399,7 +399,7 @@ export async function generatePayrollJournal(payrollRunId: string) {
     ? await prisma.payrollJournal.update({ where: { id: existing.id }, data })
     : await prisma.payrollJournal.create({ data });
 
-  await auditWrite({ action: existing ? 'update' : 'create', subjectType: 'payroll_journal', subjectId: row.id, after: row as never, force: true });
+  await auditWrite({ action: existing ? 'update' : 'create', subjectType: 'payroll_journal', subjectId: row.id, after: row as never });
   return row;
 }
 
@@ -456,7 +456,7 @@ export async function postPayrollJournal(id: string, accountId: string) {
     where: { id },
     data: { status: 'Posted', transactionId: txn.id, postedById: auth.partyId, postedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'payroll_journal', subjectId: id, before: journal as never, after: row as never, force: true });
+  await auditWrite({ action: 'update', subjectType: 'payroll_journal', subjectId: id, before: journal as never, after: row as never });
   await emit({
     name: EVENTS.PAYROLL_JOURNAL_POSTED,
     subject: { entityType: 'payroll_journal', entityId: row.id },
@@ -604,7 +604,7 @@ export async function generateBankAdvice(payrollRunId: string) {
       generatedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'bank_advice', subjectId: row.id, after: { payPeriod: row.payPeriod, count: row.count, total: num(row.total) }, force: true });
+  await auditWrite({ action: 'create', subjectType: 'bank_advice', subjectId: row.id, after: { payPeriod: row.payPeriod, count: row.count, total: num(row.total) } });
   await auditExport('bank_advice', 'generated', rows.length);
   await emit({
     name: EVENTS.BANK_ADVICE_GENERATED,
@@ -690,7 +690,7 @@ export async function generatePayrollReconciliation(payrollRunId: string, previo
       generatedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'payroll_reconciliation', subjectId: row.id, after: { payrollRunId, unexplainedCount: flagged }, force: true });
+  await auditWrite({ action: 'create', subjectType: 'payroll_reconciliation', subjectId: row.id, after: { payrollRunId, unexplainedCount: flagged } });
 
   if (flagged > 0) {
     await raiseException({
@@ -823,7 +823,7 @@ export async function createPayrollQuery(input: PayrollQueryInput) {
       status: 'Open',
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'payroll_query', subjectId: row.id, after: row as never, force: true });
+  await auditWrite({ action: 'create', subjectType: 'payroll_query', subjectId: row.id, after: row as never });
   await emit({
     name: EVENTS.PAYROLL_QUERY_RAISED,
     subject: { entityType: 'payroll_query', entityId: row.id },
@@ -850,7 +850,7 @@ export async function respondToPayrollQuery(id: string, response: string, close 
       status: close ? 'Closed' : 'Responded',
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'payroll_query', subjectId: id, before: before as never, after: row as never, force: true });
+  await auditWrite({ action: 'update', subjectType: 'payroll_query', subjectId: id, before: before as never, after: row as never });
   await emit({
     name: EVENTS.PAYROLL_QUERY_RESOLVED,
     subject: { entityType: 'payroll_query', entityId: row.id },
@@ -867,6 +867,6 @@ export async function closePayrollQuery(id: string) {
   const before = await prisma.payrollQuery.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!before) throw ApiError.notFound('Payroll query');
   const row = await prisma.payrollQuery.update({ where: { id }, data: { status: 'Closed' } });
-  await auditWrite({ action: 'update', subjectType: 'payroll_query', subjectId: id, before: before as never, after: row as never, force: true });
+  await auditWrite({ action: 'update', subjectType: 'payroll_query', subjectId: id, before: before as never, after: row as never });
   return row;
 }

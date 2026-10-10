@@ -342,8 +342,6 @@ export interface AuditWriteInput {
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
   meta?: Record<string, unknown>;
-  /** Forces the record even if the entity is not on the governed registry. */
-  force?: boolean;
 }
 
 export async function auditWrite(input: AuditWriteInput): Promise<void> {

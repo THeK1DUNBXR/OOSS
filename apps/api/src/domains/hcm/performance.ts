@@ -194,7 +194,6 @@ export async function advanceReviewCyclePhase(id: string, to: ReviewCyclePhase) 
     subjectId: id,
     before: { phase: from },
     after: { phase: to },
-    force: true,
   });
 
   return updated;

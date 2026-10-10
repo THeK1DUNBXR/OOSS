@@ -1000,7 +1000,6 @@ export async function recordBgvConsent(employmentRelationshipId: string) {
     subjectId: employmentRelationshipId,
     before: { backgroundVerificationConsentAt: before?.backgroundVerificationConsentAt ?? null },
     after: { backgroundVerificationConsentAt: row.backgroundVerificationConsentAt },
-    force: true,
   });
   return { backgroundVerificationConsentAt: row.backgroundVerificationConsentAt };
 }
@@ -1019,7 +1018,6 @@ export async function recordCodeOfConductAck(employmentRelationshipId: string) {
     subjectId: employmentRelationshipId,
     before: { codeOfConductAcknowledgedAt: before?.codeOfConductAcknowledgedAt ?? null },
     after: { codeOfConductAcknowledgedAt: row.codeOfConductAcknowledgedAt },
-    force: true,
   });
   return { codeOfConductAcknowledgedAt: row.codeOfConductAcknowledgedAt };
 }

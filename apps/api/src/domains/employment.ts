@@ -795,7 +795,6 @@ export async function updateEmployeeProfile(employmentId: string, input: Employe
       after: { ...employmentBefore, ...Object.fromEntries(changedPlainEmployment.map((f) => [f, employmentData[f]])) },
       // `employment_relationship` carries no CRM governance registration —
       // `setBankDetails`/`setEngagementType` force the same way.
-      force: true,
     });
   }
 
@@ -806,7 +805,6 @@ export async function updateEmployeeProfile(employmentId: string, input: Employe
       subjectType: 'employment_relationship',
       subjectId: employmentId,
       meta: { fieldsChanged: changedRegulatedEmployment },
-      force: true,
     });
   }
 
