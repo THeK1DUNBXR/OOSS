@@ -558,3 +558,14 @@ Still open after round 18:
 - The function and vertical list, and the role template for each (telecalling, training, and others).
 - Whether an interim hire-time role, before Wave 6, matches the Staff baseline. This is under check against the existing `employee` role.
 - Whether `sysadmin@` should hold the chairman role in the seed. The FX-01 tests routed a chairman step to it.
+## Owner answers, round 19 (recorded 2026-10-10, access-model plan review)
+
+Context: the access-model plan draft (`docs/plan/zen360/ACCESS-MODEL-PLAN.md`, DRAFT v2) and the owner's corrections given during its drafting.
+
+- **(a) HR runs employee onboarding.** HR answers the stakeholder-mapping questionnaire and owns the onboarding case. This resolves round 13 (D:428, "founder or onboarding owner") against round 18 (d), in favour of HR.
+- **(b) Nothing is set up by hardcode.** No employees or roles are set up through hardcode; they are set up only during onboarding. Levels, verticals and every person's access become tenant data. The seeded role matrix (`apps/api/src/seed/grants.ts`) stops being the source of access. Open: whether an unassigned, editable starter template may ship, given round 10's "template ships with the app".
+- **(c) Statutory sign-off is a guided in-app setup.** It runs after the application is set up: the accountant logs in, and a guided setup takes her through approving the statutory rules. Onboarding and access mapping no longer wait on statutory sign-off. Features that depend on statutory rules stay gated until the accountant approves those rules. This reverses the BLOCKED-BY on P7 in ORDERED-PLAN (OP:125) (owner answer to plan question 6: "yes").
+- **(d) The access model is level × vertical, not a job-role model.** A vertical (with units) decides which records a person reaches. A level decides how far that reach goes and how much the person may approve. Telecalling versus training, and every similar case, comes from the vertical or unit, never from a job title.
+- **(e) The vertical structure is researched, not inherited.** The owner directs that verticals must not rely on the list defined at inception (`packages/shared/src/domain.ts:9-20`). The verticals must be researched and fixed firmly, so that growth of the app or the company does not break records, access or reports. Research is under way; a vertical taxonomy proposal follows for approval.
+- **(f) Multiple placements are allowed.** A person may hold placements in more than one vertical or unit, each with its own level.
+- **(g) Who confirms access.** HR answers. The vertical Head confirms placements in their vertical. The founder confirms sensitive extra duties, Head placements and HR's own mapping (owner answer to plan question 5: "yes").
