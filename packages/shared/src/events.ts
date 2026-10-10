@@ -10,11 +10,64 @@
 
 export type EventName = string;
 
-/** The canonical event-name grammar. Used to validate every emission. */
-export const EVENT_NAME_PATTERN = /^kz\.[a-z]{2,4}\.[a-z_]+\.[a-z_]+$/;
+/**
+ * The canonical event-name grammar, `kz.<domain>.<object>.<verb>`. The verb is
+ * captured so the tense can be checked. An event records a fact that already
+ * happened, so the verb is past tense, and a present-tense name is refused at
+ * both ends (emit and outbox dispatch) rather than stored.
+ */
+export const EVENT_NAME_PATTERN = /^kz\.[a-z]{2,4}\.[a-z_]+\.([a-z_]+)$/;
+
+/**
+ * Past-tense verbs that do not end in -ed. Listed rather than inferred: a rule
+ * that guessed would accept `kz.x.y.set` only by luck and refuse `kz.x.y.sent`.
+ */
+const IRREGULAR_PAST = new Set([
+  'built', 'begun', 'brought', 'bought', 'caught', 'cast', 'cut', 'done', 'given', 'got', 'held', 'hit',
+  'kept', 'known', 'laid', 'led', 'left', 'let', 'lost', 'made', 'met', 'paid', 'put', 'read',
+  'reset', 'run', 'sent', 'set', 'shut', 'sold', 'spent', 'split', 'taken', 'told', 'withdrawn', 'won', 'written',
+]);
+
+/**
+ * Names that predate the tense rule and are still emitted, subscribed to, or
+ * stored in event_records, so renaming them would orphan that history and the
+ * subscribers that read it. They are exempt from the tense check only. Any
+ * new name must pass it, and removing an entry here means renaming the event
+ * with a dual-publish window (CRM-FOUND-002 pattern), not just editing this list.
+ */
+export const TENSE_GRANDFATHERED: ReadonlySet<string> = new Set([
+  'kz.ceo.key_result.checked_in',
+  'kz.crm.contract.expiring',
+  'kz.crm.opportunity.handed_off',
+  'kz.eqt.allotment.effective',
+  'kz.eqt.bonus.effective',
+  'kz.eqt.buyback.effective',
+  'kz.eqt.conversion.effective',
+  'kz.eqt.redemption.effective',
+  'kz.eqt.transfer.effective',
+  'kz.it.asset.warranty_approaching',
+  'kz.it.licence.renewal_approaching',
+  'kz.it.vendor_contract.expiring',
+  'kz.mkt.event.live',
+  'kz.mkt.event.no_show',
+]);
+
+/** Words that end in -ed but are base forms, so they are not past tense. */
+const ED_BASE_FORMS = new Set([
+  'bleed', 'breed', 'embed', 'exceed', 'feed', 'heed', 'need', 'proceed', 'seed', 'shed', 'speed', 'succeed', 'weed',
+]);
+
+/** The verb is judged by its last underscore-separated word: `untouched_detected`. */
+export function isPastTenseVerb(verb: string): boolean {
+  const word = verb.split('_').pop() ?? '';
+  if (IRREGULAR_PAST.has(word)) return true;
+  return word.length > 2 && word.endsWith('ed') && !ED_BASE_FORMS.has(word);
+}
 
 export function isCanonicalEventName(name: string): boolean {
-  return EVENT_NAME_PATTERN.test(name);
+  const match = EVENT_NAME_PATTERN.exec(name);
+  if (match === null) return false;
+  return TENSE_GRANDFATHERED.has(name) || isPastTenseVerb(match[1]!);
 }
 
 /**

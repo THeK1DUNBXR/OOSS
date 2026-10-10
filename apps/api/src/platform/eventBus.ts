@@ -235,7 +235,8 @@ async function appendToChain<T>(
 }
 
 /**
- * Publishes one event.
+ * Publishes one event. Delivery is at-least-once across crashes, so a handler
+ * must be idempotent on eventId.
  *
  * The EventRecord (the hash-chain link) and its outbox row are written in one
  * transaction, so an event exists if and only if the write that caused it

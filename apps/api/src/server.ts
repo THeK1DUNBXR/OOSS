@@ -8,6 +8,7 @@ import { contextMiddleware, errorMiddleware } from './lib/http.js';
 import { captureWebhookRawBody } from './lib/webhookSignature.js';
 import { requestLog } from './lib/requestLog.js';
 import { startScheduler } from './jobs/scheduler.js';
+import { startOutboxDispatcher, stopOutboxDispatcher } from './platform/outbox.js';
 import { registerSubscribers } from './events/handlers.js';
 import { prisma } from './platform/db.js';
 import { config } from './platform/config.js';
@@ -268,5 +269,14 @@ if (config.NODE_ENV !== 'test') {
     // Says which build, so a log line answers "what is running" too.
     logger.info({ component: 'boot' }, `Kaizen API listening on :${port} — build ${buildLabel()}`);
     startScheduler();
+    startOutboxDispatcher();
+    // Stops taking new outbox work on a signal. A row mid-delivery keeps its
+    // lease, so whichever process runs next picks it up once the lease lapses.
+    for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+      process.once(signal, () => {
+        stopOutboxDispatcher();
+        process.exit(0);
+      });
+    }
   });
 }

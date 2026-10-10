@@ -17,9 +17,10 @@
 
 import { Prisma } from '@prisma/client';
 import { isCanonicalEventName, type EventEnvelope } from '@kaizen/shared';
-import { prisma } from './db.js';
+import { prisma, unscopedPrisma } from './db.js';
 import { asSystem, getContext, maybeTenantId } from './context.js';
 import { subscribersFor, type Registration } from './eventBus.js';
+import { logger } from './logger.js';
 
 /**
  * Deliveries attempted before a row is dead-lettered. With backoff from 30s to
@@ -208,4 +209,56 @@ async function invoke(sub: Registration, envelope: EventEnvelope): Promise<void>
   } finally {
     if (ctx) ctx.causationId = prevCausation;
   }
+}
+
+/**
+ * Lists the tenants that have a due row, then drains each one under its own
+ * tenant context. The tenant list is the only unscoped read here and it
+ * selects ids alone; every row is read and settled through the scoped drain,
+ * so one tenant's failure is logged against that tenant and does not stop the
+ * others (CLAUDE.md rule 6: no cross-tenant drain).
+ */
+export async function dispatchDueOutbox(now: Date = new Date()): Promise<void> {
+  const due = await unscopedPrisma.$queryRaw<{ tenantId: string }[]>`
+    SELECT DISTINCT "tenantId" FROM outbox_events
+     WHERE state = 'pending' AND "nextAttemptAt" <= ${now}`;
+  for (const { tenantId } of due) {
+    try {
+      await drainOutbox({ tenantId });
+    } catch (err) {
+      logger.error({ component: 'outbox', tenantId, err }, 'outbox drain failed for tenant');
+    }
+  }
+}
+
+let dispatcher: ReturnType<typeof setInterval> | null = null;
+let dispatching = false;
+
+/**
+ * The retry loop for failed deliveries. A failed inline delivery is left
+ * pending behind its backoff, and only this loop (or a drain) picks it up.
+ * It is a fixed-interval loop, not a scheduler job, so a retry is not held to
+ * the job runner's one-minute resolution.
+ */
+export function startOutboxDispatcher({ intervalMs = 5_000 }: { intervalMs?: number } = {}): void {
+  if (dispatcher) return;
+  const tick = async () => {
+    // A tick that runs long must not overlap the next one and claim the same
+    // rows twice. The lease already prevents that; this avoids the wasted work.
+    if (dispatching) return;
+    dispatching = true;
+    try {
+      await dispatchDueOutbox();
+    } catch (err) {
+      logger.error({ component: 'outbox', err }, 'outbox dispatch tick failed');
+    } finally {
+      dispatching = false;
+    }
+  };
+  dispatcher = setInterval(() => void tick(), intervalMs);
+}
+
+export function stopOutboxDispatcher(): void {
+  if (dispatcher) clearInterval(dispatcher);
+  dispatcher = null;
 }

@@ -270,7 +270,7 @@
 
 **`apps/api/src/platform/errors.ts`** (61 lines) — ApiError:3
 
-**`apps/api/src/platform/eventBus.ts`** (474 lines) — EmitInput:33 · Subscriber:59 · Registration:61 · emittedEvents:70 · setEventCapture:73 · subscribe:78 · subscribersFor:92 · subscriberCount:96 · clearSubscribers:100 · computeHash:109 · emit:250 · wouldLoop:425 · verifyChain:445
+**`apps/api/src/platform/eventBus.ts`** (475 lines) — EmitInput:33 · Subscriber:59 · Registration:61 · emittedEvents:70 · setEventCapture:73 · subscribe:78 · subscribersFor:92 · subscriberCount:96 · clearSubscribers:100 · computeHash:109 · emit:251 · wouldLoop:426 · verifyChain:446
 
 **`apps/api/src/platform/exceptions.ts`** (334 lines) — RaiseExceptionInput:33 · passesFourPropertyTest:59 · raiseException:65 · acknowledgeException:206 · resolveException:221 · escalateException:237 · severityToPriority:289 · NotifyInput:304 · notify:316
 
@@ -290,7 +290,7 @@
 
 **`apps/api/src/platform/navSync.ts`** (89 lines) — NavSyncResult:26 · reconcileNav:32 · reconcileNavForAllTenants:80
 
-**`apps/api/src/platform/outbox.ts`** (212 lines) — OUTBOX_MAX_ATTEMPTS:29 · DrainOptions:42 · DrainResult:51 · drainOutbox:78 · backoffMs:101
+**`apps/api/src/platform/outbox.ts`** (265 lines) — OUTBOX_MAX_ATTEMPTS:30 · DrainOptions:43 · DrainResult:52 · drainOutbox:79 · backoffMs:102 · dispatchDueOutbox:221 · startOutboxDispatcher:243 · stopOutboxDispatcher:261
 
 **`apps/api/src/platform/permissions.ts`** (544 lines) — ResolvedGrant:36 · invalidateGrantCache:50 · resolveGrants:54 · ScopedRecord:100 · EvaluateInput:113 · evaluate:131 · resolveAuthorityCeiling:295 · assertCan:317 · can:330 · holdsScopeResolver:344 · scopeFor:356 · scopeWhere:369 · assertScopeAll:396 · visibilityWhere:423 · FilterResult:441 · FilterOptions:446 · FIELD_PURPOSES:467 · applyFieldVisibility:488 · canSeeMoney:539
 
@@ -422,7 +422,7 @@
 
 **`packages/shared/src/esop.ts`** (203 lines) — ESOP_PLAN_STATUSES:13 · EsopPlanStatus:14 · VESTING_FREQUENCIES:16 · VestingFrequency:17 · VESTING_FREQUENCY_MONTHS:19 · OPTION_GRANT_STATUSES:25 · OptionGrantStatus:28 · VESTING_EVENT_STATUSES:30 · VestingEventStatus:31 · OPTION_EXERCISE_STATUSES:33 · OptionExerciseStatus:34 · FMV_BASES:36 · FmvBasis:37 · ESOP_MIN_CLIFF_MONTHS:40 · ESOP_SINGLE_GRANT_RESOLUTION_THRESHOLD_PCT:43 · ESOP_FMV_VALIDITY_DAYS:46 · VestingScheduleInput:52 · VestingTranche:58 · firstVestingIsRuleTwelveCompliant:76 · generateVestingTranches:86 · EsopPlanPoolView:112 · EsopPlanView:121 · PromoterCheck:138 · OptionGrantView:144 · OptionExerciseView:169 · esopTaxLine:191
 
-**`packages/shared/src/events.ts`** (875 lines) — EventName:11 · EVENT_NAME_PATTERN:14 · isCanonicalEventName:16 · LEGACY_EVENT_CROSSWALK:26 · CANONICAL_TO_LEGACY:53 · EVENTS:58 · hrTransitionEvent:727 · KnownEventName:731 · ActorType:738 · EventActor:740 · EventSubject:748 · EventRelatedRef:754 · EventReason:760 · EventSource:768 · EventMateriality:776 · EventImpact:782 · EventOwner:788 · EventIntegrity:793 · EventEnvelope:798 · SEVERITIES:827 · SeverityCode:828 · SEVERITY_RANK:830 · NOTIFICATION_PRIORITIES:838 · NotificationPriority:839 · ESCALATION_TRIGGERS:842 · EscalationTrigger:843 · SENSITIVITY_CLASSES:849 · SensitivityClass:850 · SENSITIVITY_RANK:852 · maxSensitivity:860 · WITHHOLD_REASONS:866 · WithholdReason:874
+**`packages/shared/src/events.ts`** (928 lines) — EventName:11 · EVENT_NAME_PATTERN:19 · TENSE_GRANDFATHERED:38 · isPastTenseVerb:61 · isCanonicalEventName:67 · LEGACY_EVENT_CROSSWALK:79 · CANONICAL_TO_LEGACY:106 · EVENTS:111 · hrTransitionEvent:780 · KnownEventName:784 · ActorType:791 · EventActor:793 · EventSubject:801 · EventRelatedRef:807 · EventReason:813 · EventSource:821 · EventMateriality:829 · EventImpact:835 · EventOwner:841 · EventIntegrity:846 · EventEnvelope:851 · SEVERITIES:880 · SeverityCode:881 · SEVERITY_RANK:883 · NOTIFICATION_PRIORITIES:891 · NotificationPriority:892 · ESCALATION_TRIGGERS:895 · EscalationTrigger:896 · SENSITIVITY_CLASSES:902 · SensitivityClass:903 · SENSITIVITY_RANK:905 · maxSensitivity:913 · WITHHOLD_REASONS:919 · WithholdReason:927
 
 **`packages/shared/src/finance.ts`** (729 lines) — DIVISIONS:19 · Division:20 · DIVISION_LABELS:22 · isDivision:29 · CATEGORY_KINDS:37 · CategoryKind:40 · NON_TRADING_KINDS:51 · isTrading:53 · CATEGORY_BEHAVIOURS:62 · CategoryBehaviour:63 · TRANSACTION_SOURCES:65 · TransactionSource:68 · LEDGER_GROUPS:70 · LedgerGroup:71 · monthKey:80 · monthRange:90 · financialYearOf:96 · financialYearRange:101 · monthsBack:106 · GstLineInput:120 · GstBreakdown:127 · round2:139 · computeGst:155 · isInterState:195 · GST_RATES:201 · GST_STATE_CODES:215 · stateNameFor:258 · placeOfSupplyLabel:264 · stateCodeOf:271 · isValidGstin:289 · gstinCheckDigit:306 · supplyTypeOf:327 · GstHeads:335 · GstSetOff:341 · setOffInputCredit:363 · outstandingOf:416 · paymentTypeFor:428 · invoicePayable:445 · amountInWords:476 · PaymentSchedule:533 · computePaymentSchedule:545 · DepreciationPeriod:558 · DepreciationInput:565 · depreciationSchedule:583 · bookValueAt:620 · AmortisationPeriod:635 · emi:645 · amortisationSchedule:655 · loanBalanceAt:694 · runwayMonths:724
 
