@@ -9,11 +9,16 @@
 #   scripts/test-db.sh          create and seed if absent
 #   scripts/test-db.sh --reseed drop and rebuild from the seed
 #
+# Two roles, as in production (FX-51). The owner (kaizen) migrates and seeds and
+# bypasses row-level security. The application role (kaizen_app) is what the
+# API and the tests connect as; row-level security binds it.
+#
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DB="${TEST_DB_NAME:-kaizen_test}"
-URL="postgresql://kaizen:kaizen@127.0.0.1:5432/${DB}?schema=public"
+OWNER_URL="postgresql://kaizen:kaizen@127.0.0.1:5432/${DB}?schema=public"
+APP_URL="postgresql://kaizen_app:kaizen_app@127.0.0.1:5432/${DB}?schema=public"
 
 exists() { sudo -u postgres psql -lqt | cut -d'|' -f1 | tr -d ' ' | grep -qx "${DB}"; }
 
@@ -27,9 +32,17 @@ if ! exists; then
   sudo -u postgres psql -c "CREATE DATABASE ${DB} OWNER kaizen;" >/dev/null
 fi
 
+# The owner bypasses RLS, so migrations and the seed can write any tenant's rows.
+sudo -u postgres psql -c "ALTER ROLE kaizen BYPASSRLS;" >/dev/null
+# Before migrations: the migration creates the application role only if it is
+# missing, and the owner has no CREATEROLE.
+sudo -u postgres psql -v ON_ERROR_STOP=1 -f "${ROOT}/scripts/app-role.sql" >/dev/null
+
 cd "${ROOT}/apps/api"
 # Migrations, not db push: db push never installed the triggers the migration
 # history carries, so the suite would test a schema production does not have.
-DATABASE_URL="${URL}" npx prisma migrate deploy >/dev/null
-DATABASE_URL="${URL}" npx tsx src/tests/fixtures/run.ts >/dev/null
-echo "${DB} ready  ->  ${URL}"
+DATABASE_URL="${APP_URL}" MIGRATION_DATABASE_URL="${OWNER_URL}" npx prisma migrate deploy >/dev/null
+DATABASE_URL="${OWNER_URL}" MIGRATION_DATABASE_URL="${OWNER_URL}" UNSCOPED_DATABASE_URL="${OWNER_URL}" \
+  npx tsx src/tests/fixtures/run.ts >/dev/null
+echo "${DB} ready  ->  owner ${OWNER_URL}"
+echo "                app   ${APP_URL}"

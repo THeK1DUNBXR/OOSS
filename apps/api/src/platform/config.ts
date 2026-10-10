@@ -56,7 +56,24 @@ export const envSchema = z.object({
     errorMap: () => ({ message: "must be one of 'development', 'test' or 'production'" }),
   }),
 
+  /**
+   * The application role. Row-level security binds it, and the boot check
+   * (rlsGuard.ts) refuses a role with rolsuper or rolbypassrls.
+   */
   DATABASE_URL: z.string().min(1, 'must be a Postgres connection string'),
+
+  /**
+   * The migration owner, used by `prisma migrate` (schema.prisma `directUrl`).
+   * It owns the tables and so must not be the role the API serves requests as.
+   */
+  MIGRATION_DATABASE_URL: z.string().min(1).optional(),
+
+  /**
+   * The role behind `unscopedPrisma`: seed, cross-tenant jobs and the audit
+   * hash chain. It needs BYPASSRLS. Unset, those paths run as the application
+   * role and see no tenant rows (db.ts).
+   */
+  UNSCOPED_DATABASE_URL: z.string().min(1).optional(),
 
   /**
    * 32 characters is not arbitrary: HS256 keys shorter than the hash output

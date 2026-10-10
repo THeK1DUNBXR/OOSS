@@ -96,8 +96,11 @@ Warning: the three later migrations install triggers and immutability
 boundaries (journal balance, closed-period guard, audit and consent
 append-only) that `db push` never installed. Run them on a copy of the
 database first, and look at the failures before pointing the real database at
-them. Tenant row-level security is not in these migrations; it is held in
-`apps/api/prisma/pending/ledger_rls.sql` until FX-51 owns it.
+them. Tenant row-level security is in `20261010210000_tenant_rls` (FX-51): every
+table with a `tenantId` column is forced under a policy keyed on
+`app.tenant_id`. The API must connect as the application role `kaizen_app`
+(`scripts/app-role.sql` creates it with no superuser or BYPASSRLS), and the
+server refuses to start otherwise (`platform/rlsGuard.ts`).
 
 ## Seeding
 
@@ -187,7 +190,9 @@ that runs twice does not act twice.
 
 | Variable | Default | |
 |---|---|---|
-| `DATABASE_URL` | — | required |
+| `DATABASE_URL` | — | required. The application role (`kaizen_app`); row-level security binds it, and the server refuses to start as a superuser or BYPASSRLS role |
+| `MIGRATION_DATABASE_URL` | — | the owner, for `prisma migrate` (schema `directUrl`) |
+| `UNSCOPED_DATABASE_URL` | *(falls back to `DATABASE_URL`)* | the role for seed, cross-tenant jobs and the audit hash chain. It needs BYPASSRLS; on the fallback those paths see no tenant rows |
 | `JWT_SECRET` | — | required |
 | `PORT` | `4000` | |
 | `WEB_DIST_DIR` | *(unset)* | path to the built client (`apps/web/dist`). Set in production so the API serves the client as well as `/api`; Caddy proxies to it (`deploy/Caddyfile`) |

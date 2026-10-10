@@ -11,7 +11,7 @@
  */
 
 import { formatRecordCode, istYearMonth, RECORD_CODE_MAX_SEQUENCE, type RecordTypeCode } from '@kaizen/shared';
-import { prisma } from './db.js';
+import { prisma, type DbTx } from './db.js';
 import { currentTenantId } from './context.js';
 import { ApiError } from './errors.js';
 
@@ -38,11 +38,16 @@ export function recordCodeYear(at: Date): number {
   return istYearMonth(at).year;
 }
 
-export async function nextRecordCode(type: RecordTypeCode, at: Date = new Date()): Promise<string> {
+/**
+ * `db` is the transaction a caller is already in. Without it the sequence row
+ * is written on a connection outside that transaction, where the tenant
+ * setting is not applied (db.ts) and row-level security refuses the write.
+ */
+export async function nextRecordCode(type: RecordTypeCode, at: Date = new Date(), db: DbTx = prisma): Promise<string> {
   const tenantId = currentTenantId();
   const year = recordCodeYear(at);
 
-  const row = await prisma.recordSequence.upsert({
+  const row = await db.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId, entityType: type, year } },
     create: { tenantId, entityType: type, year, nextSequence: 2 },
     update: { nextSequence: { increment: 1 } },

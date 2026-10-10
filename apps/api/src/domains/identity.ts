@@ -280,7 +280,7 @@ async function createPerson(input: PersonInput, overrideReason?: string) {
  */
 async function insertPersonRow(db: DbTx, input: PersonInput) {
   const auth = currentAuth();
-  const recordCode = await nextRecordCode('PER');
+  const recordCode = await nextRecordCode('PER', new Date(), db);
 
   const person = await db.person.create({
     data: {

@@ -15,9 +15,29 @@
  * separately-audited SYSTEM_PRINCIPAL path.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { getContext, maybeTenantId } from './context.js';
 import { config } from './config.js';
+
+/**
+ * The Postgres setting the row-level-security policies read (FX-51).
+ *
+ * Every tenant table's policy is `"tenantId" = current_setting('app.tenant_id')`,
+ * so a query that reaches the database without this set sees no rows and can
+ * write none. The setting is applied with `set_config(..., true)`, which lasts
+ * only as long as the enclosing transaction: a pooled connection cannot carry
+ * one tenant's setting into the next request. That is why every scoped
+ * statement runs inside a transaction that starts by setting it.
+ */
+const TENANT_SETTING = 'app.tenant_id';
+
+/**
+ * True while the current async call is inside a `$transaction` whose tenant
+ * setting has already been applied. Ops in that scope run on the transaction
+ * and must not open a transaction of their own, or they would leave it.
+ */
+const insideTenantTransaction = new AsyncLocalStorage<true>();
 
 /**
  * Models that legitimately have no tenant key.
@@ -73,11 +93,44 @@ function applyTenantToData(data: unknown, tenantId: string): unknown {
   return data;
 }
 
-const basePrisma = new PrismaClient({
-  log: config.PRISMA_LOG === 'query' ? ['query', 'warn', 'error'] : ['warn', 'error'],
-});
+const logLevels: Prisma.LogLevel[] = config.PRISMA_LOG === 'query' ? ['query', 'warn', 'error'] : ['warn', 'error'];
 
-export const prisma = basePrisma.$extends({
+// The application role. Row-level security applies to it; see rlsGuard.ts for
+// the boot check that refuses a role which would bypass it.
+const basePrisma = new PrismaClient({ datasourceUrl: config.DATABASE_URL, log: logLevels });
+
+function lowerFirst(model: string): string {
+  return model.charAt(0).toLowerCase() + model.slice(1);
+}
+
+/**
+ * Runs one already-scoped operation with the tenant setting applied.
+ *
+ * Inside a transaction the operation joins that transaction, which set the
+ * setting when it began. Outside one, the operation gets a transaction of its
+ * own: the setting and the statement must share a transaction or the setting
+ * is gone before the statement runs. The statement goes through the unextended
+ * delegate, so the scope above is not applied twice.
+ */
+function runScoped(
+  model: string,
+  operation: string,
+  args: unknown,
+  tenantId: string,
+  query: (args: unknown) => Promise<unknown>,
+): Promise<unknown> {
+  if (insideTenantTransaction.getStore()) return query(args);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const delegate = (basePrisma as any)[lowerFirst(model)];
+  return basePrisma
+    .$transaction([
+      basePrisma.$executeRaw`SELECT set_config(${TENANT_SETTING}, ${tenantId}, true)`,
+      delegate[operation](args),
+    ])
+    .then((results) => results[1]);
+}
+
+const tenantScoped = basePrisma.$extends({
   name: 'tenantScope',
   query: {
     $allModels: {
@@ -111,7 +164,10 @@ export const prisma = basePrisma.$extends({
             // A unique lookup cannot take an arbitrary filter, so it is
             // rewritten to a findFirst-shaped scoped query by the caller-facing
             // helpers below. Here we degrade safely: fetch, then verify tenancy.
-            const result = await query(next);
+            // Row-level security has already withheld another tenant's row by
+            // the time it reaches here; this check is the second line, kept for
+            // the case where the row is returned but its tenant is not selected.
+            const result = await runScoped(model, operation, next, tenantId, query);
             if (result && typeof result === 'object' && 'tenantId' in (result as any)) {
               if ((result as any).tenantId !== tenantId) return null;
             }
@@ -136,9 +192,40 @@ export const prisma = basePrisma.$extends({
           }
         }
 
-        return query(next);
+        return runScoped(model, operation, next, tenantId, query);
       },
     },
+  },
+});
+
+/**
+ * Transactions carry the tenant setting. An interactive transaction sets it
+ * first and runs its callback inside `insideTenantTransaction`, so the ops it
+ * makes do not each open another. A batch array gets the setting as its first
+ * element, which is what keeps the batch atomic. Without a tenant in scope the
+ * transaction is passed through unchanged: the operations inside it are then
+ * refused by the scope gate, and any statement that reached the database would
+ * be refused by row-level security.
+ */
+export const prisma = tenantScoped.$extends({
+  name: 'tenantTransaction',
+  client: {
+    $transaction: ((arg: unknown, options?: unknown) => {
+      const tenantId = maybeTenantId();
+      if (!tenantId) return tenantScoped.$transaction(arg as never, options as never);
+
+      if (typeof arg === 'function') {
+        return tenantScoped.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT set_config(${TENANT_SETTING}, ${tenantId}, true)`;
+          return insideTenantTransaction.run(true, () => (arg as (t: unknown) => unknown)(tx));
+        }, options as never);
+      }
+
+      const setting = tenantScoped.$executeRaw`SELECT set_config(${TENANT_SETTING}, ${tenantId}, true)`;
+      return insideTenantTransaction
+        .run(true, () => tenantScoped.$transaction([setting, ...(arg as unknown[])] as never, options as never))
+        .then((results) => (results as unknown[]).slice(1));
+    }) as unknown as typeof tenantScoped.$transaction,
   },
 });
 
@@ -157,8 +244,16 @@ export type DbTx = Omit<Db, '$connect' | '$disconnect' | '$on' | '$transaction' 
 /**
  * A raw, unscoped client. Reachable only from the seed script and the
  * separately-audited platform-support path — never from request-scoped code.
+ *
+ * It connects as UNSCOPED_DATABASE_URL, a role that may bypass row-level
+ * security. Without that variable it falls back to the application role, which
+ * is safe: row-level security then hides every tenant row from it, so a job
+ * that needs cross-tenant reads fails visibly rather than reading everything.
  */
-export const unscopedPrisma = basePrisma;
+export const unscopedPrisma = new PrismaClient({
+  datasourceUrl: config.UNSCOPED_DATABASE_URL ?? config.DATABASE_URL,
+  log: logLevels,
+});
 
 export { Prisma };
 
