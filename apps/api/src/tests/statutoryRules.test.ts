@@ -115,7 +115,7 @@ describe('StatutoryRule structure (3.1)', () => {
     it('returns an APPROVED rule effective on the IST date of the instant', async () => {
       await seed({ effectiveFrom: dateOnly('2026-04-01') });
       const row = await asUser('chairman@kaizen.co.in', () =>
-        ruleAt(KEY, JURISDICTION, new Date('2026-04-01T10:00:00.000Z')),
+        ruleAt('test', KEY, JURISDICTION, new Date('2026-04-01T10:00:00.000Z')),
       );
       expect(row.key).toBe(KEY);
     });
@@ -125,7 +125,7 @@ describe('StatutoryRule structure (3.1)', () => {
       // A UTC derivation would read 31 March and find nothing.
       await seed({ effectiveFrom: dateOnly('2026-04-01') });
       const row = await asUser('chairman@kaizen.co.in', () =>
-        ruleAt(KEY, JURISDICTION, new Date('2026-03-31T19:00:00.000Z')),
+        ruleAt('test', KEY, JURISDICTION, new Date('2026-03-31T19:00:00.000Z')),
       );
       expect(row.key).toBe(KEY);
     });
@@ -133,28 +133,28 @@ describe('StatutoryRule structure (3.1)', () => {
     it('control: 23:30 IST on 31 March is still 31 March and finds no rule starting 1 April', async () => {
       await seed({ effectiveFrom: dateOnly('2026-04-01') });
       await expect(
-        asUser('chairman@kaizen.co.in', () => ruleAt(KEY, JURISDICTION, new Date('2026-03-31T18:00:00.000Z'))),
+        asUser('chairman@kaizen.co.in', () => ruleAt('test', KEY, JURISDICTION, new Date('2026-03-31T18:00:00.000Z'))),
       ).rejects.toBeInstanceOf(StatutoryRuleNotFoundError);
     });
 
     it('never returns a DRAFT rule', async () => {
       await seed({ status: 'DRAFT', approvedBy: null, approvedAt: null });
       await expect(
-        asUser('chairman@kaizen.co.in', () => ruleAt(KEY, JURISDICTION, new Date('2026-06-01T00:00:00.000Z'))),
+        asUser('chairman@kaizen.co.in', () => ruleAt('test', KEY, JURISDICTION, new Date('2026-06-01T00:00:00.000Z'))),
       ).rejects.toBeInstanceOf(StatutoryRuleNotFoundError);
     });
 
     it('never returns a HOLD rule', async () => {
       await seed({ status: 'HOLD', approvedBy: null, approvedAt: null });
       await expect(
-        asUser('chairman@kaizen.co.in', () => ruleAt(KEY, JURISDICTION, new Date('2026-06-01T00:00:00.000Z'))),
+        asUser('chairman@kaizen.co.in', () => ruleAt('test', KEY, JURISDICTION, new Date('2026-06-01T00:00:00.000Z'))),
       ).rejects.toBeInstanceOf(StatutoryRuleNotFoundError);
     });
 
     it('throws a typed error when no rule covers the date, and never falls back to a constant', async () => {
       await seed({ effectiveFrom: dateOnly('2026-01-01'), effectiveTo: dateOnly('2026-06-01') });
       await expect(
-        asUser('chairman@kaizen.co.in', () => ruleAt(KEY, JURISDICTION, new Date('2026-07-01T00:00:00.000Z'))),
+        asUser('chairman@kaizen.co.in', () => ruleAt('test', KEY, JURISDICTION, new Date('2026-07-01T00:00:00.000Z'))),
       ).rejects.toBeInstanceOf(StatutoryRuleNotFoundError);
     });
   });
@@ -212,10 +212,15 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
   });
 
   it('two domains with the same key and jurisdiction over the same days coexist', async () => {
-    await seed({ jurisdiction: FX_JURISDICTION, domain: 'test', effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null });
+    await seed({ jurisdiction: FX_JURISDICTION, domain: 'test', effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null, value: 1 });
     await expect(
-      seed({ jurisdiction: FX_JURISDICTION, domain: 'other', effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null }),
+      seed({ jurisdiction: FX_JURISDICTION, domain: 'other', effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null, value: 7 }),
     ).resolves.toBeDefined();
+    // Resolution is per domain: each caller gets its own row, not whichever sorts first.
+    const onDay = new Date('2026-06-01T00:00:00.000Z');
+    const test = await asUser(CREATOR, () => ruleAt('test', KEY, FX_JURISDICTION, onDay));
+    const other = await asUser(CREATOR, () => ruleAt('other', KEY, FX_JURISDICTION, onDay));
+    expect([test.value, other.value]).toEqual([1, 7]);
   });
 
   it('refuses approval by the creator, and leaves the row a DRAFT', async () => {
@@ -283,9 +288,9 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
     expect(closed.effectiveTo).toEqual(dateOnly('2026-04-01'));
 
     // 2026-03-31T18:30Z is 00:00 IST on 1 April. 18:29Z is still 31 March IST.
-    const before = await asUser(CREATOR, () => ruleAt(KEY, FX_JURISDICTION, new Date('2026-03-31T18:29:00.000Z')));
+    const before = await asUser(CREATOR, () => ruleAt('test', KEY, FX_JURISDICTION, new Date('2026-03-31T18:29:00.000Z')));
     expect(before.value).toBe(1);
-    const onTheDay = await asUser(CREATOR, () => ruleAt(KEY, FX_JURISDICTION, new Date('2026-03-31T18:30:00.000Z')));
+    const onTheDay = await asUser(CREATOR, () => ruleAt('test', KEY, FX_JURISDICTION, new Date('2026-03-31T18:30:00.000Z')));
     expect(onTheDay.value).toBe(2);
   });
 
@@ -337,7 +342,7 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
     const held = await asUser(CREATOR, () => holdStatutoryRule(rule.id));
     expect(held.status).toBe('HOLD');
     await expect(
-      asUser(CREATOR, () => ruleAt(KEY, FX_JURISDICTION, new Date('2026-06-01T00:00:00.000Z'))),
+      asUser(CREATOR, () => ruleAt('test', KEY, FX_JURISDICTION, new Date('2026-06-01T00:00:00.000Z'))),
     ).rejects.toBeInstanceOf(StatutoryRuleNotFoundError);
   });
 });

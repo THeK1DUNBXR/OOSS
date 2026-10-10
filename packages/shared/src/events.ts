@@ -668,6 +668,11 @@ export const EVENTS = {
   COMPLIANCE_OBLIGATIONS_GENERATED: 'kz.cmp.obligation.generated',
   COMPLIANCE_OBLIGATION_FILED: 'kz.cmp.obligation.filed',
   COMPLIANCE_OBLIGATION_WAIVED: 'kz.cmp.obligation.waived',
+  // Statutory rule parameters (FIXES P2). Approval is the fact that lets a rate
+  // reach a payslip, so it is an event of its own, separate from drafting.
+  STATUTORY_RULE_DRAFTED: 'kz.cmp.statutory_rule.drafted',
+  STATUTORY_RULE_APPROVED: 'kz.cmp.statutory_rule.approved',
+  STATUTORY_RULE_HELD: 'kz.cmp.statutory_rule.held',
 
   // --- Technology (docs/plan/cio.md) ----------------------------------------
   // A. Assets and devices
