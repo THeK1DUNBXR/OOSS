@@ -27,19 +27,20 @@ import {
   payrollCalendarMilestone,
   PAY_ITEM_KINDS,
   EVENTS,
+  isEncryptedFieldValue,
   type NeftBeneficiary,
 } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma, unscopedPrisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, canSeeMoney, scopeFor } from '../../platform/permissions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
-import { auditWrite, auditExport, registerGovernedEntities } from '../../platform/audit.js';
+import { auditWrite, auditExport, auditBulkOperation, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { payrollCostByDivision } from '../payroll.js';
 import { recordTransaction } from '../books.js';
-import { readRegulated } from '../compliance/privacy.js';
+import { encryptField, readRegulated } from '../compliance/privacy.js';
 
 /** Withholds a money field for a caller who cannot see it — null, never zero, with a reason. Same shape as `hcm/compensation.ts`'s `money()`. */
 function money(value: unknown, visible: boolean): number | null {
@@ -472,10 +473,29 @@ export async function postPayrollJournal(id: string, accountId: string) {
 // Bank advice
 // ---------------------------------------------------------------------------
 
-/** Masks an account number to its last 4 digits — the same shape `compliance/payroll.ts` exposes on a payslip snapshot (`bankLast4`). */
-function maskAccountNumber(accountNumber: string): string {
-  const last4 = accountNumber.slice(-4);
+/** Masks a bank identifier to its last 4 characters — the same shape `compliance/payroll.ts` exposes on a payslip snapshot (`bankLast4`). Applied to the IFSC as well as the account number, since a view-only holder must not read either in full. */
+function maskLast4(value: string): string {
+  const last4 = value.slice(-4);
   return last4 ? `••••${last4}` : '••••';
+}
+
+/**
+ * Seals the account number and IFSC of each beneficiary before they are
+ * stored. Without this, anyone with DB or backup access reads every employee's
+ * bank details in clear, since `rows` is a plain Json column (FX-61). The
+ * other fields stay readable so a listing or an audit view does not need the key.
+ */
+function sealBeneficiaries(rows: NeftBeneficiary[]): NeftBeneficiary[] {
+  return rows.map((r) => ({ ...r, accountNumber: encryptField(r.accountNumber), ifsc: encryptField(r.ifsc) }));
+}
+
+/** Opens what `sealBeneficiaries` stored. Pre-fix rows hold plaintext, which `readRegulated` returns unchanged. */
+function openBeneficiaries(stored: unknown): NeftBeneficiary[] {
+  return (stored as NeftBeneficiary[]).map((r) => ({
+    ...r,
+    accountNumber: readRegulated(r.accountNumber) ?? '',
+    ifsc: readRegulated(r.ifsc) ?? '',
+  }));
 }
 
 export async function listBankAdvices() {
@@ -504,7 +524,9 @@ export async function getBankAdvice(id: string) {
   const row = await prisma.bankAdvice.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Bank advice');
   const visible = await canSeeMoney('bank_advices');
-  const rows = (row.rows as unknown as NeftBeneficiary[]).map((r) => ({ ...r, accountNumber: maskAccountNumber(r.accountNumber), amount: money(r.amount, visible) }));
+  // Open before masking: masking the ciphertext would show the tail of the
+  // encoding, not the tail of the account number.
+  const rows = openBeneficiaries(row.rows).map((r) => ({ ...r, accountNumber: maskLast4(r.accountNumber), ifsc: maskLast4(r.ifsc), amount: money(r.amount, visible) }));
   return {
     id: row.id,
     payrollRunId: row.payrollRunId,
@@ -530,7 +552,7 @@ export async function downloadBankAdvice(id: string) {
   const row = await prisma.bankAdvice.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Bank advice');
   await auditExport('bank_advice', row.id, row.count);
-  return { filename: `bank-advice-${row.payPeriod}-${row.id.slice(-6)}.csv`, csv: row.fileText };
+  return { filename: `bank-advice-${row.payPeriod}-${row.id.slice(-6)}.csv`, csv: readRegulated(row.fileText) ?? '' };
 }
 
 /**
@@ -583,7 +605,7 @@ export async function generateBankAdvice(payrollRunId: string) {
       employeeName: employment.person?.fullName ?? employment.id,
       accountNumber: account,
       // Same regulated read as the account number above: the column is stored
-      // encrypted, and a bank reads the file, so the IFSC must leave in the clear.
+      // encrypted, and the file is built in clear before it is sealed below.
       ifsc: readRegulated(employment.bankIfsc) ?? '',
       amount: net,
       reference: `${run.recordCode}/${employment.id.slice(-6)}`,
@@ -592,6 +614,8 @@ export async function generateBankAdvice(payrollRunId: string) {
 
   const fileText = neftAdviceCsv(rows);
   const total = neftAdviceTotal(rows);
+  // The file and the rows are both sealed: a stored advice is a record of bank
+  // details, readable only through `downloadBankAdvice` and the masked view.
 
   const row = await prisma.bankAdvice.create({
     data: {
@@ -599,8 +623,8 @@ export async function generateBankAdvice(payrollRunId: string) {
       payrollRunId,
       payPeriod: run.payPeriod,
       format: 'NEFT_CSV',
-      fileText,
-      rows: rows as never,
+      fileText: encryptField(fileText),
+      rows: sealBeneficiaries(rows) as never,
       count: rows.length,
       total,
       generatedById: auth.partyId,
@@ -616,6 +640,57 @@ export async function generateBankAdvice(payrollRunId: string) {
     impact: { domains: ['hr', 'fin'] },
   });
   return { id: row.id, payrollRunId, payPeriod: row.payPeriod, count: row.count, total, generatedAt: row.generatedAt };
+}
+
+/**
+ * One-off, idempotent re-encryption of bank advices written before FX-61 was
+ * fixed, when `fileText` and each row's account number and IFSC were stored in
+ * clear. Detects plaintext by the absence of the `enc:v1:` prefix, so a second
+ * run converts nothing. Tenant-scoped on the explicit `tenantId`, never a row
+ * from another tenant. Run through `apps/api/scripts/encrypt-bank-advices.ts`.
+ *
+ * Only the storage encoding changes: `fileText` and the rows decrypt to the
+ * same values they held, so an advice a bank has already acted on is not
+ * regenerated or altered. Each converted advice is written with `updateMany`
+ * keyed on id and tenant, so a concurrent change to another advice is never
+ * overwritten by this pass.
+ */
+export async function encryptBankAdvicesAtRest(): Promise<{ advicesScanned: number; advicesConverted: number; alreadyEncrypted: number }> {
+  const auth = currentAuth();
+  await assertCan({ resource: 'bank_advices', verb: 'export' });
+
+  const advices = await unscopedPrisma.bankAdvice.findMany({ where: { tenantId: auth.tenantId } });
+
+  let advicesConverted = 0;
+  let alreadyEncrypted = 0;
+
+  for (const advice of advices) {
+    const storedRows = (advice.rows as unknown as NeftBeneficiary[]) ?? [];
+    const rowsNeedSealing = storedRows.some((r) => !isEncryptedFieldValue(r.accountNumber) || !isEncryptedFieldValue(r.ifsc));
+    const fileNeedsSealing = !isEncryptedFieldValue(advice.fileText);
+
+    if (!rowsNeedSealing && !fileNeedsSealing) {
+      alreadyEncrypted += 1;
+      continue;
+    }
+
+    const sealedRows = storedRows.map((r) => ({
+      ...r,
+      accountNumber: isEncryptedFieldValue(r.accountNumber) ? r.accountNumber : encryptField(r.accountNumber),
+      ifsc: isEncryptedFieldValue(r.ifsc) ? r.ifsc : encryptField(r.ifsc),
+    }));
+    await unscopedPrisma.bankAdvice.updateMany({
+      where: { id: advice.id, tenantId: auth.tenantId },
+      data: {
+        fileText: fileNeedsSealing ? encryptField(advice.fileText) : advice.fileText,
+        rows: sealedRows as never,
+      },
+    });
+    advicesConverted += 1;
+  }
+
+  await auditBulkOperation('bank_advice', 'encrypt_at_rest_backfill', { advicesScanned: advices.length, advicesConverted, alreadyEncrypted });
+  return { advicesScanned: advices.length, advicesConverted, alreadyEncrypted };
 }
 
 // ---------------------------------------------------------------------------

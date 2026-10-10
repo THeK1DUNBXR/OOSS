@@ -149,6 +149,24 @@ governed act.
 The acceptance suite asserts the plan is empty, so drift between the declared
 matrix and what a tenant holds fails the build.
 
+## Encrypting bank advices written before FX-61
+
+Bank advices generated before FX-61 was fixed store the NEFT file and each
+beneficiary's account number and IFSC in clear. Anyone with DB or backup access
+could read every employee's bank details. New advices are sealed on write. Run
+this once per deployment to seal the old rows:
+
+```bash
+cd apps/api
+npx tsx scripts/encrypt-bank-advices.ts               # every tenant
+npx tsx scripts/encrypt-bank-advices.ts <tenant-slug> # one tenant
+```
+
+It prints scanned, converted and already-encrypted counts per tenant. It is
+idempotent: plaintext is detected by the missing `enc:v1:` prefix, so a second
+run converts nothing. It changes only the storage encoding; the bank file
+content is unchanged, and no advice is deleted or regenerated.
+
 ## Jobs
 
 ```bash
