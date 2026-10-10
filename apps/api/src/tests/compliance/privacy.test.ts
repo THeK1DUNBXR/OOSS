@@ -351,6 +351,60 @@ describe('CMP-DPD-003: a minor StudentProfile needs a guardian consent', () => {
     expect(consent.status).toBe('granted');
   });
 
+  // FX-64. Guardian name and phone are regulated, so they are encrypted like
+  // PAN and bank values. The old code wrote them to the column as given.
+  it('the guardian phone is stored encrypted on the StudentProfile and reads back in the clear', async () => {
+    const minor = await asUser('operations@kaizen.co.in', () =>
+      makePerson('minor-encrypted', { dateOfBirth: new Date(Date.now() - 15 * 365.25 * 86_400_000) }),
+    );
+    const profile = await asUser('operations@kaizen.co.in', () =>
+      attachStudentProfile(minor.id, { fullName: minor.fullName, guardianName: 'Parent Name', guardianPhone: '9800000000' }),
+    );
+    const stored = await unscopedPrisma.studentProfile.findFirstOrThrow({ where: { id: profile.id } });
+    expect(stored.guardianPhone?.startsWith(ENCRYPTED_FIELD_PREFIX)).toBe(true);
+    expect(stored.guardianName?.startsWith(ENCRYPTED_FIELD_PREFIX)).toBe(true);
+    expect(readRegulated(stored.guardianPhone)).toBe('9800000000');
+  });
+
+  // FX-64. The batch enrolment path took `isMinor` from the caller and let a
+  // minor through with no consent id. Minority is derived from the date of
+  // birth on file, as attachStudentProfile does, and the caller cannot
+  // override it.
+  it('a batch enrolment of somebody on file as 15 is refused as a minor even when the caller says they are not', async () => {
+    const minor = await asUser('operations@kaizen.co.in', () =>
+      makePerson('enrol-minor-lie', { dateOfBirth: new Date(Date.now() - 15 * 365.25 * 86_400_000) }),
+    );
+    const cohort = await unscopedPrisma.cohort.findFirstOrThrow({ where: { tenantId: TENANT } });
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', async () => {
+        const { enrolStudent } = await import('../../domains/education.js');
+        return enrolStudent({ cohortId: cohort.id, personId: minor.id, isMinor: false });
+      }),
+    );
+    expect(err.status).toBe(400);
+  });
+
+  // FX-64. A minor's enrolment rests on a recorded guardian consent, as the
+  // student profile does, and its guardian contact is stored encrypted.
+  it('a batch enrolment of a minor with a guardian stores the guardian phone encrypted and the consent it rests on', async () => {
+    const minor = await asUser('operations@kaizen.co.in', () =>
+      makePerson('enrol-minor-ok', { dateOfBirth: new Date(Date.now() - 15 * 365.25 * 86_400_000) }),
+    );
+    const cohort = await unscopedPrisma.cohort.findFirstOrThrow({ where: { tenantId: TENANT } });
+    const enrollment = await asUser('operations@kaizen.co.in', async () => {
+      const { enrolStudent } = await import('../../domains/education.js');
+      return enrolStudent({ cohortId: cohort.id, personId: minor.id, guardianName: 'Parent Name', guardianPhone: '9800000002' });
+    });
+    expect(enrollment.guardianConsentId).toBeTruthy();
+
+    const stored = await unscopedPrisma.enrollment.findFirstOrThrow({ where: { id: enrollment.id } });
+    expect(stored.isMinor).toBe(true);
+    expect(stored.guardianPhone?.startsWith(ENCRYPTED_FIELD_PREFIX)).toBe(true);
+    expect(readRegulated(stored.guardianPhone)).toBe('9800000002');
+    const consent = await unscopedPrisma.consent.findFirstOrThrow({ where: { id: enrollment.guardianConsentId! } });
+    expect(consent.guardianOfPersonId).toBe(minor.id);
+  });
+
   it('an adult student needs no guardian at all', async () => {
     const adult = await asUser('operations@kaizen.co.in', () =>
       makePerson('adult-student', { dateOfBirth: new Date(Date.now() - 25 * 365.25 * 86_400_000) }),
