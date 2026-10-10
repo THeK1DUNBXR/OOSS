@@ -90,10 +90,16 @@ describe('FX-01 — approval step decisions require the approve grant and the re
     expect(decided.state).toBe('approved');
     expect(decided.decidedById).toBe(step.resolvedApproverId);
 
+    const row = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: stepId } });
+    expect(row.state).toBe('approved');
+    expect(row.decidedById).toBe(step.resolvedApproverId);
+
     const audit = await unscopedPrisma.auditRecord.findFirst({
       where: { tenantId: step.tenantId, subjectType: 'approval_step', subjectId: stepId },
     });
     expect(audit).not.toBeNull();
+    expect(audit!.actorId).toBe(step.resolvedApproverId);
+    expect(JSON.stringify(audit!.diff)).toContain('approved');
   });
 });
 
@@ -135,13 +141,20 @@ describe('FX-04 — accepting or rejecting an agent proposal requires a grant an
   it('a granted human accepts the proposal, and the decision leaves an audit row', async () => {
     const actionId = await proposeForecast();
 
+    const chairman = await principalFor('chairman@kaizen.co.in');
     const updated = await asUser('chairman@kaizen.co.in', () => decideAgentAction(actionId, true, 'Accepted.'));
     expect(updated.state).toBe('executed');
+
+    const row = await unscopedPrisma.agentAction.findFirstOrThrow({ where: { id: actionId } });
+    expect(row.state).toBe('executed');
+    expect(row.humanActorId).toBe(chairman.partyId);
 
     const audit = await unscopedPrisma.auditRecord.findFirst({
       where: { subjectType: 'agent_action', subjectId: actionId },
     });
     expect(audit).not.toBeNull();
+    expect(audit!.actorId).toBe(chairman.partyId);
+    expect(JSON.stringify(audit!.diff)).toContain('executed');
   });
 });
 
