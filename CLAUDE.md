@@ -1,8 +1,8 @@
 # CLAUDE.md
 
-Zen 360 (formerly KaiERP) — Kaizen Infinities' operating platform. CRM, HRM, Finance, Education, Command Centre. Multi-tenant, Indian statutory, intended for commercialisation.
+Zen 360 (formerly KaiERP) — Kaizen Infinities' operating platform. CRM, HRM, Finance, Education, Command Centre. Multi-tenant, Indian statutory, internal first; commercialisation is a later product phase, not the current aim.
 
-TypeScript pnpm monorepo: `apps/api` (Express + Prisma + Postgres), `apps/web` (React + Vite + Tailwind + TanStack Query), `packages/shared` (vocabulary both tiers import), `worker/` (Cloudflare Worker: serves the built client, proxies `/api`).
+TypeScript pnpm monorepo: `apps/api` (Express + Prisma + Postgres), `apps/web` (React + Vite + Tailwind + TanStack Query), `packages/shared` (vocabulary both tiers import), the API is served from the company's own server in India; `worker/` (a Cloudflare Worker that served the built client and proxied `/api`) is being removed.
 
 Plan: `docs/plan/README.md` — index, audit point, known drift. **Read only the one phase file you are working on.**
 

@@ -26,3 +26,350 @@ Statutory and legal items are flagged for professional sign-off, not decided her
 | D-18 | Practice offers: security, careers and consultancy (agents 03 #1-#10) | Practice placement: same tenant with a practice discriminator vs separate entities/tenants. Whether the platform holds client restricted evidence. Who signs authorised testing scope and who may accept a client risk. CCTV go/no-go. Careers launch order and whether guarantees, refunds and success fees are offered. | Same tenant with a practice discriminator and a `Project` fix until D-01 says otherwise. Hold finding summaries only; keep client evidence outside the platform until a restricted store and counsel review exist. Remove CCTV from this programme or use a partner VMS (privacy impact assessment first). Launch only models the code and counsel support; defer Kaizen-employed deployment, third-party-employed and payroll-only until counsel confirms status. Offer guarantees and success fees only after the accountant (D-02) settles recognition and the refund-liability ledger path. | SEC 01/02/05/10, CAR 01/07/12; CAP-SEC-01/02/05/10, CAP-CAR-01/07/12, CAP-CON-10 | Phase 4 (before any engagement model is built) |
 | D-19 | Education and skill-development policy (agents 04 D1/D4-D10, 08 D7-D11, 10 D10) | Scheme-specific claim workflows now vs funding guards only. Who verifies competence and who revokes a certificate; whether verification is public. Attendance denominator (excused sessions) and biometric. Trainer-substitution notice and refund basis. Programme and cohort version pinning. Fee-calculator margin definition (on revenue vs markup). GST exemption per course vs per recipient. LMS: build bounded modules vs integrate. | Guards only until a scheme is contracted (enrolment-level funding, invoicing guard); completion asserts claimed, not assessed; pin versions on cohorts from creation; margin on revenue; per-course exemption with a visible invoice flag until counsel answers; state LMS portability and identity needs before choosing. Reason: person-level funding rows already exist and the proposal disclaims scheme assertions. | SKL 02, EDU 08/10/11/16/20/23, FIN 22; CAP-SKL-01..10, CAP-EDU-01/08/10/11/16/20/23 | Phase 4 (before cohort schema change) |
 | D-20 | Ancillary module scope and tenancy (agents 05 D1-D7/D9, 08 D5, 11 D10, 06 D6) | MSP tenancy: tenant per customer vs customer dimension inside the company tenant. Shared logistics and procurement: in or out. Ventures: record only vs pipeline and approval flow. Social publishing: manual until a provider is approved. Remote workspace and hybrid desk booking: build, buy or defer. Spin-off: accept the documented approval bypass on the opening allotment, and script-carry vs counsel-led legal transfer. | Defer MSP, logistics, remote workspace and desk booking; ventures record-only; manual social publishing stays the default; spin-off must pass the normal approval path and be audited, with counsel running the legal transfer and the script moving data only. Reason: none of these has a tenancy or legal design yet. | GRP 13, MED 11, TEC 05/10/19, HRM 28, INT 10; CAP-TEC-05/06/07/10/19, CAP-INT-10, CAP-HRM-28, CAP-MED-11, CAP-GRP-13, CAP-VEN-08 | Phase 7 (MSP/tenancy); before first spin-off commit |
+
+## Owner answers (recorded 2026-10-10)
+
+Answers given by the owner. Existing rows above are unchanged. Where no answer is recorded here, the recommendation above stands.
+
+- **D-01 (entity model).** Owner answer: a tenant is one legal company. Each subsidiary is its own tenant. Holding companies connect to their subsidiaries through an optional, consented link layer between tenants (closest to option (a)'s group layer). Divisions are not separate tenants. Every company owns its own subscription.
+  - Open: intercompany recording choice (pairing record vs reciprocal `post()` entries); accountant confirmation of Ind AS 110/103 consolidation applicability (D-02).
+  - Implication to confirm, not an owner statement: CLAUDE.md rule 6 (tenant scope from session only) means a holding-company view needs an explicit link with consent and read-only snapshots, not a relaxed tenant check.
+- **D-03 (cutover and money).** Owner answer: money is bigint paise end to end, including in database storage; no Decimal at the DB boundary. This replaces that part of the recommendation above and matches CLAUDE.md rule 1.
+  - Not yet answered; the recommendation stands, unconfirmed: cutover timing, payments scope and closed-period imports.
+- **D-05 (product intent).** Owner answer: internal first, product later. Statutory parameters stay date-effective `StatutoryRule` rows (seed Tamil Nadu as data, no hardcoding), consistent with CLAUDE.md rule 4. Subscription ownership and billing rules are deferred to the product phase.
+  - Not yet answered; the recommendation stands, unconfirmed: funding model and staffing.
+- **D-09 (authority model).** Owner answer: decided during onboarding. When employees and roles are created at setup, authority (approval limits, delegation, alternates) is selectable at that time, entered as data, not hardcoded.
+  - Open: which delegation store to keep (decision `Delegation` at `main.prisma:905`, HR `DelegationOfAuthority`, or new `DelegationLog`); single vs separate approvals inbox; founder-only classes; who names reserved matters; the 24-hour absence test.
+- **D-15 (AI claim).** Owner answer: reword the "AI-native" claim as a roadmap statement, not a current capability (there are zero model calls today).
+  - Open: all other D-15 items (autonomy touchpoints, provider, spend caps, India-region rule, evaluation owner) remain open; the recommendation stands, unconfirmed.
+
+Conflict to resolve: CLAUDE.md says the platform is intended for commercialisation and PRODUCT.md says it is internal-only; the D-05 answer (internal first, product later) is consistent with both only if the multi-tenant design is kept. Not edited here.
+
+## Owner answers, round 2 (recorded 2026-10-10)
+
+Answers given by the owner in a second round. Existing rows and the first-round answers above are unchanged. Where no answer is recorded here, the recommendation above stands.
+
+- **Status of the work.** Owner answer: planning only for now; nothing is to be built yet.
+  - Not answered: D-04 (Z0 stop-ship before the discovery pilot). The question was therefore not answered and stays open.
+- **D-01 (intercompany).** Owner answer: pair the two sides now; post reciprocal ledger entries once Phase 1 lands.
+- **D-03 (cutover).** Owner answer: retire the legacy `Transaction` table at cutover (Phase 1.5). Imports into a closed period require reopening the period, with a reason. Combined with the first-round answer, money is bigint paise end to end.
+  - Implication to confirm, not an owner statement: existing `Decimal(18,2)` columns need a migration plan (see FIXES.md FX-31).
+- **FX-31 (paise remainder).** Owner answer: the leftover paise go to the first allocation line, so allocations always sum to the total.
+- **Plan decisions A and C.** Owner answer: `entityId` goes on the journal now, and Phase 1 is built for many companies.
+- **D-09 (authority store).** Owner answer: one new delegation model. Thresholds are entered as data at onboarding, consistent with the first-round answer. The two existing stores (decision `Delegation` at `main.prisma:905` and HR `DelegationOfAuthority`) are to be replaced or folded into the new model.
+  - Not stated by the owner: the migration path for the two existing stores.
+- **D-15 and FX-04.** Owner answer: nobody holds the `agents:decide` permission for now, so no agent proposal can be accepted until the AI phase. The other D-15 items stay open.
+- **D-13 and FX-50.** Owner answer: inbound webhooks are authenticated with a per-tenant HMAC. The live WhatsApp, email and telephony providers are not yet named.
+- **FX-02.** Owner answer: no skill or score feeds pay or promotion automatically; a human decision is always required.
+- **D-19 and D-08.** Owner answer: certificate verification is internal only (requires sign-in) for now; no external users at launch.
+- **D-20.** Owner answer: no approval bypass on a spin-out's opening allotment (FX-22).
+- **D-02.** Owner answer: the accountant and the tax/legal adviser are not yet named. Every statutory item (revenue, cash, payables, GST, TDS, Ind AS 110/103 consolidation, Income-tax Act 2025 mapping) remains awaiting professional sign-off. Nothing here asserts law.
+- **D-06 and plan decision B.** Owner answer: direct to the government e-invoice portal (IRP), not a GSP. This differs from the recommendation above, which is a GSP. Whether and when e-invoicing applies still needs the tax adviser.
+- **D-14 (encryption key).** Owner answer: the encryption key is platform-held, one per tenant; boot refuses to start without it (FX-60).
+- **D-05 (staffing and funding).** Not decided yet. The doc says to measure productive hours before committing.
+- **D-17 (restricted funds).** Owner answer: restricted funds are tracked in the ledger from Phase 1.
+  - Implication to confirm, not an owner statement: this adds a fund dimension to the ledger design. The legal form (for example Section 8, 12A, 80G) still needs professional advice.
+- **Still open, not asked yet (later phases).** D-07, D-10, D-11, D-12, D-16, D-18, and the list of live inbound providers under D-13.
+
+## Owner phase definitions and scope (recorded 2026-10-10)
+
+Owner's definitions, paraphrased:
+
+- **Phase 0** = streamline and fix the existing workflow without adding new features.
+- **Phase 1** = complete the features that let software developers work from home with no issues (daily workflow tools and delivery/project work).
+- These are not the plan's phases 0-8 (`docs/plan/README.md`) nor the zen360 tracks Z0-Z4. The mapping is the lists below.
+- The owner chose to include some new-build items in Phase 0. That departs from "no new features" and is the owner's choice.
+
+Phase 0, fix items (all kept):
+
+- Plan P0 0.1, 0.3, all of 0.6 (including FX-40 and FX-41, UTC financial-year fixes), and the 0.8 fixes (two dead style classes, build identity).
+- Stop-ship: FX-01, 02, 03, 04, 05, 20, 21, 22, 50, 60, 61, 80 (internal only: verification requires sign-in, no public verify endpoint), 81.
+- Ledger defects: FX-30 to 35 and FX-70 to 73.
+- Interface fixes: code splitting, 401 handling, 4.2a metric rule.
+
+Phase 0, new or replace items chosen:
+
+- 0.2 session hardening; 0.4 structured logging; 0.5 scheduler; 0.7 schema split, map and scoped test scripts; 0.8 CI pipeline, lint and migration baseline.
+- P1 ledger 1.1, 1.2, 1.3, 1.4, 1.5, 1.6.
+- P3 3.1 statutory master pack.
+- P4 error boundaries, token storage (httpOnly cookie), typed client, component library, forms, 4.5 feel, 4.3 accessibility, 4.6 frontend tests.
+- P7 onboarding state machine, per-state statutory packs, static egress IPs.
+- P8 concurrency test suite, tenant-leakage fuzzer, ten CI gates.
+- Z2 commitment record, one document store, typed task source, decision links, founder exception view.
+- Z3 continuity and handover gate.
+
+Phase 0, out or undecided:
+
+- P2 (2.1 audit trail, 2.2 DPDP): undecided.
+- P3: 3.2 e-invoicing out; 3.3, 3.4, 3.5 undecided.
+- P4: 4.4 mobile out.
+- P5: 5.2 undecided; 5.3 dropped.
+- P6: all dropped for now (needs 6.1, P2, P5).
+- P7: per-tenant encryption, noisy-neighbour controls and India residency undecided; tiering, billing and real API deployment out.
+- P8: load tests, monthly restore drill, SOC 2 / ISO 27001, annual pentest out.
+- Z2: customer case out (could be reconsidered now that D-12 is answered).
+- Z3: lifecycles out.
+- Z4: all undecided.
+
+Phase 0 prerequisite notes:
+
+- Onboarding and per-state packs need 3.1 (added for that reason).
+- 1.5 needs a named accountant (D-02), the Kaizen book figures and a named human reviewer.
+- FX-70 to 73 likely need 1.1 to 1.3 (implication from the docs, not an owner statement).
+- 1.2 needs PgBouncer transaction mode and a non-owner database role.
+- Token storage needs 0.2; error boundaries need 0.4; accessibility and frontend tests need 0.8 CI.
+- Tenant-leakage fuzzer needs a second tenant's test data and D-07 (now answered).
+- P8 ten CI gates are defined in `00-BRIEF.md` section 5, which was not read for this record.
+
+Phase 1 scope chosen:
+
+- Approvals: single approvals inbox (CAP-DEC-08); one delegation record (DEC-06); maker-checker (DEC-07); routing and authority matrix (DEC-05).
+- Attendance and remote work: remote and field attendance (HRM-06); WFH and hybrid policy (HRM-28); leave approval with backup approver (HRM-19); access revoked at exit (HRM-15).
+- Time and projects: time against engagement (CON-09); work logs (DEL-07); project with owner and acceptance (DEL-01); milestones and acceptance (DEL-02).
+- Delivery: estimates (DEL-03); change requests (DEL-04); release records (DEL-05); exit gates (DEL-06); sales-to-delivery handoff (CRM-13); single engagement with packages (CON-05); allocation calendar and capacity ledger (HRM-18).
+- Sprints, backlog, ~~standups~~ (dropped per round 4) and internal chat: `planned-features.md` Feature 1, phases A (work items), B (discussion), C (realtime and delivery), D (automation).
+- Communication: shared inboxes (COM-02); meetings and minutes (COM-11); response SLA (COM-13); notifications (COM-15).
+- Staff expense claims: no capability row exists.
+- Voice calls: open-source LiveKit (Apache-2.0) under the existing API; no recordings; recording service not deployed.
+- Out of Phase 1 or not chosen: device custody, issued kit, exit asset return (TEC-13, HRM-29, HRM-14); object storage for chat attachments (decision deferred).
+
+Phase 1 prerequisite notes:
+
+- Phase 1 sits on the Phase 0 selection above.
+- Feature 1 needs: the Task completion route fix at `crm.routes.ts:1109` first; tenant row-level security on new work tables (CLAUDE.md rule 6); legal review before Phase B; a check against CAP-HRM-32 (no covert monitoring); SSE tested first for realtime; chat kept under the 8-year retention rule (needs counsel confirmation); and the doc's decisions on transactional email and object storage (email open, storage deferred).
+- DEL-04, CON-05, CRM-13 and DEL-07 depend on D-12 (now answered).
+- DEL-03 depends on HRM-18. DEL-02 needs the one document store and an exact money type. COM-13 depends on D-11 (service levels after a baseline).
+- Conflict to resolve: COM-02 shared inboxes depend on D-13 provider decisions, but email and WhatsApp capture are deferred.
+- HRM-28 WFH policy was on the proposal's defer list under D-04, but the owner included it in Phase 1.
+- Effort: the docs give per-phase effort totals only (plan P0 1 week, P1 3-4 weeks, P3 6-8 weeks, P4 4-6 weeks, P5 3 weeks, P6 4-6 weeks, P7 3-4 weeks), with no per-item sizes.
+
+## Owner answers, round 3 (recorded 2026-10-10)
+
+Answers given by the owner in a third round. Existing rows and the earlier answers above are unchanged. Where no answer is recorded here, the recommendation above stands.
+
+- **D-02 (accounting and tax sign-off).** Owner answer: for now an internal finance head signs off. No outside accountant or tax/legal adviser is named. Every statutory item (GST, TDS, labour codes, revenue recognition, consolidation, Income-tax Act 2025 mapping) remains awaiting professional sign-off. CLAUDE.md "statutory uncertainty means stop and flag" still applies.
+- **D-07 (identity and tenancy).** Owner answer: confirmed. One login per person; separate permissions per company; an explicit share record for any cross-company read; access and tenant checks in place before any external user.
+- **D-11 (ownership and service levels).** Owner answer: owners and backups required on pilot processes only. Service-level numbers wait for a measured baseline. "Settlement without handover" and "forecast with unverified receipts": warn only, do not block.
+  - Interpretation, not an owner statement: the system warns the user; it neither blocks the settlement nor silently excludes receipts.
+- **D-12 (customer case and acceptance).** Owner answer: a new Case record, from which an exception can be raised. "Won" means a signed contract; an MoU counts only when executed and typed. One named delivery owner at sales-to-delivery handoff. Customer acceptance, separate from technical completion, triggers billing.
+  - Implication, not an owner statement: revenue and invoicing rules need professional sign-off under D-02.
+  - Not answered: whether work logs are aggregate or per person.
+- **D-04 (first-release scope).** Owner answer: the defer list is adopted. CCTV, pantry, MSP catalogue, hybrid desk booking, ventures platform and logistics are out of this programme's first release. Phase order: the owner's own Phase 0 and Phase 1 definitions (see the section above) apply.
+  - Not answered: build vs integrate per capability.
+- **D-05 (resourcing).** Owner answer: one senior person plus AI-assisted developers, funded phase by phase with a stop rule. This resolves the staffing and funding part. The 25% product-design extra remains per the "internal first, product later" answer.
+- **D-10 (privileged access and review).** Owner answer: an authorised director is the independent reviewer of related-party and founder deals. Platform admins have no default access to HR or finance content.
+  - Not answered: break-glass details.
+- **D-13 (voice, email and WhatsApp).** Owner answer: voice calls via open-source LiveKit in Phase 1, with no recordings or transcripts. Email and WhatsApp capture are deferred; chat comes from Feature 1. Providers for email, WhatsApp and telephony remain unnamed. Recordings stay out until counsel signs off.
+  - LiveKit notes, unverified: recording is a separate egress service and is not deployed; per-tenant key separation, end-to-end encryption, release years and Indian data-hosting obligations are unverified.
+- **D-14 (privacy, erasure and residency).** Owner answer: erasure is handled by minimised audit facts plus an erasable content store. The audit chain keeps facts and a salted subject token; personal content lives in a separate erasable store. Legal hold is deferred: for now the software only warns the user that something looks illegal.
+  - Not answered: counsel owner. Every DPDP, retention and residency item awaits counsel; no DPDP date is stated as fact.
+- **D-16 (integrity claims).** Owner answer: Postgres outbox for event delivery. The audit trail is called an "integrity log" until the checker recomputes content fingerprints across the whole chain (FX-81). Anchor-key holder: not needed until an auditor-facing claim is planned.
+- **D-18 (practice offers).** Owner answer: CCTV stays deferred. When built, it is live view only, with no recording.
+  - Not answered: summaries-only client evidence, the careers launch model, and practice labels vs separate companies.
+- **Feature 1 decisions (`planned-features.md`).** Owner answers: realtime transport, test SSE first. Chat retention, keep with the 8-year rule, subject to counsel. Object storage, deferred. Transactional email, open.
+
+Still open after round 3:
+
+- D-02: real statutory sign-off (no named accountant or tax/legal adviser).
+- D-14: counsel owner.
+- D-18: remaining items (summaries-only client evidence, careers launch model, practice labels vs separate companies).
+- Feature 1: transactional email decision.
+- CLAUDE.md vs PRODUCT.md commercial conflict (see the conflict note in the first-round answers).
+- D-04: build vs integrate per capability.
+
+## Owner answers, round 4 (recorded 2026-10-10)
+
+Answers given by the owner in a fourth round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, except the one in-place annotation to the Phase 1 scope list (standups). Where no answer is recorded here, the recommendation above stands.
+
+- **Task-complete fix (owner answer).** `POST /tasks/:id/complete` (`crm.routes.ts:1109`; no `assertCan`, audit or emit) is moved into Phase 0 as a stop-ship-class fix. Write the failing test first.
+- **3.1 statutory master pack (owner answer).** Placed early in Phase 0 (owner override).
+  - Implication, not an owner statement: this departs from the repo README's "do not reorder" rule and from the "1 before 3" sequencing rule. It is recorded here as an explicit owner override of both.
+- **Phase length (owner answer).** Each phase has a stop rule: a phase ends when its done-criteria pass. The one-week label for Phase 0 no longer applies. Each wave is sized when it starts.
+- **Added to Phase 0 (owner answer).** FX-24 (outbox); FX-51 (RLS on every table); FX-42 (UTC financial period at `invoicing.ts:266-269`); FX-06 and FX-07; FX-62 to FX-65.
+- **Phase 1 items (owner answers).**
+  - COM-02 shared inboxes: internal-only inbox. No external email or WhatsApp provider.
+  - Work logs: per person, plus project aggregates for insights (D-12). This answers the round 3 question on aggregate versus per person.
+  - Field and remote attendance: self-declared request plus manager approval. No location, device ID or IP is stored.
+  - Staff expense claims: claim, approve, then post to the ledger on approval via `post()`. Desktop capture only.
+  - Counsel owner (D-14): the internal finance head, for now.
+  - Statutory sign-off (D-02): the internal finance head only. Statutory values stay DRAFT until signed off.
+  - Standups: dropped from Phase 1. They had no spec in `planned-features.md`.
+- **Product aim (D-05, owner answer).** Internal first, product later. The multi-tenant design is kept. `PRODUCT.md` (Capabilities and Constraints, audience bullet) and `CLAUDE.md` (line 3) were edited minimally so the commercial-versus-internal wording no longer conflicts. This resolves the conflict noted in the first-round answers.
+
+Still open after round 4:
+
+- D-04: build vs integrate per capability.
+- D-18: summaries-only client evidence, careers launch model, practice labels vs separate companies.
+- Feature 1: transactional email decision.
+- D-10: break-glass details.
+
+## Owner answers, round 5 (recorded 2026-10-10)
+
+Answers given by the owner in a fifth round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged. Where no answer is recorded here, the recommendation above stands.
+
+- **00-BRIEF gates (owner answer, OPEN).** `00-BRIEF.md` is missing from the branch. The ten CI gates and the ledger gate tests are to be defined fresh. Claude will draft them for owner approval. Status: OPEN until drafted and approved.
+- **1.5 cashbook mapping and Kaizen book figure check (owner answer).** The reviewer for both is the internal finance head.
+- **Transactional email (owner answer).** The provider is chosen now: Resend, in Phase 1 scope.
+  - Implication, not an owner statement: Resend processes data outside India, and sending relies on domain verification. A legal and data-hosting check by the internal finance head (the D-14 counsel owner) is needed before real customer data is sent.
+- **Build vs integrate (D-04, owner answer).** Build natively for work items, chat, voice and video. The owner's method: do NOT fork or copy third-party code. Read open-source source code to learn what it did and why, then write custom code for this app. LiveKit is the voice and video media layer, used as a dependency or service.
+  - Implication, not an owner statement: this matches the existing clean-room rule. No code from third-party repos is copied, regardless of licence.
+- **Video calls (owner answer).** Video calls are added to Phase 1. Previously voice only. Recording, egress and transcripts remain off (D-13).
+  - Implication, not an owner statement: video adds bandwidth and server cost to the LiveKit Indian-VPS plan.
+- **Per-tenant encryption (owner answer).** One key per tenant. D-14 stands. P7 "undecided" is to be read as decided.
+- **Deferred items (owner answer).** D-18 client files summaries-only, careers model and practice labels are all DEFERRED. None is in Phase 0 or Phase 1.
+
+Still open after round 5:
+
+- D-02: real statutory sign-off (internal finance head only; statutory values stay DRAFT).
+- 00-BRIEF gates: draft pending Claude's draft and owner approval.
+- D-14: chat-retention counsel check.
+- Resend: data-hosting check (cross-border processing and domain verification).
+- D-03: payments scope and cutover timing.
+- D-09: open items (founder-only classes, reserved matters, 24-hour absence test).
+- D-11: service-level numbers.
+- Expense receipt storage (object storage deferred).
+- VPS provider for LiveKit.
+
+## Owner answers, round 6: hosting (recorded 2026-10-10)
+
+Answers given by the owner in a sixth round, on hosting. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, including the round 5 "Still open" list, which is superseded by the list at the end of this section. Where no answer is recorded here, the recommendation above stands.
+
+- **Hosting (owner answer).** The application is hosted on the company's own server, located in India, on-premises.
+- **Cloudflare Worker (owner answer).** `worker/index.ts` is to be removed. Everything is served from the company's own server.
+  - Implication, not an owner statement: `CLAUDE.md` (line 4) and the repo README still describe `worker/` as the serving layer. Not edited here.
+  - Implication, not an owner statement: SSE is served directly by the Express API. The Feature 1 Phase C "SSE through the Worker" spike gate no longer applies.
+  - Implication, not an owner statement: removing the Worker removes Cloudflare as the TLS, DDoS and rate-limit front. A reverse proxy and network protection must be chosen for the own server.
+- **Operations wave in Phase 0 (owner answer).** An operations wave is added to Phase 0 with four items: database backups with tested restores; monitoring and alerts; TLS certificate renewal; non-owner application database role setup.
+  - Implication, not an owner statement: the non-owner app role (blocking 1.2) and PgBouncer in transaction mode are now the own server's setup.
+- **LiveKit hosting (owner answer, by implication of the hosting answer).** LiveKit self-hosting runs on the own server.
+  - Implication, not an owner statement: needs TCP 7880 and 7881, UDP 50000-60000, and TURN/TLS on 443 open at the on-premises network edge, plus a public IP. The VPS provider question is superseded.
+  - Implication, not an owner statement: video (round 5) adds bandwidth load on the on-premises connection.
+- **P7 static egress IPs (implication).** These depend on the office or ISP providing static IPs.
+- **Single-site risk (implication).** On-premises raises single-site risk: power, internet, hardware failure and off-site backup each need a named owner.
+- **Data location and email (implication).** Indian data hosting is simpler for in-India storage. Resend (round 5) still processes data outside India, so the round 5 data-hosting check still applies.
+- **Object storage (implication).** Object storage, still deferred, would also be on the own server. Receipts and attachments remain deferred.
+
+Still open after round 6 (supersedes the round 5 list; the round 5 item "VPS provider for LiveKit" is closed by the hosting answer):
+
+- D-02: real statutory sign-off (internal finance head only; statutory values stay DRAFT).
+- 00-BRIEF gates: draft pending Claude's draft and owner approval.
+- D-14: chat-retention counsel check.
+- Resend: data-hosting check (cross-border processing and domain verification).
+- D-03: payments scope and cutover timing.
+- D-09: open items (founder-only classes, reserved matters, 24-hour absence test).
+- D-11: service-level numbers.
+- Expense receipt storage (object storage deferred).
+- Owner of server operations and off-site backup.
+- Reverse proxy and network protection choice.
+- Static public IP availability (office or ISP).
+- Internet and power redundancy.
+
+## Owner answers, round 7 (recorded 2026-10-10)
+
+Answers given by the owner in a seventh round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, including the round 6 "Still open" list, which is superseded by the list at the end of this section. Where no answer is recorded here, the recommendation above stands.
+
+- **Server operations and off-site backup owner (owner answer).** An internal IT person or team will own server operations and off-site backup. The name is not yet given.
+- **Reverse proxy (owner answer).** Caddy, with automatic TLS and certificate renewal.
+- **Connectivity and power (owner answer).** The office has a static public IP. It has a second internet line and backup power, both.
+  - Implication, not an owner statement: this resolves the static public IP and internet and power redundancy risks listed in round 6. The P7 static egress IP dependency and the single-site power and internet risk are resolved on this answer. Off-site backup and server operations still need the named owner above.
+- **D-03 payments scope (owner answer).** Record only. No online payment gateway.
+- **Cashbook cutover (owner answer).** The cashbook moves to the new ledger at a financial year start (1 April), and only after the trial balance ties to the paisa.
+- **D-09 approvals (owner answer).**
+  - Founder-only approval classes are: payroll run, large payments, and statutory filings.
+  - If an approver is absent for 24 hours, the request escalates to the named alternate stored on the request.
+  - Reserved matters are named by the founder at onboarding and entered as data.
+- **D-11 service-level numbers (owner answer).** Measure first, set later. Build the mechanism, collect about one month of real data, then the owner sets the numbers.
+- **Resend data-hosting check and chat-retention legal check (owner answer).** Both are done by the internal finance head before the first outside user. Internal testing proceeds meanwhile.
+
+Still open after round 7 (supersedes the round 6 list):
+
+- Real statutory sign-off beyond the internal finance head. Statutory values stay DRAFT.
+- Ten CI gates and ledger gate tests, to be drafted by Claude for owner approval. The 00-BRIEF.md file is missing.
+- Name of the internal IT owner for server operations and off-site backup.
+- Large-payment threshold value and other thresholds, to be set at onboarding.
+- Expense receipt storage. Object storage remains deferred.
+
+## Owner answers, round 8 (recorded 2026-10-10)
+
+Answers given by the owner in an eighth round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged. This round supersedes the round 7 "Still open" list at the end of the round 7 section. Where no answer is recorded here, the recommendation above stands.
+
+- **Tenant setup data (owner answer).** Where a decision is tenant setup data, it is closed as "tbd during onboard" (to be entered during onboarding). It is entered as data, not hardcoded. Closed this way, and only these:
+  - **Large-payment threshold and other approval thresholds (D-09).** Status: tbd during onboard.
+  - **Reserved matters list (D-09).** The founder names them at onboarding. Status: tbd during onboard.
+  - **Named alternates and delegates per role (D-09).** Status: tbd during onboard.
+  - **Per-tenant practice labels, careers model and client-file summary rules (D-18).** Already deferred in the round 5 answer ("D-18 client files summaries-only, careers model and practice labels are all DEFERRED"). Status: tbd during onboard / deferred.
+- **Not closed by this answer.** These stay open, and are not tenant setup data:
+  - Real statutory sign-off (D-02). Statutory values stay DRAFT.
+  - The internal IT owner's name (server operations and off-site backup, round 7).
+  - D-11 numbers. Measure first, set later (round 7); the one-month measurement has not been collected.
+  - Legal checks: the chat-retention counsel check (D-14) and the Resend data-hosting check (round 7). Both are done by the internal finance head before the first outside user.
+- **CI gates and ledger tests (implication, not an owner statement).** Claude drafted the ten CI gates and the three ledger gate tests for owner approval in `docs/plan/zen360/CI-GATES-DRAFT.md`. That file carries the draft status line that `00-BRIEF.md` section 5 is missing from the branch and is not reconstructed. Nothing in the draft is in force until the owner approves it.
+
+Still open after round 8 (supersedes the round 7 list):
+
+- Real statutory sign-off beyond the internal finance head (D-02). Statutory values stay DRAFT.
+- Name of the internal IT owner for server operations and off-site backup.
+- Ten CI gates and ledger gate tests: awaiting owner approval of `docs/plan/zen360/CI-GATES-DRAFT.md`.
+- Expense receipt storage location: object storage on the company's own server, deferred.
+- D-11 numbers after the one-month measurement.
+- Legal checks carried over from round 7, not closed by this round: the chat-retention counsel check (D-14) and the Resend data-hosting check. Both are due before the first outside user.
+
+## Owner answers, round 9 (recorded 2026-10-10)
+
+Answers given by the owner in a ninth round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged. This round supersedes the round 8 "Still open" list at the end of the round 8 section. Where no answer is recorded here, the recommendation in `docs/plan/zen360/CI-GATES-DRAFT.md` stands, and that draft's status line says what is approved.
+
+- **CI gates G1 to G10 (owner answer).** All ten CI gates G1 to G10 are approved as the required set.
+- **Log redaction and accessibility become required gates (owner answer).** The log-redaction check and the accessibility (axe) check are required gates too, so there are twelve checks in total. In the draft's numbering they are added as G11 (log redaction) and G12 (axe).
+- **Mock scan (owner answer).** The mock scan fails the build.
+- **Failing-test-first proof (owner answer).** The failing test sits in a separate first commit that fails on the old code. CI checks this.
+- **Governed-write scan (owner answer).** The governed-write scan is registry-driven and blocks the build. Unregistered writes fail the build, and `force: true` fails the build.
+- **Dependency licence check (owner answer).** The licence check is REPORT ONLY. It lists the licences found and never fails the build.
+  - Implication (label): the clean-room, no-copy rule in CLAUDE.md and the owner's "read, understand, write custom" method are now enforced by review, not by CI.
+- **fast-check (owner answer).** fast-check (MIT) is approved as a test-only dependency.
+- **Ledger test budget (owner answer).** Short runs of the ledger property test happen on every pull request. The full ten-thousand-operation test and the full concurrency runs happen at phase end.
+- **Statutory gate G10 (owner answer).** G10 checks structure only. It fails on hard-coded rates and never checks values.
+- **CI database approach (owner answer).** CI moves from `prisma db push` to real migrations in Wave 0.
+- **Gate sequencing (owner answer).** Gates are listed per wave only. The team sequences the work within a wave.
+- **Access model (owner answer).** Named reviewers and signers are replaced by a level-based access system. Each employee is assigned a level during onboarding. Sign-off duties are attached to levels, not to named people. Examples of duties: the Kaizen fixture sign-off, the 1.5 account-mapping review, statutory rule approval, legal checks and approval classes.
+  - Implication (label): this extends D-09, where thresholds and roles are entered as data at onboarding.
+  - Implication (label): until onboarding exists, the internal finance head remains the interim holder of every sign-off duty previously assigned to them.
+  - Implication (label): the per-tenant assignment of duties to levels is "tbd during onboard". The level model itself (level names, number of levels, which duties sit at each level, and whether levels are per tenant) still needs a design decision. It is open, listed below.
+
+Still open after round 9 (supersedes the round 8 list):
+
+- Statutory sign-off still needs a real qualified person, even when the duty is held by a level. Statutory values stay DRAFT.
+- Name of the internal IT owner for server operations and off-site backup. This becomes a level assignment at onboarding.
+- Level model design: the levels, the duties at each level, and whether levels are per tenant.
+- Expense receipt storage location: object storage on the company's own server, deferred.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+
+## Owner answers, round 10 (recorded 2026-10-10)
+
+Answers given by the owner in a tenth round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged. This round supersedes the round 9 "Still open" list at the end of the round 9 section. Where no answer is recorded here, the recommendation in `docs/plan/zen360/CI-GATES-DRAFT.md` stands, and that draft's status line says what is approved.
+
+- **Ledger gate tests (owner answer, item 1).** L1 (ten-thousand-operation property test), L2 (migration equivalence) and L3 (200 concurrent allocations) are approved as the required ledger gate. Budget: the short run of the property test on each pull request; the full ten-thousand-operation test and the full concurrency runs at phase end.
+- **CI migration baseline (owner answer, item 2).** The CI migration baseline sits in Wave 0. Draft G3 in `docs/plan/zen360/CI-GATES-DRAFT.md` is corrected from "from Wave B" to Wave 0, and the draft's open question 11 is resolved. Who owns the baseline is not recorded.
+- **Governed writes (owner answer, item 3).** BOTH checks are required: the registry scan (static, blocks the build) and a runtime test that a write leaves an audit row. This resolves the draft's check (b) and its open question 4.
+- **Ordered plan location (owner answer, item 4).** The final ordered plan is committed to the repository branch as `docs/plan/zen360/ORDERED-PLAN.md`. It is not published as a separate document.
+- **Access levels by stakeholder type (owner answer, item 5; extends the round 9 access-model answer).** Levels are split by stakeholder type:
+  - Employees: Head, Manager, Staff.
+  - Founders and owners.
+  - Contractors and freelancers.
+  - External auditors and accountants.
+  - Board and investors.
+  The levels are a template that ships with the app. Each tenant can edit the template at onboarding. Each person holds one level, plus named extra duties.
+- **Maker-checker: the founder is exempt (owner answer, item 6).** The founder may approve the founder's own requests. No extra flag is recorded beyond the normal audit row.
+  - Implication (label): this departs from the CLAUDE.md-style maker-checker rule, where the requester never approves.
+  - Implication (label): this departs from the Phase 1A draft test "maker equals checker is refused". That test must exempt the founder level.
+  - Implication (label, recorded as a risk, not an objection): self-approval by the founder is traceable only through the ordinary audit row. Segregation of duties is weaker for founder-only classes: payroll run, large payments and statutory filings.
+  - Still undefined after this answer: the exact duties per level; whether contractors, auditors and board members are users of the same tenant; and the read scope for each level.
+
+Still open after round 10 (supersedes round 9):
+
+- Statutory sign-off by a qualified person. Statutory values stay DRAFT.
+- Duties per level, and read scope of the non-employee levels (founders and owners, contractors, external auditors and accountants, board and investors), including whether they are users of the same tenant.
+- IT owner: a level assignment at onboarding. The name is not recorded.
+- Expense receipt storage location: object storage on the company's own server, deferred.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).

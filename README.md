@@ -1,6 +1,6 @@
 # KaiERP — ERP Platform of Kaizen Infinities
 
-An AI-native, multi-tenant ERP for Kaizen Infinities. CRM, HRM and Finance are
+A multi-tenant ERP with AI features on the roadmap for Kaizen Infinities. CRM, HRM and Finance are
 the three domains the company runs on; Education, Projects, Commercial,
 Governance, Technology (the CIO office) and the Command Center ship alongside
 them because the platform's premise is that they are one system, not nine
@@ -325,8 +325,9 @@ one.
 
 ## Deploying
 
-The client deploys to Cloudflare as a Worker named **ooss**, which serves the
-built SPA and forwards `/api` to the API.
+The API is served from the company's own server in India. The client was
+deployed to Cloudflare as a Worker named **ooss**, which served the built SPA
+and forwarded `/api` to the API; that Worker is being removed.
 
 ```bash
 pnpm run build:worker    # builds apps/web/dist
