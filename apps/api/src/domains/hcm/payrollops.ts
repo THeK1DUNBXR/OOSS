@@ -582,7 +582,9 @@ export async function generateBankAdvice(payrollRunId: string) {
     rows.push({
       employeeName: employment.person?.fullName ?? employment.id,
       accountNumber: account,
-      ifsc: employment.bankIfsc ?? '',
+      // Same regulated read as the account number above: the column is stored
+      // encrypted, and a bank reads the file, so the IFSC must leave in the clear.
+      ifsc: readRegulated(employment.bankIfsc) ?? '',
       amount: net,
       reference: `${run.recordCode}/${employment.id.slice(-6)}`,
     });
