@@ -874,18 +874,4 @@
 
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
-- `.claude/worktrees/agent-a19bd5e2d7e0bc5ae/pnpm-lock.yaml` (6006 lines)
-- `.claude/worktrees/agent-a267cf0c53718b422/pnpm-lock.yaml` (6006 lines)
-- `.claude/worktrees/agent-a348c13968dfc4ee9/pnpm-lock.yaml` (6006 lines)
-- `.claude/worktrees/agent-a63fd5466e71683b1/pnpm-lock.yaml` (6006 lines)
-- `.claude/worktrees/agent-a8c1a316b0acb1bdc/pnpm-lock.yaml` (5293 lines)
-- `.claude/worktrees/agent-a060d09e4eb532b47/pnpm-lock.yaml` (5169 lines)
-- `.claude/worktrees/agent-a0a9b0dd671ce5ac2/pnpm-lock.yaml` (5169 lines)
-- `.claude/worktrees/agent-a277db7fa361cf1f6/pnpm-lock.yaml` (5169 lines)
-- `.claude/worktrees/agent-a3eb7624f960ee016/pnpm-lock.yaml` (5169 lines)
-- `.claude/worktrees/agent-a60f26b194f394e12/pnpm-lock.yaml` (5169 lines)
-- `.claude/worktrees/agent-a6846beaf45ab3c61/pnpm-lock.yaml` (5169 lines)
-- `.claude/worktrees/agent-a889deee29e46c1b3/pnpm-lock.yaml` (5169 lines)
-- `.claude/worktrees/agent-a9110a4117f27a259/pnpm-lock.yaml` (5169 lines)
-- `.claude/worktrees/agent-afd22e077572a2f7e/pnpm-lock.yaml` (5169 lines)
 - `pnpm-lock.yaml` (5169 lines)
