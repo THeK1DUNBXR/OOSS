@@ -256,15 +256,6 @@ export function totalsOf(invoice: {
 // ---------------------------------------------------------------------------
 
 /**
- * Refuses a change to an invoice whose month has been filed.
- *
- * A filed GSTR-1 is a statement of every outward supply in that month. Editing
- * one afterwards does not correct the return, it makes the books disagree with
- * it — and the disagreement is found by somebody else, later, with a notice. The
- * lawful correction after filing is a credit or debit note in the current
- * period, which this platform issues through `issueCreditNote`.
- */
-/**
  * The GST period an invoice falls in, in IST. A UTC month here checks the lock
  * against March for an invoice dated 1 April, so an April invoice issued in the
  * first five and a half hours of the day could be edited after April's GSTR-1
@@ -274,6 +265,15 @@ export function filingPeriodOf(date: Date): string {
   return istMonthKey(date);
 }
 
+/**
+ * Refuses a change to an invoice whose month has been filed.
+ *
+ * A filed GSTR-1 is a statement of every outward supply in that month. Editing
+ * one afterwards does not correct the return, it makes the books disagree with
+ * it — and the disagreement is found by somebody else, later, with a notice. The
+ * lawful correction after filing is a credit or debit note in the current
+ * period, which this platform issues through `issueCreditNote`.
+ */
 export async function assertPeriodOpen(date: Date, what: string): Promise<void> {
   const auth = currentAuth();
   const period = filingPeriodOf(date);

@@ -136,7 +136,7 @@
 
 **`apps/api/src/domains/interactions.ts`** (452 lines) — RelatedReference:33 · classificationFor:55 · computeSensitivity:69 · InteractionInput:90 · logInteraction:105 · VisibleInteraction:259 · timelineFor:289 · recentInteractions:412
 
-**`apps/api/src/domains/invoicing.ts`** (1868 lines) — InvoiceLineInput:92 · CollectedPaymentInput:131 · InvoiceInput:145 · invoiceLabel:186 · isCourseFeeInvoice:200 · lineTotalOf:212 · InvoiceTotals:216 · totalsOf:233 · filingPeriodOf:273 · assertPeriodOpen:277 · CUSTOMER_KINDS:303 · CustomerKind:304 · createInvoice:703 · updateInvoice:911 · issueInvoiceDraft:1014 · voidInvoice:1091 · collectInvoicePayment:1150 · declarePaymentTerms:1390 · loadInvoiceForRead:1464 · invoiceSummary:1480 · invoiceDocument:1505 · rehydrateReceivablesFor:1812
+**`apps/api/src/domains/invoicing.ts`** (1868 lines) — InvoiceLineInput:92 · CollectedPaymentInput:131 · InvoiceInput:145 · invoiceLabel:186 · isCourseFeeInvoice:200 · lineTotalOf:212 · InvoiceTotals:216 · totalsOf:233 · filingPeriodOf:264 · assertPeriodOpen:277 · CUSTOMER_KINDS:303 · CustomerKind:304 · createInvoice:703 · updateInvoice:911 · issueInvoiceDraft:1014 · voidInvoice:1091 · collectInvoicePayment:1150 · declarePaymentTerms:1390 · loadInvoiceForRead:1464 · invoiceSummary:1480 · invoiceDocument:1505 · rehydrateReceivablesFor:1812
 
 **`apps/api/src/domains/it/assets.ts`** (807 lines) — AssetThresholds:67 · currentThresholds:75 · CreateAssetInput:89 · createAsset:107 · UpdateAssetInput:155 · updateAsset:173 · AssetFilter:204 · listAssets:223 · myAssets:260 · assetDetail:271 · AssignAssetInput:333 · assignAsset:346 · ReturnAssetInput:399 · returnAsset:411 · transitionAsset:484 · AddAssetEventInput:535 · addAssetEvent:540 · listAssetEvents:556 · resolveDeskOwnerPartyId:571 · WarrantyLadderResult:580 · runWarrantyLadder:586 · RepairDetectorResult:641 · runInRepairTooLongDetector:646 · OrphanedAssetResult:677 · runOrphanedAssetDetector:685 · summary:729
 
@@ -874,4 +874,8 @@
 
 Generated or lock files. Nothing in them answers a question worth the tokens.
 
+- `.claude/worktrees/agent-a19bd5e2d7e0bc5ae/pnpm-lock.yaml` (6006 lines)
+- `.claude/worktrees/agent-a348c13968dfc4ee9/pnpm-lock.yaml` (6006 lines)
+- `.claude/worktrees/agent-a63fd5466e71683b1/pnpm-lock.yaml` (6006 lines)
+- `.claude/worktrees/agent-a889deee29e46c1b3/pnpm-lock.yaml` (6006 lines)
 - `pnpm-lock.yaml` (6006 lines)
