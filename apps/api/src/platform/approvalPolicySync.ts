@@ -31,6 +31,7 @@ import { asSystem } from './context.js';
 import { assertCan } from './permissions.js';
 import { auditWrite } from './audit.js';
 import { emit } from './eventBus.js';
+import { logger } from './logger.js';
 
 interface LadderConvergence {
   policyCode: string;
@@ -75,7 +76,24 @@ export async function reconcileApprovalGatePolicies(tenantId: string): Promise<A
 
       const content = current.content as Record<string, unknown> & { approverResolution?: string[] };
       const ladder = content.approverResolution ?? [];
-      if (sameLadder(ladder, c.to)) continue;
+      if (sameLadder(ladder, c.to)) {
+        // Converged, but a crash between the version insert and the pointer
+        // update leaves the pointer on the old version. Nothing else would
+        // ever move it, so the skip repairs it here.
+        if (policy.currentVersionId !== current.id) {
+          await assertCan({ resource: 'policies', verb: 'edit' });
+          await prisma.policy.update({ where: { id: policy.id }, data: { currentVersionId: current.id } });
+          await auditWrite({
+            action: 'update',
+            subjectType: 'policy',
+            subjectId: policy.id,
+            before: { currentVersionId: policy.currentVersionId },
+            after: { currentVersionId: current.id },
+            meta: { policyCode: c.policyCode, reason: 'pointer repaired to latest version' },
+          });
+        }
+        continue;
+      }
       if (!sameLadder(ladder, c.from)) {
         result.left.push(c.policyCode);
         continue;
@@ -83,15 +101,20 @@ export async function reconcileApprovalGatePolicies(tenantId: string): Promise<A
 
       await assertCan({ resource: 'policies', verb: 'edit' });
 
-      const next = await prisma.policyVersion.create({
-        data: {
-          tenantId,
-          policyId: policy.id,
-          version: current.version + 1,
-          content: { ...content, approverResolution: c.to },
-        },
+      // One transaction: the version and the pointer to it land together, so a
+      // crash cannot leave the pointer on v1 (the skip above repairs that too).
+      const next = await prisma.$transaction(async (tx) => {
+        const created = await tx.policyVersion.create({
+          data: {
+            tenantId,
+            policyId: policy.id,
+            version: current.version + 1,
+            content: { ...content, approverResolution: c.to },
+          },
+        });
+        await tx.policy.update({ where: { id: policy.id }, data: { currentVersionId: created.id } });
+        return created;
       });
-      await prisma.policy.update({ where: { id: policy.id }, data: { currentVersionId: next.id } });
 
       await auditWrite({
         action: 'create',
@@ -116,15 +139,27 @@ export async function reconcileApprovalGatePolicies(tenantId: string): Promise<A
   });
 }
 
-/** Every tenant, at boot. Failure is logged and swallowed by the caller, same posture as nav/grant sync. */
-export async function reconcileApprovalGatePoliciesForAllTenants(): Promise<{ tenants: number; published: number }> {
+/**
+ * Every tenant, at boot. A tenant that throws is logged with its id and
+ * counted in `failed`; the tenants after it still run, so one broken tenant
+ * cannot hold back the rest.
+ */
+export async function reconcileApprovalGatePoliciesForAllTenants(
+  run: (tenantId: string) => Promise<ApprovalPolicySyncResult> = reconcileApprovalGatePolicies,
+): Promise<{ tenants: number; published: number; failed: number }> {
   const tenants = await unscopedPrisma.tenant.findMany({ select: { id: true } });
   let published = 0;
+  let failed = 0;
   for (const t of tenants) {
-    const r = await reconcileApprovalGatePolicies(t.id);
-    published += r.published.length;
+    try {
+      const r = await run(t.id);
+      published += r.published.length;
+    } catch (error: unknown) {
+      failed += 1;
+      logger.error({ component: 'boot', tenantId: t.id, err: error }, 'Approval ladder reconcile failed for tenant');
+    }
   }
-  return { tenants: tenants.length, published };
+  return { tenants: tenants.length, published, failed };
 }
 
 function sameLadder(a: readonly string[], b: readonly string[]): boolean {

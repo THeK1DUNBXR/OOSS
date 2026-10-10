@@ -250,9 +250,12 @@ if (config.NODE_ENV !== 'test') {
   // tenant seeded before FX-01 routes IT-policy publishes to a finance_head who
   // cannot decide them until this publishes the chairman-only version.
   void reconcileApprovalGatePoliciesForAllTenants()
-    .then(({ tenants, published }) => {
-      if (published > 0) {
-        logger.info({ component: 'boot' }, `Approval ladders reconciled across ${tenants} tenant(s): ${published} new version(s)`);
+    .then(({ tenants, published, failed }) => {
+      if (published > 0 || failed > 0) {
+        logger.info(
+          { component: 'boot' },
+          `Approval ladders reconciled across ${tenants} tenant(s): ${published} new version(s), ${failed} failed`,
+        );
       }
     })
     .catch((error: unknown) => {

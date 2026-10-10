@@ -252,7 +252,7 @@
 
 ## API platform
 
-**`apps/api/src/platform/approvalPolicySync.ts`** (133 lines) — LADDER_CONVERGENCES:45 · ApprovalPolicySyncResult:54 · reconcileApprovalGatePolicies:62 · reconcileApprovalGatePoliciesForAllTenants:120
+**`apps/api/src/platform/approvalPolicySync.ts`** (168 lines) — LADDER_CONVERGENCES:46 · ApprovalPolicySyncResult:55 · reconcileApprovalGatePolicies:63 · reconcileApprovalGatePoliciesForAllTenants:147
 
 **`apps/api/src/platform/approvals.ts`** (411 lines) — ApprovalPolicyContent:36 · DEFAULT_APPROVAL_POLICY:52 · GateSubject:65 · GateResult:88 · evaluateApprovalGate:115 · decideApprovalStep:316
 
