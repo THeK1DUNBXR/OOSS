@@ -419,3 +419,30 @@ Still open after round 12 (supersedes round 11):
 - IT owner: a level assignment at onboarding. The name is not recorded.
 - D-11 numbers after the one-month measurement.
 - Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+
+## Owner answers, round 13 (recorded 2026-10-10)
+
+Answers given by the owner in a thirteenth round. Each item is an owner answer unless it is marked as an implication or proposed design. Existing rows and the earlier answers above are unchanged. This round supersedes the round 12 "Still open" list. Where no answer is recorded here, the earlier rounds and the drafts stand.
+
+- **Level assignment by guided questionnaire (owner answer, item 1).** Access levels are assigned to employees during onboarding through a guided stakeholder-mapping questionnaire. The reviewer then reviews the final result and can add or remove access before it takes effect.
+- **Who answers (owner answer, item 2).** The questionnaire is answered by the founder or the onboarding owner for each employee.
+- **Review step (owner answer, item 3).** The review step shows a plain-language summary of what each person will be able to see and do, with per-duty toggles.
+- **Reuse for joiners and role changes (owner answer, item 4).** The same flow is reused for new joiners and role changes.
+- **Placement (owner answer, item 5).** The guided level-mapping flow is in Phase 0 Wave 6, built with the onboarding state machine and level assignment (ROADMAP.md Wave 6).
+- **Fixed rules, not AI (implication, proposed design, not an owner statement).** The mapping uses fixed rules. AI-assisted mapping features remain on the roadmap and are not part of this round.
+- **Suggestion only until confirmed (implication, proposed design).** The flow proposes a level and duties. Nothing takes effect until a named confirmer confirms it.
+- **Least access when unclear (implication, proposed design).** When an answer is unclear or missing, the flow assigns the least access that still lets the person work.
+- **Audit row per confirmed assignment (implication, proposed design).** Each confirmed assignment writes the usual audit row, including the answers given and the confirmer.
+- **No self-confirmation (implication, proposed design).** The person being mapped cannot confirm their own level.
+- **Founder-only classes (implication, proposed design).** Founder-only classes (payroll run, large payments, statutory filings) need explicit founder confirmation before they are assigned.
+- **Open, not decided.** The exact questions in the questionnaire, the rules that map answers to levels and duties, and the Staff level default duties.
+
+Still open after round 13 (supersedes round 12):
+
+- Qualified holder of statutory sign-off, named per tenant at onboarding. Statutory values stay DRAFT.
+- Whether auditors, board members and contractors are users of the same tenant.
+- Staff level default duties.
+- IT owner: a level assignment at onboarding. The name is not recorded.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+- Questionnaire content and mapping rules.
