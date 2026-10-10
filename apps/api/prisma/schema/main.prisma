@@ -817,6 +817,11 @@ model ApprovalStep {
   subjectId     String
   subjectLabel  String?
   action        String // mou.approve | contract.sign | quote.issue
+  /// The permission resource the gate checked `approve` against. Stored so a
+  /// decision is checked against the same grant the step was opened under;
+  /// re-deriving it from subjectType gets share_transaction wrong (it gates on
+  /// share_ledger). Null on rows opened before this column existed.
+  resource      String?
 
   requestedById  String
   requestedAt    DateTime @default(now())

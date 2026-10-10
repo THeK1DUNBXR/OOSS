@@ -15,7 +15,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { riskScore, riskBandFor, remediationDueAt, acknowledgementRate, type RiskScoringBandRow, type RemediationRuleRow } from '@kaizen/shared';
-import { asUser, expectReject, tenantId, unscopedPrisma, withFixtureRole } from '../helpers.js';
+import { asUser, expectReject, principalFor, tenantId, unscopedPrisma, withFixtureRole } from '../helpers.js';
 import {
   createRisk,
   updateRisk,
@@ -60,8 +60,8 @@ const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
  * rather than applying directly — forces the row to `published` to keep
  * exercising this acceptance ID's actual subject (immutability, versioning)
  * without every such test needing its own approval-step plumbing.
- * `POL-IT-POLICY-PUBLISH`'s seeded `approverResolution` is `['chairman',
- * 'finance_head']`: a *non*-self-dealing publish (someone other than the
+ * `POL-IT-POLICY-PUBLISH`'s seeded `approverResolution` is `['chairman']`
+ * (docs/plan/cio.md:144: only the chairman holds it_policies:approve): a *non*-self-dealing publish (someone other than the
  * drafter, at zero/no authority ceiling) resolves tier 0 to `chairman`, and
  * the chairman *is* that tier's approver, so it applies directly in the
  * ordinary case — this fallback exists for whichever case does not (a
@@ -288,7 +288,7 @@ describe('IT governance — domain and wiring', () => {
     expect(supersededOriginal.status).toBe('superseded');
   });
 
-  it('the gate chain: a self-dealing publish opens a step to the Finance Head, and finishes once that step is approved', async () => {
+  it('the gate chain: a self-dealing publish opens a step to the chairman role, which the other chairman holder decides', async () => {
     const draft = await asUser('chairman@kaizen.co.in', () =>
       createPolicyDraft({ code: `IT-POL-CHAIN-${stamp()}`, title: 'Chain test policy', body: 'Body for the gate-chain test.' }),
     );
@@ -298,8 +298,14 @@ describe('IT governance — domain and wiring', () => {
     expect(gated.approvalStepId).toBeTruthy();
 
     const step = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: gated.approvalStepId! } });
+    // The self-dealing bump now lands on the chairman, the only holder of
+    // it_policies:approve (docs/plan/cio.md:144), not on the Finance Head.
     expect(step.selfDealingBarTripped).toBe(true);
-    expect(step.resolvedApproverRole).toBe('finance_head');
+    expect(step.resolvedApproverRole).toBe('chairman');
+    // Resolution excludes the drafter, so it lands on the other holder of the
+    // chairman role (sysadmin@ in the kaizen tenant), not on chairman@.
+    const otherChairman = await principalFor('sysadmin@kaizen.co.in');
+    expect(step.resolvedApproverId).toBe(otherChairman.partyId);
     expect(step.state).toBe('open');
 
     // Re-running publish before the step is decided still just re-opens (or
@@ -309,10 +315,18 @@ describe('IT governance — domain and wiring', () => {
     const stillDraft = await unscopedPrisma.itPolicyDocument.findFirstOrThrow({ where: { id: draft.id } });
     expect(stillDraft.status).toBe('draft');
 
-    await asUser('finance@kaizen.co.in', () => decideApprovalStep(step.id, true, 'Approved for publication.'));
+    // The drafter cannot decide their own step (Self-Dealing Bar), so the
+    // step stays open and the policy stays a draft.
+    const selfDecide = await expectReject(() =>
+      asUser('chairman@kaizen.co.in', () => decideApprovalStep(step.id, true, 'Self-approval attempt.')),
+    );
+    expect(selfDecide.status).toBe(403);
+    const afterAttempt = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: step.id } });
+    expect(afterAttempt.state).toBe('open');
 
-    // The step is decided but the policy itself has not moved yet — a
-    // decided approval step is not itself the write.
+    // The resolved approver of record decides; the policy itself has not
+    // moved yet, because a decided step is not itself the write.
+    await asUser('sysadmin@kaizen.co.in', () => decideApprovalStep(step.id, true, 'Approved for publication.'));
     const beforeFinalCall = await unscopedPrisma.itPolicyDocument.findFirstOrThrow({ where: { id: draft.id } });
     expect(beforeFinalCall.status).toBe('draft');
 

@@ -23,9 +23,15 @@ import { EVENTS, APPROVAL_EXCLUDED_ROLES, APPROVAL_LADDER, type SeverityCode } f
 import { prisma } from './db.js';
 import { currentAuth } from './context.js';
 import { emit } from './eventBus.js';
-import { evaluate, resolveAuthorityCeiling } from './permissions.js';
+import { assertCan, evaluate, resolveAuthorityCeiling } from './permissions.js';
 import { ApiError } from './errors.js';
 import { notify, raiseException } from './exceptions.js';
+import { auditWrite, registerGovernedEntities } from './audit.js';
+
+// Registered here, not in audit.ts, because the step is the record the gate
+// opens: auditWrite silently skips unregistered types, so a decision would
+// leave no trail without this line.
+registerGovernedEntities('gov', ['approval_step']);
 
 export interface ApprovalPolicyContent {
   requiredPermission: string;
@@ -205,6 +211,7 @@ export async function evaluateApprovalGate(
       subjectId: subject.id,
       subjectLabel: subject.label,
       action,
+      resource,
       requestedById: auth.partyId ?? 'system',
       requestedValue: subject.commercialValue ?? undefined,
       currency: subject.currency,
@@ -310,8 +317,20 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
   const auth = currentAuth();
   const step = await prisma.approvalStep.findFirst({ where: { id: stepId } });
   if (!step) throw ApiError.notFound('Approval step');
+
+  // The same `approve` grant the gate required to open the step, on the same
+  // resource. Checked before the state, so an ungranted caller learns nothing
+  // about a step they may not decide.
+  await assertCan({ resource: step.resource ?? `${step.subjectType}s`, verb: 'approve' });
+
   if (step.state !== 'open' && step.state !== 'escalated') {
     throw ApiError.conflict(`Approval step is already ${step.state}.`);
+  }
+
+  // An AI principal may recommend but never decide an approval; the gate
+  // already refuses it on the way in, and the decision is the same act.
+  if (auth.principalType === 'agent') {
+    throw ApiError.forbidden('An AI principal may never decide an approval step.');
   }
 
   // Approval routes to whoever holds authority at decision time, not at block
@@ -323,6 +342,17 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
     throw ApiError.forbidden('The Self-Dealing Bar is unconditional: a requester may never approve their own step.');
   }
 
+  // The grant says who may decide in principle; the resolution says who was
+  // asked. Without this, any holder of approve on the resource can take a step
+  // that was routed to someone else, which is how a Finance Head's sign-off
+  // becomes a peer's. A step whose resolution found nobody (resolvedApproverId
+  // null, EX-GOV-001) is decided by no one here, deliberately.
+  if (!step.resolvedApproverId || step.resolvedApproverId !== auth.partyId || auth.roleSlug !== step.resolvedApproverRole) {
+    throw ApiError.forbidden(
+      `This step was resolved to ${step.resolvedApproverRole ?? 'no role'}; only that approver of record may decide it.`,
+    );
+  }
+
   const updated = await prisma.approvalStep.update({
     where: { id: stepId },
     data: {
@@ -331,6 +361,14 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
       decidedAt: new Date(),
       decisionNote: note,
     },
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'approval_step',
+    subjectId: stepId,
+    before: { state: step.state },
+    after: { state: updated.state, decidedById: updated.decidedById, decisionNote: note },
   });
 
   await emit({

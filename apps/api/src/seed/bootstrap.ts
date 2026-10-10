@@ -498,7 +498,10 @@ async function seedGovernance() {
       name: 'Technology policy publication',
       requiredPermission: 'it_policies:approve',
       authorityClass: 'it_policy_publish',
-      approverResolution: ['chairman', 'finance_head'],
+      // Chairman only: it_policies:approve is held by the chairman alone
+      // (docs/plan/cio.md:144). A ['chairman','finance_head'] ladder sent the
+      // self-dealing bump to finance_head, who holds no such grant (FX-01).
+      approverResolution: ['chairman'],
     },
     {
       code: 'POL-IT-INITIATIVE-APPROVAL',

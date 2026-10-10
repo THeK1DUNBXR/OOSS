@@ -4,40 +4,52 @@
  * FX-01: `decideApprovalStep` had no `assertCan`, no check that the decider
  * was the step's resolved approver, and no audit row, so any tenant user could
  * approve any open step (platform/approvals.ts:309). These tests drive the
- * real gate and the real evaluator; the only fixture is a role with the grants
- * a test needs.
+ * real decision path and the real evaluator against real rows. The step is
+ * written directly, because the only gate route that opens one to a
+ * decidable approver is not reachable from a test with a single chairman.
  */
 import { describe, expect, it } from 'vitest';
-import { createPolicyDraft, publishPolicy } from '../domains/it/governance.js';
 import { decideApprovalStep } from '../platform/approvals.js';
 import { decideAgentAction, propose } from '../agents/index.js';
 import type { AiTierCode } from '@kaizen/shared';
 import { prisma } from '../platform/db.js';
-import { asUser, expectReject, tenantId, unscopedPrisma, withFixtureRole } from './helpers.js';
+import { principalFor, asUser, expectReject, tenantId, unscopedPrisma, withFixtureRole } from './helpers.js';
 
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
-/** A self-dealing publish by the chairman opens an approval step to the Finance Head. */
-async function openStepToFinanceHead(): Promise<string> {
-  const draft = await asUser('chairman@kaizen.co.in', () =>
-    createPolicyDraft({ code: `FX01-POL-${stamp()}`, title: 'FX-01 policy', body: 'Body for the FX-01 decision test.' }),
-  );
-  const gated = await asUser('chairman@kaizen.co.in', () => publishPolicy(draft.id));
-  expect(gated.approvalStepId).toBeTruthy();
-  const step = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: gated.approvalStepId! } });
-  expect(step.state).toBe('open');
-  expect(step.resolvedApproverRole).toBe('finance_head');
+/**
+ * An open step on the licence-renewal resource, resolved to the Finance Head.
+ * finance_head holds it_licences:approve (seed/grants.ts financeHead), so the
+ * resolved approver can decide it; nobody else should be able to.
+ */
+async function openStepResolvedToFinanceHead(): Promise<string> {
+  const requester = await principalFor('chairman@kaizen.co.in');
+  const approver = await principalFor('finance@kaizen.co.in');
+  const step = await unscopedPrisma.approvalStep.create({
+    data: {
+      tenantId: await tenantId(),
+      subjectType: 'it_licence',
+      subjectId: `fx01-licence-${stamp()}`,
+      subjectLabel: 'FX-01 licence renewal',
+      action: 'it_licence.renew',
+      resource: 'it_licences',
+      requestedById: requester.partyId,
+      resolvedApproverId: approver.partyId,
+      resolvedApproverRole: 'finance_head',
+      resolutionTier: 0,
+    },
+  });
   return step.id;
 }
 
 describe('FX-01 — approval step decisions require the approve grant and the resolved approver', () => {
   it('a user without the approve grant gets 403 and the step stays open', async () => {
-    const stepId = await openStepToFinanceHead();
+    const stepId = await openStepResolvedToFinanceHead();
 
     // Holds edit on the subject resource but not approve: edit never confers
     // approval authority (platform/approvals.ts, the required_permission gate).
     await withFixtureRole(
-      { slug: 'fx01_editor', grants: [{ resource: 'it_policies', verbs: ['view', 'edit'] }] },
+      { slug: 'fx01_editor', grants: [{ resource: 'it_licences', verbs: ['view', 'edit'] }] },
       async () => {
         const err = await expectReject(() => decideApprovalStep(stepId, true, 'No grant, should not decide.'));
         expect(err.status).toBe(403);
@@ -50,13 +62,13 @@ describe('FX-01 — approval step decisions require the approve grant and the re
   });
 
   it('a holder of approve who is not the resolved approver gets 403 and the step stays open', async () => {
-    const stepId = await openStepToFinanceHead();
+    const stepId = await openStepResolvedToFinanceHead();
 
     // Holds approve on the resource, is not the requester, and is not the
     // step's resolved approver (the Finance Head). The grant alone is not
     // enough: the decider must be the approver of record.
     await withFixtureRole(
-      { slug: 'fx01_approver_other', grants: [{ resource: 'it_policies', verbs: ['view', 'approve'] }] },
+      { slug: 'fx01_approver_other', grants: [{ resource: 'it_licences', verbs: ['view', 'approve'] }] },
       async () => {
         const err = await expectReject(() => decideApprovalStep(stepId, true, 'Not the resolved approver.'));
         expect(err.status).toBe(403);
@@ -69,7 +81,7 @@ describe('FX-01 — approval step decisions require the approve grant and the re
   });
 
   it('the resolved approver decides, and the decision leaves an audit row', async () => {
-    const stepId = await openStepToFinanceHead();
+    const stepId = await openStepResolvedToFinanceHead();
     const step = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: stepId } });
 
     const decided = await asUser('finance@kaizen.co.in', () =>
