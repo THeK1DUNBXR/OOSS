@@ -511,3 +511,22 @@ Still open after round 15 (supersedes round 14):
 - IT owner as a level assignment at onboarding. The name is not recorded.
 - D-11 numbers after the one-month measurement.
 - Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+
+## Owner answers, round 16 (recorded 2026-10-11)
+
+Owner answers. This round supersedes the round 15 "Still open" list, and only the freelancer management part of round 15 item 3. Round 15 items 1, 2 and 4 are unchanged.
+
+1. **Freelancer management is deferred (owner answer, item 1).** Freelancer management is not in Phase 0 or Phase 1. It has no phase and is not scheduled. Its scope is not decided.
+   - Guest accounts for auditors, board members and contractors (round 15 item 3) stay as the access model. Their design is deferred together with freelancer management, unless an earlier phase needs them.
+   - Implication (label): contractors' timesheets and tasks in ORDERED-PLAN Phase 1C and 1D must work for employees only until guest accounts are designed. Contractor access is not built in those phases.
+   - Implication (label): tax on freelancer payments would need statutory sign-off when freelancer management is scheduled. No statutory value is stated here, and the deferral adds none.
+
+Still open after round 16 (supersedes round 15):
+
+- Questionnaire content and mapping rules: owner approval of `docs/plan/zen360/QUESTIONNAIRE-DRAFT.md`.
+- Qualified holder of statutory sign-off, named per tenant at onboarding. Statutory values stay DRAFT.
+- IT owner as a level assignment at onboarding. The name is not recorded.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
+- Guest-account design (invitation, authentication, tenant scoping, expiry, audit). Deferred with freelancer management (round 16 item 1).
+- Freelancer management scope, phase and statutory sign-off for tax on freelancer payments. Deferred (round 16 item 1).
