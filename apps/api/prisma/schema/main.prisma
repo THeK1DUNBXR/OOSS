@@ -4634,6 +4634,10 @@ model Skill {
   /// still be stale in between.
   halfLifeMonths   Int    @default(24)
   proficiencyScale Json   @default("[]")
+  /// Whether a Verified claim on this skill moves pay, promotion or mobility.
+  /// Defaults to true: until the owner marks a skill otherwise, every claim on
+  /// it needs two independent verifiers. Fail closed, never open.
+  feedsCompensationOrPromotionOrMobility Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -217,21 +217,51 @@ export async function addEvidence(claimId: string, input: { description: string;
  * enforced here before anything is written, so a rejected attempt leaves no
  * trace of having nearly succeeded.
  */
+/**
+ * The two-person rule's inputs are derived here, never taken from the caller.
+ * A flag the caller can send is a flag the caller can send as false: that was
+ * the bypass (routes/hr.routes.ts:844-856 before FX-02). The skill's
+ * classification decides whether the claim feeds pay; the reporting line
+ * decides whether the verifier is only the claimant's manager.
+ */
+async function verifierIsClaimantsManager(claimantPartyId: string, verifierPartyId: string): Promise<boolean> {
+  const [claimantEmployments, verifierEmployments] = await Promise.all([
+    prisma.employmentRelationship.findMany({ where: { personId: claimantPartyId }, select: { id: true } }),
+    prisma.employmentRelationship.findMany({ where: { personId: verifierPartyId }, select: { id: true } }),
+  ]);
+  if (claimantEmployments.length === 0 || verifierEmployments.length === 0) return false;
+  const line = await prisma.reportingLine.findFirst({
+    where: {
+      effectiveTo: null,
+      employmentRelationshipId: { in: claimantEmployments.map((e) => e.id) },
+      managerEmploymentRelationshipId: { in: verifierEmployments.map((e) => e.id) },
+    },
+    select: { id: true },
+  });
+  return Boolean(line);
+}
+
 export async function verifyClaim(
   claimId: string,
   input: {
     secondVerifierPartyId?: string | null;
-    feedsCompensationOrPromotionOrMobility?: boolean;
-    verifierIsManagerOnly?: boolean;
     note?: string | null;
   },
 ) {
   const auth = currentAuth();
   await assertCan({ resource: 'capabilities', verb: 'approve' });
 
-  const claim = await prisma.capabilityClaim.findFirst({ where: { id: claimId, tenantId: auth.tenantId } });
+  const claim = await prisma.capabilityClaim.findFirst({
+    where: { id: claimId, tenantId: auth.tenantId },
+    include: { skill: { select: { feedsCompensationOrPromotionOrMobility: true } } },
+  });
   if (!claim) throw ApiError.notFound('Capability claim');
   if (!auth.partyId) throw ApiError.forbidden('Verification requires a human principal.');
+
+  // A claim with no skill has nothing to say it is harmless, so it is treated
+  // as pay-feeding.
+  const feedsPay = claim.skill?.feedsCompensationOrPromotionOrMobility ?? true;
+  const verifierIsManagerOnly = await verifierIsClaimantsManager(claim.partyId, auth.partyId);
 
   try {
     assertVerificationAllowed({
@@ -239,8 +269,8 @@ export async function verifyClaim(
       verifierPartyId: auth.partyId,
       secondVerifierPartyId: input.secondVerifierPartyId ?? null,
       targetTier: 'verified',
-      feedsCompensationOrPromotionOrMobility: input.feedsCompensationOrPromotionOrMobility ?? false,
-      verifierIsManagerOnly: input.verifierIsManagerOnly ?? false,
+      feedsCompensationOrPromotionOrMobility: feedsPay,
+      verifierIsManagerOnly,
     });
   } catch (err) {
     asApiError(err);

@@ -1136,7 +1136,7 @@ describe('§14.6 — verification is structurally two people', () => {
 
     const err = await expectReject(() =>
       asUser('hr@kaizen.co.in', () =>
-        verifyClaim(claim.id, { feedsCompensationOrPromotionOrMobility: true }),
+        verifyClaim(claim.id, {}),
       ),
     );
     expect(err.status).toBe(422);
@@ -1144,7 +1144,6 @@ describe('§14.6 — verification is structurally two people', () => {
     const bhead = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'bhead@kaizen.co.in' } });
     const verified = await asUser('hr@kaizen.co.in', () =>
       verifyClaim(claim.id, {
-        feedsCompensationOrPromotionOrMobility: true,
         secondVerifierPartyId: bhead.personId,
       }),
     );

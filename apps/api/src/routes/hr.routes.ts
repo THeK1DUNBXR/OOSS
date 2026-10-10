@@ -845,9 +845,9 @@ router.post(
   handler(async (req) => {
     const body = z
       .object({
+        // The two-person rule's inputs are not accepted here: they are derived
+        // from the skill and the reporting line (domains/capability.ts).
         secondVerifierPartyId: z.string().nullish(),
-        feedsCompensationOrPromotionOrMobility: z.boolean().optional(),
-        verifierIsManagerOnly: z.boolean().optional(),
         note: z.string().nullish(),
       })
       .parse(req.body);
