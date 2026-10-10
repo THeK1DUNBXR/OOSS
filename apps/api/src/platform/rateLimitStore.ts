@@ -15,9 +15,36 @@
 
 import type { ClientRateLimitInfo, Options, Store } from 'express-rate-limit';
 import { unscopedPrisma } from './db.js';
+import { logger } from './logger.js';
+
+/**
+ * How many increments between sweeps, per process. A sweep is one DELETE over
+ * an index-less scan of a small table, so running it every request would cost
+ * more than the rows it removes; every thousand keeps the table bounded
+ * without a scheduler. The jobs scheduler is per tenant, and this table is
+ * not tenant-scoped, so a job there would sweep once per tenant.
+ */
+const SWEEP_EVERY_INCREMENTS = 1_000;
+
+/**
+ * Deletes buckets whose window ended more than a day ago. The day is grace
+ * for instances whose clocks disagree; the database clock decides the rest.
+ * Rate-limit counters are not accounting or audit data, so deleting them is
+ * safe. `windowMs` is the window the store was built with: a row does not
+ * record its own, so the cut-off is only exact for limiters sharing a window,
+ * and every limiter here uses 60s.
+ */
+export async function purgeExpiredRateLimitBuckets(windowMs: number): Promise<number> {
+  return unscopedPrisma.$executeRawUnsafe(
+    `DELETE FROM "RateLimitBucket"
+     WHERE "windowStart" + ($1::int * interval '1 millisecond') < now() - interval '1 day'`,
+    windowMs,
+  );
+}
 
 export class PostgresRateLimitStore implements Store {
   private windowMs = 60_000;
+  private incrementsSinceSweep = 0;
 
   /**
    * express-rate-limit reads `prefix` to tell two stores' keys apart when it
@@ -51,6 +78,14 @@ export class PostgresRateLimitStore implements Store {
       this.bucketKey(key),
       this.windowMs,
     );
+    // Fire and forget: a failed sweep must not fail the request that happened
+    // to trigger it. The next sweep retries, so one failure costs nothing.
+    if (++this.incrementsSinceSweep >= SWEEP_EVERY_INCREMENTS) {
+      this.incrementsSinceSweep = 0;
+      purgeExpiredRateLimitBuckets(this.windowMs).catch((err: unknown) =>
+        logger.warn({ err }, 'rate-limit bucket sweep failed'),
+      );
+    }
     const row = rows[0]!;
     return { totalHits: Number(row.hits), resetTime: new Date(row.resetAt) };
   }
