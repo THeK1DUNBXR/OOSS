@@ -10,8 +10,7 @@
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../server.js';
-import { signToken } from '../lib/auth.js';
-import { principalFor, tenantId, unscopedPrisma, type TestPrincipal } from './helpers.js';
+import { principalFor, sessionToken, tenantId, unscopedPrisma, type TestPrincipal } from './helpers.js';
 
 let server: Server;
 let base: string;
@@ -27,8 +26,8 @@ afterAll(() => {
   server?.close();
 });
 
-function headersFor(p: TestPrincipal): Record<string, string> {
-  const token = signToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
+async function headersFor(p: TestPrincipal): Promise<Record<string, string>> {
+  const token = await sessionToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
   return { Authorization: `Bearer ${token}`, 'content-type': 'application/json' };
 }
 
@@ -38,7 +37,7 @@ describe('FX-22: POST /education/cohorts leaves a cohort create audit row', () =
     const course = await unscopedPrisma.course.findFirstOrThrow({ where: { tenantId: chairman.tenantId } });
     const res = await fetch(`${base}/education/cohorts`, {
       method: 'POST',
-      headers: headersFor(chairman),
+      headers: await headersFor(chairman),
       body: JSON.stringify({ courseId: course.id, name: `fx22-cohort-${Date.now()}`, startDate: '2026-11-01' }),
     });
     expect(res.status).toBe(201);
@@ -58,7 +57,7 @@ describe('FX-22: PATCH /education/projects/:id leaves a project update audit row
     });
     const res = await fetch(`${base}/education/projects/${project.id}`, {
       method: 'PATCH',
-      headers: headersFor(chairman),
+      headers: await headersFor(chairman),
       body: JSON.stringify({ status: 'on_hold' }),
     });
     expect(res.status).toBe(200);
@@ -92,7 +91,7 @@ async function eventRow(eventName: string, subjectEntityId: string) {
 async function send(p: TestPrincipal, method: string, path: string, body?: unknown): Promise<Response> {
   return fetch(`${base}${path}`, {
     method,
-    headers: headersFor(p),
+    headers: await headersFor(p),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }

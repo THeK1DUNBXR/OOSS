@@ -7,8 +7,7 @@
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../server.js';
-import { signToken } from '../lib/auth.js';
-import { unscopedPrisma, withFixtureRole, type TestPrincipal } from './helpers.js';
+import { sessionToken, unscopedPrisma, withFixtureRole, type TestPrincipal } from './helpers.js';
 
 let server: Server;
 let base: string;
@@ -24,14 +23,14 @@ afterAll(() => {
   server?.close();
 });
 
-function tokenFor(p: TestPrincipal): string {
-  return signToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
+async function tokenFor(p: TestPrincipal): Promise<string> {
+  return sessionToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
 }
 
-function postGrant(p: TestPrincipal, body: Record<string, unknown>) {
+async function postGrant(p: TestPrincipal, body: Record<string, unknown>) {
   return fetch(`${base}/admin/grants`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${tokenFor(p)}`, 'content-type': 'application/json' },
+    headers: { Authorization: `Bearer ${await tokenFor(p)}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
 }
