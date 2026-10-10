@@ -543,3 +543,18 @@ Consequences and open points:
 - Old path references in earlier rounds (1 to 16) point to files now in `docs/plan/archive/`. For example, "`docs/plan/README.md` decisions A, B and C" now means `docs/plan/archive/README-old-index.md`. The text of those rounds is not rewritten. Round 16 and earlier are otherwise unchanged.
 - The domain specs `ceo-office.md`, `cio.md`, `compliance.md`, `equity-portal.md`, `hcm.md`, `marketing.md` and `ceo-office-asbuilt/` are not phase files and are not moved. Code comments and the zen360 reference docs cite them. Whether they are superseded, and by what, is **open for owner decision**. The `docs/plan/ceo-office-asbuilt/phase-0.md` file also uses the word "Phase 0" for a CEO-office build record, which is not the owner Phase 0.
 - Old phase labels without a file path (for example "phase-0 0.4" in the zen360 reference docs) are not rewritten in this round. They are read as old item references into the archive.
+
+## Owner answers, round 18 (recorded 2026-10-10, during Wave 0 and Wave 1 implementation)
+
+- **(a) IT-policy self-dealing approvals go to the chairman.** FX-01 now requires the approver to hold `it_policies:approve`, and only the chairman holds it (`docs/plan/cio.md:144`). So the self-dealing publish step routes to the chairman, not to `finance_head`. Implication: tenants seeded before this change still carry the old approval chain, so a new policy version is needed. Open.
+- **(b) No role means no access.** An affiliation with no access role grants nothing. It used to fall back to `sales`. Before deploy, `report:roleless` lists the people affected.
+- **(c) Access differs by vertical as well as level.** Owner words: "A telecalling staff is different from a trainer staff." Level (Head, Manager, Staff) alone does not set access. The function or vertical picks the role template, and the level then sets the duties. This confirms `QUESTIONNAIRE-DRAFT.md` section 0, step 2. The function list there is still open and must include verticals such as telecalling and training.
+- **(d) Creating a new hire prompts the onboarding owner to run the stakeholder-mapping questionnaire.** Owner words: "creating a new hire will automatically prompt HR to go through the questionnaire for stakeholder mapping." This is built in Wave 6 with the onboarding state machine. Until it is confirmed, the hire holds the Staff default duties (round 15) and nothing more.
+- **(e) Wave 0 goes up as a PR** (THeK1DUNBXR/OOSS#32). Wave 1 lands after Wave 0's CI is green.
+
+Still open after round 18:
+
+- Who receives the new-hire prompt. Round 13 says "the founder or the onboarding owner". The owner said "HR". Is HR the onboarding owner by default?
+- The function and vertical list, and the role template for each (telecalling, training, and others).
+- Whether an interim hire-time role, before Wave 6, matches the Staff baseline. This is under check against the existing `employee` role.
+- Whether `sysadmin@` should hold the chairman role in the seed. The FX-01 tests routed a chairman step to it.
