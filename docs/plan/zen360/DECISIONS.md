@@ -202,3 +202,30 @@ Still open after round 4:
 - D-18: summaries-only client evidence, careers launch model, practice labels vs separate companies.
 - Feature 1: transactional email decision.
 - D-10: break-glass details.
+
+## Owner answers, round 5 (recorded 2026-10-10)
+
+Answers given by the owner in a fifth round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged. Where no answer is recorded here, the recommendation above stands.
+
+- **00-BRIEF gates (owner answer, OPEN).** `00-BRIEF.md` is missing from the branch. The ten CI gates and the ledger gate tests are to be defined fresh. Claude will draft them for owner approval. Status: OPEN until drafted and approved.
+- **1.5 cashbook mapping and Kaizen book figure check (owner answer).** The reviewer for both is the internal finance head.
+- **Transactional email (owner answer).** The provider is chosen now: Resend, in Phase 1 scope.
+  - Implication, not an owner statement: Resend processes data outside India, and sending relies on domain verification. A legal and data-hosting check by the internal finance head (the D-14 counsel owner) is needed before real customer data is sent.
+- **Build vs integrate (D-04, owner answer).** Build natively for work items, chat, voice and video. The owner's method: do NOT fork or copy third-party code. Read open-source source code to learn what it did and why, then write custom code for this app. LiveKit is the voice and video media layer, used as a dependency or service.
+  - Implication, not an owner statement: this matches the existing clean-room rule. No code from third-party repos is copied, regardless of licence.
+- **Video calls (owner answer).** Video calls are added to Phase 1. Previously voice only. Recording, egress and transcripts remain off (D-13).
+  - Implication, not an owner statement: video adds bandwidth and server cost to the LiveKit Indian-VPS plan.
+- **Per-tenant encryption (owner answer).** One key per tenant. D-14 stands. P7 "undecided" is to be read as decided.
+- **Deferred items (owner answer).** D-18 client files summaries-only, careers model and practice labels are all DEFERRED. None is in Phase 0 or Phase 1.
+
+Still open after round 5:
+
+- D-02: real statutory sign-off (internal finance head only; statutory values stay DRAFT).
+- 00-BRIEF gates: draft pending Claude's draft and owner approval.
+- D-14: chat-retention counsel check.
+- Resend: data-hosting check (cross-border processing and domain verification).
+- D-03: payments scope and cutover timing.
+- D-09: open items (founder-only classes, reserved matters, 24-hour absence test).
+- D-11: service-level numbers.
+- Expense receipt storage (object storage deferred).
+- VPS provider for LiveKit.
