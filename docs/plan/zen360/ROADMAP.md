@@ -1,0 +1,174 @@
+# Zen 360 roadmap: owner Phase 0 and Phase 1
+
+Status: planning only. Nothing in this roadmap is built. The docs give no effort estimate. Each phase ends at a stop rule (done criteria), not at a date.
+
+Where this file and `DECISIONS.md` differ, `DECISIONS.md` governs. The item-level detail is in `ORDERED-PLAN.md`.
+
+Statutory values: none appear here. They stay DRAFT and unverified until a qualified person signs them off.
+
+Tags used below:
+- **BLOCKED-BY**: the work cannot start until the named condition is met.
+- **UNVERIFIED**: not checked against the code or a primary source.
+- **Source** cites the file, and the DECISIONS.md round or D-id where it applies.
+
+---
+
+## 1. Now to next
+
+### 1a. Phase 0: streamline and fix
+
+Owner definition (DECISIONS.md, "Owner phase definitions"): streamline and fix the existing workflow without new features. The owner chose some new-build items, so Phase 0 is mostly new build. Waves run in order unless a wave is marked parallel.
+
+Stop rule for each wave: its listed items are merged and the gates for that wave pass. Then the next wave starts.
+
+- **Wave 0, foundations.** Schema split, config and secrets, time helpers, CI with lint and a migration baseline, Cloudflare Worker removed. **Exit:** boot without `JWT_SECRET` exits naming the variable; the FY helper test passes; `prisma validate` and the migration no-drift check pass; G1, G2 and G3 run in CI.
+- **Wave 1, authority, audit, security, statutory data.** Task-complete fix, FX-20 to FX-22, FX-01 to FX-07, webhook HMAC, outbox, RLS, logging, HTTP hardening, sessions, 3.1 statutory master pack. **Exit:** each fix's failing-test-first commit has landed; ungranted users get 403 with state unchanged; negative access tests pass for approve, verify, affiliation, agent decide and webhook (zen360/README.md, Z0 gate); RLS checks pass. 3.1 is marked BLOCKED-BY statutory sign-off in ORDERED-PLAN, and the docs do not say what that blocks at build time (**UNVERIFIED**).
+- **Wave 2, scheduler and audit correctness.** Scheduler rewrite, hash-chain race fix, `verifyChain` fix, remaining audit gaps in `books.ts`, `assertPeriodOpen` on remaining write paths. **Exit:** a `0 6 * * *` job fires once per simulated day; `verifyChain` recomputes hashes (FX-81 test); the chain-uniqueness race test passes. The audit-gap and period-check items have no named test in the docs (**UNVERIFIED** as a stop criterion).
+- **Wave 3, money and ledger (serial, one person).** `money.ts` with bigint, payment allocation, ledger models and migration, `post()`, derived balances, cashbook migration prepared. **Exit:** zen360/README.md Z1 gate, Done-means 1, 3 and 6 pass (10,000-operation trial balance, 200 concurrent allocations, immutability as the app role); L1 short run and L3 pass. The cashbook cutover (1.5) waits for Done-means 2 and its BLOCKED-BY items.
+- **Wave 4, operations (own server).** Postgres and PgBouncer, backups with tested restores and an off-site copy, monitoring and alerts, Caddy TLS renewal, non-owner database role, IT owner as a level assignment. **Exit:** the items are in place and a restore has been tested (DECISIONS.md round 6). No other stop test is named in the docs (**UNVERIFIED** as a complete criterion).
+- **Wave 5, ledger consumers and interface (parallel within the wave).** FX-70 to FX-73 posting from events, reversal not delete, chunked imports, payroll liabilities; P4 interface items 1 to 9. **Exit:** FX-70 to FX-73 tests pass; G12 (axe) runs on the P4 pages; phase-4 gate holds: zero axe-core violations, Lighthouse accessibility at least 95, invoice flow usable at 390px. FX-73 is BLOCKED-BY statutory sign-off for the payroll statutory items.
+- **Wave 6, spine and onboarding.** Commitment record, one document store, typed task source, decision links, founder exception view, P7 onboarding state machine with per-state packs, level-based access, static public IP. **Exit:** the Z2 gate passes (proposal criteria 1, 2 and 4, and the 24-hour founder-absence scenario, zen360/README.md); the onboarding state machine runs; G10 structure check passes. The Z3 continuity and handover gate has no criterion stated in the docs (**UNVERIFIED**).
+- **Wave 7, proof.** Concurrency suite, tenant-leakage fuzzer, all twelve CI checks (G1 to G12) and ledger tests L1 to L3. **Exit:** all pass. The full ten-thousand-operation test and the full concurrency runs happen at phase end (DECISIONS.md round 9 and 10).
+
+### 1b. Phase 1: developers can work from home
+
+Owner definition (DECISIONS.md, "Owner phase definitions"): complete the features that let software developers work from home with no issues, covering daily workflow tools and delivery and project work.
+
+Stop rule for each row: its items are merged and its listed tests pass. Tests are written first.
+
+Feature 1 is `planned-features.md` Feature 1, the work-management and team-communication feature. Its waves 2 to 6 are in Phase 1 here. Its wave 1 is the Task-complete fix, which sits in Phase 0 Wave 1.
+
+| Milestone | What it delivers | Needs first | BLOCKED-BY | Stop rule (tests named in the docs) |
+|---|---|---|---|---|
+| 1A Approvals (DEC-05, DEC-06, DEC-07, CAP-DEC-08) | Single approvals inbox, one delegation record, maker-checker with founder exemption, typed thresholds as data | FX-01 (Phase 0 W1), FX-32 (Phase 0 W3) | None named | Ungranted approver gets 403 and state is unchanged. The "maker equals checker is refused" test must exempt the founder level (DECISIONS.md round 10). |
+| 1B Attendance and remote (HRM-06, HRM-28, HRM-19, HRM-15) | Self-declared work-from-home and on-duty requests with manager approval; backup approver; no location, device ID or IP stored | 1A (inferred: manager approval uses the 1A inbox) | CAP-HRM-32 legal check (no covert monitoring) | Overlap check; self-approval refused |
+| 1C Time and projects (CON-09, DEL-07, DEL-01, DEL-02) | Timesheets per person with project aggregates; billable flag; rate snapshot; approved-period lock with permission-gated reopen | Feature 1 Wave 2 projects (inferred from ORDERED-PLAN item text) | None named | Approved-period lock tests (no test name given in the docs) |
+| 1D Delivery (HRM-18 first, DEL-03 to DEL-06, CRM-13, CON-05) | Allocation calendar with a Postgres exclusion constraint; change-request baseline plus delta; derived billable amounts; customer acceptance as the only billing trigger | 1C (inferred); D-12 answer | None named | Allocation exclusion and billing-trigger tests (names not given) |
+| 1E Communication (COM-13, COM-15, COM-02, COM-11) | Response-SLA mechanism (numbers later); in-app and email notifications via Resend; internal-only shared inbox; meetings and minutes typed by people | 1A for approval routing (inferred) | COM-15: Resend data-hosting check before the first outside user (DECISIONS.md round 7). COM-13 numbers wait for one month of measurement (D-11). | Notifications dispatch; no recording (no test named) |
+| 1F Staff expense claims | Claim, approve, then post to the ledger through `post()`; desktop capture only | Phase 0 W3 (`post()`) and Phase 0 W5 (FX-70) | Receipt storage location (open, DECISIONS.md round 10) | Expense claims post only via `post()` (G9) |
+| F1 W2 Projects | Projects, epics, stories, tasks, subtasks; per-project statuses; WIP limits; midpoint ranking with rebalance; `version` column; RLS | Phase 0 W1 (FX-51, RLS); Task fix | None named | Not stated in the docs |
+| F1 W3 Discussion | Channels, DMs, mentions, reactions; per-channel sequence numbers; edits as revisions; deletes as tombstones | F1 W2 (inferred) | Chat-retention legal check (D-14, before the first outside user) | Private-channel non-member is refused at the API (planned-features.md, Phase B exit test) |
+| F1 W4 Realtime | SSE served directly by the Express API; notification worker with do-not-disturb | F1 W3 (inferred) | None named (Worker spike dropped, DECISIONS.md round 6) | "Test SSE first" (DECISIONS.md round 3) |
+| F1 W5 Automation | Rules can never post journals, generate IRNs, file returns, run payroll or email customers without approval | F1 W2, 1A | None named | Rule prohibitions enforced like human writes (planned-features.md, Phase D) |
+| F1 W6 Voice and video | LiveKit self-hosted on the own server; 5-minute join tokens; opaque room names; no recording, egress or transcripts | Hosting answer (round 6); public IP (round 7) | Per-tenant isolation and E2EE are **UNVERIFIED** (DECISIONS.md round 3, round 5) | Not stated in the docs |
+
+---
+
+## 2. Deferred (explicitly not in Phase 0 or Phase 1)
+
+Each row is an owner deferral or drop, or a repo phase item the owner did not take in Phase 0 or Phase 1. Items marked UNVERIFIED are not checked.
+
+| Item | Why deferred | What it waits for | Source |
+|---|---|---|---|
+| CCTV | Out of first release. When built: live view only, no recording | Separate business case per pack; go/no-go on the D-18 question | DECISIONS.md round 3 (D-04, D-18); zen360/README.md section 4 |
+| Pantry | Out of first release (defer list adopted) | Separate business case per pack | DECISIONS.md round 3 (D-04); zen360/README.md section 4 |
+| MSP catalogue | Out of first release. Tenancy not designed (tenant per customer or a customer dimension) | Tenancy design (D-20); Phase 7 | DECISIONS.md round 3 (D-04), D-20 row |
+| Hybrid desk booking | Out of first release. Build, buy or defer not decided. Work-from-home policy (HRM-28) is in Phase 1, desk booking is not | Build-or-buy decision (D-20) | DECISIONS.md round 3 (D-04); D-20 row; round 4 |
+| Ventures platform | Out of first release. Record-only vs pipeline not decided | Scope decision (D-20) | DECISIONS.md round 3 (D-04), D-20 row |
+| Logistics and procurement | Out of first release. In or out not decided | Scope decision (D-20) | DECISIONS.md round 3 (D-04), D-20 row |
+| Foundation module | Owner adopted the defer list. D-17 row says do not build until the legal form and an adviser's opinion exist | Legal form and tax adviser's opinion (D-17) | DECISIONS.md round 3 (D-04); D-17 row |
+| Restricted-fund tracking | **Conflict:** round 2 owner answer says restricted funds are tracked in the ledger from Phase 1. The zen360/README.md deferred row says "until D-17". ORDERED-PLAN does not schedule it. Not in Phase 0 or 1 scope | Owner to settle which applies; adviser sign-off on any eligibility rule | DECISIONS.md round 2 (D-17); zen360/README.md section 4; D-17 row |
+| WhatsApp capture | Deferred. Providers not named | Provider choice and legal review (D-13) | DECISIONS.md round 3 (D-13) |
+| Shared external email-provider inboxes | Deferred. COM-02 is internal-only | Provider choice (D-13) | DECISIONS.md round 3 (D-13), round 4 (COM-02) |
+| Call and meeting recordings, egress, transcripts | Off until counsel signs off. Recording service not deployed | Counsel sign-off (D-13); egress service decision | DECISIONS.md round 3 (D-13), round 5 (video) |
+| Legal hold (warn only) | Deferred. Software only warns the user | Legal-hold authority and counsel owner (D-14) | DECISIONS.md round 3 (D-14) |
+| Object storage, attachments, receipt storage | Deferred. Object storage on the own server, if built | Storage design decision; receipt location for 1F | DECISIONS.md round 3, round 8, round 10; planned-features.md Feature 1 Decision 3 |
+| Mobile camera capture for expenses (4.4) | Phase 0 selection: P4 4.4 mobile out. Expense capture is desktop only | Phase 4 mobile scope | DECISIONS.md "Phase 0, out or undecided"; round 4 |
+| Client-file summaries, careers model, practice labels (D-18) | Deferred in round 5. Marked "tbd during onboard / deferred" in round 8 | Onboarding data (per tenant) and a later decision | DECISIONS.md round 5, round 8 |
+| Online payment gateway | Record only | No plan to build (D-03) | DECISIONS.md round 7 |
+| Holding-company link between tenants and group features (D-01) | Owner answer: optional, consented link layer. Not scheduled in ORDERED-PLAN. Z4 undecided | Z4 scheduling; holding-company view needs explicit consent and read-only snapshots (implication) | DECISIONS.md round 1 (D-01); zen360/README.md section 4 (Z4) |
+| Intercompany pairing and consolidation | **Conflict:** round 2 owner answer says pair the two sides now and post reciprocal entries once Phase 1 lands. ORDERED-PLAN does not place it. Consolidation applicability needs an accountant (D-02) | Scheduling decision; accountant confirmation (D-02) | DECISIONS.md round 2 (D-01), round 3 (D-02); "Phase 0, out or undecided" (Z4) |
+| Customer Case model (Z2) | Out of Phase 0. Round 3 design answer says a new Case record, which may be reconsidered | Scheduling decision (D-12) | DECISIONS.md "Phase 0, out or undecided" (Z2); round 3 (D-12) |
+| Z3 lifecycles (lead to contract to project or cohort to invoice to support) | Out of Phase 0 | Z3 scheduling in zen360/README.md (Phases 2 to 3) | DECISIONS.md "Phase 0, out or undecided" (Z3); zen360/README.md section 4 |
+| Comms-capture integration (Z3) | After D-13 | D-13 provider and legal decisions | zen360/README.md section 4 (Z3) |
+| External users and portals | None at launch. A full portal is a separate product after Phase 4 and D-07 | Phase 4, D-07, leakage fuzzer and negative tests | DECISIONS.md round 2 (D-08); D-08 row |
+| Certificate verification, public | Internal only (sign-in required) for now | Who verifies and revokes, and whether verification is public (D-19) | DECISIONS.md round 2 (D-19, D-08); D-19 row |
+| External anchoring of the integrity log (auditor-facing tamper-evidence claim) | Anchor-key holder not needed until an auditor-facing claim is planned | An auditor-facing claim is planned (D-16) | DECISIONS.md round 3 (D-16) |
+| Audit spine beyond the hash chain (2.1: trigger-written audit records, long-term retention store, signed export on termination) | Phase 0 selection: P2 2.1 undecided | Retention and counsel decisions (D-14) | DECISIONS.md "Phase 0, out or undecided" (P2); phase-2-audit.md |
+| DPDP work (2.2: consent ledger, rights endpoints, breach workflow, children's consent) | Phase 0 selection: P2 2.2 undecided | Counsel owner (D-14); commencement date open | DECISIONS.md "Phase 0, out or undecided" (P2), round 3 (D-14); phase-2-audit.md |
+| E-invoicing (3.2) | Out of Phase 0. **Conflict:** round 2 owner answer chose direct to the government portal, not GSP. phase-3 file and README decision B recommend GSP | Tax adviser's view on applicability and window (D-06, D-02) | DECISIONS.md "Phase 0, out or undecided" (P3 3.2), round 2 (D-06); docs/plan/README.md decision B |
+| GST returns, payroll statutory outputs, other P3 outputs (3.3, 3.4, 3.5) | Phase 0 selection: undecided. FX-73 payroll posting is in Phase 0 W5 | Statutory sign-off (internal finance head, interim; values stay DRAFT) | DECISIONS.md "Phase 0, out or undecided" (P3); round 4 |
+| Semantic layer (P5 5.2 build list) | Phase 0 selection: undecided | Owner decision | DECISIONS.md "Phase 0, out or undecided" (P5) |
+| Eval harness (P5 5.3) | Dropped for now | Dropped | DECISIONS.md "Phase 0, out or undecided" (P5) |
+| Intelligence layer (P6 6.1 to 6.5): model gateway, approval gates, Briefing, Ask Kaizen, narrow ML, drafting, extraction, forecasting | All dropped for now. Needs P2, P5 and 6.1 | Phases 2 and 5 (repo rule: 1, 2 and 5 before 6) | DECISIONS.md "Phase 0, out or undecided" (P6); docs/plan/README.md |
+| AI claim and AI features on the README roadmap | "AI-native" reworded as a roadmap statement, not a capability. Zero model calls today. Other D-15 items open | D-15 open items (autonomy, provider, spend caps, evaluation owner) | DECISIONS.md round 1 (D-15), round 2 (D-15); root README.md line 3; zen360/README.md section 3 |
+| Z4 group, portals and intelligence | Undecided. Consolidation, portals and semantic layer and AI are in Z4 | Z4 scheduling; D-01, D-08, D-15 | DECISIONS.md "Phase 0, out or undecided" (Z4); zen360/README.md section 4 |
+| P7 tiering (database per tenant for enterprise) | Out of Phase 0 | Product phase (D-05) | DECISIONS.md "Phase 0, out or undecided" (P7); phase-7-product.md |
+| P7 noisy-neighbour controls and India residency controls | Undecided in Phase 0 selection. Hosting answer puts the server in India, but the residency checks are not scheduled | Owner decision; residency rules to be checked by counsel | DECISIONS.md "Phase 0, out or undecided" (P7), round 6; phase-7-product.md |
+| P7 billing, plans, usage metering, trial flow, signed export on termination | Out of Phase 0. Subscription and billing rules deferred to the product phase | Product phase (D-05) | DECISIONS.md round 1 (D-05), "Phase 0, out or undecided" (P7) |
+| P7 real API deployment (host manifest and deploy pipeline) | Out of Phase 0. Wave 4 covers the own-server operations, not the deploy manifest | Owner decision | DECISIONS.md "Phase 0, out or undecided" (P7); phase-7-product.md |
+| P8 load tests at ten times projected peak | Out of Phase 0 | Owner decision | DECISIONS.md "Phase 0, out or undecided" (P8); phase-8-proof.md |
+| P8 monthly restore drill with bit-identical trial balance | Out of Phase 0. Wave 4 has tested restores, not the monthly drill | Owner decision | DECISIONS.md "Phase 0, out or undecided" (P8); CI-GATES-DRAFT.md section 1 |
+| P8 SOC 2 Type II, ISO 27001, annual penetration test | Out of Phase 0 | Customer-driven need (phase-8-proof.md) | DECISIONS.md "Phase 0, out or undecided" (P8); phase-8-proof.md |
+| Product rename, KaiERP to Zen 360 (Feature 2) | Accepted, not scheduled. Tier 1 first, then infra | Scheduling decision; domain (Tier 2) | planned-features.md Feature 2 |
+| Feature 1 later items: shared and cross-tenant channels, huddles, bots and slash commands, workflow forms, eDiscovery and legal holds, request types and queues, swimlanes, velocity reports | Not scoped | Feature scoping | planned-features.md Feature 1, "Later (not scoped)" |
+| Feature 1 per-tenant workflow configuration and permission schemes | Excluded from Phase A. Sellable-product only | Audience decision (product or internal, planned-features.md Decision 5); D-05 | planned-features.md Feature 1 Phase A, Decision 5 |
+| Standups | Dropped | None | DECISIONS.md round 4 |
+| Device custody, issued kit, exit asset return (TEC-13, HRM-29, HRM-14) | Out of Phase 1 or not chosen | Owner decision | DECISIONS.md "Phase 1 scope chosen" |
+| Build vs integrate per capability (other than the owner's Phase 1 method) | Build natively for work items, chat, voice and video; LiveKit as a service | Open per capability | DECISIONS.md round 5 (D-04); round 3 (D-04, still open) |
+| Worker-based SSE spike and Durable Object WebSocket option | Dropped. SSE served by the Express API | None | DECISIONS.md round 6; planned-features.md Feature 1 Decision 1 |
+| E2EE and per-tenant LiveKit isolation | **UNVERIFIED.** Not confirmed in the docs | Verification of LiveKit facts | DECISIONS.md round 3 (D-13); ORDERED-PLAN Wave 6 |
+| Service-level numbers (D-11) | Measure first, set later | About one month of real data, then owner sets numbers | DECISIONS.md round 3, round 7 (D-11) |
+
+---
+
+## 3. Tbd during onboard
+
+These are tenant setup data. They are entered as data at onboarding, not hardcoded (DECISIONS.md round 8 and round 9).
+
+- **Approval thresholds**, including the large-payment threshold (D-09). Status: tbd during onboard.
+- **Reserved matters** list. The founder names them at onboarding (D-09).
+- **Named alternates and delegates** per role (D-09).
+- **Access-level assignment** for each person. Each person holds one level plus named extra duties. The template ships with the app and each tenant can edit it.
+- **Per-tenant assignment of duties to levels** (round 9 and round 10).
+- **IT owner** as a level assignment at onboarding. The name is not recorded.
+- **Per-tenant practice labels, careers model and client-file summary rules** (D-18). Also deferred (round 5).
+
+Not tbd during onboard, and still open: the duties per level, the read scope of the non-employee levels, and the level model design (DECISIONS.md round 9 and round 10).
+
+---
+
+## 4. Dependency view: critical path
+
+The critical path, in order. Each step gates the next.
+
+1. **Wave 0 foundations:** 0.7 schema split and 0.1 config. Both come first because they make later items cheaper and enforce boot refusal.
+2. **0.8 CI:** lint, migration baseline, and gate G3 from Wave 0.
+3. **Authority and audit (Wave 1 and 2):** FX-01 to FX-05, FX-20 to FX-22, RLS (FX-51), the scheduler and hash-chain fixes.
+4. **Money (Wave 3):** `money.ts` (bigint) before the ledger schema. `entityId` on the journal before the first post.
+5. **Ledger (Wave 3):** ledger models, migration, `post()` as the sole writer, derived balances. Cashbook cutover (1.5) waits for the trial balance to tie and for its BLOCKED-BY items.
+6. **Ledger consumers (Wave 5):** FX-70 to FX-73 posting from events, imports and payroll liabilities.
+7. **1A approvals:** needs FX-01 and FX-32.
+8. **Rest of Phase 1:** 1B to 1F and Feature 1 waves 2 to 6. Feature 1 wave 2 (projects) is needed by 1C and 1D (inferred). The Task fix ships first (Phase 0 Wave 1).
+
+Parallel where the docs allow: Wave 5 interface work and Wave 4 operations; non-money parts of the Z2 spine can run alongside Phase 1 (zen360/README.md section 4).
+
+---
+
+## 5. Risks and open decisions
+
+### 5a. Still open after round 10 (DECISIONS.md)
+
+- Statutory sign-off by a qualified person. Statutory values stay DRAFT. Interim holder: the internal finance head.
+- Duties per level, and the read scope of the non-employee levels (founders and owners, contractors, external auditors and accountants, board and investors), including whether they are users of the same tenant.
+- IT owner: a level assignment at onboarding. The name is not recorded.
+- Expense receipt storage location: object storage on the own server, deferred.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14). Both are for the internal finance head.
+
+### 5b. Risks from ORDERED-PLAN.md
+
+- Phase 0 is mostly new build, with no effort estimates.
+- Item 3.1 (statutory master pack) is pulled early by the owner, overriding the "do not reorder" rule.
+- The founder's exemption from maker-checker is a segregation-of-duties risk for founder-only classes (payroll run, large payments, statutory filings). Self-approval is traceable only through the ordinary audit row.
+- Single-site risk: everything runs on one own server. Round 7 gives a static IP, a second line and backup power, but off-site backup and server operations still need the named owner.
+- Test counts differ across documents: `ci.yml` says 382, `phase-8-proof.md` says 370, `phase-0-stabilise.md` says 372. There is no single source of truth.
+- The 00-BRIEF.md section 5 is missing from the branch. CI-GATES-DRAFT.md is a fresh draft and does not reconstruct it.
+
+### 5c. Other open items this roadmap depends on
+
+- D-15 AI autonomy, provider, spend caps, evaluation owner (still open, round 2).
+- D-10 break-glass details (round 3 and round 4 still open).
+- D-07 SSO and identity-provider choice.
+- The restricted-fund and intercompany conflicts in section 2.
+- The e-invoicing route conflict in section 2 (D-06).
