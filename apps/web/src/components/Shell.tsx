@@ -426,7 +426,7 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
                 : 'text-[#c9c9ce] hover:bg-[#232326] hover:text-white'
             }`}
           >
-            <span className="truncate capitalize">{a.roleSlug.replace(/_/g, ' ')}</span>
+            <span className="truncate capitalize">{a.roleSlug ? a.roleSlug.replace(/_/g, ' ') : 'no role set'}</span>
             <span className="flex shrink-0 items-center gap-1">
               {a.requiresStepUp && (
                 <span title="You will be asked to confirm your password again before this goes through">

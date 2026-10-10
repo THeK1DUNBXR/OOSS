@@ -56,6 +56,16 @@ database already holds a tenant — so re-running it never touches your data.
 
 Logs land in `.dev/api.log` and `.dev/web.log`.
 
+## Before a deploy: people with no role
+
+An affiliation with no role gives its holder no access. Before a deploy, run the read-only report to see who that is:
+
+```
+pnpm --filter @kaizen/api report:roleless
+```
+
+It prints, per active tenant, the count of active affiliations with no role and the person record codes behind them. It prints no names or emails. Anyone listed cannot sign in to work until someone names a role for them; fix that in the people area before the deploy, not after a complaint.
+
 ## Databases
 
 | | |

@@ -220,7 +220,9 @@ async function entitiesFor(principalId: string, emailForHint?: string): Promise<
       name: user.tenant.name,
       kind: user.tenant.kind as TenantKind,
       parentTenantId: user.tenant.parentTenantId,
-      roleSlugs: [...new Set(affiliations.map((a) => a.roleSlug ?? 'sales'))],
+      // An affiliation with no role contributes no role here, rather than a
+      // default one (see http.ts, where the same fallback was removed).
+      roleSlugs: [...new Set(affiliations.flatMap((a) => (a.roleSlug ? [a.roleSlug] : [])))],
       ...(suggested ? { suggested: true } : {}),
     });
   }
@@ -608,10 +610,13 @@ export async function buildSessionUser(
   });
 
   const active = affiliations.find((a) => a.id === affiliationId) ?? affiliations[0];
-  const roleSlug = active?.roleSlug ?? 'sales';
+  // No role is no role: see http.ts. The session carries null and no grants.
+  const roleSlug = active?.roleSlug ?? null;
 
-  const role = await unscopedPrisma.accessRole.findFirst({ where: { tenantId, slug: roleSlug } });
-  const ceiling = (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'internal') as SensitivityClass;
+  const role = roleSlug ? await unscopedPrisma.accessRole.findFirst({ where: { tenantId, slug: roleSlug } }) : null;
+  const ceiling = (
+    roleSlug ? (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'internal') : 'public'
+  ) as SensitivityClass;
 
   const auth = toAuthContext({ userId, tenantId, affiliationId: active.id, stepUp }, user.personId, roleSlug, user.branch, active.orgUnitId, ceiling);
 
@@ -625,7 +630,7 @@ export async function buildSessionUser(
     id: a.id,
     affiliationType: a.affiliationType,
     counterpartyName: a.counterpartyName,
-    roleSlug: a.roleSlug ?? 'sales',
+    roleSlug: a.roleSlug,
     primaryFlag: a.primaryFlag,
     status: a.status,
     effectiveFrom: a.effectiveFrom.toISOString(),
@@ -665,7 +670,7 @@ export async function buildSessionUser(
 export function toAuthContext(
   payload: TokenPayload,
   partyId: string,
-  roleSlug: string,
+  roleSlug: string | null,
   branch: string | null,
   orgUnitId: string | null,
   ceiling: SensitivityClass,

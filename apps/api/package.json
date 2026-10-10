@@ -15,6 +15,7 @@
     "db:reset": "prisma migrate reset --force --skip-generate && prisma generate && tsx src/seed/index.ts",
     "generate": "prisma generate",
     "seed": "tsx src/seed/index.ts",
+    "report:roleless": "tsx src/scripts/reportRoleless.ts",
     "tenant:create": "tsx src/seed/createTenant.ts",
     "division:spin-out": "tsx src/seed/spinOut.ts",
     "seed:course-catalog": "tsx src/seed/courseCatalog.ts",

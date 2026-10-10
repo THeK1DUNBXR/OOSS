@@ -48,7 +48,8 @@ export interface AffiliationSummary {
   id: string;
   affiliationType: string;
   counterpartyName: string | null;
-  roleSlug: string;
+  /** Null when no role was ever set: the holder has no access through it. */
+  roleSlug: string | null;
   primaryFlag: boolean;
   status: string;
   effectiveFrom: string;
@@ -71,7 +72,8 @@ export interface SessionUser {
   /** How many tenants this principal holds an active affiliation in — the entity picker shows itself when this is more than one. */
   entityCount: number;
   activeAffiliationId: string;
-  roleSlug: string;
+  /** Null for an affiliation with no role: no grants, the lowest ceiling. */
+  roleSlug: string | null;
   archetype: SurfaceArchetype;
   classificationCeiling: SensitivityClass;
   affiliations: AffiliationSummary[];

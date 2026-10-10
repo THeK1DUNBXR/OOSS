@@ -116,7 +116,7 @@ function SecurityTab() {
       <Card title="Your second factor" subtitle="A TOTP code from an authenticator app (Google Authenticator, Authy, 1Password).">
         {mfaRequired && (
           <p className="mb-3 text-2xs text-band-warning">
-            The {user?.roleSlug.replace('_', ' ')} role requires MFA to approve a refund, an MCA filing, or an e-signature request.
+            The {user?.roleSlug?.replace('_', ' ')} role requires MFA to approve a refund, an MCA filing, or an e-signature request.
           </p>
         )}
         {!enrolment ? (

@@ -45,12 +45,20 @@ export async function contextMiddleware(req: Request, res: Response, next: NextF
         // A revoked affiliation goes dark on the very next query — no
         // deprovisioning job, no session-invalidation step.
         if (affiliation) {
-          const roleSlug = affiliation.roleSlug ?? 'sales';
-          const role = await unscopedPrisma.accessRole.findFirst({
-            where: { tenantId: user.tenantId, slug: roleSlug },
-            select: { classificationCeiling: true },
-          });
-          const ceiling = (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'internal') as SensitivityClass;
+          // A missing role is no role, never a default one. Defaulting it to
+          // 'sales' gave the sales seat to every affiliation whose role was
+          // never set, so the holder could read what sales can read. With no
+          // role there are no grants, and the ceiling is the lowest class.
+          const roleSlug = affiliation.roleSlug;
+          const role = roleSlug
+            ? await unscopedPrisma.accessRole.findFirst({
+                where: { tenantId: user.tenantId, slug: roleSlug },
+                select: { classificationCeiling: true },
+              })
+            : null;
+          const ceiling = (
+            roleSlug ? (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'internal') : 'public'
+          ) as SensitivityClass;
           ctx.auth = toAuthContext(
             { ...payload, tenantId: user.tenantId },
             user.personId,
