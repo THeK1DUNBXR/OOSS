@@ -1,8 +1,8 @@
-DRAFT by Claude for owner approval. 00-BRIEF.md section 5 is missing from this branch; this is NOT a reconstruction of it.
+Drafted by Claude; approved by owner 2026-10-10 (see Status). 00-BRIEF.md section 5 is missing from this branch; this is NOT a reconstruction of it.
 
 # CI gates and ledger gate tests: draft
 
-Status: DRAFT. Nothing here is in force. Owner approval is required before any gate is added to `.github/workflows/ci.yml`, `eslint.config.js` or the test suite.
+Status: Approved by owner 2026-10-10 with the decisions below; still uses UNVERIFIED markers where flagged. Decisions: DECISIONS.md "Owner answers, round 9 (recorded 2026-10-10)". Approval covers gates G1 to G12 (G11 and G12 added in round 9). The ledger gate tests L1 to L3 are not approved as a set by round 9; see section 5. Adding a gate to `.github/workflows/ci.yml`, `eslint.config.js` or the test suite is still a separate change, made in its own pull request.
 
 Scope: the ten CI gates that DECISIONS.md "Owner answers, round 5" asked Claude to define fresh, plus the three ledger gate tests named in `docs/plan/phase-1-ledger.md` (gate line) and `docs/plan/phase-8-proof.md`. The round 5 answer is: "The ten CI gates and the ledger gate tests are to be defined fresh. Claude will draft them for owner approval."
 
@@ -12,7 +12,7 @@ Sources and how to read them:
 - Anything not verified in the docs or the code is marked **UNVERIFIED**.
 - No statutory rate, limit, slab, due date or form value appears in this draft. Where a gate touches statutory data, it checks structure only.
 
-Waves used in section 3 (the docs give no sequence within a wave; see open question 5):
+Waves used in section 3 (the docs give no sequence within a wave; round 9 answer 10 leaves sequencing within a wave to the team):
 
 - **Wave A** = owner's Phase 0 fix items (DECISIONS.md, "Phase 0, fix items (all kept)").
 - **Wave B** = owner's Phase 0 new or replace items (DECISIONS.md, "Phase 0, new or replace items chosen").
@@ -123,11 +123,27 @@ What exists in the repository today is noted per gate, so the owner can see how 
 - **Statutory values are not stated in this draft and must not be added to it.**
 - **First mandatory:** Wave B, with 3.1.
 
+### G11. Log redaction
+
+- **Checks:** fields listed in `REGULATED_EXCLUDED_FIELDS` never appear in serialised logs, error output or responses. A test writes a value into each excluded field and asserts that the value does not appear in captured output.
+- **Fails the build:** any captured output that contains a redacted field's value.
+- **Protects:** phase-0 0.4 (`REGULATED_EXCLUDED_FIELDS` redacted at the serialiser). Required by owner answer, round 9, item 1.
+- **Exists today:** no. `REGULATED_EXCLUDED_FIELDS` is cited from the phase-0 file and was not re-opened in this pass. UNVERIFIED as to where it is defined and what it covers.
+- **First mandatory:** Wave A (phase-0 0.4). Wave membership is taken from the phase-0 item and not re-checked.
+
+### G12. Accessibility (axe)
+
+- **Checks:** axe-core run on the rendered pages in scope, with zero violations, and a Lighthouse accessibility score at or above 95 (figures from `docs/plan/README.md:59` and `docs/plan/phase-4-interface.md:5`).
+- **Fails the build:** any axe violation, or a Lighthouse accessibility score below 95.
+- **Protects:** the Phase 4 interface requirements. Required by owner answer, round 9, item 1.
+- **Exists today:** no. No axe job exists in `ci.yml` (checked).
+- **First mandatory:** not in the wave table in section 3 for Waves A to C or Phase 1; it applies from Phase 4.
+
 ### Considered and not in the ten
 
-- **Log redaction test:** `REGULATED_EXCLUDED_FIELDS` redacted at the serialiser (phase-0 0.4). Strong candidate; not in the ten because the boot test (G5) and the tenant gate (G7) already take the security slots. Open question 6.
-- **Accessibility gate (axe-core, zero violations, Lighthouse accessibility at or above 95):** `docs/plan/README.md:59`, `docs/plan/phase-4-interface.md:5`. No axe job exists in `ci.yml` (checked). Belongs to Phase 4 (owner's Phase 0 interface items and P4 items). Open question 6.
-- **Dependency licence check blocking GPL, AGPL, LGPL, MPL and BUSL:** this was in the request that asked for this draft. No licence policy exists in the repository docs or in `ci.yml` or `scripts/` (checked). The owner's build-versus-integrate answer (DECISIONS round 5) says LiveKit is Apache-2.0 and that third-party code is read, not copied. The blocklist is therefore a proposal, not a repository rule. UNVERIFIED as a policy. Open question 7.
+- **Log redaction test:** moved to G11 by owner answer, round 9, item 1.
+- **Accessibility gate (axe-core):** moved to G12 by owner answer, round 9, item 1.
+- **Dependency licence check:** REPORT ONLY, by owner answer, round 9, item 5. The request that asked for this draft named GPL, AGPL, LGPL, MPL and BUSL. No licence policy exists in the repository docs or in `ci.yml` or `scripts/` (checked). The owner's build-versus-integrate answer (DECISIONS round 5) says LiveKit is Apache-2.0 and that third-party code is read, not copied. The check lists licences found and never fails the build. The clean-room rule is enforced by review, not by CI (implication, labelled in DECISIONS round 9). UNVERIFIED as a policy. Open question 7.
 - **Monthly restore drill with bit-identical trial balance:** `docs/plan/phase-8-proof.md`. Out of the owner's Phase 0 list (DECISIONS, "P8: load tests, monthly restore drill ... out"). The Wave C item "database backups with tested restores" is the nearest operations item.
 - **Concurrency suite:** `docs/plan/phase-8-proof.md`, and the owner's Phase 0 new items. Covered for the ledger by L3 below.
 
@@ -249,7 +265,9 @@ Runs in the concurrency suite, not the serial suite. Latency budget is an owner 
 | G7 Tenant isolation and RLS | from A (RLS checks, FX-51) | from B (fuzzer) | needs non-owner app role for runtime checks | carried |
 | G8 Governed writes | from A (FX-01 to FX-05, FX-20 to FX-22) | carried | carried | carried; applies to approvals and expense posting |
 | G9 Money, period, ledger-write lint | from A (IST rule part 2) | from B (money part 1, ledger-write part 3, with 1.3 and 1.6) | carried | carried; expense claims post only via `post()` |
-| G10 Statutory rows only | n/a | from B (with 3.1) | carried | carried |
+| G10 Statutory rows only (structure only) | n/a | from B (with 3.1) | carried | carried |
+| G11 Log redaction | from A (phase-0 0.4) | carried | carried | carried |
+| G12 Accessibility (axe) | n/a | n/a | n/a | n/a until Phase 4 |
 | L1 Ten-thousand-operation property test | n/a | from B (with 1.1 to 1.4) | carried; needs app role for immutability cases | carried |
 | L2 Migration equivalence | n/a | from B, blocked until mapping is signed and Kaizen figures confirmed (1.5) | carried | required at the 1 April cutover (round 7) |
 | L3 200 concurrent allocations | from A (0.6 payment allocation fix) | carried | carried | carried |
@@ -269,18 +287,20 @@ Drift to note: `ci.yml` header says the suite is "382-test"; `docs/plan/phase-8-
 
 ## 5. Open questions for owner approval
 
-1. **Approve or amend the ten gates (G1 to G10) and the three ledger tests (L1 to L3)** as drafted. Nothing is added to CI until this is answered.
-2. **Mock policy (G4).** Is the ban absolute, or is a stub allowed for a non-database external service? If allowed, name the allowlist.
-3. **Failing-test-first (G6).** Should CI run the FX test against the base commit itself, or should the pull request record the failing run and CI only check the record?
-4. **Governed-write check (G8).** Is the static scan required, or only the runtime audit-row test? The static scan is heuristic.
-5. **Order within each wave.** The docs give no sequence within Phase 0 or within Phase 1. Should the wave table be ordered (for example, does G5 land before the 0.2 session work), or is any order within a wave acceptable?
-6. **Two candidates outside the ten.** Log redaction (phase-0 0.4) and the axe-core accessibility gate (Phase 4) are not in the ten. Should either replace a gate above?
-7. **Dependency licence check.** The request named GPL, AGPL, LGPL, MPL and BUSL as blocked. No repository document states a licence policy. Confirm the list, and say who decides exceptions. (Note: LiveKit is recorded as Apache-2.0 in DECISIONS round 5.)
-8. **Ledger test budgets.** Confirm: how often L1 runs (every pull request touching `platform/ledger.ts` or the schema, nightly, or both); the runtime ceiling for L1; the latency ceiling for L3; and whether 200 is the right concurrency for L3.
-9. **Fixture sign-off (L2).** The internal finance head reviews the 66-account mapping (DECISIONS round 5). Confirm also that the Kaizen book figures (1,123 vouchers, 66 accounts, the window) are checked by a human before the fixture is committed (`docs/plan/README.md:68`).
-10. **Statutory gate (G10).** The gate checks structure only and holds no values. Confirm that the values, their sign-off and their owner stay with the internal finance head (DECISIONS round 3, D-02).
-11. **CI database approach (G3).** Confirm that `ci.yml` moves from `prisma db push` to migrations, and who owns the baseline.
-12. **Fast-check.** Approve `fast-check` as a new dev dependency for L1, or name an alternative.
+Status after round 9 (owner answers recorded in DECISIONS.md, "Owner answers, round 9"). Each question keeps its answer. Questions with no answer stay open.
+
+1. **Gates G1 to G10 and ledger tests L1 to L3.** RESOLVED for G1 to G10: approved as the required set. G11 (log redaction) and G12 (axe) added as required gates, so twelve checks in total. The ledger tests L1 to L3 are NOT approved as a set in round 9. Owner to confirm L2 and L3 explicitly.
+2. **Mock policy (G4).** RESOLVED in part: the mock scan fails the build. No allowlist was recorded, so no non-database stub is allowed until the owner names one.
+3. **Failing-test-first (G6).** RESOLVED: the failing test is in a separate first commit that fails on the old code. CI checks that this commit exists and that it fails on the old code.
+4. **Governed-write check (G8).** RESOLVED in part: the scan is registry-driven and blocks the build (unregistered writes and `force: true` fail). Whether the runtime audit-row test is also required is not recorded; check (b) stands until the owner says otherwise.
+5. **Order within each wave.** RESOLVED: gates are listed per wave only. The team sequences work within a wave.
+6. **Log redaction and axe.** RESOLVED: both are required gates (G11, G12). Neither replaces a gate above.
+7. **Dependency licence check.** RESOLVED: report only. The check lists licences and never fails the build. Enforcement of the clean-room rule moves to review. The GPL, AGPL, LGPL, MPL and BUSL list and the exception owner are not recorded and remain open.
+8. **Ledger test budgets.** PARTLY RESOLVED: short runs of L1 on every pull request; the full ten-thousand-operation test and full concurrency runs at phase end. Still open: the runtime ceiling for L1, the latency ceiling for L3, and whether 200 is the right concurrency for L3.
+9. **Fixture sign-off (L2).** OPEN in part. Under round 9 item 11, sign-off duties (including the 1.5 account-mapping review) attach to access levels, not named people. The interim holder is the internal finance head. Still open: whether the Kaizen book figures (1,123 vouchers, 66 accounts, the window) are checked by a human before the fixture is committed (`docs/plan/README.md:68`), and the level model (open after round 9).
+10. **Statutory gate (G10).** RESOLVED: G10 checks structure only and fails on hard-coded rates. It never checks values. Values, sign-off and ownership stay with the internal finance head (DECISIONS round 3, D-02). Statutory sign-off still needs a real qualified person, even when the duty is held by a level.
+11. **CI database approach (G3).** PARTLY RESOLVED: CI moves from `prisma db push` to real migrations in Wave 0. Open: the G3 row in section 3 says "from B", and the owner places the move in "Wave 0", which this draft does not define. Owner or team to reconcile. Who owns the baseline is not recorded.
+12. **Fast-check.** RESOLVED: fast-check (MIT) approved as a test-only dependency.
 
 ---
 

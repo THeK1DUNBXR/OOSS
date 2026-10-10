@@ -313,3 +313,33 @@ Still open after round 8 (supersedes the round 7 list):
 - Expense receipt storage location: object storage on the company's own server, deferred.
 - D-11 numbers after the one-month measurement.
 - Legal checks carried over from round 7, not closed by this round: the chat-retention counsel check (D-14) and the Resend data-hosting check. Both are due before the first outside user.
+
+## Owner answers, round 9 (recorded 2026-10-10)
+
+Answers given by the owner in a ninth round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged. This round supersedes the round 8 "Still open" list at the end of the round 8 section. Where no answer is recorded here, the recommendation in `docs/plan/zen360/CI-GATES-DRAFT.md` stands, and that draft's status line says what is approved.
+
+- **CI gates G1 to G10 (owner answer).** All ten CI gates G1 to G10 are approved as the required set.
+- **Log redaction and accessibility become required gates (owner answer).** The log-redaction check and the accessibility (axe) check are required gates too, so there are twelve checks in total. In the draft's numbering they are added as G11 (log redaction) and G12 (axe).
+- **Mock scan (owner answer).** The mock scan fails the build.
+- **Failing-test-first proof (owner answer).** The failing test sits in a separate first commit that fails on the old code. CI checks this.
+- **Governed-write scan (owner answer).** The governed-write scan is registry-driven and blocks the build. Unregistered writes fail the build, and `force: true` fails the build.
+- **Dependency licence check (owner answer).** The licence check is REPORT ONLY. It lists the licences found and never fails the build.
+  - Implication (label): the clean-room, no-copy rule in CLAUDE.md and the owner's "read, understand, write custom" method are now enforced by review, not by CI.
+- **fast-check (owner answer).** fast-check (MIT) is approved as a test-only dependency.
+- **Ledger test budget (owner answer).** Short runs of the ledger property test happen on every pull request. The full ten-thousand-operation test and the full concurrency runs happen at phase end.
+- **Statutory gate G10 (owner answer).** G10 checks structure only. It fails on hard-coded rates and never checks values.
+- **CI database approach (owner answer).** CI moves from `prisma db push` to real migrations in Wave 0.
+- **Gate sequencing (owner answer).** Gates are listed per wave only. The team sequences the work within a wave.
+- **Access model (owner answer).** Named reviewers and signers are replaced by a level-based access system. Each employee is assigned a level during onboarding. Sign-off duties are attached to levels, not to named people. Examples of duties: the Kaizen fixture sign-off, the 1.5 account-mapping review, statutory rule approval, legal checks and approval classes.
+  - Implication (label): this extends D-09, where thresholds and roles are entered as data at onboarding.
+  - Implication (label): until onboarding exists, the internal finance head remains the interim holder of every sign-off duty previously assigned to them.
+  - Implication (label): the per-tenant assignment of duties to levels is "tbd during onboard". The level model itself (level names, number of levels, which duties sit at each level, and whether levels are per tenant) still needs a design decision. It is open, listed below.
+
+Still open after round 9 (supersedes the round 8 list):
+
+- Statutory sign-off still needs a real qualified person, even when the duty is held by a level. Statutory values stay DRAFT.
+- Name of the internal IT owner for server operations and off-site backup. This becomes a level assignment at onboarding.
+- Level model design: the levels, the duties at each level, and whether levels are per tenant.
+- Expense receipt storage location: object storage on the company's own server, deferred.
+- D-11 numbers after the one-month measurement.
+- Legal checks before the first outside user: the Resend data-hosting check, and the chat-retention counsel check (D-14).
