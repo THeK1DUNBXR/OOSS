@@ -12,6 +12,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { journalTotals, reconciliationDiff, unexplainedCount, payrollCalendarMilestone } from '@kaizen/shared';
 import { asUser, expectReject, prisma, unscopedPrisma, tenantId } from '../helpers.js';
 import { hire, transitionEmployment } from '../../domains/employment.js';
+import { encryptField } from '../../domains/compliance/privacy.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import {
   createPayItem, listPayItems, setPayItemActive,
@@ -396,6 +397,24 @@ describe('bank advice', () => {
     const advice = await asUser('operations@kaizen.co.in', () => generateBankAdvice(run.id));
     expect(advice.count).toBe(1);
     expect(advice.total).toBe(27_000);
+  });
+
+  it('FX-61: a bank file carries the plaintext IFSC and account number, never the enc:v1: ciphertext', async () => {
+    const a = await makeEmployee('bank-enc');
+    await asUser('chairman@kaizen.co.in', () =>
+      prisma.employmentRelationship.update({
+        where: { id: a.employment.id },
+        // Written the way the regulated-field write path stores them at rest.
+        data: { bankAccountNumber: encryptField('000777888999'), bankIfsc: encryptField('HDFC0000789') },
+      }),
+    );
+    const run = await makeRun('2032-11', [{ employmentRelationshipId: a.employment.id, division: 'software', gross: 25_000, net: 22_000 }]);
+
+    const advice = await asUser('operations@kaizen.co.in', () => generateBankAdvice(run.id));
+    const { csv } = await asUser('operations@kaizen.co.in', () => downloadBankAdvice(advice.id));
+    expect(csv).toContain('HDFC0000789');
+    expect(csv).toContain('000777888999');
+    expect(csv).not.toContain('enc:v1:');
   });
 
   it('an employee holds no grant on bank advices', async () => {
