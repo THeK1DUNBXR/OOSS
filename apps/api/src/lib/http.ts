@@ -10,6 +10,7 @@ import { ApiError } from '../platform/errors.js';
 import { TenantScopeError } from '../platform/db.js';
 import { toAuthContext, verifyToken } from './auth.js';
 import { grantedConsentCodes, resolvePurpose } from '../domains/compliance/privacy.js';
+import { logger } from '../platform/logger.js';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -97,7 +98,7 @@ export function handler(fn: (req: Request, res: Response) => Promise<unknown>): 
   };
 }
 
-export function errorMiddleware(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+export function errorMiddleware(err: unknown, req: Request, res: Response, _next: NextFunction) {
   if (err instanceof ApiError) {
     const details = err.details as { candidates?: unknown[]; axes?: unknown[] } | undefined;
     res.status(err.status).json({
@@ -112,17 +113,22 @@ export function errorMiddleware(err: unknown, _req: Request, res: Response, _nex
     return;
   }
 
+  // The full error goes to the log, where the on-call person needs it. The
+  // response carries a code and a request id only: a Prisma or driver message
+  // names hosts, users and sometimes the values that failed a constraint, and
+  // none of that belongs in a body an unauthenticated caller can read.
+  const requestId = getContext()?.requestId ?? req.ctx?.requestId;
+  const tenantId = req.ctx?.auth?.tenantId ?? null;
+
   if (err instanceof TenantScopeError) {
     // A query that escaped the tenant gate is a 500 in staging, caught before
     // production cutover — never a silently unscoped result.
-    const requestId = getContext()?.requestId;
-    console.error('[tenant-scope]', { requestId, err });
+    logger.error({ requestId, tenantId, err }, 'query ran outside the tenant gate');
     res.status(500).json({ error: { code: err.code, requestId } });
     return;
   }
 
-  const requestId = getContext()?.requestId;
-  console.error('[error]', { requestId, err });
+  logger.error({ requestId, tenantId, err }, 'unhandled error');
   res.status(500).json({ error: { code: 'INTERNAL', requestId } });
 }
 

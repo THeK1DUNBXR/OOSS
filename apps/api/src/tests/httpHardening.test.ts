@@ -45,9 +45,31 @@ describe('CORS allowlist (FX-52)', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe(ALLOWED);
   });
 
+  it('refuses a preflight from an origin that is not allowlisted', async () => {
+    const res = await fetch(`${base}/api/auth/login`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://evil.example',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type',
+      },
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
   it('answers a same-origin request, which carries no Origin header', async () => {
     const res = await fetch(`${base}/health`);
     expect(res.status).toBe(200);
+  });
+});
+
+describe('security headers (helmet)', () => {
+  it('sends a CSP that forbids inline scripts, and leaves HSTS to Caddy', async () => {
+    const res = await fetch(`${base}/health`);
+    const csp = res.headers.get('content-security-policy') ?? '';
+    expect(csp).toMatch(/script-src 'self'(;|$)/);
+    expect(csp).not.toMatch(/script-src[^;]*'unsafe-inline'/);
+    expect(res.headers.get('strict-transport-security')).toBeNull();
   });
 });
 

@@ -1,14 +1,16 @@
 /**
- * A small in-memory token-bucket rate limiter, for `POST /auth/login`.
+ * Rate limits for `POST /auth/login`: a per-address limit held in Postgres, and
+ * a per-email token bucket that is still process-local.
  *
- * This is process-local state: a multi-process deployment (more than one API
- * instance behind a load balancer) needs a shared store (Redis, or a table
- * behind an atomic increment) for the limit to hold across instances — noted
- * here rather than pretended away, per docs/plan/compliance.md's own
- * "state what the platform does not do" discipline.
+ * The per-email bucket is the gap. A process-local count holds for one API
+ * instance only; it is noted here rather than pretended away, per
+ * docs/plan/compliance.md's own "state what the platform does not do"
+ * discipline, until it moves onto the same store.
  */
 
 import type { NextFunction, Request, Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
+import { PostgresRateLimitStore } from '../../../platform/rateLimitStore.js';
 
 interface Bucket {
   tokens: number;
@@ -53,24 +55,37 @@ export class TokenBucketLimiter {
 // Five attempts a minute per IP, five per minute per email — generous enough
 // for a person who mistypes a password twice, tight enough to make a
 // credential-stuffing run slow.
-export const loginIpLimiter = new TokenBucketLimiter(5, 5 / 60_000);
+//
+// The address bucket is in Postgres so it holds across API instances; the
+// email bucket is still per process (FX-53 tracks moving it too).
 export const loginEmailLimiter = new TokenBucketLimiter(5, 5 / 60_000);
 
+const LOGIN_REFUSED = {
+  error: {
+    code: 'RATE_LIMITED',
+    message: 'Too many sign-in attempts. Wait a minute and try again.',
+  },
+};
+
+const loginAddressLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  store: new PostgresRateLimitStore('login:ip'),
+  message: LOGIN_REFUSED,
+});
+
 export function loginRateLimit(req: Request, res: Response, next: NextFunction): void {
-  const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
-  const email = typeof req.body?.email === 'string' ? req.body.email.toLowerCase() : 'unknown';
-
-  const ipOk = loginIpLimiter.consume(`ip:${ip}`);
-  const emailOk = loginEmailLimiter.consume(`email:${email}`);
-
-  if (!ipOk || !emailOk) {
-    res.status(429).json({
-      error: {
-        code: 'RATE_LIMITED',
-        message: 'Too many sign-in attempts. Wait a minute and try again.',
-      },
-    });
-    return;
-  }
-  next();
+  // express-rate-limit answers the refusal itself and does not call `next`,
+  // so reaching the callback means the address is still under its limit.
+  loginAddressLimit(req, res, (err?: unknown) => {
+    if (err) return next(err);
+    const email = typeof req.body?.email === 'string' ? req.body.email.toLowerCase() : 'unknown';
+    if (!loginEmailLimiter.consume(`email:${email}`)) {
+      res.status(429).json(LOGIN_REFUSED);
+      return;
+    }
+    next();
+  });
 }
