@@ -132,7 +132,7 @@
 
 **`apps/api/src/domains/hiring.ts`** (333 lines) — listRequisitions:35 · createRequisition:53 · transitionRequisition:90 · listApplications:117 · createApplication:140 · transitionApplication:199 · joinFromApplication:274 · hiringFunnel:316
 
-**`apps/api/src/domains/identity.ts`** (504 lines) — normalisePhone:31 · normaliseEmail:39 · maskPhone:45 · maskEmail:50 · ResolutionScope:64 · crmResolutionScope:71 · PersonInput:75 · findDedupCandidates:90 · ResolveResult:171 · findOrCreatePerson:182 · sanctionedCreatePerson:293 · mergePersons:299 · personIdChain:357 · resolveMergeCandidate:371 · sweepStaleMergeCandidates:411 · AffiliationInput:442 · createAffiliation:456 · endAffiliation:491
+**`apps/api/src/domains/identity.ts`** (520 lines) — normalisePhone:31 · normaliseEmail:39 · maskPhone:45 · maskEmail:50 · ResolutionScope:64 · crmResolutionScope:71 · PersonInput:75 · findDedupCandidates:90 · ResolveResult:171 · findOrCreatePerson:182 · sanctionedCreatePerson:293 · mergePersons:299 · personIdChain:357 · resolveMergeCandidate:371 · sweepStaleMergeCandidates:411 · AffiliationInput:442 · createAffiliation:456 · endAffiliation:507
 
 **`apps/api/src/domains/interactions.ts`** (452 lines) — RelatedReference:33 · classificationFor:55 · computeSensitivity:69 · InteractionInput:90 · logInteraction:105 · VisibleInteraction:259 · timelineFor:289 · recentInteractions:412
 
@@ -254,7 +254,7 @@
 
 **`apps/api/src/platform/approvals.ts`** (373 lines) — ApprovalPolicyContent:30 · DEFAULT_APPROVAL_POLICY:46 · GateSubject:59 · GateResult:82 · evaluateApprovalGate:109 · decideApprovalStep:309
 
-**`apps/api/src/platform/audit.ts`** (433 lines) — AUDIT_ACTIONS:19 · AuditAction:30 · registerGovernedEntities:39 · governedEntities:45 · isGoverned:51 · diffForAudit:123 · computeAuditHash:187 · createChainedAuditRecord:221 · verifyAuditChain:273 · chainUnhashedAuditRecords:319 · AuditWriteInput:341 · auditWrite:352 · auditRegulatedRead:377 · auditExport:400 · auditBulkOperation:415
+**`apps/api/src/platform/audit.ts`** (436 lines) — AUDIT_ACTIONS:19 · AuditAction:30 · registerGovernedEntities:39 · governedEntities:45 · isGoverned:51 · diffForAudit:126 · computeAuditHash:190 · createChainedAuditRecord:224 · verifyAuditChain:276 · chainUnhashedAuditRecords:322 · AuditWriteInput:344 · auditWrite:355 · auditRegulatedRead:380 · auditExport:403 · auditBulkOperation:418
 
 **`apps/api/src/platform/build.ts`** (121 lines) — BuildStamp:27 · BUILD:95 · STARTED_AT:98 · buildsBehind:108 · buildLabel:115
 

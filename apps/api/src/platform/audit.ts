@@ -90,6 +90,9 @@ registerGovernedEntities('fin', ['invoice', 'receipt', 'credit_note', 'fee_insta
 // A task closed is a commitment someone made good on or didn't; closing it
 // unaudited left no trace of who marked a follow-up done.
 registerGovernedEntities('crm', ['task']);
+// An affiliation names the access role a person works under, so creating one
+// is a grant of access; it was the one write in the people area with no trail.
+registerGovernedEntities('crm', ['affiliation']);
 // Added with invoicing and the returns: the company's own registration, which
 // every invoice is printed from, and a filed return, which is a statement to
 // the government. Both are things somebody will one day have to prove who

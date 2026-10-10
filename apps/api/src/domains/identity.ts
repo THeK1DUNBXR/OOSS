@@ -455,6 +455,15 @@ export interface AffiliationInput {
 
 export async function createAffiliation(input: AffiliationInput) {
   const auth = currentAuth();
+  // An affiliation's role is the access role the evaluator reads for this
+  // person, so naming one is granting access. Checked only when a role is
+  // named: the education and import callers create affiliations with none,
+  // and that is not a grant.
+  if (input.roleSlug) {
+    await assertCan({ resource: 'people', verb: 'assign' });
+    const role = await prisma.accessRole.findFirst({ where: { slug: input.roleSlug }, select: { id: true } });
+    if (!role) throw ApiError.unprocessable(`Access role '${input.roleSlug}' is not defined for this tenant.`);
+  }
   const affiliation = await prisma.affiliation.create({
     data: {
       tenantId: auth.tenantId,
@@ -471,6 +480,13 @@ export async function createAffiliation(input: AffiliationInput) {
       effectiveTo: input.effectiveTo ?? null,
       statutoryRetentionFloor: STATUTORY_RETENTION_AFFILIATIONS.includes(input.affiliationType),
     },
+  });
+
+  await auditWrite({
+    action: 'create',
+    subjectType: 'affiliation',
+    subjectId: affiliation.id,
+    after: { affiliationType: input.affiliationType, roleSlug: input.roleSlug ?? null },
   });
 
   await emit({
