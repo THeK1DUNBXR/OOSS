@@ -151,6 +151,10 @@ describe('MKT-ANA-001 — funnel conversion rates', () => {
 describe('MKT-ANA-002 — channel cost per lead', () => {
   it('costPerLead is null when a channel has spend but zero leads', async () => {
     await run(async () => {
+      // The spend is dated one day inside the window, not at `to`. Stamping it
+      // with `new Date()` after `to` was captured put it a millisecond past the
+      // inclusive upper bound whenever the insert crossed a ms boundary, so the
+      // channel intermittently vanished from the result.
       const from = new Date(Date.now() - 3 * 86_400_000);
       const to = new Date();
 
@@ -161,7 +165,7 @@ describe('MKT-ANA-002 — channel cost per lead', () => {
           channelKey: 'print_only_channel_test',
           division: 'software',
           amount: 5000,
-          spendDate: new Date(),
+          spendDate: new Date(Date.now() - 86_400_000),
         },
       });
 
