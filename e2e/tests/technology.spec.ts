@@ -11,6 +11,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
+import { sessionToken, useSessionToken } from './helpers.js';
 
 /**
  * Web fonts are decoration with a fallback stack behind them, and a stack
@@ -53,22 +54,11 @@ const TECHNOLOGY_NAV_LABELS = [
   'Continuity',
 ];
 
-async function dismissIntro(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem('kaizen.seenIntro', '1');
-    } catch {
-      /* a browser without storage still shows the modal; nothing to do */
-    }
-  });
-}
-
 async function signInAs(page: Page, email: string, password: string): Promise<void> {
-  await dismissIntro(page);
+  // A shared session token rather than the form: see `sessionToken` in helpers.ts
+  // for why every test signing in through the form exhausts the API's budget.
+  await useSessionToken(page, await sessionToken(page.request, email, password));
   await page.goto('/');
-  await page.locator('input[type=email]').fill(email);
-  await page.locator('input[type=password]').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('link', { name: 'Getting Started' })).toBeVisible();
 }
 
