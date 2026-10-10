@@ -122,6 +122,8 @@ These are tenant setup data. They are entered as data at onboarding, not hardcod
 - **Access-level assignment** for each person. Each person holds one level plus named extra duties. The template ships with the app and each tenant can edit it.
 - **Per-tenant assignment of duties to levels** (round 9 and round 10).
 - **IT owner** as a level assignment at onboarding. The name is not recorded.
+- **Head and Manager default duties** (round 12). Entered as data per tenant.
+- **Statutory sign-off holder** (round 12). A level duty, named per tenant at onboarding.
 - **Per-tenant practice labels, careers model and client-file summary rules** (D-18). Also deferred (round 5).
 
 Not tbd during onboard, and still open: the duties per level, the read scope of the non-employee levels, and the level model design (DECISIONS.md round 9 and round 10).
