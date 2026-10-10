@@ -24,7 +24,14 @@ import { ROLE_GRANT_MATRIX, parseCell } from './grants.js';
 
 type Change =
   | { kind: 'add'; role: string; resource: string; verbs: string[]; scope: string; scopeResolver: string | null }
-  | { kind: 'update'; role: string; resource: string; from: Record<string, unknown>; to: Record<string, unknown>; id: string }
+  | {
+      kind: 'update';
+      role: string;
+      resource: string;
+      from: Record<string, unknown>;
+      to: Record<string, unknown>;
+      id: string;
+    }
   | { kind: 'revoke'; role: string; resource: string; id: string };
 
 const same = (a: readonly string[], b: readonly string[]) =>
@@ -56,7 +63,14 @@ export async function planFor(tenantId: string): Promise<Change[]> {
       const resolver = spec.scopeResolver ?? null;
 
       if (!existing) {
-        changes.push({ kind: 'add', role: slug, resource: spec.resource, verbs: parsed.verbs, scope: parsed.scope, scopeResolver: resolver });
+        changes.push({
+          kind: 'add',
+          role: slug,
+          resource: spec.resource,
+          verbs: parsed.verbs,
+          scope: parsed.scope,
+          scopeResolver: resolver,
+        });
         continue;
       }
 
@@ -108,14 +122,24 @@ async function apply(changes: Change[], tenantId: string, policyVersionId: strin
         name: EVENTS.GRANT_CHANGED,
         subject: { entityType: 'grant', entityId: created.id },
         previousState: null,
-        newState: { role: c.role, resource: c.resource, verbs: c.verbs, scope: c.scope, scopeResolver: c.scopeResolver },
+        newState: {
+          role: c.role,
+          resource: c.resource,
+          verbs: c.verbs,
+          scope: c.scope,
+          scopeResolver: c.scopeResolver,
+        },
         reason: { reasonCode: 'matrix_reconcile', note: 'Declared matrix added this grant.' },
         impact: { domains: ['gov'], severity: 'S2_WARNING' },
       });
     } else if (c.kind === 'update') {
       await prisma.grant.update({
         where: { id: c.id },
-        data: { verbs: c.to.verbs as string[], scope: c.to.scope as string, scopeResolver: (c.to.scopeResolver ?? null) as string | null },
+        data: {
+          verbs: c.to.verbs as string[],
+          scope: c.to.scope as string,
+          scopeResolver: (c.to.scopeResolver ?? null) as string | null,
+        },
       });
       await emit({
         name: EVENTS.GRANT_CHANGED,
@@ -156,8 +180,12 @@ async function main() {
 
       console.log(`\n${tenant.slug}: ${changes.length} difference(s) from the declared matrix`);
       for (const c of changes) {
-        if (c.kind === 'add') console.log(`  + ${c.role.padEnd(22)} ${c.resource}  ${c.verbs.join(',')}@${c.scope}${c.scopeResolver ? ` [${c.scopeResolver}]` : ''}`);
-        else if (c.kind === 'update') console.log(`  ~ ${c.role.padEnd(22)} ${c.resource}  ${JSON.stringify(c.from)} -> ${JSON.stringify(c.to)}`);
+        if (c.kind === 'add')
+          console.log(
+            `  + ${c.role.padEnd(22)} ${c.resource}  ${c.verbs.join(',')}@${c.scope}${c.scopeResolver ? ` [${c.scopeResolver}]` : ''}`,
+          );
+        else if (c.kind === 'update')
+          console.log(`  ~ ${c.role.padEnd(22)} ${c.resource}  ${JSON.stringify(c.from)} -> ${JSON.stringify(c.to)}`);
         else console.log(`  - ${c.role.padEnd(22)} ${c.resource}`);
       }
 

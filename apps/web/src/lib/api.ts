@@ -103,7 +103,8 @@ async function refreshOnce(): Promise<boolean> {
 function refreshAccessToken(): Promise<boolean> {
   if (refreshing) return refreshing;
   const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
-  const viaLock = async (): Promise<boolean> => (locks ? await locks.request('kz-refresh', refreshOnce) : await refreshOnce());
+  const viaLock = async (): Promise<boolean> =>
+    locks ? await locks.request('kz-refresh', refreshOnce) : await refreshOnce();
   const pending = viaLock();
   refreshing = pending.finally(() => {
     refreshing = null;
@@ -300,7 +301,9 @@ export async function verifyMfa(challengeToken: string, code: string) {
  *  selection token `login()` returned rather than a session token. The
  *  chosen entity's account may itself ask for a second factor. */
 export async function chooseEntity(tenantId: string, selectionToken: string): Promise<SessionIssued | MfaRequired> {
-  return storeIfSession(await api.postWithToken<SessionIssued | MfaRequired>('/auth/switch-entity', { tenantId }, selectionToken));
+  return storeIfSession(
+    await api.postWithToken<SessionIssued | MfaRequired>('/auth/switch-entity', { tenantId }, selectionToken),
+  );
 }
 
 /** Moves an already-signed-in principal into another entity they hold an

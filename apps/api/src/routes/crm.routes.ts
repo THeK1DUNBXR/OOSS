@@ -45,15 +45,14 @@ import {
   attachStudentProfile,
   STUDENT_STATUSES,
 } from '../domains/students.js';
-import { createRelationship, refineRelationship, supersedeRelationship, traverse, resolveEdge } from '../domains/relationships.js';
 import {
-  createLead,
-  listLeads,
-  advanceLeadStage,
-  convertLead,
-  reassignLead,
-  applyRouting,
-} from '../domains/leads.js';
+  createRelationship,
+  refineRelationship,
+  supersedeRelationship,
+  traverse,
+  resolveEdge,
+} from '../domains/relationships.js';
+import { createLead, listLeads, advanceLeadStage, convertLead, reassignLead, applyRouting } from '../domains/leads.js';
 import { routingAuditFor } from '../domains/routing.js';
 import {
   createOpportunity,
@@ -74,7 +73,10 @@ const router = Router();
 // Search
 // ---------------------------------------------------------------------------
 
-router.get('/search', handler(async (req) => universalSearch(str(req.query.q) ?? '', 15)));
+router.get(
+  '/search',
+  handler(async (req) => universalSearch(str(req.query.q) ?? '', 15)),
+);
 
 // ---------------------------------------------------------------------------
 // People — the identity spine
@@ -93,7 +95,13 @@ router.get(
       deletedAt: null,
       ...(bool(req.query.includeMerged) ? {} : { dedupeStatus: { not: 'merged' } }),
       ...(q
-        ? { OR: [{ fullName: { contains: q, mode: 'insensitive' as const } }, { recordCode: { contains: q, mode: 'insensitive' as const } }, { primaryEmail: { contains: q, mode: 'insensitive' as const } }] }
+        ? {
+            OR: [
+              { fullName: { contains: q, mode: 'insensitive' as const } },
+              { recordCode: { contains: q, mode: 'insensitive' as const } },
+              { primaryEmail: { contains: q, mode: 'insensitive' as const } },
+            ],
+          }
         : {}),
     };
 
@@ -153,7 +161,9 @@ router.get(
         // specialisation detail behind it.
         externalAffiliationBadges: canSeeHr
           ? []
-          : p.affiliations.filter((a) => ['employee', 'student'].includes(a.affiliationType)).map((a) => a.affiliationType),
+          : p.affiliations
+              .filter((a) => ['employee', 'student'].includes(a.affiliationType))
+              .map((a) => a.affiliationType),
         createdAt: p.createdAt.toISOString(),
       })),
       total,
@@ -431,11 +441,23 @@ async function listBodies(req: Request, kind: 'institution' | 'organization') {
   };
 }
 
-router.get('/organizations', handler(async (req) => listBodies(req, 'organization')));
-router.get('/institutions', handler(async (req) => listBodies(req, 'institution')));
+router.get(
+  '/organizations',
+  handler(async (req) => listBodies(req, 'organization')),
+);
+router.get(
+  '/institutions',
+  handler(async (req) => listBodies(req, 'institution')),
+);
 
-router.get('/organizations/:id', handler(async (req) => assembleOrganization360(req.params.id)));
-router.get('/institutions/:id', handler(async (req) => assembleOrganization360(req.params.id)));
+router.get(
+  '/organizations/:id',
+  handler(async (req) => assembleOrganization360(req.params.id)),
+);
+router.get(
+  '/institutions/:id',
+  handler(async (req) => assembleOrganization360(req.params.id)),
+);
 
 const bodySchema = z.object({
   name: z.string().min(1),
@@ -527,7 +549,10 @@ router.patch(
   handler(async (req) => updateInstitutionProfile(req.params.id, institutionProfileSchema.partial().parse(req.body))),
 );
 
-router.delete('/organizations/:id/account', handler(async (req) => detachAccount(req.params.id)));
+router.delete(
+  '/organizations/:id/account',
+  handler(async (req) => detachAccount(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Students
@@ -658,7 +683,10 @@ router.patch(
   '/relationships/:id/refine',
   handler(async (req) => {
     await assertCan({ resource: 'relationships', verb: 'edit' });
-    const schema = z.object({ status: z.string().optional(), strength: z.enum(['weak', 'moderate', 'strong']).optional() });
+    const schema = z.object({
+      status: z.string().optional(),
+      strength: z.enum(['weak', 'moderate', 'strong']).optional(),
+    });
     return refineRelationship(req.params.id, schema.parse(req.body));
   }),
 );
@@ -709,7 +737,9 @@ router.get(
       q: str(req.query.q),
     });
 
-    const stages = await prisma.pipelineStage.findMany({ where: { tenantId: currentAuth().tenantId, retiredAt: null } });
+    const stages = await prisma.pipelineStage.findMany({
+      where: { tenantId: currentAuth().tenantId, retiredAt: null },
+    });
     const stageMap = new Map(stages.map((s) => [`${s.pipelineId}:${s.stageKey}`, s]));
     const money = await canSeeMoney('leads');
 
@@ -764,7 +794,13 @@ router.get(
     await assertCan({ resource: 'leads', verb: 'view' });
     const lead = await prisma.lead.findFirst({
       where: { id: req.params.id, deletedAt: null },
-      include: { person: true, organization: true, offering: true, pipeline: { include: { stages: true, transitions: true } }, territory: true },
+      include: {
+        person: true,
+        organization: true,
+        offering: true,
+        pipeline: { include: { stages: true, transitions: true } },
+        territory: true,
+      },
     });
     if (!lead) throw ApiError.notFound('Lead');
     const [timeline, routing] = await Promise.all([
@@ -834,7 +870,10 @@ router.post(
   }),
 );
 
-router.get('/leads/:id/routing-audit', handler(async (req) => routingAuditFor(req.params.id)));
+router.get(
+  '/leads/:id/routing-audit',
+  handler(async (req) => routingAuditFor(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Opportunities
@@ -892,7 +931,8 @@ router.get(
           // Masked (present but nulled) rather than absent, for a viewer
           // without financial visibility.
           expectedValue: money ? value : null,
-          weightedValue: money && value !== null ? Number((value * ((stage?.defaultProbability ?? 0) / 100)).toFixed(2)) : null,
+          weightedValue:
+            money && value !== null ? Number((value * ((stage?.defaultProbability ?? 0) / 100)).toFixed(2)) : null,
           currency: o.currency,
           expectedCloseDate: o.expectedCloseDate?.toISOString() ?? null,
           closeDateStale: Boolean(o.expectedCloseDate && o.expectedCloseDate < new Date() && !o.outcome),
@@ -925,14 +965,22 @@ router.get(
     await assertCan({ resource: 'opportunities', verb: 'view' });
     const opportunity = await prisma.opportunity.findFirst({
       where: { id: req.params.id, deletedAt: null },
-      include: { organization: true, offering: true, pipeline: { include: { stages: { where: { retiredAt: null }, orderBy: { sequence: 'asc' } }, transitions: true } } },
+      include: {
+        organization: true,
+        offering: true,
+        pipeline: {
+          include: { stages: { where: { retiredAt: null }, orderBy: { sequence: 'asc' } }, transitions: true },
+        },
+      },
     });
     if (!opportunity) throw ApiError.notFound('Opportunity');
 
     const [timeline, proposal, quote, contract, mou, winLoss, receivables] = await Promise.all([
       timelineFor('opportunity', opportunity.id, { limit: 40 }),
       opportunity.proposalId ? prisma.proposal.findFirst({ where: { id: opportunity.proposalId } }) : null,
-      opportunity.quoteId ? prisma.quote.findFirst({ where: { id: opportunity.quoteId }, include: { lines: true } }) : null,
+      opportunity.quoteId
+        ? prisma.quote.findFirst({ where: { id: opportunity.quoteId }, include: { lines: true } })
+        : null,
       opportunity.contractId ? prisma.contract.findFirst({ where: { id: opportunity.contractId } }) : null,
       opportunity.mouId ? prisma.mou.findFirst({ where: { id: opportunity.mouId } }) : null,
       prisma.winLossReview.findFirst({ where: { subjectType: 'opportunity', subjectId: opportunity.id } }),
@@ -1040,7 +1088,10 @@ router.post(
   }),
 );
 
-router.get('/forecast', handler(async (req) => forecastRollup({ blended: bool(req.query.blended) ?? false })));
+router.get(
+  '/forecast',
+  handler(async (req) => forecastRollup({ blended: bool(req.query.blended) ?? false })),
+);
 
 router.get(
   '/coverage',
@@ -1072,7 +1123,14 @@ router.post(
       direction: z.enum(['inbound', 'outbound', 'internal']).optional(),
       occurredAt: z.string(),
       relatedReferences: z
-        .array(z.object({ contextCode: z.string(), entityType: z.string(), entityId: z.string(), displayLabel: z.string().nullish() }))
+        .array(
+          z.object({
+            contextCode: z.string(),
+            entityType: z.string(),
+            entityId: z.string(),
+            displayLabel: z.string().nullish(),
+          }),
+        )
         .min(1),
       durationMinutes: z.number().nullish(),
       subject: z.string().nullish(),

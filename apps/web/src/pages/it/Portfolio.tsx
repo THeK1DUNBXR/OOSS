@@ -28,7 +28,16 @@ import {
   Tabs,
   Withheld,
 } from '../../components/ui.js';
-import { CreateModal, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
+import {
+  CreateModal,
+  MoneyInput,
+  NewButton,
+  Row,
+  SelectInput,
+  TextArea,
+  TextInput,
+  messageOf,
+} from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 
 // ---------------------------------------------------------------------------
@@ -127,7 +136,11 @@ export function ItPortfolio() {
   const [creating, setCreating] = useState(false);
   const { can } = useSession();
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['it-initiatives', theme],
     queryFn: () => api.get<InitiativeRow[]>(`/it/initiatives${theme === 'all' ? '' : `?theme=${theme}`}`),
   });
@@ -172,19 +185,35 @@ export function ItPortfolio() {
       <PageHeader
         title="Portfolio"
         subtitle="Every technology initiative, from idea to benefits realised. Approving a sponsor's own initiative reroutes on the Self-Dealing Bar."
-        actions={can('it_initiatives:create') ? <NewButton label="New initiative" onClick={() => setCreating(true)} /> : undefined}
+        actions={
+          can('it_initiatives:create') ? (
+            <NewButton label="New initiative" onClick={() => setCreating(true)} />
+          ) : undefined
+        }
       />
 
       {summary && !summary.notYetMeasured && (
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Metric label="In flight" value={summary.byStage.in_flight ?? 0} drillTo="/it/portfolio" />
           <Metric label="Delivered" value={summary.byStage.delivered ?? 0} drillTo="/it/portfolio" />
-          <Metric label="Red" value={summary.byRag.red} tone={summary.byRag.red > 0 ? 'bad' : 'neutral'} drillTo="/it/portfolio" />
-          <Metric label="Amber" value={summary.byRag.amber} tone={summary.byRag.amber > 0 ? 'warn' : 'neutral'} drillTo="/it/portfolio" />
+          <Metric
+            label="Red"
+            value={summary.byRag.red}
+            tone={summary.byRag.red > 0 ? 'bad' : 'neutral'}
+            drillTo="/it/portfolio"
+          />
+          <Metric
+            label="Amber"
+            value={summary.byRag.amber}
+            tone={summary.byRag.amber > 0 ? 'warn' : 'neutral'}
+            drillTo="/it/portfolio"
+          />
         </div>
       )}
       {summary?.notYetMeasured && (
-        <Card className="mb-4"><EmptyState message="Nothing to measure yet" hint="No initiatives have been proposed." /></Card>
+        <Card className="mb-4">
+          <EmptyState message="Nothing to measure yet" hint="No initiatives have been proposed." />
+        </Card>
       )}
 
       <Tabs
@@ -196,7 +225,9 @@ export function ItPortfolio() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="No initiatives yet." hint="Propose one to see it here." /></Card>
+        <Card>
+          <EmptyState message="No initiatives yet." hint="Propose one to see it here." />
+        </Card>
       ) : (
         <div className="grid gap-3 overflow-x-auto pb-2 sm:grid-cols-2 lg:grid-cols-4">
           {STAGES.filter((s) => s !== 'cancelled').map((stage) => (
@@ -247,20 +278,49 @@ export function ItPortfolio() {
           })
         }
       >
-        <TextInput label="Title" required value={title} onChange={setTitle} placeholder="Migrate the helpdesk to the new ticketing system" />
+        <TextInput
+          label="Title"
+          required
+          value={title}
+          onChange={setTitle}
+          placeholder="Migrate the helpdesk to the new ticketing system"
+        />
         <Row>
-          <SelectInput label="Theme" value={itTheme} onChange={(v: (typeof THEMES)[number]) => setItTheme(v)} options={THEMES.map((t) => ({ value: t, label: THEME_LABELS[t] }))} />
+          <SelectInput
+            label="Theme"
+            value={itTheme}
+            onChange={(v: (typeof THEMES)[number]) => setItTheme(v)}
+            options={THEMES.map((t) => ({ value: t, label: THEME_LABELS[t] }))}
+          />
           <MoneyInput label="Budget" required value={budget} onChange={setBudget} />
         </Row>
         <Row>
-          <PersonPicker label="Sponsor (accountable for funding)" required value={sponsorPartyId} onChange={setSponsorPartyId} people={people} />
-          <PersonPicker label="Owner (accountable for delivery)" required value={ownerPartyId} onChange={setOwnerPartyId} people={people} />
+          <PersonPicker
+            label="Sponsor (accountable for funding)"
+            required
+            value={sponsorPartyId}
+            onChange={setSponsorPartyId}
+            people={people}
+          />
+          <PersonPicker
+            label="Owner (accountable for delivery)"
+            required
+            value={ownerPartyId}
+            onChange={setOwnerPartyId}
+            people={people}
+          />
         </Row>
         <TextArea label="Business case" value={businessCase} onChange={setBusinessCase} rows={3} />
         <TextArea label="Expected benefit" value={expectedBenefit} onChange={setExpectedBenefit} rows={2} />
-        <TextInput label="Target quarter" value={targetQuarter} onChange={setTargetQuarter} placeholder="FY2026-27 Q3" />
+        <TextInput
+          label="Target quarter"
+          value={targetQuarter}
+          onChange={setTargetQuarter}
+          placeholder="FY2026-27 Q3"
+        />
         <p className="text-2xs text-ink-500">
-          The sponsor is who the Self-Dealing Bar checks: they can never be the one who approves this initiative's own funding.
+          The sponsor is who the Self-Dealing Bar checks: they can never be the one who approves this initiative's own
+          funding.
         </p>
       </CreateModal>
     </div>
@@ -286,20 +346,37 @@ export function ItInitiativeDetail() {
   const { id = '' } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const { can } = useSession();
-  const [gateResult, setGateResult] = useState<{ reason: string; resolvedApproverRole: string | null; resolutionTier: number; selfDealingBarTripped: boolean } | null>(null);
+  const [gateResult, setGateResult] = useState<{
+    reason: string;
+    resolvedApproverRole: string | null;
+    resolutionTier: number;
+    selfDealingBarTripped: boolean;
+  } | null>(null);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updateBody, setUpdateBody] = useState('');
   const [updateRag, setUpdateRag] = useState('green');
 
-  const { data, isLoading, error: loadError } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['it-initiative', id],
     queryFn: () => api.get<InitiativeDetailView>(`/it/initiatives/${id}`),
     enabled: Boolean(id),
   });
 
   const transition = useMutation({
-    mutationFn: (event: string) => api.post<{ applied: boolean; reason: string | null; approvalStepId: string | null; resolvedApproverRole?: string | null; resolutionTier?: number; selfDealingBarTripped?: boolean }>(`/it/initiatives/${id}/transition`, { event }),
+    mutationFn: (event: string) =>
+      api.post<{
+        applied: boolean;
+        reason: string | null;
+        approvalStepId: string | null;
+        resolvedApproverRole?: string | null;
+        resolutionTier?: number;
+        selfDealingBarTripped?: boolean;
+      }>(`/it/initiatives/${id}/transition`, { event }),
     onSuccess: (res) => {
       setError(null);
       if (!res.applied) {
@@ -336,7 +413,10 @@ export function ItInitiativeDetail() {
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             <RecordCode code={data.recordCode} />
-            <StatusChip status={data.stage} tone={data.stage === 'benefits_realised' ? 'good' : data.stage === 'cancelled' ? 'bad' : 'neutral'} />
+            <StatusChip
+              status={data.stage}
+              tone={data.stage === 'benefits_realised' ? 'good' : data.stage === 'cancelled' ? 'bad' : 'neutral'}
+            />
             <RagChip rag={data.rag} />
           </span>
         }
@@ -357,7 +437,11 @@ export function ItInitiativeDetail() {
         }
       />
 
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
@@ -372,7 +456,11 @@ export function ItInitiativeDetail() {
 
           <Card
             title="Updates"
-            actions={can('it_initiatives:edit') || can('it_initiatives:create') ? <NewButton label="Post update" onClick={() => setPosting(true)} /> : undefined}
+            actions={
+              can('it_initiatives:edit') || can('it_initiatives:create') ? (
+                <NewButton label="Post update" onClick={() => setPosting(true)} />
+              ) : undefined
+            }
           >
             {data.updates.length === 0 ? (
               <EmptyState message="No updates posted yet." />
@@ -398,18 +486,26 @@ export function ItInitiativeDetail() {
             <div className="mt-3">
               <Metric
                 label="Spend to date"
-                value={data.spendToDate === null ? <Withheld reason="no_permission" /> : money(data.spendToDate, data.currency)}
+                value={
+                  data.spendToDate === null ? (
+                    <Withheld reason="no_permission" />
+                  ) : (
+                    money(data.spendToDate, data.currency)
+                  )
+                }
                 sub="Summed from linked vendor bills."
                 noActionReason="Computed, not stored."
               />
             </div>
             {data.spendToDate === null ? (
               <p className="mt-3 text-2xs text-ink-500">
-                Spend figures need financial visibility on the budget (<code>it_budgets:F</code>) — the Finance Head and the chairman hold it.
+                Spend figures need financial visibility on the budget (<code>it_budgets:F</code>) — the Finance Head and
+                the chairman hold it.
               </p>
             ) : (
               <p className="mt-3 text-2xs text-ink-500">
-                Spend to date sums the linked vendor bills only. Licence spend is not yet joined in — see docs/it/portfolio.md.
+                Spend to date sums the linked vendor bills only. Licence spend is not yet joined in — see
+                docs/it/portfolio.md.
               </p>
             )}
           </Card>
@@ -422,7 +518,9 @@ export function ItInitiativeDetail() {
         onClose={() => setPosting(false)}
         footer={
           <>
-            <button className="btn" onClick={() => setPosting(false)}>Cancel</button>
+            <button className="btn" onClick={() => setPosting(false)}>
+              Cancel
+            </button>
             <button className="btn-primary" disabled={postUpdate.isPending} onClick={() => postUpdate.mutate()}>
               {postUpdate.isPending ? 'Posting…' : 'Post'}
             </button>
@@ -430,7 +528,16 @@ export function ItInitiativeDetail() {
         }
       >
         <div className="flex flex-col gap-3">
-          <SelectInput label="RAG" value={updateRag} onChange={setUpdateRag} options={[{ value: 'green', label: 'Green' }, { value: 'amber', label: 'Amber' }, { value: 'red', label: 'Red' }]} />
+          <SelectInput
+            label="RAG"
+            value={updateRag}
+            onChange={setUpdateRag}
+            options={[
+              { value: 'green', label: 'Green' },
+              { value: 'amber', label: 'Amber' },
+              { value: 'red', label: 'Red' },
+            ]}
+          />
           <TextArea label="What's happened" required value={updateBody} onChange={setUpdateBody} rows={4} />
         </div>
       </Modal>
@@ -497,7 +604,11 @@ export function ItRoadmap() {
   const [creating, setCreating] = useState(false);
   const quarters = useMemo(() => nextQuarters(6), []);
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['it-roadmap'],
     queryFn: () => api.get<RoadmapItemRow[]>('/it/roadmap'),
   });
@@ -532,7 +643,9 @@ export function ItRoadmap() {
       <PageHeader
         title="Roadmap"
         subtitle="Milestones on the quarter x theme grid."
-        actions={can('it_initiatives:create') ? <NewButton label="Add item" onClick={() => setCreating(true)} /> : undefined}
+        actions={
+          can('it_initiatives:create') ? <NewButton label="Add item" onClick={() => setCreating(true)} /> : undefined
+        }
       />
 
       {isLoading ? (
@@ -544,7 +657,9 @@ export function ItRoadmap() {
               <tr>
                 <th className="text-left text-2xs uppercase text-ink-500">Theme</th>
                 {quarters.map((q) => (
-                  <th key={q} className="text-left text-2xs uppercase text-ink-500">{q}</th>
+                  <th key={q} className="text-left text-2xs uppercase text-ink-500">
+                    {q}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -558,7 +673,10 @@ export function ItRoadmap() {
                       <td key={q} className="align-top">
                         <div className="min-h-[48px] space-y-1">
                           {items.map((item) => (
-                            <div key={item.id} className={`rounded border border-ink-800 bg-ink-900 p-1.5 text-2xs ${item.done ? 'opacity-50 line-through' : ''}`}>
+                            <div
+                              key={item.id}
+                              className={`rounded border border-ink-800 bg-ink-900 p-1.5 text-2xs ${item.done ? 'opacity-50 line-through' : ''}`}
+                            >
                               {item.milestone}
                             </div>
                           ))}
@@ -574,7 +692,11 @@ export function ItRoadmap() {
         </div>
       )}
 
-      {data.length === 0 && !isLoading && <Card className="mt-4"><EmptyState message="No roadmap items yet." /></Card>}
+      {data.length === 0 && !isLoading && (
+        <Card className="mt-4">
+          <EmptyState message="No roadmap items yet." />
+        </Card>
+      )}
 
       <CreateModal
         open={creating}
@@ -592,8 +714,18 @@ export function ItRoadmap() {
         }
       >
         <Row>
-          <SelectInput label="Quarter" value={quarter} onChange={setQuarter} options={quarters.map((q) => ({ value: q, label: q }))} />
-          <SelectInput label="Theme" value={theme} onChange={(v: (typeof THEMES)[number]) => setTheme(v)} options={THEMES.map((t) => ({ value: t, label: THEME_LABELS[t] }))} />
+          <SelectInput
+            label="Quarter"
+            value={quarter}
+            onChange={setQuarter}
+            options={quarters.map((q) => ({ value: q, label: q }))}
+          />
+          <SelectInput
+            label="Theme"
+            value={theme}
+            onChange={(v: (typeof THEMES)[number]) => setTheme(v)}
+            options={THEMES.map((t) => ({ value: t, label: THEME_LABELS[t] }))}
+          />
         </Row>
         <SelectInput
           label="Initiative (optional)"
@@ -602,7 +734,13 @@ export function ItRoadmap() {
           placeholder="Not tied to a funded initiative"
           options={initiatives.map((i) => ({ value: i.id, label: `${i.recordCode} — ${i.title}` }))}
         />
-        <TextInput label="Milestone" required value={milestone} onChange={setMilestone} placeholder="Cut over to the new system" />
+        <TextInput
+          label="Milestone"
+          required
+          value={milestone}
+          onChange={setMilestone}
+          placeholder="Cut over to the new system"
+        />
         <TextInput label="Due" type="date" value={dueAt} onChange={setDueAt} />
       </CreateModal>
     </div>
@@ -643,7 +781,14 @@ interface BudgetSummaryView {
   fy: string | null;
   plannedTotal: number | null;
   actualTotal: number | null;
-  byDivision: Array<{ division: string; planned: number | null; actual: number | null; variance: number | null; run: number; grow: number }>;
+  byDivision: Array<{
+    division: string;
+    planned: number | null;
+    actual: number | null;
+    variance: number | null;
+    run: number;
+    grow: number;
+  }>;
   runTotal: number;
   growTotal: number;
 }
@@ -671,7 +816,11 @@ export function ItBudget() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data, isLoading, error: loadError } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['it-budget', fy],
     queryFn: () => api.get<BudgetForFyView>(`/it/budget?fy=${encodeURIComponent(fy)}`),
   });
@@ -702,19 +851,38 @@ export function ItBudget() {
       <PageHeader
         title="Budget"
         subtitle="Planned vs actual, by category and division. Actuals are summed from the books every time you look — nothing here is stored."
-        actions={can('it_budgets:create') ? <NewButton label="New line" onClick={() => setCreating(true)} /> : undefined}
+        actions={
+          can('it_budgets:create') ? <NewButton label="New line" onClick={() => setCreating(true)} /> : undefined
+        }
       />
 
       <div className="mb-4 flex items-center gap-2">
-        <SelectInput label="Financial year" value={fy} onChange={setFy} options={fyOptions().map((f) => ({ value: f, label: f }))} />
+        <SelectInput
+          label="Financial year"
+          value={fy}
+          onChange={setFy}
+          options={fyOptions().map((f) => ({ value: f, label: f }))}
+        />
       </div>
 
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       {summary && (
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Metric label="Planned" value={summary.plannedTotal === null ? <Withheld reason="no_permission" /> : money(summary.plannedTotal)} noActionReason="Set on each budget line." />
-          <Metric label="Actual" value={summary.actualTotal === null ? <Withheld reason="no_permission" /> : money(summary.actualTotal)} noActionReason="Summed from the books." />
+          <Metric
+            label="Planned"
+            value={summary.plannedTotal === null ? <Withheld reason="no_permission" /> : money(summary.plannedTotal)}
+            noActionReason="Set on each budget line."
+          />
+          <Metric
+            label="Actual"
+            value={summary.actualTotal === null ? <Withheld reason="no_permission" /> : money(summary.actualTotal)}
+            noActionReason="Summed from the books."
+          />
           <Metric label="Run" value={money(summary.runTotal)} noActionReason="Kind = run." />
           <Metric label="Grow" value={money(summary.growTotal)} noActionReason="Kind = grow." />
         </div>
@@ -732,8 +900,12 @@ export function ItBudget() {
             {summary.byDivision.map((d) => (
               <div key={d.division}>
                 <div className="mb-1 flex items-center justify-between text-2xs">
-                  <span className="font-medium text-ink-200">{DIVISION_LABELS[d.division as Division] ?? titleCase(d.division)}</span>
-                  <span className="text-ink-500">{money(d.run)} run · {money(d.grow)} grow</span>
+                  <span className="font-medium text-ink-200">
+                    {DIVISION_LABELS[d.division as Division] ?? titleCase(d.division)}
+                  </span>
+                  <span className="text-ink-500">
+                    {money(d.run)} run · {money(d.grow)} grow
+                  </span>
                 </div>
                 <ContributionBar value={d.run} max={d.run + d.grow || 1} tone="accent" />
               </div>
@@ -745,7 +917,9 @@ export function ItBudget() {
       {isLoading ? (
         <Loading />
       ) : !data || data.lines.length === 0 ? (
-        <Card><EmptyState message="Nothing to measure yet" hint={`No budget lines for ${fy}.`} /></Card>
+        <Card>
+          <EmptyState message="Nothing to measure yet" hint={`No budget lines for ${fy}.`} />
+        </Card>
       ) : (
         <Card bodyClassName="p-0">
           <table className="w-full text-sm">
@@ -771,20 +945,32 @@ export function ItBudget() {
               {data.lines.map((l) => (
                 <tr key={l.id} className="border-b border-ink-900 last:border-0">
                   <td className="px-3 py-2">{titleCase(l.category)}</td>
-                  <td className="px-3 py-2">{l.division ? DIVISION_LABELS[l.division as Division] ?? titleCase(l.division) : '—'}</td>
+                  <td className="px-3 py-2">
+                    {l.division ? (DIVISION_LABELS[l.division as Division] ?? titleCase(l.division)) : '—'}
+                  </td>
                   <td className="px-3 py-2">{titleCase(l.kind)}</td>
                   {seesMoney ? (
                     <>
-                      <td className="px-3 py-2 text-right tabular-nums">{l.planned === null ? <Withheld reason="no_permission" /> : money(l.planned)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{l.actual === null ? <Withheld reason="no_permission" /> : money(l.actual)}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums ${(l.variance ?? 0) < 0 ? 'text-band-critical' : 'text-ink-300'}`}>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {l.planned === null ? <Withheld reason="no_permission" /> : money(l.planned)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {l.actual === null ? <Withheld reason="no_permission" /> : money(l.actual)}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right tabular-nums ${(l.variance ?? 0) < 0 ? 'text-band-critical' : 'text-ink-300'}`}
+                      >
                         {l.variance === null ? <Withheld reason="no_permission" /> : money(l.variance)}
                       </td>
                     </>
                   ) : (
-                    <td className="px-3 py-2 text-right"><Withheld reason="no_permission" /></td>
+                    <td className="px-3 py-2 text-right">
+                      <Withheld reason="no_permission" />
+                    </td>
                   )}
-                  <td className="px-3 py-2"><StatusChip status={l.status} tone={l.status === 'approved' ? 'good' : 'neutral'} /></td>
+                  <td className="px-3 py-2">
+                    <StatusChip status={l.status} tone={l.status === 'approved' ? 'good' : 'neutral'} />
+                  </td>
                   <td className="px-3 py-2 text-right">
                     {l.status === 'draft' && can('it_budgets:approve') && (
                       <button className="btn-ghost" disabled={approve.isPending} onClick={() => approve.mutate(l.id)}>
@@ -816,11 +1002,26 @@ export function ItBudget() {
         }
       >
         <Row>
-          <SelectInput label="Category" value={category} onChange={(v: (typeof CATEGORIES)[number]) => setCategory(v)} options={CATEGORIES.map((c) => ({ value: c, label: titleCase(c) }))} />
-          <SelectInput label="Kind" value={kind} onChange={(v: (typeof KINDS)[number]) => setKind(v)} options={KINDS.map((k) => ({ value: k, label: titleCase(k) }))} />
+          <SelectInput
+            label="Category"
+            value={category}
+            onChange={(v: (typeof CATEGORIES)[number]) => setCategory(v)}
+            options={CATEGORIES.map((c) => ({ value: c, label: titleCase(c) }))}
+          />
+          <SelectInput
+            label="Kind"
+            value={kind}
+            onChange={(v: (typeof KINDS)[number]) => setKind(v)}
+            options={KINDS.map((k) => ({ value: k, label: titleCase(k) }))}
+          />
         </Row>
         <Row>
-          <SelectInput label="Division" value={division} onChange={(v: (typeof DIVISIONS)[number]) => setDivision(v)} options={DIVISIONS.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))} />
+          <SelectInput
+            label="Division"
+            value={division}
+            onChange={(v: (typeof DIVISIONS)[number]) => setDivision(v)}
+            options={DIVISIONS.map((d) => ({ value: d, label: DIVISION_LABELS[d] }))}
+          />
           <MoneyInput label="Planned" required value={planned} onChange={setPlanned} />
         </Row>
         <p className="text-2xs text-ink-500">
@@ -863,7 +1064,11 @@ export function ItTechDebt() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data = [], isLoading, error: loadError } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['it-tech-debt', status],
     queryFn: () => api.get<TechDebtRow[]>(`/it/tech-debt${status === 'all' ? '' : `?status=${status}`}`),
   });
@@ -890,27 +1095,49 @@ export function ItTechDebt() {
 
   if (loadError) return <ErrorBox error={loadError} />;
 
-  const TRANSITIONS: Record<string, string> = { PLAN: 'Plan', START: 'Start', RETIRE: 'Retire', ACCEPT: 'Accept', REOPEN: 'Reopen' };
+  const TRANSITIONS: Record<string, string> = {
+    PLAN: 'Plan',
+    START: 'Start',
+    RETIRE: 'Retire',
+    ACCEPT: 'Accept',
+    REOPEN: 'Reopen',
+  };
 
   return (
     <div>
       <PageHeader
         title="Technical debt"
         subtitle="What it would cost to fix, and what it costs to leave."
-        actions={can('it_tech_debt:create') ? <NewButton label="New item" onClick={() => setCreating(true)} /> : undefined}
+        actions={
+          can('it_tech_debt:create') ? <NewButton label="New item" onClick={() => setCreating(true)} /> : undefined
+        }
       />
 
       {summary && !summary.notYetMeasured && (
         <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Metric label="Open" value={summary.openCount} drillTo="/it/tech-debt" />
           {SEVERITIES.map((s) => (
-            <Metric key={s} label={titleCase(s)} value={summary.bySeverity[s] ?? 0} tone={s === 'critical' && (summary.bySeverity[s] ?? 0) > 0 ? 'bad' : 'neutral'} drillTo="/it/tech-debt" />
+            <Metric
+              key={s}
+              label={titleCase(s)}
+              value={summary.bySeverity[s] ?? 0}
+              tone={s === 'critical' && (summary.bySeverity[s] ?? 0) > 0 ? 'bad' : 'neutral'}
+              drillTo="/it/tech-debt"
+            />
           ))}
         </div>
       )}
-      {summary?.notYetMeasured && <Card className="mb-4"><EmptyState message="Nothing to measure yet" hint="No technical-debt items recorded." /></Card>}
+      {summary?.notYetMeasured && (
+        <Card className="mb-4">
+          <EmptyState message="Nothing to measure yet" hint="No technical-debt items recorded." />
+        </Card>
+      )}
 
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       <Tabs
         tabs={[
@@ -928,7 +1155,9 @@ export function ItTechDebt() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="No technical-debt items." /></Card>
+        <Card>
+          <EmptyState message="No technical-debt items." />
+        </Card>
       ) : (
         <div className="space-y-2">
           {data.map((item) => (
@@ -937,7 +1166,16 @@ export function ItTechDebt() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <RecordCode code={item.recordCode} />
-                    <StatusChip status={item.severity} tone={item.severity === 'critical' || item.severity === 'high' ? 'bad' : item.severity === 'medium' ? 'warn' : 'neutral'} />
+                    <StatusChip
+                      status={item.severity}
+                      tone={
+                        item.severity === 'critical' || item.severity === 'high'
+                          ? 'bad'
+                          : item.severity === 'medium'
+                            ? 'warn'
+                            : 'neutral'
+                      }
+                    />
                     <StatusChip status={item.status} tone={item.status === 'retired' ? 'good' : 'neutral'} />
                   </div>
                   <p className="mt-1 text-sm font-medium text-ink-100">{item.title}</p>
@@ -948,7 +1186,12 @@ export function ItTechDebt() {
                   {(['PLAN', 'START', 'RETIRE', 'ACCEPT', 'REOPEN'] as const)
                     .filter((e) => legalFrom(item.status, e))
                     .map((e) => (
-                      <button key={e} className="btn-ghost" disabled={transition.isPending} onClick={() => transition.mutate({ id: item.id, event: e })}>
+                      <button
+                        key={e}
+                        className="btn-ghost"
+                        disabled={transition.isPending}
+                        onClick={() => transition.mutate({ id: item.id, event: e })}
+                      >
                         → {TRANSITIONS[e]}
                       </button>
                     ))}
@@ -973,12 +1216,29 @@ export function ItTechDebt() {
           })
         }
       >
-        <TextInput label="Title" required value={title} onChange={setTitle} placeholder="The old helpdesk still runs on end-of-life PHP" />
+        <TextInput
+          label="Title"
+          required
+          value={title}
+          onChange={setTitle}
+          placeholder="The old helpdesk still runs on end-of-life PHP"
+        />
         <Row>
-          <SelectInput label="Severity" value={severity} onChange={(v: (typeof SEVERITIES)[number]) => setSeverity(v)} options={SEVERITIES.map((s) => ({ value: s, label: titleCase(s) }))} />
+          <SelectInput
+            label="Severity"
+            value={severity}
+            onChange={(v: (typeof SEVERITIES)[number]) => setSeverity(v)}
+            options={SEVERITIES.map((s) => ({ value: s, label: titleCase(s) }))}
+          />
           <TextInput label="Effort (days)" type="number" value={effortDays} onChange={setEffortDays} />
         </Row>
-        <TextArea label="What it costs to leave" value={interest} onChange={setInterest} rows={3} placeholder="Security patches have stopped; every incident on it costs a day." />
+        <TextArea
+          label="What it costs to leave"
+          value={interest}
+          onChange={setInterest}
+          rows={3}
+          placeholder="Security patches have stopped; every incident on it costs a day."
+        />
       </CreateModal>
     </div>
   );

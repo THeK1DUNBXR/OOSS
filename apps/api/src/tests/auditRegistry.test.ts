@@ -47,16 +47,25 @@ function codeOnly(src: string): string {
     const c = src[i]!;
     const n = src[i + 1];
     if (c === '/' && n === '/') {
-      while (i < src.length && src[i] !== '\n') { out += ' '; i++; }
+      while (i < src.length && src[i] !== '\n') {
+        out += ' ';
+        i++;
+      }
     } else if (c === '/' && n === '*') {
-      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) { out += src[i] === '\n' ? '\n' : ' '; i++; }
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) {
+        out += src[i] === '\n' ? '\n' : ' ';
+        i++;
+      }
       out += '  ';
       i += 2;
     } else if (c === "'" || c === '"' || c === '`') {
       out += c;
       i++;
       while (i < src.length && src[i] !== c) {
-        if (src[i] === '\\') { out += src[i]; i++; }
+        if (src[i] === '\\') {
+          out += src[i];
+          i++;
+        }
         out += src[i];
         i++;
       }
@@ -78,7 +87,10 @@ function closeIndex(code: string, open: number): number {
     const ch = code[i]!;
     if (ch === "'" || ch === '"' || ch === '`') {
       i++;
-      while (i < code.length && code[i] !== ch) { if (code[i] === '\\') i++; i++; }
+      while (i < code.length && code[i] !== ch) {
+        if (code[i] === '\\') i++;
+        i++;
+      }
     } else if (pairs[ch]) {
       stack.push(pairs[ch]!);
     } else if (ch === ')' || ch === ']' || ch === '}') {
@@ -172,7 +184,13 @@ describe('FX-20: every audited subject type literal is registered', () => {
 
 describe('FX-21: no auditWrite or transition call passes force', () => {
   it('no call site sets force', () => {
-    const forced = [...new Set(auditCalls().filter((c) => c.forced).map((c) => c.file))];
+    const forced = [
+      ...new Set(
+        auditCalls()
+          .filter((c) => c.forced)
+          .map((c) => c.file),
+      ),
+    ];
     expect(forced).toEqual([]);
   });
 
@@ -228,7 +246,12 @@ describe('FX-22: each writer module has its subjects registered in its own impor
     const byFile = new Map(FILES.map(({ file, code }) => [file, code]));
     const missing: string[] = [];
     for (const { file } of FILES) {
-      const subjects = new Set(calls.filter((c) => c.file === relative(SRC, file)).map((c) => c.literalSubject).filter((s): s is string => !!s));
+      const subjects = new Set(
+        calls
+          .filter((c) => c.file === relative(SRC, file))
+          .map((c) => c.literalSubject)
+          .filter((s): s is string => !!s),
+      );
       if (subjects.size === 0) continue;
       const reach = new Set<string>();
       const stack = [file];

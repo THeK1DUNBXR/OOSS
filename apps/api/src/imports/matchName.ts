@@ -19,9 +19,7 @@ export interface Candidate {
 }
 
 export type MatchResult =
-  | { kind: 'matched'; id: string; how: string }
-  | { kind: 'none' }
-  | { kind: 'ambiguous'; names: string[] };
+  { kind: 'matched'; id: string; how: string } | { kind: 'none' } | { kind: 'ambiguous'; names: string[] };
 
 /** Word tokens, lowercased, initials and honorifics dropped. */
 function tokens(name: string): string[] {

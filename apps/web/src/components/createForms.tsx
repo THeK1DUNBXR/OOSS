@@ -232,14 +232,7 @@ export function NewLedgerAccount({ open, onClose }: { open: boolean; onClose: ()
         })
       }
     >
-      <TextInput
-        label="Name"
-        required
-        autoFocus
-        value={name}
-        onChange={setName}
-        placeholder="Current Account — Axis"
-      />
+      <TextInput label="Name" required autoFocus value={name} onChange={setName} placeholder="Current Account — Axis" />
       <Row>
         <SelectInput
           label="Kind"
@@ -449,7 +442,12 @@ export function NewPayment({ open, onClose }: { open: boolean; onClose: () => vo
           ]}
         />
       </Row>
-      <TextInput label="Reference" value={gatewayReference} onChange={setReference} placeholder="UTR or cheque number" />
+      <TextInput
+        label="Reference"
+        value={gatewayReference}
+        onChange={setReference}
+        placeholder="UTR or cheque number"
+      />
       <TextArea
         label="Note"
         value={note}
@@ -494,9 +492,7 @@ export function NewContact({ open, onClose }: { open: boolean; onClose: () => vo
         <TextInput label="Email" type="email" value={primaryEmail} onChange={setEmail} />
       </Row>
       <TextArea label="Notes" value={notes} onChange={setNotes} rows={2} />
-      <p className="text-2xs text-ink-500">
-        If this matches somebody on file, you will be asked first.
-      </p>
+      <p className="text-2xs text-ink-500">If this matches somebody on file, you will be asked first.</p>
     </CreateModal>
   );
 }
@@ -649,11 +645,16 @@ function useBodyFields() {
     institutionProfile,
     billingProps: { tier, setTier, billingEmail, setBillingEmail, paymentTermsDays, setPaymentTermsDays },
     schoolProps: {
-      institutionType, setInstitutionType,
-      managementType, setManagementType,
-      district, setDistrict,
-      state, setState,
-      studentCount, setStudentCount,
+      institutionType,
+      setInstitutionType,
+      managementType,
+      setManagementType,
+      district,
+      setDistrict,
+      state,
+      setState,
+      studentCount,
+      setStudentCount,
     },
   };
 }
@@ -746,8 +747,8 @@ export function NewInstitution({
     >
       {!editing && (
         <p className="text-2xs text-ink-500">
-          Somewhere learners come to us from. Students name it as where they studied, and its page then answers how
-          many it has sent and how they did.
+          Somewhere learners come to us from. Students name it as where they studied, and its page then answers how many
+          it has sent and how they did.
         </p>
       )}
       <TextInput label="Name" required autoFocus value={name} onChange={setName} />
@@ -803,7 +804,9 @@ export function NewInstitution({
             <input type="checkbox" className="mt-0.5" checked={billed} onChange={(e) => setBilled(e.target.checked)} />
             <span>
               <span className="block text-xs text-ink-200">We invoice them too</span>
-              <span className="block text-2xs text-ink-500">Payment terms and a billing address. It stays a college.</span>
+              <span className="block text-2xs text-ink-500">
+                Payment terms and a billing address. It stays a college.
+              </span>
             </span>
           </label>
           {billed && (
@@ -909,7 +912,9 @@ export function NewOrganization({
                     roles.includes(r) ? 'border-accent/60 bg-accent/10' : 'border-ink-800 hover:border-ink-600'
                   }`}
                 >
-                  <span className={`block text-xs font-medium ${roles.includes(r) ? 'text-accent-soft' : 'text-ink-200'}`}>
+                  <span
+                    className={`block text-xs font-medium ${roles.includes(r) ? 'text-accent-soft' : 'text-ink-200'}`}
+                  >
                     {ORGANIZATION_ROLE_LABELS[r]}
                   </span>
                   <span className="block text-2xs text-ink-500">{ORGANIZATION_ROLE_HINTS[r]}</span>
@@ -923,7 +928,9 @@ export function NewOrganization({
             <input type="checkbox" className="mt-0.5" checked={billed} onChange={(e) => setBilled(e.target.checked)} />
             <span>
               <span className="block text-xs text-ink-200">We invoice them</span>
-              <span className="block text-2xs text-ink-500">Payment terms and a billing address. Add it later if you would rather.</span>
+              <span className="block text-2xs text-ink-500">
+                Payment terms and a billing address. Add it later if you would rather.
+              </span>
             </span>
           </label>
           {billed && (
@@ -946,7 +953,12 @@ export function NewOrganization({
  * created with a POST.
  */
 export function AddBillingDetails({
-  open, organizationId, name, onClose, queryKey, existing,
+  open,
+  organizationId,
+  name,
+  onClose,
+  queryKey,
+  existing,
 }: {
   open: boolean;
   organizationId: string;
@@ -991,7 +1003,11 @@ export function AddBillingDetails({
  * and is created with a POST.
  */
 export function AddSchoolDetails({
-  open, organizationId, name, onClose, existing,
+  open,
+  organizationId,
+  name,
+  onClose,
+  existing,
 }: {
   open: boolean;
   organizationId: string;
@@ -1029,9 +1045,7 @@ export function AddSchoolDetails({
         return editing ? api.patch(path, f.institutionProfile()) : api.post(path, f.institutionProfile());
       }}
     >
-      <p className="text-2xs text-ink-500">
-        All optional.
-      </p>
+      <p className="text-2xs text-ink-500">All optional.</p>
       <SchoolFields {...f.schoolProps} />
     </CreateModal>
   );
@@ -1095,7 +1109,12 @@ export function NewStudent({
   const [deliveryLocation, setLocation] = useState('');
   // Only a new student carries an age basis: the edit form's record has no date
   // of birth to show, and changing one is not part of editing a profile. FX-64.
-  const [age, setAge] = useState<AgeBasisValues>({ dateOfBirth: '', adultAttested: false, guardianName: '', guardianPhone: '' });
+  const [age, setAge] = useState<AgeBasisValues>({
+    dateOfBirth: '',
+    adultAttested: false,
+    guardianName: '',
+    guardianPhone: '',
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -1161,9 +1180,7 @@ export function NewStudent({
         <TextInput label="Phone" value={primaryPhone} onChange={setPhone} placeholder="10 digits" />
         <TextInput label="Email" value={primaryEmail} onChange={setEmail} />
       </Row>
-      <p className="text-2xs text-ink-500">
-        One of the two is needed, so somebody already on file is recognised.
-      </p>
+      <p className="text-2xs text-ink-500">One of the two is needed, so somebody already on file is recognised.</p>
       {!editing && <AgeBasisFields values={age} onChange={setAge} />}
       <Row>
         <TextInput
@@ -1235,15 +1252,9 @@ export function NewStudent({
             options={FUNDING_FRAMEWORKS.map((f) => ({ value: f, label: FUNDING_FRAMEWORK_LABELS[f] }))}
           />
         )}
-        {funding === 'institution' && (
-          <p className="text-2xs text-ink-500">
-            Their college pays — name it above.
-          </p>
-        )}
+        {funding === 'institution' && <p className="text-2xs text-ink-500">Their college pays — name it above.</p>}
         {funding !== 'self' && (
-          <p className="text-2xs text-ink-500">
-            No invoice goes to them. The fee is billed to whoever pays.
-          </p>
+          <p className="text-2xs text-ink-500">No invoice goes to them. The fee is billed to whoever pays.</p>
         )}
       </fieldset>
 
@@ -1253,9 +1264,7 @@ export function NewStudent({
             <TextInput label="State" value={placeOfSupply} onChange={setPlaceOfSupply} placeholder="33 — Tamil Nadu" />
             <TextInput label="Address" value={address} onChange={setAddress} />
           </Row>
-          <p className="text-2xs text-ink-500">
-            The state decides how their tax splits.
-          </p>
+          <p className="text-2xs text-ink-500">The state decides how their tax splits.</p>
         </>
       )}
     </CreateModal>
@@ -1294,7 +1303,12 @@ export function NewOffering({ open, onClose }: { open: boolean; onClose: () => v
       invalidate={[['offerings']]}
       onSubmit={() =>
         api.post('/commercial/offerings', {
-          offeringCode: offeringCode || name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 20),
+          offeringCode:
+            offeringCode ||
+            name
+              .toUpperCase()
+              .replace(/[^A-Z0-9]+/g, '-')
+              .slice(0, 20),
           name,
           description: description || null,
           vertical,
@@ -1335,9 +1349,7 @@ export function NewOffering({ open, onClose }: { open: boolean; onClose: () => v
           { value: 'milestone_based', label: 'At each milestone' },
         ]}
       />
-      <p className="text-2xs text-ink-500">
-        Set once here, so nobody decides it deal by deal.
-      </p>
+      <p className="text-2xs text-ink-500">Set once here, so nobody decides it deal by deal.</p>
     </CreateModal>
   );
 }
@@ -1406,7 +1418,14 @@ export function NewInteraction({ open, onClose }: { open: boolean; onClose: () =
         />
       </Row>
       <Row>
-        <TextInput label="When" type="text" required value={occurredAt} onChange={setOccurredAt} hint="YYYY-MM-DDTHH:MM" />
+        <TextInput
+          label="When"
+          type="text"
+          required
+          value={occurredAt}
+          onChange={setOccurredAt}
+          hint="YYYY-MM-DDTHH:MM"
+        />
         <TextInput label="How long (minutes)" type="number" value={durationMinutes} onChange={setDuration} />
       </Row>
       <TextInput label="Subject" required value={subject} onChange={setSubject} placeholder="Renewal discussion" />
@@ -1418,9 +1437,7 @@ export function NewInteraction({ open, onClose }: { open: boolean; onClose: () =
         options={organizations.rows.map((o) => ({ value: o.id, label: o.name }))}
       />
       <TextArea label="What was said" value={notes} onChange={setNotes} rows={3} />
-      <p className="text-2xs text-ink-500">
-        Sensitivity follows what it is attached to.
-      </p>
+      <p className="text-2xs text-ink-500">Sensitivity follows what it is attached to.</p>
     </CreateModal>
   );
 }
@@ -1518,7 +1535,14 @@ export function NewLoan({ open, onClose }: { open: boolean; onClose: () => void 
       <TextInput label="Who from" required autoFocus value={lender} onChange={setLender} placeholder="Axis Bank" />
       <Row>
         <MoneyInput label="How much" required value={principal} onChange={setPrincipal} />
-        <TextInput label="Rate (% a year)" type="number" required value={annualRate} onChange={setRate} placeholder="11.5" />
+        <TextInput
+          label="Rate (% a year)"
+          type="number"
+          required
+          value={annualRate}
+          onChange={setRate}
+          placeholder="11.5"
+        />
       </Row>
       <Row>
         <TextInput label="Over (months)" type="number" required value={tenureMonths} onChange={setTenure} />
@@ -1530,15 +1554,7 @@ export function NewLoan({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
-export function NewBudgetLine({
-  open,
-  onClose,
-  period,
-}: {
-  open: boolean;
-  onClose: () => void;
-  period: string;
-}) {
+export function NewBudgetLine({ open, onClose, period }: { open: boolean; onClose: () => void; period: string }) {
   const categories = useCategories(open);
   const [categoryId, setCategoryId] = useState('');
   const [amount, setAmount] = useState('');
@@ -1575,9 +1591,7 @@ export function NewBudgetLine({
         <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
       </Row>
       <TextArea label="Why this number" value={note} onChange={setNote} rows={2} />
-      <p className="text-2xs text-ink-500">
-        Spend is summed when you look, so a late entry moves the variance.
-      </p>
+      <p className="text-2xs text-ink-500">Spend is summed when you look, so a late entry moves the variance.</p>
     </CreateModal>
   );
 }
@@ -1607,9 +1621,7 @@ export function NewSkill({ open, onClose }: { open: boolean; onClose: () => void
         onChange={setHalfLife}
         hint="how fast it goes stale unaided"
       />
-      <p className="text-2xs text-ink-500">
-        Confidence fades from this date.
-      </p>
+      <p className="text-2xs text-ink-500">Confidence fades from this date.</p>
     </CreateModal>
   );
 }
@@ -1625,7 +1637,9 @@ function orUndefined(value: string): string | undefined {
  * when it is there but withheld; blank when there is nothing on file yet. */
 function onFileHint(has: boolean, last4?: string | null): string | undefined {
   if (!has) return undefined;
-  return last4 ? `On file, ending ${last4} — enter a new value to replace it` : 'On file — enter a new value to replace it';
+  return last4
+    ? `On file, ending ${last4} — enter a new value to replace it`
+    : 'On file — enter a new value to replace it';
 }
 
 /**
@@ -1767,7 +1781,12 @@ export function EditEmployeeProfile({
       </Row>
       <Row>
         <TextInput label="Emergency contact name" value={emergencyContactName} onChange={setEmergencyName} />
-        <TextInput label="Emergency contact phone" type="tel" value={emergencyContactPhone} onChange={setEmergencyPhone} />
+        <TextInput
+          label="Emergency contact phone"
+          type="tel"
+          value={emergencyContactPhone}
+          onChange={setEmergencyPhone}
+        />
       </Row>
 
       {canEditEmploymentDetails && employment && (
@@ -1785,10 +1804,20 @@ export function EditEmployeeProfile({
             options={EMPLOYMENT_ENGAGEMENT_TYPES.map((t) => ({ value: t, label: titleCaseWord(t) }))}
           />
           <Row>
-            <TextInput label="PAN" value={panNumber} onChange={setPan} hint={onFileHint(Boolean(employment.hasPan), employment.panLast4)} />
+            <TextInput
+              label="PAN"
+              value={panNumber}
+              onChange={setPan}
+              hint={onFileHint(Boolean(employment.hasPan), employment.panLast4)}
+            />
             <TextInput label="UAN" value={uanNumber} onChange={setUan} hint={onFileHint(Boolean(employment.hasUan))} />
           </Row>
-          <TextInput label="ESIC number" value={esicNumber} onChange={setEsic} hint={onFileHint(Boolean(employment.hasEsicNumber))} />
+          <TextInput
+            label="ESIC number"
+            value={esicNumber}
+            onChange={setEsic}
+            hint={onFileHint(Boolean(employment.hasEsicNumber))}
+          />
           <Row>
             <TextInput
               label="Bank account number"
@@ -1853,7 +1882,10 @@ export function ProposeCompensation({
       title="Propose a pay change"
       submitLabel="Send for approval"
       onClose={onClose}
-      invalidate={[['hr-compensation', employmentRelationshipId], ['hr-employee', employmentRelationshipId]]}
+      invalidate={[
+        ['hr-compensation', employmentRelationshipId],
+        ['hr-employee', employmentRelationshipId],
+      ]}
       onSubmit={() =>
         api.post('/hr/compensation', {
           employmentRelationshipId,
@@ -1888,8 +1920,8 @@ export function ProposeCompensation({
         />
       )}
       <p className="text-2xs text-ink-500">
-        This does not change anybody's pay by itself — it opens a proposal Finance has to approve, and never the
-        person who proposed it or the person it is about.
+        This does not change anybody's pay by itself — it opens a proposal Finance has to approve, and never the person
+        who proposed it or the person it is about.
       </p>
     </CreateModal>
   );
@@ -1969,8 +2001,8 @@ export function NewAssignment({
       />
       <TextInput label="Effective from" type="date" required value={effectiveFrom} onChange={setEffectiveFrom} />
       <p className="text-2xs text-ink-500">
-        This opens a proposal, Draft until it is submitted, approved, scheduled and activated — the same approval
-        the seat's own history already requires. Nothing about where they sit changes until it is activated.
+        This opens a proposal, Draft until it is submitted, approved, scheduled and activated — the same approval the
+        seat's own history already requires. Nothing about where they sit changes until it is activated.
       </p>
     </CreateModal>
   );
@@ -2043,8 +2075,8 @@ export function NewLeaveRequest({
       </Row>
       <TextArea label="Reason" value={reason} onChange={setReason} rows={2} />
       <p className="text-2xs text-ink-500">
-        {days} {days === 1 ? 'day' : 'days'}. Approval places a hold on the balance rather than deducting it;
-        the deduction happens when the leave is actually taken.
+        {days} {days === 1 ? 'day' : 'days'}. Approval places a hold on the balance rather than deducting it; the
+        deduction happens when the leave is actually taken.
       </p>
     </CreateModal>
   );
@@ -2127,10 +2159,19 @@ export function NewRequisition({ open, onClose }: { open: boolean; onClose: () =
         value={jobId}
         onChange={setJobId}
         placeholder="Choose a job, or add one"
-        options={[...jobs.rows.map((j) => ({ value: j.id, label: j.title })), { value: '__new', label: '+ A job we have not hired for before' }]}
+        options={[
+          ...jobs.rows.map((j) => ({ value: j.id, label: j.title })),
+          { value: '__new', label: '+ A job we have not hired for before' },
+        ]}
       />
       {creatingJob && (
-        <TextInput label="Job title" required value={newJobTitle} onChange={setNewJobTitle} placeholder="Senior Developer" />
+        <TextInput
+          label="Job title"
+          required
+          value={newJobTitle}
+          onChange={setNewJobTitle}
+          placeholder="Senior Developer"
+        />
       )}
 
       <SelectInput
@@ -2139,11 +2180,20 @@ export function NewRequisition({ open, onClose }: { open: boolean; onClose: () =
         value={orgUnitId}
         onChange={setOrgUnitId}
         placeholder="Choose a team, or add one"
-        options={[...orgUnits.rows.map((u) => ({ value: u.id, label: u.name })), { value: '__new', label: '+ A new team' }]}
+        options={[
+          ...orgUnits.rows.map((u) => ({ value: u.id, label: u.name })),
+          { value: '__new', label: '+ A new team' },
+        ]}
       />
       {creatingUnit && (
         <Row>
-          <TextInput label="Team name" required value={newUnitName} onChange={setNewUnitName} placeholder="Cybersecurity" />
+          <TextInput
+            label="Team name"
+            required
+            value={newUnitName}
+            onChange={setNewUnitName}
+            placeholder="Cybersecurity"
+          />
           <SelectInput label="Division" value={division} onChange={setDivision} options={DIVISIONS} />
         </Row>
       )}
@@ -2153,8 +2203,8 @@ export function NewRequisition({ open, onClose }: { open: boolean; onClose: () =
         <TextInput label="Wanted by" type="date" value={targetStartDate} onChange={setStart} />
       </Row>
       <p className="text-2xs text-ink-500">
-        This creates the seat as well as the vacancy, so the establishment shows one more chair in that team whether
-        or not anybody is sitting in it yet.
+        This creates the seat as well as the vacancy, so the establishment shows one more chair in that team whether or
+        not anybody is sitting in it yet.
       </p>
     </CreateModal>
   );
@@ -2376,9 +2426,7 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
             <TextInput label="Phone" type="tel" value={primaryPhone} onChange={setPhone} />
             <TextInput label="Email" type="email" value={primaryEmail} onChange={setEmail} />
           </Row>
-          <p className="text-2xs text-ink-500">
-            A phone or email is matched against people already on file.
-          </p>
+          <p className="text-2xs text-ink-500">A phone or email is matched against people already on file.</p>
         </>
       )}
       <SelectInput
@@ -2387,7 +2435,10 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
         value={cohortId}
         onChange={setCohortId}
         placeholder={cohorts.rows.length ? 'Which batch' : 'No batches yet — create one first'}
-        options={cohorts.rows.map((c) => ({ value: c.id, label: c.courseName ? `${c.name} — ${c.courseName}` : c.name }))}
+        options={cohorts.rows.map((c) => ({
+          value: c.id,
+          label: c.courseName ? `${c.name} — ${c.courseName}` : c.name,
+        }))}
       />
       <SelectInput
         label="Which college are they from"
@@ -2402,8 +2453,8 @@ export function NewEnrollment({ open, onClose }: { open: boolean; onClose: () =>
       {!learnerDob && (
         <>
           <label className="flex items-center gap-2 text-sm text-ink-200">
-            <input type="checkbox" checked={adultAttested} onChange={(e) => setAdultAttested(e.target.checked)} />
-            I attest they are 18 or over
+            <input type="checkbox" checked={adultAttested} onChange={(e) => setAdultAttested(e.target.checked)} />I
+            attest they are 18 or over
           </label>
           <p className="text-2xs text-ink-500">
             With no date of birth, a learner is treated as under 18 until you attest otherwise. Your attestation is
@@ -2479,9 +2530,7 @@ export function NewCohort({ open, onClose }: { open: boolean; onClose: () => voi
         />
         <TextInput label="Seats" type="number" value={capacity} onChange={setCapacity} />
       </Row>
-      <p className="text-2xs text-ink-500">
-        Where the batch runs and where the student came from are different.
-      </p>
+      <p className="text-2xs text-ink-500">Where the batch runs and where the student came from are different.</p>
     </CreateModal>
   );
 }
@@ -2502,19 +2551,33 @@ export function NewCourse({ open, onClose }: { open: boolean; onClose: () => voi
       onSubmit={() =>
         api.post('/education/courses', {
           name,
-          code: code || name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 16),
+          code:
+            code ||
+            name
+              .toUpperCase()
+              .replace(/[^A-Z0-9]+/g, '-')
+              .slice(0, 16),
           description: description || null,
           durationWeeks: durationWeeks ? Number(durationWeeks) : null,
         })
       }
     >
       <Row>
-        <TextInput label="Name" required autoFocus value={name} onChange={setName} placeholder="Full Stack Development" />
+        <TextInput
+          label="Name"
+          required
+          autoFocus
+          value={name}
+          onChange={setName}
+          placeholder="Full Stack Development"
+        />
         <TextInput label="Code" hint="made from the name if blank" value={code} onChange={setCode} placeholder="FSD" />
       </Row>
       <TextArea label="What it covers" value={description} onChange={setDescription} rows={2} />
       <TextInput label="Length (weeks)" type="number" value={durationWeeks} onChange={setWeeks} />
-      <p className="text-2xs text-ink-500">A course is the syllabus. A batch is one run of it, with dates and people.</p>
+      <p className="text-2xs text-ink-500">
+        A course is the syllabus. A batch is one run of it, with dates and people.
+      </p>
     </CreateModal>
   );
 }

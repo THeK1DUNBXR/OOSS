@@ -115,23 +115,23 @@ Create `apps/api/src/platform/ledger.ts`. **This is the only module in the codeb
 ```ts
 export async function post(input: {
   entityId: string;
-  entryDate: Date;          // IST-derived, see packages/shared/src/time.ts
+  entryDate: Date; // IST-derived, see packages/shared/src/time.ts
   narration: string;
   sourceType: SourceType;
   sourceId?: string;
-  idempotencyKey: string;   // required, not optional
+  idempotencyKey: string; // required, not optional
   lines: Array<{
     accountId: string;
-    amountMinor: bigint;    // signed; debits positive
+    amountMinor: bigint; // signed; debits positive
     currency?: string;
     division?: string;
     partyId?: string;
     // ...dimensions
   }>;
-}): Promise<JournalEntry>
+}): Promise<JournalEntry>;
 ```
 
-It must: resolve the period and refuse if closed; assert the lines sum to zero *before* hitting the database so the error message is useful; assert every account is postable and that required dimensions are present; allocate `entryNumber` from `RecordSequence` **inside** the transaction; check the idempotency key and return the existing entry on a repeat; insert entry and lines; write an audit record; emit `kz.finance.journal.posted`.
+It must: resolve the period and refuse if closed; assert the lines sum to zero _before_ hitting the database so the error message is useful; assert every account is postable and that required dimensions are present; allocate `entryNumber` from `RecordSequence` **inside** the transaction; check the idempotency key and return the existing entry on a repeat; insert entry and lines; write an audit record; emit `kz.finance.journal.posted`.
 
 Add `reverse(entryId, reason)` — creates a mirrored entry, links both ways, refuses to reverse a reversal (`domains/books.ts:264` already has this logic and gets it right; port it).
 

@@ -140,7 +140,9 @@ describe('MKT-CAP-002 — a converted submission creates or finds a Person via f
     const person = await unscopedPrisma.person.findFirstOrThrow({ where: { id: submission.personId! } });
     expect(person.primaryEmail).toBe(email);
 
-    const touchpoint = await unscopedPrisma.marketingTouchpoint.findFirstOrThrow({ where: { tenantId: tid, touchKind: 'form', campaignId: campaign.id } });
+    const touchpoint = await unscopedPrisma.marketingTouchpoint.findFirstOrThrow({
+      where: { tenantId: tid, touchKind: 'form', campaignId: campaign.id },
+    });
     expect(touchpoint.channelKey).toBe('website');
 
     const refreshedForm = await unscopedPrisma.marketingForm.findFirstOrThrow({ where: { id: form.id } });
@@ -184,7 +186,10 @@ describe('duplicate detection — an identical payload within 10 minutes is not 
     await submitPublicForm(form.publicToken, payload);
     await submitPublicForm(form.publicToken, payload);
 
-    const submissions = await unscopedPrisma.marketingFormSubmission.findMany({ where: { formId: form.id }, orderBy: { receivedAt: 'asc' } });
+    const submissions = await unscopedPrisma.marketingFormSubmission.findMany({
+      where: { formId: form.id },
+      orderBy: { receivedAt: 'asc' },
+    });
     expect(submissions).toHaveLength(2);
     expect(submissions[0].status).toBe('converted');
     expect(submissions[1].status).toBe('duplicate');
@@ -238,7 +243,11 @@ describe('MKT-CAP-004 — every touchpoint is immutable once recorded', () => {
 describe('short links — a click records a touchpoint and appends utm to the target', () => {
   it('resolveAndClick redirects to the target URL with utm params, and increments clickCount', async () => {
     const link = await asUser(OPS, () =>
-      createShortLink({ targetUrl: 'https://example.com/landing', channelKey: 'social_meta', utm: { source: 'meta', medium: 'social', campaign: 'launch' } }),
+      createShortLink({
+        targetUrl: 'https://example.com/landing',
+        channelKey: 'social_meta',
+        utm: { source: 'meta', medium: 'social', campaign: 'launch' },
+      }),
     );
 
     const { targetUrl } = await resolveAndClick(link.slug);
@@ -249,7 +258,9 @@ describe('short links — a click records a touchpoint and appends utm to the ta
     const refreshed = await unscopedPrisma.marketingShortLink.findFirstOrThrow({ where: { id: link.id } });
     expect(refreshed.clickCount).toBe(1);
 
-    const touchpoint = await unscopedPrisma.marketingTouchpoint.findFirstOrThrow({ where: { sourceRef: link.slug, touchKind: 'click' } });
+    const touchpoint = await unscopedPrisma.marketingTouchpoint.findFirstOrThrow({
+      where: { sourceRef: link.slug, touchKind: 'click' },
+    });
     expect(touchpoint.channelKey).toBe('social_meta');
   });
 
@@ -265,14 +276,22 @@ describe('MKT-CAP-007 — lead score is the sum of active rule matches, CRM reas
     const lead = await asUser(FINANCE, () =>
       createLead({
         title: 'Referral enquiry',
-        person: { fullName: 'Referral Person', primaryEmail: `ref-${Date.now()}@example.com`, primaryPhone: `9${String(Date.now()).slice(-9)}` },
+        person: {
+          fullName: 'Referral Person',
+          primaryEmail: `ref-${Date.now()}@example.com`,
+          primaryPhone: `9${String(Date.now()).slice(-9)}`,
+        },
         vertical: 'education',
         source: 'referral',
       }),
     );
 
     await asUser(OPS, () =>
-      createScoreRule({ name: `Referral bonus ${Date.now()}`, condition: { field: 'source', op: 'eq', value: 'referral' }, points: 20 }),
+      createScoreRule({
+        name: `Referral bonus ${Date.now()}`,
+        condition: { field: 'source', op: 'eq', value: 'referral' },
+        points: 20,
+      }),
     );
 
     const preview = await asUser(OPS, () => previewScore(lead.id));
@@ -310,12 +329,16 @@ describe('MKT-CAP-006 / EX-MKT-001 — a lead with no attributable source raises
     const count = await asUser(OPS, () => detectUnattributedLeads());
     expect(count).toBeGreaterThanOrEqual(1);
 
-    const exception = await unscopedPrisma.exceptionRecord.findFirst({ where: { code: 'EX-MKT-001', subjectId: lead.id } });
+    const exception = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { code: 'EX-MKT-001', subjectId: lead.id },
+    });
     expect(exception).toBeTruthy();
 
     // Idempotent — a second run raises nothing new for the same lead.
     await asUser(OPS, () => detectUnattributedLeads());
-    const exceptions = await unscopedPrisma.exceptionRecord.findMany({ where: { code: 'EX-MKT-001', subjectId: lead.id } });
+    const exceptions = await unscopedPrisma.exceptionRecord.findMany({
+      where: { code: 'EX-MKT-001', subjectId: lead.id },
+    });
     expect(exceptions).toHaveLength(1);
   });
 
@@ -331,7 +354,9 @@ describe('MKT-CAP-006 / EX-MKT-001 — a lead with no attributable source raises
     await asUser(OPS, () => prisma.lead.update({ where: { id: lead.id }, data: { channelKey: 'website' } }));
 
     await asUser(OPS, () => detectUnattributedLeads());
-    const exception = await unscopedPrisma.exceptionRecord.findFirst({ where: { code: 'EX-MKT-001', subjectId: lead.id } });
+    const exception = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { code: 'EX-MKT-001', subjectId: lead.id },
+    });
     expect(exception).toBeNull();
   });
 });
@@ -346,14 +371,29 @@ describe('MKT-CAP-005 — attribution is computed and stored per model, never de
     const earlier = new Date(now.getTime() - 3600_000);
 
     await asUser(OPS, () =>
-      recordTouchpoint({ personId: person.person.id, channelKey: 'social_meta', touchKind: 'impression', occurredAt: earlier }),
+      recordTouchpoint({
+        personId: person.person.id,
+        channelKey: 'social_meta',
+        touchKind: 'impression',
+        occurredAt: earlier,
+      }),
     );
     await asUser(OPS, () =>
-      recordTouchpoint({ personId: person.person.id, channelKey: 'email', touchKind: 'click', occurredAt: new Date(now.getTime() - 1800_000) }),
+      recordTouchpoint({
+        personId: person.person.id,
+        channelKey: 'email',
+        touchKind: 'click',
+        occurredAt: new Date(now.getTime() - 1800_000),
+      }),
     );
 
     const lead = await asUser(FINANCE, () =>
-      createLead({ title: 'Two touches', personId: person.person.id, vertical: 'education', source: 'inbound_website' }),
+      createLead({
+        title: 'Two touches',
+        personId: person.person.id,
+        vertical: 'education',
+        source: 'inbound_website',
+      }),
     );
 
     await asUser(OPS, () => computeAttribution(new Date(now.getTime() - 86_400_000), new Date(now.getTime() + 1000)));
@@ -407,9 +447,13 @@ describe('inbound webhooks', () => {
 
   it('refuses an unrecognised provider with 401 and stores nothing', async () => {
     const tid = await tenantId();
-    const err = await expectReject(() => receiveWebhook(signedInbound('any-token', 'secret', '{"eventId":"e1"}', 'mystery-provider')));
+    const err = await expectReject(() =>
+      receiveWebhook(signedInbound('any-token', 'secret', '{"eventId":"e1"}', 'mystery-provider')),
+    );
     expect(err.status).toBe(401);
-    const rows = await unscopedPrisma.marketingWebhookInbound.count({ where: { tenantId: tid, provider: 'mystery-provider' } });
+    const rows = await unscopedPrisma.marketingWebhookInbound.count({
+      where: { tenantId: tid, provider: 'mystery-provider' },
+    });
     expect(rows).toBe(0);
   });
 
@@ -433,10 +477,14 @@ describe('inbound webhooks', () => {
       // under test is that the row is stored and marked processed, and that
       // the messaging pipeline is invoked without throwing.
       const eventId = `capture-console-${Date.now()}`;
-      const result = await receiveWebhook(signedInbound(endpoint.token, endpoint.signingSecret, JSON.stringify({ eventId, events: [] })));
+      const result = await receiveWebhook(
+        signedInbound(endpoint.token, endpoint.signingSecret, JSON.stringify({ eventId, events: [] })),
+      );
       expect(result.status).toBe('processed');
 
-      const row = await unscopedPrisma.marketingWebhookInbound.findFirstOrThrow({ where: { tenantId: tid, provider: 'email', eventId } });
+      const row = await unscopedPrisma.marketingWebhookInbound.findFirstOrThrow({
+        where: { tenantId: tid, provider: 'email', eventId },
+      });
       expect(row.processedAt).toBeTruthy();
     } finally {
       if (original === undefined) delete process.env.MARKETING_EMAIL_ADAPTER;

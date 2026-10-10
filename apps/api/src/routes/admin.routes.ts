@@ -70,7 +70,9 @@ router.get(
         description: r.description,
         archetype: r.archetype,
         classificationCeiling: r.classificationCeiling,
-        holders: await prisma.affiliation.count({ where: { tenantId: auth.tenantId, roleSlug: r.slug, status: 'active' } }),
+        holders: await prisma.affiliation.count({
+          where: { tenantId: auth.tenantId, roleSlug: r.slug, status: 'active' },
+        }),
         grants: r.grants.map((g) => ({
           id: g.id,
           resource: g.resource,
@@ -105,8 +107,11 @@ router.get(
       const slug = g.roleId ? byRole.get(g.roleId) : null;
       if (!slug) continue;
       matrix[g.resource] = matrix[g.resource] ?? {};
-      matrix[g.resource][slug] = formatGrant({ resource: g.resource, verbs: g.verbs as never, scope: g.scope as never })
-        .split(':')[1];
+      matrix[g.resource][slug] = formatGrant({
+        resource: g.resource,
+        verbs: g.verbs as never,
+        scope: g.scope as never,
+      }).split(':')[1];
     }
 
     return { roles: roles.map((r) => r.slug), resources: RESOURCES, matrix };
@@ -147,7 +152,14 @@ router.post(
     });
 
     const grant = await prisma.grant.upsert({
-      where: { id: (await prisma.grant.findFirst({ where: { tenantId: auth.tenantId, roleId: role.id, resource: input.resource } }))?.id ?? '__none__' },
+      where: {
+        id:
+          (
+            await prisma.grant.findFirst({
+              where: { tenantId: auth.tenantId, roleId: role.id, resource: input.resource },
+            })
+          )?.id ?? '__none__',
+      },
       create: {
         tenantId: auth.tenantId,
         roleId: role.id,
@@ -343,7 +355,12 @@ router.get(
     ]);
 
     return {
-      registered: ALL_JOBS.map((j) => ({ name: j.name, label: j.label, automationClass: j.automationClass, cron: j.cron })),
+      registered: ALL_JOBS.map((j) => ({
+        name: j.name,
+        label: j.label,
+        automationClass: j.automationClass,
+        cron: j.cron,
+      })),
       definitions,
       runs: runs.map((r) => ({
         id: r.id,

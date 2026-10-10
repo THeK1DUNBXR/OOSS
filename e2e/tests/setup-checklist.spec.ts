@@ -94,10 +94,7 @@ test.describe('the setup banner', () => {
    * `key` is marked undone. Everything under test is on the client side of that
    * response.
    */
-  async function withUnfinishedSetup(
-    page: import('@playwright/test').Page,
-    key: string,
-  ): Promise<void> {
+  async function withUnfinishedSetup(page: import('@playwright/test').Page, key: string): Promise<void> {
     await page.route('**/api/auth/onboarding', async (route) => {
       const response = await route.fetch();
       const state = (await response.json()) as OnboardingState;

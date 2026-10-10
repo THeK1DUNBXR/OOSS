@@ -71,8 +71,30 @@ async function makeEmployee(label: string) {
 describe('CMP-DPD-001: a regulated read via a purpose that requires consent', () => {
   it('fails when the principal holds no matching Consent row', async () => {
     const decision = await asUser('employee@kaizen.co.in', async (p) => {
-      const auth = { tenantId: p.tenantId, principalType: 'human' as const, partyId: p.partyId, userId: p.userId, agentId: null, onBehalfOfPartyId: null, affiliationId: p.affiliationId, roleSlug: p.roleSlug, branch: p.branch, orgUnitId: null, classificationCeiling: 'regulated' as const, purpose: 'marketing', consentCodes: [] as string[], stepUpVerified: true };
-      return evaluate({ resource: 'people', verb: 'view', classification: 'regulated', requiredPurpose: 'marketing', requiredConsent: ['marketing'], auth });
+      const auth = {
+        tenantId: p.tenantId,
+        principalType: 'human' as const,
+        partyId: p.partyId,
+        userId: p.userId,
+        agentId: null,
+        onBehalfOfPartyId: null,
+        affiliationId: p.affiliationId,
+        roleSlug: p.roleSlug,
+        branch: p.branch,
+        orgUnitId: null,
+        classificationCeiling: 'regulated' as const,
+        purpose: 'marketing',
+        consentCodes: [] as string[],
+        stepUpVerified: true,
+      };
+      return evaluate({
+        resource: 'people',
+        verb: 'view',
+        classification: 'regulated',
+        requiredPurpose: 'marketing',
+        requiredConsent: ['marketing'],
+        auth,
+      });
     });
     expect(decision.allowed).toBe(false);
     expect(decision.deniedBy).toBe('WHY');
@@ -80,8 +102,30 @@ describe('CMP-DPD-001: a regulated read via a purpose that requires consent', ()
 
   it('passes once the consent code is present on the auth context', async () => {
     const decision = await asUser('employee@kaizen.co.in', async (p) => {
-      const auth = { tenantId: p.tenantId, principalType: 'human' as const, partyId: p.partyId, userId: p.userId, agentId: null, onBehalfOfPartyId: null, affiliationId: p.affiliationId, roleSlug: p.roleSlug, branch: p.branch, orgUnitId: null, classificationCeiling: 'regulated' as const, purpose: 'marketing', consentCodes: ['marketing'], stepUpVerified: true };
-      return evaluate({ resource: 'people', verb: 'view', classification: 'regulated', requiredPurpose: 'marketing', requiredConsent: ['marketing'], auth });
+      const auth = {
+        tenantId: p.tenantId,
+        principalType: 'human' as const,
+        partyId: p.partyId,
+        userId: p.userId,
+        agentId: null,
+        onBehalfOfPartyId: null,
+        affiliationId: p.affiliationId,
+        roleSlug: p.roleSlug,
+        branch: p.branch,
+        orgUnitId: null,
+        classificationCeiling: 'regulated' as const,
+        purpose: 'marketing',
+        consentCodes: ['marketing'],
+        stepUpVerified: true,
+      };
+      return evaluate({
+        resource: 'people',
+        verb: 'view',
+        classification: 'regulated',
+        requiredPurpose: 'marketing',
+        requiredConsent: ['marketing'],
+        auth,
+      });
     });
     expect(decision.allowed).toBe(true);
   });
@@ -112,7 +156,9 @@ describe('CMP-DPD-001: a regulated read via a purpose that requires consent', ()
   it('refuses consent against a purpose the notice does not name', async () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('badpurpose'));
     const err = await expectReject(() =>
-      asUser('operations@kaizen.co.in', () => grantConsent({ personId: person.id, purposeCode: 'not_a_real_purpose', channel: 'in_app' })),
+      asUser('operations@kaizen.co.in', () =>
+        grantConsent({ personId: person.id, purposeCode: 'not_a_real_purpose', channel: 'in_app' }),
+      ),
     );
     expect(err.status).toBe(400);
   });
@@ -133,7 +179,15 @@ describe('Privacy notice: versioned, never edited', () => {
       publishNotice({
         effectiveFrom: new Date(),
         body: 'Updated notice body for the test run.',
-        purposes: [{ code: 'employment', label: 'Employment', lawfulBasis: 'legal_obligation', dataCategories: ['contact'], retention: '8 years' }],
+        purposes: [
+          {
+            code: 'employment',
+            label: 'Employment',
+            lawfulBasis: 'legal_obligation',
+            dataCategories: ['contact'],
+            retention: '8 years',
+          },
+        ],
       }),
     );
 
@@ -146,7 +200,13 @@ describe('Privacy notice: versioned, never edited', () => {
   it('only the chairman may publish a new version — operations cannot', async () => {
     const err = await expectReject(() =>
       asUser('operations@kaizen.co.in', () =>
-        publishNotice({ effectiveFrom: new Date(), body: 'x', purposes: [{ code: 'employment', label: 'e', lawfulBasis: 'legal_obligation', dataCategories: [], retention: '8y' }] }),
+        publishNotice({
+          effectiveFrom: new Date(),
+          body: 'x',
+          purposes: [
+            { code: 'employment', label: 'e', lawfulBasis: 'legal_obligation', dataCategories: [], retention: '8y' },
+          ],
+        }),
       ),
     );
     expect(err.status).toBe(403);
@@ -166,7 +226,9 @@ describe('CMP-DPD-002: erasure inside the statutory retention floor', () => {
   it('is refused with the floor named and the earliest erasable date, not silently ignored', async () => {
     const { person } = await makeEmployee('erase-blocked');
 
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'erasure' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'erasure' }),
+    );
     const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
 
     expect(fulfilled.status).toBe('refused');
@@ -178,7 +240,9 @@ describe('CMP-DPD-002: erasure inside the statutory retention floor', () => {
   it('erases (scrubs to a token) once nothing blocks it', async () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('erase-clear'));
     // No statutory-retention-floor affiliation on this person, so no blocker.
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'erasure' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'erasure' }),
+    );
     const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
 
     expect(fulfilled.status).toBe('fulfilled');
@@ -196,9 +260,13 @@ describe('CMP-DPD-002: erasure inside the statutory retention floor', () => {
     const saved = await unscopedPrisma.retentionSchedule.findMany({
       where: { tenantId: TENANT, retentionClass: 'employee_record' },
     });
-    await unscopedPrisma.retentionSchedule.deleteMany({ where: { tenantId: TENANT, retentionClass: 'employee_record' } });
+    await unscopedPrisma.retentionSchedule.deleteMany({
+      where: { tenantId: TENANT, retentionClass: 'employee_record' },
+    });
     try {
-      const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'erasure' }));
+      const request = await asUser('operations@kaizen.co.in', () =>
+        raiseDataRequest({ personId: person.id, kind: 'erasure' }),
+      );
       const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
 
       expect(fulfilled.status).toBe('refused');
@@ -217,10 +285,18 @@ describe('CMP-DPD-002: erasure inside the statutory retention floor', () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('erase-dependents'));
     await asUser('operations@kaizen.co.in', () =>
       prisma.studentProfile.create({
-        data: { tenantId: TENANT, personId: person.id, guardianName: 'Parent Name', guardianPhone: '9800000001', address: '12 Example Street' },
+        data: {
+          tenantId: TENANT,
+          personId: person.id,
+          guardianName: 'Parent Name',
+          guardianPhone: '9800000001',
+          address: '12 Example Street',
+        },
       }),
     );
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'erasure' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'erasure' }),
+    );
     const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
     expect(fulfilled.status).toBe('fulfilled');
 
@@ -238,7 +314,9 @@ describe('CMP-DPD-002: erasure inside the statutory retention floor', () => {
 describe('Data-principal requests', () => {
   it('dueAt is set 30 days (DATA_REQUEST_DUE_DAYS) after receipt', async () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('due-date'));
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'access' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'access' }),
+    );
     expect(request.dueAt.getTime()).toBe(requestDueAt(request.receivedAt, DATA_REQUEST_DUE_DAYS).getTime());
 
     // An unfiltered listing — several people's requests together — still
@@ -248,13 +326,17 @@ describe('Data-principal requests', () => {
   });
 
   it('an employee can raise their own request', async () => {
-    const request = await asUser('employee@kaizen.co.in', async (p) => raiseDataRequest({ personId: p.partyId, kind: 'access' }));
+    const request = await asUser('employee@kaizen.co.in', async (p) =>
+      raiseDataRequest({ personId: p.partyId, kind: 'access' }),
+    );
     expect(request.status).toBe('received');
   });
 
   it('an employee cannot raise a request on somebody else', async () => {
     const other = await asUser('operations@kaizen.co.in', () => makePerson('not-me'));
-    const err = await expectReject(() => asUser('employee@kaizen.co.in', () => raiseDataRequest({ personId: other.id, kind: 'access' })));
+    const err = await expectReject(() =>
+      asUser('employee@kaizen.co.in', () => raiseDataRequest({ personId: other.id, kind: 'access' })),
+    );
     expect(err.status).toBe(403);
   });
 
@@ -265,10 +347,14 @@ describe('Data-principal requests', () => {
   it('a correction naming a system field (mergedIntoId) is refused and the person is unchanged', async () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('correction-merge'));
     const other = await asUser('operations@kaizen.co.in', () => makePerson('correction-merge-target'));
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'correction' }),
+    );
 
     const err = await expectReject(() =>
-      asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id, { correction: { mergedIntoId: other.id } })),
+      asUser('operations@kaizen.co.in', () =>
+        fulfilDataRequest(request.id, { correction: { mergedIntoId: other.id } }),
+      ),
     );
     expect(err.status).toBe(400);
 
@@ -281,9 +367,13 @@ describe('Data-principal requests', () => {
 
   it('a correction naming deletedAt or recordCode is refused', async () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('correction-system'));
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'correction' }),
+    );
     const err = await expectReject(() =>
-      asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id, { correction: { deletedAt: new Date(), recordCode: 'PER-HIJACK' } })),
+      asUser('operations@kaizen.co.in', () =>
+        fulfilDataRequest(request.id, { correction: { deletedAt: new Date(), recordCode: 'PER-HIJACK' } }),
+      ),
     );
     expect(err.status).toBe(400);
     const after = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
@@ -293,7 +383,9 @@ describe('Data-principal requests', () => {
 
   it('a correction to a correctable field is applied and the normalised phone follows it', async () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('correction-ok'));
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'correction' }),
+    );
     // A number no other active person holds: the collision guard (FX-63) refuses
     // a number already on file, and this suite's database keeps rows across runs.
     const phone = `9${String(Date.now()).slice(-9)}`;
@@ -308,7 +400,9 @@ describe('Data-principal requests', () => {
 
   it('fulfilling an access request assembles an export and audits it as an export', async () => {
     const person = await asUser('operations@kaizen.co.in', () => makePerson('access-export'));
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'access' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'access' }),
+    );
     const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
 
     expect(fulfilled.status).toBe('fulfilled');
@@ -343,7 +437,11 @@ describe('CMP-DPD-003: a minor StudentProfile needs a guardian consent', () => {
       makePerson('minor-with-guardian', { dateOfBirth: new Date(Date.now() - 15 * 365.25 * 86_400_000) }),
     );
     const profile = await asUser('operations@kaizen.co.in', () =>
-      attachStudentProfile(minor.id, { fullName: minor.fullName, guardianName: 'Parent Name', guardianPhone: '9800000000' }),
+      attachStudentProfile(minor.id, {
+        fullName: minor.fullName,
+        guardianName: 'Parent Name',
+        guardianPhone: '9800000000',
+      }),
     );
 
     const stored = await unscopedPrisma.studentProfile.findFirstOrThrow({ where: { id: profile.id } });
@@ -362,7 +460,11 @@ describe('CMP-DPD-003: a minor StudentProfile needs a guardian consent', () => {
       makePerson('minor-encrypted', { dateOfBirth: new Date(Date.now() - 15 * 365.25 * 86_400_000) }),
     );
     const profile = await asUser('operations@kaizen.co.in', () =>
-      attachStudentProfile(minor.id, { fullName: minor.fullName, guardianName: 'Parent Name', guardianPhone: '9800000000' }),
+      attachStudentProfile(minor.id, {
+        fullName: minor.fullName,
+        guardianName: 'Parent Name',
+        guardianPhone: '9800000000',
+      }),
     );
     const stored = await unscopedPrisma.studentProfile.findFirstOrThrow({ where: { id: profile.id } });
     expect(stored.guardianPhone?.startsWith(ENCRYPTED_FIELD_PREFIX)).toBe(true);
@@ -397,7 +499,12 @@ describe('CMP-DPD-003: a minor StudentProfile needs a guardian consent', () => {
     const cohort = await unscopedPrisma.cohort.findFirstOrThrow({ where: { tenantId: TENANT } });
     const enrollment = await asUser('operations@kaizen.co.in', async () => {
       const { enrolStudent } = await import('../../domains/education.js');
-      return enrolStudent({ cohortId: cohort.id, personId: minor.id, guardianName: 'Parent Name', guardianPhone: '9800000002' });
+      return enrolStudent({
+        cohortId: cohort.id,
+        personId: minor.id,
+        guardianName: 'Parent Name',
+        guardianPhone: '9800000002',
+      });
     });
     expect(enrollment.guardianConsentId).toBeTruthy();
 
@@ -413,7 +520,9 @@ describe('CMP-DPD-003: a minor StudentProfile needs a guardian consent', () => {
     const adult = await asUser('operations@kaizen.co.in', () =>
       makePerson('adult-student', { dateOfBirth: new Date(Date.now() - 25 * 365.25 * 86_400_000) }),
     );
-    const profile = await asUser('operations@kaizen.co.in', () => attachStudentProfile(adult.id, { fullName: adult.fullName }));
+    const profile = await asUser('operations@kaizen.co.in', () =>
+      attachStudentProfile(adult.id, { fullName: adult.fullName }),
+    );
     const stored = await unscopedPrisma.studentProfile.findFirstOrThrow({ where: { id: profile.id } });
     expect(stored.guardianConsentId).toBeNull();
   });
@@ -494,7 +603,9 @@ describe('Breach register: the 72-hour ladder', () => {
       raiseBreach({ detectedAt: new Date(), description: 'x', severity: 'S3_HIGH_RISK' }),
     );
     const { transitionBreach } = await import('../../domains/compliance/privacy.js');
-    const err = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionBreach(breach.id, 'notified_principals')));
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionBreach(breach.id, 'notified_principals')),
+    );
     expect(err.status).toBe(422);
   });
 });
@@ -511,7 +622,9 @@ describe('Access revocation follows offboarding to its close', () => {
       await transitionEmployment(employment.id, 'SUBMIT_RESIGNATION', { note: 'Resigned' });
     });
 
-    const offboarding = await unscopedPrisma.offboarding.findFirstOrThrow({ where: { employmentRelationshipId: employment.id } });
+    const offboarding = await unscopedPrisma.offboarding.findFirstOrThrow({
+      where: { employmentRelationshipId: employment.id },
+    });
 
     await asUser('operations@kaizen.co.in', async () => {
       await transitionOffboarding(offboarding.id, 'REACH_LWD');
@@ -521,7 +634,9 @@ describe('Access revocation follows offboarding to its close', () => {
       await transitionOffboarding(offboarding.id, 'ARCHIVE');
     });
 
-    const affiliations = await unscopedPrisma.affiliation.findMany({ where: { tenantId: TENANT, partyId: person.id, affiliationType: 'employee' } });
+    const affiliations = await unscopedPrisma.affiliation.findMany({
+      where: { tenantId: TENANT, partyId: person.id, affiliationType: 'employee' },
+    });
     expect(affiliations.length).toBeGreaterThan(0);
     for (const aff of affiliations) {
       expect(aff.status).toBe('ended');
@@ -577,7 +692,9 @@ describe('P3 rule 3: age is measured on the IST calendar, not UTC', () => {
 describe('FX-64: an unknown date of birth holds the minor rule unless an adult is attested', () => {
   it('no date of birth and no attestation: the minor rule applies, so a guardian is required', () => {
     expect(() => assertMinorHasGuardian({ dateOfBirth: null })).toThrow(/guardian/i);
-    expect(assertMinorHasGuardian({ dateOfBirth: null, guardianName: 'Parent Name', guardianPhone: '9800000000' })).toBe(true);
+    expect(
+      assertMinorHasGuardian({ dateOfBirth: null, guardianName: 'Parent Name', guardianPhone: '9800000000' }),
+    ).toBe(true);
   });
 
   it('an explicit adult attestation releases the rule when there is no date of birth', () => {
@@ -624,7 +741,9 @@ describe('FX-62: erasure reaches the guardian and contact values on dependent ro
       }),
     );
 
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'erasure' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'erasure' }),
+    );
     const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
     expect(fulfilled.status).toBe('fulfilled');
 
@@ -648,7 +767,9 @@ describe('FX-62: an active affiliation blocks erasure even without a statutory f
         data: { tenantId: TENANT, partyId: person.id, affiliationType: 'customer_contact', status: 'active' },
       }),
     );
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'erasure' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'erasure' }),
+    );
     const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
 
     expect(fulfilled.status).toBe('refused');
@@ -662,13 +783,20 @@ describe('FX-62: an active affiliation blocks erasure even without a statutory f
 describe('FX-63: a correction cannot take a contact another active person holds', () => {
   it('refuses an email held by another active person, whatever its case, and changes nothing', async () => {
     await asUser('operations@kaizen.co.in', () =>
-      makePerson('holder', { primaryEmail: 'Holder.Taken@Example.com', primaryEmailNormalised: 'holder.taken@example.com' }),
+      makePerson('holder', {
+        primaryEmail: 'Holder.Taken@Example.com',
+        primaryEmailNormalised: 'holder.taken@example.com',
+      }),
     );
     const person = await asUser('operations@kaizen.co.in', () => makePerson('collider'));
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'correction' }),
+    );
 
     const err = await expectReject(() =>
-      asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id, { correction: { primaryEmail: 'HOLDER.TAKEN@example.com' } })),
+      asUser('operations@kaizen.co.in', () =>
+        fulfilDataRequest(request.id, { correction: { primaryEmail: 'HOLDER.TAKEN@example.com' } }),
+      ),
     );
     expect(err.status).toBe(409);
     const after = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
@@ -703,10 +831,14 @@ describe('FX-63: a date-of-birth correction re-runs the minor gate on the enrolm
 
   it('refuses a correction that makes the learner a minor when the enrolment has no guardian on file', async () => {
     const { person, enrollment } = await adultWithEnrolment('dob-no-guardian', false);
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'correction' }),
+    );
 
     const err = await expectReject(() =>
-      asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id, { correction: { dateOfBirth: fifteenYearsAgo() } })),
+      asUser('operations@kaizen.co.in', () =>
+        fulfilDataRequest(request.id, { correction: { dateOfBirth: fifteenYearsAgo() } }),
+      ),
     );
     expect(err.status).toBe(422);
     const p = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
@@ -717,7 +849,9 @@ describe('FX-63: a date-of-birth correction re-runs the minor gate on the enrolm
 
   it('a correction to a minor, with guardian contact on the enrolment, updates isMinor and stamps the consent (audited)', async () => {
     const { person, enrollment } = await adultWithEnrolment('dob-with-guardian', true);
-    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'correction' }));
+    const request = await asUser('operations@kaizen.co.in', () =>
+      raiseDataRequest({ personId: person.id, kind: 'correction' }),
+    );
 
     const fulfilled = await asUser('operations@kaizen.co.in', () =>
       fulfilDataRequest(request.id, { correction: { dateOfBirth: fifteenYearsAgo() } }),

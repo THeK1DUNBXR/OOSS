@@ -172,9 +172,7 @@ router.get(
         dueDate: inv.dueDate?.toISOString() ?? null,
         total: money ? totals.payable : null,
         taxableValue: money ? (num(inv.taxableValue) ?? 0) : null,
-        taxAmount: money
-          ? (num(inv.cgstAmount) ?? 0) + (num(inv.sgstAmount) ?? 0) + (num(inv.igstAmount) ?? 0)
-          : null,
+        taxAmount: money ? (num(inv.cgstAmount) ?? 0) + (num(inv.sgstAmount) ?? 0) + (num(inv.igstAmount) ?? 0) : null,
         allocated: money ? totals.allocated : null,
         outstanding: money ? totals.outstanding : null,
         daysOverdue,
@@ -219,7 +217,10 @@ router.get(
   }),
 );
 
-router.get('/invoices/:id', handler(async (req) => invoiceSummary(req.params.id)));
+router.get(
+  '/invoices/:id',
+  handler(async (req) => invoiceSummary(req.params.id)),
+);
 
 /**
  * The invoice as a document.
@@ -230,7 +231,10 @@ router.get('/invoices/:id', handler(async (req) => invoiceSummary(req.params.id)
  * screen that recomputes a total is a screen that can disagree with the copy the
  * customer is holding.
  */
-router.get('/invoices/:id/document', handler(async (req) => invoiceDocument(req.params.id)));
+router.get(
+  '/invoices/:id/document',
+  handler(async (req) => invoiceDocument(req.params.id)),
+);
 
 const invoiceBodySchema = z.object({
   accountId: z.string().nullish(),
@@ -329,16 +333,17 @@ router.post(
 
 router.get(
   '/receipts',
-  handler(async (req) =>
-    listReceipts({ invoiceId: str(req.query.invoiceId), limit: numeric(req.query.limit) }),
-  ),
+  handler(async (req) => listReceipts({ invoiceId: str(req.query.invoiceId), limit: numeric(req.query.limit) })),
 );
 
 /**
  * A receipt as a document: its own number and time, the invoice it is against,
  * the amount, the mode, and the balance left after it.
  */
-router.get('/receipts/:id/document', handler(async (req) => receiptDocument(req.params.id)));
+router.get(
+  '/receipts/:id/document',
+  handler(async (req) => receiptDocument(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // The final invoice
@@ -350,12 +355,13 @@ router.get('/receipts/:id/document', handler(async (req) => receiptDocument(req.
 
 router.get(
   '/final-invoices',
-  handler(async (req) =>
-    listFinalInvoices({ invoiceId: str(req.query.invoiceId), limit: numeric(req.query.limit) }),
-  ),
+  handler(async (req) => listFinalInvoices({ invoiceId: str(req.query.invoiceId), limit: numeric(req.query.limit) })),
 );
 
-router.get('/final-invoices/:id/document', handler(async (req) => finalInvoiceDocument(req.params.id)));
+router.get(
+  '/final-invoices/:id/document',
+  handler(async (req) => finalInvoiceDocument(req.params.id)),
+);
 
 router.post(
   '/invoices/:id/final-invoice',
@@ -502,7 +508,10 @@ router.get(
     const money = await canSeeMoney('receivables');
 
     const rows = await prisma.receivablesProjection.findMany({
-      where: { tenantId: auth.tenantId, ...(str(req.query.dunningStage) ? { dunningStage: str(req.query.dunningStage) } : {}) },
+      where: {
+        tenantId: auth.tenantId,
+        ...(str(req.query.dunningStage) ? { dunningStage: str(req.query.dunningStage) } : {}),
+      },
       orderBy: { amountOutstanding: 'desc' },
       take: 200,
     });

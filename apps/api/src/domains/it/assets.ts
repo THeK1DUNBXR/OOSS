@@ -52,7 +52,9 @@ function assertValidKind(kind: string): void {
 function assertValidCondition(condition: string | null | undefined): void {
   if (condition == null) return;
   if (!(IT_ASSET_CONDITIONS as readonly string[]).includes(condition)) {
-    throw ApiError.badRequest(`'${condition}' is not a condition an asset can carry. Choose one of: ${IT_ASSET_CONDITIONS.join(', ')}.`);
+    throw ApiError.badRequest(
+      `'${condition}' is not a condition an asset can carry. Choose one of: ${IT_ASSET_CONDITIONS.join(', ')}.`,
+    );
   }
 }
 
@@ -141,7 +143,12 @@ export async function createAsset(input: CreateAssetInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_asset', subjectId: asset.id, after: { recordCode, tag, kind: input.kind } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_asset',
+    subjectId: asset.id,
+    after: { recordCode, tag, kind: input.kind },
+  });
   await emit({
     name: EVENTS.IT_ASSET_CREATED,
     subject: { entityType: 'it_asset', entityId: asset.id, recordCode },
@@ -275,7 +282,10 @@ export async function assetDetail(id: string) {
   await assertCan({ resource: RESOURCE, verb: 'view', record: { ownerPartyId: asset.holderPartyId } });
 
   const [assignments, events, [holderName], fixedAssetRow] = await Promise.all([
-    prisma.itAssetAssignment.findMany({ where: { tenantId: auth.tenantId, assetId: id }, orderBy: { assignedAt: 'desc' } }),
+    prisma.itAssetAssignment.findMany({
+      where: { tenantId: auth.tenantId, assetId: id },
+      orderBy: { assignedAt: 'desc' },
+    }),
     prisma.itAssetEvent.findMany({ where: { tenantId: auth.tenantId, assetId: id }, orderBy: { createdAt: 'desc' } }),
     asset.holderPartyId ? holderNames([asset.holderPartyId]) : Promise.resolve([]),
     // Cross-workstream reference resolved at the service layer, never a
@@ -294,7 +304,13 @@ export async function assetDetail(id: string) {
   const nameOf = (partyId: string) => names.find((n) => n.id === partyId)?.fullName ?? null;
 
   const fixedAsset = fixedAssetRow
-    ? { id: fixedAssetRow.id, recordCode: fixedAssetRow.recordCode, name: fixedAssetRow.name, cost: Number(fixedAssetRow.cost), disposedAt: fixedAssetRow.disposedAt }
+    ? {
+        id: fixedAssetRow.id,
+        recordCode: fixedAssetRow.recordCode,
+        name: fixedAssetRow.name,
+        cost: Number(fixedAssetRow.cost),
+        disposedAt: fixedAssetRow.disposedAt,
+      }
     : null;
 
   return {
@@ -313,13 +329,21 @@ export async function assetDetail(id: string) {
 async function holderNames(partyIds: string[]): Promise<Array<{ id: string; fullName: string }>> {
   if (!partyIds.length) return [];
   const auth = currentAuth();
-  return prisma.person.findMany({ where: { tenantId: auth.tenantId, id: { in: partyIds } }, select: { id: true, fullName: true } });
+  return prisma.person.findMany({
+    where: { tenantId: auth.tenantId, id: { in: partyIds } },
+    select: { id: true, fullName: true },
+  });
 }
 
-async function withHolderNames<T extends { holderPartyId: string | null }>(rows: T[]): Promise<Array<T & { holderName: string | null }>> {
+async function withHolderNames<T extends { holderPartyId: string | null }>(
+  rows: T[],
+): Promise<Array<T & { holderName: string | null }>> {
   const ids = [...new Set(rows.map((r) => r.holderPartyId).filter((x): x is string => Boolean(x)))];
   const names = await holderNames(ids);
-  return rows.map((r) => ({ ...r, holderName: r.holderPartyId ? names.find((n) => n.id === r.holderPartyId)?.fullName ?? null : null }));
+  return rows.map((r) => ({
+    ...r,
+    holderName: r.holderPartyId ? (names.find((n) => n.id === r.holderPartyId)?.fullName ?? null) : null,
+  }));
 }
 
 function withTransitions<T extends { status: string }>(row: T): T & { availableTransitions: ItAssetLifecycleEvent[] } {
@@ -383,7 +407,13 @@ export async function assignAsset(id: string, input: AssignAssetInput) {
     }),
   ]);
 
-  await auditWrite({ action: 'update', subjectType: 'it_asset', subjectId: id, before: { status: asset.status }, after: { status: to, holderPartyId: input.partyId } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_asset',
+    subjectId: id,
+    before: { status: asset.status },
+    after: { status: to, holderPartyId: input.partyId },
+  });
   await emit({
     name: EVENTS.IT_ASSET_ASSIGNED,
     subject: { entityType: 'it_asset', entityId: id, recordCode: asset.recordCode },
@@ -451,7 +481,13 @@ export async function returnAsset(id: string, input: ReturnAssetInput = {}) {
     }),
   ]);
 
-  await auditWrite({ action: 'update', subjectType: 'it_asset', subjectId: id, before: { status: asset.status, holderPartyId: asset.holderPartyId }, after: { status: to, holderPartyId: null } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_asset',
+    subjectId: id,
+    before: { status: asset.status, holderPartyId: asset.holderPartyId },
+    after: { status: to, holderPartyId: null },
+  });
   await emit({
     name: EVENTS.IT_ASSET_RETURNED,
     subject: { entityType: 'it_asset', entityId: id, recordCode: asset.recordCode },
@@ -483,7 +519,9 @@ const DEDICATED_EVENTS: ItAssetLifecycleEvent[] = ['ASSIGN', 'RETURN'];
 
 export async function transitionAsset(id: string, event: ItAssetLifecycleEvent, note?: string | null) {
   if (DEDICATED_EVENTS.includes(event)) {
-    throw ApiError.badRequest(`${event} needs who it is going to/from — use the assign or return action, not a plain transition.`);
+    throw ApiError.badRequest(
+      `${event} needs who it is going to/from — use the assign or return action, not a plain transition.`,
+    );
   }
 
   const auth = currentAuth();
@@ -499,7 +537,8 @@ export async function transitionAsset(id: string, event: ItAssetLifecycleEvent, 
     where: { id },
     data: {
       status: to,
-      inRepairSince: event === 'SEND_TO_REPAIR' ? new Date() : event === 'BACK_FROM_REPAIR' ? null : asset.inRepairSince,
+      inRepairSince:
+        event === 'SEND_TO_REPAIR' ? new Date() : event === 'BACK_FROM_REPAIR' ? null : asset.inRepairSince,
       ...(event === 'RETIRE' || event === 'DISPOSE' ? { inRepairSince: null } : {}),
     },
   });
@@ -514,7 +553,14 @@ export async function transitionAsset(id: string, event: ItAssetLifecycleEvent, 
     },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'it_asset', subjectId: id, before: { status: from }, after: { status: to }, meta: { transition: event } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_asset',
+    subjectId: id,
+    before: { status: from },
+    after: { status: to },
+    meta: { transition: event },
+  });
   await emit({
     name: EVENTS.IT_ASSET_TRANSITIONED,
     subject: { entityType: 'it_asset', entityId: id, recordCode: asset.recordCode },
@@ -549,7 +595,12 @@ export async function addAssetEvent(id: string, input: AddAssetEventInput) {
   const event = await prisma.itAssetEvent.create({
     data: { tenantId: auth.tenantId, assetId: id, kind: input.kind || 'note', detail, actorPartyId: auth.partyId },
   });
-  await auditWrite({ action: 'create', subjectType: 'it_asset_event', subjectId: event.id, after: { assetId: id, kind: event.kind } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_asset_event',
+    subjectId: event.id,
+    after: { assetId: id, kind: event.kind },
+  });
   return event;
 }
 
@@ -558,7 +609,10 @@ export async function listAssetEvents(id: string) {
   const asset = await prisma.itAsset.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!asset) throw ApiError.notFound('Asset');
   await assertCan({ resource: RESOURCE, verb: 'view', record: { ownerPartyId: asset.holderPartyId } });
-  return prisma.itAssetEvent.findMany({ where: { tenantId: auth.tenantId, assetId: id }, orderBy: { createdAt: 'desc' } });
+  return prisma.itAssetEvent.findMany({
+    where: { tenantId: auth.tenantId, assetId: id },
+    orderBy: { createdAt: 'desc' },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -609,7 +663,9 @@ export async function runWarrantyLadder(now: Date = new Date()): Promise<Warrant
 
     await raiseException({
       code: expired ? 'IT_AST_WARRANTY_EXPIRED' : 'IT_AST_WARRANTY_APPROACHING',
-      label: expired ? `${row.tag} warranty expired` : `${row.tag} warranty ends in ${rung} day${rung === 1 ? '' : 's'}`,
+      label: expired
+        ? `${row.tag} warranty expired`
+        : `${row.tag} warranty ends in ${rung} day${rung === 1 ? '' : 's'}`,
       severity: expired ? 'S3_HIGH_RISK' : rung <= 7 ? 'S2_WARNING' : 'S1_ATTENTION',
       subjectType: 'it_asset',
       subjectId: row.id,
@@ -625,7 +681,10 @@ export async function runWarrantyLadder(now: Date = new Date()): Promise<Warrant
     });
     notified += 1;
 
-    await prisma.itAsset.update({ where: { id: row.id }, data: { warrantyNotifiedRungs: [...new Set([...already, rung])] } });
+    await prisma.itAsset.update({
+      where: { id: row.id },
+      data: { warrantyNotifiedRungs: [...new Set([...already, rung])] },
+    });
 
     await emit({
       name: EVENTS.IT_ASSET_WARRANTY_APPROACHING,
@@ -744,7 +803,9 @@ export async function summary() {
     }
   }
 
-  const where = ownOnly ? { tenantId: auth.tenantId, holderPartyId: auth.partyId ?? ' no-party' } : { tenantId: auth.tenantId };
+  const where = ownOnly
+    ? { tenantId: auth.tenantId, holderPartyId: auth.partyId ?? ' no-party' }
+    : { tenantId: auth.tenantId };
 
   const total = await prisma.itAsset.count({ where });
   if (total === 0) {
@@ -776,13 +837,21 @@ export async function summary() {
     byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
     if (r.status === 'in_stock') unassignedStock += 1;
     if (r.fixedAssetId) fixedAssetLinkedCount += 1;
-    if (r.warrantyEnd && r.status !== 'retired' && r.status !== 'disposed' && daysUntil(r.warrantyEnd, now) <= 90 && daysUntil(r.warrantyEnd, now) >= 0) {
+    if (
+      r.warrantyEnd &&
+      r.status !== 'retired' &&
+      r.status !== 'disposed' &&
+      daysUntil(r.warrantyEnd, now) <= 90 &&
+      daysUntil(r.warrantyEnd, now) >= 0
+    ) {
       warrantyExpiringIn90Days += 1;
     }
     if (r.holderPartyId) holderCounts.set(r.holderPartyId, (holderCounts.get(r.holderPartyId) ?? 0) + 1);
   }
 
-  const bookValue = assetBookValue(rows.filter((r) => r.status !== 'disposed').map((r) => (r.purchaseCost ? Number(r.purchaseCost) : null)));
+  const bookValue = assetBookValue(
+    rows.filter((r) => r.status !== 'disposed').map((r) => (r.purchaseCost ? Number(r.purchaseCost) : null)),
+  );
 
   const topHolderIds = [...holderCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
   const names = await holderNames(topHolderIds.map(([id]) => id));

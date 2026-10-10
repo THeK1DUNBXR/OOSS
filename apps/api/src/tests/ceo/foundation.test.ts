@@ -21,42 +21,103 @@ import type { Server } from 'node:http';
 
 // The 21 resources this module's Phase 0 declares (docs/plan/ceo-office.md §6).
 const CEO_RESOURCES = [
-  'kpi_definitions', 'ceo_cockpit',
-  'strategic_themes', 'objectives', 'key_results',
+  'kpi_definitions',
+  'ceo_cockpit',
+  'strategic_themes',
+  'objectives',
+  'key_results',
   'initiatives',
-  'meeting_series', 'meeting_instances',
-  'doa_matrix', 'ceo_approvals_inbox',
-  'board_packs', 'investor_updates', 'stakeholders',
-  'risks', 'policy_documents',
-  'financial_scenarios', 'headcount_plans',
-  'seats', 'one_on_ones', 'succession_candidates', 'time_audit',
+  'meeting_series',
+  'meeting_instances',
+  'doa_matrix',
+  'ceo_approvals_inbox',
+  'board_packs',
+  'investor_updates',
+  'stakeholders',
+  'risks',
+  'policy_documents',
+  'financial_scenarios',
+  'headcount_plans',
+  'seats',
+  'one_on_ones',
+  'succession_candidates',
+  'time_audit',
 ] as const;
 
 const CEO_EVENTS = [
-  'CEO_KPI_DEFINITION_CREATED', 'CEO_KPI_FORMULA_PUBLISHED', 'CEO_NORTH_STAR_CHANGED',
-  'CEO_VISION_SET', 'CEO_AOP_SUBMITTED', 'CEO_AOP_ACTIVATED', 'CEO_OBJECTIVE_CREATED',
-  'CEO_OBJECTIVE_SCORED', 'CEO_KEY_RESULT_CHECKED_IN',
-  'CEO_INITIATIVE_CREATED', 'CEO_INITIATIVE_STATUS_CHANGED', 'CEO_INITIATIVE_KILLED',
+  'CEO_KPI_DEFINITION_CREATED',
+  'CEO_KPI_FORMULA_PUBLISHED',
+  'CEO_NORTH_STAR_CHANGED',
+  'CEO_VISION_SET',
+  'CEO_AOP_SUBMITTED',
+  'CEO_AOP_ACTIVATED',
+  'CEO_OBJECTIVE_CREATED',
+  'CEO_OBJECTIVE_SCORED',
+  'CEO_KEY_RESULT_CHECKED_IN',
+  'CEO_INITIATIVE_CREATED',
+  'CEO_INITIATIVE_STATUS_CHANGED',
+  'CEO_INITIATIVE_KILLED',
   'CEO_INITIATIVE_MILESTONE_COMPLETED',
-  'CEO_MEETING_SCHEDULED', 'CEO_MEETING_CLOSED', 'CEO_ISSUE_RAISED', 'CEO_ISSUE_RESOLVED',
+  'CEO_MEETING_SCHEDULED',
+  'CEO_MEETING_CLOSED',
+  'CEO_ISSUE_RAISED',
+  'CEO_ISSUE_RESOLVED',
   'CEO_ACTION_ITEM_COMPLETED',
-  'CEO_DOA_ENTRY_CHANGED', 'CEO_DELEGATION_CREATED', 'CEO_DELEGATION_ENDED',
-  'CEO_BOARD_PACK_ISSUED', 'CEO_INVESTOR_UPDATE_ISSUED', 'CEO_DOCUMENT_CIRCULATED',
-  'CEO_DOCUMENT_ACKNOWLEDGED', 'CEO_STAKEHOLDER_TOUCHED',
-  'CEO_RISK_RAISED', 'CEO_RISK_CLOSED', 'CEO_POLICY_PUBLISHED', 'CEO_POLICY_ACKNOWLEDGED',
-  'CEO_SCENARIO_CREATED', 'CEO_BUDGET_LINE_PROPOSED', 'CEO_HEADCOUNT_PLAN_APPROVED',
-  'CEO_SEAT_CREATED', 'CEO_SEAT_REASSIGNED', 'CEO_SUCCESSION_REVIEWED', 'CEO_ONE_ON_ONE_LOGGED',
+  'CEO_DOA_ENTRY_CHANGED',
+  'CEO_DELEGATION_CREATED',
+  'CEO_DELEGATION_ENDED',
+  'CEO_BOARD_PACK_ISSUED',
+  'CEO_INVESTOR_UPDATE_ISSUED',
+  'CEO_DOCUMENT_CIRCULATED',
+  'CEO_DOCUMENT_ACKNOWLEDGED',
+  'CEO_STAKEHOLDER_TOUCHED',
+  'CEO_RISK_RAISED',
+  'CEO_RISK_CLOSED',
+  'CEO_POLICY_PUBLISHED',
+  'CEO_POLICY_ACKNOWLEDGED',
+  'CEO_SCENARIO_CREATED',
+  'CEO_BUDGET_LINE_PROPOSED',
+  'CEO_HEADCOUNT_PLAN_APPROVED',
+  'CEO_SEAT_CREATED',
+  'CEO_SEAT_REASSIGNED',
+  'CEO_SUCCESSION_REVIEWED',
+  'CEO_ONE_ON_ONE_LOGGED',
 ] as const;
 
 const CEO_NAV_KEYS = [
-  'ceo_cockpit', 'ceo_kpi_library', 'ceo_strategy', 'ceo_okrs', 'ceo_initiatives',
-  'ceo_meetings', 'ceo_delegation', 'ceo_approvals', 'ceo_board_pack',
-  'ceo_investor_updates', 'ceo_stakeholders', 'ceo_risks', 'ceo_policies',
-  'ceo_governance', 'ceo_financial_plan', 'ceo_headcount_plan', 'ceo_leadership',
-  'ceo_one_on_ones', 'ceo_succession', 'ceo_time_audit',
+  'ceo_cockpit',
+  'ceo_kpi_library',
+  'ceo_strategy',
+  'ceo_okrs',
+  'ceo_initiatives',
+  'ceo_meetings',
+  'ceo_delegation',
+  'ceo_approvals',
+  'ceo_board_pack',
+  'ceo_investor_updates',
+  'ceo_stakeholders',
+  'ceo_risks',
+  'ceo_policies',
+  'ceo_governance',
+  'ceo_financial_plan',
+  'ceo_headcount_plan',
+  'ceo_leadership',
+  'ceo_one_on_ones',
+  'ceo_succession',
+  'ceo_time_audit',
 ] as const;
 
-const STUB_AREAS = ['cockpit', 'strategy', 'initiatives', 'rhythm', 'doa', 'board', 'risk', 'finance', 'people'] as const;
+const STUB_AREAS = [
+  'cockpit',
+  'strategy',
+  'initiatives',
+  'rhythm',
+  'doa',
+  'board',
+  'risk',
+  'finance',
+  'people',
+] as const;
 
 /** apps/web/src/main.tsx, read as text — the route table Phase 0 must match. */
 function mainTsxSource(): string {
@@ -81,14 +142,14 @@ describe('CEO-FOUND-001 — every new resource is declared in both resource list
   });
 });
 
-describe("CEO-FOUND-002 — every new nav row resolves to a real route, and stays off the portal", () => {
+describe('CEO-FOUND-002 — every new nav row resolves to a real route, and stays off the portal', () => {
   const ceoNav = NAV_REGISTRY.filter((n) => n.group === 'ceo');
 
   it('registers exactly the 20 screens the master table names', () => {
     expect(ceoNav.map((n) => n.nodeKey).sort()).toEqual([...CEO_NAV_KEYS].sort());
   });
 
-  it("every path matches a <Route> in apps/web/src/main.tsx", () => {
+  it('every path matches a <Route> in apps/web/src/main.tsx', () => {
     const src = mainTsxSource();
     for (const node of ceoNav) {
       const needle = `path="${node.path}"`;
@@ -167,7 +228,12 @@ describe('CEO-FOUND-006 — every stub route answers the way a phase can build a
 
     const { principalFor } = await import('../helpers.js');
     const p = await principalFor('chairman@kaizen.co.in');
-    const token = await sessionToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
+    const token = await sessionToken({
+      userId: p.userId,
+      tenantId: p.tenantId,
+      affiliationId: p.affiliationId,
+      stepUp: true,
+    });
     const headers = { Authorization: `Bearer ${token}` };
 
     for (const area of STUB_AREAS) {
@@ -220,10 +286,9 @@ describe('CEO-FOUND-007 — a non-chairman, non-named role is refused on a chair
 describe('CEO-FOUND-008 — no service code compares a role slug for this module (§3.5)', () => {
   it('a source grep of domains/ceo for a role-slug literal comparison returns empty', async () => {
     const { execSync } = await import('node:child_process');
-    const out = execSync(
-      "grep -rnE \"roleSlug\\s*[=!]==\\s*['\\\"]\" src/domains/ceo src/routes/ceo || true",
-      { cwd: fileURLToPath(new URL('../../..', import.meta.url)) },
-    )
+    const out = execSync('grep -rnE "roleSlug\\s*[=!]==\\s*[\'\\"]" src/domains/ceo src/routes/ceo || true', {
+      cwd: fileURLToPath(new URL('../../..', import.meta.url)),
+    })
       .toString()
       .trim();
     expect(out).toBe('');

@@ -35,13 +35,19 @@ import {
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'separations', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'separations', ready: true })),
+);
 
 // ---------------------------------------------------------------------------
 // Notice policy
 // ---------------------------------------------------------------------------
 
-router.get('/notice-policies', handler(async () => listNoticePolicies()));
+router.get(
+  '/notice-policies',
+  handler(async () => listNoticePolicies()),
+);
 
 const noticePolicyBody = z.object({
   name: z.string().min(1),
@@ -68,15 +74,24 @@ router.patch(
   }),
 );
 
-router.get('/notice-policies/for/:employmentId', handler(async (req) => noticeDaysFor(req.params.employmentId)));
+router.get(
+  '/notice-policies/for/:employmentId',
+  handler(async (req) => noticeDaysFor(req.params.employmentId)),
+);
 
 // ---------------------------------------------------------------------------
 // Resignation
 // ---------------------------------------------------------------------------
 
-router.get('/resignations', handler(async (req) => listResignations({ status: str(req.query.status) })));
+router.get(
+  '/resignations',
+  handler(async (req) => listResignations({ status: str(req.query.status) })),
+);
 
-router.get('/resignations/:id', handler(async (req) => getResignation(req.params.id)));
+router.get(
+  '/resignations/:id',
+  handler(async (req) => getResignation(req.params.id)),
+);
 
 const submitResignationBody = z.object({
   employmentRelationshipId: z.string().min(1),
@@ -113,13 +128,19 @@ router.post(
   }),
 );
 
-router.post('/resignations/:id/withdraw', handler(async (req) => withdrawResignation(req.params.id)));
+router.post(
+  '/resignations/:id/withdraw',
+  handler(async (req) => withdrawResignation(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // "My exit" — resolved against the caller's own employment, no id required.
 // ---------------------------------------------------------------------------
 
-router.get('/my/resignations', handler(async () => myResignations()));
+router.get(
+  '/my/resignations',
+  handler(async () => myResignations()),
+);
 
 router.post(
   '/my/resignations',
@@ -132,19 +153,34 @@ router.post(
   }),
 );
 
-router.get('/my/offboarding', handler(async () => myOffboarding()));
-router.get('/my/notice-days', handler(async () => myNoticeDays()));
+router.get(
+  '/my/offboarding',
+  handler(async () => myOffboarding()),
+);
+router.get(
+  '/my/notice-days',
+  handler(async () => myNoticeDays()),
+);
 
 // ---------------------------------------------------------------------------
 // Offboarding / clearance / no-dues, addressed by employment id for the "my
 // exit" screen and by offboarding id for the HR clearance queue.
 // ---------------------------------------------------------------------------
 
-router.get('/offboarding/by-employment/:employmentId', handler(async (req) => getOffboardingForEmployment(req.params.employmentId)));
+router.get(
+  '/offboarding/by-employment/:employmentId',
+  handler(async (req) => getOffboardingForEmployment(req.params.employmentId)),
+);
 
-router.get('/offboarding/:offboardingId/clearances', handler(async (req) => listExitClearances(req.params.offboardingId)));
+router.get(
+  '/offboarding/:offboardingId/clearances',
+  handler(async (req) => listExitClearances(req.params.offboardingId)),
+);
 
-router.post('/offboarding/:offboardingId/clearances/initiate', handler(async (req) => initiateClearance(req.params.offboardingId)));
+router.post(
+  '/offboarding/:offboardingId/clearances/initiate',
+  handler(async (req) => initiateClearance(req.params.offboardingId)),
+);
 
 router.post(
   '/clearances/:id/clear',
@@ -160,16 +196,28 @@ router.post(
   }),
 );
 
-router.get('/offboarding/:offboardingId/no-dues', handler(async (req) => getNoDues(req.params.offboardingId)));
-router.post('/offboarding/:offboardingId/no-dues', handler(async (req) => issueNoDues(req.params.offboardingId)));
+router.get(
+  '/offboarding/:offboardingId/no-dues',
+  handler(async (req) => getNoDues(req.params.offboardingId)),
+);
+router.post(
+  '/offboarding/:offboardingId/no-dues',
+  handler(async (req) => issueNoDues(req.params.offboardingId)),
+);
 
-router.get('/assets-pending/:employmentId', handler(async (req) => ({ count: await assetsPendingCount(req.params.employmentId) })));
+router.get(
+  '/assets-pending/:employmentId',
+  handler(async (req) => ({ count: await assetsPendingCount(req.params.employmentId) })),
+);
 
 // ---------------------------------------------------------------------------
 // Alumni
 // ---------------------------------------------------------------------------
 
-router.get('/alumni', handler(async () => listAlumni()));
+router.get(
+  '/alumni',
+  handler(async () => listAlumni()),
+);
 
 router.post(
   '/alumni',

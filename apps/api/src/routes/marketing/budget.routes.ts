@@ -76,7 +76,10 @@ router.patch(
   }),
 );
 
-router.post('/budgets/:id/approve', handler(async (req) => approveBudget(req.params.id)));
+router.post(
+  '/budgets/:id/approve',
+  handler(async (req) => approveBudget(req.params.id)),
+);
 
 router.get(
   '/budgets/variance',
@@ -90,7 +93,11 @@ router.get(
 router.get(
   '/spends',
   handler(async (req) => {
-    const items = await listSpend({ campaignId: str(req.query.campaignId), from: date(req.query.from), to: date(req.query.to) });
+    const items = await listSpend({
+      campaignId: str(req.query.campaignId),
+      from: date(req.query.from),
+      to: date(req.query.to),
+    });
     return { items, total: items.length };
   }),
 );
@@ -110,7 +117,8 @@ router.post(
   handler(async (req) => {
     const schema = z.object({ transactionId: z.string().optional(), vendorBillId: z.string().optional() });
     const input = schema.parse(req.body ?? {});
-    if (!input.transactionId && !input.vendorBillId) throw ApiError.badRequest('transactionId or vendorBillId is required.');
+    if (!input.transactionId && !input.vendorBillId)
+      throw ApiError.badRequest('transactionId or vendorBillId is required.');
     return reconcileSpend(req.params.id, input);
   }),
 );
@@ -119,10 +127,13 @@ router.post(
 // Vendors
 // ---------------------------------------------------------------------------
 
-router.get('/vendors', handler(async () => {
-  const items = await listVendors();
-  return { items, total: items.length };
-}));
+router.get(
+  '/vendors',
+  handler(async () => {
+    const items = await listVendors();
+    return { items, total: items.length };
+  }),
+);
 
 router.post(
   '/vendors',

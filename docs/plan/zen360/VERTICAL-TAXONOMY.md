@@ -25,13 +25,13 @@ PROPOSED firm line set: Skill Development, Education, Corporate Learning, Techno
 
 ### Decisions needed (top 5)
 
-| # | Decision | Recommended default |
-|---|---|---|
-| 1 | Approve the five-line set, with Media & Marketing as a shared function until it has external revenue | Yes |
-| 2 | Is the business-line registry group-level (same IDs in holding and every subsidiary), whichever way D-01 and equity-portal 6b are settled? | Yes. A line is not an entity, so both answers work |
-| 3 | Boundary rule: when payer is not the beneficiary (sponsor, scheme, CSR), the work is Skill Development, not Corporate Learning or Education | Yes |
-| 4 | SAP: consulting sits in Technology Services, SAP training sits in Corporate Learning, told apart by offering | Yes |
-| 5 | Treat Research, Partnerships, Telecalling, Ventures and Foundation as non-lines | Yes |
+| #   | Decision                                                                                                                                    | Recommended default                                |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1   | Approve the five-line set, with Media & Marketing as a shared function until it has external revenue                                        | Yes                                                |
+| 2   | Is the business-line registry group-level (same IDs in holding and every subsidiary), whichever way D-01 and equity-portal 6b are settled?  | Yes. A line is not an entity, so both answers work |
+| 3   | Boundary rule: when payer is not the beneficiary (sponsor, scheme, CSR), the work is Skill Development, not Corporate Learning or Education | Yes                                                |
+| 4   | SAP: consulting sits in Technology Services, SAP training sits in Corporate Learning, told apart by offering                                | Yes                                                |
+| 5   | Treat Research, Partnerships, Telecalling, Ventures and Foundation as non-lines                                                             | Yes                                                |
 
 ---
 
@@ -39,11 +39,11 @@ PROPOSED firm line set: Skill Development, Education, Corporate Learning, Techno
 
 Three hardcoded taxonomies describe the same business and do not agree.
 
-| List | Values | Where | Used for |
-|---|---|---|---|
-| VERTICALS (9) | education, corporate_training, sap_enterprise, cybersecurity, software_ai, placement, partnerships, research, other | `domain.ts:9-20` | CRM: leads, opportunities, offerings, MoUs, routing, pipelines, marketing |
-| DIVISIONS (4) | software, skill, education, shared | `finance.ts:19-27` | Money: invoices, transactions, budgets, payroll, P&L |
-| COMMERCIAL_MOTIONS (5) | enterprise_direct, institution_partnership, learner_admission, workforce_placement, renewal_expansion | `domain.ts:167-173` | Seeded as pipelines |
+| List                   | Values                                                                                                              | Where               | Used for                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------- |
+| VERTICALS (9)          | education, corporate_training, sap_enterprise, cybersecurity, software_ai, placement, partnerships, research, other | `domain.ts:9-20`    | CRM: leads, opportunities, offerings, MoUs, routing, pipelines, marketing |
+| DIVISIONS (4)          | software, skill, education, shared                                                                                  | `finance.ts:19-27`  | Money: invoices, transactions, budgets, payroll, P&L                      |
+| COMMERCIAL_MOTIONS (5) | enterprise_direct, institution_partnership, learner_admission, workforce_placement, renewal_expansion               | `domain.ts:167-173` | Seeded as pipelines                                                       |
 
 Why this breaks:
 
@@ -56,11 +56,11 @@ Why this breaks:
 
 What each change breaks today (T3 "Breakage"):
 
-| Change | Consequence now |
-|---|---|
-| Rename | Filters silently miss. Pipeline lookup falls back or throws. Routing reports `no_vertical_coverage`. Zod rejects. Audience rules go stale. Imports throw (`commit.ts:1309-1318`) |
-| Split | Nothing re-tags old rows. Territories, grants and claims are orphaned. Overlapping pipelines pick the earliest. Budget unique keys collide (`BudgetLine` unique on tenant, period, category, division) |
-| Merge | Two P&L rows for one line. Budget key collisions |
+| Change               | Consequence now                                                                                                                                                                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rename               | Filters silently miss. Pipeline lookup falls back or throws. Routing reports `no_vertical_coverage`. Zod rejects. Audience rules go stale. Imports throw (`commit.ts:1309-1318`)                                                                                                                        |
+| Split                | Nothing re-tags old rows. Territories, grants and claims are orphaned. Overlapping pipelines pick the earliest. Budget unique keys collide (`BudgetLine` unique on tenant, period, category, division)                                                                                                  |
+| Merge                | Two P&L rows for one line. Budget key collisions                                                                                                                                                                                                                                                        |
 | Move to a new entity | Pipelines, territories and grants must be recreated. The spin-out carries only transactions, employment, courses, enrolments and owned orgs (`spinOutEngine.ts:21-22`). CRM has no carry-over. `Transaction` has no entity id. Group views group by division only, so a vertical cannot be consolidated |
 
 Good news to keep: document numbers carry no division or vertical (`documentNumber.ts:153`). That must stay true.
@@ -71,18 +71,18 @@ Good news to keep: document numbers carry no division or vertical (`documentNumb
 
 Ten axes. Each answers a different question and changes at a different speed. They must never share a column.
 
-| # | Axis | Question it answers | Rate of change | Owner | Lives where |
-|---|---|---|---|---|---|
-| a | Legal entity | Whose books, which GSTIN and statutory filings? | Rare, and each change is a legal event | Founder, with the accountant | Tenant (one tenant per legal company, D-01 owner answer, DECISIONS.md ~:34) |
-| b | Business line | Who pays, and how is revenue earned? | Slow. Years | Founder (the CODM) | **Group registry** (section 6) |
-| c | Unit | Which team does the work? | Often. Per hire plan or reorg | HR with the line head | Tenant data, under a line |
-| d | Channel | How did this record reach us? | Quarterly. Campaigns, MoU waves | Line head and marketing | Attribute on lead, opportunity, MoU |
-| e | Shared delivery capability | Which pool of people serves several lines? | Occasional | Founder | A unit with no line, plus allocation |
-| f | Funding source / scheme | Who funds this programme, and under which rules? | Changes with each government or CSR cycle | Line head and finance | `FUNDING_SOURCES` in `domain.ts` today; should be data |
-| g | Programme / offering | What exactly is sold or delivered? | Fast | Line head | Course, Offering, Programme tables |
-| h | Location / branch / GSTIN | Where, for tax and premises? | Moderate | Finance and admin | Branch table, GST registration |
-| i | Cost centre / department | Who spends, who answers for it? | Frequent | Finance and HR | `CostCentre` (`hcm-workforce.prisma:106-122`, dated assignments, unlinked today) |
-| j | Reporting segment | What does the CODM review, and what do we disclose? | Rare. Disclosure rules apply | Founder with the accountant | **Derived** from lines by a dated mapping. Never a column on records |
+| #   | Axis                       | Question it answers                                 | Rate of change                            | Owner                        | Lives where                                                                      |
+| --- | -------------------------- | --------------------------------------------------- | ----------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------- |
+| a   | Legal entity               | Whose books, which GSTIN and statutory filings?     | Rare, and each change is a legal event    | Founder, with the accountant | Tenant (one tenant per legal company, D-01 owner answer, DECISIONS.md ~:34)      |
+| b   | Business line              | Who pays, and how is revenue earned?                | Slow. Years                               | Founder (the CODM)           | **Group registry** (section 6)                                                   |
+| c   | Unit                       | Which team does the work?                           | Often. Per hire plan or reorg             | HR with the line head        | Tenant data, under a line                                                        |
+| d   | Channel                    | How did this record reach us?                       | Quarterly. Campaigns, MoU waves           | Line head and marketing      | Attribute on lead, opportunity, MoU                                              |
+| e   | Shared delivery capability | Which pool of people serves several lines?          | Occasional                                | Founder                      | A unit with no line, plus allocation                                             |
+| f   | Funding source / scheme    | Who funds this programme, and under which rules?    | Changes with each government or CSR cycle | Line head and finance        | `FUNDING_SOURCES` in `domain.ts` today; should be data                           |
+| g   | Programme / offering       | What exactly is sold or delivered?                  | Fast                                      | Line head                    | Course, Offering, Programme tables                                               |
+| h   | Location / branch / GSTIN  | Where, for tax and premises?                        | Moderate                                  | Finance and admin            | Branch table, GST registration                                                   |
+| i   | Cost centre / department   | Who spends, who answers for it?                     | Frequent                                  | Finance and HR               | `CostCentre` (`hcm-workforce.prisma:106-122`, dated assignments, unlinked today) |
+| j   | Reporting segment          | What does the CODM review, and what do we disclose? | Rare. Disclosure rules apply              | Founder with the accountant  | **Derived** from lines by a dated mapping. Never a column on records             |
 
 Notes on each:
 
@@ -108,19 +108,19 @@ Notes on each:
 
 ### 3.1 Failure modes of conflating pairs
 
-| Conflated pair | What goes wrong (T1 section 5, T3) |
-|---|---|
-| Line = legal entity | A subsidiary or merger forces re-tagging of every historic posting. This is today's D-01 versus equity-portal 6b argument |
-| Line = unit | A team reorg changes a line's revenue history. Telecalling becomes a "line" with a P&L it cannot own |
-| Line = channel | Partnerships shows up as a business with margin, while the same MoU feeds three lines. Admissions as channel hides its cost inside line margin; admissions as line makes it look like a product (T2 disagreements) |
-| Line = scheme | A grant claim cannot be reported without re-tagging the line (T1 failure 4). Two schemes pay for one programme and it is counted twice |
-| Line = programme | Every new course is a "vertical". The list grows without limit |
-| Line = location | Madurai becomes a business |
-| Line = cost centre | An internal reorg changes external segment numbers (T1 failure 3). Research becomes a "vertical" because it has a budget |
-| Line = segment | The registry is bent to match disclosure thresholds. A merge of segments forces an operational merge |
-| Unit = cost centre | Acceptable overlap if mapped one-to-many with dates. Not acceptable as one column |
-| Single "vertical" column holding values from several axes | Reports sum the wrong thing and nobody can say which axis they read (T1 failure 5). This is what VERTICALS is today |
-| Line coded into document numbers or account codes | A rename breaks the series and the audit trail (T1 failure 2). Already avoided (`documentNumber.ts:153`) |
+| Conflated pair                                            | What goes wrong (T1 section 5, T3)                                                                                                                                                                                 |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Line = legal entity                                       | A subsidiary or merger forces re-tagging of every historic posting. This is today's D-01 versus equity-portal 6b argument                                                                                          |
+| Line = unit                                               | A team reorg changes a line's revenue history. Telecalling becomes a "line" with a P&L it cannot own                                                                                                               |
+| Line = channel                                            | Partnerships shows up as a business with margin, while the same MoU feeds three lines. Admissions as channel hides its cost inside line margin; admissions as line makes it look like a product (T2 disagreements) |
+| Line = scheme                                             | A grant claim cannot be reported without re-tagging the line (T1 failure 4). Two schemes pay for one programme and it is counted twice                                                                             |
+| Line = programme                                          | Every new course is a "vertical". The list grows without limit                                                                                                                                                     |
+| Line = location                                           | Madurai becomes a business                                                                                                                                                                                         |
+| Line = cost centre                                        | An internal reorg changes external segment numbers (T1 failure 3). Research becomes a "vertical" because it has a budget                                                                                           |
+| Line = segment                                            | The registry is bent to match disclosure thresholds. A merge of segments forces an operational merge                                                                                                               |
+| Unit = cost centre                                        | Acceptable overlap if mapped one-to-many with dates. Not acceptable as one column                                                                                                                                  |
+| Single "vertical" column holding values from several axes | Reports sum the wrong thing and nobody can say which axis they read (T1 failure 5). This is what VERTICALS is today                                                                                                |
+| Line coded into document numbers or account codes         | A rename breaks the series and the audit trail (T1 failure 2). Already avoided (`documentNumber.ts:153`)                                                                                                           |
 
 ---
 
@@ -140,13 +140,13 @@ If it fails 1 or 2 it is a programme, channel or scheme. If it fails 3 it is a c
 
 ### 4.2 The five lines
 
-| Code (editable label) | Name | Payer | Revenue model | NIC-2008 attribute (dated, UNVERIFIED) |
-|---|---|---|---|---|
-| SKL | Skill Development | Sponsor, scheme or CSR donor. The beneficiary (learner) pays nothing | Programme fees in tranches against enrolment and placement evidence | Division 85 (education), group to confirm. Also check NIC-2025 |
-| EDU | Education | Self-paying learners, plus institutions paying course or institutional fees | Learner fees and instalments; institutional billing to colleges | Division 85 |
-| CLR | Corporate Learning | Enterprise buying training for its own staff (including SAP training) | Per-engagement or per-seat training fees | Division 85 (training), possible Division 70 for advisory |
-| TEC | Technology Services | Business customers | Project, subscription, managed-service and product fees (software, AI, SAP consulting, cybersecurity, managed security) | Division 62 (computer programming and consultancy); 58 if software publishing |
-| WFS | Workforce Solutions | Employer, on joining | Placement fee, or staffing margin | Division 78 (employment activities) |
+| Code (editable label) | Name                | Payer                                                                       | Revenue model                                                                                                           | NIC-2008 attribute (dated, UNVERIFIED)                                        |
+| --------------------- | ------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| SKL                   | Skill Development   | Sponsor, scheme or CSR donor. The beneficiary (learner) pays nothing        | Programme fees in tranches against enrolment and placement evidence                                                     | Division 85 (education), group to confirm. Also check NIC-2025                |
+| EDU                   | Education           | Self-paying learners, plus institutions paying course or institutional fees | Learner fees and instalments; institutional billing to colleges                                                         | Division 85                                                                   |
+| CLR                   | Corporate Learning  | Enterprise buying training for its own staff (including SAP training)       | Per-engagement or per-seat training fees                                                                                | Division 85 (training), possible Division 70 for advisory                     |
+| TEC                   | Technology Services | Business customers                                                          | Project, subscription, managed-service and product fees (software, AI, SAP consulting, cybersecurity, managed security) | Division 62 (computer programming and consultancy); 58 if software publishing |
+| WFS                   | Workforce Solutions | Employer, on joining                                                        | Placement fee, or staffing margin                                                                                       | Division 78 (employment activities)                                           |
 
 NIC codes are a dated attribute on the line (section 6), never a key. T1 says verify against the MoSPI PDF (not read) and check whether NIC-2025 replaces NIC-2008 (one snippet says it was released November 2025, UNVERIFIED). I state division numbers only because T1 listed them. Group and class codes are left to the accountant. NIC divisions are a classification aid, not a statutory choice for this document.
 
@@ -167,41 +167,41 @@ Rule that decides the boundary cases (PROPOSED): **payer decides the line, benef
 
 ### 4.4 Explicit non-lines
 
-| Candidate | Why it fails | Where it lives instead |
-|---|---|---|
-| Research | No external payer today (T3: demo advisory retainer only). Fails test 1 | Cost centre. If a funder pays (grant, advisory contract), the funded work is tagged to the line that matches its payer, with a funding source |
-| Partnerships | A way to reach colleges and employers. Fails test 4 | Channel on leads and opportunities, plus the MoU record. The MoU carries the line(s) it serves through its programmes |
-| Telecalling | A team and a source. Fails test 4 | Unit (people), and a channel value (source) |
-| Ventures | A portfolio, not a business with one payer | Each venture is a legal entity (tenant). If it sells, it has its own lines. The holding holds an equity stake, not a line |
-| Foundation / CSR | Must be a Section 8 company (T2 section 2) | Its own tenant. A funding-source value for the donor side |
-| Media & Marketing | Internal marketing serves other lines. Fails test 1 | Shared function (cost centre, allocated by distribution). Becomes a sixth line (code MKT, NIC Division 58/59 range, UNVERIFIED) the day it sells to outside clients |
-| Finance, HR, IT/Admin, Leadership | Shared services. Fail tests 1 to 3 | Function units with no line (ACCESS-MODEL-PLAN 2.5) |
-| Placement as Education add-on | Different payer and licensing | Not a non-line. It is WFS, see above |
-| "Other" | Not a thing | Removed. Unclassified is an explicit empty value that blocks posting (section 8) |
-| "Shared" (DIVISIONS value) | A cost pool, not a line | A line distribution (section 6.5), or a function unit |
+| Candidate                         | Why it fails                                                            | Where it lives instead                                                                                                                                              |
+| --------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Research                          | No external payer today (T3: demo advisory retainer only). Fails test 1 | Cost centre. If a funder pays (grant, advisory contract), the funded work is tagged to the line that matches its payer, with a funding source                       |
+| Partnerships                      | A way to reach colleges and employers. Fails test 4                     | Channel on leads and opportunities, plus the MoU record. The MoU carries the line(s) it serves through its programmes                                               |
+| Telecalling                       | A team and a source. Fails test 4                                       | Unit (people), and a channel value (source)                                                                                                                         |
+| Ventures                          | A portfolio, not a business with one payer                              | Each venture is a legal entity (tenant). If it sells, it has its own lines. The holding holds an equity stake, not a line                                           |
+| Foundation / CSR                  | Must be a Section 8 company (T2 section 2)                              | Its own tenant. A funding-source value for the donor side                                                                                                           |
+| Media & Marketing                 | Internal marketing serves other lines. Fails test 1                     | Shared function (cost centre, allocated by distribution). Becomes a sixth line (code MKT, NIC Division 58/59 range, UNVERIFIED) the day it sells to outside clients |
+| Finance, HR, IT/Admin, Leadership | Shared services. Fail tests 1 to 3                                      | Function units with no line (ACCESS-MODEL-PLAN 2.5)                                                                                                                 |
+| Placement as Education add-on     | Different payer and licensing                                           | Not a non-line. It is WFS, see above                                                                                                                                |
+| "Other"                           | Not a thing                                                             | Removed. Unclassified is an explicit empty value that blocks posting (section 8)                                                                                    |
+| "Shared" (DIVISIONS value)        | A cost pool, not a line                                                 | A line distribution (section 6.5), or a function unit                                                                                                               |
 
 ### 4.5 Old value to new home
 
-| Old value | Source list | New axis | New value |
-|---|---|---|---|
-| education | VERTICALS | Line | EDU |
-| corporate_training | VERTICALS | Line | CLR (but see skill note below) |
-| sap_enterprise | VERTICALS | Line, by offering | TEC (SAP consulting); CLR (SAP training) |
-| cybersecurity | VERTICALS | Line + unit | TEC, unit "Security practice" |
-| software_ai | VERTICALS | Line | TEC |
-| placement | VERTICALS | Line | WFS |
-| partnerships | VERTICALS | Channel | channel = partnership; the line comes from the programme or offering sold |
-| research | VERTICALS | Cost centre | Research cost centre; no line |
-| other | VERTICALS | Nothing | Unclassified, resolved by hand during migration |
-| software | DIVISIONS | Line | TEC (plus SAP training offerings to CLR) |
-| skill | DIVISIONS | Line | SKL |
-| education | DIVISIONS | Line | EDU |
-| shared | DIVISIONS | Function / allocation | Function units; shared cost uses line distribution |
-| enterprise_direct | COMMERCIAL_MOTIONS | Pipeline template, channel | Direct enterprise sales pipeline under CLR or TEC |
-| institution_partnership | COMMERCIAL_MOTIONS | Channel | channel = partnership |
-| learner_admission | COMMERCIAL_MOTIONS | Pipeline template | Admissions pipeline under EDU |
-| workforce_placement | COMMERCIAL_MOTIONS | Pipeline template | Placement pipeline under WFS |
-| renewal_expansion | COMMERCIAL_MOTIONS | Pipeline stage or type | A stage type on any pipeline. Not an axis value |
+| Old value               | Source list        | New axis                   | New value                                                                 |
+| ----------------------- | ------------------ | -------------------------- | ------------------------------------------------------------------------- |
+| education               | VERTICALS          | Line                       | EDU                                                                       |
+| corporate_training      | VERTICALS          | Line                       | CLR (but see skill note below)                                            |
+| sap_enterprise          | VERTICALS          | Line, by offering          | TEC (SAP consulting); CLR (SAP training)                                  |
+| cybersecurity           | VERTICALS          | Line + unit                | TEC, unit "Security practice"                                             |
+| software_ai             | VERTICALS          | Line                       | TEC                                                                       |
+| placement               | VERTICALS          | Line                       | WFS                                                                       |
+| partnerships            | VERTICALS          | Channel                    | channel = partnership; the line comes from the programme or offering sold |
+| research                | VERTICALS          | Cost centre                | Research cost centre; no line                                             |
+| other                   | VERTICALS          | Nothing                    | Unclassified, resolved by hand during migration                           |
+| software                | DIVISIONS          | Line                       | TEC (plus SAP training offerings to CLR)                                  |
+| skill                   | DIVISIONS          | Line                       | SKL                                                                       |
+| education               | DIVISIONS          | Line                       | EDU                                                                       |
+| shared                  | DIVISIONS          | Function / allocation      | Function units; shared cost uses line distribution                        |
+| enterprise_direct       | COMMERCIAL_MOTIONS | Pipeline template, channel | Direct enterprise sales pipeline under CLR or TEC                         |
+| institution_partnership | COMMERCIAL_MOTIONS | Channel                    | channel = partnership                                                     |
+| learner_admission       | COMMERCIAL_MOTIONS | Pipeline template          | Admissions pipeline under EDU                                             |
+| workforce_placement     | COMMERCIAL_MOTIONS | Pipeline template          | Placement pipeline under WFS                                              |
+| renewal_expansion       | COMMERCIAL_MOTIONS | Pipeline stage or type     | A stage type on any pipeline. Not an axis value                           |
 
 Skill note: `events.ts:41-46` maps the Skill division to corporate_training. That is wrong under the payer rule. Skill division records go to SKL. Existing records that sit under corporate_training for real enterprise buyers stay CLR. This is a manual review, not a rule.
 
@@ -211,30 +211,30 @@ Skill note: `events.ts:41-46` maps the Skill division to corporate_training. Tha
 
 Units are tenant data. They are a STARTER template. HR and the founder confirm them in onboarding. This replaces ACCESS-MODEL-PLAN.md section 3. A unit earns its place only if it owns a record set no other unit owns. Record names follow R1 and the access plan (UNVERIFIED where marked there).
 
-| Line | Unit | Records the unit owns | Note |
-|---|---|---|---|
-| EDU | Telecalling desk | Lead, Interaction, Task | Lead exists with vertical (`main.prisma:1476`); PL-ADMISSION pipeline |
-| EDU | Counselling / admissions | Lead, Opportunity, StudentProfile, Enrollment, FeeInstalment (view) | Admissions is a unit, not a line (OPEN 3) |
-| EDU | Training delivery | Cohort, Attendance, DailyProgress, LearnerLog, TrainingSession | `Cohort.trainerPartyId`; shared with CLR (see below) |
-| EDU | Institutional relations | Mou, Organization, Lead, Opportunity | Partnership channel owner |
-| SKL | Mobilisation | Lead, Beneficiary candidate, Interaction | No scheme model yet (access plan 3.2) |
-| SKL | Programme delivery | Cohort, Attendance, TrainingSession | Shared delivery pool in practice |
-| SKL | Scheme compliance | Claim, evidence, batch reports | Model needed. UNVERIFIED |
-| CLR | Corporate sales | Lead, Opportunity, Contract (draft), Organization | PL-ENTERPRISE (`pipelines.ts:45`) |
-| CLR | Training delivery (shared pool) | Cohort, TrainingSession, Attendance | Serves EDU, SKL, CLR |
-| CLR | SAP training | Cohort, Offering | A unit because its trainers are SAP specialists |
-| TEC | Software and AI delivery | Project, Task, Contract (view) | `demoDataset.ts:152` |
-| TEC | SAP consulting | Project, Task, timesheet | No consultant model (R1) |
-| TEC | Security practice | Engagement, rules of engagement | No model yet. OPEN 2 |
-| TEC | Product | Product backlog, release | Appears when a product sells |
-| TEC | Technology sales | Lead, Opportunity, Contract | Pipeline per offering |
-| WFS | Candidate desk | CandidateProfile, Application, BackgroundVerification, OfferLetter | PL-PLACEMENT (`pipelines.ts:118-150`) |
-| WFS | Employer relations | Organization, Requisition, Position, Opportunity | |
-| Function (no line) | Marketing, Media | MarketingCampaign, forms, audiences | Line comes from the campaign's target, not the team |
-| Function | Finance (receivables, payables, books) | Invoice, Payment, Receipt, VendorBill, bank lines | |
-| Function | HR (recruitment, payroll, employee relations) | Requisition, EmploymentRelationship, PayrollRun, LeaveRequest | Payroll its own unit for separation of duties |
-| Function | IT / Admin | Assets, tickets, letters, travel | |
-| Function | Leadership | Decision, BoardMeeting | Company reach |
+| Line               | Unit                                          | Records the unit owns                                               | Note                                                                  |
+| ------------------ | --------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| EDU                | Telecalling desk                              | Lead, Interaction, Task                                             | Lead exists with vertical (`main.prisma:1476`); PL-ADMISSION pipeline |
+| EDU                | Counselling / admissions                      | Lead, Opportunity, StudentProfile, Enrollment, FeeInstalment (view) | Admissions is a unit, not a line (OPEN 3)                             |
+| EDU                | Training delivery                             | Cohort, Attendance, DailyProgress, LearnerLog, TrainingSession      | `Cohort.trainerPartyId`; shared with CLR (see below)                  |
+| EDU                | Institutional relations                       | Mou, Organization, Lead, Opportunity                                | Partnership channel owner                                             |
+| SKL                | Mobilisation                                  | Lead, Beneficiary candidate, Interaction                            | No scheme model yet (access plan 3.2)                                 |
+| SKL                | Programme delivery                            | Cohort, Attendance, TrainingSession                                 | Shared delivery pool in practice                                      |
+| SKL                | Scheme compliance                             | Claim, evidence, batch reports                                      | Model needed. UNVERIFIED                                              |
+| CLR                | Corporate sales                               | Lead, Opportunity, Contract (draft), Organization                   | PL-ENTERPRISE (`pipelines.ts:45`)                                     |
+| CLR                | Training delivery (shared pool)               | Cohort, TrainingSession, Attendance                                 | Serves EDU, SKL, CLR                                                  |
+| CLR                | SAP training                                  | Cohort, Offering                                                    | A unit because its trainers are SAP specialists                       |
+| TEC                | Software and AI delivery                      | Project, Task, Contract (view)                                      | `demoDataset.ts:152`                                                  |
+| TEC                | SAP consulting                                | Project, Task, timesheet                                            | No consultant model (R1)                                              |
+| TEC                | Security practice                             | Engagement, rules of engagement                                     | No model yet. OPEN 2                                                  |
+| TEC                | Product                                       | Product backlog, release                                            | Appears when a product sells                                          |
+| TEC                | Technology sales                              | Lead, Opportunity, Contract                                         | Pipeline per offering                                                 |
+| WFS                | Candidate desk                                | CandidateProfile, Application, BackgroundVerification, OfferLetter  | PL-PLACEMENT (`pipelines.ts:118-150`)                                 |
+| WFS                | Employer relations                            | Organization, Requisition, Position, Opportunity                    |                                                                       |
+| Function (no line) | Marketing, Media                              | MarketingCampaign, forms, audiences                                 | Line comes from the campaign's target, not the team                   |
+| Function           | Finance (receivables, payables, books)        | Invoice, Payment, Receipt, VendorBill, bank lines                   |                                                                       |
+| Function           | HR (recruitment, payroll, employee relations) | Requisition, EmploymentRelationship, PayrollRun, LeaveRequest       | Payroll its own unit for separation of duties                         |
+| Function           | IT / Admin                                    | Assets, tickets, letters, travel                                    |                                                                       |
+| Function           | Leadership                                    | Decision, BoardMeeting                                              | Company reach                                                         |
 
 Telecalling versus training now reads clearly. Telecalling desk (EDU) owns Lead, Interaction, Task. Training delivery owns Cohort and Attendance. Same line, different record sets, different access. Candidate desk versus Employer relations separates the same way.
 
@@ -251,15 +251,15 @@ Two rules for shared units:
 
 Owner: the holding company (KIPL). Needed so a line has the same ID in every subsidiary once divisions become tenants, and group consolidation by line is possible.
 
-| Field | Rule |
-|---|---|
-| `id` | Immutable surrogate (UUID). Minted once, never reused. The only thing records reference |
-| `code`, `name` | Editable labels. Never a key. Never in document numbers |
-| `status` | `active` or `retired`, with `effectiveFrom`, `effectiveTo` |
-| `payerKind`, `revenueModel` | Short descriptors stating the test answers from 4.1, for future decisions |
-| `nic` | Child table: `(lineId, scheme, code, effectiveFrom, effectiveTo)`. Scheme field allows NIC-2008 and NIC-2025 side by side |
-| `successors` | Child table: `(fromLineId, toLineId, effectiveFrom, shareBasisPoints?)` for split and merge. Optional share only where a split has a stated rule |
-| `version` | Change log row per edit (who, when, why). Founder approval recorded |
+| Field                       | Rule                                                                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                        | Immutable surrogate (UUID). Minted once, never reused. The only thing records reference                                                          |
+| `code`, `name`              | Editable labels. Never a key. Never in document numbers                                                                                          |
+| `status`                    | `active` or `retired`, with `effectiveFrom`, `effectiveTo`                                                                                       |
+| `payerKind`, `revenueModel` | Short descriptors stating the test answers from 4.1, for future decisions                                                                        |
+| `nic`                       | Child table: `(lineId, scheme, code, effectiveFrom, effectiveTo)`. Scheme field allows NIC-2008 and NIC-2025 side by side                        |
+| `successors`                | Child table: `(fromLineId, toLineId, effectiveFrom, shareBasisPoints?)` for split and merge. Optional share only where a split has a stated rule |
+| `version`                   | Change log row per edit (who, when, why). Founder approval recorded                                                                              |
 
 Tenant scope (CLAUDE.md rule 6): the registry is not read across tenants. Each tenant holds a local **LineActivation** row copied from the group registry, keeping the same `id`. A holding pushes updates to a linked subsidiary through the consented link layer (D-01 owner answer). A standalone tenant mints its own IDs and, if it later joins a group, maps them by an explicit one-time reconciliation approved by the founder. Whether the link layer supports this push is UNVERIFIED and part of the D-01 design.
 
@@ -280,24 +280,24 @@ Fits the existing `OrgUnit` (`OrgUnit.division`, `main.prisma:4161`, used by the
 
 Direct columns replace the free-text strings. Each is a nullable FK to the line's surrogate ID first, then enforced.
 
-| Record | Line | How |
-|---|---|---|
-| Offering (`main.prisma:1623`) | Direct | The master source. A SAP training offering says CLR; SAP consulting says TEC |
-| Course (`:3411`) | Direct | Replaces `division` default `education` |
-| Lead (`:1476`) | Direct | Copied from the offering or pipeline at capture. Routing reads it |
-| Opportunity (`:1552`) | Direct | Inherited from lead; one line per opportunity, so a mixed deal is split into two opportunities |
-| Mou (`:1802`) | Derived | MoU lists the lines it serves through a join table. A single field cannot be true |
-| CapabilityClaim (`:1426`), Territory (`:1357`), PipelineDefinition (`:1254`), Grant conditions (`routing.ts:94-97`) | Direct, plural | Replace `vertical`/`appliesToVerticals` strings with line IDs, and gain `unitId` where needed |
-| MarketingCampaign / Form (`marketing.prisma:28,406`), audience rules (`audiences.ts:89`) | Direct | Replace strings. Marketing budgets drop the default `education` (`marketing.prisma:583`) |
-| Invoice (`:2899`) | Direct at line level | Header may carry a default; the true line sits on invoice lines (an invoice can bill two offerings) |
-| Transaction (`:4938`), VendorBill, RecurringRule, FixedAsset, Loan | Line distribution (6.5) | Replaces the single `division` and the manual tags |
-| BudgetLine (`:5064`) | Direct | Unique key becomes (tenant, period, category, lineId). A retired line closes, it does not collide |
-| LedgerCategory.defaultDivision (`:4896`) | Direct (default line) | A suggestion, not a posting |
-| PayrollInstruction (`:4702`) | Derive from placement or cost centre | Payroll groupBy via cost-centre-to-line mapping, with a dated rule |
-| OrgUnit.division (`:4161`) | Derived from Unit | Retired |
-| JournalLine.division (`compliance-books:108`) | Line distribution plus cost centre | See section 8 |
-| Training budget unique(tenant, fy, division), IT portfolio | Direct | Same pattern as BudgetLine |
-| EntitySnapshot (`:2587-2613`, P&L by division) | Direct, keyed by lineId and entity | So holding view can group by line |
+| Record                                                                                                              | Line                                 | How                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Offering (`main.prisma:1623`)                                                                                       | Direct                               | The master source. A SAP training offering says CLR; SAP consulting says TEC                        |
+| Course (`:3411`)                                                                                                    | Direct                               | Replaces `division` default `education`                                                             |
+| Lead (`:1476`)                                                                                                      | Direct                               | Copied from the offering or pipeline at capture. Routing reads it                                   |
+| Opportunity (`:1552`)                                                                                               | Direct                               | Inherited from lead; one line per opportunity, so a mixed deal is split into two opportunities      |
+| Mou (`:1802`)                                                                                                       | Derived                              | MoU lists the lines it serves through a join table. A single field cannot be true                   |
+| CapabilityClaim (`:1426`), Territory (`:1357`), PipelineDefinition (`:1254`), Grant conditions (`routing.ts:94-97`) | Direct, plural                       | Replace `vertical`/`appliesToVerticals` strings with line IDs, and gain `unitId` where needed       |
+| MarketingCampaign / Form (`marketing.prisma:28,406`), audience rules (`audiences.ts:89`)                            | Direct                               | Replace strings. Marketing budgets drop the default `education` (`marketing.prisma:583`)            |
+| Invoice (`:2899`)                                                                                                   | Direct at line level                 | Header may carry a default; the true line sits on invoice lines (an invoice can bill two offerings) |
+| Transaction (`:4938`), VendorBill, RecurringRule, FixedAsset, Loan                                                  | Line distribution (6.5)              | Replaces the single `division` and the manual tags                                                  |
+| BudgetLine (`:5064`)                                                                                                | Direct                               | Unique key becomes (tenant, period, category, lineId). A retired line closes, it does not collide   |
+| LedgerCategory.defaultDivision (`:4896`)                                                                            | Direct (default line)                | A suggestion, not a posting                                                                         |
+| PayrollInstruction (`:4702`)                                                                                        | Derive from placement or cost centre | Payroll groupBy via cost-centre-to-line mapping, with a dated rule                                  |
+| OrgUnit.division (`:4161`)                                                                                          | Derived from Unit                    | Retired                                                                                             |
+| JournalLine.division (`compliance-books:108`)                                                                       | Line distribution plus cost centre   | See section 8                                                                                       |
+| Training budget unique(tenant, fy, division), IT portfolio                                                          | Direct                               | Same pattern as BudgetLine                                                                          |
+| EntitySnapshot (`:2587-2613`, P&L by division)                                                                      | Direct, keyed by lineId and entity   | So holding view can group by line                                                                   |
 
 ### 6.5 Line distribution for shared cost
 
@@ -318,14 +318,14 @@ A default distribution can be stored per cost centre and per ledger category, da
 
 The founder approves every change to the line list. HR and line heads approve unit changes. Every change writes a registry change log row (who, when, why), is audited and emits an event (`assertCan`, write, `auditWrite`, `emit`; CLAUDE.md rule 5). Registry entities must be registered governed entities.
 
-| Change | Founder approval | What the system does | What must be updated | Test |
-|---|---|---|---|---|
-| ADD | Yes. The 4.1 test is recorded | New ID. Status active from a date. Nothing is backfilled | Pipelines, territories, grants, placements, budgets, marketing audiences, segment mapping (explicit "unmapped" warning until set) | New line appears in selectors with no code change |
-| RENAME | Yes | Edits `name` or `code` only. ID unchanged. Change logged | Nothing structural. Labels in reports. Saved audience rules by ID, so no staleness | Routing, history, filters, budgets all unaffected |
-| SPLIT | Yes, with a rule for old open items | New IDs for successors. Old line retired on a date. Successor rows written (with shares if stated). Old rows stay as-was | Re-route open leads and opportunities by a stated rule. Re-point territories, pipelines, grants and claims. New budgets per successor. Segment mapping. Access placements are re-confirmed by HR | Old rows keep old ID. New leads route to successors. Restated view totals equal the as-was total |
-| MERGE | Yes | New ID (or one survivor). Old lines retired with successor row | Budgets per period consolidated by view, not by rewriting. Pipelines combined or kept | Restated view shows one row. As-was view still shows both. No budget key collision |
-| RETIRE | Yes | `effectiveTo` set. Blocks new records, not reads. Open items must be closed or moved first | Placements, territories, grants, campaigns closed | Posting to a retired line fails after its date; history readable |
-| MOVE-TO-ENTITY | Founder, plus accountant for legal steps | Line ID unchanged. The line is activated in the new tenant with the same ID. Records move under the spin-out engine (6b). Intercompany handling is a D-01 follow-up | Pipelines, territories, grants, placements recreated in the new tenant. CRM carry-over is a gap (`spinOutEngine.ts:21-22`). `Transaction` needs an entity id | Group view by line shows one line across two tenants before and after the move |
+| Change         | Founder approval                         | What the system does                                                                                                                                                | What must be updated                                                                                                                                                                             | Test                                                                                             |
+| -------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| ADD            | Yes. The 4.1 test is recorded            | New ID. Status active from a date. Nothing is backfilled                                                                                                            | Pipelines, territories, grants, placements, budgets, marketing audiences, segment mapping (explicit "unmapped" warning until set)                                                                | New line appears in selectors with no code change                                                |
+| RENAME         | Yes                                      | Edits `name` or `code` only. ID unchanged. Change logged                                                                                                            | Nothing structural. Labels in reports. Saved audience rules by ID, so no staleness                                                                                                               | Routing, history, filters, budgets all unaffected                                                |
+| SPLIT          | Yes, with a rule for old open items      | New IDs for successors. Old line retired on a date. Successor rows written (with shares if stated). Old rows stay as-was                                            | Re-route open leads and opportunities by a stated rule. Re-point territories, pipelines, grants and claims. New budgets per successor. Segment mapping. Access placements are re-confirmed by HR | Old rows keep old ID. New leads route to successors. Restated view totals equal the as-was total |
+| MERGE          | Yes                                      | New ID (or one survivor). Old lines retired with successor row                                                                                                      | Budgets per period consolidated by view, not by rewriting. Pipelines combined or kept                                                                                                            | Restated view shows one row. As-was view still shows both. No budget key collision               |
+| RETIRE         | Yes                                      | `effectiveTo` set. Blocks new records, not reads. Open items must be closed or moved first                                                                          | Placements, territories, grants, campaigns closed                                                                                                                                                | Posting to a retired line fails after its date; history readable                                 |
+| MOVE-TO-ENTITY | Founder, plus accountant for legal steps | Line ID unchanged. The line is activated in the new tenant with the same ID. Records move under the spin-out engine (6b). Intercompany handling is a D-01 follow-up | Pipelines, territories, grants, placements recreated in the new tenant. CRM carry-over is a gap (`spinOutEngine.ts:21-22`). `Transaction` needs an entity id                                     | Group view by line shows one line across two tenants before and after the move                   |
 
 ### 7.1 D-01 versus equity-portal 6b (OPEN)
 
@@ -355,13 +355,13 @@ Recommendation: **a line is not an entity, so both answers work.** If divisions 
 
 Per ACCESS-MODEL-PLAN section 10: access compile sits in Wave 6, and vertical columns are independent migrations beside Wave 3.
 
-| When | What |
-|---|---|
-| Wave 2 | Registry tables, change log, LineActivation, Unit table. Admin API for the founder. Governed-entity registration |
-| Wave 2 to 3, before the ledger | FK columns and backfill (6.4) on CRM and education records. Offering, Course, Lead, Opportunity first |
-| Wave 3 | Ledger lands with `lineId` and `costCentreId` on JournalLine. Line distribution on Transaction. Budgets re-keyed |
-| Wave 3 to 5 | Drop strings, remove hardcode, static check on (section 9) |
-| Wave 6 | Access compile reads Unit and Line. Placements point at units. Onboarding questionnaire creates units |
+| When                           | What                                                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Wave 2                         | Registry tables, change log, LineActivation, Unit table. Admin API for the founder. Governed-entity registration |
+| Wave 2 to 3, before the ledger | FK columns and backfill (6.4) on CRM and education records. Offering, Course, Lead, Opportunity first            |
+| Wave 3                         | Ledger lands with `lineId` and `costCentreId` on JournalLine. Line distribution on Transaction. Budgets re-keyed |
+| Wave 3 to 5                    | Drop strings, remove hardcode, static check on (section 9)                                                       |
+| Wave 6                         | Access compile reads Unit and Line. Placements point at units. Onboarding questionnaire creates units            |
 
 Why before the ledger: adding a line to posted journal lines later means touching immutable rows. The app DB role has no UPDATE or DELETE on them (CLAUDE.md rule 2). The wrong place to find a missing column is after posting starts.
 
@@ -371,41 +371,41 @@ Why before the ledger: adding a line to posted journal lines later means touchin
 
 All run against the real Postgres and the real evaluator (CLAUDE.md: no mocks).
 
-| # | Test | Passes when |
-|---|---|---|
-| 1 | Rename a line | History, routing, budgets, saved audiences unchanged. Only the label differs |
-| 2 | Split a line | New leads route to successors. Old rows keep the old ID. Old open items follow the stated rule. As-was total equals restated total |
-| 3 | Merge two lines | Restated view consolidates. As-was view shows both. No budget key collision |
-| 4 | Retire a line | New records blocked after the date. History still readable |
-| 5 | Move a line to a new tenant | Line ID identical in both tenants. A group view by line shows one line, before and after |
-| 6 | Tenant isolation | A subsidiary cannot read another tenant's registry rows. Tenant is from the session (CLAUDE.md rule 6) |
-| 7 | Static check: no line literals | No string such as `'education'` or `'sap_enterprise'` in domains or web as a line value. Fails the build |
-| 8 | Segment mapping | A dated mapping returns different segments for dates before and after a change. A line with no mapping raises a warning |
-| 9 | Distribution | Shares total 10,000 basis points or the write is rejected. Allocated paise sum exactly to the source amount |
-| 10 | Document numbers | No line or unit appears in any generated number |
-| 11 | Backfill | Every old string maps to a line or sits in the review list. Counts reconcile |
-| 12 | Trial balance | After posting with a distribution, the trial balance balances |
-| 13 | Governance | Every registry write emits an event with `kz.<domain>.<object>.<verb>` and an audit row |
+| #   | Test                           | Passes when                                                                                                                        |
+| --- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Rename a line                  | History, routing, budgets, saved audiences unchanged. Only the label differs                                                       |
+| 2   | Split a line                   | New leads route to successors. Old rows keep the old ID. Old open items follow the stated rule. As-was total equals restated total |
+| 3   | Merge two lines                | Restated view consolidates. As-was view shows both. No budget key collision                                                        |
+| 4   | Retire a line                  | New records blocked after the date. History still readable                                                                         |
+| 5   | Move a line to a new tenant    | Line ID identical in both tenants. A group view by line shows one line, before and after                                           |
+| 6   | Tenant isolation               | A subsidiary cannot read another tenant's registry rows. Tenant is from the session (CLAUDE.md rule 6)                             |
+| 7   | Static check: no line literals | No string such as `'education'` or `'sap_enterprise'` in domains or web as a line value. Fails the build                           |
+| 8   | Segment mapping                | A dated mapping returns different segments for dates before and after a change. A line with no mapping raises a warning            |
+| 9   | Distribution                   | Shares total 10,000 basis points or the write is rejected. Allocated paise sum exactly to the source amount                        |
+| 10  | Document numbers               | No line or unit appears in any generated number                                                                                    |
+| 11  | Backfill                       | Every old string maps to a line or sits in the review list. Counts reconcile                                                       |
+| 12  | Trial balance                  | After posting with a distribution, the trial balance balances                                                                      |
+| 13  | Governance                     | Every registry write emits an event with `kz.<domain>.<object>.<verb>` and an audit row                                            |
 
 ---
 
 ## 10. Open questions for the owner
 
-| # | Question | Where reasonable people disagree | Recommended default |
-|---|---|---|---|
-| 1 | **SAP placement.** Is SAP a technology matter or a learning matter? | Customer view (T2: Corporate Learning and Consulting) versus technology view | Split by payer. Consulting to Technology Services, training to Corporate Learning, by offering. Avoids one line holding two revenue models |
-| 2 | **Cybersecurity.** Its own line or inside Technology Services? | Different delivery and certification (T2) versus adding a line now | A unit inside Technology Services today. Promote to a line when it has its own P&L the founder reviews and a distinct buyer. The registry makes promotion a SPLIT |
-| 3 | **Admissions.** Unit or line? | As a unit, costs stay in the line margin. As a line, it looks like a product | Unit in Education. It fails tests 1 and 2 |
-| 4 | **Media and Marketing.** Line or shared? | Matters only if it sells externally | Shared function now. Add a line the day outside clients pay |
-| 5 | **Research.** | A line only with external revenue (T2) | Cost centre. Funded work tags to the payer's line |
-| 6 | **Corporate Learning versus Skill Development for CSR-funded corporate programmes**, and college-paid programmes | The payer is a company but the learners are not its staff. A college pays but students learn | Payer-not-beneficiary rule: CSR-funded programmes for non-staff go to Skill Development. College-paid programmes go to Education with an institution funding tag. Review the first ten cases with the accountant |
-| 7 | **Workforce Solutions as its own entity.** | Licence and fee rules argue for separation (T2) | Line now, entity when staffing starts. The registry is entity-neutral, so this costs nothing |
-| 8 | **Who is the CODM?** The founder alone, or a committee | Ind AS 108 treats it as a function (T1) | Founder, named in the registry change log. Confirm with the accountant |
-| 9 | **Reporting segments.** One segment per line, or aggregated? | Aggregation and thresholds are in the standard, not read here | One segment per line for management. Disclosure grouping decided by the accountant later, through the mapping table |
-| 10 | **NIC-2008 versus NIC-2025.** | One snippet says a new version was released (UNVERIFIED) | Store as dated attribute with scheme field. Accountant confirms |
-| 11 | **Channel list.** Tenant-managed free list or controlled? | Free list grows messy | Tenant-managed, founder-approved, with merge tool |
-| 12 | **Does Unit extend OrgUnit or sit beside it?** | OrgUnit carries `division` and `unitType` | Beside it for now. Retire `OrgUnit.division` at the end of migration |
-| 13 | **Group registry reach to a standalone tenant** (future commercialisation) | Not the current aim (CLAUDE.md) | Standalone tenants own their own registry. No group needed |
+| #   | Question                                                                                                         | Where reasonable people disagree                                                             | Recommended default                                                                                                                                                                                              |
+| --- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **SAP placement.** Is SAP a technology matter or a learning matter?                                              | Customer view (T2: Corporate Learning and Consulting) versus technology view                 | Split by payer. Consulting to Technology Services, training to Corporate Learning, by offering. Avoids one line holding two revenue models                                                                       |
+| 2   | **Cybersecurity.** Its own line or inside Technology Services?                                                   | Different delivery and certification (T2) versus adding a line now                           | A unit inside Technology Services today. Promote to a line when it has its own P&L the founder reviews and a distinct buyer. The registry makes promotion a SPLIT                                                |
+| 3   | **Admissions.** Unit or line?                                                                                    | As a unit, costs stay in the line margin. As a line, it looks like a product                 | Unit in Education. It fails tests 1 and 2                                                                                                                                                                        |
+| 4   | **Media and Marketing.** Line or shared?                                                                         | Matters only if it sells externally                                                          | Shared function now. Add a line the day outside clients pay                                                                                                                                                      |
+| 5   | **Research.**                                                                                                    | A line only with external revenue (T2)                                                       | Cost centre. Funded work tags to the payer's line                                                                                                                                                                |
+| 6   | **Corporate Learning versus Skill Development for CSR-funded corporate programmes**, and college-paid programmes | The payer is a company but the learners are not its staff. A college pays but students learn | Payer-not-beneficiary rule: CSR-funded programmes for non-staff go to Skill Development. College-paid programmes go to Education with an institution funding tag. Review the first ten cases with the accountant |
+| 7   | **Workforce Solutions as its own entity.**                                                                       | Licence and fee rules argue for separation (T2)                                              | Line now, entity when staffing starts. The registry is entity-neutral, so this costs nothing                                                                                                                     |
+| 8   | **Who is the CODM?** The founder alone, or a committee                                                           | Ind AS 108 treats it as a function (T1)                                                      | Founder, named in the registry change log. Confirm with the accountant                                                                                                                                           |
+| 9   | **Reporting segments.** One segment per line, or aggregated?                                                     | Aggregation and thresholds are in the standard, not read here                                | One segment per line for management. Disclosure grouping decided by the accountant later, through the mapping table                                                                                              |
+| 10  | **NIC-2008 versus NIC-2025.**                                                                                    | One snippet says a new version was released (UNVERIFIED)                                     | Store as dated attribute with scheme field. Accountant confirms                                                                                                                                                  |
+| 11  | **Channel list.** Tenant-managed free list or controlled?                                                        | Free list grows messy                                                                        | Tenant-managed, founder-approved, with merge tool                                                                                                                                                                |
+| 12  | **Does Unit extend OrgUnit or sit beside it?**                                                                   | OrgUnit carries `division` and `unitType`                                                    | Beside it for now. Retire `OrgUnit.division` at the end of migration                                                                                                                                             |
+| 13  | **Group registry reach to a standalone tenant** (future commercialisation)                                       | Not the current aim (CLAUDE.md)                                                              | Standalone tenants own their own registry. No group needed                                                                                                                                                       |
 
 ---
 

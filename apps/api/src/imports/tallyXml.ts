@@ -34,10 +34,14 @@ import type { Extraction, StagedRow } from './extract.js';
 import { createHash } from 'node:crypto';
 
 const digest = (...parts: unknown[]): string =>
-  createHash('sha256').update(parts.map((p) => String(p ?? '')).join(' ')).digest('hex').slice(0, 32);
+  createHash('sha256')
+    .update(parts.map((p) => String(p ?? '')).join(' '))
+    .digest('hex')
+    .slice(0, 32);
 
 const asArray = <T>(v: T | T[] | undefined): T[] => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
-const text = (v: unknown): string => (v == null ? '' : typeof v === 'object' ? String((v as Record<string, unknown>)['#text'] ?? '') : String(v)).trim();
+const text = (v: unknown): string =>
+  (v == null ? '' : typeof v === 'object' ? String((v as Record<string, unknown>)['#text'] ?? '') : String(v)).trim();
 
 /** Tally writes YYYYMMDD; older exports write `19-Aug-2026`. */
 function tallyDate(value: unknown): Date | null {

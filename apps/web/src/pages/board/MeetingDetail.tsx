@@ -7,7 +7,12 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import type { BoardMemberView, BoardPackView } from '@kaizen/shared';
-import { BOARD_PACK_ITEM_KIND_LABELS, MEETING_MODE_LABELS, MEETING_STATUS_LABELS, RESOLUTION_OUTCOME_LABELS } from '@kaizen/shared';
+import {
+  BOARD_PACK_ITEM_KIND_LABELS,
+  MEETING_MODE_LABELS,
+  MEETING_STATUS_LABELS,
+  RESOLUTION_OUTCOME_LABELS,
+} from '@kaizen/shared';
 import { api, date } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, RecordCode, StatusChip } from '../../components/ui.js';
@@ -56,7 +61,9 @@ export function MeetingDetail() {
           <span className="flex flex-wrap items-center gap-1.5">
             <RecordCode code={m.recordCode} />
             <StatusChip status={MEETING_STATUS_LABELS[m.status]} />
-            <span>{date(m.scheduledFor)} · {MEETING_MODE_LABELS[m.mode]}</span>
+            <span>
+              {date(m.scheduledFor)} · {MEETING_MODE_LABELS[m.mode]}
+            </span>
           </span>
         }
         actions={
@@ -69,7 +76,9 @@ export function MeetingDetail() {
       />
 
       {error && (
-        <div className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</div>
+        <div className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </div>
       )}
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -95,7 +104,11 @@ export function MeetingDetail() {
             ) : (
               <div className="space-y-2">
                 {pack.data!.resolutions.map((r) => (
-                  <Link key={r.id} to={`/equity/resolutions/${r.id}`} className="block rounded-md border border-ink-800 bg-ink-900 p-3 hover:border-ink-700">
+                  <Link
+                    key={r.id}
+                    to={`/equity/resolutions/${r.id}`}
+                    className="block rounded-md border border-ink-800 bg-ink-900 p-3 hover:border-ink-700"
+                  >
                     <div className="flex items-center gap-1.5">
                       <span className="mono">{r.recordCode}</span>
                       <StatusChip status={RESOLUTION_OUTCOME_LABELS[r.outcome]} />
@@ -109,7 +122,12 @@ export function MeetingDetail() {
         </div>
 
         <div className="space-y-5">
-          <BoardPack meetingId={id} items={pack.data!.items} canAdd={can('board_documents:C')} onAdded={invalidateAll} />
+          <BoardPack
+            meetingId={id}
+            items={pack.data!.items}
+            canAdd={can('board_documents:C')}
+            onAdded={invalidateAll}
+          />
         </div>
       </div>
     </div>
@@ -119,7 +137,10 @@ export function MeetingDetail() {
 // ---------------------------------------------------------------------------
 
 function Agenda({
-  meetingId, agenda, canEdit, onSaved,
+  meetingId,
+  agenda,
+  canEdit,
+  onSaved,
 }: {
   meetingId: string;
   agenda: BoardPackView['meeting']['agenda'];
@@ -181,7 +202,12 @@ function Agenda({
 }
 
 function Attendance({
-  meetingId, meeting, members, canEdit, onSaved, runAction,
+  meetingId,
+  meeting,
+  members,
+  canEdit,
+  onSaved,
+  runAction,
 }: {
   meetingId: string;
   meeting: BoardPackView['meeting'];
@@ -203,10 +229,9 @@ function Attendance({
 
   const save = useMutation({
     mutationFn: () =>
-      api.post(
-        `/board/meetings/${meetingId}/attendance`,
-        { attendees: active.map((m) => ({ boardMemberId: m.id, present: Boolean(present[m.id]) })) },
-      ),
+      api.post(`/board/meetings/${meetingId}/attendance`, {
+        attendees: active.map((m) => ({ boardMemberId: m.id, present: Boolean(present[m.id]) })),
+      }),
     onSuccess: onSaved,
   });
 
@@ -252,7 +277,10 @@ function Attendance({
 }
 
 function MinutesLifecycle({
-  meetingId, meeting, canEdit, runAction,
+  meetingId,
+  meeting,
+  canEdit,
+  runAction,
 }: {
   meetingId: string;
   meeting: BoardPackView['meeting'];
@@ -264,7 +292,11 @@ function MinutesLifecycle({
   const [reason, setReason] = useState('');
 
   if (!canEdit) {
-    return meeting.minutesText ? <p className="whitespace-pre-wrap text-sm text-ink-200">{meeting.minutesText}</p> : <EmptyState message="No minutes recorded yet." />;
+    return meeting.minutesText ? (
+      <p className="whitespace-pre-wrap text-sm text-ink-200">{meeting.minutesText}</p>
+    ) : (
+      <EmptyState message="No minutes recorded yet." />
+    );
   }
 
   if (meeting.status === 'called' || meeting.status === 'cancelled') {
@@ -281,7 +313,9 @@ function MinutesLifecycle({
         }}
       >
         <TextArea label="Minutes" required rows={6} value={text} onChange={setText} />
-        <button className="btn-primary self-start" type="submit">Save draft</button>
+        <button className="btn-primary self-start" type="submit">
+          Save draft
+        </button>
       </form>
     );
   }
@@ -290,7 +324,10 @@ function MinutesLifecycle({
     return (
       <div className="space-y-2">
         <p className="whitespace-pre-wrap text-sm text-ink-200">{meeting.minutesText}</p>
-        <button className="btn-primary" onClick={() => runAction(() => api.post(`/board/meetings/${meetingId}/minutes/circulate`, {}))}>
+        <button
+          className="btn-primary"
+          onClick={() => runAction(() => api.post(`/board/meetings/${meetingId}/minutes/circulate`, {}))}
+        >
           Circulate minutes
         </button>
       </div>
@@ -308,7 +345,9 @@ function MinutesLifecycle({
         {late && <TextInput label="Reason" required value={reason} onChange={setReason} />}
         <button
           className="btn-primary"
-          onClick={() => runAction(() => api.post(`/board/meetings/${meetingId}/minutes/enter`, late ? { late: true, reason } : {}))}
+          onClick={() =>
+            runAction(() => api.post(`/board/meetings/${meetingId}/minutes/enter`, late ? { late: true, reason } : {}))
+          }
         >
           Enter minutes
         </button>
@@ -320,7 +359,10 @@ function MinutesLifecycle({
     return (
       <div className="space-y-2">
         <p className="whitespace-pre-wrap text-sm text-ink-200">{meeting.minutesText}</p>
-        <button className="btn-primary" onClick={() => runAction(() => api.post(`/board/meetings/${meetingId}/minutes/sign`, {}))}>
+        <button
+          className="btn-primary"
+          onClick={() => runAction(() => api.post(`/board/meetings/${meetingId}/minutes/sign`, {}))}
+        >
           Sign minutes
         </button>
       </div>
@@ -331,7 +373,10 @@ function MinutesLifecycle({
 }
 
 function BoardPack({
-  meetingId, items, canAdd, onAdded,
+  meetingId,
+  items,
+  canAdd,
+  onAdded,
 }: {
   meetingId: string;
   items: BoardPackView['items'];
@@ -383,9 +428,18 @@ function BoardPack({
             required
             value={kind}
             onChange={(v) => setKind(v as typeof kind)}
-            options={Object.entries(BOARD_PACK_ITEM_KIND_LABELS).map(([value, label]) => ({ value: value as typeof kind, label }))}
+            options={Object.entries(BOARD_PACK_ITEM_KIND_LABELS).map(([value, label]) => ({
+              value: value as typeof kind,
+              label,
+            }))}
           />
-          <TextInput label="File reference" required value={fileRef} onChange={setFileRef} hint="a document id or link" />
+          <TextInput
+            label="File reference"
+            required
+            value={fileRef}
+            onChange={setFileRef}
+            hint="a document id or link"
+          />
           <button className="btn self-start" type="submit" disabled={add.isPending}>
             Add to pack
           </button>

@@ -40,7 +40,10 @@ import { joinFromApplication, transitionApplication } from '../hiring.js';
 registerGovernedEntities('hcm_recruiting', ['job_posting', 'offer_letter', 'referral']);
 
 function slugify(title: string, stamp: string): string {
-  return `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${stamp}`;
+  return `${title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')}-${stamp}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,7 +72,9 @@ export async function createJobPosting(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'job_postings', verb: 'create' });
 
-  const requisition = await prisma.requisition.findFirst({ where: { id: input.requisitionId, tenantId: auth.tenantId } });
+  const requisition = await prisma.requisition.findFirst({
+    where: { id: input.requisitionId, tenantId: auth.tenantId },
+  });
   if (!requisition) throw ApiError.notFound('Requisition');
 
   const recordCode = await nextRecordCode('JPST');
@@ -148,7 +153,10 @@ export async function listCandidates(filter: { source?: string; q?: string } = {
   });
 
   const personIds = rows.map((r) => r.personId);
-  const people = await prisma.person.findMany({ where: { id: { in: personIds } }, select: { id: true, fullName: true, primaryEmail: true, primaryPhone: true, recordCode: true } });
+  const people = await prisma.person.findMany({
+    where: { id: { in: personIds } },
+    select: { id: true, fullName: true, primaryEmail: true, primaryPhone: true, recordCode: true },
+  });
   const byId = new Map(people.map((p) => [p.id, p]));
 
   const filtered = filter.q
@@ -158,20 +166,25 @@ export async function listCandidates(filter: { source?: string; q?: string } = {
   return filtered.map((r) => ({ ...maskCandidateMoney(r, canSee), person: byId.get(r.personId) ?? null }));
 }
 
-export async function createCandidate(input: PersonInput & {
-  source?: string;
-  resumeText?: string;
-  currentCtc?: number | null;
-  expectedCtc?: number | null;
-  noticeDays?: number | null;
-  tags?: string[];
-}) {
+export async function createCandidate(
+  input: PersonInput & {
+    source?: string;
+    resumeText?: string;
+    currentCtc?: number | null;
+    expectedCtc?: number | null;
+    noticeDays?: number | null;
+    tags?: string[];
+  },
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'candidates', verb: 'create' });
 
-  const { person } = await findOrCreatePerson(
-    { fullName: input.fullName, primaryPhone: input.primaryPhone, primaryEmail: input.primaryEmail, source: input.source ?? 'recruiting' },
-  );
+  const { person } = await findOrCreatePerson({
+    fullName: input.fullName,
+    primaryPhone: input.primaryPhone,
+    primaryEmail: input.primaryEmail,
+    source: input.source ?? 'recruiting',
+  });
 
   const existing = await prisma.candidateProfile.findFirst({ where: { tenantId: auth.tenantId, personId: person.id } });
   if (existing) return { ...existing, person };
@@ -210,7 +223,10 @@ export async function listInterviewRounds(applicationId: string) {
   const application = await prisma.application.findFirst({ where: { id: applicationId, tenantId: auth.tenantId } });
   if (!application) throw ApiError.notFound('Application');
 
-  const rows = await prisma.interviewRound.findMany({ where: { tenantId: auth.tenantId, applicationId }, orderBy: { roundNo: 'asc' } });
+  const rows = await prisma.interviewRound.findMany({
+    where: { tenantId: auth.tenantId, applicationId },
+    orderBy: { roundNo: 'asc' },
+  });
 
   // `interviews:V@own` is every employee's self-service grant (they are
   // either the candidate or a roster interviewer) — `assertCan` above passed
@@ -235,7 +251,9 @@ export async function scheduleInterview(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'interviews', verb: 'create' });
 
-  const application = await prisma.application.findFirst({ where: { id: input.applicationId, tenantId: auth.tenantId } });
+  const application = await prisma.application.findFirst({
+    where: { id: input.applicationId, tenantId: auth.tenantId },
+  });
   if (!application) throw ApiError.notFound('Application');
   if (!['Screening', 'Interviewing'].includes(application.status)) {
     throw ApiError.unprocessable(
@@ -266,7 +284,10 @@ export async function scheduleInterview(input: {
   return round;
 }
 
-export async function completeInterview(roundId: string, input: { outcome: 'advance' | 'reject' | 'hold'; status?: 'Completed' | 'Cancelled' | 'NoShow' }) {
+export async function completeInterview(
+  roundId: string,
+  input: { outcome: 'advance' | 'reject' | 'hold'; status?: 'Completed' | 'Cancelled' | 'NoShow' },
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'interviews', verb: 'edit' });
 
@@ -312,7 +333,10 @@ export async function submitScorecard(input: {
   const existing = await prisma.interviewScorecard.findFirst({
     where: { tenantId: auth.tenantId, roundId: input.roundId, interviewerPartyId: auth.partyId },
   });
-  if (existing) throw ApiError.conflict('You have already scored this round. A correction is a new round, not an edit of a recorded scorecard.');
+  if (existing)
+    throw ApiError.conflict(
+      'You have already scored this round. A correction is a new round, not an edit of a recorded scorecard.',
+    );
 
   const scorecard = await prisma.interviewScorecard.create({
     data: {
@@ -349,7 +373,11 @@ export async function listScorecards(roundId: string) {
   // own-scope caller is restricted here to the one row that is theirs.
   const scope = await scopeFor('scorecards', 'view');
   return prisma.interviewScorecard.findMany({
-    where: { tenantId: auth.tenantId, roundId, ...(scope === 'all' ? {} : { interviewerPartyId: auth.partyId ?? '__none__' }) },
+    where: {
+      tenantId: auth.tenantId,
+      roundId,
+      ...(scope === 'all' ? {} : { interviewerPartyId: auth.partyId ?? '__none__' }),
+    },
   });
 }
 
@@ -382,7 +410,9 @@ export async function createOffer(input: { applicationId: string; ctc: number; j
   const auth = currentAuth();
   await assertCan({ resource: 'offers', verb: 'create' });
 
-  const application = await prisma.application.findFirst({ where: { id: input.applicationId, tenantId: auth.tenantId } });
+  const application = await prisma.application.findFirst({
+    where: { id: input.applicationId, tenantId: auth.tenantId },
+  });
   if (!application) throw ApiError.notFound('Application');
   if (application.status !== 'Selected') {
     throw ApiError.unprocessable(
@@ -407,7 +437,11 @@ export async function createOffer(input: { applicationId: string; ctc: number; j
   return offer;
 }
 
-export async function transitionOffer(id: string, event: OfferEvent, input: { note?: string; declineReason?: string } = {}) {
+export async function transitionOffer(
+  id: string,
+  event: OfferEvent,
+  input: { note?: string; declineReason?: string } = {},
+) {
   const auth = currentAuth();
   const offer = await prisma.offerLetter.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!offer) throw ApiError.notFound('Offer letter');
@@ -416,10 +450,9 @@ export async function transitionOffer(id: string, event: OfferEvent, input: { no
   // approve it, unconditionally, exactly as `approveSalaryStructure` enforces
   // for a compensation revision.
   if (event === 'APPROVE' && offer.proposedByPartyId && offer.proposedByPartyId === auth.partyId) {
-    throw ApiError.forbidden(
-      'The proposer of an offer cannot also approve it (Self-Dealing Bar).',
-      [{ axis: 'WHO', passed: false, reason: 'proposer_is_approver' }],
-    );
+    throw ApiError.forbidden('The proposer of an offer cannot also approve it (Self-Dealing Bar).', [
+      { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
+    ]);
   }
   if (event === 'DECLINE' && !input.declineReason) {
     throw ApiError.unprocessable('A decline needs a reason — it is what the funnel is answerable from later.');
@@ -438,14 +471,18 @@ export async function transitionOffer(id: string, event: OfferEvent, input: { no
   // RESCIND is the one exception: it can fire from Draft or Approved, before
   // the offer was ever sent, and the application machine has no RESCIND_OFFER
   // to take from Selected in that case — there is nothing for it to follow.
-  const applicationEventFor: Partial<Record<OfferEvent, 'EXTEND_OFFER' | 'ACCEPT_OFFER' | 'DECLINE_OFFER' | 'RESCIND_OFFER'>> = {
+  const applicationEventFor: Partial<
+    Record<OfferEvent, 'EXTEND_OFFER' | 'ACCEPT_OFFER' | 'DECLINE_OFFER' | 'RESCIND_OFFER'>
+  > = {
     SEND: 'EXTEND_OFFER',
     ACCEPT: 'ACCEPT_OFFER',
     DECLINE: 'DECLINE_OFFER',
     RESCIND: 'RESCIND_OFFER',
   };
   if (applicationEventFor[event] && event !== 'RESCIND') {
-    const application = await prisma.application.findFirst({ where: { id: offer.applicationId, tenantId: auth.tenantId } });
+    const application = await prisma.application.findFirst({
+      where: { id: offer.applicationId, tenantId: auth.tenantId },
+    });
     if (!application || !applicationMachine.can(application.status as never, applicationEventFor[event]!)) {
       throw ApiError.unprocessable(
         `The underlying application is ${application?.status ?? 'gone'}; it no longer accepts ${applicationEventFor[event]}. ` +
@@ -550,9 +587,12 @@ export async function listReferrals(filter: { referrerEmploymentId?: string } = 
   const ownEmploymentIds =
     scope === 'all'
       ? null
-      : (await prisma.employmentRelationship.findMany({ where: { tenantId: auth.tenantId, personId: auth.partyId ?? '__none__' }, select: { id: true } })).map(
-          (e) => e.id,
-        );
+      : (
+          await prisma.employmentRelationship.findMany({
+            where: { tenantId: auth.tenantId, personId: auth.partyId ?? '__none__' },
+            select: { id: true },
+          })
+        ).map((e) => e.id);
 
   const rows = await prisma.referral.findMany({
     where: {
@@ -576,7 +616,9 @@ export async function createReferral(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'referrals', verb: 'create' });
 
-  const referrer = await prisma.employmentRelationship.findFirst({ where: { id: input.referrerEmploymentId, tenantId: auth.tenantId } });
+  const referrer = await prisma.employmentRelationship.findFirst({
+    where: { id: input.referrerEmploymentId, tenantId: auth.tenantId },
+  });
   if (!referrer) throw ApiError.notFound('Referring employment');
 
   // `referrals:VC@own` is every employee's self-service grant for raising
@@ -668,7 +710,9 @@ export async function createBackgroundVerification(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'background_verifications', verb: 'create' });
   if (!input.applicationId && !input.employmentId) {
-    throw ApiError.badRequest('A background verification needs either an application or an employment to be run against.');
+    throw ApiError.badRequest(
+      'A background verification needs either an application or an employment to be run against.',
+    );
   }
 
   return prisma.backgroundVerification.create({
@@ -682,13 +726,18 @@ export async function createBackgroundVerification(input: {
   });
 }
 
-export async function updateBackgroundVerification(id: string, input: { status?: 'Pending' | 'InProgress' | 'Completed'; outcome?: 'clear' | 'adverse' | 'pending' }) {
+export async function updateBackgroundVerification(
+  id: string,
+  input: { status?: 'Pending' | 'InProgress' | 'Completed'; outcome?: 'clear' | 'adverse' | 'pending' },
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'background_verifications', verb: 'edit' });
   const bgv = await prisma.backgroundVerification.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!bgv) throw ApiError.notFound('Background verification');
   if (bgv.status === 'Completed') {
-    throw ApiError.conflict('This background verification is Completed. Its outcome is final — a correction is a new check, not an edit of a closed one.');
+    throw ApiError.conflict(
+      'This background verification is Completed. Its outcome is final — a correction is a new check, not an edit of a closed one.',
+    );
   }
 
   const updated = await prisma.backgroundVerification.update({
@@ -719,10 +768,18 @@ export async function updateBackgroundVerification(id: string, input: { status?:
 export async function listOnboardingTemplates() {
   const auth = currentAuth();
   await assertCan({ resource: 'onboarding_tasks', verb: 'view' });
-  return prisma.onboardingTaskTemplate.findMany({ where: { tenantId: auth.tenantId }, orderBy: { dueOffsetDays: 'asc' } });
+  return prisma.onboardingTaskTemplate.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { dueOffsetDays: 'asc' },
+  });
 }
 
-export async function createOnboardingTemplate(input: { title: string; category?: string; assignee: 'hr' | 'it' | 'manager' | 'employee'; dueOffsetDays?: number }) {
+export async function createOnboardingTemplate(input: {
+  title: string;
+  category?: string;
+  assignee: 'hr' | 'it' | 'manager' | 'employee';
+  dueOffsetDays?: number;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'onboarding_tasks', verb: 'create' });
   return prisma.onboardingTaskTemplate.create({
@@ -740,7 +797,9 @@ export async function instantiateOnboardingTasks(employmentId: string, hireEffec
   const auth = currentAuth();
   await assertCan({ resource: 'onboarding_tasks', verb: 'create' });
 
-  const employment = await prisma.employmentRelationship.findFirst({ where: { id: employmentId, tenantId: auth.tenantId } });
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { id: employmentId, tenantId: auth.tenantId },
+  });
   if (!employment) throw ApiError.notFound('Employment');
 
   const already = await prisma.onboardingTask.count({ where: { tenantId: auth.tenantId, employmentId } });
@@ -775,11 +834,16 @@ export async function listOnboardingTasks(employmentId: string) {
   // theirs, rather than any employment id they happen to know.
   const scope = await scopeFor('onboarding_tasks', 'view');
   if (scope !== 'all') {
-    const employment = await prisma.employmentRelationship.findFirst({ where: { id: employmentId, tenantId: auth.tenantId } });
+    const employment = await prisma.employmentRelationship.findFirst({
+      where: { id: employmentId, tenantId: auth.tenantId },
+    });
     if (!employment || employment.personId !== auth.partyId) throw ApiError.notFound('Employment');
   }
 
-  return prisma.onboardingTask.findMany({ where: { tenantId: auth.tenantId, employmentId }, orderBy: { dueDate: 'asc' } });
+  return prisma.onboardingTask.findMany({
+    where: { tenantId: auth.tenantId, employmentId },
+    orderBy: { dueDate: 'asc' },
+  });
 }
 
 export async function completeOnboardingTask(id: string, skip = false) {
@@ -794,7 +858,9 @@ export async function completeOnboardingTask(id: string, skip = false) {
   // `assertCan` above had no record to narrow against.
   const scope = await scopeFor('onboarding_tasks', 'edit');
   if (scope !== 'all') {
-    const employment = await prisma.employmentRelationship.findFirst({ where: { id: task.employmentId, tenantId: auth.tenantId } });
+    const employment = await prisma.employmentRelationship.findFirst({
+      where: { id: task.employmentId, tenantId: auth.tenantId },
+    });
     if (!employment || employment.personId !== auth.partyId || task.assignee !== 'employee') {
       throw ApiError.notFound('Onboarding task');
     }
@@ -839,7 +905,11 @@ export async function recruitingFunnel() {
   });
   const times = joined.map((a) => timeToHireDays(a.createdAt, a.updatedAt));
 
-  const offers = await prisma.offerLetter.groupBy({ by: ['status'], where: { tenantId: auth.tenantId }, _count: { _all: true } });
+  const offers = await prisma.offerLetter.groupBy({
+    by: ['status'],
+    where: { tenantId: auth.tenantId },
+    _count: { _all: true },
+  });
   const offerCounts: Record<string, number> = {};
   for (const row of offers) offerCounts[row.status] = row._count._all;
   const decided = (offerCounts.Accepted ?? 0) + (offerCounts.Declined ?? 0) + (offerCounts.Rescinded ?? 0);
@@ -848,7 +918,10 @@ export async function recruitingFunnel() {
   // cross-file `@relation`, so the join is done in application code: every
   // candidate's source, matched against whether that person's own
   // applications ever reached Joined.
-  const profiles = await prisma.candidateProfile.findMany({ where: { tenantId: auth.tenantId }, select: { personId: true, source: true } });
+  const profiles = await prisma.candidateProfile.findMany({
+    where: { tenantId: auth.tenantId },
+    select: { personId: true, source: true },
+  });
   const applicationsByPerson = await prisma.application.groupBy({
     by: ['candidatePartyId'],
     where: { tenantId: auth.tenantId, deletedAt: null },
@@ -869,8 +942,6 @@ export async function recruitingFunnel() {
     meanTimeToHireDays: meanTimeToHireDays(times),
     offerAcceptanceRatePct: offerAcceptanceRate(offerCounts.Accepted ?? 0, decided),
     offersByStatus: offerCounts,
-    sourceEffectiveness: sourceEffectiveness(
-      [...tallyBySource.entries()].map(([source, t]) => ({ source, ...t })),
-    ),
+    sourceEffectiveness: sourceEffectiveness([...tallyBySource.entries()].map(([source, t]) => ({ source, ...t }))),
   };
 }

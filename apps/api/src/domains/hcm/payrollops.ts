@@ -126,7 +126,13 @@ export async function setPayItemActive(id: string, active: boolean) {
   const before = await prisma.payItem.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!before) throw ApiError.notFound('Pay item');
   const row = await prisma.payItem.update({ where: { id }, data: { active } });
-  await auditWrite({ action: 'update', subjectType: 'pay_item', subjectId: id, before: before as never, after: row as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'pay_item',
+    subjectId: id,
+    before: before as never,
+    after: row as never,
+  });
   return row;
 }
 
@@ -143,7 +149,9 @@ export interface AdHocPayLineInput {
   reason: string;
 }
 
-export async function listAdHocPayLines(filter: { payPeriod?: string; employmentRelationshipId?: string; status?: string } = {}) {
+export async function listAdHocPayLines(
+  filter: { payPeriod?: string; employmentRelationshipId?: string; status?: string } = {},
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'adhoc_pay', verb: 'view' });
   const where: Record<string, unknown> = { tenantId: auth.tenantId };
@@ -157,7 +165,11 @@ export async function listAdHocPayLines(filter: { payPeriod?: string; employment
   }
   const visible = await canSeeMoney('adhoc_pay');
   const rows = await prisma.adHocPayLine.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200 });
-  return rows.map((r) => ({ ...r, amount: money(r.amount, visible), moneyWithheldReason: visible ? null : 'no_permission' }));
+  return rows.map((r) => ({
+    ...r,
+    amount: money(r.amount, visible),
+    moneyWithheldReason: visible ? null : 'no_permission',
+  }));
 }
 
 export async function createAdHocPayLine(input: AdHocPayLineInput) {
@@ -166,9 +178,14 @@ export async function createAdHocPayLine(input: AdHocPayLineInput) {
   assertPayPeriod(input.payPeriod);
   await assertEmploymentVisible('adhoc_pay', input.employmentRelationshipId, 'create');
 
-  const payItem = await prisma.payItem.findFirst({ where: { id: input.payItemId, tenantId: auth.tenantId, active: true } });
+  const payItem = await prisma.payItem.findFirst({
+    where: { id: input.payItemId, tenantId: auth.tenantId, active: true },
+  });
   if (!payItem) throw ApiError.notFound('Pay item');
-  if (input.amount <= 0) throw ApiError.unprocessable('An ad-hoc pay line amount must be positive; the pay item\'s kind says which way it moves the payslip.');
+  if (input.amount <= 0)
+    throw ApiError.unprocessable(
+      "An ad-hoc pay line amount must be positive; the pay item's kind says which way it moves the payslip.",
+    );
 
   const row = await prisma.adHocPayLine.create({
     data: {
@@ -193,17 +210,22 @@ async function decideAdHocPayLine(id: string, approve: boolean, note?: string) {
   if (!before) throw ApiError.notFound('Ad-hoc pay line');
   if (before.status !== 'Proposed') throw ApiError.conflict(`This line is already ${before.status}.`);
   if (before.proposedById && before.proposedById === auth.partyId) {
-    throw ApiError.forbidden(
-      'The proposer of an ad-hoc pay line cannot also approve it (Self-Dealing Bar).',
-      [{ axis: 'WHO', passed: false, reason: 'proposer_is_approver' }],
-    );
+    throw ApiError.forbidden('The proposer of an ad-hoc pay line cannot also approve it (Self-Dealing Bar).', [
+      { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
+    ]);
   }
 
   const row = await prisma.adHocPayLine.update({
     where: { id },
     data: { status: approve ? 'Approved' : 'Rejected', approvedById: auth.partyId, approvedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'adhoc_pay_line', subjectId: id, before: before as never, after: row as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'adhoc_pay_line',
+    subjectId: id,
+    before: before as never,
+    after: row as never,
+  });
   if (approve) {
     await emit({
       name: EVENTS.ADHOC_PAY_APPROVED,
@@ -243,7 +265,11 @@ export async function listArrears(filter: { employmentRelationshipId?: string; s
   }
   const visible = await canSeeMoney('arrears');
   const rows = await prisma.arrear.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200 });
-  return rows.map((r) => ({ ...r, amount: money(r.amount, visible), moneyWithheldReason: visible ? null : 'no_permission' }));
+  return rows.map((r) => ({
+    ...r,
+    amount: money(r.amount, visible),
+    moneyWithheldReason: visible ? null : 'no_permission',
+  }));
 }
 
 export async function createArrear(input: ArrearInput) {
@@ -275,17 +301,22 @@ async function decideArrear(id: string, approve: boolean) {
   if (!before) throw ApiError.notFound('Arrear');
   if (before.status !== 'Proposed') throw ApiError.conflict(`This arrear is already ${before.status}.`);
   if (before.proposedById && before.proposedById === auth.partyId) {
-    throw ApiError.forbidden(
-      'The proposer of an arrear cannot also approve it (Self-Dealing Bar).',
-      [{ axis: 'WHO', passed: false, reason: 'proposer_is_approver' }],
-    );
+    throw ApiError.forbidden('The proposer of an arrear cannot also approve it (Self-Dealing Bar).', [
+      { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
+    ]);
   }
 
   const row = await prisma.arrear.update({
     where: { id },
     data: { status: approve ? 'Approved' : 'Rejected', approvedById: auth.partyId, approvedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'arrear', subjectId: id, before: before as never, after: row as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'arrear',
+    subjectId: id,
+    before: before as never,
+    after: row as never,
+  });
   if (approve) {
     await emit({
       name: EVENTS.ARREAR_APPROVED,
@@ -307,9 +338,19 @@ export async function markArrearPaid(id: string, payPeriod: string) {
   assertPayPeriod(payPeriod);
   const before = await prisma.arrear.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!before) throw ApiError.notFound('Arrear');
-  if (before.status !== 'Approved') throw ApiError.unprocessable(`Only an Approved arrear can be marked paid; this one is ${before.status}.`);
-  const row = await prisma.arrear.update({ where: { id }, data: { status: 'Paid', paidInPayPeriod: payPeriod, paidAt: new Date() } });
-  await auditWrite({ action: 'update', subjectType: 'arrear', subjectId: id, before: before as never, after: row as never });
+  if (before.status !== 'Approved')
+    throw ApiError.unprocessable(`Only an Approved arrear can be marked paid; this one is ${before.status}.`);
+  const row = await prisma.arrear.update({
+    where: { id },
+    data: { status: 'Paid', paidInPayPeriod: payPeriod, paidAt: new Date() },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'arrear',
+    subjectId: id,
+    before: before as never,
+    after: row as never,
+  });
   return row;
 }
 
@@ -324,7 +365,10 @@ export async function markArrearPaid(id: string, payPeriod: string) {
  * a figure, so it stays `0` rather than becoming indistinguishable from a
  * withheld amount.
  */
-function maskJournal<T extends { totalDebit: unknown; totalCredit: unknown; lines: unknown }>(row: T, visible: boolean) {
+function maskJournal<T extends { totalDebit: unknown; totalCredit: unknown; lines: unknown }>(
+  row: T,
+  visible: boolean,
+) {
   const maskSide = (v: unknown) => {
     const n = num(v as never) ?? 0;
     return visible || n === 0 ? n : null;
@@ -334,14 +378,24 @@ function maskJournal<T extends { totalDebit: unknown; totalCredit: unknown; line
     debit: maskSide(l.debit),
     credit: maskSide(l.credit),
   }));
-  return { ...row, totalDebit: money(row.totalDebit, visible), totalCredit: money(row.totalCredit, visible), lines, moneyWithheldReason: visible ? null : 'no_permission' };
+  return {
+    ...row,
+    totalDebit: money(row.totalDebit, visible),
+    totalCredit: money(row.totalCredit, visible),
+    lines,
+    moneyWithheldReason: visible ? null : 'no_permission',
+  };
 }
 
 export async function listPayrollJournals() {
   const auth = currentAuth();
   await assertCan({ resource: 'payroll_journals', verb: 'view' });
   const visible = await canSeeMoney('payroll_journals');
-  const rows = await prisma.payrollJournal.findMany({ where: { tenantId: auth.tenantId }, orderBy: { payPeriod: 'desc' }, take: 36 });
+  const rows = await prisma.payrollJournal.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { payPeriod: 'desc' },
+    take: 36,
+  });
   return rows.map((r) => maskJournal(r, visible));
 }
 
@@ -367,12 +421,16 @@ export async function generatePayrollJournal(payrollRunId: string) {
   const run = await prisma.payrollRun.findFirst({ where: { id: payrollRunId, tenantId: auth.tenantId } });
   if (!run) throw ApiError.notFound('Payroll run');
   if (!['Approved', 'Disbursed', 'Locked'].includes(run.status)) {
-    throw ApiError.unprocessable(`The run is ${run.status}. A journal is prepared once figures are Approved, not before.`);
+    throw ApiError.unprocessable(
+      `The run is ${run.status}. A journal is prepared once figures are Approved, not before.`,
+    );
   }
 
   const existing = await prisma.payrollJournal.findUnique({ where: { payrollRunId } });
   if (existing && existing.status === 'Posted') {
-    throw ApiError.conflict('This run\'s journal is already posted. A correction is a new run, not a rewritten journal.');
+    throw ApiError.conflict(
+      "This run's journal is already posted. A correction is a new run, not a rewritten journal.",
+    );
   }
 
   const rows = await payrollCostByDivision(run.payPeriod);
@@ -400,7 +458,12 @@ export async function generatePayrollJournal(payrollRunId: string) {
     ? await prisma.payrollJournal.update({ where: { id: existing.id }, data })
     : await prisma.payrollJournal.create({ data });
 
-  await auditWrite({ action: existing ? 'update' : 'create', subjectType: 'payroll_journal', subjectId: row.id, after: row as never });
+  await auditWrite({
+    action: existing ? 'update' : 'create',
+    subjectType: 'payroll_journal',
+    subjectId: row.id,
+    after: row as never,
+  });
   return row;
 }
 
@@ -420,19 +483,22 @@ export async function postPayrollJournal(id: string, accountId: string) {
   if (!journal) throw ApiError.notFound('Payroll journal');
   if (journal.status === 'Posted') throw ApiError.conflict('This journal is already posted.');
   if (journal.preparedById && journal.preparedById === auth.partyId) {
-    throw ApiError.forbidden(
-      'The preparer of a payroll journal cannot also post it (Self-Dealing Bar).',
-      [{ axis: 'WHO', passed: false, reason: 'preparer_is_poster' }],
-    );
+    throw ApiError.forbidden('The preparer of a payroll journal cannot also post it (Self-Dealing Bar).', [
+      { axis: 'WHO', passed: false, reason: 'preparer_is_poster' },
+    ]);
   }
 
   const run = await prisma.payrollRun.findFirst({ where: { id: journal.payrollRunId, tenantId: auth.tenantId } });
   if (!run) throw ApiError.notFound('Payroll run');
 
-  const account = await prisma.ledgerAccount.findFirst({ where: { id: accountId, tenantId: auth.tenantId, deletedAt: null } });
+  const account = await prisma.ledgerAccount.findFirst({
+    where: { id: accountId, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!account) throw ApiError.notFound('Account');
   if (!CASH_ACCOUNT_TYPES.includes(account.accountType)) {
-    throw ApiError.unprocessable(`Net pay must be disbursed from a bank, cash or wallet account; "${account.name}" is a ${account.accountType} account.`);
+    throw ApiError.unprocessable(
+      `Net pay must be disbursed from a bank, cash or wallet account; "${account.name}" is a ${account.accountType} account.`,
+    );
   }
 
   // The cash leg is the net pay payable, not the journal's total credit —
@@ -457,7 +523,13 @@ export async function postPayrollJournal(id: string, accountId: string) {
     where: { id },
     data: { status: 'Posted', transactionId: txn.id, postedById: auth.partyId, postedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'payroll_journal', subjectId: id, before: journal as never, after: row as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'payroll_journal',
+    subjectId: id,
+    before: journal as never,
+    after: row as never,
+  });
   await emit({
     name: EVENTS.PAYROLL_JOURNAL_POSTED,
     subject: { entityType: 'payroll_journal', entityId: row.id },
@@ -506,9 +578,21 @@ export async function listBankAdvices() {
     where: { tenantId: auth.tenantId },
     orderBy: { generatedAt: 'desc' },
     take: 36,
-    select: { id: true, payrollRunId: true, payPeriod: true, format: true, count: true, total: true, generatedAt: true },
+    select: {
+      id: true,
+      payrollRunId: true,
+      payPeriod: true,
+      format: true,
+      count: true,
+      total: true,
+      generatedAt: true,
+    },
   });
-  return rows.map((r) => ({ ...r, total: money(r.total, visible), moneyWithheldReason: visible ? null : 'no_permission' }));
+  return rows.map((r) => ({
+    ...r,
+    total: money(r.total, visible),
+    moneyWithheldReason: visible ? null : 'no_permission',
+  }));
 }
 
 /**
@@ -526,7 +610,12 @@ export async function getBankAdvice(id: string) {
   const visible = await canSeeMoney('bank_advices');
   // Open before masking: masking the ciphertext would show the tail of the
   // encoding, not the tail of the account number.
-  const rows = openBeneficiaries(row.rows).map((r) => ({ ...r, accountNumber: maskLast4(r.accountNumber), ifsc: maskLast4(r.ifsc), amount: money(r.amount, visible) }));
+  const rows = openBeneficiaries(row.rows).map((r) => ({
+    ...r,
+    accountNumber: maskLast4(r.accountNumber),
+    ifsc: maskLast4(r.ifsc),
+    amount: money(r.amount, visible),
+  }));
   return {
     id: row.id,
     payrollRunId: row.payrollRunId,
@@ -572,7 +661,9 @@ export async function generateBankAdvice(payrollRunId: string) {
   const run = await prisma.payrollRun.findFirst({ where: { id: payrollRunId, tenantId: auth.tenantId } });
   if (!run) throw ApiError.notFound('Payroll run');
   if (!['Approved', 'Disbursed', 'Locked'].includes(run.status)) {
-    throw ApiError.unprocessable(`The run is ${run.status}. A bank advice is generated once pay is Approved, not before.`);
+    throw ApiError.unprocessable(
+      `The run is ${run.status}. A bank advice is generated once pay is Approved, not before.`,
+    );
   }
 
   const instructions = await prisma.payrollInstruction.findMany({ where: { tenantId: auth.tenantId, payrollRunId } });
@@ -630,7 +721,12 @@ export async function generateBankAdvice(payrollRunId: string) {
       generatedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'bank_advice', subjectId: row.id, after: { payPeriod: row.payPeriod, count: row.count, total: num(row.total) } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'bank_advice',
+    subjectId: row.id,
+    after: { payPeriod: row.payPeriod, count: row.count, total: num(row.total) },
+  });
   await auditExport('bank_advice', 'generated', rows.length);
   await emit({
     name: EVENTS.BANK_ADVICE_GENERATED,
@@ -655,7 +751,11 @@ export async function generateBankAdvice(payrollRunId: string) {
  * keyed on id and tenant, so a concurrent change to another advice is never
  * overwritten by this pass.
  */
-export async function encryptBankAdvicesAtRest(): Promise<{ advicesScanned: number; advicesConverted: number; alreadyEncrypted: number }> {
+export async function encryptBankAdvicesAtRest(): Promise<{
+  advicesScanned: number;
+  advicesConverted: number;
+  alreadyEncrypted: number;
+}> {
   const auth = currentAuth();
   await assertCan({ resource: 'bank_advices', verb: 'export' });
 
@@ -666,7 +766,9 @@ export async function encryptBankAdvicesAtRest(): Promise<{ advicesScanned: numb
 
   for (const advice of advices) {
     const storedRows = (advice.rows as unknown as NeftBeneficiary[]) ?? [];
-    const rowsNeedSealing = storedRows.some((r) => !isEncryptedFieldValue(r.accountNumber) || !isEncryptedFieldValue(r.ifsc));
+    const rowsNeedSealing = storedRows.some(
+      (r) => !isEncryptedFieldValue(r.accountNumber) || !isEncryptedFieldValue(r.ifsc),
+    );
     const fileNeedsSealing = !isEncryptedFieldValue(advice.fileText);
 
     if (!rowsNeedSealing && !fileNeedsSealing) {
@@ -689,7 +791,11 @@ export async function encryptBankAdvicesAtRest(): Promise<{ advicesScanned: numb
     advicesConverted += 1;
   }
 
-  await auditBulkOperation('bank_advice', 'encrypt_at_rest_backfill', { advicesScanned: advices.length, advicesConverted, alreadyEncrypted });
+  await auditBulkOperation('bank_advice', 'encrypt_at_rest_backfill', {
+    advicesScanned: advices.length,
+    advicesConverted,
+    alreadyEncrypted,
+  });
   return { advicesScanned: advices.length, advicesConverted, alreadyEncrypted };
 }
 
@@ -712,7 +818,11 @@ export async function listPayrollReconciliations() {
   const auth = currentAuth();
   await assertCan({ resource: 'payroll_reconciliations', verb: 'view' });
   const visible = await canSeeMoney('payroll_reconciliations');
-  const rows = await prisma.payrollReconciliation.findMany({ where: { tenantId: auth.tenantId }, orderBy: { generatedAt: 'desc' }, take: 36 });
+  const rows = await prisma.payrollReconciliation.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { generatedAt: 'desc' },
+    take: 36,
+  });
   return rows.map((r) => maskReconciliation(r, visible));
 }
 
@@ -748,7 +858,9 @@ export async function generatePayrollReconciliation(payrollRunId: string, previo
 
   const [currentInstr, previousInstr] = await Promise.all([
     prisma.payrollInstruction.findMany({ where: { tenantId: auth.tenantId, payrollRunId } }),
-    previous ? prisma.payrollInstruction.findMany({ where: { tenantId: auth.tenantId, payrollRunId: previous.id } }) : Promise.resolve([]),
+    previous
+      ? prisma.payrollInstruction.findMany({ where: { tenantId: auth.tenantId, payrollRunId: previous.id } })
+      : Promise.resolve([]),
   ]);
 
   const deltas = reconciliationDiff(
@@ -767,7 +879,12 @@ export async function generatePayrollReconciliation(payrollRunId: string, previo
       generatedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'payroll_reconciliation', subjectId: row.id, after: { payrollRunId, unexplainedCount: flagged } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'payroll_reconciliation',
+    subjectId: row.id,
+    after: { payrollRunId, unexplainedCount: flagged },
+  });
 
   if (flagged > 0) {
     await raiseException({
@@ -810,7 +927,11 @@ export interface PayrollCalendarInput {
 export async function listPayrollCalendar() {
   const auth = currentAuth();
   await assertCan({ resource: 'payroll_calendar', verb: 'view' });
-  const rows = await prisma.payrollCalendar.findMany({ where: { tenantId: auth.tenantId }, orderBy: { payPeriod: 'desc' }, take: 36 });
+  const rows = await prisma.payrollCalendar.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { payPeriod: 'desc' },
+    take: 36,
+  });
   const now = new Date();
   return rows.map((r) => ({ ...r, milestone: payrollCalendarMilestone(r, now) }));
 }
@@ -823,7 +944,9 @@ export async function upsertPayrollCalendarEntry(input: PayrollCalendarInput) {
   const dates = [input.attendanceLockAt, input.inputFreezeAt, input.runByAt, input.approveByAt, input.payDate];
   for (let i = 1; i < dates.length; i += 1) {
     if (dates[i].getTime() < dates[i - 1].getTime()) {
-      throw ApiError.unprocessable('The calendar\'s milestones must fall in order: attendance lock, input freeze, run, approve, pay date.');
+      throw ApiError.unprocessable(
+        "The calendar's milestones must fall in order: attendance lock, input freeze, run, approve, pay date.",
+      );
     }
   }
 
@@ -885,7 +1008,9 @@ export async function createPayrollQuery(input: PayrollQueryInput) {
   await assertEmploymentVisible('payroll_queries', input.employmentRelationshipId, 'create');
 
   if (input.payslipId) {
-    const payslip = await prisma.payslip.findFirst({ where: { id: input.payslipId, tenantId: auth.tenantId, employmentRelationshipId: input.employmentRelationshipId } });
+    const payslip = await prisma.payslip.findFirst({
+      where: { id: input.payslipId, tenantId: auth.tenantId, employmentRelationshipId: input.employmentRelationshipId },
+    });
     if (!payslip) throw ApiError.notFound('Payslip');
   }
 
@@ -927,7 +1052,13 @@ export async function respondToPayrollQuery(id: string, response: string, close 
       status: close ? 'Closed' : 'Responded',
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'payroll_query', subjectId: id, before: before as never, after: row as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'payroll_query',
+    subjectId: id,
+    before: before as never,
+    after: row as never,
+  });
   await emit({
     name: EVENTS.PAYROLL_QUERY_RESOLVED,
     subject: { entityType: 'payroll_query', entityId: row.id },
@@ -944,6 +1075,12 @@ export async function closePayrollQuery(id: string) {
   const before = await prisma.payrollQuery.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!before) throw ApiError.notFound('Payroll query');
   const row = await prisma.payrollQuery.update({ where: { id }, data: { status: 'Closed' } });
-  await auditWrite({ action: 'update', subjectType: 'payroll_query', subjectId: id, before: before as never, after: row as never });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'payroll_query',
+    subjectId: id,
+    before: before as never,
+    after: row as never,
+  });
   return row;
 }

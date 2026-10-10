@@ -78,7 +78,9 @@ export interface FilingCheck {
 
 function assertPeriodShape(period: string): string {
   if (!PERIOD_PATTERN.test(period)) {
-    throw ApiError.badRequest(`'${period}' is not a tax period. Give it as YYYY-MM, the month the supplies were made in.`);
+    throw ApiError.badRequest(
+      `'${period}' is not a tax period. Give it as YYYY-MM, the month the supplies were made in.`,
+    );
   }
   return period;
 }
@@ -189,7 +191,13 @@ export async function computeGstr1(period: string) {
   let exemptedValue = 0;
   let nonGstValue = 0;
   const hsn = new Map<string, Gstr1HsnLine>();
-  const creditNoteRows: Array<{ recordCode: string; invoiceNumber: string; amount: number; reason: string; issuedAt: string }> = [];
+  const creditNoteRows: Array<{
+    recordCode: string;
+    invoiceNumber: string;
+    amount: number;
+    reason: string;
+    issuedAt: string;
+  }> = [];
 
   let taxableValue = 0;
   let cgst = 0;
@@ -205,7 +213,7 @@ export async function computeGstr1(period: string) {
     // Turnover (CMP-GST-001) counts only taxable lines; nil/exempt/non-GST
     // lines are reported in `nil` below, not folded into this figure.
     taxableValue = round2(
-      taxableValue + inv.lines.reduce((s, l) => s + (isNonTaxableSupply(l.supplyType) ? 0 : num(l.amount) ?? 0), 0),
+      taxableValue + inv.lines.reduce((s, l) => s + (isNonTaxableSupply(l.supplyType) ? 0 : (num(l.amount) ?? 0)), 0),
     );
     cgst = round2(cgst + invCgst);
     sgst = round2(sgst + invSgst);
@@ -344,7 +352,13 @@ export async function computeGstr1(period: string) {
   // Debit notes raised in the month, the CDNR/CDNUR counterpart that raises
   // rather than reduces what was reported (CMP-GST-003) — its own table, with
   // its own sign, because a debit note is not a negative credit note.
-  const debitNoteRows: Array<{ recordCode: string; invoiceNumber: string; amount: number; reasonCode: string; issuedAt: string }> = [];
+  const debitNoteRows: Array<{
+    recordCode: string;
+    invoiceNumber: string;
+    amount: number;
+    reasonCode: string;
+    issuedAt: string;
+  }> = [];
   const debitNotes = await prisma.debitNote.findMany({
     where: { tenantId: auth.tenantId, issuedAt: { gte: from, lt: to } },
   });
@@ -430,7 +444,8 @@ export async function computeGstr1(period: string) {
       out.push({
         severity: 'blocking',
         code: 'NO_GSTIN',
-        message: 'The company profile carries no GSTIN. A return is filed under a registration, so there is nothing to file this one under.',
+        message:
+          'The company profile carries no GSTIN. A return is filed under a registration, so there is nothing to file this one under.',
       });
     }
 
@@ -439,8 +454,7 @@ export async function computeGstr1(period: string) {
       out.push({
         severity: 'blocking',
         code: 'MISSING_HSN',
-        message:
-          `${count(noHsn.length, 'carries', 'carry')} a line with no HSN/SAC code. The portal requires one on every line — set it on the course or offering being billed and it fills itself in from then on.`,
+        message: `${count(noHsn.length, 'carries', 'carry')} a line with no HSN/SAC code. The portal requires one on every line — set it on the course or offering being billed and it fills itself in from then on.`,
         invoices: noHsn.map((i) => i.recordCode!).filter(Boolean),
       });
     }
@@ -450,8 +464,7 @@ export async function computeGstr1(period: string) {
       out.push({
         severity: 'blocking',
         code: 'MISSING_PLACE_OF_SUPPLY',
-        message:
-          `${count(noPos.length, 'has', 'have')} no place of supply, so the tax on it cannot be attributed to a state.`,
+        message: `${count(noPos.length, 'has', 'have')} no place of supply, so the tax on it cannot be attributed to a state.`,
         invoices: noPos.map((i) => i.recordCode!).filter(Boolean),
       });
     }
@@ -463,8 +476,7 @@ export async function computeGstr1(period: string) {
       out.push({
         severity: 'blocking',
         code: 'INVALID_CUSTOMER_GSTIN',
-        message:
-          `${count(badGstin.length, 'carries', 'carry')} a customer GSTIN that fails its own check digit. Reported as it stands, the customer never receives the credit and finds out months later.`,
+        message: `${count(badGstin.length, 'carries', 'carry')} a customer GSTIN that fails its own check digit. Reported as it stands, the customer never receives the credit and finds out months later.`,
         invoices: badGstin.map((i) => i.recordCode!).filter(Boolean),
       });
     }
@@ -475,8 +487,7 @@ export async function computeGstr1(period: string) {
       out.push({
         severity: 'blocking',
         code: 'INVOICE_NUMBER_TOO_LONG',
-        message:
-          `${tooLong.length} invoice number${tooLong.length === 1 ? ' is' : 's are'} longer than the sixteen characters the portal accepts. Shorten the document prefix, or write the year as 26-27, under Company details — before the next one is raised.`,
+        message: `${tooLong.length} invoice number${tooLong.length === 1 ? ' is' : 's are'} longer than the sixteen characters the portal accepts. Shorten the document prefix, or write the year as 26-27, under Company details — before the next one is raised.`,
         invoices: tooLong.map((i) => i.recordCode!).filter(Boolean),
       });
     }
@@ -491,8 +502,7 @@ export async function computeGstr1(period: string) {
       out.push({
         severity: 'blocking',
         code: 'TAX_DOES_NOT_RECONCILE',
-        message:
-          `${count(inconsistent.length, 'carries', 'carry')} a tax total that does not follow from its own lines. Reporting it would put a figure in the return that the books cannot explain.`,
+        message: `${count(inconsistent.length, 'carries', 'carry')} a tax total that does not follow from its own lines. Reporting it would put a figure in the return that the books cannot explain.`,
         invoices: inconsistent.map((i) => i.recordCode!).filter(Boolean),
       });
     }
@@ -507,8 +517,7 @@ export async function computeGstr1(period: string) {
       out.push({
         severity: 'blocking',
         code: 'WRONG_TAX_HEADS',
-        message:
-          `${count(splitWrong.length, 'carries', 'carry')} the wrong pair of taxes for where the supply was made. CGST+SGST and IGST are different taxes collected by different governments, and an invoice showing both is wrong rather than untidy.`,
+        message: `${count(splitWrong.length, 'carries', 'carry')} the wrong pair of taxes for where the supply was made. CGST+SGST and IGST are different taxes collected by different governments, and an invoice showing both is wrong rather than untidy.`,
         invoices: splitWrong.map((i) => i.recordCode!).filter(Boolean),
       });
     }
@@ -535,7 +544,8 @@ export async function computeGstr1(period: string) {
       out.push({
         severity: 'warning',
         code: 'NIL_RETURN',
-        message: 'No outward supplies in this period. This would be filed as a nil return, which is still a return that has to be filed.',
+        message:
+          'No outward supplies in this period. This would be filed as a nil return, which is still a return that has to be filed.',
       });
     }
 
@@ -591,7 +601,7 @@ export async function computeGstr3b(period: string) {
       // what looks like ordinary taxable supply.
       taxableValue: round2(
         acc.taxableValue +
-          i.lines.reduce((s, l) => s + (isNonTaxableSupply(l.supplyType) ? 0 : num(l.amount) ?? 0), 0),
+          i.lines.reduce((s, l) => s + (isNonTaxableSupply(l.supplyType) ? 0 : (num(l.amount) ?? 0)), 0),
       ),
       cgst: round2(acc.cgst + (num(i.cgstAmount) ?? 0)),
       sgst: round2(acc.sgst + (num(i.sgstAmount) ?? 0)),
@@ -665,10 +675,7 @@ export async function computeGstr3b(period: string) {
   credit.sgst = round2(credit.sgst + rcm.sgst);
   credit.igst = round2(credit.igst + rcm.igst);
 
-  const setOff = setOffInputCredit(
-    { cgst: output.cgst, sgst: output.sgst, igst: output.igst },
-    credit,
-  );
+  const setOff = setOffInputCredit({ cgst: output.cgst, sgst: output.sgst, igst: output.igst }, credit);
 
   // The same month's GSTR-1, so the two can be checked against each other rather
   // than hoped about.
@@ -975,7 +982,9 @@ export async function markReturnFiled(filingId: string, input: { arn: string; fi
 
   const arn = input.arn.trim();
   if (arn.length < 6) {
-    throw ApiError.badRequest('The ARN is the portal’s acknowledgement number for the filing. A return with no ARN was not filed.');
+    throw ApiError.badRequest(
+      'The ARN is the portal’s acknowledgement number for the filing. A return with no ARN was not filed.',
+    );
   }
 
   // The checks as they stood when the return was prepared. A return the portal
@@ -1095,7 +1104,12 @@ export async function periodStatus(period: string) {
     })),
     prepared: filings
       .filter((f) => f.status === 'prepared')
-      .map((f) => ({ id: f.id, recordCode: f.recordCode, returnType: f.returnType, preparedAt: f.preparedAt.toISOString() })),
+      .map((f) => ({
+        id: f.id,
+        recordCode: f.recordCode,
+        returnType: f.returnType,
+        preparedAt: f.preparedAt.toISOString(),
+      })),
   };
 }
 

@@ -17,7 +17,7 @@ never interprets a request's `payload` — it is opaque JSON the caller defines.
 
 ### Domain (`apps/api/src/domains/hcm/workflow.ts`)
 
-- `submitRequest({ typeId, subjectEmploymentId, payload })` — validates the type's chain, opens level 1, emits `kz.hr.hr_request.submitted`. An own-scope caller (the plain `employee` role holds `create` on `hr_requests` at `own`) may only raise a request about their own employment — `assertCan` alone only checks the verb is held at *some* scope, so this is checked explicitly via `scopeFor('hr_requests', 'create')`, refusing with 403 otherwise (`HCM-WORKFLOW-015`). An all-scope caller (HR ops, or another workstream reaching this engine by id) may raise a request about anyone.
+- `submitRequest({ typeId, subjectEmploymentId, payload })` — validates the type's chain, opens level 1, emits `kz.hr.hr_request.submitted`. An own-scope caller (the plain `employee` role holds `create` on `hr_requests` at `own`) may only raise a request about their own employment — `assertCan` alone only checks the verb is held at _some_ scope, so this is checked explicitly via `scopeFor('hr_requests', 'create')`, refusing with 403 otherwise (`HCM-WORKFLOW-015`). An all-scope caller (HR ops, or another workstream reaching this engine by id) may raise a request about anyone.
 - `decide(requestId, approve, note?)` — decides the current level. Approve on a non-final level advances and opens the next level (emits `kz.hr.hr_request.approved`); approve on the final level closes the request (`kz.hr.hr_request.approved` + `kz.hr.hr_request.closed`); reject ends it (`kz.hr.hr_request.rejected`) without opening further levels. The approval row's decision is flipped with an atomic conditional update (`decision: 'pending'` in the `WHERE`, count checked) rather than a read-then-write, so two concurrent `decide()` calls on the same level can never both succeed — the loser gets a 409 (`HCM-WORKFLOW-014`).
 - `withdrawRequest(requestId)` — the requester only, while still `submitted`.
 - `listInbox(forParty?)` — every `pending` approval resolved to a party, across every request type; requires `hr_requests:approve` (held only at `all` scope by any seeded role, so no own-scope caller can reach this at all).
@@ -28,12 +28,12 @@ never interprets a request's `payload` — it is opaque JSON the caller defines.
 
 **Approval-chain resolution** (`resolveStepApprover` in the domain file):
 
-| resolver | resolves to |
-|---|---|
-| `manager` | the subject employment's active primary `ReportingLine` manager if WS1's table is present and has an open line for it; otherwise the `hr_ops_manager` role holder |
-| `hr_grant` | the active `hr_ops_manager` role holder |
-| `finance_grant` | the active `finance_head` role holder |
-| `specific` | the chain step's fixed `partyId` |
+| resolver        | resolves to                                                                                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `manager`       | the subject employment's active primary `ReportingLine` manager if WS1's table is present and has an open line for it; otherwise the `hr_ops_manager` role holder |
+| `hr_grant`      | the active `hr_ops_manager` role holder                                                                                                                           |
+| `finance_grant` | the active `finance_head` role holder                                                                                                                             |
+| `specific`      | the chain step's fixed `partyId`                                                                                                                                  |
 
 Every resolution excludes a candidate equal to the requester or the request's
 subject (the Self-Dealing Bar, applied at resolution time so a request never
@@ -68,24 +68,24 @@ Pure logic used by both the domain layer and the tests: `ApprovalChain`/`Approva
 
 ## Acceptance
 
-| ID | What PASS means | Test |
-|---|---|---|
-| HCM-WORKFLOW-001 | Submitting opens level 1, resolved via `hr_grant` to the `hr_ops_manager` holder, with a generated `HRQ-YYYY-NNNNN` code | `HCM-WORKFLOW-001: submitting opens level 1...` |
-| HCM-WORKFLOW-002 | Approving a single-level chain's only level closes the request | `HCM-WORKFLOW-002: approving the only level closes the request` |
-| HCM-WORKFLOW-003 | A two-level chain advances to a different resolver (finance_grant) on level-1 approval, then closes on level-2 approval | `HCM-WORKFLOW-003: a two-level chain advances...` |
-| HCM-WORKFLOW-004 | Rejecting at level 1 of a two-level chain ends the request `rejected` without ever opening level 2 | `HCM-WORKFLOW-004: rejecting at level 1 ends...` |
-| HCM-WORKFLOW-005 | The Self-Dealing Bar refuses `decide()` when the (possibly drifted) approver is the request's subject | `HCM-WORKFLOW-005: an approver may never decide a request that is about them...` |
-| HCM-WORKFLOW-006 | The Self-Dealing Bar refuses `decide()` when the (possibly drifted) approver is the requester | `HCM-WORKFLOW-006: an approver may never decide a request they themselves raised` |
-| HCM-WORKFLOW-007 | Deciding an already-closed request is refused as a 409 conflict, not a silent no-op | `HCM-WORKFLOW-007: deciding an already-closed request is refused as a conflict` |
-| HCM-WORKFLOW-008 | A request is a 404 from another tenant's vantage point — never a leak | `HCM-WORKFLOW-008: a request is invisible from another tenant` |
-| HCM-WORKFLOW-009 | Only the requester may withdraw their own still-`submitted` request | `HCM-WORKFLOW-009: only the requester may withdraw...` |
-| HCM-WORKFLOW-010 | `listInbox` returns only pending approvals resolved to the caller, and drops a request once decided | `HCM-WORKFLOW-010: listInbox surfaces only pending approvals...` |
-| HCM-WORKFLOW-011 | A `manager` step falls back to the `hr_ops_manager` holder when no `ReportingLine` is open for the subject | `HCM-WORKFLOW-011: a manager step falls back...` |
-| HCM-WORKFLOW-012 | An active delegation reroutes a resolved level to the delegate, who can then decide it | `HCM-WORKFLOW-012: an active delegation reroutes...` |
-| HCM-WORKFLOW-013 | A malformed approval chain (non-contiguous levels) is refused at request-type creation, not discovered at submit time | `HCM-WORKFLOW-013: a malformed approval chain is refused at creation...` |
-| HCM-WORKFLOW-014 | Two concurrent `decide()` calls on the same level never both win — one closes the request, the other gets a 409 | `HCM-WORKFLOW-014: two concurrent decide() calls...` |
-| HCM-WORKFLOW-015 | An own-scope caller may raise an HR request about their own employment but is refused (403) about a colleague's | `HCM-WORKFLOW-015: an own-scope caller may raise an HR request...` |
-| HCM-WORKFLOW-016 | An own-scope caller listing delegations sees only their own; an all-scope caller sees the whole tenant | `HCM-WORKFLOW-016: an own-scope caller listing delegations...` |
+| ID               | What PASS means                                                                                                          | Test                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| HCM-WORKFLOW-001 | Submitting opens level 1, resolved via `hr_grant` to the `hr_ops_manager` holder, with a generated `HRQ-YYYY-NNNNN` code | `HCM-WORKFLOW-001: submitting opens level 1...`                                   |
+| HCM-WORKFLOW-002 | Approving a single-level chain's only level closes the request                                                           | `HCM-WORKFLOW-002: approving the only level closes the request`                   |
+| HCM-WORKFLOW-003 | A two-level chain advances to a different resolver (finance_grant) on level-1 approval, then closes on level-2 approval  | `HCM-WORKFLOW-003: a two-level chain advances...`                                 |
+| HCM-WORKFLOW-004 | Rejecting at level 1 of a two-level chain ends the request `rejected` without ever opening level 2                       | `HCM-WORKFLOW-004: rejecting at level 1 ends...`                                  |
+| HCM-WORKFLOW-005 | The Self-Dealing Bar refuses `decide()` when the (possibly drifted) approver is the request's subject                    | `HCM-WORKFLOW-005: an approver may never decide a request that is about them...`  |
+| HCM-WORKFLOW-006 | The Self-Dealing Bar refuses `decide()` when the (possibly drifted) approver is the requester                            | `HCM-WORKFLOW-006: an approver may never decide a request they themselves raised` |
+| HCM-WORKFLOW-007 | Deciding an already-closed request is refused as a 409 conflict, not a silent no-op                                      | `HCM-WORKFLOW-007: deciding an already-closed request is refused as a conflict`   |
+| HCM-WORKFLOW-008 | A request is a 404 from another tenant's vantage point — never a leak                                                    | `HCM-WORKFLOW-008: a request is invisible from another tenant`                    |
+| HCM-WORKFLOW-009 | Only the requester may withdraw their own still-`submitted` request                                                      | `HCM-WORKFLOW-009: only the requester may withdraw...`                            |
+| HCM-WORKFLOW-010 | `listInbox` returns only pending approvals resolved to the caller, and drops a request once decided                      | `HCM-WORKFLOW-010: listInbox surfaces only pending approvals...`                  |
+| HCM-WORKFLOW-011 | A `manager` step falls back to the `hr_ops_manager` holder when no `ReportingLine` is open for the subject               | `HCM-WORKFLOW-011: a manager step falls back...`                                  |
+| HCM-WORKFLOW-012 | An active delegation reroutes a resolved level to the delegate, who can then decide it                                   | `HCM-WORKFLOW-012: an active delegation reroutes...`                              |
+| HCM-WORKFLOW-013 | A malformed approval chain (non-contiguous levels) is refused at request-type creation, not discovered at submit time    | `HCM-WORKFLOW-013: a malformed approval chain is refused at creation...`          |
+| HCM-WORKFLOW-014 | Two concurrent `decide()` calls on the same level never both win — one closes the request, the other gets a 409          | `HCM-WORKFLOW-014: two concurrent decide() calls...`                              |
+| HCM-WORKFLOW-015 | An own-scope caller may raise an HR request about their own employment but is refused (403) about a colleague's          | `HCM-WORKFLOW-015: an own-scope caller may raise an HR request...`                |
+| HCM-WORKFLOW-016 | An own-scope caller listing delegations sees only their own; an all-scope caller sees the whole tenant                   | `HCM-WORKFLOW-016: an own-scope caller listing delegations...`                    |
 
 ## What this does not do
 
@@ -104,12 +104,12 @@ Pure logic used by both the domain layer and the tests: `ApprovalChain`/`Approva
   workstream (request types are meant to be defined by whichever workstream
   needs a request kind, via the API, not hand-authored by an HR user through
   this page).
-- `finance_grant` and `hr_grant` resolve to *the* `finance_head`/`hr_ops_manager`
+- `finance_grant` and `hr_grant` resolve to _the_ `finance_head`/`hr_ops_manager`
   role holder — there is no notion of "whichever hr_ops_manager owns this
   employment's org unit" or similar narrowing; the product only has one of
   each role today, so this is deliberately the simplest correct
   implementation rather than a speculative multi-holder resolver.
-- Delegation `scope` narrows which *resolver kind* reroutes (`manager`,
+- Delegation `scope` narrows which _resolver kind_ reroutes (`manager`,
   `hr_grant`, `finance_grant`, or `all`); it does not narrow by request type
   or subject. A delegate covering `hr_grant` receives every `hr_grant`-routed
   request for the delegation period, not a filtered subset.
@@ -132,7 +132,7 @@ Pure logic used by both the domain layer and the tests: `ApprovalChain`/`Approva
   event name (`kz.hr.hr_request.submitted/approved/rejected/closed`,
   `kz.hr.authority_delegation.created/ended`), and record-code prefix (`HRQ`)
   this workstream needed was already registered by the scaffold. Two of the
-  seeded *grants* on those resources are narrower than this engine actually
+  seeded _grants_ on those resources are narrower than this engine actually
   needs, though, and this workstream cannot edit `grants.ts` to widen them:
   - **`finance_head` holds only `view` on `hr_requests`, not `approve`** — so
     a `finance_grant`-resolved level opens correctly, but the real seeded

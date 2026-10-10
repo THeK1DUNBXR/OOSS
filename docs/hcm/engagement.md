@@ -182,23 +182,23 @@ location-targeted audience against anyone — fixed).
 
 ## Acceptance
 
-| ID | What PASS means | Test |
-| --- | --- | --- |
-| HCM-ENGAGEMENT-001 | eNPS classifies 9-10 as promoters, 0-6 as detractors, and scores `(%promoters - %detractors)` | `Pure logic > 001` |
-| HCM-ENGAGEMENT-002 | An HR case is SLA-breached only while still open past its due date; resolved/closed never counts | `Pure logic > 002` |
-| HCM-ENGAGEMENT-003 | HR publishes an announcement; it reaches an employee's feed and pending-ack list, and disappears from pending once acked | `Announcements > 003` |
-| HCM-ENGAGEMENT-004 | An employee cannot create an announcement (no `create` grant) | `Announcements > 004` |
-| HCM-ENGAGEMENT-005 | A draft, future-dated announcement never appears in an employee's feed | `Announcements > 005` |
-| HCM-ENGAGEMENT-006 | An employee can give/receive recognition; giving it to oneself is refused | `Recognition > 006` |
-| HCM-ENGAGEMENT-007 | The recognition leaderboard is an all-scope aggregate; an employee cannot pull it | `Recognition > 007` |
-| HCM-ENGAGEMENT-008 | An employee's recognition list never includes a colleague-to-colleague entry | `Recognition > 008` |
-| HCM-ENGAGEMENT-009 | An anonymous survey accepts one response per employee (dedupe hash, never joinable to the response) and reports aggregates only | `Pulse surveys > 009` |
-| HCM-ENGAGEMENT-014 | An employee's `surveys:create` (held only so they can answer) is refused when used to define a new survey | `Pulse surveys > 014` |
-| HCM-ENGAGEMENT-015 | A named survey response is always recorded against the caller's own employment — there is no field left for a caller to override | `Pulse surveys > 015` |
-| HCM-ENGAGEMENT-016 | A grievance is auto-confidential, absent from the general queue, visible only via the confidential listing to an all-scope holder or the raiser | `HR helpdesk > 016` |
-| HCM-ENGAGEMENT-017 | A non-grievance case is in the general queue and follows status transitions, rejecting an invalid status | `HR helpdesk > 017` |
-| HCM-ENGAGEMENT-018 | An employee cannot reach a colleague's case by id; a cross-tenant id is never found | `HR helpdesk > 018` |
-| HCM-ENGAGEMENT-019 | A published policy's acknowledgement count is accurate and is an HR-only read | `Policy acknowledgement > 019` |
+| ID                 | What PASS means                                                                                                                                 | Test                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| HCM-ENGAGEMENT-001 | eNPS classifies 9-10 as promoters, 0-6 as detractors, and scores `(%promoters - %detractors)`                                                   | `Pure logic > 001`             |
+| HCM-ENGAGEMENT-002 | An HR case is SLA-breached only while still open past its due date; resolved/closed never counts                                                | `Pure logic > 002`             |
+| HCM-ENGAGEMENT-003 | HR publishes an announcement; it reaches an employee's feed and pending-ack list, and disappears from pending once acked                        | `Announcements > 003`          |
+| HCM-ENGAGEMENT-004 | An employee cannot create an announcement (no `create` grant)                                                                                   | `Announcements > 004`          |
+| HCM-ENGAGEMENT-005 | A draft, future-dated announcement never appears in an employee's feed                                                                          | `Announcements > 005`          |
+| HCM-ENGAGEMENT-006 | An employee can give/receive recognition; giving it to oneself is refused                                                                       | `Recognition > 006`            |
+| HCM-ENGAGEMENT-007 | The recognition leaderboard is an all-scope aggregate; an employee cannot pull it                                                               | `Recognition > 007`            |
+| HCM-ENGAGEMENT-008 | An employee's recognition list never includes a colleague-to-colleague entry                                                                    | `Recognition > 008`            |
+| HCM-ENGAGEMENT-009 | An anonymous survey accepts one response per employee (dedupe hash, never joinable to the response) and reports aggregates only                 | `Pulse surveys > 009`          |
+| HCM-ENGAGEMENT-014 | An employee's `surveys:create` (held only so they can answer) is refused when used to define a new survey                                       | `Pulse surveys > 014`          |
+| HCM-ENGAGEMENT-015 | A named survey response is always recorded against the caller's own employment — there is no field left for a caller to override                | `Pulse surveys > 015`          |
+| HCM-ENGAGEMENT-016 | A grievance is auto-confidential, absent from the general queue, visible only via the confidential listing to an all-scope holder or the raiser | `HR helpdesk > 016`            |
+| HCM-ENGAGEMENT-017 | A non-grievance case is in the general queue and follows status transitions, rejecting an invalid status                                        | `HR helpdesk > 017`            |
+| HCM-ENGAGEMENT-018 | An employee cannot reach a colleague's case by id; a cross-tenant id is never found                                                             | `HR helpdesk > 018`            |
+| HCM-ENGAGEMENT-019 | A published policy's acknowledgement count is accurate and is an HR-only read                                                                   | `Policy acknowledgement > 019` |
 
 `npx vitest run src/tests/hcm/engagement.test.ts` — 15 passed.
 
@@ -220,10 +220,10 @@ location-targeted audience against anyone — fixed).
 ## Wanted from the scaffold
 
 - **Job registration**: `apps/api/src/jobs/hcm/engagement.ts` exports `JOBS:
-  JobDefinition[]`, following the exact shape `jobs/compliance/index.ts` uses
+JobDefinition[]`, following the exact shape `jobs/compliance/index.ts` uses
   for `COMPLIANCE_JOBS`. `jobs/scheduler.ts` is off-limits to this
   workstream; the integrator should add `import { JOBS as engagement } from
-  './hcm/engagement.js';` and splice `...engagement` into `ALL_JOBS` the same
+'./hcm/engagement.js';` and splice `...engagement` into `ALL_JOBS` the same
   way `...COMPLIANCE_JOBS` is spliced in today.
 - **Record-code prefixes**: `Announcement`, `Recognition`, `PulseSurvey`,
   `PolicyDocument` and `ExitInterview` have no reserved entry in

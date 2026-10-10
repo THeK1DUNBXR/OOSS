@@ -55,7 +55,13 @@ function NewDocument({ open, onClose }: { open: boolean; onClose: () => void }) 
           options={ENTITY_DOCUMENT_AUDIENCES.map((a) => ({ value: a, label: AUDIENCE_LABELS[a] }))}
         />
       </Row>
-      <TextInput label="File reference" required value={fileRef} onChange={setFileRef} placeholder="A URL or a filing reference" />
+      <TextInput
+        label="File reference"
+        required
+        value={fileRef}
+        onChange={setFileRef}
+        placeholder="A URL or a filing reference"
+      />
     </CreateModal>
   );
 }
@@ -113,7 +119,12 @@ export function Documents() {
                         <td className="text-2xs text-ink-400">{date(d.createdAt)}</td>
                         <td className="text-2xs">
                           {/^https?:\/\//.test(d.fileRef) ? (
-                            <a href={d.fileRef} target="_blank" rel="noreferrer" className="text-accent-soft hover:underline">
+                            <a
+                              href={d.fileRef}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-accent-soft hover:underline"
+                            >
                               Open
                             </a>
                           ) : (

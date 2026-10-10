@@ -59,7 +59,6 @@ const DOMAIN_PLAIN_NAME: Record<string, string> = {
   H_TEC: 'Technology',
 };
 
-
 export interface FactorResult {
   factor: string;
   label: string;
@@ -125,7 +124,9 @@ export async function computeCommercialHealth(): Promise<ComputeResult> {
   const coverageTarget = 3; // 3x coverage is the standard benchmark
 
   // Factor 2 — median days at stage band. Lower is better, so the ratio inverts.
-  const ages = openOpps.map((o) => Math.floor((Date.now() - o.stageEnteredAt.getTime()) / 86_400_000)).sort((a, b) => a - b);
+  const ages = openOpps
+    .map((o) => Math.floor((Date.now() - o.stageEnteredAt.getTime()) / 86_400_000))
+    .sort((a, b) => a - b);
   const medianAge = ages.length ? ages[Math.floor(ages.length / 2)] : 0;
   const ageTarget = 21;
 
@@ -149,7 +150,14 @@ export async function computeCommercialHealth(): Promise<ComputeResult> {
   const stalledShare = totalProposals > 0 ? stalledProposals / totalProposals : 0;
   const stalledTarget = 0.1;
 
-  const raw: Array<{ code: string; value: number; target: number; higherIsBetter: boolean; narrative: string; drill: string }> = [
+  const raw: Array<{
+    code: string;
+    value: number;
+    target: number;
+    higherIsBetter: boolean;
+    narrative: string;
+    drill: string;
+  }> = [
     {
       code: 'pipeline_coverage',
       value: Number(coverageValue.toFixed(2)),
@@ -226,7 +234,10 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
 
   if (domainCode === 'H_FIN') {
     const [invoices, projections] = await Promise.all([
-      prisma.invoice.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, include: { lines: true, receipts: true } }),
+      prisma.invoice.findMany({
+        where: { tenantId: auth.tenantId, deletedAt: null },
+        include: { lines: true, receipts: true },
+      }),
       prisma.receivablesProjection.findMany({ where: { tenantId: auth.tenantId } }),
     ]);
     if (invoices.length === 0) return notYetMeasured(domainCode);
@@ -247,9 +258,36 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     const escalated = projections.filter((p) => p.dunningStage === 'escalated').length;
 
     const factors = buildFactors(domainCode, [
-      { code: 'collection_rate', label: 'Getting paid on time', weight: 40, value: Number(collectionRate.toFixed(1)), target: 90, higherIsBetter: true, narrative: `${fmt(collected)} collected of ${fmt(billed)} billed.`, drill: '/finance/invoices' },
-      { code: 'ar_ageing', label: 'Owed to us too long', weight: 35, value: Number(arShare.toFixed(1)), target: 10, higherIsBetter: false, narrative: `${fmt(overdue)} overdue across ${invoices.filter((i) => i.status === 'overdue').length} invoices.`, drill: '/finance/invoices?status=overdue' },
-      { code: 'dunning_escalations', label: 'Customers chased hard', weight: 25, value: escalated, target: 2, higherIsBetter: false, narrative: `${escalated} customer${escalated === 1 ? ' has' : 's have'} been chased to the final stage without paying.`, drill: '/finance/receivables' },
+      {
+        code: 'collection_rate',
+        label: 'Getting paid on time',
+        weight: 40,
+        value: Number(collectionRate.toFixed(1)),
+        target: 90,
+        higherIsBetter: true,
+        narrative: `${fmt(collected)} collected of ${fmt(billed)} billed.`,
+        drill: '/finance/invoices',
+      },
+      {
+        code: 'ar_ageing',
+        label: 'Owed to us too long',
+        weight: 35,
+        value: Number(arShare.toFixed(1)),
+        target: 10,
+        higherIsBetter: false,
+        narrative: `${fmt(overdue)} overdue across ${invoices.filter((i) => i.status === 'overdue').length} invoices.`,
+        drill: '/finance/invoices?status=overdue',
+      },
+      {
+        code: 'dunning_escalations',
+        label: 'Customers chased hard',
+        weight: 25,
+        value: escalated,
+        target: 2,
+        higherIsBetter: false,
+        narrative: `${escalated} customer${escalated === 1 ? ' has' : 's have'} been chased to the final stage without paying.`,
+        drill: '/finance/receivables',
+      },
     ]);
     return finalise(domainCode, factors);
   }
@@ -266,9 +304,36 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     const completionRate = completed + withdrawn > 0 ? (completed / (completed + withdrawn)) * 100 : 0;
 
     const factors = buildFactors(domainCode, [
-      { code: 'completion_rate', label: 'Learners finishing', weight: 40, value: Number(completionRate.toFixed(1)), target: 85, higherIsBetter: true, narrative: `${completed} completed against ${withdrawn} withdrawn.`, drill: '/education/enrollments' },
-      { code: 'attendance', label: 'Attendance', weight: 30, value: Number(avgAttendance.toFixed(1)), target: 85, higherIsBetter: true, narrative: `Average attendance across ${active.length} learners currently enrolled.`, drill: '/education/attendance' },
-      { code: 'learner_risk', label: 'Learners falling behind', weight: 30, value: atRisk, target: Math.max(Math.round(active.length * 0.05), 1), higherIsBetter: false, narrative: `${atRisk} learner${atRisk === 1 ? ' is' : 's are'} falling behind and may not finish.`, drill: '/education/enrollments?atRisk=true' },
+      {
+        code: 'completion_rate',
+        label: 'Learners finishing',
+        weight: 40,
+        value: Number(completionRate.toFixed(1)),
+        target: 85,
+        higherIsBetter: true,
+        narrative: `${completed} completed against ${withdrawn} withdrawn.`,
+        drill: '/education/enrollments',
+      },
+      {
+        code: 'attendance',
+        label: 'Attendance',
+        weight: 30,
+        value: Number(avgAttendance.toFixed(1)),
+        target: 85,
+        higherIsBetter: true,
+        narrative: `Average attendance across ${active.length} learners currently enrolled.`,
+        drill: '/education/attendance',
+      },
+      {
+        code: 'learner_risk',
+        label: 'Learners falling behind',
+        weight: 30,
+        value: atRisk,
+        target: Math.max(Math.round(active.length * 0.05), 1),
+        higherIsBetter: false,
+        narrative: `${atRisk} learner${atRisk === 1 ? ' is' : 's are'} falling behind and may not finish.`,
+        drill: '/education/enrollments?atRisk=true',
+      },
     ]);
     return finalise(domainCode, factors);
   }
@@ -279,13 +344,42 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
 
     const active = projects.filter((p) => ['planned', 'active'].includes(p.status));
     const unaccepted = projects.filter((p) => !p.handoffAcceptedAt && p.status === 'planned').length;
-    const avgVariance = active.length ? active.reduce((s, p) => s + Math.abs(p.scheduleVariancePct), 0) / active.length : 0;
+    const avgVariance = active.length
+      ? active.reduce((s, p) => s + Math.abs(p.scheduleVariancePct), 0) / active.length
+      : 0;
     const delivered = projects.filter((p) => p.status === 'delivered').length;
 
     const factors = buildFactors(domainCode, [
-      { code: 'schedule_variance', label: 'Projects running late', weight: 45, value: Number(avgVariance.toFixed(1)), target: 10, higherIsBetter: false, narrative: `Across ${active.length} active projects, timelines are off by ${avgVariance.toFixed(0)}% on average.`, drill: '/delivery/projects' },
-      { code: 'handoff_acceptance', label: 'Won work delivery has picked up', weight: 30, value: unaccepted, target: 0, higherIsBetter: false, narrative: `${unaccepted} deal${unaccepted === 1 ? ' has' : 's have'} been won but not yet picked up by the delivery team.`, drill: '/delivery/projects?handoff=pending' },
-      { code: 'delivery_throughput', label: 'Work getting finished', weight: 25, value: delivered, target: Math.max(Math.round(projects.length * 0.3), 1), higherIsBetter: true, narrative: `${delivered} project${delivered === 1 ? '' : 's'} delivered.`, drill: '/delivery/projects?status=delivered' },
+      {
+        code: 'schedule_variance',
+        label: 'Projects running late',
+        weight: 45,
+        value: Number(avgVariance.toFixed(1)),
+        target: 10,
+        higherIsBetter: false,
+        narrative: `Across ${active.length} active projects, timelines are off by ${avgVariance.toFixed(0)}% on average.`,
+        drill: '/delivery/projects',
+      },
+      {
+        code: 'handoff_acceptance',
+        label: 'Won work delivery has picked up',
+        weight: 30,
+        value: unaccepted,
+        target: 0,
+        higherIsBetter: false,
+        narrative: `${unaccepted} deal${unaccepted === 1 ? ' has' : 's have'} been won but not yet picked up by the delivery team.`,
+        drill: '/delivery/projects?handoff=pending',
+      },
+      {
+        code: 'delivery_throughput',
+        label: 'Work getting finished',
+        weight: 25,
+        value: delivered,
+        target: Math.max(Math.round(projects.length * 0.3), 1),
+        higherIsBetter: true,
+        narrative: `${delivered} project${delivered === 1 ? '' : 's'} delivered.`,
+        drill: '/delivery/projects?status=delivered',
+      },
     ]);
     return finalise(domainCode, factors);
   }
@@ -306,9 +400,36 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     const failedJobs = jobRuns.filter((j) => j.status === 'failed').length;
 
     const factors = buildFactors(domainCode, [
-      { code: 'unowned_exceptions', label: 'Problems assigned to nobody', weight: 35, value: unowned, target: 0, higherIsBetter: false, narrative: `${unowned} open problem${unowned === 1 ? ' has' : 's have'} nobody assigned. Until someone owns them, nobody is working on them.`, drill: '/exceptions?unowned=true' },
-      { code: 'sla_breaches', label: 'Deadlines missed', weight: 35, value: breached, target: Math.max(Math.round(open.length * 0.1), 1), higherIsBetter: false, narrative: `${breached} of ${open.length} open exceptions are past their SLA.`, drill: '/exceptions?breached=true' },
-      { code: 'automation_reliability', label: 'Automatic checks running', weight: 30, value: failedJobs + deadLetters, target: 0, higherIsBetter: false, narrative: `${failedJobs} failed job run${failedJobs === 1 ? '' : 's'} and ${deadLetters} dead-lettered event${deadLetters === 1 ? '' : 's'}.`, drill: '/admin/jobs' },
+      {
+        code: 'unowned_exceptions',
+        label: 'Problems assigned to nobody',
+        weight: 35,
+        value: unowned,
+        target: 0,
+        higherIsBetter: false,
+        narrative: `${unowned} open problem${unowned === 1 ? ' has' : 's have'} nobody assigned. Until someone owns them, nobody is working on them.`,
+        drill: '/exceptions?unowned=true',
+      },
+      {
+        code: 'sla_breaches',
+        label: 'Deadlines missed',
+        weight: 35,
+        value: breached,
+        target: Math.max(Math.round(open.length * 0.1), 1),
+        higherIsBetter: false,
+        narrative: `${breached} of ${open.length} open exceptions are past their SLA.`,
+        drill: '/exceptions?breached=true',
+      },
+      {
+        code: 'automation_reliability',
+        label: 'Automatic checks running',
+        weight: 30,
+        value: failedJobs + deadLetters,
+        target: 0,
+        higherIsBetter: false,
+        narrative: `${failedJobs} failed job run${failedJobs === 1 ? '' : 's'} and ${deadLetters} dead-lettered event${deadLetters === 1 ? '' : 's'}.`,
+        drill: '/admin/jobs',
+      },
     ]);
     return finalise(domainCode, factors);
   }
@@ -376,38 +497,58 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     const since30 = daysAgo(30);
     const since90 = daysAgo(90);
 
-    const [ticketsResolved30d, incidentsSev12Last90d, changesLast90d, openRisks, openFindings, activePlansTier12] = await Promise.all([
-      prisma.itTicket.findMany({
-        where: { tenantId: auth.tenantId, resolvedAt: { gte: since30, not: null }, resolveDueAt: { not: null } },
-        select: { resolvedAt: true, resolveDueAt: true },
-      }),
-      prisma.itIncident.findMany({
-        where: { tenantId: auth.tenantId, severity: { in: ['sev1', 'sev2'] }, resolvedAt: { gte: since90, not: null } },
-        select: { detectedAt: true, resolvedAt: true },
-      }),
-      prisma.itChange.findMany({
-        where: { tenantId: auth.tenantId, updatedAt: { gte: since90 }, status: { in: ['reviewed', 'failed', 'rolled_back'] } },
-        select: { status: true },
-      }),
-      prisma.itRisk.findMany({
-        where: { tenantId: auth.tenantId, status: { in: ['open', 'treating'] } },
-        select: { bandInherent: true, bandResidual: true },
-      }),
-      prisma.itSecurityFinding.findMany({
-        where: { tenantId: auth.tenantId, status: { in: ['open', 'in_progress'] } },
-        select: { dueAt: true },
-      }),
-      prisma.itContinuityPlan.findMany({
-        where: { tenantId: auth.tenantId, status: 'active', applicationTier: { lte: 2 }, deletedAt: null },
-        select: { lastTestedAt: true, testCadenceDays: true },
-      }),
-    ]);
+    const [ticketsResolved30d, incidentsSev12Last90d, changesLast90d, openRisks, openFindings, activePlansTier12] =
+      await Promise.all([
+        prisma.itTicket.findMany({
+          where: { tenantId: auth.tenantId, resolvedAt: { gte: since30, not: null }, resolveDueAt: { not: null } },
+          select: { resolvedAt: true, resolveDueAt: true },
+        }),
+        prisma.itIncident.findMany({
+          where: {
+            tenantId: auth.tenantId,
+            severity: { in: ['sev1', 'sev2'] },
+            resolvedAt: { gte: since90, not: null },
+          },
+          select: { detectedAt: true, resolvedAt: true },
+        }),
+        prisma.itChange.findMany({
+          where: {
+            tenantId: auth.tenantId,
+            updatedAt: { gte: since90 },
+            status: { in: ['reviewed', 'failed', 'rolled_back'] },
+          },
+          select: { status: true },
+        }),
+        prisma.itRisk.findMany({
+          where: { tenantId: auth.tenantId, status: { in: ['open', 'treating'] } },
+          select: { bandInherent: true, bandResidual: true },
+        }),
+        prisma.itSecurityFinding.findMany({
+          where: { tenantId: auth.tenantId, status: { in: ['open', 'in_progress'] } },
+          select: { dueAt: true },
+        }),
+        prisma.itContinuityPlan.findMany({
+          where: { tenantId: auth.tenantId, status: 'active', applicationTier: { lte: 2 }, deletedAt: null },
+          select: { lastTestedAt: true, testCadenceDays: true },
+        }),
+      ]);
 
-    const raw: Array<{ code: string; label: string; weight: number; value: number; target: number; higherIsBetter: boolean; narrative: string; drill: string }> = [];
+    const raw: Array<{
+      code: string;
+      label: string;
+      weight: number;
+      value: number;
+      target: number;
+      higherIsBetter: boolean;
+      narrative: string;
+      drill: string;
+    }> = [];
 
     if (ticketsResolved30d.length > 0) {
       const attainment = slaAttainment(
-        ticketsResolved30d.map((t) => ({ met: Boolean(t.resolvedAt && t.resolveDueAt && t.resolvedAt <= t.resolveDueAt) })),
+        ticketsResolved30d.map((t) => ({
+          met: Boolean(t.resolvedAt && t.resolveDueAt && t.resolvedAt <= t.resolveDueAt),
+        })),
       );
       if (attainment !== null) {
         raw.push({
@@ -489,7 +630,9 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
     }
 
     if (activePlansTier12.length > 0) {
-      const withinCadence = activePlansTier12.filter((p) => testOverdueRung(p.lastTestedAt, p.testCadenceDays, now) === undefined).length;
+      const withinCadence = activePlansTier12.filter(
+        (p) => testOverdueRung(p.lastTestedAt, p.testCadenceDays, now) === undefined,
+      ).length;
       const share = Number(((withinCadence / activePlansTier12.length) * 100).toFixed(1));
       raw.push({
         code: 'continuity_coverage',
@@ -551,7 +694,9 @@ export async function computeDomainHealth(domainCode: string): Promise<ComputeRe
 
     const attributedLeadIds = attributedLeads.map((l) => l.id);
     const oppsFromAttributed = attributedLeadIds.length
-      ? await prisma.opportunity.count({ where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: attributedLeadIds } } })
+      ? await prisma.opportunity.count({
+          where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: attributedLeadIds } },
+        })
       : 0;
     const conversionRate = attributedLeadIds.length > 0 ? oppsFromAttributed / attributedLeadIds.length : 0;
 
@@ -650,7 +795,16 @@ function notYetMeasured(domainCode: string): ComputeResult {
 
 function buildFactors(
   domainCode: string,
-  specs: Array<{ code: string; label: string; weight: number; value: number; target: number; higherIsBetter: boolean; narrative: string; drill: string }>,
+  specs: Array<{
+    code: string;
+    label: string;
+    weight: number;
+    value: number;
+    target: number;
+    higherIsBetter: boolean;
+    narrative: string;
+    drill: string;
+  }>,
 ): FactorResult[] {
   return specs.map((s) => {
     const r = s.higherIsBetter ? ratio(s.value, s.target) : ratio(s.target, Math.max(s.value, 0.0001));
@@ -886,11 +1040,20 @@ export async function latestPulse(): Promise<PulseEntry[]> {
       score: latest.score,
       band: latest.band,
       previousScore: previous?.score ?? null,
-      trend: previous?.score == null ? null : latest.score > previous.score ? ('up' as const) : latest.score < previous.score ? ('down' as const) : ('flat' as const),
+      trend:
+        previous?.score == null
+          ? null
+          : latest.score > previous.score
+            ? ('up' as const)
+            : latest.score < previous.score
+              ? ('down' as const)
+              : ('flat' as const),
       // How much room before this crosses — never a bare number.
       distanceToEdge: distanceToEdge(latest.score),
       severityFloor: latest.band ? HEALTH_BAND_SEVERITY_FLOOR[latest.band as HealthBand] : null,
-      largestNegativeContributor: worst ? `${worst.label} −${(worst.weight - worst.contribution).toFixed(1)} pts` : null,
+      largestNegativeContributor: worst
+        ? `${worst.label} −${(worst.weight - worst.contribution).toFixed(1)} pts`
+        : null,
       factors,
       state: 'measured' as const,
       drillPath: `/command/health/${domain.code}`,

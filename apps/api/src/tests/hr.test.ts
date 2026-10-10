@@ -105,7 +105,9 @@ async function makeEmployee(label: string) {
 
 describe('§14 — authority over people is held, not inherited from rank', () => {
   it('the chairman may open an employment, because nothing is withheld from the chairman', async () => {
-    const employments = await asUser('chairman@kaizen.co.in', () => prisma.employmentRelationship.findMany({ take: 5 }));
+    const employments = await asUser('chairman@kaizen.co.in', () =>
+      prisma.employmentRelationship.findMany({ take: 5 }),
+    );
     expect(employments.length).toBeGreaterThan(0);
 
     // Built for this run. Hiring is not idempotent — a seeded candidate is
@@ -151,9 +153,7 @@ describe('§14 — authority over people is held, not inherited from rank', () =
     // against, the evaluator could only answer "may this person read employees
     // at all", and `employees:V@own` says yes. The aggregate asks for the
     // scope instead.
-    const err = await expectReject(() =>
-      asUser('ravi@kaizen.co.in', () => headcountByDivision()),
-    );
+    const err = await expectReject(() => asUser('ravi@kaizen.co.in', () => headcountByDivision()));
     expect(err.status).toBe(403);
     expect(err.message).toMatch(/all-scope/);
   });
@@ -255,7 +255,7 @@ describe('§14 — authority over people is held, not inherited from rank', () =
     expect(approved.status).toBe('Approved');
   });
 
-  it('bars the proposer from signing their own proposal, even about somebody else\'s pay', async () => {
+  it("bars the proposer from signing their own proposal, even about somebody else's pay", async () => {
     // The chairman is the one principal who holds both `create` and `approve`
     // on `compensation` — the only seat where this bar and the self-dealing
     // bar above are actually different rules.
@@ -360,7 +360,7 @@ describe('updateEmployeeProfile corrects what a staff-list import writes on the 
     expect(missing.status).toBe(404);
   });
 
-  it('lets an employee correct their own phone, but not a colleague\'s — 404, not 403', async () => {
+  it("lets an employee correct their own phone, but not a colleague's — 404, not 403", async () => {
     const mine = await employmentFor('ravi@kaizen.co.in');
     const theirs = await employmentFor('kavitha@kaizen.co.in');
 
@@ -384,9 +384,7 @@ describe('updateEmployeeProfile corrects what a staff-list import writes on the 
       const badEmail = await expectReject(() => updateEmployeeProfile(employment.id, { primaryEmail: 'not-an-email' }));
       expect(badEmail.status).toBe(400);
 
-      const futureDob = await expectReject(() =>
-        updateEmployeeProfile(employment.id, { dateOfBirth: '2999-01-01' }),
-      );
+      const futureDob = await expectReject(() => updateEmployeeProfile(employment.id, { dateOfBirth: '2999-01-01' }));
       expect(futureDob.status).toBe(400);
 
       const implausibleDob = await expectReject(() =>
@@ -417,7 +415,9 @@ describe('updateEmployeeProfile corrects what a staff-list import writes on the 
     const records = await unscopedPrisma.auditRecord.findMany({
       where: { tenantId: TENANT, subjectType: 'person', subjectId: employment.personId },
     });
-    const bloodGroupRecord = records.find((r) => (r.meta as { fieldsChanged?: string[] } | null)?.fieldsChanged?.includes('bloodGroup'));
+    const bloodGroupRecord = records.find((r) =>
+      (r.meta as { fieldsChanged?: string[] } | null)?.fieldsChanged?.includes('bloodGroup'),
+    );
     expect(bloodGroupRecord).toBeTruthy();
     expect(JSON.stringify(bloodGroupRecord)).not.toContain('B+');
   });
@@ -507,7 +507,7 @@ describe('the employee-detail projection never carries a regulated field to the 
 // ===========================================================================
 
 describe('An `own` grant binds a write to the writer', () => {
-  it('will not let somebody file leave in a colleague\'s name', async () => {
+  it("will not let somebody file leave in a colleague's name", async () => {
     const mine = await employmentFor('ravi@kaizen.co.in');
     const theirs = await employmentFor('kavitha@kaizen.co.in');
     const leaveType = await unscopedPrisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'CL' } });
@@ -559,7 +559,7 @@ describe('An `own` grant binds a write to the writer', () => {
     expect(own.partyId).toBe(ravi.personId);
   });
 
-  it('keeps a colleague out of somebody else\'s performance evidence', async () => {
+  it("keeps a colleague out of somebody else's performance evidence", async () => {
     const theirs = await employmentFor('kavitha@kaizen.co.in');
     const mine = await employmentFor('ravi@kaizen.co.in');
 
@@ -617,9 +617,7 @@ describe('An `own` grant binds a write to the writer', () => {
 
     // A colleague cannot reach the record at all — not the note, not the fact
     // that a note exists.
-    const err = await expectReject(() =>
-      asUser('ravi@kaizen.co.in', () => listEvidence(employment.id)),
-    );
+    const err = await expectReject(() => asUser('ravi@kaizen.co.in', () => listEvidence(employment.id)));
     expect(err.status).toBe(404);
   });
 });
@@ -706,7 +704,7 @@ describe('§14.5 — a promotion moves the seat and the money together', () => {
 // ===========================================================================
 
 describe('Position and org-unit changes', () => {
-  it("HR creates an assignment for an employee and it shows as current once activated", async () => {
+  it('HR creates an assignment for an employee and it shows as current once activated', async () => {
     const { employment, position: originalPosition } = await makeEmployee('assignment-target');
     const newPosition = await asUser('hr@kaizen.co.in', async () =>
       prisma.position.create({
@@ -946,7 +944,9 @@ describe('Attendance and payroll', () => {
   it('opens a run at the pay in force on the last day of the period, not today', async () => {
     // The payroll tests own this period and reset it, so the suite can be run
     // twice without the second run colliding with the first one's output.
-    const existing = await unscopedPrisma.payrollRun.findFirst({ where: { tenantId: TENANT, payPeriod: PAYROLL_PERIOD } });
+    const existing = await unscopedPrisma.payrollRun.findFirst({
+      where: { tenantId: TENANT, payPeriod: PAYROLL_PERIOD },
+    });
     if (existing) {
       await unscopedPrisma.payrollInstruction.deleteMany({ where: { payrollRunId: existing.id } });
       await unscopedPrisma.payrollRun.delete({ where: { id: existing.id } });
@@ -968,15 +968,17 @@ describe('Attendance and payroll', () => {
   });
 
   it('will not disburse a run nobody approved', async () => {
-    const run = await unscopedPrisma.payrollRun.findFirstOrThrow({ where: { tenantId: TENANT, payPeriod: PAYROLL_PERIOD } });
-    const err = await expectReject(() =>
-      asUser('hr@kaizen.co.in', () => transitionPayrollRun(run.id, 'DISBURSE')),
-    );
+    const run = await unscopedPrisma.payrollRun.findFirstOrThrow({
+      where: { tenantId: TENANT, payPeriod: PAYROLL_PERIOD },
+    });
+    const err = await expectReject(() => asUser('hr@kaizen.co.in', () => transitionPayrollRun(run.id, 'DISBURSE')));
     expect(err.status).toBe(422);
   });
 
   it('freezes the figures once a run is approved', async () => {
-    const run = await unscopedPrisma.payrollRun.findFirstOrThrow({ where: { tenantId: TENANT, payPeriod: PAYROLL_PERIOD } });
+    const run = await unscopedPrisma.payrollRun.findFirstOrThrow({
+      where: { tenantId: TENANT, payPeriod: PAYROLL_PERIOD },
+    });
 
     await asUser('hr@kaizen.co.in', () => transitionPayrollRun(run.id, 'COMPUTE'));
     await asUser('hr@kaizen.co.in', () => transitionPayrollRun(run.id, 'SUBMIT_REVIEW'));
@@ -1008,9 +1010,7 @@ describe('Attendance and payroll', () => {
     //
     // Not-found rather than forbidden: whether a colleague has a pay record at
     // all is part of what is being withheld, and a 403 confirms the id is real.
-    const err = await expectReject(() =>
-      asUser('ravi@kaizen.co.in', () => currentCompensation(employment.id)),
-    );
+    const err = await expectReject(() => asUser('ravi@kaizen.co.in', () => currentCompensation(employment.id)));
     expect(err.status).toBe(404);
 
     // Their own, they can read.
@@ -1065,9 +1065,7 @@ describe('§14.7 — need-to-know is a grant, not a rank', () => {
     expect(asChairman.some((e) => e.caseScoped)).toBe(true);
 
     // A colleague reaches none of it.
-    const err = await expectReject(() =>
-      asUser('ravi@kaizen.co.in', () => listEvidence(employment.id)),
-    );
+    const err = await expectReject(() => asUser('ravi@kaizen.co.in', () => listEvidence(employment.id)));
     expect(err.status).toBe(404);
   });
 
@@ -1134,11 +1132,7 @@ describe('§14.6 — verification is structurally two people', () => {
       assertClaim({ partyId: arun.personId, skillId: skill.id, tier: 'demonstrated' }),
     );
 
-    const err = await expectReject(() =>
-      asUser('hr@kaizen.co.in', () =>
-        verifyClaim(claim.id, {}),
-      ),
-    );
+    const err = await expectReject(() => asUser('hr@kaizen.co.in', () => verifyClaim(claim.id, {})));
     expect(err.status).toBe(422);
 
     // The second verifier must hold capabilities:approve (domains/capability.ts
@@ -1159,9 +1153,7 @@ describe('§14.6 — verification is structurally two people', () => {
     const skill = await unscopedPrisma.skill.findFirstOrThrow({ where: { tenantId: TENANT } });
 
     const err = await expectReject(() =>
-      asUser('hr@kaizen.co.in', () =>
-        assertClaim({ partyId: arun.personId, skillId: skill.id, tier: 'verified' }),
-      ),
+      asUser('hr@kaizen.co.in', () => assertClaim({ partyId: arun.personId, skillId: skill.id, tier: 'verified' })),
     );
     // Otherwise a verified claim exists that nobody verified.
     expect(err.status).toBe(422);
@@ -1366,9 +1358,7 @@ describe('Every transition publishes under its own past-tense name', () => {
 
     setEventCapture(true);
     emittedEvents.length = 0;
-    await asUser('hr@kaizen.co.in', () =>
-      transitionEmployment(employment.id, 'SUSPEND', { note: 'Pending enquiry' }),
-    );
+    await asUser('hr@kaizen.co.in', () => transitionEmployment(employment.id, 'SUSPEND', { note: 'Pending enquiry' }));
     // `setEventCapture(false)` empties the buffer, so read it first.
     const names = emittedEvents.map((e) => e.eventName);
     setEventCapture(false);

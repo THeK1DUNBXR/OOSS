@@ -10,5 +10,12 @@ import { JOBS as privacy } from './privacy.js';
 import { JOBS as corporate } from './corporate.js';
 
 export const COMPLIANCE_JOBS: JobDefinition[] = [
-  ...calendar, ...gst, ...tax, ...books, ...payroll, ...labour, ...privacy, ...corporate,
+  ...calendar,
+  ...gst,
+  ...tax,
+  ...books,
+  ...payroll,
+  ...labour,
+  ...privacy,
+  ...corporate,
 ];

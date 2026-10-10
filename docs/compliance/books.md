@@ -142,7 +142,7 @@ Exports (download buttons via `api.download`), Bank reconciliation, Retention.
 ## Not done, and why
 
 - No `ScheduleIIIMapping` rows are seeded per category — the kind/ledgerGroup
-  default *is* the seeded mapping the plan asks for; an explicit row is for
+  default _is_ the seeded mapping the plan asks for; an explicit row is for
   a company that wants a specific category to land somewhere the default
   would not put it, which is a bookkeeping decision, not a schema gap.
 - The Income-tax block WDV walk is per-asset, not true block accounting

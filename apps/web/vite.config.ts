@@ -16,7 +16,9 @@ import react from '@vitejs/plugin-react';
  */
 function git(args: string[]): string | null {
   try {
-    return execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execFileSync('git', args, { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
   } catch {
     return null;
   }

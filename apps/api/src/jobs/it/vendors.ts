@@ -156,7 +156,9 @@ export async function runVendorAssessmentOverdueJob(): Promise<JobResult> {
     try {
       await raiseException({
         code: 'IT_VEN_ASSESSMENT_OVERDUE',
-        label: overdue ? `${v.name} — security assessment overdue` : `${v.name} — assessment due in ${rung} day${rung === 1 ? '' : 's'}`,
+        label: overdue
+          ? `${v.name} — security assessment overdue`
+          : `${v.name} — assessment due in ${rung} day${rung === 1 ? '' : 's'}`,
         severity: overdue ? 'S3_HIGH_RISK' : severityForRung(rung),
         subjectType: 'it_vendor',
         subjectId: v.id,

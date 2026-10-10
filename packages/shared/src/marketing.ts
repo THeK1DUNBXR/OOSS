@@ -19,7 +19,14 @@
 // ---------------------------------------------------------------------------
 
 export const CAMPAIGN_STATUSES = [
-  'draft', 'pending_approval', 'scheduled', 'live', 'paused', 'completed', 'archived', 'cancelled',
+  'draft',
+  'pending_approval',
+  'scheduled',
+  'live',
+  'paused',
+  'completed',
+  'archived',
+  'cancelled',
 ] as const;
 export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
 
@@ -51,7 +58,13 @@ export const CAMPAIGN_TRANSITIONS: Record<CampaignStatus, CampaignStatus[]> = {
 };
 
 export const CAMPAIGN_OBJECTIVES = [
-  'awareness', 'lead_gen', 'enrolment', 'partnership', 'placement', 'retention', 'event',
+  'awareness',
+  'lead_gen',
+  'enrolment',
+  'partnership',
+  'placement',
+  'retention',
+  'event',
 ] as const;
 export type CampaignObjective = (typeof CAMPAIGN_OBJECTIVES)[number];
 
@@ -70,8 +83,21 @@ export const CAMPAIGN_OBJECTIVE_LABELS: Record<CampaignObjective, string> = {
 // ---------------------------------------------------------------------------
 
 export const CHANNEL_KEYS = [
-  'email', 'sms', 'whatsapp', 'social_meta', 'social_linkedin', 'social_youtube',
-  'google_ads', 'website', 'event', 'referral', 'partner', 'print', 'walk_in', 'phone', 'other',
+  'email',
+  'sms',
+  'whatsapp',
+  'social_meta',
+  'social_linkedin',
+  'social_youtube',
+  'google_ads',
+  'website',
+  'event',
+  'referral',
+  'partner',
+  'print',
+  'walk_in',
+  'phone',
+  'other',
 ] as const;
 export type ChannelKey = (typeof CHANNEL_KEYS)[number];
 
@@ -126,7 +152,17 @@ export type AudienceEntityType = (typeof AUDIENCE_ENTITY_TYPES)[number];
  * always say exactly who it reached.
  */
 export const AUDIENCE_RULE_OPS = [
-  'eq', 'ne', 'in', 'contains', 'gt', 'lt', 'between', 'is_null', 'not_null', 'before', 'after',
+  'eq',
+  'ne',
+  'in',
+  'contains',
+  'gt',
+  'lt',
+  'between',
+  'is_null',
+  'not_null',
+  'before',
+  'after',
 ] as const;
 export type AudienceRuleOp = (typeof AUDIENCE_RULE_OPS)[number];
 
@@ -199,8 +235,16 @@ export const SEND_TRANSITIONS: Record<SendStatus, SendStatus[]> = {
 };
 
 export const RECIPIENT_STATUSES = [
-  'queued', 'skipped_no_consent', 'skipped_dnc', 'sent', 'delivered',
-  'opened', 'clicked', 'bounced', 'unsubscribed', 'failed',
+  'queued',
+  'skipped_no_consent',
+  'skipped_dnc',
+  'sent',
+  'delivered',
+  'opened',
+  'clicked',
+  'bounced',
+  'unsubscribed',
+  'failed',
 ] as const;
 export type RecipientStatus = (typeof RECIPIENT_STATUSES)[number];
 
@@ -247,7 +291,12 @@ export const JOURNEY_TRANSITIONS: Record<JourneyStatus, JourneyStatus[]> = {
 };
 
 export const JOURNEY_TRIGGER_KINDS = [
-  'audience_join', 'lead_created', 'form_submitted', 'event_registered', 'enrolment', 'manual',
+  'audience_join',
+  'lead_created',
+  'form_submitted',
+  'event_registered',
+  'enrolment',
+  'manual',
 ] as const;
 export type JourneyTriggerKind = (typeof JOURNEY_TRIGGER_KINDS)[number];
 
@@ -297,7 +346,15 @@ export const FORM_SUBMISSION_STATUS_LABELS: Record<FormSubmissionStatus, string>
 // ---------------------------------------------------------------------------
 
 export const TOUCH_KINDS = [
-  'impression', 'click', 'visit', 'form', 'call', 'event_attend', 'referral', 'message_reply', 'walk_in',
+  'impression',
+  'click',
+  'visit',
+  'form',
+  'call',
+  'event_attend',
+  'referral',
+  'message_reply',
+  'walk_in',
 ] as const;
 export type TouchKind = (typeof TOUCH_KINDS)[number];
 
@@ -338,10 +395,25 @@ export interface LeadScoreRuleSeed {
 
 export const DEFAULT_LEAD_SCORE_RULES: LeadScoreRuleSeed[] = [
   { name: 'Submitted a form', condition: { field: 'touchKind', op: 'eq', value: 'form' }, points: 10, order: 1 },
-  { name: 'Attended an event', condition: { field: 'touchKind', op: 'eq', value: 'event_attend' }, points: 20, order: 2 },
+  {
+    name: 'Attended an event',
+    condition: { field: 'touchKind', op: 'eq', value: 'event_attend' },
+    points: 20,
+    order: 2,
+  },
   { name: 'Clicked a campaign link', condition: { field: 'touchKind', op: 'eq', value: 'click' }, points: 5, order: 3 },
-  { name: 'Referred by an existing student', condition: { field: 'touchKind', op: 'eq', value: 'referral' }, points: 25, order: 4 },
-  { name: 'Replied to a message', condition: { field: 'touchKind', op: 'eq', value: 'message_reply' }, points: 15, order: 5 },
+  {
+    name: 'Referred by an existing student',
+    condition: { field: 'touchKind', op: 'eq', value: 'referral' },
+    points: 25,
+    order: 4,
+  },
+  {
+    name: 'Replied to a message',
+    condition: { field: 'touchKind', op: 'eq', value: 'message_reply' },
+    points: 15,
+    order: 5,
+  },
   { name: 'Walked in', condition: { field: 'touchKind', op: 'eq', value: 'walk_in' }, points: 30, order: 6 },
 ];
 
@@ -350,7 +422,14 @@ export const DEFAULT_LEAD_SCORE_RULES: LeadScoreRuleSeed[] = [
 // ---------------------------------------------------------------------------
 
 export const MARKETING_EVENT_KINDS = [
-  'webinar', 'seminar', 'open_day', 'demo', 'college_visit', 'placement_drive', 'fair', 'other',
+  'webinar',
+  'seminar',
+  'open_day',
+  'demo',
+  'college_visit',
+  'placement_drive',
+  'fair',
+  'other',
 ] as const;
 export type MarketingEventKind = (typeof MARKETING_EVENT_KINDS)[number];
 
@@ -402,7 +481,16 @@ export const REGISTRATION_STATUS_LABELS: Record<RegistrationStatus, string> = {
 // ---------------------------------------------------------------------------
 
 export const ASSET_KINDS = [
-  'brochure', 'creative', 'video', 'deck', 'copy', 'landing_page', 'email', 'social_post', 'print', 'other',
+  'brochure',
+  'creative',
+  'video',
+  'deck',
+  'copy',
+  'landing_page',
+  'email',
+  'social_post',
+  'print',
+  'other',
 ] as const;
 export type AssetKind = (typeof ASSET_KINDS)[number];
 
@@ -1041,35 +1129,65 @@ export const MARKETING_REQUIREMENTS: MarketingRequirement[] = [
   // MKT-AUD — audiences
   { id: 'MKT-AUD-001', title: 'A dynamic audience evaluates its rule tree into MarketingAudienceMember rows.' },
   { id: 'MKT-AUD-002', title: 'A static audience accepts only manual add/remove, never rule evaluation.' },
-  { id: 'MKT-AUD-003', title: 'A suppression audience member is excluded from every send regardless of other audiences.' },
+  {
+    id: 'MKT-AUD-003',
+    title: 'A suppression audience member is excluded from every send regardless of other audiences.',
+  },
   { id: 'MKT-AUD-004', title: 'Rule conditions are restricted to the closed AUDIENCE_RULE_OPS set.' },
   { id: 'MKT-AUD-005', title: 'memberCount and lastEvaluatedAt are updated only by the evaluation job.' },
   { id: 'MKT-AUD-006', title: 'An audience declares exactly one AUDIENCE_ENTITY_TYPES value.' },
   // MKT-CON — consent & preferences
   { id: 'MKT-CON-001', title: "A send never reaches a person lacking a granted 'marketing' Consent." },
-  { id: 'MKT-CON-002', title: 'A recipient with doNotContact=true on MarketingPreference is skipped, reason recorded.' },
-  { id: 'MKT-CON-003', title: 'An opt-out via unsubscribe link updates MarketingPreference and never deletes history.' },
-  { id: 'MKT-CON-004', title: 'A preference change always names its source (self_service/agent/import/unsubscribe_link/admin).' },
+  {
+    id: 'MKT-CON-002',
+    title: 'A recipient with doNotContact=true on MarketingPreference is skipped, reason recorded.',
+  },
+  {
+    id: 'MKT-CON-003',
+    title: 'An opt-out via unsubscribe link updates MarketingPreference and never deletes history.',
+  },
+  {
+    id: 'MKT-CON-004',
+    title: 'A preference change always names its source (self_service/agent/import/unsubscribe_link/admin).',
+  },
   { id: 'MKT-CON-005', title: 'Consent coverage of contacted people is the H_MKT consent-coverage factor input.' },
   // MKT-MSG — templates, sends, journeys
   { id: 'MKT-MSG-001', title: 'A template moves only along TEMPLATE_TRANSITIONS; retired templates cannot be sent.' },
   { id: 'MKT-MSG-002', title: 'A WhatsApp template requires waTemplateName and dltTemplateId before approval.' },
   { id: 'MKT-MSG-003', title: 'A send requires an approved template and a channel with a configured adapter.' },
-  { id: 'MKT-MSG-004', title: 'A send with no configured channel adapter raises EX-MKT-011 rather than silently queuing.' },
-  { id: 'MKT-MSG-005', title: 'Every recipient outcome (delivered/opened/clicked/bounced/unsubscribed) is a distinct event.' },
+  {
+    id: 'MKT-MSG-004',
+    title: 'A send with no configured channel adapter raises EX-MKT-011 rather than silently queuing.',
+  },
+  {
+    id: 'MKT-MSG-005',
+    title: 'Every recipient outcome (delivered/opened/clicked/bounced/unsubscribed) is a distinct event.',
+  },
   { id: 'MKT-MSG-006', title: 'A bounce rate above 5% on a send raises EX-MKT-005.' },
   { id: 'MKT-MSG-007', title: 'An unsubscribe spike above 2% on a send raises EX-MKT-006.' },
-  { id: 'MKT-MSG-008', title: 'A journey enrols a person on its triggerKind and advances steps on delayDays and condition.' },
+  {
+    id: 'MKT-MSG-008',
+    title: 'A journey enrols a person on its triggerKind and advances steps on delayDays and condition.',
+  },
   { id: 'MKT-MSG-009', title: 'A journey run overdue on nextAt by 2 days raises EX-MKT-015.' },
   { id: 'MKT-MSG-010', title: 'Every outbound send carries the X-Purpose: marketing header.' },
   // MKT-CAP — forms, capture, attribution, scoring
   { id: 'MKT-CAP-001', title: 'A public form submission is accepted only against an active publicToken.' },
-  { id: 'MKT-CAP-002', title: 'A converted submission creates or finds a Person via findOrCreatePerson, never a duplicate.' },
+  {
+    id: 'MKT-CAP-002',
+    title: 'A converted submission creates or finds a Person via findOrCreatePerson, never a duplicate.',
+  },
   { id: 'MKT-CAP-003', title: 'A submission unconverted for 24h raises EX-MKT-007.' },
   { id: 'MKT-CAP-004', title: 'Every touchpoint is immutable once recorded — corrections are new rows, never edits.' },
-  { id: 'MKT-CAP-005', title: 'Attribution is computed per ATTRIBUTION_MODELS and stored, never derived at render time.' },
+  {
+    id: 'MKT-CAP-005',
+    title: 'Attribution is computed per ATTRIBUTION_MODELS and stored, never derived at render time.',
+  },
   { id: 'MKT-CAP-006', title: 'A lead with no attributable touchpoint at creation raises EX-MKT-001.' },
-  { id: 'MKT-CAP-007', title: 'Lead score is the sum of active MarketingLeadScoreRule matches, with score_reasons[] naming each.' },
+  {
+    id: 'MKT-CAP-007',
+    title: 'Lead score is the sum of active MarketingLeadScoreRule matches, with score_reasons[] naming each.',
+  },
   { id: 'MKT-CAP-008', title: 'Marketing never writes Lead.ownerPartyId and never routes a lead — CRM owns that.' },
   // MKT-EVT — marketing events
   { id: 'MKT-EVT-001', title: 'A marketing event moves only along MARKETING_EVENT_TRANSITIONS.' },
@@ -1077,34 +1195,81 @@ export const MARKETING_REQUIREMENTS: MarketingRequirement[] = [
   { id: 'MKT-EVT-003', title: 'A completed event with follow-ups outstanding after 3 days raises EX-MKT-008.' },
   { id: 'MKT-EVT-004', title: 'Checking in a registrant sets checkedInAt and flips status to attended.' },
   // MKT-AST — assets, social, links, claims
-  { id: 'MKT-AST-001', title: 'An asset moves only along ASSET_TRANSITIONS; only approved assets may be used in a send or post.' },
+  {
+    id: 'MKT-AST-001',
+    title: 'An asset moves only along ASSET_TRANSITIONS; only approved assets may be used in a send or post.',
+  },
   { id: 'MKT-AST-002', title: 'An asset used past its usageRights expiresAt raises EX-MKT-012.' },
   { id: 'MKT-AST-003', title: 'A social post publishes only assetIds that resolve to approved assets.' },
   { id: 'MKT-AST-004', title: 'A short link records every click and rolls it up onto clickCount.' },
-  { id: 'MKT-AST-005', title: 'A claim moves only along CLAIM_TRANSITIONS; only approved claims may be printed or published.' },
+  {
+    id: 'MKT-AST-005',
+    title: 'A claim moves only along CLAIM_TRANSITIONS; only approved claims may be printed or published.',
+  },
   // MKT-REF — referrals
   { id: 'MKT-REF-001', title: 'A referral moves only along REFERRAL_TRANSITIONS.' },
   { id: 'MKT-REF-002', title: 'A referral code is unique per tenant and resolves to exactly one program.' },
   { id: 'MKT-REF-003', title: 'A reward pending beyond 30 days raises EX-MKT-013.' },
-  { id: 'MKT-REF-004', title: 'Rewarding a referral references a Finance transaction; marketing never posts money itself.' },
+  {
+    id: 'MKT-REF-004',
+    title: 'Rewarding a referral references a Finance transaction; marketing never posts money itself.',
+  },
   // MKT-BUD — budget, spend, vendors
-  { id: 'MKT-BUD-001', title: 'A budget period has planned/committed/spent reconciled against linked MarketingSpend rows.' },
+  {
+    id: 'MKT-BUD-001',
+    title: 'A budget period has planned/committed/spent reconciled against linked MarketingSpend rows.',
+  },
   { id: 'MKT-BUD-002', title: 'Spend exceeding the planned budget for a campaign raises EX-MKT-002.' },
   { id: 'MKT-BUD-003', title: 'Spend recorded against a budget period with no approved budget raises EX-MKT-014.' },
-  { id: 'MKT-BUD-004', title: 'A spend moves only along SPEND_TRANSITIONS; reconciliation references the books Transaction.' },
-  { id: 'MKT-BUD-005', title: 'A vendor is a specialisation of the existing Organization record, never a new party type.' },
+  {
+    id: 'MKT-BUD-004',
+    title: 'A spend moves only along SPEND_TRANSITIONS; reconciliation references the books Transaction.',
+  },
+  {
+    id: 'MKT-BUD-005',
+    title: 'A vendor is a specialisation of the existing Organization record, never a new party type.',
+  },
   // MKT-ANA — analytics / health
   { id: 'MKT-ANA-001', title: 'H_MKT is not yet measured while no campaign has ever gone live.' },
-  { id: 'MKT-ANA-002', title: 'Attributed-lead share, campaign-to-opportunity conversion and cost-per-lead trend are each falsifiable and drill to source rows.' },
-  { id: 'MKT-ANA-003', title: 'MarketingOverviewView renders KPI tiles and a funnel from the same computed figures the drill path opens.' },
-  { id: 'MKT-ANA-004', title: 'Channel performance is computed per ChannelPerformanceView from touchpoints, spend and attribution together.' },
+  {
+    id: 'MKT-ANA-002',
+    title:
+      'Attributed-lead share, campaign-to-opportunity conversion and cost-per-lead trend are each falsifiable and drill to source rows.',
+  },
+  {
+    id: 'MKT-ANA-003',
+    title: 'MarketingOverviewView renders KPI tiles and a funnel from the same computed figures the drill path opens.',
+  },
+  {
+    id: 'MKT-ANA-004',
+    title:
+      'Channel performance is computed per ChannelPerformanceView from touchpoints, spend and attribution together.',
+  },
   // MKT-GOV — grants, events, AI
-  { id: 'MKT-GOV-001', title: 'Every RESOURCES entry this module adds is granted per the Role cells and no other role.' },
+  {
+    id: 'MKT-GOV-001',
+    title: 'Every RESOURCES entry this module adds is granted per the Role cells and no other role.',
+  },
   { id: 'MKT-GOV-002', title: 'Every state transition emits its kz.mkt.<entity>.<verb> canonical event.' },
-  { id: 'MKT-GOV-003', title: 'AI-MKT-007 (send approval) and AI-MKT-008 (budget approval) are PROHIBITED at every AUTHORITY_GRANT size.' },
-  { id: 'MKT-GOV-004', title: 'Marketing never approves its own campaign or budget — the self-dealing bar applies here too.' },
+  {
+    id: 'MKT-GOV-003',
+    title: 'AI-MKT-007 (send approval) and AI-MKT-008 (budget approval) are PROHIBITED at every AUTHORITY_GRANT size.',
+  },
+  {
+    id: 'MKT-GOV-004',
+    title: 'Marketing never approves its own campaign or budget — the self-dealing bar applies here too.',
+  },
   // MKT-INT — webhooks / adapters
-  { id: 'MKT-INT-001', title: 'An inbound webhook is accepted only from a recognised provider and recorded before processing.' },
-  { id: 'MKT-INT-002', title: 'A provider webhook failure is retried and never silently dropped — status and error are recorded.' },
-  { id: 'MKT-INT-003', title: 'A channel with providerAdapter null is treated as not configured, never as a silent no-op send.' },
+  {
+    id: 'MKT-INT-001',
+    title: 'An inbound webhook is accepted only from a recognised provider and recorded before processing.',
+  },
+  {
+    id: 'MKT-INT-002',
+    title: 'A provider webhook failure is retried and never silently dropped — status and error are recorded.',
+  },
+  {
+    id: 'MKT-INT-003',
+    title: 'A channel with providerAdapter null is treated as not configured, never as a silent no-op send.',
+  },
 ];

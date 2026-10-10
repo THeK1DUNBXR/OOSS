@@ -129,7 +129,10 @@ describe('CMP-GST-001: a nil/exempt line reports as such and drops out of taxabl
       // ₹4,000 shows up in the nil/exempt row instead.
       expect(round2(after3b.outwardSupplies.taxableValue - before3b.outwardSupplies.taxableValue)).toBe(10_000);
       expect(
-        round2(after3b.otherOutwardSupplies.nilRatedAndExempt.taxableValue - before3b.otherOutwardSupplies.nilRatedAndExempt.taxableValue),
+        round2(
+          after3b.otherOutwardSupplies.nilRatedAndExempt.taxableValue -
+            before3b.otherOutwardSupplies.nilRatedAndExempt.taxableValue,
+        ),
       ).toBe(4000);
       expect(round2(after1.totals.taxableValue - before1.totals.taxableValue)).toBe(10_000);
       expect(round2(after1.nil.exempted - before1.nil.exempted)).toBe(4000);
@@ -156,7 +159,10 @@ describe('CMP-GST-001: a nil/exempt line reports as such and drops out of taxabl
       expect(num(line.taxAmount)).toBe(0);
       expect(num(afterClassify.grandTotal)).toBe(2000);
 
-      const backToTaxable = await classifyInvoiceLine(draft.id, lineId, { supplyType: 'taxable', gstRate: 12 } as never);
+      const backToTaxable = await classifyInvoiceLine(draft.id, lineId, {
+        supplyType: 'taxable',
+        gstRate: 12,
+      } as never);
       const line2 = backToTaxable.lines.find((l) => l.id === lineId)!;
       expect(num(line2.gstRate)).toBe(12);
       expect(num(line2.taxAmount)).toBe(240);
@@ -179,7 +185,15 @@ describe('CMP-GST-001: a nil/exempt line reports as such and drops out of taxabl
         const invoice = await createInvoice({
           personId: await aPerson(),
           placeOfSupply: '33',
-          lines: [{ description: 'Composition seller', unitPrice: 1000, gstRate: 0, hsnSac: '998314', supplyType: 'exempt' as never }],
+          lines: [
+            {
+              description: 'Composition seller',
+              unitPrice: 1000,
+              gstRate: 0,
+              hsnSac: '998314',
+              supplyType: 'exempt' as never,
+            },
+          ],
         });
         expect(invoice.invoiceType).toBe('bill_of_supply');
       });
@@ -263,7 +277,9 @@ describe('CMP-GST-003: a debit note has its own gapless series and a mandatory r
       const notes = await listDebitNotes(invoice.id);
       expect(notes).toHaveLength(2);
 
-      const rejected = await expectReject(() => issueDebitNote(invoice.id, { amount: 100, reasonCode: 'bogus' as never }));
+      const rejected = await expectReject(() =>
+        issueDebitNote(invoice.id, { amount: 100, reasonCode: 'bogus' as never }),
+      );
       expect(rejected.code).toBe('BAD_REQUEST');
     });
   });
@@ -275,7 +291,12 @@ describe('CMP-GST-003: a debit note has its own gapless series and a mandatory r
         placeOfSupply: '33',
         lines: [{ description: 'Over-billed', unitPrice: 5000, gstRate: 18, hsnSac: '998314' }],
       });
-      const note = await issueCreditNote(invoice.id, 400, 'Price agreed lower after issue', 'post_supply_price_revision');
+      const note = await issueCreditNote(
+        invoice.id,
+        400,
+        'Price agreed lower after issue',
+        'post_supply_price_revision',
+      );
       expect(note.recordCode).toMatch(/\/C\//);
 
       const reason = await setCreditNoteReason(note.id, 'other');
@@ -380,13 +401,28 @@ describe('GSTR-2B reconciliation matches on vendor GSTIN and bill number', () =>
 
     await asUser('finance@kaizen.co.in', async () => {
       const matchedBill = await recordVendorBill({
-        vendorName: 'Matched Co', vendorGstin: gstin, billNumber: 'INV-1', billDate, subtotal: 1000, taxAmount: 180,
+        vendorName: 'Matched Co',
+        vendorGstin: gstin,
+        billNumber: 'INV-1',
+        billDate,
+        subtotal: 1000,
+        taxAmount: 180,
       });
       const mismatchBill = await recordVendorBill({
-        vendorName: 'Mismatch Co', vendorGstin: gstin, billNumber: 'INV-2', billDate, subtotal: 1000, taxAmount: 100,
+        vendorName: 'Mismatch Co',
+        vendorGstin: gstin,
+        billNumber: 'INV-2',
+        billDate,
+        subtotal: 1000,
+        taxAmount: 100,
       });
       const unmatchedBill = await recordVendorBill({
-        vendorName: 'Missing in 2B', vendorGstin: gstin, billNumber: 'INV-3', billDate, subtotal: 500, taxAmount: 90,
+        vendorName: 'Missing in 2B',
+        vendorGstin: gstin,
+        billNumber: 'INV-3',
+        billDate,
+        subtotal: 500,
+        taxAmount: 90,
       });
       void unmatchedBill;
 

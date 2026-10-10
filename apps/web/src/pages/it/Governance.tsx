@@ -15,7 +15,19 @@ import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, dateTime, relative, titleCase } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
-import { Card, EmptyState, ErrorBox, Field, Loading, Metric, Modal, PageHeader, RecordCode, StatusChip, Tabs } from '../../components/ui.js';
+import {
+  Card,
+  EmptyState,
+  ErrorBox,
+  Field,
+  Loading,
+  Metric,
+  Modal,
+  PageHeader,
+  RecordCode,
+  StatusChip,
+  Tabs,
+} from '../../components/ui.js';
 import { NewButton, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
 
 function rowsOf<T>(data: unknown): T[] {
@@ -33,7 +45,11 @@ const BAND_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'> 
 
 function ErrorLine({ error }: { error: string | null }) {
   if (!error) return null;
-  return <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>;
+  return (
+    <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+      {error}
+    </p>
+  );
 }
 
 // ===========================================================================
@@ -82,12 +98,18 @@ export function ItRisks() {
   const [status, setStatus] = useState<string>('');
   const [creating, setCreating] = useState(false);
 
-  const summary = useQuery({ queryKey: ['it-risks-summary'], queryFn: () => api.get<RisksSummary>('/it/risks/summary') });
+  const summary = useQuery({
+    queryKey: ['it-risks-summary'],
+    queryFn: () => api.get<RisksSummary>('/it/risks/summary'),
+  });
   const params = new URLSearchParams();
   if (band) params.set('band', band);
   if (status) params.set('status', status);
   const qs = params.toString();
-  const risks = useQuery({ queryKey: ['it-risks', band, status], queryFn: () => api.get<RiskRow[]>(`/it/risks${qs ? `?${qs}` : ''}`) });
+  const risks = useQuery({
+    queryKey: ['it-risks', band, status],
+    queryFn: () => api.get<RiskRow[]>(`/it/risks${qs ? `?${qs}` : ''}`),
+  });
 
   if (risks.error) return <ErrorBox error={risks.error} />;
   const s = summary.data;
@@ -111,42 +133,65 @@ export function ItRisks() {
       />
 
       {s?.notYetMeasured ? (
-        <Card className="mb-5"><EmptyState message="No risks on file yet." hint="Add the first one to start the register." /></Card>
+        <Card className="mb-5">
+          <EmptyState message="No risks on file yet." hint="Add the first one to start the register." />
+        </Card>
       ) : (
         s && (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Metric label="Total" value={s.total} noActionReason="Every risk on file." />
-            <Metric label="Open or treating" value={s.open} tone={s.open > 0 ? 'warn' : 'good'} noActionReason="Not yet accepted or closed." />
-            <Metric label="Reviews overdue" value={s.reviewsOverdue} tone={s.reviewsOverdue > 0 ? 'bad' : 'good'} noActionReason="Past their review date, still open or treating." />
-            <Metric label="Critical band" value={s.byBand.critical ?? 0} tone={(s.byBand.critical ?? 0) > 0 ? 'bad' : 'good'} noActionReason="Residual if scored, else inherent." />
+            <Metric
+              label="Open or treating"
+              value={s.open}
+              tone={s.open > 0 ? 'warn' : 'good'}
+              noActionReason="Not yet accepted or closed."
+            />
+            <Metric
+              label="Reviews overdue"
+              value={s.reviewsOverdue}
+              tone={s.reviewsOverdue > 0 ? 'bad' : 'good'}
+              noActionReason="Past their review date, still open or treating."
+            />
+            <Metric
+              label="Critical band"
+              value={s.byBand.critical ?? 0}
+              tone={(s.byBand.critical ?? 0) > 0 ? 'bad' : 'good'}
+              noActionReason="Residual if scored, else inherent."
+            />
           </div>
         )
       )}
 
       <Card title="Heatmap" className="mb-5">
-        <p className="mb-2 text-2xs text-ink-500">Inherent likelihood (rows) x impact (columns). A cell's colour is the band of a risk scored there.</p>
+        <p className="mb-2 text-2xs text-ink-500">
+          Inherent likelihood (rows) x impact (columns). A cell's colour is the band of a risk scored there.
+        </p>
         <div className="grid grid-cols-6 gap-1 text-2xs">
           <div />
           {SCALE.map((i) => (
-            <div key={`h-${i}`} className="text-center text-ink-500">{i}</div>
+            <div key={`h-${i}`} className="text-center text-ink-500">
+              {i}
+            </div>
           ))}
-          {SCALE.slice().reverse().map((l) => (
-            <Fragment key={`row-${l}`}>
-              <div className="flex items-center text-ink-500">{l}</div>
-              {SCALE.map((i) => {
-                const b = cellBand(l, i);
-                return (
-                  <div
-                    key={`${l}-${i}`}
-                    className={`flex h-8 items-center justify-center rounded border border-ink-800 ${b ? `bg-band-${b === 'low' ? 'strong' : b === 'medium' ? 'watch' : b === 'high' ? 'watch' : 'critical'}/20` : 'bg-ink-900'}`}
-                    title={`Likelihood ${l} x impact ${i} = ${l * i}${b ? ` — ${b}` : ''}`}
-                  >
-                    {b ? <StatusChip status={b} tone={BAND_TONE[b]} /> : <span className="text-ink-700">·</span>}
-                  </div>
-                );
-              })}
-            </Fragment>
-          ))}
+          {SCALE.slice()
+            .reverse()
+            .map((l) => (
+              <Fragment key={`row-${l}`}>
+                <div className="flex items-center text-ink-500">{l}</div>
+                {SCALE.map((i) => {
+                  const b = cellBand(l, i);
+                  return (
+                    <div
+                      key={`${l}-${i}`}
+                      className={`flex h-8 items-center justify-center rounded border border-ink-800 ${b ? `bg-band-${b === 'low' ? 'strong' : b === 'medium' ? 'watch' : b === 'high' ? 'watch' : 'critical'}/20` : 'bg-ink-900'}`}
+                      title={`Likelihood ${l} x impact ${i} = ${l * i}${b ? ` — ${b}` : ''}`}
+                    >
+                      {b ? <StatusChip status={b} tone={BAND_TONE[b]} /> : <span className="text-ink-700">·</span>}
+                    </div>
+                  );
+                })}
+              </Fragment>
+            ))}
         </div>
       </Card>
 
@@ -154,13 +199,17 @@ export function ItRisks() {
         <select className="input max-w-40" value={band} onChange={(e) => setBand(e.target.value)}>
           <option value="">Every band</option>
           {['low', 'medium', 'high', 'critical'].map((b) => (
-            <option key={b} value={b}>{titleCase(b)}</option>
+            <option key={b} value={b}>
+              {titleCase(b)}
+            </option>
           ))}
         </select>
         <select className="input max-w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">Every status</option>
           {['open', 'treating', 'accepted', 'closed'].map((st) => (
-            <option key={st} value={st}>{titleCase(st)}</option>
+            <option key={st} value={st}>
+              {titleCase(st)}
+            </option>
           ))}
         </select>
       </div>
@@ -187,14 +236,28 @@ export function ItRisks() {
                 {rows.map((r) => (
                   <tr key={r.id} className="border-b border-ink-850/60">
                     <td className="px-4 py-2">
-                      <Link to={`/it/risks/${r.id}`} className="font-medium text-ink-100 hover:text-accent">{r.title}</Link>
-                      <div className="text-2xs text-ink-500"><RecordCode code={r.recordCode} /></div>
+                      <Link to={`/it/risks/${r.id}`} className="font-medium text-ink-100 hover:text-accent">
+                        {r.title}
+                      </Link>
+                      <div className="text-2xs text-ink-500">
+                        <RecordCode code={r.recordCode} />
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-ink-300">{titleCase(r.category)}</td>
-                    <td className="px-4 py-2"><StatusChip status={r.bandResidual ?? r.bandInherent} tone={BAND_TONE[r.bandResidual ?? r.bandInherent]} /></td>
+                    <td className="px-4 py-2">
+                      <StatusChip
+                        status={r.bandResidual ?? r.bandInherent}
+                        tone={BAND_TONE[r.bandResidual ?? r.bandInherent]}
+                      />
+                    </td>
                     <td className="px-4 py-2 text-ink-300">{titleCase(r.treatment)}</td>
                     <td className="px-4 py-2 text-ink-300">{r.reviewDueAt ? date(r.reviewDueAt) : '—'}</td>
-                    <td className="px-4 py-2"><StatusChip status={r.status} tone={r.status === 'closed' ? 'neutral' : r.status === 'accepted' ? 'good' : 'warn'} /></td>
+                    <td className="px-4 py-2">
+                      <StatusChip
+                        status={r.status}
+                        tone={r.status === 'closed' ? 'neutral' : r.status === 'accepted' ? 'good' : 'warn'}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -247,8 +310,14 @@ function NewRiskModal({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       footer={
         <>
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" disabled={!title.trim() || !category || !ownerPartyId.trim() || mutation.isPending} onClick={() => mutation.mutate()}>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            disabled={!title.trim() || !category || !ownerPartyId.trim() || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
             {mutation.isPending ? 'Saving…' : 'Create'}
           </button>
         </>
@@ -257,13 +326,41 @@ function NewRiskModal({ onClose }: { onClose: () => void }) {
       <ErrorLine error={error} />
       <div className="flex flex-col gap-3">
         <TextInput label="Title" value={title} onChange={setTitle} required autoFocus />
-        <SelectInput label="Category" value={category} onChange={setCategory} required placeholder="Choose a category" options={CATEGORIES.map((c) => ({ value: c, label: titleCase(c) }))} />
-        <TextInput label="Owner (party id)" value={ownerPartyId} onChange={setOwnerPartyId} required hint="Who is accountable for this risk." />
+        <SelectInput
+          label="Category"
+          value={category}
+          onChange={setCategory}
+          required
+          placeholder="Choose a category"
+          options={CATEGORIES.map((c) => ({ value: c, label: titleCase(c) }))}
+        />
+        <TextInput
+          label="Owner (party id)"
+          value={ownerPartyId}
+          onChange={setOwnerPartyId}
+          required
+          hint="Who is accountable for this risk."
+        />
         <div className="grid grid-cols-2 gap-3">
-          <SelectInput label="Likelihood (1-5)" value={String(likelihood)} onChange={(v) => setLikelihood(Number(v))} options={SCALE.map((n) => ({ value: String(n), label: String(n) }))} />
-          <SelectInput label="Impact (1-5)" value={String(impact)} onChange={(v) => setImpact(Number(v))} options={SCALE.map((n) => ({ value: String(n), label: String(n) }))} />
+          <SelectInput
+            label="Likelihood (1-5)"
+            value={String(likelihood)}
+            onChange={(v) => setLikelihood(Number(v))}
+            options={SCALE.map((n) => ({ value: String(n), label: String(n) }))}
+          />
+          <SelectInput
+            label="Impact (1-5)"
+            value={String(impact)}
+            onChange={(v) => setImpact(Number(v))}
+            options={SCALE.map((n) => ({ value: String(n), label: String(n) }))}
+          />
         </div>
-        <SelectInput label="Treatment" value={treatment} onChange={setTreatment} options={TREATMENTS.map((t) => ({ value: t, label: titleCase(t) }))} />
+        <SelectInput
+          label="Treatment"
+          value={treatment}
+          onChange={setTreatment}
+          options={TREATMENTS.map((t) => ({ value: t, label: titleCase(t) }))}
+        />
         <TextArea label="Treatment plan" value={treatmentPlan} onChange={setTreatmentPlan} rows={2} />
         <TextInput label="Review due" type="date" value={reviewDueAt} onChange={setReviewDueAt} />
       </div>
@@ -277,7 +374,11 @@ export function ItRiskDetail() {
   const { can } = useSession();
   const [scoring, setScoring] = useState(false);
 
-  const risk = useQuery({ queryKey: ['it-risk', id], queryFn: () => api.get<RiskRow>(`/it/risks/${id}`), enabled: Boolean(id) });
+  const risk = useQuery({
+    queryKey: ['it-risk', id],
+    queryFn: () => api.get<RiskRow>(`/it/risks/${id}`),
+    enabled: Boolean(id),
+  });
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['it-risk', id] });
     qc.invalidateQueries({ queryKey: ['it-risks'] });
@@ -297,17 +398,32 @@ export function ItRiskDetail() {
     <div>
       <PageHeader
         title={r.title}
-        subtitle={<><RecordCode code={r.recordCode} /> · {titleCase(r.category)}</>}
-        actions={<StatusChip status={r.status} tone={r.status === 'closed' ? 'neutral' : r.status === 'accepted' ? 'good' : 'warn'} />}
+        subtitle={
+          <>
+            <RecordCode code={r.recordCode} /> · {titleCase(r.category)}
+          </>
+        }
+        actions={
+          <StatusChip
+            status={r.status}
+            tone={r.status === 'closed' ? 'neutral' : r.status === 'accepted' ? 'good' : 'warn'}
+          />
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="Scoring" className="lg:col-span-2">
           <dl className="grid gap-x-6 sm:grid-cols-2">
-            <Field label="Inherent"><StatusChip status={r.bandInherent} tone={BAND_TONE[r.bandInherent]} /> — likelihood {r.likelihoodInherent} x impact {r.impactInherent} = {r.scoreInherent}</Field>
+            <Field label="Inherent">
+              <StatusChip status={r.bandInherent} tone={BAND_TONE[r.bandInherent]} /> — likelihood{' '}
+              {r.likelihoodInherent} x impact {r.impactInherent} = {r.scoreInherent}
+            </Field>
             <Field label="Residual">
               {r.bandResidual ? (
-                <><StatusChip status={r.bandResidual} tone={BAND_TONE[r.bandResidual]} /> — likelihood {r.likelihoodResidual} x impact {r.impactResidual} = {r.scoreResidual}</>
+                <>
+                  <StatusChip status={r.bandResidual} tone={BAND_TONE[r.bandResidual]} /> — likelihood{' '}
+                  {r.likelihoodResidual} x impact {r.impactResidual} = {r.scoreResidual}
+                </>
               ) : (
                 'Not yet scored'
               )}
@@ -322,7 +438,9 @@ export function ItRiskDetail() {
             </div>
           )}
           {canEdit && (
-            <button className="btn-ghost btn-sm mt-3" onClick={() => setScoring(true)}>Record residual score</button>
+            <button className="btn-ghost btn-sm mt-3" onClick={() => setScoring(true)}>
+              Record residual score
+            </button>
           )}
         </Card>
 
@@ -334,7 +452,12 @@ export function ItRiskDetail() {
           ) : (
             <div className="flex flex-col gap-2">
               {r.availableTransitions.map((event) => (
-                <button key={event} className="btn-sm w-full" disabled={transition.isPending} onClick={() => transition.mutate(event)}>
+                <button
+                  key={event}
+                  className="btn-sm w-full"
+                  disabled={transition.isPending}
+                  onClick={() => transition.mutate(event)}
+                >
                   {titleCase(event.replace('_', ' '))}
                 </button>
               ))}
@@ -344,7 +467,14 @@ export function ItRiskDetail() {
       </div>
 
       {scoring && (
-        <ResidualScoreModal riskId={r.id} onClose={() => setScoring(false)} onDone={() => { invalidate(); setScoring(false); }} />
+        <ResidualScoreModal
+          riskId={r.id}
+          onClose={() => setScoring(false)}
+          onDone={() => {
+            invalidate();
+            setScoring(false);
+          }}
+        />
       )}
     </div>
   );
@@ -362,13 +492,39 @@ function ResidualScoreModal({ riskId, onClose, onDone }: { riskId: string; onClo
   });
 
   return (
-    <Modal open title="Record residual score" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Saving…' : 'Save'}</button></>}>
+    <Modal
+      open
+      title="Record residual score"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+            {mutation.isPending ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
       <ErrorLine error={error} />
       <div className="grid grid-cols-2 gap-3">
-        <SelectInput label="Residual likelihood" value={String(likelihood)} onChange={(v) => setLikelihood(Number(v))} options={SCALE.map((n) => ({ value: String(n), label: String(n) }))} />
-        <SelectInput label="Residual impact" value={String(impact)} onChange={(v) => setImpact(Number(v))} options={SCALE.map((n) => ({ value: String(n), label: String(n) }))} />
+        <SelectInput
+          label="Residual likelihood"
+          value={String(likelihood)}
+          onChange={(v) => setLikelihood(Number(v))}
+          options={SCALE.map((n) => ({ value: String(n), label: String(n) }))}
+        />
+        <SelectInput
+          label="Residual impact"
+          value={String(impact)}
+          onChange={(v) => setImpact(Number(v))}
+          options={SCALE.map((n) => ({ value: String(n), label: String(n) }))}
+        />
       </div>
-      <p className="mt-2 text-2xs text-ink-500">Scored against the risk banding table in force today — never a fixed constant.</p>
+      <p className="mt-2 text-2xs text-ink-500">
+        Scored against the risk banding table in force today — never a fixed constant.
+      </p>
     </Modal>
   );
 }
@@ -414,9 +570,18 @@ export function ItPolicies() {
   const [status, setStatus] = useState<string>('');
   const [creating, setCreating] = useState(false);
 
-  const summary = useQuery({ queryKey: ['it-policies-summary'], queryFn: () => api.get<PoliciesSummary>('/it/policies/summary') });
-  const policies = useQuery({ queryKey: ['it-policies', status], queryFn: () => api.get<PolicyRow[]>(`/it/policies${status ? `?status=${status}` : ''}`) });
-  const awaiting = useQuery({ queryKey: ['it-policies-awaiting'], queryFn: () => api.get<PolicyRow[]>('/it/policies/awaiting') });
+  const summary = useQuery({
+    queryKey: ['it-policies-summary'],
+    queryFn: () => api.get<PoliciesSummary>('/it/policies/summary'),
+  });
+  const policies = useQuery({
+    queryKey: ['it-policies', status],
+    queryFn: () => api.get<PolicyRow[]>(`/it/policies${status ? `?status=${status}` : ''}`),
+  });
+  const awaiting = useQuery({
+    queryKey: ['it-policies-awaiting'],
+    queryFn: () => api.get<PolicyRow[]>('/it/policies/awaiting'),
+  });
 
   if (policies.error) return <ErrorBox error={policies.error} />;
   const s = summary.data;
@@ -435,7 +600,10 @@ export function ItPolicies() {
           <ul className="flex flex-col gap-1.5">
             {awaiting.data.map((p) => (
               <li key={p.id} className="text-xs text-ink-200">
-                <Link to={`/it/policies/${p.id}`} className="text-accent hover:underline">{p.title}</Link> (v{p.version})
+                <Link to={`/it/policies/${p.id}`} className="text-accent hover:underline">
+                  {p.title}
+                </Link>{' '}
+                (v{p.version})
               </li>
             ))}
           </ul>
@@ -443,15 +611,23 @@ export function ItPolicies() {
       )}
 
       {s?.notYetMeasured ? (
-        <Card className="mb-5"><EmptyState message="No policies on file yet." /></Card>
+        <Card className="mb-5">
+          <EmptyState message="No policies on file yet." />
+        </Card>
       ) : (
         s && (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Metric label="Published" value={s.published} noActionReason="Current policies staff may need to acknowledge." />
+            <Metric
+              label="Published"
+              value={s.published}
+              noActionReason="Current policies staff may need to acknowledge."
+            />
             <Metric label="Drafts" value={s.drafts} noActionReason="Not yet published." />
             <Metric
               label="Acknowledgement rate"
-              value={s.acknowledgementRate === null ? 'Not yet measured' : `${Math.round(s.acknowledgementRate * 100)}%`}
+              value={
+                s.acknowledgementRate === null ? 'Not yet measured' : `${Math.round(s.acknowledgementRate * 100)}%`
+              }
               tone={s.acknowledgementRate === null ? 'neutral' : s.acknowledgementRate >= 0.9 ? 'good' : 'warn'}
               noActionReason="Across every published policy's target audience."
             />
@@ -492,13 +668,19 @@ export function ItPolicies() {
                 {rows.map((p) => (
                   <tr key={p.id} className="border-b border-ink-850/60">
                     <td className="px-4 py-2">
-                      <Link to={`/it/policies/${p.id}`} className="font-medium text-ink-100 hover:text-accent">{p.title}</Link>
-                      <div className="text-2xs text-ink-500"><RecordCode code={p.recordCode} /></div>
+                      <Link to={`/it/policies/${p.id}`} className="font-medium text-ink-100 hover:text-accent">
+                        {p.title}
+                      </Link>
+                      <div className="text-2xs text-ink-500">
+                        <RecordCode code={p.recordCode} />
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-ink-300">{p.code}</td>
                     <td className="px-4 py-2 text-ink-300">v{p.version}</td>
                     <td className="px-4 py-2 text-ink-300">{p.publishedAt ? date(p.publishedAt) : '—'}</td>
-                    <td className="px-4 py-2"><StatusChip status={p.status} tone={POLICY_TONE[p.status]} /></td>
+                    <td className="px-4 py-2">
+                      <StatusChip status={p.status} tone={POLICY_TONE[p.status]} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -521,7 +703,13 @@ function NewPolicyModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () => api.post('/it/policies', { code, title, body, reacknowledgeMonths: reacknowledgeMonths ? Number(reacknowledgeMonths) : undefined }),
+    mutationFn: () =>
+      api.post('/it/policies', {
+        code,
+        title,
+        body,
+        reacknowledgeMonths: reacknowledgeMonths ? Number(reacknowledgeMonths) : undefined,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['it-policies'] });
       qc.invalidateQueries({ queryKey: ['it-policies-summary'] });
@@ -535,14 +723,32 @@ function NewPolicyModal({ onClose }: { onClose: () => void }) {
       open
       title="New policy draft"
       onClose={onClose}
-      footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={!code.trim() || !title.trim() || !body.trim() || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Saving…' : 'Create draft'}</button></>}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            disabled={!code.trim() || !title.trim() || !body.trim() || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? 'Saving…' : 'Create draft'}
+          </button>
+        </>
+      }
     >
       <ErrorLine error={error} />
       <div className="flex flex-col gap-3">
         <TextInput label="Code" value={code} onChange={setCode} required autoFocus hint="e.g. IT-POL-REMOTE-ACCESS" />
         <TextInput label="Title" value={title} onChange={setTitle} required />
         <TextArea label="Body" value={body} onChange={setBody} rows={8} required />
-        <TextInput label="Re-acknowledge every (months)" type="number" value={reacknowledgeMonths} onChange={setReacknowledgeMonths} />
+        <TextInput
+          label="Re-acknowledge every (months)"
+          type="number"
+          value={reacknowledgeMonths}
+          onChange={setReacknowledgeMonths}
+        />
       </div>
     </Modal>
   );
@@ -552,13 +758,22 @@ export function ItPolicyDetail() {
   const { id = '' } = useParams();
   const qc = useQueryClient();
   const { can } = useSession();
-  const [gateResult, setGateResult] = useState<{ applied: boolean; reason: string; approvalStepId: string | null } | null>(null);
+  const [gateResult, setGateResult] = useState<{
+    applied: boolean;
+    reason: string;
+    approvalStepId: string | null;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const policy = useQuery({ queryKey: ['it-policy', id], queryFn: () => api.get<PolicyRow>(`/it/policies/${id}`), enabled: Boolean(id) });
+  const policy = useQuery({
+    queryKey: ['it-policy', id],
+    queryFn: () => api.get<PolicyRow>(`/it/policies/${id}`),
+    enabled: Boolean(id),
+  });
   const acks = useQuery({
     queryKey: ['it-policy-acks', id],
-    queryFn: () => api.get<Array<{ id: string; partyId: string; acknowledgedAt: string }>>(`/it/policies/${id}/acknowledgements`),
+    queryFn: () =>
+      api.get<Array<{ id: string; partyId: string; acknowledgedAt: string }>>(`/it/policies/${id}/acknowledgements`),
     enabled: Boolean(id) && can('it_policies:E'),
   });
 
@@ -570,7 +785,8 @@ export function ItPolicyDetail() {
   };
 
   const publish = useMutation({
-    mutationFn: () => api.post<{ applied: boolean; reason: string; approvalStepId: string | null }>(`/it/policies/${id}/publish`, {}),
+    mutationFn: () =>
+      api.post<{ applied: boolean; reason: string; approvalStepId: string | null }>(`/it/policies/${id}/publish`, {}),
     onSuccess: (res) => {
       setError(null);
       if (!res.applied) setGateResult(res);
@@ -586,8 +802,16 @@ export function ItPolicyDetail() {
     },
     onError: (e: unknown) => setError(messageOf(e)),
   });
-  const retire = useMutation({ mutationFn: () => api.post(`/it/policies/${id}/retire`, {}), onSuccess: invalidate, onError: (e: unknown) => setError(messageOf(e)) });
-  const acknowledge = useMutation({ mutationFn: () => api.post(`/it/policies/${id}/acknowledge`, {}), onSuccess: invalidate, onError: (e: unknown) => setError(messageOf(e)) });
+  const retire = useMutation({
+    mutationFn: () => api.post(`/it/policies/${id}/retire`, {}),
+    onSuccess: invalidate,
+    onError: (e: unknown) => setError(messageOf(e)),
+  });
+  const acknowledge = useMutation({
+    mutationFn: () => api.post(`/it/policies/${id}/acknowledge`, {}),
+    onSuccess: invalidate,
+    onError: (e: unknown) => setError(messageOf(e)),
+  });
 
   if (policy.error) return <ErrorBox error={policy.error} />;
   if (policy.isLoading || !policy.data) return <Loading label="Loading the policy" />;
@@ -599,7 +823,11 @@ export function ItPolicyDetail() {
     <div>
       <PageHeader
         title={p.title}
-        subtitle={<><RecordCode code={p.recordCode} /> · {p.code} · v{p.version}</>}
+        subtitle={
+          <>
+            <RecordCode code={p.recordCode} /> · {p.code} · v{p.version}
+          </>
+        }
         actions={<StatusChip status={p.status} tone={POLICY_TONE[p.status]} />}
       />
 
@@ -614,12 +842,18 @@ export function ItPolicyDetail() {
           <Card title="Actions">
             <div className="flex flex-col gap-2">
               {p.status === 'draft' && canApprove && (
-                <button className="btn-primary btn-sm w-full" disabled={publish.isPending} onClick={() => publish.mutate()}>
+                <button
+                  className="btn-primary btn-sm w-full"
+                  disabled={publish.isPending}
+                  onClick={() => publish.mutate()}
+                >
                   {publish.isPending ? 'Publishing…' : 'Publish'}
                 </button>
               )}
               {p.status === 'draft' && !canApprove && (
-                <p className="text-2xs italic text-ink-500">Publishing needs `it_policies:approve` — the drafter never publishes their own draft.</p>
+                <p className="text-2xs italic text-ink-500">
+                  Publishing needs `it_policies:approve` — the drafter never publishes their own draft.
+                </p>
               )}
               {p.status === 'published' && canEdit && (
                 <button className="btn-sm w-full" onClick={() => newVersion.mutate()} disabled={newVersion.isPending}>
@@ -627,10 +861,16 @@ export function ItPolicyDetail() {
                 </button>
               )}
               {(p.status === 'draft' || p.status === 'published') && canEdit && (
-                <button className="btn-ghost btn-sm w-full" onClick={() => retire.mutate()} disabled={retire.isPending}>Retire</button>
+                <button className="btn-ghost btn-sm w-full" onClick={() => retire.mutate()} disabled={retire.isPending}>
+                  Retire
+                </button>
               )}
               {p.status === 'published' && p.acknowledgedByMe === false && (
-                <button className="btn-primary btn-sm w-full" onClick={() => acknowledge.mutate()} disabled={acknowledge.isPending}>
+                <button
+                  className="btn-primary btn-sm w-full"
+                  onClick={() => acknowledge.mutate()}
+                  disabled={acknowledge.isPending}
+                >
                   {acknowledge.isPending ? 'Recording…' : 'I have read and acknowledge this'}
                 </button>
               )}
@@ -642,8 +882,12 @@ export function ItPolicyDetail() {
 
           <Card title="Details">
             <dl>
-              <Field label="Applies to roles">{p.appliesToRoleSlugs.length ? p.appliesToRoleSlugs.join(', ') : 'Everyone'}</Field>
-              <Field label="Re-acknowledge every">{p.reacknowledgeMonths ? `${p.reacknowledgeMonths} months` : 'Once per version'}</Field>
+              <Field label="Applies to roles">
+                {p.appliesToRoleSlugs.length ? p.appliesToRoleSlugs.join(', ') : 'Everyone'}
+              </Field>
+              <Field label="Re-acknowledge every">
+                {p.reacknowledgeMonths ? `${p.reacknowledgeMonths} months` : 'Once per version'}
+              </Field>
               <Field label="Published">{p.publishedAt ? date(p.publishedAt) : 'Not yet'}</Field>
             </dl>
           </Card>
@@ -655,7 +899,9 @@ export function ItPolicyDetail() {
               ) : (
                 <ul className="flex flex-col gap-1 text-2xs text-ink-300">
                   {acks.data.map((a) => (
-                    <li key={a.id}>{a.partyId} — {date(a.acknowledgedAt)}</li>
+                    <li key={a.id}>
+                      {a.partyId} — {date(a.acknowledgedAt)}
+                    </li>
                   ))}
                 </ul>
               )}
@@ -711,7 +957,10 @@ export function ItControls() {
   const [creating, setCreating] = useState(false);
   const [testing, setTesting] = useState<ControlRow | null>(null);
 
-  const summary = useQuery({ queryKey: ['it-controls-summary'], queryFn: () => api.get<ControlsSummary>('/it/controls/summary') });
+  const summary = useQuery({
+    queryKey: ['it-controls-summary'],
+    queryFn: () => api.get<ControlsSummary>('/it/controls/summary'),
+  });
   const controls = useQuery({ queryKey: ['it-controls'], queryFn: () => api.get<ControlRow[]>('/it/controls') });
 
   if (controls.error) return <ErrorBox error={controls.error} />;
@@ -727,14 +976,26 @@ export function ItControls() {
       />
 
       {s?.notYetMeasured ? (
-        <Card className="mb-5"><EmptyState message="No controls on file yet." /></Card>
+        <Card className="mb-5">
+          <EmptyState message="No controls on file yet." />
+        </Card>
       ) : (
         s && (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Metric label="Active" value={s.active} noActionReason="Not retired." />
             <Metric label="Tested (90d)" value={s.testedInPeriod} noActionReason="Tested in the last 90 days." />
-            <Metric label="Failing" value={s.failing} tone={s.failing > 0 ? 'bad' : 'good'} noActionReason="Last result was a fail." />
-            <Metric label="Overdue" value={s.overdue} tone={s.overdue > 0 ? 'warn' : 'good'} noActionReason="Past their own frequency, or never tested." />
+            <Metric
+              label="Failing"
+              value={s.failing}
+              tone={s.failing > 0 ? 'bad' : 'good'}
+              noActionReason="Last result was a fail."
+            />
+            <Metric
+              label="Overdue"
+              value={s.overdue}
+              tone={s.overdue > 0 ? 'warn' : 'good'}
+              noActionReason="Past their own frequency, or never tested."
+            />
           </div>
         )
       )}
@@ -762,15 +1023,23 @@ export function ItControls() {
                   <tr key={c.id} className="border-b border-ink-850/60">
                     <td className="px-4 py-2">
                       <p className="font-medium text-ink-100">{c.title}</p>
-                      <div className="text-2xs text-ink-500"><RecordCode code={c.recordCode} /> · {c.code}</div>
+                      <div className="text-2xs text-ink-500">
+                        <RecordCode code={c.recordCode} /> · {c.code}
+                      </div>
                     </td>
-                    <td className="px-4 py-2 text-ink-300">{c.frameworkRefs.map((f) => `${f.framework} ${f.ref}`).join(', ') || '—'}</td>
+                    <td className="px-4 py-2 text-ink-300">
+                      {c.frameworkRefs.map((f) => `${f.framework} ${f.ref}`).join(', ') || '—'}
+                    </td>
                     <td className="px-4 py-2 text-ink-300">every {c.frequencyDays}d</td>
                     <td className="px-4 py-2 text-ink-300">{c.lastTestedAt ? date(c.lastTestedAt) : 'Never'}</td>
-                    <td className="px-4 py-2">{c.lastResult ? <StatusChip status={c.lastResult} tone={RESULT_TONE[c.lastResult]} /> : '—'}</td>
+                    <td className="px-4 py-2">
+                      {c.lastResult ? <StatusChip status={c.lastResult} tone={RESULT_TONE[c.lastResult]} /> : '—'}
+                    </td>
                     <td className="px-4 py-2">
                       {can('it_controls:E') && (
-                        <button className="btn-ghost btn-sm" onClick={() => setTesting(c)}>Record a test</button>
+                        <button className="btn-ghost btn-sm" onClick={() => setTesting(c)}>
+                          Record a test
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -815,7 +1084,25 @@ function NewControlModal({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <Modal open title="New control" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={!code.trim() || !title.trim() || !ownerPartyId.trim() || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Saving…' : 'Create'}</button></>}>
+    <Modal
+      open
+      title="New control"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            disabled={!code.trim() || !title.trim() || !ownerPartyId.trim() || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? 'Saving…' : 'Create'}
+          </button>
+        </>
+      }
+    >
       <ErrorLine error={error} />
       <div className="flex flex-col gap-3">
         <TextInput label="Code" value={code} onChange={setCode} required autoFocus hint="e.g. A.8.9" />
@@ -848,9 +1135,32 @@ function RecordTestModal({ control, onClose }: { control: ControlRow; onClose: (
   });
 
   return (
-    <Modal open title={`Record a test — ${control.title}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Saving…' : 'Record'}</button></>}>
+    <Modal
+      open
+      title={`Record a test — ${control.title}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+            {mutation.isPending ? 'Saving…' : 'Record'}
+          </button>
+        </>
+      }
+    >
       <ErrorLine error={error} />
-      <SelectInput label="Result" value={result} onChange={setResult} options={[{ value: 'pass', label: 'Pass' }, { value: 'partial', label: 'Partial' }, { value: 'fail', label: 'Fail' }]} />
+      <SelectInput
+        label="Result"
+        value={result}
+        onChange={setResult}
+        options={[
+          { value: 'pass', label: 'Pass' },
+          { value: 'partial', label: 'Partial' },
+          { value: 'fail', label: 'Fail' },
+        ]}
+      />
       <TextArea label="Notes" value={notes} onChange={setNotes} rows={3} />
     </Modal>
   );
@@ -888,12 +1198,19 @@ interface CampaignItem {
   note: string | null;
 }
 
-const CAMPAIGN_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'> = { open: 'warn', in_progress: 'accent', closed: 'good' };
+const CAMPAIGN_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'> = {
+  open: 'warn',
+  in_progress: 'accent',
+  closed: 'good',
+};
 
 export function ItAccessReviews() {
   const { can } = useSession();
   const [opening, setOpening] = useState(false);
-  const campaigns = useQuery({ queryKey: ['it-access-reviews'], queryFn: () => api.get<CampaignRow[]>('/it/access-reviews') });
+  const campaigns = useQuery({
+    queryKey: ['it-access-reviews'],
+    queryFn: () => api.get<CampaignRow[]>('/it/access-reviews'),
+  });
 
   if (campaigns.error) return <ErrorBox error={campaigns.error} />;
   const rows = campaigns.data ?? [];
@@ -903,7 +1220,9 @@ export function ItAccessReviews() {
       <PageHeader
         title="Access Reviews"
         subtitle="A campaign is a point-in-time sweep of who has access to what. Opening one materialises one item per active affiliation in scope; a reviewer may never decide their own row."
-        actions={can('it_access_reviews:C') ? <NewButton label="Open campaign" onClick={() => setOpening(true)} /> : undefined}
+        actions={
+          can('it_access_reviews:C') ? <NewButton label="Open campaign" onClick={() => setOpening(true)} /> : undefined
+        }
       />
 
       <Card bodyClassName="p-0">
@@ -927,13 +1246,24 @@ export function ItAccessReviews() {
                 {rows.map((c) => (
                   <tr key={c.id} className="border-b border-ink-850/60">
                     <td className="px-4 py-2">
-                      <Link to={`/it/access-reviews/${c.id}`} className="font-medium text-ink-100 hover:text-accent">{c.name}</Link>
-                      <div className="text-2xs text-ink-500"><RecordCode code={c.recordCode} /></div>
+                      <Link to={`/it/access-reviews/${c.id}`} className="font-medium text-ink-100 hover:text-accent">
+                        {c.name}
+                      </Link>
+                      <div className="text-2xs text-ink-500">
+                        <RecordCode code={c.recordCode} />
+                      </div>
                     </td>
-                    <td className="px-4 py-2 text-ink-300">{titleCase(c.scope)}{c.scopeRef ? ` (${c.scopeRef})` : ''}</td>
+                    <td className="px-4 py-2 text-ink-300">
+                      {titleCase(c.scope)}
+                      {c.scopeRef ? ` (${c.scopeRef})` : ''}
+                    </td>
                     <td className="px-4 py-2 text-ink-300">{date(c.dueAt)}</td>
-                    <td className="px-4 py-2 text-ink-300">{c.decidedCount ?? 0} / {c.itemCount}</td>
-                    <td className="px-4 py-2"><StatusChip status={c.status} tone={CAMPAIGN_TONE[c.status] ?? 'neutral'} /></td>
+                    <td className="px-4 py-2 text-ink-300">
+                      {c.decidedCount ?? 0} / {c.itemCount}
+                    </td>
+                    <td className="px-4 py-2">
+                      <StatusChip status={c.status} tone={CAMPAIGN_TONE[c.status] ?? 'neutral'} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -956,7 +1286,8 @@ function OpenCampaignModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () => api.post('/it/access-reviews', { name, scope, scopeRef: scope === 'all' ? undefined : scopeRef, dueAt }),
+    mutationFn: () =>
+      api.post('/it/access-reviews', { name, scope, scopeRef: scope === 'all' ? undefined : scopeRef, dueAt }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['it-access-reviews'] });
       onClose();
@@ -965,13 +1296,45 @@ function OpenCampaignModal({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <Modal open title="Open an access-review campaign" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={!name.trim() || !dueAt || (scope !== 'all' && !scopeRef.trim()) || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Opening…' : 'Open'}</button></>}>
+    <Modal
+      open
+      title="Open an access-review campaign"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            disabled={!name.trim() || !dueAt || (scope !== 'all' && !scopeRef.trim()) || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? 'Opening…' : 'Open'}
+          </button>
+        </>
+      }
+    >
       <ErrorLine error={error} />
       <div className="flex flex-col gap-3">
         <TextInput label="Name" value={name} onChange={setName} required autoFocus />
-        <SelectInput label="Scope" value={scope} onChange={setScope} options={[{ value: 'all', label: 'Everyone' }, { value: 'role', label: 'A role' }, { value: 'application', label: 'An application' }]} />
+        <SelectInput
+          label="Scope"
+          value={scope}
+          onChange={setScope}
+          options={[
+            { value: 'all', label: 'Everyone' },
+            { value: 'role', label: 'A role' },
+            { value: 'application', label: 'An application' },
+          ]}
+        />
         {scope !== 'all' && (
-          <TextInput label={scope === 'role' ? 'Role slug' : 'Application id'} value={scopeRef} onChange={setScopeRef} required />
+          <TextInput
+            label={scope === 'role' ? 'Role slug' : 'Application id'}
+            value={scopeRef}
+            onChange={setScopeRef}
+            required
+          />
         )}
         <TextInput label="Due date" type="date" value={dueAt} onChange={setDueAt} required />
       </div>
@@ -996,7 +1359,11 @@ export function ItAccessReviewDetail() {
     qc.invalidateQueries({ queryKey: ['it-access-review', id] });
     qc.invalidateQueries({ queryKey: ['it-access-reviews'] });
   };
-  const close = useMutation({ mutationFn: () => api.post(`/it/access-reviews/${id}/close`, {}), onSuccess: invalidate, onError: (e: unknown) => setError(messageOf(e)) });
+  const close = useMutation({
+    mutationFn: () => api.post(`/it/access-reviews/${id}/close`, {}),
+    onSuccess: invalidate,
+    onError: (e: unknown) => setError(messageOf(e)),
+  });
 
   if (campaign.error) return <ErrorBox error={campaign.error} />;
   if (campaign.isLoading || !campaign.data) return <Loading label="Loading the campaign" />;
@@ -1008,7 +1375,12 @@ export function ItAccessReviewDetail() {
     <div>
       <PageHeader
         title={c.name}
-        subtitle={<><RecordCode code={c.recordCode} /> · {titleCase(c.scope)}{c.scopeRef ? ` (${c.scopeRef})` : ''} · due {date(c.dueAt)}</>}
+        subtitle={
+          <>
+            <RecordCode code={c.recordCode} /> · {titleCase(c.scope)}
+            {c.scopeRef ? ` (${c.scopeRef})` : ''} · due {date(c.dueAt)}
+          </>
+        }
         actions={<StatusChip status={c.status} tone={CAMPAIGN_TONE[c.status] ?? 'neutral'} />}
       />
 
@@ -1016,7 +1388,12 @@ export function ItAccessReviewDetail() {
 
       {c.status !== 'closed' && canEdit && (
         <div className="mb-4">
-          <button className="btn-primary btn-sm" disabled={undecided > 0 || close.isPending} onClick={() => close.mutate()} title={undecided > 0 ? `${undecided} item(s) still need a decision.` : undefined}>
+          <button
+            className="btn-primary btn-sm"
+            disabled={undecided > 0 || close.isPending}
+            onClick={() => close.mutate()}
+            title={undecided > 0 ? `${undecided} item(s) still need a decision.` : undefined}
+          >
             {close.isPending ? 'Closing…' : `Close campaign${undecided > 0 ? ` (${undecided} left)` : ''}`}
           </button>
         </div>
@@ -1039,11 +1416,27 @@ export function ItAccessReviewDetail() {
                 <tr key={i.id} className="border-b border-ink-850/60">
                   <td className="px-4 py-2 text-ink-200">{i.partyName}</td>
                   <td className="px-4 py-2 text-ink-300">{i.roleSlug ?? '—'}</td>
-                  <td className="px-4 py-2">{i.decision ? <StatusChip status={i.decision} tone={i.decision === 'revoke' ? 'bad' : i.decision === 'modify' ? 'warn' : 'good'} /> : <span className="text-2xs text-ink-500">Pending</span>}</td>
-                  <td className="px-4 py-2 text-2xs text-ink-500" title={i.decidedAt ? dateTime(i.decidedAt) : undefined}>{i.decidedAt ? relative(i.decidedAt) : '—'}</td>
+                  <td className="px-4 py-2">
+                    {i.decision ? (
+                      <StatusChip
+                        status={i.decision}
+                        tone={i.decision === 'revoke' ? 'bad' : i.decision === 'modify' ? 'warn' : 'good'}
+                      />
+                    ) : (
+                      <span className="text-2xs text-ink-500">Pending</span>
+                    )}
+                  </td>
+                  <td
+                    className="px-4 py-2 text-2xs text-ink-500"
+                    title={i.decidedAt ? dateTime(i.decidedAt) : undefined}
+                  >
+                    {i.decidedAt ? relative(i.decidedAt) : '—'}
+                  </td>
                   <td className="px-4 py-2">
                     {c.status !== 'closed' && !i.decidedAt && canEdit && (
-                      <button className="btn-ghost btn-sm" onClick={() => setDeciding(i)}>Decide</button>
+                      <button className="btn-ghost btn-sm" onClick={() => setDeciding(i)}>
+                        Decide
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -1058,30 +1451,69 @@ export function ItAccessReviewDetail() {
           reviewId={c.id}
           item={deciding}
           onClose={() => setDeciding(null)}
-          onDone={() => { invalidate(); setDeciding(null); }}
+          onDone={() => {
+            invalidate();
+            setDeciding(null);
+          }}
         />
       )}
     </div>
   );
 }
 
-function DecideItemModal({ reviewId, item, onClose, onDone }: { reviewId: string; item: CampaignItem; onClose: () => void; onDone: () => void }) {
+function DecideItemModal({
+  reviewId,
+  item,
+  onClose,
+  onDone,
+}: {
+  reviewId: string;
+  item: CampaignItem;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [decision, setDecision] = useState<'keep' | 'revoke' | 'modify'>('keep');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () => api.post(`/it/access-reviews/${reviewId}/items/${item.id}/decide`, { decision, note: note || undefined }),
+    mutationFn: () =>
+      api.post(`/it/access-reviews/${reviewId}/items/${item.id}/decide`, { decision, note: note || undefined }),
     onSuccess: onDone,
     onError: (e: unknown) => setError(messageOf(e)),
   });
 
   return (
-    <Modal open title={`Decide — ${item.partyName}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Saving…' : 'Record decision'}</button></>}>
+    <Modal
+      open
+      title={`Decide — ${item.partyName}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn-primary" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+            {mutation.isPending ? 'Saving…' : 'Record decision'}
+          </button>
+        </>
+      }
+    >
       <ErrorLine error={error} />
-      <SelectInput label="Decision" value={decision} onChange={setDecision} options={[{ value: 'keep', label: 'Keep' }, { value: 'modify', label: 'Modify' }, { value: 'revoke', label: 'Revoke' }]} />
+      <SelectInput
+        label="Decision"
+        value={decision}
+        onChange={setDecision}
+        options={[
+          { value: 'keep', label: 'Keep' },
+          { value: 'modify', label: 'Modify' },
+          { value: 'revoke', label: 'Revoke' },
+        ]}
+      />
       {decision === 'revoke' && (
-        <p className="mt-1 text-2xs text-band-watch">Revoke does not change the affiliation itself — it raises an exception for the Operations Head to act on.</p>
+        <p className="mt-1 text-2xs text-band-watch">
+          Revoke does not change the affiliation itself — it raises an exception for the Operations Head to act on.
+        </p>
       )}
       <TextArea label="Note" value={note} onChange={setNote} rows={2} />
     </Modal>
@@ -1116,7 +1548,12 @@ interface FindingsSummary {
   overdue: number;
 }
 
-const SEVERITY_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { critical: 'bad', high: 'bad', medium: 'warn', low: 'neutral' };
+const SEVERITY_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  critical: 'bad',
+  high: 'bad',
+  medium: 'warn',
+  low: 'neutral',
+};
 const FINDING_STATUS_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
   open: 'warn',
   in_progress: 'warn',
@@ -1131,16 +1568,23 @@ export function ItFindings() {
   const [status, setStatus] = useState('');
   const [creating, setCreating] = useState(false);
 
-  const summary = useQuery({ queryKey: ['it-findings-summary'], queryFn: () => api.get<FindingsSummary>('/it/findings/summary') });
+  const summary = useQuery({
+    queryKey: ['it-findings-summary'],
+    queryFn: () => api.get<FindingsSummary>('/it/findings/summary'),
+  });
   const params = new URLSearchParams();
   if (severity) params.set('severity', severity);
   if (status) params.set('status', status);
   const qs = params.toString();
-  const findings = useQuery({ queryKey: ['it-findings', severity, status], queryFn: () => api.get<FindingRow[]>(`/it/findings${qs ? `?${qs}` : ''}`) });
+  const findings = useQuery({
+    queryKey: ['it-findings', severity, status],
+    queryFn: () => api.get<FindingRow[]>(`/it/findings${qs ? `?${qs}` : ''}`),
+  });
   const qc = useQueryClient();
 
   const transition = useMutation({
-    mutationFn: ({ id, event }: { id: string; event: FindingEvent }) => api.post(`/it/findings/${id}/transition`, { event }),
+    mutationFn: ({ id, event }: { id: string; event: FindingEvent }) =>
+      api.post(`/it/findings/${id}/transition`, { event }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['it-findings'] });
       qc.invalidateQueries({ queryKey: ['it-findings-summary'] });
@@ -1160,14 +1604,27 @@ export function ItFindings() {
       />
 
       {s?.notYetMeasured ? (
-        <Card className="mb-5"><EmptyState message="No findings on file yet." /></Card>
+        <Card className="mb-5">
+          <EmptyState message="No findings on file yet." />
+        </Card>
       ) : (
         s && (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
             {(['critical', 'high', 'medium', 'low'] as const).map((sev) => (
-              <Metric key={sev} label={titleCase(sev)} value={s.openBySeverity[sev] ?? 0} tone={s.openBySeverity[sev] > 0 ? (sev === 'critical' || sev === 'high' ? 'bad' : 'warn') : 'good'} noActionReason="Open or in progress." />
+              <Metric
+                key={sev}
+                label={titleCase(sev)}
+                value={s.openBySeverity[sev] ?? 0}
+                tone={s.openBySeverity[sev] > 0 ? (sev === 'critical' || sev === 'high' ? 'bad' : 'warn') : 'good'}
+                noActionReason="Open or in progress."
+              />
             ))}
-            <Metric label="Overdue" value={s.overdue} tone={s.overdue > 0 ? 'bad' : 'good'} noActionReason="Past due, still open." />
+            <Metric
+              label="Overdue"
+              value={s.overdue}
+              tone={s.overdue > 0 ? 'bad' : 'good'}
+              noActionReason="Past due, still open."
+            />
           </div>
         )
       )}
@@ -1176,13 +1633,17 @@ export function ItFindings() {
         <select className="input max-w-40" value={severity} onChange={(e) => setSeverity(e.target.value)}>
           <option value="">Every severity</option>
           {['critical', 'high', 'medium', 'low'].map((sv) => (
-            <option key={sv} value={sv}>{titleCase(sv)}</option>
+            <option key={sv} value={sv}>
+              {titleCase(sv)}
+            </option>
           ))}
         </select>
         <select className="input max-w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">Every status</option>
           {['open', 'in_progress', 'risk_accepted', 'fixed', 'verified'].map((st) => (
-            <option key={st} value={st}>{titleCase(st.replace('_', ' '))}</option>
+            <option key={st} value={st}>
+              {titleCase(st.replace('_', ' '))}
+            </option>
           ))}
         </select>
       </div>
@@ -1210,17 +1671,28 @@ export function ItFindings() {
                   <tr key={f.id} className="border-b border-ink-850/60">
                     <td className="px-4 py-2">
                       <p className="font-medium text-ink-100">{f.title}</p>
-                      <div className="text-2xs text-ink-500"><RecordCode code={f.recordCode} /></div>
+                      <div className="text-2xs text-ink-500">
+                        <RecordCode code={f.recordCode} />
+                      </div>
                     </td>
                     <td className="px-4 py-2 text-ink-300">{titleCase(f.source)}</td>
-                    <td className="px-4 py-2"><StatusChip status={f.severity} tone={SEVERITY_TONE[f.severity]} /></td>
+                    <td className="px-4 py-2">
+                      <StatusChip status={f.severity} tone={SEVERITY_TONE[f.severity]} />
+                    </td>
                     <td className="px-4 py-2 text-ink-300">{date(f.dueAt)}</td>
-                    <td className="px-4 py-2"><StatusChip status={f.status} tone={FINDING_STATUS_TONE[f.status]} /></td>
+                    <td className="px-4 py-2">
+                      <StatusChip status={f.status} tone={FINDING_STATUS_TONE[f.status]} />
+                    </td>
                     <td className="px-4 py-2">
                       {can('it_findings:E') && (
                         <div className="flex flex-wrap justify-end gap-1">
                           {f.availableTransitions.map((event) => (
-                            <button key={event} className="btn-ghost btn-sm" disabled={transition.isPending} onClick={() => transition.mutate({ id: f.id, event })}>
+                            <button
+                              key={event}
+                              className="btn-ghost btn-sm"
+                              disabled={transition.isPending}
+                              onClick={() => transition.mutate({ id: f.id, event })}
+                            >
                               {titleCase(event.replace('_', ' '))}
                             </button>
                           ))}
@@ -1250,7 +1722,14 @@ function NewFindingModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () => api.post('/it/findings', { title, source, severity, cvss: cvss ? Number(cvss) : undefined, description: description || undefined }),
+    mutationFn: () =>
+      api.post('/it/findings', {
+        title,
+        source,
+        severity,
+        cvss: cvss ? Number(cvss) : undefined,
+        description: description || undefined,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['it-findings'] });
       qc.invalidateQueries({ queryKey: ['it-findings-summary'] });
@@ -1260,13 +1739,51 @@ function NewFindingModal({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <Modal open title="New finding" onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={!title.trim() || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Saving…' : 'Create'}</button></>}>
+    <Modal
+      open
+      title="New finding"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            disabled={!title.trim() || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? 'Saving…' : 'Create'}
+          </button>
+        </>
+      }
+    >
       <ErrorLine error={error} />
       <div className="flex flex-col gap-3">
         <TextInput label="Title" value={title} onChange={setTitle} required autoFocus />
         <div className="grid grid-cols-2 gap-3">
-          <SelectInput label="Source" value={source} onChange={setSource} options={[{ value: 'pentest', label: 'Pentest' }, { value: 'scan', label: 'Scan' }, { value: 'audit', label: 'Audit' }, { value: 'internal', label: 'Internal' }]} />
-          <SelectInput label="Severity" value={severity} onChange={setSeverity} options={[{ value: 'critical', label: 'Critical' }, { value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]} />
+          <SelectInput
+            label="Source"
+            value={source}
+            onChange={setSource}
+            options={[
+              { value: 'pentest', label: 'Pentest' },
+              { value: 'scan', label: 'Scan' },
+              { value: 'audit', label: 'Audit' },
+              { value: 'internal', label: 'Internal' },
+            ]}
+          />
+          <SelectInput
+            label="Severity"
+            value={severity}
+            onChange={setSeverity}
+            options={[
+              { value: 'critical', label: 'Critical' },
+              { value: 'high', label: 'High' },
+              { value: 'medium', label: 'Medium' },
+              { value: 'low', label: 'Low' },
+            ]}
+          />
         </div>
         <TextInput label="CVSS (optional)" type="number" value={cvss} onChange={setCvss} />
         <TextArea label="Description" value={description} onChange={setDescription} rows={3} />

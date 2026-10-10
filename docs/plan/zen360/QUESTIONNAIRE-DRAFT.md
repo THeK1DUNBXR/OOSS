@@ -30,20 +30,20 @@ Step B, function (single choice, not counted): one function from the list in sec
 
 ### Yes/no questions (12)
 
-| # | Task wording (shown to the founder or onboarding owner) | Attribute or duty it flips | Sensitive review? |
-|---|---|---|---|
-| Q1 | Does this person set the work and priorities of other people? | Level: at least **Manager** | No |
-| Q2 | Does this person lead more than one team, or a whole function? | Level: **Head** (only together with Q1 yes) | No |
-| Q3 | Does this person approve other people's leave, attendance or expense requests? | Duty: approve team requests (only with Q1 yes) | **Yes** (approvals) |
-| Q4 | Does this person create or prepare payments to suppliers, freelancers or staff? | Duty: create payments | **Yes** (payments) |
-| Q5 | Does this person approve payments? | Duty: approve payments (up to the tenant's threshold, set at onboarding) | **Yes** (payments) |
-| Q6 | Does this person run payroll? | Duty: run payroll. Founder-only class: founder confirmation required | **Yes** (payroll) |
-| Q7 | Does this person approve payroll? | Duty: approve payroll | **Yes** (payroll) |
-| Q8 | Does this person need to see or change bank accounts or bank files? | Duty: bank | **Yes** (bank) |
-| Q9 | Does this person need to add, remove or change other people's access or levels? | Duty: user administration | **Yes** (user admin) |
-| Q10 | Does this person need to change the company's statutory rule settings? | Duty: change statutory rules. Sign-off is never mapped from this answer (section 3) | **Yes** (statutory) |
-| Q11 | Does this person need to read company-wide records outside one team, such as all books or all staff HR records? | Duty: company-wide read | **Yes** (company-wide data) |
-| Q12 | Does this person need to read the company directory (a list of all employees)? | Duty: company directory read. Not a default (round 15) | No, but it is a non-default duty and the reviewer must confirm it |
+| #   | Task wording (shown to the founder or onboarding owner)                                                         | Attribute or duty it flips                                                          | Sensitive review?                                                 |
+| --- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Q1  | Does this person set the work and priorities of other people?                                                   | Level: at least **Manager**                                                         | No                                                                |
+| Q2  | Does this person lead more than one team, or a whole function?                                                  | Level: **Head** (only together with Q1 yes)                                         | No                                                                |
+| Q3  | Does this person approve other people's leave, attendance or expense requests?                                  | Duty: approve team requests (only with Q1 yes)                                      | **Yes** (approvals)                                               |
+| Q4  | Does this person create or prepare payments to suppliers, freelancers or staff?                                 | Duty: create payments                                                               | **Yes** (payments)                                                |
+| Q5  | Does this person approve payments?                                                                              | Duty: approve payments (up to the tenant's threshold, set at onboarding)            | **Yes** (payments)                                                |
+| Q6  | Does this person run payroll?                                                                                   | Duty: run payroll. Founder-only class: founder confirmation required                | **Yes** (payroll)                                                 |
+| Q7  | Does this person approve payroll?                                                                               | Duty: approve payroll                                                               | **Yes** (payroll)                                                 |
+| Q8  | Does this person need to see or change bank accounts or bank files?                                             | Duty: bank                                                                          | **Yes** (bank)                                                    |
+| Q9  | Does this person need to add, remove or change other people's access or levels?                                 | Duty: user administration                                                           | **Yes** (user admin)                                              |
+| Q10 | Does this person need to change the company's statutory rule settings?                                          | Duty: change statutory rules. Sign-off is never mapped from this answer (section 3) | **Yes** (statutory)                                               |
+| Q11 | Does this person need to read company-wide records outside one team, such as all books or all staff HR records? | Duty: company-wide read                                                             | **Yes** (company-wide data)                                       |
+| Q12 | Does this person need to read the company directory (a list of all employees)?                                  | Duty: company directory read. Not a default (round 15)                              | No, but it is a non-default duty and the reviewer must confirm it |
 
 Notes on the questions:
 
@@ -66,30 +66,30 @@ Notes on the questions:
 
 Rules run top to bottom. Each rule is data, versioned, and recorded with the suggestion (round 13 audit row).
 
-| Answers | Suggested level | Extra duties suggested | Notes and flags |
-|---|---|---|---|
-| Q1 no, Q2 no | **Staff** | None beyond the Staff baseline | Default for everyone who does not match a later rule |
-| Q1 yes, Q2 no | **Manager** | None by level alone | Manager default duties are tbd during onboard (round 12) |
-| Q1 yes, Q2 yes | **Head** | None by level alone | Head variants are an open question (section 6) |
-| Q1 no, Q2 yes | **Manager** (least access) | None | Flag "leads a function but sets no one's work". Reviewer decides; Head is not suggested |
-| Q3 yes with Q1 yes | As above | Approve team requests (sensitive) | Scope follows S1 |
-| Q3 yes with Q1 no | As above | **None added** | Flag "approves requests but sets no one's work". Reviewer decides |
-| Q4 yes | As above | Create payments (sensitive) | Blocked if Q5 is also yes (section 3) |
-| Q5 yes | As above | Approve payments (sensitive) | Blocked if Q4 is also yes (section 3). Threshold from onboarding data |
-| Q4 yes and Q5 yes | As above | **Neither suggested** | Blocked pair. Reviewer removes one side, or founder overrides with a reason |
-| Q6 yes | As above | Run payroll (sensitive, founder-only class) | Needs founder confirmation before it takes effect (round 13) |
-| Q7 yes | As above | Approve payroll (sensitive) | Blocked if Q6 is also yes |
-| Q6 yes and Q7 yes | As above | **Neither suggested** | Blocked pair (section 3) |
-| Q8 yes | As above | Bank (sensitive) | |
-| Q9 yes | As above | User administration (sensitive) | Cannot approve own access (section 3). Founder exempt |
-| Q10 yes | As above | Change statutory rules (sensitive) | Sign-off is not mapped (section 3) |
-| Q11 yes with S1 company | As above | Company-wide read (sensitive) | Reviewer confirms |
-| Q11 yes with S1 branch | As above | **None added** | Flag "company-wide read asked for a branch-scoped person". Reviewer decides |
-| Q12 yes | As above | Company directory read (non-default) | Reviewer confirms. Not a default (round 15) |
-| S1 company | As above | None by scope alone | Company scope is itself a sensitive review |
-| S1 branch | As above | None by scope alone | Every duty is limited to the named branch(es) |
-| Identity founder | **Founder** | Founder level, not mapped by these questions | Founder self-approval exemption applies (round 10). Who reviews the founder's own access is open (section 6) |
-| Missing or unclear answer | Treated as "no" | None added | Flag for reviewer. Least access (round 13) |
+| Answers                   | Suggested level            | Extra duties suggested                       | Notes and flags                                                                                              |
+| ------------------------- | -------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Q1 no, Q2 no              | **Staff**                  | None beyond the Staff baseline               | Default for everyone who does not match a later rule                                                         |
+| Q1 yes, Q2 no             | **Manager**                | None by level alone                          | Manager default duties are tbd during onboard (round 12)                                                     |
+| Q1 yes, Q2 yes            | **Head**                   | None by level alone                          | Head variants are an open question (section 6)                                                               |
+| Q1 no, Q2 yes             | **Manager** (least access) | None                                         | Flag "leads a function but sets no one's work". Reviewer decides; Head is not suggested                      |
+| Q3 yes with Q1 yes        | As above                   | Approve team requests (sensitive)            | Scope follows S1                                                                                             |
+| Q3 yes with Q1 no         | As above                   | **None added**                               | Flag "approves requests but sets no one's work". Reviewer decides                                            |
+| Q4 yes                    | As above                   | Create payments (sensitive)                  | Blocked if Q5 is also yes (section 3)                                                                        |
+| Q5 yes                    | As above                   | Approve payments (sensitive)                 | Blocked if Q4 is also yes (section 3). Threshold from onboarding data                                        |
+| Q4 yes and Q5 yes         | As above                   | **Neither suggested**                        | Blocked pair. Reviewer removes one side, or founder overrides with a reason                                  |
+| Q6 yes                    | As above                   | Run payroll (sensitive, founder-only class)  | Needs founder confirmation before it takes effect (round 13)                                                 |
+| Q7 yes                    | As above                   | Approve payroll (sensitive)                  | Blocked if Q6 is also yes                                                                                    |
+| Q6 yes and Q7 yes         | As above                   | **Neither suggested**                        | Blocked pair (section 3)                                                                                     |
+| Q8 yes                    | As above                   | Bank (sensitive)                             |                                                                                                              |
+| Q9 yes                    | As above                   | User administration (sensitive)              | Cannot approve own access (section 3). Founder exempt                                                        |
+| Q10 yes                   | As above                   | Change statutory rules (sensitive)           | Sign-off is not mapped (section 3)                                                                           |
+| Q11 yes with S1 company   | As above                   | Company-wide read (sensitive)                | Reviewer confirms                                                                                            |
+| Q11 yes with S1 branch    | As above                   | **None added**                               | Flag "company-wide read asked for a branch-scoped person". Reviewer decides                                  |
+| Q12 yes                   | As above                   | Company directory read (non-default)         | Reviewer confirms. Not a default (round 15)                                                                  |
+| S1 company                | As above                   | None by scope alone                          | Company scope is itself a sensitive review                                                                   |
+| S1 branch                 | As above                   | None by scope alone                          | Every duty is limited to the named branch(es)                                                                |
+| Identity founder          | **Founder**                | Founder level, not mapped by these questions | Founder self-approval exemption applies (round 10). Who reviews the founder's own access is open (section 6) |
+| Missing or unclear answer | Treated as "no"            | None added                                   | Flag for reviewer. Least access (round 13)                                                                   |
 
 Level never rises above Manager from duties alone. Head comes only from Q1 and Q2 together.
 
@@ -99,12 +99,12 @@ Level never rises above Manager from duties alone. Head comes only from Q1 and Q
 
 A conflict is blocked. Neither side takes effect until the conflict is resolved. The founder may override a block with a **logged reason**. Each override is shown in the exceptions view (round 14, item 3).
 
-| Pair | Why blocked | Mapping check | Founder override |
-|---|---|---|---|
-| Create and approve payments (Q4 and Q5) | One person could pay and approve their own payment | Blocked if both are yes | Yes, with reason |
-| Run and approve payroll (Q6 and Q7) | One person could run a payroll and approve it | Blocked if both are yes | Yes, with reason. Payroll run is founder-only in any case |
-| Manage access levels and approve own access (Q9 and any access approval) | A person could grant themselves access | Blocked for anyone holding user administration who would confirm their own access. The founder alone may approve their own access | Founder exemption (round 14): the founder may approve their own access. Other overrides need reason |
-| Change and sign off statutory rules (Q10 and the sign-off duty) | A person could change a rule and then approve it (round 15, item 1) | Q10 can be mapped, but the sign-off duty is never mapped from any answer. It is assigned only by the founder during onboarding, to a qualified holder (round 12). The review screen blocks a person who has both | Yes, with reason. The reason must name the qualified holder who signs off |
+| Pair                                                                     | Why blocked                                                         | Mapping check                                                                                                                                                                                                    | Founder override                                                                                    |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Create and approve payments (Q4 and Q5)                                  | One person could pay and approve their own payment                  | Blocked if both are yes                                                                                                                                                                                          | Yes, with reason                                                                                    |
+| Run and approve payroll (Q6 and Q7)                                      | One person could run a payroll and approve it                       | Blocked if both are yes                                                                                                                                                                                          | Yes, with reason. Payroll run is founder-only in any case                                           |
+| Manage access levels and approve own access (Q9 and any access approval) | A person could grant themselves access                              | Blocked for anyone holding user administration who would confirm their own access. The founder alone may approve their own access                                                                                | Founder exemption (round 14): the founder may approve their own access. Other overrides need reason |
+| Change and sign off statutory rules (Q10 and the sign-off duty)          | A person could change a rule and then approve it (round 15, item 1) | Q10 can be mapped, but the sign-off duty is never mapped from any answer. It is assigned only by the founder during onboarding, to a qualified holder (round 12). The review screen blocks a person who has both | Yes, with reason. The reason must name the qualified holder who signs off                           |
 
 Notes:
 

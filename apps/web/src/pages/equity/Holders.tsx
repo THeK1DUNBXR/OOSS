@@ -68,7 +68,9 @@ function NewHolder({ open, onClose }: { open: boolean; onClose: () => void }) {
       onSubmit={() =>
         api.post('/equity/holders', {
           kind,
-          ...(kind === 'person' ? { person: { fullName, email: personEmail || null, phone: personPhone || null } } : {}),
+          ...(kind === 'person'
+            ? { person: { fullName, email: personEmail || null, phone: personPhone || null } }
+            : {}),
           ...(kind === 'organization' ? { organizationId } : {}),
           ...(kind === 'entity' ? { heldByTenantId } : {}),
           residency,
@@ -168,7 +170,12 @@ function NewHolder({ open, onClose }: { open: boolean; onClose: () => void }) {
             <TextInput label="Occupation" value={occupation} onChange={setOccupation} placeholder="Optional" />
             <TextInput label="Nationality" value={nationality} onChange={setNationality} placeholder="Optional" />
           </Row>
-          <TextInput label="Father / spouse name" value={guardianOrSpouseName} onChange={setGuardianOrSpouseName} placeholder="Optional" />
+          <TextInput
+            label="Father / spouse name"
+            value={guardianOrSpouseName}
+            onChange={setGuardianOrSpouseName}
+            placeholder="Optional"
+          />
         </div>
       </fieldset>
 
@@ -233,7 +240,9 @@ export function Holders() {
               </thead>
               <tbody>
                 {rows.map((h) => {
-                  const classesHeld = [...new Set(capTable?.rows.filter((r) => r.holderId === h.id).map((r) => r.shareClassName))];
+                  const classesHeld = [
+                    ...new Set(capTable?.rows.filter((r) => r.holderId === h.id).map((r) => r.shareClassName)),
+                  ];
                   const total = capTable?.holderTotals.find((t) => t.holderId === h.id);
                   return (
                     <tr key={h.id}>
@@ -246,7 +255,9 @@ export function Holders() {
                       <td className="text-ink-300">{HOLDER_KIND_LABELS[h.kind]}</td>
                       <td className="text-ink-300">{RESIDENCY_LABELS[h.residency]}</td>
                       <td className="text-2xs text-ink-400">{classesHeld.length ? classesHeld.join(', ') : '—'}</td>
-                      <td className="text-right tabular-nums">{total ? `${total.fullyDilutedPct.toFixed(2)}%` : '—'}</td>
+                      <td className="text-right tabular-nums">
+                        {total ? `${total.fullyDilutedPct.toFixed(2)}%` : '—'}
+                      </td>
                     </tr>
                   );
                 })}
@@ -265,18 +276,28 @@ function CreateSignIn({ holder, onClose }: { holder: HolderView; onClose: () => 
   const [error, setError] = useState<string | null>(null);
 
   const create = useMutation({
-    mutationFn: () => api.post<{ email: string; password: string | null; created: boolean }>('/auth/sign-ins', {
-      personId: holder.personId,
-      roleSlug: 'shareholder',
-      email,
-    }),
+    mutationFn: () =>
+      api.post<{ email: string; password: string | null; created: boolean }>('/auth/sign-ins', {
+        personId: holder.personId,
+        roleSlug: 'shareholder',
+        email,
+      }),
     onSuccess: (res) => setResult(res),
     onError: (e) => setError(messageOf(e)),
   });
 
   if (result) {
     return (
-      <Modal open title="Sign-in created" onClose={onClose} footer={<button className="btn-primary" onClick={onClose}>Done</button>}>
+      <Modal
+        open
+        title="Sign-in created"
+        onClose={onClose}
+        footer={
+          <button className="btn-primary" onClick={onClose}>
+            Done
+          </button>
+        }
+      >
         <p className="text-sm text-ink-200">
           Email <span className="mono">{result.email}</span>
         </p>
@@ -371,9 +392,7 @@ export function HolderDetail() {
             <Field label="Occupation">{data.occupation || 'Not recorded'}</Field>
             <Field label="Nationality">{data.nationality || 'Not recorded'}</Field>
             <Field label="Father / spouse name">{data.guardianOrSpouseName || 'Not recorded'}</Field>
-            <Field label="Demat account">
-              {data.dematAccount ? 'On record' : 'Not recorded — holds physically'}
-            </Field>
+            <Field label="Demat account">{data.dematAccount ? 'On record' : 'Not recorded — holds physically'}</Field>
           </dl>
         </Card>
 

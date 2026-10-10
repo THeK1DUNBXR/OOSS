@@ -62,7 +62,10 @@ function AnnouncementsTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: '', body: '', pinned: false, acknowledgementRequired: false });
 
-  const announcements = useQuery({ queryKey: ['eng-announcements'], queryFn: () => api.get<Announcement[]>('/hcm/engagement/announcements') });
+  const announcements = useQuery({
+    queryKey: ['eng-announcements'],
+    queryFn: () => api.get<Announcement[]>('/hcm/engagement/announcements'),
+  });
   const withdraw = useMutation({
     mutationFn: (id: string) => api.post(`/hcm/engagement/announcements/${id}/withdraw`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['eng-announcements'] }),
@@ -85,8 +88,13 @@ function AnnouncementsTab() {
                 <div className="flex items-center gap-2">
                   {a.pinned && <span className="chip border-accent/40 bg-accent/10 text-accent-soft">Pinned</span>}
                   <p className="text-sm font-medium text-ink-100">{a.title}</p>
-                  <StatusChip status={a.status} tone={a.status === 'published' ? 'good' : a.status === 'withdrawn' ? 'bad' : 'neutral'} />
-                  {a.acknowledgementRequired && <span className="chip border-band-watch/40 text-band-watch">Ack required</span>}
+                  <StatusChip
+                    status={a.status}
+                    tone={a.status === 'published' ? 'good' : a.status === 'withdrawn' ? 'bad' : 'neutral'}
+                  />
+                  {a.acknowledgementRequired && (
+                    <span className="chip border-band-watch/40 text-band-watch">Ack required</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 text-2xs text-ink-500">
                   <span>{dateTime(a.publishAt)}</span>
@@ -122,7 +130,11 @@ function AnnouncementsTab() {
         <TextArea label="Body" value={form.body} onChange={(v) => setForm({ ...form, body: v })} rows={4} required />
         <Row>
           <label className="flex items-center gap-2 text-xs text-ink-300">
-            <input type="checkbox" checked={form.pinned} onChange={(e) => setForm({ ...form, pinned: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={form.pinned}
+              onChange={(e) => setForm({ ...form, pinned: e.target.checked })}
+            />
             Pin to top
           </label>
           <label className="flex items-center gap-2 text-xs text-ink-300">
@@ -158,10 +170,16 @@ function RecognitionTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ toPartyId: '', badge: '', message: '', points: '10' });
 
-  const recognitions = useQuery({ queryKey: ['eng-recognitions'], queryFn: () => api.get<Recognition[]>('/hcm/engagement/recognitions') });
+  const recognitions = useQuery({
+    queryKey: ['eng-recognitions'],
+    queryFn: () => api.get<Recognition[]>('/hcm/engagement/recognitions'),
+  });
   const leaderboard = useQuery({
     queryKey: ['eng-recognition-leaderboard'],
-    queryFn: () => api.get<Array<{ toPartyId: string; totalPoints: number; count: number }>>('/hcm/engagement/recognitions/leaderboard'),
+    queryFn: () =>
+      api.get<Array<{ toPartyId: string; totalPoints: number; count: number }>>(
+        '/hcm/engagement/recognitions/leaderboard',
+      ),
     retry: false,
   });
 
@@ -218,8 +236,20 @@ function RecognitionTab() {
           })
         }
       >
-        <TextInput label="Recipient party id" value={form.toPartyId} onChange={(v) => setForm({ ...form, toPartyId: v })} required hint="The person id — a directory picker lands with WS1." />
-        <TextInput label="Badge" value={form.badge} onChange={(v) => setForm({ ...form, badge: v })} required placeholder="Team player" />
+        <TextInput
+          label="Recipient party id"
+          value={form.toPartyId}
+          onChange={(v) => setForm({ ...form, toPartyId: v })}
+          required
+          hint="The person id — a directory picker lands with WS1."
+        />
+        <TextInput
+          label="Badge"
+          value={form.badge}
+          onChange={(v) => setForm({ ...form, badge: v })}
+          required
+          placeholder="Team player"
+        />
         <TextArea label="Message" value={form.message} onChange={(v) => setForm({ ...form, message: v })} required />
         <TextInput label="Points" type="number" value={form.points} onChange={(v) => setForm({ ...form, points: v })} />
       </CreateModal>
@@ -267,10 +297,19 @@ interface PulseSurvey {
 function SurveysTab() {
   const [open, setOpen] = useState(false);
   const [resultsFor, setResultsFor] = useState<string | null>(null);
-  const [form, setForm] = useState({ title: '', questionText: '', questionType: 'enps' as 'enps' | 'scale' | 'text', anonymous: true, days: '14' });
+  const [form, setForm] = useState({
+    title: '',
+    questionText: '',
+    questionType: 'enps' as 'enps' | 'scale' | 'text',
+    anonymous: true,
+    days: '14',
+  });
   const qc = useQueryClient();
 
-  const surveys = useQuery({ queryKey: ['eng-surveys'], queryFn: () => api.get<PulseSurvey[]>('/hcm/engagement/surveys') });
+  const surveys = useQuery({
+    queryKey: ['eng-surveys'],
+    queryFn: () => api.get<PulseSurvey[]>('/hcm/engagement/surveys'),
+  });
   const openMutation = useMutation({
     mutationFn: (id: string) => api.post(`/hcm/engagement/surveys/${id}/open`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['eng-surveys'] }),
@@ -308,7 +347,12 @@ function SurveysTab() {
                     {s.title}
                     {s.anonymous && <span className="ml-2 chip border-ink-700 text-ink-400">Anonymous</span>}
                   </td>
-                  <td><StatusChip status={s.status} tone={s.status === 'open' ? 'good' : s.status === 'closed' ? 'neutral' : 'warn'} /></td>
+                  <td>
+                    <StatusChip
+                      status={s.status}
+                      tone={s.status === 'open' ? 'good' : s.status === 'closed' ? 'neutral' : 'warn'}
+                    />
+                  </td>
                   <td>{dateTime(s.opensAt)}</td>
                   <td>{dateTime(s.closesAt)}</td>
                   <td className="flex justify-end gap-2 text-right">
@@ -359,11 +403,25 @@ function SurveysTab() {
             { value: 'text', label: 'Free text' },
           ]}
         />
-        <TextArea label="Question" value={form.questionText} onChange={(v) => setForm({ ...form, questionText: v })} required />
+        <TextArea
+          label="Question"
+          value={form.questionText}
+          onChange={(v) => setForm({ ...form, questionText: v })}
+          required
+        />
         <Row>
-          <TextInput label="Open for (days)" type="number" value={form.days} onChange={(v) => setForm({ ...form, days: v })} />
+          <TextInput
+            label="Open for (days)"
+            type="number"
+            value={form.days}
+            onChange={(v) => setForm({ ...form, days: v })}
+          />
           <label className="flex items-center gap-2 pt-6 text-xs text-ink-300">
-            <input type="checkbox" checked={form.anonymous} onChange={(e) => setForm({ ...form, anonymous: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={form.anonymous}
+              onChange={(e) => setForm({ ...form, anonymous: e.target.checked })}
+            />
             Anonymous responses
           </label>
         </Row>
@@ -390,30 +448,49 @@ interface QuestionResult {
 function SurveyResultsCard({ id, onClose }: { id: string; onClose: () => void }) {
   const results = useQuery({
     queryKey: ['eng-survey-results', id],
-    queryFn: () => api.get<{ survey: PulseSurvey; totalResponses: number; questions: QuestionResult[] }>(`/hcm/engagement/surveys/${id}/results`),
+    queryFn: () =>
+      api.get<{ survey: PulseSurvey; totalResponses: number; questions: QuestionResult[] }>(
+        `/hcm/engagement/surveys/${id}/results`,
+      ),
   });
 
   return (
-    <Card title="Results" subtitle={results.data ? `${results.data.survey.title} — ${results.data.totalResponses} response(s)` : undefined} actions={<button className="btn text-2xs" onClick={onClose}>Close</button>}>
+    <Card
+      title="Results"
+      subtitle={results.data ? `${results.data.survey.title} — ${results.data.totalResponses} response(s)` : undefined}
+      actions={
+        <button className="btn text-2xs" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
       {results.isLoading && <Loading />}
       {results.error && <ErrorBox error={results.error} />}
       {results.data && results.data.totalResponses === 0 && <EmptyState message="No responses yet." />}
-      {results.data && results.data.questions.map((q) => (
-        <div key={q.questionId} className="border-b border-ink-800 py-2 last:border-0">
-          <p className="text-xs font-medium text-ink-200">{q.text}</p>
-          {q.type === 'enps' && (
-            <p className="mt-1 text-2xs text-ink-400">
-              eNPS <span className="font-semibold text-ink-100">{q.score ?? '—'}</span> · {q.promoters} promoter(s), {q.passives} passive(s), {q.detractors} detractor(s)
-            </p>
-          )}
-          {q.type === 'scale' && <p className="mt-1 text-2xs text-ink-400">Average {q.average?.toFixed(1) ?? '—'} over {q.responses} response(s)</p>}
-          {q.type === 'text' && (
-            <ul className="mt-1 list-disc pl-4 text-2xs text-ink-400">
-              {(q.answers ?? []).map((a, i) => <li key={i}>{a}</li>)}
-            </ul>
-          )}
-        </div>
-      ))}
+      {results.data &&
+        results.data.questions.map((q) => (
+          <div key={q.questionId} className="border-b border-ink-800 py-2 last:border-0">
+            <p className="text-xs font-medium text-ink-200">{q.text}</p>
+            {q.type === 'enps' && (
+              <p className="mt-1 text-2xs text-ink-400">
+                eNPS <span className="font-semibold text-ink-100">{q.score ?? '—'}</span> · {q.promoters} promoter(s),{' '}
+                {q.passives} passive(s), {q.detractors} detractor(s)
+              </p>
+            )}
+            {q.type === 'scale' && (
+              <p className="mt-1 text-2xs text-ink-400">
+                Average {q.average?.toFixed(1) ?? '—'} over {q.responses} response(s)
+              </p>
+            )}
+            {q.type === 'text' && (
+              <ul className="mt-1 list-disc pl-4 text-2xs text-ink-400">
+                {(q.answers ?? []).map((a, i) => (
+                  <li key={i}>{a}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
     </Card>
   );
 }
@@ -466,9 +543,16 @@ function HelpdeskTab() {
     <tr key={c.id}>
       <td className="mono text-2xs">{c.recordCode}</td>
       <td>{c.category.replace(/_/g, ' ')}</td>
-      <td><StatusChip status={c.priority} tone={c.priority === 'urgent' ? 'bad' : c.priority === 'high' ? 'warn' : 'neutral'} /></td>
+      <td>
+        <StatusChip
+          status={c.priority}
+          tone={c.priority === 'urgent' ? 'bad' : c.priority === 'high' ? 'warn' : 'neutral'}
+        />
+      </td>
       <td>{c.subject}</td>
-      <td><StatusChip status={c.status} tone={c.status === 'resolved' || c.status === 'closed' ? 'good' : 'neutral'} /></td>
+      <td>
+        <StatusChip status={c.status} tone={c.status === 'resolved' || c.status === 'closed' ? 'good' : 'neutral'} />
+      </td>
       <td>{dateTime(c.slaDueAt)}</td>
       <td className="text-right">
         {c.status !== 'resolved' && c.status !== 'closed' && (
@@ -517,10 +601,17 @@ function HelpdeskTab() {
           </button>
         }
       >
-        {!showConfidential && <EmptyState message="Hidden until you choose to reveal it." hint="A deliberate extra step, the same one POSH complaints take." />}
+        {!showConfidential && (
+          <EmptyState
+            message="Hidden until you choose to reveal it."
+            hint="A deliberate extra step, the same one POSH complaints take."
+          />
+        )}
         {showConfidential && confidential.isLoading && <Loading />}
         {showConfidential && confidential.error && <ErrorBox error={confidential.error} />}
-        {showConfidential && confidential.data && confidential.data.length === 0 && <EmptyState message="No confidential cases." />}
+        {showConfidential && confidential.data && confidential.data.length === 0 && (
+          <EmptyState message="No confidential cases." />
+        )}
         {showConfidential && confidential.data && confidential.data.length > 0 && (
           <table className="table">
             <thead>
@@ -573,7 +664,13 @@ function HelpdeskTab() {
           />
         </Row>
         <TextInput label="Subject" value={form.subject} onChange={(v) => setForm({ ...form, subject: v })} required />
-        <TextArea label="Describe the issue" value={form.body} onChange={(v) => setForm({ ...form, body: v })} required rows={4} />
+        <TextArea
+          label="Describe the issue"
+          value={form.body}
+          onChange={(v) => setForm({ ...form, body: v })}
+          required
+          rows={4}
+        />
       </CreateModal>
     </div>
   );
@@ -599,10 +696,14 @@ function PoliciesTab() {
   const [statusFor, setStatusFor] = useState<string | null>(null);
   const [form, setForm] = useState({ title: '', version: '1.0', body: '', acknowledgementRequired: true });
 
-  const policies = useQuery({ queryKey: ['eng-policies'], queryFn: () => api.get<PolicyDocument[]>('/hcm/engagement/policies') });
+  const policies = useQuery({
+    queryKey: ['eng-policies'],
+    queryFn: () => api.get<PolicyDocument[]>('/hcm/engagement/policies'),
+  });
   const status = useQuery({
     queryKey: ['eng-policy-status', statusFor],
-    queryFn: () => api.get<{ policy: PolicyDocument; ackCount: number }>(`/hcm/engagement/policies/${statusFor}/status`),
+    queryFn: () =>
+      api.get<{ policy: PolicyDocument; ackCount: number }>(`/hcm/engagement/policies/${statusFor}/status`),
     enabled: Boolean(statusFor),
     retry: false,
   });
@@ -637,7 +738,12 @@ function PoliciesTab() {
                 <tr key={p.id}>
                   <td>{p.title}</td>
                   <td className="mono">{p.version}</td>
-                  <td><StatusChip status={p.status} tone={p.status === 'published' ? 'good' : p.status === 'superseded' ? 'neutral' : 'warn'} /></td>
+                  <td>
+                    <StatusChip
+                      status={p.status}
+                      tone={p.status === 'published' ? 'good' : p.status === 'superseded' ? 'neutral' : 'warn'}
+                    />
+                  </td>
                   <td>{dateTime(p.effectiveFrom)}</td>
                   <td className="flex justify-end gap-2 text-right">
                     {p.status === 'draft' && (
@@ -659,9 +765,17 @@ function PoliciesTab() {
       </Card>
 
       {statusFor && status.data && (
-        <Card title="Acknowledgement status" actions={<button className="btn text-2xs" onClick={() => setStatusFor(null)}>Close</button>}>
+        <Card
+          title="Acknowledgement status"
+          actions={
+            <button className="btn text-2xs" onClick={() => setStatusFor(null)}>
+              Close
+            </button>
+          }
+        >
           <p className="text-sm text-ink-200">
-            {status.data.ackCount} acknowledgement(s) recorded for {status.data.policy.title} v{status.data.policy.version}.
+            {status.data.ackCount} acknowledgement(s) recorded for {status.data.policy.title} v
+            {status.data.policy.version}.
           </p>
         </Card>
       )}

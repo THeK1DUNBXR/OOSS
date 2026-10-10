@@ -33,7 +33,11 @@ interface TeamCalendarResult {
 
 function monthLabel(month: string): string {
   const [y, m] = month.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-IN', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
 }
 
 function shiftMonth(month: string, delta: number): string {
@@ -46,11 +50,17 @@ export function LeaveCalendar() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [orgUnitId, setOrgUnitId] = useState('');
 
-  const { data: orgUnits = [] } = useQuery({ queryKey: ['org-units'], queryFn: () => api.get<OrgUnitOption[]>('/hr/org-units') });
+  const { data: orgUnits = [] } = useQuery({
+    queryKey: ['org-units'],
+    queryFn: () => api.get<OrgUnitOption[]>('/hr/org-units'),
+  });
 
   const result = useQuery({
     queryKey: ['leavepolicy-team-calendar', month, orgUnitId],
-    queryFn: () => api.get<TeamCalendarResult>(`/hcm/leavepolicy/team-calendar?month=${month}${orgUnitId ? `&orgUnitId=${orgUnitId}` : ''}`),
+    queryFn: () =>
+      api.get<TeamCalendarResult>(
+        `/hcm/leavepolicy/team-calendar?month=${month}${orgUnitId ? `&orgUnitId=${orgUnitId}` : ''}`,
+      ),
   });
 
   const byDay = new Map<string, TeamCalendarEntry[]>();
@@ -106,11 +116,18 @@ export function LeaveCalendar() {
               const dayHoliday = holidaySet.get(key);
               const entries = byDay.get(key) ?? [];
               return (
-                <div key={day} className={`min-h-[5rem] rounded border p-1 ${dayHoliday ? 'border-band-good/40 bg-band-good/5' : 'border-ink-800/10'}`}>
+                <div
+                  key={day}
+                  className={`min-h-[5rem] rounded border p-1 ${dayHoliday ? 'border-band-good/40 bg-band-good/5' : 'border-ink-800/10'}`}
+                >
                   <div className="flex items-center justify-between">
                     <span className="font-semibold">{day}</span>
                   </div>
-                  {dayHoliday && <div className="truncate text-band-good" title={dayHoliday.name}>{dayHoliday.name}</div>}
+                  {dayHoliday && (
+                    <div className="truncate text-band-good" title={dayHoliday.name}>
+                      {dayHoliday.name}
+                    </div>
+                  )}
                   {entries.map((e, idx) => (
                     <div key={idx} className="truncate" title={`${e.fullName} — ${e.leaveTypeName}`}>
                       {e.fullName.split(' ')[0]} · {e.leaveTypeName}

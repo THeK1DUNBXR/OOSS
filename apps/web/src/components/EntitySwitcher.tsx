@@ -24,9 +24,7 @@ const KIND_WORDS: Record<TenantKind, string> = {
 };
 
 function roleWords(slugs: string[]): string {
-  return slugs
-    .map((s) => AFFILIATION_LABELS[s as keyof typeof AFFILIATION_LABELS] ?? words(s))
-    .join(', ');
+  return slugs.map((s) => AFFILIATION_LABELS[s as keyof typeof AFFILIATION_LABELS] ?? words(s)).join(', ');
 }
 
 /**

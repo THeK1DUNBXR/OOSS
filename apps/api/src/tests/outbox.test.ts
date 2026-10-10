@@ -46,7 +46,9 @@ describe('FX-24 outbox', () => {
     });
     expect(seen).toEqual([]);
     expect(await unscopedPrisma.outboxEvent.count({ where: { tenantId: TENANT, eventName: NAME } })).toBe(0);
-    expect(await unscopedPrisma.eventRecord.count({ where: { tenantId: TENANT, subjectEntityId: 'rolled-back' } })).toBe(0);
+    expect(
+      await unscopedPrisma.eventRecord.count({ where: { tenantId: TENANT, subjectEntityId: 'rolled-back' } }),
+    ).toBe(0);
   });
 
   it('a committed write is not delivered until dispatch, then exactly once under two concurrent dispatchers', async () => {
@@ -92,7 +94,9 @@ describe('FX-24 outbox', () => {
 
   it('an invalid event name is refused at emit and at dispatch', async () => {
     await asSystem(TENANT, async () => {
-      await expect(emit({ name: 'PersonCreated', subject: { entityType: 'X', entityId: '1' } })).rejects.toThrow(/grammar/);
+      await expect(emit({ name: 'PersonCreated', subject: { entityType: 'X', entityId: '1' } })).rejects.toThrow(
+        /grammar/,
+      );
     });
     await unscopedPrisma.outboxEvent.create({
       data: {
@@ -165,7 +169,9 @@ describe('FX-24 dispatcher and past-tense grammar', () => {
     });
     const r = await drainOutbox({ tenantId: TENANT });
     expect(r.dead).toBe(1);
-    await unscopedPrisma.outboxEvent.deleteMany({ where: { tenantId: TENANT, eventName: 'kz.crm.outboxprobe.create' } });
+    await unscopedPrisma.outboxEvent.deleteMany({
+      where: { tenantId: TENANT, eventName: 'kz.crm.outboxprobe.create' },
+    });
   });
 
   it('accepts past participles and the irregular verbs, refuses present forms', () => {

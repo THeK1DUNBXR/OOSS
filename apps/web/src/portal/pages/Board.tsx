@@ -35,7 +35,9 @@ export function Board() {
 
   const upcoming = (meetings.data?.items ?? []).filter((m) => m.status !== 'cancelled' && !m.heldOn);
   const open = (resolutions.data?.items ?? []).filter((r) => r.outcome === 'open');
-  const past = (resolutions.data?.items ?? []).filter((r) => ['passed', 'failed', 'withdrawn', 'meeting_demanded'].includes(r.outcome));
+  const past = (resolutions.data?.items ?? []).filter((r) =>
+    ['passed', 'failed', 'withdrawn', 'meeting_demanded'].includes(r.outcome),
+  );
   const me = members.data?.items.find((m) => m.personId === user?.personId);
 
   const nothing = upcoming.length === 0 && open.length === 0 && past.length === 0;
@@ -71,7 +73,12 @@ export function Board() {
             ) : (
               <div className="space-y-3">
                 {open.map((r) => (
-                  <OpenResolution key={r.id} resolution={r} myBoardMemberId={me?.id} canVote={can('resolutions:approve')} />
+                  <OpenResolution
+                    key={r.id}
+                    resolution={r}
+                    myBoardMemberId={me?.id}
+                    canVote={can('resolutions:approve')}
+                  />
                 ))}
               </div>
             )}
@@ -83,7 +90,10 @@ export function Board() {
             ) : (
               <ul className="space-y-2">
                 {past.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-2 rounded-md border border-ink-800 bg-ink-900 p-3">
+                  <li
+                    key={r.id}
+                    className="flex items-center justify-between gap-2 rounded-md border border-ink-800 bg-ink-900 p-3"
+                  >
                     <div className="min-w-0">
                       <p className="truncate text-sm text-ink-100">{r.title}</p>
                       <p className="text-2xs text-ink-500">{r.recordCode}</p>
@@ -135,7 +145,9 @@ function UpcomingMeeting({ meeting }: { meeting: BoardMeetingView }) {
 }
 
 function OpenResolution({
-  resolution, myBoardMemberId, canVote,
+  resolution,
+  myBoardMemberId,
+  canVote,
 }: {
   resolution: ResolutionView;
   myBoardMemberId: string | undefined;
@@ -150,7 +162,12 @@ function OpenResolution({
 
   const cast = useMutation({
     mutationFn: (demandsMeeting: boolean) =>
-      api.post(`/board/resolutions/${resolution.id}/vote`, { boardMemberId: myBoardMemberId, choice, interested, demandsMeeting }),
+      api.post(`/board/resolutions/${resolution.id}/vote`, {
+        boardMemberId: myBoardMemberId,
+        choice,
+        interested,
+        demandsMeeting,
+      }),
     onSuccess: () => {
       setError(null);
       qc.invalidateQueries({ queryKey: ['board', 'resolutions'] });
@@ -181,12 +198,16 @@ function OpenResolution({
                   label="Your vote"
                   value={choice}
                   onChange={(v) => setChoice(v as typeof choice)}
-                  options={[{ value: 'for', label: 'For' }, { value: 'against', label: 'Against' }, { value: 'abstain', label: 'Abstain' }]}
+                  options={[
+                    { value: 'for', label: 'For' },
+                    { value: 'against', label: 'Against' },
+                    { value: 'abstain', label: 'Abstain' },
+                  ]}
                 />
               </Row>
               <label className="flex items-center gap-2 text-2xs text-ink-300">
-                <input type="checkbox" checked={interested} onChange={(e) => setInterested(e.target.checked)} />
-                I am interested in this matter
+                <input type="checkbox" checked={interested} onChange={(e) => setInterested(e.target.checked)} />I am
+                interested in this matter
               </label>
               <div className="flex gap-2">
                 <button className="btn-primary" onClick={() => cast.mutate(false)} disabled={cast.isPending}>

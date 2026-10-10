@@ -139,7 +139,9 @@ export function assertActionAllowed(action?: string): void {
   }
 }
 
-export function isIndiaRegionRequired(config: Pick<ModelGatewayConfig, 'tenantInferenceRegion' | 'requireIndiaRegion'>): boolean {
+export function isIndiaRegionRequired(
+  config: Pick<ModelGatewayConfig, 'tenantInferenceRegion' | 'requireIndiaRegion'>,
+): boolean {
   return config.requireIndiaRegion === true || config.tenantInferenceRegion === 'india';
 }
 
@@ -154,7 +156,9 @@ export function allowInferenceRegion(
   return true;
 }
 
-export function redactPersonalFields<T extends Record<string, unknown>>(payload: T): { data: T; redactedFields: string[] } {
+export function redactPersonalFields<T extends Record<string, unknown>>(
+  payload: T,
+): { data: T; redactedFields: string[] } {
   const seen: string[] = [];
   const walk = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map((item) => walk(item));

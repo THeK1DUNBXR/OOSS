@@ -147,7 +147,10 @@ export function detectGrid(grid: Grid, label?: string): Detection {
     };
   }
 
-  const employeeHeader = findHeaderRow(grid, [['name', 'designation', 'employee code'], ['name', 'division', 'designation']]);
+  const employeeHeader = findHeaderRow(grid, [
+    ['name', 'designation', 'employee code'],
+    ['name', 'division', 'designation'],
+  ]);
   if (employeeHeader >= 0) {
     return {
       kind: 'employees',
@@ -158,7 +161,11 @@ export function detectGrid(grid: Grid, label?: string): Detection {
     };
   }
 
-  const salaryHeader = findHeaderRow(grid, [['name', 'actual salary'], ['name', 'net salary'], ['name', 'gross salary']]);
+  const salaryHeader = findHeaderRow(grid, [
+    ['name', 'actual salary'],
+    ['name', 'net salary'],
+    ['name', 'gross salary'],
+  ]);
   if (salaryHeader >= 0) {
     return {
       kind: 'salary',
@@ -170,7 +177,14 @@ export function detectGrid(grid: Grid, label?: string): Detection {
   }
 
   // An attendance grid is a row of dates across the top and P/A/L/WO beneath.
-  const attendanceHeader = findHeaderRow(grid, [['name', 'days'], ['name', 'date']], 6);
+  const attendanceHeader = findHeaderRow(
+    grid,
+    [
+      ['name', 'days'],
+      ['name', 'date'],
+    ],
+    6,
+  );
   if (attendanceHeader >= 0 && looksLikeAttendance(grid, attendanceHeader)) {
     return {
       kind: 'attendance',
@@ -181,7 +195,10 @@ export function detectGrid(grid: Grid, label?: string): Detection {
     };
   }
 
-  const txnHeader = findHeaderRow(grid, [['date', 'amount'], ['date', 'debit', 'credit']]);
+  const txnHeader = findHeaderRow(grid, [
+    ['date', 'amount'],
+    ['date', 'debit', 'credit'],
+  ]);
   if (txnHeader >= 0) {
     return {
       kind: 'transactions',
@@ -242,11 +259,25 @@ export function detectWorkbook(sheets: SheetGrid[]): { primary: Detection; perSh
   }
 
   const order: ImportKind[] = [
-    'template_courses', 'template_batches', 'template_colleges', 'template_clients',
-    'template_students', 'template_contacts', 'template_staff', 'template_opening_register',
-    'template_ledger_accounts', 'template_ledger_categories', 'template_vendor_bills',
-    'tally_ledger', 'bank_statement', 'employees', 'salary',
-    'chart_of_accounts', 'attendance', 'transactions', 'unknown',
+    'template_courses',
+    'template_batches',
+    'template_colleges',
+    'template_clients',
+    'template_students',
+    'template_contacts',
+    'template_staff',
+    'template_opening_register',
+    'template_ledger_accounts',
+    'template_ledger_categories',
+    'template_vendor_bills',
+    'tally_ledger',
+    'bank_statement',
+    'employees',
+    'salary',
+    'chart_of_accounts',
+    'attendance',
+    'transactions',
+    'unknown',
   ];
   const primary = [...perSheet].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))[0];
   return { primary, perSheet };
@@ -261,7 +292,10 @@ export function countLedgers(grid: Grid): number {
 }
 
 function isTallyTrialBalance(grid: Grid): boolean {
-  const head = grid.slice(0, 12).map((r) => r.join(' ').toLowerCase()).join(' | ');
+  const head = grid
+    .slice(0, 12)
+    .map((r) => r.join(' ').toLowerCase())
+    .join(' | ');
   return head.includes('trial balance') && grid.some((r) => has(r, 'debit', 'credit'));
 }
 

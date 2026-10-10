@@ -28,7 +28,7 @@ Build, in `packages/ui`:
 
 ## 4.2a Make the `Metric` rule real
 
-The first audit claimed `Metric` structurally requires `drillTo` or `noActionReason`. **It does not.** Both are plain optionals (`ui.tsx:147-148`), there is no discriminated union and no runtime check, and the component renders unwrapped when `drillTo` is absent (`:167-173`). What exists is a doc comment at `ui.tsx:132-135` stating the intent: *"drillTo is required unless noActionReason explains why none exists — a dead number is a defect, not a layout choice."*
+The first audit claimed `Metric` structurally requires `drillTo` or `noActionReason`. **It does not.** Both are plain optionals (`ui.tsx:147-148`), there is no discriminated union and no runtime check, and the component renders unwrapped when `drillTo` is absent (`:167-173`). What exists is a doc comment at `ui.tsx:132-135` stating the intent: _"drillTo is required unless noActionReason explains why none exists — a dead number is a defect, not a layout choice."_
 
 **52 of 90 call sites — 57% — pass neither**, including every figure on the GST return screens (`pages/GstReturns.tsx:350-353,569-571`), the receipt and final-invoice document headers (`ReceiptDocument.tsx:206,207`, `FinalInvoiceDocument.tsx:273,274`) and `Courses.tsx:82,83`.
 

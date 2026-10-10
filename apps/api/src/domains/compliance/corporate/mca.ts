@@ -31,9 +31,21 @@ export async function createMcaFiling(input: { form: McaFilingForm; fy: string }
   const auth = currentAuth();
   const recordCode = await nextCorporateCode('MCA');
   const filing = await prisma.mcaFiling.create({
-    data: { tenantId: auth.tenantId, recordCode, form: input.form, fy: input.fy, status: 'pending', createdById: auth.partyId },
+    data: {
+      tenantId: auth.tenantId,
+      recordCode,
+      form: input.form,
+      fy: input.fy,
+      status: 'pending',
+      createdById: auth.partyId,
+    },
   });
-  await auditWrite({ action: 'create', subjectType: 'mca_filing', subjectId: filing.id, after: { recordCode, form: input.form, fy: input.fy } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'mca_filing',
+    subjectId: filing.id,
+    after: { recordCode, form: input.form, fy: input.fy },
+  });
   return filing;
 }
 
@@ -45,7 +57,9 @@ export async function markMcaFilingFiled(id: string, input: { srn: string; filed
   const filing = await prisma.mcaFiling.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!filing) throw ApiError.notFound('MCA filing');
   if (filing.status === 'filed') {
-    throw ApiError.unprocessable('This filing is already recorded as filed. A correction is a new filing row, not an edit to this one.');
+    throw ApiError.unprocessable(
+      'This filing is already recorded as filed. A correction is a new filing row, not an edit to this one.',
+    );
   }
 
   const updated = await prisma.mcaFiling.update({

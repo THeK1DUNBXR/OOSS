@@ -32,7 +32,10 @@ function DelegationsCard() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ toPartyId: '', fromDate: '', toDate: '', note: '' });
 
-  const delegations = useQuery({ queryKey: DELEGATIONS_KEY, queryFn: () => api.get<Delegation[]>('/hcm/workflow/delegations') });
+  const delegations = useQuery({
+    queryKey: DELEGATIONS_KEY,
+    queryFn: () => api.get<Delegation[]>('/hcm/workflow/delegations'),
+  });
 
   const create = useMutation({
     mutationFn: () =>
@@ -71,14 +74,39 @@ function DelegationsCard() {
       {open && (
         <form onSubmit={submit} className="mb-4 flex flex-col gap-3 rounded-md border border-ink-800 bg-ink-900 p-3">
           {error && (
-            <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+            <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+              {error}
+            </p>
           )}
-          <TextInput label="Delegate to (party id)" value={form.toPartyId} onChange={(v) => setForm((f) => ({ ...f, toPartyId: v }))} required />
+          <TextInput
+            label="Delegate to (party id)"
+            value={form.toPartyId}
+            onChange={(v) => setForm((f) => ({ ...f, toPartyId: v }))}
+            required
+          />
           <Row>
-            <TextInput label="From" type="date" value={form.fromDate} onChange={(v) => setForm((f) => ({ ...f, fromDate: v }))} required />
-            <TextInput label="To" type="date" value={form.toDate} onChange={(v) => setForm((f) => ({ ...f, toDate: v }))} required />
+            <TextInput
+              label="From"
+              type="date"
+              value={form.fromDate}
+              onChange={(v) => setForm((f) => ({ ...f, fromDate: v }))}
+              required
+            />
+            <TextInput
+              label="To"
+              type="date"
+              value={form.toDate}
+              onChange={(v) => setForm((f) => ({ ...f, toDate: v }))}
+              required
+            />
           </Row>
-          <TextArea label="Note" value={form.note} onChange={(v) => setForm((f) => ({ ...f, note: v }))} rows={2} placeholder="Why, or for how long" />
+          <TextArea
+            label="Note"
+            value={form.note}
+            onChange={(v) => setForm((f) => ({ ...f, note: v }))}
+            rows={2}
+            placeholder="Why, or for how long"
+          />
           <div className="flex justify-end gap-2">
             <button type="button" className="btn" onClick={() => setOpen(false)}>
               Cancel
@@ -138,9 +166,7 @@ export function Approvals() {
         title="Approvals"
         subtitle="Everything an HR request has routed to you, across every request type — leave, expense, WFH exceptions and anything else another part of the system opens against the generic HR request engine."
       />
-      <RequestInbox
-        subtitle="Approve or reject with a note. A request you raised, or one about you, never appears here — the Self-Dealing Bar keeps it off your own inbox."
-      />
+      <RequestInbox subtitle="Approve or reject with a note. A request you raised, or one about you, never appears here — the Self-Dealing Bar keeps it off your own inbox." />
       <DelegationsCard />
     </div>
   );

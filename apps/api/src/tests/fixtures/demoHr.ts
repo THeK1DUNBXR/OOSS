@@ -252,7 +252,13 @@ export async function seedDemoHr(people: SeededPerson[]) {
     { code: 'EL', name: 'Earned Leave', annualEntitlementDays: 15, statutory: true, employmentStateAffecting: false },
     // Long leave takes somebody off the roll while it runs, so the employment
     // relationship moves with it.
-    { code: 'ML', name: 'Maternity Leave', annualEntitlementDays: 182, statutory: true, employmentStateAffecting: true },
+    {
+      code: 'ML',
+      name: 'Maternity Leave',
+      annualEntitlementDays: 182,
+      statutory: true,
+      employmentStateAffecting: true,
+    },
     { code: 'LOP', name: 'Loss of Pay', annualEntitlementDays: 0, statutory: false, employmentStateAffecting: false },
   ];
 
@@ -303,9 +309,23 @@ export async function seedDemoHr(people: SeededPerson[]) {
   }
 
   const leaveRequestSpecs: Array<{
-    email: string; code: string; from: number; to: number; days: number; status: string; reason: string;
+    email: string;
+    code: string;
+    from: number;
+    to: number;
+    days: number;
+    status: string;
+    reason: string;
   }> = [
-    { email: 'arun@kaizen.co.in', code: 'CL', from: -21, to: -19, days: 3, status: 'Completed', reason: 'Family function' },
+    {
+      email: 'arun@kaizen.co.in',
+      code: 'CL',
+      from: -21,
+      to: -19,
+      days: 3,
+      status: 'Completed',
+      reason: 'Family function',
+    },
     { email: 'divya@kaizen.co.in', code: 'SL', from: -9, to: -8, days: 2, status: 'Completed', reason: 'Fever' },
     { email: 'ravi@kaizen.co.in', code: 'EL', from: 6, to: 10, days: 5, status: 'PendingApproval', reason: 'Vacation' },
     { email: 'priya@kaizen.co.in', code: 'CL', from: 3, to: 3, days: 1, status: 'PendingApproval', reason: 'Personal' },
@@ -486,13 +506,25 @@ export async function seedDemoHr(people: SeededPerson[]) {
     skills.set(spec.name, skill.id);
   }
 
-  const claimSpecs: Array<{ email: string; skill: string; tier: keyof typeof CONFIDENCE_RANK; state?: string; monthsSinceEvidence: number }> = [
+  const claimSpecs: Array<{
+    email: string;
+    skill: string;
+    tier: keyof typeof CONFIDENCE_RANK;
+    state?: string;
+    monthsSinceEvidence: number;
+  }> = [
     { email: 'kavitha@kaizen.co.in', skill: 'React', tier: 'verified', monthsSinceEvidence: 2 },
     { email: 'kavitha@kaizen.co.in', skill: 'PostgreSQL', tier: 'demonstrated', monthsSinceEvidence: 5 },
     { email: 'priya@kaizen.co.in', skill: 'React', tier: 'assessed', monthsSinceEvidence: 8 },
     { email: 'priya@kaizen.co.in', skill: 'Node.js', tier: 'claimed', monthsSinceEvidence: 14 },
     { email: 'ravi@kaizen.co.in', skill: 'Classroom Facilitation', tier: 'verified', monthsSinceEvidence: 1 },
-    { email: 'suresh@kaizen.co.in', skill: 'Spoken English Training', tier: 'assessed', monthsSinceEvidence: 3, state: 'contradicted' },
+    {
+      email: 'suresh@kaizen.co.in',
+      skill: 'Spoken English Training',
+      tier: 'assessed',
+      monthsSinceEvidence: 3,
+      state: 'contradicted',
+    },
     { email: 'latha@kaizen.co.in', skill: 'GST Compliance', tier: 'demonstrated', monthsSinceEvidence: 4 },
     // Inferred from a document, never confirmed by anybody — the weakest tier,
     // and the one a surface should be most careful about presenting.
@@ -542,7 +574,11 @@ export async function seedDemoHr(people: SeededPerson[]) {
   // Goals, learning, and a hiring funnel with something at every stage.
   // -------------------------------------------------------------------------
   const goalSpecs = [
-    { email: 'arun@kaizen.co.in', description: 'Close ₹40L of new institutional business this quarter', status: 'InProgress' },
+    {
+      email: 'arun@kaizen.co.in',
+      description: 'Close ₹40L of new institutional business this quarter',
+      status: 'InProgress',
+    },
     { email: 'meera@kaizen.co.in', description: 'Convert 60 admissions across the Madurai belt', status: 'AtRisk' },
     { email: 'kavitha@kaizen.co.in', description: 'Ship the placement portal to production', status: 'InProgress' },
     { email: 'ravi@kaizen.co.in', description: 'Lift batch completion above 85%', status: 'Achieved' },

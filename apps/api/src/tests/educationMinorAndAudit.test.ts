@@ -81,7 +81,9 @@ describe('FX-64: enrolment with no date of birth holds the minor rule', () => {
     const name = `Stated Minor ${Date.now()}`;
     const dob = yearsAgo(15);
     const err = await expectReject(() =>
-      asUser(CHAIRMAN, () => enrolStudent({ cohortId: cohort.id, fullName: name, primaryPhone: aPhone(), dateOfBirth: dob })),
+      asUser(CHAIRMAN, () =>
+        enrolStudent({ cohortId: cohort.id, fullName: name, primaryPhone: aPhone(), dateOfBirth: dob }),
+      ),
     );
     expect(err.status).toBe(422);
     expect(await unscopedPrisma.person.count({ where: { tenantId: TENANT, fullName: name } })).toBe(0);
@@ -138,7 +140,10 @@ describe('P1 learner timeline: progress is filed under the IST day', () => {
         primaryPhone: aPhone(),
         adultAttested: true,
       });
-      const row = await recordDailyProgress(enrollment.id, { progressDate: new Date('2026-05-09T20:00:00Z'), score: 80 });
+      const row = await recordDailyProgress(enrollment.id, {
+        progressDate: new Date('2026-05-09T20:00:00Z'),
+        score: 80,
+      });
       expect(row.progressDate.toISOString()).toBe('2026-05-09T18:30:00.000Z');
     });
   });

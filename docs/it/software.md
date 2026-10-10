@@ -71,22 +71,22 @@ step is open, `{ applied: true, licence, ... }` once decided.
 
 ## API — mounted at `/api/it`
 
-| Method & path | Verb needed | Notes |
-|---|---|---|
-| `GET /applications` | `it_applications:view` | `?status=&tier=&hosting=` |
-| `GET /applications/summary` | `it_applications:view` | see below |
-| `POST /applications` | `it_applications:create` | |
-| `GET /applications/:id` | `it_applications:view` | includes `licences[]` and `availableTransitions` |
-| `PATCH /applications/:id` | `it_applications:edit` | assigning an owner clears `unownedNotifiedAt` |
-| `POST /applications/:id/transition` | `it_applications:edit` | `{ event: 'ACTIVATE'\|'SUNSET'\|'RETIRE'\|'REJECT', note? }` |
-| `GET /licences` | `it_licences:view` | `?status=&applicationId=&view=renewing\|over_allocated\|all` |
-| `GET /licences/summary` | `it_licences:view` | see below |
-| `POST /licences` | `it_licences:create` | |
-| `GET /licences/:id` | `it_licences:view` | includes computed `annualisedCost`, `seatUtilisation`, `events[]` |
-| `POST /licences/:id/seats` | `it_licences:edit` | `{ seatsInUse, note? }` — append-only event |
-| `POST /licences/:id/renew` | `it_licences:edit` | propose — `{ newTermEnd, newCostPerPeriod?, newBillingCycle?, note? }` |
-| `POST /licences/:id/approve-renewal` | `it_licences:approve` | `{ approve, note? }` — refuses the proposer |
-| `POST /licences/:id/cancel` | `it_licences:edit` | `{ reason }` |
+| Method & path                        | Verb needed              | Notes                                                                  |
+| ------------------------------------ | ------------------------ | ---------------------------------------------------------------------- |
+| `GET /applications`                  | `it_applications:view`   | `?status=&tier=&hosting=`                                              |
+| `GET /applications/summary`          | `it_applications:view`   | see below                                                              |
+| `POST /applications`                 | `it_applications:create` |                                                                        |
+| `GET /applications/:id`              | `it_applications:view`   | includes `licences[]` and `availableTransitions`                       |
+| `PATCH /applications/:id`            | `it_applications:edit`   | assigning an owner clears `unownedNotifiedAt`                          |
+| `POST /applications/:id/transition`  | `it_applications:edit`   | `{ event: 'ACTIVATE'\|'SUNSET'\|'RETIRE'\|'REJECT', note? }`           |
+| `GET /licences`                      | `it_licences:view`       | `?status=&applicationId=&view=renewing\|over_allocated\|all`           |
+| `GET /licences/summary`              | `it_licences:view`       | see below                                                              |
+| `POST /licences`                     | `it_licences:create`     |                                                                        |
+| `GET /licences/:id`                  | `it_licences:view`       | includes computed `annualisedCost`, `seatUtilisation`, `events[]`      |
+| `POST /licences/:id/seats`           | `it_licences:edit`       | `{ seatsInUse, note? }` — append-only event                            |
+| `POST /licences/:id/renew`           | `it_licences:edit`       | propose — `{ newTermEnd, newCostPerPeriod?, newBillingCycle?, note? }` |
+| `POST /licences/:id/approve-renewal` | `it_licences:approve`    | `{ approve, note? }` — refuses the proposer                            |
+| `POST /licences/:id/cancel`          | `it_licences:edit`       | `{ reason }`                                                           |
 
 ### `GET /applications/summary`
 
@@ -96,7 +96,7 @@ step is open, `{ applied: true, licence, ... }` once decided.
   "byTier": { "1": 2, "2": 5, "3": 9, "4": 3 },
   "byHosting": { "saas": 14, "on_prem": 3, "cloud": 2 },
   "byStatus": { "evaluating": 2, "active": 15, "sunsetting": 1, "retired": 1 },
-  "unowned": 1
+  "unowned": 1,
 }
 ```
 
@@ -112,13 +112,13 @@ as seen by Finance Head, who holds it:
   "notYetMeasured": false,
   "annualisedSpend": 842000,
   "annualisedSpendByApplication": [
-    { "applicationId": "…", "applicationName": "Google Workspace", "annualisedCost": 240000 }
+    { "applicationId": "…", "applicationName": "Google Workspace", "annualisedCost": 240000 },
   ],
   "renewingIn90Days": 3,
   "overAllocated": 1,
   "underUsed": 2,
   "seatsPurchased": 180,
-  "seatsInUse": 142
+  "seatsInUse": 142,
 }
 ```
 
@@ -156,16 +156,16 @@ as seen by Finance Head, who holds it:
 
 ## Acceptance IDs → tests (`apps/api/src/tests/it/software.test.ts`)
 
-| ID | Test |
-|---|---|
-| IT-APP-001 | `IT-APP-001: an application with no owner raises IT_APP_UNOWNED rather than sitting silently unowned` |
-| IT-LIC-001 | `IT-LIC-001: the renewal ladder fires once per rung, and a second run the same day is idempotent` |
+| ID         | Test                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| IT-APP-001 | `IT-APP-001: an application with no owner raises IT_APP_UNOWNED rather than sitting silently unowned`   |
+| IT-LIC-001 | `IT-LIC-001: the renewal ladder fires once per rung, and a second run the same day is idempotent`       |
 | IT-LIC-002 | `IT-LIC-002: seats in use above seats purchased raises an over-allocation exception naming the licence` |
-| IT-LIC-003 | `IT-LIC-003: a renewal proposal by the Operations Head opens an approval step it cannot decide itself` |
-| IT-LIC-004 | `IT-LIC-004: annualisedCost normalises monthly, quarterly and annual billing to one figure` |
-| Permission | `the Operations Head cannot approve their own renewal (permission test)` |
-| Permission | `the Finance Head cannot create a licence — VF,approve carries no create verb (permission test)` |
-| Permission | `an employee sees the application catalogue but holds no grant on licences at all (permission test)` |
+| IT-LIC-003 | `IT-LIC-003: a renewal proposal by the Operations Head opens an approval step it cannot decide itself`  |
+| IT-LIC-004 | `IT-LIC-004: annualisedCost normalises monthly, quarterly and annual billing to one figure`             |
+| Permission | `the Operations Head cannot approve their own renewal (permission test)`                                |
+| Permission | `the Finance Head cannot create a licence — VF,approve carries no create verb (permission test)`        |
+| Permission | `an employee sees the application catalogue but holds no grant on licences at all (permission test)`    |
 
 Run against this workstream's own database:
 

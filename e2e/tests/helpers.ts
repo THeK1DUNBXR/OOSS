@@ -78,11 +78,7 @@ const sessionTokens = new Map<string, string>();
  * session is the token the app itself keeps, so handing it over is the same
  * session a form sign-in would have produced.
  */
-export async function sessionToken(
-  request: APIRequestContext,
-  email: string,
-  password: string,
-): Promise<string> {
+export async function sessionToken(request: APIRequestContext, email: string, password: string): Promise<string> {
   const cached = sessionTokens.get(email);
   if (cached) return cached;
   const login = await request.post(`${API_URL}/api/auth/login`, { data: { email, password } });

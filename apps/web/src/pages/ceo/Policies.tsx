@@ -38,7 +38,12 @@ export function Policies() {
       <div className="grid gap-4 md:grid-cols-3">
         <Metric label="Active policies" value="14" sub="Across six governance domains" drillTo="/ceo/governance" />
         <Metric label="Due this month" value="3" sub="One overdue and two due soon" drillTo="/ceo/risks" tone="warn" />
-        <Metric label="Acknowledge rate" value="96%" sub="All named policy owners have signed" noActionReason="Snapshot of current acknowledgement status" />
+        <Metric
+          label="Acknowledge rate"
+          value="96%"
+          sub="All named policy owners have signed"
+          noActionReason="Snapshot of current acknowledgement status"
+        />
       </div>
 
       <Card title="Policy register" subtitle="Review cadence and owner accountability.">

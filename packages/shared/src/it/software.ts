@@ -147,7 +147,10 @@ export const DEFAULT_IT_LICENCE_RENEWAL_RUNGS = [90, 60, 30, 7, 0] as const;
  * reasoning in `packages/shared/src/compliance/calendar.ts`: the widest rung
  * crossed is mildest, the tightest is what describes the situation now.
  */
-export function renewalRung(daysLeft: number, rungs: readonly number[] = DEFAULT_IT_LICENCE_RENEWAL_RUNGS): number | null {
+export function renewalRung(
+  daysLeft: number,
+  rungs: readonly number[] = DEFAULT_IT_LICENCE_RENEWAL_RUNGS,
+): number | null {
   const sorted = [...rungs].sort((a, b) => b - a);
   const crossed = sorted.filter((r) => daysLeft <= r);
   if (!crossed.length) return null;

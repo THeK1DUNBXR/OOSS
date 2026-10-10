@@ -43,9 +43,20 @@ const router = Router();
 // Forms
 // ---------------------------------------------------------------------------
 
-router.get('/forms', handler(async (req) => listForms({ q: str(req.query.q), active: req.query.active === undefined ? undefined : req.query.active === 'true' })));
+router.get(
+  '/forms',
+  handler(async (req) =>
+    listForms({
+      q: str(req.query.q),
+      active: req.query.active === undefined ? undefined : req.query.active === 'true',
+    }),
+  ),
+);
 
-router.get('/forms/:id', handler(async (req) => loadForm(req.params.id)));
+router.get(
+  '/forms/:id',
+  handler(async (req) => loadForm(req.params.id)),
+);
 
 router.post(
   '/forms',
@@ -57,11 +68,26 @@ router.post(
   }),
 );
 
-router.patch('/forms/:id', handler(async (req) => updateForm(req.params.id, req.body as Partial<FormInput>)));
-router.post('/forms/:id/publish', handler(async (req) => publishForm(req.params.id)));
-router.post('/forms/:id/unpublish', handler(async (req) => unpublishForm(req.params.id)));
-router.post('/forms/:id/rotate-token', handler(async (req) => rotateToken(req.params.id)));
-router.get('/forms/:id/embed', handler(async (req) => formEmbedInfo(req.params.id)));
+router.patch(
+  '/forms/:id',
+  handler(async (req) => updateForm(req.params.id, req.body as Partial<FormInput>)),
+);
+router.post(
+  '/forms/:id/publish',
+  handler(async (req) => publishForm(req.params.id)),
+);
+router.post(
+  '/forms/:id/unpublish',
+  handler(async (req) => unpublishForm(req.params.id)),
+);
+router.post(
+  '/forms/:id/rotate-token',
+  handler(async (req) => rotateToken(req.params.id)),
+);
+router.get(
+  '/forms/:id/embed',
+  handler(async (req) => formEmbedInfo(req.params.id)),
+);
 
 router.get(
   '/forms/:id/submissions',
@@ -72,12 +98,18 @@ router.get(
 // Submissions
 // ---------------------------------------------------------------------------
 
-router.post('/submissions/:id/convert', handler(async (req) => convertSubmission(req.params.id)));
+router.post(
+  '/submissions/:id/convert',
+  handler(async (req) => convertSubmission(req.params.id)),
+);
 router.post(
   '/submissions/:id/reject',
   handler(async (req) => rejectSubmission(req.params.id, str(req.body?.reason) ?? 'Not specified')),
 );
-router.post('/submissions/:id/mark-spam', handler(async (req) => markSpamSubmission(req.params.id)));
+router.post(
+  '/submissions/:id/mark-spam',
+  handler(async (req) => markSpamSubmission(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Touchpoints
@@ -133,23 +165,41 @@ router.post(
   }),
 );
 
-router.get('/attribution/lead/:leadId', handler(async (req) => attributionForLead(req.params.leadId)));
+router.get(
+  '/attribution/lead/:leadId',
+  handler(async (req) => attributionForLead(req.params.leadId)),
+);
 
 // ---------------------------------------------------------------------------
 // Score rules
 // ---------------------------------------------------------------------------
 
-router.get('/score-rules', handler(async () => ({ items: await listScoreRules() })));
+router.get(
+  '/score-rules',
+  handler(async () => ({ items: await listScoreRules() })),
+);
 router.post(
   '/score-rules',
   handler(async (req) => {
-    const body = req.body as { name: string; condition: { field: string; op: string; value: unknown }; points: number; active?: boolean; order?: number };
+    const body = req.body as {
+      name: string;
+      condition: { field: string; op: string; value: unknown };
+      points: number;
+      active?: boolean;
+      order?: number;
+    };
     if (!body?.name || !body?.condition) throw ApiError.badRequest('name and condition are required.');
     return createScoreRule(body as never);
   }),
 );
-router.patch('/score-rules/:id', handler(async (req) => updateScoreRule(req.params.id, req.body as never)));
-router.delete('/score-rules/:id', handler(async (req) => deleteScoreRule(req.params.id)));
+router.patch(
+  '/score-rules/:id',
+  handler(async (req) => updateScoreRule(req.params.id, req.body as never)),
+);
+router.delete(
+  '/score-rules/:id',
+  handler(async (req) => deleteScoreRule(req.params.id)),
+);
 router.post(
   '/score-rules/preview',
   handler(async (req) => {
@@ -158,17 +208,29 @@ router.post(
     return previewScore(leadId);
   }),
 );
-router.post('/score-rules/apply', handler(async () => ({ updated: await applyScores() })));
+router.post(
+  '/score-rules/apply',
+  handler(async () => ({ updated: await applyScores() })),
+);
 
 // ---------------------------------------------------------------------------
 // Short links
 // ---------------------------------------------------------------------------
 
-router.get('/links', handler(async () => listShortLinks()));
+router.get(
+  '/links',
+  handler(async () => listShortLinks()),
+);
 router.post(
   '/links',
   handler(async (req) => {
-    const body = req.body as { slug?: string; targetUrl: string; campaignId?: string; channelKey?: string; utm?: Record<string, unknown> };
+    const body = req.body as {
+      slug?: string;
+      targetUrl: string;
+      campaignId?: string;
+      channelKey?: string;
+      utm?: Record<string, unknown>;
+    };
     if (!body?.targetUrl) throw ApiError.badRequest('targetUrl is required.');
     return createShortLink(body as never);
   }),

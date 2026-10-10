@@ -37,7 +37,9 @@ describe('revoking an authority grant is granted and audited', () => {
     const row = await unscopedPrisma.authorityGrant.findFirstOrThrow({ where: { id: grantId } });
     expect(row.status).toBe('active');
     expect(row.revokedAt).toBeNull();
-    const audits = await unscopedPrisma.auditRecord.count({ where: { subjectType: 'authority_grant', subjectId: grantId } });
+    const audits = await unscopedPrisma.auditRecord.count({
+      where: { subjectType: 'authority_grant', subjectId: grantId },
+    });
     expect(audits).toBe(0);
   });
 
@@ -49,7 +51,9 @@ describe('revoking an authority grant is granted and audited', () => {
 
     const row = await unscopedPrisma.authorityGrant.findFirstOrThrow({ where: { id: grantId } });
     expect(row.status).toBe('revoked');
-    const audits = await unscopedPrisma.auditRecord.findMany({ where: { subjectType: 'authority_grant', subjectId: grantId } });
+    const audits = await unscopedPrisma.auditRecord.findMany({
+      where: { subjectType: 'authority_grant', subjectId: grantId },
+    });
     expect(audits).toHaveLength(1);
     expect(audits[0].actorId).toBe(chairman.partyId);
   });

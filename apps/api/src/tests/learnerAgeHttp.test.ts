@@ -53,10 +53,22 @@ const phone = () => {
 async function aCourseAndBatch(tag: string) {
   return asUser(CHAIRMAN, async () => {
     const course = await prisma.course.create({
-      data: { tenantId: TENANT, recordCode: await nextRecordCode('CRS'), name: `Http ${tag}`, code: `HTTP${tag}`.slice(0, 16) },
+      data: {
+        tenantId: TENANT,
+        recordCode: await nextRecordCode('CRS'),
+        name: `Http ${tag}`,
+        code: `HTTP${tag}`.slice(0, 16),
+      },
     });
     const cohort = await prisma.cohort.create({
-      data: { tenantId: TENANT, recordCode: await nextRecordCode('COH'), courseId: course.id, name: `Http Batch ${tag}`, startDate: new Date(), capacity: 30 },
+      data: {
+        tenantId: TENANT,
+        recordCode: await nextRecordCode('COH'),
+        courseId: course.id,
+        name: `Http Batch ${tag}`,
+        startDate: new Date(),
+        capacity: 30,
+      },
     });
     return { course, cohort };
   });
@@ -136,7 +148,10 @@ describe('HTTP: POST /crm/people/:id/student-record carries the age basis', () =
     const person = await aPerson('dob-on-attach', null);
     // A 15-year-old with no guardian is refused, and the date is not written on
     // a refusal.
-    const refused = await post(`/crm/people/${person.id}/student-record`, { fullName: person.fullName, dateOfBirth: yearsAgo(15) });
+    const refused = await post(`/crm/people/${person.id}/student-record`, {
+      fullName: person.fullName,
+      dateOfBirth: yearsAgo(15),
+    });
     expect(refused.status).toBe(422);
     const untouched = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
     expect(untouched.dateOfBirth).toBeNull();
@@ -155,7 +170,10 @@ describe('HTTP: POST /crm/people/:id/student-record carries the age basis', () =
 
   it('an attested adult with no date of birth on file becomes a student, and the audit row names who attested', async () => {
     const person = await aPerson('attested-on-attach', null);
-    const res = await post(`/crm/people/${person.id}/student-record`, { fullName: person.fullName, adultAttested: true });
+    const res = await post(`/crm/people/${person.id}/student-record`, {
+      fullName: person.fullName,
+      adultAttested: true,
+    });
     expect(res.status).toBe(201);
     const profile = await unscopedPrisma.studentProfile.findFirstOrThrow({ where: { personId: person.id } });
     const audit = await unscopedPrisma.auditRecord.findFirst({

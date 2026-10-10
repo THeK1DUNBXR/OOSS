@@ -124,10 +124,7 @@ export async function transition<S extends string, E extends string>(
  * viewer cannot press is a different problem from a transition that does not
  * exist.
  */
-export function availableTransitions<S extends string, E extends string>(
-  machine: Machine<S, E>,
-  state: S,
-): E[] {
+export function availableTransitions<S extends string, E extends string>(machine: Machine<S, E>, state: S): E[] {
   return machine.allowedEvents(state);
 }
 

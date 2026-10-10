@@ -103,7 +103,9 @@ function linesFrom(invoice: InvoiceView | null): EditorLine[] {
     quantity: String(l.quantity ?? 1),
     // The fee before the discount, which is what the counter re-opens a draft
     // to see and adjust — not the already-discounted amount the server stores.
-    unitPrice: String(l.unitPrice ?? round2(((l.amount ?? 0) + (l.discountAmount ?? 0)) / Math.max(l.quantity ?? 1, 1)) ?? ''),
+    unitPrice: String(
+      l.unitPrice ?? round2(((l.amount ?? 0) + (l.discountAmount ?? 0)) / Math.max(l.quantity ?? 1, 1)) ?? '',
+    ),
     discountPercent: l.discountPercent ? String(l.discountPercent) : '',
     discountAmount: l.discountAmount ? String(l.discountAmount) : '',
     gstRate: String(l.gstRate ?? 0),
@@ -135,11 +137,13 @@ export function InvoiceEditor({
   const editing = Boolean(invoice);
   const organizations = useList<Named>('organizations', '/crm/organizations?pageSize=200', open);
   const institutions = useList<Named>('institutions', '/crm/institutions?pageSize=200', open);
-  const students = useList<{ id: string; personId: string; fullName: string; registrationNumber: string | null; primaryPhone: string | null }>(
-    'students-picker',
-    '/crm/students?pageSize=200',
-    open,
-  );
+  const students = useList<{
+    id: string;
+    personId: string;
+    fullName: string;
+    registrationNumber: string | null;
+    primaryPhone: string | null;
+  }>('students-picker', '/crm/students?pageSize=200', open);
   const courses = useList<CourseView>('courses', '/education/courses', open);
   const states = useList<{ code: string; name: string }>('gst-states', '/books/gst/states', open);
   /**
@@ -153,7 +157,8 @@ export function InvoiceEditor({
    */
   const { data: profile } = useQuery({
     queryKey: ['company-profile'],
-    queryFn: () => api.get<{ stateCode: string | null; gstin: string | null; defaultDueDays: number }>('/books/company-profile'),
+    queryFn: () =>
+      api.get<{ stateCode: string | null; gstin: string | null; defaultDueDays: number }>('/books/company-profile'),
     enabled: open,
     retry: false,
   });
@@ -434,7 +439,9 @@ export function InvoiceEditor({
                 else setPersonId('');
               }}
               className={`chip transition-colors ${
-                billTo === value ? 'border-accent/60 text-accent-soft' : 'border-ink-800 text-ink-500 hover:border-ink-600'
+                billTo === value
+                  ? 'border-accent/60 text-accent-soft'
+                  : 'border-ink-800 text-ink-500 hover:border-ink-600'
               }`}
             >
               {label}
@@ -442,9 +449,7 @@ export function InvoiceEditor({
           ))}
         </div>
       </div>
-      <p className="text-2xs text-ink-500">
-        The invoice says which of the three it is for.
-      </p>
+      <p className="text-2xs text-ink-500">The invoice says which of the three it is for.</p>
 
       {billTo === 'student' ? (
         <SelectInput
@@ -543,7 +548,10 @@ export function InvoiceEditor({
                   placeholder="Not a course — type it below"
                   options={courses.rows.map((c) => ({
                     value: c.id,
-                    label: c.feeAmount !== null ? `${c.name} (${c.code}) — ₹${c.feeAmount.toLocaleString('en-IN')}` : `${c.name} (${c.code})`,
+                    label:
+                      c.feeAmount !== null
+                        ? `${c.name} (${c.code}) — ₹${c.feeAmount.toLocaleString('en-IN')}`
+                        : `${c.name} (${c.code})`,
                   }))}
                   hint="fills the price, rate and SAC"
                 />
@@ -629,7 +637,8 @@ export function InvoiceEditor({
                   </>
                 ) : (
                   <>
-                    Line total <span className="tabular-nums text-ink-200">₹{grossOf(line).toLocaleString('en-IN')}</span>
+                    Line total{' '}
+                    <span className="tabular-nums text-ink-200">₹{grossOf(line).toLocaleString('en-IN')}</span>
                   </>
                 )}
               </p>
@@ -730,7 +739,13 @@ export function InvoiceEditor({
         </>
       )}
 
-      <TextArea label="Notes on the invoice" value={notes} onChange={setNotes} rows={2} hint="printed under the lines" />
+      <TextArea
+        label="Notes on the invoice"
+        value={notes}
+        onChange={setNotes}
+        rows={2}
+        hint="printed under the lines"
+      />
     </CreateModal>
   );
 }
@@ -756,17 +771,7 @@ function fillFromEnrolment(
   };
 }
 
-function Figure({
-  label,
-  value,
-  strong,
-  tone,
-}: {
-  label: string;
-  value: number;
-  strong?: boolean;
-  tone?: 'warn';
-}) {
+function Figure({ label, value, strong, tone }: { label: string; value: number; strong?: boolean; tone?: 'warn' }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
       <dt className={strong ? 'text-ink-200' : 'text-ink-400'}>{label}</dt>
@@ -780,4 +785,3 @@ function Figure({
     </div>
   );
 }
-

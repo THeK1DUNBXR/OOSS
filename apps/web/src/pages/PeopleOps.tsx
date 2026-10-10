@@ -35,7 +35,14 @@ import {
   Withheld,
 } from '../components/ui.js';
 import { NewButton } from '../components/forms.js';
-import { EditEmployeeProfile, NewAssignment, NewLeaveRequest, NewRequisition, NewSkill, ProposeCompensation } from '../components/createForms.js';
+import {
+  EditEmployeeProfile,
+  NewAssignment,
+  NewLeaveRequest,
+  NewRequisition,
+  NewSkill,
+  ProposeCompensation,
+} from '../components/createForms.js';
 import { humanize } from '../lib/words.js';
 
 // ---------------------------------------------------------------------------
@@ -105,8 +112,7 @@ function Transitions({
   const [error, setError] = useState<string | null>(null);
 
   const run = useMutation({
-    mutationFn: (body: { event: string; note?: string }) =>
-      api.post(`/hr/${collection}/${id}/transition`, body),
+    mutationFn: (body: { event: string; note?: string }) => api.post(`/hr/${collection}/${id}/transition`, body),
     onSuccess: () => {
       for (const key of invalidate) void qc.invalidateQueries({ queryKey: [key] });
       setPending(null);
@@ -161,9 +167,7 @@ function Transitions({
       >
         <label className="label">Why</label>
         <textarea className="input" rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
-        <p className="mt-1.5 text-2xs text-ink-500">
-          Kept with the record.
-        </p>
+        <p className="mt-1.5 text-2xs text-ink-500">Kept with the record.</p>
       </Modal>
     </>
   );
@@ -221,7 +225,11 @@ interface DivisionHeadcount {
 export function Employees() {
   const [status, setStatus] = useState<string>('all');
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['hr-employees'],
     queryFn: () => api.get<EmployeeRow[]>('/hr/employees'),
   });
@@ -243,10 +251,7 @@ export function Employees() {
 
   return (
     <div>
-      <PageHeader
-        title="Employees"
-        subtitle="Everyone the company employs, and where each stands."
-      />
+      <PageHeader title="Employees" subtitle="Everyone the company employs, and where each stands." />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="On the books" value={onBooks.length} sub="Active, on leave, suspended or serving notice" />
@@ -361,7 +366,13 @@ export function Employees() {
                     <td>
                       <StatusChip
                         status={titleCase(e.confirmationState.replace(/_/g, ' '))}
-                        tone={e.confirmationState === 'confirmed' ? 'good' : e.confirmationState === 'in_probation' ? 'warn' : 'neutral'}
+                        tone={
+                          e.confirmationState === 'confirmed'
+                            ? 'good'
+                            : e.confirmationState === 'in_probation'
+                              ? 'warn'
+                              : 'neutral'
+                        }
                       />
                     </td>
                   </tr>
@@ -420,7 +431,12 @@ interface EmployeeDetailView {
   /** Withheld rather than guessed from a role slug — a viewer who cannot
    * open a position for this person does not see the button at all. */
   canCreateAssignment: boolean;
-  leaveBalances: Array<{ id: string; balanceDays: string; heldDays: string; leaveType: { name: string; code: string } }>;
+  leaveBalances: Array<{
+    id: string;
+    balanceDays: string;
+    heldDays: string;
+    leaveType: { name: string; code: string };
+  }>;
   onboarding: { id: string; status: string } | null;
   offboarding: { id: string; status: string } | null;
   goals: Array<{ id: string; description: string; status: string; periodLabel: string | null }>;
@@ -504,8 +520,7 @@ export function EmployeeDetail() {
         title={data.person.fullName}
         subtitle={
           <>
-            <RecordCode code={data.recordCode} /> · {current?.position.job.title ?? 'no seat'} ·{' '}
-            {data.legalEntity}
+            <RecordCode code={data.recordCode} /> · {current?.position.job.title ?? 'no seat'} · {data.legalEntity}
           </>
         }
         actions={
@@ -533,8 +548,16 @@ export function EmployeeDetail() {
         employment={data}
         canEditEmploymentDetails={data.canEditEmploymentDetails}
       />
-      <ProposeCompensation open={proposeCompOpen} onClose={() => setProposeCompOpen(false)} employmentRelationshipId={data.id} />
-      <NewAssignment open={newAssignmentOpen} onClose={() => setNewAssignmentOpen(false)} employmentRelationshipId={data.id} />
+      <ProposeCompensation
+        open={proposeCompOpen}
+        onClose={() => setProposeCompOpen(false)}
+        employmentRelationshipId={data.id}
+      />
+      <NewAssignment
+        open={newAssignmentOpen}
+        onClose={() => setNewAssignmentOpen(false)}
+        employmentRelationshipId={data.id}
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
@@ -576,7 +599,10 @@ export function EmployeeDetail() {
                     <td className="num">{date(a.effectiveFrom)}</td>
                     <td className="num">{a.effectiveTo ? date(a.effectiveTo) : '—'}</td>
                     <td>
-                      <StatusChip status={humanize(a.rowStatus)} tone={a.rowStatus === 'Effective' ? 'good' : 'neutral'} />
+                      <StatusChip
+                        status={humanize(a.rowStatus)}
+                        tone={a.rowStatus === 'Effective' ? 'good' : 'neutral'}
+                      />
                     </td>
                     <td>
                       <StatusChip status={humanize(a.requestStatus)} tone={tone(a.requestStatus)} />
@@ -596,10 +622,7 @@ export function EmployeeDetail() {
             </table>
           </Card>
 
-          <Card
-            title="Pay"
-            subtitle="Every pay revision, and what it was for."
-          >
+          <Card title="Pay" subtitle="Every pay revision, and what it was for.">
             {compensation.length === 0 ? (
               data.payVisible ? (
                 <EmptyState
@@ -737,7 +760,13 @@ export function EmployeeDetail() {
               id={data.id}
               events={data.availableTransitions}
               invalidate={['hr-employee', 'hr-employees', 'hr-headcount']}
-              needsNote={['SUSPEND', 'TERMINATE_POST_DISCIPLINARY', 'ABSENCE_BREACH', 'ABANDONMENT_CONFIRMED', 'RESCIND_OFFER']}
+              needsNote={[
+                'SUSPEND',
+                'TERMINATE_POST_DISCIPLINARY',
+                'ABSENCE_BREACH',
+                'ABANDONMENT_CONFIRMED',
+                'RESCIND_OFFER',
+              ]}
             />
           </Card>
 
@@ -757,7 +786,9 @@ export function EmployeeDetail() {
                   {data.leaveBalances.map((b) => (
                     <tr key={b.id}>
                       <td>{b.leaveType.name}</td>
-                      <td className={`num ${Number(b.balanceDays) < 0 ? 'text-band-critical' : ''}`}>{b.balanceDays}</td>
+                      <td className={`num ${Number(b.balanceDays) < 0 ? 'text-band-critical' : ''}`}>
+                        {b.balanceDays}
+                      </td>
                       <td className="num">{b.heldDays}</td>
                     </tr>
                   ))}
@@ -766,10 +797,7 @@ export function EmployeeDetail() {
             )}
           </Card>
 
-          <Card
-            title="Skills"
-            subtitle="The badge is the standing. The score is not shown to colleagues."
-          >
+          <Card title="Skills" subtitle="The badge is the standing. The score is not shown to colleagues.">
             {capabilities.length === 0 ? (
               <EmptyState message="No claims recorded." />
             ) : (
@@ -791,7 +819,10 @@ export function EmployeeDetail() {
           </Card>
 
           {data.onboarding && (
-            <Card title="Onboarding" actions={<StatusChip status={humanize(data.onboarding.status)} tone={tone(data.onboarding.status)} />}>
+            <Card
+              title="Onboarding"
+              actions={<StatusChip status={humanize(data.onboarding.status)} tone={tone(data.onboarding.status)} />}
+            >
               <Transitions
                 collection="onboardings"
                 id={data.onboarding.id}
@@ -803,7 +834,10 @@ export function EmployeeDetail() {
           )}
 
           {data.offboarding && (
-            <Card title="Offboarding" actions={<StatusChip status={humanize(data.offboarding.status)} tone={tone(data.offboarding.status)} />}>
+            <Card
+              title="Offboarding"
+              actions={<StatusChip status={humanize(data.offboarding.status)} tone={tone(data.offboarding.status)} />}
+            >
               <Transitions
                 collection="offboardings"
                 id={data.offboarding.id}
@@ -841,7 +875,11 @@ export function Leave() {
   const [creating, setCreating] = useState(false);
   const [filter, setFilter] = useState('open');
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['hr-leave'],
     queryFn: () => api.get<LeaveRow[]>('/hr/leave-requests'),
   });
@@ -851,9 +889,7 @@ export function Leave() {
   const OPEN = ['Draft', 'Submitted', 'PendingApproval', 'Approved', 'InProgress', 'Extended'];
   const awaiting = data.filter((r) => r.status === 'PendingApproval');
   const shown =
-    filter === 'open' ? data.filter((r) => OPEN.includes(r.status))
-    : filter === 'awaiting' ? awaiting
-    : data;
+    filter === 'open' ? data.filter((r) => OPEN.includes(r.status)) : filter === 'awaiting' ? awaiting : data;
 
   return (
     <div>
@@ -867,7 +903,10 @@ export function Leave() {
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="Awaiting a decision" value={awaiting.length} tone={awaiting.length > 0 ? 'warn' : 'good'} />
         <Metric label="Open requests" value={data.filter((r) => OPEN.includes(r.status)).length} />
-        <Metric label="Days requested" value={data.filter((r) => OPEN.includes(r.status)).reduce((s, r) => s + (r.days ?? 0), 0)} />
+        <Metric
+          label="Days requested"
+          value={data.filter((r) => OPEN.includes(r.status)).reduce((s, r) => s + (r.days ?? 0), 0)}
+        />
       </div>
 
       <Tabs
@@ -910,7 +949,10 @@ export function Leave() {
                       <RecordCode code={r.recordCode} />
                     </td>
                     <td>
-                      <Link to={`/people/employees/${r.employmentRelationshipId}`} className="font-semibold hover:underline">
+                      <Link
+                        to={`/people/employees/${r.employmentRelationshipId}`}
+                        className="font-semibold hover:underline"
+                      >
                         {r.fullName}
                       </Link>
                     </td>
@@ -974,7 +1016,11 @@ export function Attendance() {
   const active = employees.filter((e) => ['Active', 'OnLeave', 'NoticePeriod'].includes(e.status));
   const selected = employmentId || active[0]?.id || '';
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['hr-attendance', selected, payPeriod],
     queryFn: () => api.get<AttendanceRow[]>(`/hr/employees/${selected}/attendance?payPeriod=${payPeriod}`),
     enabled: Boolean(selected),
@@ -1023,7 +1069,11 @@ export function Attendance() {
           )}
         </div>
       )}
-      {lock.error && <div className="mb-4"><ErrorBox error={lock.error} /></div>}
+      {lock.error && (
+        <div className="mb-4">
+          <ErrorBox error={lock.error} />
+        </div>
+      )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
         <Metric label="Days recorded" value={data.length} />
@@ -1132,7 +1182,11 @@ export function Payroll() {
   });
   const qc = useQueryClient();
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['hr-payroll'],
     queryFn: () => api.get<PayrollRunRow[]>('/hr/payroll/runs'),
   });
@@ -1159,7 +1213,12 @@ export function Payroll() {
         subtitle="What each person is to be paid, and the run that settles it."
         actions={
           <>
-            <input type="month" className="input w-40" value={newPeriod} onChange={(e) => setNewPeriod(e.target.value)} />
+            <input
+              type="month"
+              className="input w-40"
+              value={newPeriod}
+              onChange={(e) => setNewPeriod(e.target.value)}
+            />
             <button className="btn-primary btn-sm" disabled={open.isPending} onClick={() => open.mutate()}>
               Open a run
             </button>
@@ -1167,14 +1226,24 @@ export function Payroll() {
         }
       />
 
-      {open.error && <div className="mb-4"><ErrorBox error={open.error} /></div>}
+      {open.error && (
+        <div className="mb-4">
+          <ErrorBox error={open.error} />
+        </div>
+      )}
 
       {latest && (
         <div className="mb-5 grid gap-3 sm:grid-cols-4">
           <Metric label="Latest period" value={latest.payPeriod} sub={latest.status} />
           <Metric label="Headcount" value={latest.headcount} />
-          <Metric label="Gross" value={latest.grossTotal === null ? <Withheld reason="no_permission" /> : money(latest.grossTotal)} />
-          <Metric label="Net" value={latest.netTotal === null ? <Withheld reason="no_permission" /> : money(latest.netTotal)} />
+          <Metric
+            label="Gross"
+            value={latest.grossTotal === null ? <Withheld reason="no_permission" /> : money(latest.grossTotal)}
+          />
+          <Metric
+            label="Net"
+            value={latest.netTotal === null ? <Withheld reason="no_permission" /> : money(latest.netTotal)}
+          />
         </div>
       )}
 
@@ -1182,7 +1251,10 @@ export function Payroll() {
         <Loading />
       ) : data.length === 0 ? (
         <Card>
-          <EmptyState message="No payroll runs yet." hint="Opening a run drafts an instruction for everyone on the books." />
+          <EmptyState
+            message="No payroll runs yet."
+            hint="Opening a run drafts an instruction for everyone on the books."
+          />
         </Card>
       ) : (
         <Card bodyClassName="p-0" className="mb-4">
@@ -1256,7 +1328,10 @@ export function Payroll() {
                 {detail.instructions.map((i) => (
                   <tr key={i.id}>
                     <td>
-                      <Link to={`/people/employees/${i.employmentRelationshipId}`} className="font-semibold hover:underline">
+                      <Link
+                        to={`/people/employees/${i.employmentRelationshipId}`}
+                        className="font-semibold hover:underline"
+                      >
                         {i.fullName}
                       </Link>
                     </td>
@@ -1471,7 +1546,10 @@ export function Hiring() {
                         {a.rejectionReason && <div className="mt-0.5 text-2xs text-ink-500">{a.rejectionReason}</div>}
                       </td>
                       <td>
-                        <StatusChip status={humanize(a.funnelBucket)} tone={a.funnelBucket === 'hired' ? 'good' : 'neutral'} />
+                        <StatusChip
+                          status={humanize(a.funnelBucket)}
+                          tone={a.funnelBucket === 'hired' ? 'good' : 'neutral'}
+                        />
                       </td>
                       <td>
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -1522,7 +1600,11 @@ export function Hiring() {
         <p className="mt-2 text-2xs leading-relaxed text-ink-500">
           This opens their employment record and their onboarding.
         </p>
-        {join.error && <div className="mt-3"><ErrorBox error={join.error} /></div>}
+        {join.error && (
+          <div className="mt-3">
+            <ErrorBox error={join.error} />
+          </div>
+        )}
       </Modal>
     </div>
   );

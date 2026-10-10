@@ -101,7 +101,11 @@ async function assembleEvidencePack(input: RaiseDecisionInput) {
   });
 
   const precedents = await prisma.decision.findMany({
-    where: { tenantId: auth.tenantId, subjectType: input.subjectType, state: { in: ['Decided', 'Implemented', 'Reviewed'] } },
+    where: {
+      tenantId: auth.tenantId,
+      subjectType: input.subjectType,
+      state: { in: ['Decided', 'Implemented', 'Reviewed'] },
+    },
     orderBy: { decidedAt: 'desc' },
     take: 3,
     include: { delegations: false },
@@ -202,7 +206,9 @@ export async function decisionQueue() {
       outcomeAssessment: d.outcomeAssessment,
       evidencePack: pack,
       // Not decidable until the pack is complete.
-      availableDispositions: d.evidenceComplete ? ['decide', 'delegate', 'defer', 'request_evidence'] : ['request_evidence'],
+      availableDispositions: d.evidenceComplete
+        ? ['decide', 'delegate', 'defer', 'request_evidence']
+        : ['request_evidence'],
       drillPath: drillPathFor(d.subjectType, d.subjectId),
       ranked: {
         band: d.state === 'AwaitingAuthority' ? ('my_due_items' as const) : ('scored' as const),
@@ -242,7 +248,7 @@ export async function disposeDecision(input: DispositionInput) {
 
   if (!decision.evidenceComplete && input.disposition !== 'request_evidence') {
     throw ApiError.unprocessable(
-      'This decision\'s evidence pack is incomplete. It is not decidable until every mandatory component is assembled.',
+      "This decision's evidence pack is incomplete. It is not decidable until every mandatory component is assembled.",
       { missing: (decision.evidencePack as { missingComponents?: string[] })?.missingComponents ?? [] },
     );
   }
@@ -278,7 +284,13 @@ export async function disposeDecision(input: DispositionInput) {
         reviewDueOn: new Date(Date.now() + 30 * 86_400_000),
       },
     });
-    await auditWrite({ action: 'update', subjectType: 'decision', subjectId: input.decisionId, before: decision, after: updated });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'decision',
+      subjectId: input.decisionId,
+      before: decision,
+      after: updated,
+    });
 
     await emit({
       name: EVENTS.DECISION_DECIDED,
@@ -313,7 +325,13 @@ export async function disposeDecision(input: DispositionInput) {
       where: { id: input.decisionId },
       data: { state: 'Delegated', routedToPartyId: input.delegateToPartyId, rationale: input.rationale },
     });
-    await auditWrite({ action: 'update', subjectType: 'decision', subjectId: input.decisionId, before: decision, after: updated });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'decision',
+      subjectId: input.decisionId,
+      before: decision,
+      after: updated,
+    });
 
     await emit({
       name: EVENTS.DECISION_DELEGATED,
@@ -341,7 +359,13 @@ export async function disposeDecision(input: DispositionInput) {
       where: { id: input.decisionId },
       data: { state: 'Deferred', deferUntil: input.deferUntil, rationale: input.rationale, slaDueAt: input.deferUntil },
     });
-    await auditWrite({ action: 'update', subjectType: 'decision', subjectId: input.decisionId, before: decision, after: updated });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'decision',
+      subjectId: input.decisionId,
+      before: decision,
+      after: updated,
+    });
 
     await emit({
       name: EVENTS.DECISION_DEFERRED,
@@ -359,7 +383,13 @@ export async function disposeDecision(input: DispositionInput) {
     where: { id: input.decisionId },
     data: { state: 'EvidenceRequested', rationale: input.rationale },
   });
-  await auditWrite({ action: 'update', subjectType: 'decision', subjectId: input.decisionId, before: decision, after: updated });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'decision',
+    subjectId: input.decisionId,
+    before: decision,
+    after: updated,
+  });
 
   await emit({
     name: EVENTS.DECISION_EVIDENCE_REQUESTED,
@@ -406,7 +436,13 @@ export async function reviewDecision(
       changeCommitmentResolved: true,
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'decision', subjectId: decisionId, before: decision, after: updated });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'decision',
+    subjectId: decisionId,
+    before: decision,
+    after: updated,
+  });
   return updated;
 }
 
@@ -426,7 +462,9 @@ export async function decisionCalibration() {
   const buckets = [0.5, 0.6, 0.7, 0.8, 0.9, 1].map((upper, i, arr) => {
     const lower = i === 0 ? 0 : arr[i - 1];
     const inBucket = decided.filter((d) => (d.confidence ?? 0) > lower && (d.confidence ?? 0) <= upper);
-    const realised = inBucket.filter((d) => d.outcomeAssessment === 'as_expected' || d.varianceBand === 'within').length;
+    const realised = inBucket.filter(
+      (d) => d.outcomeAssessment === 'as_expected' || d.varianceBand === 'within',
+    ).length;
     return {
       band: `${Math.round(lower * 100)}–${Math.round(upper * 100)}%`,
       stated: Math.round(((lower + upper) / 2) * 100),

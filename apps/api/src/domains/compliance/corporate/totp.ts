@@ -83,7 +83,14 @@ export function totp(secretBase32: string, at: Date = new Date(), step = 30, dig
  * generating the code to typing it), never wider — a bigger window is a
  * bigger replay surface.
  */
-export function verifyTotp(secretBase32: string, code: string, at: Date = new Date(), window = 1, step = 30, digits = 6): boolean {
+export function verifyTotp(
+  secretBase32: string,
+  code: string,
+  at: Date = new Date(),
+  window = 1,
+  step = 30,
+  digits = 6,
+): boolean {
   const clean = code.trim();
   if (!/^\d+$/.test(clean) || clean.length !== digits) return false;
   const key = base32Decode(secretBase32);

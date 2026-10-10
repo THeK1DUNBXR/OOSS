@@ -195,7 +195,7 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
     ).resolves.toBeDefined();
   });
 
-  it('createStatutoryRule stages next year\'s rate as a DRAFT while this year\'s open-ended rule is APPROVED', async () => {
+  it("createStatutoryRule stages next year's rate as a DRAFT while this year's open-ended rule is APPROVED", async () => {
     await seed({ jurisdiction: FX_JURISDICTION, effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null });
     const draft = await asUser(CREATOR, (p) =>
       createStatutoryRule({
@@ -212,9 +212,21 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
   });
 
   it('two domains with the same key and jurisdiction over the same days coexist', async () => {
-    await seed({ jurisdiction: FX_JURISDICTION, domain: 'test', effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null, value: 1 });
+    await seed({
+      jurisdiction: FX_JURISDICTION,
+      domain: 'test',
+      effectiveFrom: dateOnly('2026-01-01'),
+      effectiveTo: null,
+      value: 1,
+    });
     await expect(
-      seed({ jurisdiction: FX_JURISDICTION, domain: 'other', effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null, value: 7 }),
+      seed({
+        jurisdiction: FX_JURISDICTION,
+        domain: 'other',
+        effectiveFrom: dateOnly('2026-01-01'),
+        effectiveTo: null,
+        value: 7,
+      }),
     ).resolves.toBeDefined();
     // Resolution is per domain: each caller gets its own row, not whichever sorts first.
     const onDay = new Date('2026-06-01T00:00:00.000Z');
@@ -288,14 +300,22 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
     expect(closed.effectiveTo).toEqual(dateOnly('2026-04-01'));
 
     // 2026-03-31T18:30Z is 00:00 IST on 1 April. 18:29Z is still 31 March IST.
-    const before = await asUser(CREATOR, () => ruleAt('test', KEY, FX_JURISDICTION, new Date('2026-03-31T18:29:00.000Z')));
+    const before = await asUser(CREATOR, () =>
+      ruleAt('test', KEY, FX_JURISDICTION, new Date('2026-03-31T18:29:00.000Z')),
+    );
     expect(before.value).toBe(1);
-    const onTheDay = await asUser(CREATOR, () => ruleAt('test', KEY, FX_JURISDICTION, new Date('2026-03-31T18:30:00.000Z')));
+    const onTheDay = await asUser(CREATOR, () =>
+      ruleAt('test', KEY, FX_JURISDICTION, new Date('2026-03-31T18:30:00.000Z')),
+    );
     expect(onTheDay.value).toBe(2);
   });
 
   it('approval writes an audit record for both the new row and the closed prior row', async () => {
-    const prior = await seed({ jurisdiction: FX_JURISDICTION, effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null });
+    const prior = await seed({
+      jurisdiction: FX_JURISDICTION,
+      effectiveFrom: dateOnly('2026-01-01'),
+      effectiveTo: null,
+    });
     const draft = await asUser(CREATOR, () =>
       createStatutoryRule({
         domain: 'test',
@@ -338,7 +358,11 @@ describe('StatutoryRule drafting and approval (FIXES P2, P3)', () => {
   });
 
   it('holding an approved rule takes it out of ruleAt', async () => {
-    const rule = await seed({ jurisdiction: FX_JURISDICTION, effectiveFrom: dateOnly('2026-01-01'), effectiveTo: null });
+    const rule = await seed({
+      jurisdiction: FX_JURISDICTION,
+      effectiveFrom: dateOnly('2026-01-01'),
+      effectiveTo: null,
+    });
     const held = await asUser(CREATOR, () => holdStatutoryRule(rule.id));
     expect(held.status).toBe('HOLD');
     await expect(

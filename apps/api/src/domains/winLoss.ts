@@ -60,7 +60,9 @@ export async function ensureWinLossReview(subjectType: 'opportunity' | 'mou', su
   const byValue = (commercialValue ?? 0) >= threshold;
   const mandatory = byStrategic || byValue;
   const basis = mandatory
-    ? [byStrategic ? 'strategic_value=high' : null, byValue ? `commercial_value>=${threshold}` : null].filter(Boolean).join(' OR ')
+    ? [byStrategic ? 'strategic_value=high' : null, byValue ? `commercial_value>=${threshold}` : null]
+        .filter(Boolean)
+        .join(' OR ')
     : 'not_mandatory';
 
   const recordCode = await nextRecordCode('WLR');
@@ -106,7 +108,7 @@ export async function completeWinLossReview(id: string, input: WinLossInput) {
   await assertCan({ resource: 'win_loss_reviews', verb: 'edit', record: { ownerPartyId: review.completedById } });
 
   if (input.lostReason === 'other' && !input.lostReasonOtherText) {
-    throw ApiError.unprocessable("Say what the other reason was.");
+    throw ApiError.unprocessable('Say what the other reason was.');
   }
   if (review.mandatory && !input.lesson) {
     throw ApiError.unprocessable('This review needs a lesson recorded.');

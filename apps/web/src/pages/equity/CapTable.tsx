@@ -21,10 +21,7 @@ import { Card, EmptyState, ErrorBox, Loading, PageHeader } from '../../component
  * lightness varied as well as hue so the set stays distinguishable under
  * colour-vision deficiency, cycled if there are more than eight holders.
  */
-const HOLDER_PALETTE = [
-  '#2a78d6', '#c2670f', '#12805c', '#8f3d90',
-  '#b5570c', '#1a7a4c', '#6b4fd6', '#a8481a',
-];
+const HOLDER_PALETTE = ['#2a78d6', '#c2670f', '#12805c', '#8f3d90', '#b5570c', '#1a7a4c', '#6b4fd6', '#a8481a'];
 
 function ChartTooltip({ active, payload }: { active?: boolean; payload?: unknown[] }) {
   if (!active || !payload?.length) return null;
@@ -97,7 +94,10 @@ export function CapTable() {
 
   const { data: valuations } = useQuery({
     queryKey: ['equity-valuations', 'latest'],
-    queryFn: () => api.get<{ items: Array<{ asOf: string; basis: string; perShareByClass: Record<string, number> }> }>('/equity/valuations'),
+    queryFn: () =>
+      api.get<{ items: Array<{ asOf: string; basis: string; perShareByClass: Record<string, number> }> }>(
+        '/equity/valuations',
+      ),
   });
 
   if (error) return <ErrorBox error={error} />;
@@ -117,12 +117,7 @@ export function CapTable() {
         actions={
           <label className="flex items-center gap-2 text-xs text-ink-400">
             As of
-            <input
-              type="date"
-              className="input w-auto"
-              value={asOf}
-              onChange={(e) => setAsOf(e.target.value)}
-            />
+            <input type="date" className="input w-auto" value={asOf} onChange={(e) => setAsOf(e.target.value)} />
           </label>
         }
       />
@@ -140,7 +135,11 @@ export function CapTable() {
         </Card>
       ) : (
         <div className="grid gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2" bodyClassName="p-0" subtitle={data.since ? `Since ${date(data.since)}` : undefined}>
+          <Card
+            className="lg:col-span-2"
+            bodyClassName="p-0"
+            subtitle={data.since ? `Since ${date(data.since)}` : undefined}
+          >
             <div className="overflow-x-auto">
               <table className="table">
                 <thead>
@@ -229,12 +228,7 @@ export function CapTable() {
                     ))}
                   </Pie>
                   <Tooltip content={<ChartTooltip />} />
-                  <Legend
-                    layout="vertical"
-                    align="right"
-                    verticalAlign="middle"
-                    wrapperStyle={{ fontSize: 11 }}
-                  />
+                  <Legend layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: 11 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>

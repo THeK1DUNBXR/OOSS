@@ -98,7 +98,12 @@ export async function createOffering(input: OfferingInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'offering', subjectId: offering.id, after: { offeringCode: offering.offeringCode } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'offering',
+    subjectId: offering.id,
+    after: { offeringCode: offering.offeringCode },
+  });
   await emit({
     name: EVENTS.OFFERING_CREATED,
     subject: { entityType: 'offering', entityId: offering.id, recordCode: offering.offeringCode },
@@ -190,7 +195,9 @@ export async function publishPrice(input: PriceInput) {
   await assertCan({ resource: 'price_book_entries', verb: 'create' });
 
   if (input.maxDiscountPct === null || input.maxDiscountPct === undefined) {
-    throw ApiError.unprocessable('max_discount_pct is required on every price book entry — there is no default ceiling.');
+    throw ApiError.unprocessable(
+      'max_discount_pct is required on every price book entry — there is no default ceiling.',
+    );
   }
   if (input.maxDiscountPct < 0 || input.maxDiscountPct > 100) {
     throw ApiError.unprocessable('max_discount_pct must be between 0 and 100.');
@@ -199,7 +206,13 @@ export async function publishPrice(input: PriceInput) {
   const priceBookId = input.priceBookId ?? 'standard';
 
   const current = await prisma.priceBookEntry.findFirst({
-    where: { tenantId: auth.tenantId, offeringId: input.offeringId, priceBookId, status: 'active', currency: input.currency },
+    where: {
+      tenantId: auth.tenantId,
+      offeringId: input.offeringId,
+      priceBookId,
+      status: 'active',
+      currency: input.currency,
+    },
     orderBy: { version: 'desc' },
   });
 
@@ -320,7 +333,13 @@ export async function sendProposal(proposalId: string) {
     where: { id: proposalId },
     data: { sentAt, response: 'pending' },
   });
-  await auditWrite({ action: 'update', subjectType: 'proposal', subjectId: proposalId, before: proposal, after: updated });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'proposal',
+    subjectId: proposalId,
+    before: proposal,
+    after: updated,
+  });
 
   // CRM's read-model mirror is hydrated from the PCT event, never written
   // directly by CRM service code. This IS the event handler path.
@@ -654,7 +673,13 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
         approvalStepId: step.id,
       },
     });
-    await auditWrite({ action: 'update', subjectType: 'quote', subjectId: quoteId, before: quoteState(quote), after: quoteState(blocked) });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'quote',
+      subjectId: quoteId,
+      before: quoteState(quote),
+      after: quoteState(blocked),
+    });
 
     await emit({
       name: EVENTS.QUOTE_DISCOUNT_BLOCKED,
@@ -691,7 +716,13 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
       blockedReason: null,
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'quote', subjectId: quoteId, before: quoteState(quote), after: quoteState(issued) });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'quote',
+    subjectId: quoteId,
+    before: quoteState(quote),
+    after: quoteState(issued),
+  });
 
   const opportunityBefore = await prisma.opportunity.findFirst({ where: { id: quote.opportunityId } });
   const opportunityAfter = await prisma.opportunity.update({ where: { id: quote.opportunityId }, data: { quoteId } });

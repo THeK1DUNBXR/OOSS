@@ -36,7 +36,10 @@ const period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected a period as
 // Accounting periods
 // ---------------------------------------------------------------------------
 
-router.get('/periods', handler(async (req) => listPeriods(str(req.query.fy))));
+router.get(
+  '/periods',
+  handler(async (req) => listPeriods(str(req.query.fy))),
+);
 
 router.post(
   '/periods/:period/request-close',
@@ -81,7 +84,10 @@ router.get(
 // Retention
 // ---------------------------------------------------------------------------
 
-router.get('/retention', handler(async () => retentionReport()));
+router.get(
+  '/retention',
+  handler(async () => retentionReport()),
+);
 
 /** Runs the sweep on demand rather than only waiting for the monthly job — useful right after seeding a demo dataset. */
 router.post(
@@ -148,7 +154,11 @@ router.get(
     const to = date(req.query.to) ?? new Date();
     const accountId = str(req.query.accountId);
     const csv = await generalLedgerCsv({ from, to, accountId });
-    await auditExport('transaction', `general-ledger:${from.toISOString().slice(0, 10)}..${to.toISOString().slice(0, 10)}`, csv.split('\n').length - 1);
+    await auditExport(
+      'transaction',
+      `general-ledger:${from.toISOString().slice(0, 10)}..${to.toISOString().slice(0, 10)}`,
+      csv.split('\n').length - 1,
+    );
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="general-ledger.csv"');
     res.send(csv);
@@ -162,7 +172,11 @@ router.get(
     const from = date(req.query.from) ?? new Date(0);
     const to = date(req.query.to) ?? new Date();
     const { xml, count } = await tallyExportXml({ from, to });
-    await auditExport('transaction', `tally-export:${from.toISOString().slice(0, 10)}..${to.toISOString().slice(0, 10)}`, count);
+    await auditExport(
+      'transaction',
+      `tally-export:${from.toISOString().slice(0, 10)}..${to.toISOString().slice(0, 10)}`,
+      count,
+    );
     res.setHeader('Content-Type', 'application/xml');
     res.setHeader('Content-Disposition', 'attachment; filename="tally-export.xml"');
     res.send(xml);
@@ -196,8 +210,14 @@ router.post(
   }),
 );
 
-router.post('/bank/:accountId/match', handler(async (req) => matchBankLines(req.params.accountId)));
+router.post(
+  '/bank/:accountId/match',
+  handler(async (req) => matchBankLines(req.params.accountId)),
+);
 
-router.get('/bank/:accountId/reconciliation', handler(async (req) => reconciliationReport(req.params.accountId)));
+router.get(
+  '/bank/:accountId/reconciliation',
+  handler(async (req) => reconciliationReport(req.params.accountId)),
+);
 
 export default router;

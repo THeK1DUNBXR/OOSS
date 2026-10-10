@@ -9,12 +9,7 @@
  * can be prevented: creation time.
  */
 
-import {
-  EVENTS,
-  STATUTORY_RETENTION_AFFILIATIONS,
-  type AffiliationType,
-  type DedupCandidate,
-} from '@kaizen/shared';
+import { EVENTS, STATUTORY_RETENTION_AFFILIATIONS, type AffiliationType, type DedupCandidate } from '@kaizen/shared';
 import { prisma, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -92,10 +87,7 @@ export interface PersonInput {
  * Exact equality against the normalised phone/email fields, excluding merged
  * rows, scoped by the caller's declared RESOLUTION_SCOPE.
  */
-export async function findDedupCandidates(
-  input: PersonInput,
-  scope: ResolutionScope,
-): Promise<DedupCandidate[]> {
+export async function findDedupCandidates(input: PersonInput, scope: ResolutionScope): Promise<DedupCandidate[]> {
   const phone = normalisePhone(input.primaryPhone);
   const email = normaliseEmail(input.primaryEmail);
   const extraPhones = (input.additionalPhones ?? []).map(normalisePhone).filter(Boolean) as string[];
@@ -142,8 +134,7 @@ export async function findDedupCandidates(
     // scored below exact so it raises a MERGE_CANDIDATE rather than resolving.
     const suppliedPrimary = [phone, email].filter(Boolean).length;
     const matchedPrimary =
-      (phone && m.primaryPhoneNormalised === phone ? 1 : 0) +
-      (email && m.primaryEmailNormalised === email ? 1 : 0);
+      (phone && m.primaryPhoneNormalised === phone ? 1 : 0) + (email && m.primaryEmailNormalised === email ? 1 : 0);
 
     const confidence =
       suppliedPrimary > 0 && matchedPrimary === suppliedPrimary
@@ -393,11 +384,7 @@ export async function personIdChain(personId: string): Promise<string[]> {
   return [...ids];
 }
 
-export async function resolveMergeCandidate(
-  id: string,
-  disposition: 'confirm' | 'reject' | 'defer',
-  note: string,
-) {
+export async function resolveMergeCandidate(id: string, disposition: 'confirm' | 'reject' | 'defer', note: string) {
   const auth = currentAuth();
   // Resolving a candidate is the decision to merge or to keep apart. Holding
   // the queue to the merge grant means nobody can clear it without the right to

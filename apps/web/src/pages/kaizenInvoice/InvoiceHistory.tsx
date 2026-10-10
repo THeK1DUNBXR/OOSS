@@ -18,7 +18,11 @@ import { fmtINR } from './calc.js';
 
 export function InvoiceHistory() {
   const [query, setQuery] = useState('');
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['invoices'],
     queryFn: () => api.get<InvoiceView[]>('/finance/invoices'),
   });
@@ -46,7 +50,10 @@ export function InvoiceHistory() {
 
   return (
     <div>
-      <PageHeader title="Invoice History" subtitle="Every course invoice raised, searchable by number, student or course." />
+      <PageHeader
+        title="Invoice History"
+        subtitle="Every course invoice raised, searchable by number, student or course."
+      />
       <style>{KI_APP_CSS}</style>
       <div className="ki-app">
         <main className="ki-main">
@@ -101,7 +108,11 @@ export function InvoiceHistory() {
                         <td style={{ textTransform: 'capitalize' }}>{inv.status.replace('_', ' ')}</td>
                         <td>
                           {inv.receiptCount > 0 ? (
-                            <Link className="ki-btn-remove" style={{ color: 'var(--ki-navy)' }} to={`/finance/invoices/${inv.id}/document`}>
+                            <Link
+                              className="ki-btn-remove"
+                              style={{ color: 'var(--ki-navy)' }}
+                              to={`/finance/invoices/${inv.id}/document`}
+                            >
                               {inv.receiptCount} receipt{inv.receiptCount === 1 ? '' : 's'}
                             </Link>
                           ) : (
@@ -122,7 +133,11 @@ export function InvoiceHistory() {
                           )}
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}>
-                          <Link className="ki-btn-remove" style={{ color: 'var(--ki-navy)' }} to={`/finance/invoices/${inv.id}/document`}>
+                          <Link
+                            className="ki-btn-remove"
+                            style={{ color: 'var(--ki-navy)' }}
+                            to={`/finance/invoices/${inv.id}/document`}
+                          >
                             Reprint
                           </Link>
                         </td>
@@ -134,12 +149,12 @@ export function InvoiceHistory() {
             </table>
           </div>
           <p style={{ fontSize: 11, color: 'var(--ki-muted)', marginTop: 14, lineHeight: 1.6 }}>
-            Every invoice here is the same record the rest of the platform reads. It is the internal working record
-            a course&apos;s instalments are tracked against — never a tax document, never handed to the student, and
-            not reported in GST returns. Each instalment&apos;s own receipt voucher is the student&apos;s document
-            along the way; the &quot;Final Invoice&quot; column links the tax invoice raised automatically once fees
-            are paid in full or the student withdraws. &quot;Reprint&quot; opens the invoice&apos;s own printable
-            document; nothing here can be edited or deleted once issued.
+            Every invoice here is the same record the rest of the platform reads. It is the internal working record a
+            course&apos;s instalments are tracked against — never a tax document, never handed to the student, and not
+            reported in GST returns. Each instalment&apos;s own receipt voucher is the student&apos;s document along the
+            way; the &quot;Final Invoice&quot; column links the tax invoice raised automatically once fees are paid in
+            full or the student withdraws. &quot;Reprint&quot; opens the invoice&apos;s own printable document; nothing
+            here can be edited or deleted once issued.
           </p>
         </main>
       </div>

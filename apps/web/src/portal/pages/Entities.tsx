@@ -20,9 +20,7 @@ const KIND_WORDS: Record<TenantKind, string> = {
 };
 
 function roleWords(slugs: string[]): string {
-  return slugs
-    .map((s) => AFFILIATION_LABELS[s as keyof typeof AFFILIATION_LABELS] ?? words(s))
-    .join(', ');
+  return slugs.map((s) => AFFILIATION_LABELS[s as keyof typeof AFFILIATION_LABELS] ?? words(s)).join(', ');
 }
 
 /**
@@ -72,7 +70,9 @@ function GroupTiles() {
           <span className="mt-1 text-2xs text-ink-500">
             {n.publishedAt ? `as published ${dateTime(n.publishedAt)}` : 'Not yet published'}
           </span>
-          {n.stale && <span className="mt-1 chip border-band-critical/40 bg-band-critical/10 text-band-critical">Stale</span>}
+          {n.stale && (
+            <span className="mt-1 chip border-band-critical/40 bg-band-critical/10 text-band-critical">Stale</span>
+          )}
           {busy === n.tenantId && <span className="mt-1 text-2xs text-ink-500">Opening…</span>}
         </button>
       ))}
@@ -149,7 +149,10 @@ export function Entities() {
   if (user?.tenantKind === 'holding') {
     return (
       <div>
-        <PageHeader title="Entities" subtitle="Each subsidiary's own published summary. Tap one to open it, where your relationships there allow it." />
+        <PageHeader
+          title="Entities"
+          subtitle="Each subsidiary's own published summary. Tap one to open it, where your relationships there allow it."
+        />
         <GroupTiles />
       </div>
     );

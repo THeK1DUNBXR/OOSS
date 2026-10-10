@@ -67,7 +67,7 @@ function payer(s: StudentRow): string {
   if (s.funding === 'institution') return s.institution ? `Paid by ${s.institution.name}` : 'Paid by their college';
   if (s.funding === 'scheme') {
     return s.fundingFramework
-      ? FUNDING_FRAMEWORK_LABELS[s.fundingFramework as FundingFramework] ?? 'Funded under a scheme'
+      ? (FUNDING_FRAMEWORK_LABELS[s.fundingFramework as FundingFramework] ?? 'Funded under a scheme')
       : 'Funded under a scheme';
   }
   return 'Paying their own fee';
@@ -166,11 +166,7 @@ export function Students() {
         <Card>
           <EmptyState
             message={q ? 'No students match what you searched for.' : 'No students yet.'}
-            hint={
-              q
-                ? undefined
-                : 'Add a student to enrol them on a course and invoice them by name.'
-            }
+            hint={q ? undefined : 'Add a student to enrol them on a course and invoice them by name.'}
           />
         </Card>
       ) : (
@@ -183,7 +179,10 @@ export function Students() {
             >
               <div className="flex items-start justify-between gap-2">
                 <RecordCode code={s.recordCode} />
-                <StatusChip status={STATUS_LABEL[s.status] ?? humanize(s.status)} tone={STATUS_TONE[s.status] ?? 'neutral'} />
+                <StatusChip
+                  status={STATUS_LABEL[s.status] ?? humanize(s.status)}
+                  tone={STATUS_TONE[s.status] ?? 'neutral'}
+                />
               </div>
               <p className="mt-1.5 text-sm font-medium text-ink-100">{s.fullName}</p>
               {s.registrationNumber && <p className="mono truncate text-2xs">{s.registrationNumber}</p>}
@@ -195,8 +194,7 @@ export function Students() {
                 {s.institution ? `From ${s.institution.name}` : 'Came to us directly'}
                 {s.deliveryLocation &&
                   ` · ${DELIVERY_LOCATION_LABELS[s.deliveryLocation as DeliveryLocation] ?? s.deliveryLocation}`}
-                {s.enrolmentCount > 0 &&
-                  ` · ${s.enrolmentCount} course${s.enrolmentCount === 1 ? '' : 's'}`}
+                {s.enrolmentCount > 0 && ` · ${s.enrolmentCount} course${s.enrolmentCount === 1 ? '' : 's'}`}
               </p>
               <p className={`mt-1 text-2xs ${s.billable ? 'text-ink-500' : 'text-accent-soft'}`}>{payer(s)}</p>
             </Link>
@@ -226,9 +224,16 @@ export function StudentDetail() {
   const enrolments = useQuery({
     queryKey: ['enrollments', 'person', data?.personId],
     queryFn: () =>
-      api.get<Array<{ id: string; recordCode: string; cohortName: string; courseName: string; status: string; enrolledAt: string | null }>>(
-        `/education/enrollments?personId=${data!.personId}`,
-      ),
+      api.get<
+        Array<{
+          id: string;
+          recordCode: string;
+          cohortName: string;
+          courseName: string;
+          status: string;
+          enrolledAt: string | null;
+        }>
+      >(`/education/enrollments?personId=${data!.personId}`),
     enabled: Boolean(data?.personId),
     // An employee raises invoices and does not read the class register, so this
     // is a 403 for them rather than an outage. The panel says so instead of
@@ -258,17 +263,16 @@ export function StudentDetail() {
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="chip border-accent/40 text-accent-soft">Student</span>
-        <StatusChip status={STATUS_LABEL[data.status] ?? humanize(data.status)} tone={STATUS_TONE[data.status] ?? 'neutral'} />
+        <StatusChip
+          status={STATUS_LABEL[data.status] ?? humanize(data.status)}
+          tone={STATUS_TONE[data.status] ?? 'neutral'}
+        />
         {!data.billable && <span className="chip border-ink-700 text-ink-400">{payer(data)}</span>}
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
-          <Card
-            title="Courses"
-            subtitle="Every course they have held a place on."
-            bodyClassName="p-0"
-          >
+          <Card title="Courses" subtitle="Every course they have held a place on." bodyClassName="p-0">
             {enrolments.error ? (
               <div className="p-4">
                 <EmptyState
@@ -278,17 +282,17 @@ export function StudentDetail() {
               </div>
             ) : !enrolments.data?.length ? (
               <div className="p-4">
-                <EmptyState
-                  message="Not enrolled on anything yet."
-                  hint="Enrol them from Courses."
-                />
+                <EmptyState message="Not enrolled on anything yet." hint="Enrol them from Courses." />
               </div>
             ) : (
               <ul className="divide-y divide-ink-850">
                 {enrolments.data.map((e) => (
                   <li key={e.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                     <div>
-                      <Link to={`/education/enrollments/${e.id}`} className="text-xs text-ink-200 hover:text-accent-soft">
+                      <Link
+                        to={`/education/enrollments/${e.id}`}
+                        className="text-xs text-ink-200 hover:text-accent-soft"
+                      >
                         {e.courseName ?? e.cohortName}
                       </Link>
                       <p className="text-2xs text-ink-500">

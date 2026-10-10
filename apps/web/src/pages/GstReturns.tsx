@@ -91,9 +91,10 @@ export function GstReturns() {
   });
   const periodState = useQuery({
     queryKey: ['gst-period', period],
-    queryFn: () => api.get<{ closed: boolean; filed: Array<{ recordCode: string; returnType: string; arn: string | null }> }>(
-      `/books/gst/period?period=${period}`,
-    ),
+    queryFn: () =>
+      api.get<{ closed: boolean; filed: Array<{ recordCode: string; returnType: string; arn: string | null }> }>(
+        `/books/gst/period?period=${period}`,
+      ),
   });
 
   const prepare = useMutation({
@@ -143,9 +144,12 @@ export function GstReturns() {
       {periodState.data?.closed && (
         <div className="mb-4 rounded-lg border border-band-strong/40 bg-band-strong/5 px-4 py-2.5">
           <p className="text-xs text-band-strong">
-            {period} is closed. {periodState.data.filed.map((f) => `${f.returnType} filed as ${f.recordCode}${f.arn ? ` (ARN ${f.arn})` : ''}`).join('; ')}. An
-            invoice dated in this month can no longer be edited — the lawful correction to one already reported is a
-            credit or debit note in the current period.
+            {period} is closed.{' '}
+            {periodState.data.filed
+              .map((f) => `${f.returnType} filed as ${f.recordCode}${f.arn ? ` (ARN ${f.arn})` : ''}`)
+              .join('; ')}
+            . An invoice dated in this month can no longer be edited — the lawful correction to one already reported is
+            a credit or debit note in the current period.
           </p>
         </div>
       )}
@@ -180,9 +184,7 @@ export function GstReturns() {
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-2xs text-band-critical/70">
-            These can be prepared, but not filed.
-          </p>
+          <p className="mt-2 text-2xs text-band-critical/70">These can be prepared, but not filed.</p>
         </div>
       )}
 
@@ -213,8 +215,8 @@ export function GstReturns() {
         </button>
         {preparedForPeriod.length > 0 && (
           <span className="text-2xs text-ink-500">
-            {preparedForPeriod.length} preparation{preparedForPeriod.length === 1 ? '' : 's'} already snapshotted for this
-            month. Preparing again supersedes the earlier one rather than overwriting it.
+            {preparedForPeriod.length} preparation{preparedForPeriod.length === 1 ? '' : 's'} already snapshotted for
+            this month. Preparing again supersedes the earlier one rather than overwriting it.
           </span>
         )}
       </div>
@@ -224,10 +226,7 @@ export function GstReturns() {
         <Loading />
       ) : (filings.data ?? []).length === 0 ? (
         <Card>
-          <EmptyState
-            message="Nothing prepared yet."
-            hint="A prepared return keeps the figures as they stood."
-          />
+          <EmptyState message="Nothing prepared yet." hint="A prepared return keeps the figures as they stood." />
         </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
@@ -286,9 +285,7 @@ export function GstReturns() {
         </Card>
       )}
 
-      <p className="mt-3 text-2xs text-ink-600">
-        Returns are prepared here and filed on the portal.
-      </p>
+      <p className="mt-3 text-2xs text-ink-600">Returns are prepared here and filed on the portal.</p>
 
       <MarkFiled filing={filing} onClose={() => setFiling(null)} />
     </div>
@@ -511,10 +508,7 @@ function Gstr1View({ data }: { data: any }) {
         )}
       </Card>
 
-      <Card
-        title="Document summary"
-        subtitle="The numbers issued, and how many were cancelled."
-      >
+      <Card title="Document summary" subtitle="The numbers issued, and how many were cancelled.">
         <dl className="grid grid-cols-2 gap-x-6 sm:grid-cols-5">
           <Field label="From">{data.documentSummary.from ?? '—'}</Field>
           <Field label="To">{data.documentSummary.to ?? '—'}</Field>
@@ -578,10 +572,7 @@ function Gstr3bView({ data }: { data: any }) {
         />
       </div>
 
-      <Card
-        title="3.1(a) — outward taxable supplies"
-        subtitle="From the same invoices as GSTR-1, so the two agree."
-      >
+      <Card title="3.1(a) — outward taxable supplies" subtitle="From the same invoices as GSTR-1, so the two agree.">
         <dl className="grid grid-cols-2 gap-x-6 sm:grid-cols-4">
           <Field label="Taxable value">{rupees(data.outwardSupplies.taxableValue)}</Field>
           <Field label="IGST">{rupees(data.outwardSupplies.igst)}</Field>
@@ -593,10 +584,7 @@ function Gstr3bView({ data }: { data: any }) {
         </dl>
       </Card>
 
-      <Card
-        title="4(A) — input tax credit available"
-        subtitle="Input tax from supplier bills this period."
-      >
+      <Card title="4(A) — input tax credit available" subtitle="Input tax from supplier bills this period.">
         <dl className="grid grid-cols-2 gap-x-6 sm:grid-cols-4">
           <Field label="IGST">{rupees(data.inputTaxCredit.igst)}</Field>
           <Field label="CGST">{rupees(data.inputTaxCredit.cgst)}</Field>
@@ -606,9 +594,7 @@ function Gstr3bView({ data }: { data: any }) {
           <Field label="Not claimable">{rupees(data.inputTaxCredit.notClaimable)}</Field>
         </dl>
         {data.inputTaxCredit.notClaimable > 0 && (
-          <p className="mt-2 text-2xs text-ink-500">
-            Suppliers with no GSTIN on file. This tax cannot be claimed.
-          </p>
+          <p className="mt-2 text-2xs text-ink-500">Suppliers with no GSTIN on file. This tax cannot be claimed.</p>
         )}
       </Card>
 
@@ -643,13 +629,12 @@ function Gstr3bView({ data }: { data: any }) {
         )}
       </Card>
 
-      <Card
-        title="3.1(b)–(e) — everything else supplied"
-        subtitle="Nil, exempt and non-GST supplies."
-      >
+      <Card title="3.1(b)–(e) — everything else supplied" subtitle="Nil, exempt and non-GST supplies.">
         <dl className="grid grid-cols-2 gap-x-6 sm:grid-cols-4">
           <Field label="Zero rated">{rupees(data.otherOutwardSupplies.zeroRated.taxableValue)}</Field>
-          <Field label="Nil rated &amp; exempt">{rupees(data.otherOutwardSupplies.nilRatedAndExempt.taxableValue)}</Field>
+          <Field label="Nil rated &amp; exempt">
+            {rupees(data.otherOutwardSupplies.nilRatedAndExempt.taxableValue)}
+          </Field>
           <Field label="Non-GST">{rupees(data.otherOutwardSupplies.nonGst.taxableValue)}</Field>
           <Field label="Reverse charge">{rupees(data.otherOutwardSupplies.reverseCharge.taxableValue)}</Field>
         </dl>
@@ -776,7 +761,9 @@ export function CompanyDetails() {
           {failure}
         </p>
       )}
-      {saved && <p className="mb-4 text-xs text-band-strong">Saved. Every invoice raised from now on prints these details.</p>}
+      {saved && (
+        <p className="mb-4 text-xs text-band-strong">Saved. Every invoice raised from now on prints these details.</p>
+      )}
       {!data.gstin && (
         <div className="mb-4 rounded-lg border border-band-critical/40 bg-band-critical/5 px-4 py-2.5">
           <p className="text-xs text-band-critical">
@@ -811,8 +798,8 @@ export function CompanyDetails() {
             />
             {data.stateName && (
               <p className="text-2xs text-ink-500">
-                Registered in {data.stateName} ({data.stateCode}). A customer in the same state is charged CGST and SGST;
-                one outside it is charged IGST.
+                Registered in {data.stateName} ({data.stateCode}). A customer in the same state is charged CGST and
+                SGST; one outside it is charged IGST.
               </p>
             )}
           </div>
@@ -830,10 +817,7 @@ export function CompanyDetails() {
           </div>
         </Card>
 
-        <Card
-          title="How customers pay"
-          subtitle="Printed in the invoice footer."
-        >
+        <Card title="How customers pay" subtitle="Printed in the invoice footer.">
           <div className="flex flex-col gap-3">
             <TextInput label="Bank" value={value('bankName')} onChange={set('bankName')} />
             <TextInput label="Account name" value={value('bankAccountName')} onChange={set('bankAccountName')} />
@@ -864,7 +848,12 @@ export function CompanyDetails() {
         >
           <div className="flex flex-col gap-3">
             <Row>
-              <TextInput label="Incorporated on" type="date" value={value('incorporatedOn')} onChange={set('incorporatedOn')} />
+              <TextInput
+                label="Incorporated on"
+                type="date"
+                value={value('incorporatedOn')}
+                onChange={set('incorporatedOn')}
+              />
               <TextInput
                 label="Financial year ends (month)"
                 type="number"
@@ -881,10 +870,20 @@ export function CompanyDetails() {
                 placeholder="Not set"
                 options={DEMAT_STATUSES.map((d) => ({ value: d, label: DEMAT_STATUS_LABELS[d] }))}
               />
-              <TextInput label="ISIN" value={value('isin')} onChange={(v) => set('isin')(v.toUpperCase())} hint="twelve characters, starts INE" />
+              <TextInput
+                label="ISIN"
+                value={value('isin')}
+                onChange={(v) => set('isin')(v.toUpperCase())}
+                hint="twelve characters, starts INE"
+              />
             </Row>
             <Row>
-              <TextInput label="RTA" value={value('rtaName')} onChange={set('rtaName')} placeholder="Registrar and transfer agent, if any" />
+              <TextInput
+                label="RTA"
+                value={value('rtaName')}
+                onChange={set('rtaName')}
+                placeholder="Registrar and transfer agent, if any"
+              />
               <label className="flex items-center gap-2 pt-6 text-xs text-ink-200">
                 <input
                   type="checkbox"
@@ -913,16 +912,18 @@ export function CompanyDetails() {
             {sigRows.map((s, i) => (
               <Row key={i}>
                 <TextInput label={`Signatory ${i + 1}`} value={s.name} onChange={(v) => setSignatory(i, 'name', v)} />
-                <TextInput label="Designation" value={s.designation} onChange={(v) => setSignatory(i, 'designation', v)} />
+                <TextInput
+                  label="Designation"
+                  value={s.designation}
+                  onChange={(v) => setSignatory(i, 'designation', v)}
+                />
               </Row>
             ))}
           </div>
         </Card>
       </div>
 
-      <p className="mt-4 text-2xs text-ink-600">
-        An invoice already issued keeps the tax it was raised under.
-      </p>
+      <p className="mt-4 text-2xs text-ink-600">An invoice already issued keeps the tax it was raised under.</p>
     </div>
   );
 }
@@ -973,7 +974,7 @@ function DocumentSeries({ profile }: { profile: any }) {
         <div className="mb-3 rounded border border-band-critical/40 bg-band-critical/5 px-3 py-2">
           <p className="text-xs text-band-critical">
             A tax invoice number may be at most sixteen characters, and {tooLong[0].example} is {tooLong[0].length}.
-            GSTR-1 would reject every invoice raised under it. Shorten the prefix, or write the year as {' '}
+            GSTR-1 would reject every invoice raised under it. Shorten the prefix, or write the year as{' '}
             {profile.documentYearFormat === 'full' ? '26-27' : '2026-27'}.
           </p>
         </div>

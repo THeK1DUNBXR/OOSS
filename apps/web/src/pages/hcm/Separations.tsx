@@ -77,7 +77,8 @@ function ResignationsTab() {
 
   const resignations = useQuery({
     queryKey: ['sep-resignations', statusFilter],
-    queryFn: () => api.get<ResignationRow[]>(`/hcm/separations/resignations${statusFilter ? `?status=${statusFilter}` : ''}`),
+    queryFn: () =>
+      api.get<ResignationRow[]>(`/hcm/separations/resignations${statusFilter ? `?status=${statusFilter}` : ''}`),
   });
 
   const accept = useMutation({
@@ -138,7 +139,9 @@ function ResignationsTab() {
                 <td>{date(r.agreedLastDay ?? r.requestedLastDay)}</td>
                 <td>{r.noticeDays}d</td>
                 <td>{titleCase(r.reasonCategory)}</td>
-                <td><StatusChip status={r.status} tone={RESIGNATION_TONE[r.status]} /></td>
+                <td>
+                  <StatusChip status={r.status} tone={RESIGNATION_TONE[r.status]} />
+                </td>
                 <td className="text-right">
                   {r.status === 'submitted' && (
                     <div className="flex justify-end gap-2">
@@ -283,7 +286,12 @@ function ClearancesTab() {
         subtitle="Paste an offboarding id, or use “view clearance” above."
         actions={
           <div className="flex gap-2">
-            <TextInput label="Offboarding id" placeholder="Paste an id" value={offboardingId} onChange={setOffboardingId} />
+            <TextInput
+              label="Offboarding id"
+              placeholder="Paste an id"
+              value={offboardingId}
+              onChange={setOffboardingId}
+            />
             <button className="btn text-2xs" onClick={() => setActiveOffboardingId(offboardingId)}>
               Load
             </button>
@@ -311,7 +319,9 @@ function ClearancesTab() {
               {clearances.data.map((c) => (
                 <tr key={c.id}>
                   <td>{titleCase(c.department)}</td>
-                  <td><StatusChip status={c.status} tone={CLEARANCE_TONE[c.status]} /></td>
+                  <td>
+                    <StatusChip status={c.status} tone={CLEARANCE_TONE[c.status]} />
+                  </td>
                   <td className="text-ink-400">{c.note ?? '—'}</td>
                   <td>{c.clearedAt ? dateTime(c.clearedAt) : '—'}</td>
                   <td className="text-right">
@@ -363,7 +373,8 @@ function NoDuesTab() {
   });
   const noDues = useQuery({
     queryKey: ['sep-no-dues', activeOffboardingId],
-    queryFn: () => api.get<{ id: string; issuedOn: string } | null>(`/hcm/separations/offboarding/${activeOffboardingId}/no-dues`),
+    queryFn: () =>
+      api.get<{ id: string; issuedOn: string } | null>(`/hcm/separations/offboarding/${activeOffboardingId}/no-dues`),
     enabled: Boolean(activeOffboardingId),
   });
 
@@ -372,7 +383,8 @@ function NoDuesTab() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sep-no-dues', activeOffboardingId] }),
   });
 
-  const allCleared = clearances.data && clearances.data.length > 0 && clearances.data.every((c) => c.status === 'cleared');
+  const allCleared =
+    clearances.data && clearances.data.length > 0 && clearances.data.every((c) => c.status === 'cleared');
 
   return (
     <Card
@@ -380,16 +392,25 @@ function NoDuesTab() {
       subtitle="Issued only once every department has cleared — the button stays off otherwise."
       actions={
         <div className="flex gap-2">
-          <TextInput label="Offboarding id" placeholder="Paste an id" value={offboardingId} onChange={setOffboardingId} />
+          <TextInput
+            label="Offboarding id"
+            placeholder="Paste an id"
+            value={offboardingId}
+            onChange={setOffboardingId}
+          />
           <button className="btn text-2xs" onClick={() => setActiveOffboardingId(offboardingId)}>
             Load
           </button>
         </div>
       }
     >
-      {!activeOffboardingId && <EmptyState message="No offboarding selected." hint="Paste an offboarding id from the Exit clearance tab." />}
+      {!activeOffboardingId && (
+        <EmptyState message="No offboarding selected." hint="Paste an offboarding id from the Exit clearance tab." />
+      )}
       {activeOffboardingId && (clearances.isLoading || noDues.isLoading) && <Loading />}
-      {activeOffboardingId && (clearances.error || noDues.error) && <ErrorBox error={clearances.error ?? noDues.error} />}
+      {activeOffboardingId && (clearances.error || noDues.error) && (
+        <ErrorBox error={clearances.error ?? noDues.error} />
+      )}
       {activeOffboardingId && clearances.data && noDues.data !== undefined && (
         <div className="flex flex-col gap-3">
           {noDues.data ? (
@@ -468,7 +489,9 @@ function AlumniTab() {
               <tr key={a.id}>
                 <td>{a.lastDesignation}</td>
                 <td>{date(a.exitDate)}</td>
-                <td><StatusChip status={a.separationType} /></td>
+                <td>
+                  <StatusChip status={a.separationType} />
+                </td>
                 <td>{a.rehireEligible === null ? 'Not assessed' : a.rehireEligible ? 'Yes' : 'No'}</td>
                 <td>{a.contactConsent ? (a.contactEmail ?? a.contactPhone ?? 'Given') : 'Not given'}</td>
               </tr>
@@ -512,8 +535,18 @@ function AlumniTab() {
         />
         <TextArea label="Note" value={form.rehireNote} onChange={(v) => setForm({ ...form, rehireNote: v })} />
         <Row>
-          <TextInput label="Contact email" type="email" value={form.contactEmail} onChange={(v) => setForm({ ...form, contactEmail: v })} />
-          <TextInput label="Contact phone" type="tel" value={form.contactPhone} onChange={(v) => setForm({ ...form, contactPhone: v })} />
+          <TextInput
+            label="Contact email"
+            type="email"
+            value={form.contactEmail}
+            onChange={(v) => setForm({ ...form, contactEmail: v })}
+          />
+          <TextInput
+            label="Contact phone"
+            type="tel"
+            value={form.contactPhone}
+            onChange={(v) => setForm({ ...form, contactPhone: v })}
+          />
         </Row>
         <label className="flex items-center gap-2 text-sm text-ink-300">
           <input
@@ -547,10 +580,14 @@ function NoticePoliciesTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', grade: '', engagementType: '', noticeDays: '30', buyoutAllowed: true });
 
-  const policies = useQuery({ queryKey: ['sep-notice-policies'], queryFn: () => api.get<NoticePolicyRow[]>('/hcm/separations/notice-policies') });
+  const policies = useQuery({
+    queryKey: ['sep-notice-policies'],
+    queryFn: () => api.get<NoticePolicyRow[]>('/hcm/separations/notice-policies'),
+  });
 
   const toggle = useMutation({
-    mutationFn: ({ id, active }: { id: string; active: boolean }) => api.patch(`/hcm/separations/notice-policies/${id}/active`, { active }),
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      api.patch(`/hcm/separations/notice-policies/${id}/active`, { active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['sep-notice-policies'] }),
   });
 
@@ -562,7 +599,12 @@ function NoticePoliciesTab() {
     >
       {policies.isLoading && <Loading />}
       {policies.error && <ErrorBox error={policies.error} />}
-      {policies.data && policies.data.length === 0 && <EmptyState message="No notice policies defined." hint="Every employment falls back to its own flat notice period." />}
+      {policies.data && policies.data.length === 0 && (
+        <EmptyState
+          message="No notice policies defined."
+          hint="Every employment falls back to its own flat notice period."
+        />
+      )}
       {policies.data && policies.data.length > 0 && (
         <table className="table">
           <thead>
@@ -584,7 +626,9 @@ function NoticePoliciesTab() {
                 <td>{p.engagementType ? titleCase(p.engagementType) : 'Any'}</td>
                 <td>{p.noticeDays}</td>
                 <td>{p.buyoutAllowed ? 'Allowed' : 'Not allowed'}</td>
-                <td><StatusChip status={p.active ? 'active' : 'inactive'} tone={p.active ? 'good' : 'neutral'} /></td>
+                <td>
+                  <StatusChip status={p.active ? 'active' : 'inactive'} tone={p.active ? 'good' : 'neutral'} />
+                </td>
                 <td className="text-right">
                   <button className="btn text-2xs" onClick={() => toggle.mutate({ id: p.id, active: !p.active })}>
                     {p.active ? 'Deactivate' : 'Activate'}
@@ -614,9 +658,20 @@ function NoticePoliciesTab() {
         <TextInput label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
         <Row>
           <TextInput label="Grade (optional)" value={form.grade} onChange={(v) => setForm({ ...form, grade: v })} />
-          <TextInput label="Engagement type (optional)" value={form.engagementType} onChange={(v) => setForm({ ...form, engagementType: v })} placeholder="employee / contractor / …" />
+          <TextInput
+            label="Engagement type (optional)"
+            value={form.engagementType}
+            onChange={(v) => setForm({ ...form, engagementType: v })}
+            placeholder="employee / contractor / …"
+          />
         </Row>
-        <TextInput label="Notice days" type="number" value={form.noticeDays} onChange={(v) => setForm({ ...form, noticeDays: v })} required />
+        <TextInput
+          label="Notice days"
+          type="number"
+          value={form.noticeDays}
+          onChange={(v) => setForm({ ...form, noticeDays: v })}
+          required
+        />
         <label className="flex items-center gap-2 text-sm text-ink-300">
           <input
             type="checkbox"

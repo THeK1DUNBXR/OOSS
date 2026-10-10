@@ -79,19 +79,19 @@ decision (`docs/plan/cio.md`'s open questions).
 
 ## API — mounted at `/api/it/assets`
 
-| Method | Path | What |
-|---|---|---|
-| GET | `/` | List, scoped. Query: `status`, `kind`, `search` (matches tag, serial, make, model, or a holder's name). |
-| GET | `/summary` | The summary tile shape (below). |
-| GET | `/mine` | Exactly the caller's own assets — what the My IT page (another workstream) reads, regardless of the caller's own `it_assets` scope. |
-| POST | `/` | Create. `it_assets:create`. |
-| GET | `/:id` | Detail: the asset, `availableTransitions`, `assignments`, `events`, and — when `fixedAssetId` is set — the linked `FixedAsset` resolved server-side (`recordCode`, `name`, `cost`, `disposedAt`) plus a `bookValue` (the books' cost when capitalised, else the typed-in `purchaseCost`). Never both added together (Principle 8). Scoped to the caller's own asset unless their grant is `@all`. |
-| PATCH | `/:id` | Edit descriptive fields (make/model/serial/cost/warranty/supplier/location/division/fixedAssetId/condition/notes) — never status or holder. `kind` (create only) and `condition` are validated against `IT_ASSET_KINDS`/`IT_ASSET_CONDITIONS` in the zod schema and again in the domain. |
-| POST | `/:id/assign` | `{ partyId, conditionOut?, note? }` — writes a new `ItAssetAssignment` row, moves to `assigned`. `it_assets:assign`. |
-| POST | `/:id/return` | `{ conditionIn?, note?, acknowledged? }` — closes the open assignment row, moves to `in_stock`, clears the holder. `it_assets:assign`. |
-| POST | `/:id/transition` | `{ event, note? }` — `SEND_TO_REPAIR` \| `BACK_FROM_REPAIR` \| `RETIRE` \| `DISPOSE` only; `ASSIGN`/`RETURN` are refused here (400) since they need the dedicated endpoints. |
-| GET | `/:id/events` | The append-only event log. |
-| POST | `/:id/events` | `{ kind, detail }` — a repair note, an audit sighting, or a free-text note. |
+| Method | Path              | What                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/`               | List, scoped. Query: `status`, `kind`, `search` (matches tag, serial, make, model, or a holder's name).                                                                                                                                                                                                                                                                                           |
+| GET    | `/summary`        | The summary tile shape (below).                                                                                                                                                                                                                                                                                                                                                                   |
+| GET    | `/mine`           | Exactly the caller's own assets — what the My IT page (another workstream) reads, regardless of the caller's own `it_assets` scope.                                                                                                                                                                                                                                                               |
+| POST   | `/`               | Create. `it_assets:create`.                                                                                                                                                                                                                                                                                                                                                                       |
+| GET    | `/:id`            | Detail: the asset, `availableTransitions`, `assignments`, `events`, and — when `fixedAssetId` is set — the linked `FixedAsset` resolved server-side (`recordCode`, `name`, `cost`, `disposedAt`) plus a `bookValue` (the books' cost when capitalised, else the typed-in `purchaseCost`). Never both added together (Principle 8). Scoped to the caller's own asset unless their grant is `@all`. |
+| PATCH  | `/:id`            | Edit descriptive fields (make/model/serial/cost/warranty/supplier/location/division/fixedAssetId/condition/notes) — never status or holder. `kind` (create only) and `condition` are validated against `IT_ASSET_KINDS`/`IT_ASSET_CONDITIONS` in the zod schema and again in the domain.                                                                                                          |
+| POST   | `/:id/assign`     | `{ partyId, conditionOut?, note? }` — writes a new `ItAssetAssignment` row, moves to `assigned`. `it_assets:assign`.                                                                                                                                                                                                                                                                              |
+| POST   | `/:id/return`     | `{ conditionIn?, note?, acknowledged? }` — closes the open assignment row, moves to `in_stock`, clears the holder. `it_assets:assign`.                                                                                                                                                                                                                                                            |
+| POST   | `/:id/transition` | `{ event, note? }` — `SEND_TO_REPAIR` \| `BACK_FROM_REPAIR` \| `RETIRE` \| `DISPOSE` only; `ASSIGN`/`RETURN` are refused here (400) since they need the dedicated endpoints.                                                                                                                                                                                                                      |
+| GET    | `/:id/events`     | The append-only event log.                                                                                                                                                                                                                                                                                                                                                                        |
+| POST   | `/:id/events`     | `{ kind, detail }` — a repair note, an audit sighting, or a free-text note.                                                                                                                                                                                                                                                                                                                       |
 
 All writes are `assertCan`-gated on `it_assets`, audited via `auditWrite`,
 and emit `IT_ASSET_CREATED` / `IT_ASSET_ASSIGNED` / `IT_ASSET_RETURNED` /
@@ -136,7 +136,7 @@ than creating another.
 
 - **`runAssetWarrantyLadderJob`** (06:00 daily) — every non-retired,
   non-disposed asset with a warranty end date; fires `IT_AST_WARRANTY_
-  APPROACHING` (or `_EXPIRED` once past the last rung) once per rung,
+APPROACHING` (or `_EXPIRED` once past the last rung) once per rung,
   recorded on `warrantyNotifiedRungs`. Owner is the current holder, or the
   Operations Head when unheld.
 - **`runAssetInRepairTooLongJob`** (06:15 daily) — an asset in `in_repair`
@@ -159,13 +159,13 @@ field above is typed in by a person, and the summary tile says so
 
 ## Acceptance
 
-| ID | Test |
-|---|---|
+| ID         | Test                                                                                                                                                                                      |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | IT-AST-001 | `IT-AST-001: the asset lifecycle machine (pure, no DB)` — three `it`s in `src/tests/it/assets.test.ts` asserting `allowedEvents` per state and that `DISPOSE` is refused from `assigned`. |
-| IT-AST-002 | `IT-AST-002: assigning writes an assignment row and returning closes it without editing the earlier row` |
-| IT-AST-003 | `IT-AST-003: the warranty ladder fires once per rung and a second run on the same day raises nothing new` |
-| IT-AST-004 | `IT-AST-004: an employee lists assets and sees only those assigned to them` |
-| IT-AST-005 | `IT-AST-005: an asset held by a person whose affiliation has ended surfaces as an exception with the asset as subject` |
+| IT-AST-002 | `IT-AST-002: assigning writes an assignment row and returning closes it without editing the earlier row`                                                                                  |
+| IT-AST-003 | `IT-AST-003: the warranty ladder fires once per rung and a second run on the same day raises nothing new`                                                                                 |
+| IT-AST-004 | `IT-AST-004: an employee lists assets and sees only those assigned to them`                                                                                                               |
+| IT-AST-005 | `IT-AST-005: an asset held by a person whose affiliation has ended surfaces as an exception with the asset as subject`                                                                    |
 
 Plus: the in-repair-too-long detector (idempotent), append-only events, the
 summary's `notYetMeasured`/count invariants, and permission tests — an

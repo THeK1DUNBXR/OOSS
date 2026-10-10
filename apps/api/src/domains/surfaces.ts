@@ -184,10 +184,23 @@ export async function universalSearch(query: string, limit = 20) {
 
   if (canPeople) {
     const rows = await prisma.person.findMany({
-      where: { tenantId: auth.tenantId, deletedAt: null, OR: [{ fullName: like }, { recordCode: like }, { primaryEmail: like }] },
+      where: {
+        tenantId: auth.tenantId,
+        deletedAt: null,
+        OR: [{ fullName: like }, { recordCode: like }, { primaryEmail: like }],
+      },
       take: limit,
     });
-    results.push(...rows.map((r) => ({ type: 'person', id: r.id, label: r.fullName, recordCode: r.recordCode, path: `/crm/people/${r.id}`, sub: r.primaryEmail ?? r.primaryPhone ?? '' })));
+    results.push(
+      ...rows.map((r) => ({
+        type: 'person',
+        id: r.id,
+        label: r.fullName,
+        recordCode: r.recordCode,
+        path: `/crm/people/${r.id}`,
+        sub: r.primaryEmail ?? r.primaryPhone ?? '',
+      })),
+    );
   }
 
   if (canOrgs) {
@@ -203,7 +216,12 @@ export async function universalSearch(query: string, limit = 20) {
         label: r.name,
         recordCode: r.recordCode,
         path: `/crm/accounts/${r.id}`,
-        sub: [r.account ? `Account · ${r.account.tier}` : null, r.institutionProfile ? `Institution · ${r.institutionProfile.district ?? ''}` : null].filter(Boolean).join(' · '),
+        sub: [
+          r.account ? `Account · ${r.account.tier}` : null,
+          r.institutionProfile ? `Institution · ${r.institutionProfile.district ?? ''}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
       })),
     );
   }
@@ -213,7 +231,16 @@ export async function universalSearch(query: string, limit = 20) {
       where: { tenantId: auth.tenantId, deletedAt: null, OR: [{ title: like }, { recordCode: like }] },
       take: limit,
     });
-    results.push(...rows.map((r) => ({ type: 'lead', id: r.id, label: r.title, recordCode: r.recordCode, path: `/crm/leads/${r.id}`, sub: r.stageKey })));
+    results.push(
+      ...rows.map((r) => ({
+        type: 'lead',
+        id: r.id,
+        label: r.title,
+        recordCode: r.recordCode,
+        path: `/crm/leads/${r.id}`,
+        sub: r.stageKey,
+      })),
+    );
   }
 
   if (canOpps) {
@@ -221,7 +248,16 @@ export async function universalSearch(query: string, limit = 20) {
       where: { tenantId: auth.tenantId, deletedAt: null, OR: [{ title: like }, { recordCode: like }] },
       take: limit,
     });
-    results.push(...rows.map((r) => ({ type: 'opportunity', id: r.id, label: r.title, recordCode: r.recordCode, path: `/crm/opportunities/${r.id}`, sub: `${r.stageKey} · ${r.forecastCategory}` })));
+    results.push(
+      ...rows.map((r) => ({
+        type: 'opportunity',
+        id: r.id,
+        label: r.title,
+        recordCode: r.recordCode,
+        path: `/crm/opportunities/${r.id}`,
+        sub: `${r.stageKey} · ${r.forecastCategory}`,
+      })),
+    );
   }
 
   if (canMous) {
@@ -229,7 +265,16 @@ export async function universalSearch(query: string, limit = 20) {
       where: { tenantId: auth.tenantId, deletedAt: null, OR: [{ title: like }, { recordCode: like }] },
       take: limit,
     });
-    results.push(...rows.map((r) => ({ type: 'mou', id: r.id, label: r.title, recordCode: r.recordCode, path: `/commercial/mous/${r.id}`, sub: r.status })));
+    results.push(
+      ...rows.map((r) => ({
+        type: 'mou',
+        id: r.id,
+        label: r.title,
+        recordCode: r.recordCode,
+        path: `/commercial/mous/${r.id}`,
+        sub: r.status,
+      })),
+    );
   }
 
   if (canContracts) {
@@ -237,7 +282,16 @@ export async function universalSearch(query: string, limit = 20) {
       where: { tenantId: auth.tenantId, deletedAt: null, OR: [{ title: like }, { recordCode: like }] },
       take: limit,
     });
-    results.push(...rows.map((r) => ({ type: 'contract', id: r.id, label: r.title, recordCode: r.recordCode, path: `/commercial/contracts/${r.id}`, sub: r.status })));
+    results.push(
+      ...rows.map((r) => ({
+        type: 'contract',
+        id: r.id,
+        label: r.title,
+        recordCode: r.recordCode,
+        path: `/commercial/contracts/${r.id}`,
+        sub: r.status,
+      })),
+    );
   }
 
   return { query: q, results: results.slice(0, limit * 2) };

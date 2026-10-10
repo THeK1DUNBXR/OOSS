@@ -24,11 +24,16 @@ export function Compliance() {
 
   return (
     <div>
-      <PageHeader title="Compliance" subtitle="SS-1, MBP-1, MGT-14 and AGM due dates — each computed from what has actually been recorded." />
+      <PageHeader
+        title="Compliance"
+        subtitle="SS-1, MBP-1, MGT-14 and AGM due dates — each computed from what has actually been recorded."
+      />
 
       <Card bodyClassName="p-0">
         {isLoading ? (
-          <div className="p-4"><Loading /></div>
+          <div className="p-4">
+            <Loading />
+          </div>
         ) : data!.items.length === 0 ? (
           <div className="p-4">
             <EmptyState message="Nothing is due. Items appear as meetings and resolutions are recorded." />
@@ -47,7 +52,12 @@ export function Compliance() {
               </thead>
               <tbody>
                 {data!.items.map((i) => (
-                  <ComplianceRow key={i.id} item={i} canEdit={can('compliance:E')} onDone={() => qc.invalidateQueries({ queryKey: ['board', 'compliance'] })} />
+                  <ComplianceRow
+                    key={i.id}
+                    item={i}
+                    canEdit={can('compliance:E')}
+                    onDone={() => qc.invalidateQueries({ queryKey: ['board', 'compliance'] })}
+                  />
                 ))}
               </tbody>
             </table>
@@ -64,7 +74,8 @@ function ComplianceRow({ item, canEdit, onDone }: { item: ComplianceItemView; ca
   const [error, setError] = useState<string | null>(null);
 
   const resolve = useMutation({
-    mutationFn: (input: { waived?: boolean; reason?: string }) => api.post(`/board/compliance/${item.id}/resolve`, input),
+    mutationFn: (input: { waived?: boolean; reason?: string }) =>
+      api.post(`/board/compliance/${item.id}/resolve`, input),
     onSuccess: () => {
       setError(null);
       onDone();
@@ -82,9 +93,16 @@ function ComplianceRow({ item, canEdit, onDone }: { item: ComplianceItemView; ca
       <td className="max-w-sm px-4 py-2.5 text-2xs text-ink-500">{item.basis}</td>
       <td className="px-4 py-2.5">
         {item.status === 'open' ? (
-          item.overdue ? <StatusChip status="Overdue" tone="bad" /> : <StatusChip status="Open" tone="accent" />
+          item.overdue ? (
+            <StatusChip status="Overdue" tone="bad" />
+          ) : (
+            <StatusChip status="Open" tone="accent" />
+          )
         ) : (
-          <StatusChip status={item.status === 'done' ? 'Done' : 'Waived'} tone={item.status === 'done' ? 'good' : 'neutral'} />
+          <StatusChip
+            status={item.status === 'done' ? 'Done' : 'Waived'}
+            tone={item.status === 'done' ? 'good' : 'neutral'}
+          />
         )}
       </td>
       {canEdit && (

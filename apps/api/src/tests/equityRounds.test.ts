@@ -13,15 +13,36 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { modelRound, waterfall, type ScenarioCapTableRow } from '@kaizen/shared';
-import { createShareClass, createHolder, proposeAllotment, approveShareTransaction, makeEffective, effectiveBalance, recordValuation } from '../domains/equity.js';
 import {
-  createRound, updateRound, openRound, closeRound,
-  proposeConversion, proposeBuyback, freeReservesProxy,
-  scenarioRound, scenarioWaterfall,
+  createShareClass,
+  createHolder,
+  proposeAllotment,
+  approveShareTransaction,
+  makeEffective,
+  effectiveBalance,
+  recordValuation,
+} from '../domains/equity.js';
+import {
+  createRound,
+  updateRound,
+  openRound,
+  closeRound,
+  proposeConversion,
+  proposeBuyback,
+  freeReservesProxy,
+  scenarioRound,
+  scenarioWaterfall,
 } from '../domains/rounds.js';
 import { seedBootstrap } from '../seed/bootstrap.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { asPrincipal, authFor, expectReject, type TestPrincipal, unscopedPrisma, prisma as scopedPrisma } from './helpers.js';
+import {
+  asPrincipal,
+  authFor,
+  expectReject,
+  type TestPrincipal,
+  unscopedPrisma,
+  prisma as scopedPrisma,
+} from './helpers.js';
 
 let SUB: string;
 const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -52,22 +73,47 @@ async function newHolder(label: string) {
   return as('chairman@kaizen.co.in', async () => {
     const email = `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${suffix}@example.test`;
     const person = await scopedPrisma.person.create({
-      data: { tenantId: SUB, recordCode: await nextRecordCode('PER'), fullName: label, primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+      data: {
+        tenantId: SUB,
+        recordCode: await nextRecordCode('PER'),
+        fullName: label,
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+        source: 'test',
+      },
     });
     return createHolder({ kind: 'person', personId: person.id, residency: 'resident' });
   });
 }
 
-async function newClass(name: string, kind: 'equity' | 'preference', instrument: string, faceValue = 10, conversionTerms?: Record<string, unknown>) {
+async function newClass(
+  name: string,
+  kind: 'equity' | 'preference',
+  instrument: string,
+  faceValue = 10,
+  conversionTerms?: Record<string, unknown>,
+) {
   return as('chairman@kaizen.co.in', () =>
-    createShareClass({ name: `${name}-${suffix}`, kind, instrument: instrument as never, faceValue, conversionTerms: conversionTerms ?? null }),
+    createShareClass({
+      name: `${name}-${suffix}`,
+      kind,
+      instrument: instrument as never,
+      faceValue,
+      conversionTerms: conversionTerms ?? null,
+    }),
   );
 }
 
 /** Proposes (chairman) → approves (finance) → makes effective (finance) an ordinary allotment. */
 async function allot(shareClassId: string, toHolderId: string, count: number, pricePerShare?: number) {
   const proposed = await as('chairman@kaizen.co.in', () =>
-    proposeAllotment({ shareClassId, toHolderId, count, pricePerShare: pricePerShare ?? null, effectiveOn: new Date().toISOString() }),
+    proposeAllotment({
+      shareClassId,
+      toHolderId,
+      count,
+      pricePerShare: pricePerShare ?? null,
+      effectiveOn: new Date().toISOString(),
+    }),
   );
   await as('finance@kaizen.co.in', () => approveShareTransaction(proposed.id));
   return as('finance@kaizen.co.in', () => makeEffective(proposed.id));
@@ -75,13 +121,22 @@ async function allot(shareClassId: string, toHolderId: string, count: number, pr
 
 async function registeredValuerValuation(asOf: Date) {
   return as('chairman@kaizen.co.in', () =>
-    recordValuation({ asOf: asOf.toISOString(), basis: 'registered_valuer', perShareByClass: {}, valuerName: 'Test Valuer LLP' }),
+    recordValuation({
+      asOf: asOf.toISOString(),
+      basis: 'registered_valuer',
+      perShareByClass: {},
+      valuerName: 'Test Valuer LLP',
+    }),
   );
 }
 
 beforeAll(async () => {
   const slug = `eqt-rnd-${suffix}`;
-  const { tenantId } = await seedBootstrap({ tenantSlug: slug, tenantName: 'EQT Phase 4 Sub', parentTenantSlug: 'kaizen' });
+  const { tenantId } = await seedBootstrap({
+    tenantSlug: slug,
+    tenantName: 'EQT Phase 4 Sub',
+    parentTenantSlug: 'kaizen',
+  });
   SUB = tenantId;
 
   await as('chairman@kaizen.co.in', async () => {
@@ -95,15 +150,21 @@ beforeAll(async () => {
   });
 });
 
-describe('EQT-RND-001 — a preferential round cannot open without a registered valuer\'s report dated before opening', () => {
+describe("EQT-RND-001 — a preferential round cannot open without a registered valuer's report dated before opening", () => {
   it('refuses with no valuation, refuses with the wrong basis, refuses with a future report, and opens with a past registered-valuer report', async () => {
-    const r = await as('chairman@kaizen.co.in', () => createRound({ name: `Preferential-${suffix}`, kind: 'preferential' }));
+    const r = await as('chairman@kaizen.co.in', () =>
+      createRound({ name: `Preferential-${suffix}`, kind: 'preferential' }),
+    );
 
     const noValuation = await expectReject(() => as('chairman@kaizen.co.in', () => openRound(r.id)));
     expect(noValuation.status).toBe(422);
 
     const internalValuation = await as('chairman@kaizen.co.in', () =>
-      recordValuation({ asOf: new Date(Date.now() - 86_400_000).toISOString(), basis: 'internal', perShareByClass: {} }),
+      recordValuation({
+        asOf: new Date(Date.now() - 86_400_000).toISOString(),
+        basis: 'internal',
+        perShareByClass: {},
+      }),
     );
     await as('chairman@kaizen.co.in', () => updateRound(r.id, { valuationId: internalValuation.id }));
     const wrongBasis = await expectReject(() => as('chairman@kaizen.co.in', () => openRound(r.id)));
@@ -175,7 +236,12 @@ describe('EQT-RND-003 — a conversion retires the convertible holding and allot
     expect(await as('chairman@kaizen.co.in', () => effectiveBalance(holder.id, ccpsClass.id))).toBe(100);
 
     const proposed = await as('chairman@kaizen.co.in', () =>
-      proposeConversion({ holderId: holder.id, fromClassId: ccpsClass.id, count: 100, effectiveOn: new Date().toISOString() }),
+      proposeConversion({
+        holderId: holder.id,
+        fromClassId: ccpsClass.id,
+        count: 100,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     await as('finance@kaizen.co.in', () => approveShareTransaction(proposed.id));
     const effective = await as('finance@kaizen.co.in', () => makeEffective(proposed.id));
@@ -213,8 +279,12 @@ describe('EQT-RND-005 — a buy-back beyond ten percent needs a special resoluti
 
     // Free reserves become measured: one income transaction in these books.
     await as('chairman@kaizen.co.in', async () => {
-      const account = await scopedPrisma.ledgerAccount.create({ data: { tenantId: SUB, name: `Bank-005-${suffix}`, accountType: 'bank' } });
-      const category = await scopedPrisma.ledgerCategory.create({ data: { tenantId: SUB, name: `Sales-005-${suffix}`, kind: 'income' } });
+      const account = await scopedPrisma.ledgerAccount.create({
+        data: { tenantId: SUB, name: `Bank-005-${suffix}`, accountType: 'bank' },
+      });
+      const category = await scopedPrisma.ledgerCategory.create({
+        data: { tenantId: SUB, name: `Sales-005-${suffix}`, kind: 'income' },
+      });
       await scopedPrisma.transaction.create({
         data: {
           tenantId: SUB,
@@ -233,12 +303,21 @@ describe('EQT-RND-005 — a buy-back beyond ten percent needs a special resoluti
     expect(reserves.amount).toBe(50_000);
     // base = paidUp (10,000) + reserves (50,000) = 60,000; board ceiling 6,000; special-resolution ceiling 15,000.
 
-    const buybackRoundA = await as('chairman@kaizen.co.in', () => createRound({ name: `Buyback-A-${suffix}`, kind: 'buyback' }));
+    const buybackRoundA = await as('chairman@kaizen.co.in', () =>
+      createRound({ name: `Buyback-A-${suffix}`, kind: 'buyback' }),
+    );
     await as('chairman@kaizen.co.in', () => openRound(buybackRoundA.id));
 
     const overBoardCeiling = await expectReject(() =>
       as('chairman@kaizen.co.in', () =>
-        proposeBuyback({ roundId: buybackRoundA.id, holderId: holder.id, shareClassId: equityClass.id, count: 1000, pricePerShare: 10, effectiveOn: new Date().toISOString() }),
+        proposeBuyback({
+          roundId: buybackRoundA.id,
+          holderId: holder.id,
+          shareClassId: equityClass.id,
+          count: 1000,
+          pricePerShare: 10,
+          effectiveOn: new Date().toISOString(),
+        }),
       ),
     );
     expect(overBoardCeiling.status).toBe(422);
@@ -260,12 +339,21 @@ describe('EQT-RND-005 — a buy-back beyond ten percent needs a special resoluti
       }),
     );
 
-    const buybackRoundB = await as('chairman@kaizen.co.in', () => createRound({ name: `Buyback-B-${suffix}`, kind: 'buyback' }));
+    const buybackRoundB = await as('chairman@kaizen.co.in', () =>
+      createRound({ name: `Buyback-B-${suffix}`, kind: 'buyback' }),
+    );
     await as('chairman@kaizen.co.in', () => openRound(buybackRoundB.id));
 
     const overDebtEquity = await expectReject(() =>
       as('chairman@kaizen.co.in', () =>
-        proposeBuyback({ roundId: buybackRoundB.id, holderId: holder.id, shareClassId: equityClass.id, count: 100, pricePerShare: 10, effectiveOn: new Date().toISOString() }),
+        proposeBuyback({
+          roundId: buybackRoundB.id,
+          holderId: holder.id,
+          shareClassId: equityClass.id,
+          count: 100,
+          pricePerShare: 10,
+          effectiveOn: new Date().toISOString(),
+        }),
       ),
     );
     expect(overDebtEquity.status).toBe(422);
@@ -289,7 +377,9 @@ describe('EQT-RND-006 — closing a round raises the PAS-3 item with the 15- or 
     const expectedPrivateDue = new Date(closedPrivate.closedOn!).getTime() + 15 * 86_400_000;
     expect(Math.abs(privateException!.slaDueAt!.getTime() - expectedPrivateDue)).toBeLessThan(60_000);
 
-    const seedRound = await as('chairman@kaizen.co.in', () => createRound({ name: `Seed-006-${suffix}`, kind: 'seed' }));
+    const seedRound = await as('chairman@kaizen.co.in', () =>
+      createRound({ name: `Seed-006-${suffix}`, kind: 'seed' }),
+    );
     await as('chairman@kaizen.co.in', () => openRound(seedRound.id));
     const closedSeed = await as('chairman@kaizen.co.in', () => closeRound(seedRound.id));
 
@@ -327,7 +417,13 @@ describe('EQT-RND-007 — the round model dilutes every holder pro-rata and the 
 
   it('waterfall pays a non-participating preference stack before common only when conversion is not the better outcome', () => {
     const capTable: ScenarioCapTableRow[] = [
-      { holderId: 'pref', holderName: 'Series A', shareClassId: 'series-a', count: 100, preference: { multiple: 1, participating: false, seniority: 0 } },
+      {
+        holderId: 'pref',
+        holderName: 'Series A',
+        shareClassId: 'series-a',
+        count: 100,
+        preference: { multiple: 1, participating: false, seniority: 0 },
+      },
       { holderId: 'common', holderName: 'Founder', shareClassId: 'common', count: 900 },
     ];
     const priceByClass = { 'series-a': 10, common: 1 };
@@ -364,7 +460,11 @@ describe('EQT-RND-008 — a scenario is never persisted', () => {
     const before = await counts();
 
     const modelled = await as('chairman@kaizen.co.in', () =>
-      scenarioRound({ newMoney: 100, preMoney: 900, newClass: { name: 'Seed', liquidationPreferenceMultiple: 1, participating: false, seniority: 0 } }),
+      scenarioRound({
+        newMoney: 100,
+        preMoney: 900,
+        newClass: { name: 'Seed', liquidationPreferenceMultiple: 1, participating: false, seniority: 0 },
+      }),
     );
     expect(modelled.postMoney).toBe(1000);
     const waterfallResult = await as('chairman@kaizen.co.in', () => scenarioWaterfall(50_000));

@@ -88,9 +88,7 @@ async function candidatesHoldingLeadGrant(vertical: string): Promise<Candidate[]
     where: { tenantId: auth.tenantId, resource: 'leads', verbs: { has: 'assign' } },
   });
   const eligibleRoleIds = new Set(grants.map((g) => g.roleId).filter(Boolean) as string[]);
-  const eligibleRoleSlugs = new Set(
-    roles.filter((r) => eligibleRoleIds.has(r.id)).map((r) => r.slug),
-  );
+  const eligibleRoleSlugs = new Set(roles.filter((r) => eligibleRoleIds.has(r.id)).map((r) => r.slug));
 
   // A vertical-specific narrowing lives on the grant's conditions, as data.
   const verticalNarrowed = new Set<string>();
@@ -165,7 +163,12 @@ export async function routeLead(subject: RoutingSubject): Promise<RoutingOutcome
 
   for (const candidate of pool) {
     // ---- Hard filter 1: territory --------------------------------------
-    if (territory && territory.geoAreaRef.length > 0 && candidate.branch && !territory.geoAreaRef.includes(candidate.branch)) {
+    if (
+      territory &&
+      territory.geoAreaRef.length > 0 &&
+      candidate.branch &&
+      !territory.geoAreaRef.includes(candidate.branch)
+    ) {
       scored.push({
         candidateId: candidate.partyId,
         candidateName: candidate.name,
@@ -186,8 +189,18 @@ export async function routeLead(subject: RoutingSubject): Promise<RoutingOutcome
     const recencyRaw = recencyScore(candidate.lastAssignedAt);
 
     const factors = [
-      { factor: 'capacity', weight: weights.capacity ?? 30, raw: capacityRaw, weighted: capacityRaw * (weights.capacity ?? 30) },
-      { factor: 'capability', weight: weights.capability ?? 25, raw: capabilityRaw, weighted: capabilityRaw * (weights.capability ?? 25) },
+      {
+        factor: 'capacity',
+        weight: weights.capacity ?? 30,
+        raw: capacityRaw,
+        weighted: capacityRaw * (weights.capacity ?? 30),
+      },
+      {
+        factor: 'capability',
+        weight: weights.capability ?? 25,
+        raw: capabilityRaw,
+        weighted: capabilityRaw * (weights.capability ?? 25),
+      },
       {
         factor: 'relationship_strength',
         weight: weights.relationship_strength ?? 30,
@@ -223,11 +236,12 @@ export async function routeLead(subject: RoutingSubject): Promise<RoutingOutcome
   if (survivors.length === 0) {
     // The two unrouted causes need different remedies, so they carry different
     // reason codes: a genuine coverage gap versus a capacity problem.
-    const reason: UnroutedReason = pool.length === 0
-      ? 'no_vertical_coverage'
-      : territory === null
-        ? 'no_territory_match'
-        : 'all_candidates_over_capacity';
+    const reason: UnroutedReason =
+      pool.length === 0
+        ? 'no_vertical_coverage'
+        : territory === null
+          ? 'no_territory_match'
+          : 'all_candidates_over_capacity';
     await persistAudit(subject.leadId, territory?.id ?? null, scored, null, reason);
     return { winnerPartyId: null, territoryId: territory?.id ?? null, candidates: scored, unroutedReason: reason };
   }
@@ -333,10 +347,10 @@ export async function raiseUnroutedException(
 
   const detail =
     reason === 'no_vertical_coverage'
-      ? 'No candidate in this territory holds a grant for the lead\'s vertical — a genuine coverage gap. The remedy is a grant change, not a capacity change.'
+      ? "No candidate in this territory holds a grant for the lead's vertical — a genuine coverage gap. The remedy is a grant change, not a capacity change."
       : reason === 'all_candidates_over_capacity'
         ? 'Every eligible candidate is at or over their declared capacity ceiling. The remedy is capacity, not coverage.'
-        : 'No active territory matches this lead\'s geography, vertical and account kind.';
+        : "No active territory matches this lead's geography, vertical and account kind.";
 
   await raiseException({
     code: 'EX-CRM-004',
@@ -426,7 +440,11 @@ export async function updateRoutingRule(
   await emit({
     name: EVENTS.ROUTING_RULE_UPDATED,
     subject: { entityType: 'routing_rule', entityId: ruleId, recordCode: null },
-    newState: { active: after.active, tieBreakMarginPoints: after.tieBreakMarginPoints, factorWeights: after.factorWeights },
+    newState: {
+      active: after.active,
+      tieBreakMarginPoints: after.tieBreakMarginPoints,
+      factorWeights: after.factorWeights,
+    },
   });
   return after;
 }

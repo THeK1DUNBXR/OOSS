@@ -89,7 +89,11 @@ export function Templates() {
       />
 
       <div className="mb-3 flex flex-wrap gap-2">
-        <select className="input max-w-xs" value={channelKey} onChange={(e) => setChannelKey(e.target.value as ChannelKey | '')}>
+        <select
+          className="input max-w-xs"
+          value={channelKey}
+          onChange={(e) => setChannelKey(e.target.value as ChannelKey | '')}
+        >
           <option value="">Every channel</option>
           {CHANNEL_KEYS.map((c) => (
             <option key={c} value={c}>
@@ -97,7 +101,11 @@ export function Templates() {
             </option>
           ))}
         </select>
-        <select className="input max-w-xs" value={status} onChange={(e) => setStatus(e.target.value as TemplateStatus | '')}>
+        <select
+          className="input max-w-xs"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as TemplateStatus | '')}
+        >
           <option value="">Every status</option>
           {TEMPLATE_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -111,7 +119,10 @@ export function Templates() {
         <Loading />
       ) : !data?.items.length ? (
         <Card>
-          <EmptyState message="No templates yet." hint="A send or journey step needs an approved template before it can go out." />
+          <EmptyState
+            message="No templates yet."
+            hint="A send or journey step needs an approved template before it can go out."
+          />
         </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
@@ -173,7 +184,15 @@ function MergeFieldPalette({ onInsert }: { onInsert: (token: string) => void }) 
   );
 }
 
-function NewTemplate({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
+function NewTemplate({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (id: string) => void;
+}) {
   const [channelKey, setChannelKey] = useState<ChannelKey | ''>('');
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('');
@@ -230,16 +249,36 @@ function NewTemplate({ open, onClose, onCreated }: { open: boolean; onClose: () 
       </Row>
       {channelKey === 'email' && <TextInput label="Subject" value={subject} onChange={setSubject} />}
       <div>
-        <TextArea label="Body" required rows={6} value={body} onChange={setBody} placeholder="Use {{merge fields}} — pick from below" hint="{{merge}} syntax" />
+        <TextArea
+          label="Body"
+          required
+          rows={6}
+          value={body}
+          onChange={setBody}
+          placeholder="Use {{merge fields}} — pick from below"
+          hint="{{merge}} syntax"
+        />
         <div className="mt-1.5">
           <MergeFieldPalette onInsert={(tok) => setBody((b) => b + tok)} />
         </div>
       </div>
-      {channelKey === 'sms' && <TextInput label="DLT template id" value={dltTemplateId} onChange={setDltTemplateId} hint="Required before approval" />}
+      {channelKey === 'sms' && (
+        <TextInput
+          label="DLT template id"
+          value={dltTemplateId}
+          onChange={setDltTemplateId}
+          hint="Required before approval"
+        />
+      )}
       {channelKey === 'whatsapp' && (
         <Row>
           <TextInput label="DLT template id" value={dltTemplateId} onChange={setDltTemplateId} />
-          <TextInput label="WhatsApp template name" value={waTemplateName} onChange={setWaTemplateName} hint="Required before approval" />
+          <TextInput
+            label="WhatsApp template name"
+            value={waTemplateName}
+            onChange={setWaTemplateName}
+            hint="Required before approval"
+          />
         </Row>
       )}
     </CreateModal>
@@ -251,7 +290,11 @@ function TemplateDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const { data, isLoading, error } = useTemplate(id);
   const [banner, setBanner] = useState<string | null>(null);
   const [previewPersonId, setPreviewPersonId] = useState('');
-  const [previewResult, setPreviewResult] = useState<{ subject: string | null; body: string; missing: string[] } | null>(null);
+  const [previewResult, setPreviewResult] = useState<{
+    subject: string | null;
+    body: string;
+    missing: string[];
+  } | null>(null);
   const [editBody, setEditBody] = useState<string | null>(null);
 
   const update = useUpdateTemplate(id);
@@ -287,7 +330,9 @@ function TemplateDrawer({ id, onClose }: { id: string; onClose: () => void }) {
     <Modal open title={t.name} onClose={onClose} width="max-w-3xl">
       <div className="space-y-4">
         {banner && (
-          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{banner}</p>
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {banner}
+          </p>
         )}
 
         <div className="flex flex-wrap items-center gap-2">
@@ -297,15 +342,16 @@ function TemplateDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           {t.approvedByName && <span className="text-2xs text-ink-500">approved by {t.approvedByName}</span>}
         </div>
 
-        {t.status === 'pending_review' && (
-          isOwnProposal ? (
+        {t.status === 'pending_review' &&
+          (isOwnProposal ? (
             <p className="rounded-md border border-band-watch/40 bg-band-watch/10 px-3 py-2 text-xs italic text-band-watch">
               Awaiting a second person's review — you proposed this template, so you cannot approve it.
             </p>
           ) : (
-            !canApprove && <p className="text-2xs italic text-ink-500">Awaiting review from someone with approval rights.</p>
-          )
-        )}
+            !canApprove && (
+              <p className="text-2xs italic text-ink-500">Awaiting review from someone with approval rights.</p>
+            )
+          ))}
 
         <dl>
           {t.subject !== null && <Field label="Subject">{t.subject}</Field>}
@@ -345,13 +391,21 @@ function TemplateDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
         <div className="flex flex-wrap gap-2 border-t border-ink-800 pt-3">
           {t.status === 'draft' && can('marketing_templates:E') && nextStates.includes('pending_review') && (
-            <button className="btn-primary" disabled={submit.isPending} onClick={() => submit.mutate(t.id, { onError: (e) => setBanner(messageOf(e)) })}>
+            <button
+              className="btn-primary"
+              disabled={submit.isPending}
+              onClick={() => submit.mutate(t.id, { onError: (e) => setBanner(messageOf(e)) })}
+            >
               Submit for review
             </button>
           )}
           {t.status === 'pending_review' && canApprove && !isOwnProposal && (
             <>
-              <button className="btn-primary" disabled={approve.isPending} onClick={() => approve.mutate(t.id, { onError: (e) => setBanner(messageOf(e)) })}>
+              <button
+                className="btn-primary"
+                disabled={approve.isPending}
+                onClick={() => approve.mutate(t.id, { onError: (e) => setBanner(messageOf(e)) })}
+              >
                 Approve
               </button>
               <button
@@ -367,15 +421,27 @@ function TemplateDrawer({ id, onClose }: { id: string; onClose: () => void }) {
             </>
           )}
           {t.status === 'approved' && can('marketing_templates:E') && nextStates.includes('retired') && (
-            <button className="btn-ghost text-band-critical" disabled={retire.isPending} onClick={() => retire.mutate(t.id, { onError: (e) => setBanner(messageOf(e)) })}>
+            <button
+              className="btn-ghost text-band-critical"
+              disabled={retire.isPending}
+              onClick={() => retire.mutate(t.id, { onError: (e) => setBanner(messageOf(e)) })}
+            >
               Retire
             </button>
           )}
         </div>
 
-        <Card title="Preview" subtitle="Renders the merge fields against a real person, and names any that are still missing.">
+        <Card
+          title="Preview"
+          subtitle="Renders the merge fields against a real person, and names any that are still missing."
+        >
           <div className="flex flex-wrap items-end gap-2">
-            <TextInput label="Person id (optional)" value={previewPersonId} onChange={setPreviewPersonId} placeholder="Leave blank for placeholders" />
+            <TextInput
+              label="Person id (optional)"
+              value={previewPersonId}
+              onChange={setPreviewPersonId}
+              placeholder="Leave blank for placeholders"
+            />
             <button
               className="btn-ghost"
               disabled={preview.isPending}

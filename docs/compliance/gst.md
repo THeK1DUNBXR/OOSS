@@ -93,7 +93,7 @@ An adapter boundary, `EInvoiceProvider` (`registerIrn(invoice) => {irn,
 ackNo, ackAt, signedQr}`), with `NotConfiguredProvider` as what every fresh
 tenant has — the posture `payroll.ts` already takes toward an external
 engine. Provider selection is stored on `EInvoiceConfig` (provider name plus
-a credentials *reference* only — no secret lives in this row).
+a credentials _reference_ only — no secret lives in this row).
 `registerEInvoiceProvider` is the deployment/test seam that swaps a real
 adapter in without touching callers.
 

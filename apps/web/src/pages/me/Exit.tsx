@@ -83,7 +83,8 @@ export function Exit() {
   });
   const noticeDays = useQuery({
     queryKey: ['my-notice-days'],
-    queryFn: () => api.get<{ noticeDays: number; buyoutAllowed: boolean; source: string }>('/hcm/separations/my/notice-days'),
+    queryFn: () =>
+      api.get<{ noticeDays: number; buyoutAllowed: boolean; source: string }>('/hcm/separations/my/notice-days'),
   });
 
   const current = resignations.data
@@ -147,11 +148,7 @@ export function Exit() {
         )}
         {pending && (
           <div className="mt-4">
-            <button
-              className="btn text-2xs"
-              disabled={withdraw.isPending}
-              onClick={() => withdraw.mutate(pending.id)}
-            >
+            <button className="btn text-2xs" disabled={withdraw.isPending} onClick={() => withdraw.mutate(pending.id)}>
               {withdraw.isPending ? 'Withdrawing…' : 'Withdraw resignation'}
             </button>
             {withdraw.isError && <p className="mt-2 text-2xs text-band-critical">{messageOf(withdraw.error)}</p>}
@@ -165,7 +162,10 @@ export function Exit() {
             {offboarding.isLoading && <Loading />}
             {offboarding.error && <ErrorBox error={offboarding.error} />}
             {offboarding.data && offboarding.data.clearances.length === 0 && (
-              <EmptyState message="HR has not opened your clearance yet." hint="This starts once your last working day is confirmed." />
+              <EmptyState
+                message="HR has not opened your clearance yet."
+                hint="This starts once your last working day is confirmed."
+              />
             )}
             {offboarding.data && offboarding.data.clearances.length > 0 && (
               <table className="table">
@@ -180,7 +180,9 @@ export function Exit() {
                   {offboarding.data.clearances.map((c) => (
                     <tr key={c.id}>
                       <td>{titleCase(c.department)}</td>
-                      <td><StatusChip status={c.status} tone={CLEARANCE_TONE[c.status]} /></td>
+                      <td>
+                        <StatusChip status={c.status} tone={CLEARANCE_TONE[c.status]} />
+                      </td>
                       <td className="text-ink-400">{c.note ?? '—'}</td>
                     </tr>
                   ))}
@@ -188,7 +190,9 @@ export function Exit() {
               </table>
             )}
             {offboarding.data?.noDues && (
-              <p className="mt-3 text-2xs text-band-strong">No-dues certificate issued {date(offboarding.data.noDues.issuedOn)}.</p>
+              <p className="mt-3 text-2xs text-band-strong">
+                No-dues certificate issued {date(offboarding.data.noDues.issuedOn)}.
+              </p>
             )}
           </Card>
         </div>
@@ -222,7 +226,11 @@ export function Exit() {
           onChange={(v) => setForm({ ...form, reasonCategory: v })}
           options={REASON_OPTIONS}
         />
-        <TextArea label="Note (optional)" value={form.reasonNote} onChange={(v) => setForm({ ...form, reasonNote: v })} />
+        <TextArea
+          label="Note (optional)"
+          value={form.reasonNote}
+          onChange={(v) => setForm({ ...form, reasonNote: v })}
+        />
       </CreateModal>
     </div>
   );

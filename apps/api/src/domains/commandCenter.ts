@@ -18,18 +18,11 @@
  * four admission gates below), and dead numbers (every widget declares actions).
  */
 
-import {
-  AUTOMATION_CLASSES,
-  EVENTS,
-  SEVERITY_RANK,
-  type DeltaItem,
-  type SeverityCode,
-} from '@kaizen/shared';
+import { AUTOMATION_CLASSES, EVENTS, SEVERITY_RANK, type DeltaItem, type SeverityCode } from '@kaizen/shared';
 import { createHash } from 'node:crypto';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { latestPulse } from './health.js';
-
 
 /** Why an item sits where it does in the queue, in words rather than codes. */
 const SEVERITY_REASON: Record<string, string> = {
@@ -39,7 +32,6 @@ const SEVERITY_REASON: Record<string, string> = {
   S3_HIGH_RISK: 'it is high risk',
   S4_CRITICAL: 'it is urgent',
 };
-
 
 // ---------------------------------------------------------------------------
 // The four admission gates. Nothing arrives on this surface as a raw event —
@@ -225,17 +217,22 @@ async function buildNarrative(items: DeltaItem[], since: Date) {
   const reconciliationLine = `${openWhenLeft} serious problems open when you left, ${stillOpen} still open, ${resolvedSince} resolved, ${newSince} new.`;
 
   const bySeverity = items.filter((i) => i.severity && SEVERITY_RANK[i.severity] >= SEVERITY_RANK.S3_HIGH_RISK);
-  const byValue = items.filter((i) => i.materiality && i.materiality > 0).sort((a, b) => (b.materiality ?? 0) - (a.materiality ?? 0));
+  const byValue = items
+    .filter((i) => i.materiality && i.materiality > 0)
+    .sort((a, b) => (b.materiality ?? 0) - (a.materiality ?? 0));
 
   const claims: string[] = [];
   if (bySeverity.length) {
-    claims.push(`${bySeverity.length} high-risk item${bySeverity.length === 1 ? '' : 's'} arrived, led by ${bySeverity[0].headline}.`);
+    claims.push(
+      `${bySeverity.length} high-risk item${bySeverity.length === 1 ? '' : 's'} arrived, led by ${bySeverity[0].headline}.`,
+    );
   }
   if (byValue.length) {
     claims.push(`The largest movement by value was ${byValue[0].headline} at ${formatMoney(byValue[0].materiality!)}.`);
   }
   const handled = items.filter((i) => i.handledWithoutYou).length;
-  if (handled) claims.push(`${handled} item${handled === 1 ? '' : 's'} ${handled === 1 ? 'was' : 'were'} handled without you.`);
+  if (handled)
+    claims.push(`${handled} item${handled === 1 ? '' : 's'} ${handled === 1 ? 'was' : 'were'} handled without you.`);
   if (claims.length === 0) claims.push('Nothing big enough to report happened in this window.');
 
   return { reconciliationLine, body: claims.join(' ') };
@@ -352,14 +349,18 @@ export async function liveAndHandled(windowHours = 24) {
     const count = isAgentClass ? agentCount : clsRuns.length;
     const top = clsRuns.length
       ? clsRuns.reduce((a, b) => (b.processed > a.processed ? b : a)).jobName
-      : clsDefs[0]?.jobName ?? null;
+      : (clsDefs[0]?.jobName ?? null);
 
     return {
       automationClass: cls,
       label: humaniseClass(cls),
       count,
       valueMoved: null,
-      successRate: clsRuns.length ? Number(((succeeded / clsRuns.length) * 100).toFixed(1)) : isAgentClass && agentCount ? 100 : 100,
+      successRate: clsRuns.length
+        ? Number(((succeeded / clsRuns.length) * 100).toFixed(1))
+        : isAgentClass && agentCount
+          ? 100
+          : 100,
       exceptionCount: failed,
       topDefinition: top,
       accountablePosition: top ? (byClass.get(top)?.accountablePositionId ?? null) : null,
@@ -385,7 +386,9 @@ export async function liveAndHandled(windowHours = 24) {
         ceilingValue: num(g.ceilingValue),
         currency: g.currency,
         status: g.status,
-        dependentAutomations: definitions.filter((d) => (d.config as { authorityClass?: string })?.authorityClass === g.authorityClass).map((d) => d.label),
+        dependentAutomations: definitions
+          .filter((d) => (d.config as { authorityClass?: string })?.authorityClass === g.authorityClass)
+          .map((d) => d.label),
         dependentAgents: dependentAgents.map((a) => a.name),
       };
     }),
@@ -491,7 +494,12 @@ export async function touchWatermark() {
         affiliationId: auth.affiliationId,
       },
     },
-    create: { tenantId: auth.tenantId, userId: auth.userId, affiliationId: auth.affiliationId, reachSignature: signature },
+    create: {
+      tenantId: auth.tenantId,
+      userId: auth.userId,
+      affiliationId: auth.affiliationId,
+      reachSignature: signature,
+    },
     update: { lastSeenAt: new Date(), reachSignature: signature },
   });
 }
@@ -500,12 +508,19 @@ export async function banner() {
   const auth = currentAuth();
   const [exceptions, decisions, approvals] = await Promise.all([
     prisma.exceptionRecord.findMany({
-      where: { tenantId: auth.tenantId, state: { in: ['open', 'escalated'] }, severity: { in: ['S3_HIGH_RISK', 'S4_CRITICAL'] } },
+      where: {
+        tenantId: auth.tenantId,
+        state: { in: ['open', 'escalated'] },
+        severity: { in: ['S3_HIGH_RISK', 'S4_CRITICAL'] },
+      },
       orderBy: { raisedAt: 'asc' },
       select: { raisedAt: true },
     }),
     prisma.decision.findMany({
-      where: { tenantId: auth.tenantId, state: { in: ['Raised', 'Analysing', 'AwaitingAuthority', 'EvidenceRequested'] } },
+      where: {
+        tenantId: auth.tenantId,
+        state: { in: ['Raised', 'Analysing', 'AwaitingAuthority', 'EvidenceRequested'] },
+      },
       orderBy: { raisedAt: 'asc' },
       select: { raisedAt: true },
     }),

@@ -63,7 +63,9 @@ async function assertInstitution(institutionId: string, tenantId: string): Promi
   const org = await prisma.organization.findFirst({ where: { id: institutionId, tenantId, deletedAt: null } });
   if (!org) throw ApiError.notFound('Institution');
   if (org.kind !== 'institution') {
-    throw ApiError.badRequest(`${org.name} is recorded as an organisation, not an institution. Only an institution may host a marketing event.`);
+    throw ApiError.badRequest(
+      `${org.name} is recorded as an organisation, not an institution. Only an institution may host a marketing event.`,
+    );
   }
 }
 
@@ -189,7 +191,13 @@ export async function loadEvent(id: string) {
     ...event,
     costPlanned: num(event.costPlanned),
     costActual,
-    registrations: { registered, confirmed: counts.confirmed, attended, noShow: counts.no_show, cancelled: counts.cancelled },
+    registrations: {
+      registered,
+      confirmed: counts.confirmed,
+      attended,
+      noShow: counts.no_show,
+      cancelled: counts.cancelled,
+    },
     costPerAttendee,
     costPerAttendeeMeasured: attended > 0,
   };
@@ -344,7 +352,9 @@ export async function registerForEvent(eventId: string, input: RegisterInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_events', verb: 'edit' });
 
-  const event = await prisma.marketingEvent.findFirst({ where: { id: eventId, tenantId: auth.tenantId, deletedAt: null } });
+  const event = await prisma.marketingEvent.findFirst({
+    where: { id: eventId, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!event) throw ApiError.notFound('Event');
   if (event.status !== 'open') {
     throw ApiError.conflict(`Registration is only accepted while an event is open (currently ${event.status}).`);
@@ -466,7 +476,11 @@ export async function checkInRegistration(registrationId: string) {
 
   await emit({
     name: EVENTS.MKT_EVENT_ATTENDED,
-    subject: { entityType: 'marketing_event_registration', entityId: registration.id, recordCode: registration.recordCode },
+    subject: {
+      entityType: 'marketing_event_registration',
+      entityId: registration.id,
+      recordCode: registration.recordCode,
+    },
     related: [{ relation: 'registrant', entityType: 'person', entityId: registration.personId }],
     newState: { status: 'attended', checkedInAt: updated.checkedInAt },
   });
@@ -476,10 +490,17 @@ export async function checkInRegistration(registrationId: string) {
 
 export async function markNoShow(registrationId: string) {
   const { registration } = await transitionRegistration(registrationId, 'no_show');
-  const updated = await prisma.marketingEventRegistration.update({ where: { id: registration.id }, data: { status: 'no_show' } });
+  const updated = await prisma.marketingEventRegistration.update({
+    where: { id: registration.id },
+    data: { status: 'no_show' },
+  });
   await emit({
     name: EVENTS.MKT_EVENT_NO_SHOW,
-    subject: { entityType: 'marketing_event_registration', entityId: registration.id, recordCode: registration.recordCode },
+    subject: {
+      entityType: 'marketing_event_registration',
+      entityId: registration.id,
+      recordCode: registration.recordCode,
+    },
     newState: { status: 'no_show' },
   });
   return updated;
@@ -487,10 +508,17 @@ export async function markNoShow(registrationId: string) {
 
 export async function cancelRegistration(registrationId: string) {
   const { registration, from } = await transitionRegistration(registrationId, 'cancelled');
-  const updated = await prisma.marketingEventRegistration.update({ where: { id: registration.id }, data: { status: 'cancelled' } });
+  const updated = await prisma.marketingEventRegistration.update({
+    where: { id: registration.id },
+    data: { status: 'cancelled' },
+  });
   await emit({
     name: EVENTS.MKT_EVENT_CANCELLED,
-    subject: { entityType: 'marketing_event_registration', entityId: registration.id, recordCode: registration.recordCode },
+    subject: {
+      entityType: 'marketing_event_registration',
+      entityId: registration.id,
+      recordCode: registration.recordCode,
+    },
     previousState: { status: from },
     newState: { status: 'cancelled' },
   });
@@ -535,7 +563,9 @@ export async function convertAttendees(eventId: string): Promise<{ created: numb
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_events', verb: 'edit' });
 
-  const event = await prisma.marketingEvent.findFirst({ where: { id: eventId, tenantId: auth.tenantId, deletedAt: null } });
+  const event = await prisma.marketingEvent.findFirst({
+    where: { id: eventId, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!event) throw ApiError.notFound('Event');
 
   const candidates = await prisma.marketingEventRegistration.findMany({

@@ -49,7 +49,10 @@ const router = Router();
 
 // --- Members ---------------------------------------------------------------
 
-router.get('/members', handler(async () => ({ items: await listBoardMembers() })));
+router.get(
+  '/members',
+  handler(async () => ({ items: await listBoardMembers() })),
+);
 
 router.post(
   '/members',
@@ -80,7 +83,9 @@ router.post(
   handler(async (req) => {
     const body = z
       .object({
-        interests: z.array(z.object({ entity: z.string(), nature: z.string(), since: z.string().optional() })).optional(),
+        interests: z
+          .array(z.object({ entity: z.string(), nature: z.string(), since: z.string().optional() }))
+          .optional(),
         declaredOn: z.coerce.date().optional(),
       })
       .parse(req.body ?? {});
@@ -90,7 +95,10 @@ router.post(
 
 // --- Meetings ----------------------------------------------------------------
 
-router.get('/meetings', handler(async () => ({ items: await listMeetings() })));
+router.get(
+  '/meetings',
+  handler(async () => ({ items: await listMeetings() })),
+);
 
 router.post(
   '/meetings',
@@ -110,13 +118,23 @@ router.post(
   }),
 );
 
-router.get('/meetings/:id', handler(async (req) => meeting(req.params.id)));
+router.get(
+  '/meetings/:id',
+  handler(async (req) => meeting(req.params.id)),
+);
 
 router.post(
   '/meetings/:id/agenda',
   handler(async (req) => {
     const body = z
-      .array(z.object({ n: z.number(), title: z.string(), notes: z.string().optional(), resolutionId: z.string().optional() }))
+      .array(
+        z.object({
+          n: z.number(),
+          title: z.string(),
+          notes: z.string().optional(),
+          resolutionId: z.string().optional(),
+        }),
+      )
       .parse((req.body as { agenda?: unknown }).agenda ?? req.body);
     return updateAgenda(req.params.id, body);
   }),
@@ -148,7 +166,10 @@ router.post(
   }),
 );
 
-router.post('/meetings/:id/minutes/circulate', handler(async (req) => circulateMinutes(req.params.id)));
+router.post(
+  '/meetings/:id/minutes/circulate',
+  handler(async (req) => circulateMinutes(req.params.id)),
+);
 
 router.post(
   '/meetings/:id/minutes/enter',
@@ -189,7 +210,10 @@ router.post(
   }),
 );
 
-router.get('/meetings/:id/pack', handler(async (req) => boardPack(req.params.id)));
+router.get(
+  '/meetings/:id/pack',
+  handler(async (req) => boardPack(req.params.id)),
+);
 
 // --- Resolutions -------------------------------------------------------------
 
@@ -221,7 +245,10 @@ router.post(
   }),
 );
 
-router.get('/resolutions/:id', handler(async (req) => resolution(req.params.id)));
+router.get(
+  '/resolutions/:id',
+  handler(async (req) => resolution(req.params.id)),
+);
 
 router.post(
   '/resolutions/:id/circulate',
@@ -246,7 +273,10 @@ router.post(
   }),
 );
 
-router.post('/resolutions/:id/close', handler(async (req) => closeCirculation(req.params.id)));
+router.post(
+  '/resolutions/:id/close',
+  handler(async (req) => closeCirculation(req.params.id)),
+);
 
 router.post(
   '/resolutions/:id/pass',
@@ -254,14 +284,19 @@ router.post(
     const body = z
       .object({
         meetingId: z.string(),
-        votes: z.array(z.object({ boardMemberId: z.string(), choice: z.enum(VOTE_CHOICES), interested: z.boolean().optional() })),
+        votes: z.array(
+          z.object({ boardMemberId: z.string(), choice: z.enum(VOTE_CHOICES), interested: z.boolean().optional() }),
+        ),
       })
       .parse(req.body);
     return passAtMeeting(req.params.id, body.meetingId, body.votes);
   }),
 );
 
-router.post('/resolutions/:id/withdraw', handler(async (req) => withdraw(req.params.id)));
+router.post(
+  '/resolutions/:id/withdraw',
+  handler(async (req) => withdraw(req.params.id)),
+);
 
 router.post(
   '/resolutions/:id/mgt14',
@@ -273,12 +308,17 @@ router.post(
 
 // --- Compliance ----------------------------------------------------------------
 
-router.get('/compliance', handler(async () => ({ items: await complianceCalendar() })));
+router.get(
+  '/compliance',
+  handler(async () => ({ items: await complianceCalendar() })),
+);
 
 router.post(
   '/compliance/:id/resolve',
   handler(async (req) => {
-    const body = z.object({ filedRef: z.string().optional(), waived: z.boolean().optional(), reason: z.string().optional() }).parse(req.body ?? {});
+    const body = z
+      .object({ filedRef: z.string().optional(), waived: z.boolean().optional(), reason: z.string().optional() })
+      .parse(req.body ?? {});
     return resolveComplianceItem(req.params.id, body);
   }),
 );

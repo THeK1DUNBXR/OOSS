@@ -339,19 +339,29 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
         actions={
           <>
             {can(`${endpoint}:E`) && (
-              <button className="btn-ghost" onClick={() => setEditingBase(true)}>Edit</button>
+              <button className="btn-ghost" onClick={() => setEditingBase(true)}>
+                Edit
+              </button>
             )}
             {!data.account && can(`${endpoint}:C`) && (
-              <button className="btn-ghost" onClick={() => setAdding('billing')}>How we bill them</button>
+              <button className="btn-ghost" onClick={() => setAdding('billing')}>
+                How we bill them
+              </button>
             )}
             {data.account && can(`${endpoint}:E`) && (
-              <button className="btn-ghost" onClick={() => setAdding('billing')}>Edit billing</button>
+              <button className="btn-ghost" onClick={() => setAdding('billing')}>
+                Edit billing
+              </button>
             )}
             {kind === 'institution' && !data.institutionProfile && can('institutions:C') && (
-              <button className="btn-ghost" onClick={() => setAdding('school')}>What kind of place it is</button>
+              <button className="btn-ghost" onClick={() => setAdding('school')}>
+                What kind of place it is
+              </button>
             )}
             {kind === 'institution' && data.institutionProfile && can('institutions:E') && (
-              <button className="btn-ghost" onClick={() => setAdding('school')}>Edit school details</button>
+              <button className="btn-ghost" onClick={() => setAdding('school')}>
+                Edit school details
+              </button>
             )}
           </>
         }
@@ -395,7 +405,10 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
               </span>
             ))}
         {data.account && <span className="chip border-ink-700 text-ink-400">We invoice them</span>}
-        <StatusChip status={humanize(data.computedRelationshipStatus)} tone={STATUS_TONE[data.computedRelationshipStatus] ?? 'neutral'} />
+        <StatusChip
+          status={humanize(data.computedRelationshipStatus)}
+          tone={STATUS_TONE[data.computedRelationshipStatus] ?? 'neutral'}
+        />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -422,7 +435,10 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
                 <Field label="Established">{data.institutionProfile.establishedYear ?? '—'}</Field>
                 <Field label="Registry identifier">
                   {data.institutionProfile.externalIdentifier ?? (
-                    <span className="text-ink-500" title="Left blank when unknown. A missing answer is safe; a made-up one is not.">
+                    <span
+                      className="text-ink-500"
+                      title="Left blank when unknown. A missing answer is safe; a made-up one is not."
+                    >
                       not recorded
                     </span>
                   )}
@@ -481,9 +497,16 @@ export function BodyDetail({ kind }: { kind: 'institution' | 'organization' }) {
             </Card>
           )}
 
-          <Card title="Relationship history" subtitle="Past connections are kept, not written over." bodyClassName="p-0">
+          <Card
+            title="Relationship history"
+            subtitle="Past connections are kept, not written over."
+            bodyClassName="p-0"
+          >
             {relationships.length === 0 ? (
-              <EmptyState message="No relationships recorded." hint="Connections appear when something happens — a meeting, a contract, an enrolment." />
+              <EmptyState
+                message="No relationships recorded."
+                hint="Connections appear when something happens — a meeting, a contract, an enrolment."
+              />
             ) : (
               <ul className="divide-y divide-ink-850">
                 {relationships.map((r: any) => (

@@ -172,14 +172,7 @@ export const TENANT_ONBOARDING_STATES = [
 export type TenantOnboardingState = (typeof TENANT_ONBOARDING_STATES)[number];
 
 export type TenantOnboardingEvent =
-  | 'START'
-  | 'SETUP_COMPANY'
-  | 'CONFIGURE_STATUTORY'
-  | 'IMPORT_OPENINGS'
-  | 'VERIFY'
-  | 'ACTIVATE'
-  | 'BLOCK'
-  | 'RESUME';
+  'START' | 'SETUP_COMPANY' | 'CONFIGURE_STATUTORY' | 'IMPORT_OPENINGS' | 'VERIFY' | 'ACTIVATE' | 'BLOCK' | 'RESUME';
 
 export interface TenantOnboardingStateRecord {
   status: TenantOnboardingState;
@@ -716,7 +709,13 @@ export interface InteractionView {
   actorPartyId: string | null;
   actorName: string | null;
   participantPartyIds: string[];
-  relatedReferences: { contextCode: string; entityType: string; entityId: string; displayLabel: string | null; recordCode: string | null }[];
+  relatedReferences: {
+    contextCode: string;
+    entityType: string;
+    entityId: string;
+    displayLabel: string | null;
+    recordCode: string | null;
+  }[];
   /** Computed as the max classification across every related reference. Never assigned by the logging user. */
   sensitivityClass: SensitivityClass;
   nextAction: string | null;

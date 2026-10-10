@@ -72,7 +72,11 @@ function Tranches({ schedule }: { schedule: VestingTranche[] }) {
 export function MyOptionsView() {
   const [requesting, setRequesting] = useState<MyGrantRow | null>(null);
 
-  const { data, isLoading, error: loadError } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['my-options'],
     queryFn: () => api.get<{ items: MyGrantRow[] }>('/esop/me'),
   });
@@ -101,27 +105,47 @@ export function MyOptionsView() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-ink-100">{g.recordCode}</p>
-                    <p className="text-2xs text-ink-500">Granted {date(g.grantedOn)} · exercise price {money(g.exercisePrice)}</p>
+                    <p className="text-2xs text-ink-500">
+                      Granted {date(g.grantedOn)} · exercise price {money(g.exercisePrice)}
+                    </p>
                   </div>
                   <StatusChip status={g.status} tone={STATUS_TONE[g.status] ?? 'neutral'} />
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-2xs sm:grid-cols-4">
-                  <div><span className="text-ink-500">Total</span><div className="tabular-nums text-ink-100">{g.count.toLocaleString('en-IN')}</div></div>
-                  <div><span className="text-ink-500">Vested</span><div className="tabular-nums text-ink-100">{g.vested.toLocaleString('en-IN')}</div></div>
-                  <div><span className="text-ink-500">Exercised</span><div className="tabular-nums text-ink-100">{g.exercised.toLocaleString('en-IN')}</div></div>
-                  <div><span className="text-ink-500">Lapsed</span><div className="tabular-nums text-ink-100">{g.lapsed.toLocaleString('en-IN')}</div></div>
+                  <div>
+                    <span className="text-ink-500">Total</span>
+                    <div className="tabular-nums text-ink-100">{g.count.toLocaleString('en-IN')}</div>
+                  </div>
+                  <div>
+                    <span className="text-ink-500">Vested</span>
+                    <div className="tabular-nums text-ink-100">{g.vested.toLocaleString('en-IN')}</div>
+                  </div>
+                  <div>
+                    <span className="text-ink-500">Exercised</span>
+                    <div className="tabular-nums text-ink-100">{g.exercised.toLocaleString('en-IN')}</div>
+                  </div>
+                  <div>
+                    <span className="text-ink-500">Lapsed</span>
+                    <div className="tabular-nums text-ink-100">{g.lapsed.toLocaleString('en-IN')}</div>
+                  </div>
                 </div>
                 {g.exerciseWindowEndsOn && (
-                  <p className="mt-2 text-2xs text-band-watch">Exercise window closes {date(g.exerciseWindowEndsOn)}.</p>
+                  <p className="mt-2 text-2xs text-band-watch">
+                    Exercise window closes {date(g.exerciseWindowEndsOn)}.
+                  </p>
                 )}
                 <p className="mt-2 text-2xs text-ink-400">{g.taxLine}</p>
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-2xs text-accent-soft">Vesting timeline ({g.vesting.schedule.length})</summary>
+                  <summary className="cursor-pointer text-2xs text-accent-soft">
+                    Vesting timeline ({g.vesting.schedule.length})
+                  </summary>
                   <Tranches schedule={g.vesting.schedule} />
                 </details>
                 {availableToExercise > 0 && (
                   <div className="mt-3">
-                    <button className="btn-primary" onClick={() => setRequesting(g)}>Request exercise</button>
+                    <button className="btn-primary" onClick={() => setRequesting(g)}>
+                      Request exercise
+                    </button>
                   </div>
                 )}
               </Card>

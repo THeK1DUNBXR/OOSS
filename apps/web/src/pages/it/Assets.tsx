@@ -187,7 +187,10 @@ export function ItAssets() {
 
       {s?.notYetMeasured ? (
         <Card className="mb-5">
-          <EmptyState message="No assets on file yet." hint="Add the first one to start tracking warranty, holders and repairs." />
+          <EmptyState
+            message="No assets on file yet."
+            hint="Add the first one to start tracking warranty, holders and repairs."
+          />
         </Card>
       ) : (
         s && (
@@ -200,7 +203,11 @@ export function ItAssets() {
               noActionReason="Within 90 days, not yet retired or disposed."
             />
             <Metric label="Unassigned stock" value={s.unassignedStock} noActionReason="In stock, ready to issue." />
-            <Metric label="Book value" value={`₹${s.bookValue.toLocaleString('en-IN')}`} noActionReason="Sum of purchase cost, non-disposed." />
+            <Metric
+              label="Book value"
+              value={`₹${s.bookValue.toLocaleString('en-IN')}`}
+              noActionReason="Sum of purchase cost, non-disposed."
+            />
           </div>
         )
       )}
@@ -336,7 +343,12 @@ function NewAssetModal({ onClose }: { onClose: () => void }) {
           <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" form="new-asset-form" className="btn-primary" disabled={mutation.isPending || !tag.trim() || !kind}>
+          <button
+            type="submit"
+            form="new-asset-form"
+            className="btn-primary"
+            disabled={mutation.isPending || !tag.trim() || !kind}
+          >
             {mutation.isPending ? 'Saving…' : 'Create'}
           </button>
         </>
@@ -352,9 +364,18 @@ function NewAssetModal({ onClose }: { onClose: () => void }) {
         }}
       >
         {error && (
-          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
         )}
-        <TextInput label="Tag" value={tag} onChange={setTag} required autoFocus hint="How it's referred to on the floor" />
+        <TextInput
+          label="Tag"
+          value={tag}
+          onChange={setTag}
+          required
+          autoFocus
+          hint="How it's referred to on the floor"
+        />
         <SelectInput
           label="Kind"
           value={kind}
@@ -402,7 +423,11 @@ export function ItAssetDetail() {
   const [noting, setNoting] = useState(false);
   const [pendingTransition, setPendingTransition] = useState<LifecycleEvent | null>(null);
 
-  const asset = useQuery({ queryKey: ['it-asset', id], queryFn: () => api.get<AssetDetailResponse>(`/it/assets/${id}`), enabled: Boolean(id) });
+  const asset = useQuery({
+    queryKey: ['it-asset', id],
+    queryFn: () => api.get<AssetDetailResponse>(`/it/assets/${id}`),
+    enabled: Boolean(id),
+  });
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['it-asset', id] });
@@ -441,7 +466,12 @@ export function ItAssetDetail() {
       }
       return rows;
     });
-    const fromEvents: Row[] = events.map((e) => ({ id: e.id, at: e.createdAt, label: titleCase(e.kind), body: e.detail }));
+    const fromEvents: Row[] = events.map((e) => ({
+      id: e.id,
+      at: e.createdAt,
+      label: titleCase(e.kind),
+      body: e.detail,
+    }));
     return [...fromAssignments, ...fromEvents].sort((x, y) => y.at.localeCompare(x.at));
   }, [a.assignments, events]);
 
@@ -472,7 +502,9 @@ export function ItAssetDetail() {
             <Field label="Serial">{a.serial ?? '—'}</Field>
             <Field label="Condition">{a.condition ? titleCase(a.condition) : '—'}</Field>
             <Field label="Purchase date">{a.purchaseDate ? date(a.purchaseDate) : '—'}</Field>
-            <Field label="Purchase cost">{a.purchaseCost != null ? `₹${a.purchaseCost.toLocaleString('en-IN')}` : '—'}</Field>
+            <Field label="Purchase cost">
+              {a.purchaseCost != null ? `₹${a.purchaseCost.toLocaleString('en-IN')}` : '—'}
+            </Field>
             <Field label="Warranty end">{a.warrantyEnd ? date(a.warrantyEnd) : '—'}</Field>
             <Field label="Supplier">{a.supplierName ?? '—'}</Field>
             <Field label="Location">{a.location ?? '—'}</Field>
@@ -634,10 +666,18 @@ function AssignModal({ assetId, onClose, onDone }: { assetId: string; onClose: (
   // The same small "search a person" pattern `components/createForms.tsx`
   // uses against `/crm/people` — copied inline here rather than editing that
   // file, which belongs to another surface.
-  const people = useList<PersonOption>('it-assign-people', `/crm/people?pageSize=200${search ? `&search=${encodeURIComponent(search)}` : ''}`);
+  const people = useList<PersonOption>(
+    'it-assign-people',
+    `/crm/people?pageSize=200${search ? `&search=${encodeURIComponent(search)}` : ''}`,
+  );
 
   const mutation = useMutation({
-    mutationFn: () => api.post(`/it/assets/${assetId}/assign`, { partyId, conditionOut: conditionOut || undefined, note: note || undefined }),
+    mutationFn: () =>
+      api.post(`/it/assets/${assetId}/assign`, {
+        partyId,
+        conditionOut: conditionOut || undefined,
+        note: note || undefined,
+      }),
     onSuccess: onDone,
     onError: (e: unknown) => setError(messageOf(e)),
   });
@@ -659,7 +699,9 @@ function AssignModal({ assetId, onClose, onDone }: { assetId: string; onClose: (
       }
     >
       {error && (
-        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
       )}
       <TextInput label="Find a person" value={search} onChange={setSearch} placeholder="Search by name" />
       <div className="mt-2 max-h-40 overflow-y-auto rounded border border-ink-800">
@@ -698,7 +740,8 @@ function ReturnModal({ assetId, onClose, onDone }: { assetId: string; onClose: (
   const [error, setError] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: () => api.post(`/it/assets/${assetId}/return`, { conditionIn: conditionIn || undefined, note: note || undefined }),
+    mutationFn: () =>
+      api.post(`/it/assets/${assetId}/return`, { conditionIn: conditionIn || undefined, note: note || undefined }),
     onSuccess: onDone,
     onError: (e: unknown) => setError(messageOf(e)),
   });
@@ -720,7 +763,9 @@ function ReturnModal({ assetId, onClose, onDone }: { assetId: string; onClose: (
       }
     >
       {error && (
-        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
       )}
       <SelectInput
         label="Condition coming back"
@@ -755,14 +800,20 @@ function NoteModal({ assetId, onClose, onDone }: { assetId: string; onClose: () 
           <button className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-primary" disabled={!detail.trim() || mutation.isPending} onClick={() => mutation.mutate()}>
+          <button
+            className="btn-primary"
+            disabled={!detail.trim() || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
             {mutation.isPending ? 'Saving…' : 'Record'}
           </button>
         </>
       }
     >
       {error && (
-        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
       )}
       <SelectInput
         label="Kind"

@@ -128,10 +128,24 @@ describe('assets — domain and wiring', () => {
       data: { tenantId: tid, recordCode: `PER-AST-${s}B`, fullName: `Asset Holder B ${s}`, source: 'test' },
     });
     await unscopedPrisma.affiliation.create({
-      data: { tenantId: tid, partyId: pa.id, affiliationType: 'employee', counterpartyName: 'Kaizen', roleSlug: 'employee', status: 'active' },
+      data: {
+        tenantId: tid,
+        partyId: pa.id,
+        affiliationType: 'employee',
+        counterpartyName: 'Kaizen',
+        roleSlug: 'employee',
+        status: 'active',
+      },
     });
     await unscopedPrisma.affiliation.create({
-      data: { tenantId: tid, partyId: pb.id, affiliationType: 'employee', counterpartyName: 'Kaizen', roleSlug: 'employee', status: 'active' },
+      data: {
+        tenantId: tid,
+        partyId: pb.id,
+        affiliationType: 'employee',
+        counterpartyName: 'Kaizen',
+        roleSlug: 'employee',
+        status: 'active',
+      },
     });
     holderA = { id: pa.id, name: pa.fullName };
     holderB = { id: pb.id, name: pb.fullName };
@@ -139,7 +153,9 @@ describe('assets — domain and wiring', () => {
 
   it('IT-AST-002: assigning writes an assignment row and returning closes it without editing the earlier row', async () => {
     const tag = `AST-${stamp()}`;
-    const asset = await asUser('operations@kaizen.co.in', () => createAsset({ tag, kind: 'laptop', condition: 'good' }));
+    const asset = await asUser('operations@kaizen.co.in', () =>
+      createAsset({ tag, kind: 'laptop', condition: 'good' }),
+    );
     expect(asset.status).toBe('in_stock');
     expect(asset.availableTransitions.sort()).toEqual(['ASSIGN', 'RETIRE', 'SEND_TO_REPAIR'].sort());
 
@@ -149,7 +165,9 @@ describe('assets — domain and wiring', () => {
     expect(assigned.status).toBe('assigned');
     expect(assigned.holderPartyId).toBe(holderA.id);
 
-    const afterAssign = await unscopedPrisma.itAssetAssignment.findMany({ where: { tenantId: tid, assetId: asset.id } });
+    const afterAssign = await unscopedPrisma.itAssetAssignment.findMany({
+      where: { tenantId: tid, assetId: asset.id },
+    });
     expect(afterAssign).toHaveLength(1);
     const openRow = afterAssign[0];
     expect(openRow.partyId).toBe(holderA.id);
@@ -161,7 +179,9 @@ describe('assets — domain and wiring', () => {
     expect(returned.status).toBe('in_stock');
     expect(returned.holderPartyId).toBeNull();
 
-    const afterReturn = await unscopedPrisma.itAssetAssignment.findMany({ where: { tenantId: tid, assetId: asset.id } });
+    const afterReturn = await unscopedPrisma.itAssetAssignment.findMany({
+      where: { tenantId: tid, assetId: asset.id },
+    });
     // Append-only: still exactly one row — the same hand-over, now closed —
     // never a second row for the return.
     expect(afterReturn).toHaveLength(1);
@@ -175,7 +195,10 @@ describe('assets — domain and wiring', () => {
       assignAsset(asset.id, { partyId: holderB.id, conditionOut: 'fair' }),
     );
     expect(reassigned.holderPartyId).toBe(holderB.id);
-    const rows = await unscopedPrisma.itAssetAssignment.findMany({ where: { tenantId: tid, assetId: asset.id }, orderBy: { assignedAt: 'asc' } });
+    const rows = await unscopedPrisma.itAssetAssignment.findMany({
+      where: { tenantId: tid, assetId: asset.id },
+      orderBy: { assignedAt: 'asc' },
+    });
     expect(rows).toHaveLength(2);
     expect(rows[0].returnedAt).not.toBeNull();
     expect(rows[0].conditionIn).toBe('fair'); // unchanged from the first close
@@ -192,7 +215,9 @@ describe('assets — domain and wiring', () => {
     const asset = await asUser('operations@kaizen.co.in', () => createAsset({ tag, kind: 'monitor' }));
     await asUser('operations@kaizen.co.in', () => assignAsset(asset.id, { partyId: holderA.id }));
 
-    const rejection = await expectReject(() => asUser('operations@kaizen.co.in', () => assignAsset(asset.id, { partyId: holderB.id })));
+    const rejection = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => assignAsset(asset.id, { partyId: holderB.id })),
+    );
     expect(rejection.status).toBe(422);
 
     await asUser('operations@kaizen.co.in', () => returnAsset(asset.id));
@@ -203,9 +228,7 @@ describe('assets — domain and wiring', () => {
     const warrantyEnd = new Date();
     warrantyEnd.setDate(warrantyEnd.getDate() + 5); // inside the 7-day rung
 
-    const asset = await asUser('operations@kaizen.co.in', () =>
-      createAsset({ tag, kind: 'laptop', warrantyEnd }),
-    );
+    const asset = await asUser('operations@kaizen.co.in', () => createAsset({ tag, kind: 'laptop', warrantyEnd }));
 
     const first = await asUser('operations@kaizen.co.in', () => runWarrantyLadder());
     expect(first.notified).toBeGreaterThanOrEqual(1);
@@ -265,7 +288,14 @@ describe('assets — domain and wiring', () => {
       data: { tenantId: tid, recordCode: `PER-LEAVE-${s}`, fullName: `Departed Employee ${s}`, source: 'test' },
     });
     const affiliation = await unscopedPrisma.affiliation.create({
-      data: { tenantId: tid, partyId: leaver.id, affiliationType: 'employee', counterpartyName: 'Kaizen', roleSlug: 'employee', status: 'active' },
+      data: {
+        tenantId: tid,
+        partyId: leaver.id,
+        affiliationType: 'employee',
+        counterpartyName: 'Kaizen',
+        roleSlug: 'employee',
+        status: 'active',
+      },
     });
 
     const asset = await asUser('operations@kaizen.co.in', () => createAsset({ tag, kind: 'laptop' }));
@@ -273,7 +303,9 @@ describe('assets — domain and wiring', () => {
 
     // Nothing to flag while the affiliation is still active.
     await asUser('operations@kaizen.co.in', () => runOrphanedAssetDetector());
-    let exceptions = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: tid, subjectType: 'it_asset', subjectId: asset.id, code: 'IT_AST_ORPHANED' } });
+    let exceptions = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: tid, subjectType: 'it_asset', subjectId: asset.id, code: 'IT_AST_ORPHANED' },
+    });
     expect(exceptions).toHaveLength(0);
 
     // The affiliation ends — the exit checklist's technology half.
@@ -282,13 +314,17 @@ describe('assets — domain and wiring', () => {
     const result = await asUser('operations@kaizen.co.in', () => runOrphanedAssetDetector());
     expect(result.flagged).toBeGreaterThanOrEqual(1);
 
-    exceptions = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: tid, subjectType: 'it_asset', subjectId: asset.id, code: 'IT_AST_ORPHANED' } });
+    exceptions = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: tid, subjectType: 'it_asset', subjectId: asset.id, code: 'IT_AST_ORPHANED' },
+    });
     expect(exceptions).toHaveLength(1);
     expect(exceptions[0].subjectId).toBe(asset.id);
 
     // Idempotent: a second run does not duplicate the open exception.
     await asUser('operations@kaizen.co.in', () => runOrphanedAssetDetector());
-    exceptions = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: tid, subjectType: 'it_asset', subjectId: asset.id, code: 'IT_AST_ORPHANED' } });
+    exceptions = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: tid, subjectType: 'it_asset', subjectId: asset.id, code: 'IT_AST_ORPHANED' },
+    });
     expect(exceptions).toHaveLength(1);
   });
 
@@ -305,11 +341,15 @@ describe('assets — domain and wiring', () => {
     const first = await asUser('operations@kaizen.co.in', () => runInRepairTooLongDetector());
     expect(first.flagged).toBeGreaterThanOrEqual(1);
 
-    const exceptions = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: tid, subjectType: 'it_asset', subjectId: asset.id, code: 'IT_AST_REPAIR_OVERDUE' } });
+    const exceptions = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: tid, subjectType: 'it_asset', subjectId: asset.id, code: 'IT_AST_REPAIR_OVERDUE' },
+    });
     expect(exceptions).toHaveLength(1);
 
     await asUser('operations@kaizen.co.in', () => runInRepairTooLongDetector());
-    const exceptionsAfter = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: tid, subjectType: 'it_asset', subjectId: asset.id, code: 'IT_AST_REPAIR_OVERDUE' } });
+    const exceptionsAfter = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: tid, subjectType: 'it_asset', subjectId: asset.id, code: 'IT_AST_REPAIR_OVERDUE' },
+    });
     expect(exceptionsAfter).toHaveLength(1);
 
     await asUser('operations@kaizen.co.in', () => transitionAsset(asset.id, 'RETIRE'));
@@ -319,8 +359,12 @@ describe('assets — domain and wiring', () => {
   it('events: a repair note or audit sighting is recorded against the asset, append-only', async () => {
     const tag = `AST-EVT-${stamp()}`;
     const asset = await asUser('operations@kaizen.co.in', () => createAsset({ tag, kind: 'server' }));
-    await asUser('operations@kaizen.co.in', () => addAssetEvent(asset.id, { kind: 'audit', detail: 'Sighted in server room during Q3 audit.' }));
-    await asUser('operations@kaizen.co.in', () => addAssetEvent(asset.id, { kind: 'note', detail: 'Firmware updated.' }));
+    await asUser('operations@kaizen.co.in', () =>
+      addAssetEvent(asset.id, { kind: 'audit', detail: 'Sighted in server room during Q3 audit.' }),
+    );
+    await asUser('operations@kaizen.co.in', () =>
+      addAssetEvent(asset.id, { kind: 'note', detail: 'Firmware updated.' }),
+    );
 
     const detail = await asUser('operations@kaizen.co.in', () => assetDetail(asset.id));
     expect(detail.events.length).toBeGreaterThanOrEqual(2);
@@ -348,7 +392,9 @@ describe('assets — permissions', () => {
   });
 
   it('the Finance Head holds view and financial on assets, but not edit — cannot assign or transition one', async () => {
-    const asset = await asUser('operations@kaizen.co.in', () => createAsset({ tag: `AST-FIN-${stamp()}`, kind: 'laptop' }));
+    const asset = await asUser('operations@kaizen.co.in', () =>
+      createAsset({ tag: `AST-FIN-${stamp()}`, kind: 'laptop' }),
+    );
 
     const rejection = await expectReject(() =>
       asUser('finance@kaizen.co.in', () => transitionAsset(asset.id, 'RETIRE')),
@@ -361,13 +407,17 @@ describe('assets — permissions', () => {
   });
 
   it('the chairman holds every resource, every verb, every scope', async () => {
-    const asset = await asUser('chairman@kaizen.co.in', () => createAsset({ tag: `AST-CHAIR-${stamp()}`, kind: 'phone' }));
+    const asset = await asUser('chairman@kaizen.co.in', () =>
+      createAsset({ tag: `AST-CHAIR-${stamp()}`, kind: 'phone' }),
+    );
     const seen = await asUser('chairman@kaizen.co.in', () => listAssets());
     expect(seen.some((a) => a.id === asset.id)).toBe(true);
   });
 
   it('cannot request a lifecycle event that has its own dedicated endpoint (ASSIGN/RETURN) through /transition', async () => {
-    const asset = await asUser('operations@kaizen.co.in', () => createAsset({ tag: `AST-DEDIC-${stamp()}`, kind: 'laptop' }));
+    const asset = await asUser('operations@kaizen.co.in', () =>
+      createAsset({ tag: `AST-DEDIC-${stamp()}`, kind: 'laptop' }),
+    );
     const rejection = await expectReject(() =>
       asUser('operations@kaizen.co.in', () => transitionAsset(asset.id, 'ASSIGN' as never)),
     );
@@ -375,7 +425,9 @@ describe('assets — permissions', () => {
   });
 
   it('assigning and returning need the `assign` verb, not `edit` — a fixture role holding VCE cannot assign', async () => {
-    const asset = await asUser('operations@kaizen.co.in', () => createAsset({ tag: `AST-NOASSIGN-${stamp()}`, kind: 'laptop' }));
+    const asset = await asUser('operations@kaizen.co.in', () =>
+      createAsset({ tag: `AST-NOASSIGN-${stamp()}`, kind: 'laptop' }),
+    );
 
     const rejection = await withFixtureRole(
       { grants: [{ resource: 'it_assets', verbs: ['view', 'create', 'edit'], scope: 'all' }] },
@@ -400,15 +452,26 @@ describe('assets — permissions', () => {
       data: { tenantId: tid, recordCode: `PER-SUM-${s}`, fullName: `Summary Outsider ${s}`, source: 'test' },
     });
     await unscopedPrisma.affiliation.create({
-      data: { tenantId: tid, partyId: outsider.id, affiliationType: 'employee', counterpartyName: 'Kaizen', roleSlug: 'employee', status: 'active' },
+      data: {
+        tenantId: tid,
+        partyId: outsider.id,
+        affiliationType: 'employee',
+        counterpartyName: 'Kaizen',
+        roleSlug: 'employee',
+        status: 'active',
+      },
     });
 
     const employeeParty = await asUser('employee@kaizen.co.in', async (p) => p.partyId);
 
     const mineCost = 913001;
     const otherCost = 913002;
-    const mine = await asUser('operations@kaizen.co.in', () => createAsset({ tag: `AST-SUM-MINE-${s}`, kind: 'laptop', purchaseCost: mineCost }));
-    const other = await asUser('operations@kaizen.co.in', () => createAsset({ tag: `AST-SUM-OTHER-${s}`, kind: 'laptop', purchaseCost: otherCost }));
+    const mine = await asUser('operations@kaizen.co.in', () =>
+      createAsset({ tag: `AST-SUM-MINE-${s}`, kind: 'laptop', purchaseCost: mineCost }),
+    );
+    const other = await asUser('operations@kaizen.co.in', () =>
+      createAsset({ tag: `AST-SUM-OTHER-${s}`, kind: 'laptop', purchaseCost: otherCost }),
+    );
     await asUser('operations@kaizen.co.in', () => assignAsset(mine.id, { partyId: employeeParty }));
     await asUser('operations@kaizen.co.in', () => assignAsset(other.id, { partyId: outsider.id }));
 

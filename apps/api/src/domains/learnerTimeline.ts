@@ -87,10 +87,14 @@ export async function recordLearnerLog(enrollmentId: string, input: LearnerLogIn
   const enrollment = await enrolmentFor(enrollmentId, 'create');
 
   if (!LEARNER_LOG_KINDS.includes(input.kind)) {
-    throw ApiError.badRequest(`'${input.kind}' is not a kind of timeline entry. It is a query, feedback, an issue or a note.`);
+    throw ApiError.badRequest(
+      `'${input.kind}' is not a kind of timeline entry. It is a query, feedback, an issue or a note.`,
+    );
   }
   if (!input.title.trim()) {
-    throw ApiError.badRequest('A timeline entry needs a one-line summary, so the timeline can be read without opening every row.');
+    throw ApiError.badRequest(
+      'A timeline entry needs a one-line summary, so the timeline can be read without opening every row.',
+    );
   }
   if (input.rating !== undefined && input.rating !== null) {
     if (input.kind !== 'feedback') {
@@ -340,10 +344,7 @@ export interface TimelineEntry {
  * asked. The grouping by day is part of the answer rather than a rendering
  * choice — a student's record is read a day at a time.
  */
-export async function learnerTimeline(
-  enrollmentId: string,
-  options: { limit?: number; kinds?: string[] } = {},
-) {
+export async function learnerTimeline(enrollmentId: string, options: { limit?: number; kinds?: string[] } = {}) {
   const auth = currentAuth();
   const enrollment = await enrolmentFor(enrollmentId, 'view');
   const wanted = options.kinds?.length ? new Set(options.kinds) : null;
@@ -395,7 +396,14 @@ export async function learnerTimeline(
       kind: 'attendance',
       at: a.sessionDate.toISOString(),
       day: a.sessionDate.toISOString().slice(0, 10),
-      title: a.status === 'present' ? 'Present' : a.status === 'late' ? 'Late' : a.status === 'excused' ? 'Excused' : 'Absent',
+      title:
+        a.status === 'present'
+          ? 'Present'
+          : a.status === 'late'
+            ? 'Late'
+            : a.status === 'excused'
+              ? 'Excused'
+              : 'Absent',
       detail: a.note,
       status: a.status,
       severity: a.status === 'absent' ? 'medium' : null,
@@ -482,7 +490,13 @@ export async function learnerTimeline(
       courseCode: enrollment.cohort.course.code,
     },
     student: person
-      ? { id: person.id, name: person.fullName, recordCode: person.recordCode, phone: person.primaryPhone, email: person.primaryEmail }
+      ? {
+          id: person.id,
+          name: person.fullName,
+          recordCode: person.recordCode,
+          phone: person.primaryPhone,
+          email: person.primaryEmail,
+        }
       : null,
     counts: {
       entries: entries.length,

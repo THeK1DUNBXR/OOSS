@@ -15,13 +15,7 @@ import { Link } from 'react-router-dom';
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { Lock, X } from 'lucide-react';
 import type { SensitivityClass, SeverityCode } from '@kaizen/shared';
-import {
-  BAND_WORDS,
-  NOT_MEASURED,
-  SENSITIVITY_WORDS,
-  severityWord,
-  withheldWord,
-} from '../lib/words.js';
+import { BAND_WORDS, NOT_MEASURED, SENSITIVITY_WORDS, severityWord, withheldWord } from '../lib/words.js';
 
 export function Card({
   title,
@@ -106,7 +100,13 @@ export function SensitivityChip({ level }: { level: SensitivityClass | string })
   );
 }
 
-export function StatusChip({ status, tone = 'neutral' }: { status: string; tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'accent' }) {
+export function StatusChip({
+  status,
+  tone = 'neutral',
+}: {
+  status: string;
+  tone?: 'neutral' | 'good' | 'warn' | 'bad' | 'accent';
+}) {
   const styles = {
     neutral: 'border-ink-700 bg-ink-850 text-ink-300',
     good: 'border-band-strong/40 bg-band-strong/10 text-band-strong',
@@ -218,7 +218,9 @@ export function ErrorBox({ error }: { error: unknown }) {
           {axes.map((a) => (
             <div key={a.axis} className="flex items-center gap-2 text-2xs">
               <span className={`w-16 font-mono ${a.passed ? 'text-band-strong' : 'text-band-critical'}`}>{a.axis}</span>
-              <span className={a.passed ? 'text-ink-400' : 'text-ink-200'}>{a.reason ?? (a.passed ? 'passed' : 'denied')}</span>
+              <span className={a.passed ? 'text-ink-400' : 'text-ink-200'}>
+                {a.reason ?? (a.passed ? 'passed' : 'denied')}
+              </span>
             </div>
           ))}
         </div>
@@ -227,15 +229,7 @@ export function ErrorBox({ error }: { error: unknown }) {
   );
 }
 
-export function PageHeader({
-  title,
-  subtitle,
-  actions,
-}: {
-  title: string;
-  subtitle?: ReactNode;
-  actions?: ReactNode;
-}) {
+export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
     <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
@@ -275,11 +269,16 @@ export function Tabs<T extends string>({
             onKeyDown={(event) => {
               if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
               event.preventDefault();
-              const nextIndex = event.key === 'ArrowRight' ? (t.index + 1) % ordered.length : (t.index - 1 + ordered.length) % ordered.length;
+              const nextIndex =
+                event.key === 'ArrowRight'
+                  ? (t.index + 1) % ordered.length
+                  : (t.index - 1 + ordered.length) % ordered.length;
               onChange(ordered[nextIndex].key);
             }}
             className={`-mb-px border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
-              selected ? 'border-accent text-ink-50' : 'border-transparent text-ink-400 hover:border-ink-700 hover:text-ink-200'
+              selected
+                ? 'border-accent text-ink-50'
+                : 'border-transparent text-ink-400 hover:border-ink-700 hover:text-ink-200'
             }`}
           >
             {t.label}
@@ -321,7 +320,7 @@ export function Modal({
   useEffect(() => {
     if (!open) return;
     const firstFocusable = panelRef.current?.querySelector<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     );
     firstFocusable?.focus();
 
@@ -330,8 +329,8 @@ export function Modal({
       if (event.key !== 'Tab' || !panelRef.current) return;
       const focusables = Array.from(
         panelRef.current.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
       ).filter((el) => !el.hasAttribute('disabled'));
       if (focusables.length === 0) return;
       const first = focusables[0];
@@ -352,7 +351,10 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-100/30 p-4 pt-16 backdrop-blur-sm" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-100/30 p-4 pt-16 backdrop-blur-sm"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
       <div
         ref={panelRef}
         role="dialog"
@@ -361,7 +363,9 @@ export function Modal({
         className={`glass w-full ${width} rounded-lg`}
       >
         <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <h2 id={titleId} className="text-sm font-semibold text-ink-50">{title}</h2>
+          <h2 id={titleId} className="text-sm font-semibold text-ink-50">
+            {title}
+          </h2>
           <button type="button" onClick={onClose} className="text-ink-400 hover:text-ink-100" aria-label="Close">
             <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />
           </button>
@@ -400,7 +404,11 @@ export function DataTable<T extends Record<string, unknown>>({
   className?: string;
 }) {
   if (loading) {
-    return <div className={`rounded-lg border border-ink-800 bg-ink-900 p-4 text-sm text-ink-400 ${className}`}>Loading…</div>;
+    return (
+      <div className={`rounded-lg border border-ink-800 bg-ink-900 p-4 text-sm text-ink-400 ${className}`}>
+        Loading…
+      </div>
+    );
   }
 
   if (!rows.length) {
@@ -428,7 +436,7 @@ export function DataTable<T extends Record<string, unknown>>({
             <tr key={String(getRowKey(row, rowIndex))}>
               {columns.map((column, index) => (
                 <td key={`${String(column.key)}-${rowIndex}-${index}`} className={column.className ?? ''}>
-                  {column.render ? column.render(row) : (row[String(column.key)] as ReactNode) ?? '—'}
+                  {column.render ? column.render(row) : ((row[String(column.key)] as ReactNode) ?? '—')}
                 </td>
               ))}
             </tr>
@@ -439,7 +447,15 @@ export function DataTable<T extends Record<string, unknown>>({
   );
 }
 
-export function ContributionBar({ value, max, tone = 'accent' }: { value: number; max: number; tone?: 'accent' | 'warn' | 'bad' }) {
+export function ContributionBar({
+  value,
+  max,
+  tone = 'accent',
+}: {
+  value: number;
+  max: number;
+  tone?: 'accent' | 'warn' | 'bad';
+}) {
   const pct = max > 0 ? Math.max(0, Math.min((value / max) * 100, 100)) : 0;
   const colour = { accent: 'bg-accent', warn: 'bg-band-watch', bad: 'bg-band-critical' }[tone];
   return (

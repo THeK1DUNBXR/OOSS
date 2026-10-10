@@ -4,8 +4,18 @@
   "title": "Design System: KaiERP",
   "extensions": {
     "colorMeta": {
-      "ink-primary": { "role": "primary", "displayName": "Ink", "canonical": "#0F0F12", "tonalRamp": ["#0F0F12", "#232326", "#3A3A45", "#57575f", "#6b6b74", "#a9a9b4", "#d7d7dd", "#e7e7eb"] },
-      "gold": { "role": "secondary", "displayName": "Signal Gold", "canonical": "#FFC20E", "tonalRamp": ["#8a6a00", "#a9820a", "#c99b0e", "#e3b011", "#FFC20E", "#ffd451", "#ffe497", "#FFF3CE"] },
+      "ink-primary": {
+        "role": "primary",
+        "displayName": "Ink",
+        "canonical": "#0F0F12",
+        "tonalRamp": ["#0F0F12", "#232326", "#3A3A45", "#57575f", "#6b6b74", "#a9a9b4", "#d7d7dd", "#e7e7eb"]
+      },
+      "gold": {
+        "role": "secondary",
+        "displayName": "Signal Gold",
+        "canonical": "#FFC20E",
+        "tonalRamp": ["#8a6a00", "#a9820a", "#c99b0e", "#e3b011", "#FFC20E", "#ffd451", "#ffe497", "#FFF3CE"]
+      },
       "ink-page": { "role": "neutral", "displayName": "Paper", "canonical": "#F2F2F4" },
       "ink-surface": { "role": "neutral", "displayName": "Raised Surface", "canonical": "#ffffff" },
       "ink-hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "#e7e7eb" },
@@ -21,23 +31,60 @@
       "div-shared": { "role": "data", "displayName": "Division: Shared", "canonical": "#8f3d90" }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display / Headline", "purpose": "Page and section titles (h1-h3, .card-title). Sentence case, size+weight hierarchy, never uppercase." },
+      "display": {
+        "displayName": "Display / Headline",
+        "purpose": "Page and section titles (h1-h3, .card-title). Sentence case, size+weight hierarchy, never uppercase."
+      },
       "body": { "displayName": "Body", "purpose": "Running copy, 14px base, IBM Plex Sans." },
-      "label": { "displayName": "Grouped-list label", "purpose": "Small uppercase tracked labels (.label, .kpi-label, .section-title, .sidebar-group) — the one place uppercase survives." },
-      "numeral": { "displayName": "Tabular numeral", "purpose": "Every money figure and count (.num, .tabular, .kpi-value) — Archivo at 112% font-stretch, tabular-nums." }
+      "label": {
+        "displayName": "Grouped-list label",
+        "purpose": "Small uppercase tracked labels (.label, .kpi-label, .section-title, .sidebar-group) — the one place uppercase survives."
+      },
+      "numeral": {
+        "displayName": "Tabular numeral",
+        "purpose": "Every money figure and count (.num, .tabular, .kpi-value) — Archivo at 112% font-stretch, tabular-nums."
+      }
     },
     "shadows": [
-      { "name": "soft", "value": "0 1px 2px 0 rgba(15,15,18,0.05)", "purpose": "Resting state for inputs and buttons before interaction." },
-      { "name": "raised", "value": "0 1px 2px rgba(15,15,18,0.04), 0 6px 16px -4px rgba(15,15,18,0.10)", "purpose": "Default lift for a card, KPI tile, or primary button." },
-      { "name": "floating", "value": "0 4px 10px rgba(15,15,18,0.06), 0 16px 36px -8px rgba(15,15,18,0.16)", "purpose": "A hovered/lifted element, or a card that owns attention." },
-      { "name": "glass", "value": "0 8px 20px rgba(15,15,18,0.10), 0 28px 60px -12px rgba(15,15,18,0.28)", "purpose": "A modal, dropdown, popover, or the command palette — paired with backdrop-blur and a translucent fill." },
-      { "name": "sidebar-edge", "value": "6px 0 24px -8px rgba(15,15,18,0.35)", "purpose": "Separates the sidebar's trailing edge from the canvas without a hard border." }
+      {
+        "name": "soft",
+        "value": "0 1px 2px 0 rgba(15,15,18,0.05)",
+        "purpose": "Resting state for inputs and buttons before interaction."
+      },
+      {
+        "name": "raised",
+        "value": "0 1px 2px rgba(15,15,18,0.04), 0 6px 16px -4px rgba(15,15,18,0.10)",
+        "purpose": "Default lift for a card, KPI tile, or primary button."
+      },
+      {
+        "name": "floating",
+        "value": "0 4px 10px rgba(15,15,18,0.06), 0 16px 36px -8px rgba(15,15,18,0.16)",
+        "purpose": "A hovered/lifted element, or a card that owns attention."
+      },
+      {
+        "name": "glass",
+        "value": "0 8px 20px rgba(15,15,18,0.10), 0 28px 60px -12px rgba(15,15,18,0.28)",
+        "purpose": "A modal, dropdown, popover, or the command palette — paired with backdrop-blur and a translucent fill."
+      },
+      {
+        "name": "sidebar-edge",
+        "value": "6px 0 24px -8px rgba(15,15,18,0.35)",
+        "purpose": "Separates the sidebar's trailing edge from the canvas without a hard border."
+      }
     ],
     "motion": [
-      { "name": "ease-standard", "value": "150ms ease (Tailwind's default transition-all/transition-colors timing)", "purpose": "Hover/press state changes: color, shadow, and the 1px lift on primary/gold buttons." }
+      {
+        "name": "ease-standard",
+        "value": "150ms ease (Tailwind's default transition-all/transition-colors timing)",
+        "purpose": "Hover/press state changes: color, shadow, and the 1px lift on primary/gold buttons."
+      }
     ],
     "breakpoints": [
-      { "name": "md", "value": "768px", "purpose": "Below this, the sidebar collapses to a hamburger-triggered glass overlay drawer." }
+      {
+        "name": "md",
+        "value": "768px",
+        "purpose": "Below this, the sidebar collapses to a hamburger-triggered glass overlay drawer."
+      }
     ]
   },
   "components": [
@@ -117,11 +164,31 @@
       "One consistent-stroke icon system (lucide-react) — no Unicode dingbats standing in for icons."
     ],
     "rules": [
-      { "name": "The One Accent Rule", "body": "Gold never carries body text — it fails contrast on paper — so a readable gold is always accent-soft (#8a6a00), never the raw hex.", "section": "colors" },
-      { "name": "The Functional Color Floor", "body": "Band and division colors are data encodings, set once and validated for contrast/CVD-safety. No visual-world change may retint, lighten, darken, or reassign them.", "section": "colors" },
-      { "name": "The Sentence-Case Heading Rule", "body": "h1/h2/h3 and .card-title are never uppercase. Uppercase tracking is reserved for .label/.kpi-label/.section-title/.sidebar-group — never a page or card's own title.", "section": "typography" },
-      { "name": "The Functional Glass Rule", "body": "Translucency + backdrop-blur is reserved for chrome with real content behind it to blur. It is never applied to a static panel purely for a frosted look.", "section": "elevation" },
-      { "name": "The No-Colored-Rail Rule", "body": "A left-border or top-border color stripe is retired. Status now reads through a tinted icon chip or a chip's own fill/border color.", "section": "elevation" }
+      {
+        "name": "The One Accent Rule",
+        "body": "Gold never carries body text — it fails contrast on paper — so a readable gold is always accent-soft (#8a6a00), never the raw hex.",
+        "section": "colors"
+      },
+      {
+        "name": "The Functional Color Floor",
+        "body": "Band and division colors are data encodings, set once and validated for contrast/CVD-safety. No visual-world change may retint, lighten, darken, or reassign them.",
+        "section": "colors"
+      },
+      {
+        "name": "The Sentence-Case Heading Rule",
+        "body": "h1/h2/h3 and .card-title are never uppercase. Uppercase tracking is reserved for .label/.kpi-label/.section-title/.sidebar-group — never a page or card's own title.",
+        "section": "typography"
+      },
+      {
+        "name": "The Functional Glass Rule",
+        "body": "Translucency + backdrop-blur is reserved for chrome with real content behind it to blur. It is never applied to a static panel purely for a frosted look.",
+        "section": "elevation"
+      },
+      {
+        "name": "The No-Colored-Rail Rule",
+        "body": "A left-border or top-border color stripe is retired. Status now reads through a tinted icon chip or a chip's own fill/border color.",
+        "section": "elevation"
+      }
     ],
     "dos": [
       "Do use a shadow token (soft/raised/floating/glass) for every new elevated surface — never a border-weight step to signal \"this is raised.\"",

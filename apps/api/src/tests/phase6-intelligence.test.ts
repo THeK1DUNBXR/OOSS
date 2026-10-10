@@ -1,23 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { AI_PROHIBITED_ACTIONS } from '@kaizen/shared';
 import { compileMetricQuery, createMetricGraph } from '@kaizen/semantic';
-import {
-  ModelGateway,
-  assertActionAllowed,
-  createGateway,
-  safeBriefingComposition,
-} from '../platform/llm.js';
+import { ModelGateway, assertActionAllowed, createGateway, safeBriefingComposition } from '../platform/llm.js';
 
 describe('Phase 6 intelligence foundations', () => {
   it('keeps autonomous journal, IRN, filing, payroll and email actions out of the model path', () => {
     expect(AI_PROHIBITED_ACTIONS).toEqual(
-      expect.arrayContaining([
-        'journal.post',
-        'irn.generate',
-        'filing.submit',
-        'payroll.run',
-        'email.send',
-      ]),
+      expect.arrayContaining(['journal.post', 'irn.generate', 'filing.submit', 'payroll.run', 'email.send']),
     );
 
     expect(() => assertActionAllowed('journal.post')).toThrow(/prohibited|forbidden/i);

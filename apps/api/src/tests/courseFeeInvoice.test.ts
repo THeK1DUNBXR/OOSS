@@ -11,7 +11,13 @@ import { round2 } from '@kaizen/shared';
 import { asUser, expectReject, prisma, tenantId } from './helpers.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { collectInvoicePayment, createInvoice, invoiceDocument } from '../domains/invoicing.js';
-import { finalInvoiceDocument, finalizeCourseFeeInvoice, listFinalInvoices, raiseFinalInvoice, receiptDocument } from '../domains/receipts.js';
+import {
+  finalInvoiceDocument,
+  finalizeCourseFeeInvoice,
+  listFinalInvoices,
+  raiseFinalInvoice,
+  receiptDocument,
+} from '../domains/receipts.js';
 import { enrolStudent, setEnrollmentStatus } from '../domains/education.js';
 // Registers the invoice.before_issue classification hook as a side effect —
 // production loads this transitively through its server bootstrap, but a
@@ -86,7 +92,11 @@ describe('the course-fee invoice lifecycle', () => {
       const grandTotal = Number(invoice.grandTotal.toString());
 
       // Part payment: nothing finalised yet.
-      const part = await collectInvoicePayment(invoice.id, { amount: 20_000, mode: 'cash', reference: `T1-${Date.now()}` });
+      const part = await collectInvoicePayment(invoice.id, {
+        amount: 20_000,
+        mode: 'cash',
+        reference: `T1-${Date.now()}`,
+      });
       expect(part.finalInvoice).toBeNull();
       expect((await listFinalInvoices({ invoiceId: invoice.id })).length).toBe(0);
 
@@ -172,7 +182,12 @@ describe('the course-fee invoice lifecycle', () => {
       const invoice = await createInvoice({
         organizationId: (
           await prisma.organization.create({
-            data: { tenantId: TENANT, recordCode: await nextRecordCode('ORG'), kind: 'company', name: `Generic ${Date.now()}` },
+            data: {
+              tenantId: TENANT,
+              recordCode: await nextRecordCode('ORG'),
+              kind: 'company',
+              name: `Generic ${Date.now()}`,
+            },
           })
         ).id,
         placeOfSupply: '33',

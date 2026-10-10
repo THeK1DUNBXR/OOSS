@@ -108,7 +108,13 @@ export async function requestClosePeriod(period: string) {
     where: { id: row.id },
     data: { status: 'closing', requestedById: auth.partyId, requestedAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'accounting_period', subjectId: row.id, before: { status: row.status }, after: { status: 'closing', requestedById: auth.partyId } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'accounting_period',
+    subjectId: row.id,
+    before: { status: row.status },
+    after: { status: 'closing', requestedById: auth.partyId },
+  });
   return updated;
 }
 
@@ -141,7 +147,13 @@ export async function closePeriod(period: string) {
     where: { id: row.id },
     data: { status: 'closed', closedById: auth.partyId, closedAt: new Date(), snapshot: snapshot as never },
   });
-  await auditWrite({ action: 'update', subjectType: 'accounting_period', subjectId: row.id, before: { status: 'closing' }, after: { status: 'closed', closedById: auth.partyId } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'accounting_period',
+    subjectId: row.id,
+    before: { status: 'closing' },
+    after: { status: 'closed', closedById: auth.partyId },
+  });
   return updated;
 }
 
@@ -189,7 +201,11 @@ registerHook('transaction.before_record', 'compliance.books.period_lock', async 
 // Retention
 // ---------------------------------------------------------------------------
 
-const RETENTION_ENTITIES: Array<{ entityType: string; model: 'transaction' | 'vendorBill' | 'fixedAsset' | 'loan' | 'auditRecord' | 'eventRecord'; dateField: string }> = [
+const RETENTION_ENTITIES: Array<{
+  entityType: string;
+  model: 'transaction' | 'vendorBill' | 'fixedAsset' | 'loan' | 'auditRecord' | 'eventRecord';
+  dateField: string;
+}> = [
   { entityType: 'transaction', model: 'transaction', dateField: 'txnDate' },
   { entityType: 'vendor_bill', model: 'vendorBill', dateField: 'billDate' },
   { entityType: 'fixed_asset', model: 'fixedAsset', dateField: 'purchaseDate' },
@@ -213,7 +229,9 @@ export async function sweepRetention(): Promise<number> {
     if (!policy) continue;
     const cutoff = retentionDueDate(new Date(), -policy.years);
 
-    const rows = await (prisma[spec.model] as { findMany: (args: unknown) => Promise<Array<Record<string, unknown>>> }).findMany({
+    const rows = await (
+      prisma[spec.model] as { findMany: (args: unknown) => Promise<Array<Record<string, unknown>>> }
+    ).findMany({
       where: { tenantId: auth.tenantId, [spec.dateField]: { lt: cutoff } },
       select: { id: true, [spec.dateField]: true },
       take: 500,
@@ -379,7 +397,9 @@ export async function statementForFy(fyStartYear: number) {
   const bsUnmapped = new Map<string, number>();
   for (const account of accounts) {
     const balance = round2(
-      (num(account.openingBalance) ?? 0) + (inflowByAccount.get(account.id) ?? 0) - (outflowByAccount.get(account.id) ?? 0),
+      (num(account.openingBalance) ?? 0) +
+        (inflowByAccount.get(account.id) ?? 0) -
+        (outflowByAccount.get(account.id) ?? 0),
     );
     const mapping = await resolveAccountMapping(account.id, account.ledgerGroup);
     if (!mapping || mapping.statement !== 'balance_sheet') {
@@ -389,8 +409,10 @@ export async function statementForFy(fyStartYear: number) {
     bsHeads.set(mapping.head, round2((bsHeads.get(mapping.head) ?? 0) + balance));
   }
 
-  const toRows = (m: Map<string, number>): ScheduleIIIRow[] => [...m.entries()].map(([head, amount]) => ({ head, amount }));
-  const toUnmapped = (m: Map<string, number>): UnmappedRow[] => [...m.entries()].map(([name, amount]) => ({ name, amount }));
+  const toRows = (m: Map<string, number>): ScheduleIIIRow[] =>
+    [...m.entries()].map(([head, amount]) => ({ head, amount }));
+  const toUnmapped = (m: Map<string, number>): UnmappedRow[] =>
+    [...m.entries()].map(([name, amount]) => ({ name, amount }));
 
   return {
     fy: fyOf(from),
@@ -464,7 +486,10 @@ export async function depreciationReport(fyStartYear: number) {
   });
   const categoryIds = [...new Set(assets.map((a) => a.categoryId).filter((id): id is string => Boolean(id)))];
   const assetCategories = categoryIds.length
-    ? await prisma.ledgerCategory.findMany({ where: { tenantId: auth.tenantId, id: { in: categoryIds } }, select: { id: true, name: true } })
+    ? await prisma.ledgerCategory.findMany({
+        where: { tenantId: auth.tenantId, id: { in: categoryIds } },
+        select: { id: true, name: true },
+      })
     : [];
   const categoryNameById = new Map(assetCategories.map((c) => [c.id, c.name]));
 
@@ -500,11 +525,16 @@ export async function depreciationReport(fyStartYear: number) {
       for (let y = acquisitionFyStart; y <= fyStartYear; y += 1) {
         const { to: yearTo } = financialYearRange(y);
         const yearFyEnd = new Date(yearTo.getTime() - 86_400_000);
-        const heldFrom = asset.purchaseDate > financialYearRange(y).from ? asset.purchaseDate : financialYearRange(y).from;
+        const heldFrom =
+          asset.purchaseDate > financialYearRange(y).from ? asset.purchaseDate : financialYearRange(y).from;
         const daysHeld = Math.max(0, Math.round((yearFyEnd.getTime() - heldFrom.getTime()) / 86_400_000) + 1);
         const usedLessThan180 = y === acquisitionFyStart && daysHeld < 180;
         if (y === fyStartYear) itOpeningWdv = round2(wdv);
-        const charge = incomeTaxWdvCharge({ openingWdv: wdv, ratePercent: num(block.ratePercent) ?? 0, usedLessThan180Days: usedLessThan180 });
+        const charge = incomeTaxWdvCharge({
+          openingWdv: wdv,
+          ratePercent: num(block.ratePercent) ?? 0,
+          usedLessThan180Days: usedLessThan180,
+        });
         if (y === fyStartYear) itCharge = charge;
         wdv = round2(Math.max(0, wdv - charge));
       }
@@ -518,10 +548,21 @@ export async function depreciationReport(fyStartYear: number) {
       purchaseDate: asset.purchaseDate.toISOString().slice(0, 10),
       cost,
       companiesAct: companiesAct
-        ? { usefulLifeYears: life!.usefulLifeYears, residualPercent: num(life!.residualPercent), charge: companiesAct.charge, mismatch, assetUsefulLifeYears: round2(asset.usefulLifeMonths / 12) }
+        ? {
+            usefulLifeYears: life!.usefulLifeYears,
+            residualPercent: num(life!.residualPercent),
+            charge: companiesAct.charge,
+            mismatch,
+            assetUsefulLifeYears: round2(asset.usefulLifeMonths / 12),
+          }
         : { note: 'No Schedule II useful-life row for this asset class yet.' },
       incomeTax: block
-        ? { blockName: block.blockName, ratePercent: num(block.ratePercent), openingWdv: itOpeningWdv, charge: itCharge }
+        ? {
+            blockName: block.blockName,
+            ratePercent: num(block.ratePercent),
+            openingWdv: itOpeningWdv,
+            charge: itCharge,
+          }
         : { note: 'No Income-tax block rate for this asset class yet.' },
     });
   }
@@ -589,7 +630,11 @@ export async function trialBalance(asOf: Date) {
     // else (expense, asset purchase, tax, transfer, drawings) shows a debit
     // for a net outflow.
     const value = income ? movement : -movement;
-    rows.push({ name: category.name, debit: !income && value > 0 ? value : income && value < 0 ? -value : 0, credit: income && value > 0 ? value : !income && value < 0 ? -value : 0 });
+    rows.push({
+      name: category.name,
+      debit: !income && value > 0 ? value : income && value < 0 ? -value : 0,
+      credit: income && value > 0 ? value : !income && value < 0 ? -value : 0,
+    });
   }
 
   const totalDebit = round2(rows.reduce((s, r) => s + r.debit, 0));
@@ -713,7 +758,9 @@ export interface BankLineInput {
 export async function importBankStatement(accountId: string, lines: BankLineInput[]): Promise<{ imported: number }> {
   const auth = currentAuth();
   await assertCan({ resource: 'transactions', verb: 'edit' });
-  const account = await prisma.ledgerAccount.findFirst({ where: { id: accountId, tenantId: auth.tenantId, deletedAt: null } });
+  const account = await prisma.ledgerAccount.findFirst({
+    where: { id: accountId, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!account) throw ApiError.notFound('Account');
 
   for (const line of lines) {
@@ -769,7 +816,10 @@ export async function matchBankLines(accountId: string) {
 
     usedTxnIds.add(candidate.id);
     const now = new Date();
-    await prisma.bankStatementLine.update({ where: { id: line.id }, data: { matchedTransactionId: candidate.id, matchedAt: now } });
+    await prisma.bankStatementLine.update({
+      where: { id: line.id },
+      data: { matchedTransactionId: candidate.id, matchedAt: now },
+    });
     await prisma.transaction.update({ where: { id: candidate.id }, data: { reconciledAt: now } });
     matched += 1;
   }
@@ -785,8 +835,16 @@ export async function reconciliationReport(accountId: string) {
   await assertCan({ resource: 'transactions', verb: 'view' });
 
   const [unmatchedBank, unmatchedLedger, matchedCount] = await Promise.all([
-    prisma.bankStatementLine.findMany({ where: { tenantId: auth.tenantId, accountId, matchedAt: null }, orderBy: { date: 'desc' }, take: 200 }),
-    prisma.transaction.findMany({ where: { tenantId: auth.tenantId, accountId, deletedAt: null, reconciledAt: null }, orderBy: { txnDate: 'desc' }, take: 200 }),
+    prisma.bankStatementLine.findMany({
+      where: { tenantId: auth.tenantId, accountId, matchedAt: null },
+      orderBy: { date: 'desc' },
+      take: 200,
+    }),
+    prisma.transaction.findMany({
+      where: { tenantId: auth.tenantId, accountId, deletedAt: null, reconciledAt: null },
+      orderBy: { txnDate: 'desc' },
+      take: 200,
+    }),
     prisma.bankStatementLine.count({ where: { tenantId: auth.tenantId, accountId, matchedAt: { not: null } } }),
   ]);
 

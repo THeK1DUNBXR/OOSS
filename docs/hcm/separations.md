@@ -45,18 +45,18 @@ No role slug is ever compared. Scope narrowing goes through `assertCan`'s `recor
 
 ### Routes (`apps/api/src/routes/hcm/separations.routes.ts`), mounted at `/api/hcm/separations`
 
-| Method & path | Calls |
-|---|---|
-| `GET /_status` | — |
-| `GET/POST /notice-policies`, `PATCH /notice-policies/:id/active`, `GET /notice-policies/for/:employmentId` | notice policy CRUD + resolution |
-| `GET /resignations`, `GET /resignations/:id`, `POST /resignations`, `POST /resignations/:id/{accept,reject,withdraw}` | resignation lifecycle |
-| `GET /my/resignations`, `POST /my/resignations`, `GET /my/offboarding`, `GET /my/notice-days` | the `/me/exit` shape |
-| `GET /offboarding/by-employment/:employmentId` | `getOffboardingForEmployment` |
-| `GET /offboarding/:offboardingId/clearances`, `POST /offboarding/:offboardingId/clearances/initiate` | exit clearance |
-| `POST /clearances/:id/{clear,block}` | per-department decisions |
-| `GET/POST /offboarding/:offboardingId/no-dues` | no-dues certificate |
-| `GET /assets-pending/:employmentId` | `assetsPendingCount` |
-| `GET/POST /alumni` | alumni record |
+| Method & path                                                                                                         | Calls                           |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `GET /_status`                                                                                                        | —                               |
+| `GET/POST /notice-policies`, `PATCH /notice-policies/:id/active`, `GET /notice-policies/for/:employmentId`            | notice policy CRUD + resolution |
+| `GET /resignations`, `GET /resignations/:id`, `POST /resignations`, `POST /resignations/:id/{accept,reject,withdraw}` | resignation lifecycle           |
+| `GET /my/resignations`, `POST /my/resignations`, `GET /my/offboarding`, `GET /my/notice-days`                         | the `/me/exit` shape            |
+| `GET /offboarding/by-employment/:employmentId`                                                                        | `getOffboardingForEmployment`   |
+| `GET /offboarding/:offboardingId/clearances`, `POST /offboarding/:offboardingId/clearances/initiate`                  | exit clearance                  |
+| `POST /clearances/:id/{clear,block}`                                                                                  | per-department decisions        |
+| `GET/POST /offboarding/:offboardingId/no-dues`                                                                        | no-dues certificate             |
+| `GET /assets-pending/:employmentId`                                                                                   | `assetsPendingCount`            |
+| `GET/POST /alumni`                                                                                                    | alumni record                   |
 
 ### Screens
 
@@ -65,31 +65,31 @@ No role slug is ever compared. Scope narrowing goes through `assertCan`'s `recor
 
 ## Acceptance table
 
-| ID | PASS means | Test |
-|---|---|---|
-| HCM-SEP-001 | An accepted resignation moves the employment relationship to `NoticePeriod` and opens an `Offboarding` at `NoticePeriodActive` | `HCM-SEP-001` |
-| HCM-SEP-002 | A resignation cannot be accepted by the person who filed it | `HCM-SEP-002` |
-| HCM-SEP-003 | A second resignation is refused (409) while one is `submitted`; a fresh one is accepted after the first is withdrawn | `HCM-SEP-003` |
-| HCM-SEP-004 | A withdrawn resignation cannot then be accepted (409) | `HCM-SEP-004` |
+| ID          | PASS means                                                                                                                                                    | Test          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| HCM-SEP-001 | An accepted resignation moves the employment relationship to `NoticePeriod` and opens an `Offboarding` at `NoticePeriodActive`                                | `HCM-SEP-001` |
+| HCM-SEP-002 | A resignation cannot be accepted by the person who filed it                                                                                                   | `HCM-SEP-002` |
+| HCM-SEP-003 | A second resignation is refused (409) while one is `submitted`; a fresh one is accepted after the first is withdrawn                                          | `HCM-SEP-003` |
+| HCM-SEP-004 | A withdrawn resignation cannot then be accepted (409)                                                                                                         | `HCM-SEP-004` |
 | HCM-SEP-005 | `noticeDaysFor` resolves an engagement-type-specific active policy over the employment's flat default, and `submitResignation` copies that value onto the row | `HCM-SEP-005` |
-| HCM-SEP-006 | Clearing all five departments completes the exit clearance and the offboarding reaches `FFSettlementPending` | `HCM-SEP-006` |
-| HCM-SEP-007 | A department cannot be cleared by the departing employee themselves | `HCM-SEP-007` |
-| HCM-SEP-008 | Blocking a department disputes the offboarding (`BlockedDisputed`); clearing the block resolves it back to `ClearancePending`/onward | `HCM-SEP-008` |
-| HCM-SEP-009 | No-dues is refused (409, naming the outstanding departments) until all five clear, then succeeds | `HCM-SEP-009` |
-| HCM-SEP-010 | A resignation from another tenant 404s rather than leaking a 403 | `HCM-SEP-010` |
-| HCM-SEP-011 | `recordAlumni` moves `Terminated` into `Alumni` and writes rehire/consent fields | `HCM-SEP-011` |
-| HCM-SEP-012 | An employee's resignation list is narrowed to their own; a colleague's resignation 404s by id | `HCM-SEP-012` |
-| HCM-SEP-013 | Accepting a resignation is refused for a role holding `resignations:approve` only at `own` scope | `HCM-SEP-013` |
-| HCM-SEP-014 | Clearing a department is refused for a role holding `exit_clearances:edit` only at `own` scope | `HCM-SEP-014` |
-| HCM-SEP-015 | Opening exit clearance is refused for a role holding `exit_clearances:create` only at `own` scope | `HCM-SEP-015` |
-| HCM-SEP-016 | Issuing no-dues is refused for a role holding `no_dues:create` only at `own` scope | `HCM-SEP-016` |
-| HCM-SEP-017 | Recording an alumni entry is refused for a role holding `alumni:create` only at `own` scope | `HCM-SEP-017` |
+| HCM-SEP-006 | Clearing all five departments completes the exit clearance and the offboarding reaches `FFSettlementPending`                                                  | `HCM-SEP-006` |
+| HCM-SEP-007 | A department cannot be cleared by the departing employee themselves                                                                                           | `HCM-SEP-007` |
+| HCM-SEP-008 | Blocking a department disputes the offboarding (`BlockedDisputed`); clearing the block resolves it back to `ClearancePending`/onward                          | `HCM-SEP-008` |
+| HCM-SEP-009 | No-dues is refused (409, naming the outstanding departments) until all five clear, then succeeds                                                              | `HCM-SEP-009` |
+| HCM-SEP-010 | A resignation from another tenant 404s rather than leaking a 403                                                                                              | `HCM-SEP-010` |
+| HCM-SEP-011 | `recordAlumni` moves `Terminated` into `Alumni` and writes rehire/consent fields                                                                              | `HCM-SEP-011` |
+| HCM-SEP-012 | An employee's resignation list is narrowed to their own; a colleague's resignation 404s by id                                                                 | `HCM-SEP-012` |
+| HCM-SEP-013 | Accepting a resignation is refused for a role holding `resignations:approve` only at `own` scope                                                              | `HCM-SEP-013` |
+| HCM-SEP-014 | Clearing a department is refused for a role holding `exit_clearances:edit` only at `own` scope                                                                | `HCM-SEP-014` |
+| HCM-SEP-015 | Opening exit clearance is refused for a role holding `exit_clearances:create` only at `own` scope                                                             | `HCM-SEP-015` |
+| HCM-SEP-016 | Issuing no-dues is refused for a role holding `no_dues:create` only at `own` scope                                                                            | `HCM-SEP-016` |
+| HCM-SEP-017 | Recording an alumni entry is refused for a role holding `alumni:create` only at `own` scope                                                                   | `HCM-SEP-017` |
 
 All 17 pass against `kaizen_test_separations` (`npx vitest run src/tests/hcm/separations.test.ts`).
 
 ### Scope-axis audit (WS5-review pattern)
 
-Every exported function that calls `assertCan({ resource, verb })` was checked against the bug the WS5 review found: a coarse check with no `record` only proves the verb is held at *some* scope, and the WHERE axis narrows only when a record is supplied — so an `@own` grant on a create/edit/approve verb can stand in for real authority over someone else's record unless the scope is checked explicitly.
+Every exported function that calls `assertCan({ resource, verb })` was checked against the bug the WS5 review found: a coarse check with no `record` only proves the verb is held at _some_ scope, and the WHERE axis narrows only when a record is supplied — so an `@own` grant on a create/edit/approve verb can stand in for real authority over someone else's record unless the scope is checked explicitly.
 
 - **Genuinely admin-only writes** — `createNoticePolicy`, `setNoticePolicyActive`, `acceptResignation`, `rejectResignation`, `initiateClearance`, `clearDepartment`, `blockDepartment`, `issueNoDues`, `recordAlumni` — now each assert `scopeFor(resource, verb) === 'all'` before doing anything, on top of whatever verb-level `assertCan` already ran. None of these are reachable via today's shipped matrix at `own` scope (the employee role holds no create/edit/approve on any of `notice_policies`, `exit_clearances`, `no_dues`, `alumni`, and holds `approve` on nothing at all) — the added check is defense-in-depth against a future or tenant-customised grant, not a fix for a live hole in the shipped roles. HCM-SEP-013..017 prove it with fixture roles built to hold exactly that hypothetical `@own` grant.
 - **Legitimate self-service creates** — `submitResignation` and `withdrawResignation` are the only paths an own-scoped employee holds a create verb on (`resignations:create@own`). Both already required the caller to be the resignation's subject: `submitResignation` calls `requireEmployment` (which runs `assertEmploymentVisible('employees', ..., 'view')` — 404 for a colleague's employment id under `own` scope) and then a second, explicitly record-scoped `assertCan({ ..., record: { ownerPartyId: employment.personId } })`; `withdrawResignation` runs the same record-scoped check before touching the row. No change was needed here — HCM-SEP-003/012 already exercise this path, including a fresh assertion added nowhere else needed it.
@@ -108,6 +108,6 @@ Every exported function that calls `assertCan({ resource, verb })` was checked a
 
 ## Wanted from the scaffold
 
-- **A hook point for "no F&F before clearance is complete."** `hooks.ts` declares `offboarding.completed` (fired at `ClosedArchived`/`FFSettlementCompleted`) but nothing fires *before* `settleOffboarding` runs in `domains/compliance/payroll.ts`, and that file is out of this workstream's ownership to add one to. `settleOffboarding` currently computes and writes a settlement amount regardless of `ExitClearance` state. The clean fix is an `offboarding.before_settle` hook point declared in `hooks.ts` (scaffold or platform, not this workstream) that `settleOffboarding` calls and this workstream registers against, asserting `allClearancesComplete`.
+- **A hook point for "no F&F before clearance is complete."** `hooks.ts` declares `offboarding.completed` (fired at `ClosedArchived`/`FFSettlementCompleted`) but nothing fires _before_ `settleOffboarding` runs in `domains/compliance/payroll.ts`, and that file is out of this workstream's ownership to add one to. `settleOffboarding` currently computes and writes a settlement amount regardless of `ExitClearance` state. The clean fix is an `offboarding.before_settle` hook point declared in `hooks.ts` (scaffold or platform, not this workstream) that `settleOffboarding` calls and this workstream registers against, asserting `allClearancesComplete`.
 - **A `grade` field on `EmploymentRelationship` (or a WS1 cross-read)** so `NoticePolicy.grade` can actually be matched — right now it is declared but always resolves as "any grade," which is honest but incomplete once WS1's `Grade`/`ReportingLine` model exists.
 - The scaffold's resource list already includes `resignations`, `exit_clearances`, `no_dues`, `alumni`, `notice_policies` with sensible verb/scope cells (employee `V@own`/`VC@own`, hr_ops_manager `VCEDA(,approve)`, finance_head `V`, alumni HR-only) — no gap there. Record code `RSG` and events `kz.hr.resignation.{submitted,accepted,withdrawn,rejected}`, `kz.hr.exit_clearance.completed`, `kz.hr.no_dues.issued` were likewise already present and used as-is; no per-department clearance event was scaffolded, so a single department clearing or blocking is `auditWrite`d but does not emit its own `kz.hr.*` event — only the all-departments-complete case does (`EXIT_CLEARANCE_COMPLETED`).

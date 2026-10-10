@@ -27,7 +27,12 @@ afterAll(() => {
 });
 
 async function headersFor(p: TestPrincipal): Promise<Record<string, string>> {
-  const token = await sessionToken({ userId: p.userId, tenantId: p.tenantId, affiliationId: p.affiliationId, stepUp: true });
+  const token = await sessionToken({
+    userId: p.userId,
+    tenantId: p.tenantId,
+    affiliationId: p.affiliationId,
+    stepUp: true,
+  });
   return { Authorization: `Bearer ${token}`, 'content-type': 'application/json' };
 }
 
@@ -99,8 +104,13 @@ async function send(p: TestPrincipal, method: string, path: string, body?: unkno
 describe('FX-22: commercial proposal and quote writes leave audit rows', () => {
   it('POST /commercial/proposals audits the proposal create', async () => {
     const chairman = await principalFor('chairman@kaizen.co.in');
-    const opp = await unscopedPrisma.opportunity.findFirstOrThrow({ where: { tenantId: chairman.tenantId, deletedAt: null } });
-    const res = await send(chairman, 'POST', '/commercial/proposals', { opportunityId: opp.id, title: `fx22-proposal-${Date.now()}` });
+    const opp = await unscopedPrisma.opportunity.findFirstOrThrow({
+      where: { tenantId: chairman.tenantId, deletedAt: null },
+    });
+    const res = await send(chairman, 'POST', '/commercial/proposals', {
+      opportunityId: opp.id,
+      title: `fx22-proposal-${Date.now()}`,
+    });
     expect(res.status).toBe(201);
     const proposal = (await res.json()) as { id: string };
     expect(await auditRow('proposal', proposal.id, 'create')).not.toBeNull();
@@ -108,7 +118,9 @@ describe('FX-22: commercial proposal and quote writes leave audit rows', () => {
 
   it('POST /commercial/proposals/:id/send audits the proposal update', async () => {
     const chairman = await principalFor('chairman@kaizen.co.in');
-    const proposal = await unscopedPrisma.proposal.findFirstOrThrow({ where: { tenantId: chairman.tenantId, sentAt: null } });
+    const proposal = await unscopedPrisma.proposal.findFirstOrThrow({
+      where: { tenantId: chairman.tenantId, sentAt: null },
+    });
     const res = await send(chairman, 'POST', `/commercial/proposals/${proposal.id}/send`);
     expect(res.status).toBe(200);
     expect(await auditRow('proposal', proposal.id, 'update')).not.toBeNull();
@@ -116,8 +128,12 @@ describe('FX-22: commercial proposal and quote writes leave audit rows', () => {
 
   it('POST /commercial/quotes audits the quote create', async () => {
     const chairman = await principalFor('chairman@kaizen.co.in');
-    const opp = await unscopedPrisma.opportunity.findFirstOrThrow({ where: { tenantId: chairman.tenantId, deletedAt: null } });
-    const entry = await unscopedPrisma.priceBookEntry.findFirstOrThrow({ where: { tenantId: chairman.tenantId, currency: opp.currency } });
+    const opp = await unscopedPrisma.opportunity.findFirstOrThrow({
+      where: { tenantId: chairman.tenantId, deletedAt: null },
+    });
+    const entry = await unscopedPrisma.priceBookEntry.findFirstOrThrow({
+      where: { tenantId: chairman.tenantId, currency: opp.currency },
+    });
     const res = await send(chairman, 'POST', '/commercial/quotes', {
       opportunityId: opp.id,
       lines: [{ priceBookEntryId: entry.id, quantity: 1, discountPct: 0 }],
@@ -142,7 +158,9 @@ describe('FX-22: commercial proposal and quote writes leave audit rows', () => {
 describe('FX-22: decision writes leave audit rows', () => {
   it('POST /command/decisions audits the decision create', async () => {
     const chairman = await principalFor('chairman@kaizen.co.in');
-    const opp = await unscopedPrisma.opportunity.findFirstOrThrow({ where: { tenantId: chairman.tenantId, deletedAt: null } });
+    const opp = await unscopedPrisma.opportunity.findFirstOrThrow({
+      where: { tenantId: chairman.tenantId, deletedAt: null },
+    });
     const res = await send(chairman, 'POST', '/command/decisions', {
       question: `fx22 decision ${Date.now()}`,
       subjectType: 'opportunity',
@@ -156,7 +174,9 @@ describe('FX-22: decision writes leave audit rows', () => {
 
   it('request_evidence disposition audits the decision update', async () => {
     const chairman = await principalFor('chairman@kaizen.co.in');
-    const decision = await unscopedPrisma.decision.findFirstOrThrow({ where: { tenantId: chairman.tenantId, evidenceComplete: false } });
+    const decision = await unscopedPrisma.decision.findFirstOrThrow({
+      where: { tenantId: chairman.tenantId, evidenceComplete: false },
+    });
     const res = await send(chairman, 'POST', `/command/decisions/${decision.id}/dispose`, {
       disposition: 'request_evidence',
       rationale: 'fx22 evidence request',
@@ -207,7 +227,9 @@ describe('FX-22: decision writes leave audit rows', () => {
 describe('FX-22: pipeline route writes leave audit rows', () => {
   it('PATCH /pipelines/stages/:id audits the stage update', async () => {
     const chairman = await principalFor('chairman@kaizen.co.in');
-    const stage = await unscopedPrisma.pipelineStage.findFirstOrThrow({ where: { tenantId: chairman.tenantId, retiredAt: null } });
+    const stage = await unscopedPrisma.pipelineStage.findFirstOrThrow({
+      where: { tenantId: chairman.tenantId, retiredAt: null },
+    });
     const res = await send(chairman, 'PATCH', `/pipelines/stages/${stage.id}`, { label: `fx22 ${Date.now()}` });
     expect(res.status).toBe(200);
     expect(await auditRow('pipeline_stage', stage.id, 'update')).not.toBeNull();
@@ -215,9 +237,16 @@ describe('FX-22: pipeline route writes leave audit rows', () => {
 
   it('DELETE /pipelines/transitions/:id audits the transition delete', async () => {
     const chairman = await principalFor('chairman@kaizen.co.in');
-    const pipeline = await unscopedPrisma.pipelineDefinition.findFirstOrThrow({ where: { tenantId: chairman.tenantId } });
+    const pipeline = await unscopedPrisma.pipelineDefinition.findFirstOrThrow({
+      where: { tenantId: chairman.tenantId },
+    });
     const transition = await unscopedPrisma.pipelineTransition.create({
-      data: { tenantId: chairman.tenantId, pipelineId: pipeline.id, fromStageKey: null, toStageKey: `fx22-${Date.now()}` },
+      data: {
+        tenantId: chairman.tenantId,
+        pipelineId: pipeline.id,
+        fromStageKey: null,
+        toStageKey: `fx22-${Date.now()}`,
+      },
     });
     const res = await send(chairman, 'DELETE', `/pipelines/transitions/${transition.id}`);
     expect(res.status).toBe(200);
@@ -259,7 +288,9 @@ describe('FX-22: education cohort and project writes emit events', () => {
   it('PATCH /education/projects/:id emits kz.prj.project.updated', async () => {
     const chairman = await principalFor('chairman@kaizen.co.in');
     const project = await unscopedPrisma.project.findFirstOrThrow({ where: { tenantId: chairman.tenantId } });
-    const res = await send(chairman, 'PATCH', `/education/projects/${project.id}`, { healthBand: `fx22-${Date.now()}` });
+    const res = await send(chairman, 'PATCH', `/education/projects/${project.id}`, {
+      healthBand: `fx22-${Date.now()}`,
+    });
     expect(res.status).toBe(200);
     expect(await eventRow('kz.prj.project.updated', project.id)).not.toBeNull();
   });

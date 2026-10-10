@@ -34,7 +34,11 @@ import {
 // ---------------------------------------------------------------------------
 
 export function PipelineAdmin() {
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['pipelines'],
     queryFn: () => api.get<any[]>('/pipelines'),
   });
@@ -76,14 +80,21 @@ export function PipelineAdmin() {
                 <span>·</span>
                 <span>{p.opportunityCount} opportunities</span>
                 <span>·</span>
-                <span>verticals: {p.appliesToVerticals.length ? p.appliesToVerticals.join(', ') : 'any (fallback)'}</span>
+                <span>
+                  verticals: {p.appliesToVerticals.length ? p.appliesToVerticals.join(', ') : 'any (fallback)'}
+                </span>
               </div>
 
               <table className="table">
                 <thead>
                   <tr>
                     <th>Stage</th>
-                    <th className="text-right" title="The shared scale that lets different kinds of business be compared side by side.">Position</th>
+                    <th
+                      className="text-right"
+                      title="The shared scale that lets different kinds of business be compared side by side."
+                    >
+                      Position
+                    </th>
                     <th className="text-right">Probability</th>
                     <th className="text-right">SLA budget</th>
                     <th>Required fields</th>
@@ -94,19 +105,30 @@ export function PipelineAdmin() {
                   {p.stages.map((s: any) => (
                     <tr key={s.id}>
                       <td>
-                        <p className="text-xs text-ink-100" title={s.stageKey}>{s.label}</p>
+                        <p className="text-xs text-ink-100" title={s.stageKey}>
+                          {s.label}
+                        </p>
                       </td>
                       <td className="text-right tabular-nums text-xs text-accent-soft">{s.pipelinePosition}</td>
                       <td className="text-right tabular-nums text-xs">{s.defaultProbability}%</td>
                       <td className="text-right tabular-nums text-2xs text-ink-400">
-                        {s.stageAgeBudgetDays ? `${s.stageAgeBudgetDays}d` : <span className="text-ink-600">no clock</span>}
+                        {s.stageAgeBudgetDays ? (
+                          `${s.stageAgeBudgetDays}d`
+                        ) : (
+                          <span className="text-ink-600">no clock</span>
+                        )}
                       </td>
-                      <td className="text-2xs text-ink-400">{s.requiredFields.length ? s.requiredFields.join(', ') : '—'}</td>
+                      <td className="text-2xs text-ink-400">
+                        {s.requiredFields.length ? s.requiredFields.join(', ') : '—'}
+                      </td>
                       <td>
                         <div className="flex flex-wrap gap-1">
                           {s.isTerminal && <span className="chip border-ink-700 text-ink-400">terminal</span>}
                           {s.postAward && (
-                            <span className="chip border-band-watch/40 text-band-watch" title="No longer in use. Old records still show it, but nothing new can be moved here.">
+                            <span
+                              className="chip border-band-watch/40 text-band-watch"
+                              title="No longer in use. Old records still show it, but nothing new can be moved here."
+                            >
                               post-award (retired)
                             </span>
                           )}
@@ -154,10 +176,7 @@ export function TerritoryAdmin() {
 
   return (
     <div>
-      <PageHeader
-        title="Territories & Assignment"
-        subtitle="How new enquiries get assigned."
-      />
+      <PageHeader title="Territories & Assignment" subtitle="How new enquiries get assigned." />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Card title="Territories" bodyClassName="p-0">
@@ -179,7 +198,13 @@ export function TerritoryAdmin() {
                   </p>
                   <p className="mt-0.5 text-2xs text-ink-600">
                     capacity ceiling {t.capacityCeiling} ·{' '}
-                    <span title={t.ownerPositionId ? `${t.ownerPositionId} — a job, not a person, so this still works when someone changes role or leaves.` : undefined}>
+                    <span
+                      title={
+                        t.ownerPositionId
+                          ? `${t.ownerPositionId} — a job, not a person, so this still works when someone changes role or leaves.`
+                          : undefined
+                      }
+                    >
                       {t.ownerPositionId ? 'owner position assigned' : 'no owner position set'}
                     </span>
                   </p>
@@ -246,8 +271,13 @@ export function TerritoryAdmin() {
  * offers both readings rather than choosing one.
  */
 const CELL_LETTERS: Record<string, string> = {
-  V: 'view', C: 'create', E: 'edit', D: 'delete',
-  A: 'assign', X: 'export', F: 'financial',
+  V: 'view',
+  C: 'create',
+  E: 'edit',
+  D: 'delete',
+  A: 'assign',
+  X: 'export',
+  F: 'financial',
 };
 
 function explainCell(resource: string, cell: string): string {
@@ -255,7 +285,10 @@ function explainCell(resource: string, cell: string): string {
   const verbs: string[] = [];
   for (const token of letters.split(',')) {
     const t = token.trim();
-    if (t === 'approve' || t === 'merge') { verbs.push(t); continue; }
+    if (t === 'approve' || t === 'merge') {
+      verbs.push(t);
+      continue;
+    }
     for (const ch of t) if (CELL_LETTERS[ch]) verbs.push(CELL_LETTERS[ch]);
   }
   return `${resource} — ${grantSentence([...new Set(verbs)], scope ?? 'all')}`;
@@ -266,7 +299,10 @@ export function Governance() {
 
   const { data: matrix } = useQuery({
     queryKey: ['grant-matrix'],
-    queryFn: () => api.get<{ roles: string[]; resources: string[]; matrix: Record<string, Record<string, string>> }>('/admin/grant-matrix'),
+    queryFn: () =>
+      api.get<{ roles: string[]; resources: string[]; matrix: Record<string, Record<string, string>> }>(
+        '/admin/grant-matrix',
+      ),
   });
 
   const { data: roles = [] } = useQuery({
@@ -286,10 +322,7 @@ export function Governance() {
 
   return (
     <div>
-      <PageHeader
-        title="Who Can Do What"
-        subtitle="Who can do what. Changes take effect immediately."
-      />
+      <PageHeader title="Who Can Do What" subtitle="Who can do what. Changes take effect immediately." />
 
       <Tabs
         tabs={[
@@ -310,7 +343,9 @@ export function Governance() {
                 <th className="sticky left-0 z-20 bg-ink-900">Resource</th>
                 {matrix.roles.map((r) => (
                   <th key={r} className="text-center">
-                    <span className="block max-w-16 truncate" title={r}>{words(r)}</span>
+                    <span className="block max-w-16 truncate" title={r}>
+                      {words(r)}
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -330,7 +365,9 @@ export function Governance() {
                           // and they are what the audit trail records — but
                           // hovering spells the cell out as a sentence, so nobody
                           // has to decode it to check that it is right.
-                          <span className="mono text-ink-200" title={explainCell(res, cell)}>{cell}</span>
+                          <span className="mono text-ink-200" title={explainCell(res, cell)}>
+                            {cell}
+                          </span>
                         ) : (
                           <span
                             className="text-ink-700"
@@ -370,7 +407,11 @@ export function Governance() {
                 <summary className="cursor-pointer text-2xs text-ink-500 hover:text-ink-300">Show grants</summary>
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {r.grants.map((g: any) => (
-                    <span key={g.id} className="chip border-ink-800 text-ink-400" title={g.scopeResolver ? `scope resolver: ${g.scopeResolver}` : undefined}>
+                    <span
+                      key={g.id}
+                      className="chip border-ink-800 text-ink-400"
+                      title={g.scopeResolver ? `scope resolver: ${g.scopeResolver}` : undefined}
+                    >
                       {g.display}
                       {g.scopeResolver && ' ⓘ'}
                     </span>
@@ -395,9 +436,7 @@ export function Governance() {
                   </div>
                 </div>
               ))}
-              <p className="mt-2 text-2xs italic text-ink-500">
-                Kept as it was, so a past decision stays explainable.
-              </p>
+              <p className="mt-2 text-2xs italic text-ink-500">Kept as it was, so a past decision stays explainable.</p>
             </Card>
           ))}
         </div>
@@ -420,13 +459,17 @@ export function Governance() {
               {authority.map((g) => (
                 <tr key={g.id}>
                   <td className="text-xs text-ink-100">{g.principalLabel ?? g.principalId}</td>
-                  <td><span className="chip border-ink-700 text-ink-400">{g.principalType}</span></td>
+                  <td>
+                    <span className="chip border-ink-700 text-ink-400">{g.principalType}</span>
+                  </td>
                   <td className="text-2xs text-ink-300">{titleCase(g.authorityClass)}</td>
                   <td className="text-right tabular-nums text-xs">{money(g.ceilingValue, g.currency ?? 'INR')}</td>
                   <td className="text-right tabular-nums text-2xs text-ink-400">
                     {g.countCeiling ? `${g.countCeiling} / ${g.countWindow}` : '—'}
                   </td>
-                  <td><StatusChip status={g.status} tone={g.status === 'active' ? 'good' : 'bad'} /></td>
+                  <td>
+                    <StatusChip status={g.status} tone={g.status === 'active' ? 'good' : 'bad'} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -482,10 +525,7 @@ export function Agents() {
 
   return (
     <div>
-      <PageHeader
-        title="AI Agents"
-        subtitle="The AI assistants, what each may do, and when a person must sign off."
-      />
+      <PageHeader title="AI Agents" subtitle="The AI assistants, what each may do, and when a person must sign off." />
 
       <Tabs
         tabs={[
@@ -509,7 +549,10 @@ export function Agents() {
                   title={<span title={a.agentKey}>{a.name}</span>}
                   actions={
                     <>
-                      <StatusChip status={a.tier.replace(/_/g, ' ').toLowerCase()} tone={TIER_TONE[a.tier] ?? 'neutral'} />
+                      <StatusChip
+                        status={a.tier.replace(/_/g, ' ').toLowerCase()}
+                        tone={TIER_TONE[a.tier] ?? 'neutral'}
+                      />
                       <button
                         className="btn-ghost"
                         onClick={() => pause.mutate({ id: a.id, paused: a.status === 'active' })}
@@ -525,7 +568,9 @@ export function Agents() {
                     <p className="text-2xs uppercase tracking-wide text-ink-500">Declared tools</p>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {a.declaredTools.map((t) => (
-                        <span key={t} className="chip border-ink-800 text-ink-400">{t}</span>
+                        <span key={t} className="chip border-ink-800 text-ink-400">
+                          {t}
+                        </span>
                       ))}
                     </div>
                   </div>
@@ -556,7 +601,11 @@ export function Agents() {
           )}
 
           {platform?.hardProhibitions && (
-            <Card className="mt-5 border-band-critical/30" title="Hard prohibitions" subtitle="Platform-wide. No grant overrides them.">
+            <Card
+              className="mt-5 border-band-critical/30"
+              title="Hard prohibitions"
+              subtitle="Platform-wide. No grant overrides them."
+            >
               <ul className="space-y-2">
                 {platform.hardProhibitions.map((p: any) => (
                   <li key={p.code}>
@@ -581,8 +630,13 @@ export function Agents() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-xs font-medium text-ink-100" title={a.tool}>{a.agentName}</span>
-                        <StatusChip status={a.tier.replace(/_/g, ' ').toLowerCase()} tone={TIER_TONE[a.tier] ?? 'neutral'} />
+                        <span className="text-xs font-medium text-ink-100" title={a.tool}>
+                          {a.agentName}
+                        </span>
+                        <StatusChip
+                          status={a.tier.replace(/_/g, ' ').toLowerCase()}
+                          tone={TIER_TONE[a.tier] ?? 'neutral'}
+                        />
                         <StatusChip
                           status={a.state}
                           tone={a.state === 'executed' ? 'good' : a.state === 'blocked' ? 'bad' : 'neutral'}
@@ -596,8 +650,12 @@ export function Agents() {
                     </div>
                     {a.state === 'proposed' && (
                       <div className="flex shrink-0 gap-1">
-                        <button className="btn-primary" onClick={() => decide.mutate({ id: a.id, accept: true })}>Accept</button>
-                        <button className="btn-ghost" onClick={() => decide.mutate({ id: a.id, accept: false })}>Reject</button>
+                        <button className="btn-primary" onClick={() => decide.mutate({ id: a.id, accept: true })}>
+                          Accept
+                        </button>
+                        <button className="btn-ghost" onClick={() => decide.mutate({ id: a.id, accept: false })}>
+                          Reject
+                        </button>
                       </div>
                     )}
                   </div>
@@ -622,10 +680,17 @@ export function Agents() {
               {platform.aiTouchpoints.map((t: any) => (
                 <tr key={t.code}>
                   <td>
-                    <p className="text-xs text-ink-100" title={`${t.code} · calls ${t.tool}`}>{t.surface}</p>
+                    <p className="text-xs text-ink-100" title={`${t.code} · calls ${t.tool}`}>
+                      {t.surface}
+                    </p>
                     <p className="text-2xs text-ink-500">{t.description}</p>
                   </td>
-                  <td><StatusChip status={t.tier.replace(/_/g, ' ').toLowerCase()} tone={TIER_TONE[t.tier] ?? 'neutral'} /></td>
+                  <td>
+                    <StatusChip
+                      status={t.tier.replace(/_/g, ' ').toLowerCase()}
+                      tone={TIER_TONE[t.tier] ?? 'neutral'}
+                    />
+                  </td>
                   <td className="max-w-md text-2xs text-ink-400">{t.boundary}</td>
                 </tr>
               ))}
@@ -644,12 +709,20 @@ export function Agents() {
 /** Event names are recorded as a dotted internal code, e.g. "kz.crm.opportunity.won";
  *  this only affects display — the raw name stays available on hover. */
 function humanEventName(name: string): string {
-  const words = name.split('.').filter((w) => w !== 'kz').join(' ').replace(/_/g, ' ');
+  const words = name
+    .split('.')
+    .filter((w) => w !== 'kz')
+    .join(' ')
+    .replace(/_/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 export function Events() {
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['events'],
     queryFn: () => api.get<EventView[]>('/admin/events?limit=120'),
     refetchInterval: 30_000,
@@ -710,7 +783,9 @@ export function Events() {
               {data.map((e) => (
                 <tr key={e.id}>
                   <td>
-                    <p className="text-ink-200" title={e.eventName}>{humanEventName(e.eventName)}</p>
+                    <p className="text-ink-200" title={e.eventName}>
+                      {humanEventName(e.eventName)}
+                    </p>
                   </td>
                   <td>
                     <p className="text-2xs text-ink-300">{e.subjectType}</p>
@@ -721,7 +796,9 @@ export function Events() {
                     <p className="text-ink-600">{e.actorType}</p>
                   </td>
                   <td className="text-2xs text-ink-500">{dateTime(e.recordedAt)}</td>
-                  <td><SensitivityChip level={e.confidentiality} /></td>
+                  <td>
+                    <SensitivityChip level={e.confidentiality} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -773,7 +850,11 @@ export function Jobs() {
         <Loading />
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">
-          <Card title="Registered jobs" subtitle="Each independently scheduled — the forced single hourly tick is gone." bodyClassName="p-0">
+          <Card
+            title="Registered jobs"
+            subtitle="Each independently scheduled — the forced single hourly tick is gone."
+            bodyClassName="p-0"
+          >
             <table className="table">
               <thead>
                 <tr>
@@ -786,7 +867,9 @@ export function Jobs() {
                 {data?.registered.map((j: any) => (
                   <tr key={j.name}>
                     <td>
-                      <p className="text-xs text-ink-100" title={`${j.name} · runs on schedule ${j.cron}`}>{j.label}</p>
+                      <p className="text-xs text-ink-100" title={`${j.name} · runs on schedule ${j.cron}`}>
+                        {j.label}
+                      </p>
                     </td>
                     <td className="text-2xs text-ink-400">{titleCase(j.automationClass)}</td>
                     <td>
@@ -816,7 +899,10 @@ export function Jobs() {
                         </p>
                         {r.errors?.length > 0 && <p className="text-2xs text-band-critical">{r.errors[0]}</p>}
                       </div>
-                      <StatusChip status={r.status} tone={r.status === 'completed' ? 'good' : r.status === 'failed' ? 'bad' : 'neutral'} />
+                      <StatusChip
+                        status={r.status}
+                        tone={r.status === 'completed' ? 'good' : r.status === 'failed' ? 'bad' : 'neutral'}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -836,7 +922,11 @@ export function Jobs() {
 export function Audit() {
   const [action, setAction] = useState('');
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['audit', action],
     queryFn: () => api.get<any[]>(`/admin/audit?limit=150${action ? `&action=${action}` : ''}`),
   });
@@ -852,10 +942,7 @@ export function Audit() {
 
   return (
     <div>
-      <PageHeader
-        title="Audit Trail"
-        subtitle="Who changed what, and when. Nothing here can be edited or removed."
-      />
+      <PageHeader title="Audit Trail" subtitle="Who changed what, and when. Nothing here can be edited or removed." />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="Records shown" value={data.length} drillTo="/admin/audit" />
@@ -921,14 +1008,16 @@ export function Audit() {
                       <p className="text-2xs text-band-watch">
                         read: {r.fieldsRead.join(', ')} <span className="text-ink-600">(names only, never values)</span>
                       </p>
-                    ) : (() => {
-                      const changed = Object.keys(r.diff ?? r.meta ?? {});
-                      return changed.length > 0 ? (
-                        <p className="text-2xs text-ink-500" title={JSON.stringify(r.diff ?? r.meta)}>
-                          {changed.length} field{changed.length === 1 ? '' : 's'} changed
-                        </p>
-                      ) : null;
-                    })()}
+                    ) : (
+                      (() => {
+                        const changed = Object.keys(r.diff ?? r.meta ?? {});
+                        return changed.length > 0 ? (
+                          <p className="text-2xs text-ink-500" title={JSON.stringify(r.diff ?? r.meta)}>
+                            {changed.length} field{changed.length === 1 ? '' : 's'} changed
+                          </p>
+                        ) : null;
+                      })()
+                    )}
                   </td>
                 </tr>
               ))}
@@ -969,7 +1058,9 @@ export function PlatformModel() {
           {thresholds.map((t) => (
             <li key={t.id} className="py-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-ink-200" title={t.thresholdKey}>{t.description}</span>
+                <span className="text-xs text-ink-200" title={t.thresholdKey}>
+                  {t.description}
+                </span>
                 <span className="shrink-0 text-xs tabular-nums text-ink-100">
                   {t.value.toLocaleString('en-IN')} <span className="text-2xs text-ink-500">{t.unit}</span>
                 </span>
@@ -995,9 +1086,13 @@ export function PlatformModel() {
           <tbody>
             {registrations.map((r) => (
               <tr key={r.id}>
-                <td className="text-2xs text-ink-400" title={r.contextCode}>{titleCase(r.contextCode)}</td>
+                <td className="text-2xs text-ink-400" title={r.contextCode}>
+                  {titleCase(r.contextCode)}
+                </td>
                 <td className="text-2xs text-ink-300">{titleCase(r.entityType)}</td>
-                <td><SensitivityChip level={r.sensitivityClass} /></td>
+                <td>
+                  <SensitivityChip level={r.sensitivityClass} />
+                </td>
               </tr>
             ))}
           </tbody>

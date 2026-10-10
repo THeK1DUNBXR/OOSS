@@ -89,7 +89,8 @@ export function assertAllowedInferenceRegion(
   }
 
   const residency = config?.dataResidency ?? 'india';
-  const allowedRegions: readonly InferenceRegion[] = residency === 'india' ? INDIA_INFERENCE_REGIONS : GLOBAL_INFERENCE_REGIONS;
+  const allowedRegions: readonly InferenceRegion[] =
+    residency === 'india' ? INDIA_INFERENCE_REGIONS : GLOBAL_INFERENCE_REGIONS;
   const parsed = region as InferenceRegion;
 
   if (!allowedRegions.includes(parsed)) {
@@ -118,15 +119,20 @@ export function resolveTenantRuntimePolicy(config: Partial<TenantConfig> | null 
   return {
     tier,
     dataResidency: residency,
-    inferenceRegion: inferenceRegion && GLOBAL_INFERENCE_REGIONS.includes(inferenceRegion as InferenceRegion)
-      ? (inferenceRegion as InferenceRegion)
-      : null,
+    inferenceRegion:
+      inferenceRegion && GLOBAL_INFERENCE_REGIONS.includes(inferenceRegion as InferenceRegion)
+        ? (inferenceRegion as InferenceRegion)
+        : null,
     featureGates,
-    onboardingComplete: !!config?.onboardingComplete || !!config?.onboarding?.status && config.onboarding.status === 'active',
+    onboardingComplete:
+      !!config?.onboardingComplete || (!!config?.onboarding?.status && config.onboarding.status === 'active'),
   };
 }
 
-export async function syncTenantPolicy(tenantId: string, config: Partial<TenantConfig> | null | undefined): Promise<TenantRuntimePolicy> {
+export async function syncTenantPolicy(
+  tenantId: string,
+  config: Partial<TenantConfig> | null | undefined,
+): Promise<TenantRuntimePolicy> {
   const runtime = resolveTenantRuntimePolicy(config);
   const nextConfig = {
     ...(config ?? {}),

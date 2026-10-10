@@ -114,8 +114,14 @@ router.post(
   }),
 );
 
-router.post('/offerings/:id/publish', handler(async (req) => publishOffering(req.params.id)));
-router.post('/offerings/:id/retire', handler(async (req) => retireOffering(req.params.id)));
+router.post(
+  '/offerings/:id/publish',
+  handler(async (req) => publishOffering(req.params.id)),
+);
+router.post(
+  '/offerings/:id/retire',
+  handler(async (req) => retireOffering(req.params.id)),
+);
 
 router.get(
   '/offerings/:id/prices',
@@ -193,7 +199,10 @@ router.post(
   }),
 );
 
-router.post('/proposals/:id/send', handler(async (req) => sendProposal(req.params.id)));
+router.post(
+  '/proposals/:id/send',
+  handler(async (req) => sendProposal(req.params.id)),
+);
 
 router.post(
   '/proposals/:id/respond',
@@ -303,10 +312,22 @@ async function listAgreements(kind: AgreementKind, filters: { status?: string })
 
   const rows =
     kind === 'mou'
-      ? await prisma.mou.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, ...(filters.status ? { status: filters.status } : {}) }, orderBy: { createdAt: 'desc' }, take: 200 })
+      ? await prisma.mou.findMany({
+          where: { tenantId: auth.tenantId, deletedAt: null, ...(filters.status ? { status: filters.status } : {}) },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+        })
       : kind === 'contract'
-        ? await prisma.contract.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, ...(filters.status ? { status: filters.status } : {}) }, orderBy: { createdAt: 'desc' }, take: 200 })
-        : await prisma.partnerAgreement.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, ...(filters.status ? { status: filters.status } : {}) }, orderBy: { createdAt: 'desc' }, take: 200 });
+        ? await prisma.contract.findMany({
+            where: { tenantId: auth.tenantId, deletedAt: null, ...(filters.status ? { status: filters.status } : {}) },
+            orderBy: { createdAt: 'desc' },
+            take: 200,
+          })
+        : await prisma.partnerAgreement.findMany({
+            where: { tenantId: auth.tenantId, deletedAt: null, ...(filters.status ? { status: filters.status } : {}) },
+            orderBy: { createdAt: 'desc' },
+            take: 200,
+          });
 
   const orgIds = [
     ...new Set(

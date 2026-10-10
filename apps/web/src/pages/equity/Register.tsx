@@ -20,7 +20,16 @@ import {
 import { api, date, money } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
-import { CreateModal, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
+import {
+  CreateModal,
+  MoneyInput,
+  NewButton,
+  Row,
+  SelectInput,
+  TextArea,
+  TextInput,
+  messageOf,
+} from '../../components/forms.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -45,20 +54,21 @@ function useEquityConsiderations() {
   return useQuery({
     queryKey: ['books-transactions', 'equity-consideration'],
     queryFn: () =>
-      api.get<Array<{ id: string; recordCode: string; categoryKind: string | null; amount: number | null; txnDate: string; counterparty: string | null }>>(
-        '/books/transactions?take=200',
-      ),
+      api.get<
+        Array<{
+          id: string;
+          recordCode: string;
+          categoryKind: string | null;
+          amount: number | null;
+          txnDate: string;
+          counterparty: string | null;
+        }>
+      >('/books/transactions?take=200'),
     select: (rows) => rows.filter((t) => t.categoryKind === 'equity'),
   });
 }
 
-function ConsiderationPicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
+function ConsiderationPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { data: rows = [] } = useEquityConsiderations();
   return (
     <SelectInput
@@ -120,7 +130,10 @@ function NewAllotment({ open, onClose }: { open: boolean; onClose: () => void })
           value={toHolderId}
           onChange={setToHolderId}
           placeholder="Who is allotted these shares"
-          options={(holders.data?.items ?? []).map((h) => ({ value: h.id, label: `${h.displayName} (${h.folioNumber})` }))}
+          options={(holders.data?.items ?? []).map((h) => ({
+            value: h.id,
+            label: `${h.displayName} (${h.folioNumber})`,
+          }))}
         />
       </Row>
       <Row>
@@ -133,8 +146,8 @@ function NewAllotment({ open, onClose }: { open: boolean; onClose: () => void })
       </Row>
       <ConsiderationPicker value={considerationTransactionId} onChange={setConsideration} />
       <p className="text-2xs text-ink-500">
-        A priced allotment left unlinked to a consideration shows as awaiting consideration on the cap table until
-        one is attached.
+        A priced allotment left unlinked to a consideration shows as awaiting consideration on the cap table until one
+        is attached.
       </p>
     </CreateModal>
   );
@@ -185,7 +198,10 @@ function NewTransfer({ open, onClose }: { open: boolean; onClose: () => void }) 
           value={fromHolderId}
           onChange={setFromHolderId}
           placeholder="Transferor"
-          options={(holders.data?.items ?? []).map((h) => ({ value: h.id, label: `${h.displayName} (${h.folioNumber})` }))}
+          options={(holders.data?.items ?? []).map((h) => ({
+            value: h.id,
+            label: `${h.displayName} (${h.folioNumber})`,
+          }))}
         />
         <SelectInput
           label="To"
@@ -193,7 +209,10 @@ function NewTransfer({ open, onClose }: { open: boolean; onClose: () => void }) 
           value={toHolderId}
           onChange={setToHolderId}
           placeholder="Transferee"
-          options={(holders.data?.items ?? []).map((h) => ({ value: h.id, label: `${h.displayName} (${h.folioNumber})` }))}
+          options={(holders.data?.items ?? []).map((h) => ({
+            value: h.id,
+            label: `${h.displayName} (${h.folioNumber})`,
+          }))}
         />
       </Row>
       <Row>
@@ -206,7 +225,15 @@ function NewTransfer({ open, onClose }: { open: boolean; onClose: () => void }) 
   );
 }
 
-function NewConversion({ open, onClose, convertibleClasses }: { open: boolean; onClose: () => void; convertibleClasses: ShareClassView[] }) {
+function NewConversion({
+  open,
+  onClose,
+  convertibleClasses,
+}: {
+  open: boolean;
+  onClose: () => void;
+  convertibleClasses: ShareClassView[];
+}) {
   const holders = useHolders();
   const [fromClassId, setFromClassId] = useState('');
   const [holderId, setHolderId] = useState('');
@@ -220,7 +247,9 @@ function NewConversion({ open, onClose, convertibleClasses }: { open: boolean; o
       submitLabel="Propose it"
       onClose={onClose}
       invalidate={[['equity-ledger']]}
-      onSubmit={() => api.post('/equity/ledger/conversions', { fromClassId, holderId, count: Number(count), effectiveOn })}
+      onSubmit={() =>
+        api.post('/equity/ledger/conversions', { fromClassId, holderId, count: Number(count), effectiveOn })
+      }
     >
       <SelectInput
         label="Convertible class"
@@ -236,17 +265,35 @@ function NewConversion({ open, onClose, convertibleClasses }: { open: boolean; o
         value={holderId}
         onChange={setHolderId}
         placeholder="Whose holding is converting"
-        options={(holders.data?.items ?? []).map((h) => ({ value: h.id, label: `${h.displayName} (${h.folioNumber})` }))}
+        options={(holders.data?.items ?? []).map((h) => ({
+          value: h.id,
+          label: `${h.displayName} (${h.folioNumber})`,
+        }))}
       />
       <Row>
-        <TextInput label="Count" type="number" required value={count} onChange={setCount} hint="units of the convertible class" />
+        <TextInput
+          label="Count"
+          type="number"
+          required
+          value={count}
+          onChange={setCount}
+          hint="units of the convertible class"
+        />
         <TextInput label="Effective on" type="date" required value={effectiveOn} onChange={setEffectiveOn} />
       </Row>
     </CreateModal>
   );
 }
 
-function NewRedemption({ open, onClose, redeemableClasses }: { open: boolean; onClose: () => void; redeemableClasses: ShareClassView[] }) {
+function NewRedemption({
+  open,
+  onClose,
+  redeemableClasses,
+}: {
+  open: boolean;
+  onClose: () => void;
+  redeemableClasses: ShareClassView[];
+}) {
   const holders = useHolders();
   const [shareClassId, setShareClassId] = useState('');
   const [holderId, setHolderId] = useState('');
@@ -262,7 +309,13 @@ function NewRedemption({ open, onClose, redeemableClasses }: { open: boolean; on
       onClose={onClose}
       invalidate={[['equity-ledger']]}
       onSubmit={() =>
-        api.post('/equity/ledger/redemptions', { shareClassId, holderId, count: Number(count), effectiveOn, fromReserves: fromReserves === 'yes' })
+        api.post('/equity/ledger/redemptions', {
+          shareClassId,
+          holderId,
+          count: Number(count),
+          effectiveOn,
+          fromReserves: fromReserves === 'yes',
+        })
       }
     >
       <SelectInput
@@ -279,7 +332,10 @@ function NewRedemption({ open, onClose, redeemableClasses }: { open: boolean; on
         value={holderId}
         onChange={setHolderId}
         placeholder="Whose holding is being redeemed"
-        options={(holders.data?.items ?? []).map((h) => ({ value: h.id, label: `${h.displayName} (${h.folioNumber})` }))}
+        options={(holders.data?.items ?? []).map((h) => ({
+          value: h.id,
+          label: `${h.displayName} (${h.folioNumber})`,
+        }))}
       />
       <Row>
         <TextInput label="Count" type="number" required value={count} onChange={setCount} />
@@ -290,7 +346,10 @@ function NewRedemption({ open, onClose, redeemableClasses }: { open: boolean; on
         required
         value={fromReserves}
         onChange={(v) => setFromReserves(v as 'yes' | 'no')}
-        options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]}
+        options={[
+          { value: 'yes', label: 'Yes' },
+          { value: 'no', label: 'No' },
+        ]}
       />
     </CreateModal>
   );
@@ -345,7 +404,11 @@ export function Register() {
   const [reversing, setReversing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data, isLoading, error: loadError } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['equity-ledger'],
     queryFn: () => api.get<{ items: ShareTransactionView[] }>('/equity/ledger'),
   });
@@ -364,14 +427,19 @@ export function Register() {
 
   if (loadError) return <ErrorBox error={loadError} />;
 
-  const holderName = (id: string | null) => (id ? holders.data?.items.find((h) => h.id === id)?.displayName ?? id : '—');
+  const holderName = (id: string | null) =>
+    id ? (holders.data?.items.find((h) => h.id === id)?.displayName ?? id) : '—';
   const className = (id: string) => classes.data?.items.find((c) => c.id === id)?.name ?? id;
 
   // "New conversion"/"New redemption" appear only when a class actually
   // carries the terms that make either action possible — there is nothing to
   // convert or redeem otherwise.
-  const convertibleClasses = (classes.data?.items ?? []).filter((c) => (c.conversionTerms as ConversionTerms | null)?.convertsToClassId);
-  const redeemableClasses = (classes.data?.items ?? []).filter((c) => (c.redemptionTerms as RedemptionTerms | null) != null);
+  const convertibleClasses = (classes.data?.items ?? []).filter(
+    (c) => (c.conversionTerms as ConversionTerms | null)?.convertsToClassId,
+  );
+  const redeemableClasses = (classes.data?.items ?? []).filter(
+    (c) => (c.redemptionTerms as RedemptionTerms | null) != null,
+  );
 
   const rows = (data?.items ?? []).filter((t) => statusFilter === 'all' || t.status === statusFilter);
   const counts = (data?.items ?? []).reduce<Record<string, number>>((acc, t) => {
@@ -384,10 +452,18 @@ export function Register() {
       <NewAllotment open={creatingAllotment} onClose={() => setCreatingAllotment(false)} />
       <NewTransfer open={creatingTransfer} onClose={() => setCreatingTransfer(false)} />
       {convertibleClasses.length > 0 && (
-        <NewConversion open={creatingConversion} onClose={() => setCreatingConversion(false)} convertibleClasses={convertibleClasses} />
+        <NewConversion
+          open={creatingConversion}
+          onClose={() => setCreatingConversion(false)}
+          convertibleClasses={convertibleClasses}
+        />
       )}
       {redeemableClasses.length > 0 && (
-        <NewRedemption open={creatingRedemption} onClose={() => setCreatingRedemption(false)} redeemableClasses={redeemableClasses} />
+        <NewRedemption
+          open={creatingRedemption}
+          onClose={() => setCreatingRedemption(false)}
+          redeemableClasses={redeemableClasses}
+        />
       )}
       {rejecting && (
         <ReasonModal

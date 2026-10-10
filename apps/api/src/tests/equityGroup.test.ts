@@ -10,19 +10,27 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DIVISIONS, DIVISION_LABELS, GROUP_LABELS, computeLookThrough, type LookThroughDirectRow, type LookThroughEdge } from '@kaizen/shared';
+import {
+  DIVISIONS,
+  DIVISION_LABELS,
+  GROUP_LABELS,
+  computeLookThrough,
+  type LookThroughDirectRow,
+  type LookThroughEdge,
+} from '@kaizen/shared';
 import { seedBootstrap } from '../seed/bootstrap.js';
 import { createHolder } from '../domains/equity.js';
 import { recordTransaction, createAccount } from '../domains/books.js';
 import {
-  publishEntitySnapshot, groupStructure, groupHolders, groupFinancials,
-  groupCompliance, entitySnapshotView,
+  publishEntitySnapshot,
+  groupStructure,
+  groupHolders,
+  groupFinancials,
+  groupCompliance,
+  entitySnapshotView,
 } from '../domains/group.js';
 import { switchEntity } from '../lib/auth.js';
-import {
-  asPrincipal, asUser, authFor, expectReject, tenantId, unscopedPrisma,
-  type TestPrincipal,
-} from './helpers.js';
+import { asPrincipal, asUser, authFor, expectReject, tenantId, unscopedPrisma, type TestPrincipal } from './helpers.js';
 
 let HOLDING: string;
 const cleanupTenantSlugs: string[] = [];
@@ -100,7 +108,13 @@ describe('EQT-GRP-001 — the group screen reads only snapshots: group.ts uses n
 describe('EQT-GRP-002 — look-through arithmetic on the worked example (60% × 70% + 5% = 47%)', () => {
   it('a founder holding 60% of the holding and 5% direct in a subsidiary the holding owns 70% of comes to 47%', () => {
     const direct: LookThroughDirectRow[] = [
-      { entityId: 'holding', holderKey: 'founder@example.test', issuedPct: 60, fullyDilutedPct: 60, matchedBy: 'email' },
+      {
+        entityId: 'holding',
+        holderKey: 'founder@example.test',
+        issuedPct: 60,
+        fullyDilutedPct: 60,
+        matchedBy: 'email',
+      },
       { entityId: 'sub', holderKey: 'founder@example.test', issuedPct: 5, fullyDilutedPct: 5, matchedBy: 'email' },
     ];
     const edges: LookThroughEdge[] = [
@@ -129,7 +143,11 @@ describe('EQT-GRP-003 — a stale snapshot is labelled with its age and never bl
   it('a snapshot published over 24h ago is flagged stale, and its figures stay its own', async () => {
     const subSlug = `eqt-grp-003-${Date.now()}`;
     cleanupTenantSlugs.push(subSlug);
-    const { tenantId: subId } = await seedBootstrap({ tenantSlug: subSlug, tenantName: 'EQT-GRP-003 Sub', parentTenantSlug: 'kaizen' });
+    const { tenantId: subId } = await seedBootstrap({
+      tenantSlug: subSlug,
+      tenantName: 'EQT-GRP-003 Sub',
+      parentTenantSlug: 'kaizen',
+    });
 
     const before = await publishEntitySnapshot(subId);
     expect(before.published).toBe(true);
@@ -168,20 +186,30 @@ describe('EQT-GRP-003 — a stale snapshot is labelled with its age and never bl
   });
 });
 
-describe('EQT-GRP-004 — a grandchild cannot be recorded as a holder in the top holding\'s register (s.19, multi-hop)', () => {
+describe("EQT-GRP-004 — a grandchild cannot be recorded as a holder in the top holding's register (s.19, multi-hop)", () => {
   it('walking two hops up still finds the ancestor and refuses the holder', async () => {
     const parentSlug = `eqt-grp-004-parent-${Date.now()}`;
     const childSlug = `eqt-grp-004-child-${Date.now()}`;
     cleanupTenantSlugs.push(parentSlug, childSlug);
 
-    const { tenantId: parentId } = await seedBootstrap({ tenantSlug: parentSlug, tenantName: 'EQT-GRP-004 Parent', parentTenantSlug: 'kaizen' });
-    const { tenantId: childId } = await seedBootstrap({ tenantSlug: childSlug, tenantName: 'EQT-GRP-004 Child', parentTenantSlug: parentSlug });
+    const { tenantId: parentId } = await seedBootstrap({
+      tenantSlug: parentSlug,
+      tenantName: 'EQT-GRP-004 Parent',
+      parentTenantSlug: 'kaizen',
+    });
+    const { tenantId: childId } = await seedBootstrap({
+      tenantSlug: childSlug,
+      tenantName: 'EQT-GRP-004 Child',
+      parentTenantSlug: parentSlug,
+    });
 
     // In the TOP holding's own register, a holder said to be "held by" the
     // grandchild two levels down is refused — the walk from `heldByTenantId`
     // up through its own parent chain reaches `kaizen` at the second hop.
     const rejection = await expectReject(() =>
-      asUser('chairman@kaizen.co.in', () => createHolder({ kind: 'entity', heldByTenantId: childId, residency: 'resident' })),
+      asUser('chairman@kaizen.co.in', () =>
+        createHolder({ kind: 'entity', heldByTenantId: childId, residency: 'resident' }),
+      ),
     );
     expect(rejection.status).toBe(422);
 
@@ -199,13 +227,19 @@ describe('EQT-GRP-005 — a chairman without an affiliation in a subsidiary sees
   it('the snapshot is readable from the holding; switch-entity into the subsidiary is a 404', async () => {
     const subSlug = `eqt-grp-005-${Date.now()}`;
     cleanupTenantSlugs.push(subSlug);
-    const { tenantId: subId } = await seedBootstrap({ tenantSlug: subSlug, tenantName: 'EQT-GRP-005 Sub', parentTenantSlug: 'kaizen' });
+    const { tenantId: subId } = await seedBootstrap({
+      tenantSlug: subSlug,
+      tenantName: 'EQT-GRP-005 Sub',
+      parentTenantSlug: 'kaizen',
+    });
 
     // The chairman is auto-affiliated in every freshly bootstrapped tenant
     // that reuses the same founding email — end that affiliation so this
     // test starts from the premise the requirement names: no relationship
     // in the subsidiary at all.
-    const chairmanUser = await unscopedPrisma.user.findFirstOrThrow({ where: { tenantId: subId, email: 'chairman@kaizen.co.in' } });
+    const chairmanUser = await unscopedPrisma.user.findFirstOrThrow({
+      where: { tenantId: subId, email: 'chairman@kaizen.co.in' },
+    });
     await unscopedPrisma.affiliation.updateMany({
       where: { tenantId: subId, partyId: chairmanUser.personId, status: 'active' },
       data: { status: 'ended' },
@@ -232,7 +266,11 @@ describe('EQT-GRP-006 — a group total is labelled before inter-company elimina
   it('groupFinancials carries the exact heading and the recorded inter-company totals', async () => {
     const subSlug = `eqt-grp-006-${Date.now()}`;
     cleanupTenantSlugs.push(subSlug);
-    const { tenantId: subId } = await seedBootstrap({ tenantSlug: subSlug, tenantName: 'EQT-GRP-006 Sub', parentTenantSlug: 'kaizen' });
+    const { tenantId: subId } = await seedBootstrap({
+      tenantSlug: subSlug,
+      tenantName: 'EQT-GRP-006 Sub',
+      parentTenantSlug: 'kaizen',
+    });
 
     const account = await asTenantUser(subId, 'chairman@kaizen.co.in', () =>
       createAccount({ name: `EQT-GRP-006 Account ${Date.now()}`, accountType: 'bank' }),

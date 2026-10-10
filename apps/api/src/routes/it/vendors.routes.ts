@@ -39,7 +39,10 @@ router.get(
   }),
 );
 
-router.get('/vendors/summary', handler(async () => summaryVendors()));
+router.get(
+  '/vendors/summary',
+  handler(async () => summaryVendors()),
+);
 
 router.post(
   '/vendors',
@@ -61,7 +64,10 @@ router.post(
   }),
 );
 
-router.get('/vendors/:id', handler(async (req) => vendorDetail(req.params.id)));
+router.get(
+  '/vendors/:id',
+  handler(async (req) => vendorDetail(req.params.id)),
+);
 
 router.post(
   '/vendors/:id/assess',
@@ -80,7 +86,7 @@ router.post(
       .parse(req.body);
     return recordAssessment(req.params.id, {
       ...body,
-      assessedAt: body.assessedAt ? date(body.assessedAt) ?? null : null,
+      assessedAt: body.assessedAt ? (date(body.assessedAt) ?? null) : null,
     });
   }),
 );
@@ -106,7 +112,10 @@ router.get(
   }),
 );
 
-router.get('/contracts/summary', handler(async () => summaryContracts()));
+router.get(
+  '/contracts/summary',
+  handler(async () => summaryContracts()),
+);
 
 router.post(
   '/contracts',
@@ -128,13 +137,16 @@ router.post(
       .parse(req.body);
     return createVendorContract({
       ...body,
-      startDate: body.startDate ? date(body.startDate) ?? null : null,
-      endDate: body.endDate ? date(body.endDate) ?? null : null,
+      startDate: body.startDate ? (date(body.startDate) ?? null) : null,
+      endDate: body.endDate ? (date(body.endDate) ?? null) : null,
     });
   }),
 );
 
-router.get('/contracts/:id', handler(async (req) => vendorContractDetail(req.params.id)));
+router.get(
+  '/contracts/:id',
+  handler(async (req) => vendorContractDetail(req.params.id)),
+);
 
 router.post(
   '/contracts/:id/transition',
@@ -167,7 +179,7 @@ router.post(
     return renewVendorContract(req.params.id, {
       ...body,
       endDate,
-      startDate: body.startDate ? date(body.startDate) ?? null : null,
+      startDate: body.startDate ? (date(body.startDate) ?? null) : null,
     });
   }),
 );
@@ -175,7 +187,9 @@ router.post(
 router.post(
   '/contracts/:id/terminate',
   handler(async (req) => {
-    const body = z.object({ reason: z.string().min(1, 'Terminating a vendor contract needs a reason.') }).parse(req.body);
+    const body = z
+      .object({ reason: z.string().min(1, 'Terminating a vendor contract needs a reason.') })
+      .parse(req.body);
     return terminateVendorContract(req.params.id, body.reason);
   }),
 );

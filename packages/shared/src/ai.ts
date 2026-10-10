@@ -40,7 +40,8 @@ export const AI_TIERS = [
   {
     code: 'AUTONOMOUS_WITHIN_POLICY',
     label: 'Autonomous within policy',
-    meaning: 'The agent may act without a per-instance approval, bounded strictly by its AUTHORITY_GRANT and a pre-approved policy.',
+    meaning:
+      'The agent may act without a per-instance approval, bounded strictly by its AUTHORITY_GRANT and a pre-approved policy.',
     canWrite: true,
     requiresHuman: false,
   },
@@ -69,7 +70,7 @@ export const HARD_PROHIBITIONS = [
     code: 'no_individual_attrition_scoring',
     statement: 'No individual attrition or flight-risk scoring.',
     rationale:
-      'The platform\'s actual levers here are structural (hire, cross-train, re-allocate), not individual prediction. Enforced by unit-level-only aggregation and the k>=5 floor, not merely a policy note.',
+      "The platform's actual levers here are structural (hire, cross-train, re-allocate), not individual prediction. Enforced by unit-level-only aggregation and the k>=5 floor, not merely a policy note.",
   },
   {
     code: 'no_autonomous_pay_leave_promotion',
@@ -88,7 +89,8 @@ export const HARD_PROHIBITIONS = [
   },
   {
     code: 'no_autonomous_journal_or_tax_actions',
-    statement: 'No autonomous journal posting, IRN generation, GST/other filings, payroll execution or outbound email sends.',
+    statement:
+      'No autonomous journal posting, IRN generation, GST/other filings, payroll execution or outbound email sends.',
     rationale:
       'These are irreversible or externally visible actions with statutory or customer impact; only a named human approver may initiate them.',
   },
@@ -150,7 +152,8 @@ export const AI_TOUCHPOINTS: AiTouchpoint[] = [
   {
     code: 'AI-IDN-002',
     surface: 'Person near-duplicate detection',
-    description: 'Stage-3 embedding-similarity pass over free text to catch near-duplicates the exact-match stage misses.',
+    description:
+      'Stage-3 embedding-similarity pass over free text to catch near-duplicates the exact-match stage misses.',
     tier: 'RECOMMEND',
     tool: 'tool.idn.suggest_duplicates',
     boundary:
@@ -196,7 +199,8 @@ export const AI_TOUCHPOINTS: AiTouchpoint[] = [
     description: 'Authoring a PIPELINE_DEFINITION or PIPELINE_TRANSITION.',
     tier: 'PROHIBITED',
     tool: '—',
-    boundary: 'This changes what every seller in the vertical may do — a governance action, not a data-entry convenience.',
+    boundary:
+      'This changes what every seller in the vertical may do — a governance action, not a data-entry convenience.',
   },
   {
     code: 'AI-PIPE-002',
@@ -274,10 +278,10 @@ export const AI_TOUCHPOINTS: AiTouchpoint[] = [
   {
     code: 'AI-WLR-001',
     surface: 'Win/loss disposition triage',
-    description: 'Proposing a disposition from a row\'s activity history for migration triage.',
+    description: "Proposing a disposition from a row's activity history for migration triage.",
     tier: 'RECOMMEND',
     tool: 'tool.crm.triage_disposition',
-    boundary: 'Pre-fills a report; every row\'s final classification requires human confirmation.',
+    boundary: "Pre-fills a report; every row's final classification requires human confirmation.",
   },
   {
     code: 'AI-XCP-001',
@@ -285,12 +289,14 @@ export const AI_TOUCHPOINTS: AiTouchpoint[] = [
     description: 'Resolving an owner for an exception that failed to route.',
     tier: 'AUTONOMOUS_WITHIN_POLICY',
     tool: 'tool.xcp.resolve_owner',
-    boundary: 'Assigns within 15 minutes during an absence window. Assigns; never decides or acts on the exception\'s substance.',
+    boundary:
+      "Assigns within 15 minutes during an absence window. Assigns; never decides or acts on the exception's substance.",
   },
   {
     code: 'AI-CMD-001',
     surface: 'Ask Kaizen',
-    description: 'Natural-language query answering over the same governed widget compositions every visual surface renders.',
+    description:
+      'Natural-language query answering over the same governed widget compositions every visual surface renders.',
     tier: 'READ',
     tool: 'tool.xdm.answer_from_composition',
     boundary:

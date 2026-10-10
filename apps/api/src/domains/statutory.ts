@@ -19,11 +19,13 @@ export interface StatutoryRuleInput {
   source: string;
 }
 
-export async function listStatutoryRules(filters: {
-  domain?: string;
-  key?: string;
-  jurisdiction?: string;
-} = {}) {
+export async function listStatutoryRules(
+  filters: {
+    domain?: string;
+    key?: string;
+    jurisdiction?: string;
+  } = {},
+) {
   const auth = currentAuth();
   await assertCan({ resource: 'rate_tables', verb: 'view' });
   return prisma.statutoryRule.findMany({

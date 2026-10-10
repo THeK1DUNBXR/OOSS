@@ -65,9 +65,18 @@ interface Holiday {
 function HolidaysTab() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ date: '', name: '', kind: 'national' as 'national' | 'state' | 'restricted', state: '', note: '' });
+  const [form, setForm] = useState({
+    date: '',
+    name: '',
+    kind: 'national' as 'national' | 'state' | 'restricted',
+    state: '',
+    note: '',
+  });
 
-  const holidays = useQuery({ queryKey: ['labour-holidays'], queryFn: () => api.get<Holiday[]>('/compliance/labour/holidays') });
+  const holidays = useQuery({
+    queryKey: ['labour-holidays'],
+    queryFn: () => api.get<Holiday[]>('/compliance/labour/holidays'),
+  });
 
   const remove = useMutation({
     mutationFn: (id: string) => api.del(`/compliance/labour/holidays/${id}`),
@@ -102,7 +111,9 @@ function HolidaysTab() {
                   {h.name}
                   {h.note && <p className="text-2xs text-ink-500">{h.note}</p>}
                 </td>
-                <td><StatusChip status={h.kind} /></td>
+                <td>
+                  <StatusChip status={h.kind} />
+                </td>
                 <td>{h.state ?? '—'}</td>
                 <td className="text-right">
                   <button className="btn text-2xs" onClick={() => remove.mutate(h.id)}>
@@ -131,7 +142,13 @@ function HolidaysTab() {
         }
       >
         <Row>
-          <TextInput label="Date" type="date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} required />
+          <TextInput
+            label="Date"
+            type="date"
+            value={form.date}
+            onChange={(v) => setForm({ ...form, date: v })}
+            required
+          />
           <SelectInput
             label="Kind"
             value={form.kind}
@@ -144,7 +161,12 @@ function HolidaysTab() {
           />
         </Row>
         <TextInput label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
-        <TextInput label="State (if not national)" value={form.state} onChange={(v) => setForm({ ...form, state: v })} placeholder="TN" />
+        <TextInput
+          label="State (if not national)"
+          value={form.state}
+          onChange={(v) => setForm({ ...form, state: v })}
+          placeholder="TN"
+        />
         <TextArea label="Note" value={form.note} onChange={(v) => setForm({ ...form, note: v })} />
       </CreateModal>
     </Card>
@@ -173,10 +195,13 @@ function LeaveTab() {
 
   const encash = useMutation({
     mutationFn: () =>
-      api.post<{ encashment: { days: number; amount: number } }>(`/compliance/labour/leave/${encashForm.employmentId}/encash`, {
-        leaveTypeId: encashForm.leaveTypeId,
-        days: Number(encashForm.days),
-      }),
+      api.post<{ encashment: { days: number; amount: number } }>(
+        `/compliance/labour/leave/${encashForm.employmentId}/encash`,
+        {
+          leaveTypeId: encashForm.leaveTypeId,
+          days: Number(encashForm.days),
+        },
+      ),
     onSuccess: (r) => setEncashResult(`Encashed ${r.encashment.days} days for ₹${r.encashment.amount}.`),
     onError: (e) => setError(messageOf(e)),
   });
@@ -193,17 +218,37 @@ function LeaveTab() {
         </button>
         {result && (
           <p className="mt-3 text-sm text-ink-300">
-            {result.processed} balance{result.processed === 1 ? '' : 's'} closed, {result.notified} exception{result.notified === 1 ? '' : 's'} raised.
+            {result.processed} balance{result.processed === 1 ? '' : 's'} closed, {result.notified} exception
+            {result.notified === 1 ? '' : 's'} raised.
           </p>
         )}
       </Card>
 
-      <Card title="Encash leave" subtitle="Encashable leave types only, up to the type's maximum encashable days. Amount is basic/26 × days.">
+      <Card
+        title="Encash leave"
+        subtitle="Encashable leave types only, up to the type's maximum encashable days. Amount is basic/26 × days."
+      >
         <Row>
-          <TextInput label="Employment ID" value={encashForm.employmentId} onChange={(v) => setEncashForm({ ...encashForm, employmentId: v })} required />
-          <TextInput label="Leave type ID" value={encashForm.leaveTypeId} onChange={(v) => setEncashForm({ ...encashForm, leaveTypeId: v })} required />
+          <TextInput
+            label="Employment ID"
+            value={encashForm.employmentId}
+            onChange={(v) => setEncashForm({ ...encashForm, employmentId: v })}
+            required
+          />
+          <TextInput
+            label="Leave type ID"
+            value={encashForm.leaveTypeId}
+            onChange={(v) => setEncashForm({ ...encashForm, leaveTypeId: v })}
+            required
+          />
         </Row>
-        <TextInput label="Days" type="number" value={encashForm.days} onChange={(v) => setEncashForm({ ...encashForm, days: v })} required />
+        <TextInput
+          label="Days"
+          type="number"
+          value={encashForm.days}
+          onChange={(v) => setEncashForm({ ...encashForm, days: v })}
+          required
+        />
         <button className="btn-primary mt-3" onClick={() => encash.mutate()} disabled={encash.isPending}>
           {encash.isPending ? 'Encashing…' : 'Encash'}
         </button>
@@ -233,7 +278,10 @@ function HoursTab() {
 
   const overtime = useQuery({
     queryKey: ['labour-overtime', employmentId],
-    queryFn: () => api.get<Array<{ isoWeek: string; hours: number; rate: number; amount: number }>>(`/compliance/labour/hours/${employmentId}/overtime`),
+    queryFn: () =>
+      api.get<Array<{ isoWeek: string; hours: number; rate: number; amount: number }>>(
+        `/compliance/labour/hours/${employmentId}/overtime`,
+      ),
     enabled: employmentId.length > 0,
   });
 
@@ -249,15 +297,23 @@ function HoursTab() {
         </button>
         {result && (
           <p className="mt-3 text-sm text-ink-300">
-            {result.processed} employment{result.processed === 1 ? '' : 's'} checked, {result.notified} breach{result.notified === 1 ? '' : 'es'} raised.
+            {result.processed} employment{result.processed === 1 ? '' : 's'} checked, {result.notified} breach
+            {result.notified === 1 ? '' : 'es'} raised.
           </p>
         )}
       </Card>
 
       <Card title="Overtime accrual" subtitle="Hours × 2 × basic/(26×8), by ISO week.">
-        <TextInput label="Employment ID" value={employmentId} onChange={setEmploymentId} placeholder="Paste an employment relationship id" />
+        <TextInput
+          label="Employment ID"
+          value={employmentId}
+          onChange={setEmploymentId}
+          placeholder="Paste an employment relationship id"
+        />
         {overtime.isLoading && employmentId && <Loading />}
-        {overtime.data && overtime.data.length === 0 && <EmptyState message="No overtime accrued for this employment yet." />}
+        {overtime.data && overtime.data.length === 0 && (
+          <EmptyState message="No overtime accrued for this employment yet." />
+        )}
         {overtime.data && overtime.data.length > 0 && (
           <table className="table mt-3">
             <thead>
@@ -304,13 +360,19 @@ function RegistersTab() {
   };
 
   return (
-    <Card title="Statutory registers" subtitle="Each downloads as a CSV under the register's statutory name, and each download is itself audited.">
+    <Card
+      title="Statutory registers"
+      subtitle="Each downloads as a CSV under the register's statutory name, and each download is itself audited."
+    >
       {error && <ErrorBox error={error} />}
       <div className="flex flex-col gap-4">
         <Field label="Wages register">
           <div className="flex flex-wrap items-center gap-2">
             <input className="input w-40" type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
-            <button className="btn" onClick={() => download(`/compliance/labour/registers/wages?period=${period}`, `wages-${period}.csv`)}>
+            <button
+              className="btn"
+              onClick={() => download(`/compliance/labour/registers/wages?period=${period}`, `wages-${period}.csv`)}
+            >
               Download
             </button>
           </div>
@@ -318,7 +380,10 @@ function RegistersTab() {
         <Field label="Leave register">
           <div className="flex flex-wrap items-center gap-2">
             <input className="input w-40" placeholder="FY2026-27" value={fy} onChange={(e) => setFy(e.target.value)} />
-            <button className="btn" onClick={() => download(`/compliance/labour/registers/leave?fy=${fy}`, `leave-${fy}.csv`)}>
+            <button
+              className="btn"
+              onClick={() => download(`/compliance/labour/registers/leave?fy=${fy}`, `leave-${fy}.csv`)}
+            >
               Download
             </button>
           </div>
@@ -326,7 +391,12 @@ function RegistersTab() {
         <Field label="Muster roll">
           <div className="flex flex-wrap items-center gap-2">
             <input className="input w-40" type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
-            <button className="btn" onClick={() => download(`/compliance/labour/registers/muster-roll?period=${period}`, `muster-roll-${period}.csv`)}>
+            <button
+              className="btn"
+              onClick={() =>
+                download(`/compliance/labour/registers/muster-roll?period=${period}`, `muster-roll-${period}.csv`)
+              }
+            >
               Download
             </button>
           </div>
@@ -367,10 +437,18 @@ function PoshTab() {
   const [memberOpen, setMemberOpen] = useState(false);
   const [complaintOpen, setComplaintOpen] = useState(false);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [memberForm, setMemberForm] = useState({ role: 'member' as 'presiding' | 'member' | 'external', externalName: '', isWoman: false, appointedOn: '' });
+  const [memberForm, setMemberForm] = useState({
+    role: 'member' as 'presiding' | 'member' | 'external',
+    externalName: '',
+    isWoman: false,
+    appointedOn: '',
+  });
   const [complaintForm, setComplaintForm] = useState({ complainantText: '', respondentText: '', receivedOn: '' });
 
-  const members = useQuery({ queryKey: ['posh-members'], queryFn: () => api.get<IccMember[]>('/compliance/labour/posh/committee') });
+  const members = useQuery({
+    queryKey: ['posh-members'],
+    queryFn: () => api.get<IccMember[]>('/compliance/labour/posh/committee'),
+  });
   const validation = useQuery({
     queryKey: ['posh-validate'],
     queryFn: () => api.post<{ compliant: boolean; missing: string[] }>('/compliance/labour/posh/committee/validate'),
@@ -383,17 +461,28 @@ function PoshTab() {
   const report = useQuery({
     queryKey: ['posh-report', year],
     queryFn: () =>
-      api.get<{ snapshot: { received: number; disposed: number; pending: number; pendingOver90Days: number; workshopsHeld: number }; status: string }>(
-        `/compliance/labour/posh/annual-report/${year}`,
-      ),
+      api.get<{
+        snapshot: {
+          received: number;
+          disposed: number;
+          pending: number;
+          pendingOver90Days: number;
+          workshopsHeld: number;
+        };
+        status: string;
+      }>(`/compliance/labour/posh/annual-report/${year}`),
   });
 
   return (
     <div className="flex flex-col gap-4">
       <Card title="Internal Committee" actions={<NewButton label="Add member" onClick={() => setMemberOpen(true)} />}>
         {validation.data && (
-          <div className={`mb-3 rounded border px-3 py-2 text-sm ${validation.data.compliant ? 'border-band-strong/40 text-band-strong' : 'border-band-critical/40 text-band-critical'}`}>
-            {validation.data.compliant ? 'The committee meets the POSH Act Sec 4(2) composition.' : (
+          <div
+            className={`mb-3 rounded border px-3 py-2 text-sm ${validation.data.compliant ? 'border-band-strong/40 text-band-strong' : 'border-band-critical/40 text-band-critical'}`}
+          >
+            {validation.data.compliant ? (
+              'The committee meets the POSH Act Sec 4(2) composition.'
+            ) : (
               <ul className="list-disc pl-4">
                 {validation.data.missing.map((m) => (
                   <li key={m}>{m}</li>
@@ -418,7 +507,9 @@ function PoshTab() {
             <tbody>
               {members.data.map((m) => (
                 <tr key={m.id}>
-                  <td><StatusChip status={m.role} /></td>
+                  <td>
+                    <StatusChip status={m.role} />
+                  </td>
                   <td>{m.externalName ?? m.id}</td>
                   <td>{m.isWoman ? 'Yes' : 'No'}</td>
                   <td>{date(m.appointedOn)}</td>
@@ -445,17 +536,38 @@ function PoshTab() {
               { value: 'external', label: 'External member' },
             ]}
           />
-          <TextInput label="Name" value={memberForm.externalName} onChange={(v) => setMemberForm({ ...memberForm, externalName: v })} required />
+          <TextInput
+            label="Name"
+            value={memberForm.externalName}
+            onChange={(v) => setMemberForm({ ...memberForm, externalName: v })}
+            required
+          />
           <label className="mt-2 flex items-center gap-2 text-sm text-ink-300">
-            <input type="checkbox" checked={memberForm.isWoman} onChange={(e) => setMemberForm({ ...memberForm, isWoman: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={memberForm.isWoman}
+              onChange={(e) => setMemberForm({ ...memberForm, isWoman: e.target.checked })}
+            />
             Woman
           </label>
-          <TextInput label="Appointed on" type="date" value={memberForm.appointedOn} onChange={(v) => setMemberForm({ ...memberForm, appointedOn: v })} required />
+          <TextInput
+            label="Appointed on"
+            type="date"
+            value={memberForm.appointedOn}
+            onChange={(v) => setMemberForm({ ...memberForm, appointedOn: v })}
+            required
+          />
         </CreateModal>
       </Card>
 
-      <Card title="Complaints" subtitle="Visible only to a holder of posh_cases:view. Never counted anywhere else." actions={<NewButton label="Record complaint" onClick={() => setComplaintOpen(true)} />}>
-        {complaints.error && <EmptyState message="Not visible from this account — POSH complaints need posh_cases:view." />}
+      <Card
+        title="Complaints"
+        subtitle="Visible only to a holder of posh_cases:view. Never counted anywhere else."
+        actions={<NewButton label="Record complaint" onClick={() => setComplaintOpen(true)} />}
+      >
+        {complaints.error && (
+          <EmptyState message="Not visible from this account — POSH complaints need posh_cases:view." />
+        )}
         {complaints.data && complaints.data.length === 0 && <EmptyState message="No complaints recorded." />}
         {complaints.data && complaints.data.length > 0 && (
           <table className="table">
@@ -472,7 +584,9 @@ function PoshTab() {
                 <tr key={c.id}>
                   <td>{c.number}</td>
                   <td>{date(c.receivedOn)}</td>
-                  <td><StatusChip status={c.status} /></td>
+                  <td>
+                    <StatusChip status={c.status} />
+                  </td>
                   <td>{date(c.inquiryDueAt)}</td>
                 </tr>
               ))}
@@ -486,13 +600,32 @@ function PoshTab() {
           invalidate={[['posh-complaints']]}
           onSubmit={() => api.post('/compliance/labour/posh/complaints', complaintForm)}
         >
-          <TextArea label="Complainant" value={complaintForm.complainantText} onChange={(v) => setComplaintForm({ ...complaintForm, complainantText: v })} required />
-          <TextArea label="Respondent" value={complaintForm.respondentText} onChange={(v) => setComplaintForm({ ...complaintForm, respondentText: v })} required />
-          <TextInput label="Received on" type="date" value={complaintForm.receivedOn} onChange={(v) => setComplaintForm({ ...complaintForm, receivedOn: v })} required />
+          <TextArea
+            label="Complainant"
+            value={complaintForm.complainantText}
+            onChange={(v) => setComplaintForm({ ...complaintForm, complainantText: v })}
+            required
+          />
+          <TextArea
+            label="Respondent"
+            value={complaintForm.respondentText}
+            onChange={(v) => setComplaintForm({ ...complaintForm, respondentText: v })}
+            required
+          />
+          <TextInput
+            label="Received on"
+            type="date"
+            value={complaintForm.receivedOn}
+            onChange={(v) => setComplaintForm({ ...complaintForm, receivedOn: v })}
+            required
+          />
         </CreateModal>
       </Card>
 
-      <Card title="Annual report" subtitle="POSH Act Sec 21 — a snapshot for the year, prepared here and filed once ready.">
+      <Card
+        title="Annual report"
+        subtitle="POSH Act Sec 21 — a snapshot for the year, prepared here and filed once ready."
+      >
         <div className="mb-3 flex items-center gap-2">
           <input className="input w-28" type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} />
           <button className="btn" onClick={() => qc.invalidateQueries({ queryKey: ['posh-report', year] })}>
@@ -534,10 +667,17 @@ function DisciplinaryTab() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ employmentRelationshipId: '', note: '' });
 
-  const cases = useQuery({ queryKey: ['disciplinary-cases'], queryFn: () => api.get<DisciplinaryCase[]>('/compliance/labour/disciplinary') });
+  const cases = useQuery({
+    queryKey: ['disciplinary-cases'],
+    queryFn: () => api.get<DisciplinaryCase[]>('/compliance/labour/disciplinary'),
+  });
 
   return (
-    <Card title="Disciplinary cases" subtitle="Show-cause, reply, inquiry, decision, close. Evidence recorded at each step becomes part of that person's record." actions={<NewButton label="Open case" onClick={() => setOpen(true)} />}>
+    <Card
+      title="Disciplinary cases"
+      subtitle="Show-cause, reply, inquiry, decision, close. Evidence recorded at each step becomes part of that person's record."
+      actions={<NewButton label="Open case" onClick={() => setOpen(true)} />}
+    >
       {cases.isLoading && <Loading />}
       {cases.data && cases.data.length === 0 && <EmptyState message="No disciplinary cases open." />}
       {cases.data && cases.data.length > 0 && (
@@ -557,7 +697,9 @@ function DisciplinaryTab() {
                 <td className="text-2xs" title={c.employmentRecordCode ?? c.employmentRelationshipId}>
                   {c.employmentFullName ?? c.employmentRelationshipId}
                 </td>
-                <td><StatusChip status={c.status} /></td>
+                <td>
+                  <StatusChip status={c.status} />
+                </td>
                 <td>{dateTime(c.showCauseIssuedAt)}</td>
                 <td>{dateTime(c.replyDueAt)}</td>
                 <td>{c.outcome ?? '—'}</td>
@@ -573,7 +715,12 @@ function DisciplinaryTab() {
         invalidate={[['disciplinary-cases']]}
         onSubmit={() => api.post('/compliance/labour/disciplinary', form)}
       >
-        <TextInput label="Employment ID" value={form.employmentRelationshipId} onChange={(v) => setForm({ ...form, employmentRelationshipId: v })} required />
+        <TextInput
+          label="Employment ID"
+          value={form.employmentRelationshipId}
+          onChange={(v) => setForm({ ...form, employmentRelationshipId: v })}
+          required
+        />
         <TextArea label="Show-cause note" value={form.note} onChange={(v) => setForm({ ...form, note: v })} required />
       </CreateModal>
     </Card>
@@ -603,7 +750,9 @@ function LettersTab() {
 
   const view = async (id: string) => {
     try {
-      const doc = await api.get<{ number: string; snapshot: { body: string } }>(`/compliance/labour/letters/${id}/document`);
+      const doc = await api.get<{ number: string; snapshot: { body: string } }>(
+        `/compliance/labour/letters/${id}/document`,
+      );
       setViewing(doc);
       setError(null);
     } catch (e) {
@@ -616,7 +765,12 @@ function LettersTab() {
       title="Letters"
       subtitle="Offer, appointment, confirmation, relieving, experience, warning. Final once issued — a correction is a new letter, never an edit. Appointment letters issue automatically when an offer is accepted; relieving and experience letters issue automatically on offboarding."
     >
-      <TextInput label="Employment ID" value={employmentId} onChange={setEmploymentId} placeholder="Paste an employment relationship id" />
+      <TextInput
+        label="Employment ID"
+        value={employmentId}
+        onChange={setEmploymentId}
+        placeholder="Paste an employment relationship id"
+      />
       {error && <ErrorBox error={error} />}
       {letters.isLoading && employmentId && <Loading />}
       {letters.data && letters.data.length === 0 && <EmptyState message="No letters issued for this employment yet." />}
@@ -633,7 +787,9 @@ function LettersTab() {
           <tbody>
             {letters.data.map((l) => (
               <tr key={l.id}>
-                <td><StatusChip status={l.kind} /></td>
+                <td>
+                  <StatusChip status={l.kind} />
+                </td>
                 <td>{l.number}</td>
                 <td>{dateTime(l.issuedAt)}</td>
                 <td className="text-right">

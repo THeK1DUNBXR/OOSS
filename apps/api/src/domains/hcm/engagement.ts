@@ -127,9 +127,12 @@ export async function createAnnouncement(input: AnnouncementInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'announcements', verb: 'create' });
   const audienceType = input.audienceType ?? 'all';
-  if (audienceType === 'division' && !input.audienceDivision) throw ApiError.badRequest('A division audience needs a division.');
-  if (audienceType === 'org_unit' && !input.audienceOrgUnitId) throw ApiError.badRequest('An org-unit audience needs an org unit.');
-  if (audienceType === 'location' && !input.audienceLocation) throw ApiError.badRequest('A location audience needs a location.');
+  if (audienceType === 'division' && !input.audienceDivision)
+    throw ApiError.badRequest('A division audience needs a division.');
+  if (audienceType === 'org_unit' && !input.audienceOrgUnitId)
+    throw ApiError.badRequest('An org-unit audience needs an org unit.');
+  if (audienceType === 'location' && !input.audienceLocation)
+    throw ApiError.badRequest('A location audience needs a location.');
 
   const recordCode = await nextEngagementNumber('ANN');
   const publishAt = input.publishAt ?? new Date();
@@ -171,8 +174,17 @@ export async function publishAnnouncement(id: string) {
   const row = await prisma.announcement.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Announcement');
   if (row.status === 'published') return row;
-  const updated = await prisma.announcement.update({ where: { id }, data: { status: 'published', publishAt: new Date() } });
-  await auditWrite({ action: 'update', subjectType: 'announcement', subjectId: id, before: { status: row.status }, after: { status: 'published' } });
+  const updated = await prisma.announcement.update({
+    where: { id },
+    data: { status: 'published', publishAt: new Date() },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'announcement',
+    subjectId: id,
+    before: { status: row.status },
+    after: { status: 'published' },
+  });
   await emitAnnouncementPublished(id, row.recordCode);
   return updated;
 }
@@ -183,7 +195,13 @@ export async function withdrawAnnouncement(id: string) {
   const row = await prisma.announcement.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Announcement');
   const updated = await prisma.announcement.update({ where: { id }, data: { status: 'withdrawn' } });
-  await auditWrite({ action: 'update', subjectType: 'announcement', subjectId: id, before: { status: row.status }, after: { status: 'withdrawn' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'announcement',
+    subjectId: id,
+    before: { status: row.status },
+    after: { status: 'withdrawn' },
+  });
   return updated;
 }
 
@@ -249,7 +267,8 @@ export async function giveRecognition(input: RecognitionInput) {
   await assertCan({ resource: 'recognitions', verb: 'create' });
   if (!auth.partyId) throw ApiError.badRequest('No party on this session to give recognition from.');
   if (input.toPartyId === auth.partyId) throw ApiError.badRequest('You cannot give yourself recognition.');
-  if (!input.badge.trim() || !input.message.trim()) throw ApiError.badRequest('A badge and a message are both required.');
+  if (!input.badge.trim() || !input.message.trim())
+    throw ApiError.badRequest('A badge and a message are both required.');
 
   const recordCode = await nextEngagementNumber('REC');
   const row = await prisma.recognition.create({
@@ -283,7 +302,10 @@ export async function listRecognitions() {
   const where =
     scope === 'all'
       ? { tenantId: auth.tenantId }
-      : { tenantId: auth.tenantId, OR: [{ fromPartyId: auth.partyId ?? '__none__' }, { toPartyId: auth.partyId ?? '__none__' }] };
+      : {
+          tenantId: auth.tenantId,
+          OR: [{ fromPartyId: auth.partyId ?? '__none__' }, { toPartyId: auth.partyId ?? '__none__' }],
+        };
   return prisma.recognition.findMany({ where, orderBy: { createdAt: 'desc' } });
 }
 
@@ -352,7 +374,11 @@ export async function createPulseSurvey(input: PulseSurveyInput) {
 }
 
 async function emitSurveyOpened(id: string, recordCode: string) {
-  await emit({ name: 'kz.hr.survey.opened', subject: { entityType: 'pulse_survey', entityId: id, recordCode }, newState: { status: 'open' } });
+  await emit({
+    name: 'kz.hr.survey.opened',
+    subject: { entityType: 'pulse_survey', entityId: id, recordCode },
+    newState: { status: 'open' },
+  });
 }
 
 export async function openPulseSurvey(id: string) {
@@ -373,8 +399,18 @@ export async function closePulseSurvey(id: string) {
   if (!row) throw ApiError.notFound('Pulse survey');
   if (row.status !== 'open') throw ApiError.conflict(`Only an open survey can be closed (this one is ${row.status}).`);
   const updated = await prisma.pulseSurvey.update({ where: { id }, data: { status: 'closed' } });
-  await auditWrite({ action: 'update', subjectType: 'pulse_survey', subjectId: id, before: { status: row.status }, after: { status: 'closed' } });
-  await emit({ name: 'kz.hr.survey.closed', subject: { entityType: 'pulse_survey', entityId: id, recordCode: row.recordCode }, newState: { status: 'closed' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'pulse_survey',
+    subjectId: id,
+    before: { status: row.status },
+    after: { status: 'closed' },
+  });
+  await emit({
+    name: 'kz.hr.survey.closed',
+    subject: { entityType: 'pulse_survey', entityId: id, recordCode: row.recordCode },
+    newState: { status: 'closed' },
+  });
   return updated;
 }
 
@@ -446,7 +482,8 @@ export async function submitSurveyResponse(surveyId: string, answers: SurveyAnsw
           data: { tenantId: auth.tenantId, surveyId, dedupeHash: dedupeHash(auth.tenantId, surveyId, auth.partyId!) },
         });
       } catch (err) {
-        if ((err as { code?: string }).code === 'P2002') throw ApiError.conflict('You have already answered this survey.');
+        if ((err as { code?: string }).code === 'P2002')
+          throw ApiError.conflict('You have already answered this survey.');
         throw err;
       }
       return tx.surveyResponse.create({
@@ -469,7 +506,13 @@ export async function submitSurveyResponse(surveyId: string, answers: SurveyAnsw
 
   try {
     return await prisma.surveyResponse.create({
-      data: { tenantId: auth.tenantId, surveyId, employmentRelationshipId: employment.id, respondentToken: null, answers: answers as never },
+      data: {
+        tenantId: auth.tenantId,
+        surveyId,
+        employmentRelationshipId: employment.id,
+        respondentToken: null,
+        answers: answers as never,
+      },
     });
   } catch (err) {
     if ((err as { code?: string }).code === 'P2002') {
@@ -489,7 +532,9 @@ export async function pulseSurveyResults(surveyId: string) {
   const questions = survey.questions as unknown as SurveyQuestion[];
 
   const perQuestion = questions.map((q) => {
-    const values = responses.map((r) => (r.answers as unknown as SurveyAnswer[]).find((a) => a.questionId === q.id)?.value).filter((v) => v !== undefined);
+    const values = responses
+      .map((r) => (r.answers as unknown as SurveyAnswer[]).find((a) => a.questionId === q.id)?.value)
+      .filter((v) => v !== undefined);
     if (q.type === 'text') {
       // Free text is the one answer shape that can read as identifying on its
       // own — an anonymous survey's whole point is defeated if a handful of
@@ -523,14 +568,21 @@ export async function pendingSurveysForMe() {
   const scope = await scopeFor('surveys', 'view');
   if (!scope) return [];
   const facts = await audienceFactsFor(auth.tenantId, auth.partyId);
-  const employment = await prisma.employmentRelationship.findFirst({ where: { tenantId: auth.tenantId, personId: auth.partyId }, select: { id: true } });
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { tenantId: auth.tenantId, personId: auth.partyId },
+    select: { id: true },
+  });
 
   const open = await prisma.pulseSurvey.findMany({ where: { tenantId: auth.tenantId, status: 'open' } });
   const inMyAudience = open.filter((s) => inAudience(s as unknown as Audience, facts));
   if (inMyAudience.length === 0) return [];
 
   const namedAnswered = await prisma.surveyResponse.findMany({
-    where: { tenantId: auth.tenantId, surveyId: { in: inMyAudience.map((s) => s.id) }, employmentRelationshipId: employment?.id ?? '__none__' },
+    where: {
+      tenantId: auth.tenantId,
+      surveyId: { in: inMyAudience.map((s) => s.id) },
+      employmentRelationshipId: employment?.id ?? '__none__',
+    },
     select: { surveyId: true },
   });
   const anonymousSurveyIds = inMyAudience.filter((s) => s.anonymous).map((s) => s.id);
@@ -600,7 +652,12 @@ export async function createHrCase(input: HrCaseInput) {
     return created;
   });
 
-  await auditWrite({ action: 'create', subjectType: 'hr_case', subjectId: row.id, after: { category: row.category, status: row.status } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'hr_case',
+    subjectId: row.id,
+    after: { category: row.category, status: row.status },
+  });
   // A confidential case is marked `restricted` on the wire the same way a POSH
   // complaint is — the fact of its existence travels no further than the
   // event bus's own confidentiality classification lets it.
@@ -624,7 +681,10 @@ export async function listHrCases() {
   await assertCan({ resource: 'hr_cases', verb: 'view' });
   const scope = await scopeFor('hr_cases', 'view');
   if (scope === 'all') {
-    return prisma.hrCase.findMany({ where: { tenantId: auth.tenantId, confidential: false }, orderBy: { createdAt: 'desc' } });
+    return prisma.hrCase.findMany({
+      where: { tenantId: auth.tenantId, confidential: false },
+      orderBy: { createdAt: 'desc' },
+    });
   }
   return prisma.hrCase.findMany({
     where: { tenantId: auth.tenantId, raisedByPartyId: auth.partyId ?? '__none__' },
@@ -640,7 +700,10 @@ export async function listHrCases() {
 export async function listConfidentialHrCases() {
   const auth = currentAuth();
   await assertScopeAll('hr_cases', 'view');
-  return prisma.hrCase.findMany({ where: { tenantId: auth.tenantId, confidential: true }, orderBy: { createdAt: 'desc' } });
+  return prisma.hrCase.findMany({
+    where: { tenantId: auth.tenantId, confidential: true },
+    orderBy: { createdAt: 'desc' },
+  });
 }
 
 async function loadVisibleCase(id: string) {
@@ -659,7 +722,10 @@ async function loadVisibleCase(id: string) {
 
 export async function getHrCase(id: string) {
   const row = await loadVisibleCase(id);
-  const messages = await prisma.hrCaseMessage.findMany({ where: { tenantId: row.tenantId, caseId: id }, orderBy: { createdAt: 'asc' } });
+  const messages = await prisma.hrCaseMessage.findMany({
+    where: { tenantId: row.tenantId, caseId: id },
+    orderBy: { createdAt: 'asc' },
+  });
   return { case: row, messages };
 }
 
@@ -678,8 +744,17 @@ export async function assignHrCase(id: string, assigneePartyId: string) {
   await assertScopeAll('hr_cases', 'edit');
   const row = await prisma.hrCase.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('HR case');
-  const updated = await prisma.hrCase.update({ where: { id }, data: { assigneePartyId, status: row.status === 'open' ? 'in_progress' : row.status } });
-  await auditWrite({ action: 'update', subjectType: 'hr_case', subjectId: id, before: { assigneePartyId: row.assigneePartyId }, after: { assigneePartyId } });
+  const updated = await prisma.hrCase.update({
+    where: { id },
+    data: { assigneePartyId, status: row.status === 'open' ? 'in_progress' : row.status },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'hr_case',
+    subjectId: id,
+    before: { assigneePartyId: row.assigneePartyId },
+    after: { assigneePartyId },
+  });
   return updated;
 }
 
@@ -697,8 +772,17 @@ export async function transitionHrCase(id: string, status: HrCaseStatus, note?: 
   if (status === 'closed' && !row.closedAt) data.closedAt = new Date();
 
   const updated = await prisma.hrCase.update({ where: { id }, data });
-  if (note?.trim()) await prisma.hrCaseMessage.create({ data: { tenantId: auth.tenantId, caseId: id, authorPartyId: auth.partyId ?? 'system', body: note } });
-  await auditWrite({ action: 'update', subjectType: 'hr_case', subjectId: id, before: { status: row.status }, after: { status } });
+  if (note?.trim())
+    await prisma.hrCaseMessage.create({
+      data: { tenantId: auth.tenantId, caseId: id, authorPartyId: auth.partyId ?? 'system', body: note },
+    });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'hr_case',
+    subjectId: id,
+    before: { status: row.status },
+    after: { status },
+  });
 
   if (status === 'resolved' || status === 'closed') {
     await emit({
@@ -715,7 +799,9 @@ export async function transitionHrCase(id: string, status: HrCaseStatus, note?: 
 /** Daily job — HCM-ENGAGEMENT-*: an open case past its SLA due date raises an exception on the HR ops owner. Runs over every case, confidential included; nothing about a grievance's category leaks into the exception body. */
 export async function runHrCaseSlaCheck(): Promise<JobResult> {
   const auth = currentAuth();
-  const open = await prisma.hrCase.findMany({ where: { tenantId: auth.tenantId, status: { notIn: ['resolved', 'closed'] } } });
+  const open = await prisma.hrCase.findMany({
+    where: { tenantId: auth.tenantId, status: { notIn: ['resolved', 'closed'] } },
+  });
   const breached = open.filter((c) => isHrCaseSlaBreached(c.status, c.slaDueAt));
 
   for (const c of breached) {
@@ -773,13 +859,22 @@ export async function createPolicyDocument(input: PolicyDocumentInput) {
       createdById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'policy_document', subjectId: row.id, after: { title: row.title, version: row.version } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'policy_document',
+    subjectId: row.id,
+    after: { title: row.title, version: row.version },
+  });
   if (row.status === 'published') await emitPolicyPublished(row.id, recordCode);
   return row;
 }
 
 async function emitPolicyPublished(id: string, recordCode: string) {
-  await emit({ name: 'kz.hr.policy_document.published', subject: { entityType: 'policy_document', entityId: id, recordCode }, newState: { status: 'published' } });
+  await emit({
+    name: 'kz.hr.policy_document.published',
+    subject: { entityType: 'policy_document', entityId: id, recordCode },
+    newState: { status: 'published' },
+  });
 }
 
 export async function publishPolicyDocument(id: string) {
@@ -793,7 +888,13 @@ export async function publishPolicyDocument(id: string) {
     data: { status: 'superseded' },
   });
   const updated = await prisma.policyDocument.update({ where: { id }, data: { status: 'published' } });
-  await auditWrite({ action: 'update', subjectType: 'policy_document', subjectId: id, before: { status: row.status }, after: { status: 'published' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'policy_document',
+    subjectId: id,
+    before: { status: row.status },
+    after: { status: 'published' },
+  });
   await emitPolicyPublished(id, row.recordCode);
   return updated;
 }
@@ -801,7 +902,10 @@ export async function publishPolicyDocument(id: string) {
 export async function listPolicyDocuments() {
   const auth = currentAuth();
   await assertCan({ resource: 'hcm_policy_documents', verb: 'view' });
-  const rows = await prisma.policyDocument.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  const rows = await prisma.policyDocument.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
   return (await managesResource('hcm_policy_documents')) ? rows : rows.filter((r) => r.status === 'published');
 }
 
@@ -813,7 +917,9 @@ export async function acknowledgePolicyDocument(id: string) {
   if (!row) throw ApiError.notFound('Policy document');
   if (row.status !== 'published') throw ApiError.conflict('Only a published policy can be acknowledged.');
   const ack = await prisma.policyAcknowledgement.upsert({
-    where: { tenantId_policyDocumentId_partyId: { tenantId: auth.tenantId, policyDocumentId: id, partyId: auth.partyId } },
+    where: {
+      tenantId_policyDocumentId_partyId: { tenantId: auth.tenantId, policyDocumentId: id, partyId: auth.partyId },
+    },
     create: { tenantId: auth.tenantId, policyDocumentId: id, partyId: auth.partyId },
     update: {},
   });
@@ -830,7 +936,9 @@ export async function policyAckStatus(id: string) {
   await assertCan({ resource: 'hcm_policy_documents', verb: 'edit' });
   const row = await prisma.policyDocument.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Policy document');
-  const acks = await prisma.policyAcknowledgement.findMany({ where: { tenantId: auth.tenantId, policyDocumentId: id } });
+  const acks = await prisma.policyAcknowledgement.findMany({
+    where: { tenantId: auth.tenantId, policyDocumentId: id },
+  });
   return { policy: row, ackCount: acks.length };
 }
 
@@ -838,7 +946,9 @@ export async function policyAckStatus(id: string) {
 export async function pendingPolicyAcksForMe() {
   const auth = currentAuth();
   if (!auth.partyId) return [];
-  const published = await prisma.policyDocument.findMany({ where: { tenantId: auth.tenantId, status: 'published', acknowledgementRequired: true } });
+  const published = await prisma.policyDocument.findMany({
+    where: { tenantId: auth.tenantId, status: 'published', acknowledgementRequired: true },
+  });
   if (published.length === 0) return [];
   const acked = await prisma.policyAcknowledgement.findMany({
     where: { tenantId: auth.tenantId, partyId: auth.partyId, policyDocumentId: { in: published.map((p) => p.id) } },
@@ -874,7 +984,12 @@ export async function createExitInterview(input: ExitInterviewInput) {
       conductedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'exit_interview', subjectId: row.id, after: { employmentRelationshipId: row.employmentRelationshipId } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'exit_interview',
+    subjectId: row.id,
+    after: { employmentRelationshipId: row.employmentRelationshipId },
+  });
   await emit({
     name: 'kz.hr.exit_interview.completed',
     subject: { entityType: 'exit_interview', entityId: row.id, recordCode },
@@ -912,23 +1027,32 @@ export async function exitInterviewThemeSummary() {
 
 export async function myEngagementHome() {
   const auth = currentAuth();
-  const [announcements, kudos, myCases, pendingAnnouncementAcks, pendingPolicyAcks, surveysToAnswer] = await Promise.all([
-    listAnnouncements().catch(() => []),
-    prisma.recognition.findMany({
-      where: { tenantId: auth.tenantId, toPartyId: auth.partyId ?? '__none__' },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    }),
-    prisma.hrCase.findMany({
-      where: { tenantId: auth.tenantId, raisedByPartyId: auth.partyId ?? '__none__', status: { notIn: ['resolved', 'closed'] } },
-      orderBy: { createdAt: 'desc' },
-    }),
-    listAnnouncements().then((rows) =>
-      filterUnacked(auth.tenantId, auth.partyId, rows.filter((r) => r.acknowledgementRequired)),
-    ),
-    pendingPolicyAcksForMe(),
-    pendingSurveysForMe(),
-  ]);
+  const [announcements, kudos, myCases, pendingAnnouncementAcks, pendingPolicyAcks, surveysToAnswer] =
+    await Promise.all([
+      listAnnouncements().catch(() => []),
+      prisma.recognition.findMany({
+        where: { tenantId: auth.tenantId, toPartyId: auth.partyId ?? '__none__' },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      prisma.hrCase.findMany({
+        where: {
+          tenantId: auth.tenantId,
+          raisedByPartyId: auth.partyId ?? '__none__',
+          status: { notIn: ['resolved', 'closed'] },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      listAnnouncements().then((rows) =>
+        filterUnacked(
+          auth.tenantId,
+          auth.partyId,
+          rows.filter((r) => r.acknowledgementRequired),
+        ),
+      ),
+      pendingPolicyAcksForMe(),
+      pendingSurveysForMe(),
+    ]);
 
   return {
     announcements: announcements.slice(0, 10),
@@ -939,7 +1063,11 @@ export async function myEngagementHome() {
   };
 }
 
-async function filterUnacked<T extends { id: string }>(tenantId: string, partyId: string | null, rows: T[]): Promise<T[]> {
+async function filterUnacked<T extends { id: string }>(
+  tenantId: string,
+  partyId: string | null,
+  rows: T[],
+): Promise<T[]> {
   if (!partyId || rows.length === 0) return [];
   const acked = await prisma.announcementAck.findMany({
     where: { tenantId, partyId, announcementId: { in: rows.map((r) => r.id) } },

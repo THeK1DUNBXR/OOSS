@@ -365,9 +365,7 @@ export async function transitionLeaveRequest(id: string, event: LeaveRequestEven
       where: { id },
       data: {
         status: result.to,
-        ...(event === 'APPROVE' || event === 'REJECT'
-          ? { decidedById: auth.partyId, decidedAt: new Date() }
-          : {}),
+        ...(event === 'APPROVE' || event === 'REJECT' ? { decidedById: auth.partyId, decidedAt: new Date() } : {}),
       },
     });
 
@@ -474,14 +472,14 @@ export async function recordAttendance(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'attendance', verb: 'create' });
 
-  const day = new Date(Date.UTC(
-    input.workDate.getUTCFullYear(),
-    input.workDate.getUTCMonth(),
-    input.workDate.getUTCDate(),
-  ));
+  const day = new Date(
+    Date.UTC(input.workDate.getUTCFullYear(), input.workDate.getUTCMonth(), input.workDate.getUTCDate()),
+  );
 
   const existing = await prisma.workAttendance.findUnique({
-    where: { employmentRelationshipId_workDate: { employmentRelationshipId: input.employmentRelationshipId, workDate: day } },
+    where: {
+      employmentRelationshipId_workDate: { employmentRelationshipId: input.employmentRelationshipId, workDate: day },
+    },
   });
 
   // A locked day is closed. Correcting it is a regularisation on a reopened
@@ -494,7 +492,9 @@ export async function recordAttendance(input: {
   }
 
   const row = await prisma.workAttendance.upsert({
-    where: { employmentRelationshipId_workDate: { employmentRelationshipId: input.employmentRelationshipId, workDate: day } },
+    where: {
+      employmentRelationshipId_workDate: { employmentRelationshipId: input.employmentRelationshipId, workDate: day },
+    },
     create: {
       tenantId: auth.tenantId,
       employmentRelationshipId: input.employmentRelationshipId,

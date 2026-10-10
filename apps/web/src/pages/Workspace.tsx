@@ -77,7 +77,9 @@ export function Workspace() {
         subtitle={
           <span>
             Working as <span className="text-ink-200">{titleCase(user.roleSlug)}</span> · you can see up to{' '}
-            <span className="text-ink-200">{SENSITIVITY_WORDS[user.classificationCeiling] ?? user.classificationCeiling}</span>
+            <span className="text-ink-200">
+              {SENSITIVITY_WORDS[user.classificationCeiling] ?? user.classificationCeiling}
+            </span>
           </span>
         }
       />
@@ -91,7 +93,12 @@ export function Workspace() {
           drillTo="/workspace"
         />
         {can('opportunities:V') && (
-          <Metric label="My open pipeline" value={money(pipelineValue)} sub={`${opps?.items.length ?? 0} opportunities`} drillTo="/crm/pipeline" />
+          <Metric
+            label="My open pipeline"
+            value={money(pipelineValue)}
+            sub={`${opps?.items.length ?? 0} opportunities`}
+            drillTo="/crm/pipeline"
+          />
         )}
         {can('exceptions:V') && (
           <Metric
@@ -152,10 +159,15 @@ export function Workspace() {
                 <li key={a.id} className="px-4 py-2.5">
                   <div className="flex items-center gap-1.5">
                     <span className="chip border-accent/40 text-accent-soft">{a.action}</span>
-                    {a.slaBreached && <span className="chip border-band-critical/40 text-band-critical">SLA breached</span>}
+                    {a.slaBreached && (
+                      <span className="chip border-band-critical/40 text-band-critical">SLA breached</span>
+                    )}
                   </div>
                   <p className="mt-1 text-xs text-ink-100">{a.subjectLabel}</p>
-                  <Link to="/commercial/approvals" className="mt-1 inline-block text-2xs text-accent-soft hover:underline">
+                  <Link
+                    to="/commercial/approvals"
+                    className="mt-1 inline-block text-2xs text-accent-soft hover:underline"
+                  >
                     Open the approval queue →
                   </Link>
                 </li>
@@ -165,7 +177,15 @@ export function Workspace() {
         )}
 
         {can('opportunities:V') && (
-          <Card title="My pipeline" actions={<Link to="/crm/pipeline" className="btn-ghost">Board</Link>} bodyClassName="p-0">
+          <Card
+            title="My pipeline"
+            actions={
+              <Link to="/crm/pipeline" className="btn-ghost">
+                Board
+              </Link>
+            }
+            bodyClassName="p-0"
+          >
             {(opps?.items ?? []).length === 0 ? (
               <EmptyState message="No open opportunities assigned to you." />
             ) : (
@@ -174,7 +194,10 @@ export function Workspace() {
                   <li key={o.id} className="px-4 py-2.5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <Link to={`/crm/opportunities/${o.id}`} className="text-xs font-medium text-ink-100 hover:text-accent-soft">
+                        <Link
+                          to={`/crm/opportunities/${o.id}`}
+                          className="text-xs font-medium text-ink-100 hover:text-accent-soft"
+                        >
                           {o.title}
                         </Link>
                         <p className="text-2xs text-ink-500">
@@ -183,7 +206,10 @@ export function Workspace() {
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="text-xs tabular-nums text-ink-200">{money(o.expectedValue, o.currency)}</p>
-                        <StatusChip status={o.forecastCategory} tone={o.forecastCategory === 'commit' ? 'good' : 'neutral'} />
+                        <StatusChip
+                          status={o.forecastCategory}
+                          tone={o.forecastCategory === 'commit' ? 'good' : 'neutral'}
+                        />
                       </div>
                     </div>
                   </li>
@@ -201,7 +227,9 @@ export function Workspace() {
                   <div className="flex items-center gap-1.5">
                     <SeverityChip severity={e.severity} />
                   </div>
-                  <p className="mt-1 text-xs text-ink-100" title={e.code}>{e.label}</p>
+                  <p className="mt-1 text-xs text-ink-100" title={e.code}>
+                    {e.label}
+                  </p>
                   <p className="text-2xs text-ink-500">{e.subjectLabel}</p>
                 </li>
               ))}
@@ -223,9 +251,21 @@ export function Exceptions() {
   const [resolving, setResolving] = useState<any>(null);
 
   const query =
-    tab === 'mine' ? '?mine=true' : tab === 'unowned' ? '?unowned=true' : tab === 'breached' ? '?breached=true' : tab === 'resolved' ? '?state=resolved' : '';
+    tab === 'mine'
+      ? '?mine=true'
+      : tab === 'unowned'
+        ? '?unowned=true'
+        : tab === 'breached'
+          ? '?breached=true'
+          : tab === 'resolved'
+            ? '?state=resolved'
+            : '';
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['exceptions', tab],
     queryFn: () => api.get<any[]>(`/command/exceptions${query}`),
   });
@@ -239,10 +279,7 @@ export function Exceptions() {
 
   return (
     <div>
-      <PageHeader
-        title="Problems"
-        subtitle="Things that need a person to fix them, each assigned by name."
-      />
+      <PageHeader title="Problems" subtitle="Things that need a person to fix them, each assigned by name." />
 
       <Tabs
         tabs={[
@@ -274,17 +311,27 @@ export function Exceptions() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <SeverityChip severity={e.severity} />
                     <span className="chip border-ink-700 text-ink-400">{e.domain}</span>
-                    <StatusChip status={e.state} tone={e.state === 'resolved' ? 'good' : e.state === 'escalated' ? 'warn' : 'neutral'} />
-                    {e.slaBreached && <span className="chip border-band-critical/40 text-band-critical">SLA breached</span>}
+                    <StatusChip
+                      status={e.state}
+                      tone={e.state === 'resolved' ? 'good' : e.state === 'escalated' ? 'warn' : 'neutral'}
+                    />
+                    {e.slaBreached && (
+                      <span className="chip border-band-critical/40 text-band-critical">SLA breached</span>
+                    )}
                     {e.ownerUnresolved && (
-                      <span className="chip border-band-strained/40 text-band-strained" title="Nobody has been assigned this. It counts as a gap in our routing rules.">
+                      <span
+                        className="chip border-band-strained/40 text-band-strained"
+                        title="Nobody has been assigned this. It counts as a gap in our routing rules."
+                      >
                         owner unresolved
                       </span>
                     )}
                     {e.ladderRung && <span className="chip border-ink-800 text-ink-500">rung {e.ladderRung}</span>}
                   </div>
 
-                  <p className="mt-1.5 text-xs font-medium text-ink-100" title={e.code}>{e.label}</p>
+                  <p className="mt-1.5 text-xs font-medium text-ink-100" title={e.code}>
+                    {e.label}
+                  </p>
                   <p className="mt-0.5 text-2xs text-ink-400">{e.detail}</p>
                   <p className="mt-1 text-2xs text-ink-500">
                     {e.subjectLabel} · owner {e.ownerName ?? '— unresolved'} · raised {relative(e.raisedAt)}
@@ -339,7 +386,9 @@ function ResolveModal({ exception, onClose }: { exception: any; onClose: () => v
       onClose={onClose}
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
           <button className="btn-primary" onClick={() => resolve.mutate()} disabled={!note || resolve.isPending}>
             Resolve
           </button>
@@ -351,7 +400,12 @@ function ResolveModal({ exception, onClose }: { exception: any; onClose: () => v
         <p className="text-2xs text-ink-400">{exception.detail}</p>
         <div>
           <label className="label">Resolution note (required)</label>
-          <textarea className="input min-h-20" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What did you do about it?" />
+          <textarea
+            className="input min-h-20"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="What did you do about it?"
+          />
         </div>
       </div>
     </Modal>

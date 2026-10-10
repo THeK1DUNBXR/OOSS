@@ -4,18 +4,18 @@
 
 **Read one phase file per session.** Each is self-contained. Reading all nine costs ~11k tokens to find ~1.5k of instruction.
 
-| Phase | File | Delivers | Size |
-|---|---|---|---|
-| 0 | `phase-0-stabilise.md` | Nine verified defects, security headers, logging, CI | 1 week |
-| 1 | `phase-1-ledger.md` | Double-entry journal, integer paise, DB-enforced balance, append-only | 3–4 weeks |
-| 2 | `phase-2-audit.md` | Rule 3(1) audit spine, 8-year retention, DPDP consent + erasure | 2 weeks |
-| 3 | `phase-3-statutory.md` | Statutory pack, e-invoicing, GSTR-1/1A/3B/IMS, payroll, TDS | 6–8 weeks |
-| 4 | `phase-4-interface.md` | Design system, `DataTable`, splitting, a11y, mobile | 4–6 weeks |
-| 5 | `phase-5-semantic.md` | Typed metric graph, deterministic SQL compiler, evals | 3 weeks |
-| 6 | `phase-6-intelligence.md` | Model gateway, the Briefing, Ask Kaizen, approval gates | 4–6 weeks |
-| 7 | `phase-7-product.md` | Onboarding state machine, tenancy tiers, India residency | 3–4 weeks |
-| 8 | `phase-8-proof.md` | Concurrency tests, leakage fuzzer, restore drills, SOC 2 | ongoing |
-| — | `planned-features.md` | Features not yet scheduled into a phase: researched, argued, open decisions | not scheduled |
+| Phase | File                      | Delivers                                                                    | Size          |
+| ----- | ------------------------- | --------------------------------------------------------------------------- | ------------- |
+| 0     | `phase-0-stabilise.md`    | Nine verified defects, security headers, logging, CI                        | 1 week        |
+| 1     | `phase-1-ledger.md`       | Double-entry journal, integer paise, DB-enforced balance, append-only       | 3–4 weeks     |
+| 2     | `phase-2-audit.md`        | Rule 3(1) audit spine, 8-year retention, DPDP consent + erasure             | 2 weeks       |
+| 3     | `phase-3-statutory.md`    | Statutory pack, e-invoicing, GSTR-1/1A/3B/IMS, payroll, TDS                 | 6–8 weeks     |
+| 4     | `phase-4-interface.md`    | Design system, `DataTable`, splitting, a11y, mobile                         | 4–6 weeks     |
+| 5     | `phase-5-semantic.md`     | Typed metric graph, deterministic SQL compiler, evals                       | 3 weeks       |
+| 6     | `phase-6-intelligence.md` | Model gateway, the Briefing, Ask Kaizen, approval gates                     | 4–6 weeks     |
+| 7     | `phase-7-product.md`      | Onboarding state machine, tenancy tiers, India residency                    | 3–4 weeks     |
+| 8     | `phase-8-proof.md`        | Concurrency tests, leakage fuzzer, restore drills, SOC 2                    | ongoing       |
+| —     | `planned-features.md`     | Features not yet scheduled into a phase: researched, argued, open decisions | not scheduled |
 
 `planned-features.md` — features beyond the phases, each with status, rationale and open decisions. Add to it; move a feature into a phase file when it is scheduled. Not read during phase execution.
 
@@ -29,13 +29,13 @@
 
 All `file:line` citations were read at `origin/main` @ `1656498`, verified by a Session-0 pass on 12 September 2026. Two commits have landed since (`fef1870`, `dc2c05f`, PR #6). No defect moved. These citations are stale:
 
-| Written | At `1656498` | At `dc2c05f` |
-|---|---|---|
-| `server.ts` `app.use(cors())` | :14 | **:18** |
-| `server.ts` `startScheduler()` | :72 | **:88** |
-| API test count | 370 | **372** |
-| `platform/*` file count | 14 | **15** |
-| `createForms.tsx` `role=sponsor` | :881 | **:878** |
+| Written                          | At `1656498` | At `dc2c05f` |
+| -------------------------------- | ------------ | ------------ |
+| `server.ts` `app.use(cors())`    | :14          | **:18**      |
+| `server.ts` `startScheduler()`   | :72          | **:88**      |
+| API test count                   | 370          | **372**      |
+| `platform/*` file count          | 14           | **15**       |
+| `createForms.tsx` `role=sponsor` | :881         | **:878**     |
 
 If a citation does not match, re-locate it — do not assume the plan describes a different file.
 

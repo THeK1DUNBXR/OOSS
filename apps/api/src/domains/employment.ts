@@ -220,7 +220,10 @@ export async function getEmployment(id: string) {
     where: { id, tenantId: auth.tenantId },
     include: {
       person: true,
-      assignments: { include: { position: { include: { job: true, orgUnit: true } } }, orderBy: { effectiveFrom: 'desc' } },
+      assignments: {
+        include: { position: { include: { job: true, orgUnit: true } } },
+        orderBy: { effectiveFrom: 'desc' },
+      },
       leaveBalances: { include: { leaveType: true } },
       onboarding: true,
       offboarding: true,
@@ -299,7 +302,12 @@ export function redactRegulatedEmploymentFields<
     hasUan,
     hasEsicNumber,
     hasBankDetails,
-    ...(revealLast4 ? { panLast4: hasPan ? last4(employment.panNumber) : null, bankLast4: hasBankDetails ? last4(employment.bankAccountNumber) : null } : {}),
+    ...(revealLast4
+      ? {
+          panLast4: hasPan ? last4(employment.panNumber) : null,
+          bankLast4: hasBankDetails ? last4(employment.bankAccountNumber) : null,
+        }
+      : {}),
     person: { ...employment.person, bloodGroup: undefined, hasBloodGroup },
   };
 }
@@ -435,11 +443,7 @@ export interface EmploymentTransitionInput {
  * abandonment confirmation is always the abandonment kind — Absconded resolves
  * into Terminated with that reason, never into Alumni directly.
  */
-export async function transitionEmployment(
-  id: string,
-  event: EmploymentEvent,
-  input: EmploymentTransitionInput = {},
-) {
+export async function transitionEmployment(id: string, event: EmploymentEvent, input: EmploymentTransitionInput = {}) {
   const auth = currentAuth();
   const employment = await prisma.employmentRelationship.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!employment) throw ApiError.notFound('Employment relationship');
@@ -447,9 +451,7 @@ export async function transitionEmployment(
   const from = employment.status as EmploymentState;
 
   const separating =
-    event === 'TERMINATE_POST_DISCIPLINARY' ||
-    event === 'REACH_LAST_WORKING_DAY' ||
-    event === 'ABANDONMENT_CONFIRMED';
+    event === 'TERMINATE_POST_DISCIPLINARY' || event === 'REACH_LAST_WORKING_DAY' || event === 'ABANDONMENT_CONFIRMED';
 
   let separationType = employment.separationType;
   if (separating) {
@@ -603,17 +605,32 @@ export interface EmployeeProfileInput {
 /** Fields that belong to the employment row, not the person — HR's to
  * correct, never reachable through the employee's own `@own` grant. */
 const EMPLOYMENT_ONLY_FIELDS = [
-  'hireEffectiveDate', 'noticePeriodDays', 'engagementType',
-  'panNumber', 'uanNumber', 'esicNumber',
-  'bankAccountNumber', 'bankIfsc', 'bankAccountName',
+  'hireEffectiveDate',
+  'noticePeriodDays',
+  'engagementType',
+  'panNumber',
+  'uanNumber',
+  'esicNumber',
+  'bankAccountNumber',
+  'bankIfsc',
+  'bankAccountName',
 ] as const;
 
 const EMPLOYMENT_PLAIN_FIELDS = [
-  'hireEffectiveDate', 'noticePeriodDays', 'engagementType', 'emergencyContactName', 'emergencyContactPhone',
+  'hireEffectiveDate',
+  'noticePeriodDays',
+  'engagementType',
+  'emergencyContactName',
+  'emergencyContactPhone',
 ] as const;
 
 const EMPLOYMENT_REGULATED_FIELDS = [
-  'panNumber', 'uanNumber', 'esicNumber', 'bankAccountNumber', 'bankIfsc', 'bankAccountName',
+  'panNumber',
+  'uanNumber',
+  'esicNumber',
+  'bankAccountNumber',
+  'bankIfsc',
+  'bankAccountName',
 ] as const;
 
 // A 10-digit Indian mobile number, with or without a +91 prefix — the shape
@@ -680,9 +697,7 @@ export async function updateEmployeeProfile(employmentId: string, input: Employe
     throw ApiError.notFound('Employment relationship');
   }
 
-  const touchesEmploymentOnly = EMPLOYMENT_ONLY_FIELDS.some(
-    (f) => (input as Record<string, unknown>)[f] !== undefined,
-  );
+  const touchesEmploymentOnly = EMPLOYMENT_ONLY_FIELDS.some((f) => (input as Record<string, unknown>)[f] !== undefined);
   if (touchesEmploymentOnly && scope !== 'all') {
     throw ApiError.forbidden(
       "Employment dates, terms and statutory identifiers are HR's to correct, not self-service.",
@@ -759,7 +774,11 @@ export async function updateEmployeeProfile(employmentId: string, input: Employe
   });
 
   // Plain person fields: diffed with values, like every other write.
-  if (['fullName', 'primaryPhone', 'primaryEmail', 'dateOfBirth'].some((f) => (input as Record<string, unknown>)[f] !== undefined)) {
+  if (
+    ['fullName', 'primaryPhone', 'primaryEmail', 'dateOfBirth'].some(
+      (f) => (input as Record<string, unknown>)[f] !== undefined,
+    )
+  ) {
     await auditWrite({
       action: 'update',
       subjectType: 'person',
@@ -785,7 +804,9 @@ export async function updateEmployeeProfile(employmentId: string, input: Employe
     });
   }
 
-  const changedPlainEmployment = EMPLOYMENT_PLAIN_FIELDS.filter((f) => (input as Record<string, unknown>)[f] !== undefined);
+  const changedPlainEmployment = EMPLOYMENT_PLAIN_FIELDS.filter(
+    (f) => (input as Record<string, unknown>)[f] !== undefined,
+  );
   if (changedPlainEmployment.length) {
     await auditWrite({
       action: 'update',
@@ -798,7 +819,9 @@ export async function updateEmployeeProfile(employmentId: string, input: Employe
     });
   }
 
-  const changedRegulatedEmployment = EMPLOYMENT_REGULATED_FIELDS.filter((f) => (input as Record<string, unknown>)[f] !== undefined);
+  const changedRegulatedEmployment = EMPLOYMENT_REGULATED_FIELDS.filter(
+    (f) => (input as Record<string, unknown>)[f] !== undefined,
+  );
   if (changedRegulatedEmployment.length) {
     await auditWrite({
       action: 'update',
@@ -1024,10 +1047,9 @@ export async function transitionCompensation(id: string, event: CompensationEven
   if (event === 'APPROVE' || event === 'REJECT') {
     const proposedBy = await proposerPartyIdOf(id);
     if (proposedBy && proposedBy === auth.partyId) {
-      throw ApiError.forbidden(
-        'You proposed this compensation change; somebody else has to sign it.',
-        [{ axis: 'WHO', passed: false, reason: 'self_proposed_compensation' }],
-      );
+      throw ApiError.forbidden('You proposed this compensation change; somebody else has to sign it.', [
+        { axis: 'WHO', passed: false, reason: 'self_proposed_compensation' },
+      ]);
     }
   }
 
@@ -1140,7 +1162,13 @@ export async function listCompensationForEmployment(employmentRelationshipId: st
     const proposedByPartyId = proposerByRecord.get(r.id) ?? null;
     const isProposer = proposedByPartyId !== null && proposedByPartyId === auth.partyId;
     const canApprove = holdsApprove && !isSubject && !isProposer;
-    const approveWithheldReason = !holdsApprove ? 'not_holder' : isSubject ? 'self' : isProposer ? 'self_proposed' : null;
+    const approveWithheldReason = !holdsApprove
+      ? 'not_holder'
+      : isSubject
+        ? 'self'
+        : isProposer
+          ? 'self_proposed'
+          : null;
     return {
       ...r,
       proposedByPartyId,
@@ -1210,7 +1238,10 @@ export async function transitionOffboarding(id: string, event: OffboardingEvent,
   });
   if (result.to === 'ClosedArchived' || result.to === 'FFSettlementCompleted') {
     // Access revocation and the exit paperwork attach here (workstreams F, G).
-    await runHooks('offboarding.completed', { offboarding: updated, employmentRelationship: record.employmentRelationship });
+    await runHooks('offboarding.completed', {
+      offboarding: updated,
+      employmentRelationship: record.employmentRelationship,
+    });
   }
   return updated;
 }

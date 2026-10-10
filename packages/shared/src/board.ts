@@ -145,14 +145,7 @@ export const RESOLUTION_SUBJECTS_REQUIRING_MEETING: ResolutionSubject[] = [
 export const RESOLUTION_PASSED_BY = ['meeting', 'circulation'] as const;
 export type ResolutionPassedBy = (typeof RESOLUTION_PASSED_BY)[number];
 
-export const RESOLUTION_OUTCOMES = [
-  'draft',
-  'open',
-  'passed',
-  'failed',
-  'withdrawn',
-  'meeting_demanded',
-] as const;
+export const RESOLUTION_OUTCOMES = ['draft', 'open', 'passed', 'failed', 'withdrawn', 'meeting_demanded'] as const;
 export type ResolutionOutcome = (typeof RESOLUTION_OUTCOMES)[number];
 
 export const RESOLUTION_OUTCOME_LABELS: Record<ResolutionOutcome, string> = {

@@ -22,14 +22,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import {
-  EVENTS,
-  computeGst,
-  round2,
-  type DeliveryModel,
-  type RevenueTreatment,
-  type Vertical,
-} from '@kaizen/shared';
+import { EVENTS, computeGst, round2, type DeliveryModel, type RevenueTreatment, type Vertical } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { asSystem } from '../../platform/context.js';
 import { hashPassword } from '../../lib/auth.js';
@@ -75,8 +68,18 @@ const KARNATAKA_GSTIN = '29AABCT1332L1ZA';
 const TRAINING_SAC = '999293';
 
 const TAMIL_NADU_DISTRICTS = [
-  'Chennai', 'Coimbatore', 'Madurai', 'Tiruchirappalli', 'Salem', 'Tirunelveli',
-  'Erode', 'Vellore', 'Thanjavur', 'Dindigul', 'Kanchipuram', 'Cuddalore',
+  'Chennai',
+  'Coimbatore',
+  'Madurai',
+  'Tiruchirappalli',
+  'Salem',
+  'Tirunelveli',
+  'Erode',
+  'Vellore',
+  'Thanjavur',
+  'Dindigul',
+  'Kanchipuram',
+  'Cuddalore',
 ];
 
 /**
@@ -139,22 +142,134 @@ async function seedPeopleAndUsers(): Promise<SeededPerson[]> {
   const passwordHash = await hashPassword(PASSWORD);
 
   const staff: Array<{ name: string; email: string; role: string; branch: string; phone: string; orgUnit: string }> = [
-    { name: 'Ashok Raghunathan', email: 'chairman@kaizen.co.in', role: 'chairman', branch: 'Chennai', phone: '9840000001', orgUnit: 'exec' },
-    { name: 'Vinodh Shankar', email: 'sysadmin@kaizen.co.in', role: 'system_admin', branch: 'Chennai', phone: '9840000002', orgUnit: 'platform' },
-    { name: 'Nandini Krishnan', email: 'bhead@kaizen.co.in', role: 'business_head', branch: 'Chennai', phone: '9840000003', orgUnit: 'commercial' },
-    { name: 'Rajesh Venkataraman', email: 'director@kaizen.co.in', role: 'director', branch: 'Coimbatore', phone: '9840000004', orgUnit: 'commercial' },
-    { name: 'Latha Subramanian', email: 'controller@kaizen.co.in', role: 'finance_controller', branch: 'Chennai', phone: '9840000005', orgUnit: 'finance' },
-    { name: 'Arun Prakash', email: 'arun@kaizen.co.in', role: 'sales', branch: 'Chennai', phone: '9840000006', orgUnit: 'commercial' },
-    { name: 'Sanjay Mehta', email: 'sanjay@kaizen.co.in', role: 'sales', branch: 'Coimbatore', phone: '9840000007', orgUnit: 'commercial' },
-    { name: 'Divya Ramesh', email: 'divya@kaizen.co.in', role: 'telecaller', branch: 'Chennai', phone: '9840000008', orgUnit: 'commercial' },
-    { name: 'Meera Nair', email: 'meera@kaizen.co.in', role: 'education_counsellor', branch: 'Madurai', phone: '9840000009', orgUnit: 'education' },
-    { name: 'Ravi Chandran', email: 'ravi@kaizen.co.in', role: 'trainer', branch: 'Chennai', phone: '9840000010', orgUnit: 'education' },
-    { name: 'Kavitha Selvam', email: 'kavitha@kaizen.co.in', role: 'project_manager', branch: 'Chennai', phone: '9840000011', orgUnit: 'delivery' },
-    { name: 'Suresh Kumar', email: 'suresh@kaizen.co.in', role: 'workforce_placement', branch: 'Coimbatore', phone: '9840000012', orgUnit: 'placement' },
-    { name: 'Priya Balan', email: 'priya@kaizen.co.in', role: 'marketing', branch: 'Chennai', phone: '9840000013', orgUnit: 'marketing' },
-    { name: 'Lakshmi Iyer', email: 'latha@kaizen.co.in', role: 'finance', branch: 'Chennai', phone: '9840000014', orgUnit: 'finance' },
-    { name: 'Bhavani Rajan', email: 'hr@kaizen.co.in', role: 'hr_ops', branch: 'Chennai', phone: '9840000016', orgUnit: 'corporate' },
-    { name: 'Gopal Srinivasan', email: 'multi@kaizen.co.in', role: 'sales', branch: 'Chennai', phone: '9840000015', orgUnit: 'commercial' },
+    {
+      name: 'Ashok Raghunathan',
+      email: 'chairman@kaizen.co.in',
+      role: 'chairman',
+      branch: 'Chennai',
+      phone: '9840000001',
+      orgUnit: 'exec',
+    },
+    {
+      name: 'Vinodh Shankar',
+      email: 'sysadmin@kaizen.co.in',
+      role: 'system_admin',
+      branch: 'Chennai',
+      phone: '9840000002',
+      orgUnit: 'platform',
+    },
+    {
+      name: 'Nandini Krishnan',
+      email: 'bhead@kaizen.co.in',
+      role: 'business_head',
+      branch: 'Chennai',
+      phone: '9840000003',
+      orgUnit: 'commercial',
+    },
+    {
+      name: 'Rajesh Venkataraman',
+      email: 'director@kaizen.co.in',
+      role: 'director',
+      branch: 'Coimbatore',
+      phone: '9840000004',
+      orgUnit: 'commercial',
+    },
+    {
+      name: 'Latha Subramanian',
+      email: 'controller@kaizen.co.in',
+      role: 'finance_controller',
+      branch: 'Chennai',
+      phone: '9840000005',
+      orgUnit: 'finance',
+    },
+    {
+      name: 'Arun Prakash',
+      email: 'arun@kaizen.co.in',
+      role: 'sales',
+      branch: 'Chennai',
+      phone: '9840000006',
+      orgUnit: 'commercial',
+    },
+    {
+      name: 'Sanjay Mehta',
+      email: 'sanjay@kaizen.co.in',
+      role: 'sales',
+      branch: 'Coimbatore',
+      phone: '9840000007',
+      orgUnit: 'commercial',
+    },
+    {
+      name: 'Divya Ramesh',
+      email: 'divya@kaizen.co.in',
+      role: 'telecaller',
+      branch: 'Chennai',
+      phone: '9840000008',
+      orgUnit: 'commercial',
+    },
+    {
+      name: 'Meera Nair',
+      email: 'meera@kaizen.co.in',
+      role: 'education_counsellor',
+      branch: 'Madurai',
+      phone: '9840000009',
+      orgUnit: 'education',
+    },
+    {
+      name: 'Ravi Chandran',
+      email: 'ravi@kaizen.co.in',
+      role: 'trainer',
+      branch: 'Chennai',
+      phone: '9840000010',
+      orgUnit: 'education',
+    },
+    {
+      name: 'Kavitha Selvam',
+      email: 'kavitha@kaizen.co.in',
+      role: 'project_manager',
+      branch: 'Chennai',
+      phone: '9840000011',
+      orgUnit: 'delivery',
+    },
+    {
+      name: 'Suresh Kumar',
+      email: 'suresh@kaizen.co.in',
+      role: 'workforce_placement',
+      branch: 'Coimbatore',
+      phone: '9840000012',
+      orgUnit: 'placement',
+    },
+    {
+      name: 'Priya Balan',
+      email: 'priya@kaizen.co.in',
+      role: 'marketing',
+      branch: 'Chennai',
+      phone: '9840000013',
+      orgUnit: 'marketing',
+    },
+    {
+      name: 'Lakshmi Iyer',
+      email: 'latha@kaizen.co.in',
+      role: 'finance',
+      branch: 'Chennai',
+      phone: '9840000014',
+      orgUnit: 'finance',
+    },
+    {
+      name: 'Bhavani Rajan',
+      email: 'hr@kaizen.co.in',
+      role: 'hr_ops',
+      branch: 'Chennai',
+      phone: '9840000016',
+      orgUnit: 'corporate',
+    },
+    {
+      name: 'Gopal Srinivasan',
+      email: 'multi@kaizen.co.in',
+      role: 'sales',
+      branch: 'Chennai',
+      phone: '9840000015',
+      orgUnit: 'commercial',
+    },
   ];
 
   const out: SeededPerson[] = [];
@@ -220,7 +335,9 @@ async function seedPeopleAndUsers(): Promise<SeededPerson[]> {
     { affiliationType: 'employee', roleSlug: 'project_manager', orgUnit: 'delivery' },
     { affiliationType: 'employee', roleSlug: 'workforce_placement', orgUnit: 'placement' },
   ]) {
-    const exists = await prisma.affiliation.findFirst({ where: { tenantId, partyId: multi.id, roleSlug: mapRole(extra.roleSlug) } });
+    const exists = await prisma.affiliation.findFirst({
+      where: { tenantId, partyId: multi.id, roleSlug: mapRole(extra.roleSlug) },
+    });
     if (!exists) {
       await prisma.affiliation.create({
         data: {
@@ -252,10 +369,18 @@ async function seedPeopleAndUsers(): Promise<SeededPerson[]> {
   for (const c of claims) {
     const person = out.find((p) => p.email === c.email);
     if (!person) continue;
-    const exists = await prisma.capabilityClaim.findFirst({ where: { tenantId, partyId: person.id, vertical: c.vertical } });
+    const exists = await prisma.capabilityClaim.findFirst({
+      where: { tenantId, partyId: person.id, vertical: c.vertical },
+    });
     if (!exists) {
       await prisma.capabilityClaim.create({
-        data: { tenantId, partyId: person.id, vertical: c.vertical, tier: c.tier, evidence: 'Seeded from historical win data.' },
+        data: {
+          tenantId,
+          partyId: person.id,
+          vertical: c.vertical,
+          tier: c.tier,
+          evidence: 'Seeded from historical win data.',
+        },
       });
     }
   }
@@ -328,22 +453,139 @@ async function seedCatalog(): Promise<SeededOffering[]> {
   const tenantId = (await currentTenant()).id;
 
   const catalog: Array<{
-    code: string; name: string; description: string; vertical: Vertical;
-    deliveryModel: DeliveryModel; revenue: RevenueTreatment; price: number;
-    frequency: string; maxDiscount: number; publish: boolean;
+    code: string;
+    name: string;
+    description: string;
+    vertical: Vertical;
+    deliveryModel: DeliveryModel;
+    revenue: RevenueTreatment;
+    price: number;
+    frequency: string;
+    maxDiscount: number;
+    publish: boolean;
   }> = [
-    { code: 'SAP-S4-IMPL', name: 'SAP S/4HANA Implementation', description: 'End-to-end S/4HANA migration and rollout.', vertical: 'sap_enterprise', deliveryModel: 'professional_services', revenue: 'milestone_based', price: 8_500_000, frequency: 'milestone', maxDiscount: 12, publish: true },
-    { code: 'SAP-SUPPORT', name: 'SAP Managed Support (AMS)', description: 'Ongoing application management services.', vertical: 'sap_enterprise', deliveryModel: 'saas_subscription', revenue: 'over_time_ratable', price: 450_000, frequency: 'monthly', maxDiscount: 15, publish: true },
-    { code: 'CYBER-SOC', name: 'Managed SOC', description: '24x7 security operations centre.', vertical: 'cybersecurity', deliveryModel: 'saas_subscription', revenue: 'over_time_ratable', price: 650_000, frequency: 'monthly', maxDiscount: 10, publish: true },
-    { code: 'CYBER-VAPT', name: 'VAPT Engagement', description: 'Vulnerability assessment and penetration testing.', vertical: 'cybersecurity', deliveryModel: 'professional_services', revenue: 'point_in_time', price: 1_200_000, frequency: 'one_time', maxDiscount: 20, publish: true },
-    { code: 'AI-PLATFORM', name: 'AI Platform Build', description: 'Custom AI platform design and delivery.', vertical: 'software_ai', deliveryModel: 'professional_services', revenue: 'milestone_based', price: 6_000_000, frequency: 'milestone', maxDiscount: 15, publish: true },
-    { code: 'CT-LEADERSHIP', name: 'Leadership Development Programme', description: 'Cohort-based corporate leadership training.', vertical: 'corporate_training', deliveryModel: 'cohort', revenue: 'over_time_ratable', price: 1_800_000, frequency: 'one_time', maxDiscount: 25, publish: true },
-    { code: 'EDU-FSD', name: 'Full Stack Development Programme', description: '24-week full stack cohort with placement support.', vertical: 'education', deliveryModel: 'cohort', revenue: 'over_time_ratable', price: 60_000, frequency: 'one_time', maxDiscount: 30, publish: true },
-    { code: 'EDU-DS', name: 'Data Science Programme', description: '20-week data science cohort.', vertical: 'education', deliveryModel: 'cohort', revenue: 'over_time_ratable', price: 75_000, frequency: 'one_time', maxDiscount: 30, publish: true },
-    { code: 'PLC-FEE', name: 'Placement Success Fee', description: 'Fee on confirmed placement.', vertical: 'placement', deliveryModel: 'placement_fee', revenue: 'point_in_time', price: 45_000, frequency: 'one_time', maxDiscount: 20, publish: true },
+    {
+      code: 'SAP-S4-IMPL',
+      name: 'SAP S/4HANA Implementation',
+      description: 'End-to-end S/4HANA migration and rollout.',
+      vertical: 'sap_enterprise',
+      deliveryModel: 'professional_services',
+      revenue: 'milestone_based',
+      price: 8_500_000,
+      frequency: 'milestone',
+      maxDiscount: 12,
+      publish: true,
+    },
+    {
+      code: 'SAP-SUPPORT',
+      name: 'SAP Managed Support (AMS)',
+      description: 'Ongoing application management services.',
+      vertical: 'sap_enterprise',
+      deliveryModel: 'saas_subscription',
+      revenue: 'over_time_ratable',
+      price: 450_000,
+      frequency: 'monthly',
+      maxDiscount: 15,
+      publish: true,
+    },
+    {
+      code: 'CYBER-SOC',
+      name: 'Managed SOC',
+      description: '24x7 security operations centre.',
+      vertical: 'cybersecurity',
+      deliveryModel: 'saas_subscription',
+      revenue: 'over_time_ratable',
+      price: 650_000,
+      frequency: 'monthly',
+      maxDiscount: 10,
+      publish: true,
+    },
+    {
+      code: 'CYBER-VAPT',
+      name: 'VAPT Engagement',
+      description: 'Vulnerability assessment and penetration testing.',
+      vertical: 'cybersecurity',
+      deliveryModel: 'professional_services',
+      revenue: 'point_in_time',
+      price: 1_200_000,
+      frequency: 'one_time',
+      maxDiscount: 20,
+      publish: true,
+    },
+    {
+      code: 'AI-PLATFORM',
+      name: 'AI Platform Build',
+      description: 'Custom AI platform design and delivery.',
+      vertical: 'software_ai',
+      deliveryModel: 'professional_services',
+      revenue: 'milestone_based',
+      price: 6_000_000,
+      frequency: 'milestone',
+      maxDiscount: 15,
+      publish: true,
+    },
+    {
+      code: 'CT-LEADERSHIP',
+      name: 'Leadership Development Programme',
+      description: 'Cohort-based corporate leadership training.',
+      vertical: 'corporate_training',
+      deliveryModel: 'cohort',
+      revenue: 'over_time_ratable',
+      price: 1_800_000,
+      frequency: 'one_time',
+      maxDiscount: 25,
+      publish: true,
+    },
+    {
+      code: 'EDU-FSD',
+      name: 'Full Stack Development Programme',
+      description: '24-week full stack cohort with placement support.',
+      vertical: 'education',
+      deliveryModel: 'cohort',
+      revenue: 'over_time_ratable',
+      price: 60_000,
+      frequency: 'one_time',
+      maxDiscount: 30,
+      publish: true,
+    },
+    {
+      code: 'EDU-DS',
+      name: 'Data Science Programme',
+      description: '20-week data science cohort.',
+      vertical: 'education',
+      deliveryModel: 'cohort',
+      revenue: 'over_time_ratable',
+      price: 75_000,
+      frequency: 'one_time',
+      maxDiscount: 30,
+      publish: true,
+    },
+    {
+      code: 'PLC-FEE',
+      name: 'Placement Success Fee',
+      description: 'Fee on confirmed placement.',
+      vertical: 'placement',
+      deliveryModel: 'placement_fee',
+      revenue: 'point_in_time',
+      price: 45_000,
+      frequency: 'one_time',
+      maxDiscount: 20,
+      publish: true,
+    },
     // Deliberately published with no price book entry, so DET-CRM-OFF-01 has a
     // real coverage gap to detect on first run.
-    { code: 'RES-ADVISORY', name: 'Applied Research Advisory', description: 'Advisory retainer for applied research programmes.', vertical: 'research', deliveryModel: 'professional_services', revenue: 'over_time_ratable', price: 0, frequency: 'monthly', maxDiscount: 0, publish: false },
+    {
+      code: 'RES-ADVISORY',
+      name: 'Applied Research Advisory',
+      description: 'Advisory retainer for applied research programmes.',
+      vertical: 'research',
+      deliveryModel: 'professional_services',
+      revenue: 'over_time_ratable',
+      price: 0,
+      frequency: 'monthly',
+      maxDiscount: 0,
+      publish: false,
+    },
   ];
 
   const out: SeededOffering[] = [];
@@ -367,7 +609,9 @@ async function seedCatalog(): Promise<SeededOffering[]> {
       });
     }
 
-    let entry = await prisma.priceBookEntry.findFirst({ where: { tenantId, offeringId: offering.id, status: 'active' } });
+    let entry = await prisma.priceBookEntry.findFirst({
+      where: { tenantId, offeringId: offering.id, status: 'active' },
+    });
     if (!entry && c.publish) {
       entry = await prisma.priceBookEntry.create({
         data: {
@@ -397,7 +641,9 @@ async function seedCatalog(): Promise<SeededOffering[]> {
     });
   }
 
-  console.log(`  ${out.length} offerings (one deliberately unpriced, so the coverage detector has something real to find)`);
+  console.log(
+    `  ${out.length} offerings (one deliberately unpriced, so the coverage detector has something real to find)`,
+  );
   return out;
 }
 
@@ -405,10 +651,38 @@ async function seedTerritoriesAndRouting(people: SeededPerson[]) {
   const tenantId = (await currentTenant()).id;
 
   const territories = [
-    { name: 'Chennai Metro — Enterprise', districts: ['Chennai', 'Kanchipuram'], verticals: ['sap_enterprise', 'cybersecurity', 'software_ai', 'corporate_training'], kind: 'organization', owner: 'bhead@kaizen.co.in', capacity: 40 },
-    { name: 'Western TN — Enterprise', districts: ['Coimbatore', 'Erode', 'Salem'], verticals: ['sap_enterprise', 'cybersecurity', 'software_ai'], kind: 'organization', owner: 'director@kaizen.co.in', capacity: 35 },
-    { name: 'Southern TN — Institutions', districts: ['Madurai', 'Tirunelveli', 'Dindigul', 'Thanjavur'], verticals: ['partnerships', 'education'], kind: 'institution', owner: 'bhead@kaizen.co.in', capacity: 60 },
-    { name: 'State-wide — Placement', districts: [], verticals: ['placement'], kind: 'any', owner: 'director@kaizen.co.in', capacity: 50 },
+    {
+      name: 'Chennai Metro — Enterprise',
+      districts: ['Chennai', 'Kanchipuram'],
+      verticals: ['sap_enterprise', 'cybersecurity', 'software_ai', 'corporate_training'],
+      kind: 'organization',
+      owner: 'bhead@kaizen.co.in',
+      capacity: 40,
+    },
+    {
+      name: 'Western TN — Enterprise',
+      districts: ['Coimbatore', 'Erode', 'Salem'],
+      verticals: ['sap_enterprise', 'cybersecurity', 'software_ai'],
+      kind: 'organization',
+      owner: 'director@kaizen.co.in',
+      capacity: 35,
+    },
+    {
+      name: 'Southern TN — Institutions',
+      districts: ['Madurai', 'Tirunelveli', 'Dindigul', 'Thanjavur'],
+      verticals: ['partnerships', 'education'],
+      kind: 'institution',
+      owner: 'bhead@kaizen.co.in',
+      capacity: 60,
+    },
+    {
+      name: 'State-wide — Placement',
+      districts: [],
+      verticals: ['placement'],
+      kind: 'any',
+      owner: 'director@kaizen.co.in',
+      capacity: 50,
+    },
   ];
 
   for (const t of territories) {
@@ -467,18 +741,45 @@ async function seedOrganizations(): Promise<SeededOrg[]> {
   const tenantId = (await currentTenant()).id;
 
   const orgs: Array<{
-    name: string; website: string; account?: { tier: string; terms: number; gstin?: string; placeOfSupply?: string };
+    name: string;
+    website: string;
+    account?: { tier: string; terms: number; gstin?: string; placeOfSupply?: string };
     institution?: { type: string; management: string; district: string; students: number; aishe: string | null };
     district: string;
   }> = [
     // The registration and the place of supply sit on the account, because they
     // do not change from sale to sale and retyping them per invoice is how a
     // digit goes missing and the wrong pair of taxes is charged.
-    { name: 'Sundaram Textiles Ltd', website: 'https://sundaramtextiles.example', account: { tier: 'strategic', terms: 45, gstin: '33AAACS9101K1ZI', placeOfSupply: '33' }, district: 'Coimbatore' },
-    { name: 'Meridian Financial Services', website: 'https://meridianfs.example', account: { tier: 'key', terms: 30, gstin: '33AABCM2345P1ZD', placeOfSupply: '33' }, district: 'Chennai' },
-    { name: 'Cauvery Logistics', website: 'https://cauverylogistics.example', account: { tier: 'standard', terms: 30, placeOfSupply: '33' }, district: 'Tiruchirappalli' },
-    { name: 'Nexa Healthcare Systems', website: 'https://nexahealth.example', account: { tier: 'key', terms: 60 }, district: 'Chennai' },
-    { name: 'Vaigai Power Solutions', website: 'https://vaigaipower.example', account: { tier: 'standard', terms: 30 }, district: 'Madurai' },
+    {
+      name: 'Sundaram Textiles Ltd',
+      website: 'https://sundaramtextiles.example',
+      account: { tier: 'strategic', terms: 45, gstin: '33AAACS9101K1ZI', placeOfSupply: '33' },
+      district: 'Coimbatore',
+    },
+    {
+      name: 'Meridian Financial Services',
+      website: 'https://meridianfs.example',
+      account: { tier: 'key', terms: 30, gstin: '33AABCM2345P1ZD', placeOfSupply: '33' },
+      district: 'Chennai',
+    },
+    {
+      name: 'Cauvery Logistics',
+      website: 'https://cauverylogistics.example',
+      account: { tier: 'standard', terms: 30, placeOfSupply: '33' },
+      district: 'Tiruchirappalli',
+    },
+    {
+      name: 'Nexa Healthcare Systems',
+      website: 'https://nexahealth.example',
+      account: { tier: 'key', terms: 60 },
+      district: 'Chennai',
+    },
+    {
+      name: 'Vaigai Power Solutions',
+      website: 'https://vaigaipower.example',
+      account: { tier: 'standard', terms: 30 },
+      district: 'Madurai',
+    },
     {
       // The commissioning example: a single legal body that is simultaneously
       // an admissions-partner institution AND a fee-paying corporate training
@@ -486,15 +787,69 @@ async function seedOrganizations(): Promise<SeededOrg[]> {
       name: 'Anna Institute of Technology',
       website: 'https://ait.example',
       account: { tier: 'key', terms: 45 },
-      institution: { type: 'engineering_college', management: 'self_financing', district: 'Chennai', students: 4200, aishe: 'C-12345' },
+      institution: {
+        type: 'engineering_college',
+        management: 'self_financing',
+        district: 'Chennai',
+        students: 4200,
+        aishe: 'C-12345',
+      },
       district: 'Chennai',
     },
-    { name: 'Madurai Kamaraj Arts College', website: 'https://mkac.example', institution: { type: 'arts_science_college', management: 'aided', district: 'Madurai', students: 2800, aishe: 'C-23451' }, district: 'Madurai' },
-    { name: 'Government Polytechnic Salem', website: 'https://gpsalem.example', institution: { type: 'polytechnic', management: 'government', district: 'Salem', students: 1400, aishe: null }, district: 'Salem' },
-    { name: 'Thanjavur Engineering College', website: 'https://tec.example', institution: { type: 'engineering_college', management: 'self_financing', district: 'Thanjavur', students: 3100, aishe: 'C-34512' }, district: 'Thanjavur' },
-    { name: 'Vellore Science Academy', website: 'https://vsa.example', institution: { type: 'arts_science_college', management: 'private', district: 'Vellore', students: 1900, aishe: 'C-45123' }, district: 'Vellore' },
-    { name: 'TalentBridge Staffing', website: 'https://talentbridge.example', account: { tier: 'standard', terms: 30 }, district: 'Coimbatore' },
-    { name: 'Zenith Manufacturing', website: 'https://zenithmfg.example', account: { tier: 'key', terms: 45 }, district: 'Erode' },
+    {
+      name: 'Madurai Kamaraj Arts College',
+      website: 'https://mkac.example',
+      institution: {
+        type: 'arts_science_college',
+        management: 'aided',
+        district: 'Madurai',
+        students: 2800,
+        aishe: 'C-23451',
+      },
+      district: 'Madurai',
+    },
+    {
+      name: 'Government Polytechnic Salem',
+      website: 'https://gpsalem.example',
+      institution: { type: 'polytechnic', management: 'government', district: 'Salem', students: 1400, aishe: null },
+      district: 'Salem',
+    },
+    {
+      name: 'Thanjavur Engineering College',
+      website: 'https://tec.example',
+      institution: {
+        type: 'engineering_college',
+        management: 'self_financing',
+        district: 'Thanjavur',
+        students: 3100,
+        aishe: 'C-34512',
+      },
+      district: 'Thanjavur',
+    },
+    {
+      name: 'Vellore Science Academy',
+      website: 'https://vsa.example',
+      institution: {
+        type: 'arts_science_college',
+        management: 'private',
+        district: 'Vellore',
+        students: 1900,
+        aishe: 'C-45123',
+      },
+      district: 'Vellore',
+    },
+    {
+      name: 'TalentBridge Staffing',
+      website: 'https://talentbridge.example',
+      account: { tier: 'standard', terms: 30 },
+      district: 'Coimbatore',
+    },
+    {
+      name: 'Zenith Manufacturing',
+      website: 'https://zenithmfg.example',
+      account: { tier: 'key', terms: 45 },
+      district: 'Erode',
+    },
   ];
 
   const out: SeededOrg[] = [];
@@ -563,7 +918,13 @@ async function seedOrganizations(): Promise<SeededOrg[]> {
       }
     }
 
-    out.push({ id: org.id, name: o.name, hasAccount: Boolean(o.account), hasInstitution: Boolean(o.institution), district: o.district });
+    out.push({
+      id: org.id,
+      name: o.name,
+      hasAccount: Boolean(o.account),
+      hasInstitution: Boolean(o.institution),
+      district: o.district,
+    });
   }
 
   console.log(`  ${out.length} organizations (one carries both specialisations simultaneously)`);
@@ -600,9 +961,18 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
   // ---- Contact people ------------------------------------------------------
   const contacts: Array<{ id: string; name: string; orgId: string }> = [];
   const contactNames = [
-    'Hariharan Muthu', 'Deepa Varma', 'Karthik Raman', 'Sneha Pillai', 'Vignesh Anand',
-    'Anjali Menon', 'Prakash Naidu', 'Revathi Iyer', 'Manoj Gupta', 'Shalini Rao',
-    'Balaji Narayanan', 'Ritu Sharma',
+    'Hariharan Muthu',
+    'Deepa Varma',
+    'Karthik Raman',
+    'Sneha Pillai',
+    'Vignesh Anand',
+    'Anjali Menon',
+    'Prakash Naidu',
+    'Revathi Iyer',
+    'Manoj Gupta',
+    'Shalini Rao',
+    'Balaji Narayanan',
+    'Ritu Sharma',
   ];
   for (const [i, name] of contactNames.entries()) {
     const org = pick(orgs, i);
@@ -647,21 +1017,151 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
   }
 
   // ---- Leads across every motion ------------------------------------------
-  const leadSpecs: Array<{ title: string; vertical: Vertical; pipeline: string; orgIdx: number; owner: string | null; stageIdx: number; value: number; source: string; ageDays: number }> = [
-    { title: 'S/4HANA migration assessment', vertical: 'sap_enterprise', pipeline: 'PL-ENTERPRISE', orgIdx: 0, owner: sales[0].id, stageIdx: 1, value: 8_500_000, source: 'referral', ageDays: 12 },
-    { title: 'SOC evaluation for core banking', vertical: 'cybersecurity', pipeline: 'PL-ENTERPRISE', orgIdx: 1, owner: sales[1].id, stageIdx: 2, value: 7_800_000, source: 'inbound_website', ageDays: 21 },
-    { title: 'Fleet telemetry AI pilot', vertical: 'software_ai', pipeline: 'PL-ENTERPRISE', orgIdx: 2, owner: sales[0].id, stageIdx: 0, value: 3_200_000, source: 'event', ageDays: 4 },
-    { title: 'Clinical analytics platform', vertical: 'software_ai', pipeline: 'PL-ENTERPRISE', orgIdx: 3, owner: sales[1].id, stageIdx: 3, value: 6_000_000, source: 'referral', ageDays: 30 },
+  const leadSpecs: Array<{
+    title: string;
+    vertical: Vertical;
+    pipeline: string;
+    orgIdx: number;
+    owner: string | null;
+    stageIdx: number;
+    value: number;
+    source: string;
+    ageDays: number;
+  }> = [
+    {
+      title: 'S/4HANA migration assessment',
+      vertical: 'sap_enterprise',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 0,
+      owner: sales[0].id,
+      stageIdx: 1,
+      value: 8_500_000,
+      source: 'referral',
+      ageDays: 12,
+    },
+    {
+      title: 'SOC evaluation for core banking',
+      vertical: 'cybersecurity',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 1,
+      owner: sales[1].id,
+      stageIdx: 2,
+      value: 7_800_000,
+      source: 'inbound_website',
+      ageDays: 21,
+    },
+    {
+      title: 'Fleet telemetry AI pilot',
+      vertical: 'software_ai',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 2,
+      owner: sales[0].id,
+      stageIdx: 0,
+      value: 3_200_000,
+      source: 'event',
+      ageDays: 4,
+    },
+    {
+      title: 'Clinical analytics platform',
+      vertical: 'software_ai',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 3,
+      owner: sales[1].id,
+      stageIdx: 3,
+      value: 6_000_000,
+      source: 'referral',
+      ageDays: 30,
+    },
     // Deliberately unrouted at seed, so the unrouted queue and EX-CRM-004 have
     // a real case on first load.
-    { title: 'Grid resilience advisory enquiry', vertical: 'research', pipeline: 'PL-ENTERPRISE', orgIdx: 4, owner: null, stageIdx: 0, value: 1_500_000, source: 'inbound_website', ageDays: 6 },
-    { title: 'MoU for placement partnership', vertical: 'partnerships', pipeline: 'PL-INSTITUTION', orgIdx: 6, owner: counsellor.id, stageIdx: 1, value: 0, source: 'campaign', ageDays: 45 },
-    { title: 'Campus programme partnership', vertical: 'partnerships', pipeline: 'PL-INSTITUTION', orgIdx: 8, owner: counsellor.id, stageIdx: 2, value: 0, source: 'referral', ageDays: 18 },
-    { title: 'Full stack admission — Chennai batch', vertical: 'education', pipeline: 'PL-ADMISSION', orgIdx: 5, owner: counsellor.id, stageIdx: 1, value: 60_000, source: 'inbound_website', ageDays: 2 },
-    { title: 'Data science admission enquiry', vertical: 'education', pipeline: 'PL-ADMISSION', orgIdx: 9, owner: telecaller.id, stageIdx: 0, value: 75_000, source: 'campaign', ageDays: 7 },
-    { title: 'Bulk hiring — 40 developers', vertical: 'placement', pipeline: 'PL-PLACEMENT', orgIdx: 10, owner: placement.id, stageIdx: 2, value: 1_800_000, source: 'referral', ageDays: 14 },
-    { title: 'Manufacturing graduate intake', vertical: 'placement', pipeline: 'PL-PLACEMENT', orgIdx: 11, owner: placement.id, stageIdx: 1, value: 900_000, source: 'event', ageDays: 25 },
-    { title: 'Leadership programme for senior managers', vertical: 'corporate_training', pipeline: 'PL-ENTERPRISE', orgIdx: 11, owner: sales[0].id, stageIdx: 1, value: 1_800_000, source: 'campaign', ageDays: 9 },
+    {
+      title: 'Grid resilience advisory enquiry',
+      vertical: 'research',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 4,
+      owner: null,
+      stageIdx: 0,
+      value: 1_500_000,
+      source: 'inbound_website',
+      ageDays: 6,
+    },
+    {
+      title: 'MoU for placement partnership',
+      vertical: 'partnerships',
+      pipeline: 'PL-INSTITUTION',
+      orgIdx: 6,
+      owner: counsellor.id,
+      stageIdx: 1,
+      value: 0,
+      source: 'campaign',
+      ageDays: 45,
+    },
+    {
+      title: 'Campus programme partnership',
+      vertical: 'partnerships',
+      pipeline: 'PL-INSTITUTION',
+      orgIdx: 8,
+      owner: counsellor.id,
+      stageIdx: 2,
+      value: 0,
+      source: 'referral',
+      ageDays: 18,
+    },
+    {
+      title: 'Full stack admission — Chennai batch',
+      vertical: 'education',
+      pipeline: 'PL-ADMISSION',
+      orgIdx: 5,
+      owner: counsellor.id,
+      stageIdx: 1,
+      value: 60_000,
+      source: 'inbound_website',
+      ageDays: 2,
+    },
+    {
+      title: 'Data science admission enquiry',
+      vertical: 'education',
+      pipeline: 'PL-ADMISSION',
+      orgIdx: 9,
+      owner: telecaller.id,
+      stageIdx: 0,
+      value: 75_000,
+      source: 'campaign',
+      ageDays: 7,
+    },
+    {
+      title: 'Bulk hiring — 40 developers',
+      vertical: 'placement',
+      pipeline: 'PL-PLACEMENT',
+      orgIdx: 10,
+      owner: placement.id,
+      stageIdx: 2,
+      value: 1_800_000,
+      source: 'referral',
+      ageDays: 14,
+    },
+    {
+      title: 'Manufacturing graduate intake',
+      vertical: 'placement',
+      pipeline: 'PL-PLACEMENT',
+      orgIdx: 11,
+      owner: placement.id,
+      stageIdx: 1,
+      value: 900_000,
+      source: 'event',
+      ageDays: 25,
+    },
+    {
+      title: 'Leadership programme for senior managers',
+      vertical: 'corporate_training',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 11,
+      owner: sales[0].id,
+      stageIdx: 1,
+      value: 1_800_000,
+      source: 'campaign',
+      ageDays: 9,
+    },
   ];
 
   for (const [i, spec] of leadSpecs.entries()) {
@@ -689,7 +1189,11 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
         unroutedReason: spec.owner ? null : 'no_vertical_coverage',
         routedAt: spec.owner ? stageEnteredAt : null,
         score: 40 + ((i * 7) % 55),
-        scoreReasons: ['+15 reachable by phone', '+20 linked to a known organization', `+${8 + (i % 12)} source: ${spec.source}`],
+        scoreReasons: [
+          '+15 reachable by phone',
+          '+20 linked to a known organization',
+          `+${8 + (i % 12)} source: ${spec.source}`,
+        ],
         source: spec.source,
         estimatedValue: spec.value || undefined,
         currency: 'INR',
@@ -714,7 +1218,13 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
           notes: 'Discussed scope, timeline and the internal approval path.',
           outcome: pick(['connected', 'meeting_scheduled', 'information_shared', 'follow_up_required'], i),
           relatedReferences: [
-            { contextCode: 'crm', entityType: 'lead', entityId: lead.id, displayLabel: lead.title, recordCode: lead.recordCode },
+            {
+              contextCode: 'crm',
+              entityType: 'lead',
+              entityId: lead.id,
+              displayLabel: lead.title,
+              recordCode: lead.recordCode,
+            },
             { contextCode: 'idn', entityType: 'person', entityId: contact.id, displayLabel: contact.name },
           ] as never,
           sensitivityClass: 'internal',
@@ -725,27 +1235,188 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
 
   // ---- Opportunities -------------------------------------------------------
   const oppSpecs: Array<{
-    title: string; vertical: Vertical; pipeline: string; orgIdx: number; owner: string;
-    stageIdx: number; value: number; forecast: string; ageDays: number; closeInDays: number;
-    strategic: string | null; outcome?: string;
+    title: string;
+    vertical: Vertical;
+    pipeline: string;
+    orgIdx: number;
+    owner: string;
+    stageIdx: number;
+    value: number;
+    forecast: string;
+    ageDays: number;
+    closeInDays: number;
+    strategic: string | null;
+    outcome?: string;
   }> = [
-    { title: 'Sundaram — S/4HANA implementation', vertical: 'sap_enterprise', pipeline: 'PL-ENTERPRISE', orgIdx: 0, owner: sales[0].id, stageIdx: 5, value: 9_200_000, forecast: 'commit', ageDays: 11, closeInDays: 25, strategic: 'high' },
-    { title: 'Meridian — managed SOC rollout', vertical: 'cybersecurity', pipeline: 'PL-ENTERPRISE', orgIdx: 1, owner: sales[1].id, stageIdx: 4, value: 7_800_000, forecast: 'best_case', ageDays: 26, closeInDays: 45, strategic: 'high' },
-    { title: 'Nexa — clinical analytics platform', vertical: 'software_ai', pipeline: 'PL-ENTERPRISE', orgIdx: 3, owner: sales[1].id, stageIdx: 3, value: 6_000_000, forecast: 'pipeline', ageDays: 34, closeInDays: 70, strategic: 'medium' },
-    { title: 'Cauvery — fleet telemetry AI', vertical: 'software_ai', pipeline: 'PL-ENTERPRISE', orgIdx: 2, owner: sales[0].id, stageIdx: 2, value: 3_200_000, forecast: 'pipeline', ageDays: 8, closeInDays: 90, strategic: 'low' },
-    { title: 'Zenith — leadership programme', vertical: 'corporate_training', pipeline: 'PL-ENTERPRISE', orgIdx: 11, owner: sales[0].id, stageIdx: 4, value: 1_900_000, forecast: 'best_case', ageDays: 15, closeInDays: 30, strategic: 'medium' },
+    {
+      title: 'Sundaram — S/4HANA implementation',
+      vertical: 'sap_enterprise',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 0,
+      owner: sales[0].id,
+      stageIdx: 5,
+      value: 9_200_000,
+      forecast: 'commit',
+      ageDays: 11,
+      closeInDays: 25,
+      strategic: 'high',
+    },
+    {
+      title: 'Meridian — managed SOC rollout',
+      vertical: 'cybersecurity',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 1,
+      owner: sales[1].id,
+      stageIdx: 4,
+      value: 7_800_000,
+      forecast: 'best_case',
+      ageDays: 26,
+      closeInDays: 45,
+      strategic: 'high',
+    },
+    {
+      title: 'Nexa — clinical analytics platform',
+      vertical: 'software_ai',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 3,
+      owner: sales[1].id,
+      stageIdx: 3,
+      value: 6_000_000,
+      forecast: 'pipeline',
+      ageDays: 34,
+      closeInDays: 70,
+      strategic: 'medium',
+    },
+    {
+      title: 'Cauvery — fleet telemetry AI',
+      vertical: 'software_ai',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 2,
+      owner: sales[0].id,
+      stageIdx: 2,
+      value: 3_200_000,
+      forecast: 'pipeline',
+      ageDays: 8,
+      closeInDays: 90,
+      strategic: 'low',
+    },
+    {
+      title: 'Zenith — leadership programme',
+      vertical: 'corporate_training',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 11,
+      owner: sales[0].id,
+      stageIdx: 4,
+      value: 1_900_000,
+      forecast: 'best_case',
+      ageDays: 15,
+      closeInDays: 30,
+      strategic: 'medium',
+    },
     // Deliberately stale: expected close date in the past while sitting in
     // commit, so AU-CRM-010 has a real demotion to make on the first job run.
-    { title: 'Vaigai — VAPT engagement', vertical: 'cybersecurity', pipeline: 'PL-ENTERPRISE', orgIdx: 4, owner: sales[1].id, stageIdx: 5, value: 1_250_000, forecast: 'commit', ageDays: 40, closeInDays: -8, strategic: 'medium' },
-    { title: 'Anna Institute — campus MoU', vertical: 'partnerships', pipeline: 'PL-INSTITUTION', orgIdx: 5, owner: counsellor.id, stageIdx: 4, value: 0, forecast: 'best_case', ageDays: 22, closeInDays: 40, strategic: 'high' },
-    { title: 'Madurai Kamaraj — placement MoU', vertical: 'partnerships', pipeline: 'PL-INSTITUTION', orgIdx: 6, owner: counsellor.id, stageIdx: 3, value: 0, forecast: 'pipeline', ageDays: 48, closeInDays: 60, strategic: 'high' },
-    { title: 'TalentBridge — 40 developer intake', vertical: 'placement', pipeline: 'PL-PLACEMENT', orgIdx: 10, owner: placement.id, stageIdx: 4, value: 1_800_000, forecast: 'commit', ageDays: 12, closeInDays: 20, strategic: 'medium' },
-    { title: 'Zenith — graduate intake 2026', vertical: 'placement', pipeline: 'PL-PLACEMENT', orgIdx: 11, owner: placement.id, stageIdx: 2, value: 900_000, forecast: 'pipeline', ageDays: 27, closeInDays: 75, strategic: 'low' },
-    { title: 'Thanjavur Engineering — cohort partnership', vertical: 'partnerships', pipeline: 'PL-INSTITUTION', orgIdx: 8, owner: counsellor.id, stageIdx: 1, value: 0, forecast: 'pipeline', ageDays: 55, closeInDays: 120, strategic: 'medium' },
-    { title: 'Vellore Science — admissions channel', vertical: 'partnerships', pipeline: 'PL-INSTITUTION', orgIdx: 9, owner: counsellor.id, stageIdx: 2, value: 0, forecast: 'pipeline', ageDays: 19, closeInDays: 95, strategic: 'low' },
+    {
+      title: 'Vaigai — VAPT engagement',
+      vertical: 'cybersecurity',
+      pipeline: 'PL-ENTERPRISE',
+      orgIdx: 4,
+      owner: sales[1].id,
+      stageIdx: 5,
+      value: 1_250_000,
+      forecast: 'commit',
+      ageDays: 40,
+      closeInDays: -8,
+      strategic: 'medium',
+    },
+    {
+      title: 'Anna Institute — campus MoU',
+      vertical: 'partnerships',
+      pipeline: 'PL-INSTITUTION',
+      orgIdx: 5,
+      owner: counsellor.id,
+      stageIdx: 4,
+      value: 0,
+      forecast: 'best_case',
+      ageDays: 22,
+      closeInDays: 40,
+      strategic: 'high',
+    },
+    {
+      title: 'Madurai Kamaraj — placement MoU',
+      vertical: 'partnerships',
+      pipeline: 'PL-INSTITUTION',
+      orgIdx: 6,
+      owner: counsellor.id,
+      stageIdx: 3,
+      value: 0,
+      forecast: 'pipeline',
+      ageDays: 48,
+      closeInDays: 60,
+      strategic: 'high',
+    },
+    {
+      title: 'TalentBridge — 40 developer intake',
+      vertical: 'placement',
+      pipeline: 'PL-PLACEMENT',
+      orgIdx: 10,
+      owner: placement.id,
+      stageIdx: 4,
+      value: 1_800_000,
+      forecast: 'commit',
+      ageDays: 12,
+      closeInDays: 20,
+      strategic: 'medium',
+    },
+    {
+      title: 'Zenith — graduate intake 2026',
+      vertical: 'placement',
+      pipeline: 'PL-PLACEMENT',
+      orgIdx: 11,
+      owner: placement.id,
+      stageIdx: 2,
+      value: 900_000,
+      forecast: 'pipeline',
+      ageDays: 27,
+      closeInDays: 75,
+      strategic: 'low',
+    },
+    {
+      title: 'Thanjavur Engineering — cohort partnership',
+      vertical: 'partnerships',
+      pipeline: 'PL-INSTITUTION',
+      orgIdx: 8,
+      owner: counsellor.id,
+      stageIdx: 1,
+      value: 0,
+      forecast: 'pipeline',
+      ageDays: 55,
+      closeInDays: 120,
+      strategic: 'medium',
+    },
+    {
+      title: 'Vellore Science — admissions channel',
+      vertical: 'partnerships',
+      pipeline: 'PL-INSTITUTION',
+      orgIdx: 9,
+      owner: counsellor.id,
+      stageIdx: 2,
+      value: 0,
+      forecast: 'pipeline',
+      ageDays: 19,
+      closeInDays: 95,
+      strategic: 'low',
+    },
   ];
 
-  const createdOpps: Array<{ id: string; recordCode: string; title: string; orgId: string; value: number; owner: string; strategic: string | null }> = [];
+  const createdOpps: Array<{
+    id: string;
+    recordCode: string;
+    title: string;
+    orgId: string;
+    value: number;
+    owner: string;
+    strategic: string | null;
+  }> = [];
 
   for (const [i, spec] of oppSpecs.entries()) {
     const pipeline = byCode.get(spec.pipeline)!;
@@ -778,7 +1449,15 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
       },
     });
 
-    createdOpps.push({ id: opp.id, recordCode: opp.recordCode, title: opp.title, orgId: org.id, value: spec.value, owner: spec.owner, strategic: spec.strategic });
+    createdOpps.push({
+      id: opp.id,
+      recordCode: opp.recordCode,
+      title: opp.title,
+      orgId: org.id,
+      value: spec.value,
+      owner: spec.owner,
+      strategic: spec.strategic,
+    });
 
     await prisma.interaction.create({
       data: {
@@ -794,7 +1473,13 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
         notes: 'Walked the proposed architecture and commercial shape. Committee review scheduled.',
         outcome: 'meeting_scheduled',
         relatedReferences: [
-          { contextCode: 'crm', entityType: 'opportunity', entityId: opp.id, displayLabel: opp.title, recordCode: opp.recordCode },
+          {
+            contextCode: 'crm',
+            entityType: 'opportunity',
+            entityId: opp.id,
+            displayLabel: opp.title,
+            recordCode: opp.recordCode,
+          },
           { contextCode: 'crm', entityType: 'organization', entityId: org.id, displayLabel: org.name },
         ] as never,
         sensitivityClass: 'internal',
@@ -998,8 +1683,26 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
   // ---- Lost deals with structured post-mortems -----------------------------
   const lostStage = enterprise.stages.find((s) => s.pipelinePosition === 0)!;
   const lostSpecs = [
-    { title: 'Cauvery — ERP consolidation', orgIdx: 2, owner: sales[0].id, value: 4_200_000, reason: 'competitor', competitor: 'Larsen Digital', strategic: 'high', complete: true },
-    { title: 'Vaigai — cyber posture review', orgIdx: 4, owner: sales[1].id, value: 620_000, reason: 'no_budget', competitor: null, strategic: 'low', complete: false },
+    {
+      title: 'Cauvery — ERP consolidation',
+      orgIdx: 2,
+      owner: sales[0].id,
+      value: 4_200_000,
+      reason: 'competitor',
+      competitor: 'Larsen Digital',
+      strategic: 'high',
+      complete: true,
+    },
+    {
+      title: 'Vaigai — cyber posture review',
+      orgIdx: 4,
+      owner: sales[1].id,
+      value: 620_000,
+      reason: 'no_budget',
+      competitor: null,
+      strategic: 'low',
+      complete: false,
+    },
   ];
 
   for (const l of lostSpecs) {
@@ -1041,10 +1744,17 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
         competitorName: l.complete ? l.competitor : null,
         realLostStage: l.complete ? 'solution_shaped' : null,
         lostReason: l.reason,
-        lesson: l.complete ? 'We were shaped out at architecture review because the incumbent already held the integration layer. Qualify integration ownership at the qualified stage, not at proposal.' : null,
+        lesson: l.complete
+          ? 'We were shaped out at architecture review because the incumbent already held the integration layer. Qualify integration ownership at the qualified stage, not at proposal.'
+          : null,
         mandatory,
         mandatoryBasis: mandatory
-          ? [l.strategic === 'high' ? 'strategic_value=high' : null, l.value >= 500_000 ? 'commercial_value>=500000' : null].filter(Boolean).join(' OR ')
+          ? [
+              l.strategic === 'high' ? 'strategic_value=high' : null,
+              l.value >= 500_000 ? 'commercial_value>=500000' : null,
+            ]
+              .filter(Boolean)
+              .join(' OR ')
           : 'not_mandatory',
         strategicValueSnapshot: l.strategic,
         commercialValueSnapshot: l.value,
@@ -1074,10 +1784,42 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
 
   // ---- MoUs, including one inside the expiry ladder ------------------------
   const mouSpecs = [
-    { title: 'Anna Institute — campus partnership MoU', orgIdx: 5, status: 'active', value: 0, strategic: 'high', endInDays: 25, owner: counsellor.id },
-    { title: 'Madurai Kamaraj — placement MoU', orgIdx: 6, status: 'signed', value: 250_000, strategic: 'medium', endInDays: 200, owner: counsellor.id },
-    { title: 'Government Polytechnic Salem — skills MoU', orgIdx: 7, status: 'negotiating', value: 0, strategic: 'high', endInDays: 365, owner: counsellor.id },
-    { title: 'Vellore Science — admissions channel MoU', orgIdx: 9, status: 'proposed', value: 1_500_000, strategic: 'high', endInDays: 400, owner: counsellor.id },
+    {
+      title: 'Anna Institute — campus partnership MoU',
+      orgIdx: 5,
+      status: 'active',
+      value: 0,
+      strategic: 'high',
+      endInDays: 25,
+      owner: counsellor.id,
+    },
+    {
+      title: 'Madurai Kamaraj — placement MoU',
+      orgIdx: 6,
+      status: 'signed',
+      value: 250_000,
+      strategic: 'medium',
+      endInDays: 200,
+      owner: counsellor.id,
+    },
+    {
+      title: 'Government Polytechnic Salem — skills MoU',
+      orgIdx: 7,
+      status: 'negotiating',
+      value: 0,
+      strategic: 'high',
+      endInDays: 365,
+      owner: counsellor.id,
+    },
+    {
+      title: 'Vellore Science — admissions channel MoU',
+      orgIdx: 9,
+      status: 'proposed',
+      value: 1_500_000,
+      strategic: 'high',
+      endInDays: 400,
+      owner: counsellor.id,
+    },
   ];
 
   for (const m of mouSpecs) {
@@ -1259,7 +2001,15 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
       data: {
         tenantId,
         recordCode: await nextRecordCode('TSK'),
-        title: pick(['Send revised commercials', 'Confirm committee date', 'Chase signed NDA', 'Prepare architecture walkthrough'], i),
+        title: pick(
+          [
+            'Send revised commercials',
+            'Confirm committee date',
+            'Chase signed NDA',
+            'Prepare architecture walkthrough',
+          ],
+          i,
+        ),
         assigneePartyId: target.owner,
         ownerPartyId: target.owner,
         dueAt: daysFromNow(i - 2),
@@ -1270,7 +2020,9 @@ async function seedCommercialDataset(people: SeededPerson[], orgs: SeededOrg[], 
     });
   }
 
-  console.log(`  ${leadSpecs.length} leads, ${oppSpecs.length + wonSpecs.length + lostSpecs.length} opportunities, ${mouSpecs.length} MoUs, 3 contracts, quotes, invoices and tasks`);
+  console.log(
+    `  ${leadSpecs.length} leads, ${oppSpecs.length + wonSpecs.length + lostSpecs.length} opportunities, ${mouSpecs.length} MoUs, 3 contracts, quotes, invoices and tasks`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1293,9 +2045,18 @@ async function seedEducation(people: SeededPerson[], orgs: SeededOrg[]) {
   ];
 
   const learnerNames = [
-    'Aishwarya Ganesan', 'Bharath Kumar', 'Chitra Devi', 'Dinesh Raj', 'Elakkiya Murugan',
-    'Farhan Ahmed', 'Gayathri Selvan', 'Harish Babu', 'Indira Natarajan', 'Jagan Mohan',
-    'Kalaivani Rajan', 'Lokesh Prabhu',
+    'Aishwarya Ganesan',
+    'Bharath Kumar',
+    'Chitra Devi',
+    'Dinesh Raj',
+    'Elakkiya Murugan',
+    'Farhan Ahmed',
+    'Gayathri Selvan',
+    'Harish Babu',
+    'Indira Natarajan',
+    'Jagan Mohan',
+    'Kalaivani Rajan',
+    'Lokesh Prabhu',
   ];
 
   for (const [ci, c] of courses.entries()) {
@@ -1630,29 +2391,49 @@ async function seedStudentBillingAndTimelines() {
     // complaint, because a detector that has never had an open item to find is a
     // detector nobody has watched work.
     const timeline: Array<{
-      kind: string; title: string; detail: string; severity: string | null; rating: number | null;
-      status: string; days: number;
+      kind: string;
+      title: string;
+      detail: string;
+      severity: string | null;
+      rating: number | null;
+      status: string;
+      days: number;
     }> = [
       {
-        kind: 'feedback', title: 'Found the first module well paced',
+        kind: 'feedback',
+        title: 'Found the first module well paced',
         detail: 'Said the lab exercises were the useful part and asked for more of them.',
-        severity: null, rating: 5, status: 'resolved', days: 30,
+        severity: null,
+        rating: 5,
+        status: 'resolved',
+        days: 30,
       },
       {
-        kind: 'query', title: 'Asked whether the certificate names the college',
+        kind: 'query',
+        title: 'Asked whether the certificate names the college',
         detail: 'Wants to know what the certificate says before the placement drive.',
-        severity: 'low', rating: null, status: index === 0 ? 'open' : 'resolved', days: 12,
+        severity: 'low',
+        rating: null,
+        status: index === 0 ? 'open' : 'resolved',
+        days: 12,
       },
       {
-        kind: 'issue', title: 'Cannot access the lab environment from home',
+        kind: 'issue',
+        title: 'Cannot access the lab environment from home',
         detail: 'Logs in and the container fails to start. Reported twice.',
-        severity: index === 0 ? 'high' : 'medium', rating: null,
-        status: index === 0 ? 'open' : 'resolved', days: 5,
+        severity: index === 0 ? 'high' : 'medium',
+        rating: null,
+        status: index === 0 ? 'open' : 'resolved',
+        days: 5,
       },
       {
-        kind: 'note', title: 'Working evenings, may miss Friday sessions',
+        kind: 'note',
+        title: 'Working evenings, may miss Friday sessions',
         detail: 'Flagged by the trainer so the absence is not read as disengagement.',
-        severity: null, rating: null, status: 'resolved', days: 20,
+        severity: null,
+        rating: null,
+        status: 'resolved',
+        days: 20,
       },
     ];
 
@@ -1733,7 +2514,10 @@ async function advanceDocumentSeries() {
     // None of this fixture's course-fee invoices carry `enrollmentDate` — they
     // predate that distinction — so this starts at 0 and only matters once one
     // does.
-    ['DOC:temp', await prisma.invoice.count({ where: { tenantId, recordCode: { not: null }, enrollmentDate: { not: null } } })],
+    [
+      'DOC:temp',
+      await prisma.invoice.count({ where: { tenantId, recordCode: { not: null }, enrollmentDate: { not: null } } }),
+    ],
     ['DOC:R', await prisma.receipt.count({ where: { tenantId } })],
     ['DOC:TI', await prisma.finalInvoice.count({ where: { tenantId } })],
   ];
@@ -1801,7 +2585,8 @@ async function seedDecisions(people: SeededPerson[]) {
       data: {
         tenantId,
         recordCode: await nextRecordCode('DEC'),
-        question: 'Should we extend payment terms to 90 days for Sundaram Textiles in exchange for a two-year AMS commitment?',
+        question:
+          'Should we extend payment terms to 90 days for Sundaram Textiles in exchange for a two-year AMS commitment?',
         state: 'AwaitingAuthority',
         subjectType: 'contract',
         subjectId: contract.id,
@@ -1816,16 +2601,41 @@ async function seedDecisions(people: SeededPerson[]) {
         evidencePack: {
           question: 'Extend payment terms to 90 days in exchange for a two-year AMS commitment?',
           rejectedOptions: [
-            { option: 'Hold at 45 days', outcome: 'Customer likely re-tenders at renewal', risk: 'Loses a strategic account', cost: 'Nil now, 5.4M at renewal' },
-            { option: 'Extend to 60 days only', outcome: 'Partial concession, no commitment secured', risk: 'Concession without reciprocity', cost: 'Working capital, no upside' },
+            {
+              option: 'Hold at 45 days',
+              outcome: 'Customer likely re-tenders at renewal',
+              risk: 'Loses a strategic account',
+              cost: 'Nil now, 5.4M at renewal',
+            },
+            {
+              option: 'Extend to 60 days only',
+              outcome: 'Partial concession, no commitment secured',
+              risk: 'Concession without reciprocity',
+              cost: 'Working capital, no upside',
+            },
           ],
-          noActionOption: { option: 'Take no action', consequence: 'Terms stay at 45 days and the AMS commitment lapses at renewal.', by: 'the renewal date' },
+          noActionOption: {
+            option: 'Take no action',
+            consequence: 'Terms stay at 45 days and the AMS commitment lapses at renewal.',
+            by: 'the renewal date',
+          },
           subjectState: { status: contract.status, commercialValue: 5_400_000 },
           lastFiveTransitions: [],
           nearestPrecedents: [],
-          constraintsAndGrant: { constraint: 'Requires contract_approval authority for 5,400,000 INR.', grantExercised: 'contract_approval ceiling 100,000,000' },
-          modelView: { label: 'Model view', statement: 'Working capital impact of ~₹6.6L over the extended window, against a two-year commitment worth ₹1.08 Cr.', isModel: true },
-          noActionConsequence: { statement: 'Terms stay at 45 days and the AMS commitment lapses at renewal.', by: 'the renewal date' },
+          constraintsAndGrant: {
+            constraint: 'Requires contract_approval authority for 5,400,000 INR.',
+            grantExercised: 'contract_approval ceiling 100,000,000',
+          },
+          modelView: {
+            label: 'Model view',
+            statement:
+              'Working capital impact of ~₹6.6L over the extended window, against a two-year commitment worth ₹1.08 Cr.',
+            isModel: true,
+          },
+          noActionConsequence: {
+            statement: 'Terms stay at 45 days and the AMS commitment lapses at renewal.',
+            by: 'the renewal date',
+          },
           complete: true,
           missingComponents: [],
         } as never,
@@ -1856,13 +2666,23 @@ async function seedDecisions(people: SeededPerson[]) {
         evidencePack: {
           question: 'Widen the Anna Institute partnership to a joint certification track?',
           rejectedOptions: [],
-          noActionOption: { option: 'Take no action', consequence: 'The partnership continues on placement support alone.', by: 'the MoU end date' },
+          noActionOption: {
+            option: 'Take no action',
+            consequence: 'The partnership continues on placement support alone.',
+            by: 'the MoU end date',
+          },
           subjectState: { status: mou.status },
           lastFiveTransitions: [],
           nearestPrecedents: [],
-          constraintsAndGrant: { constraint: 'Requires mou_approval authority.', grantExercised: 'mou_approval ceiling 100,000,000' },
+          constraintsAndGrant: {
+            constraint: 'Requires mou_approval authority.',
+            grantExercised: 'mou_approval ceiling 100,000,000',
+          },
           modelView: null,
-          noActionConsequence: { statement: 'The partnership continues on placement support alone.', by: 'the MoU end date' },
+          noActionConsequence: {
+            statement: 'The partnership continues on placement support alone.',
+            by: 'the MoU end date',
+          },
           complete: false,
           missingComponents: ['question_and_rejected_options', 'three_nearest_precedents'],
         } as never,

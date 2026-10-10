@@ -112,11 +112,22 @@ export async function runServicedeskJob(): Promise<JobResult> {
     }
   }
 
-  return { processed: openTickets.length + waitingTickets.length, notified: notified + nudged, skippedIdempotent, errors };
+  return {
+    processed: openTickets.length + waitingTickets.length,
+    notified: notified + nudged,
+    skippedIdempotent,
+    errors,
+  };
 }
 
 async function raiseBreach(
-  ticket: { id: string; recordCode: string | null; subject: string; priority: string | null; assigneePartyId: string | null },
+  ticket: {
+    id: string;
+    recordCode: string | null;
+    subject: string;
+    priority: string | null;
+    assigneePartyId: string | null;
+  },
   clock: 'response' | 'resolution',
   dueAt: Date,
 ) {

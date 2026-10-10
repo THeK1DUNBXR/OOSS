@@ -53,7 +53,9 @@ afterAll(async () => {
   // Rows are merged, never deleted, so the incoming person created on confirm
   // is still referenced by mergedIntoId from the candidate's person. Clearing
   // the references first lets the test rows go.
-  await unscopedPrisma.person.updateMany({ where: { id: { in: createdPersonIds } }, data: { mergedIntoId: null } }).catch(() => {});
+  await unscopedPrisma.person
+    .updateMany({ where: { id: { in: createdPersonIds } }, data: { mergedIntoId: null } })
+    .catch(() => {});
   await unscopedPrisma.person.deleteMany({ where: { id: { in: createdPersonIds } } }).catch(() => {});
 });
 

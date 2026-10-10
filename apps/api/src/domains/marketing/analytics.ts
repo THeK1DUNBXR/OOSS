@@ -64,7 +64,15 @@ export interface KpiTile {
 export interface MarketingOverviewView {
   kpis: KpiTile[];
   funnel: MarketingFunnelView;
-  liveCampaigns: Array<{ id: string; recordCode: string; name: string; status: string; division: string; startAt: string; endAt: string }>;
+  liveCampaigns: Array<{
+    id: string;
+    recordCode: string;
+    name: string;
+    status: string;
+    division: string;
+    startAt: string;
+    endAt: string;
+  }>;
   attention: Array<{ code: string; label: string; count: number }>;
 }
 
@@ -75,40 +83,53 @@ export async function overview(): Promise<MarketingOverviewView> {
   const from = daysAgo(30);
   const to = new Date();
 
-  const [liveCampaigns, leadsThisMonth, spendThisMonth, sendsRecent, consented, contacted, budgetCheck, staleCampaigns] =
-    await Promise.all([
-      prisma.marketingCampaign.findMany({
-        where: { tenantId: auth.tenantId, status: 'live', deletedAt: null },
-        orderBy: { startAt: 'desc' },
-        take: 20,
-      }),
-      prisma.lead.findMany({
-        where: { tenantId: auth.tenantId, deletedAt: null, createdAt: { gte: from, lte: to }, OR: [{ campaignId: { not: null } }, { channelKey: { not: null } }] },
-        select: { id: true },
-      }),
-      prisma.marketingSpend.aggregate({
-        where: { tenantId: auth.tenantId, deletedAt: null, spendDate: { gte: from, lte: to } },
-        _sum: { amount: true },
-      }),
-      prisma.marketingSend.findMany({
-        where: { tenantId: auth.tenantId, deletedAt: null, status: 'sent', sentAt: { gte: from, lte: to } },
-        select: { recipientCount: true, deliveredCount: true, bouncedCount: true },
-      }),
-      prisma.consent.count({ where: { tenantId: auth.tenantId, purposeCode: 'marketing', status: 'granted' } }),
-      prisma.marketingTouchpoint.findMany({
-        where: { tenantId: auth.tenantId, deletedAt: null, personId: { not: null }, occurredAt: { gte: daysAgo(90) } },
-        distinct: ['personId'],
-        select: { personId: true },
-      }),
-      prisma.marketingCampaign.findMany({
-        where: { tenantId: auth.tenantId, deletedAt: null },
-        select: { budgetPlanned: true, budgetActual: true },
-      }),
-      prisma.marketingCampaign.findMany({
-        where: { tenantId: auth.tenantId, deletedAt: null, status: 'live' },
-        select: { id: true, touchpoints: { where: { occurredAt: { gte: daysAgo(7) } }, take: 1, select: { id: true } } },
-      }),
-    ]);
+  const [
+    liveCampaigns,
+    leadsThisMonth,
+    spendThisMonth,
+    sendsRecent,
+    consented,
+    contacted,
+    budgetCheck,
+    staleCampaigns,
+  ] = await Promise.all([
+    prisma.marketingCampaign.findMany({
+      where: { tenantId: auth.tenantId, status: 'live', deletedAt: null },
+      orderBy: { startAt: 'desc' },
+      take: 20,
+    }),
+    prisma.lead.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        deletedAt: null,
+        createdAt: { gte: from, lte: to },
+        OR: [{ campaignId: { not: null } }, { channelKey: { not: null } }],
+      },
+      select: { id: true },
+    }),
+    prisma.marketingSpend.aggregate({
+      where: { tenantId: auth.tenantId, deletedAt: null, spendDate: { gte: from, lte: to } },
+      _sum: { amount: true },
+    }),
+    prisma.marketingSend.findMany({
+      where: { tenantId: auth.tenantId, deletedAt: null, status: 'sent', sentAt: { gte: from, lte: to } },
+      select: { recipientCount: true, deliveredCount: true, bouncedCount: true },
+    }),
+    prisma.consent.count({ where: { tenantId: auth.tenantId, purposeCode: 'marketing', status: 'granted' } }),
+    prisma.marketingTouchpoint.findMany({
+      where: { tenantId: auth.tenantId, deletedAt: null, personId: { not: null }, occurredAt: { gte: daysAgo(90) } },
+      distinct: ['personId'],
+      select: { personId: true },
+    }),
+    prisma.marketingCampaign.findMany({
+      where: { tenantId: auth.tenantId, deletedAt: null },
+      select: { budgetPlanned: true, budgetActual: true },
+    }),
+    prisma.marketingCampaign.findMany({
+      where: { tenantId: auth.tenantId, deletedAt: null, status: 'live' },
+      select: { id: true, touchpoints: { where: { occurredAt: { gte: daysAgo(7) } }, take: 1, select: { id: true } } },
+    }),
+  ]);
 
   const overBudgetCount = budgetCheck.filter((c) => (num(c.budgetActual) ?? 0) > (num(c.budgetPlanned) ?? 0)).length;
   const staleCampaignCount = staleCampaigns.filter((c) => c.touchpoints.length === 0).length;
@@ -139,11 +160,35 @@ export async function overview(): Promise<MarketingOverviewView> {
 
   const kpis: KpiTile[] = [
     { key: 'live_campaigns', label: 'Live campaigns', value: liveCampaigns.length, unit: 'count', measured: true },
-    { key: 'leads_attributed', label: 'Leads this month (attributed)', value: leadCount, unit: 'count', measured: true },
-    { key: 'cost_per_lead', label: 'Cost per lead', value: costPerLead, unit: 'currency', measured: costPerLead !== null },
+    {
+      key: 'leads_attributed',
+      label: 'Leads this month (attributed)',
+      value: leadCount,
+      unit: 'count',
+      measured: true,
+    },
+    {
+      key: 'cost_per_lead',
+      label: 'Cost per lead',
+      value: costPerLead,
+      unit: 'currency',
+      measured: costPerLead !== null,
+    },
     { key: 'consent_coverage', label: 'Consent coverage', value: coverage, unit: 'ratio', measured: coverage !== null },
-    { key: 'send_deliverability', label: 'Send deliverability', value: deliverability, unit: 'ratio', measured: deliverability !== null },
-    { key: 'pipeline_value', label: 'Pipeline value (marketing-attributed)', value: pipelineValue, unit: 'currency', measured: true },
+    {
+      key: 'send_deliverability',
+      label: 'Send deliverability',
+      value: deliverability,
+      unit: 'ratio',
+      measured: deliverability !== null,
+    },
+    {
+      key: 'pipeline_value',
+      label: 'Pipeline value (marketing-attributed)',
+      value: pipelineValue,
+      unit: 'currency',
+      measured: true,
+    },
   ];
 
   return {
@@ -204,7 +249,10 @@ export async function funnel(params: FunnelParams = {}): Promise<MarketingFunnel
 
   const [touchpointCount, touchpointLeadRows] = await Promise.all([
     prisma.marketingTouchpoint.count({ where: touchpointWhere }),
-    prisma.marketingTouchpoint.findMany({ where: { ...touchpointWhere, leadId: { not: null } }, select: { leadId: true } }),
+    prisma.marketingTouchpoint.findMany({
+      where: { ...touchpointWhere, leadId: { not: null } },
+      select: { leadId: true },
+    }),
   ]);
   const touchpointLeadIds = [...new Set(touchpointLeadRows.map((r) => r.leadId as string))];
 
@@ -233,11 +281,16 @@ export async function funnel(params: FunnelParams = {}): Promise<MarketingFunnel
       })
     : [];
   const positionOf = new Map(stageRows.map((s) => [`${s.pipelineId}:${s.stageKey}`, s.pipelinePosition]));
-  const qualifiedCount = leads.filter((l) => (positionOf.get(`${l.pipelineId}:${l.stageKey}`) ?? 0) >= QUALIFIED_POSITION).length;
+  const qualifiedCount = leads.filter(
+    (l) => (positionOf.get(`${l.pipelineId}:${l.stageKey}`) ?? 0) >= QUALIFIED_POSITION,
+  ).length;
 
   const leadIds = leads.map((l) => l.id);
   const opportunities = leadIds.length
-    ? await prisma.opportunity.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: leadIds } }, select: { id: true, outcome: true } })
+    ? await prisma.opportunity.findMany({
+        where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: leadIds } },
+        select: { id: true, outcome: true },
+      })
     : [];
   const opportunityCount = opportunities.length;
   const wonCount = opportunities.filter((o) => o.outcome === 'won').length;
@@ -247,7 +300,8 @@ export async function funnel(params: FunnelParams = {}): Promise<MarketingFunnel
     ? await prisma.enrollment.count({ where: { tenantId: auth.tenantId, opportunityId: { in: oppIds } } })
     : 0;
 
-  const rate = (numerator: number, denominator: number): number | null => (denominator > 0 ? Number((numerator / denominator).toFixed(4)) : null);
+  const rate = (numerator: number, denominator: number): number | null =>
+    denominator > 0 ? Number((numerator / denominator).toFixed(4)) : null;
 
   const stages: FunnelStage[] = [
     { key: 'touchpoints', label: 'Touchpoints', count: touchpointCount, measured: true },
@@ -315,7 +369,10 @@ export async function channels(params: { from?: Date; to?: Date } = {}): Promise
 
   const allLeadIds = leads.map((l) => l.id);
   const opps = allLeadIds.length
-    ? await prisma.opportunity.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: allLeadIds } }, select: { leadId: true, outcome: true, expectedValue: true } })
+    ? await prisma.opportunity.findMany({
+        where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: allLeadIds } },
+        select: { leadId: true, outcome: true, expectedValue: true },
+      })
     : [];
   const leadToChannel = new Map(leads.map((l) => [l.id, l.channelKey as string]));
 
@@ -386,16 +443,27 @@ export async function campaigns(params: { from?: Date; to?: Date } = {}): Promis
   const result: CampaignPerformanceView[] = [];
   for (const c of camps) {
     const [leads, spendAgg] = await Promise.all([
-      prisma.lead.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, campaignId: c.id }, select: { id: true } }),
-      prisma.marketingSpend.aggregate({ where: { tenantId: auth.tenantId, deletedAt: null, campaignId: c.id }, _sum: { amount: true } }),
+      prisma.lead.findMany({
+        where: { tenantId: auth.tenantId, deletedAt: null, campaignId: c.id },
+        select: { id: true },
+      }),
+      prisma.marketingSpend.aggregate({
+        where: { tenantId: auth.tenantId, deletedAt: null, campaignId: c.id },
+        _sum: { amount: true },
+      }),
     ]);
     const leadIds = leads.map((l) => l.id);
     const opps = leadIds.length
-      ? await prisma.opportunity.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: leadIds } }, select: { id: true, outcome: true, expectedValue: true } })
+      ? await prisma.opportunity.findMany({
+          where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: leadIds } },
+          select: { id: true, outcome: true, expectedValue: true },
+        })
       : [];
     const won = opps.filter((o) => o.outcome === 'won');
     const oppIds = opps.map((o) => o.id);
-    const enrolments = oppIds.length ? await prisma.enrollment.count({ where: { tenantId: auth.tenantId, opportunityId: { in: oppIds } } }) : 0;
+    const enrolments = oppIds.length
+      ? await prisma.enrollment.count({ where: { tenantId: auth.tenantId, opportunityId: { in: oppIds } } })
+      : 0;
     const pipelineValue = opps.filter((o) => o.outcome === null).reduce((s, o) => s + (num(o.expectedValue) ?? 0), 0);
     const spend = num(spendAgg._sum.amount) ?? 0;
 
@@ -444,7 +512,10 @@ export interface AttributionSummaryView {
  * pre-materialised MarketingAttribution rows, so this stays correct even
  * before the attribution recompute job has run for a lead.
  */
-export async function attributionSummary(model: AttributionModel, params: { from?: Date; to?: Date } = {}): Promise<AttributionSummaryView> {
+export async function attributionSummary(
+  model: AttributionModel,
+  params: { from?: Date; to?: Date } = {},
+): Promise<AttributionSummaryView> {
   await assertCan({ resource: 'marketing_analytics', verb: 'view' });
   const auth = currentAuth();
   const from = params.from ?? daysAgo(90);
@@ -473,7 +544,10 @@ export async function attributionSummary(model: AttributionModel, params: { from
   const oppsByLead = new Map<string, { outcome: string | null; expectedValue: number | null }[]>();
   for (const o of opps) {
     if (!o.leadId) continue;
-    oppsByLead.set(o.leadId, [...(oppsByLead.get(o.leadId) ?? []), { outcome: o.outcome, expectedValue: num(o.expectedValue) }]);
+    oppsByLead.set(o.leadId, [
+      ...(oppsByLead.get(o.leadId) ?? []),
+      { outcome: o.outcome, expectedValue: num(o.expectedValue) },
+    ]);
   }
 
   const touchpointsByLead = new Map<string, typeof touchpoints>();
@@ -490,7 +564,8 @@ export async function attributionSummary(model: AttributionModel, params: { from
 
   function weightsFor(list: typeof touchpoints): Weighted[] {
     if (list.length === 0) return [];
-    if (resolvedModel === 'first_touch') return [{ campaignId: list[0].campaignId, channelKey: list[0].channelKey, weight: 1 }];
+    if (resolvedModel === 'first_touch')
+      return [{ campaignId: list[0].campaignId, channelKey: list[0].channelKey, weight: 1 }];
     if (resolvedModel === 'last_touch') {
       const last = list[list.length - 1];
       return [{ campaignId: last.campaignId, channelKey: last.channelKey, weight: 1 }];
@@ -544,7 +619,10 @@ export async function attributionSummary(model: AttributionModel, params: { from
 
   const campaignIds = [...buckets.values()].map((r) => r.campaignId).filter((id): id is string => !!id);
   const campaignNames = campaignIds.length
-    ? await prisma.marketingCampaign.findMany({ where: { tenantId: auth.tenantId, id: { in: campaignIds } }, select: { id: true, name: true } })
+    ? await prisma.marketingCampaign.findMany({
+        where: { tenantId: auth.tenantId, id: { in: campaignIds } },
+        select: { id: true, name: true },
+      })
     : [];
   const nameOf = new Map(campaignNames.map((c) => [c.id, c.name]));
 
@@ -576,13 +654,20 @@ export async function cohorts(params: { by?: 'month' } = {}): Promise<CohortRow[
   const auth = currentAuth();
 
   const leads = await prisma.lead.findMany({
-    where: { tenantId: auth.tenantId, deletedAt: null, OR: [{ campaignId: { not: null } }, { channelKey: { not: null } }] },
+    where: {
+      tenantId: auth.tenantId,
+      deletedAt: null,
+      OR: [{ campaignId: { not: null } }, { channelKey: { not: null } }],
+    },
     select: { id: true, createdAt: true, convertedOpportunityId: true },
   });
 
   const leadIds = leads.map((l) => l.id);
   const opps = leadIds.length
-    ? await prisma.opportunity.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: leadIds } }, select: { id: true, leadId: true } })
+    ? await prisma.opportunity.findMany({
+        where: { tenantId: auth.tenantId, deletedAt: null, leadId: { in: leadIds } },
+        select: { id: true, leadId: true },
+      })
     : [];
   const oppIdsByLead = new Map<string, string[]>();
   for (const o of opps) {
@@ -591,7 +676,10 @@ export async function cohorts(params: { by?: 'month' } = {}): Promise<CohortRow[
   }
   const allOppIds = opps.map((o) => o.id);
   const enrollments = allOppIds.length
-    ? await prisma.enrollment.findMany({ where: { tenantId: auth.tenantId, opportunityId: { in: allOppIds } }, select: { opportunityId: true } })
+    ? await prisma.enrollment.findMany({
+        where: { tenantId: auth.tenantId, opportunityId: { in: allOppIds } },
+        select: { opportunityId: true },
+      })
     : [];
   const enrolledOppIds = new Set(enrollments.map((e) => e.opportunityId));
 
@@ -608,7 +696,13 @@ export async function cohorts(params: { by?: 'month' } = {}): Promise<CohortRow[
 
   return [...byCohort.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([cohort, v]) => ({ cohort, leads: v.leads, converted: v.converted, enrolled: v.enrolled, rate: v.leads > 0 ? Number((v.enrolled / v.leads).toFixed(4)) : null }));
+    .map(([cohort, v]) => ({
+      cohort,
+      leads: v.leads,
+      converted: v.converted,
+      enrolled: v.enrolled,
+      rate: v.leads > 0 ? Number((v.enrolled / v.leads).toFixed(4)) : null,
+    }));
 }
 
 // ---------------------------------------------------------------------------
@@ -634,7 +728,16 @@ export async function exportCsv(kind: ExportKind, params: { from?: Date; to?: Da
   const to = params.to ?? new Date();
   const leads = await prisma.lead.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, createdAt: { gte: from, lte: to } },
-    select: { recordCode: true, title: true, source: true, channelKey: true, campaignId: true, leadStatus: true, score: true, createdAt: true },
+    select: {
+      recordCode: true,
+      title: true,
+      source: true,
+      channelKey: true,
+      campaignId: true,
+      leadStatus: true,
+      score: true,
+      createdAt: true,
+    },
     orderBy: { createdAt: 'desc' },
     take: 5000,
   });

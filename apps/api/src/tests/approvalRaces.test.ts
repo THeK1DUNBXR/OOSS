@@ -164,17 +164,16 @@ describe('agent pause and resume are audited', () => {
   it('a caller without edit on agents gets 403 and the agent keeps its status', async () => {
     const agentId = await makeAgent();
 
-    await withFixtureRole(
-      { slug: 'agt_viewer', grants: [{ resource: 'agents', verbs: ['view'] }] },
-      async () => {
-        const err = await expectReject(() => pauseAgent(agentId, true));
-        expect(err.status).toBe(403);
-      },
-    );
+    await withFixtureRole({ slug: 'agt_viewer', grants: [{ resource: 'agents', verbs: ['view'] }] }, async () => {
+      const err = await expectReject(() => pauseAgent(agentId, true));
+      expect(err.status).toBe(403);
+    });
 
     const row = await unscopedPrisma.agentPrincipal.findFirstOrThrow({ where: { id: agentId } });
     expect(row.status).toBe('active');
-    const audits = await unscopedPrisma.auditRecord.count({ where: { subjectType: 'agent_principal', subjectId: agentId } });
+    const audits = await unscopedPrisma.auditRecord.count({
+      where: { subjectType: 'agent_principal', subjectId: agentId },
+    });
     expect(audits).toBe(0);
   });
 });

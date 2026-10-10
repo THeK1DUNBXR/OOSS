@@ -80,9 +80,7 @@ export function LedgerHead({ company }: { company: LedgerCompany }) {
 }
 
 export function InfoStrip({ doc }: { doc: LedgerInvoiceData }) {
-  const taxBasis = doc.fromTNYes
-    ? 'Yes — CGST @9% + SGST @9% (intra-state)'
-    : 'No — IGST @18% (inter-state)';
+  const taxBasis = doc.fromTNYes ? 'Yes — CGST @9% + SGST @9% (intra-state)' : 'No — IGST @18% (inter-state)';
   return (
     <InfoGrid>
       <InfoRow k="Invoice No." v={doc.invoiceNo} />
@@ -118,7 +116,10 @@ export function ScheduleStrip({ doc }: { doc: LedgerInvoiceData }) {
   return (
     <DateBoxGrid columns={4}>
       <DateBoxItem k="Enrollment Date" v={doc.enrollmentDate ? fmtDate(doc.enrollmentDate) : '—'} />
-      <DateBoxItem k="First Payment Due (within 3 days)" v={doc.schedule ? fmtDate(doc.schedule.firstPaymentDue) : '—'} />
+      <DateBoxItem
+        k="First Payment Due (within 3 days)"
+        v={doc.schedule ? fmtDate(doc.schedule.firstPaymentDue) : '—'}
+      />
       <DateBoxItem k="Subsequent Payments From" v={doc.schedule ? fmtDate(doc.schedule.subsequentFrom) : '—'} />
       <DateBoxItem k="Then due on" v="1st of every month" bold={false} />
     </DateBoxGrid>
@@ -229,13 +230,13 @@ export function NoteStrip({ children }: { children?: ReactNode }) {
           Note: GST rate is a placeholder — confirm the applicable rate/exemption for your course category. The
           &quot;Student is from Tamil Nadu?&quot; field controls the tax split: Yes charges CGST @9% + SGST @9% (18%
           total, intra-state); No charges IGST @18% instead (inter-state) — whichever doesn&apos;t apply shows as
-          Rs.0.00 rather than being hidden, so the calculation stays auditable either way. SAC code is common across
-          all courses (9983) — confirm with your accountant. Monthly Fee and Discount % are editable per student
-          since pricing is flexible/negotiable; Discount % is set once and applies to the course and its add-ons.
-          Add-ons are priced as a fixed total, split evenly across the tenure chosen. Payment schedule: first payment
-          due within 3 days of enrollment; subsequent payments fall on the 1st of every month after — pushed to the
-          1st of the month after that if fewer than 14 days separate the first payment from the next 1st. Fees once
-          paid are non-refundable and non-transferable unless stated otherwise in the admission agreement.
+          Rs.0.00 rather than being hidden, so the calculation stays auditable either way. SAC code is common across all
+          courses (9983) — confirm with your accountant. Monthly Fee and Discount % are editable per student since
+          pricing is flexible/negotiable; Discount % is set once and applies to the course and its add-ons. Add-ons are
+          priced as a fixed total, split evenly across the tenure chosen. Payment schedule: first payment due within 3
+          days of enrollment; subsequent payments fall on the 1st of every month after — pushed to the 1st of the month
+          after that if fewer than 14 days separate the first payment from the next 1st. Fees once paid are
+          non-refundable and non-transferable unless stated otherwise in the admission agreement.
         </>
       )}
     </div>

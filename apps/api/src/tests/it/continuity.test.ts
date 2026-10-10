@@ -73,15 +73,21 @@ describe('continuity arithmetic (pure, no DB)', () => {
   });
 
   it('rtoBreached: recovery beyond the RTO is a breach even when RPO holds', () => {
-    expect(rtoBreached({ actualRecoveryMinutes: 500, actualDataLossMinutes: 5 }, { rtoMinutes: 240, rpoMinutes: 60 })).toBe(true);
+    expect(
+      rtoBreached({ actualRecoveryMinutes: 500, actualDataLossMinutes: 5 }, { rtoMinutes: 240, rpoMinutes: 60 }),
+    ).toBe(true);
   });
 
   it('rtoBreached: data loss beyond the RPO is a breach even when RTO holds', () => {
-    expect(rtoBreached({ actualRecoveryMinutes: 100, actualDataLossMinutes: 90 }, { rtoMinutes: 240, rpoMinutes: 60 })).toBe(true);
+    expect(
+      rtoBreached({ actualRecoveryMinutes: 100, actualDataLossMinutes: 90 }, { rtoMinutes: 240, rpoMinutes: 60 }),
+    ).toBe(true);
   });
 
   it('rtoBreached: within both promises is not a breach', () => {
-    expect(rtoBreached({ actualRecoveryMinutes: 100, actualDataLossMinutes: 10 }, { rtoMinutes: 240, rpoMinutes: 60 })).toBe(false);
+    expect(
+      rtoBreached({ actualRecoveryMinutes: 100, actualDataLossMinutes: 10 }, { rtoMinutes: 240, rpoMinutes: 60 }),
+    ).toBe(false);
   });
 });
 
@@ -117,9 +123,13 @@ describe('continuity — domain and wiring', () => {
     expect(exception!.subjectLabel).toBe(app.name);
 
     // Idempotent: a second run raises no duplicate for the same application.
-    const before = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_DR_NO_PLAN', subjectId: app.id } });
+    const before = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_DR_NO_PLAN', subjectId: app.id },
+    });
     await asUser('operations@kaizen.co.in', () => runContinuityNoPlanJob());
-    const after = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_DR_NO_PLAN', subjectId: app.id } });
+    const after = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_DR_NO_PLAN', subjectId: app.id },
+    });
     expect(after).toBe(before);
   });
 
@@ -227,14 +237,23 @@ describe('continuity — domain and wiring', () => {
   it('IT-AVL-001: uptime % is pure arithmetic over minutes, and a month with no reading reports not yet measured', async () => {
     const appId = `app-fixture-${stamp()}`;
     const period = '2099-01'; // a period nothing else in the suite touches
-    const recorded = await asUser('operations@kaizen.co.in', () =>
-      recordAvailabilityReading({ applicationId: appId, applicationName: 'Fixture Availability App', period, minutesDown: 4464 }), // 10% of Jan's 44640 minutes
+    const recorded = await asUser(
+      'operations@kaizen.co.in',
+      () =>
+        recordAvailabilityReading({
+          applicationId: appId,
+          applicationName: 'Fixture Availability App',
+          period,
+          minutesDown: 4464,
+        }), // 10% of Jan's 44640 minutes
     );
     expect(recorded.minutesDown).toBe(4464);
     const rows = await asUser('operations@kaizen.co.in', () => listPlans()); // sanity: ops head can list (below)
     expect(Array.isArray(rows)).toBe(true);
 
-    const withUptime = await unscopedPrisma.itAvailabilityReading.findFirstOrThrow({ where: { tenantId: tid, applicationId: appId, period } });
+    const withUptime = await unscopedPrisma.itAvailabilityReading.findFirstOrThrow({
+      where: { tenantId: tid, applicationId: appId, period },
+    });
     expect(uptimePercent(withUptime.minutesDown, withUptime.period)).toBeCloseTo(90, 3);
 
     // A different, untouched month for this same app reports not yet measured
@@ -338,10 +357,14 @@ describe('continuity — domain and wiring', () => {
     );
 
     const { cancelMaintenanceWindow } = await import('../../domains/it/continuity.js');
-    const noReason = await expectReject(() => asUser('operations@kaizen.co.in', () => cancelMaintenanceWindow(window.id, '')));
+    const noReason = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => cancelMaintenanceWindow(window.id, '')),
+    );
     expect(noReason.status).toBe(400);
 
-    const cancelled = await asUser('operations@kaizen.co.in', () => cancelMaintenanceWindow(window.id, 'Vendor postponed the upgrade.'));
+    const cancelled = await asUser('operations@kaizen.co.in', () =>
+      cancelMaintenanceWindow(window.id, 'Vendor postponed the upgrade.'),
+    );
     expect(cancelled.status).toBe('cancelled');
   });
 

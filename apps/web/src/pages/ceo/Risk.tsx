@@ -43,7 +43,13 @@ export function Risk() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <Metric label="Open risks" value="2" sub="1 critical / 1 high" drillTo="/ceo/governance" tone="warn" />
-        <Metric label="Mitigating" value="1" sub="Action plan currently tracked" drillTo="/ceo/governance" tone="neutral" />
+        <Metric
+          label="Mitigating"
+          value="1"
+          sub="Action plan currently tracked"
+          drillTo="/ceo/governance"
+          tone="neutral"
+        />
         <Metric label="Review due" value="3" sub="Within the next 30 days" drillTo="/ceo/policies" tone="bad" />
       </div>
 
@@ -70,12 +76,17 @@ export function Risk() {
                   <td className="px-3 py-3 align-top text-ink-300">{risk.category}</td>
                   <td className="px-3 py-3 align-top text-ink-300">{risk.owner}</td>
                   <td className="px-3 py-3 align-top">
-                    <span className={`chip ${risk.impact === 'Critical' ? 'border-band-critical/40 bg-band-critical/10 text-band-critical' : 'border-band-watch/40 bg-band-watch/10 text-band-watch'}`}>
+                    <span
+                      className={`chip ${risk.impact === 'Critical' ? 'border-band-critical/40 bg-band-critical/10 text-band-critical' : 'border-band-watch/40 bg-band-watch/10 text-band-watch'}`}
+                    >
                       {risk.impact}
                     </span>
                   </td>
                   <td className="px-3 py-3 align-top text-ink-300">
-                    <StatusChip status={risk.status} tone={risk.status === 'closed' ? 'good' : risk.status === 'open' ? 'bad' : 'warn'} />
+                    <StatusChip
+                      status={risk.status}
+                      tone={risk.status === 'closed' ? 'good' : risk.status === 'open' ? 'bad' : 'warn'}
+                    />
                   </td>
                   <td className="px-3 py-3 align-top text-ink-300">{risk.reviewDate}</td>
                 </tr>

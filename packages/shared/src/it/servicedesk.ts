@@ -29,14 +29,7 @@ export type ItKnowledgeStatus = (typeof IT_KNOWLEDGE_STATUSES)[number];
 
 export type ItTicketStatus = 'new' | 'triaged' | 'in_progress' | 'waiting' | 'resolved' | 'closed';
 
-export type ItTicketEvent =
-  | 'TRIAGE'
-  | 'START'
-  | 'WAIT'
-  | 'RESUME'
-  | 'RESOLVE'
-  | 'CLOSE'
-  | 'REOPEN';
+export type ItTicketEvent = 'TRIAGE' | 'START' | 'WAIT' | 'RESUME' | 'RESOLVE' | 'CLOSE' | 'REOPEN';
 
 /** `new -> triaged -> in_progress -> waiting -> resolved -> closed`, with
  * `REOPEN` taking a resolved ticket back to `in_progress` (the plan's
@@ -166,7 +159,10 @@ export function medianMinutes(values: number[]): number | null {
 
 /** Backlog age buckets, in whole days from `now`, over a set of creation
  * timestamps still open. Pure — the caller filters to open tickets first. */
-export function backlogAgeBuckets(createdAts: Date[], now: Date): { d0_1: number; d2_7: number; d8_30: number; d30plus: number } {
+export function backlogAgeBuckets(
+  createdAts: Date[],
+  now: Date,
+): { d0_1: number; d2_7: number; d8_30: number; d30plus: number } {
   const buckets = { d0_1: 0, d2_7: 0, d8_30: 0, d30plus: 0 };
   for (const createdAt of createdAts) {
     const ageDays = Math.floor((now.getTime() - createdAt.getTime()) / MS_PER_DAY);

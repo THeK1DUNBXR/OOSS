@@ -34,23 +34,23 @@ needs no database, so it is exercised directly by unit tests.
 `apps/api/src/seed/compliance/calendar.ts` seeds sixteen obligation types by
 idempotent upsert on `code`:
 
-| Code | Recurrence | Due |
-|---|---|---|
-| GSTR1 | monthly | 11th of next month |
-| GSTR3B | monthly | 20th of next month |
-| TDS_DEPOSIT | monthly | 7th of next month; 30 April for March |
-| TDS_24Q / TDS_26Q | quarterly | 31 May / 31 Jul / 31 Oct / 31 Jan |
-| PF_ECR | monthly | 15th |
-| ESI_CONTRIB | monthly | 15th |
-| PT_TN | half-yearly | 30 Sep / 31 Mar — confirm against the company's own PT enrolment |
-| ADVANCE_TAX | quarterly | 15 Jun / Sep / Dec / Mar |
-| AOC4 | annual | 30 Oct (default; actually 30 days after the AGM) |
-| MGT7 | annual | 29 Nov (default; actually 60 days after the AGM) |
-| DIR3_KYC | annual | 30 Sep |
-| POSH_ANNUAL | annual | 31 Jan, for the calendar year |
-| ITR_COMPANY | annual | 31 Oct |
-| FORM16 | annual | 15 Jun |
-| GSTR9 | annual | 31 Dec |
+| Code              | Recurrence  | Due                                                              |
+| ----------------- | ----------- | ---------------------------------------------------------------- |
+| GSTR1             | monthly     | 11th of next month                                               |
+| GSTR3B            | monthly     | 20th of next month                                               |
+| TDS_DEPOSIT       | monthly     | 7th of next month; 30 April for March                            |
+| TDS_24Q / TDS_26Q | quarterly   | 31 May / 31 Jul / 31 Oct / 31 Jan                                |
+| PF_ECR            | monthly     | 15th                                                             |
+| ESI_CONTRIB       | monthly     | 15th                                                             |
+| PT_TN             | half-yearly | 30 Sep / 31 Mar — confirm against the company's own PT enrolment |
+| ADVANCE_TAX       | quarterly   | 15 Jun / Sep / Dec / Mar                                         |
+| AOC4              | annual      | 30 Oct (default; actually 30 days after the AGM)                 |
+| MGT7              | annual      | 29 Nov (default; actually 60 days after the AGM)                 |
+| DIR3_KYC          | annual      | 30 Sep                                                           |
+| POSH_ANNUAL       | annual      | 31 Jan, for the calendar year                                    |
+| ITR_COMPANY       | annual      | 31 Oct                                                           |
+| FORM16            | annual      | 15 Jun                                                           |
+| GSTR9             | annual      | 31 Dec                                                           |
 
 ## Domain (`apps/api/src/domains/compliance/calendar.ts`)
 

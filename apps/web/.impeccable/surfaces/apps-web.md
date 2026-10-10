@@ -1,7 +1,7 @@
 ---
 version: 1
-slug: "apps-web"
-primary_target: "apps/web"
+slug: 'apps-web'
+primary_target: 'apps/web'
 related_targets: []
 ---
 

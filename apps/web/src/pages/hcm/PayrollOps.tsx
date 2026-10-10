@@ -14,7 +14,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, date, dateTime, money, relative } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
-import { CreateModal, messageOf, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
+import {
+  CreateModal,
+  messageOf,
+  MoneyInput,
+  NewButton,
+  Row,
+  SelectInput,
+  TextArea,
+  TextInput,
+} from '../../components/forms.js';
 
 type Tab = 'calendar' | 'pay-items' | 'adhoc' | 'arrears' | 'reconciliation' | 'journal' | 'bank-advice' | 'queries';
 
@@ -68,7 +77,15 @@ function useRuns() {
   return useQuery({ queryKey: ['payrollops-runs'], queryFn: () => api.get<PayrollRunRow[]>('/hr/payroll/runs') });
 }
 
-function RunPicker({ value, onChange, onlyApproved }: { value: string; onChange: (id: string) => void; onlyApproved?: boolean }) {
+function RunPicker({
+  value,
+  onChange,
+  onlyApproved,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  onlyApproved?: boolean;
+}) {
   const runs = useRuns();
   const rows = (runs.data ?? []).filter((r) => !onlyApproved || ['Approved', 'Disbursed', 'Locked'].includes(r.status));
   if (runs.isLoading) return <Loading />;
@@ -121,15 +138,28 @@ function CalendarTab() {
   const { can } = useSession();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ payPeriod: '', attendanceLockAt: '', inputFreezeAt: '', runByAt: '', approveByAt: '', payDate: '', note: '' });
+  const [form, setForm] = useState({
+    payPeriod: '',
+    attendanceLockAt: '',
+    inputFreezeAt: '',
+    runByAt: '',
+    approveByAt: '',
+    payDate: '',
+    note: '',
+  });
 
-  const rows = useQuery({ queryKey: ['payrollops-calendar'], queryFn: () => api.get<CalendarRow[]>('/hcm/payrollops/calendar') });
+  const rows = useQuery({
+    queryKey: ['payrollops-calendar'],
+    queryFn: () => api.get<CalendarRow[]>('/hcm/payrollops/calendar'),
+  });
 
   return (
     <Card
       title="Payroll calendar"
       subtitle="The cutoffs a period runs against — when attendance locks, when other input freezes, and the planned run, approve and pay dates."
-      actions={can('payroll_calendar:create') && <NewButton label="Set a period's calendar" onClick={() => setOpen(true)} />}
+      actions={
+        can('payroll_calendar:create') && <NewButton label="Set a period's calendar" onClick={() => setOpen(true)} />
+      }
     >
       {rows.isLoading && <Loading />}
       {rows.error && <ErrorBox error={rows.error} />}
@@ -156,7 +186,9 @@ function CalendarTab() {
                 <td>{date(r.runByAt)}</td>
                 <td>{date(r.approveByAt)}</td>
                 <td>{date(r.payDate)}</td>
-                <td><StatusChip status={r.milestone.replace(/_/g, ' ')} tone={MILESTONE_TONE[r.milestone] ?? 'neutral'} /></td>
+                <td>
+                  <StatusChip status={r.milestone.replace(/_/g, ' ')} tone={MILESTONE_TONE[r.milestone] ?? 'neutral'} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -180,16 +212,52 @@ function CalendarTab() {
           })
         }
       >
-        <TextInput label="Pay period" placeholder="YYYY-MM" value={form.payPeriod} onChange={(v) => setForm({ ...form, payPeriod: v })} required />
+        <TextInput
+          label="Pay period"
+          placeholder="YYYY-MM"
+          value={form.payPeriod}
+          onChange={(v) => setForm({ ...form, payPeriod: v })}
+          required
+        />
         <Row>
-          <TextInput label="Attendance lock" type="date" value={form.attendanceLockAt} onChange={(v) => setForm({ ...form, attendanceLockAt: v })} required />
-          <TextInput label="Input freeze" type="date" value={form.inputFreezeAt} onChange={(v) => setForm({ ...form, inputFreezeAt: v })} required />
+          <TextInput
+            label="Attendance lock"
+            type="date"
+            value={form.attendanceLockAt}
+            onChange={(v) => setForm({ ...form, attendanceLockAt: v })}
+            required
+          />
+          <TextInput
+            label="Input freeze"
+            type="date"
+            value={form.inputFreezeAt}
+            onChange={(v) => setForm({ ...form, inputFreezeAt: v })}
+            required
+          />
         </Row>
         <Row>
-          <TextInput label="Run by" type="date" value={form.runByAt} onChange={(v) => setForm({ ...form, runByAt: v })} required />
-          <TextInput label="Approve by" type="date" value={form.approveByAt} onChange={(v) => setForm({ ...form, approveByAt: v })} required />
+          <TextInput
+            label="Run by"
+            type="date"
+            value={form.runByAt}
+            onChange={(v) => setForm({ ...form, runByAt: v })}
+            required
+          />
+          <TextInput
+            label="Approve by"
+            type="date"
+            value={form.approveByAt}
+            onChange={(v) => setForm({ ...form, approveByAt: v })}
+            required
+          />
         </Row>
-        <TextInput label="Pay date" type="date" value={form.payDate} onChange={(v) => setForm({ ...form, payDate: v })} required />
+        <TextInput
+          label="Pay date"
+          type="date"
+          value={form.payDate}
+          onChange={(v) => setForm({ ...form, payDate: v })}
+          required
+        />
         <TextArea label="Note" value={form.note} onChange={(v) => setForm({ ...form, note: v })} />
       </CreateModal>
     </Card>
@@ -215,11 +283,22 @@ function PayItemsTab() {
   const { can } = useSession();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ code: '', name: '', kind: 'earning' as string, glAccountCode: '', taxable: true, statutoryBasis: false });
+  const [form, setForm] = useState({
+    code: '',
+    name: '',
+    kind: 'earning' as string,
+    glAccountCode: '',
+    taxable: true,
+    statutoryBasis: false,
+  });
 
-  const items = useQuery({ queryKey: ['payrollops-pay-items'], queryFn: () => api.get<PayItem[]>('/hcm/payrollops/pay-items') });
+  const items = useQuery({
+    queryKey: ['payrollops-pay-items'],
+    queryFn: () => api.get<PayItem[]>('/hcm/payrollops/pay-items'),
+  });
   const toggle = useMutation({
-    mutationFn: ({ id, active }: { id: string; active: boolean }) => api.patch(`/hcm/payrollops/pay-items/${id}/active`, { active }),
+    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+      api.patch(`/hcm/payrollops/pay-items/${id}/active`, { active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payrollops-pay-items'] }),
   });
 
@@ -231,7 +310,12 @@ function PayItemsTab() {
     >
       {items.isLoading && <Loading />}
       {items.error && <ErrorBox error={items.error} />}
-      {items.data && items.data.length === 0 && <EmptyState message="No pay items configured yet." hint="A run's own gross/net still works without these — they are for ad-hoc lines and journal costing." />}
+      {items.data && items.data.length === 0 && (
+        <EmptyState
+          message="No pay items configured yet."
+          hint="A run's own gross/net still works without these — they are for ad-hoc lines and journal costing."
+        />
+      )}
       {items.data && items.data.length > 0 && (
         <table className="table">
           <thead>
@@ -249,7 +333,9 @@ function PayItemsTab() {
               <tr key={i.id} className={i.active ? '' : 'opacity-50'}>
                 <td className="tabular-nums">{i.code}</td>
                 <td>{i.name}</td>
-                <td><StatusChip status={i.kind.replace(/_/g, ' ')} /></td>
+                <td>
+                  <StatusChip status={i.kind.replace(/_/g, ' ')} />
+                </td>
                 <td className="tabular-nums text-2xs">{i.glAccountCode}</td>
                 <td>{i.taxable ? 'Yes' : 'No'}</td>
                 <td className="text-right">
@@ -273,7 +359,12 @@ function PayItemsTab() {
         onSubmit={() => api.post('/hcm/payrollops/pay-items', form)}
       >
         <Row>
-          <TextInput label="Code" value={form.code} onChange={(v) => setForm({ ...form, code: v.toUpperCase() })} required />
+          <TextInput
+            label="Code"
+            value={form.code}
+            onChange={(v) => setForm({ ...form, code: v.toUpperCase() })}
+            required
+          />
           <SelectInput
             label="Kind"
             value={form.kind}
@@ -287,7 +378,13 @@ function PayItemsTab() {
           />
         </Row>
         <TextInput label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
-        <TextInput label="GL account code" value={form.glAccountCode} onChange={(v) => setForm({ ...form, glAccountCode: v })} placeholder="6020-BONUS" required />
+        <TextInput
+          label="GL account code"
+          value={form.glAccountCode}
+          onChange={(v) => setForm({ ...form, glAccountCode: v })}
+          placeholder="6020-BONUS"
+          required
+        />
       </CreateModal>
     </Card>
   );
@@ -308,19 +405,37 @@ interface AdHocLine {
   status: string;
 }
 
-const ADHOC_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { Proposed: 'warn', Approved: 'good', Rejected: 'bad', Applied: 'neutral' };
+const ADHOC_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  Proposed: 'warn',
+  Approved: 'good',
+  Rejected: 'bad',
+  Applied: 'neutral',
+};
 
 function AdHocTab() {
   const { can } = useSession();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ employmentRelationshipId: '', payItemId: '', payPeriod: '', amount: '', reason: '' });
+  const [form, setForm] = useState({
+    employmentRelationshipId: '',
+    payItemId: '',
+    payPeriod: '',
+    amount: '',
+    reason: '',
+  });
 
-  const lines = useQuery({ queryKey: ['payrollops-adhoc'], queryFn: () => api.get<AdHocLine[]>('/hcm/payrollops/adhoc-pay') });
-  const items = useQuery({ queryKey: ['payrollops-pay-items'], queryFn: () => api.get<PayItem[]>('/hcm/payrollops/pay-items') });
+  const lines = useQuery({
+    queryKey: ['payrollops-adhoc'],
+    queryFn: () => api.get<AdHocLine[]>('/hcm/payrollops/adhoc-pay'),
+  });
+  const items = useQuery({
+    queryKey: ['payrollops-pay-items'],
+    queryFn: () => api.get<PayItem[]>('/hcm/payrollops/pay-items'),
+  });
 
   const decide = useMutation({
-    mutationFn: ({ id, approve }: { id: string; approve: boolean }) => api.post(`/hcm/payrollops/adhoc-pay/${id}/${approve ? 'approve' : 'reject'}`, {}),
+    mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
+      api.post(`/hcm/payrollops/adhoc-pay/${id}/${approve ? 'approve' : 'reject'}`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payrollops-adhoc'] }),
   });
   const [decideError, setDecideError] = useState<string | null>(null);
@@ -333,7 +448,11 @@ function AdHocTab() {
     >
       {lines.isLoading && <Loading />}
       {lines.error && <ErrorBox error={lines.error} />}
-      {decideError && <p className="mb-2 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{decideError}</p>}
+      {decideError && (
+        <p className="mb-2 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {decideError}
+        </p>
+      )}
       {lines.data && lines.data.length === 0 && <EmptyState message="No ad-hoc pay lines proposed yet." />}
       {lines.data && lines.data.length > 0 && (
         <table className="table">
@@ -352,19 +471,25 @@ function AdHocTab() {
                 <td>{l.payPeriod}</td>
                 <td className="tabular-nums">{money(l.amount)}</td>
                 <td>{l.reason}</td>
-                <td><StatusChip status={l.status} tone={ADHOC_TONE[l.status] ?? 'neutral'} /></td>
+                <td>
+                  <StatusChip status={l.status} tone={ADHOC_TONE[l.status] ?? 'neutral'} />
+                </td>
                 <td className="text-right">
                   {l.status === 'Proposed' && can('adhoc_pay:approve') && (
                     <div className="flex justify-end gap-1">
                       <button
                         className="btn text-2xs"
-                        onClick={() => decide.mutate({ id: l.id, approve: true }, { onError: (e) => setDecideError(messageOf(e)) })}
+                        onClick={() =>
+                          decide.mutate({ id: l.id, approve: true }, { onError: (e) => setDecideError(messageOf(e)) })
+                        }
                       >
                         Approve
                       </button>
                       <button
                         className="btn text-2xs"
-                        onClick={() => decide.mutate({ id: l.id, approve: false }, { onError: (e) => setDecideError(messageOf(e)) })}
+                        onClick={() =>
+                          decide.mutate({ id: l.id, approve: false }, { onError: (e) => setDecideError(messageOf(e)) })
+                        }
                       >
                         Reject
                       </button>
@@ -392,16 +517,30 @@ function AdHocTab() {
           })
         }
       >
-        <TextInput label="Employment relationship id" value={form.employmentRelationshipId} onChange={(v) => setForm({ ...form, employmentRelationshipId: v })} required hint="From the employee's People record" />
+        <TextInput
+          label="Employment relationship id"
+          value={form.employmentRelationshipId}
+          onChange={(v) => setForm({ ...form, employmentRelationshipId: v })}
+          required
+          hint="From the employee's People record"
+        />
         <SelectInput
           label="Pay item"
           value={form.payItemId}
           onChange={(v) => setForm({ ...form, payItemId: v })}
           placeholder="Choose…"
-          options={(items.data ?? []).filter((i) => i.active).map((i) => ({ value: i.id, label: `${i.code} — ${i.name}` }))}
+          options={(items.data ?? [])
+            .filter((i) => i.active)
+            .map((i) => ({ value: i.id, label: `${i.code} — ${i.name}` }))}
         />
         <Row>
-          <TextInput label="Pay period" placeholder="YYYY-MM" value={form.payPeriod} onChange={(v) => setForm({ ...form, payPeriod: v })} required />
+          <TextInput
+            label="Pay period"
+            placeholder="YYYY-MM"
+            value={form.payPeriod}
+            onChange={(v) => setForm({ ...form, payPeriod: v })}
+            required
+          />
           <MoneyInput label="Amount" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} required />
         </Row>
         <TextArea label="Reason" value={form.reason} onChange={(v) => setForm({ ...form, reason: v })} required />
@@ -425,7 +564,12 @@ interface ArrearRow {
   paidInPayPeriod: string | null;
 }
 
-const ARREAR_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { Proposed: 'warn', Approved: 'good', Rejected: 'bad', Paid: 'neutral' };
+const ARREAR_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  Proposed: 'warn',
+  Approved: 'good',
+  Rejected: 'bad',
+  Paid: 'neutral',
+};
 
 function ArrearsTab() {
   const { can } = useSession();
@@ -435,13 +579,18 @@ function ArrearsTab() {
   const [markPeriod, setMarkPeriod] = useState<Record<string, string>>({});
   const [decideError, setDecideError] = useState<string | null>(null);
 
-  const rows = useQuery({ queryKey: ['payrollops-arrears'], queryFn: () => api.get<ArrearRow[]>('/hcm/payrollops/arrears') });
+  const rows = useQuery({
+    queryKey: ['payrollops-arrears'],
+    queryFn: () => api.get<ArrearRow[]>('/hcm/payrollops/arrears'),
+  });
   const decide = useMutation({
-    mutationFn: ({ id, approve }: { id: string; approve: boolean }) => api.post(`/hcm/payrollops/arrears/${id}/${approve ? 'approve' : 'reject'}`, {}),
+    mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
+      api.post(`/hcm/payrollops/arrears/${id}/${approve ? 'approve' : 'reject'}`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payrollops-arrears'] }),
   });
   const markPaid = useMutation({
-    mutationFn: ({ id, payPeriod }: { id: string; payPeriod: string }) => api.post(`/hcm/payrollops/arrears/${id}/mark-paid`, { payPeriod }),
+    mutationFn: ({ id, payPeriod }: { id: string; payPeriod: string }) =>
+      api.post(`/hcm/payrollops/arrears/${id}/mark-paid`, { payPeriod }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['payrollops-arrears'] }),
   });
 
@@ -453,7 +602,11 @@ function ArrearsTab() {
     >
       {rows.isLoading && <Loading />}
       {rows.error && <ErrorBox error={rows.error} />}
-      {decideError && <p className="mb-2 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{decideError}</p>}
+      {decideError && (
+        <p className="mb-2 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {decideError}
+        </p>
+      )}
       {rows.data && rows.data.length === 0 && <EmptyState message="No arrears proposed yet." />}
       {rows.data && rows.data.length > 0 && (
         <table className="table">
@@ -473,15 +626,27 @@ function ArrearsTab() {
                 <td>{a.fromPeriod}</td>
                 <td className="tabular-nums">{money(a.amount)}</td>
                 <td>{a.reason}</td>
-                <td><StatusChip status={a.status} tone={ARREAR_TONE[a.status] ?? 'neutral'} /></td>
+                <td>
+                  <StatusChip status={a.status} tone={ARREAR_TONE[a.status] ?? 'neutral'} />
+                </td>
                 <td>{a.paidInPayPeriod ?? '—'}</td>
                 <td className="text-right">
                   {a.status === 'Proposed' && can('arrears:approve') && (
                     <div className="flex justify-end gap-1">
-                      <button className="btn text-2xs" onClick={() => decide.mutate({ id: a.id, approve: true }, { onError: (e) => setDecideError(messageOf(e)) })}>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() =>
+                          decide.mutate({ id: a.id, approve: true }, { onError: (e) => setDecideError(messageOf(e)) })
+                        }
+                      >
                         Approve
                       </button>
-                      <button className="btn text-2xs" onClick={() => decide.mutate({ id: a.id, approve: false }, { onError: (e) => setDecideError(messageOf(e)) })}>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() =>
+                          decide.mutate({ id: a.id, approve: false }, { onError: (e) => setDecideError(messageOf(e)) })
+                        }
+                      >
                         Reject
                       </button>
                     </div>
@@ -523,9 +688,20 @@ function ArrearsTab() {
           })
         }
       >
-        <TextInput label="Employment relationship id" value={form.employmentRelationshipId} onChange={(v) => setForm({ ...form, employmentRelationshipId: v })} required />
+        <TextInput
+          label="Employment relationship id"
+          value={form.employmentRelationshipId}
+          onChange={(v) => setForm({ ...form, employmentRelationshipId: v })}
+          required
+        />
         <Row>
-          <TextInput label="Owed for period" placeholder="YYYY-MM" value={form.fromPeriod} onChange={(v) => setForm({ ...form, fromPeriod: v })} required />
+          <TextInput
+            label="Owed for period"
+            placeholder="YYYY-MM"
+            value={form.fromPeriod}
+            onChange={(v) => setForm({ ...form, fromPeriod: v })}
+            required
+          />
           <MoneyInput label="Amount" value={form.amount} onChange={(v) => setForm({ ...form, amount: v })} required />
         </Row>
         <TextArea label="Reason" value={form.reason} onChange={(v) => setForm({ ...form, reason: v })} required />
@@ -544,7 +720,15 @@ interface ReconRow {
   previousPayrollRunId: string | null;
   unexplainedCount: number;
   generatedAt: string;
-  deltas: Array<{ employmentRelationshipId: string; previousNet: number | null; currentNet: number | null; delta: number; deltaPct: number | null; unexplained: boolean; note: string }>;
+  deltas: Array<{
+    employmentRelationshipId: string;
+    previousNet: number | null;
+    currentNet: number | null;
+    delta: number;
+    deltaPct: number | null;
+    unexplained: boolean;
+    note: string;
+  }>;
 }
 
 function ReconciliationTab() {
@@ -554,10 +738,20 @@ function ReconciliationTab() {
   const [previousRunId, setPreviousRunId] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const rows = useQuery({ queryKey: ['payrollops-recon'], queryFn: () => api.get<ReconRow[]>('/hcm/payrollops/reconciliations') });
+  const rows = useQuery({
+    queryKey: ['payrollops-recon'],
+    queryFn: () => api.get<ReconRow[]>('/hcm/payrollops/reconciliations'),
+  });
   const generate = useMutation({
-    mutationFn: () => api.post<ReconRow>('/hcm/payrollops/reconciliations/generate', { payrollRunId: runId, previousPayrollRunId: previousRunId || undefined }),
-    onSuccess: () => { setError(null); qc.invalidateQueries({ queryKey: ['payrollops-recon'] }); },
+    mutationFn: () =>
+      api.post<ReconRow>('/hcm/payrollops/reconciliations/generate', {
+        payrollRunId: runId,
+        previousPayrollRunId: previousRunId || undefined,
+      }),
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ['payrollops-recon'] });
+    },
     onError: (e) => setError(messageOf(e)),
   });
 
@@ -567,15 +761,23 @@ function ReconciliationTab() {
       subtitle="A per-employee delta against the previous run, before disbursal — a swing beyond the usual range is flagged while the money has not left yet."
     >
       <div className="mb-4 flex flex-wrap items-end gap-3 border-b border-ink-800 pb-4">
-        <div className="w-64"><RunPicker value={runId} onChange={setRunId} onlyApproved /></div>
-        <div className="w-64"><RunPicker value={previousRunId} onChange={setPreviousRunId} /></div>
+        <div className="w-64">
+          <RunPicker value={runId} onChange={setRunId} onlyApproved />
+        </div>
+        <div className="w-64">
+          <RunPicker value={previousRunId} onChange={setPreviousRunId} />
+        </div>
         {can('payroll_reconciliations:create') && (
           <button className="btn-primary" disabled={!runId || generate.isPending} onClick={() => generate.mutate()}>
             {generate.isPending ? 'Comparing…' : 'Run reconciliation'}
           </button>
         )}
       </div>
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       {rows.isLoading && <Loading />}
       {rows.error && <ErrorBox error={rows.error} />}
@@ -586,7 +788,10 @@ function ReconciliationTab() {
             <div key={r.id} className="rounded border border-ink-800 p-3">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs text-ink-300">Generated {relative(r.generatedAt)}</p>
-                <StatusChip status={r.unexplainedCount > 0 ? `${r.unexplainedCount} unexplained` : 'clean'} tone={r.unexplainedCount > 0 ? 'bad' : 'good'} />
+                <StatusChip
+                  status={r.unexplainedCount > 0 ? `${r.unexplainedCount} unexplained` : 'clean'}
+                  tone={r.unexplainedCount > 0 ? 'bad' : 'good'}
+                />
               </div>
               <table className="table">
                 <thead>
@@ -604,7 +809,10 @@ function ReconciliationTab() {
                       <td className="text-2xs tabular-nums">{d.employmentRelationshipId.slice(-8)}</td>
                       <td className="tabular-nums">{d.previousNet === null ? '—' : money(d.previousNet)}</td>
                       <td className="tabular-nums">{d.currentNet === null ? '—' : money(d.currentNet)}</td>
-                      <td className={`tabular-nums ${d.unexplained ? 'text-band-critical' : ''}`}>{money(d.delta)}{d.deltaPct !== null ? ` (${d.deltaPct}%)` : ''}</td>
+                      <td className={`tabular-nums ${d.unexplained ? 'text-band-critical' : ''}`}>
+                        {money(d.delta)}
+                        {d.deltaPct !== null ? ` (${d.deltaPct}%)` : ''}
+                      </td>
                       <td className="text-2xs text-ink-400">{d.note}</td>
                     </tr>
                   ))}
@@ -626,7 +834,13 @@ interface JournalRow {
   id: string;
   payrollRunId: string;
   payPeriod: string;
-  lines: Array<{ ledgerAccountCode: string; label: string; costCentre: string; debit: number | null; credit: number | null }>;
+  lines: Array<{
+    ledgerAccountCode: string;
+    label: string;
+    costCentre: string;
+    debit: number | null;
+    credit: number | null;
+  }>;
   totalDebit: number | null;
   totalCredit: number | null;
   moneyWithheldReason?: string | null;
@@ -649,18 +863,30 @@ function JournalTab() {
   const [accountId, setAccountId] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const journals = useQuery({ queryKey: ['payrollops-journals'], queryFn: () => api.get<JournalRow[]>('/hcm/payrollops/journals') });
-  const accounts = useQuery({ queryKey: ['ledger-accounts-for-payroll'], queryFn: () => api.get<LedgerAccount[]>('/books/accounts') });
+  const journals = useQuery({
+    queryKey: ['payrollops-journals'],
+    queryFn: () => api.get<JournalRow[]>('/hcm/payrollops/journals'),
+  });
+  const accounts = useQuery({
+    queryKey: ['ledger-accounts-for-payroll'],
+    queryFn: () => api.get<LedgerAccount[]>('/books/accounts'),
+  });
   const cashAccounts = (accounts.data ?? []).filter((a) => CASH_ACCOUNT_TYPES.includes(a.accountType));
 
   const generate = useMutation({
     mutationFn: () => api.post('/hcm/payrollops/journals/generate', { payrollRunId: runId }),
-    onSuccess: () => { setError(null); qc.invalidateQueries({ queryKey: ['payrollops-journals'] }); },
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ['payrollops-journals'] });
+    },
     onError: (e) => setError(messageOf(e)),
   });
   const post = useMutation({
     mutationFn: (id: string) => api.post(`/hcm/payrollops/journals/${id}/post`, { accountId }),
-    onSuccess: () => { setError(null); qc.invalidateQueries({ queryKey: ['payrollops-journals'] }); },
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ['payrollops-journals'] });
+    },
     onError: (e) => setError(messageOf(e)),
   });
 
@@ -670,14 +896,20 @@ function JournalTab() {
       subtitle="The double-entry breakdown a run posts as, by division. Debits always equal credits by construction. Posting records the net-pay cash movement in the books; the full breakdown stays here since the books post one cash line at a time, not a multi-line entry."
     >
       <div className="mb-4 flex flex-wrap items-end gap-3 border-b border-ink-800 pb-4">
-        <div className="w-64"><RunPicker value={runId} onChange={setRunId} onlyApproved /></div>
+        <div className="w-64">
+          <RunPicker value={runId} onChange={setRunId} onlyApproved />
+        </div>
         {can('payroll_journals:create') && (
           <button className="btn-primary" disabled={!runId || generate.isPending} onClick={() => generate.mutate()}>
             {generate.isPending ? 'Preparing…' : 'Generate / rebuild journal'}
           </button>
         )}
       </div>
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       {journals.isLoading && <Loading />}
       {journals.error && <ErrorBox error={journals.error} />}
@@ -702,10 +934,16 @@ function JournalTab() {
                 <tbody>
                   {j.lines.map((l, idx) => (
                     <tr key={idx}>
-                      <td className="text-2xs">{l.label} <span className="text-ink-500">({l.ledgerAccountCode})</span></td>
+                      <td className="text-2xs">
+                        {l.label} <span className="text-ink-500">({l.ledgerAccountCode})</span>
+                      </td>
                       <td>{l.costCentre}</td>
-                      <td className="text-right tabular-nums">{l.debit === null ? <StatusChip status="withheld" /> : l.debit > 0 ? money(l.debit) : ''}</td>
-                      <td className="text-right tabular-nums">{l.credit === null ? <StatusChip status="withheld" /> : l.credit > 0 ? money(l.credit) : ''}</td>
+                      <td className="text-right tabular-nums">
+                        {l.debit === null ? <StatusChip status="withheld" /> : l.debit > 0 ? money(l.debit) : ''}
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {l.credit === null ? <StatusChip status="withheld" /> : l.credit > 0 ? money(l.credit) : ''}
+                      </td>
                     </tr>
                   ))}
                   <tr className="font-medium">
@@ -726,12 +964,18 @@ function JournalTab() {
                       options={cashAccounts.map((a) => ({ value: a.id, label: a.name }))}
                     />
                   </div>
-                  <button className="btn-primary" disabled={!accountId || post.isPending} onClick={() => post.mutate(j.id)}>
+                  <button
+                    className="btn-primary"
+                    disabled={!accountId || post.isPending}
+                    onClick={() => post.mutate(j.id)}
+                  >
                     {post.isPending ? 'Posting…' : 'Post to books'}
                   </button>
                 </div>
               )}
-              {j.status === 'Posted' && <p className="text-2xs text-ink-500">Posted as transaction {j.transactionId}.</p>}
+              {j.status === 'Posted' && (
+                <p className="text-2xs text-ink-500">Posted as transaction {j.transactionId}.</p>
+              )}
             </div>
           ))}
         </div>
@@ -767,7 +1011,10 @@ function BankAdviceTab() {
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
 
-  const advices = useQuery({ queryKey: ['payrollops-advices'], queryFn: () => api.get<BankAdviceSummary[]>('/hcm/payrollops/bank-advices') });
+  const advices = useQuery({
+    queryKey: ['payrollops-advices'],
+    queryFn: () => api.get<BankAdviceSummary[]>('/hcm/payrollops/bank-advices'),
+  });
   const detail = useQuery({
     queryKey: ['payrollops-advice-detail', viewingId],
     queryFn: () => api.get<BankAdviceDetail>(`/hcm/payrollops/bank-advices/${viewingId}`),
@@ -776,7 +1023,10 @@ function BankAdviceTab() {
 
   const generate = useMutation({
     mutationFn: () => api.post('/hcm/payrollops/bank-advices/generate', { payrollRunId: runId }),
-    onSuccess: () => { setError(null); qc.invalidateQueries({ queryKey: ['payrollops-advices'] }); },
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ['payrollops-advices'] });
+    },
     onError: (e) => setError(messageOf(e)),
   });
 
@@ -798,14 +1048,20 @@ function BankAdviceTab() {
       subtitle="The NEFT file for a run's net pay. Held only by HR operations and Finance — never at employee scope. Account numbers show only their last 4 digits here; the full CSV is a separate, audited download."
     >
       <div className="mb-4 flex flex-wrap items-end gap-3 border-b border-ink-800 pb-4">
-        <div className="w-64"><RunPicker value={runId} onChange={setRunId} onlyApproved /></div>
+        <div className="w-64">
+          <RunPicker value={runId} onChange={setRunId} onlyApproved />
+        </div>
         {can('bank_advices:export') && (
           <button className="btn-primary" disabled={!runId || generate.isPending} onClick={() => generate.mutate()}>
             {generate.isPending ? 'Generating…' : 'Generate bank advice'}
           </button>
         )}
       </div>
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       {advices.isLoading && <Loading />}
       {advices.error && <ErrorBox error={advices.error} />}
@@ -836,7 +1092,11 @@ function BankAdviceTab() {
                       {viewingId === a.id ? 'Hide' : 'View rows'}
                     </button>
                     {can('bank_advices:export') && (
-                      <button className="btn text-2xs" disabled={downloading === a.id} onClick={() => download(a.id, a.payPeriod)}>
+                      <button
+                        className="btn text-2xs"
+                        disabled={downloading === a.id}
+                        onClick={() => download(a.id, a.payPeriod)}
+                      >
                         {downloading === a.id ? 'Downloading…' : 'Download CSV'}
                       </button>
                     )}
@@ -865,7 +1125,9 @@ function BankAdviceTab() {
                 <td className="text-2xs">{r.employeeName}</td>
                 <td className="text-2xs tabular-nums">{r.accountNumber}</td>
                 <td className="text-2xs tabular-nums">{r.ifsc}</td>
-                <td className="text-right tabular-nums">{r.amount === null ? <StatusChip status="withheld" /> : money(r.amount)}</td>
+                <td className="text-right tabular-nums">
+                  {r.amount === null ? <StatusChip status="withheld" /> : money(r.amount)}
+                </td>
                 <td className="text-2xs text-ink-500">{r.reference}</td>
               </tr>
             ))}
@@ -892,7 +1154,11 @@ interface PayrollQueryRow {
   createdAt: string;
 }
 
-const QUERY_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { Open: 'warn', Responded: 'good', Closed: 'neutral' };
+const QUERY_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  Open: 'warn',
+  Responded: 'good',
+  Closed: 'neutral',
+};
 
 function QueriesTab() {
   const { can } = useSession();
@@ -900,17 +1166,30 @@ function QueriesTab() {
   const [responses, setResponses] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
-  const rows = useQuery({ queryKey: ['payrollops-queries'], queryFn: () => api.get<PayrollQueryRow[]>('/hcm/payrollops/queries') });
+  const rows = useQuery({
+    queryKey: ['payrollops-queries'],
+    queryFn: () => api.get<PayrollQueryRow[]>('/hcm/payrollops/queries'),
+  });
   const respond = useMutation({
     mutationFn: ({ id, response, close }: { id: string; response: string; close: boolean }) =>
       api.post(`/hcm/payrollops/queries/${id}/respond`, { response, close }),
-    onSuccess: () => { setError(null); qc.invalidateQueries({ queryKey: ['payrollops-queries'] }); },
+    onSuccess: () => {
+      setError(null);
+      qc.invalidateQueries({ queryKey: ['payrollops-queries'] });
+    },
     onError: (e) => setError(messageOf(e)),
   });
 
   return (
-    <Card title="Payroll queries" subtitle="A question an employee raised about their own payslip — routed here for a response.">
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+    <Card
+      title="Payroll queries"
+      subtitle="A question an employee raised about their own payslip — routed here for a response."
+    >
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
       {rows.isLoading && <Loading />}
       {rows.error && <ErrorBox error={rows.error} />}
       {rows.data && rows.data.length === 0 && <EmptyState message="No payroll queries raised yet." />}
@@ -919,7 +1198,9 @@ function QueriesTab() {
           {rows.data.map((q) => (
             <div key={q.id} className="rounded border border-ink-800 p-3">
               <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium text-ink-100">{q.subject} <span className="ml-2 text-2xs text-ink-500">{q.payPeriod}</span></p>
+                <p className="text-sm font-medium text-ink-100">
+                  {q.subject} <span className="ml-2 text-2xs text-ink-500">{q.payPeriod}</span>
+                </p>
                 <StatusChip status={q.status} tone={QUERY_TONE[q.status] ?? 'neutral'} />
               </div>
               <p className="mb-2 text-xs text-ink-300">{q.message}</p>
@@ -927,19 +1208,28 @@ function QueriesTab() {
               {q.status !== 'Closed' && can('payroll_queries:edit') && (
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="min-w-[16rem] flex-1">
-                    <TextArea label="Response" value={responses[q.id] ?? ''} onChange={(v) => setResponses({ ...responses, [q.id]: v })} rows={2} />
+                    <TextArea
+                      label="Response"
+                      value={responses[q.id] ?? ''}
+                      onChange={(v) => setResponses({ ...responses, [q.id]: v })}
+                      rows={2}
+                    />
                   </div>
                   <button
                     className="btn text-2xs"
                     disabled={!responses[q.id]}
-                    onClick={() => responses[q.id] && respond.mutate({ id: q.id, response: responses[q.id], close: false })}
+                    onClick={() =>
+                      responses[q.id] && respond.mutate({ id: q.id, response: responses[q.id], close: false })
+                    }
                   >
                     Respond
                   </button>
                   <button
                     className="btn-primary text-2xs"
                     disabled={!responses[q.id]}
-                    onClick={() => responses[q.id] && respond.mutate({ id: q.id, response: responses[q.id], close: true })}
+                    onClick={() =>
+                      responses[q.id] && respond.mutate({ id: q.id, response: responses[q.id], close: true })
+                    }
                   >
                     Respond &amp; close
                   </button>

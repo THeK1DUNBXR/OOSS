@@ -52,7 +52,10 @@ const CONCEALED_ENTITY_TYPES = new Set(['ICC_CASE', 'POSH_CASE', 'WHISTLEBLOWER_
  * type defaults to `confidential`, NOT `internal`, and raises S1_ATTENTION —
  * defaulting to internal means every new column ships readable.
  */
-export async function classificationFor(contextCode: string, entityType: string): Promise<{
+export async function classificationFor(
+  contextCode: string,
+  entityType: string,
+): Promise<{
   sensitivity: SensitivityClass;
   registered: boolean;
 }> {
@@ -118,10 +121,9 @@ export async function logInteraction(input: InteractionInput) {
   for (const ref of input.relatedReferences) {
     const ok = await referenceResolvesInTenant(ref, auth.tenantId);
     if (!ok) {
-      throw ApiError.unprocessable(
-        `Reference ${ref.entityType}:${ref.entityId} does not resolve within this tenant.`,
-        { ref },
-      );
+      throw ApiError.unprocessable(`Reference ${ref.entityType}:${ref.entityId} does not resolve within this tenant.`, {
+        ref,
+      });
     }
   }
 

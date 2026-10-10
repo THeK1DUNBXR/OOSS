@@ -88,7 +88,13 @@ interface Employee360View {
     engagementType: string;
     legalEntity: string;
   };
-  person: { id: string; fullName: string; primaryEmail: string | null; primaryPhone: string | null; recordCode: string };
+  person: {
+    id: string;
+    fullName: string;
+    primaryEmail: string | null;
+    primaryPhone: string | null;
+    recordCode: string;
+  };
   currentAssignment: { position: { job: { title: string }; orgUnit: { name: string } } } | null;
   profile: Profile | null;
   documents: DocumentRow[];
@@ -150,7 +156,10 @@ export function Employee360() {
             <Link className="btn-ghost" to={`/people/employees/${data.employment.id}`}>
               Seat &amp; pay
             </Link>
-            <StatusChip status={data.employment.status} tone={data.employment.status === 'Active' ? 'good' : 'neutral'} />
+            <StatusChip
+              status={data.employment.status}
+              tone={data.employment.status === 'Active' ? 'good' : 'neutral'}
+            />
           </>
         }
       />
@@ -275,9 +284,17 @@ function OverviewTab({ id, data }: { id: string; data: Employee360View }) {
       <div className="space-y-4">
         <Card title="Org design">
           <dl>
-            <Field label="Grade">{data.org.grade ? `${data.org.grade.code} — ${data.org.grade.name}` : 'Not assigned.'}</Field>
-            <Field label="Cost centre">{data.org.costCentre ? `${data.org.costCentre.code} — ${data.org.costCentre.name}` : 'Not assigned.'}</Field>
-            <Field label="Location">{data.org.location ? `${data.org.location.name}${data.org.location.city ? `, ${data.org.location.city}` : ''}` : 'Not assigned.'}</Field>
+            <Field label="Grade">
+              {data.org.grade ? `${data.org.grade.code} — ${data.org.grade.name}` : 'Not assigned.'}
+            </Field>
+            <Field label="Cost centre">
+              {data.org.costCentre ? `${data.org.costCentre.code} — ${data.org.costCentre.name}` : 'Not assigned.'}
+            </Field>
+            <Field label="Location">
+              {data.org.location
+                ? `${data.org.location.name}${data.org.location.city ? `, ${data.org.location.city}` : ''}`
+                : 'Not assigned.'}
+            </Field>
           </dl>
         </Card>
         <Card title="Contact">
@@ -415,12 +432,7 @@ function JsonList({
       <button className="btn-ghost btn-sm mt-2" onClick={() => setOpen(true)}>
         + Add
       </button>
-      <CreateModal
-        open={open}
-        title="Add row"
-        onClose={() => setOpen(false)}
-        onSubmit={() => mutation.mutateAsync()}
-      >
+      <CreateModal open={open} title="Add row" onClose={() => setOpen(false)} onSubmit={() => mutation.mutateAsync()}>
         {addFields.map((f) => (
           <TextInput
             key={f.key}
@@ -498,7 +510,11 @@ function DocumentsTab({ id, data }: { id: string; data: Employee360View }) {
                 </td>
                 <td>
                   {!d.verified && (
-                    <button className="btn-ghost btn-sm" onClick={() => verify.mutate(d.id)} disabled={verify.isPending}>
+                    <button
+                      className="btn-ghost btn-sm"
+                      onClick={() => verify.mutate(d.id)}
+                      disabled={verify.isPending}
+                    >
                       Verify
                     </button>
                   )}
@@ -526,11 +542,7 @@ function DocumentsTab({ id, data }: { id: string; data: Employee360View }) {
         />
         <label className="block">
           <span className="label">File</span>
-          <input
-            className="input"
-            type="file"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
+          <input className="input" type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </label>
       </CreateModal>
     </Card>
@@ -581,7 +593,10 @@ function ReportingTab({ id, data }: { id: string; data: Employee360View }) {
             {data.org.managers
               .filter((m) => m.line.effectiveTo === null)
               .map((m) => (
-                <li key={m.line.id} className="flex items-center justify-between rounded border border-ink-800 bg-ink-950 p-2.5">
+                <li
+                  key={m.line.id}
+                  className="flex items-center justify-between rounded border border-ink-800 bg-ink-950 p-2.5"
+                >
                   <div>
                     <Link
                       to={`/people/employees/${m.line.managerEmploymentRelationshipId}/360`}
@@ -604,7 +619,10 @@ function ReportingTab({ id, data }: { id: string; data: Employee360View }) {
         ) : (
           <ul className="space-y-2">
             {data.org.directReports.map((r) => (
-              <li key={r.line.id} className="flex items-center justify-between rounded border border-ink-800 bg-ink-950 p-2.5">
+              <li
+                key={r.line.id}
+                className="flex items-center justify-between rounded border border-ink-800 bg-ink-950 p-2.5"
+              >
                 <Link
                   to={`/people/employees/${r.line.employmentRelationshipId}/360`}
                   className="text-xs font-medium text-ink-100 hover:text-accent hover:underline"
@@ -653,7 +671,8 @@ function ReportingTab({ id, data }: { id: string; data: Employee360View }) {
         />
         {currentPrimary && lineKind === 'primary' && (
           <p className="text-2xs text-ink-500">
-            This replaces the current primary line to {currentPrimary.managerName ?? 'the current manager'}, effective today.
+            This replaces the current primary line to {currentPrimary.managerName ?? 'the current manager'}, effective
+            today.
           </p>
         )}
       </CreateModal>
@@ -693,9 +712,18 @@ function HistoryTab({
   const [costCentreId, setCostCentreId] = useState('');
   const [locationId, setLocationId] = useState('');
 
-  const { data: grades = [] } = useQuery({ queryKey: ['hcm-workforce-grades'], queryFn: () => api.get<Array<{ id: string; code: string; name: string }>>('/hcm/workforce/grades') });
-  const { data: costCentres = [] } = useQuery({ queryKey: ['hcm-workforce-cost-centres'], queryFn: () => api.get<Array<{ id: string; code: string; name: string }>>('/hcm/workforce/cost-centres') });
-  const { data: locations = [] } = useQuery({ queryKey: ['hcm-workforce-locations'], queryFn: () => api.get<Array<{ id: string; name: string }>>('/hcm/workforce/locations') });
+  const { data: grades = [] } = useQuery({
+    queryKey: ['hcm-workforce-grades'],
+    queryFn: () => api.get<Array<{ id: string; code: string; name: string }>>('/hcm/workforce/grades'),
+  });
+  const { data: costCentres = [] } = useQuery({
+    queryKey: ['hcm-workforce-cost-centres'],
+    queryFn: () => api.get<Array<{ id: string; code: string; name: string }>>('/hcm/workforce/cost-centres'),
+  });
+  const { data: locations = [] } = useQuery({
+    queryKey: ['hcm-workforce-locations'],
+    queryFn: () => api.get<Array<{ id: string; name: string }>>('/hcm/workforce/locations'),
+  });
 
   const decide = useMutation({
     mutationFn: ({ changeId, approve }: { changeId: string; approve: boolean }) =>
@@ -745,7 +773,10 @@ function HistoryTab({
                   <td className="whitespace-nowrap">
                     {c.status === 'pending_approval' &&
                       (isSelfDealing ? (
-                        <span className="text-2xs italic text-ink-500" title="The Self-Dealing Bar: neither the proposer nor the subject of a change may decide it.">
+                        <span
+                          className="text-2xs italic text-ink-500"
+                          title="The Self-Dealing Bar: neither the proposer nor the subject of a change may decide it."
+                        >
                           Awaiting another decider
                         </span>
                       ) : (
@@ -767,7 +798,11 @@ function HistoryTab({
                         </div>
                       ))}
                     {c.status === 'approved' && (
-                      <button className="btn-ghost btn-sm" onClick={() => apply.mutate(c.id)} disabled={apply.isPending}>
+                      <button
+                        className="btn-ghost btn-sm"
+                        onClick={() => apply.mutate(c.id)}
+                        disabled={apply.isPending}
+                      >
                         Apply
                       </button>
                     )}
@@ -799,16 +834,41 @@ function HistoryTab({
           })
         }
       >
-        <SelectInput label="Kind" required value={kind} onChange={(v) => setKind(v as typeof kind)} placeholder="Choose a kind…" options={KIND_OPTIONS} />
+        <SelectInput
+          label="Kind"
+          required
+          value={kind}
+          onChange={(v) => setKind(v as typeof kind)}
+          placeholder="Choose a kind…"
+          options={KIND_OPTIONS}
+        />
         <TextArea label="Reason" required value={reason} onChange={setReason} />
         <TextInput label="Effective date" type="date" required value={effectiveDate} onChange={setEffectiveDate} />
         <p className="section-title">What moves (leave blank what does not change)</p>
         <TextInput label="New designation" value={designation} onChange={setDesignation} />
         <Row>
-          <SelectInput label="New grade" value={gradeId} onChange={setGradeId} placeholder="Unchanged" options={grades.map((g) => ({ value: g.id, label: `${g.code} — ${g.name}` }))} />
-          <SelectInput label="New cost centre" value={costCentreId} onChange={setCostCentreId} placeholder="Unchanged" options={costCentres.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` }))} />
+          <SelectInput
+            label="New grade"
+            value={gradeId}
+            onChange={setGradeId}
+            placeholder="Unchanged"
+            options={grades.map((g) => ({ value: g.id, label: `${g.code} — ${g.name}` }))}
+          />
+          <SelectInput
+            label="New cost centre"
+            value={costCentreId}
+            onChange={setCostCentreId}
+            placeholder="Unchanged"
+            options={costCentres.map((c) => ({ value: c.id, label: `${c.code} — ${c.name}` }))}
+          />
         </Row>
-        <SelectInput label="New location" value={locationId} onChange={setLocationId} placeholder="Unchanged" options={locations.map((l) => ({ value: l.id, label: l.name }))} />
+        <SelectInput
+          label="New location"
+          value={locationId}
+          onChange={setLocationId}
+          placeholder="Unchanged"
+          options={locations.map((l) => ({ value: l.id, label: l.name }))}
+        />
       </CreateModal>
     </Card>
   );

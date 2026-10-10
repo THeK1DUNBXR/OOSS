@@ -40,7 +40,10 @@ export async function backfillPrincipals(): Promise<number> {
     // test fixture) still needs a principal to sign in through — a
     // placeholder hash that can never verify, rather than leaving it unset
     // and login silently falling through to nothing.
-    const passwordHash = user.passwordHash ?? (await unscopedPrisma.principal.findFirst({ where: { email } }))?.passwordHash ?? 'unmigrated';
+    const passwordHash =
+      user.passwordHash ??
+      (await unscopedPrisma.principal.findFirst({ where: { email } }))?.passwordHash ??
+      'unmigrated';
 
     const principal = await unscopedPrisma.principal.upsert({
       where: { email },

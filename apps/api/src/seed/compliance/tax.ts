@@ -23,15 +23,70 @@ const SECTION_RATES: Array<{
   thresholdPerFy: number;
   panMissingRatePercent?: number;
 }> = [
-  { section: '194C_IND', label: '194C — contractor, individual/HUF', ratePercent: 1, thresholdPerTransaction: 30_000, thresholdPerFy: 100_000 },
-  { section: '194C_COMP', label: '194C — contractor, other than individual/HUF', ratePercent: 2, thresholdPerTransaction: 30_000, thresholdPerFy: 100_000 },
-  { section: '194J_PROF', label: '194J — professional fees', ratePercent: 10, thresholdPerTransaction: 30_000, thresholdPerFy: 30_000 },
-  { section: '194J_TECH', label: '194J — technical services/royalty', ratePercent: 2, thresholdPerTransaction: 30_000, thresholdPerFy: 30_000 },
-  { section: '194H', label: '194H — commission or brokerage', ratePercent: 5, thresholdPerTransaction: 15_000, thresholdPerFy: 15_000 },
-  { section: '194I_LAND', label: '194I — rent of land, building, furniture', ratePercent: 10, thresholdPerTransaction: 240_000, thresholdPerFy: 240_000 },
-  { section: '194I_PLANT', label: '194I — rent of plant or machinery', ratePercent: 2, thresholdPerTransaction: 240_000, thresholdPerFy: 240_000 },
-  { section: '194Q', label: '194Q — purchase of goods', ratePercent: 0.1, thresholdPerTransaction: 0, thresholdPerFy: 5_000_000, panMissingRatePercent: 5 },
-  { section: '192', label: '192 — salary (computed from the slab table, not this rate)', ratePercent: 0, thresholdPerTransaction: 0, thresholdPerFy: 0 },
+  {
+    section: '194C_IND',
+    label: '194C — contractor, individual/HUF',
+    ratePercent: 1,
+    thresholdPerTransaction: 30_000,
+    thresholdPerFy: 100_000,
+  },
+  {
+    section: '194C_COMP',
+    label: '194C — contractor, other than individual/HUF',
+    ratePercent: 2,
+    thresholdPerTransaction: 30_000,
+    thresholdPerFy: 100_000,
+  },
+  {
+    section: '194J_PROF',
+    label: '194J — professional fees',
+    ratePercent: 10,
+    thresholdPerTransaction: 30_000,
+    thresholdPerFy: 30_000,
+  },
+  {
+    section: '194J_TECH',
+    label: '194J — technical services/royalty',
+    ratePercent: 2,
+    thresholdPerTransaction: 30_000,
+    thresholdPerFy: 30_000,
+  },
+  {
+    section: '194H',
+    label: '194H — commission or brokerage',
+    ratePercent: 5,
+    thresholdPerTransaction: 15_000,
+    thresholdPerFy: 15_000,
+  },
+  {
+    section: '194I_LAND',
+    label: '194I — rent of land, building, furniture',
+    ratePercent: 10,
+    thresholdPerTransaction: 240_000,
+    thresholdPerFy: 240_000,
+  },
+  {
+    section: '194I_PLANT',
+    label: '194I — rent of plant or machinery',
+    ratePercent: 2,
+    thresholdPerTransaction: 240_000,
+    thresholdPerFy: 240_000,
+  },
+  {
+    section: '194Q',
+    label: '194Q — purchase of goods',
+    ratePercent: 0.1,
+    thresholdPerTransaction: 0,
+    thresholdPerFy: 5_000_000,
+    panMissingRatePercent: 5,
+  },
+  {
+    section: '192',
+    label: '192 — salary (computed from the slab table, not this rate)',
+    ratePercent: 0,
+    thresholdPerTransaction: 0,
+    thresholdPerFy: 0,
+  },
 ];
 
 const NEW_REGIME_SLABS = [

@@ -146,7 +146,10 @@ export function ItContinuity() {
   const [newOpen, setNewOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
 
-  const summary = useQuery({ queryKey: ['it-continuity-summary'], queryFn: () => api.get<ContinuitySummary>('/it/continuity/summary') });
+  const summary = useQuery({
+    queryKey: ['it-continuity-summary'],
+    queryFn: () => api.get<ContinuitySummary>('/it/continuity/summary'),
+  });
   const plans = useQuery({
     queryKey: ['it-continuity-plans', tier],
     queryFn: () => api.get<Plan[]>(`/it/continuity/plans${tier === 'all' ? '' : `?tier=${tier}`}`),
@@ -182,7 +185,10 @@ export function ItContinuity() {
 
       {s?.notYetMeasured ? (
         <Card>
-          <EmptyState message="No continuity plans yet." hint="Nothing has been measured — this is not the same as everything being fine." />
+          <EmptyState
+            message="No continuity plans yet."
+            hint="Nothing has been measured — this is not the same as everything being fine."
+          />
         </Card>
       ) : (
         s && (
@@ -190,7 +196,11 @@ export function ItContinuity() {
             <Metric
               label="Tier-1 tested on cadence"
               value={s.tier1Tested.total === 0 ? '—' : `${s.tier1Tested.count}/${s.tier1Tested.total}`}
-              sub={s.tier1Tested.fraction === null ? 'No tier-1 active plans' : `${Math.round(s.tier1Tested.fraction * 100)}%`}
+              sub={
+                s.tier1Tested.fraction === null
+                  ? 'No tier-1 active plans'
+                  : `${Math.round(s.tier1Tested.fraction * 100)}%`
+              }
               tone={s.tier1Tested.fraction === null ? 'neutral' : s.tier1Tested.fraction >= 1 ? 'good' : 'warn'}
               noActionReason="Active tier-1 plans within their own test cadence."
             />
@@ -202,8 +212,16 @@ export function ItContinuity() {
             />
             <Metric
               label="Availability last month"
-              value={s.availabilityLastMonth.notYetMeasured ? 'Not yet measured' : `${s.availabilityLastMonth.meanUptimePercent}%`}
-              sub={s.availabilityLastMonth.worstApplication ? `Worst: ${s.availabilityLastMonth.worstApplication.applicationName} (${s.availabilityLastMonth.worstApplication.uptimePercent}%)` : undefined}
+              value={
+                s.availabilityLastMonth.notYetMeasured
+                  ? 'Not yet measured'
+                  : `${s.availabilityLastMonth.meanUptimePercent}%`
+              }
+              sub={
+                s.availabilityLastMonth.worstApplication
+                  ? `Worst: ${s.availabilityLastMonth.worstApplication.applicationName} (${s.availabilityLastMonth.worstApplication.uptimePercent}%)`
+                  : undefined
+              }
               tone={s.availabilityLastMonth.notYetMeasured ? 'neutral' : 'neutral'}
               noActionReason="Mean uptime across applications with a reading."
             />
@@ -232,7 +250,10 @@ export function ItContinuity() {
         <Loading label="Loading continuity plans" />
       ) : (plans.data ?? []).length === 0 ? (
         <Card>
-          <EmptyState message="No plans in this tier." hint="Add a plan for an application to start tracking its RTO/RPO." />
+          <EmptyState
+            message="No plans in this tier."
+            hint="Add a plan for an application to start tracking its RTO/RPO."
+          />
         </Card>
       ) : (
         <div className="flex flex-col gap-5">
@@ -254,17 +275,27 @@ export function ItContinuity() {
                     </thead>
                     <tbody>
                       {rows.map((p) => (
-                        <tr key={p.id} className="cursor-pointer border-b border-ink-850/60 hover:bg-ink-850/40" onClick={() => setDetailId(p.id)}>
+                        <tr
+                          key={p.id}
+                          className="cursor-pointer border-b border-ink-850/60 hover:bg-ink-850/40"
+                          onClick={() => setDetailId(p.id)}
+                        >
                           <td className="py-2 pr-3">
                             <div className="text-ink-100">{p.applicationName}</div>
                             <div className="text-2xs text-ink-500">
                               <RecordCode code={p.recordCode} />
                             </div>
                           </td>
-                          <td className="py-2 pr-3 text-ink-300">{p.rtoMinutes}m / {p.rpoMinutes}m</td>
-                          <td className="py-2 pr-3 text-ink-300">{p.backupMethod} · {p.backupFrequency}</td>
+                          <td className="py-2 pr-3 text-ink-300">
+                            {p.rtoMinutes}m / {p.rpoMinutes}m
+                          </td>
+                          <td className="py-2 pr-3 text-ink-300">
+                            {p.backupMethod} · {p.backupFrequency}
+                          </td>
                           <td className="py-2 pr-3 text-ink-300">{p.lastTestedAt ? date(p.lastTestedAt) : 'Never'}</td>
-                          <td className="py-2 pr-3"><StatusChip status={p.status} tone={STATUS_TONE[p.status]} /></td>
+                          <td className="py-2 pr-3">
+                            <StatusChip status={p.status} tone={STATUS_TONE[p.status]} />
+                          </td>
                           <td className="py-2 pr-3 text-right text-2xs text-ink-500">Cadence {p.testCadenceDays}d</td>
                         </tr>
                       ))}
@@ -325,7 +356,9 @@ function NewPlanModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
           <button type="submit" form="new-plan-form" className="btn-primary" disabled={mutation.isPending}>
             {mutation.isPending ? 'Saving…' : 'Create plan'}
           </button>
@@ -341,9 +374,19 @@ function NewPlanModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           mutation.mutate();
         }}
       >
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
         <Row>
-          <TextInput label="Application ID" value={applicationId} onChange={setApplicationId} required hint="From the application catalogue, once it exists" />
+          <TextInput
+            label="Application ID"
+            value={applicationId}
+            onChange={setApplicationId}
+            required
+            hint="From the application catalogue, once it exists"
+          />
           <TextInput label="Application name" value={applicationName} onChange={setApplicationName} required />
         </Row>
         <SelectInput
@@ -363,8 +406,20 @@ function NewPlanModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <TextInput label="RPO (minutes)" value={rpoMinutes} onChange={setRpoMinutes} type="number" required />
         </Row>
         <Row>
-          <TextInput label="Backup method" value={backupMethod} onChange={setBackupMethod} required hint="e.g. nightly snapshot, continuous replication" />
-          <TextInput label="Backup frequency" value={backupFrequency} onChange={setBackupFrequency} required hint="e.g. daily, hourly" />
+          <TextInput
+            label="Backup method"
+            value={backupMethod}
+            onChange={setBackupMethod}
+            required
+            hint="e.g. nightly snapshot, continuous replication"
+          />
+          <TextInput
+            label="Backup frequency"
+            value={backupFrequency}
+            onChange={setBackupFrequency}
+            required
+            hint="e.g. daily, hourly"
+          />
         </Row>
         <TextInput
           label="Test cadence (days)"
@@ -383,7 +438,10 @@ function PlanDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
   const { can } = useSession();
   const [testOpen, setTestOpen] = useState(false);
 
-  const detail = useQuery({ queryKey: ['it-continuity-plan', id], queryFn: () => api.get<PlanDetail>(`/it/continuity/plans/${id}`) });
+  const detail = useQuery({
+    queryKey: ['it-continuity-plan', id],
+    queryFn: () => api.get<PlanDetail>(`/it/continuity/plans/${id}`),
+  });
 
   const transition = useMutation({
     mutationFn: (status: PlanStatus) => api.patch(`/it/continuity/plans/${id}`, { status }),
@@ -402,9 +460,13 @@ function PlanDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
       ) : (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Field label="Record"><RecordCode code={p.recordCode} /></Field>
+            <Field label="Record">
+              <RecordCode code={p.recordCode} />
+            </Field>
             <Field label="Tier">{tierLabel(p.applicationTier)}</Field>
-            <Field label="Status"><StatusChip status={p.status} tone={STATUS_TONE[p.status]} /></Field>
+            <Field label="Status">
+              <StatusChip status={p.status} tone={STATUS_TONE[p.status]} />
+            </Field>
             <Field label="RTO">{p.rtoMinutes} minutes</Field>
             <Field label="RPO">{p.rpoMinutes} minutes</Field>
             <Field label="Cadence">{p.testCadenceDays} days</Field>
@@ -417,13 +479,19 @@ function PlanDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
           {can('it_continuity:E') && (
             <div className="flex flex-wrap gap-2">
               {p.availableTransitions.includes('active') && (
-                <button className="btn-sm" disabled={transition.isPending} onClick={() => transition.mutate('active')}>Activate</button>
+                <button className="btn-sm" disabled={transition.isPending} onClick={() => transition.mutate('active')}>
+                  Activate
+                </button>
               )}
               {p.availableTransitions.includes('retired') && (
-                <button className="btn-sm" disabled={transition.isPending} onClick={() => transition.mutate('retired')}>Retire</button>
+                <button className="btn-sm" disabled={transition.isPending} onClick={() => transition.mutate('retired')}>
+                  Retire
+                </button>
               )}
               {can('it_continuity:C') && p.status !== 'retired' && (
-                <button className="btn-sm" onClick={() => setTestOpen(true)}>Record test</button>
+                <button className="btn-sm" onClick={() => setTestOpen(true)}>
+                  Record test
+                </button>
               )}
             </div>
           )}
@@ -431,7 +499,10 @@ function PlanDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
           <div>
             <h3 className="mb-2 text-2xs font-semibold uppercase tracking-wide text-ink-400">Test history</h3>
             {p.tests.length === 0 ? (
-              <EmptyState message="No tests recorded yet." hint="A restore, failover or tabletop test proves the plan — or doesn't." />
+              <EmptyState
+                message="No tests recorded yet."
+                hint="A restore, failover or tabletop test proves the plan — or doesn't."
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
@@ -450,12 +521,17 @@ function PlanDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
                         <td className="py-2 pr-3 text-ink-300">{dateTime(t.testedAt)}</td>
                         <td className="py-2 pr-3 text-ink-300">{t.kind}</td>
                         <td className="py-2 pr-3">
-                          <StatusChip status={t.outcome} tone={t.outcome === 'pass' ? 'good' : t.outcome === 'fail' ? 'bad' : 'warn'} />
+                          <StatusChip
+                            status={t.outcome}
+                            tone={t.outcome === 'pass' ? 'good' : t.outcome === 'fail' ? 'bad' : 'warn'}
+                          />
                         </td>
                         <td className="py-2 pr-3 text-ink-300">
                           {t.actualRecoveryMinutes ?? '—'}m / {t.actualDataLossMinutes ?? '—'}m
                           {t.actualRecoveryMinutes != null && t.actualRecoveryMinutes > p.rtoMinutes && (
-                            <span className="ml-2 chip border-band-critical/40 bg-band-critical/10 text-band-critical">RTO exceeded</span>
+                            <span className="ml-2 chip border-band-critical/40 bg-band-critical/10 text-band-critical">
+                              RTO exceeded
+                            </span>
                           )}
                         </td>
                         <td className="py-2 pr-3 text-ink-500">{t.notes ?? '—'}</td>
@@ -484,7 +560,15 @@ function PlanDetailModal({ id, onClose, onChanged }: { id: string; onClose: () =
   );
 }
 
-function RecordTestModal({ plan, onClose, onRecorded }: { plan: PlanDetail; onClose: () => void; onRecorded: () => void }) {
+function RecordTestModal({
+  plan,
+  onClose,
+  onRecorded,
+}: {
+  plan: PlanDetail;
+  onClose: () => void;
+  onRecorded: () => void;
+}) {
   const [kind, setKind] = useState<TestKind>('restore');
   const [outcome, setOutcome] = useState<TestOutcome>('pass');
   const [actualRecoveryMinutes, setActualRecoveryMinutes] = useState('');
@@ -512,7 +596,9 @@ function RecordTestModal({ plan, onClose, onRecorded }: { plan: PlanDetail; onCl
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
           <button type="submit" form="record-test-form" className="btn-primary" disabled={mutation.isPending}>
             {mutation.isPending ? 'Recording…' : 'Record test'}
           </button>
@@ -528,8 +614,14 @@ function RecordTestModal({ plan, onClose, onRecorded }: { plan: PlanDetail; onCl
           mutation.mutate();
         }}
       >
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
-        <Field label="RTO / RPO promised">{plan.rtoMinutes}m / {plan.rpoMinutes}m</Field>
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
+        <Field label="RTO / RPO promised">
+          {plan.rtoMinutes}m / {plan.rpoMinutes}m
+        </Field>
         <Row>
           <SelectInput
             label="Kind"
@@ -555,8 +647,18 @@ function RecordTestModal({ plan, onClose, onRecorded }: { plan: PlanDetail; onCl
           />
         </Row>
         <Row>
-          <TextInput label="Actual recovery (minutes)" value={actualRecoveryMinutes} onChange={setActualRecoveryMinutes} type="number" />
-          <TextInput label="Actual data loss (minutes)" value={actualDataLossMinutes} onChange={setActualDataLossMinutes} type="number" />
+          <TextInput
+            label="Actual recovery (minutes)"
+            value={actualRecoveryMinutes}
+            onChange={setActualRecoveryMinutes}
+            type="number"
+          />
+          <TextInput
+            label="Actual data loss (minutes)"
+            value={actualDataLossMinutes}
+            onChange={setActualDataLossMinutes}
+            type="number"
+          />
         </Row>
         <TextArea label="Notes" value={notes} onChange={setNotes} rows={3} />
       </form>
@@ -570,7 +672,11 @@ function RecordTestModal({ plan, onClose, onRecorded }: { plan: PlanDetail; onCl
 
 function monthLabel(period: string): string {
   const [y, m] = period.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
 }
 
 function currentPeriod(): string {
@@ -589,7 +695,10 @@ export function ItAvailability() {
     queryFn: () => api.get<AvailabilityReading[]>(`/it/availability/readings?period=${period}`),
   });
 
-  const rows = useMemo(() => [...(readings.data ?? [])].sort((a, b) => a.uptimePercent - b.uptimePercent), [readings.data]);
+  const rows = useMemo(
+    () => [...(readings.data ?? [])].sort((a, b) => a.uptimePercent - b.uptimePercent),
+    [readings.data],
+  );
 
   if (readings.error) return <ErrorBox error={readings.error} />;
 
@@ -638,7 +747,15 @@ export function ItAvailability() {
                   <tr key={r.id} className="border-b border-ink-850/60">
                     <td className="py-2 pr-3 text-ink-100">{r.applicationName}</td>
                     <td className="py-2 pr-3 tabular-nums">
-                      <span className={r.uptimePercent < 99 ? 'text-band-critical' : r.uptimePercent < 99.9 ? 'text-band-watch' : 'text-band-strong'}>
+                      <span
+                        className={
+                          r.uptimePercent < 99
+                            ? 'text-band-critical'
+                            : r.uptimePercent < 99.9
+                              ? 'text-band-watch'
+                              : 'text-band-strong'
+                        }
+                      >
                         {r.uptimePercent}%
                       </span>
                     </td>
@@ -668,7 +785,15 @@ export function ItAvailability() {
   );
 }
 
-function RecordReadingModal({ period, onClose, onRecorded }: { period: string; onClose: () => void; onRecorded: () => void }) {
+function RecordReadingModal({
+  period,
+  onClose,
+  onRecorded,
+}: {
+  period: string;
+  onClose: () => void;
+  onRecorded: () => void;
+}) {
   const [applicationId, setApplicationId] = useState('');
   const [applicationName, setApplicationName] = useState('');
   const [readingPeriod, setReadingPeriod] = useState(period);
@@ -698,7 +823,9 @@ function RecordReadingModal({ period, onClose, onRecorded }: { period: string; o
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
           <button type="submit" form="record-reading-form" className="btn-primary" disabled={mutation.isPending}>
             {mutation.isPending ? 'Saving…' : 'Record'}
           </button>
@@ -714,12 +841,23 @@ function RecordReadingModal({ period, onClose, onRecorded }: { period: string; o
           mutation.mutate();
         }}
       >
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
         <Row>
           <TextInput label="Application ID" value={applicationId} onChange={setApplicationId} required />
           <TextInput label="Application name" value={applicationName} onChange={setApplicationName} required />
         </Row>
-        <TextInput label="Month" value={readingPeriod} onChange={setReadingPeriod} placeholder="2026-09" required hint="YYYY-MM" />
+        <TextInput
+          label="Month"
+          value={readingPeriod}
+          onChange={setReadingPeriod}
+          placeholder="2026-09"
+          required
+          hint="YYYY-MM"
+        />
         <Row>
           <TextInput label="Minutes down" value={minutesDown} onChange={setMinutesDown} type="number" required />
           <TextInput label="Incidents" value={incidentCount} onChange={setIncidentCount} type="number" />
@@ -773,7 +911,10 @@ export function ItMaintenance() {
         {windows.isLoading ? (
           <Loading label="Loading maintenance windows" />
         ) : rows.length === 0 ? (
-          <EmptyState message={tab === 'upcoming' ? 'Nothing scheduled.' : 'No windows here.'} hint="A window is a planned, declared outage — not a detected one." />
+          <EmptyState
+            message={tab === 'upcoming' ? 'Nothing scheduled.' : 'No windows here.'}
+            hint="A window is a planned, declared outage — not a detected one."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -792,15 +933,23 @@ export function ItMaintenance() {
                   <tr key={w.id} className="border-b border-ink-850/60">
                     <td className="py-2 pr-3">
                       <div className="text-ink-100">{w.applicationName}</div>
-                      <div className="text-2xs text-ink-500"><RecordCode code={w.recordCode} /></div>
+                      <div className="text-2xs text-ink-500">
+                        <RecordCode code={w.recordCode} />
+                      </div>
                     </td>
-                    <td className="py-2 pr-3 text-ink-300">{dateTime(w.startsAt)} → {dateTime(w.endsAt)}</td>
+                    <td className="py-2 pr-3 text-ink-300">
+                      {dateTime(w.startsAt)} → {dateTime(w.endsAt)}
+                    </td>
                     <td className="py-2 pr-3 text-ink-300">{w.reason}</td>
-                    <td className="py-2 pr-3"><StatusChip status={w.status} tone={WINDOW_TONE[w.status]} /></td>
+                    <td className="py-2 pr-3">
+                      <StatusChip status={w.status} tone={WINDOW_TONE[w.status]} />
+                    </td>
                     <td className="py-2 pr-3 text-ink-500">{w.notifiedAt ? dateTime(w.notifiedAt) : '—'}</td>
                     <td className="py-2 pr-3 text-right">
                       {can('it_continuity:E') && (w.status === 'planned' || w.status === 'in_progress') && (
-                        <button className="btn-sm" onClick={() => setCancelTarget(w)}>Cancel</button>
+                        <button className="btn-sm" onClick={() => setCancelTarget(w)}>
+                          Cancel
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -862,7 +1011,9 @@ function NewWindowModal({ onClose, onCreated }: { onClose: () => void; onCreated
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
           <button type="submit" form="new-window-form" className="btn-primary" disabled={mutation.isPending}>
             {mutation.isPending ? 'Saving…' : 'Schedule'}
           </button>
@@ -878,7 +1029,11 @@ function NewWindowModal({ onClose, onCreated }: { onClose: () => void; onCreated
           mutation.mutate();
         }}
       >
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
         <Row>
           <TextInput label="Application ID" value={applicationId} onChange={setApplicationId} required />
           <TextInput label="Application name" value={applicationName} onChange={setApplicationName} required />
@@ -886,11 +1041,23 @@ function NewWindowModal({ onClose, onCreated }: { onClose: () => void; onCreated
         <Row>
           <label className="block">
             <span className="label mb-1 block">Starts at</span>
-            <input className="input" type="datetime-local" required value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
+            <input
+              className="input"
+              type="datetime-local"
+              required
+              value={startsAt}
+              onChange={(e) => setStartsAt(e.target.value)}
+            />
           </label>
           <label className="block">
             <span className="label mb-1 block">Ends at</span>
-            <input className="input" type="datetime-local" required value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+            <input
+              className="input"
+              type="datetime-local"
+              required
+              value={endsAt}
+              onChange={(e) => setEndsAt(e.target.value)}
+            />
           </label>
         </Row>
         <TextArea label="Reason" value={reason} onChange={setReason} rows={2} required />
@@ -899,7 +1066,15 @@ function NewWindowModal({ onClose, onCreated }: { onClose: () => void; onCreated
   );
 }
 
-function CancelWindowModal({ window, onClose, onCancelled }: { window: MaintenanceWindow; onClose: () => void; onCancelled: () => void }) {
+function CancelWindowModal({
+  window,
+  onClose,
+  onCancelled,
+}: {
+  window: MaintenanceWindow;
+  onClose: () => void;
+  onCancelled: () => void;
+}) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -916,7 +1091,9 @@ function CancelWindowModal({ window, onClose, onCancelled }: { window: Maintenan
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>Back</button>
+          <button type="button" className="btn" onClick={onClose}>
+            Back
+          </button>
           <button type="submit" form="cancel-window-form" className="btn-primary" disabled={mutation.isPending}>
             {mutation.isPending ? 'Cancelling…' : 'Cancel window'}
           </button>
@@ -932,8 +1109,19 @@ function CancelWindowModal({ window, onClose, onCancelled }: { window: Maintenan
           mutation.mutate();
         }}
       >
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
-        <TextArea label="Reason" value={reason} onChange={setReason} rows={3} required hint="A deliberate decision not to run this window." />
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
+        <TextArea
+          label="Reason"
+          value={reason}
+          onChange={setReason}
+          rows={3}
+          required
+          hint="A deliberate decision not to run this window."
+        />
       </form>
     </Modal>
   );

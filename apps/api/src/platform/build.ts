@@ -77,9 +77,10 @@ function packageVersion(): string {
  */
 function resolve(): BuildStamp {
   const envSequence = Number(config.BUILD_SEQUENCE ?? '');
-  const sequence = Number.isFinite(envSequence) && envSequence > 0
-    ? envSequence
-    : Number(fromGit(['rev-list', '--count', 'HEAD']) ?? '0');
+  const sequence =
+    Number.isFinite(envSequence) && envSequence > 0
+      ? envSequence
+      : Number(fromGit(['rev-list', '--count', 'HEAD']) ?? '0');
 
   const commit = config.GIT_SHA?.slice(0, 7) ?? fromGit(['rev-parse', '--short', 'HEAD']) ?? '';
 
@@ -114,7 +115,5 @@ export function buildsBehind(current: number, stamped: number): number {
 /** `148 · 7ab59ff`, or `unknown build` when it could not be resolved. */
 export function buildLabel(stamp: BuildStamp = BUILD): string {
   if (!stamp.known) return 'unknown build';
-  return [stamp.sequence > 0 ? String(stamp.sequence) : null, stamp.commit || null]
-    .filter(Boolean)
-    .join(' · ');
+  return [stamp.sequence > 0 ? String(stamp.sequence) : null, stamp.commit || null].filter(Boolean).join(' · ');
 }

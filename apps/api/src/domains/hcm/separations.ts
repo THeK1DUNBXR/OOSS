@@ -97,7 +97,12 @@ export async function myEmploymentId(): Promise<string> {
   const auth = currentAuth();
   if (!auth.partyId) throw ApiError.unprocessable('No person is attached to this account.');
   const employment = await prisma.employmentRelationship.findFirst({
-    where: { tenantId: auth.tenantId, personId: auth.partyId, deletedAt: null, status: { notIn: ['OfferRescinded', 'NoShow'] } },
+    where: {
+      tenantId: auth.tenantId,
+      personId: auth.partyId,
+      deletedAt: null,
+      status: { notIn: ['OfferRescinded', 'NoShow'] },
+    },
     orderBy: { hireEffectiveDate: 'desc' },
     select: { id: true },
   });
@@ -162,10 +167,15 @@ export async function setNoticePolicyActive(id: string, active: boolean) {
 }
 
 /** What notice period applies to this employment right now — the policy table first, the employment's own flat default otherwise. */
-export async function noticeDaysFor(employmentRelationshipId: string): Promise<{ noticeDays: number; buyoutAllowed: boolean; source: 'policy' | 'employment_default' }> {
+export async function noticeDaysFor(
+  employmentRelationshipId: string,
+): Promise<{ noticeDays: number; buyoutAllowed: boolean; source: 'policy' | 'employment_default' }> {
   const employment = await requireEmployment(employmentRelationshipId);
   const auth = currentAuth();
-  const policies = await prisma.noticePolicy.findMany({ where: { tenantId: auth.tenantId, active: true }, orderBy: { createdAt: 'desc' } });
+  const policies = await prisma.noticePolicy.findMany({
+    where: { tenantId: auth.tenantId, active: true },
+    orderBy: { createdAt: 'desc' },
+  });
   const facts: NoticePolicyFact[] = policies.map((p) => ({
     id: p.id,
     grade: p.grade,
@@ -234,7 +244,8 @@ export async function submitResignation(input: {
   const existing = await prisma.resignation.findFirst({
     where: { tenantId: auth.tenantId, employmentRelationshipId: input.employmentRelationshipId, status: 'submitted' },
   });
-  if (existing) throw ApiError.conflict('A resignation is already pending on this employment.', { resignationId: existing.id });
+  if (existing)
+    throw ApiError.conflict('A resignation is already pending on this employment.', { resignationId: existing.id });
   if (!RESIGNATION_REASON_CATEGORIES.includes(input.reasonCategory)) {
     throw ApiError.badRequest(`"${input.reasonCategory}" is not a resignation reason category.`);
   }
@@ -261,7 +272,9 @@ export async function submitResignation(input: {
   await emit({
     name: EVENTS.RESIGNATION_SUBMITTED,
     subject: { entityType: 'resignation', entityId: row.id, recordCode },
-    related: [{ relation: 'resigns_from', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+    related: [
+      { relation: 'resigns_from', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+    ],
     newState: { status: 'submitted', requestedLastDay: input.requestedLastDay, reasonCategory: input.reasonCategory },
     owner: { partyId: employment.personId },
     impact: { domains: ['hr'] },
@@ -312,10 +325,9 @@ export async function acceptResignation(id: string, agreedLastDay?: Date, note?:
   const employment = await employmentBrief(row.employmentRelationshipId);
 
   if (employment.personId === auth.partyId) {
-    throw ApiError.forbidden(
-      'A resignation cannot be accepted by the person who filed it (Self-Dealing Bar).',
-      [{ axis: 'WHO', passed: false, reason: 'self_dealing_bar_resignation' }],
-    );
+    throw ApiError.forbidden('A resignation cannot be accepted by the person who filed it (Self-Dealing Bar).', [
+      { axis: 'WHO', passed: false, reason: 'self_dealing_bar_resignation' },
+    ]);
   }
 
   const finalLastDay = agreedLastDay ?? row.requestedLastDay;
@@ -330,7 +342,9 @@ export async function acceptResignation(id: string, agreedLastDay?: Date, note?:
   // `transitionEmployment` in domains/employment.ts).
   await transitionEmployment(row.employmentRelationshipId, 'SUBMIT_RESIGNATION', { note: note ?? undefined });
 
-  const offboarding = await prisma.offboarding.findUnique({ where: { employmentRelationshipId: row.employmentRelationshipId } });
+  const offboarding = await prisma.offboarding.findUnique({
+    where: { employmentRelationshipId: row.employmentRelationshipId },
+  });
   const linked = offboarding
     ? await prisma.resignation.update({ where: { id }, data: { offboardingId: offboarding.id } })
     : await prisma.resignation.findUniqueOrThrow({ where: { id } });
@@ -360,10 +374,9 @@ export async function rejectResignation(id: string, reason: string) {
   assertResignationTransition(row.status as ResignationState, 'rejected');
   const employment = await employmentBrief(row.employmentRelationshipId);
   if (employment.personId === auth.partyId) {
-    throw ApiError.forbidden(
-      'A resignation cannot be rejected by the person who filed it (Self-Dealing Bar).',
-      [{ axis: 'WHO', passed: false, reason: 'self_dealing_bar_resignation' }],
-    );
+    throw ApiError.forbidden('A resignation cannot be rejected by the person who filed it (Self-Dealing Bar).', [
+      { axis: 'WHO', passed: false, reason: 'self_dealing_bar_resignation' },
+    ]);
   }
   if (!reason?.trim()) throw ApiError.badRequest('A rejection needs a reason.');
 
@@ -395,7 +408,10 @@ export async function withdrawResignation(id: string) {
   await assertCan({ resource: 'resignations', verb: 'create', record: { ownerPartyId: employment.personId } });
   assertResignationTransition(row.status as ResignationState, 'withdrawn');
 
-  const updated = await prisma.resignation.update({ where: { id }, data: { status: 'withdrawn', withdrawnAt: new Date() } });
+  const updated = await prisma.resignation.update({
+    where: { id },
+    data: { status: 'withdrawn', withdrawnAt: new Date() },
+  });
 
   await emit({
     name: EVENTS.RESIGNATION_WITHDRAWN,
@@ -410,7 +426,12 @@ export async function withdrawResignation(id: string) {
 }
 
 /** Days short of full notice, for the screen that shows what a buyout would cover — pure arithmetic, exported so a payroll ad-hoc line can call it without re-deriving. */
-export function resignationNoticeShortfall(resignation: { noticeDays: number; submittedOn: Date; agreedLastDay: Date | null; requestedLastDay: Date }): number {
+export function resignationNoticeShortfall(resignation: {
+  noticeDays: number;
+  submittedOn: Date;
+  agreedLastDay: Date | null;
+  requestedLastDay: Date;
+}): number {
   const lastDay = resignation.agreedLastDay ?? resignation.requestedLastDay;
   return noticeShortfallDays(resignation.noticeDays, resignation.submittedOn, lastDay);
 }
@@ -437,7 +458,10 @@ export async function listExitClearances(offboardingId: string) {
   if (scope !== 'all' && offboarding.employmentRelationship.personId !== auth.partyId) {
     throw ApiError.notFound('Offboarding');
   }
-  return prisma.exitClearance.findMany({ where: { tenantId: auth.tenantId, offboardingId }, orderBy: { department: 'asc' } });
+  return prisma.exitClearance.findMany({
+    where: { tenantId: auth.tenantId, offboardingId },
+    orderBy: { department: 'asc' },
+  });
 }
 
 /** Opens the five-department clearance for an offboarding, once its last working day is reached — idempotent, so calling it twice never duplicates a row. */
@@ -492,7 +516,9 @@ async function afterClearanceChange(offboardingId: string) {
     await emit({
       name: EVENTS.EXIT_CLEARANCE_COMPLETED,
       subject: { entityType: 'offboarding', entityId: offboardingId },
-      related: [{ relation: 'clears', entityType: 'employment_relationship', entityId: offboarding.employmentRelationshipId }],
+      related: [
+        { relation: 'clears', entityType: 'employment_relationship', entityId: offboarding.employmentRelationshipId },
+      ],
       newState: { status: 'complete', departments: rows.map((r) => r.department) },
       impact: { domains: ['hr'] },
     });
@@ -584,7 +610,9 @@ export async function issueNoDues(offboardingId: string) {
   const offboarding = await requireOffboarding(offboardingId);
   const rows = await prisma.exitClearance.findMany({ where: { tenantId: auth.tenantId, offboardingId } });
   if (!allClearancesComplete(rows)) {
-    const outstanding = CLEARANCE_DEPARTMENTS.filter((d) => !rows.some((r) => r.department === d && r.status === 'cleared'));
+    const outstanding = CLEARANCE_DEPARTMENTS.filter(
+      (d) => !rows.some((r) => r.department === d && r.status === 'cleared'),
+    );
     throw ApiError.conflict(
       `No-dues cannot be issued while ${outstanding.length === 1 ? 'a department is' : 'departments are'} outstanding: ${outstanding.join(', ')}.`,
     );
@@ -596,7 +624,12 @@ export async function issueNoDues(offboardingId: string) {
       offboardingId,
       employmentRelationshipId: offboarding.employmentRelationshipId,
       issuedById: auth.partyId ?? 'system',
-      clearanceSnapshot: rows.map((r) => ({ department: r.department, status: r.status, clearedById: r.clearedById, clearedAt: r.clearedAt })) as never,
+      clearanceSnapshot: rows.map((r) => ({
+        department: r.department,
+        status: r.status,
+        clearedById: r.clearedById,
+        clearedAt: r.clearedAt,
+      })) as never,
     },
   });
 
@@ -659,13 +692,17 @@ export async function recordAlumni(input: {
   }
 
   const employment = await requireEmployment(input.employmentRelationshipId);
-  const existing = await prisma.alumniRecord.findUnique({ where: { employmentRelationshipId: input.employmentRelationshipId } });
+  const existing = await prisma.alumniRecord.findUnique({
+    where: { employmentRelationshipId: input.employmentRelationshipId },
+  });
   if (existing) throw ApiError.conflict('An alumni record already exists for this employment.');
 
   if (employment.status === 'Terminated') {
     await transitionEmployment(input.employmentRelationshipId, 'RETENTION_TRANSITION');
   } else if (employment.status !== 'Alumni') {
-    throw ApiError.conflict(`An alumni record can only be written once employment is Terminated or Alumni (currently ${employment.status}).`);
+    throw ApiError.conflict(
+      `An alumni record can only be written once employment is Terminated or Alumni (currently ${employment.status}).`,
+    );
   }
 
   const lastAssignment = await prisma.assignment.findFirst({
@@ -707,7 +744,10 @@ export async function getOffboardingForEmployment(employmentRelationshipId: stri
   const employment = await requireEmployment(employmentRelationshipId);
   const offboarding = await prisma.offboarding.findUnique({ where: { employmentRelationshipId: employment.id } });
   if (!offboarding) return null;
-  const clearances = await prisma.exitClearance.findMany({ where: { tenantId: auth.tenantId, offboardingId: offboarding.id }, orderBy: { department: 'asc' } });
+  const clearances = await prisma.exitClearance.findMany({
+    where: { tenantId: auth.tenantId, offboardingId: offboarding.id },
+    orderBy: { department: 'asc' },
+  });
   const noDues = await prisma.noDuesCertificate.findUnique({ where: { offboardingId: offboarding.id } });
   return {
     ...offboarding,

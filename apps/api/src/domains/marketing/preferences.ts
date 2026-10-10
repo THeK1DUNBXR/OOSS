@@ -114,7 +114,12 @@ export async function setDoNotContact(personId: string, doNotContact: boolean, r
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'preference', subjectId: pref.id, after: { doNotContact, reason } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'preference',
+    subjectId: pref.id,
+    after: { doNotContact, reason },
+  });
   await emit({
     name: EVENTS.MKT_PREFERENCE_CHANGED,
     subject: { entityType: 'preference', entityId: pref.id, recordCode },
@@ -160,7 +165,13 @@ export async function getPreferences(personId: string) {
   return {
     personId,
     consent: consent
-      ? { status: consent.status, purposeCode: consent.purposeCode, recordedAt: consent.grantedAt, channel: consent.channel, evidence: consent.evidence }
+      ? {
+          status: consent.status,
+          purposeCode: consent.purposeCode,
+          recordedAt: consent.grantedAt,
+          channel: consent.channel,
+          evidence: consent.evidence,
+        }
       : null,
     channels,
     doNotContact,
@@ -176,7 +187,10 @@ export async function consentCoverage() {
   await assertCan({ resource: 'marketing_analytics', verb: 'view' });
 
   const contactedRows = await prisma.marketingSendRecipient.findMany({
-    where: { tenantId: auth.tenantId, status: { in: ['sent', 'delivered', 'opened', 'clicked', 'bounced', 'unsubscribed'] } },
+    where: {
+      tenantId: auth.tenantId,
+      status: { in: ['sent', 'delivered', 'opened', 'clicked', 'bounced', 'unsubscribed'] },
+    },
     select: { personId: true },
     distinct: ['personId'],
   });
@@ -186,7 +200,12 @@ export async function consentCoverage() {
   if (contacted === 0) return { contacted: 0, consented: 0, missing: 0, measured: false };
 
   const consented = await prisma.consent.count({
-    where: { tenantId: auth.tenantId, personId: { in: contactedIds }, purposeCode: MARKETING_PURPOSE, status: 'granted' },
+    where: {
+      tenantId: auth.tenantId,
+      personId: { in: contactedIds },
+      purposeCode: MARKETING_PURPOSE,
+      status: 'granted',
+    },
   });
 
   return { contacted, consented, missing: contacted - consented, measured: true };
@@ -202,20 +221,31 @@ export interface EligibilitySkip {
   reason: 'no_consent' | 'dnc' | 'opted_out' | 'suppressed' | 'no_address';
 }
 
-export async function eligibleForChannel(personIds: string[], channelKey: ChannelKey | string): Promise<{ eligible: string[]; skipped: EligibilitySkip[] }> {
+export async function eligibleForChannel(
+  personIds: string[],
+  channelKey: ChannelKey | string,
+): Promise<{ eligible: string[]; skipped: EligibilitySkip[] }> {
   const auth = currentAuth();
   if (!personIds.length) return { eligible: [], skipped: [] };
 
   const [consents, prefs, people, suppressed] = await Promise.all([
     prisma.consent.findMany({
-      where: { tenantId: auth.tenantId, personId: { in: personIds }, purposeCode: MARKETING_PURPOSE, status: 'granted' },
+      where: {
+        tenantId: auth.tenantId,
+        personId: { in: personIds },
+        purposeCode: MARKETING_PURPOSE,
+        status: 'granted',
+      },
       select: { personId: true },
     }),
     prisma.marketingPreference.findMany({
       where: { tenantId: auth.tenantId, personId: { in: personIds }, deletedAt: null },
       orderBy: { changedAt: 'desc' },
     }),
-    prisma.person.findMany({ where: { tenantId: auth.tenantId, id: { in: personIds } }, select: { id: true, primaryEmail: true, primaryPhone: true } }),
+    prisma.person.findMany({
+      where: { tenantId: auth.tenantId, id: { in: personIds } },
+      select: { id: true, primaryEmail: true, primaryPhone: true },
+    }),
     suppressedPersonIds(),
   ]);
 

@@ -123,7 +123,9 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
   if (input.isin) {
     const isin = input.isin.trim().toUpperCase();
     if (!isValidIsin(isin)) {
-      throw ApiError.badRequest(`${isin} is not a valid ISIN. It is twelve characters and, for an India-issued security, starts INE.`);
+      throw ApiError.badRequest(
+        `${isin} is not a valid ISIN. It is twelve characters and, for an India-issued security, starts INE.`,
+      );
     }
     input.isin = isin;
   }
@@ -134,7 +136,9 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
   if (input.tan) {
     const tan = input.tan.trim().toUpperCase();
     if (!isValidTan(tan)) {
-      throw ApiError.badRequest(`${tan} is not a valid TAN. It is ten characters: four letters, five digits, one letter.`);
+      throw ApiError.badRequest(
+        `${tan} is not a valid TAN. It is ten characters: four letters, five digits, one letter.`,
+      );
     }
     input.tan = tan;
   }
@@ -142,7 +146,9 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
   if (input.cin) {
     const cin = input.cin.trim().toUpperCase();
     if (!isValidCin(cin)) {
-      throw ApiError.badRequest(`${cin} is not a valid CIN. It is twenty-one characters: L/U, a five-digit industry code, a two-letter state code, a four-digit year, a three-letter company type, and a six-digit registration number.`);
+      throw ApiError.badRequest(
+        `${cin} is not a valid CIN. It is twenty-one characters: L/U, a five-digit industry code, a two-letter state code, a four-digit year, a three-letter company type, and a six-digit registration number.`,
+      );
     }
     input.cin = cin;
   }
@@ -150,7 +156,9 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
   if (input.udyamNumber) {
     const udyam = input.udyamNumber.trim().toUpperCase();
     if (!isValidUdyam(udyam)) {
-      throw ApiError.badRequest(`${udyam} is not a valid Udyam registration number. It reads UDYAM-XX-00-0000000 — a two-letter state code, a two-digit district code, and a seven-digit number.`);
+      throw ApiError.badRequest(
+        `${udyam} is not a valid Udyam registration number. It reads UDYAM-XX-00-0000000 — a two-letter state code, a two-digit district code, and a seven-digit number.`,
+      );
     }
     input.udyamNumber = udyam;
   }
@@ -195,16 +203,22 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
         ? { documentPrefix: input.documentPrefix?.trim().toUpperCase() || null }
         : {}),
       ...(input.documentYearFormat !== undefined ? { documentYearFormat: input.documentYearFormat } : {}),
-      ...(input.incorporatedOn !== undefined ? { incorporatedOn: input.incorporatedOn ? new Date(input.incorporatedOn) : null } : {}),
+      ...(input.incorporatedOn !== undefined
+        ? { incorporatedOn: input.incorporatedOn ? new Date(input.incorporatedOn) : null }
+        : {}),
       ...(input.financialYearEndMonth !== undefined ? { financialYearEndMonth: input.financialYearEndMonth } : {}),
       ...(input.isSmallCompany !== undefined ? { isSmallCompany: input.isSmallCompany } : {}),
       ...(input.dematStatus !== undefined ? { dematStatus: input.dematStatus } : {}),
       ...(input.isin !== undefined ? { isin: input.isin } : {}),
       ...(input.rtaName !== undefined ? { rtaName: input.rtaName } : {}),
       ...(input.dpiitNumber !== undefined ? { dpiitNumber: input.dpiitNumber } : {}),
-      ...(input.dpiitRecognisedOn !== undefined ? { dpiitRecognisedOn: input.dpiitRecognisedOn ? new Date(input.dpiitRecognisedOn) : null } : {}),
+      ...(input.dpiitRecognisedOn !== undefined
+        ? { dpiitRecognisedOn: input.dpiitRecognisedOn ? new Date(input.dpiitRecognisedOn) : null }
+        : {}),
       ...(input.iac80CertificateRef !== undefined ? { iac80CertificateRef: input.iac80CertificateRef } : {}),
-      ...(input.certificateSignatories !== undefined ? { certificateSignatories: input.certificateSignatories as never } : {}),
+      ...(input.certificateSignatories !== undefined
+        ? { certificateSignatories: input.certificateSignatories as never }
+        : {}),
       ...(input.tan !== undefined ? { tan: input.tan } : {}),
       ...(input.udyamNumber !== undefined ? { udyamNumber: input.udyamNumber } : {}),
     },

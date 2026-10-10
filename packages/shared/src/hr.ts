@@ -75,33 +75,50 @@ export function createMachine<S extends string, E extends string>(
 // ---------------------------------------------------------------------------
 
 export type EmploymentState =
-  | 'PendingHire' | 'OfferRescinded' | 'NoShow' | 'Active' | 'OnLeave'
-  | 'Suspended' | 'Terminated' | 'NoticePeriod' | 'Absconded' | 'Alumni';
+  | 'PendingHire'
+  | 'OfferRescinded'
+  | 'NoShow'
+  | 'Active'
+  | 'OnLeave'
+  | 'Suspended'
+  | 'Terminated'
+  | 'NoticePeriod'
+  | 'Absconded'
+  | 'Alumni';
 
 export type EmploymentEvent =
-  | 'RESCIND_OFFER' | 'NO_SHOW' | 'ACTIVATE' | 'START_LEAVE' | 'RETURN_FROM_LEAVE'
-  | 'SUSPEND' | 'REINSTATE' | 'TERMINATE_POST_DISCIPLINARY' | 'SUBMIT_RESIGNATION'
-  | 'REACH_LAST_WORKING_DAY' | 'ABSENCE_BREACH' | 'EXPLANATION_ACCEPTED'
-  | 'ABANDONMENT_CONFIRMED' | 'RETENTION_TRANSITION';
+  | 'RESCIND_OFFER'
+  | 'NO_SHOW'
+  | 'ACTIVATE'
+  | 'START_LEAVE'
+  | 'RETURN_FROM_LEAVE'
+  | 'SUSPEND'
+  | 'REINSTATE'
+  | 'TERMINATE_POST_DISCIPLINARY'
+  | 'SUBMIT_RESIGNATION'
+  | 'REACH_LAST_WORKING_DAY'
+  | 'ABSENCE_BREACH'
+  | 'EXPLANATION_ACCEPTED'
+  | 'ABANDONMENT_CONFIRMED'
+  | 'RETENTION_TRANSITION';
 
-export const employmentRelationshipMachine = createMachine<EmploymentState, EmploymentEvent>(
-  'EmploymentRelationship',
-  {
-    PendingHire: { RESCIND_OFFER: 'OfferRescinded', NO_SHOW: 'NoShow', ACTIVATE: 'Active' },
-    Active: {
-      START_LEAVE: 'OnLeave', SUSPEND: 'Suspended',
-      SUBMIT_RESIGNATION: 'NoticePeriod', ABSENCE_BREACH: 'Absconded',
-    },
-    OnLeave: { RETURN_FROM_LEAVE: 'Active', SUBMIT_RESIGNATION: 'NoticePeriod', ABSENCE_BREACH: 'Absconded' },
-    Suspended: { REINSTATE: 'Active', TERMINATE_POST_DISCIPLINARY: 'Terminated' },
-    NoticePeriod: { REACH_LAST_WORKING_DAY: 'Terminated', ABSENCE_BREACH: 'Absconded' },
-    Absconded: { EXPLANATION_ACCEPTED: 'Active', ABANDONMENT_CONFIRMED: 'Terminated' },
-    Terminated: { RETENTION_TRANSITION: 'Alumni' },
-    OfferRescinded: {},
-    NoShow: {},
-    Alumni: {},
+export const employmentRelationshipMachine = createMachine<EmploymentState, EmploymentEvent>('EmploymentRelationship', {
+  PendingHire: { RESCIND_OFFER: 'OfferRescinded', NO_SHOW: 'NoShow', ACTIVATE: 'Active' },
+  Active: {
+    START_LEAVE: 'OnLeave',
+    SUSPEND: 'Suspended',
+    SUBMIT_RESIGNATION: 'NoticePeriod',
+    ABSENCE_BREACH: 'Absconded',
   },
-);
+  OnLeave: { RETURN_FROM_LEAVE: 'Active', SUBMIT_RESIGNATION: 'NoticePeriod', ABSENCE_BREACH: 'Absconded' },
+  Suspended: { REINSTATE: 'Active', TERMINATE_POST_DISCIPLINARY: 'Terminated' },
+  NoticePeriod: { REACH_LAST_WORKING_DAY: 'Terminated', ABSENCE_BREACH: 'Absconded' },
+  Absconded: { EXPLANATION_ACCEPTED: 'Active', ABANDONMENT_CONFIRMED: 'Terminated' },
+  Terminated: { RETENTION_TRANSITION: 'Alumni' },
+  OfferRescinded: {},
+  NoShow: {},
+  Alumni: {},
+});
 
 /**
  * [SUPERSEDES HRM Vol3 §9.2.8] Absconded resolves only into Terminated with
@@ -151,12 +168,27 @@ export function isEmployed(state: EmploymentState): boolean {
 // ---------------------------------------------------------------------------
 
 export type LeaveRequestState =
-  | 'Draft' | 'Submitted' | 'PendingApproval' | 'Approved' | 'Rejected'
-  | 'CancelledWithdrawn' | 'InProgress' | 'Extended' | 'Completed';
+  | 'Draft'
+  | 'Submitted'
+  | 'PendingApproval'
+  | 'Approved'
+  | 'Rejected'
+  | 'CancelledWithdrawn'
+  | 'InProgress'
+  | 'Extended'
+  | 'Completed';
 
 export type LeaveRequestEvent =
-  | 'SUBMIT' | 'ROUTE_FOR_APPROVAL' | 'APPROVE' | 'REJECT' | 'WITHDRAW'
-  | 'CANCEL' | 'START' | 'REQUEST_EXTENSION' | 'EXTENSION_RUNNING' | 'COMPLETE';
+  | 'SUBMIT'
+  | 'ROUTE_FOR_APPROVAL'
+  | 'APPROVE'
+  | 'REJECT'
+  | 'WITHDRAW'
+  | 'CANCEL'
+  | 'START'
+  | 'REQUEST_EXTENSION'
+  | 'EXTENSION_RUNNING'
+  | 'COMPLETE';
 
 export const leaveRequestMachine = createMachine<LeaveRequestState, LeaveRequestEvent>('LeaveRequest', {
   Draft: { SUBMIT: 'Submitted' },
@@ -204,11 +236,10 @@ export const LEAVE_REQUEST_EVENT_VERB: Record<LeaveRequestEvent, string> = {
 // ---------------------------------------------------------------------------
 
 export type RequisitionState =
-  | 'Draft' | 'PendingApproval' | 'Approved' | 'Open' | 'OnHold'
-  | 'Filled' | 'Closed' | 'Cancelled' | 'Rejected';
+  'Draft' | 'PendingApproval' | 'Approved' | 'Open' | 'OnHold' | 'Filled' | 'Closed' | 'Cancelled' | 'Rejected';
 
 export type RequisitionEvent =
-  | 'SUBMIT' | 'APPROVE' | 'REJECT' | 'PUBLISH' | 'HOLD' | 'RESUME' | 'FILL' | 'CLOSE' | 'CANCEL';
+  'SUBMIT' | 'APPROVE' | 'REJECT' | 'PUBLISH' | 'HOLD' | 'RESUME' | 'FILL' | 'CLOSE' | 'CANCEL';
 
 export const requisitionMachine = createMachine<RequisitionState, RequisitionEvent>('Requisition', {
   Draft: { SUBMIT: 'PendingApproval', CANCEL: 'Cancelled' },
@@ -239,13 +270,29 @@ export const REQUISITION_EVENT_VERB: Record<RequisitionEvent, string> = {
 // ---------------------------------------------------------------------------
 
 export type ApplicationState =
-  | 'Applied' | 'Screening' | 'Interviewing' | 'Selected' | 'OfferExtended'
-  | 'OfferAccepted' | 'Joined' | 'Rejected' | 'Withdrawn' | 'OfferDeclined'
-  | 'OfferRescinded' | 'NoShow';
+  | 'Applied'
+  | 'Screening'
+  | 'Interviewing'
+  | 'Selected'
+  | 'OfferExtended'
+  | 'OfferAccepted'
+  | 'Joined'
+  | 'Rejected'
+  | 'Withdrawn'
+  | 'OfferDeclined'
+  | 'OfferRescinded'
+  | 'NoShow';
 
 export type ApplicationEvent =
-  | 'ADVANCE' | 'REJECT' | 'WITHDRAW' | 'EXTEND_OFFER' | 'ACCEPT_OFFER'
-  | 'DECLINE_OFFER' | 'RESCIND_OFFER' | 'JOIN' | 'NO_SHOW';
+  | 'ADVANCE'
+  | 'REJECT'
+  | 'WITHDRAW'
+  | 'EXTEND_OFFER'
+  | 'ACCEPT_OFFER'
+  | 'DECLINE_OFFER'
+  | 'RESCIND_OFFER'
+  | 'JOIN'
+  | 'NO_SHOW';
 
 export const applicationMachine = createMachine<ApplicationState, ApplicationEvent>('Application', {
   Applied: { ADVANCE: 'Screening', WITHDRAW: 'Withdrawn' },
@@ -253,8 +300,10 @@ export const applicationMachine = createMachine<ApplicationState, ApplicationEve
   Interviewing: { ADVANCE: 'Selected', REJECT: 'Rejected', WITHDRAW: 'Withdrawn' },
   Selected: { EXTEND_OFFER: 'OfferExtended', WITHDRAW: 'Withdrawn' },
   OfferExtended: {
-    ACCEPT_OFFER: 'OfferAccepted', DECLINE_OFFER: 'OfferDeclined',
-    RESCIND_OFFER: 'OfferRescinded', WITHDRAW: 'Withdrawn',
+    ACCEPT_OFFER: 'OfferAccepted',
+    DECLINE_OFFER: 'OfferDeclined',
+    RESCIND_OFFER: 'OfferRescinded',
+    WITHDRAW: 'Withdrawn',
   },
   // Offer Accepted is not Joined, and the gap between them is where
   // OfferRescinded and NoShow live [Canon §14.3 R3].
@@ -321,11 +370,9 @@ export const POSITION_EVENT_VERB: Record<PositionEvent, string> = {
 // ---------------------------------------------------------------------------
 
 export type AssignmentRequestState =
-  | 'Draft' | 'PendingApproval' | 'Approved' | 'Scheduled'
-  | 'Effective' | 'Superseded' | 'Rejected' | 'Cancelled';
+  'Draft' | 'PendingApproval' | 'Approved' | 'Scheduled' | 'Effective' | 'Superseded' | 'Rejected' | 'Cancelled';
 
-export type AssignmentRequestEvent =
-  | 'SUBMIT' | 'APPROVE' | 'REJECT' | 'SCHEDULE' | 'ACTIVATE' | 'SUPERSEDE' | 'CANCEL';
+export type AssignmentRequestEvent = 'SUBMIT' | 'APPROVE' | 'REJECT' | 'SCHEDULE' | 'ACTIVATE' | 'SUPERSEDE' | 'CANCEL';
 
 /**
  * This is the *change request* machine. The temporal row status every
@@ -362,11 +409,9 @@ export const ASSIGNMENT_EVENT_VERB: Record<AssignmentRequestEvent, string> = {
 // ---------------------------------------------------------------------------
 
 export type CompensationState =
-  | 'Proposed' | 'PendingApproval' | 'Approved' | 'Scheduled'
-  | 'Effective' | 'Superseded' | 'Rejected' | 'Withdrawn';
+  'Proposed' | 'PendingApproval' | 'Approved' | 'Scheduled' | 'Effective' | 'Superseded' | 'Rejected' | 'Withdrawn';
 
-export type CompensationEvent =
-  | 'SUBMIT' | 'APPROVE' | 'REJECT' | 'SCHEDULE' | 'ACTIVATE' | 'SUPERSEDE' | 'WITHDRAW';
+export type CompensationEvent = 'SUBMIT' | 'APPROVE' | 'REJECT' | 'SCHEDULE' | 'ACTIVATE' | 'SUPERSEDE' | 'WITHDRAW';
 
 export const compensationRecordMachine = createMachine<CompensationState, CompensationEvent>('CompensationRecord', {
   Proposed: { SUBMIT: 'PendingApproval', WITHDRAW: 'Withdrawn' },
@@ -380,7 +425,11 @@ export const compensationRecordMachine = createMachine<CompensationState, Compen
 });
 
 export const COMPENSATION_REVISION_REASONS = [
-  'hire', 'promotion', 'annual_cycle', 'market_correction', 'off_cycle',
+  'hire',
+  'promotion',
+  'annual_cycle',
+  'market_correction',
+  'off_cycle',
 ] as const;
 export type CompensationRevisionReason = (typeof COMPENSATION_REVISION_REASONS)[number];
 
@@ -426,11 +475,10 @@ export type EmploymentEngagementType = (typeof EMPLOYMENT_ENGAGEMENT_TYPES)[numb
 // ---------------------------------------------------------------------------
 
 export type OnboardingState =
-  | 'Initiated' | 'PreBoarding' | 'Day1Activated' | 'InProgress'
-  | 'BlockedEscalated' | 'Completed' | 'Abandoned';
+  'Initiated' | 'PreBoarding' | 'Day1Activated' | 'InProgress' | 'BlockedEscalated' | 'Completed' | 'Abandoned';
 
 export type OnboardingEvent =
-  | 'START_PREBOARDING' | 'ACTIVATE_DAY1' | 'BEGIN' | 'ESCALATE' | 'RESUME' | 'COMPLETE' | 'ABANDON';
+  'START_PREBOARDING' | 'ACTIVATE_DAY1' | 'BEGIN' | 'ESCALATE' | 'RESUME' | 'COMPLETE' | 'ABANDON';
 
 export const onboardingMachine = createMachine<OnboardingState, OnboardingEvent>('Onboarding', {
   Initiated: { START_PREBOARDING: 'PreBoarding' },
@@ -456,12 +504,24 @@ export const ONBOARDING_EVENT_VERB: Record<OnboardingEvent, string> = {
 };
 
 export type OffboardingState =
-  | 'Initiated' | 'NoticePeriodActive' | 'LastWorkingDayReached' | 'ClearancePending'
-  | 'BlockedDisputed' | 'FFSettlementPending' | 'FFSettlementCompleted' | 'ClosedArchived';
+  | 'Initiated'
+  | 'NoticePeriodActive'
+  | 'LastWorkingDayReached'
+  | 'ClearancePending'
+  | 'BlockedDisputed'
+  | 'FFSettlementPending'
+  | 'FFSettlementCompleted'
+  | 'ClosedArchived';
 
 export type OffboardingEvent =
-  | 'START_NOTICE' | 'REACH_LWD' | 'BEGIN_CLEARANCE' | 'DISPUTE'
-  | 'RESOLVE' | 'CLEARANCE_COMPLETE' | 'DISBURSE' | 'ARCHIVE';
+  | 'START_NOTICE'
+  | 'REACH_LWD'
+  | 'BEGIN_CLEARANCE'
+  | 'DISPUTE'
+  | 'RESOLVE'
+  | 'CLEARANCE_COMPLETE'
+  | 'DISBURSE'
+  | 'ARCHIVE';
 
 export const offboardingMachine = createMachine<OffboardingState, OffboardingEvent>('Offboarding', {
   Initiated: { START_NOTICE: 'NoticePeriodActive' },
@@ -489,22 +549,24 @@ export const OFFBOARDING_EVENT_VERB: Record<OffboardingEvent, string> = {
 // Goal
 // ---------------------------------------------------------------------------
 
-export type GoalState =
-  | 'Draft' | 'Agreed' | 'InProgress' | 'AtRisk' | 'Achieved' | 'PartiallyAchieved' | 'Missed';
+export type GoalState = 'Draft' | 'Agreed' | 'InProgress' | 'AtRisk' | 'Achieved' | 'PartiallyAchieved' | 'Missed';
 
-export type GoalEvent =
-  | 'AGREE' | 'START' | 'FLAG_AT_RISK' | 'RECOVER' | 'ACHIEVE' | 'PARTIALLY_ACHIEVE' | 'MISS';
+export type GoalEvent = 'AGREE' | 'START' | 'FLAG_AT_RISK' | 'RECOVER' | 'ACHIEVE' | 'PARTIALLY_ACHIEVE' | 'MISS';
 
 export const goalMachine = createMachine<GoalState, GoalEvent>('Goal', {
   Draft: { AGREE: 'Agreed' },
   Agreed: { START: 'InProgress' },
   InProgress: {
-    FLAG_AT_RISK: 'AtRisk', ACHIEVE: 'Achieved',
-    PARTIALLY_ACHIEVE: 'PartiallyAchieved', MISS: 'Missed',
+    FLAG_AT_RISK: 'AtRisk',
+    ACHIEVE: 'Achieved',
+    PARTIALLY_ACHIEVE: 'PartiallyAchieved',
+    MISS: 'Missed',
   },
   AtRisk: {
-    RECOVER: 'InProgress', ACHIEVE: 'Achieved',
-    PARTIALLY_ACHIEVE: 'PartiallyAchieved', MISS: 'Missed',
+    RECOVER: 'InProgress',
+    ACHIEVE: 'Achieved',
+    PARTIALLY_ACHIEVE: 'PartiallyAchieved',
+    MISS: 'Missed',
   },
   Achieved: {},
   PartiallyAchieved: {},
@@ -527,7 +589,11 @@ export const GOAL_EVENT_VERB: Record<GoalEvent, string> = {
  * kinds of evidence that accumulate instead.
  */
 export const PERFORMANCE_EVIDENCE_KINDS = [
-  'milestone', 'quality_outcome', 'corrective_note', 'manager_note', 'self_note',
+  'milestone',
+  'quality_outcome',
+  'corrective_note',
+  'manager_note',
+  'self_note',
 ] as const;
 export type PerformanceEvidenceKind = (typeof PERFORMANCE_EVIDENCE_KINDS)[number];
 
@@ -555,8 +621,7 @@ export const WORK_ATTENDANCE_EVENT_VERB: Record<WorkAttendanceEvent, string> = {
 // Payroll — one shape for the instruction and the run
 // ---------------------------------------------------------------------------
 
-export type PayrollState =
-  | 'Draft' | 'Computed' | 'UnderReview' | 'Approved' | 'Disbursed' | 'Locked' | 'Rejected';
+export type PayrollState = 'Draft' | 'Computed' | 'UnderReview' | 'Approved' | 'Disbursed' | 'Locked' | 'Rejected';
 
 export type PayrollEvent = 'COMPUTE' | 'SUBMIT_REVIEW' | 'APPROVE' | 'REJECT' | 'DISBURSE' | 'LOCK';
 
@@ -597,7 +662,11 @@ export const CAPABILITY_TIERS: CapabilityTier[] = ['inferred', 'claimed', 'asses
  * waiting for someone to reorder the enum, so the rank is written down.
  */
 export const CONFIDENCE_RANK: Record<CapabilityTier, number> = {
-  inferred: 1, claimed: 2, assessed: 3, demonstrated: 4, verified: 5,
+  inferred: 1,
+  claimed: 2,
+  assessed: 3,
+  demonstrated: 4,
+  verified: 5,
 };
 
 export function confidenceRank(tier: CapabilityTier): number {
@@ -614,8 +683,11 @@ export function isMoreConfident(
 }
 
 export type OriginationSource =
-  | 'extraction_event' | 'self_report_or_cv_parse' | 'assessment_completed'
-  | 'work_sample_evidence' | 'issuer_verification';
+  | 'extraction_event'
+  | 'self_report_or_cv_parse'
+  | 'assessment_completed'
+  | 'work_sample_evidence'
+  | 'issuer_verification';
 
 /**
  * A claim does not climb the tiers. Each tier has its own way in, and a claim
@@ -653,7 +725,7 @@ export function enterNonTierState(fromTier: CapabilityTier, target: NonTierState
 }
 
 export type ContradictionType =
-  | 'tier_conflict' | 'level_conflict' | 'temporal_conflict' | 'issuer_conflict' | 'identity_conflict';
+  'tier_conflict' | 'level_conflict' | 'temporal_conflict' | 'issuer_conflict' | 'identity_conflict';
 
 export type ContradictionRegion = 'auto_accept' | 'human_review' | 'auto_reject';
 

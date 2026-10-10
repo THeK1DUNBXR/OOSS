@@ -23,10 +23,27 @@ export async function seedCorporate(): Promise<void> {
   // so the contract-signing gate has something to check against; a tenant
   // that has not confirmed its own figures can still edit the rule before
   // the first real signature.
-  const stampDutyDefaults: Array<{ agreementKind: string; percentOfValue?: number; flatAmount?: number; note: string }> = [
-    { agreementKind: 'contract', percentOfValue: 0.1, note: 'Placeholder — confirm against the current TN Stamp Act schedule for a general commercial agreement.' },
-    { agreementKind: 'mou', flatAmount: 100, note: 'Placeholder — an MoU with no consideration is usually a flat, nominal duty; confirm the figure.' },
-    { agreementKind: 'partner_agreement', percentOfValue: 0.1, note: 'Placeholder — confirm against the current TN Stamp Act schedule.' },
+  const stampDutyDefaults: Array<{
+    agreementKind: string;
+    percentOfValue?: number;
+    flatAmount?: number;
+    note: string;
+  }> = [
+    {
+      agreementKind: 'contract',
+      percentOfValue: 0.1,
+      note: 'Placeholder — confirm against the current TN Stamp Act schedule for a general commercial agreement.',
+    },
+    {
+      agreementKind: 'mou',
+      flatAmount: 100,
+      note: 'Placeholder — an MoU with no consideration is usually a flat, nominal duty; confirm the figure.',
+    },
+    {
+      agreementKind: 'partner_agreement',
+      percentOfValue: 0.1,
+      note: 'Placeholder — confirm against the current TN Stamp Act schedule.',
+    },
   ];
   for (const rule of stampDutyDefaults) {
     const existing = await prisma.stampDutyRule.findFirst({
@@ -57,7 +74,13 @@ export async function seedCorporate(): Promise<void> {
     });
     if (!existing) {
       await prisma.documentRetentionRule.create({
-        data: { tenantId, documentKind: rule.documentKind, anchor: rule.anchor, years: rule.years, effectiveFrom: STAMP_DUTY_EFFECTIVE_FROM },
+        data: {
+          tenantId,
+          documentKind: rule.documentKind,
+          anchor: rule.anchor,
+          years: rule.years,
+          effectiveFrom: STAMP_DUTY_EFFECTIVE_FROM,
+        },
       });
     }
   }
@@ -71,7 +94,7 @@ export async function seedCorporate(): Promise<void> {
         text:
           'A course fee is refunded in full when the request is made within 7 days of enrolment and before the ' +
           'course has started. A partial refund of 50% applies within 14 days of enrolment, before the course has ' +
-          'started. No refund applies once the course has started. This is the platform\'s seeded starting policy — ' +
+          "started. No refund applies once the course has started. This is the platform's seeded starting policy — " +
           'the company has not yet confirmed its own written refund policy (docs/plan/compliance.md, open question).',
         rules: { fullWithinDays: 7, partialPercent: 50, noneAfterStartDays: 0 },
         effectiveFrom: new Date(),

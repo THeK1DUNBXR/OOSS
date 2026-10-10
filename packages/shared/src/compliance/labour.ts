@@ -176,9 +176,7 @@ export function reportDueAt(inquiryClosedAt: Date): Date {
 // Disciplinary process
 // ---------------------------------------------------------------------------
 
-export const DISCIPLINARY_STATUSES = [
-  'show_cause', 'reply_received', 'inquiry', 'decision', 'closed',
-] as const;
+export const DISCIPLINARY_STATUSES = ['show_cause', 'reply_received', 'inquiry', 'decision', 'closed'] as const;
 export type DisciplinaryStatus = (typeof DISCIPLINARY_STATUSES)[number];
 
 export const DISCIPLINARY_OUTCOMES = ['warning', 'suspension', 'termination', 'none'] as const;
@@ -193,9 +191,7 @@ export function replyDueAt(showCauseIssuedAt: Date): Date {
 // Letters
 // ---------------------------------------------------------------------------
 
-export const HR_LETTER_KINDS = [
-  'offer', 'appointment', 'confirmation', 'relieving', 'experience', 'warning',
-] as const;
+export const HR_LETTER_KINDS = ['offer', 'appointment', 'confirmation', 'relieving', 'experience', 'warning'] as const;
 export type HrLetterKind = (typeof HR_LETTER_KINDS)[number];
 
 export interface LetterFacts {

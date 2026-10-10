@@ -20,7 +20,10 @@ import { emit } from '../platform/eventBus.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { encryptField, readRegulated } from '../domains/compliance/privacy.js';
 import {
-  EVENTS, REGULATED_EXCLUDED_FIELDS, SENSITIVITY_RANK, isEncryptedFieldValue,
+  EVENTS,
+  REGULATED_EXCLUDED_FIELDS,
+  SENSITIVITY_RANK,
+  isEncryptedFieldValue,
   type SensitivityClass,
 } from '@kaizen/shared';
 import { TEMPLATES, type TemplateSpec } from './templates.js';
@@ -69,7 +72,8 @@ const REGULATED_STAGED_FIELDS = new Set<string>([
  * use their own column definitions, which carry the field name, and so do not
  * come through here.
  */
-const REGULATED_HEADING = /\b(pan|aadhaar|aadhar|uan|pf|esi|ifsc|account (no|number)|bank account|guardian|blood group)\b/i;
+const REGULATED_HEADING =
+  /\b(pan|aadhaar|aadhar|uan|pf|esi|ifsc|account (no|number)|bank account|guardian|blood group)\b/i;
 
 const isBlankValue = (v: unknown) => v === null || v === undefined || v === '';
 

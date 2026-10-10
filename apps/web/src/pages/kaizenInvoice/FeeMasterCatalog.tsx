@@ -10,7 +10,9 @@ import { KI_APP_CSS } from './style.js';
 import { fmtINR } from './calc.js';
 
 function feeCell(monthlyFee: number | undefined) {
-  return monthlyFee !== undefined ? <td className="ki-num-cell">{fmtINR(monthlyFee)}</td> : (
+  return monthlyFee !== undefined ? (
+    <td className="ki-num-cell">{fmtINR(monthlyFee)}</td>
+  ) : (
     <td className="ki-num-cell">
       <span className="ki-badge ki-na">n/a</span>
     </td>
@@ -22,12 +24,12 @@ export function FeeMasterCatalog({ courses }: { courses: CourseView[] }) {
   const q = query.trim().toLowerCase();
 
   const filteredCourses = useMemo(() => courses.filter((c) => c.name.toLowerCase().includes(q)), [courses, q]);
-  const addons = useMemo(
-    () => courses.flatMap((c) => c.addons.map((a) => ({ course: c, addon: a }))),
-    [courses],
-  );
+  const addons = useMemo(() => courses.flatMap((c) => c.addons.map((a) => ({ course: c, addon: a }))), [courses]);
   const filteredAddons = useMemo(
-    () => addons.filter(({ course, addon }) => course.name.toLowerCase().includes(q) || addon.name.toLowerCase().includes(q)),
+    () =>
+      addons.filter(
+        ({ course, addon }) => course.name.toLowerCase().includes(q) || addon.name.toLowerCase().includes(q),
+      ),
     [addons, q],
   );
 
@@ -35,7 +37,12 @@ export function FeeMasterCatalog({ courses }: { courses: CourseView[] }) {
     <div className="ki-app">
       <main className="ki-main">
         <div className="ki-catalog-toolbar">
-          <input type="text" placeholder="Search courses or add-ons…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input
+            type="text"
+            placeholder="Search courses or add-ons…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           <span className="ki-count">
             {filteredCourses.length} courses, {filteredAddons.length} add-ons
           </span>

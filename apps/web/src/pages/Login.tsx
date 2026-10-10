@@ -13,7 +13,10 @@ import { words } from '../lib/words.js';
  * same screen shows different things to different people.
  */
 const ROLES = [
-  { label: 'Employee', note: 'Their own leave, attendance and payslips, the staff directory, and the invoices they raise.' },
+  {
+    label: 'Employee',
+    note: 'Their own leave, attendance and payslips, the staff directory, and the invoices they raise.',
+  },
   { label: 'Operations Head', note: 'People, delivery and the course catalogue. Proposes pay but cannot approve it.' },
   { label: 'Finance Head', note: 'The books, GST returns, and approving pay and payroll.' },
   { label: 'Chairman', note: 'Everything.' },
@@ -26,9 +29,7 @@ const KIND_WORDS: Record<TenantKind, string> = {
 };
 
 function roleWords(slugs: string[]): string {
-  return slugs
-    .map((s) => AFFILIATION_LABELS[s as keyof typeof AFFILIATION_LABELS] ?? words(s))
-    .join(', ');
+  return slugs.map((s) => AFFILIATION_LABELS[s as keyof typeof AFFILIATION_LABELS] ?? words(s)).join(', ');
 }
 
 export function Login() {
@@ -41,7 +42,15 @@ export function Login() {
     return <EntityPicker entities={pendingSelection.entities} onChoose={chooseEntity} error={error} />;
   }
 
-  return <SignInForm signIn={signIn} verifyMfa={verifyMfa} mfaChallengeToken={mfaChallengeToken} error={error} notice={notice} />;
+  return (
+    <SignInForm
+      signIn={signIn}
+      verifyMfa={verifyMfa}
+      mfaChallengeToken={mfaChallengeToken}
+      error={error}
+      notice={notice}
+    />
+  );
 }
 
 function SignInForm({
@@ -142,7 +151,9 @@ function SignInForm({
 
           <form onSubmit={submit} className="space-y-3">
             <div>
-              <label htmlFor={emailId} className="label">Email</label>
+              <label htmlFor={emailId} className="label">
+                Email
+              </label>
               <input
                 id={emailId}
                 className="input"
@@ -153,7 +164,9 @@ function SignInForm({
               />
             </div>
             <div>
-              <label htmlFor={passwordId} className="label">Password</label>
+              <label htmlFor={passwordId} className="label">
+                Password
+              </label>
               <input
                 id={passwordId}
                 className="input"
@@ -176,9 +189,7 @@ function SignInForm({
 
         <div className="card p-6">
           <h2 className="text-sm font-semibold text-ink-100">What you see depends on what you do here</h2>
-          <p className="mt-1 text-2xs leading-relaxed text-ink-500">
-            Four roles. Each sees what their job needs.
-          </p>
+          <p className="mt-1 text-2xs leading-relaxed text-ink-500">Four roles. Each sees what their job needs.</p>
 
           <div className="mt-4 space-y-1.5">
             {ROLES.map((r) => (
@@ -255,7 +266,9 @@ function EntityPicker({
               <span className="text-2xs text-ink-500">
                 {KIND_WORDS[e.kind]} · {roleWords(e.roleSlugs)}
               </span>
-              {e.suggested && <span className="mt-0.5 text-2xs italic text-accent-soft">Suggested from your email</span>}
+              {e.suggested && (
+                <span className="mt-0.5 text-2xs italic text-accent-soft">Suggested from your email</span>
+              )}
               {busy === e.tenantId && <span className="mt-1 text-2xs text-ink-500">Opening…</span>}
             </button>
           ))}

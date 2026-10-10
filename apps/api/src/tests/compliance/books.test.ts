@@ -66,7 +66,14 @@ describe('CMP-AUD-001 — the five-plus-two governed entities produce a diffed A
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
     const txn = await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 321, accountId: account.id, categoryId: category.id, note: 'CMP-AUD-001' }),
+      recordTransaction({
+        txnDate: new Date(),
+        direction: 'out',
+        amount: 321,
+        accountId: account.id,
+        categoryId: category.id,
+        note: 'CMP-AUD-001',
+      }),
     );
     const record = await unscopedPrisma.auditRecord.findFirst({
       where: { tenantId: TENANT, subjectType: 'transaction', subjectId: txn.id },
@@ -80,11 +87,21 @@ describe('CMP-AUD-001 — the five-plus-two governed entities produce a diffed A
     const account = await bankAccount();
     const bill = await asUser('finance@kaizen.co.in', () =>
       prisma.vendorBill.create({
-        data: { tenantId: TENANT, recordCode: `BILL-TEST-${Date.now()}`, vendorName: 'CMP-AUD Test Vendor', billDate: new Date(), subtotal: 1000, total: 1000, status: 'open' },
+        data: {
+          tenantId: TENANT,
+          recordCode: `BILL-TEST-${Date.now()}`,
+          vendorName: 'CMP-AUD Test Vendor',
+          billDate: new Date(),
+          subtotal: 1000,
+          total: 1000,
+          status: 'open',
+        },
       }),
     );
     const { payVendorBill } = await import('../../domains/books.js');
-    await asUser('finance@kaizen.co.in', () => payVendorBill(bill.id, { amount: 1000, accountId: account.id, paidOn: new Date() }));
+    await asUser('finance@kaizen.co.in', () =>
+      payVendorBill(bill.id, { amount: 1000, accountId: account.id, paidOn: new Date() }),
+    );
 
     const record = await unscopedPrisma.auditRecord.findFirst({
       where: { tenantId: TENANT, subjectType: 'vendor_bill', subjectId: bill.id, action: 'update' },
@@ -98,7 +115,13 @@ describe('CMP-AUD-001 — the five-plus-two governed entities produce a diffed A
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
     const txn = await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 555, accountId: account.id, categoryId: category.id }),
+      recordTransaction({
+        txnDate: new Date(),
+        direction: 'out',
+        amount: 555,
+        accountId: account.id,
+        categoryId: category.id,
+      }),
     );
     const reversal = await asUser('finance@kaizen.co.in', () => reverseTransaction(txn.id, 'CMP-AUD-001 reversal'));
 
@@ -115,13 +138,28 @@ describe('CMP-AUD-001 — the five-plus-two governed entities produce a diffed A
   it('creating a fixed asset, a loan, a ledger account and a ledger category are all audited', async () => {
     const { createAsset, createLoan, createAccount, createCategory } = await import('../../domains/books.js');
     const asset = await asUser('finance@kaizen.co.in', () =>
-      createAsset({ name: `CMP-AUD Asset ${Date.now()}`, purchaseDate: new Date(), cost: 50_000, usefulLifeMonths: 36 }),
+      createAsset({
+        name: `CMP-AUD Asset ${Date.now()}`,
+        purchaseDate: new Date(),
+        cost: 50_000,
+        usefulLifeMonths: 36,
+      }),
     );
     const loan = await asUser('finance@kaizen.co.in', () =>
-      createLoan({ lender: 'CMP-AUD Bank', principal: 100_000, annualRate: 10, tenureMonths: 12, startDate: new Date() }),
+      createLoan({
+        lender: 'CMP-AUD Bank',
+        principal: 100_000,
+        annualRate: 10,
+        tenureMonths: 12,
+        startDate: new Date(),
+      }),
     );
-    const account = await asUser('finance@kaizen.co.in', () => createAccount({ name: `CMP-AUD Account ${Date.now()}` }));
-    const category = await asUser('finance@kaizen.co.in', () => createCategory({ name: `CMP-AUD Category ${Date.now()}` }));
+    const account = await asUser('finance@kaizen.co.in', () =>
+      createAccount({ name: `CMP-AUD Account ${Date.now()}` }),
+    );
+    const category = await asUser('finance@kaizen.co.in', () =>
+      createCategory({ name: `CMP-AUD Category ${Date.now()}` }),
+    );
 
     for (const [subjectType, subjectId] of [
       ['fixed_asset', asset.id],
@@ -129,7 +167,9 @@ describe('CMP-AUD-001 — the five-plus-two governed entities produce a diffed A
       ['ledger_account', account.id],
       ['ledger_category', category.id],
     ] as const) {
-      const record = await unscopedPrisma.auditRecord.findFirst({ where: { tenantId: TENANT, subjectType, subjectId } });
+      const record = await unscopedPrisma.auditRecord.findFirst({
+        where: { tenantId: TENANT, subjectType, subjectId },
+      });
       expect(record, `expected an AuditRecord for ${subjectType}`).not.toBeNull();
     }
   });
@@ -144,7 +184,13 @@ describe('CMP-AUD-002 — the AuditRecord hash chain', () => {
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
     await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 42, accountId: account.id, categoryId: category.id }),
+      recordTransaction({
+        txnDate: new Date(),
+        direction: 'out',
+        amount: 42,
+        accountId: account.id,
+        categoryId: category.id,
+      }),
     );
 
     const result = await asUser('finance@kaizen.co.in', () => verifyAuditChain(TENANT));
@@ -157,7 +203,13 @@ describe('CMP-AUD-002 — the AuditRecord hash chain', () => {
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
     const txn = await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 77, accountId: account.id, categoryId: category.id }),
+      recordTransaction({
+        txnDate: new Date(),
+        direction: 'out',
+        amount: 77,
+        accountId: account.id,
+        categoryId: category.id,
+      }),
     );
     const record = await unscopedPrisma.auditRecord.findFirstOrThrow({
       where: { tenantId: TENANT, subjectType: 'transaction', subjectId: txn.id, action: 'create' },
@@ -206,7 +258,9 @@ describe('CMP-AUD-003 — a closed accounting period vetoes new or edited entrie
     const err = await expectReject(() => asUser('finance@kaizen.co.in', () => closePeriod(closedPeriod)));
     expect(err.status).toBe(403);
 
-    const row = await unscopedPrisma.accountingPeriod.findFirstOrThrow({ where: { tenantId: TENANT, period: closedPeriod } });
+    const row = await unscopedPrisma.accountingPeriod.findFirstOrThrow({
+      where: { tenantId: TENANT, period: closedPeriod },
+    });
     expect(row.status).toBe('closing');
 
     const closed = await asUser('chairman@kaizen.co.in', () => closePeriod(closedPeriod));
@@ -219,7 +273,13 @@ describe('CMP-AUD-003 — a closed accounting period vetoes new or edited entrie
     const category = await categoryNamed('General Expenses');
     const err = await expectReject(() =>
       asUser('finance@kaizen.co.in', () =>
-        recordTransaction({ txnDate: new Date(Date.UTC(2019, 5, 15)), direction: 'out', amount: 100, accountId: account.id, categoryId: category.id }),
+        recordTransaction({
+          txnDate: new Date(Date.UTC(2019, 5, 15)),
+          direction: 'out',
+          amount: 100,
+          accountId: account.id,
+          categoryId: category.id,
+        }),
       ),
     );
     expect(err.message).toContain('closed accounting period');
@@ -230,7 +290,13 @@ describe('CMP-AUD-003 — a closed accounting period vetoes new or edited entrie
     const category = await categoryNamed('General Expenses');
     // Recorded in an open period, then the period it is reversed in is today's — open.
     const txn = await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 88, accountId: account.id, categoryId: category.id }),
+      recordTransaction({
+        txnDate: new Date(),
+        direction: 'out',
+        amount: 88,
+        accountId: account.id,
+        categoryId: category.id,
+      }),
     );
     const reversal = await asUser('finance@kaizen.co.in', () => reverseTransaction(txn.id, 'CMP-AUD-003'));
     const today = new Date().toISOString().slice(0, 10);
@@ -239,7 +305,9 @@ describe('CMP-AUD-003 — a closed accounting period vetoes new or edited entrie
 
   it('reopening needs a reason, and is itself audited', async () => {
     await expect(asUser('chairman@kaizen.co.in', () => reopenPeriod(closedPeriod, ''))).rejects.toBeTruthy();
-    const reopened = await asUser('chairman@kaizen.co.in', () => reopenPeriod(closedPeriod, 'Auditor found a misposted entry'));
+    const reopened = await asUser('chairman@kaizen.co.in', () =>
+      reopenPeriod(closedPeriod, 'Auditor found a misposted entry'),
+    );
     expect(reopened.status).toBe('reopened');
 
     const record = await unscopedPrisma.auditRecord.findFirst({
@@ -285,12 +353,16 @@ describe('Schedule III — nothing dropped, unmapped stays visible', () => {
     let income = 0;
     let expense = 0;
     for (let m = 4; m <= 12; m += 1) {
-      const pl = await asUser('chairman@kaizen.co.in', () => profitAndLoss(`${fyStartYear}-${String(m).padStart(2, '0')}`));
+      const pl = await asUser('chairman@kaizen.co.in', () =>
+        profitAndLoss(`${fyStartYear}-${String(m).padStart(2, '0')}`),
+      );
       income += pl.income;
       expense += pl.expense;
     }
     for (let m = 1; m <= 3; m += 1) {
-      const pl = await asUser('chairman@kaizen.co.in', () => profitAndLoss(`${fyStartYear + 1}-${String(m).padStart(2, '0')}`));
+      const pl = await asUser('chairman@kaizen.co.in', () =>
+        profitAndLoss(`${fyStartYear + 1}-${String(m).padStart(2, '0')}`),
+      );
       income += pl.income;
       expense += pl.expense;
     }
@@ -332,8 +404,11 @@ describe('Depreciation — Schedule II against the Income-tax block, deliberatel
     }
 
     const comparable = rows.filter(
-      (row): row is typeof rows[number] & { companiesAct: { charge: number }; incomeTax: { charge: number } } =>
-        'charge' in row.companiesAct && row.companiesAct.charge != null && 'charge' in row.incomeTax && row.incomeTax.charge != null,
+      (row): row is (typeof rows)[number] & { companiesAct: { charge: number }; incomeTax: { charge: number } } =>
+        'charge' in row.companiesAct &&
+        row.companiesAct.charge != null &&
+        'charge' in row.incomeTax &&
+        row.incomeTax.charge != null,
     );
     expect(comparable.length).toBeGreaterThan(0);
     // Two independent statutory answers for the same asset in the same year —
@@ -382,7 +457,14 @@ describe('Bank reconciliation', () => {
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
     const txn = await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 12_345, accountId: account.id, categoryId: category.id, reference: 'CHQ-9911' }),
+      recordTransaction({
+        txnDate: new Date(),
+        direction: 'out',
+        amount: 12_345,
+        accountId: account.id,
+        categoryId: category.id,
+        reference: 'CHQ-9911',
+      }),
     );
 
     await asUser('finance@kaizen.co.in', () =>
@@ -412,18 +494,32 @@ describe('Bank reconciliation', () => {
 // IST period boundaries in the close snapshot and the financial year
 // ===========================================================================
 
-describe('IST boundaries — a closed month does not take the next month\'s first hours', () => {
+describe("IST boundaries — a closed month does not take the next month's first hours", () => {
   // 2031-04-30T18:00Z is 23:30 IST on 30 April (April); 2031-04-30T19:00Z is 00:30 IST on 1 May (May).
   it('the April close snapshot includes 23:30 IST on 30 April and excludes 00:30 IST on 1 May', async () => {
     const account = await bankAccount();
     const category = await categoryNamed('General Expenses');
     await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date('2031-04-30T18:00:00Z'), direction: 'out', amount: 1000, accountId: account.id, categoryId: category.id, note: 'CLOSE-BOUNDARY in April' }),
+      recordTransaction({
+        txnDate: new Date('2031-04-30T18:00:00Z'),
+        direction: 'out',
+        amount: 1000,
+        accountId: account.id,
+        categoryId: category.id,
+        note: 'CLOSE-BOUNDARY in April',
+      }),
     );
     const expected = await asUser('finance@kaizen.co.in', () => trialBalance(istEndOfDay(2031, 4, 30)));
 
     await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date('2031-04-30T19:00:00Z'), direction: 'out', amount: 5000, accountId: account.id, categoryId: category.id, note: 'CLOSE-BOUNDARY in May' }),
+      recordTransaction({
+        txnDate: new Date('2031-04-30T19:00:00Z'),
+        direction: 'out',
+        amount: 5000,
+        accountId: account.id,
+        categoryId: category.id,
+        note: 'CLOSE-BOUNDARY in May',
+      }),
     );
     await asUser('finance@kaizen.co.in', () => requestClosePeriod('2031-04'));
     const closed = await asUser('chairman@kaizen.co.in', () => closePeriod('2031-04'));
@@ -432,7 +528,12 @@ describe('IST boundaries — a closed month does not take the next month\'s firs
     // Rows are compared by name, because the ledger's row order is not guaranteed.
     type Row = { name: string; debit: number; credit: number };
     const byName = (a: Row, b: Row) => a.name.localeCompare(b.name);
-    const snapshot = closed.snapshot as unknown as { asOf: string; rows: Row[]; totalDebit: number; totalCredit: number };
+    const snapshot = closed.snapshot as unknown as {
+      asOf: string;
+      rows: Row[];
+      totalDebit: number;
+      totalCredit: number;
+    };
     expect(snapshot.asOf).toBe('2031-04-30');
     expect([...snapshot.rows].sort(byName)).toEqual([...expected.rows].sort(byName));
     expect(snapshot.totalDebit).toBe(expected.totalDebit);
@@ -452,7 +553,14 @@ describe('IST boundaries — a closed month does not take the next month\'s firs
     const beforeNext = await asUser('chairman@kaizen.co.in', () => statementForFy(2034));
 
     await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date('2034-03-31T19:00:00Z'), direction: 'out', amount: 700, accountId: account.id, categoryId: category.id, note: 'FY-BOUNDARY 00:30 1 Apr' }),
+      recordTransaction({
+        txnDate: new Date('2034-03-31T19:00:00Z'),
+        direction: 'out',
+        amount: 700,
+        accountId: account.id,
+        categoryId: category.id,
+        note: 'FY-BOUNDARY 00:30 1 Apr',
+      }),
     );
 
     const after = await asUser('chairman@kaizen.co.in', () => statementForFy(2033));

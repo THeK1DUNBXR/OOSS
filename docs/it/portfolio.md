@@ -117,29 +117,29 @@ collapsing the budget table's Planned/Actual/Variance columns into a single
 
 ## API — mounted at `/api/it`
 
-| Method | Path | |
-|---|---|---|
-| `GET` | `/initiatives?stage=&theme=&rag=` | list |
-| `GET` | `/initiatives/summary` | `ItPortfolioSummary` (below) |
-| `POST` | `/initiatives` | create (`it_initiatives:create`) |
-| `GET` | `/initiatives/:id` | detail, with `spendToDate` (`number \| null`, masked without `it_budgets:F`) and `availableTransitions` |
-| `POST` | `/initiatives/:id/transition` | `{ event, note? }` → `{ applied, initiative, approvalStepId, reason }` |
-| `GET` | `/initiatives/:id/updates` | list |
-| `POST` | `/initiatives/:id/updates` | `{ body, rag }`, append-only |
-| `GET` | `/roadmap`, `/roadmap/items` | list (`?quarter=&theme=`) |
-| `POST` | `/roadmap/items` | create |
-| `POST` | `/roadmap/items/:id/done` | `{ done? }` (extra, not in the plan's endpoint list, mirrors the model's `done` field) |
-| `GET` | `/budget?fy=FY2026-27` | `BudgetForFy` — every line for the FY with `actual`/`variance` computed, money masked without `it_budgets:F` |
-| `GET` | `/budget/summary?fy=` | `ItBudgetSummary` (below); `fy` defaults to the FY containing today; money masked without `it_budgets:F` |
-| `POST` | `/budget/lines` | create (`it_budgets:create`) |
-| `GET` | `/budget/lines/:id` | detail, with `actual`/`variance`, money masked without `it_budgets:F` |
-| `PATCH` | `/budget/lines/:id` | edit `planned`/`division`/`bookCategoryIds` (extra, matches the `E` verb every role with `it_budgets` holds) |
-| `POST` | `/budget/lines/:id/approve` | `it_budgets:approve`, refused to the line's own creator |
-| `GET` | `/tech-debt?status=&severity=&applicationId=` | list |
-| `GET` | `/tech-debt/summary` | `ItTechDebtSummary` (below) |
-| `POST` | `/tech-debt` | create |
-| `GET` | `/tech-debt/:id` | detail, with `availableTransitions` |
-| `POST` | `/tech-debt/:id/transition` | `{ event, note? }` |
+| Method  | Path                                          |                                                                                                              |
+| ------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `GET`   | `/initiatives?stage=&theme=&rag=`             | list                                                                                                         |
+| `GET`   | `/initiatives/summary`                        | `ItPortfolioSummary` (below)                                                                                 |
+| `POST`  | `/initiatives`                                | create (`it_initiatives:create`)                                                                             |
+| `GET`   | `/initiatives/:id`                            | detail, with `spendToDate` (`number \| null`, masked without `it_budgets:F`) and `availableTransitions`      |
+| `POST`  | `/initiatives/:id/transition`                 | `{ event, note? }` → `{ applied, initiative, approvalStepId, reason }`                                       |
+| `GET`   | `/initiatives/:id/updates`                    | list                                                                                                         |
+| `POST`  | `/initiatives/:id/updates`                    | `{ body, rag }`, append-only                                                                                 |
+| `GET`   | `/roadmap`, `/roadmap/items`                  | list (`?quarter=&theme=`)                                                                                    |
+| `POST`  | `/roadmap/items`                              | create                                                                                                       |
+| `POST`  | `/roadmap/items/:id/done`                     | `{ done? }` (extra, not in the plan's endpoint list, mirrors the model's `done` field)                       |
+| `GET`   | `/budget?fy=FY2026-27`                        | `BudgetForFy` — every line for the FY with `actual`/`variance` computed, money masked without `it_budgets:F` |
+| `GET`   | `/budget/summary?fy=`                         | `ItBudgetSummary` (below); `fy` defaults to the FY containing today; money masked without `it_budgets:F`     |
+| `POST`  | `/budget/lines`                               | create (`it_budgets:create`)                                                                                 |
+| `GET`   | `/budget/lines/:id`                           | detail, with `actual`/`variance`, money masked without `it_budgets:F`                                        |
+| `PATCH` | `/budget/lines/:id`                           | edit `planned`/`division`/`bookCategoryIds` (extra, matches the `E` verb every role with `it_budgets` holds) |
+| `POST`  | `/budget/lines/:id/approve`                   | `it_budgets:approve`, refused to the line's own creator                                                      |
+| `GET`   | `/tech-debt?status=&severity=&applicationId=` | list                                                                                                         |
+| `GET`   | `/tech-debt/summary`                          | `ItTechDebtSummary` (below)                                                                                  |
+| `POST`  | `/tech-debt`                                  | create                                                                                                       |
+| `GET`   | `/tech-debt/:id`                              | detail, with `availableTransitions`                                                                          |
+| `POST`  | `/tech-debt/:id/transition`                   | `{ event, note? }`                                                                                           |
 
 ### Summary shapes
 
@@ -147,8 +147,11 @@ collapsing the budget table's Planned/Actual/Variance columns into a single
 // GET /it/initiatives/summary
 interface ItPortfolioSummary {
   notYetMeasured: boolean;
-  byStage: Record<'idea'|'assessed'|'approved'|'in_flight'|'delivered'|'benefits_realised'|'cancelled', number>;
-  byRag: { green: number; amber: number; red: number; total: number; worst: 'green'|'amber'|'red'|null };
+  byStage: Record<
+    'idea' | 'assessed' | 'approved' | 'in_flight' | 'delivered' | 'benefits_realised' | 'cancelled',
+    number
+  >;
+  byRag: { green: number; amber: number; red: number; total: number; worst: 'green' | 'amber' | 'red' | null };
 }
 
 // GET /it/budget/summary
@@ -161,7 +164,14 @@ interface ItBudgetSummary {
   plannedTotal: number | null;
   actualTotal: number | null;
   byCategory: Array<{ category: string; planned: number | null; actual: number | null; variance: number | null }>;
-  byDivision: Array<{ division: string; planned: number | null; actual: number | null; variance: number | null; run: number; grow: number }>;
+  byDivision: Array<{
+    division: string;
+    planned: number | null;
+    actual: number | null;
+    variance: number | null;
+    run: number;
+    grow: number;
+  }>;
   runTotal: number;
   growTotal: number;
 }
@@ -169,7 +179,7 @@ interface ItBudgetSummary {
 // GET /it/tech-debt/summary
 interface ItTechDebtSummary {
   notYetMeasured: boolean;
-  bySeverity: Record<'low'|'medium'|'high'|'critical', number>;
+  bySeverity: Record<'low' | 'medium' | 'high' | 'critical', number>;
   openCount: number;
 }
 ```
@@ -189,12 +199,12 @@ interface ItTechDebtSummary {
 
 ## Acceptance
 
-| ID | Test |
-|---|---|
-| IT-INI-001 | `IT-INI-001: approving an initiative one sponsors reroutes on the Self-Dealing Bar` and `IT-INI-001: a Finance Head approving an initiative they did not sponsor is never flagged self-dealing` |
+| ID         | Test                                                                                                                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| IT-INI-001 | `IT-INI-001: approving an initiative one sponsors reroutes on the Self-Dealing Bar` and `IT-INI-001: a Finance Head approving an initiative they did not sponsor is never flagged self-dealing`                                |
 | IT-INI-002 | `IT-INI-002 (arithmetic): benefits_realised is reachable only through delivered, never directly from in_flight` and `IT-INI-002: a stage transition the machine has no arrow for is refused by the API, not silently accepted` |
-| IT-BUD-001 | `IT-BUD-001: a budget line's actual is a live sum over the books, and a late bill moves the variance without editing the line` |
-| IT-BUD-002 | `IT-BUD-002 (arithmetic): burnAhead exceeds only once spend outruns the elapsed clock by more than the margin` and `IT-BUD-002: the burn detector fires once per FY margin crossing, and a second run raises nothing new` |
+| IT-BUD-001 | `IT-BUD-001: a budget line's actual is a live sum over the books, and a late bill moves the variance without editing the line`                                                                                                 |
+| IT-BUD-002 | `IT-BUD-002 (arithmetic): burnAhead exceeds only once spend outruns the elapsed clock by more than the margin` and `IT-BUD-002: the burn detector fires once per FY margin crossing, and a second run raises nothing new`      |
 
 Plus permission tests: the Finance Head cannot create an initiative (holds
 `V,approve` only); the Operations Head proposes a budget line and cannot

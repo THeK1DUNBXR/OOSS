@@ -91,11 +91,18 @@ export async function createMou(input: {
     await prisma.opportunity.update({ where: { id: input.opportunityId }, data: { mouId: mou.id } });
   }
 
-  await auditWrite({ action: 'create', subjectType: 'mou', subjectId: mou.id, after: { recordCode, title: mou.title } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'mou',
+    subjectId: mou.id,
+    after: { recordCode, title: mou.title },
+  });
   await emit({
     name: EVENTS.MOU_CREATED,
     subject: { entityType: 'mou', entityId: mou.id, recordCode },
-    related: input.organizationId ? [{ relation: 'covers', entityType: 'organization', entityId: input.organizationId }] : [],
+    related: input.organizationId
+      ? [{ relation: 'covers', entityType: 'organization', entityId: input.organizationId }]
+      : [],
     newState: { status: 'proposed', commercialValue: input.commercialValue ?? 0 },
     confidentiality: 'confidential',
   });
@@ -126,7 +133,9 @@ export async function createContract(input: {
 
   // Unlike MoU, where zero is valid, an unpriced contract is a modelling error.
   if (!(input.commercialValue > 0)) {
-    throw ApiError.unprocessable('A contract must carry a commercial_value greater than zero. An unpriced contract is a modelling error, not a coverage instrument — use an MoU for that.');
+    throw ApiError.unprocessable(
+      'A contract must carry a commercial_value greater than zero. An unpriced contract is a modelling error, not a coverage instrument — use an MoU for that.',
+    );
   }
 
   const recordCode = await nextRecordCode('CON');
@@ -354,7 +363,11 @@ export async function transitionAgreement(
       };
     }
   } else {
-    await assertCan({ resource: `${kind}s`, verb: 'edit', record: { ownerPartyId: agreement.ownerPartyId as string | null } });
+    await assertCan({
+      resource: `${kind}s`,
+      verb: 'edit',
+      record: { ownerPartyId: agreement.ownerPartyId as string | null },
+    });
   }
 
   // A signed agreement is a stamped instrument when the schedule says duty
@@ -419,7 +432,11 @@ export async function transitionAgreement(
     impact: {
       domains: kind === 'contract' && toStatus === 'signed' ? ['crm', 'fin', 'prj'] : ['crm'],
       materiality: agreement.commercialValue
-        ? { measure: `${kind}_value`, value: num(agreement.commercialValue as never)!, currency: (agreement.currency as string) ?? 'INR' }
+        ? {
+            measure: `${kind}_value`,
+            value: num(agreement.commercialValue as never)!,
+            currency: (agreement.currency as string) ?? 'INR',
+          }
         : null,
     },
     // The load-bearing cross-domain event: Finance subscribes for billing
@@ -443,10 +460,31 @@ export async function runExpiryLadder(kind: 'mou' | 'contract' | 'partner_agreem
 
   const rows =
     kind === 'mou'
-      ? await prisma.mou.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, status: { in: ['signed', 'active', 'expiring'] }, endDate: { not: null } } })
+      ? await prisma.mou.findMany({
+          where: {
+            tenantId: auth.tenantId,
+            deletedAt: null,
+            status: { in: ['signed', 'active', 'expiring'] },
+            endDate: { not: null },
+          },
+        })
       : kind === 'contract'
-        ? await prisma.contract.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, status: { in: ['signed', 'active', 'expiring'] }, endDate: { not: null } } })
-        : await prisma.partnerAgreement.findMany({ where: { tenantId: auth.tenantId, deletedAt: null, status: { in: ['signed', 'active', 'expiring'] }, endDate: { not: null } } });
+        ? await prisma.contract.findMany({
+            where: {
+              tenantId: auth.tenantId,
+              deletedAt: null,
+              status: { in: ['signed', 'active', 'expiring'] },
+              endDate: { not: null },
+            },
+          })
+        : await prisma.partnerAgreement.findMany({
+            where: {
+              tenantId: auth.tenantId,
+              deletedAt: null,
+              status: { in: ['signed', 'active', 'expiring'] },
+              endDate: { not: null },
+            },
+          });
 
   let notified = 0;
 
@@ -482,7 +520,8 @@ export async function runExpiryLadder(kind: 'mou' | 'contract' | 'partner_agreem
 
     // Severity climbs as the runway shortens.
     const idx = ladder.indexOf(rung);
-    const severity: SeverityCode = (['S1_ATTENTION', 'S2_WARNING', 'S3_HIGH_RISK', 'S4_CRITICAL'] as const)[idx] ?? 'S2_WARNING';
+    const severity: SeverityCode =
+      (['S1_ATTENTION', 'S2_WARNING', 'S3_HIGH_RISK', 'S4_CRITICAL'] as const)[idx] ?? 'S2_WARNING';
 
     await raiseException({
       code: kind === 'mou' ? 'EX-CRM-014' : 'EX-PCT-001',
@@ -583,7 +622,8 @@ export async function auditWonWithoutContract(): Promise<number> {
       subjectType: 'opportunity',
       subjectId: opp.id,
       subjectLabel: `${opp.recordCode} — ${opp.title}`,
-      detail: 'A won opportunity carries neither a contract nor an MoU reference. This should be impossible through the service layer — investigate the path that produced it.',
+      detail:
+        'A won opportunity carries neither a contract nor an MoU reference. This should be impossible through the service layer — investigate the path that produced it.',
       ownerPartyId: opp.ownerPartyId,
       reasonCode: 'won_without_award_artefact',
       triggerFingerprint: 'won_without_contract_sweep',

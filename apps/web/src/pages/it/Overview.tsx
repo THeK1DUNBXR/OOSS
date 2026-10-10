@@ -70,7 +70,10 @@ function pick<T = unknown>(obj: Summary, ...keys: string[]): T | undefined {
   for (const key of keys) {
     const value = key
       .split('.')
-      .reduce<unknown>((acc, part) => (acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[part] : undefined), obj);
+      .reduce<unknown>(
+        (acc, part) => (acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[part] : undefined),
+        obj,
+      );
     if (value !== undefined && value !== null) return value as T;
   }
   return undefined;
@@ -81,7 +84,9 @@ function pick<T = unknown>(obj: Summary, ...keys: string[]): T | undefined {
  *  ignored rather than turned into `NaN`. */
 function sumBuckets(obj: unknown): number | undefined {
   if (!obj || typeof obj !== 'object') return undefined;
-  const values = Object.values(obj as Record<string, unknown>).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  const values = Object.values(obj as Record<string, unknown>).filter(
+    (v): v is number => typeof v === 'number' && Number.isFinite(v),
+  );
   if (values.length === 0) return undefined;
   return values.reduce((a, b) => a + b, 0);
 }
@@ -89,7 +94,9 @@ function sumBuckets(obj: unknown): number | undefined {
 /** Renders a `{ [bucket]: count }` object as "P1 2 · P2 5" for a tile's sub-line. */
 function breakdown(obj: unknown, limit = 4): string | undefined {
   if (!obj || typeof obj !== 'object') return undefined;
-  const entries = Object.entries(obj as Record<string, unknown>).filter(([, v]) => typeof v === 'number' && (v as number) > 0);
+  const entries = Object.entries(obj as Record<string, unknown>).filter(
+    ([, v]) => typeof v === 'number' && (v as number) > 0,
+  );
   if (entries.length === 0) return undefined;
   return entries
     .slice(0, limit)

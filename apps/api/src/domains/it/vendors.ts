@@ -118,7 +118,12 @@ export async function createVendor(input: CreateVendorInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_vendor', subjectId: vendor.id, after: { recordCode, name: vendor.name, tier } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_vendor',
+    subjectId: vendor.id,
+    after: { recordCode, name: vendor.name, tier },
+  });
   await emit({
     name: EVENTS.IT_VENDOR_CREATED,
     subject: { entityType: 'it_vendor', entityId: vendor.id, recordCode },
@@ -156,8 +161,14 @@ export async function vendorDetail(id: string) {
   if (!vendor) throw ApiError.notFound('Vendor');
 
   const [assessments, contracts] = await Promise.all([
-    prisma.itVendorRiskAssessment.findMany({ where: { tenantId: auth.tenantId, vendorId: id }, orderBy: { assessedAt: 'desc' } }),
-    prisma.itVendorContract.findMany({ where: { tenantId: auth.tenantId, vendorId: id }, orderBy: { createdAt: 'desc' } }),
+    prisma.itVendorRiskAssessment.findMany({
+      where: { tenantId: auth.tenantId, vendorId: id },
+      orderBy: { assessedAt: 'desc' },
+    }),
+    prisma.itVendorContract.findMany({
+      where: { tenantId: auth.tenantId, vendorId: id },
+      orderBy: { createdAt: 'desc' },
+    }),
   ]);
 
   return {
@@ -343,13 +354,21 @@ export async function createVendorContract(input: CreateContractInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_vendor_contract', subjectId: contract.id, after: { recordCode, title: contract.title, value: input.value } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_vendor_contract',
+    subjectId: contract.id,
+    after: { recordCode, title: contract.title, value: input.value },
+  });
   await emit({
     name: EVENTS.IT_VENDOR_CONTRACT_CREATED,
     subject: { entityType: 'it_vendor_contract', entityId: contract.id, recordCode },
     related: [{ relation: 'with', entityType: 'it_vendor', entityId: input.vendorId }],
     newState: { status: 'draft', value: input.value, currency: contract.currency },
-    impact: { domains: [IT_DOMAIN], materiality: { measure: 'it_vendor_contract_value', value: input.value, currency: contract.currency } },
+    impact: {
+      domains: [IT_DOMAIN],
+      materiality: { measure: 'it_vendor_contract_value', value: input.value, currency: contract.currency },
+    },
     confidentiality: 'confidential',
   });
 
@@ -370,7 +389,11 @@ export interface ContractFilter {
  * (it is a declared `MONEY_FIELDS` entry); `currency` is not itself money and
  * so is masked alongside it explicitly, the same way `value` is.
  */
-function maskContractMoney<T extends Record<string, unknown>>(row: T, seesMoney: boolean, ceiling: Parameters<typeof applyFieldVisibility>[1]['ceiling']): T {
+function maskContractMoney<T extends Record<string, unknown>>(
+  row: T,
+  seesMoney: boolean,
+  ceiling: Parameters<typeof applyFieldVisibility>[1]['ceiling'],
+): T {
   if (seesMoney) return row;
   const { data } = applyFieldVisibility(row, { canSeeMoney: false, ceiling });
   return { ...data, currency: null } as T;
@@ -442,14 +465,20 @@ export interface ContractTransitionResult {
  * the Self-Dealing Bar reroutes a proposer's attempt to approve their own
  * contract to the next tier (IT-VCT-001) rather than throwing.
  */
-export async function transitionVendorContract(id: string, toStatus: VendorContractStatus, note = ''): Promise<ContractTransitionResult> {
+export async function transitionVendorContract(
+  id: string,
+  toStatus: VendorContractStatus,
+  note = '',
+): Promise<ContractTransitionResult> {
   const auth = currentAuth();
   const contract = await prisma.itVendorContract.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!contract) throw ApiError.notFound('Vendor contract');
 
   const from = contract.status as VendorContractStatus;
   if (toStatus === 'expiring' || toStatus === 'expired') {
-    throw ApiError.unprocessable(`'${toStatus}' is a job-driven status derived from the notice ladder, never a user transition.`);
+    throw ApiError.unprocessable(
+      `'${toStatus}' is a job-driven status derived from the notice ladder, never a user transition.`,
+    );
   }
   const allowed = VENDOR_CONTRACT_USER_TRANSITIONS[from] ?? [];
   if (!allowed.includes(toStatus)) {

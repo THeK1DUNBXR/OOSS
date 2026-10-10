@@ -16,7 +16,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  createShareClass, createHolder, proposeAllotment, approveShareTransaction, makeEffective,
+  createShareClass,
+  createHolder,
+  proposeAllotment,
+  approveShareTransaction,
+  makeEffective,
 } from '../domains/equity.js';
 import { publishEntitySnapshot, aoc1, aoc1Export, groupBenCandidates, benCandidatesExport } from '../domains/group.js';
 import { recordFiling } from '../domains/filings.js';
@@ -47,14 +51,23 @@ async function principalInTenant(tid: string, email: string): Promise<TestPrinci
   };
 }
 
-async function asTenantUser<T>(tid: string, email: 'chairman@kaizen.co.in' | 'finance@kaizen.co.in', fn: () => Promise<T>): Promise<T> {
+async function asTenantUser<T>(
+  tid: string,
+  email: 'chairman@kaizen.co.in' | 'finance@kaizen.co.in',
+  fn: () => Promise<T>,
+): Promise<T> {
   const p = await principalInTenant(tid, email);
   return asPrincipal(authFor(p), fn);
 }
 
 async function ensureSignatories(tid: string) {
   await asTenantUser(tid, 'chairman@kaizen.co.in', () =>
-    updateCompanyProfile({ certificateSignatories: [{ name: 'A. Director', designation: 'Director' }, { name: 'B. Secretary', designation: 'Company Secretary' }] }),
+    updateCompanyProfile({
+      certificateSignatories: [
+        { name: 'A. Director', designation: 'Director' },
+        { name: 'B. Secretary', designation: 'Company Secretary' },
+      ],
+    }),
   );
 }
 
@@ -67,14 +80,23 @@ async function newClassIn(tid: string, label: string, faceValue = 10) {
 async function newPersonHolderIn(tid: string, label: string, email: string) {
   return asTenantUser(tid, 'chairman@kaizen.co.in', async () => {
     const person = await scopedPrisma.person.create({
-      data: { tenantId: tid, recordCode: await nextRecordCode('PER'), fullName: label, primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+      data: {
+        tenantId: tid,
+        recordCode: await nextRecordCode('PER'),
+        fullName: label,
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+        source: 'test',
+      },
     });
     return createHolder({ kind: 'person', personId: person.id, residency: 'resident', investmentBasis: null });
   });
 }
 
 async function newEntityHolderIn(tid: string, heldByTenantId: string) {
-  return asTenantUser(tid, 'chairman@kaizen.co.in', () => createHolder({ kind: 'entity', heldByTenantId, residency: 'resident' }));
+  return asTenantUser(tid, 'chairman@kaizen.co.in', () =>
+    createHolder({ kind: 'entity', heldByTenantId, residency: 'resident' }),
+  );
 }
 
 async function allotIn(tid: string, shareClassId: string, toHolderId: string, count: number) {
@@ -116,7 +138,11 @@ describe('EQT-FIL-011 — the AOC-1 statement lists each subsidiary from its sna
   it("a subsidiary's Part A row carries share capital and % holding from the snapshot, and reads not published where the books carry nothing", async () => {
     const subSlug = `eqt-fil-011-sub-${suffix}`;
     cleanupTenantSlugs.push(subSlug);
-    const { tenantId: subId } = await seedBootstrap({ tenantSlug: subSlug, tenantName: 'EQT-FIL-011 Sub', parentTenantSlug: HOLDING_SLUG });
+    const { tenantId: subId } = await seedBootstrap({
+      tenantSlug: subSlug,
+      tenantName: 'EQT-FIL-011 Sub',
+      parentTenantSlug: HOLDING_SLUG,
+    });
     await ensureSignatories(subId);
 
     const cls = await newClassIn(subId, 'Equity-011', 10);
@@ -174,7 +200,11 @@ let benSubId: string;
 async function buildBenFixture(label: string): Promise<{ subId: string; personEmail: string }> {
   const subSlug = `eqt-fil-${label}-sub-${suffix}`;
   cleanupTenantSlugs.push(subSlug);
-  const { tenantId: subId } = await seedBootstrap({ tenantSlug: subSlug, tenantName: `EQT-FIL-${label} Sub`, parentTenantSlug: HOLDING_SLUG });
+  const { tenantId: subId } = await seedBootstrap({
+    tenantSlug: subSlug,
+    tenantName: `EQT-FIL-${label} Sub`,
+    parentTenantSlug: HOLDING_SLUG,
+  });
   await ensureSignatories(subId);
   const personEmail = `multi-holder-${label}-${suffix}@example.test`;
 
@@ -183,7 +213,11 @@ async function buildBenFixture(label: string): Promise<{ subId: string; personEm
   const holdingClass = await newClassIn(HOLDING, `Equity-${label}-Holding`, 10);
   const personInHolding = await newPersonHolderIn(HOLDING, `Multi Holder ${label}`, personEmail);
   await allotIn(HOLDING, holdingClass.id, personInHolding.id, 25);
-  const otherInHolding = await newPersonHolderIn(HOLDING, `Other Holder ${label}`, `other-${label}-${suffix}@example.test`);
+  const otherInHolding = await newPersonHolderIn(
+    HOLDING,
+    `Other Holder ${label}`,
+    `other-${label}-${suffix}@example.test`,
+  );
   await allotIn(HOLDING, holdingClass.id, otherInHolding.id, 75);
 
   // The subsidiary's own register: the holding holds 50% (the edge), the
@@ -193,7 +227,11 @@ async function buildBenFixture(label: string): Promise<{ subId: string; personEm
   await allotIn(subId, subClass.id, kipl.id, 50);
   const personInSub = await newPersonHolderIn(subId, `Multi Holder ${label}`, personEmail);
   await allotIn(subId, subClass.id, personInSub.id, 2);
-  const otherInSub = await newPersonHolderIn(subId, `Other Sub Holder ${label}`, `other-sub-${label}-${suffix}@example.test`);
+  const otherInSub = await newPersonHolderIn(
+    subId,
+    `Other Sub Holder ${label}`,
+    `other-sub-${label}-${suffix}@example.test`,
+  );
   await allotIn(subId, subClass.id, otherInSub.id, 48);
 
   const published = await publishEntitySnapshot(subId);
@@ -270,21 +308,33 @@ describe('EQT-FIL-014 — the BEN declaration item is raised once per candidate 
   });
 
   it('runs twice without duplicating, and recording BEN-2 for the holder key resolves it', async () => {
-    const before = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: HOLDING, code: 'EX-EQT-011', subjectId: personEmail } });
+    const before = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: HOLDING, code: 'EX-EQT-011', subjectId: personEmail },
+    });
     expect(before).toHaveLength(0);
 
     await asTenantUser(HOLDING, 'chairman@kaizen.co.in', () => groupBenCandidates());
-    const afterFirst = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: HOLDING, code: 'EX-EQT-011', subjectId: personEmail } });
+    const afterFirst = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: HOLDING, code: 'EX-EQT-011', subjectId: personEmail },
+    });
     expect(afterFirst).toHaveLength(1);
     expect(afterFirst[0].state).not.toBe('resolved');
 
     await asTenantUser(HOLDING, 'chairman@kaizen.co.in', () => groupBenCandidates());
-    const afterSecond = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: HOLDING, code: 'EX-EQT-011', subjectId: personEmail } });
+    const afterSecond = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: HOLDING, code: 'EX-EQT-011', subjectId: personEmail },
+    });
     expect(afterSecond).toHaveLength(1); // no duplicate on a repeat computation
     expect(afterSecond[0].id).toBe(afterFirst[0].id);
 
     await asTenantUser(HOLDING, 'chairman@kaizen.co.in', () =>
-      recordFiling({ form: 'BEN-2', relatedType: 'group_holder', relatedId: personEmail, periodOrEvent: `FY 2026-27 — ${personEmail}`, status: 'filed' }),
+      recordFiling({
+        form: 'BEN-2',
+        relatedType: 'group_holder',
+        relatedId: personEmail,
+        periodOrEvent: `FY 2026-27 — ${personEmail}`,
+        status: 'filed',
+      }),
     );
 
     const resolved = await unscopedPrisma.exceptionRecord.findFirst({ where: { id: afterFirst[0].id } });
@@ -292,7 +342,7 @@ describe('EQT-FIL-014 — the BEN declaration item is raised once per candidate 
   });
 });
 
-describe('EQT-FIL-015 — the group exports read only snapshots (source grep on group.ts\'s AOC-1/BEN sections)', () => {
+describe("EQT-FIL-015 — the group exports read only snapshots (source grep on group.ts's AOC-1/BEN sections)", () => {
   it('no unscopedPrisma reference appears from the AOC-1 section to the end of the file', () => {
     const path = fileURLToPath(new URL('../domains/group.ts', import.meta.url));
     const text = readFileSync(path, 'utf8');

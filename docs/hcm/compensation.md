@@ -3,7 +3,7 @@
 Comp & benefits, on top of the existing `CompensationRecord` lifecycle
 (`apps/api/src/domains/employment.ts`) and `SalaryStructure` (statutory
 breakdown, `apps/api/src/domains/compliance/payroll.ts`). This workstream is
-the money conversation *around* those two: pay grades to check an offer or a
+the money conversation _around_ those two: pay grades to check an offer or a
 revision against, an annual (or off-cycle) revision round with a budget
 ceiling, variable pay, benefit enrolment, employee loans and expense claims.
 
@@ -23,7 +23,7 @@ click.
   `midPay` / `maxPay` (annual CTC), `currency`. WS1's `Grade` is the
   org-level level/code with no money in it; this table is WS7's.
 - **SalaryRevisionCycle** — a round (`draft → proposed → approved →
-  applied`), `budgetPct` the ceiling on its lines' aggregate increase,
+applied`), `budgetPct` the ceiling on its lines' aggregate increase,
   `recordCode` (`SREV-YYYY-NNNNN`).
 - **SalaryRevisionLine** — one employment's line in a cycle: `currentCtc`,
   `proposedPct`/`proposedCtc`, `approvedCtc`, `status`
@@ -125,44 +125,44 @@ their own (`VF@own`/`VC@own` grants).
   refusal message carries the Self-Dealing Bar reason when someone tries
   anyway.
 - `apps/web/src/pages/me/Money.tsx` (`/me/money`) — my expense claims (submit
-  + status), my loans (request with a live EMI preview + status), my
-  benefits (browse open plans, enrol, cancel).
+  - status), my loans (request with a live EMI preview + status), my
+    benefits (browse open plans, enrol, cancel).
 
 ## Acceptance
 
-| ID | What PASS means | Test |
-| --- | --- | --- |
-| HCM-COMPENSATION-001 | An EMI schedule closes at exactly zero balance and its principal components sum to the original principal. | `EMI schedule closes exactly at zero and totals reconcile` |
-| HCM-COMPENSATION-002 | Revision budget check and compa-ratio compute the stated arithmetic. | `revision budget check and compa-ratio compute the plain arithmetic` |
-| HCM-COMPENSATION-003 | hrOps creates pay grades and they list in level order. | `hrOps creates a pay grade and it lists in level order` |
-| HCM-COMPENSATION-004 | A grade with `minPay > maxPay` is refused. | `a grade with minPay above maxPay is refused` |
-| HCM-COMPENSATION-005 | hrOps (holds create/edit, no approve) cannot approve a line; finance (holds approve, no edit) cannot apply a cycle — the roles cannot move money alone. | `hrOps proposes, finance approves and applies is refused to hrOps…` |
-| HCM-COMPENSATION-006 | hrOps proposes, finance approves a third employee's line and the cycle, hrOps applies it, and an `Effective` `CompensationRecord` is written with the approved amount. | `hrOps proposes and finance approves a third employee's line, and applying…` |
-| HCM-COMPENSATION-007 | A cycle whose approved lines exceed its own `budgetPct` is refused approval. | `a cycle whose approved lines exceed its own budget is refused approval` |
-| HCM-COMPENSATION-008 | Money on a revision line is withheld (`null` + `no_permission`) from a role without the `financial` verb, and visible to one that has it. | `money on a salary revision line is withheld…` |
-| — | A cross-tenant revision cycle id reads as 404, not 403 or leaked data. | `a cross-tenant revision cycle id is 404` |
-| HCM-COMPENSATION-009 | The Self-Dealing Bar refuses a line's own proposer even when that principal (a fixture role) holds `approve`. | `the Self-Dealing Bar refuses a line's own proposer…` |
-| HCM-COMPENSATION-010 | A variable payout is computed by hrOps, approved by finance, marked paid by hrOps. | `a payout is computed by hrOps, approved by finance, and marked paid by hrOps…` |
-| HCM-COMPENSATION-011 | The Self-Dealing Bar refuses a payout's own computer even when that principal holds `approve`. | `the Self-Dealing Bar refuses a payout's own computer…` |
-| HCM-COMPENSATION-012 | An employee enrols in a benefit plan and cancels their own enrolment. | `an employee enrols in a benefit plan and can cancel their own enrolment` |
-| HCM-COMPENSATION-013 | An employee requests their own loan; only finance (not the employee) can approve it; hrOps disburses; a full repayment closes it. | `ravi requests his own loan, finance approves it…` |
-| HCM-COMPENSATION-014 | Loan principal is withheld from a viewer without `financial`, visible to finance. | `loan principal is withheld from a viewer without the financial verb…` |
-| HCM-COMPENSATION-015 | The Self-Dealing Bar refuses a loan for the approver's own employment even when that principal holds `approve`. | `the Self-Dealing Bar refuses a loan for the approver's own employment…` |
-| HCM-COMPENSATION-016 | An employee submits their own expense claim; only hrOps/finance (never the employee) can approve it; hrOps reimburses. | `ravi submits his own claim, hrOps approves it…` |
-| HCM-COMPENSATION-017 | Approving an already-reimbursed claim is refused as a conflict (invalid transition). | `an invalid transition (approving an already-reimbursed claim)…` |
-| HCM-COMPENSATION-018 | The Self-Dealing Bar refuses a claim submitted and approved by the same dual-hatted principal. | `the Self-Dealing Bar refuses a claim submitted and approved by the same dual-hatted principal` |
-| HCM-COMPENSATION-019 | A cycle's line list does not leak a colleague's line to an own-scope viewer. | `listing a cycle's lines does not leak a colleague's line to an own-scope viewer` |
-| HCM-COMPENSATION-020 | An unfiltered payout list does not leak a colleague's payout to an own-scope viewer. | `an unfiltered payout list does not leak a colleague's payout to an own-scope viewer` |
-| HCM-COMPENSATION-021 | An unfiltered loan list does not leak a colleague's loan to an own-scope viewer. | `an unfiltered loan list does not leak a colleague's loan to an own-scope viewer` |
-| HCM-COMPENSATION-022 | An unfiltered expense claim list does not leak a colleague's claim to an own-scope viewer. | `an unfiltered expense claim list does not leak a colleague's claim to an own-scope viewer` |
-| HCM-COMPENSATION-023 | An unfiltered benefit enrolment list does not leak a colleague's enrolment to an own-scope viewer. | `an unfiltered benefit enrolment list does not leak a colleague's enrolment to an own-scope viewer` |
-| HCM-COMPENSATION-024 | An own-scope viewer is refused the cycle list and a single cycle outright (not merely narrowed), since a cycle spans every employee and has no "own" slice. | `an own-scope viewer is refused the cycle list and a single cycle outright, not merely narrowed` |
-| HCM-COMPENSATION-025 | An own-scope employee cannot mark a colleague's approved expense claim reimbursed. | `an own-scope employee cannot mark a colleague's approved expense claim reimbursed` |
+| ID                   | What PASS means                                                                                                                                                        | Test                                                                                                |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| HCM-COMPENSATION-001 | An EMI schedule closes at exactly zero balance and its principal components sum to the original principal.                                                             | `EMI schedule closes exactly at zero and totals reconcile`                                          |
+| HCM-COMPENSATION-002 | Revision budget check and compa-ratio compute the stated arithmetic.                                                                                                   | `revision budget check and compa-ratio compute the plain arithmetic`                                |
+| HCM-COMPENSATION-003 | hrOps creates pay grades and they list in level order.                                                                                                                 | `hrOps creates a pay grade and it lists in level order`                                             |
+| HCM-COMPENSATION-004 | A grade with `minPay > maxPay` is refused.                                                                                                                             | `a grade with minPay above maxPay is refused`                                                       |
+| HCM-COMPENSATION-005 | hrOps (holds create/edit, no approve) cannot approve a line; finance (holds approve, no edit) cannot apply a cycle — the roles cannot move money alone.                | `hrOps proposes, finance approves and applies is refused to hrOps…`                                 |
+| HCM-COMPENSATION-006 | hrOps proposes, finance approves a third employee's line and the cycle, hrOps applies it, and an `Effective` `CompensationRecord` is written with the approved amount. | `hrOps proposes and finance approves a third employee's line, and applying…`                        |
+| HCM-COMPENSATION-007 | A cycle whose approved lines exceed its own `budgetPct` is refused approval.                                                                                           | `a cycle whose approved lines exceed its own budget is refused approval`                            |
+| HCM-COMPENSATION-008 | Money on a revision line is withheld (`null` + `no_permission`) from a role without the `financial` verb, and visible to one that has it.                              | `money on a salary revision line is withheld…`                                                      |
+| —                    | A cross-tenant revision cycle id reads as 404, not 403 or leaked data.                                                                                                 | `a cross-tenant revision cycle id is 404`                                                           |
+| HCM-COMPENSATION-009 | The Self-Dealing Bar refuses a line's own proposer even when that principal (a fixture role) holds `approve`.                                                          | `the Self-Dealing Bar refuses a line's own proposer…`                                               |
+| HCM-COMPENSATION-010 | A variable payout is computed by hrOps, approved by finance, marked paid by hrOps.                                                                                     | `a payout is computed by hrOps, approved by finance, and marked paid by hrOps…`                     |
+| HCM-COMPENSATION-011 | The Self-Dealing Bar refuses a payout's own computer even when that principal holds `approve`.                                                                         | `the Self-Dealing Bar refuses a payout's own computer…`                                             |
+| HCM-COMPENSATION-012 | An employee enrols in a benefit plan and cancels their own enrolment.                                                                                                  | `an employee enrols in a benefit plan and can cancel their own enrolment`                           |
+| HCM-COMPENSATION-013 | An employee requests their own loan; only finance (not the employee) can approve it; hrOps disburses; a full repayment closes it.                                      | `ravi requests his own loan, finance approves it…`                                                  |
+| HCM-COMPENSATION-014 | Loan principal is withheld from a viewer without `financial`, visible to finance.                                                                                      | `loan principal is withheld from a viewer without the financial verb…`                              |
+| HCM-COMPENSATION-015 | The Self-Dealing Bar refuses a loan for the approver's own employment even when that principal holds `approve`.                                                        | `the Self-Dealing Bar refuses a loan for the approver's own employment…`                            |
+| HCM-COMPENSATION-016 | An employee submits their own expense claim; only hrOps/finance (never the employee) can approve it; hrOps reimburses.                                                 | `ravi submits his own claim, hrOps approves it…`                                                    |
+| HCM-COMPENSATION-017 | Approving an already-reimbursed claim is refused as a conflict (invalid transition).                                                                                   | `an invalid transition (approving an already-reimbursed claim)…`                                    |
+| HCM-COMPENSATION-018 | The Self-Dealing Bar refuses a claim submitted and approved by the same dual-hatted principal.                                                                         | `the Self-Dealing Bar refuses a claim submitted and approved by the same dual-hatted principal`     |
+| HCM-COMPENSATION-019 | A cycle's line list does not leak a colleague's line to an own-scope viewer.                                                                                           | `listing a cycle's lines does not leak a colleague's line to an own-scope viewer`                   |
+| HCM-COMPENSATION-020 | An unfiltered payout list does not leak a colleague's payout to an own-scope viewer.                                                                                   | `an unfiltered payout list does not leak a colleague's payout to an own-scope viewer`               |
+| HCM-COMPENSATION-021 | An unfiltered loan list does not leak a colleague's loan to an own-scope viewer.                                                                                       | `an unfiltered loan list does not leak a colleague's loan to an own-scope viewer`                   |
+| HCM-COMPENSATION-022 | An unfiltered expense claim list does not leak a colleague's claim to an own-scope viewer.                                                                             | `an unfiltered expense claim list does not leak a colleague's claim to an own-scope viewer`         |
+| HCM-COMPENSATION-023 | An unfiltered benefit enrolment list does not leak a colleague's enrolment to an own-scope viewer.                                                                     | `an unfiltered benefit enrolment list does not leak a colleague's enrolment to an own-scope viewer` |
+| HCM-COMPENSATION-024 | An own-scope viewer is refused the cycle list and a single cycle outright (not merely narrowed), since a cycle spans every employee and has no "own" slice.            | `an own-scope viewer is refused the cycle list and a single cycle outright, not merely narrowed`    |
+| HCM-COMPENSATION-025 | An own-scope employee cannot mark a colleague's approved expense claim reimbursed.                                                                                     | `an own-scope employee cannot mark a colleague's approved expense claim reimbursed`                 |
 
 ## Scope-axis audit (post-review)
 
 A cross-workstream review (WS5) found that `assertCan({resource, verb})`
-alone only proves a verb is held in *some* scope — it says nothing about
+alone only proves a verb is held in _some_ scope — it says nothing about
 whether an `own`-scope grant is being exercised on the caller's own record,
 because the WHERE/scope axis is only evaluated once a record (or an explicit
 scope check) is in play. Auditing every function in this file against that
@@ -183,18 +183,18 @@ pattern found and closed:
   employee's own read path.
 - **`reimburseExpenseClaim`**: sat on `expense_claims:edit`, the same grant
   row as an employee's own `create`/`view` (`VCE@own`), with no employment
-  check at all — an employee could mark *any* colleague's approved claim
+  check at all — an employee could mark _any_ colleague's approved claim
   reimbursed. Now requires `edit` at `all` scope, like the approve/reject
   actions beside it.
 - **`addRevisionLine`/`computePayout`**: hardened to require `create` at
-  `all` scope outright — these are always proposed by HR *about* someone
+  `all` scope outright — these are always proposed by HR _about_ someone
   else, never a self-service act, even though no role currently holds either
   verb at `own` scope.
 - **`enrolInBenefit`/`requestLoan`/`submitExpenseClaim`**: these legitimately
   serve both an own-scope self-service create and an all-scope HR create.
   They already resolved correctly today because the employee's `view` and
   `create` verbs sit on the same grant row (`VCE@own`/`VC@own`), but the
-  employment check was against the *default* `view` verb rather than
+  employment check was against the _default_ `view` verb rather than
   `create` — a coincidence of the current matrix, not a guarantee. Now check
   the `create` verb explicitly.
 - Every `approve`/`reject` action, `proposeCycle`/`approveCycle`/
@@ -210,7 +210,7 @@ Tests HCM-COMPENSATION-019 through -025 prove each closed path against
 ## What this does not do
 
 - Does not post anything to the general ledger. Reimbursing an expense claim
-  or marking a payout paid records the *fact*, not a journal entry — WS8
+  or marking a payout paid records the _fact_, not a journal entry — WS8
   payrollops owns the ad-hoc pay line and the journal handoff into `books.ts`.
 - Does not compute PF/ESI/PT/LWF or any statutory deduction on a revised
   CTC — that is `SalaryStructure` (`compliance/payroll.ts`), which reads

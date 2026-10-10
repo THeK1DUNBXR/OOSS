@@ -5,25 +5,52 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { handler, str } from '../../lib/http.js';
 import {
-  listPayItems, createPayItem, setPayItemActive,
-  listAdHocPayLines, createAdHocPayLine, approveAdHocPayLine, rejectAdHocPayLine,
-  listArrears, createArrear, approveArrear, rejectArrear, markArrearPaid,
-  listPayrollJournals, getPayrollJournal, generatePayrollJournal, postPayrollJournal,
-  listBankAdvices, getBankAdvice, generateBankAdvice, downloadBankAdvice,
-  listPayrollReconciliations, getPayrollReconciliation, generatePayrollReconciliation,
-  listPayrollCalendar, upsertPayrollCalendarEntry,
-  listPayrollQueries, createPayrollQuery, respondToPayrollQuery, closePayrollQuery,
+  listPayItems,
+  createPayItem,
+  setPayItemActive,
+  listAdHocPayLines,
+  createAdHocPayLine,
+  approveAdHocPayLine,
+  rejectAdHocPayLine,
+  listArrears,
+  createArrear,
+  approveArrear,
+  rejectArrear,
+  markArrearPaid,
+  listPayrollJournals,
+  getPayrollJournal,
+  generatePayrollJournal,
+  postPayrollJournal,
+  listBankAdvices,
+  getBankAdvice,
+  generateBankAdvice,
+  downloadBankAdvice,
+  listPayrollReconciliations,
+  getPayrollReconciliation,
+  generatePayrollReconciliation,
+  listPayrollCalendar,
+  upsertPayrollCalendarEntry,
+  listPayrollQueries,
+  createPayrollQuery,
+  respondToPayrollQuery,
+  closePayrollQuery,
 } from '../../domains/hcm/payrollops.js';
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'payrollops', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'payrollops', ready: true })),
+);
 
 // ---------------------------------------------------------------------------
 // Pay items
 // ---------------------------------------------------------------------------
 
-router.get('/pay-items', handler(async () => listPayItems()));
+router.get(
+  '/pay-items',
+  handler(async () => listPayItems()),
+);
 router.post(
   '/pay-items',
   handler(async (req) => {
@@ -77,8 +104,14 @@ router.post(
     return createAdHocPayLine(body);
   }),
 );
-router.post('/adhoc-pay/:id/approve', handler(async (req) => approveAdHocPayLine(req.params.id, str(req.body?.note))));
-router.post('/adhoc-pay/:id/reject', handler(async (req) => rejectAdHocPayLine(req.params.id, str(req.body?.note))));
+router.post(
+  '/adhoc-pay/:id/approve',
+  handler(async (req) => approveAdHocPayLine(req.params.id, str(req.body?.note))),
+);
+router.post(
+  '/adhoc-pay/:id/reject',
+  handler(async (req) => rejectAdHocPayLine(req.params.id, str(req.body?.note))),
+);
 
 // ---------------------------------------------------------------------------
 // Arrears
@@ -86,7 +119,9 @@ router.post('/adhoc-pay/:id/reject', handler(async (req) => rejectAdHocPayLine(r
 
 router.get(
   '/arrears',
-  handler(async (req) => listArrears({ employmentRelationshipId: str(req.query.employmentRelationshipId), status: str(req.query.status) })),
+  handler(async (req) =>
+    listArrears({ employmentRelationshipId: str(req.query.employmentRelationshipId), status: str(req.query.status) }),
+  ),
 );
 router.post(
   '/arrears',
@@ -102,8 +137,14 @@ router.post(
     return createArrear(body);
   }),
 );
-router.post('/arrears/:id/approve', handler(async (req) => approveArrear(req.params.id)));
-router.post('/arrears/:id/reject', handler(async (req) => rejectArrear(req.params.id)));
+router.post(
+  '/arrears/:id/approve',
+  handler(async (req) => approveArrear(req.params.id)),
+);
+router.post(
+  '/arrears/:id/reject',
+  handler(async (req) => rejectArrear(req.params.id)),
+);
 router.post(
   '/arrears/:id/mark-paid',
   handler(async (req) => {
@@ -116,8 +157,14 @@ router.post(
 // Payroll journal
 // ---------------------------------------------------------------------------
 
-router.get('/journals', handler(async () => listPayrollJournals()));
-router.get('/journals/:id', handler(async (req) => getPayrollJournal(req.params.id)));
+router.get(
+  '/journals',
+  handler(async () => listPayrollJournals()),
+);
+router.get(
+  '/journals/:id',
+  handler(async (req) => getPayrollJournal(req.params.id)),
+);
 router.post(
   '/journals/generate',
   handler(async (req) => {
@@ -137,8 +184,14 @@ router.post(
 // Bank advice
 // ---------------------------------------------------------------------------
 
-router.get('/bank-advices', handler(async () => listBankAdvices()));
-router.get('/bank-advices/:id', handler(async (req) => getBankAdvice(req.params.id)));
+router.get(
+  '/bank-advices',
+  handler(async () => listBankAdvices()),
+);
+router.get(
+  '/bank-advices/:id',
+  handler(async (req) => getBankAdvice(req.params.id)),
+);
 router.post(
   '/bank-advices/generate',
   handler(async (req) => {
@@ -162,8 +215,14 @@ router.get(
 // Reconciliation
 // ---------------------------------------------------------------------------
 
-router.get('/reconciliations', handler(async () => listPayrollReconciliations()));
-router.get('/reconciliations/:id', handler(async (req) => getPayrollReconciliation(req.params.id)));
+router.get(
+  '/reconciliations',
+  handler(async () => listPayrollReconciliations()),
+);
+router.get(
+  '/reconciliations/:id',
+  handler(async (req) => getPayrollReconciliation(req.params.id)),
+);
 router.post(
   '/reconciliations/generate',
   handler(async (req) => {
@@ -176,7 +235,10 @@ router.post(
 // Calendar
 // ---------------------------------------------------------------------------
 
-router.get('/calendar', handler(async () => listPayrollCalendar()));
+router.get(
+  '/calendar',
+  handler(async () => listPayrollCalendar()),
+);
 router.post(
   '/calendar',
   handler(async (req) => {
@@ -199,7 +261,15 @@ router.post(
 // Payroll queries
 // ---------------------------------------------------------------------------
 
-router.get('/queries', handler(async (req) => listPayrollQueries({ status: str(req.query.status), employmentRelationshipId: str(req.query.employmentRelationshipId) })));
+router.get(
+  '/queries',
+  handler(async (req) =>
+    listPayrollQueries({
+      status: str(req.query.status),
+      employmentRelationshipId: str(req.query.employmentRelationshipId),
+    }),
+  ),
+);
 router.post(
   '/queries',
   handler(async (req) => {
@@ -222,6 +292,9 @@ router.post(
     return respondToPayrollQuery(req.params.id, body.response, body.close ?? false);
   }),
 );
-router.post('/queries/:id/close', handler(async (req) => closePayrollQuery(req.params.id)));
+router.post(
+  '/queries/:id/close',
+  handler(async (req) => closePayrollQuery(req.params.id)),
+);
 
 export default router;

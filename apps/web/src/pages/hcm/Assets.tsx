@@ -83,12 +83,19 @@ function InventoryTab() {
   const qc = useQueryClient();
   const { can } = useSession();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ tag: '', category: 'laptop' as Asset['category'], serial: '', cost: '', note: '' });
+  const [form, setForm] = useState({
+    tag: '',
+    category: 'laptop' as Asset['category'],
+    serial: '',
+    cost: '',
+    note: '',
+  });
 
   const assets = useQuery({ queryKey: ['assets-inventory'], queryFn: () => api.get<Asset[]>('/hcm/assets/inventory') });
 
   const transition = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => api.post(`/hcm/assets/inventory/${id}/transition`, { status }),
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.post(`/hcm/assets/inventory/${id}/transition`, { status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['assets-inventory'] }),
   });
 
@@ -101,7 +108,10 @@ function InventoryTab() {
       {assets.isLoading && <Loading />}
       {assets.error && <ErrorBox error={assets.error} />}
       {assets.data && assets.data.length === 0 && (
-        <EmptyState message="No assets recorded yet." hint="Add a laptop, phone or access card to start tracking who holds it." />
+        <EmptyState
+          message="No assets recorded yet."
+          hint="Add a laptop, phone or access card to start tracking who holds it."
+        />
       )}
       {assets.data && assets.data.length > 0 && (
         <table className="table">
@@ -124,7 +134,9 @@ function InventoryTab() {
                 <td>{a.serial ?? '—'}</td>
                 <td>{a.purchaseDate ? date(a.purchaseDate) : '—'}</td>
                 <td>{money(a.cost)}</td>
-                <td><StatusChip status={a.status} tone={STATUS_TONE[a.status]} /></td>
+                <td>
+                  <StatusChip status={a.status} tone={STATUS_TONE[a.status]} />
+                </td>
                 <td className="text-right">
                   {can('hcm_assets:edit') && a.status === 'in_stock' && (
                     <button className="btn text-2xs" onClick={() => transition.mutate({ id: a.id, status: 'retired' })}>
@@ -132,7 +144,10 @@ function InventoryTab() {
                     </button>
                   )}
                   {can('hcm_assets:edit') && a.status === 'repair' && (
-                    <button className="btn text-2xs" onClick={() => transition.mutate({ id: a.id, status: 'in_stock' })}>
+                    <button
+                      className="btn text-2xs"
+                      onClick={() => transition.mutate({ id: a.id, status: 'in_stock' })}
+                    >
                       Back in stock
                     </button>
                   )}
@@ -174,7 +189,13 @@ function InventoryTab() {
         </Row>
         <Row>
           <TextInput label="Serial number" value={form.serial} onChange={(v) => setForm({ ...form, serial: v })} />
-          <TextInput label="Cost" type="number" value={form.cost} onChange={(v) => setForm({ ...form, cost: v })} hint="₹, optional" />
+          <TextInput
+            label="Cost"
+            type="number"
+            value={form.cost}
+            onChange={(v) => setForm({ ...form, cost: v })}
+            hint="₹, optional"
+          />
         </Row>
         <TextArea label="Note" value={form.note} onChange={(v) => setForm({ ...form, note: v })} />
       </CreateModal>
@@ -202,10 +223,20 @@ function AssignmentsTab() {
   const [open, setOpen] = useState(false);
   const [returning, setReturning] = useState<AssetAssignment | null>(null);
   const [returnCondition, setReturnCondition] = useState<'good' | 'fair' | 'poor'>('good');
-  const [form, setForm] = useState({ assetId: '', employmentRelationshipId: '', condition: 'good' as 'good' | 'fair' | 'poor' });
+  const [form, setForm] = useState({
+    assetId: '',
+    employmentRelationshipId: '',
+    condition: 'good' as 'good' | 'fair' | 'poor',
+  });
 
-  const assignments = useQuery({ queryKey: ['assets-assignments'], queryFn: () => api.get<AssetAssignment[]>('/hcm/assets/assignments') });
-  const inStock = useQuery({ queryKey: ['assets-inventory', 'in_stock'], queryFn: () => api.get<Asset[]>('/hcm/assets/inventory?status=in_stock') });
+  const assignments = useQuery({
+    queryKey: ['assets-assignments'],
+    queryFn: () => api.get<AssetAssignment[]>('/hcm/assets/assignments'),
+  });
+  const inStock = useQuery({
+    queryKey: ['assets-inventory', 'in_stock'],
+    queryFn: () => api.get<Asset[]>('/hcm/assets/inventory?status=in_stock'),
+  });
 
   const returnMutation = useMutation({
     mutationFn: () => api.post(`/hcm/assets/assignments/${returning!.id}/return`, { condition: returnCondition }),
@@ -224,7 +255,9 @@ function AssignmentsTab() {
     >
       {assignments.isLoading && <Loading />}
       {assignments.error && <ErrorBox error={assignments.error} />}
-      {assignments.data && assignments.data.length === 0 && <EmptyState message="No assets are currently issued to anyone." />}
+      {assignments.data && assignments.data.length === 0 && (
+        <EmptyState message="No assets are currently issued to anyone." />
+      )}
       {assignments.data && assignments.data.length > 0 && (
         <table className="table">
           <thead>
@@ -247,7 +280,13 @@ function AssignmentsTab() {
                 <td>{a.condition}</td>
                 <td className="text-right">
                   {!a.returnedOn && can('asset_assignments:edit') && (
-                    <button className="btn text-2xs" onClick={() => { setReturning(a); setReturnCondition('good'); }}>
+                    <button
+                      className="btn text-2xs"
+                      onClick={() => {
+                        setReturning(a);
+                        setReturnCondition('good');
+                      }}
+                    >
                       Return
                     </button>
                   )}
@@ -341,7 +380,10 @@ function TravelTab() {
   const [settling, setSettling] = useState<TravelRequest | null>(null);
   const [claimId, setClaimId] = useState('');
 
-  const requests = useQuery({ queryKey: ['assets-travel'], queryFn: () => api.get<TravelRequest[]>('/hcm/assets/travel') });
+  const requests = useQuery({
+    queryKey: ['assets-travel'],
+    queryFn: () => api.get<TravelRequest[]>('/hcm/assets/travel'),
+  });
 
   const decide = useMutation({
     mutationFn: ({ id, decision }: { id: string; decision: 'approved' | 'rejected' }) =>
@@ -385,28 +427,49 @@ function TravelTab() {
             {requests.data.map((r) => (
               <tr key={r.id}>
                 <td className="font-mono text-2xs">{r.recordCode}</td>
-                <td>{r.fromLocation} → {r.toLocation}<p className="text-2xs text-ink-500">{r.purpose}</p></td>
-                <td>{date(r.startDate)} – {date(r.endDate)}</td>
+                <td>
+                  {r.fromLocation} → {r.toLocation}
+                  <p className="text-2xs text-ink-500">{r.purpose}</p>
+                </td>
+                <td>
+                  {date(r.startDate)} – {date(r.endDate)}
+                </td>
                 <td>{r.mode}</td>
                 <td>{money(r.estimatedCost)}</td>
-                <td><StatusChip status={r.status} tone={STATUS_TONE[r.status]} /></td>
+                <td>
+                  <StatusChip status={r.status} tone={STATUS_TONE[r.status]} />
+                </td>
                 <td className="text-right whitespace-nowrap">
                   {r.status === 'submitted' && can('travel_requests:approve') && (
                     <>
-                      <button className="btn text-2xs" onClick={() => decide.mutate({ id: r.id, decision: 'approved' })}>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() => decide.mutate({ id: r.id, decision: 'approved' })}
+                      >
                         Approve
                       </button>{' '}
-                      <button className="btn text-2xs" onClick={() => decide.mutate({ id: r.id, decision: 'rejected' })}>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() => decide.mutate({ id: r.id, decision: 'rejected' })}
+                      >
                         Reject
                       </button>
                     </>
                   )}
                   {r.status === 'approved' && can('travel_requests:edit') && (
-                    <button className="btn text-2xs" onClick={() => { setSettling(r); setClaimId(''); }}>
+                    <button
+                      className="btn text-2xs"
+                      onClick={() => {
+                        setSettling(r);
+                        setClaimId('');
+                      }}
+                    >
                       Settle
                     </button>
                   )}
-                  {r.status === 'settled' && <span className="text-2xs text-ink-500 font-mono">{r.expenseClaimId}</span>}
+                  {r.status === 'settled' && (
+                    <span className="text-2xs text-ink-500 font-mono">{r.expenseClaimId}</span>
+                  )}
                 </td>
               </tr>
             ))}
@@ -422,7 +485,13 @@ function TravelTab() {
         invalidate={[['assets-travel']]}
         onSubmit={() => settle.mutateAsync()}
       >
-        <TextInput label="Expense claim ID" value={claimId} onChange={setClaimId} required hint="From Payroll ops → Expense claims" />
+        <TextInput
+          label="Expense claim ID"
+          value={claimId}
+          onChange={setClaimId}
+          required
+          hint="From Payroll ops → Expense claims"
+        />
       </CreateModal>
     </Card>
   );
@@ -451,7 +520,10 @@ function LettersTab() {
   const [rejectNote, setRejectNote] = useState('');
   const [viewing, setViewing] = useState<LetterRequest | null>(null);
 
-  const requests = useQuery({ queryKey: ['assets-letters'], queryFn: () => api.get<LetterRequest[]>('/hcm/assets/letters') });
+  const requests = useQuery({
+    queryKey: ['assets-letters'],
+    queryFn: () => api.get<LetterRequest[]>('/hcm/assets/letters'),
+  });
 
   const fulfil = useMutation({
     mutationFn: (id: string) => api.post(`/hcm/assets/letters/${id}/fulfil`),
@@ -493,7 +565,9 @@ function LettersTab() {
               <tr key={r.id}>
                 <td className="font-mono text-2xs">{r.employmentRelationshipId}</td>
                 <td>{r.kind.replace(/_/g, ' ')}</td>
-                <td><StatusChip status={r.status} tone={STATUS_TONE[r.status]} /></td>
+                <td>
+                  <StatusChip status={r.status} tone={STATUS_TONE[r.status]} />
+                </td>
                 <td className="font-mono text-2xs">{r.number ?? '—'}</td>
                 <td className="text-right whitespace-nowrap">
                   {r.status === 'requested' && can('letter_requests:edit') && (
@@ -501,7 +575,13 @@ function LettersTab() {
                       <button className="btn text-2xs" onClick={() => fulfil.mutate(r.id)}>
                         Fulfil
                       </button>{' '}
-                      <button className="btn text-2xs" onClick={() => { setRejecting(r); setRejectNote(''); }}>
+                      <button
+                        className="btn text-2xs"
+                        onClick={() => {
+                          setRejecting(r);
+                          setRejectNote('');
+                        }}
+                      >
                         Reject
                       </button>
                     </>
@@ -584,7 +664,17 @@ function IdCardsTab() {
     <Card
       title="ID cards"
       subtitle="A lost card is marked lost and a fresh card number is issued in the same action — the old row stays as the record of what happened to it."
-      actions={can('hcm_assets:create') && <NewButton label="Issue card" onClick={() => { setEmploymentId(''); setOpen(true); }} />}
+      actions={
+        can('hcm_assets:create') && (
+          <NewButton
+            label="Issue card"
+            onClick={() => {
+              setEmploymentId('');
+              setOpen(true);
+            }}
+          />
+        )
+      }
     >
       {cards.isLoading && <Loading />}
       {cards.error && <ErrorBox error={cards.error} />}
@@ -605,7 +695,9 @@ function IdCardsTab() {
               <tr key={c.id}>
                 <td className="font-mono text-2xs">{c.employmentRelationshipId}</td>
                 <td className="font-mono text-2xs">{c.cardNumber}</td>
-                <td><StatusChip status={c.status} tone={STATUS_TONE[c.status]} /></td>
+                <td>
+                  <StatusChip status={c.status} tone={STATUS_TONE[c.status]} />
+                </td>
                 <td>{date(c.issuedOn)}</td>
                 <td className="text-right whitespace-nowrap">
                   {c.status === 'issued' && can('hcm_assets:edit') && (
@@ -625,7 +717,13 @@ function IdCardsTab() {
         </table>
       )}
 
-      <CreateModal open={open} title="Issue an ID card" onClose={() => setOpen(false)} invalidate={[['assets-idcards']]} onSubmit={() => issue.mutateAsync()}>
+      <CreateModal
+        open={open}
+        title="Issue an ID card"
+        onClose={() => setOpen(false)}
+        invalidate={[['assets-idcards']]}
+        onSubmit={() => issue.mutateAsync()}
+      >
         <TextInput label="Employment relationship ID" value={employmentId} onChange={setEmploymentId} required />
       </CreateModal>
     </Card>

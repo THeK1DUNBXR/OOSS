@@ -98,20 +98,38 @@ function PoliciesTab() {
   });
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
 
-  const policies = useQuery({ queryKey: ['leavepolicy-policies'], queryFn: () => api.get<Policy[]>('/hcm/leavepolicy/policies') });
-  const { data: leaveTypes = [] } = useQuery({ queryKey: ['leave-types'], queryFn: () => api.get<LeaveTypeOption[]>('/hr/leave-types') });
+  const policies = useQuery({
+    queryKey: ['leavepolicy-policies'],
+    queryFn: () => api.get<Policy[]>('/hcm/leavepolicy/policies'),
+  });
+  const { data: leaveTypes = [] } = useQuery({
+    queryKey: ['leave-types'],
+    queryFn: () => api.get<LeaveTypeOption[]>('/hr/leave-types'),
+  });
 
   const nameForType = (id: string) => leaveTypes.find((t) => t.id === id)?.name ?? id;
 
   const toggleEngagement = (v: string) =>
-    setForm((f) => ({ ...f, engagementTypes: f.engagementTypes.includes(v) ? f.engagementTypes.filter((e) => e !== v) : [...f.engagementTypes, v] }));
+    setForm((f) => ({
+      ...f,
+      engagementTypes: f.engagementTypes.includes(v)
+        ? f.engagementTypes.filter((e) => e !== v)
+        : [...f.engagementTypes, v],
+    }));
 
   return (
-    <Card title="Policies" subtitle="Empty applicability means everybody. A more specific policy (an engagement type or org unit given) wins over the wider default." actions={<NewButton label="Add policy" onClick={() => setCreating(true)} />}>
+    <Card
+      title="Policies"
+      subtitle="Empty applicability means everybody. A more specific policy (an engagement type or org unit given) wins over the wider default."
+      actions={<NewButton label="Add policy" onClick={() => setCreating(true)} />}
+    >
       {policies.isLoading && <Loading />}
       {policies.error && <ErrorBox error={policies.error} />}
       {policies.data && policies.data.length === 0 && (
-        <EmptyState message="No leave policies yet." hint="Add one — a policy with no applicability lists is the company-wide default." />
+        <EmptyState
+          message="No leave policies yet."
+          hint="Add one — a policy with no applicability lists is the company-wide default."
+        />
       )}
       {policies.data && policies.data.length > 0 && (
         <div className="space-y-4">
@@ -121,7 +139,8 @@ function PoliciesTab() {
                 <div>
                   <div className="font-semibold">{p.name}</div>
                   <div className="text-2xs text-ink-300">
-                    Effective {date(p.effectiveFrom)}{p.effectiveTo ? ` – ${date(p.effectiveTo)}` : ' onward'}
+                    Effective {date(p.effectiveFrom)}
+                    {p.effectiveTo ? ` – ${date(p.effectiveTo)}` : ' onward'}
                     {p.engagementTypes.length > 0 && ` · ${p.engagementTypes.join(', ')}`}
                     {p.engagementTypes.length === 0 && ' · everybody'}
                   </div>
@@ -155,7 +174,9 @@ function PoliciesTab() {
                       <tr key={r.id}>
                         <td>{nameForType(r.leaveTypeId)}</td>
                         <td>
-                          {r.accrualFrequency === 'none' ? 'No accrual' : `${r.accrualDays} days / ${r.accrualFrequency.replace('ly', '')}`}
+                          {r.accrualFrequency === 'none'
+                            ? 'No accrual'
+                            : `${r.accrualDays} days / ${r.accrualFrequency.replace('ly', '')}`}
                         </td>
                         <td>{r.maxBalanceDays ?? '—'}</td>
                         <td>{r.minNoticeDays} days</td>
@@ -196,13 +217,23 @@ function PoliciesTab() {
       >
         <TextInput label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
         <TextArea label="Description" value={form.description} onChange={(v) => setForm({ ...form, description: v })} />
-        <TextInput label="Effective from" type="date" value={form.effectiveFrom} onChange={(v) => setForm({ ...form, effectiveFrom: v })} required />
+        <TextInput
+          label="Effective from"
+          type="date"
+          value={form.effectiveFrom}
+          onChange={(v) => setForm({ ...form, effectiveFrom: v })}
+          required
+        />
         <div>
           <p className="label mb-1">Applies to (leave empty for everybody)</p>
           <div className="flex flex-wrap gap-2">
             {ENGAGEMENT_TYPES.map((t) => (
               <label key={t} className="flex items-center gap-1 text-2xs text-ink-300">
-                <input type="checkbox" checked={form.engagementTypes.includes(t)} onChange={() => toggleEngagement(t)} />
+                <input
+                  type="checkbox"
+                  checked={form.engagementTypes.includes(t)}
+                  onChange={() => toggleEngagement(t)}
+                />
                 {t}
               </label>
             ))}
@@ -227,7 +258,9 @@ function PoliciesTab() {
             minNoticeDays: Number(ruleForm.minNoticeDays) || 0,
             maxConsecutiveDays: ruleForm.maxConsecutiveDays ? Number(ruleForm.maxConsecutiveDays) : null,
             sandwichRule: ruleForm.sandwichRule,
-            requiresDocumentAfterDays: ruleForm.requiresDocumentAfterDays ? Number(ruleForm.requiresDocumentAfterDays) : null,
+            requiresDocumentAfterDays: ruleForm.requiresDocumentAfterDays
+              ? Number(ruleForm.requiresDocumentAfterDays)
+              : null,
             applicableGender: ruleForm.applicableGender || null,
           })
         }
@@ -247,35 +280,85 @@ function PoliciesTab() {
             onChange={(v) => setRuleForm({ ...ruleForm, accrualFrequency: v })}
             options={FREQUENCIES.map((f) => ({ value: f, label: f }))}
           />
-          <TextInput label="Days per accrual" type="number" value={ruleForm.accrualDays} onChange={(v) => setRuleForm({ ...ruleForm, accrualDays: v })} hint="0 if it does not accrue" />
+          <TextInput
+            label="Days per accrual"
+            type="number"
+            value={ruleForm.accrualDays}
+            onChange={(v) => setRuleForm({ ...ruleForm, accrualDays: v })}
+            hint="0 if it does not accrue"
+          />
         </Row>
         <Row>
-          <TextInput label="Max balance" type="number" value={ruleForm.maxBalanceDays} onChange={(v) => setRuleForm({ ...ruleForm, maxBalanceDays: v })} hint="Optional" />
-          <TextInput label="Carry-forward cap" type="number" value={ruleForm.carryForwardCapDays} onChange={(v) => setRuleForm({ ...ruleForm, carryForwardCapDays: v })} hint="Optional" />
+          <TextInput
+            label="Max balance"
+            type="number"
+            value={ruleForm.maxBalanceDays}
+            onChange={(v) => setRuleForm({ ...ruleForm, maxBalanceDays: v })}
+            hint="Optional"
+          />
+          <TextInput
+            label="Carry-forward cap"
+            type="number"
+            value={ruleForm.carryForwardCapDays}
+            onChange={(v) => setRuleForm({ ...ruleForm, carryForwardCapDays: v })}
+            hint="Optional"
+          />
         </Row>
         <Row>
-          <TextInput label="Min notice (days)" type="number" value={ruleForm.minNoticeDays} onChange={(v) => setRuleForm({ ...ruleForm, minNoticeDays: v })} />
-          <TextInput label="Max consecutive days" type="number" value={ruleForm.maxConsecutiveDays} onChange={(v) => setRuleForm({ ...ruleForm, maxConsecutiveDays: v })} hint="Optional" />
+          <TextInput
+            label="Min notice (days)"
+            type="number"
+            value={ruleForm.minNoticeDays}
+            onChange={(v) => setRuleForm({ ...ruleForm, minNoticeDays: v })}
+          />
+          <TextInput
+            label="Max consecutive days"
+            type="number"
+            value={ruleForm.maxConsecutiveDays}
+            onChange={(v) => setRuleForm({ ...ruleForm, maxConsecutiveDays: v })}
+            hint="Optional"
+          />
         </Row>
-        <TextInput label="Document required after (days)" type="number" value={ruleForm.requiresDocumentAfterDays} onChange={(v) => setRuleForm({ ...ruleForm, requiresDocumentAfterDays: v })} hint="Optional" />
+        <TextInput
+          label="Document required after (days)"
+          type="number"
+          value={ruleForm.requiresDocumentAfterDays}
+          onChange={(v) => setRuleForm({ ...ruleForm, requiresDocumentAfterDays: v })}
+          hint="Optional"
+        />
         <SelectInput
           label="Applies to gender"
           value={ruleForm.applicableGender}
           onChange={(v) => setRuleForm({ ...ruleForm, applicableGender: v })}
           placeholder="Everybody"
-          options={[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }]}
+          options={[
+            { value: 'male', label: 'Male' },
+            { value: 'female', label: 'Female' },
+          ]}
         />
         <div className="flex flex-wrap gap-4">
           <label className="flex items-center gap-2 text-sm text-ink-300">
-            <input type="checkbox" checked={ruleForm.prorateOnJoin} onChange={(e) => setRuleForm({ ...ruleForm, prorateOnJoin: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={ruleForm.prorateOnJoin}
+              onChange={(e) => setRuleForm({ ...ruleForm, prorateOnJoin: e.target.checked })}
+            />
             Pro-rate on join
           </label>
           <label className="flex items-center gap-2 text-sm text-ink-300">
-            <input type="checkbox" checked={ruleForm.negativeAllowed} onChange={(e) => setRuleForm({ ...ruleForm, negativeAllowed: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={ruleForm.negativeAllowed}
+              onChange={(e) => setRuleForm({ ...ruleForm, negativeAllowed: e.target.checked })}
+            />
             Negative balance allowed
           </label>
           <label className="flex items-center gap-2 text-sm text-ink-300">
-            <input type="checkbox" checked={ruleForm.sandwichRule} onChange={(e) => setRuleForm({ ...ruleForm, sandwichRule: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={ruleForm.sandwichRule}
+              onChange={(e) => setRuleForm({ ...ruleForm, sandwichRule: e.target.checked })}
+            />
             Sandwich rule
           </label>
         </div>
@@ -293,7 +376,13 @@ function PoliciesTab() {
           label="Period"
           value={period}
           onChange={setPeriod}
-          hint={runningRule?.accrualFrequency === 'yearly' ? 'YYYY' : runningRule?.accrualFrequency === 'quarterly' ? 'YYYY-Q1..4' : 'YYYY-MM'}
+          hint={
+            runningRule?.accrualFrequency === 'yearly'
+              ? 'YYYY'
+              : runningRule?.accrualFrequency === 'quarterly'
+                ? 'YYYY-Q1..4'
+                : 'YYYY-MM'
+          }
           required
         />
       </CreateModal>
@@ -317,15 +406,26 @@ interface AccrualRunRow {
 }
 
 function AccrualsTab() {
-  const runs = useQuery({ queryKey: ['leavepolicy-accrual-runs'], queryFn: () => api.get<AccrualRunRow[]>('/hcm/leavepolicy/accrual-runs') });
-  const { data: leaveTypes = [] } = useQuery({ queryKey: ['leave-types'], queryFn: () => api.get<LeaveTypeOption[]>('/hr/leave-types') });
+  const runs = useQuery({
+    queryKey: ['leavepolicy-accrual-runs'],
+    queryFn: () => api.get<AccrualRunRow[]>('/hcm/leavepolicy/accrual-runs'),
+  });
+  const { data: leaveTypes = [] } = useQuery({
+    queryKey: ['leave-types'],
+    queryFn: () => api.get<LeaveTypeOption[]>('/hr/leave-types'),
+  });
   const nameForType = (id: string) => leaveTypes.find((t) => t.id === id)?.name ?? id;
 
   return (
-    <Card title="Accrual runs" subtitle="Every firing is idempotent per rule and period — running one twice credits the ledger once.">
+    <Card
+      title="Accrual runs"
+      subtitle="Every firing is idempotent per rule and period — running one twice credits the ledger once."
+    >
       {runs.isLoading && <Loading />}
       {runs.error && <ErrorBox error={runs.error} />}
-      {runs.data && runs.data.length === 0 && <EmptyState message="No accrual has run yet." hint="Run one from a policy's rule on the Policies tab." />}
+      {runs.data && runs.data.length === 0 && (
+        <EmptyState message="No accrual has run yet." hint="Run one from a policy's rule on the Policies tab." />
+      )}
       {runs.data && runs.data.length > 0 && (
         <table className="table">
           <thead>
@@ -381,14 +481,18 @@ function ChainsTab() {
     levels: [{ level: 1, kind: 'manager', approverPartyId: '' }],
   });
 
-  const chains = useQuery({ queryKey: ['leavepolicy-chains'], queryFn: () => api.get<Chain[]>('/hcm/leavepolicy/approval-chains') });
+  const chains = useQuery({
+    queryKey: ['leavepolicy-chains'],
+    queryFn: () => api.get<Chain[]>('/hcm/leavepolicy/approval-chains'),
+  });
 
   const del = useMutation({
     mutationFn: (id: string) => api.del(`/hcm/leavepolicy/approval-chains/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['leavepolicy-chains'] }),
   });
 
-  const addLevel = () => setForm((f) => ({ ...f, levels: [...f.levels, { level: f.levels.length + 1, kind: 'hr', approverPartyId: '' }] }));
+  const addLevel = () =>
+    setForm((f) => ({ ...f, levels: [...f.levels, { level: f.levels.length + 1, kind: 'hr', approverPartyId: '' }] }));
   const updateLevel = (idx: number, patch: Partial<ChainLevel>) =>
     setForm((f) => ({ ...f, levels: f.levels.map((l, i) => (i === idx ? { ...l, ...patch } : l)) }));
   const removeLevel = (idx: number) => setForm((f) => ({ ...f, levels: f.levels.filter((_, i) => i !== idx) }));
@@ -401,7 +505,12 @@ function ChainsTab() {
     >
       {chains.isLoading && <Loading />}
       {chains.error && <ErrorBox error={chains.error} />}
-      {chains.data && chains.data.length === 0 && <EmptyState message="No approval chain configured yet." hint="A request created with no chain simply has none opened for it." />}
+      {chains.data && chains.data.length === 0 && (
+        <EmptyState
+          message="No approval chain configured yet."
+          hint="A request created with no chain simply has none opened for it."
+        />
+      )}
       {chains.data && chains.data.length > 0 && (
         <div className="space-y-3">
           {chains.data.map((c) => (
@@ -432,14 +541,24 @@ function ChainsTab() {
           api.post('/hcm/leavepolicy/approval-chains', {
             name: form.name,
             isDefault: form.isDefault,
-            levels: form.levels.map((l) => ({ level: l.level, kind: l.kind, approverPartyId: l.kind === 'custom_grant' ? l.approverPartyId : undefined })),
+            levels: form.levels.map((l) => ({
+              level: l.level,
+              kind: l.kind,
+              approverPartyId: l.kind === 'custom_grant' ? l.approverPartyId : undefined,
+            })),
           })
         }
-        onCreated={() => setForm({ name: '', isDefault: false, levels: [{ level: 1, kind: 'manager', approverPartyId: '' }] })}
+        onCreated={() =>
+          setForm({ name: '', isDefault: false, levels: [{ level: 1, kind: 'manager', approverPartyId: '' }] })
+        }
       >
         <TextInput label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
         <label className="flex items-center gap-2 text-sm text-ink-300">
-          <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} />
+          <input
+            type="checkbox"
+            checked={form.isDefault}
+            onChange={(e) => setForm({ ...form, isDefault: e.target.checked })}
+          />
           Default chain (used when a policy has none of its own)
         </label>
         <div className="space-y-2">
@@ -456,7 +575,12 @@ function ChainsTab() {
                 ]}
               />
               {l.kind === 'custom_grant' ? (
-                <TextInput label="Party id" value={l.approverPartyId ?? ''} onChange={(v) => updateLevel(idx, { approverPartyId: v })} required />
+                <TextInput
+                  label="Party id"
+                  value={l.approverPartyId ?? ''}
+                  onChange={(v) => updateLevel(idx, { approverPartyId: v })}
+                  required
+                />
               ) : (
                 <div className="flex items-end pb-2">
                   {form.levels.length > 1 && (

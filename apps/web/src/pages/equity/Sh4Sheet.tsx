@@ -92,9 +92,13 @@ export function Sh4Sheet() {
           <tr>
             <td>{data.shareClassName}</td>
             <td className="num">
-              {data.distinctiveFrom && data.distinctiveTo ? `${data.distinctiveFrom} to ${data.distinctiveTo}` : 'Not yet assigned'}
+              {data.distinctiveFrom && data.distinctiveTo
+                ? `${data.distinctiveFrom} to ${data.distinctiveTo}`
+                : 'Not yet assigned'}
             </td>
-            <td className="num">{data.certificateNumbers.length ? data.certificateNumbers.join(', ') : 'Not yet assigned'}</td>
+            <td className="num">
+              {data.certificateNumbers.length ? data.certificateNumbers.join(', ') : 'Not yet assigned'}
+            </td>
             <td className="num">{data.count.toLocaleString('en-IN')}</td>
             <td className="num">{data.pricePerShare == null ? '—' : `₹${rupees(data.pricePerShare)}`}</td>
             <td className="num">{data.consideration == null ? '—' : `₹${rupees(data.consideration)}`}</td>
@@ -110,7 +114,7 @@ export function Sh4Sheet() {
           <strong>Stamp duty.</strong>{' '}
           {data.stampDuty != null
             ? `₹${rupees(data.stampDuty)} (0.015% of consideration, demat transfer).`
-            : data.stampDutyNote ?? 'Not recorded.'}
+            : (data.stampDutyNote ?? 'Not recorded.')}
         </p>
       </section>
 

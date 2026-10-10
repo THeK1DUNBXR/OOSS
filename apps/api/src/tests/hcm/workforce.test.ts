@@ -101,7 +101,9 @@ describe('HCM-WORKFORCE-001 — profile extension, and regulated masking', () =>
     // not-found, so the masking test needs a party who legitimately holds
     // `employee_profiles:view` but only at `@own`/self scope on their OWN row.
     const own = await asUser('ravi@kaizen.co.in', async () => {
-      const mine = await prisma.employmentRelationship.findFirstOrThrow({ where: { tenantId: TENANT, person: { primaryEmail: { contains: 'ravi' } } } });
+      const mine = await prisma.employmentRelationship.findFirstOrThrow({
+        where: { tenantId: TENANT, person: { primaryEmail: { contains: 'ravi' } } },
+      });
       await upsertProfileExtension(mine.id, { passportNumber: 'K1112222' });
       return getProfileExtension(mine.id);
     });
@@ -113,11 +115,18 @@ describe('HCM-WORKFORCE-001 — profile extension, and regulated masking', () =>
 describe('HCM-WORKFORCE-003 — employee documents', () => {
   it('HCM-WORKFORCE-003: an employee can upload their own document, but not verify it', async () => {
     const employment = await asUser('ravi@kaizen.co.in', () =>
-      prisma.employmentRelationship.findFirstOrThrow({ where: { tenantId: TENANT, person: { primaryEmail: { contains: 'ravi' } } } }),
+      prisma.employmentRelationship.findFirstOrThrow({
+        where: { tenantId: TENANT, person: { primaryEmail: { contains: 'ravi' } } },
+      }),
     );
 
     const doc = await asUser('ravi@kaizen.co.in', () =>
-      uploadEmployeeDocument(employment.id, { kind: 'id_proof', filename: 'aadhaar.pdf', mimeType: 'application/pdf', content: 'ZmFrZQ==' }),
+      uploadEmployeeDocument(employment.id, {
+        kind: 'id_proof',
+        filename: 'aadhaar.pdf',
+        mimeType: 'application/pdf',
+        content: 'ZmFrZQ==',
+      }),
     );
     expect(doc.verified).toBe(false);
 
@@ -128,7 +137,12 @@ describe('HCM-WORKFORCE-003 — employee documents', () => {
   it('HCM-WORKFORCE-004: HR can verify a document once, and a second verify is refused', async () => {
     const { employment } = await makeEmployee('doc-verify');
     const doc = await asUser('hr@kaizen.co.in', () =>
-      uploadEmployeeDocument(employment.id, { kind: 'offer', filename: 'offer.pdf', mimeType: 'application/pdf', content: 'ZmFrZQ==' }),
+      uploadEmployeeDocument(employment.id, {
+        kind: 'offer',
+        filename: 'offer.pdf',
+        mimeType: 'application/pdf',
+        content: 'ZmFrZQ==',
+      }),
     );
 
     const verified = await asUser('hr@kaizen.co.in', () => verifyEmployeeDocument(doc.id));
@@ -150,7 +164,10 @@ describe('HCM-WORKFORCE-005 — reporting lines and the org chart', () => {
     const report = await makeEmployee('report');
 
     await asUser('hr@kaizen.co.in', () =>
-      setReportingLine({ employmentRelationshipId: report.employment.id, managerEmploymentRelationshipId: manager.employment.id }),
+      setReportingLine({
+        employmentRelationshipId: report.employment.id,
+        managerEmploymentRelationshipId: manager.employment.id,
+      }),
     );
 
     const lines = await asUser('hr@kaizen.co.in', () => listReportingLines(report.employment.id));
@@ -160,12 +177,17 @@ describe('HCM-WORKFORCE-005 — reporting lines and the org chart', () => {
     // A second manager on the same primary line closes the first.
     const manager2 = await makeEmployee('manager2');
     await asUser('hr@kaizen.co.in', () =>
-      setReportingLine({ employmentRelationshipId: report.employment.id, managerEmploymentRelationshipId: manager2.employment.id }),
+      setReportingLine({
+        employmentRelationshipId: report.employment.id,
+        managerEmploymentRelationshipId: manager2.employment.id,
+      }),
     );
     const relines = await asUser('hr@kaizen.co.in', () => listReportingLines(report.employment.id));
     expect(relines.manages).toHaveLength(2);
     expect(relines.manages.filter((l) => l.effectiveTo === null)).toHaveLength(1);
-    expect(relines.manages.find((l) => l.effectiveTo === null)?.managerEmploymentRelationshipId).toBe(manager2.employment.id);
+    expect(relines.manages.find((l) => l.effectiveTo === null)?.managerEmploymentRelationshipId).toBe(
+      manager2.employment.id,
+    );
 
     const tree = await asUser('hr@kaizen.co.in', () => orgChart());
     const flatten = (nodes: typeof tree): typeof tree => nodes.flatMap((n) => [n, ...flatten(n.reports)]);
@@ -177,7 +199,9 @@ describe('HCM-WORKFORCE-005 — reporting lines and the org chart', () => {
   it('HCM-WORKFORCE-006: an employment cannot be set to report to itself', async () => {
     const { employment } = await makeEmployee('self-report');
     const rejected = await expectReject(() =>
-      asUser('hr@kaizen.co.in', () => setReportingLine({ employmentRelationshipId: employment.id, managerEmploymentRelationshipId: employment.id })),
+      asUser('hr@kaizen.co.in', () =>
+        setReportingLine({ employmentRelationshipId: employment.id, managerEmploymentRelationshipId: employment.id }),
+      ),
     );
     expect(rejected.status).toBe(400);
   });
@@ -197,8 +221,16 @@ describe('HCM-WORKFORCE-007 — directory and the 360 aggregate', () => {
 
     await asUser('hr@kaizen.co.in', async () => {
       await upsertProfileExtension(employment.id, { gender: 'male' });
-      await uploadEmployeeDocument(employment.id, { kind: 'other', filename: 'x.txt', mimeType: 'text/plain', content: 'eA==' });
-      await setReportingLine({ employmentRelationshipId: employment.id, managerEmploymentRelationshipId: manager.employment.id });
+      await uploadEmployeeDocument(employment.id, {
+        kind: 'other',
+        filename: 'x.txt',
+        mimeType: 'text/plain',
+        content: 'eA==',
+      });
+      await setReportingLine({
+        employmentRelationshipId: employment.id,
+        managerEmploymentRelationshipId: manager.employment.id,
+      });
     });
 
     const view = await asUser('hr@kaizen.co.in', () => employee360(employment.id));
@@ -232,7 +264,9 @@ describe('HCM-WORKFORCE-011 — employee status changes: propose → decide (Sel
   it('HCM-WORKFORCE-011: the proposer may never decide their own status change', async () => {
     const { employment } = await makeEmployee('self-dealing');
     const stamp = Date.now();
-    const grade = await asUser('hr@kaizen.co.in', () => createGrade({ code: `SD-${stamp}`, name: 'Self-Dealing Grade', level: 3 }));
+    const grade = await asUser('hr@kaizen.co.in', () =>
+      createGrade({ code: `SD-${stamp}`, name: 'Self-Dealing Grade', level: 3 }),
+    );
 
     const proposed = await asUser('hr@kaizen.co.in', () =>
       proposeStatusChange({
@@ -253,7 +287,9 @@ describe('HCM-WORKFORCE-011 — employee status changes: propose → decide (Sel
   it('HCM-WORKFORCE-012: a different decider can approve, and applying writes the new grade assignment', async () => {
     const { employment } = await makeEmployee('apply-flow');
     const stamp = Date.now();
-    const grade = await asUser('hr@kaizen.co.in', () => createGrade({ code: `AP-${stamp}`, name: 'Applied Grade', level: 4 }));
+    const grade = await asUser('hr@kaizen.co.in', () =>
+      createGrade({ code: `AP-${stamp}`, name: 'Applied Grade', level: 4 }),
+    );
 
     const proposed = await asUser('hr@kaizen.co.in', () =>
       proposeStatusChange({
@@ -272,7 +308,9 @@ describe('HCM-WORKFORCE-011 — employee status changes: propose → decide (Sel
 
     // Applying before approval, or deciding twice, are both refused —
     // the closed set of legal transitions.
-    const reDecide = await expectReject(() => asUser('chairman@kaizen.co.in', () => decideStatusChange(proposed.id, true)));
+    const reDecide = await expectReject(() =>
+      asUser('chairman@kaizen.co.in', () => decideStatusChange(proposed.id, true)),
+    );
     expect(reDecide.status).toBe(409);
 
     const applied = await asUser('hr@kaizen.co.in', () => applyStatusChange(proposed.id));
@@ -293,7 +331,9 @@ describe('HCM-WORKFORCE-011 — employee status changes: propose → decide (Sel
   it('HCM-WORKFORCE-013: the subject of a status change may never decide it themselves, even holding the approve grant', async () => {
     const { employment, person } = await makeEmployee('subject-dealing');
     const stamp = Date.now();
-    const grade = await asUser('hr@kaizen.co.in', () => createGrade({ code: `SJ-${stamp}`, name: 'Subject Grade', level: 2 }));
+    const grade = await asUser('hr@kaizen.co.in', () =>
+      createGrade({ code: `SJ-${stamp}`, name: 'Subject Grade', level: 2 }),
+    );
 
     const proposed = await asUser('hr@kaizen.co.in', () =>
       proposeStatusChange({
@@ -317,8 +357,8 @@ describe('HCM-WORKFORCE-011 — employee status changes: propose → decide (Sel
   });
 });
 
-describe('HCM-WORKFORCE-014 — own-scope callers cannot reach a colleague\'s record', () => {
-  it('HCM-WORKFORCE-014: an own-scope employee is refused reading a colleague\'s profile extension', async () => {
+describe("HCM-WORKFORCE-014 — own-scope callers cannot reach a colleague's record", () => {
+  it("HCM-WORKFORCE-014: an own-scope employee is refused reading a colleague's profile extension", async () => {
     const { employment } = await makeEmployee('colleague-profile');
     await asUser('hr@kaizen.co.in', () => upsertProfileExtension(employment.id, { passportNumber: 'C0000001' }));
 
@@ -341,10 +381,12 @@ describe('HCM-WORKFORCE-014 — own-scope callers cannot reach a colleague\'s re
     expect(results.every((r) => r.person.id !== person.id)).toBe(true);
   });
 
-  it('HCM-WORKFORCE-016: an own-scope employee cannot list a colleague\'s status changes, filtered or unfiltered', async () => {
+  it("HCM-WORKFORCE-016: an own-scope employee cannot list a colleague's status changes, filtered or unfiltered", async () => {
     const { employment } = await makeEmployee('colleague-status-change');
     const stamp = Date.now();
-    const grade = await asUser('hr@kaizen.co.in', () => createGrade({ code: `CS-${stamp}`, name: 'Colleague Status Grade', level: 1 }));
+    const grade = await asUser('hr@kaizen.co.in', () =>
+      createGrade({ code: `CS-${stamp}`, name: 'Colleague Status Grade', level: 1 }),
+    );
     await asUser('hr@kaizen.co.in', () =>
       proposeStatusChange({
         employmentRelationshipId: employment.id,

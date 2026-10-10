@@ -15,12 +15,7 @@
  * reopens through a bulk-import or API back door.
  */
 
-import {
-  EVENTS,
-  FORECAST_TRANSITIONS,
-  type ForecastCategory,
-  type SeverityCode,
-} from '@kaizen/shared';
+import { EVENTS, FORECAST_TRANSITIONS, type ForecastCategory, type SeverityCode } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -80,16 +75,29 @@ export async function createOpportunity(input: OpportunityInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'opportunity', subjectId: opportunity.id, after: { title: opportunity.title, recordCode } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'opportunity',
+    subjectId: opportunity.id,
+    after: { title: opportunity.title, recordCode },
+  });
 
   await emit({
     name: input.parentContractId ? EVENTS.OPPORTUNITY_RENEWAL_OPENED : EVENTS.OPPORTUNITY_CREATED,
     subject: { entityType: 'opportunity', entityId: opportunity.id, recordCode },
     related: [
-      ...(input.organizationId ? [{ relation: 'account', entityType: 'organization', entityId: input.organizationId }] : []),
-      ...(input.parentContractId ? [{ relation: 'renews', entityType: 'contract', entityId: input.parentContractId }] : []),
+      ...(input.organizationId
+        ? [{ relation: 'account', entityType: 'organization', entityId: input.organizationId }]
+        : []),
+      ...(input.parentContractId
+        ? [{ relation: 'renews', entityType: 'contract', entityId: input.parentContractId }]
+        : []),
     ],
-    newState: { stageKey: stage.stageKey, pipelinePosition: stage.pipelinePosition, pipelineCode: pipeline.pipelineCode },
+    newState: {
+      stageKey: stage.stageKey,
+      pipelinePosition: stage.pipelinePosition,
+      pipelineCode: pipeline.pipelineCode,
+    },
     owner: { partyId: opportunity.ownerPartyId },
   });
 
@@ -139,7 +147,12 @@ export async function advanceStage(
 
   await assertCan({ resource: 'opportunities', verb: 'edit', record: { ownerPartyId: opportunity.ownerPartyId } });
 
-  const check = await validateTransition(opportunity.pipelineId, opportunity.stageKey, toStageKey, opportunity as never);
+  const check = await validateTransition(
+    opportunity.pipelineId,
+    opportunity.stageKey,
+    toStageKey,
+    opportunity as never,
+  );
   if (!check.ok) throw ApiError.unprocessable(check.reason!, { missingRequiredFields: check.missingRequiredFields });
 
   const target = check.targetStage!;
@@ -172,8 +185,12 @@ export async function advanceStage(
       stageKey: toStageKey,
       stageEnteredAt: new Date(),
       stageAgeNotifiedAt: null,
-      ...(target.pipelinePosition === 90 ? { outcome: 'won', closedAt: new Date(), forecastCategory: 'closed_won' } : {}),
-      ...(target.pipelinePosition === 0 ? { outcome: 'lost', closedAt: new Date(), forecastCategory: 'closed_lost' } : {}),
+      ...(target.pipelinePosition === 90
+        ? { outcome: 'won', closedAt: new Date(), forecastCategory: 'closed_won' }
+        : {}),
+      ...(target.pipelinePosition === 0
+        ? { outcome: 'lost', closedAt: new Date(), forecastCategory: 'closed_lost' }
+        : {}),
     },
   });
 
@@ -239,7 +256,15 @@ registerGovernedEntities('prj', ['project']);
  * where all further delivery tracking happens. Post-award state lives entirely
  * outside the sales pipeline.
  */
-async function handoffOnWin(opportunity: { id: string; tenantId: string; title: string; organizationId: string | null; contractId: string | null; ownerPartyId: string | null; recordCode: string }) {
+async function handoffOnWin(opportunity: {
+  id: string;
+  tenantId: string;
+  title: string;
+  organizationId: string | null;
+  contractId: string | null;
+  ownerPartyId: string | null;
+  recordCode: string;
+}) {
   const auth = currentAuth();
   const recordCode = await nextRecordCode('PRJ');
 
@@ -491,7 +516,9 @@ export async function forecastRollup(opts: { blended?: boolean } = {}): Promise<
     blended: opts.blended
       ? {
           rawValue: round2(perPipeline.reduce((s, p) => s + p.buckets.reduce((b, x) => b + x.rawValue, 0), 0)),
-          weightedValue: round2(perPipeline.reduce((s, p) => s + p.buckets.reduce((b, x) => b + x.weightedValue, 0), 0)),
+          weightedValue: round2(
+            perPipeline.reduce((s, p) => s + p.buckets.reduce((b, x) => b + x.weightedValue, 0), 0),
+          ),
         }
       : null,
     note: opts.blended

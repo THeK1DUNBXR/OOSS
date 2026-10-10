@@ -123,11 +123,15 @@ export async function upsertProfileExtension(employmentRelationshipId: string, i
     gender: input.gender ?? before?.gender ?? null,
     maritalStatus: input.maritalStatus ?? before?.maritalStatus ?? null,
     nationality: input.nationality ?? before?.nationality ?? null,
-    passportNumber: input.passportNumber !== undefined ? input.passportNumber : before?.passportNumber ?? null,
-    passportExpiry: input.passportExpiry !== undefined ? input.passportExpiry : before?.passportExpiry ?? null,
+    passportNumber: input.passportNumber !== undefined ? input.passportNumber : (before?.passportNumber ?? null),
+    passportExpiry: input.passportExpiry !== undefined ? input.passportExpiry : (before?.passportExpiry ?? null),
     emergencyContacts: (input.emergencyContacts ?? before?.emergencyContacts ?? []) as never,
-    currentAddress: (input.currentAddress !== undefined ? input.currentAddress : before?.currentAddress ?? null) as never,
-    permanentAddress: (input.permanentAddress !== undefined ? input.permanentAddress : before?.permanentAddress ?? null) as never,
+    currentAddress: (input.currentAddress !== undefined
+      ? input.currentAddress
+      : (before?.currentAddress ?? null)) as never,
+    permanentAddress: (input.permanentAddress !== undefined
+      ? input.permanentAddress
+      : (before?.permanentAddress ?? null)) as never,
     educationHistory: (input.educationHistory ?? before?.educationHistory ?? []) as never,
     previousEmployment: (input.previousEmployment ?? before?.previousEmployment ?? []) as never,
     dependants: (input.dependants ?? before?.dependants ?? []) as never,
@@ -201,7 +205,12 @@ export async function uploadEmployeeDocument(employmentRelationshipId: string, i
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'employee_document', subjectId: row.id, after: { ...row, content: '[redacted]' } as never });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'employee_document',
+    subjectId: row.id,
+    after: { ...row, content: '[redacted]' } as never,
+  });
   await emit({
     name: 'kz.hr.employee_document.uploaded',
     subject: { entityType: 'employee_document', entityId: row.id },
@@ -397,9 +406,7 @@ export async function directorySearch(filter: DirectoryFilter = {}) {
       deletedAt: null,
       ...(scope !== 'all' ? { personId: auth.partyId ?? 'NO-OWNER-SENTINEL' } : {}),
       ...(filter.status ? { status: filter.status } : {}),
-      ...(filter.q
-        ? { person: { fullName: { contains: filter.q, mode: 'insensitive' } } }
-        : {}),
+      ...(filter.q ? { person: { fullName: { contains: filter.q, mode: 'insensitive' } } } : {}),
       ...(filter.orgUnitId
         ? { assignments: { some: { rowStatus: 'Effective', position: { orgUnitId: filter.orgUnitId } } } }
         : {}),
@@ -418,14 +425,18 @@ export async function directorySearch(filter: DirectoryFilter = {}) {
   });
 
   const locationRows = await prisma.locationAssignment.findMany({
-    where: { tenantId: auth.tenantId, employmentRelationshipId: { in: employments.map((e) => e.id) }, effectiveTo: null },
+    where: {
+      tenantId: auth.tenantId,
+      employmentRelationshipId: { in: employments.map((e) => e.id) },
+      effectiveTo: null,
+    },
   });
   const locationIds = [...new Set(locationRows.map((l) => l.locationId))];
-  const locations = locationIds.length
-    ? await prisma.location.findMany({ where: { id: { in: locationIds } } })
-    : [];
+  const locations = locationIds.length ? await prisma.location.findMany({ where: { id: { in: locationIds } } }) : [];
   const locationById = new Map(locations.map((l) => [l.id, l]));
-  const locationByEmployment = new Map(locationRows.map((l) => [l.employmentRelationshipId, locationById.get(l.locationId) ?? null]));
+  const locationByEmployment = new Map(
+    locationRows.map((l) => [l.employmentRelationshipId, locationById.get(l.locationId) ?? null]),
+  );
 
   return employments.map((e) => {
     const assignment = e.assignments[0];
@@ -453,7 +464,10 @@ export async function employee360(employmentRelationshipId: string) {
     where: { id: employmentRelationshipId, tenantId: auth.tenantId, deletedAt: null },
     include: {
       person: true,
-      assignments: { include: { position: { include: { job: true, orgUnit: true } } }, orderBy: { effectiveFrom: 'desc' } },
+      assignments: {
+        include: { position: { include: { job: true, orgUnit: true } } },
+        orderBy: { effectiveFrom: 'desc' },
+      },
     },
   });
   if (!employment) throw ApiError.notFound('Employment relationship');
@@ -468,8 +482,14 @@ export async function employee360(employmentRelationshipId: string) {
         where: { employmentRelationshipId, deletedAt: null },
         orderBy: { createdAt: 'desc' },
         select: {
-          id: true, kind: true, filename: true, mimeType: true, verified: true,
-          verifiedAt: true, expiresOn: true, createdAt: true,
+          id: true,
+          kind: true,
+          filename: true,
+          mimeType: true,
+          verified: true,
+          verifiedAt: true,
+          expiresOn: true,
+          createdAt: true,
         },
       }),
       listReportingLines(employmentRelationshipId),
@@ -680,7 +700,9 @@ export async function listStatusChanges(employmentRelationshipId?: string) {
     });
     const ownIds = own.map((e) => e.id);
     where.employmentRelationshipId = employmentRelationshipId
-      ? (ownIds.includes(employmentRelationshipId) ? employmentRelationshipId : 'no-such-employment-relationship')
+      ? ownIds.includes(employmentRelationshipId)
+        ? employmentRelationshipId
+        : 'no-such-employment-relationship'
       : { in: ownIds };
   }
 
@@ -705,11 +727,15 @@ export async function decideStatusChange(id: string, approve: boolean, note?: st
     throw ApiError.conflict(`This status change is ${row.status} and cannot be decided again.`);
   }
   if (row.proposedById === auth.partyId) {
-    throw ApiError.forbidden('The Self-Dealing Bar is unconditional: a proposer may never decide their own status change.');
+    throw ApiError.forbidden(
+      'The Self-Dealing Bar is unconditional: a proposer may never decide their own status change.',
+    );
   }
   const subject = await requireEmployment(row.employmentRelationshipId);
   if (subject.personId === auth.partyId) {
-    throw ApiError.forbidden('The Self-Dealing Bar is unconditional: the subject of a status change may never decide it themselves.');
+    throw ApiError.forbidden(
+      'The Self-Dealing Bar is unconditional: the subject of a status change may never decide it themselves.',
+    );
   }
 
   const updated = await prisma.employeeStatusChange.update({
@@ -762,7 +788,12 @@ export async function applyStatusChange(id: string) {
         data: { effectiveTo: effectiveFrom },
       });
       await tx.gradeAssignment.create({
-        data: { tenantId: auth.tenantId, employmentRelationshipId: row.employmentRelationshipId, gradeId: target.gradeId, effectiveFrom },
+        data: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: row.employmentRelationshipId,
+          gradeId: target.gradeId,
+          effectiveFrom,
+        },
       });
     }
     if (target.costCentreId) {
@@ -771,7 +802,12 @@ export async function applyStatusChange(id: string) {
         data: { effectiveTo: effectiveFrom },
       });
       await tx.costCentreAssignment.create({
-        data: { tenantId: auth.tenantId, employmentRelationshipId: row.employmentRelationshipId, costCentreId: target.costCentreId, effectiveFrom },
+        data: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: row.employmentRelationshipId,
+          costCentreId: target.costCentreId,
+          effectiveFrom,
+        },
       });
     }
     if (target.locationId) {
@@ -780,7 +816,12 @@ export async function applyStatusChange(id: string) {
         data: { effectiveTo: effectiveFrom },
       });
       await tx.locationAssignment.create({
-        data: { tenantId: auth.tenantId, employmentRelationshipId: row.employmentRelationshipId, locationId: target.locationId, effectiveFrom },
+        data: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: row.employmentRelationshipId,
+          locationId: target.locationId,
+          effectiveFrom,
+        },
       });
     }
     await tx.employeeStatusChange.update({ where: { id }, data: { status: 'applied', appliedAt: new Date() } });

@@ -8,7 +8,14 @@ import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../server.js';
 import { emittedEvents, setEventCapture } from '../platform/eventBus.js';
-import { principalFor, sessionToken, tenantId, unscopedPrisma, withFixtureRole, type TestPrincipal } from './helpers.js';
+import {
+  principalFor,
+  sessionToken,
+  tenantId,
+  unscopedPrisma,
+  withFixtureRole,
+  type TestPrincipal,
+} from './helpers.js';
 
 let server: Server;
 let base: string;
@@ -81,7 +88,9 @@ describe('POST /crm/tasks/:id/complete — governance', () => {
     });
     expect(audit.map((r) => r.action)).toContain('update');
 
-    const events = emittedEvents.filter((e) => e.eventName === 'kz.wfl.task.completed' && e.subject.entityId === task.id);
+    const events = emittedEvents.filter(
+      (e) => e.eventName === 'kz.wfl.task.completed' && e.subject.entityId === task.id,
+    );
     expect(events).toHaveLength(1);
   });
 });
@@ -111,7 +120,9 @@ describe('POST /crm/tasks/:id/complete — state and ownership', () => {
     const afterSecond = await unscopedPrisma.task.findFirstOrThrow({ where: { id: task.id } });
     expect(afterSecond.completedAt?.getTime()).toBe(afterFirst.completedAt?.getTime());
 
-    const events = emittedEvents.filter((e) => e.eventName === 'kz.wfl.task.completed' && e.subject.entityId === task.id);
+    const events = emittedEvents.filter(
+      (e) => e.eventName === 'kz.wfl.task.completed' && e.subject.entityId === task.id,
+    );
     expect(events).toHaveLength(1);
   });
 

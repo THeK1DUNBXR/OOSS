@@ -43,12 +43,7 @@ import { raiseException } from '../../platform/exceptions.js';
 import { normaliseEmail, normalisePhone } from '../identity.js';
 import { registerHook } from '../../platform/hooks.js';
 
-registerGovernedEntities('cmp_privacy', [
-  'privacy_notice',
-  'consent',
-  'data_principal_request',
-  'data_breach',
-]);
+registerGovernedEntities('cmp_privacy', ['privacy_notice', 'consent', 'data_principal_request', 'data_breach']);
 
 // ---------------------------------------------------------------------------
 // Privacy notice
@@ -106,10 +101,18 @@ export async function publishNotice(input: { effectiveFrom: Date; body: string; 
   });
 
   if (previous) {
-    await prisma.privacyNotice.update({ where: { id: previous.id }, data: { status: 'superseded', supersededById: notice.id } });
+    await prisma.privacyNotice.update({
+      where: { id: previous.id },
+      data: { status: 'superseded', supersededById: notice.id },
+    });
   }
 
-  await auditWrite({ action: 'create', subjectType: 'privacy_notice', subjectId: notice.id, after: { version, effectiveFrom: input.effectiveFrom } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'privacy_notice',
+    subjectId: notice.id,
+    after: { version, effectiveFrom: input.effectiveFrom },
+  });
   await emit({
     name: 'kz.cmp.privacy_notice.published',
     subject: { entityType: 'privacy_notice', entityId: notice.id, recordCode: `NOTICE-v${version}` },
@@ -227,8 +230,18 @@ export async function grantConsent(input: {
       evidence: (input.evidence ?? {}) as never,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'consent_ledger', subjectId: consent.id, after: { event: 'granted', purpose: input.purposeCode } });
-  await auditWrite({ action: 'create', subjectType: 'consent', subjectId: consent.id, after: { purposeCode: input.purposeCode, status: 'granted' } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'consent_ledger',
+    subjectId: consent.id,
+    after: { event: 'granted', purpose: input.purposeCode },
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'consent',
+    subjectId: consent.id,
+    after: { purposeCode: input.purposeCode, status: 'granted' },
+  });
   await emit({
     name: 'kz.cmp.consent.granted',
     subject: { entityType: 'consent', entityId: consent.id },
@@ -267,7 +280,12 @@ export async function withdrawConsent(id: string, reason?: string) {
       evidence: { reason: reason ?? null } as never,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'consent_ledger', subjectId: existing.id, after: { event: 'withdrawn', purpose: existing.purposeCode } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'consent_ledger',
+    subjectId: existing.id,
+    after: { event: 'withdrawn', purpose: existing.purposeCode },
+  });
   await auditWrite({
     action: 'update',
     subjectType: 'consent',
@@ -290,11 +308,17 @@ export async function withdrawConsent(id: string, reason?: string) {
 export async function listConsentsForPerson(personId: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'consents', verb: 'view', record: { ownerPartyId: personId } });
-  const rows = await prisma.consent.findMany({ where: { tenantId: auth.tenantId, personId }, orderBy: { createdAt: 'desc' } });
+  const rows = await prisma.consent.findMany({
+    where: { tenantId: auth.tenantId, personId },
+    orderBy: { createdAt: 'desc' },
+  });
   // Consent.personId carries no Prisma relation (guardianOfPersonId can name
   // a different person entirely, so the column is deliberately untyped as a
   // foreign key) — one batched lookup, not one query per row.
-  const person = await prisma.person.findFirst({ where: { id: personId, tenantId: auth.tenantId }, select: { fullName: true } });
+  const person = await prisma.person.findFirst({
+    where: { id: personId, tenantId: auth.tenantId },
+    select: { fullName: true },
+  });
   return rows.map((r) => ({ ...r, personFullName: person?.fullName ?? null }));
 }
 
@@ -394,7 +418,10 @@ export async function requireGuardianConsentForMinor(input: MinorGateInput): Pro
       status: 'granted',
       grantedAt: new Date(),
       channel: 'guardian_intake',
-      evidence: { guardianName: encryptField(input.guardianName!.trim()), guardianPhone: encryptField(input.guardianPhone!.trim()) } as never,
+      evidence: {
+        guardianName: encryptField(input.guardianName!.trim()),
+        guardianPhone: encryptField(input.guardianPhone!.trim()),
+      } as never,
       guardianOfPersonId: input.personId,
     },
   });
@@ -409,10 +436,18 @@ export async function requireGuardianConsentForMinor(input: MinorGateInput): Pro
       channel: 'guardian_intake',
       event: 'granted',
       givenAt: consent.grantedAt,
-      evidence: { guardianName: encryptField(input.guardianName!.trim()), guardianPhone: encryptField(input.guardianPhone!.trim()) } as never,
+      evidence: {
+        guardianName: encryptField(input.guardianName!.trim()),
+        guardianPhone: encryptField(input.guardianPhone!.trim()),
+      } as never,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'consent_ledger', subjectId: consent.id, after: { event: 'granted', purpose: 'education_delivery' } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'consent_ledger',
+    subjectId: consent.id,
+    after: { event: 'granted', purpose: 'education_delivery' },
+  });
   await auditWrite({
     action: 'create',
     subjectType: 'consent',
@@ -479,7 +514,12 @@ export async function raiseDataRequest(input: { personId: string; kind: string; 
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'data_principal_request', subjectId: request.id, after: { kind: input.kind, personId: input.personId } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'data_principal_request',
+    subjectId: request.id,
+    after: { kind: input.kind, personId: input.personId },
+  });
   await emit({
     name: 'kz.cmp.data_request.raised',
     subject: { entityType: 'data_principal_request', entityId: request.id, recordCode },
@@ -559,10 +599,28 @@ async function assembleAccessExport(tenantId: string, personId: string) {
         }
       : null,
     dataMap: [
-      { source: 'person', fields: ['fullName', 'email', 'phone', 'dateOfBirth'].map((field) => ({ field, purpose: FIELD_PURPOSES[field] })) },
-      { source: 'affiliations', purpose: 'employment|education_delivery', fields: ['roleSlug', 'status', 'effectiveFrom', 'effectiveTo'] },
-      { source: 'employments', purpose: 'employment|statutory_filing', fields: ['status', 'panNumber', 'aadhaarReference', 'bankAccountNumber', 'bankAccountName', 'bankIfsc'] },
-      { source: 'studentProfile', purpose: 'education_delivery', fields: ['guardianName', 'guardianPhone', 'guardianConsentId'] },
+      {
+        source: 'person',
+        fields: ['fullName', 'email', 'phone', 'dateOfBirth'].map((field) => ({
+          field,
+          purpose: FIELD_PURPOSES[field],
+        })),
+      },
+      {
+        source: 'affiliations',
+        purpose: 'employment|education_delivery',
+        fields: ['roleSlug', 'status', 'effectiveFrom', 'effectiveTo'],
+      },
+      {
+        source: 'employments',
+        purpose: 'employment|statutory_filing',
+        fields: ['status', 'panNumber', 'aadhaarReference', 'bankAccountNumber', 'bankAccountName', 'bankIfsc'],
+      },
+      {
+        source: 'studentProfile',
+        purpose: 'education_delivery',
+        fields: ['guardianName', 'guardianPhone', 'guardianConsentId'],
+      },
     ],
     exportedAt: new Date().toISOString(),
   };
@@ -595,7 +653,10 @@ async function erasureBlockers(tenantId: string, personId: string): Promise<Eras
   const affiliations = await unscopedPrisma.affiliation.findMany({ where: { tenantId, partyId: personId } });
   if (!affiliations.length) return [];
 
-  const schedules = await unscopedPrisma.retentionSchedule.findMany({ where: { tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  const schedules = await unscopedPrisma.retentionSchedule.findMany({
+    where: { tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
   const blockers: ErasureBlocker[] = [];
   const now = new Date();
 
@@ -657,10 +718,14 @@ function correctionData(correction: Partial<Record<CorrectablePersonField, unkno
     data.primaryEmailNormalised = normaliseEmail(correction.primaryEmail as string | null);
   }
   if (Array.isArray(correction.additionalPhones)) {
-    data.additionalPhonesNormalised = (correction.additionalPhones as string[]).map((p) => normalisePhone(p)).filter((p): p is string => !!p);
+    data.additionalPhonesNormalised = (correction.additionalPhones as string[])
+      .map((p) => normalisePhone(p))
+      .filter((p): p is string => !!p);
   }
   if (Array.isArray(correction.additionalEmails)) {
-    data.additionalEmailsNormalised = (correction.additionalEmails as string[]).map((e) => normaliseEmail(e)).filter((e): e is string => !!e);
+    data.additionalEmailsNormalised = (correction.additionalEmails as string[])
+      .map((e) => normaliseEmail(e))
+      .filter((e): e is string => !!e);
   }
   return data;
 }
@@ -675,7 +740,11 @@ function correctionData(correction: Partial<Record<CorrectablePersonField, unkno
  * The message names no other person: the requester is an operator, not the
  * principal, and a refusal should not tell them whose record it is.
  */
-async function assertContactsFree(tenantId: string, personId: string, correction: Record<string, unknown>): Promise<void> {
+async function assertContactsFree(
+  tenantId: string,
+  personId: string,
+  correction: Record<string, unknown>,
+): Promise<void> {
   const emails = [
     ...(typeof correction.primaryEmail === 'string' ? [correction.primaryEmail] : []),
     ...(Array.isArray(correction.additionalEmails) ? (correction.additionalEmails as string[]) : []),
@@ -695,14 +764,20 @@ async function assertContactsFree(tenantId: string, personId: string, correction
       where: { ...base, OR: [{ primaryEmailNormalised: key }, { additionalEmailsNormalised: { has: key } }] },
       select: { id: true },
     });
-    if (holder) throw ApiError.conflict('That email address is already held by another active person on file, so it cannot be given to this one.');
+    if (holder)
+      throw ApiError.conflict(
+        'That email address is already held by another active person on file, so it cannot be given to this one.',
+      );
   }
   for (const key of phones) {
     const holder = await unscopedPrisma.person.findFirst({
       where: { ...base, OR: [{ primaryPhoneNormalised: key }, { additionalPhonesNormalised: { has: key } }] },
       select: { id: true },
     });
-    if (holder) throw ApiError.conflict('That phone number is already held by another active person on file, so it cannot be given to this one.');
+    if (holder)
+      throw ApiError.conflict(
+        'That phone number is already held by another active person on file, so it cannot be given to this one.',
+      );
   }
 }
 
@@ -713,7 +788,9 @@ async function assertContactsFree(tenantId: string, personId: string, correction
  */
 function correctedDateOfBirth(value: unknown): Date {
   if (value === null || value === undefined || value === '') {
-    throw ApiError.badRequest('A date of birth can be corrected but not removed. With none on file the minor rule applies to the enrolments.');
+    throw ApiError.badRequest(
+      'A date of birth can be corrected but not removed. With none on file the minor rule applies to the enrolments.',
+    );
   }
   const d = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(d.getTime())) throw ApiError.badRequest('The corrected date of birth is not a valid date.');
@@ -752,7 +829,13 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
       where: { id },
       data: { status: 'fulfilled', fulfilledAt: new Date(), response: bundle as never },
     });
-    await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'fulfilled' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'data_principal_request',
+      subjectId: id,
+      before: { status: request.status },
+      after: { status: 'fulfilled' },
+    });
     return updated;
   }
 
@@ -765,9 +848,13 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
     // are the platform's to set, so they are refused by name rather than
     // dropped silently: a silent drop would look like a correction that
     // succeeded.
-    const disallowed = Object.keys(input.correction).filter((k) => !CORRECTABLE_PERSON_FIELDS.includes(k as CorrectablePersonField));
+    const disallowed = Object.keys(input.correction).filter(
+      (k) => !CORRECTABLE_PERSON_FIELDS.includes(k as CorrectablePersonField),
+    );
     if (disallowed.length) {
-      throw ApiError.badRequest(`These fields cannot be corrected by a data-principal request: ${disallowed.join(', ')}.`);
+      throw ApiError.badRequest(
+        `These fields cannot be corrected by a data-principal request: ${disallowed.join(', ')}.`,
+      );
     }
     // Every refusal below happens before the first write, so a refused
     // correction leaves the person, the enrolments and the request as they were.
@@ -825,7 +912,13 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
       where: { id },
       data: { status: 'fulfilled', fulfilledAt: new Date(), response: { corrected: input.correction } as never },
     });
-    await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'fulfilled' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'data_principal_request',
+      subjectId: id,
+      before: { status: request.status },
+      after: { status: 'fulfilled' },
+    });
     return updated;
   }
 
@@ -837,21 +930,36 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
     const unmeasured = [...new Set(blockers.filter((b) => b.unmeasured).map((b) => b.retentionClass))];
     const parts: string[] = [];
     if (active.length) {
-      parts.push(`An affiliation is still active (${active.join(', ')}), so erasure cannot proceed until it has ended.`);
+      parts.push(
+        `An affiliation is still active (${active.join(', ')}), so erasure cannot proceed until it has ended.`,
+      );
     }
     if (dated.length) {
-      const earliest = dated.reduce((min, b) => (b.earliestErasable < min ? b.earliestErasable : min), dated[0].earliestErasable);
-      parts.push(`Blocked by the statutory retention floor on ${[...new Set(dated.map((b) => b.retentionClass))].join(', ')}. Not erasable before ${earliest.toISOString().slice(0, 10)}.`);
+      const earliest = dated.reduce(
+        (min, b) => (b.earliestErasable < min ? b.earliestErasable : min),
+        dated[0].earliestErasable,
+      );
+      parts.push(
+        `Blocked by the statutory retention floor on ${[...new Set(dated.map((b) => b.retentionClass))].join(', ')}. Not erasable before ${earliest.toISOString().slice(0, 10)}.`,
+      );
     }
     if (unmeasured.length) {
-      parts.push(`No retention schedule is recorded for ${unmeasured.join(', ')}, so the floor cannot be measured and erasure cannot proceed.`);
+      parts.push(
+        `No retention schedule is recorded for ${unmeasured.join(', ')}, so the floor cannot be measured and erasure cannot proceed.`,
+      );
     }
     const refusalReason = parts.join(' ');
     const updated = await prisma.dataPrincipalRequest.update({
       where: { id },
       data: { status: 'refused', refusalReason },
     });
-    await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'refused', refusalReason } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'data_principal_request',
+      subjectId: id,
+      before: { status: request.status },
+      after: { status: 'refused', refusalReason },
+    });
     return updated;
   }
 
@@ -887,7 +995,10 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
       data: { guardianName: null, guardianPhone: null, address: null },
     });
     const enrollmentIds = (
-      await tx.enrollment.findMany({ where: { tenantId: auth.tenantId, personId: request.personId }, select: { id: true } })
+      await tx.enrollment.findMany({
+        where: { tenantId: auth.tenantId, personId: request.personId },
+        select: { id: true },
+      })
     ).map((e) => e.id);
     await tx.enrollment.updateMany({
       where: { tenantId: auth.tenantId, id: { in: enrollmentIds } },
@@ -897,7 +1008,10 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
     // matched on either the minor (personId) or the guardian link.
     const consentIds = (
       await tx.consent.findMany({
-        where: { tenantId: auth.tenantId, OR: [{ personId: request.personId }, { guardianOfPersonId: request.personId }] },
+        where: {
+          tenantId: auth.tenantId,
+          OR: [{ personId: request.personId }, { guardianOfPersonId: request.personId }],
+        },
         select: { id: true },
       })
     ).map((c) => c.id);
@@ -914,10 +1028,20 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
   // Audited per dependent row, without the values: the audit log is kept
   // longer than the record and must not become the place the value survives.
   for (const enrollmentId of dependents.enrollmentIds) {
-    await auditWrite({ action: 'update', subjectType: 'enrollment', subjectId: enrollmentId, after: { guardianContactErased: true } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'enrollment',
+      subjectId: enrollmentId,
+      after: { guardianContactErased: true },
+    });
   }
   for (const consentId of dependents.consentIds) {
-    await auditWrite({ action: 'update', subjectType: 'consent', subjectId: consentId, after: { evidenceErased: true } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'consent',
+      subjectId: consentId,
+      after: { evidenceErased: true },
+    });
   }
   await auditWrite({
     action: 'delete',
@@ -925,7 +1049,13 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
     subjectId: request.personId,
     after: { erased: true, dependents: ['student_profile', 'enrollment', 'consent'] },
   });
-  await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'fulfilled' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'data_principal_request',
+    subjectId: id,
+    before: { status: request.status },
+    after: { status: 'fulfilled' },
+  });
   await emit({
     name: 'kz.cmp.data_request.fulfilled',
     subject: { entityType: 'data_principal_request', entityId: id, recordCode: request.recordCode },
@@ -940,8 +1070,17 @@ export async function refuseDataRequest(id: string, reason: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'data_requests', verb: 'edit' });
   const request = await getDataRequest(id);
-  const updated = await prisma.dataPrincipalRequest.update({ where: { id }, data: { status: 'refused', refusalReason: reason } });
-  await auditWrite({ action: 'update', subjectType: 'data_principal_request', subjectId: id, before: { status: request.status }, after: { status: 'refused', reason } });
+  const updated = await prisma.dataPrincipalRequest.update({
+    where: { id },
+    data: { status: 'refused', refusalReason: reason },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'data_principal_request',
+    subjectId: id,
+    before: { status: request.status },
+    after: { status: 'refused', reason },
+  });
   void auth;
   return updated;
 }
@@ -1001,7 +1140,12 @@ export async function raiseBreach(input: {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'data_breach', subjectId: breach.id, after: { detectedAt: input.detectedAt, severity: input.severity } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'data_breach',
+    subjectId: breach.id,
+    after: { detectedAt: input.detectedAt, severity: input.severity },
+  });
   await emit({
     name: 'kz.cmp.breach.raised',
     subject: { entityType: 'data_breach', entityId: breach.id, recordCode },
@@ -1038,7 +1182,13 @@ export async function transitionBreach(id: string, status: string, notes?: strin
   if (status === 'closed') data.closedAt = now;
 
   const updated = await prisma.dataBreach.update({ where: { id }, data: data as never });
-  await auditWrite({ action: 'update', subjectType: 'data_breach', subjectId: id, before: { status: breach.status }, after: { status } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'data_breach',
+    subjectId: id,
+    before: { status: breach.status },
+    after: { status },
+  });
   await emit({
     name: 'kz.cmp.breach.transitioned',
     subject: { entityType: 'data_breach', entityId: id, recordCode: breach.recordCode },
@@ -1102,11 +1252,20 @@ export async function runBreachLadder(): Promise<number> {
 
 export async function runRetentionReport(): Promise<{ generatedAt: Date; snapshot: unknown[] }> {
   const auth = currentAuth();
-  const schedules = await prisma.retentionSchedule.findMany({ where: { tenantId: auth.tenantId }, orderBy: { effectiveFrom: 'desc' } });
+  const schedules = await prisma.retentionSchedule.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { effectiveFrom: 'desc' },
+  });
   const now = new Date();
   const classes = [...new Set(schedules.map((s) => s.retentionClass))];
 
-  const snapshot: Array<{ retentionClass: string; years: number; totalCount: number; pastWindowCount: number; cutoff: string }> = [];
+  const snapshot: Array<{
+    retentionClass: string;
+    years: number;
+    totalCount: number;
+    pastWindowCount: number;
+    cutoff: string;
+  }> = [];
   for (const retentionClass of classes) {
     const schedule = schedules.find((s) => s.retentionClass === retentionClass && s.effectiveFrom <= now);
     if (!schedule) continue;
@@ -1120,12 +1279,16 @@ export async function runRetentionReport(): Promise<{ generatedAt: Date; snapsho
           ])
         : await Promise.all([
             prisma.eventRecord.count({ where: { tenantId: auth.tenantId, retentionClass } }),
-            prisma.eventRecord.count({ where: { tenantId: auth.tenantId, retentionClass, occurredAt: { lt: cutoff } } }),
+            prisma.eventRecord.count({
+              where: { tenantId: auth.tenantId, retentionClass, occurredAt: { lt: cutoff } },
+            }),
           ]);
     snapshot.push({ retentionClass, years: schedule.years, totalCount, pastWindowCount, cutoff: cutoff.toISOString() });
   }
 
-  const report = await prisma.retentionReport.create({ data: { tenantId: auth.tenantId, generatedAt: now, snapshot: snapshot as never } });
+  const report = await prisma.retentionReport.create({
+    data: { tenantId: auth.tenantId, generatedAt: now, snapshot: snapshot as never },
+  });
   return { generatedAt: report.generatedAt, snapshot };
 }
 
@@ -1134,7 +1297,10 @@ export async function getRetention() {
   await assertCan({ resource: 'data_requests', verb: 'view' });
   const [latest, schedule] = await Promise.all([
     prisma.retentionReport.findFirst({ where: { tenantId: auth.tenantId }, orderBy: { generatedAt: 'desc' } }),
-    prisma.retentionSchedule.findMany({ where: { tenantId: auth.tenantId }, orderBy: [{ retentionClass: 'asc' }, { effectiveFrom: 'desc' }] }),
+    prisma.retentionSchedule.findMany({
+      where: { tenantId: auth.tenantId },
+      orderBy: [{ retentionClass: 'asc' }, { effectiveFrom: 'desc' }],
+    }),
   ]);
   return { latest, schedule };
 }
@@ -1186,16 +1352,27 @@ export async function runAccessReview(): Promise<number> {
     if (!existing) statusByPerson.set(e.personId, e.status);
   }
 
-  const findings: Array<{ partyId: string; fullName: string; affiliationId: string; employmentStatus: string | null }> = [];
+  const findings: Array<{ partyId: string; fullName: string; affiliationId: string; employmentStatus: string | null }> =
+    [];
   for (const aff of affiliations) {
     const status = statusByPerson.get(aff.partyId) ?? null;
     if (status !== 'Active') {
-      findings.push({ partyId: aff.partyId, fullName: aff.party.fullName, affiliationId: aff.id, employmentStatus: status });
+      findings.push({
+        partyId: aff.partyId,
+        fullName: aff.party.fullName,
+        affiliationId: aff.id,
+        employmentStatus: status,
+      });
     }
   }
 
   await prisma.accessReview.create({
-    data: { tenantId: auth.tenantId, generatedAt: new Date(), findings: findings as never, staleCount: findings.length },
+    data: {
+      tenantId: auth.tenantId,
+      generatedAt: new Date(),
+      findings: findings as never,
+      staleCount: findings.length,
+    },
   });
 
   const ownerPartyId = await privacyOwnerPartyId(auth.tenantId);
@@ -1297,15 +1474,32 @@ export function readRegulated(value: string | null | undefined): string | null {
 /** EmploymentRelationship columns backfill touches. Bank IFSC is a routing
  * code rather than an identifier on its own, but it sits next to the account
  * number on the same regulated row, so it travels with it. */
-const REGULATED_EMPLOYMENT_FIELDS = ['panNumber', 'aadhaarReference', 'bankAccountNumber', 'bankAccountName', 'bankIfsc'] as const;
+const REGULATED_EMPLOYMENT_FIELDS = [
+  'panNumber',
+  'aadhaarReference',
+  'bankAccountNumber',
+  'bankAccountName',
+  'bankIfsc',
+] as const;
 
-export async function backfillEncryptAtRest(): Promise<{ fieldsScanned: number; valuesEncrypted: number; alreadyEncrypted: number }> {
+export async function backfillEncryptAtRest(): Promise<{
+  fieldsScanned: number;
+  valuesEncrypted: number;
+  alreadyEncrypted: number;
+}> {
   const auth = currentAuth();
   await assertCan({ resource: 'security_settings', verb: 'edit' });
 
   const rows = await unscopedPrisma.employmentRelationship.findMany({
     where: { tenantId: auth.tenantId },
-    select: { id: true, panNumber: true, aadhaarReference: true, bankAccountNumber: true, bankAccountName: true, bankIfsc: true },
+    select: {
+      id: true,
+      panNumber: true,
+      aadhaarReference: true,
+      bankAccountNumber: true,
+      bankAccountName: true,
+      bankIfsc: true,
+    },
   });
 
   let fieldsScanned = 0;
@@ -1333,7 +1527,11 @@ export async function backfillEncryptAtRest(): Promise<{ fieldsScanned: number; 
   await prisma.encryptionBackfillRun.create({
     data: { tenantId: auth.tenantId, fieldsScanned, valuesEncrypted, alreadyEncrypted, runById: auth.partyId },
   });
-  await auditBulkOperation('employment_relationship', 'encrypt_at_rest_backfill', { fieldsScanned, valuesEncrypted, alreadyEncrypted });
+  await auditBulkOperation('employment_relationship', 'encrypt_at_rest_backfill', {
+    fieldsScanned,
+    valuesEncrypted,
+    alreadyEncrypted,
+  });
 
   return { fieldsScanned, valuesEncrypted, alreadyEncrypted };
 }
@@ -1357,7 +1555,10 @@ export async function encryptionStatus() {
     }
   }
 
-  const lastRun = await prisma.encryptionBackfillRun.findFirst({ where: { tenantId: auth.tenantId }, orderBy: { ranAt: 'desc' } });
+  const lastRun = await prisma.encryptionBackfillRun.findFirst({
+    where: { tenantId: auth.tenantId },
+    orderBy: { ranAt: 'desc' },
+  });
   return { plaintext, encrypted, lastRun, keyConfigured: Boolean(config.FIELD_ENCRYPTION_KEY) };
 }
 

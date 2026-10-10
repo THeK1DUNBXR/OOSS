@@ -43,7 +43,13 @@ export async function runItSoftwareJob(): Promise<JobResult> {
   }
 
   return {
-    processed: renewal.notified + renewal.flippedToExpiring + renewal.flippedToExpired + seats.overAllocated + seats.underUsed + unowned,
+    processed:
+      renewal.notified +
+      renewal.flippedToExpiring +
+      renewal.flippedToExpired +
+      seats.overAllocated +
+      seats.underUsed +
+      unowned,
     notified: renewal.notified + seats.overAllocated + seats.underUsed + unowned,
     skippedIdempotent: 0,
     errors,
@@ -60,7 +66,8 @@ export async function runItSoftwareJobForTenant(tenantId: string): Promise<JobRe
 export const JOBS: JobDefinition[] = [
   {
     name: 'runItSoftwareJob',
-    label: 'Technology — applications & licences: renewal ladder, seat exceptions, unowned applications (IT-LIC/IT-APP)',
+    label:
+      'Technology — applications & licences: renewal ladder, seat exceptions, unowned applications (IT-LIC/IT-APP)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
     run: runItSoftwareJob,

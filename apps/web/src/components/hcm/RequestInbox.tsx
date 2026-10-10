@@ -31,7 +31,9 @@ const INBOX_QUERY_KEY = ['hcm-workflow-inbox'];
 
 function payloadSummary(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return '—';
-  const entries = Object.entries(payload as Record<string, unknown>).filter(([, v]) => v !== null && v !== undefined && v !== '');
+  const entries = Object.entries(payload as Record<string, unknown>).filter(
+    ([, v]) => v !== null && v !== undefined && v !== '',
+  );
   if (entries.length === 0) return '—';
   return entries.map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ');
 }
@@ -51,7 +53,8 @@ function InboxRow({ item, onDecided }: { item: InboxItem; onDecided: () => void 
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
 
   const decideMutation = useMutation({
-    mutationFn: (approve: boolean) => api.post(`/hcm/workflow/requests/${item.requestId}/decide`, { approve, note: note || undefined }),
+    mutationFn: (approve: boolean) =>
+      api.post(`/hcm/workflow/requests/${item.requestId}/decide`, { approve, note: note || undefined }),
     onSuccess: () => {
       setError(null);
       onDecided();
@@ -78,16 +81,30 @@ function InboxRow({ item, onDecided }: { item: InboxItem; onDecided: () => void 
           <p className="mt-1 text-2xs text-ink-400">{payloadSummary(item.payload)}</p>
         </div>
         <StatusChip
-          status={tone === 'bad' ? 'SLA breached' : tone === 'warn' ? 'SLA due soon' : `submitted ${dateTime(item.submittedAt)}`}
+          status={
+            tone === 'bad'
+              ? 'SLA breached'
+              : tone === 'warn'
+                ? 'SLA due soon'
+                : `submitted ${dateTime(item.submittedAt)}`
+          }
           tone={tone === 'neutral' ? 'neutral' : tone}
         />
       </div>
       {error && (
-        <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-2 py-1 text-2xs text-band-critical">{error}</p>
+        <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-2 py-1 text-2xs text-band-critical">
+          {error}
+        </p>
       )}
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-[16rem] flex-1">
-          <TextArea label="Note (optional)" value={note} onChange={setNote} rows={1} placeholder="Reason, condition, or context for the record" />
+          <TextArea
+            label="Note (optional)"
+            value={note}
+            onChange={setNote}
+            rows={1}
+            placeholder="Reason, condition, or context for the record"
+          />
         </div>
         <button className="btn" disabled={decideMutation.isPending} onClick={() => submit(false)}>
           {busy === 'reject' ? 'Rejecting…' : 'Reject'}

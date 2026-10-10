@@ -100,7 +100,10 @@ async function asEmployee<T>(partyId: string, fn: () => Promise<T>): Promise<T> 
 async function makePolicyWithRule(overrides: Partial<Parameters<typeof createPolicyRule>[1]> = {}) {
   return asUser('operations@kaizen.co.in', async () => {
     const elType = await prisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'EL' } });
-    const policy = await createLeavePolicy({ name: `Fixture policy ${Date.now()}-${fixtureSeq}`, effectiveFrom: new Date(Date.UTC(2020, 0, 1)) });
+    const policy = await createLeavePolicy({
+      name: `Fixture policy ${Date.now()}-${fixtureSeq}`,
+      effectiveFrom: new Date(Date.UTC(2020, 0, 1)),
+    });
     const rule = await createPolicyRule(policy.id, {
       leaveTypeId: elType.id,
       accrualFrequency: 'monthly',
@@ -303,7 +306,9 @@ describe('HCM-LVP-005 — the monthly accrual run is idempotent', () => {
 
     const balance = await asUser('operations@kaizen.co.in', () =>
       prisma.leaveBalance.findUnique({
-        where: { employmentRelationshipId_leaveTypeId: { employmentRelationshipId: employment.id, leaveTypeId: elType.id } },
+        where: {
+          employmentRelationshipId_leaveTypeId: { employmentRelationshipId: employment.id, leaveTypeId: elType.id },
+        },
       }),
     );
     expect(Number(balance?.balanceDays)).toBeCloseTo(1.25, 2);
@@ -311,7 +316,9 @@ describe('HCM-LVP-005 — the monthly accrual run is idempotent', () => {
 
   it('HCM-LVP-005: an accrual run refuses a rule with accrualFrequency none', async () => {
     const { rule } = await makePolicyWithRule({ accrualFrequency: 'none', accrualDays: 0 });
-    const err = await expectReject(() => asUser('operations@kaizen.co.in', () => runAccrualForRule(rule.id, '2026-09')));
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => runAccrualForRule(rule.id, '2026-09')),
+    );
     expect(err.status).toBe(422);
   });
 });
@@ -321,7 +328,7 @@ describe('HCM-LVP-005 — the monthly accrual run is idempotent', () => {
 // ===========================================================================
 
 describe('HCM-LVP-006 — approval chains resolve real approvers and enforce the Self-Dealing Bar', () => {
-  it('HCM-LVP-006: a manager+hr chain resolves the requester\'s actual manager, and the manager may decide their level', async () => {
+  it("HCM-LVP-006: a manager+hr chain resolves the requester's actual manager, and the manager may decide their level", async () => {
     const { employment: managerEmployment, person: managerPerson } = await makeEmployee('manager');
     const { employment } = await asUser('operations@kaizen.co.in', async () => {
       const position = await prisma.position.create({
@@ -347,12 +354,21 @@ describe('HCM-LVP-006 — approval chains resolve real approvers and enforce the
       const managerPosition = (
         await prisma.assignment.findFirstOrThrow({ where: { employmentRelationshipId: managerEmployment.id } })
       ).positionId;
-      await prisma.assignment.updateMany({ where: { employmentRelationshipId: emp.id }, data: { managerPositionId: managerPosition } });
+      await prisma.assignment.updateMany({
+        where: { employmentRelationshipId: emp.id },
+        data: { managerPositionId: managerPosition },
+      });
       return { employment: emp };
     });
 
     const chain = await asUser('operations@kaizen.co.in', () =>
-      createApprovalChain({ name: `Chain ${Date.now()}`, levels: [{ level: 1, kind: 'manager' }, { level: 2, kind: 'hr' }] }),
+      createApprovalChain({
+        name: `Chain ${Date.now()}`,
+        levels: [
+          { level: 1, kind: 'manager' },
+          { level: 2, kind: 'hr' },
+        ],
+      }),
     );
 
     const { request, elType } = await asUser('operations@kaizen.co.in', async () => {
@@ -373,7 +389,9 @@ describe('HCM-LVP-006 — approval chains resolve real approvers and enforce the
     const managerLevel = approvals.find((a) => a.kind === 'manager');
     expect(managerLevel?.approverPartyId).toBe(managerPerson.id);
 
-    const decided = await asEmployee(managerPerson.id, () => decideApprovalLevel(managerLevel!.id, 'approved', 'looks fine'));
+    const decided = await asEmployee(managerPerson.id, () =>
+      decideApprovalLevel(managerLevel!.id, 'approved', 'looks fine'),
+    );
     expect(decided.decision).toBe('approved');
 
     const rows = await asUser('operations@kaizen.co.in', () => listApprovalsForRequest(request.id));
@@ -411,9 +429,21 @@ describe('HCM-LVP-007 — restricted holiday elections are capped per financial 
     const { employment } = await makeEmployee('restricted');
     const fy = '2026-27';
     const holidays = await asUser('operations@kaizen.co.in', async () => {
-      const h1 = await createHoliday({ date: new Date(Date.UTC(2026, 9, 20)), name: `Fixture RH1 ${Date.now()}`, kind: 'restricted' });
-      const h2 = await createHoliday({ date: new Date(Date.UTC(2026, 10, 5)), name: `Fixture RH2 ${Date.now()}`, kind: 'restricted' });
-      const h3 = await createHoliday({ date: new Date(Date.UTC(2026, 11, 1)), name: `Fixture RH3 ${Date.now()}`, kind: 'restricted' });
+      const h1 = await createHoliday({
+        date: new Date(Date.UTC(2026, 9, 20)),
+        name: `Fixture RH1 ${Date.now()}`,
+        kind: 'restricted',
+      });
+      const h2 = await createHoliday({
+        date: new Date(Date.UTC(2026, 10, 5)),
+        name: `Fixture RH2 ${Date.now()}`,
+        kind: 'restricted',
+      });
+      const h3 = await createHoliday({
+        date: new Date(Date.UTC(2026, 11, 1)),
+        name: `Fixture RH3 ${Date.now()}`,
+        kind: 'restricted',
+      });
       return [h1, h2, h3];
     });
 
@@ -448,7 +478,7 @@ describe('HCM-LVP-008 — team calendar and cross-tenant isolation', () => {
     expect(result.entries).toEqual([]);
   });
 
-  it('HCM-LVP-009 (scope-axis fix): an own-scope employee is refused the team calendar, which reads other employments\' leave', async () => {
+  it("HCM-LVP-009 (scope-axis fix): an own-scope employee is refused the team calendar, which reads other employments' leave", async () => {
     const { person } = await makeEmployee('team-calendar-scope');
     const err = await expectReject(() => asEmployee(person.id, () => teamCalendar('2026-09')));
     expect(err.status).toBe(403);

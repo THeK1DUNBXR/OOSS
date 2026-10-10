@@ -28,7 +28,14 @@ interface TimesheetRow {
 }
 
 interface TimesheetDetail extends TimesheetRow {
-  entries: Array<{ id: string; date: string; projectId: string | null; taskRef: string | null; hours: string | number; billable: boolean }>;
+  entries: Array<{
+    id: string;
+    date: string;
+    projectId: string | null;
+    taskRef: string | null;
+    hours: string | number;
+    billable: boolean;
+  }>;
 }
 
 interface OvertimeRow {
@@ -54,15 +61,35 @@ interface RegularisationRow {
   status: string;
 }
 
-const TIMESHEET_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { draft: 'neutral', submitted: 'warn', approved: 'good', rejected: 'bad' };
-const OT_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { requested: 'warn', approved: 'good', rejected: 'bad' };
-const COMP_OFF_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { available: 'good', consumed: 'neutral', expired: 'bad' };
-const REG_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = { submitted: 'warn', approved: 'good', rejected: 'bad' };
+const TIMESHEET_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  draft: 'neutral',
+  submitted: 'warn',
+  approved: 'good',
+  rejected: 'bad',
+};
+const OT_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  requested: 'warn',
+  approved: 'good',
+  rejected: 'bad',
+};
+const COMP_OFF_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  available: 'good',
+  consumed: 'neutral',
+  expired: 'bad',
+};
+const REG_TONE: Record<string, 'neutral' | 'good' | 'warn' | 'bad'> = {
+  submitted: 'warn',
+  approved: 'good',
+  rejected: 'bad',
+};
 
 export function Attendance() {
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="My attendance" subtitle="Clock in and out, fill in this week's timesheet, request overtime, and see your comp-off balance." />
+      <PageHeader
+        title="My attendance"
+        subtitle="Clock in and out, fill in this week's timesheet, request overtime, and see your comp-off balance."
+      />
       <ClockCard />
       <div className="grid gap-4 lg:grid-cols-2">
         <TimesheetCard />
@@ -138,9 +165,18 @@ function ClockCard() {
 function TimesheetCard() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), projectId: '', taskRef: '', hours: '8', note: '' });
+  const [form, setForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    projectId: '',
+    taskRef: '',
+    hours: '8',
+    note: '',
+  });
 
-  const timesheets = useQuery({ queryKey: ['my-timesheets'], queryFn: () => api.get<TimesheetRow[]>('/hcm/time/timesheets/mine') });
+  const timesheets = useQuery({
+    queryKey: ['my-timesheets'],
+    queryFn: () => api.get<TimesheetRow[]>('/hcm/time/timesheets/mine'),
+  });
   const current = timesheets.data?.[0];
 
   const detail = useQuery({
@@ -184,7 +220,9 @@ function TimesheetCard() {
         </div>
       )}
 
-      {detail.data && detail.data.entries.length === 0 && <EmptyState message="No entries yet." hint="Add an entry, then submit for approval." />}
+      {detail.data && detail.data.entries.length === 0 && (
+        <EmptyState message="No entries yet." hint="Add an entry, then submit for approval." />
+      )}
       {detail.data && detail.data.entries.length > 0 && (
         <table className="table">
           <thead>
@@ -216,7 +254,11 @@ function TimesheetCard() {
 
       {current && current.status !== 'submitted' && current.status !== 'approved' && (
         <div className="mt-3">
-          <button className="btn-primary" onClick={() => submit.mutate()} disabled={submit.isPending || !detail.data?.entries.length}>
+          <button
+            className="btn-primary"
+            onClick={() => submit.mutate()}
+            disabled={submit.isPending || !detail.data?.entries.length}
+          >
             Submit for approval
           </button>
         </div>
@@ -238,10 +280,27 @@ function TimesheetCard() {
         }
       >
         <Row>
-          <TextInput label="Date" type="date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} required />
-          <TextInput label="Hours" type="number" value={form.hours} onChange={(v) => setForm({ ...form, hours: v })} required />
+          <TextInput
+            label="Date"
+            type="date"
+            value={form.date}
+            onChange={(v) => setForm({ ...form, date: v })}
+            required
+          />
+          <TextInput
+            label="Hours"
+            type="number"
+            value={form.hours}
+            onChange={(v) => setForm({ ...form, hours: v })}
+            required
+          />
         </Row>
-        <TextInput label="Task" value={form.taskRef} onChange={(v) => setForm({ ...form, taskRef: v })} hint="Optional" />
+        <TextInput
+          label="Task"
+          value={form.taskRef}
+          onChange={(v) => setForm({ ...form, taskRef: v })}
+          hint="Optional"
+        />
       </CreateModal>
     </Card>
   );
@@ -255,10 +314,17 @@ function OvertimeCard() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ date: '', hours: '2', reason: '' });
 
-  const requests = useQuery({ queryKey: ['my-overtime'], queryFn: () => api.get<OvertimeRow[]>('/hcm/time/overtime/mine') });
+  const requests = useQuery({
+    queryKey: ['my-overtime'],
+    queryFn: () => api.get<OvertimeRow[]>('/hcm/time/overtime/mine'),
+  });
 
   return (
-    <Card title="My overtime requests" subtitle="Pre-approval before working overtime — approval is also what earns the comp-off." actions={<NewButton label="Request overtime" onClick={() => setOpen(true)} />}>
+    <Card
+      title="My overtime requests"
+      subtitle="Pre-approval before working overtime — approval is also what earns the comp-off."
+      actions={<NewButton label="Request overtime" onClick={() => setOpen(true)} />}
+    >
       {requests.isLoading && <Loading />}
       {requests.error && <ErrorBox error={requests.error} />}
       {requests.data && requests.data.length === 0 && <EmptyState message="No overtime requests yet." />}
@@ -276,7 +342,9 @@ function OvertimeCard() {
               <tr key={r.id}>
                 <td>{date(r.date)}</td>
                 <td className="tabular-nums">{Number(r.hours).toFixed(2)}</td>
-                <td><StatusChip status={r.status} tone={OT_TONE[r.status] ?? 'neutral'} /></td>
+                <td>
+                  <StatusChip status={r.status} tone={OT_TONE[r.status] ?? 'neutral'} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -288,11 +356,25 @@ function OvertimeCard() {
         title="Request overtime"
         onClose={() => setOpen(false)}
         invalidate={[['my-overtime']]}
-        onSubmit={() => api.post('/hcm/time/overtime', { date: form.date, hours: Number(form.hours), reason: form.reason || null })}
+        onSubmit={() =>
+          api.post('/hcm/time/overtime', { date: form.date, hours: Number(form.hours), reason: form.reason || null })
+        }
       >
         <Row>
-          <TextInput label="Date" type="date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} required />
-          <TextInput label="Hours" type="number" value={form.hours} onChange={(v) => setForm({ ...form, hours: v })} required />
+          <TextInput
+            label="Date"
+            type="date"
+            value={form.date}
+            onChange={(v) => setForm({ ...form, date: v })}
+            required
+          />
+          <TextInput
+            label="Hours"
+            type="number"
+            value={form.hours}
+            onChange={(v) => setForm({ ...form, hours: v })}
+            required
+          />
         </Row>
         <TextArea label="Reason" value={form.reason} onChange={(v) => setForm({ ...form, reason: v })} />
       </CreateModal>
@@ -305,7 +387,10 @@ function OvertimeCard() {
 // ---------------------------------------------------------------------------
 
 function CompOffCard() {
-  const compOffs = useQuery({ queryKey: ['my-compoffs'], queryFn: () => api.get<CompOffRow[]>('/hcm/time/comp-offs/mine') });
+  const compOffs = useQuery({
+    queryKey: ['my-compoffs'],
+    queryFn: () => api.get<CompOffRow[]>('/hcm/time/comp-offs/mine'),
+  });
 
   const available = (compOffs.data ?? []).filter((c) => c.status === 'available');
   const balance = available.reduce((s, c) => s + Number(c.days), 0);
@@ -315,7 +400,12 @@ function CompOffCard() {
       title="My comp-off"
       subtitle="Earned from approved overtime or filed holiday work; expires 90 days after it's earned. HR marks a day consumed."
     >
-      <Metric label="Available" value={balance.toFixed(2)} sub="days" noActionReason={available.length === 0 ? 'Nothing to use yet.' : undefined} />
+      <Metric
+        label="Available"
+        value={balance.toFixed(2)}
+        sub="days"
+        noActionReason={available.length === 0 ? 'Nothing to use yet.' : undefined}
+      />
       {compOffs.isLoading && <Loading />}
       {compOffs.error && <ErrorBox error={compOffs.error} />}
       {compOffs.data && compOffs.data.length === 0 && <EmptyState message="No comp-off records yet." />}
@@ -335,7 +425,9 @@ function CompOffCard() {
                 <td>{date(c.earnedOn)}</td>
                 <td className="tabular-nums">{Number(c.days).toFixed(2)}</td>
                 <td>{date(c.expiresOn)}</td>
-                <td><StatusChip status={c.status} tone={COMP_OFF_TONE[c.status] ?? 'neutral'} /></td>
+                <td>
+                  <StatusChip status={c.status} tone={COMP_OFF_TONE[c.status] ?? 'neutral'} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -353,10 +445,17 @@ function RegularisationCard() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ date: '', reason: '' });
 
-  const rows = useQuery({ queryKey: ['my-regularisations'], queryFn: () => api.get<RegularisationRow[]>('/hcm/time/regularisations/mine') });
+  const rows = useQuery({
+    queryKey: ['my-regularisations'],
+    queryFn: () => api.get<RegularisationRow[]>('/hcm/time/regularisations/mine'),
+  });
 
   return (
-    <Card title="My regularisations" subtitle="Raise this for a day with a missed punch or a wrong one — it disputes the day until HR decides." actions={<NewButton label="Raise a regularisation" onClick={() => setOpen(true)} />}>
+    <Card
+      title="My regularisations"
+      subtitle="Raise this for a day with a missed punch or a wrong one — it disputes the day until HR decides."
+      actions={<NewButton label="Raise a regularisation" onClick={() => setOpen(true)} />}
+    >
       {rows.isLoading && <Loading />}
       {rows.error && <ErrorBox error={rows.error} />}
       {rows.data && rows.data.length === 0 && <EmptyState message="No regularisation requests yet." />}
@@ -373,8 +472,12 @@ function RegularisationCard() {
             {rows.data.map((r) => (
               <tr key={r.id}>
                 <td>{date(r.date)}</td>
-                <td className="max-w-xs truncate" title={r.reason}>{r.reason}</td>
-                <td><StatusChip status={r.status} tone={REG_TONE[r.status] ?? 'neutral'} /></td>
+                <td className="max-w-xs truncate" title={r.reason}>
+                  {r.reason}
+                </td>
+                <td>
+                  <StatusChip status={r.status} tone={REG_TONE[r.status] ?? 'neutral'} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -388,7 +491,13 @@ function RegularisationCard() {
         invalidate={[['my-regularisations']]}
         onSubmit={() => api.post('/hcm/time/regularisations', { date: form.date, reason: form.reason })}
       >
-        <TextInput label="Date" type="date" value={form.date} onChange={(v) => setForm({ ...form, date: v })} required />
+        <TextInput
+          label="Date"
+          type="date"
+          value={form.date}
+          onChange={(v) => setForm({ ...form, date: v })}
+          required
+        />
         <TextArea label="Reason" value={form.reason} onChange={(v) => setForm({ ...form, reason: v })} required />
       </CreateModal>
     </Card>

@@ -54,7 +54,10 @@ export interface PanGstinCheckResult {
 }
 
 /** Named-error wrapper: what a mismatch is called and what it says, in one place. */
-export function checkPanAgainstGstin(pan: string | null | undefined, gstin: string | null | undefined): PanGstinCheckResult {
+export function checkPanAgainstGstin(
+  pan: string | null | undefined,
+  gstin: string | null | undefined,
+): PanGstinCheckResult {
   if (panMatchesGstin(pan, gstin)) return { ok: true, reasonCode: null, message: null };
   return {
     ok: false,
@@ -71,10 +74,21 @@ export const PASSWORD_MIN_LENGTH = 12;
 
 /** Small, deliberately short — a blocklist is a floor, not a strength meter. */
 export const COMMON_PASSWORDS = new Set([
-  'password', 'password1', 'password123', '123456789012', 'qwertyuiop12',
-  'letmein12345', 'admin12345678', 'welcome123456', 'changeme12345',
-  'iloveyou12345', '111111111111', 'aaaaaaaaaaaaa', 'dev-secret-change-me',
-  'change-me-in-production', 'docker-development-secret-not-for-production',
+  'password',
+  'password1',
+  'password123',
+  '123456789012',
+  'qwertyuiop12',
+  'letmein12345',
+  'admin12345678',
+  'welcome123456',
+  'changeme12345',
+  'iloveyou12345',
+  '111111111111',
+  'aaaaaaaaaaaaa',
+  'dev-secret-change-me',
+  'change-me-in-production',
+  'docker-development-secret-not-for-production',
 ]);
 
 export interface PasswordCheckResult {
@@ -83,7 +97,11 @@ export interface PasswordCheckResult {
 }
 
 /** Pure — no DB, no hashing. Caller decides what happens with a failing result. */
-export function validatePassword(password: string, email?: string | null, minLength = PASSWORD_MIN_LENGTH): PasswordCheckResult {
+export function validatePassword(
+  password: string,
+  email?: string | null,
+  minLength = PASSWORD_MIN_LENGTH,
+): PasswordCheckResult {
   const reasons: string[] = [];
   if (password.length < minLength) reasons.push(`Must be at least ${minLength} characters.`);
   if (email && password.toLowerCase() === email.trim().toLowerCase()) {

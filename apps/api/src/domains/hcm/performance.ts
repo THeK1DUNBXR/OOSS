@@ -71,7 +71,10 @@ async function employmentOrThrow(employmentRelationshipId: string): Promise<{ id
 }
 
 /** The current principal's own employment relationship, for the `/me` surfaces. */
-export async function myEmploymentContext(): Promise<{ employmentRelationshipId: string | null; partyId: string | null }> {
+export async function myEmploymentContext(): Promise<{
+  employmentRelationshipId: string | null;
+  partyId: string | null;
+}> {
   const auth = currentAuth();
   if (!auth.partyId) return { employmentRelationshipId: null, partyId: null };
   const employment = await prisma.employmentRelationship.findFirst({
@@ -110,7 +113,9 @@ export async function createReviewCycle(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'review_cycles', verb: 'create' });
   if (!REVIEW_CYCLE_KINDS.includes(input.kind)) {
-    throw ApiError.badRequest(`"${input.kind}" is not a review cycle kind. Expected one of: ${REVIEW_CYCLE_KINDS.join(', ')}.`);
+    throw ApiError.badRequest(
+      `"${input.kind}" is not a review cycle kind. Expected one of: ${REVIEW_CYCLE_KINDS.join(', ')}.`,
+    );
   }
   if (input.endsOn.getTime() <= input.startsOn.getTime()) {
     throw ApiError.badRequest('A review cycle must end after it starts.');
@@ -154,7 +159,9 @@ export async function advanceReviewCyclePhase(id: string, to: ReviewCyclePhase) 
 
   const from = cycle.phase as ReviewCyclePhase;
   if (!REVIEW_CYCLE_PHASES.includes(to)) {
-    throw ApiError.badRequest(`"${to}" is not a review cycle phase. Expected one of: ${REVIEW_CYCLE_PHASES.join(', ')}.`);
+    throw ApiError.badRequest(
+      `"${to}" is not a review cycle phase. Expected one of: ${REVIEW_CYCLE_PHASES.join(', ')}.`,
+    );
   }
   if (!canAdvancePhase(from, to)) {
     const expected = nextPhase(from);
@@ -219,7 +226,12 @@ export async function createReviewTemplate(input: { name: string; sections: unkn
     throw ApiError.badRequest('A review template needs a rating scale.');
   }
   return prisma.reviewTemplate.create({
-    data: { tenantId: auth.tenantId, name: input.name, sections: input.sections as never, ratingScale: input.ratingScale as never },
+    data: {
+      tenantId: auth.tenantId,
+      name: input.name,
+      sections: input.sections as never,
+      ratingScale: input.ratingScale as never,
+    },
   });
 }
 
@@ -227,7 +239,11 @@ export async function createReviewTemplate(input: { name: string; sections: unkn
 // Review assignments + responses
 // ---------------------------------------------------------------------------
 
-export async function listReviewAssignments(filters: { cycleId?: string; employmentRelationshipId?: string; mine?: boolean }) {
+export async function listReviewAssignments(filters: {
+  cycleId?: string;
+  employmentRelationshipId?: string;
+  mine?: boolean;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'reviews', verb: 'view' });
   const scope = await scopeFor('reviews', 'view');
@@ -267,11 +283,15 @@ export async function createReviewAssignment(input: {
   // holding no real authority over the cycle.
   const scope = await scopeFor('reviews', 'create');
   if (scope !== 'all') {
-    throw ApiError.forbidden('Assigning a review needs an all-scope grant on reviews; it is not a self-service action.');
+    throw ApiError.forbidden(
+      'Assigning a review needs an all-scope grant on reviews; it is not a self-service action.',
+    );
   }
 
   if (!REVIEW_ASSIGNMENT_KINDS.includes(input.kind)) {
-    throw ApiError.badRequest(`"${input.kind}" is not a review assignment kind. Expected one of: ${REVIEW_ASSIGNMENT_KINDS.join(', ')}.`);
+    throw ApiError.badRequest(
+      `"${input.kind}" is not a review assignment kind. Expected one of: ${REVIEW_ASSIGNMENT_KINDS.join(', ')}.`,
+    );
   }
 
   const cycle = await prisma.reviewCycle.findFirst({ where: { id: input.cycleId, tenantId: auth.tenantId } });
@@ -305,7 +325,12 @@ export async function createReviewAssignment(input: {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'review_assignment', subjectId: assignment.id, after: assignment as never });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'review_assignment',
+    subjectId: assignment.id,
+    after: assignment as never,
+  });
   return assignment;
 }
 
@@ -329,7 +354,10 @@ export async function getReviewAssignment(id: string) {
   return { ...assignment, response };
 }
 
-export async function submitReviewResponse(assignmentId: string, input: { ratings: unknown; comments?: string | null }) {
+export async function submitReviewResponse(
+  assignmentId: string,
+  input: { ratings: unknown; comments?: string | null },
+) {
   const auth = currentAuth();
   const assignment = await prisma.reviewAssignment.findFirst({ where: { id: assignmentId, tenantId: auth.tenantId } });
   if (!assignment) throw ApiError.notFound('Review assignment');
@@ -337,7 +365,9 @@ export async function submitReviewResponse(assignmentId: string, input: { rating
   await assertCan({ resource: 'reviews', verb: 'edit', record: { ownerPartyId: assignment.reviewerPartyId } });
 
   if (assignment.status === 'submitted') {
-    throw ApiError.conflict('This review has already been submitted. A correction is a new assignment, not an edit to a filed one.');
+    throw ApiError.conflict(
+      'This review has already been submitted. A correction is a new assignment, not an edit to a filed one.',
+    );
   }
   if (!Array.isArray(input.ratings) || input.ratings.length === 0) {
     throw ApiError.badRequest('A review response needs at least one rating.');
@@ -364,7 +394,9 @@ export async function submitReviewResponse(assignmentId: string, input: { rating
   await emit({
     name: EVENTS.REVIEW_SUBMITTED,
     subject: { entityType: 'review_assignment', entityId: assignmentId },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: assignment.employmentRelationshipId }],
+    related: [
+      { relation: 'about', entityType: 'employment_relationship', entityId: assignment.employmentRelationshipId },
+    ],
     newState: { status: 'submitted', kind: assignment.kind },
     owner: { partyId: assignment.reviewerPartyId },
     impact: { domains: ['hr'] },
@@ -396,14 +428,19 @@ export async function listCalibrationSessions(cycleId?: string) {
   });
 }
 
-export async function openCalibrationSession(input: { cycleId: string; participants: Array<{ employmentRelationshipId: string }> }) {
+export async function openCalibrationSession(input: {
+  cycleId: string;
+  participants: Array<{ employmentRelationshipId: string }>;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'calibrations', verb: 'create' });
 
   const cycle = await prisma.reviewCycle.findFirst({ where: { id: input.cycleId, tenantId: auth.tenantId } });
   if (!cycle) throw ApiError.notFound('Review cycle');
   if (cycle.phase !== 'calibration') {
-    throw ApiError.unprocessable(`Cycle is in phase "${cycle.phase}". A calibration session opens once it reaches "calibration".`);
+    throw ApiError.unprocessable(
+      `Cycle is in phase "${cycle.phase}". A calibration session opens once it reaches "calibration".`,
+    );
   }
   if (!input.participants?.length) throw ApiError.badRequest('A calibration session needs at least one participant.');
 
@@ -415,7 +452,12 @@ export async function openCalibrationSession(input: { cycleId: string; participa
       participants: input.participants as never,
     },
   });
-  await auditWrite({ action: 'create', subjectType: 'calibration_session', subjectId: session.id, after: session as never });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'calibration_session',
+    subjectId: session.id,
+    after: session as never,
+  });
   return session;
 }
 
@@ -425,11 +467,14 @@ export async function updateCalibrationDecisions(id: string, decisions: Calibrat
 
   const session = await prisma.calibrationSession.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!session) throw ApiError.notFound('Calibration session');
-  if (session.status === 'closed') throw ApiError.conflict('This calibration session is closed and can no longer be edited.');
+  if (session.status === 'closed')
+    throw ApiError.conflict('This calibration session is closed and can no longer be edited.');
 
   for (const d of decisions) {
     if (!POTENTIAL_LEVELS.includes(d.potential)) {
-      throw ApiError.badRequest(`"${d.potential}" is not a potential level. Expected one of: ${POTENTIAL_LEVELS.join(', ')}.`);
+      throw ApiError.badRequest(
+        `"${d.potential}" is not a potential level. Expected one of: ${POTENTIAL_LEVELS.join(', ')}.`,
+      );
     }
   }
 
@@ -463,7 +508,13 @@ export async function closeCalibrationSession(id: string) {
       });
       if (!employment) continue;
       await tx.finalRating.upsert({
-        where: { tenantId_cycleId_employmentRelationshipId: { tenantId: auth.tenantId, cycleId: session.cycleId, employmentRelationshipId: d.employmentRelationshipId } },
+        where: {
+          tenantId_cycleId_employmentRelationshipId: {
+            tenantId: auth.tenantId,
+            cycleId: session.cycleId,
+            employmentRelationshipId: d.employmentRelationshipId,
+          },
+        },
         create: {
           tenantId: auth.tenantId,
           cycleId: session.cycleId,
@@ -546,7 +597,9 @@ export async function releaseFinalRating(id: string) {
   // their *own*.
   const scope = await scopeFor('reviews', 'edit');
   if (scope !== 'all') {
-    throw ApiError.forbidden('Releasing a rating needs an all-scope grant on reviews; it is not a self-service action.');
+    throw ApiError.forbidden(
+      'Releasing a rating needs an all-scope grant on reviews; it is not a self-service action.',
+    );
   }
 
   const rating = await prisma.finalRating.findFirst({ where: { id, tenantId: auth.tenantId } });
@@ -555,7 +608,9 @@ export async function releaseFinalRating(id: string) {
 
   const cycle = await prisma.reviewCycle.findFirst({ where: { id: rating.cycleId, tenantId: auth.tenantId } });
   if (!cycle || !isCycleClosed(cycle.phase as ReviewCyclePhase)) {
-    throw ApiError.unprocessable('A rating can only be released once its cycle is closed — calibration is not final until then.');
+    throw ApiError.unprocessable(
+      'A rating can only be released once its cycle is closed — calibration is not final until then.',
+    );
   }
 
   if (!canReleaseRating(rating.subjectPartyId, auth.partyId ?? '')) {
@@ -585,9 +640,13 @@ export async function nineBoxForCycle(cycleId: string) {
   const auth = currentAuth();
   const scope = await scopeFor('reviews', 'view');
   if (scope !== 'all') {
-    throw ApiError.forbidden('The 9-box is a statement about every rated employee at once; it needs an all-scope grant on reviews.');
+    throw ApiError.forbidden(
+      'The 9-box is a statement about every rated employee at once; it needs an all-scope grant on reviews.',
+    );
   }
-  const rows = await prisma.finalRating.findMany({ where: { tenantId: auth.tenantId, cycleId, rating: { not: null }, potential: { not: null } } });
+  const rows = await prisma.finalRating.findMany({
+    where: { tenantId: auth.tenantId, cycleId, rating: { not: null }, potential: { not: null } },
+  });
   return rows.map((r) => {
     const performanceTier = ratingTier(Number(r.rating));
     const cell = nineBoxCell(performanceTier, r.potential as PotentialLevel);
@@ -606,7 +665,8 @@ export async function listFeedback(filters: { employmentRelationshipId?: string;
 
   const where: Record<string, unknown> = { tenantId: auth.tenantId };
   if (filters.employmentRelationshipId) {
-    where[filters.direction === 'given' ? 'fromEmploymentRelationshipId' : 'toEmploymentRelationshipId'] = filters.employmentRelationshipId;
+    where[filters.direction === 'given' ? 'fromEmploymentRelationshipId' : 'toEmploymentRelationshipId'] =
+      filters.employmentRelationshipId;
   }
   if (scope !== 'all') {
     where.OR = [{ toPartyId: auth.partyId }, { fromPartyId: auth.partyId }];
@@ -630,7 +690,9 @@ export async function giveFeedback(input: {
   }
   const visibility = input.visibility ?? 'private';
   if (!FEEDBACK_VISIBILITIES.includes(visibility)) {
-    throw ApiError.badRequest(`"${visibility}" is not a feedback visibility. Expected one of: ${FEEDBACK_VISIBILITIES.join(', ')}.`);
+    throw ApiError.badRequest(
+      `"${visibility}" is not a feedback visibility. Expected one of: ${FEEDBACK_VISIBILITIES.join(', ')}.`,
+    );
   }
   if (!input.message.trim()) throw ApiError.badRequest('Feedback needs a message.');
 
@@ -704,7 +766,9 @@ export async function scheduleOneOnOne(input: {
   // schedule a 1:1 between two arbitrary colleagues.
   const scope = await scopeFor('hcm_one_on_ones', 'create');
   if (scope !== 'all' && manager.personId !== auth.partyId && report.personId !== auth.partyId) {
-    throw ApiError.forbidden('A 1:1 can only be scheduled by one of its two participants, unless you hold an all-scope grant.');
+    throw ApiError.forbidden(
+      'A 1:1 can only be scheduled by one of its two participants, unless you hold an all-scope grant.',
+    );
   }
 
   const row = await prisma.oneOnOne.create({
@@ -722,7 +786,9 @@ export async function scheduleOneOnOne(input: {
   await emit({
     name: EVENTS.ONE_ON_ONE_SCHEDULED,
     subject: { entityType: 'one_on_one', entityId: row.id },
-    related: [{ relation: 'with', entityType: 'employment_relationship', entityId: input.reportEmploymentRelationshipId }],
+    related: [
+      { relation: 'with', entityType: 'employment_relationship', entityId: input.reportEmploymentRelationshipId },
+    ],
     newState: { scheduledAt: row.scheduledAt.toISOString(), status: row.status },
     owner: { partyId: report.personId },
     impact: { domains: ['hr'] },
@@ -785,7 +851,9 @@ export async function openPip(input: {
   }
 
   const subject = await employmentOrThrow(input.employmentRelationshipId);
-  const manager = input.managerEmploymentRelationshipId ? await employmentOrThrow(input.managerEmploymentRelationshipId) : null;
+  const manager = input.managerEmploymentRelationshipId
+    ? await employmentOrThrow(input.managerEmploymentRelationshipId)
+    : null;
 
   const row = await prisma.pip.create({
     data: {
@@ -817,7 +885,8 @@ export async function addPipCheckpoint(id: string, checkpoint: { note: string; o
   const pip = await prisma.pip.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!pip) throw ApiError.notFound('PIP');
   await assertCan({ resource: 'pips', verb: 'edit' });
-  if (pip.outcome !== 'open') throw ApiError.conflict(`This PIP is already ${pip.outcome}. No further checkpoints can be added.`);
+  if (pip.outcome !== 'open')
+    throw ApiError.conflict(`This PIP is already ${pip.outcome}. No further checkpoints can be added.`);
 
   const checkpoints = ((pip.checkpoints as unknown as Array<Record<string, unknown>>) ?? []).concat([
     { at: new Date().toISOString(), note: checkpoint.note, onTrack: checkpoint.onTrack },
@@ -877,13 +946,19 @@ export async function listSuccessionPlans() {
   return prisma.successionPlan.findMany({ where: { tenantId: auth.tenantId }, orderBy: { createdAt: 'desc' } });
 }
 
-export async function createSuccessionPlan(input: { positionTitle: string; positionId?: string | null; successors: SuccessorInput[] }) {
+export async function createSuccessionPlan(input: {
+  positionTitle: string;
+  positionId?: string | null;
+  successors: SuccessorInput[];
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'succession_plans', verb: 'create' });
 
   for (const s of input.successors ?? []) {
     if (!READINESS_LEVELS.includes(s.readiness)) {
-      throw ApiError.badRequest(`"${s.readiness}" is not a readiness level. Expected one of: ${READINESS_LEVELS.join(', ')}.`);
+      throw ApiError.badRequest(
+        `"${s.readiness}" is not a readiness level. Expected one of: ${READINESS_LEVELS.join(', ')}.`,
+      );
     }
     await employmentOrThrow(s.employmentRelationshipId);
   }
@@ -917,7 +992,9 @@ export async function updateSuccessionPlan(id: string, successors: SuccessorInpu
 
   for (const s of successors) {
     if (!READINESS_LEVELS.includes(s.readiness)) {
-      throw ApiError.badRequest(`"${s.readiness}" is not a readiness level. Expected one of: ${READINESS_LEVELS.join(', ')}.`);
+      throw ApiError.badRequest(
+        `"${s.readiness}" is not a readiness level. Expected one of: ${READINESS_LEVELS.join(', ')}.`,
+      );
     }
     await employmentOrThrow(s.employmentRelationshipId);
   }

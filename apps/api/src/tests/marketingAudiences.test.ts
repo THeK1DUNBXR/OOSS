@@ -27,7 +27,12 @@ import {
   unsubscribeToken,
   withdrawByToken,
 } from '../domains/marketing/preferences.js';
-import { ensureDefaultChannels, getPolicy, patchPolicy, DEFAULT_MARKETING_POLICY } from '../domains/marketing/settings.js';
+import {
+  ensureDefaultChannels,
+  getPolicy,
+  patchPolicy,
+  DEFAULT_MARKETING_POLICY,
+} from '../domains/marketing/settings.js';
 import { asSystem } from '../platform/context.js';
 import { CHANNEL_KEYS } from '@kaizen/shared';
 import { publishNotice } from '../domains/compliance/privacy.js';
@@ -43,7 +48,10 @@ beforeAll(async () => {
   // final, never edited) — so this republishes with 'marketing' included
   // whenever the current notice does not already name it, rather than
   // assuming a fixture seeded it once and never changed.
-  const current = await udb.privacyNotice.findFirst({ where: { tenantId: TENANT, status: 'current' }, orderBy: { version: 'desc' } });
+  const current = await udb.privacyNotice.findFirst({
+    where: { tenantId: TENANT, status: 'current' },
+    orderBy: { version: 'desc' },
+  });
   const purposes = (current?.purposes as Array<{ code: string }> | undefined) ?? [];
   if (!purposes.some((p) => p.code === 'marketing')) {
     await asSystem(TENANT, () =>
@@ -92,10 +100,25 @@ describe('MKT-AUD — dynamic audience over leads', () => {
     const marker = `mkt-aud-${Date.now()}`;
 
     await asUser(ACTOR, async () => {
-      await createLead({ title: `${marker}-A`, vertical: 'cybersecurity', source: 'manual', person: { fullName: `${marker} Lead A`, primaryEmail: `${marker}-a@mkttest.example` } });
-      await createLead({ title: `${marker}-B`, vertical: 'cybersecurity', source: 'manual', person: { fullName: `${marker} Lead B`, primaryEmail: `${marker}-b@mkttest.example` } });
+      await createLead({
+        title: `${marker}-A`,
+        vertical: 'cybersecurity',
+        source: 'manual',
+        person: { fullName: `${marker} Lead A`, primaryEmail: `${marker}-a@mkttest.example` },
+      });
+      await createLead({
+        title: `${marker}-B`,
+        vertical: 'cybersecurity',
+        source: 'manual',
+        person: { fullName: `${marker} Lead B`, primaryEmail: `${marker}-b@mkttest.example` },
+      });
       // A distractor in a different vertical must not be counted.
-      await createLead({ title: `${marker}-C`, vertical: 'education', source: 'manual', person: { fullName: `${marker} Lead C`, primaryEmail: `${marker}-c@mkttest.example` } });
+      await createLead({
+        title: `${marker}-C`,
+        vertical: 'education',
+        source: 'manual',
+        person: { fullName: `${marker} Lead C`, primaryEmail: `${marker}-c@mkttest.example` },
+      });
     });
 
     const audience = await asUser(ACTOR, () =>
@@ -103,7 +126,12 @@ describe('MKT-AUD — dynamic audience over leads', () => {
         name: `Cyber leads ${marker}`,
         kind: 'dynamic',
         entityType: 'lead',
-        rules: { all: [{ field: 'vertical', op: 'eq', value: 'cybersecurity' }, { field: 'source', op: 'eq', value: 'manual' }] },
+        rules: {
+          all: [
+            { field: 'vertical', op: 'eq', value: 'cybersecurity' },
+            { field: 'source', op: 'eq', value: 'manual' },
+          ],
+        },
       }),
     );
 
@@ -325,7 +353,12 @@ describe('MKT-AUD — audiencePersonIds resolves entity members to Person ids', 
   it('resolves a lead member to the underlying person', async () => {
     const marker = `mkt-aud-resolve-${Date.now()}`;
     const lead = await asUser(ACTOR, () =>
-      createLead({ title: marker, vertical: 'cybersecurity', source: 'manual', person: { fullName: marker, primaryEmail: `${marker}@mkttest.example` } }),
+      createLead({
+        title: marker,
+        vertical: 'cybersecurity',
+        source: 'manual',
+        person: { fullName: marker, primaryEmail: `${marker}@mkttest.example` },
+      }),
     );
 
     const audience = await asUser(ACTOR, () => createAudience({ name: marker, kind: 'static', entityType: 'lead' }));

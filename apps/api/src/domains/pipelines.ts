@@ -55,10 +55,9 @@ export async function createPipeline(input: PipelineInput) {
     where: { tenantId: auth.tenantId, pipelineCode: input.pipelineCode, effectiveTo: null },
   });
   if (clash) {
-    throw ApiError.conflict(
-      `A pipeline with code ${input.pipelineCode} is already in force for this tenant.`,
-      { existingId: clash.id },
-    );
+    throw ApiError.conflict(`A pipeline with code ${input.pipelineCode} is already in force for this tenant.`, {
+      existingId: clash.id,
+    });
   }
 
   // Exactly one PIPELINE_DEFINITION per tenant may be is_default = true at any
@@ -142,7 +141,13 @@ export async function addStage(pipelineId: string, input: StageInput) {
 
 export async function addTransition(
   pipelineId: string,
-  input: { fromStageKey: string | null; toStageKey: string; requiresApproval?: boolean; requiredPermission?: string; emitsEvent?: string },
+  input: {
+    fromStageKey: string | null;
+    toStageKey: string;
+    requiresApproval?: boolean;
+    requiredPermission?: string;
+    emitsEvent?: string;
+  },
 ) {
   const auth = currentAuth();
   await assertCan({ resource: 'pipeline_transitions', verb: 'create' });
@@ -177,7 +182,11 @@ export async function updateStage(stageId: string, input: Record<string, unknown
   await emit({
     name: EVENTS.PIPELINE_STAGE_UPDATED,
     subject: { entityType: 'pipeline_stage', entityId: stageId, recordCode: after.stageKey },
-    newState: { label: after.label, stageAgeBudgetDays: after.stageAgeBudgetDays, defaultProbability: after.defaultProbability },
+    newState: {
+      label: after.label,
+      stageAgeBudgetDays: after.stageAgeBudgetDays,
+      defaultProbability: after.defaultProbability,
+    },
   });
   return after;
 }
@@ -377,8 +386,12 @@ export async function retireStage(stageId: string) {
   if (!stage) throw ApiError.notFound('Pipeline stage');
 
   const [leads, opps] = await Promise.all([
-    prisma.lead.count({ where: { tenantId: auth.tenantId, pipelineId: stage.pipelineId, stageKey: stage.stageKey, deletedAt: null } }),
-    prisma.opportunity.count({ where: { tenantId: auth.tenantId, pipelineId: stage.pipelineId, stageKey: stage.stageKey, deletedAt: null } }),
+    prisma.lead.count({
+      where: { tenantId: auth.tenantId, pipelineId: stage.pipelineId, stageKey: stage.stageKey, deletedAt: null },
+    }),
+    prisma.opportunity.count({
+      where: { tenantId: auth.tenantId, pipelineId: stage.pipelineId, stageKey: stage.stageKey, deletedAt: null },
+    }),
   ]);
 
   const live = leads + opps;

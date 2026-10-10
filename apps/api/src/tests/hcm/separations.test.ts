@@ -66,7 +66,10 @@ async function makeEmployee(label: string) {
 }
 
 /** Runs `fn` as the fixture employee themselves — they hold no user/login, so a constructed AuthContext at `employee` role stands in for one, exactly as `asPrincipal` does for cross-tenant and agent cases elsewhere in the suite. */
-function asEmployee<T>(fixture: { person: { id: string }; affiliation: { id: string } }, fn: () => Promise<T>): Promise<T> {
+function asEmployee<T>(
+  fixture: { person: { id: string }; affiliation: { id: string } },
+  fn: () => Promise<T>,
+): Promise<T> {
   const auth: AuthContext = {
     tenantId: TENANT,
     principalType: 'human',
@@ -109,10 +112,14 @@ describe('HCM-SEP-001 — a resignation, accepted, moves the employment into not
     expect(accepted.status).toBe('accepted');
     expect(accepted.offboardingId).toBeTruthy();
 
-    const employment = await unscopedPrisma.employmentRelationship.findUniqueOrThrow({ where: { id: fixture.employment.id } });
+    const employment = await unscopedPrisma.employmentRelationship.findUniqueOrThrow({
+      where: { id: fixture.employment.id },
+    });
     expect(employment.status).toBe('NoticePeriod');
 
-    const offboarding = await unscopedPrisma.offboarding.findUniqueOrThrow({ where: { employmentRelationshipId: fixture.employment.id } });
+    const offboarding = await unscopedPrisma.offboarding.findUniqueOrThrow({
+      where: { employmentRelationshipId: fixture.employment.id },
+    });
     expect(offboarding.status).toBe('NoticePeriodActive');
   });
 });
@@ -209,8 +216,16 @@ describe('HCM-SEP-005 — notice days come from the most specific active policy,
   it('resolves an engagement-type-specific policy over the employment default, and copies it onto the resignation at submission', async () => {
     const fixture = await makeEmployee('notice-policy');
     await asUser('operations@kaizen.co.in', async () => {
-      await prisma.employmentRelationship.update({ where: { id: fixture.employment.id }, data: { engagementType: 'contractor' } });
-      await createNoticePolicy({ name: 'Contractor notice', engagementType: 'contractor', noticeDays: 7, buyoutAllowed: false });
+      await prisma.employmentRelationship.update({
+        where: { id: fixture.employment.id },
+        data: { engagementType: 'contractor' },
+      });
+      await createNoticePolicy({
+        name: 'Contractor notice',
+        engagementType: 'contractor',
+        noticeDays: 7,
+        buyoutAllowed: false,
+      });
     });
 
     const resolved = await asUser('operations@kaizen.co.in', () => noticeDaysFor(fixture.employment.id));
@@ -269,7 +284,11 @@ describe('HCM-SEP-007 — a department cannot clear the exit of the person who i
   it('refuses when the clearing principal is the departing employee themselves', async () => {
     const fixture = await makeEmployee('self-clear');
     const resignation = await asEmployee(fixture, () =>
-      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: fixture.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
     const accepted = await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
     const clearances = await asUser('operations@kaizen.co.in', () => initiateClearance(accepted.offboardingId!));
@@ -290,7 +309,11 @@ describe('HCM-SEP-008 — a blocked department disputes the offboarding, and cle
   it('moves the offboarding to BlockedDisputed on a block, and back to ClearancePending once the block clears', async () => {
     const fixture = await makeEmployee('block');
     const resignation = await asEmployee(fixture, () =>
-      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: fixture.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
     const accepted = await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
     const offboardingId = accepted.offboardingId!;
@@ -321,7 +344,11 @@ describe('HCM-SEP-009 — no-dues cannot be issued until every department has cl
   it('refuses while a department is outstanding, and succeeds once all five clear', async () => {
     const fixture = await makeEmployee('no-dues');
     const resignation = await asEmployee(fixture, () =>
-      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: fixture.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
     const accepted = await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
     const offboardingId = accepted.offboardingId!;
@@ -368,21 +395,19 @@ describe('HCM-SEP-010 — a resignation from another tenant 404s rather than 403
       consentCodes: [],
       stepUpVerified: true,
     };
-    const foreign = await asPrincipal(
-      foreignAuth,
-      () =>
-        prisma.resignation.create({
-          data: {
-            tenantId: otherTenant.id,
-            recordCode: 'RSG-2026-99999',
-            employmentRelationshipId: 'nonexistent',
-            submittedOn: new Date(),
-            requestedLastDay: new Date(),
-            noticeDays: 30,
-            reasonCategory: 'other',
-            status: 'submitted',
-          },
-        }),
+    const foreign = await asPrincipal(foreignAuth, () =>
+      prisma.resignation.create({
+        data: {
+          tenantId: otherTenant.id,
+          recordCode: 'RSG-2026-99999',
+          employmentRelationshipId: 'nonexistent',
+          submittedOn: new Date(),
+          requestedLastDay: new Date(),
+          noticeDays: 30,
+          reasonCategory: 'other',
+          status: 'submitted',
+        },
+      }),
     );
 
     const err = await expectReject(() => asUser('operations@kaizen.co.in', () => getResignation(foreign.id)));
@@ -398,10 +423,16 @@ describe('HCM-SEP-011 — an alumni record moves Terminated into Alumni and surv
   it('writes rehire-eligibility and consent onto the alumni record once separation reaches Terminated', async () => {
     const fixture = await makeEmployee('alumni');
     const resignation = await asEmployee(fixture, () =>
-      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: fixture.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
     await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
-    await asUser('operations@kaizen.co.in', () => transitionEmployment(fixture.employment.id, 'REACH_LAST_WORKING_DAY'));
+    await asUser('operations@kaizen.co.in', () =>
+      transitionEmployment(fixture.employment.id, 'REACH_LAST_WORKING_DAY'),
+    );
 
     const alumni = await asUser('operations@kaizen.co.in', () =>
       recordAlumni({
@@ -414,7 +445,9 @@ describe('HCM-SEP-011 — an alumni record moves Terminated into Alumni and surv
     expect(alumni.rehireEligible).toBe(true);
     expect(alumni.contactConsent).toBe(true);
 
-    const employment = await unscopedPrisma.employmentRelationship.findUniqueOrThrow({ where: { id: fixture.employment.id } });
+    const employment = await unscopedPrisma.employmentRelationship.findUniqueOrThrow({
+      where: { id: fixture.employment.id },
+    });
     expect(employment.status).toBe('Alumni');
   });
 });
@@ -423,16 +456,24 @@ describe('HCM-SEP-011 — an alumni record moves Terminated into Alumni and surv
 // HCM-SEP-012 — own-scope narrowing on the resignation list.
 // ===========================================================================
 
-describe('HCM-SEP-012 — an employee sees only their own resignations, never a colleague\'s', () => {
-  it('lists only the requesting employee\'s own row and cannot fetch a colleague\'s by id', async () => {
+describe("HCM-SEP-012 — an employee sees only their own resignations, never a colleague's", () => {
+  it("lists only the requesting employee's own row and cannot fetch a colleague's by id", async () => {
     const mine = await makeEmployee('own-scope-a');
     const theirs = await makeEmployee('own-scope-b');
 
     const myResignation = await asEmployee(mine, () =>
-      submitResignation({ employmentRelationshipId: mine.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: mine.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
     await asEmployee(theirs, () =>
-      submitResignation({ employmentRelationshipId: theirs.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: theirs.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
 
     const mineList = await asEmployee(mine, () => listResignations());
@@ -461,7 +502,11 @@ describe('HCM-SEP-013 — accepting a resignation needs an all-scope grant, neve
   it('refuses acceptance from a role holding `resignations:approve` at own scope', async () => {
     const fixture = await makeEmployee('scope-accept');
     const resignation = await asEmployee(fixture, () =>
-      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: fixture.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
 
     const err = await withFixtureRole(
@@ -477,7 +522,11 @@ describe('HCM-SEP-014 — clearing a department needs an all-scope grant, never 
   it('refuses a clear from a role holding `exit_clearances:edit` at own scope', async () => {
     const fixture = await makeEmployee('scope-clear');
     const resignation = await asEmployee(fixture, () =>
-      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: fixture.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
     const accepted = await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
     const clearances = await asUser('operations@kaizen.co.in', () => initiateClearance(accepted.offboardingId!));
@@ -495,7 +544,11 @@ describe('HCM-SEP-015 — opening exit clearance needs an all-scope grant, never
   it('refuses `initiateClearance` from a role holding `exit_clearances:create` at own scope', async () => {
     const fixture = await makeEmployee('scope-initiate');
     const resignation = await asEmployee(fixture, () =>
-      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: fixture.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
     const accepted = await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
 
@@ -512,7 +565,11 @@ describe('HCM-SEP-016 — issuing a no-dues certificate needs an all-scope grant
   it('refuses `issueNoDues` from a role holding `no_dues:create` at own scope', async () => {
     const fixture = await makeEmployee('scope-nodues');
     const resignation = await asEmployee(fixture, () =>
-      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: fixture.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
     const accepted = await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
     const clearances = await asUser('operations@kaizen.co.in', () => initiateClearance(accepted.offboardingId!));
@@ -533,10 +590,16 @@ describe('HCM-SEP-017 — recording an alumni entry needs an all-scope grant, ne
   it('refuses `recordAlumni` from a role holding `alumni:create` at own scope', async () => {
     const fixture = await makeEmployee('scope-alumni');
     const resignation = await asEmployee(fixture, () =>
-      submitResignation({ employmentRelationshipId: fixture.employment.id, requestedLastDay: new Date(), reasonCategory: 'other' }),
+      submitResignation({
+        employmentRelationshipId: fixture.employment.id,
+        requestedLastDay: new Date(),
+        reasonCategory: 'other',
+      }),
     );
     await asUser('operations@kaizen.co.in', () => acceptResignation(resignation.id));
-    await asUser('operations@kaizen.co.in', () => transitionEmployment(fixture.employment.id, 'REACH_LAST_WORKING_DAY'));
+    await asUser('operations@kaizen.co.in', () =>
+      transitionEmployment(fixture.employment.id, 'REACH_LAST_WORKING_DAY'),
+    );
 
     const err = await withFixtureRole(
       {

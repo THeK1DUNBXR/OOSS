@@ -92,7 +92,14 @@ describe('HCM-TIME-001 — a shift and a roster assignment', () => {
     const divya = await employmentFor('divya@kaizen.co.in');
 
     const roster = await asUser('hr@kaizen.co.in', async () => {
-      const shift = await createShift({ code: `SH-${stamp}`, name: 'General', startTime: '09:00', endTime: '18:00', graceMinutes: 10, breakMinutes: 60 });
+      const shift = await createShift({
+        code: `SH-${stamp}`,
+        name: 'General',
+        startTime: '09:00',
+        endTime: '18:00',
+        graceMinutes: 10,
+        breakMinutes: 60,
+      });
       return assignRoster({
         employmentRelationshipId: divya.employmentRelationshipId,
         shiftId: shift.id,
@@ -112,15 +119,30 @@ describe('HCM-TIME-002 — clock in/out on one’s own account', () => {
     const day = fixtureDay(2);
 
     await asUser('divya@kaizen.co.in', async (p) => {
-      await recordClockEvent({ employmentRelationshipId: divya.employmentRelationshipId, kind: 'in', occurredAt: new Date(day.getTime() + 9 * 3_600_000), source: 'web' });
+      await recordClockEvent({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        kind: 'in',
+        occurredAt: new Date(day.getTime() + 9 * 3_600_000),
+        source: 'web',
+      });
       expect(p.partyId).toBe(divya.personId);
 
       const rejected = await expectReject(() =>
-        recordClockEvent({ employmentRelationshipId: divya.employmentRelationshipId, kind: 'in', occurredAt: new Date(day.getTime() + 9.5 * 3_600_000), source: 'web' }),
+        recordClockEvent({
+          employmentRelationshipId: divya.employmentRelationshipId,
+          kind: 'in',
+          occurredAt: new Date(day.getTime() + 9.5 * 3_600_000),
+          source: 'web',
+        }),
       );
       expect(rejected.status).toBe(422);
 
-      await recordClockEvent({ employmentRelationshipId: divya.employmentRelationshipId, kind: 'out', occurredAt: new Date(day.getTime() + 18 * 3_600_000), source: 'web' });
+      await recordClockEvent({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        kind: 'out',
+        occurredAt: new Date(day.getTime() + 18 * 3_600_000),
+        source: 'web',
+      });
     });
   });
 });
@@ -132,20 +154,45 @@ describe('HCM-TIME-003 — nightly attendance derivation from clock events', () 
     const day = fixtureDay(10);
 
     await asUser('hr@kaizen.co.in', async () => {
-      const shift = await createShift({ code: `SH2-${stamp}`, name: 'General 2', startTime: '09:00', endTime: '17:00', graceMinutes: 10, breakMinutes: 30 });
-      await assignRoster({ employmentRelationshipId: divya.employmentRelationshipId, shiftId: shift.id, effectiveFrom: day, weeklyOffDays: [0] });
+      const shift = await createShift({
+        code: `SH2-${stamp}`,
+        name: 'General 2',
+        startTime: '09:00',
+        endTime: '17:00',
+        graceMinutes: 10,
+        breakMinutes: 30,
+      });
+      await assignRoster({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        shiftId: shift.id,
+        effectiveFrom: day,
+        weeklyOffDays: [0],
+      });
     });
 
     await asUser('divya@kaizen.co.in', async () => {
-      await recordClockEvent({ employmentRelationshipId: divya.employmentRelationshipId, kind: 'in', occurredAt: new Date(day.getTime() + 9 * 3_600_000) });
-      await recordClockEvent({ employmentRelationshipId: divya.employmentRelationshipId, kind: 'out', occurredAt: new Date(day.getTime() + 17 * 3_600_000) });
+      await recordClockEvent({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        kind: 'in',
+        occurredAt: new Date(day.getTime() + 9 * 3_600_000),
+      });
+      await recordClockEvent({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        kind: 'out',
+        occurredAt: new Date(day.getTime() + 17 * 3_600_000),
+      });
     });
 
     await asUser('hr@kaizen.co.in', () => deriveAttendanceFromClockEvents(day));
 
     const row = await asUser('hr@kaizen.co.in', () =>
       prisma.workAttendance.findUnique({
-        where: { employmentRelationshipId_workDate: { employmentRelationshipId: divya.employmentRelationshipId, workDate: day } },
+        where: {
+          employmentRelationshipId_workDate: {
+            employmentRelationshipId: divya.employmentRelationshipId,
+            workDate: day,
+          },
+        },
       }),
     );
     // 9:00-17:00 minus a 30-minute break is 7.5 hours.
@@ -160,7 +207,12 @@ describe('HCM-TIME-004 — timesheet submit → approve, and the Self-Dealing Ba
     const day = fixtureDay(20);
 
     const timesheet = await asUser('divya@kaizen.co.in', async () => {
-      const entry = await addTimesheetEntry({ employmentRelationshipId: divya.employmentRelationshipId, date: day, hours: 8, taskRef: 'Fixture task' });
+      const entry = await addTimesheetEntry({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        date: day,
+        hours: 8,
+        taskRef: 'Fixture task',
+      });
       return submitTimesheet(entry.timesheetId);
     });
     expect(timesheet.status).toBe('submitted');
@@ -182,10 +234,17 @@ describe('HCM-TIME-005 — approving overtime earns a comp-off, which can be con
     const day = fixtureDay(30);
 
     const request = await asUser('divya@kaizen.co.in', () =>
-      requestOvertime({ employmentRelationshipId: divya.employmentRelationshipId, date: day, hours: 4, reason: 'Month-end close' }),
+      requestOvertime({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        date: day,
+        hours: 4,
+        reason: 'Month-end close',
+      }),
     );
 
-    const selfApprove = await expectReject(() => asUser('divya@kaizen.co.in', () => approveOvertimeRequest(request.id)));
+    const selfApprove = await expectReject(() =>
+      asUser('divya@kaizen.co.in', () => approveOvertimeRequest(request.id)),
+    );
     expect(selfApprove.status).toBe(403);
 
     await asUser('hr@kaizen.co.in', () => approveOvertimeRequest(request.id, 'Approved.'));
@@ -237,12 +296,21 @@ describe('HCM-TIME-007 — attendance regularisation drives the existing WorkAtt
     const day = fixtureDay(40);
 
     const request = await asUser('divya@kaizen.co.in', () =>
-      submitRegularisation({ employmentRelationshipId: divya.employmentRelationshipId, date: day, reason: 'Forgot to clock in.' }),
+      submitRegularisation({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        date: day,
+        reason: 'Forgot to clock in.',
+      }),
     );
 
     const disputed = await asUser('hr@kaizen.co.in', () =>
       prisma.workAttendance.findUnique({
-        where: { employmentRelationshipId_workDate: { employmentRelationshipId: divya.employmentRelationshipId, workDate: day } },
+        where: {
+          employmentRelationshipId_workDate: {
+            employmentRelationshipId: divya.employmentRelationshipId,
+            workDate: day,
+          },
+        },
       }),
     );
     expect(disputed?.status).toBe('Disputed');
@@ -250,10 +318,14 @@ describe('HCM-TIME-007 — attendance regularisation drives the existing WorkAtt
     const selfApprove = await expectReject(() => asUser('divya@kaizen.co.in', () => approveRegularisation(request.id)));
     expect(selfApprove.status).toBe(403);
 
-    const approved = await asUser('hr@kaizen.co.in', () => approveRegularisation(request.id, 'Confirmed via badge log.', 480));
+    const approved = await asUser('hr@kaizen.co.in', () =>
+      approveRegularisation(request.id, 'Confirmed via badge log.', 480),
+    );
     expect(approved.status).toBe('approved');
 
-    const regularised = await asUser('hr@kaizen.co.in', () => prisma.workAttendance.findUnique({ where: { id: disputed!.id } }));
+    const regularised = await asUser('hr@kaizen.co.in', () =>
+      prisma.workAttendance.findUnique({ where: { id: disputed!.id } }),
+    );
     expect(regularised?.status).toBe('Regularised');
     expect(regularised?.workedMinutes).toBe(480);
 
@@ -275,7 +347,12 @@ describe('HCM-TIME-009 — own-scope visibility on a colleague’s timesheet', (
     const day = fixtureDay(50);
 
     const timesheet = await asUser('divya@kaizen.co.in', async () => {
-      const entry = await addTimesheetEntry({ employmentRelationshipId: divya.employmentRelationshipId, date: day, hours: 6, taskRef: 'Fixture task 2' });
+      const entry = await addTimesheetEntry({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        date: day,
+        hours: 6,
+        taskRef: 'Fixture task 2',
+      });
       return submitTimesheet(entry.timesheetId);
     });
 
@@ -298,38 +375,50 @@ describe('HCM-TIME-009 — own-scope visibility on a colleague’s timesheet', (
 describe('HCM-TIME-010 — an own-scoped principal cannot list a colleague’s records by passing their employment id', () => {
   it('HCM-TIME-010: listRosterAssignments(colleague) 404s for an own-scoped caller', async () => {
     const priya = await employmentFor('priya@kaizen.co.in');
-    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => listRosterAssignments(priya.employmentRelationshipId)));
+    const rejected = await expectReject(() =>
+      asUser('divya@kaizen.co.in', () => listRosterAssignments(priya.employmentRelationshipId)),
+    );
     expect(rejected.status).toBe(404);
   });
 
   it('HCM-TIME-010: listTimesheets(colleague) 404s for an own-scoped caller', async () => {
     const priya = await employmentFor('priya@kaizen.co.in');
-    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => listTimesheets(priya.employmentRelationshipId)));
+    const rejected = await expectReject(() =>
+      asUser('divya@kaizen.co.in', () => listTimesheets(priya.employmentRelationshipId)),
+    );
     expect(rejected.status).toBe(404);
   });
 
   it('HCM-TIME-010: listOvertimeRequests(colleague) 404s for an own-scoped caller', async () => {
     const priya = await employmentFor('priya@kaizen.co.in');
-    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => listOvertimeRequests(priya.employmentRelationshipId)));
+    const rejected = await expectReject(() =>
+      asUser('divya@kaizen.co.in', () => listOvertimeRequests(priya.employmentRelationshipId)),
+    );
     expect(rejected.status).toBe(404);
   });
 
   it('HCM-TIME-010: listCompOffs(colleague) 404s for an own-scoped caller', async () => {
     const priya = await employmentFor('priya@kaizen.co.in');
-    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => listCompOffs(priya.employmentRelationshipId)));
+    const rejected = await expectReject(() =>
+      asUser('divya@kaizen.co.in', () => listCompOffs(priya.employmentRelationshipId)),
+    );
     expect(rejected.status).toBe(404);
   });
 
   it('HCM-TIME-010: listRegularisations(colleague) 404s for an own-scoped caller', async () => {
     const priya = await employmentFor('priya@kaizen.co.in');
-    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => listRegularisations(priya.employmentRelationshipId)));
+    const rejected = await expectReject(() =>
+      asUser('divya@kaizen.co.in', () => listRegularisations(priya.employmentRelationshipId)),
+    );
     expect(rejected.status).toBe(404);
   });
 
   it('HCM-TIME-010: an own-scoped caller with no employment id filter still sees only their own rows, never a colleague’s', async () => {
     const priya = await employmentFor('priya@kaizen.co.in');
     const day = fixtureDay(60);
-    await asUser('priya@kaizen.co.in', () => requestOvertime({ employmentRelationshipId: priya.employmentRelationshipId, date: day, hours: 3 }));
+    await asUser('priya@kaizen.co.in', () =>
+      requestOvertime({ employmentRelationshipId: priya.employmentRelationshipId, date: day, hours: 3 }),
+    );
 
     const divyaOwnList = await asUser('divya@kaizen.co.in', () => listOvertimeRequests());
     expect(divyaOwnList.every((r) => r.employmentRelationshipId !== priya.employmentRelationshipId)).toBe(true);
@@ -338,7 +427,9 @@ describe('HCM-TIME-010 — an own-scoped principal cannot list a colleague’s r
 
 describe('HCM-TIME-011 — the nightly attendance deriver is not directly triggerable by an own-scoped principal', () => {
   it('HCM-TIME-011: an employee cannot run the tenant-wide attendance derivation job directly', async () => {
-    const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => deriveAttendanceFromClockEvents(fixtureDay(0))));
+    const rejected = await expectReject(() =>
+      asUser('divya@kaizen.co.in', () => deriveAttendanceFromClockEvents(fixtureDay(0))),
+    );
     expect(rejected.status).toBe(403);
   });
 });
@@ -356,7 +447,12 @@ describe('HCM-TIME-013 — an own-scoped principal cannot delete a colleague’s
     const day = fixtureDay(70);
 
     const entry = await asUser('priya@kaizen.co.in', () =>
-      addTimesheetEntry({ employmentRelationshipId: priya.employmentRelationshipId, date: day, hours: 4, taskRef: 'Fixture task 3' }),
+      addTimesheetEntry({
+        employmentRelationshipId: priya.employmentRelationshipId,
+        date: day,
+        hours: 4,
+        taskRef: 'Fixture task 3',
+      }),
     );
 
     const rejected = await expectReject(() => asUser('divya@kaizen.co.in', () => removeTimesheetEntry(entry.id)));

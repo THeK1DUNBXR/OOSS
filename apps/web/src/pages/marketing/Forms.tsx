@@ -67,7 +67,16 @@ import {
   StatusChip,
   Tabs,
 } from '../../components/ui.js';
-import { CreateModal, MoneyInput as _MoneyInput, Row, SelectInput, TextArea, TextInput, messageOf, NewButton } from '../../components/forms.js';
+import {
+  CreateModal,
+  MoneyInput as _MoneyInput,
+  Row,
+  SelectInput,
+  TextArea,
+  TextInput,
+  messageOf,
+  NewButton,
+} from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 
 type FormTab = 'forms' | 'submissions' | 'touchpoints' | 'scoreRules' | 'links';
@@ -100,7 +109,10 @@ export function Forms() {
       <PageHeader
         title="Forms"
         subtitle="Capture forms, what they've collected, and the rules that score it."
-        actions={can('marketing_forms:C') && tab === 'forms' && <NewButton label="New form" onClick={() => setCreating(true)} />}
+        actions={
+          can('marketing_forms:C') &&
+          tab === 'forms' && <NewButton label="New form" onClick={() => setCreating(true)} />
+        }
       />
 
       <Tabs
@@ -115,12 +127,7 @@ export function Forms() {
         onChange={setTab}
       />
 
-      {tab === 'forms' && (
-        <FormsTab
-          onEdit={setEditing}
-          onEmbed={setEmbedFor}
-        />
-      )}
+      {tab === 'forms' && <FormsTab onEdit={setEditing} onEmbed={setEmbedFor} />}
       {tab === 'submissions' && <SubmissionsTab />}
       {tab === 'touchpoints' && <TouchpointsTab />}
       {tab === 'scoreRules' && <ScoreRulesTab />}
@@ -152,7 +159,9 @@ function FormsTab({ onEdit, onEmbed }: { onEdit: (f: FormView) => void; onEmbed:
   return (
     <Card bodyClassName={items.length ? 'p-0 overflow-x-auto' : 'p-4'}>
       {error && (
-        <p className="m-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+        <p className="m-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
       )}
       {items.length === 0 ? (
         <EmptyState message="No forms yet." hint="A form captures a submission, which becomes a lead once converted." />
@@ -212,7 +221,9 @@ function FormsTab({ onEdit, onEmbed }: { onEdit: (f: FormView) => void; onEmbed:
                       <button
                         className="btn-quiet btn-sm"
                         onClick={() => {
-                          if (confirm('Rotate this form\'s public token? The old embed URL stops working immediately.')) {
+                          if (
+                            confirm("Rotate this form's public token? The old embed URL stops working immediately.")
+                          ) {
                             rotate.mutate(f.id, { onError: (e) => setError(messageOf(e)) });
                           }
                         }}
@@ -235,7 +246,16 @@ function FormsTab({ onEdit, onEmbed }: { onEdit: (f: FormView) => void; onEmbed:
 function EmbedModal({ form, onClose }: { form: FormView; onClose: () => void }) {
   const embed = useFormEmbed(form.id);
   return (
-    <Modal open title={`Embed — ${form.name}`} onClose={onClose} footer={<button className="btn" onClick={onClose}>Close</button>}>
+    <Modal
+      open
+      title={`Embed — ${form.name}`}
+      onClose={onClose}
+      footer={
+        <button className="btn" onClick={onClose}>
+          Close
+        </button>
+      }
+    >
       {embed.isLoading ? (
         <Loading />
       ) : embed.error ? (
@@ -245,8 +265,16 @@ function EmbedModal({ form, onClose }: { form: FormView; onClose: () => void }) 
           <div>
             <p className="label mb-1">Public URL</p>
             <div className="flex items-center gap-2">
-              <input className="input mono" readOnly value={embed.data?.publicUrl ?? ''} onFocus={(e) => e.target.select()} />
-              <button className="btn-quiet btn-sm shrink-0" onClick={() => copyToClipboard(embed.data?.publicUrl ?? '')}>
+              <input
+                className="input mono"
+                readOnly
+                value={embed.data?.publicUrl ?? ''}
+                onFocus={(e) => e.target.select()}
+              />
+              <button
+                className="btn-quiet btn-sm shrink-0"
+                onClick={() => copyToClipboard(embed.data?.publicUrl ?? '')}
+              >
                 Copy
               </button>
             </div>
@@ -255,7 +283,10 @@ function EmbedModal({ form, onClose }: { form: FormView; onClose: () => void }) 
             <p className="label mb-1">Embed snippet</p>
             <div className="flex items-start gap-2">
               <textarea className="input mono" rows={4} readOnly value={embed.data?.embedSnippet ?? ''} />
-              <button className="btn-quiet btn-sm shrink-0" onClick={() => copyToClipboard(embed.data?.embedSnippet ?? '')}>
+              <button
+                className="btn-quiet btn-sm shrink-0"
+                onClick={() => copyToClipboard(embed.data?.embedSnippet ?? '')}
+              >
                 Copy
               </button>
             </div>
@@ -298,7 +329,12 @@ function FormBuilderModal({ open, form, onClose }: { open: boolean; form?: FormV
 
   const body = () => ({
     name,
-    slug: slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40),
+    slug:
+      slug ||
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .slice(0, 40),
     vertical,
     defaultCampaignId: defaultCampaignId || undefined,
     thankYouMessage,
@@ -309,13 +345,20 @@ function FormBuilderModal({ open, form, onClose }: { open: boolean; form?: FormV
         label: f.label.trim(),
         type: f.type,
         required: f.required,
-        options: f.options.trim() ? f.options.split(',').map((o) => o.trim()).filter(Boolean) : undefined,
+        options: f.options.trim()
+          ? f.options
+              .split(',')
+              .map((o) => o.trim())
+              .filter(Boolean)
+          : undefined,
       })),
   });
 
   const submit = () => {
     setError(null);
-    const mutation = editing ? update.mutate(body(), { onSuccess: onClose, onError: (e) => setError(messageOf(e)) }) : undefined;
+    const mutation = editing
+      ? update.mutate(body(), { onSuccess: onClose, onError: (e) => setError(messageOf(e)) })
+      : undefined;
     if (!editing) create.mutate(body(), { onSuccess: onClose, onError: (e) => setError(messageOf(e)) });
     void mutation;
   };
@@ -330,7 +373,9 @@ function FormBuilderModal({ open, form, onClose }: { open: boolean; form?: FormV
       width="max-w-2xl"
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
           <button className="btn-primary" disabled={!name || pending} onClick={submit}>
             {pending ? 'Saving…' : editing ? 'Save' : 'Create'}
           </button>
@@ -338,10 +383,20 @@ function FormBuilderModal({ open, form, onClose }: { open: boolean; form?: FormV
       }
     >
       <div className="space-y-3">
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
         <Row>
           <TextInput label="Name" required value={name} onChange={setName} placeholder="Enquire — full stack batch" />
-          <TextInput label="Slug" hint="made from the name if blank" value={slug} onChange={setSlug} placeholder="enquire-full-stack" />
+          <TextInput
+            label="Slug"
+            hint="made from the name if blank"
+            value={slug}
+            onChange={setSlug}
+            placeholder="enquire-full-stack"
+          />
         </Row>
         <Row>
           <SelectInput
@@ -382,7 +437,9 @@ function FormBuilderModal({ open, form, onClose }: { open: boolean; form?: FormV
                 onChange={(e) => setFields((fs) => fs.map((x, j) => (j === i ? { ...x, type: e.target.value } : x)))}
               >
                 {['text', 'email', 'tel', 'select', 'textarea', 'checkbox'].map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
               </select>
               <input
@@ -397,7 +454,9 @@ function FormBuilderModal({ open, form, onClose }: { open: boolean; form?: FormV
                   type="checkbox"
                   checked={f.required}
                   title="required"
-                  onChange={(e) => setFields((fs) => fs.map((x, j) => (j === i ? { ...x, required: e.target.checked } : x)))}
+                  onChange={(e) =>
+                    setFields((fs) => fs.map((x, j) => (j === i ? { ...x, required: e.target.checked } : x)))
+                  }
                 />
               </label>
               <button
@@ -412,7 +471,9 @@ function FormBuilderModal({ open, form, onClose }: { open: boolean; form?: FormV
           <button
             type="button"
             className="btn btn-sm"
-            onClick={() => setFields((fs) => [...fs, { key: '', label: '', type: 'text', required: false, options: '' }])}
+            onClick={() =>
+              setFields((fs) => [...fs, { key: '', label: '', type: 'text', required: false, options: '' }])
+            }
           >
             + Add a field
           </button>
@@ -475,16 +536,24 @@ function SubmissionsTab() {
       )}
 
       {!formId ? (
-        <Card><EmptyState message="Choose a form to see its submissions." /></Card>
+        <Card>
+          <EmptyState message="Choose a form to see its submissions." />
+        </Card>
       ) : submissions.isLoading ? (
         <Loading />
       ) : submissions.error ? (
         <ErrorBox error={submissions.error} />
       ) : items.length === 0 ? (
-        <Card><EmptyState message="No submissions match." /></Card>
+        <Card>
+          <EmptyState message="No submissions match." />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
-          {error && <p className="m-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+          {error && (
+            <p className="m-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+              {error}
+            </p>
+          )}
           <table className="table">
             <thead>
               <tr>
@@ -500,11 +569,25 @@ function SubmissionsTab() {
                 <tr key={s.id}>
                   <td className="text-2xs text-ink-400">{dateTime(s.receivedAt)}</td>
                   <td className="text-xs text-ink-200">{s.personName ?? '—'}</td>
-                  <td><StatusChip status={s.status} tone={s.status === 'converted' ? 'good' : s.status === 'spam' || s.status === 'rejected' ? 'bad' : 'neutral'} /></td>
+                  <td>
+                    <StatusChip
+                      status={s.status}
+                      tone={
+                        s.status === 'converted'
+                          ? 'good'
+                          : s.status === 'spam' || s.status === 'rejected'
+                            ? 'bad'
+                            : 'neutral'
+                      }
+                    />
+                  </td>
                   <td className="mono text-2xs text-ink-400">{s.leadRecordCode ?? '—'}</td>
                   <td>
                     <div className="flex flex-wrap justify-end gap-1.5">
-                      <button className="btn-quiet btn-sm" onClick={() => setViewing(s.payload as Record<string, unknown>)}>
+                      <button
+                        className="btn-quiet btn-sm"
+                        onClick={() => setViewing(s.payload as Record<string, unknown>)}
+                      >
                         Payload
                       </button>
                       {can('marketing_forms:E') && s.status === 'received' && (
@@ -520,7 +603,8 @@ function SubmissionsTab() {
                             className="btn-quiet btn-sm"
                             onClick={() => {
                               const reason = prompt('Reason for rejecting this submission?');
-                              if (reason) reject.mutate({ id: s.id, reason }, { onError: (e) => setError(messageOf(e)) });
+                              if (reason)
+                                reject.mutate({ id: s.id, reason }, { onError: (e) => setError(messageOf(e)) });
                             }}
                           >
                             Reject
@@ -542,8 +626,19 @@ function SubmissionsTab() {
         </Card>
       )}
 
-      <Modal open={Boolean(viewing)} title="Submission payload" onClose={() => setViewing(null)} footer={<button className="btn" onClick={() => setViewing(null)}>Close</button>}>
-        <pre className="max-h-96 overflow-auto rounded bg-ink-950 p-3 text-2xs text-ink-300">{JSON.stringify(viewing, null, 2)}</pre>
+      <Modal
+        open={Boolean(viewing)}
+        title="Submission payload"
+        onClose={() => setViewing(null)}
+        footer={
+          <button className="btn" onClick={() => setViewing(null)}>
+            Close
+          </button>
+        }
+      >
+        <pre className="max-h-96 overflow-auto rounded bg-ink-950 p-3 text-2xs text-ink-300">
+          {JSON.stringify(viewing, null, 2)}
+        </pre>
       </Modal>
     </div>
   );
@@ -574,9 +669,19 @@ function TouchpointsTab() {
     <div>
       <Card className="mb-4" bodyClassName="p-3">
         <div className="grid gap-2 sm:grid-cols-5">
-          <input className="input" placeholder="Person ID" value={personId} onChange={(e) => setPersonId(e.target.value)} />
+          <input
+            className="input"
+            placeholder="Person ID"
+            value={personId}
+            onChange={(e) => setPersonId(e.target.value)}
+          />
           <input className="input" placeholder="Lead ID" value={leadId} onChange={(e) => setLeadId(e.target.value)} />
-          <input className="input" placeholder="Campaign ID" value={campaignId} onChange={(e) => setCampaignId(e.target.value)} />
+          <input
+            className="input"
+            placeholder="Campaign ID"
+            value={campaignId}
+            onChange={(e) => setCampaignId(e.target.value)}
+          />
           <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
@@ -587,7 +692,12 @@ function TouchpointsTab() {
       ) : touchpoints.error ? (
         <ErrorBox error={touchpoints.error} />
       ) : items.length === 0 ? (
-        <Card><EmptyState message="No touchpoints match these filters." hint="Every click, form, call and walk-in is logged here, immutably." /></Card>
+        <Card>
+          <EmptyState
+            message="No touchpoints match these filters."
+            hint="Every click, form, call and walk-in is logged here, immutably."
+          />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
@@ -605,10 +715,16 @@ function TouchpointsTab() {
               {items.map((t) => (
                 <tr key={t.id}>
                   <td className="text-2xs text-ink-400">{dateTime(t.occurredAt)}</td>
-                  <td className="text-xs text-ink-200">{t.personName ?? t.organizationName ?? t.leadRecordCode ?? '—'}</td>
+                  <td className="text-xs text-ink-200">
+                    {t.personName ?? t.organizationName ?? t.leadRecordCode ?? '—'}
+                  </td>
                   <td className="text-xs text-ink-300">{t.campaignName ?? '—'}</td>
                   <td className="text-2xs text-ink-400">{CHANNEL_KEY_LABELS[t.channelKey] ?? t.channelKey}</td>
-                  <td><span className="chip border-ink-700 text-ink-400">{TOUCH_KIND_LABELS[t.touchKind] ?? t.touchKind}</span></td>
+                  <td>
+                    <span className="chip border-ink-700 text-ink-400">
+                      {TOUCH_KIND_LABELS[t.touchKind] ?? t.touchKind}
+                    </span>
+                  </td>
                   <td className="text-right tabular-nums text-xs">{t.cost ?? '—'}</td>
                 </tr>
               ))}
@@ -654,7 +770,12 @@ function ScoreRulesTab() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-end gap-2">
-          <TextInput label="Preview against lead ID" value={previewLeadId} onChange={setPreviewLeadId} placeholder="lead id" />
+          <TextInput
+            label="Preview against lead ID"
+            value={previewLeadId}
+            onChange={setPreviewLeadId}
+            placeholder="lead id"
+          />
           <button
             className="btn"
             disabled={!previewLeadId || preview.isPending}
@@ -665,7 +786,11 @@ function ScoreRulesTab() {
         </div>
         {can('marketing_forms:C') && (
           <div className="flex gap-2">
-            <button className="btn" onClick={() => apply.mutate(undefined, { onError: (e) => setError(messageOf(e)) })} disabled={apply.isPending}>
+            <button
+              className="btn"
+              onClick={() => apply.mutate(undefined, { onError: (e) => setError(messageOf(e)) })}
+              disabled={apply.isPending}
+            >
               Apply now
             </button>
             <NewButton label="New rule" onClick={() => setCreating(true)} />
@@ -673,23 +798,47 @@ function ScoreRulesTab() {
         )}
       </div>
 
-      {error && <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
-      {apply.data && <p className="mb-3 text-2xs text-ink-400">{apply.data.updated} open lead{apply.data.updated === 1 ? '' : 's'} rescored.</p>}
+      {error && (
+        <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
+      {apply.data && (
+        <p className="mb-3 text-2xs text-ink-400">
+          {apply.data.updated} open lead{apply.data.updated === 1 ? '' : 's'} rescored.
+        </p>
+      )}
       {preview.data && (
         <Card className="mb-4" title="Preview" subtitle={`Score: ${preview.data.score}`}>
           <ul className="space-y-0.5">
-            {preview.data.reasons.map((r, i) => <li key={i} className="text-2xs text-ink-400">{r}</li>)}
+            {preview.data.reasons.map((r, i) => (
+              <li key={i} className="text-2xs text-ink-400">
+                {r}
+              </li>
+            ))}
           </ul>
         </Card>
       )}
 
       {items.length === 0 ? (
-        <Card><EmptyState message="No score rules yet." hint="The default set (form submitted, event attended, referral, and so on) seeds on first use." /></Card>
+        <Card>
+          <EmptyState
+            message="No score rules yet."
+            hint="The default set (form submitted, event attended, referral, and so on) seeds on first use."
+          />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
             <thead>
-              <tr><th>Order</th><th>Name</th><th>Condition</th><th className="text-right">Points</th><th>Active</th><th /></tr>
+              <tr>
+                <th>Order</th>
+                <th>Name</th>
+                <th>Condition</th>
+                <th className="text-right">Points</th>
+                <th>Active</th>
+                <th />
+              </tr>
             </thead>
             <tbody>
               {items.map((r) => (
@@ -698,19 +847,26 @@ function ScoreRulesTab() {
                   <td className="text-xs text-ink-100">{r.name}</td>
                   <td className="mono text-2xs text-ink-400">{JSON.stringify(r.condition)}</td>
                   <td className="text-right tabular-nums text-xs">{r.points}</td>
-                  <td><StatusChip status={r.active ? 'active' : 'inactive'} tone={r.active ? 'good' : 'neutral'} /></td>
+                  <td>
+                    <StatusChip status={r.active ? 'active' : 'inactive'} tone={r.active ? 'good' : 'neutral'} />
+                  </td>
                   <td>
                     {can('marketing_forms:D') && (
                       <div className="flex justify-end gap-1.5">
                         <button
                           className="btn-quiet btn-sm"
-                          onClick={() => toggle.mutate({ id: r.id, active: !r.active }, { onError: (e) => setError(messageOf(e)) })}
+                          onClick={() =>
+                            toggle.mutate({ id: r.id, active: !r.active }, { onError: (e) => setError(messageOf(e)) })
+                          }
                         >
                           {r.active ? 'Deactivate' : 'Activate'}
                         </button>
                         <button
                           className="btn-quiet btn-sm"
-                          onClick={() => { if (confirm(`Delete rule "${r.name}"?`)) del.mutate(r.id, { onError: (e) => setError(messageOf(e)) }); }}
+                          onClick={() => {
+                            if (confirm(`Delete rule "${r.name}"?`))
+                              del.mutate(r.id, { onError: (e) => setError(messageOf(e)) });
+                          }}
                         >
                           Delete
                         </button>
@@ -728,13 +884,20 @@ function ScoreRulesTab() {
         open={creating}
         title="New score rule"
         onClose={() => setCreating(false)}
-        onSubmit={() => create.mutateAsync({ name, condition: { field, op, value }, points: Number(points), order: items.length + 1 })}
+        onSubmit={() =>
+          create.mutateAsync({ name, condition: { field, op, value }, points: Number(points), order: items.length + 1 })
+        }
         invalidate={[['mkt', 'score-rules']]}
       >
         <TextInput label="Name" required value={name} onChange={setName} placeholder="Attended an event" />
         <Row>
           <TextInput label="Field" required value={field} onChange={setField} hint="e.g. touchKind" />
-          <SelectInput label="Operator" value={op} onChange={(v) => setOp(v as AudienceRuleOp)} options={AUDIENCE_RULE_OPS.map((o) => ({ value: o, label: o }))} />
+          <SelectInput
+            label="Operator"
+            value={op}
+            onChange={(v) => setOp(v as AudienceRuleOp)}
+            options={AUDIENCE_RULE_OPS.map((o) => ({ value: o, label: o }))}
+          />
         </Row>
         <Row>
           <TextInput label="Value" required value={value} onChange={setValue} placeholder="event_attend" />
@@ -771,12 +934,21 @@ function LinksTab() {
         {can('marketing_forms:C') && <NewButton label="New short link" onClick={() => setCreating(true)} />}
       </div>
       {items.length === 0 ? (
-        <Card><EmptyState message="No short links yet." /></Card>
+        <Card>
+          <EmptyState message="No short links yet." />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
             <thead>
-              <tr><th>Slug</th><th>Target</th><th>Campaign</th><th>Channel</th><th className="text-right">Clicks</th><th /></tr>
+              <tr>
+                <th>Slug</th>
+                <th>Target</th>
+                <th>Campaign</th>
+                <th>Channel</th>
+                <th className="text-right">Clicks</th>
+                <th />
+              </tr>
             </thead>
             <tbody>
               {items.map((l) => (
@@ -787,7 +959,10 @@ function LinksTab() {
                   <td className="text-2xs text-ink-400">{l.channelKey ? CHANNEL_KEY_LABELS[l.channelKey] : '—'}</td>
                   <td className="text-right tabular-nums text-xs">{l.clickCount}</td>
                   <td>
-                    <button className="btn-quiet btn-sm" onClick={() => copyToClipboard(`${location.origin}/api/marketing/public/l/${l.slug}`)}>
+                    <button
+                      className="btn-quiet btn-sm"
+                      onClick={() => copyToClipboard(`${location.origin}/api/marketing/public/l/${l.slug}`)}
+                    >
                       Copy
                     </button>
                   </td>
@@ -802,15 +977,34 @@ function LinksTab() {
         open={creating}
         title="New short link"
         onClose={() => setCreating(false)}
-        onSubmit={() => create.mutateAsync({ slug: slug || undefined, targetUrl, campaignId: campaignId || undefined, channelKey: channelKey || undefined })}
+        onSubmit={() =>
+          create.mutateAsync({
+            slug: slug || undefined,
+            targetUrl,
+            campaignId: campaignId || undefined,
+            channelKey: channelKey || undefined,
+          })
+        }
         invalidate={[]}
       >
         {error && <p className="text-2xs text-band-critical">{error}</p>}
         <TextInput label="Target URL" required value={targetUrl} onChange={setTargetUrl} placeholder="https://…" />
         <TextInput label="Slug" hint="generated if blank" value={slug} onChange={setSlug} />
         <Row>
-          <SelectInput label="Campaign" value={campaignId} onChange={setCampaignId} placeholder="No campaign" options={(campaigns.data?.items ?? []).map((c) => ({ value: c.id, label: c.name }))} />
-          <SelectInput label="Channel" value={channelKey} onChange={(v) => setChannelKey(v as ChannelKey)} placeholder="No channel" options={CHANNEL_KEYS.map((c) => ({ value: c, label: CHANNEL_KEY_LABELS[c] }))} />
+          <SelectInput
+            label="Campaign"
+            value={campaignId}
+            onChange={setCampaignId}
+            placeholder="No campaign"
+            options={(campaigns.data?.items ?? []).map((c) => ({ value: c.id, label: c.name }))}
+          />
+          <SelectInput
+            label="Channel"
+            value={channelKey}
+            onChange={(v) => setChannelKey(v as ChannelKey)}
+            placeholder="No channel"
+            options={CHANNEL_KEYS.map((c) => ({ value: c, label: CHANNEL_KEY_LABELS[c] }))}
+          />
         </Row>
       </CreateModal>
     </div>

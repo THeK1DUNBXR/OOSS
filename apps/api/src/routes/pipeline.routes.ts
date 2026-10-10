@@ -150,7 +150,10 @@ router.patch(
   }),
 );
 
-router.delete('/stages/:stageId', handler(async (req) => retireStage(req.params.stageId)));
+router.delete(
+  '/stages/:stageId',
+  handler(async (req) => retireStage(req.params.stageId)),
+);
 
 router.post(
   '/:id/transitions',
@@ -185,7 +188,10 @@ router.get(
 
     const pipeline = await prisma.pipelineDefinition.findFirst({
       where: { id: req.params.id },
-      include: { stages: { where: { retiredAt: null, postAward: false }, orderBy: { sequence: 'asc' } }, transitions: true },
+      include: {
+        stages: { where: { retiredAt: null, postAward: false }, orderBy: { sequence: 'asc' } },
+        transitions: true,
+      },
     });
     if (!pipeline) throw ApiError.notFound('Pipeline');
 
@@ -237,7 +243,10 @@ router.get(
             forecastCategory: o.forecastCategory,
             ownerPartyId: o.ownerPartyId,
             stageAgeDays: Math.floor((Date.now() - o.stageEnteredAt.getTime()) / 86_400_000),
-            stageAgeBreached: Boolean(s.stageAgeBudgetDays && Math.floor((Date.now() - o.stageEnteredAt.getTime()) / 86_400_000) > s.stageAgeBudgetDays),
+            stageAgeBreached: Boolean(
+              s.stageAgeBudgetDays &&
+              Math.floor((Date.now() - o.stageEnteredAt.getTime()) / 86_400_000) > s.stageAgeBudgetDays,
+            ),
             wonGateSatisfied: Boolean(o.contractId || o.mouId),
           })),
           leads: stageLeads.map((l) => ({
@@ -250,7 +259,10 @@ router.get(
             ownerPartyId: l.ownerPartyId,
             unrouted: l.ownerPartyId === null,
             stageAgeDays: Math.floor((Date.now() - l.stageEnteredAt.getTime()) / 86_400_000),
-            stageAgeBreached: Boolean(s.stageAgeBudgetDays && Math.floor((Date.now() - l.stageEnteredAt.getTime()) / 86_400_000) > s.stageAgeBudgetDays),
+            stageAgeBreached: Boolean(
+              s.stageAgeBudgetDays &&
+              Math.floor((Date.now() - l.stageEnteredAt.getTime()) / 86_400_000) > s.stageAgeBudgetDays,
+            ),
           })),
         };
       }),

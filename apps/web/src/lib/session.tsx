@@ -228,9 +228,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const [resource, rest] = grant.split(':');
       const verbToken = (rest ?? 'V').split('@')[0];
       const wanted: Verb =
-        verbToken === 'approve' || verbToken === 'merge'
-          ? (verbToken as Verb)
-          : (VERB_LETTERS[verbToken[0]] ?? 'view');
+        verbToken === 'approve' || verbToken === 'merge' ? (verbToken as Verb) : (VERB_LETTERS[verbToken[0]] ?? 'view');
 
       return user.grants.some((g) => {
         const [gRes, gRest] = g.split(':');
@@ -246,12 +244,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<SessionState>(
     () => ({
-      user, nav, loading, error, notice, pendingSelection, mfaChallengeToken,
-      signIn, chooseEntity, verifyMfa, signOut, switchTo, switchEntity, can, refresh,
+      user,
+      nav,
+      loading,
+      error,
+      notice,
+      pendingSelection,
+      mfaChallengeToken,
+      signIn,
+      chooseEntity,
+      verifyMfa,
+      signOut,
+      switchTo,
+      switchEntity,
+      can,
+      refresh,
     }),
     [
-      user, nav, loading, error, notice, pendingSelection, mfaChallengeToken,
-      signIn, chooseEntity, verifyMfa, signOut, switchTo, switchEntity, can, refresh,
+      user,
+      nav,
+      loading,
+      error,
+      notice,
+      pendingSelection,
+      mfaChallengeToken,
+      signIn,
+      chooseEntity,
+      verifyMfa,
+      signOut,
+      switchTo,
+      switchEntity,
+      can,
+      refresh,
     ],
   );
 

@@ -83,7 +83,8 @@ export async function supersedeRelationship(
 ) {
   const existing = await prisma.relationship.findFirst({ where: { id } });
   if (!existing) throw ApiError.notFound('Relationship');
-  if (existing.endDate) throw ApiError.conflict('This relationship is already ended; supersede the current one instead.');
+  if (existing.endDate)
+    throw ApiError.conflict('This relationship is already ended; supersede the current one instead.');
 
   const ended = await prisma.relationship.update({
     where: { id },
@@ -118,10 +119,7 @@ export async function supersedeRelationship(
 }
 
 /** The deliberate exception to the supersede rule: in-place refinement. */
-export async function refineRelationship(
-  id: string,
-  changes: { status?: string; strength?: RelationshipStrength },
-) {
+export async function refineRelationship(id: string, changes: { status?: string; strength?: RelationshipStrength }) {
   const existing = await prisma.relationship.findFirst({ where: { id } });
   if (!existing) throw ApiError.notFound('Relationship');
 
@@ -160,11 +158,7 @@ export async function refineRelationship(
  * Traversal from a surviving person id additionally follows the mergedInto
  * chain, so a merged-away person's edges remain part of the complete history.
  */
-export async function traverse(
-  entityType: string,
-  entityId: string,
-  opts: { fullHistory?: boolean } = {},
-) {
+export async function traverse(entityType: string, entityId: string, opts: { fullHistory?: boolean } = {}) {
   const auth = currentAuth();
   const ids = entityType === 'person' ? await personIdChain(entityId) : [entityId];
 
@@ -219,7 +213,10 @@ export async function resolveEdge(
 }
 
 /** Numeric relationship-strength input to the routing engine's soft factor (0.0–1.0). */
-export async function relationshipStrengthScore(candidatePartyId: string, organizationId: string | null): Promise<number> {
+export async function relationshipStrengthScore(
+  candidatePartyId: string,
+  organizationId: string | null,
+): Promise<number> {
   if (!organizationId) return 0;
   const auth = currentAuth();
 
@@ -241,7 +238,10 @@ export async function relationshipStrengthScore(candidatePartyId: string, organi
     }),
   ]);
 
-  const strengthValue = edges.reduce((acc, e) => Math.max(acc, e.strength === 'strong' ? 1 : e.strength === 'moderate' ? 0.6 : 0.3), 0);
+  const strengthValue = edges.reduce(
+    (acc, e) => Math.max(acc, e.strength === 'strong' ? 1 : e.strength === 'moderate' ? 0.6 : 0.3),
+    0,
+  );
   const winBonus = Math.min(priorWins * 0.2, 0.4);
   return Math.min(strengthValue + winBonus, 1);
 }

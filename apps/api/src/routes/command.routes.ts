@@ -16,7 +16,13 @@ import {
   whatChanged,
 } from '../domains/commandCenter.js';
 import { latestPulse, computeAndPersistAll, computeDomainHealth } from '../domains/health.js';
-import { decisionQueue, disposeDecision, raiseDecision, reviewDecision, decisionCalibration } from '../domains/decisions.js';
+import {
+  decisionQueue,
+  disposeDecision,
+  raiseDecision,
+  reviewDecision,
+  decisionCalibration,
+} from '../domains/decisions.js';
 import { forecastRollup } from '../domains/opportunities.js';
 
 const router = Router();
@@ -91,7 +97,10 @@ router.get(
 );
 
 /** Advancing the watermark is a deliberate act, so the delta stays meaningful. */
-router.post('/what-changed/seen', handler(async () => touchWatermark()));
+router.post(
+  '/what-changed/seen',
+  handler(async () => touchWatermark()),
+);
 
 router.get(
   '/attention',
@@ -119,7 +128,10 @@ router.get(
   }),
 );
 
-router.get('/forecast', handler(async (req) => forecastRollup({ blended: bool(req.query.blended) ?? false })));
+router.get(
+  '/forecast',
+  handler(async (req) => forecastRollup({ blended: bool(req.query.blended) ?? false })),
+);
 
 // ---------------------------------------------------------------------------
 // Decisions
@@ -203,7 +215,10 @@ router.post(
   }),
 );
 
-router.get('/decisions/calibration', handler(async () => decisionCalibration()));
+router.get(
+  '/decisions/calibration',
+  handler(async () => decisionCalibration()),
+);
 
 // ---------------------------------------------------------------------------
 // Exceptions
@@ -218,7 +233,9 @@ router.get(
     const rows = await prisma.exceptionRecord.findMany({
       where: {
         tenantId: auth.tenantId,
-        ...(str(req.query.state) ? { state: str(req.query.state) } : { state: { in: ['open', 'acknowledged', 'escalated'] } }),
+        ...(str(req.query.state)
+          ? { state: str(req.query.state) }
+          : { state: { in: ['open', 'acknowledged', 'escalated'] } }),
         ...(str(req.query.domain) ? { domain: str(req.query.domain) } : {}),
         ...(bool(req.query.mine) ? { ownerPartyId: auth.partyId } : {}),
         ...(bool(req.query.unowned) ? { ownerUnresolved: true } : {}),

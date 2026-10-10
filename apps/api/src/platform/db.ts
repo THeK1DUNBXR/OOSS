@@ -143,7 +143,12 @@ const tenantScoped = basePrisma.$extends({
       // of every model's every operation exceeds what the compiler will
       // represent (TS2590). The gate reads only the model name and the
       // where/data shapes, which the loose type still carries.
-      async $allOperations({ model, operation, args, query }: {
+      async $allOperations({
+        model,
+        operation,
+        args,
+        query,
+      }: {
         model: string;
         operation: string;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

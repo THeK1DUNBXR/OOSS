@@ -76,9 +76,14 @@ function monthStart(key: string): Date {
  * reason — never a throw, so a metric wired to a workstream that has not
  * landed degrades to "not measured" instead of taking this page down.
  */
-async function readOptionalModel<T>(modelName: string, fn: (model: Record<string, (args?: unknown) => Promise<unknown>>) => Promise<T>): Promise<T | null> {
+async function readOptionalModel<T>(
+  modelName: string,
+  fn: (model: Record<string, (args?: unknown) => Promise<unknown>>) => Promise<T>,
+): Promise<T | null> {
   try {
-    const model = (prisma as unknown as Record<string, Record<string, (args?: unknown) => Promise<unknown>> | undefined>)[modelName];
+    const model = (
+      prisma as unknown as Record<string, Record<string, (args?: unknown) => Promise<unknown>> | undefined>
+    )[modelName];
     if (!model) return null;
     return await fn(model);
   } catch {
@@ -116,16 +121,20 @@ export async function headcountTrend(months = 12): Promise<HeadcountPoint[]> {
   });
   const everJoined = rows.filter((r) => EVER_JOINED_STATUSES.includes(r.status));
 
-  return keys.map((key) => {
-    const start = monthStart(key);
-    const end = monthEnd(key);
-    const headcount = everJoined.filter(
-      (r) => r.hireEffectiveDate < end && (!r.separationDate || r.separationDate >= end),
-    ).length;
-    const joiners = everJoined.filter((r) => r.hireEffectiveDate >= start && r.hireEffectiveDate < end).length;
-    const leavers = rows.filter((r) => r.separationDate && r.separationDate >= start && r.separationDate < end).length;
-    return { month: key, headcount, joiners, leavers };
-  }).filter((p) => monthStart(p.month) >= earliest);
+  return keys
+    .map((key) => {
+      const start = monthStart(key);
+      const end = monthEnd(key);
+      const headcount = everJoined.filter(
+        (r) => r.hireEffectiveDate < end && (!r.separationDate || r.separationDate >= end),
+      ).length;
+      const joiners = everJoined.filter((r) => r.hireEffectiveDate >= start && r.hireEffectiveDate < end).length;
+      const leavers = rows.filter(
+        (r) => r.separationDate && r.separationDate >= start && r.separationDate < end,
+      ).length;
+      return { month: key, headcount, joiners, leavers };
+    })
+    .filter((p) => monthStart(p.month) >= earliest);
 }
 
 export interface AttritionSummary {
@@ -180,7 +189,10 @@ export async function tenureDistribution(): Promise<TenureDistribution> {
     select: { hireEffectiveDate: true },
   });
   const now = new Date();
-  return { buckets: distribution(rows, TENURE_BUCKETS, (r) => tenureBucket(r.hireEffectiveDate, now)), totalActive: rows.length };
+  return {
+    buckets: distribution(rows, TENURE_BUCKETS, (r) => tenureBucket(r.hireEffectiveDate, now)),
+    totalActive: rows.length,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -212,10 +224,15 @@ export async function headcountBy(dimension: 'division' | 'location'): Promise<H
   const counts = new Map<string, number>();
   for (const e of employments) {
     const assignment = e.assignments[0];
-    const key = dimension === 'division' ? assignment?.position.orgUnit.division ?? 'shared' : assignment?.position.location ?? 'Unassigned';
+    const key =
+      dimension === 'division'
+        ? (assignment?.position.orgUnit.division ?? 'shared')
+        : (assignment?.position.location ?? 'Unassigned');
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
-  return [...counts.entries()].map(([key, headcount]) => ({ key, headcount })).sort((a, b) => b.headcount - a.headcount);
+  return [...counts.entries()]
+    .map(([key, headcount]) => ({ key, headcount }))
+    .sort((a, b) => b.headcount - a.headcount);
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +256,9 @@ export async function absenteeism(months = 3): Promise<AbsenteeismResult> {
 
   const [totalDays, zeroMinuteDays] = await Promise.all([
     prisma.workAttendance.count({ where: { tenantId: auth.tenantId, workDate: { gte: start, lt: end } } }),
-    prisma.workAttendance.count({ where: { tenantId: auth.tenantId, workDate: { gte: start, lt: end }, workedMinutes: 0 } }),
+    prisma.workAttendance.count({
+      where: { tenantId: auth.tenantId, workDate: { gte: start, lt: end }, workedMinutes: 0 },
+    }),
   ]);
 
   return { ratePct: absenteeismRate(zeroMinuteDays, totalDays), zeroMinuteDays, totalDays };
@@ -328,7 +347,7 @@ export async function leaveLiability(): Promise<LeaveLiabilityResult> {
   for (const b of balances) {
     const days = num(b.balanceDays) ?? 0;
     totalDays += days;
-    const rate = money ? dailyRateByEmployment.get(b.employmentRelationshipId) ?? 0 : 0;
+    const rate = money ? (dailyRateByEmployment.get(b.employmentRelationshipId) ?? 0) : 0;
     const amount = days * rate;
     if (money) totalAmount += amount;
     const row = byType.get(b.leaveType.name) ?? { days: 0, amount: 0 };
@@ -340,7 +359,11 @@ export async function leaveLiability(): Promise<LeaveLiabilityResult> {
   return {
     totalDays,
     totalAmount: money ? totalAmount : null,
-    byLeaveType: [...byType.entries()].map(([leaveType, v]) => ({ leaveType, days: v.days, amount: money ? v.amount : null })),
+    byLeaveType: [...byType.entries()].map(([leaveType, v]) => ({
+      leaveType,
+      days: v.days,
+      amount: money ? v.amount : null,
+    })),
   };
 }
 
@@ -369,7 +392,12 @@ export async function hiringSummary(months = 12): Promise<HiringSummary> {
 
   const applications = await prisma.application.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, createdAt: { gte: start } },
-    select: { status: true, candidatePartyId: true, requisitionId: true, requisition: { select: { createdAt: true, positionId: true } } },
+    select: {
+      status: true,
+      candidatePartyId: true,
+      requisitionId: true,
+      requisition: { select: { createdAt: true, positionId: true } },
+    },
   });
 
   const offersExtended = applications.filter((a) => OFFER_STAGE_OR_BEYOND.includes(a.status)).length;
@@ -387,7 +415,8 @@ export async function hiringSummary(months = 12): Promise<HiringSummary> {
       select: { hireEffectiveDate: true },
       orderBy: { hireEffectiveDate: 'desc' },
     });
-    if (employment) pairs.push({ requisitionCreatedAt: app.requisition.createdAt, hireEffectiveDate: employment.hireEffectiveDate });
+    if (employment)
+      pairs.push({ requisitionCreatedAt: app.requisition.createdAt, hireEffectiveDate: employment.hireEffectiveDate });
   }
 
   return {
@@ -402,7 +431,9 @@ export async function hiringSummary(months = 12): Promise<HiringSummary> {
 /** No recruiting-cost ledger is wired to this workstream — an honest "not measured", not a guessed number. */
 export async function costPerHire(): Promise<Metric<number>> {
   await assertAnalyticsView();
-  return notMeasured('No recruiting cost data (agency fees, advertising spend) is recorded anywhere this workstream can read.');
+  return notMeasured(
+    'No recruiting cost data (agency fees, advertising spend) is recorded anywhere this workstream can read.',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -454,13 +485,20 @@ export async function trainingSummary(months = 12): Promise<TrainingSummary> {
   const start = monthStart(keys[0]);
 
   const [completions, headcount] = await Promise.all([
-    prisma.learningRecord.count({ where: { tenantId: auth.tenantId, status: 'Completed', completedAt: { gte: start } } }),
-    prisma.employmentRelationship.count({ where: { tenantId: auth.tenantId, deletedAt: null, status: { in: EMPLOYED_STATUSES } } }),
+    prisma.learningRecord.count({
+      where: { tenantId: auth.tenantId, status: 'Completed', completedAt: { gte: start } },
+    }),
+    prisma.employmentRelationship.count({
+      where: { tenantId: auth.tenantId, deletedAt: null, status: { in: EMPLOYED_STATUSES } },
+    }),
   ]);
 
   return {
-    completionsPerHead: headcount > 0 ? measured(completions / headcount) : notMeasured('No one is currently employed to divide by.'),
-    averageHoursPerHead: notMeasured('LearningActivity records no duration field in this schema — only completion, not hours.'),
+    completionsPerHead:
+      headcount > 0 ? measured(completions / headcount) : notMeasured('No one is currently employed to divide by.'),
+    averageHoursPerHead: notMeasured(
+      'LearningActivity records no duration field in this schema — only completion, not hours.',
+    ),
   };
 }
 
@@ -488,14 +526,20 @@ export async function genderRatio(): Promise<Metric<Record<string, number>>> {
 async function currentGradeLevelByEmployment(tenantId: string): Promise<Map<string, number> | null> {
   const gradeAssignments = await readOptionalModel(
     'gradeAssignment',
-    (model) => model.findMany({ where: { tenantId, effectiveTo: null } }) as Promise<Array<{ employmentRelationshipId: string; gradeId: string }>>,
+    (model) =>
+      model.findMany({ where: { tenantId, effectiveTo: null } }) as Promise<
+        Array<{ employmentRelationshipId: string; gradeId: string }>
+      >,
   );
   if (gradeAssignments === null) return null;
   if (gradeAssignments.length === 0) return new Map();
 
   const grades = await readOptionalModel(
     'grade',
-    (model) => model.findMany({ where: { tenantId, id: { in: [...new Set(gradeAssignments.map((g) => g.gradeId))] } } }) as Promise<Array<{ id: string; level: number }>>,
+    (model) =>
+      model.findMany({
+        where: { tenantId, id: { in: [...new Set(gradeAssignments.map((g) => g.gradeId))] } },
+      }) as Promise<Array<{ id: string; level: number }>>,
   );
   if (grades === null) return null;
 
@@ -519,15 +563,22 @@ export async function compRatioDistribution(): Promise<Metric<Array<{ bucket: st
   await assertAnalyticsView();
   const money = await canSeeMoney('compensation');
   if (!money) {
-    return notMeasured('Compa-ratio compares pay against a grade midpoint — withheld without the compensation:financial grant.');
+    return notMeasured(
+      'Compa-ratio compares pay against a grade midpoint — withheld without the compensation:financial grant.',
+    );
   }
 
   const payGrades = await readOptionalModel(
     'payGrade',
-    (model) => model.findMany({ where: { tenantId: auth.tenantId } }) as Promise<Array<{ id: string; level: number; midPay: Prisma.Decimal | number }>>,
+    (model) =>
+      model.findMany({ where: { tenantId: auth.tenantId } }) as Promise<
+        Array<{ id: string; level: number; midPay: Prisma.Decimal | number }>
+      >,
   );
   if (payGrades === null) {
-    return notMeasured('No pay-grade table is available yet (compensation workstream) to compute a compa-ratio against.');
+    return notMeasured(
+      'No pay-grade table is available yet (compensation workstream) to compute a compa-ratio against.',
+    );
   }
   if (payGrades.length === 0) {
     return notMeasured('No pay grades have been defined yet.');
@@ -543,7 +594,9 @@ export async function compRatioDistribution(): Promise<Metric<Array<{ bucket: st
 
   const levelByEmployment = await currentGradeLevelByEmployment(auth.tenantId);
   if (levelByEmployment === null) {
-    return notMeasured("No grade-assignment table is available yet (workforce workstream) to know each employee's grade.");
+    return notMeasured(
+      "No grade-assignment table is available yet (workforce workstream) to know each employee's grade.",
+    );
   }
   if (levelByEmployment.size === 0) {
     return notMeasured('No employee carries a current grade assignment yet.');
@@ -571,7 +624,9 @@ export async function compRatioDistribution(): Promise<Metric<Array<{ bucket: st
   }
 
   if (ratios.length === 0) {
-    return notMeasured("No employee both has a current compensation record and a grade level that matches exactly one pay grade.");
+    return notMeasured(
+      'No employee both has a current compensation record and a grade level that matches exactly one pay grade.',
+    );
   }
   return measured(distributionList(ratios, COMP_RATIO_BUCKETS, compRatioBucket));
 }
@@ -603,7 +658,9 @@ export async function engagementEnps(): Promise<Metric<number>> {
   const enpsQuestionIdsBySurvey = new Map<string, Set<string>>();
   for (const s of surveys) {
     const questions = Array.isArray(s.questions) ? (s.questions as Array<{ id?: unknown; type?: unknown }>) : [];
-    const ids = new Set(questions.filter((q) => q.type === 'enps' && typeof q.id === 'string').map((q) => q.id as string));
+    const ids = new Set(
+      questions.filter((q) => q.type === 'enps' && typeof q.id === 'string').map((q) => q.id as string),
+    );
     if (ids.size > 0) enpsQuestionIdsBySurvey.set(s.id, ids);
   }
   if (enpsQuestionIdsBySurvey.size === 0) {
@@ -643,7 +700,9 @@ export async function engagementEnps(): Promise<Metric<number>> {
   // floor, the same discipline `commandCenter.ts` uses for unit capacity —
   // not enough of a distinct reason from "no responses" to warrant a second
   // message, since either way the honest state is "not enough to report".
-  return score === null ? notMeasured('Too few eNPS responses recorded yet to report a score without exposing individuals.') : measured(score);
+  return score === null
+    ? notMeasured('Too few eNPS responses recorded yet to report a score without exposing individuals.')
+    : measured(score);
 }
 
 /**
@@ -684,8 +743,23 @@ export async function openCasesBySla(): Promise<Metric<Array<{ bucket: string; c
 export async function dashboard(months = 12) {
   await assertAnalyticsView();
   const [
-    headcount, byDivision, byLocation, attrition, tenure, absenteeismResult, overtime,
-    liability, hiring, cost, span, payroll, training, gender, comp, enps, cases,
+    headcount,
+    byDivision,
+    byLocation,
+    attrition,
+    tenure,
+    absenteeismResult,
+    overtime,
+    liability,
+    hiring,
+    cost,
+    span,
+    payroll,
+    training,
+    gender,
+    comp,
+    enps,
+    cases,
   ] = await Promise.all([
     headcountTrend(months),
     headcountBy('division'),
@@ -707,9 +781,23 @@ export async function dashboard(months = 12) {
   ]);
 
   return {
-    headcount, byDivision, byLocation, attrition, tenure, absenteeism: absenteeismResult, overtime,
-    leaveLiability: liability, hiring, costPerHire: cost, spanOfControl: span, payroll, training,
-    genderRatio: gender, compRatioDistribution: comp, engagementEnps: enps, openCasesBySla: cases,
+    headcount,
+    byDivision,
+    byLocation,
+    attrition,
+    tenure,
+    absenteeism: absenteeismResult,
+    overtime,
+    leaveLiability: liability,
+    hiring,
+    costPerHire: cost,
+    spanOfControl: span,
+    payroll,
+    training,
+    genderRatio: gender,
+    compRatioDistribution: comp,
+    engagementEnps: enps,
+    openCasesBySla: cases,
   };
 }
 
@@ -741,7 +829,12 @@ export async function exportHeadcountRegister(): Promise<CsvExport> {
     where: { tenantId: auth.tenantId, deletedAt: null, status: { in: EMPLOYED_STATUSES } },
     include: {
       person: true,
-      assignments: { where: { rowStatus: 'Effective' }, include: { position: { include: { orgUnit: true, job: true } } }, take: 1, orderBy: { effectiveFrom: 'desc' } },
+      assignments: {
+        where: { rowStatus: 'Effective' },
+        include: { position: { include: { orgUnit: true, job: true } } },
+        take: 1,
+        orderBy: { effectiveFrom: 'desc' },
+      },
     },
     orderBy: { hireEffectiveDate: 'asc' },
   });
@@ -779,10 +872,22 @@ export async function exportAttritionReport(months = 12): Promise<CsvExport> {
       const sep = r.separationDate as Date;
       const early = isEarlyAttrition(r.hireEffectiveDate, sep);
       const tenureDays = Math.round((sep.getTime() - r.hireEffectiveDate.getTime()) / 86_400_000);
-      return [r.recordCode, r.person.fullName, r.hireEffectiveDate.toISOString().slice(0, 10), sep.toISOString().slice(0, 10), r.separationType ?? '', early ? 'yes' : 'no', tenureDays];
+      return [
+        r.recordCode,
+        r.person.fullName,
+        r.hireEffectiveDate.toISOString().slice(0, 10),
+        sep.toISOString().slice(0, 10),
+        r.separationType ?? '',
+        early ? 'yes' : 'no',
+        tenureDays,
+      ];
     }),
   );
-  await auditExport('employment_relationship', `analytics:attrition_report:${keys[0]}..${keys[keys.length - 1]}`, rows.length);
+  await auditExport(
+    'employment_relationship',
+    `analytics:attrition_report:${keys[0]}..${keys[keys.length - 1]}`,
+    rows.length,
+  );
   return { filename: `Attrition report ${keys[0]} to ${keys[keys.length - 1]}.csv`, csv };
 }
 
@@ -816,7 +921,12 @@ export async function exportLeaveLiabilityReport(): Promise<CsvExport> {
     balances.map((b) => {
       const days = num(b.balanceDays) ?? 0;
       const amount = money ? days * (dailyRateByEmployment.get(b.employmentRelationshipId) ?? 0) : null;
-      return [b.employmentRelationship.person.fullName, b.leaveType.name, days, amount === null ? 'withheld' : amount.toFixed(2)];
+      return [
+        b.employmentRelationship.person.fullName,
+        b.leaveType.name,
+        days,
+        amount === null ? 'withheld' : amount.toFixed(2),
+      ];
     }),
   );
   await auditExport('leave_balance', 'analytics:leave_liability', balances.length);
@@ -845,9 +955,18 @@ export async function exportOvertimeRegister(months = 3): Promise<CsvExport> {
   const nameByEmployment = new Map(employments.map((e) => [e.id, e.person.fullName]));
   const csv = toCsv(
     ['Employee', 'ISO week', 'Hours', 'Amount'],
-    rows.map((r) => [nameByEmployment.get(r.employmentRelationshipId) ?? r.employmentRelationshipId, r.isoWeek, num(r.hours), money ? num(r.amount) : 'withheld']),
+    rows.map((r) => [
+      nameByEmployment.get(r.employmentRelationshipId) ?? r.employmentRelationshipId,
+      r.isoWeek,
+      num(r.hours),
+      money ? num(r.amount) : 'withheld',
+    ]),
   );
-  await auditExport('overtime_accrual', `analytics:overtime_register:${keys[0]}..${keys[keys.length - 1]}`, rows.length);
+  await auditExport(
+    'overtime_accrual',
+    `analytics:overtime_register:${keys[0]}..${keys[keys.length - 1]}`,
+    rows.length,
+  );
   return { filename: `Overtime register ${keys[0]} to ${keys[keys.length - 1]}.csv`, csv };
 }
 

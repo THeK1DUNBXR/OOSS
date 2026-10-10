@@ -159,7 +159,15 @@ export function CustomerBlock({
         {customer.registrationNumber && <p className="doc-muted">Registration {customer.registrationNumber}</p>}
         {customer.address && <p className="doc-muted">{customer.address}</p>}
         <p className="doc-muted">{[customer.phone, customer.email].filter(Boolean).join(' · ')}</p>
-        <p className="doc-ids">{customer.gstin ? <><strong>GSTIN</strong> {customer.gstin}</> : 'Unregistered customer'}</p>
+        <p className="doc-ids">
+          {customer.gstin ? (
+            <>
+              <strong>GSTIN</strong> {customer.gstin}
+            </>
+          ) : (
+            'Unregistered customer'
+          )}
+        </p>
       </div>
       <div>{extra}</div>
     </section>

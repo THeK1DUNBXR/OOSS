@@ -47,7 +47,9 @@ export async function updateSecurityPolicy(input: {
   const updated = await prisma.securityPolicy.update({
     where: { id: current.id },
     data: {
-      ...(input.mfaRequiredForRoleSlugs !== undefined ? { mfaRequiredForRoleSlugs: input.mfaRequiredForRoleSlugs } : {}),
+      ...(input.mfaRequiredForRoleSlugs !== undefined
+        ? { mfaRequiredForRoleSlugs: input.mfaRequiredForRoleSlugs }
+        : {}),
       ...(input.sessionHours !== undefined ? { sessionHours: input.sessionHours } : {}),
       ...(input.passwordMinLength !== undefined ? { passwordMinLength: input.passwordMinLength } : {}),
     },
@@ -166,7 +168,8 @@ export async function runBackup(tenantId: string): Promise<BackupOutcome> {
       data: { status: 'failed', finishedAt: new Date(), error: message },
     });
 
-    const ownerPartyId = (await resolveOwnerPartyId(tenantId, 'chairman')) ?? (await resolveOwnerPartyId(tenantId, 'finance_head'));
+    const ownerPartyId =
+      (await resolveOwnerPartyId(tenantId, 'chairman')) ?? (await resolveOwnerPartyId(tenantId, 'finance_head'));
     await raiseException({
       code: 'CMP_BACKUP_FAILED',
       label: 'Daily backup failed',

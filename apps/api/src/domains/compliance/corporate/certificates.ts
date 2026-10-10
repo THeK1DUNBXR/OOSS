@@ -55,7 +55,9 @@ export async function issueCertificate(input: {
   const enrollment = await prisma.enrollment.findFirst({ where: { id: input.enrollmentId, tenantId: auth.tenantId } });
   if (!enrollment) throw ApiError.notFound('Enrollment');
   if (enrollment.status !== 'completed') {
-    throw ApiError.unprocessable(`The enrolment is ${enrollment.status}. A certificate is issued once it is completed.`);
+    throw ApiError.unprocessable(
+      `The enrolment is ${enrollment.status}. A certificate is issued once it is completed.`,
+    );
   }
 
   const prefix = await documentPrefix();
@@ -73,7 +75,12 @@ export async function issueCertificate(input: {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'certificate', subjectId: certificate.id, after: { number, enrollmentId: input.enrollmentId } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'certificate',
+    subjectId: certificate.id,
+    after: { number, enrollmentId: input.enrollmentId },
+  });
   return certificate;
 }
 
@@ -89,7 +96,9 @@ export async function issueCertificate(input: {
 export async function verifyCertificate(code: string) {
   await assertCan({ resource: 'certificates', verb: 'view' });
   const auth = currentAuth();
-  const certificate = await prisma.certificate.findFirst({ where: { tenantId: auth.tenantId, verificationCode: code } });
+  const certificate = await prisma.certificate.findFirst({
+    where: { tenantId: auth.tenantId, verificationCode: code },
+  });
   if (!certificate) throw ApiError.notFound('Certificate');
   const enrollment = await prisma.enrollment.findFirst({
     where: { id: certificate.enrollmentId, tenantId: auth.tenantId },

@@ -98,12 +98,14 @@ export function readWorkbook(buffer: Buffer): SheetGrid[] {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
   return wb.SheetNames.map((name) => ({
     name,
-    grid: (XLSX.utils.sheet_to_json(wb.Sheets[name], {
-      header: 1,
-      raw: false,
-      defval: '',
-      blankrows: true,
-    }) as unknown[][]).map((r) => r.map((c) => (c == null ? '' : String(c).trim()))),
+    grid: (
+      XLSX.utils.sheet_to_json(wb.Sheets[name], {
+        header: 1,
+        raw: false,
+        defval: '',
+        blankrows: true,
+      }) as unknown[][]
+    ).map((r) => r.map((c) => (c == null ? '' : String(c).trim()))),
   }));
 }
 
@@ -150,8 +152,19 @@ export function toAmount(input: string | number | null | undefined): number | nu
 }
 
 const MONTHS: Record<string, number> = {
-  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-  jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11,
+  jan: 0,
+  feb: 1,
+  mar: 2,
+  apr: 3,
+  may: 4,
+  jun: 5,
+  jul: 6,
+  aug: 7,
+  sep: 8,
+  sept: 8,
+  oct: 9,
+  nov: 10,
+  dec: 11,
 };
 
 /**

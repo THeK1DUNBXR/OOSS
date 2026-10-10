@@ -31,13 +31,7 @@ import { auditRegulatedRead, auditWrite, registerGovernedEntities } from '../pla
 import { raiseException } from '../platform/exceptions.js';
 import { enrolStudent, setEnrollmentStatus, ENROLLMENT_STATUSES } from '../domains/education.js';
 import { readRegulated } from '../domains/compliance/privacy.js';
-import {
-  listCourses,
-  createCourse,
-  updateCourse,
-  retireCourse,
-  assignCourse,
-} from '../domains/courses.js';
+import { listCourses, createCourse, updateCourse, retireCourse, assignCourse } from '../domains/courses.js';
 import {
   recordLearnerLog,
   resolveLearnerLog,
@@ -105,7 +99,10 @@ router.get(
         ...scopeFilter,
         ...(str(req.query.status) ? { status: str(req.query.status) } : {}),
       },
-      include: { course: { select: { name: true, code: true } }, enrollments: { select: { id: true, status: true, atRisk: true } } },
+      include: {
+        course: { select: { name: true, code: true } },
+        enrollments: { select: { id: true, status: true, atRisk: true } },
+      },
       orderBy: { startDate: 'desc' },
     });
 
@@ -156,7 +153,10 @@ router.get(
 
     const personIds = [...new Set(enrollments.map((e) => e.personId))];
     const people = personIds.length
-      ? await prisma.person.findMany({ where: { id: { in: personIds } }, select: { id: true, fullName: true, recordCode: true } })
+      ? await prisma.person.findMany({
+          where: { id: { in: personIds } },
+          select: { id: true, fullName: true, recordCode: true },
+        })
       : [];
     const personMap = new Map(people.map((p) => [p.id, p]));
 
@@ -273,7 +273,10 @@ router.patch(
  * Stops a course being sold. Never a delete: students hold enrolments on courses
  * withdrawn years ago and their record has to keep reading correctly.
  */
-router.post('/courses/:id/retire', handler(async (req) => retireCourse(req.params.id)));
+router.post(
+  '/courses/:id/retire',
+  handler(async (req) => retireCourse(req.params.id)),
+);
 
 /**
  * Puts a customer on a course.
@@ -616,9 +619,7 @@ router.post(
  */
 router.get(
   '/learner-log/open',
-  handler(async (req) =>
-    openLearnerItems({ kind: str(req.query.kind), severity: str(req.query.severity) }),
-  ),
+  handler(async (req) => openLearnerItems({ kind: str(req.query.kind), severity: str(req.query.severity) })),
 );
 
 // ---------------------------------------------------------------------------
@@ -641,7 +642,9 @@ router.get(
     });
 
     const orgIds = [...new Set(projects.map((p) => p.organizationId).filter(Boolean) as string[])];
-    const orgs = orgIds.length ? await prisma.organization.findMany({ where: { id: { in: orgIds } }, select: { id: true, name: true } }) : [];
+    const orgs = orgIds.length
+      ? await prisma.organization.findMany({ where: { id: { in: orgIds } }, select: { id: true, name: true } })
+      : [];
     const orgMap = new Map(orgs.map((o) => [o.id, o.name]));
 
     return projects.map((p) => ({
@@ -690,10 +693,14 @@ router.patch(
     const after = await prisma.project.update({
       where: { id: req.params.id },
       data: {
-        ...(input.status ? { status: input.status, ...(input.status === 'delivered' ? { actualEndDate: new Date() } : {}) } : {}),
+        ...(input.status
+          ? { status: input.status, ...(input.status === 'delivered' ? { actualEndDate: new Date() } : {}) }
+          : {}),
         ...(input.scheduleVariancePct !== undefined ? { scheduleVariancePct: input.scheduleVariancePct } : {}),
         ...(input.healthBand ? { healthBand: input.healthBand } : {}),
-        ...(input.targetEndDate !== undefined ? { targetEndDate: input.targetEndDate ? new Date(input.targetEndDate) : null } : {}),
+        ...(input.targetEndDate !== undefined
+          ? { targetEndDate: input.targetEndDate ? new Date(input.targetEndDate) : null }
+          : {}),
       },
     });
     await auditWrite({ action: 'update', subjectType: 'project', subjectId: after.id, before, after });

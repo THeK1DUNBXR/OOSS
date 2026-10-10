@@ -63,7 +63,7 @@ describe('Pure logic', () => {
 });
 
 describe('Announcements', () => {
-  it('HCM-ENGAGEMENT-003: HR ops publishes an announcement, and it reaches an employee\'s feed and pending-ack list', async () => {
+  it("HCM-ENGAGEMENT-003: HR ops publishes an announcement, and it reaches an employee's feed and pending-ack list", async () => {
     const title = `Fixture announcement ${stamp()}`;
     const created = await asUser('operations@kaizen.co.in', () =>
       createAnnouncement({ title, body: 'All hands on Friday.', acknowledgementRequired: true, publishNow: true }),
@@ -87,11 +87,13 @@ describe('Announcements', () => {
 
   it('HCM-ENGAGEMENT-004: an employee cannot publish an announcement — creating one is refused at the grant', async () => {
     await expect(
-      asUser('employee@kaizen.co.in', () => createAnnouncement({ title: 'Should not land', body: 'x', publishNow: true })),
+      asUser('employee@kaizen.co.in', () =>
+        createAnnouncement({ title: 'Should not land', body: 'x', publishNow: true }),
+      ),
     ).rejects.toThrow();
   });
 
-  it('HCM-ENGAGEMENT-005: a draft (unpublished, future-dated) announcement never appears in an employee\'s feed', async () => {
+  it("HCM-ENGAGEMENT-005: a draft (unpublished, future-dated) announcement never appears in an employee's feed", async () => {
     const created = await asUser('operations@kaizen.co.in', () =>
       createAnnouncement({
         title: `Fixture future ${stamp()}`,
@@ -118,7 +120,9 @@ describe('Recognition', () => {
     expect(raviView.some((r) => r.id === recognition.id)).toBe(true);
 
     await expect(
-      asUser('divya@kaizen.co.in', async (p) => giveRecognition({ toPartyId: p.partyId, badge: 'Self five', message: 'x' })),
+      asUser('divya@kaizen.co.in', async (p) =>
+        giveRecognition({ toPartyId: p.partyId, badge: 'Self five', message: 'x' }),
+      ),
     ).rejects.toThrow();
   });
 
@@ -128,7 +132,7 @@ describe('Recognition', () => {
     expect(Array.isArray(board)).toBe(true);
   });
 
-  it('HCM-ENGAGEMENT-008: an employee only ever sees recognitions they gave or received, never a colleague\'s', async () => {
+  it("HCM-ENGAGEMENT-008: an employee only ever sees recognitions they gave or received, never a colleague's", async () => {
     const priya = await asUser('priya@kaizen.co.in', async (p) => p);
     const kavitha = await asUser('kavitha@kaizen.co.in', async (p) => p);
     await asUser('priya@kaizen.co.in', () =>
@@ -196,7 +200,7 @@ describe('Pulse surveys — anonymity and eNPS', () => {
     ).rejects.toThrow();
   });
 
-  it('HCM-ENGAGEMENT-015: a named survey response is always recorded against the caller\'s own employment, never a client-supplied one (scope-axis: create@all with no record to narrow against)', async () => {
+  it("HCM-ENGAGEMENT-015: a named survey response is always recorded against the caller's own employment, never a client-supplied one (scope-axis: create@all with no record to narrow against)", async () => {
     const survey = await asUser('operations@kaizen.co.in', () =>
       createPulseSurvey({
         title: `Fixture named pulse ${stamp()}`,
@@ -209,8 +213,12 @@ describe('Pulse surveys — anonymity and eNPS', () => {
     const ravi = await asUser('ravi@kaizen.co.in', async (p) => p);
     // The route (and the domain function's signature) takes no identity field
     // at all — there is nothing left for a caller to override.
-    const response = await asUser('ravi@kaizen.co.in', () => submitSurveyResponse(survey.id, [{ questionId: 'q1', value: 7 }]));
-    const raviEmployment = await unscopedPrisma.employmentRelationship.findFirst({ where: { tenantId: TENANT, personId: ravi.partyId } });
+    const response = await asUser('ravi@kaizen.co.in', () =>
+      submitSurveyResponse(survey.id, [{ questionId: 'q1', value: 7 }]),
+    );
+    const raviEmployment = await unscopedPrisma.employmentRelationship.findFirst({
+      where: { tenantId: TENANT, personId: ravi.partyId },
+    });
     expect(response.employmentRelationshipId).toBe(raviEmployment?.id);
   });
 });
@@ -249,14 +257,18 @@ describe('HR helpdesk — confidential-grievance concealment', () => {
     const hrQueue = await asUser('operations@kaizen.co.in', () => listHrCases());
     expect(hrQueue.some((c) => c.id === payrollCase.id)).toBe(true);
 
-    const resolved = await asUser('operations@kaizen.co.in', () => transitionHrCase(payrollCase.id, 'resolved', 'Fixed the input.'));
+    const resolved = await asUser('operations@kaizen.co.in', () =>
+      transitionHrCase(payrollCase.id, 'resolved', 'Fixed the input.'),
+    );
     expect(resolved.status).toBe('resolved');
     expect(resolved.resolvedAt).not.toBeNull();
 
-    await expect(asUser('operations@kaizen.co.in', () => transitionHrCase(payrollCase.id, 'not-a-status' as never))).rejects.toThrow();
+    await expect(
+      asUser('operations@kaizen.co.in', () => transitionHrCase(payrollCase.id, 'not-a-status' as never)),
+    ).rejects.toThrow();
   });
 
-  it('HCM-ENGAGEMENT-018: an employee cannot reach a colleague\'s open case by id, cross-tenant reach included', async () => {
+  it("HCM-ENGAGEMENT-018: an employee cannot reach a colleague's open case by id, cross-tenant reach included", async () => {
     const raviCase = await asUser('ravi@kaizen.co.in', () =>
       createHrCase({ category: 'it', subject: 'Fixture IT case', body: 'Laptop will not boot.' }),
     );

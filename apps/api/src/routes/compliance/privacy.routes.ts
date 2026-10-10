@@ -31,7 +31,10 @@ const router = Router();
 
 // ---- Notice -----------------------------------------------------------------
 
-router.get('/notice/current', handler(async () => getCurrentNotice()));
+router.get(
+  '/notice/current',
+  handler(async () => getCurrentNotice()),
+);
 
 router.post(
   '/notice',
@@ -172,7 +175,10 @@ router.post(
 
 // ---- Breach register --------------------------------------------------------
 
-router.get('/breaches', handler(async (req) => listBreaches({ status: str(req.query.status) })));
+router.get(
+  '/breaches',
+  handler(async (req) => listBreaches({ status: str(req.query.status) })),
+);
 
 router.post(
   '/breaches',
@@ -200,7 +206,10 @@ router.post(
 
 // ---- Retention ---------------------------------------------------------------
 
-router.get('/retention', handler(async () => getRetention()));
+router.get(
+  '/retention',
+  handler(async () => getRetention()),
+);
 
 // ---- Access review ------------------------------------------------------------
 
@@ -224,8 +233,14 @@ router.post(
 
 // ---- Encryption at rest --------------------------------------------------------
 
-router.get('/encrypt-at-rest/status', handler(async () => encryptionStatus()));
+router.get(
+  '/encrypt-at-rest/status',
+  handler(async () => encryptionStatus()),
+);
 
-router.post('/encrypt-at-rest/backfill', handler(async () => backfillEncryptAtRest()));
+router.post(
+  '/encrypt-at-rest/backfill',
+  handler(async () => backfillEncryptAtRest()),
+);
 
 export default router;

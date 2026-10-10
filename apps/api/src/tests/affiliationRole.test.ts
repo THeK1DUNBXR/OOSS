@@ -118,12 +118,15 @@ describe('POST /crm/people/:id/affiliations — no escalation', () => {
 
   it('lets an assigner name a role whose grants are all within their own', async () => {
     const ops = await principalFor('operations@kaizen.co.in');
-    await withFixtureRole({ slug: 'w1a_aff_low', grants: [{ resource: 'people', verbs: ['view'], scope: 'own' }] }, async (low) => {
-      await withFixtureRole({ slug: 'w1a_aff_low_target', grants: [] }, async (target) => {
-        const res = await postAffiliation(ops, target.partyId, { roleSlug: low.roleSlug });
-        expect(res.ok).toBe(true);
-      });
-    });
+    await withFixtureRole(
+      { slug: 'w1a_aff_low', grants: [{ resource: 'people', verbs: ['view'], scope: 'own' }] },
+      async (low) => {
+        await withFixtureRole({ slug: 'w1a_aff_low_target', grants: [] }, async (target) => {
+          const res = await postAffiliation(ops, target.partyId, { roleSlug: low.roleSlug });
+          expect(res.ok).toBe(true);
+        });
+      },
+    );
   });
 
   it('lets an assigner name a role whose only grants are own-scoped, though they hold none of its resources', async () => {

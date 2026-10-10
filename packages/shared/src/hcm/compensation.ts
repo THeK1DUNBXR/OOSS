@@ -72,7 +72,10 @@ export function emiSchedule(principal: number, annualInterestPct: number, tenure
     return { emi: 0, totalInterest: 0, totalPayable: 0, instalments: [] };
   }
   const r = annualInterestPct / 1200;
-  const emi = r === 0 ? round2(principal / tenureMonths) : round2((principal * r * (1 + r) ** tenureMonths) / ((1 + r) ** tenureMonths - 1));
+  const emi =
+    r === 0
+      ? round2(principal / tenureMonths)
+      : round2((principal * r * (1 + r) ** tenureMonths) / ((1 + r) ** tenureMonths - 1));
 
   let balance = principal;
   const instalments: EmiInstalment[] = [];
@@ -83,7 +86,13 @@ export function emiSchedule(principal: number, annualInterestPct: number, tenure
     // exactly at zero rather than leaving a stray paise balance forever.
     if (month === tenureMonths) principalComponent = round2(balance);
     balance = round2(balance - principalComponent);
-    instalments.push({ month, emi: round2(principalComponent + interestComponent), principalComponent, interestComponent, balance: Math.max(balance, 0) });
+    instalments.push({
+      month,
+      emi: round2(principalComponent + interestComponent),
+      principalComponent,
+      interestComponent,
+      balance: Math.max(balance, 0),
+    });
   }
   const totalInterest = round2(instalments.reduce((sum, i) => sum + i.interestComponent, 0));
   const totalPayable = round2(principal + totalInterest);
@@ -114,7 +123,14 @@ export function revisionBudgetCheck(lines: RevisionLineTotals[], budgetPct: numb
   const totalProposed = round2(lines.reduce((sum, l) => sum + l.proposedCtc, 0));
   const increaseAmount = round2(totalProposed - totalCurrent);
   const increasePct = totalCurrent > 0 ? round2((increaseAmount / totalCurrent) * 100) : 0;
-  return { totalCurrent, totalProposed, increaseAmount, increasePct, budgetPct, withinBudget: increasePct <= budgetPct };
+  return {
+    totalCurrent,
+    totalProposed,
+    increaseAmount,
+    increasePct,
+    budgetPct,
+    withinBudget: increasePct <= budgetPct,
+  };
 }
 
 // ---------------------------------------------------------------------------

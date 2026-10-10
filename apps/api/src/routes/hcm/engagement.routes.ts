@@ -40,7 +40,10 @@ import {
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'engagement', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'engagement', ready: true })),
+);
 
 // ---------------------------------------------------------------------------
 // Announcements
@@ -53,7 +56,10 @@ const audienceSchema = z.object({
   audienceLocation: z.string().nullish(),
 });
 
-router.get('/announcements', handler(async () => listAnnouncements()));
+router.get(
+  '/announcements',
+  handler(async () => listAnnouncements()),
+);
 
 router.post(
   '/announcements',
@@ -73,16 +79,31 @@ router.post(
   }),
 );
 
-router.post('/announcements/:id/publish', handler(async (req) => publishAnnouncement(req.params.id)));
-router.post('/announcements/:id/withdraw', handler(async (req) => withdrawAnnouncement(req.params.id)));
-router.post('/announcements/:id/ack', handler(async (req) => acknowledgeAnnouncement(req.params.id)));
-router.get('/announcements/:id/acks', handler(async (req) => announcementAcks(req.params.id)));
+router.post(
+  '/announcements/:id/publish',
+  handler(async (req) => publishAnnouncement(req.params.id)),
+);
+router.post(
+  '/announcements/:id/withdraw',
+  handler(async (req) => withdrawAnnouncement(req.params.id)),
+);
+router.post(
+  '/announcements/:id/ack',
+  handler(async (req) => acknowledgeAnnouncement(req.params.id)),
+);
+router.get(
+  '/announcements/:id/acks',
+  handler(async (req) => announcementAcks(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Recognition
 // ---------------------------------------------------------------------------
 
-router.get('/recognitions', handler(async () => listRecognitions()));
+router.get(
+  '/recognitions',
+  handler(async () => listRecognitions()),
+);
 
 router.post(
   '/recognitions',
@@ -100,7 +121,10 @@ router.post(
   }),
 );
 
-router.get('/recognitions/leaderboard', handler(async (req) => recognitionLeaderboard(req.query.limit ? Number(req.query.limit) : undefined)));
+router.get(
+  '/recognitions/leaderboard',
+  handler(async (req) => recognitionLeaderboard(req.query.limit ? Number(req.query.limit) : undefined)),
+);
 
 // ---------------------------------------------------------------------------
 // Pulse surveys
@@ -113,7 +137,10 @@ const surveyQuestionSchema = z.object({
   scaleMax: z.number().int().positive().optional(),
 });
 
-router.get('/surveys', handler(async () => listPulseSurveys()));
+router.get(
+  '/surveys',
+  handler(async () => listPulseSurveys()),
+);
 
 router.post(
   '/surveys',
@@ -131,8 +158,14 @@ router.post(
   }),
 );
 
-router.post('/surveys/:id/open', handler(async (req) => openPulseSurvey(req.params.id)));
-router.post('/surveys/:id/close', handler(async (req) => closePulseSurvey(req.params.id)));
+router.post(
+  '/surveys/:id/open',
+  handler(async (req) => openPulseSurvey(req.params.id)),
+);
+router.post(
+  '/surveys/:id/close',
+  handler(async (req) => closePulseSurvey(req.params.id)),
+);
 
 router.post(
   '/surveys/:id/responses',
@@ -146,14 +179,23 @@ router.post(
   }),
 );
 
-router.get('/surveys/:id/results', handler(async (req) => pulseSurveyResults(req.params.id)));
+router.get(
+  '/surveys/:id/results',
+  handler(async (req) => pulseSurveyResults(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // HR helpdesk cases
 // ---------------------------------------------------------------------------
 
-router.get('/hr-cases', handler(async () => listHrCases()));
-router.get('/hr-cases/confidential', handler(async () => listConfidentialHrCases()));
+router.get(
+  '/hr-cases',
+  handler(async () => listHrCases()),
+);
+router.get(
+  '/hr-cases/confidential',
+  handler(async () => listConfidentialHrCases()),
+);
 
 router.post(
   '/hr-cases',
@@ -171,7 +213,10 @@ router.post(
   }),
 );
 
-router.get('/hr-cases/:id', handler(async (req) => getHrCase(req.params.id)));
+router.get(
+  '/hr-cases/:id',
+  handler(async (req) => getHrCase(req.params.id)),
+);
 
 router.post(
   '/hr-cases/:id/messages',
@@ -192,7 +237,9 @@ router.post(
 router.post(
   '/hr-cases/:id/transition',
   handler(async (req) => {
-    const body = z.object({ status: z.enum(['open', 'in_progress', 'waiting', 'resolved', 'closed']), note: z.string().optional() }).parse(req.body);
+    const body = z
+      .object({ status: z.enum(['open', 'in_progress', 'waiting', 'resolved', 'closed']), note: z.string().optional() })
+      .parse(req.body);
     return transitionHrCase(req.params.id, body.status, body.note);
   }),
 );
@@ -201,7 +248,10 @@ router.post(
 // Policy documents
 // ---------------------------------------------------------------------------
 
-router.get('/policies', handler(async () => listPolicyDocuments()));
+router.get(
+  '/policies',
+  handler(async () => listPolicyDocuments()),
+);
 
 router.post(
   '/policies',
@@ -219,16 +269,31 @@ router.post(
   }),
 );
 
-router.post('/policies/:id/publish', handler(async (req) => publishPolicyDocument(req.params.id)));
-router.post('/policies/:id/ack', handler(async (req) => acknowledgePolicyDocument(req.params.id)));
-router.get('/policies/:id/status', handler(async (req) => policyAckStatus(req.params.id)));
+router.post(
+  '/policies/:id/publish',
+  handler(async (req) => publishPolicyDocument(req.params.id)),
+);
+router.post(
+  '/policies/:id/ack',
+  handler(async (req) => acknowledgePolicyDocument(req.params.id)),
+);
+router.get(
+  '/policies/:id/status',
+  handler(async (req) => policyAckStatus(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Exit interviews
 // ---------------------------------------------------------------------------
 
-router.get('/exit-interviews', handler(async () => listExitInterviews()));
-router.get('/exit-interviews/themes', handler(async () => exitInterviewThemeSummary()));
+router.get(
+  '/exit-interviews',
+  handler(async () => listExitInterviews()),
+);
+router.get(
+  '/exit-interviews/themes',
+  handler(async () => exitInterviewThemeSummary()),
+);
 
 router.post(
   '/exit-interviews',
@@ -249,6 +314,9 @@ router.post(
 // /me/home
 // ---------------------------------------------------------------------------
 
-router.get('/me/home', handler(async () => myEngagementHome()));
+router.get(
+  '/me/home',
+  handler(async () => myEngagementHome()),
+);
 
 export default router;

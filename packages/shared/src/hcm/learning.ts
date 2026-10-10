@@ -13,13 +13,7 @@ export const HCM_LEARNING_MODULE = 'learning' as const;
 export type TrainingProgramKind = 'classroom' | 'online' | 'certification' | 'mandatory';
 export const TRAINING_PROGRAM_KINDS: TrainingProgramKind[] = ['classroom', 'online', 'certification', 'mandatory'];
 
-export type TrainingEnrollmentStatus =
-  | 'nominated'
-  | 'approved'
-  | 'attended'
-  | 'completed'
-  | 'no_show'
-  | 'rejected';
+export type TrainingEnrollmentStatus = 'nominated' | 'approved' | 'attended' | 'completed' | 'no_show' | 'rejected';
 
 /**
  * The enrollment lifecycle: nominated → approved → attended → completed, with
@@ -121,7 +115,10 @@ export function isCertificationExpired(expiresOn: Date | null, asOf: Date): bool
 }
 
 /** When a mandatory training rule's clock starts counting from someone's join date. */
-export function mandatoryTrainingDueDate(hireEffectiveDate: Date, dueWithinDaysOfJoin: number | null | undefined): Date | null {
+export function mandatoryTrainingDueDate(
+  hireEffectiveDate: Date,
+  dueWithinDaysOfJoin: number | null | undefined,
+): Date | null {
   if (dueWithinDaysOfJoin == null) return null;
   return new Date(hireEffectiveDate.getTime() + dueWithinDaysOfJoin * 86_400_000);
 }

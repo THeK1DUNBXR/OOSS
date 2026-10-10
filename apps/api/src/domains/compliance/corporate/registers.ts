@@ -53,7 +53,9 @@ export async function createRegisterEntry(input: RegisterEntryInput) {
       orderBy: { createdAt: 'desc' },
     });
     if (head?.id !== input.supersedesId) {
-      throw ApiError.unprocessable('This entry is not the current head of its subject\'s chain. Supersede the latest entry, not an earlier one — that keeps the register a straight line.');
+      throw ApiError.unprocessable(
+        "This entry is not the current head of its subject's chain. Supersede the latest entry, not an earlier one — that keeps the register a straight line.",
+      );
     }
   }
 
@@ -70,7 +72,12 @@ export async function createRegisterEntry(input: RegisterEntryInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'register_entry', subjectId: entry.id, after: { recordCode, registerKind: input.registerKind, subjectKey: input.subjectKey } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'register_entry',
+    subjectId: entry.id,
+    after: { recordCode, registerKind: input.registerKind, subjectKey: input.subjectKey },
+  });
   return entry;
 }
 

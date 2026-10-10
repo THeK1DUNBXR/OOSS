@@ -31,10 +31,10 @@ Rules that apply to every feature here:
 
 ## Index
 
-| # | Feature | Status | Researched | Target |
-|---|---|---|---|---|
-| 1 | Native work management & team communication (Jira- and Slack-style) | proposed | 2026-10-10 | not scheduled |
-| 2 | Product rename: KaiERP → Zen 360 | accepted | 2026-10-10 | not scheduled (Tier 1 first) |
+| #   | Feature                                                             | Status   | Researched | Target                       |
+| --- | ------------------------------------------------------------------- | -------- | ---------- | ---------------------------- |
+| 1   | Native work management & team communication (Jira- and Slack-style) | proposed | 2026-10-10 | not scheduled                |
+| 2   | Product rename: KaiERP → Zen 360                                    | accepted | 2026-10-10 | not scheduled (Tier 1 first) |
 
 ## Feature 1: Native work management & team communication (Jira- and Slack-style workflows)
 
@@ -73,6 +73,7 @@ Each of these is a claim about origin/main. Re-check before relying on it.
 ### Phases
 
 **Phase A — Work items (Jira core, no new infrastructure).**
+
 - Generalise the `ItTicket` pattern into projects and work items (epic, story, task, subtask).
 - Per-project statuses and transitions as table rows: from, to, roles, conditions, validators, post-actions. Set-status is a built-in transition that cannot be removed. Execution goes through `lifecycle.ts:74`, not a new engine.
 - Kanban with WIP limits, backlog, sprints.
@@ -83,6 +84,7 @@ Each of these is a claim about origin/main. Re-check before relying on it.
 - Excludes: per-tenant workflow configuration and permission schemes (see Decisions 5).
 
 **Phase B — Discussion (Slack core, polling).**
+
 - Channels (public and private), DMs, `@user` and `@channel` mentions, reactions.
 - Edit and delete as tombstones with edit history. The original is kept.
 - Record-attached discussions (on a lead, invoice or ticket) using Zulip-style topics rather than nested reply trees.
@@ -93,11 +95,13 @@ Each of these is a claim about origin/main. Re-check before relying on it.
 - Exit test: a message in a private channel is not readable by a non-member at the API, not only hidden in the UI.
 
 **Phase C — Realtime and delivery.**
+
 - Transport: SSE through the Worker first. This is unverified: test that the Worker streams SSE before committing. Alternative is a Durable Object per channel with the Hibernation WebSocket API (`serializeAttachment` limit 16 KiB). Deploys drop sockets, so clients must resync on reconnect either way.
 - Per-channel monotonic `seq` and `client_msg_id` for dedupe.
 - Notification delivery worker via a queue (email, push), user preferences, do-not-disturb.
 
 **Phase D — Automation.**
+
 - User-authored trigger → condition → action rules.
 - Every action goes through `assertCan` → write → `auditWrite` → `emit`, the same as a human write.
 - Rules must not post journal entries, generate IRNs, file returns, run payroll or email customers without human approval. The hard prohibitions in `packages/shared/src/ai.ts` apply equally to rules. They are not configurable.

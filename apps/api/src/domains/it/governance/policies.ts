@@ -59,7 +59,9 @@ export async function createPolicyDraft(input: CreatePolicyInput) {
 
   const existing = await prisma.itPolicyDocument.findFirst({ where: { tenantId: auth.tenantId, code } });
   if (existing) {
-    throw ApiError.conflict(`'${code}' already names a policy (${existing.recordCode}). Use new-version to revise it instead of a second draft under the same code.`);
+    throw ApiError.conflict(
+      `'${code}' already names a policy (${existing.recordCode}). Use new-version to revise it instead of a second draft under the same code.`,
+    );
   }
 
   const recordCode = await nextRecordCode('ITP');
@@ -78,7 +80,12 @@ export async function createPolicyDraft(input: CreatePolicyInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_policy_document', subjectId: policy.id, after: { recordCode, code, version: 1 } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_policy_document',
+    subjectId: policy.id,
+    after: { recordCode, code, version: 1 },
+  });
   return withTransitions(policy);
 }
 
@@ -98,7 +105,9 @@ export async function updatePolicyDraft(id: string, patch: UpdatePolicyDraftInpu
   if (!policy) throw ApiError.notFound('Policy');
   await assertCan({ resource: RESOURCE, verb: 'edit', record: { ownerPartyId: policy.drafterPartyId } });
   if (policy.status !== 'draft') {
-    throw ApiError.unprocessable(`${policy.recordCode} is ${policy.status}. A published policy is immutable — use new-version to revise it.`);
+    throw ApiError.unprocessable(
+      `${policy.recordCode} is ${policy.status}. A published policy is immutable — use new-version to revise it.`,
+    );
   }
 
   const updated = await prisma.itPolicyDocument.update({
@@ -110,7 +119,13 @@ export async function updatePolicyDraft(id: string, patch: UpdatePolicyDraftInpu
       ...(patch.reacknowledgeMonths !== undefined ? { reacknowledgeMonths: patch.reacknowledgeMonths } : {}),
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'it_policy_document', subjectId: id, before: policy, after: updated });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_policy_document',
+    subjectId: id,
+    before: policy,
+    after: updated,
+  });
   return withTransitions(updated);
 }
 
@@ -168,7 +183,9 @@ export async function policyDetail(id: string) {
   }
 
   const myAck = auth.partyId
-    ? await prisma.itPolicyAcknowledgement.findFirst({ where: { tenantId: auth.tenantId, policyId: id, partyId: auth.partyId, version: policy.version } })
+    ? await prisma.itPolicyAcknowledgement.findFirst({
+        where: { tenantId: auth.tenantId, policyId: id, partyId: auth.partyId, version: policy.version },
+      })
     : null;
 
   return { ...withTransitions(policy), acknowledgedByMe: Boolean(myAck) };
@@ -235,7 +252,12 @@ export async function publishPolicy(id: string) {
   }
 
   if (!gate.permitted) {
-    return { applied: false, policy: withTransitions(policy), approvalStepId: gate.approvalStepId, reason: gate.reason };
+    return {
+      applied: false,
+      policy: withTransitions(policy),
+      approvalStepId: gate.approvalStepId,
+      reason: gate.reason,
+    };
   }
 
   const now = new Date();
@@ -247,7 +269,13 @@ export async function publishPolicy(id: string) {
     data: { status: 'published', publishedAt: now, publishedById: auth.partyId },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'it_policy_document', subjectId: id, before: { status: 'draft' }, after: { status: 'published' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_policy_document',
+    subjectId: id,
+    before: { status: 'draft' },
+    after: { status: 'published' },
+  });
   await emit({
     name: EVENTS.IT_POLICY_PUBLISHED,
     subject: { entityType: 'it_policy_document', entityId: id, recordCode: policy.recordCode },
@@ -268,12 +296,18 @@ export async function newVersionOf(id: string) {
   const policy = await prisma.itPolicyDocument.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!policy) throw ApiError.notFound('Policy');
   if (policy.status !== 'published') {
-    throw ApiError.unprocessable(`${policy.recordCode} is ${policy.status}. A new version is opened from a published policy.`);
+    throw ApiError.unprocessable(
+      `${policy.recordCode} is ${policy.status}. A new version is opened from a published policy.`,
+    );
   }
 
-  const existingDraft = await prisma.itPolicyDocument.findFirst({ where: { tenantId: auth.tenantId, code: policy.code, status: 'draft' } });
+  const existingDraft = await prisma.itPolicyDocument.findFirst({
+    where: { tenantId: auth.tenantId, code: policy.code, status: 'draft' },
+  });
   if (existingDraft) {
-    throw ApiError.conflict(`${policy.code} already has an open draft (${existingDraft.recordCode}). Publish or retire it before opening another.`);
+    throw ApiError.conflict(
+      `${policy.code} already has an open draft (${existingDraft.recordCode}). Publish or retire it before opening another.`,
+    );
   }
 
   const recordCode = await nextRecordCode('ITP');
@@ -293,7 +327,12 @@ export async function newVersionOf(id: string) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_policy_document', subjectId: draft.id, after: { recordCode, code: policy.code, version: draft.version, supersedesId: policy.id } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_policy_document',
+    subjectId: draft.id,
+    after: { recordCode, code: policy.code, version: draft.version, supersedesId: policy.id },
+  });
   return withTransitions(draft);
 }
 
@@ -308,7 +347,14 @@ export async function retirePolicy(id: string) {
   }
   const to = policyMachine.apply(policy.status as PolicyState, 'RETIRE');
   const updated = await prisma.itPolicyDocument.update({ where: { id }, data: { status: to } });
-  await auditWrite({ action: 'update', subjectType: 'it_policy_document', subjectId: id, before: { status: policy.status }, after: { status: to }, meta: { transition: 'RETIRE' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_policy_document',
+    subjectId: id,
+    before: { status: policy.status },
+    after: { status: to },
+    meta: { transition: 'RETIRE' },
+  });
   await emit({
     name: EVENTS.IT_POLICY_PUBLISHED,
     subject: { entityType: 'it_policy_document', entityId: id, recordCode: policy.recordCode },
@@ -331,7 +377,9 @@ export async function acknowledgePolicy(id: string) {
   const policy = await prisma.itPolicyDocument.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!policy) throw ApiError.notFound('Policy');
   if (policy.status !== 'published') {
-    throw ApiError.unprocessable(`${policy.recordCode} is ${policy.status}. Only a published policy can be acknowledged.`);
+    throw ApiError.unprocessable(
+      `${policy.recordCode} is ${policy.status}. Only a published policy can be acknowledged.`,
+    );
   }
 
   const existing = await prisma.itPolicyAcknowledgement.findFirst({
@@ -343,7 +391,12 @@ export async function acknowledgePolicy(id: string) {
     data: { tenantId: auth.tenantId, policyId: id, version: policy.version, partyId: auth.partyId },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'it_policy_acknowledgement', subjectId: ack.id, after: { policyId: id, version: policy.version, partyId: auth.partyId } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'it_policy_acknowledgement',
+    subjectId: ack.id,
+    after: { policyId: id, version: policy.version, partyId: auth.partyId },
+  });
   await emit({
     name: EVENTS.IT_POLICY_ACKNOWLEDGED,
     subject: { entityType: 'it_policy_acknowledgement', entityId: ack.id },
@@ -396,7 +449,15 @@ export async function acknowledgementsFor(id: string) {
 // ---------------------------------------------------------------------------
 
 export interface TargetAudience {
-  policy: { id: string; code: string; title: string; version: number; publishedAt: Date | null; reacknowledgeMonths: number | null; recordCode: string | null };
+  policy: {
+    id: string;
+    code: string;
+    title: string;
+    version: number;
+    publishedAt: Date | null;
+    reacknowledgeMonths: number | null;
+    recordCode: string | null;
+  };
   targetPartyIds: string[];
   acknowledgedPartyIds: string[];
 }
@@ -414,10 +475,22 @@ export async function publishedPolicyAudiences(): Promise<TargetAudience[]> {
 
   const out: TargetAudience[] = [];
   for (const p of published) {
-    const targetPartyIds = [...new Set(affiliations.filter((a) => appliesTo(p.appliesToRoleSlugs, a.roleSlug)).map((a) => a.partyId))];
-    const acks = await prisma.itPolicyAcknowledgement.findMany({ where: { tenantId: auth.tenantId, policyId: p.id, version: p.version } });
+    const targetPartyIds = [
+      ...new Set(affiliations.filter((a) => appliesTo(p.appliesToRoleSlugs, a.roleSlug)).map((a) => a.partyId)),
+    ];
+    const acks = await prisma.itPolicyAcknowledgement.findMany({
+      where: { tenantId: auth.tenantId, policyId: p.id, version: p.version },
+    });
     out.push({
-      policy: { id: p.id, code: p.code, title: p.title, version: p.version, publishedAt: p.publishedAt, reacknowledgeMonths: p.reacknowledgeMonths, recordCode: p.recordCode },
+      policy: {
+        id: p.id,
+        code: p.code,
+        title: p.title,
+        version: p.version,
+        publishedAt: p.publishedAt,
+        reacknowledgeMonths: p.reacknowledgeMonths,
+        recordCode: p.recordCode,
+      },
       targetPartyIds,
       acknowledgedPartyIds: [...new Set(acks.map((a) => a.partyId))],
     });
@@ -444,7 +517,10 @@ export async function policiesSummary() {
 
   const audiences = await publishedPolicyAudiences();
   const totalTarget = audiences.reduce((sum, a) => sum + a.targetPartyIds.length, 0);
-  const totalAcked = audiences.reduce((sum, a) => sum + a.targetPartyIds.filter((id) => a.acknowledgedPartyIds.includes(id)).length, 0);
+  const totalAcked = audiences.reduce(
+    (sum, a) => sum + a.targetPartyIds.filter((id) => a.acknowledgedPartyIds.includes(id)).length,
+    0,
+  );
   const rate = acknowledgementRate(totalAcked, totalTarget);
 
   return { notYetMeasured: false, published, drafts, acknowledgementRate: rate };

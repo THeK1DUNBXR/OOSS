@@ -35,7 +35,14 @@ describe('approval steps record the resource they gate on', () => {
       createApplication({ name: `Resource-guard app ${Date.now()}`, category: 'productivity', hosting: 'saas' }),
     );
     const licence = await asUser('operations@kaizen.co.in', () =>
-      createLicence({ applicationId: app.id, kind: 'per_seat', seatsPurchased: 5, seatsInUse: 2, costPerPeriod: 10000, billingCycle: 'monthly' }),
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 5,
+        seatsInUse: 2,
+        costPerPeriod: 10000,
+        billingCycle: 'monthly',
+      }),
     );
     const newTermEnd = new Date();
     newTermEnd.setUTCFullYear(newTermEnd.getUTCFullYear() + 1);

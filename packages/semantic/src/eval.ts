@@ -21,7 +21,11 @@ export interface EvalResult {
   observed: number;
 }
 
-export function buildTenantSafeQuery(graph: MetricGraph, context: TenantSafeContext, request: Omit<CompileRequest, 'tenantId' | 'tenantColumn' | 'visibilityPredicate' | 'timeoutMs'>): CompiledQuery {
+export function buildTenantSafeQuery(
+  graph: MetricGraph,
+  context: TenantSafeContext,
+  request: Omit<CompileRequest, 'tenantId' | 'tenantColumn' | 'visibilityPredicate' | 'timeoutMs'>,
+): CompiledQuery {
   const tenantSpecificRequest: CompileRequest = {
     ...request,
     tenantId: context.tenantId,
@@ -43,7 +47,11 @@ export function assertTenantScoped(graph: MetricGraph, tenantId: string, request
   }
 }
 
-export function runGoldenEval(graph: MetricGraph, cases: EvalCase[], runner: (query: CompiledQuery) => number): EvalResult[] {
+export function runGoldenEval(
+  graph: MetricGraph,
+  cases: EvalCase[],
+  runner: (query: CompiledQuery) => number,
+): EvalResult[] {
   return cases.map(({ name, request, expected }) => {
     const compiled = compileMetricQuery(graph, request);
     const observed = runner(compiled);

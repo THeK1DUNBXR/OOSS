@@ -153,7 +153,10 @@ describe('structured logging (platform/logger.ts)', () => {
   it('drops fields that are not on the allowlist, such as email and password', () => {
     const chunks: string[] = [];
     const log = createLogger({ destination: { write: (s: string) => void chunks.push(s) } });
-    log.info({ tenantId: 'tenant-1', requestId: 'req-1', email: 'person@kaizen.test', password: 'hunter2' }, 'signed in');
+    log.info(
+      { tenantId: 'tenant-1', requestId: 'req-1', email: 'person@kaizen.test', password: 'hunter2' },
+      'signed in',
+    );
     const line = chunks.join('');
     expect(line).toContain('"tenantId":"tenant-1"');
     expect(line).toContain('"requestId":"req-1"');

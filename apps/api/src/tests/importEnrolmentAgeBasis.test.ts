@@ -18,16 +18,56 @@ beforeAll(async () => {
 });
 
 const HEADER = [
-  'NAME', 'REGISTRATION NUMBER', 'CONTACT', 'MAIL-ID', 'COURSE', 'ACTUAL FEES', 'Excluding GST', 'GST',
-  'Discount of Rs', 'DISCOUNT', 'Including GST', 'REGISTRATION DATE', 'COURSE START DATE', 'COURSE END DATE',
-  'IST INSTALLMENT', 'DATE', 'Receipt NUMBER', '2ND INSTALLMENT', 'DATE', 'Receipt NUMBER',
-  '3RD  INSTALLMENT', 'DATE', 'Receipt NUMBER',
+  'NAME',
+  'REGISTRATION NUMBER',
+  'CONTACT',
+  'MAIL-ID',
+  'COURSE',
+  'ACTUAL FEES',
+  'Excluding GST',
+  'GST',
+  'Discount of Rs',
+  'DISCOUNT',
+  'Including GST',
+  'REGISTRATION DATE',
+  'COURSE START DATE',
+  'COURSE END DATE',
+  'IST INSTALLMENT',
+  'DATE',
+  'Receipt NUMBER',
+  '2ND INSTALLMENT',
+  'DATE',
+  'Receipt NUMBER',
+  '3RD  INSTALLMENT',
+  'DATE',
+  'Receipt NUMBER',
 ];
 
 function row(name: string, reg: string, phone: string, course: string): string[] {
   return [
-    name, reg, phone, '', course, '24000', '15000', '2700', '6300', '26.25%', '17700', '7/8/26', '7/8/26', '9/9/26',
-    '10000', '7/8/26', `KIPL/AGE/${reg}`, '', '', '', '', '', '',
+    name,
+    reg,
+    phone,
+    '',
+    course,
+    '24000',
+    '15000',
+    '2700',
+    '6300',
+    '26.25%',
+    '17700',
+    '7/8/26',
+    '7/8/26',
+    '9/9/26',
+    '10000',
+    '7/8/26',
+    `KIPL/AGE/${reg}`,
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
   ];
 }
 
@@ -61,7 +101,9 @@ describe('FX-64: a register row with no date of birth and no guardian is a row e
       expect(result.errors[0].message).toMatch(/no date of birth and no guardian/i);
       expect(result.errors[0].message).toMatch(/Adult \(18 or over\)/);
       expect(await prisma.course.count({ where: { tenantId: TENANT, name: course } })).toBe(0);
-      expect(await unscopedPrisma.enrollment.count({ where: { tenantId: TENANT, legacyReference: `KI-AGE/${tag}/1` } })).toBe(0);
+      expect(
+        await unscopedPrisma.enrollment.count({ where: { tenantId: TENANT, legacyReference: `KI-AGE/${tag}/1` } }),
+      ).toBe(0);
     });
   });
 
@@ -101,10 +143,22 @@ describe('FX-64: the students template follows the same rule', () => {
     const batch = `Template Batch ${tag}`;
     await asUser(CHAIRMAN, async () => {
       const course = await prisma.course.create({
-        data: { tenantId: TENANT, recordCode: await nextRecordCode('CRS'), name: `Template Course ${tag}`, code: `TC${tag}`.slice(0, 16) },
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('CRS'),
+          name: `Template Course ${tag}`,
+          code: `TC${tag}`.slice(0, 16),
+        },
       });
       await prisma.cohort.create({
-        data: { tenantId: TENANT, recordCode: await nextRecordCode('COH'), courseId: course.id, name: batch, startDate: new Date(), capacity: 30 },
+        data: {
+          tenantId: TENANT,
+          recordCode: await nextRecordCode('COH'),
+          courseId: course.id,
+          name: batch,
+          startDate: new Date(),
+          capacity: 30,
+        },
       });
     });
     const book = XLSX.read(buildTemplateWorkbook(TEMPLATES.students), { type: 'buffer' });
@@ -116,7 +170,10 @@ describe('FX-64: the students template follows the same rule', () => {
     );
     book.Sheets.Data['!ref'] = 'A1:I2';
     const staged = await asUser(CHAIRMAN, () =>
-      stageImport({ fileName: `template-${tag}.xlsx`, buffer: XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer }),
+      stageImport({
+        fileName: `template-${tag}.xlsx`,
+        buffer: XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      }),
     );
     expect(staged.kind).toBe('template_students');
     return { name: `Template Learner ${tag}`, result: await asUser(CHAIRMAN, () => commitImport(staged.batchId)) };

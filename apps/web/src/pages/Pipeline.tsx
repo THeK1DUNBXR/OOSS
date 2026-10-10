@@ -81,13 +81,18 @@ export function Pipeline() {
     // alphabetically first one.
     const busiest = [...pipelines].sort(
       (a, b) =>
-        ((b as any).opportunityCount ?? 0) + ((b as any).leadCount ?? 0) -
+        ((b as any).opportunityCount ?? 0) +
+        ((b as any).leadCount ?? 0) -
         (((a as any).opportunityCount ?? 0) + ((a as any).leadCount ?? 0)),
     )[0];
     setPipelineId(busiest.id);
   }, [pipelines, pipelineId]);
 
-  const { data: board, isLoading, error: boardError } = useQuery({
+  const {
+    data: board,
+    isLoading,
+    error: boardError,
+  } = useQuery({
     queryKey: ['board', pipelineId],
     queryFn: () => api.get<BoardResponse>(`/pipelines/${pipelineId}/board`),
     enabled: Boolean(pipelineId),
@@ -172,11 +177,7 @@ export function Pipeline() {
                   setDragging(null);
                 }}
                 className={`w-72 shrink-0 rounded-lg border bg-ink-900 transition-colors ${
-                  dragging
-                    ? canDrop
-                      ? 'border-accent/60 bg-accent/5'
-                      : 'border-ink-850 opacity-50'
-                    : 'border-ink-800'
+                  dragging ? (canDrop ? 'border-accent/60 bg-accent/5' : 'border-ink-850 opacity-50') : 'border-ink-800'
                 }`}
               >
                 <div className="border-b border-ink-800 px-3 py-2.5">
@@ -187,14 +188,19 @@ export function Pipeline() {
                     </span>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-2xs text-ink-500">
-                    <span>{cards.length} · {col.defaultProbability}%</span>
+                    <span>
+                      {cards.length} · {col.defaultProbability}%
+                    </span>
                     {value > 0 && <span className="tabular-nums">{money(value)}</span>}
                   </div>
                   {col.stageAgeBudgetDays && (
                     <p className="mt-0.5 text-2xs text-ink-600">SLA {col.stageAgeBudgetDays}d</p>
                   )}
                   {col.requiredFields.length > 0 && (
-                    <p className="mt-0.5 text-2xs text-ink-600" title="Must be filled in before a card can move into this stage.">
+                    <p
+                      className="mt-0.5 text-2xs text-ink-600"
+                      title="Must be filled in before a card can move into this stage."
+                    >
                       requires {col.requiredFields.map((f) => humanize(f)).join(', ')}
                     </p>
                   )}
@@ -215,22 +221,35 @@ export function Pipeline() {
                       <div className="flex items-start justify-between gap-2">
                         <span className="mono">{c.recordCode}</span>
                         {c.stageAgeBreached && (
-                          <span className="chip border-band-strained/40 text-band-strained" title={`${c.stageAgeDays}d against a ${col.stageAgeBudgetDays}d budget`}>
+                          <span
+                            className="chip border-band-strained/40 text-band-strained"
+                            title={`${c.stageAgeDays}d against a ${col.stageAgeBudgetDays}d budget`}
+                          >
                             {c.stageAgeDays}d
                           </span>
                         )}
                       </div>
                       <p className="mt-1 line-clamp-2 text-xs font-medium text-ink-100">{c.title}</p>
-                      {c.organizationName && <p className="mt-0.5 truncate text-2xs text-ink-500">{c.organizationName}</p>}
+                      {c.organizationName && (
+                        <p className="mt-0.5 truncate text-2xs text-ink-500">{c.organizationName}</p>
+                      )}
                       <div className="mt-2 flex flex-wrap items-center gap-1">
                         {c.expectedValue !== null && c.expectedValue !== undefined && (
-                          <span className="text-2xs font-medium tabular-nums text-ink-300">{money(c.expectedValue, c.currency)}</span>
+                          <span className="text-2xs font-medium tabular-nums text-ink-300">
+                            {money(c.expectedValue, c.currency)}
+                          </span>
                         )}
                         {c.forecastCategory && (
-                          <StatusChip status={humanize(c.forecastCategory)} tone={FORECAST_TONE[c.forecastCategory] ?? 'neutral'} />
+                          <StatusChip
+                            status={humanize(c.forecastCategory)}
+                            tone={FORECAST_TONE[c.forecastCategory] ?? 'neutral'}
+                          />
                         )}
                         {col.pipelinePosition >= 50 && !c.wonGateSatisfied && (
-                          <span className="chip border-band-watch/40 text-band-watch" title="Cannot mark won until a contract or MoU reference exists.">
+                          <span
+                            className="chip border-band-watch/40 text-band-watch"
+                            title="Cannot mark won until a contract or MoU reference exists."
+                          >
                             no award artefact
                           </span>
                         )}
@@ -249,11 +268,18 @@ export function Pipeline() {
                         <span className="chip border-ink-700 text-ink-500">lead</span>
                       </div>
                       <p className="mt-1 line-clamp-2 text-xs font-medium text-ink-200">{c.title}</p>
-                      <p className="mt-0.5 truncate text-2xs text-ink-500">{c.personName ?? c.organizationName ?? '—'}</p>
+                      <p className="mt-0.5 truncate text-2xs text-ink-500">
+                        {c.personName ?? c.organizationName ?? '—'}
+                      </p>
                       <div className="mt-2 flex flex-wrap items-center gap-1">
-                        {c.score !== undefined && <span className="chip border-ink-700 text-ink-400">score {c.score}</span>}
+                        {c.score !== undefined && (
+                          <span className="chip border-ink-700 text-ink-400">score {c.score}</span>
+                        )}
                         {c.unrouted && (
-                          <span className="chip border-band-strained/40 text-band-strained" title="Still open, and nobody owns it">
+                          <span
+                            className="chip border-band-strained/40 text-band-strained"
+                            title="Still open, and nobody owns it"
+                          >
                             unrouted
                           </span>
                         )}
@@ -268,7 +294,10 @@ export function Pipeline() {
       )}
 
       {board?.columns.length === 0 && (
-        <EmptyState message="This pipeline has no open stages." hint="A pipeline with no entry or terminal stage is rejected as incomplete." />
+        <EmptyState
+          message="This pipeline has no open stages."
+          hint="A pipeline with no entry or terminal stage is rejected as incomplete."
+        />
       )}
     </div>
   );

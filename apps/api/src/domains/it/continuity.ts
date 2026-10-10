@@ -85,12 +85,17 @@ export interface CreatePlanInput {
 
 function validatePlanInput(input: CreatePlanInput) {
   if (!input.applicationId?.trim()) throw ApiError.badRequest('A continuity plan needs an applicationId.');
-  if (!input.applicationName?.trim()) throw ApiError.badRequest('A continuity plan needs the application\'s name — this file cannot look it up from the catalogue.');
+  if (!input.applicationName?.trim())
+    throw ApiError.badRequest(
+      "A continuity plan needs the application's name — this file cannot look it up from the catalogue.",
+    );
   if (!Number.isInteger(input.applicationTier) || input.applicationTier < 1 || input.applicationTier > 4) {
     throw ApiError.badRequest('applicationTier must be 1 (critical) through 4 (low).');
   }
-  if (!Number.isInteger(input.rtoMinutes) || input.rtoMinutes <= 0) throw ApiError.badRequest('rtoMinutes must be a positive number of minutes.');
-  if (!Number.isInteger(input.rpoMinutes) || input.rpoMinutes <= 0) throw ApiError.badRequest('rpoMinutes must be a positive number of minutes.');
+  if (!Number.isInteger(input.rtoMinutes) || input.rtoMinutes <= 0)
+    throw ApiError.badRequest('rtoMinutes must be a positive number of minutes.');
+  if (!Number.isInteger(input.rpoMinutes) || input.rpoMinutes <= 0)
+    throw ApiError.badRequest('rpoMinutes must be a positive number of minutes.');
   if (!input.backupMethod?.trim()) throw ApiError.badRequest('A continuity plan needs a backup method.');
   if (!input.backupFrequency?.trim()) throw ApiError.badRequest('A continuity plan needs a backup frequency.');
 }
@@ -100,7 +105,10 @@ export async function createPlan(input: CreatePlanInput) {
   await assertCan({ resource: RESOURCE, verb: 'create' });
   validatePlanInput(input);
 
-  const cadence = input.testCadenceDays && input.testCadenceDays > 0 ? input.testCadenceDays : defaultTestCadenceDays(input.applicationTier);
+  const cadence =
+    input.testCadenceDays && input.testCadenceDays > 0
+      ? input.testCadenceDays
+      : defaultTestCadenceDays(input.applicationTier);
   const recordCode = await nextRecordCode('DRP');
 
   const plan = await prisma.itContinuityPlan.create({
@@ -126,12 +134,22 @@ export async function createPlan(input: CreatePlanInput) {
     action: 'create',
     subjectType: 'it_continuity_plan',
     subjectId: plan.id,
-    after: { recordCode, applicationId: plan.applicationId, applicationTier: plan.applicationTier, status: plan.status },
+    after: {
+      recordCode,
+      applicationId: plan.applicationId,
+      applicationTier: plan.applicationTier,
+      status: plan.status,
+    },
   });
   await emit({
     name: EVENTS.IT_CONTINUITY_PLAN_SET,
     subject: { entityType: 'it_continuity_plan', entityId: plan.id, recordCode },
-    newState: { status: plan.status, applicationId: plan.applicationId, rtoMinutes: plan.rtoMinutes, rpoMinutes: plan.rpoMinutes },
+    newState: {
+      status: plan.status,
+      applicationId: plan.applicationId,
+      rtoMinutes: plan.rtoMinutes,
+      rpoMinutes: plan.rpoMinutes,
+    },
     impact: { domains: [IT_DOMAIN] },
   });
 
@@ -169,14 +187,22 @@ export async function updatePlan(id: string, input: UpdatePlanInput) {
       ...(input.rpoMinutes !== undefined ? { rpoMinutes: input.rpoMinutes } : {}),
       ...(input.backupMethod !== undefined ? { backupMethod: input.backupMethod } : {}),
       ...(input.backupFrequency !== undefined ? { backupFrequency: input.backupFrequency } : {}),
-      ...(input.restoreProcedureDocumentId !== undefined ? { restoreProcedureDocumentId: input.restoreProcedureDocumentId } : {}),
+      ...(input.restoreProcedureDocumentId !== undefined
+        ? { restoreProcedureDocumentId: input.restoreProcedureDocumentId }
+        : {}),
       ...(input.ownerPartyId !== undefined ? { ownerPartyId: input.ownerPartyId } : {}),
       ...(input.testCadenceDays !== undefined ? { testCadenceDays: input.testCadenceDays } : {}),
       ...(input.note !== undefined ? { note: input.note } : {}),
     },
   });
 
-  await auditWrite({ action: 'update', subjectType: 'it_continuity_plan', subjectId: id, before: plan, after: updated });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'it_continuity_plan',
+    subjectId: id,
+    before: plan,
+    after: updated,
+  });
   await emit({
     name: EVENTS.IT_CONTINUITY_PLAN_SET,
     subject: { entityType: 'it_continuity_plan', entityId: id, recordCode: plan.recordCode },
@@ -203,7 +229,9 @@ const EVENT_FOR_STATUS: Record<'active' | 'retired', ContinuityPlanEvent> = {
  * `itContinuityPlanMachine` the transition itself is checked against, so a
  * screen can never render a button for a move the machine would refuse. */
 export function availablePlanTransitions(status: ContinuityPlanStatus): ContinuityPlanStatus[] {
-  return availableTransitions(itContinuityPlanMachine, status).map((event) => itContinuityPlanMachine.apply(status, event));
+  return availableTransitions(itContinuityPlanMachine, status).map((event) =>
+    itContinuityPlanMachine.apply(status, event),
+  );
 }
 
 export async function transitionPlan(id: string, toStatus: 'active' | 'retired') {
@@ -275,15 +303,19 @@ export interface RecordTestInput {
 
 export async function recordTest(planId: string, input: RecordTestInput) {
   const auth = currentAuth();
-  const plan = await prisma.itContinuityPlan.findFirst({ where: { id: planId, tenantId: auth.tenantId, deletedAt: null } });
+  const plan = await prisma.itContinuityPlan.findFirst({
+    where: { id: planId, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!plan) throw ApiError.notFound('Continuity plan');
   await assertCan({ resource: RESOURCE, verb: 'create', record: { ownerPartyId: plan.ownerPartyId } });
 
   if (plan.status === 'retired') {
     throw ApiError.conflict(`${plan.recordCode} is retired; a retired plan cannot record a new test.`);
   }
-  if (!['restore', 'failover', 'tabletop'].includes(input.kind)) throw ApiError.badRequest('kind must be restore, failover or tabletop.');
-  if (!['pass', 'fail', 'partial'].includes(input.outcome)) throw ApiError.badRequest('outcome must be pass, fail or partial.');
+  if (!['restore', 'failover', 'tabletop'].includes(input.kind))
+    throw ApiError.badRequest('kind must be restore, failover or tabletop.');
+  if (!['pass', 'fail', 'partial'].includes(input.outcome))
+    throw ApiError.badRequest('outcome must be pass, fail or partial.');
 
   const testedAt = input.testedAt ?? new Date();
   const recordCode = await nextRecordCode('DRT');
@@ -348,9 +380,14 @@ export async function recordTest(planId: string, input: RecordTestInput) {
 export async function listTests(planId: string) {
   const auth = currentAuth();
   await assertCan({ resource: RESOURCE, verb: 'view' });
-  const plan = await prisma.itContinuityPlan.findFirst({ where: { id: planId, tenantId: auth.tenantId, deletedAt: null } });
+  const plan = await prisma.itContinuityPlan.findFirst({
+    where: { id: planId, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!plan) throw ApiError.notFound('Continuity plan');
-  return prisma.itContinuityTest.findMany({ where: { tenantId: auth.tenantId, planId }, orderBy: { testedAt: 'desc' } });
+  return prisma.itContinuityTest.findMany({
+    where: { tenantId: auth.tenantId, planId },
+    orderBy: { testedAt: 'desc' },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -372,9 +409,11 @@ export async function recordAvailabilityReading(input: RecordAvailabilityInput) 
   await assertCan({ resource: RESOURCE, verb: 'create' });
 
   if (!/^\d{4}-\d{2}$/.test(input.period)) throw ApiError.badRequest('period must be YYYY-MM.');
-  if (!Number.isInteger(input.minutesDown) || input.minutesDown < 0) throw ApiError.badRequest('minutesDown must be zero or a positive number of minutes.');
+  if (!Number.isInteger(input.minutesDown) || input.minutesDown < 0)
+    throw ApiError.badRequest('minutesDown must be zero or a positive number of minutes.');
   if (!input.applicationId?.trim()) throw ApiError.badRequest('An availability reading needs an applicationId.');
-  if (!input.applicationName?.trim()) throw ApiError.badRequest('An availability reading needs the application\'s name.');
+  if (!input.applicationName?.trim())
+    throw ApiError.badRequest("An availability reading needs the application's name.");
 
   const existing = await prisma.itAvailabilityReading.findFirst({
     where: { tenantId: auth.tenantId, applicationId: input.applicationId, period: input.period },
@@ -448,10 +487,12 @@ export async function createMaintenanceWindow(input: CreateMaintenanceWindowInpu
   await assertCan({ resource: RESOURCE, verb: 'create' });
 
   if (!input.applicationId?.trim()) throw ApiError.badRequest('A maintenance window needs an applicationId.');
-  if (!input.applicationName?.trim()) throw ApiError.badRequest('A maintenance window needs the application\'s name.');
+  if (!input.applicationName?.trim()) throw ApiError.badRequest("A maintenance window needs the application's name.");
   if (!input.reason?.trim()) throw ApiError.badRequest('A maintenance window needs a reason.');
-  if (!(input.startsAt instanceof Date) || Number.isNaN(input.startsAt.getTime())) throw ApiError.badRequest('startsAt is required.');
-  if (!(input.endsAt instanceof Date) || Number.isNaN(input.endsAt.getTime())) throw ApiError.badRequest('endsAt is required.');
+  if (!(input.startsAt instanceof Date) || Number.isNaN(input.startsAt.getTime()))
+    throw ApiError.badRequest('startsAt is required.');
+  if (!(input.endsAt instanceof Date) || Number.isNaN(input.endsAt.getTime()))
+    throw ApiError.badRequest('endsAt is required.');
   if (input.endsAt <= input.startsAt) throw ApiError.badRequest('endsAt must be after startsAt.');
 
   const recordCode = await nextRecordCode('MWN');
@@ -584,7 +625,9 @@ export async function continuitySummary(): Promise<ContinuitySummary> {
     return rung === undefined;
   });
 
-  const testsOverdue = plans.filter((p) => p.status === 'active' && testOverdueRung(p.lastTestedAt, p.testCadenceDays, now) !== undefined).length;
+  const testsOverdue = plans.filter(
+    (p) => p.status === 'active' && testOverdueRung(p.lastTestedAt, p.testCadenceDays, now) !== undefined,
+  ).length;
 
   const nextMaintenanceWindows = await prisma.itMaintenanceWindow.count({
     where: { tenantId: auth.tenantId, status: { in: ['planned', 'in_progress'] }, endsAt: { gte: now } },
@@ -601,7 +644,10 @@ export async function continuitySummary(): Promise<ContinuitySummary> {
     tier1Tested: {
       count: tier1TestedWithinCadence.length,
       total: tier1Plans.length,
-      fraction: tier1Plans.length > 0 ? Math.round((tier1TestedWithinCadence.length / tier1Plans.length) * 10000) / 10000 : null,
+      fraction:
+        tier1Plans.length > 0
+          ? Math.round((tier1TestedWithinCadence.length / tier1Plans.length) * 10000) / 10000
+          : null,
     },
     testsOverdue,
     availabilityLastMonth: availability,
@@ -615,7 +661,10 @@ export function lastFullMonthPeriod(now: Date): string {
   return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-async function availabilitySummaryInternal(tenantId: string, now: Date): Promise<ContinuitySummary['availabilityLastMonth']> {
+async function availabilitySummaryInternal(
+  tenantId: string,
+  now: Date,
+): Promise<ContinuitySummary['availabilityLastMonth']> {
   const period = lastFullMonthPeriod(now);
   const rows = await prisma.itAvailabilityReading.findMany({ where: { tenantId, period } });
   if (rows.length === 0) {
@@ -628,7 +677,11 @@ async function availabilitySummaryInternal(tenantId: string, now: Date): Promise
     notYetMeasured: false,
     period,
     meanUptimePercent: Math.round(mean * 100) / 100,
-    worstApplication: { applicationId: worst.applicationId, applicationName: worst.applicationName, uptimePercent: worst.uptime },
+    worstApplication: {
+      applicationId: worst.applicationId,
+      applicationName: worst.applicationName,
+      uptimePercent: worst.uptime,
+    },
   };
 }
 

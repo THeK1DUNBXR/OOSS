@@ -16,7 +16,16 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { grantConsent, publishNotice, currentNoticePurposeCodes, encryptField } from '../domains/compliance/privacy.js';
 import { PURPOSE_CODES } from '@kaizen/shared';
 import { resetAdapterCacheForTests } from '../domains/marketing/adapters/registry.js';
-import { createTemplate, submitForReview, approveTemplate, createSend, requestSend, dispatchSend, listSendRecipients, loadSend } from '../domains/marketing/messaging.js';
+import {
+  createTemplate,
+  submitForReview,
+  approveTemplate,
+  createSend,
+  requestSend,
+  dispatchSend,
+  listSendRecipients,
+  loadSend,
+} from '../domains/marketing/messaging.js';
 import { createWebhookEndpoint } from '../domains/marketing/capture.js';
 import { applyDeliveryEvents, markRecipientDispatched } from '../domains/marketing/messaging.js';
 import { createApp } from '../server.js';
@@ -86,14 +95,22 @@ async function dispatchedRecipient(): Promise<{ personId: string; sendId: string
   await asUser(APPROVER, () => grantConsent({ personId: person.id, purposeCode: 'marketing', channel: 'portal' }));
 
   const template = await asUser(CREATOR, () =>
-    createTemplate({ channelKey: 'email', name: `Hook ${Date.now()}`, subject: 'Hi', body: 'Hello {{unsubscribeUrl}}', language: 'en' } as never),
+    createTemplate({
+      channelKey: 'email',
+      name: `Hook ${Date.now()}`,
+      subject: 'Hi',
+      body: 'Hello {{unsubscribeUrl}}',
+      language: 'en',
+    } as never),
   );
   await asUser(CREATOR, () => submitForReview(template.id));
   await asUser(APPROVER, () => approveTemplate(template.id));
 
   process.env.MARKETING_EMAIL_ADAPTER = 'console';
   resetAdapterCacheForTests();
-  const send = await asUser(CREATOR, () => createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never));
+  const send = await asUser(CREATOR, () =>
+    createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never),
+  );
   await asUser(CREATOR, () => requestSend(send.id));
   await asUser(CREATOR, () => dispatchSend(send.id));
   const [recipient] = await asUser(CREATOR, () => listSendRecipients(send.id));
@@ -231,24 +248,36 @@ describe('FX-50 follow-up — delivery status only moves forward', () => {
   it('a late delivered after opened does not move the recipient back', async () => {
     const { providerMessageId } = await dispatchedRecipient();
     const at = new Date();
-    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'opened', at, eventId: `o-${Date.now()}` }]));
-    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at, eventId: `d-${Date.now()}` }]));
+    await asUser(APPROVER, () =>
+      applyDeliveryEvents('email', [{ providerMessageId, kind: 'opened', at, eventId: `o-${Date.now()}` }]),
+    );
+    await asUser(APPROVER, () =>
+      applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at, eventId: `d-${Date.now()}` }]),
+    );
     expect(await recipientStatus(providerMessageId)).toBe('opened');
   });
 
   it('a late delivered after bounced leaves the recipient bounced (a terminal failure is not overwritten)', async () => {
     const { providerMessageId } = await dispatchedRecipient();
     const at = new Date();
-    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'bounced', at, eventId: `b-${Date.now()}` }]));
-    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at, eventId: `d-${Date.now()}` }]));
+    await asUser(APPROVER, () =>
+      applyDeliveryEvents('email', [{ providerMessageId, kind: 'bounced', at, eventId: `b-${Date.now()}` }]),
+    );
+    await asUser(APPROVER, () =>
+      applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at, eventId: `d-${Date.now()}` }]),
+    );
     expect(await recipientStatus(providerMessageId)).toBe('bounced');
   });
 
   it('delivered then a late sent stays delivered', async () => {
     const { providerMessageId } = await dispatchedRecipient();
     const at = new Date();
-    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at, eventId: `d-${Date.now()}` }]));
-    await asUser(APPROVER, () => applyDeliveryEvents('email', [{ providerMessageId, kind: 'sent', at, eventId: `s-${Date.now()}` }]));
+    await asUser(APPROVER, () =>
+      applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at, eventId: `d-${Date.now()}` }]),
+    );
+    await asUser(APPROVER, () =>
+      applyDeliveryEvents('email', [{ providerMessageId, kind: 'sent', at, eventId: `s-${Date.now()}` }]),
+    );
     expect(await recipientStatus(providerMessageId)).toBe('delivered');
   });
 });
@@ -257,7 +286,9 @@ describe('FX-50 follow-up — dispatch write cannot regress a recipient', () => 
   it('a dispatch write after delivered keeps delivered and keeps the first providerMessageId', async () => {
     const { providerMessageId } = await dispatchedRecipient();
     await asUser(APPROVER, () =>
-      applyDeliveryEvents('email', [{ providerMessageId, kind: 'delivered', at: new Date(), eventId: `dd-${Date.now()}` }]),
+      applyDeliveryEvents('email', [
+        { providerMessageId, kind: 'delivered', at: new Date(), eventId: `dd-${Date.now()}` },
+      ]),
     );
     const row = await unscopedPrisma.marketingSendRecipient.findFirstOrThrow({ where: { providerMessageId } });
 

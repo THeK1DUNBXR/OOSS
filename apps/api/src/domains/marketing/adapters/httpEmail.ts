@@ -111,7 +111,8 @@ export class HttpEmailAdapter implements ChannelAdapter {
       const envelope = payload as Record<string, unknown>;
       const events = envelope.events;
       if (!Array.isArray(events)) return [];
-      const envelopeEventId = typeof envelope.eventId === 'string' && envelope.eventId.length > 0 ? envelope.eventId : undefined;
+      const envelopeEventId =
+        typeof envelope.eventId === 'string' && envelope.eventId.length > 0 ? envelope.eventId : undefined;
 
       const out: InboundDeliveryEvent[] = [];
       for (const raw of events) {

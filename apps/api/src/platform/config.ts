@@ -51,104 +51,112 @@ const booleanish = (fallback: boolean) =>
     .optional()
     .transform((v) => (v === undefined ? fallback : ['true', '1', 'yes', 'on'].includes(v)));
 
-export const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production'], {
-    errorMap: () => ({ message: "must be one of 'development', 'test' or 'production'" }),
-  }),
+export const envSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production'], {
+      errorMap: () => ({ message: "must be one of 'development', 'test' or 'production'" }),
+    }),
 
-  /**
-   * The application role. Row-level security binds it, and the boot check
-   * (rlsGuard.ts) refuses a role with rolsuper or rolbypassrls.
-   */
-  DATABASE_URL: z.string().min(1, 'must be a Postgres connection string'),
+    /**
+     * The application role. Row-level security binds it, and the boot check
+     * (rlsGuard.ts) refuses a role with rolsuper or rolbypassrls.
+     */
+    DATABASE_URL: z.string().min(1, 'must be a Postgres connection string'),
 
-  /**
-   * The migration owner, used by `prisma migrate` (schema.prisma `directUrl`).
-   * It owns the tables and so must not be the role the API serves requests as.
-   */
-  MIGRATION_DATABASE_URL: z.string().min(1).optional(),
+    /**
+     * The migration owner, used by `prisma migrate` (schema.prisma `directUrl`).
+     * It owns the tables and so must not be the role the API serves requests as.
+     */
+    MIGRATION_DATABASE_URL: z.string().min(1).optional(),
 
-  /**
-   * The role behind `unscopedPrisma`: seed, cross-tenant jobs and the audit
-   * hash chain. It needs BYPASSRLS. Unset, those paths run as the application
-   * role and see no tenant rows (db.ts).
-   */
-  UNSCOPED_DATABASE_URL: z.string().min(1).optional(),
+    /**
+     * The role behind `unscopedPrisma`: seed, cross-tenant jobs and the audit
+     * hash chain. It needs BYPASSRLS. Unset, those paths run as the application
+     * role and see no tenant rows (db.ts).
+     */
+    UNSCOPED_DATABASE_URL: z.string().min(1).optional(),
 
-  /**
-   * 32 characters is not arbitrary: HS256 keys shorter than the hash output
-   * give an attacker a cheaper brute force than the algorithm implies, and a
-   * short one is almost always a human-chosen word.
-   */
-  JWT_SECRET: z.string().min(32, 'must be at least 32 characters — generate one, do not invent it'),
+    /**
+     * 32 characters is not arbitrary: HS256 keys shorter than the hash output
+     * give an attacker a cheaper brute force than the algorithm implies, and a
+     * short one is almost always a human-chosen word.
+     */
+    JWT_SECRET: z.string().min(32, 'must be at least 32 characters — generate one, do not invent it'),
 
-  /**
-   * Keys AES-256-GCM encryption of PAN, Aadhaar and bank values (privacy.ts).
-   * Required in production because the only other option is a constant that
-   * is printed in this repository: encryption under it protects nothing from
-   * anyone who has read the source. Outside production the development key is
-   * allowed, with a warning, so a laptop does not need a secret to boot.
-   */
-  FIELD_ENCRYPTION_KEY: z.string().min(32, 'must be at least 32 characters — generate one, do not invent it').optional(),
+    /**
+     * Keys AES-256-GCM encryption of PAN, Aadhaar and bank values (privacy.ts).
+     * Required in production because the only other option is a constant that
+     * is printed in this repository: encryption under it protects nothing from
+     * anyone who has read the source. Outside production the development key is
+     * allowed, with a warning, so a laptop does not need a secret to boot.
+     */
+    FIELD_ENCRYPTION_KEY: z
+      .string()
+      .min(32, 'must be at least 32 characters — generate one, do not invent it')
+      .optional(),
 
-  /**
-   * Signs the public unsubscribe links. Optional because JWT_SECRET is a
-   * working fallback; a separate secret means rotating one does not
-   * invalidate the other's links.
-   */
-  MARKETING_UNSUBSCRIBE_SECRET: z.string().min(32, 'must be at least 32 characters — generate one, do not invent it').optional(),
+    /**
+     * Signs the public unsubscribe links. Optional because JWT_SECRET is a
+     * working fallback; a separate secret means rotating one does not
+     * invalidate the other's links.
+     */
+    MARKETING_UNSUBSCRIBE_SECRET: z
+      .string()
+      .min(32, 'must be at least 32 characters — generate one, do not invent it')
+      .optional(),
 
-  PORT: z.coerce.number().int().positive().default(4000),
+    PORT: z.coerce.number().int().positive().default(4000),
 
-  /**
-   * Built client (apps/web/dist). When set, the API serves it so the whole app
-   * is one origin behind Caddy — see deploy/Caddyfile. Unset in development,
-   * where Vite serves the client.
-   */
-  WEB_DIST_DIR: z.string().min(1).optional(),
+    /**
+     * Built client (apps/web/dist). When set, the API serves it so the whole app
+     * is one origin behind Caddy — see deploy/Caddyfile. Unset in development,
+     * where Vite serves the client.
+     */
+    WEB_DIST_DIR: z.string().min(1).optional(),
 
-  /**
-   * Where the browser client is served from. Read by the CORS allowlist; a
-   * comma-separated list so one deployment can serve a staging and a preview
-   * origin without a code change.
-   */
-  CORS_ORIGINS: z.string().optional(),
+    /**
+     * Where the browser client is served from. Read by the CORS allowlist; a
+     * comma-separated list so one deployment can serve a staging and a preview
+     * origin without a code change.
+     */
+    CORS_ORIGINS: z.string().optional(),
 
-  JOBS_ENABLED: booleanish(false),
-  /** Boot fills in grant rows for resources a tenant has never had. See grantSync.ts. */
-  GRANT_AUTOSYNC: booleanish(true),
+    JOBS_ENABLED: booleanish(false),
+    /** Boot fills in grant rows for resources a tenant has never had. See grantSync.ts. */
+    GRANT_AUTOSYNC: booleanish(true),
 
-  PRISMA_LOG: z.enum(['query']).optional(),
+    PRISMA_LOG: z.enum(['query']).optional(),
 
-  /** Stamped by the build so a running process can say what it is. See build.ts. */
-  BUILD_SEQUENCE: z.coerce.number().int().nonnegative().optional(),
-  GIT_SHA: z.string().optional(),
-  BUILT_AT: z.string().optional(),
+    /** Stamped by the build so a running process can say what it is. See build.ts. */
+    BUILD_SEQUENCE: z.coerce.number().int().nonnegative().optional(),
+    GIT_SHA: z.string().optional(),
+    BUILT_AT: z.string().optional(),
 
-  /** Seed-time identity of the tenant being provisioned. */
-  TENANT_SLUG: z.string().default('kaizen'),
-  TENANT_NAME: z.string().default('Kaizen Infinities'),
-  SEED_EMAIL_DOMAIN: z.string().default('kaizen.co.in'),
-}).superRefine((env, ctx) => {
-  if (env.NODE_ENV === 'production' && !env.FIELD_ENCRYPTION_KEY) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['FIELD_ENCRYPTION_KEY'],
-      message: 'is required when NODE_ENV is production — it keys encryption of PAN, Aadhaar and bank values',
-    });
-  }
-  // Without a role that bypasses RLS, the cross-tenant jobs (outbox drain, audit
-  // chain, scheduler) and the seed see no rows and do not say so. Production
-  // refuses to start rather than run them that way.
-  if (env.NODE_ENV === 'production' && !env.UNSCOPED_DATABASE_URL) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['UNSCOPED_DATABASE_URL'],
-      message:
-        'is required when NODE_ENV is production — the jobs and the audit chain read across tenants and need a role with BYPASSRLS',
-    });
-  }
-});
+    /** Seed-time identity of the tenant being provisioned. */
+    TENANT_SLUG: z.string().default('kaizen'),
+    TENANT_NAME: z.string().default('Kaizen Infinities'),
+    SEED_EMAIL_DOMAIN: z.string().default('kaizen.co.in'),
+  })
+  .superRefine((env, ctx) => {
+    if (env.NODE_ENV === 'production' && !env.FIELD_ENCRYPTION_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['FIELD_ENCRYPTION_KEY'],
+        message: 'is required when NODE_ENV is production — it keys encryption of PAN, Aadhaar and bank values',
+      });
+    }
+    // Without a role that bypasses RLS, the cross-tenant jobs (outbox drain, audit
+    // chain, scheduler) and the seed see no rows and do not say so. Production
+    // refuses to start rather than run them that way.
+    if (env.NODE_ENV === 'production' && !env.UNSCOPED_DATABASE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['UNSCOPED_DATABASE_URL'],
+        message:
+          'is required when NODE_ENV is production — the jobs and the audit chain read across tenants and need a role with BYPASSRLS',
+      });
+    }
+  });
 
 export type Config = Readonly<z.infer<typeof envSchema>>;
 

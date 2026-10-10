@@ -23,7 +23,6 @@ async function withoutWebFonts(page: Page): Promise<void> {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
 }
 
-
 /** Every Technology nav entry (`apps/api/src/seed/bootstrap.ts`, `group:
  *  'technology'`), label as seeded. Kept in sync by hand rather than read
  *  from the server, the same way `helpers.ts` keeps `credentials()` by
@@ -106,12 +105,23 @@ test.describe('the Technology group, signed in as the chairman', () => {
 
   test('every Technology nav entry is present', async ({ page }) => {
     for (const label of TECHNOLOGY_NAV_LABELS) {
-      await expect(page.getByRole('link', { name: label, exact: true }), `no "${label}" link in the sidebar`).toBeVisible();
+      await expect(
+        page.getByRole('link', { name: label, exact: true }),
+        `no "${label}" link in the sidebar`,
+      ).toBeVisible();
     }
   });
 
   test('the core Technology screens render a header with no error box', async ({ page }) => {
-    const screens = ['/it', '/it/assets', '/it/tickets', '/it/incidents', '/it/risks', '/it/portfolio', '/it/continuity'];
+    const screens = [
+      '/it',
+      '/it/assets',
+      '/it/tickets',
+      '/it/incidents',
+      '/it/risks',
+      '/it/portfolio',
+      '/it/continuity',
+    ];
 
     for (const path of screens) {
       // DOM-ready rather than `load`: the page's web-font stylesheet is external,
@@ -129,7 +139,10 @@ test.describe('the Technology group, signed in as an employee', () => {
   test.beforeEach(async ({ page }) => {
     await withoutWebFonts(page);
     const creds = employeeCredentials();
-    test.skip(!creds, 'set E2E_EMPLOYEE_EMAIL and E2E_EMPLOYEE_PASSWORD (or EMPLOYEE_EMAIL/EMPLOYEE_PASSWORD) to run this');
+    test.skip(
+      !creds,
+      'set E2E_EMPLOYEE_EMAIL and E2E_EMPLOYEE_PASSWORD (or EMPLOYEE_EMAIL/EMPLOYEE_PASSWORD) to run this',
+    );
     await signInAs(page, creds!.email, creds!.password);
   });
 

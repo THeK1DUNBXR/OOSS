@@ -51,10 +51,7 @@ export default function Start() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title="Getting started"
-        subtitle="What to set up, in order, and how each part works."
-      />
+      <PageHeader title="Getting started" subtitle="What to set up, in order, and how each part works." />
       <Checklist state={state} />
       <Walkthroughs />
     </div>
@@ -117,9 +114,7 @@ function Checklist({ state }: { state: ReturnType<typeof useQuery<State>> }) {
                 {step.title}
                 {step.optional && <span className="text-2xs font-normal text-ink-500">optional</span>}
                 {step.done && (
-                  <span className="text-2xs font-normal tabular-nums text-ink-500">
-                    {step.count} on file
-                  </span>
+                  <span className="text-2xs font-normal tabular-nums text-ink-500">{step.count} on file</span>
                 )}
               </p>
               <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-ink-400">{step.why}</p>
@@ -272,16 +267,16 @@ function Walkthroughs() {
                   <span className="block text-sm font-semibold text-ink-100">{topic.title}</span>
                   <span className="block text-xs text-ink-400">{topic.blurb}</span>
                 </span>
-                <span aria-hidden className="text-ink-500">{expanded ? '−' : '+'}</span>
+                <span aria-hidden className="text-ink-500">
+                  {expanded ? '−' : '+'}
+                </span>
               </button>
 
               {expanded && (
                 <div className="flex flex-col gap-4 px-3 pb-4 pt-1">
                   {topic.sections.map((section) => (
                     <section key={section.heading} className="max-w-2xl">
-                      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-300">
-                        {section.heading}
-                      </h3>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-300">{section.heading}</h3>
                       <p className="mt-1 text-sm leading-relaxed text-ink-400">{section.body}</p>
                       {section.link && (
                         <Link to={section.link.to} className="btn-quiet mt-2 inline-block">
@@ -328,9 +323,7 @@ export function SetupBanner() {
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border-l-2 border-accent bg-accent/5 px-4 py-3">
       <Link to="/start" className="min-w-0 transition-opacity hover:opacity-80">
-        <span className="block text-sm font-semibold text-ink-100">
-          Next: {next.title}
-        </span>
+        <span className="block text-sm font-semibold text-ink-100">Next: {next.title}</span>
         <span className="block text-xs text-ink-400">
           {data.done} of {data.total} set up. {next.why}
         </span>

@@ -443,7 +443,10 @@ export async function wouldLoop(envelope: EventEnvelope, candidateEventName: str
  * Walks a tenant's chain and reports the first discontinuity. The platform
  * alerts on chain-continuity failure per tenant rather than merely logging it.
  */
-export async function verifyChain(tenantId: string, limit = 5000): Promise<{
+export async function verifyChain(
+  tenantId: string,
+  limit = 5000,
+): Promise<{
   valid: boolean;
   checked: number;
   brokenAt: string | null;

@@ -128,7 +128,12 @@ const TYPES: TypeSeed[] = [
     domain: 'hr',
     recurrence: 'half_yearly',
     // H1 (Apr-Sep) due 30 Sep, H2 (Oct-Mar) due 31 Mar the following year.
-    dueRule: { halfYearDates: [{ month: 9, day: 30 }, { month: 3, day: 31, yearOffset: 1 }] },
+    dueRule: {
+      halfYearDates: [
+        { month: 9, day: 30 },
+        { month: 3, day: 31, yearOffset: 1 },
+      ],
+    },
     ownerRoleSlug: 'hr_ops_manager',
     evidenceRequired: false,
     note: "Half-yearly due dates are the common Tamil Nadu corporation schedule — confirm against the company's own PT enrolment and municipal jurisdiction before relying on them.",

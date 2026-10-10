@@ -26,9 +26,43 @@ export const EVENT_NAME_PATTERN = /^kz\.[a-z]{2,4}\.[a-z_]+\.([a-z0-9_]+)$/;
  * that guessed would accept `kz.x.y.set` only by luck and refuse `kz.x.y.sent`.
  */
 const IRREGULAR_PAST = new Set([
-  'built', 'begun', 'brought', 'bought', 'caught', 'cast', 'cut', 'done', 'given', 'got', 'held', 'hit',
-  'kept', 'known', 'laid', 'led', 'left', 'let', 'lost', 'made', 'met', 'paid', 'put', 'read',
-  'reset', 'run', 'sent', 'set', 'shut', 'sold', 'spent', 'split', 'taken', 'told', 'withdrawn', 'won', 'written',
+  'built',
+  'begun',
+  'brought',
+  'bought',
+  'caught',
+  'cast',
+  'cut',
+  'done',
+  'given',
+  'got',
+  'held',
+  'hit',
+  'kept',
+  'known',
+  'laid',
+  'led',
+  'left',
+  'let',
+  'lost',
+  'made',
+  'met',
+  'paid',
+  'put',
+  'read',
+  'reset',
+  'run',
+  'sent',
+  'set',
+  'shut',
+  'sold',
+  'spent',
+  'split',
+  'taken',
+  'told',
+  'withdrawn',
+  'won',
+  'written',
 ]);
 
 /**
@@ -64,7 +98,19 @@ export const TENSE_GRANDFATHERED: ReadonlySet<string> = new Set([
 
 /** Words that end in -ed but are base forms, so they are not past tense. */
 const ED_BASE_FORMS = new Set([
-  'bleed', 'breed', 'embed', 'exceed', 'feed', 'heed', 'need', 'proceed', 'seed', 'shed', 'speed', 'succeed', 'weed',
+  'bleed',
+  'breed',
+  'embed',
+  'exceed',
+  'feed',
+  'heed',
+  'need',
+  'proceed',
+  'seed',
+  'shed',
+  'speed',
+  'succeed',
+  'weed',
 ]);
 
 function isPastTenseWord(word: string): boolean {

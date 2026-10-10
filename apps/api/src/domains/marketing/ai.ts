@@ -70,8 +70,12 @@ async function draftCampaignBrief(context: Record<string, unknown>): Promise<str
     `Draft brief — ${name}`,
     ``,
     `Objective: ${objective.replace(/_/g, ' ')}${vertical ? ` (${vertical})` : ''}, ${division} division.`,
-    channelMix.length ? `Proposed channel mix: ${channelMix.join(', ')}.` : `Channel mix: to be confirmed with the audience owner.`,
-    targetLeads ? `Target: ${targetLeads} leads across the flight window.` : `Target: set once historical channel conversion is reviewed.`,
+    channelMix.length
+      ? `Proposed channel mix: ${channelMix.join(', ')}.`
+      : `Channel mix: to be confirmed with the audience owner.`,
+    targetLeads
+      ? `Target: ${targetLeads} leads across the flight window.`
+      : `Target: set once historical channel conversion is reviewed.`,
     ``,
     `This is a draft for a human to edit before the campaign leaves draft status — nothing here has been sent or scheduled.`,
   ];
@@ -220,13 +224,17 @@ export async function draft(kind: DraftKind, context: Record<string, unknown> = 
   const draftValue = await buildDraft(kind, context);
 
   const subjectId =
-    (context.campaignId as string | undefined) ?? (context.leadId as string | undefined) ?? (context.templateId as string | undefined) ?? 'ad-hoc';
+    (context.campaignId as string | undefined) ??
+    (context.leadId as string | undefined) ??
+    (context.templateId as string | undefined) ??
+    'ad-hoc';
 
   const result = await propose({
     agentKey: AGENT_KEY,
     tool: TOOL_BY_KIND[kind],
     action: `mkt.draft.${kind}`,
-    subjectType: kind === 'next_best_action' ? 'lead' : kind === 'segment' ? 'marketing_audience' : 'marketing_campaign',
+    subjectType:
+      kind === 'next_best_action' ? 'lead' : kind === 'segment' ? 'marketing_audience' : 'marketing_campaign',
     subjectId,
     proposal: { kind, context, draft: draftValue },
     rationale: `Deterministic template draft for '${kind}', generated for human review. Never auto-sent, never auto-applied.`,

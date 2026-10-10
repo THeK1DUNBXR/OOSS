@@ -142,7 +142,12 @@ export async function createLead(input: LeadInput) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'lead', subjectId: lead.id, after: { title: lead.title, recordCode } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'lead',
+    subjectId: lead.id,
+    after: { title: lead.title, recordCode },
+  });
 
   // Fired BEFORE routing, with ownerPartyId null.
   await emit({
@@ -150,9 +155,16 @@ export async function createLead(input: LeadInput) {
     subject: { entityType: 'lead', entityId: lead.id, recordCode },
     related: [
       ...(personId ? [{ relation: 'contact', entityType: 'person', entityId: personId }] : []),
-      ...(input.organizationId ? [{ relation: 'account', entityType: 'organization', entityId: input.organizationId }] : []),
+      ...(input.organizationId
+        ? [{ relation: 'account', entityType: 'organization', entityId: input.organizationId }]
+        : []),
     ],
-    newState: { stageKey: stage.stageKey, pipelinePosition: stage.pipelinePosition, ownerPartyId: null, score: scoring.score },
+    newState: {
+      stageKey: stage.stageKey,
+      pipelinePosition: stage.pipelinePosition,
+      ownerPartyId: null,
+      score: scoring.score,
+    },
   });
 
   // Routing runs inline, synchronously.
@@ -278,7 +290,10 @@ export async function advanceLeadStage(leadId: string, toStageKey: string) {
  * conversions from the lead's pipeline — a PL-ADMISSION lead lands in
  * PL-ADMISSION's own stages, never silently re-routed into PL-ENTERPRISE.
  */
-export async function convertLead(leadId: string, opts: { expectedValue?: number | null; expectedCloseDate?: Date | null } = {}) {
+export async function convertLead(
+  leadId: string,
+  opts: { expectedValue?: number | null; expectedCloseDate?: Date | null } = {},
+) {
   const auth = currentAuth();
   const lead = await prisma.lead.findFirst({ where: { id: leadId } });
   if (!lead) throw ApiError.notFound('Lead');
@@ -303,7 +318,8 @@ export async function convertLead(leadId: string, opts: { expectedValue?: number
       pipelineId: lead.pipelineId,
       stageKey: stage.stageKey,
       stageEnteredAt: new Date(),
-      expectedValue: (opts.expectedValue ?? (lead.estimatedValue ? Number(lead.estimatedValue.toString()) : null)) ?? undefined,
+      expectedValue:
+        opts.expectedValue ?? (lead.estimatedValue ? Number(lead.estimatedValue.toString()) : null) ?? undefined,
       currency: lead.currency,
       expectedCloseDate: opts.expectedCloseDate ?? null,
       ownerPartyId: lead.ownerPartyId,

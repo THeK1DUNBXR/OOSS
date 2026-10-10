@@ -65,11 +65,21 @@ export const DEFAULT_APPROVAL_POLICY: ApprovalPolicyContent = {
 export interface GateSubject {
   id: string;
   type:
-    | 'mou' | 'contract' | 'partner_agreement' | 'quote' | 'share_transaction' | 'option_grant' | 'option_exercise'
+    | 'mou'
+    | 'contract'
+    | 'partner_agreement'
+    | 'quote'
+    | 'share_transaction'
+    | 'option_grant'
+    | 'option_exercise'
     // Technology (docs/plan/cio.md): a licence renewal, a vendor contract, a
     // normal or emergency change, a policy publication and an initiative's
     // funding each run through this same gate.
-    | 'it_licence' | 'it_vendor_contract' | 'it_change' | 'it_policy' | 'it_initiative';
+    | 'it_licence'
+    | 'it_vendor_contract'
+    | 'it_change'
+    | 'it_policy'
+    | 'it_initiative';
   label: string;
   ownerPartyId: string | null;
   commercialValue: number | null;
@@ -96,7 +106,9 @@ export interface GateResult {
   reason: string;
 }
 
-async function loadPolicy(policyCode: string): Promise<{ id: string; version: number; content: ApprovalPolicyContent } | null> {
+async function loadPolicy(
+  policyCode: string,
+): Promise<{ id: string; version: number; content: ApprovalPolicyContent } | null> {
   const auth = currentAuth();
   const policy = await prisma.policy.findFirst({
     where: { tenantId: auth.tenantId, policyCode },
@@ -166,7 +178,8 @@ export async function evaluateApprovalGate(
   // a zero-value, high-strategic academic MoU escalates as readily as a
   // high-value commercial one.
   const forceTopTier =
-    (content.escalateToTopTierWhen.strategicValue && subject.strategicValue === content.escalateToTopTierWhen.strategicValue) ||
+    (content.escalateToTopTierWhen.strategicValue &&
+      subject.strategicValue === content.escalateToTopTierWhen.strategicValue) ||
     (content.escalateToTopTierWhen.termMonthsOver != null &&
       (subject.termMonths ?? 0) > content.escalateToTopTierWhen.termMonthsOver);
 
@@ -358,7 +371,11 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
   // that was routed to someone else, which is how a Finance Head's sign-off
   // becomes a peer's. A step whose resolution found nobody (resolvedApproverId
   // null, EX-GOV-001) is decided by no one here, deliberately.
-  if (!step.resolvedApproverId || step.resolvedApproverId !== auth.partyId || auth.roleSlug !== step.resolvedApproverRole) {
+  if (
+    !step.resolvedApproverId ||
+    step.resolvedApproverId !== auth.partyId ||
+    auth.roleSlug !== step.resolvedApproverRole
+  ) {
     throw ApiError.forbidden(
       `This step was resolved to ${step.resolvedApproverRole ?? 'no role'}; only that approver of record may decide it.`,
     );
@@ -395,7 +412,11 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
     related: [{ relation: 'gates', entityType: step.subjectType, entityId: step.subjectId }],
     previousState: { state: step.state },
     newState: { state: updated.state, note },
-    reason: { reasonCode: approve ? 'approved' : 'declined', policyId: step.policyId, policyVersion: step.policyVersion },
+    reason: {
+      reasonCode: approve ? 'approved' : 'declined',
+      policyId: step.policyId,
+      policyVersion: step.policyVersion,
+    },
     confidentiality: 'confidential',
   });
 

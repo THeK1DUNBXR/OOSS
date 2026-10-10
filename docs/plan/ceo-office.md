@@ -56,20 +56,20 @@ model, §6 Phases, §7 Conventions.
 - **Event grammar:** `kz.ceo.<entity>.<verb>`, e.g. `kz.ceo.objective.created`,
   `kz.ceo.initiative.status_changed`, `kz.ceo.board_pack.issued`. Bounded
   context `ceo` is added to `BOUNDED_CONTEXTS` (`packages/shared/src/
-  planes.ts`) with a `MODULE_REGISTER` entry (plane `P2` for the record-owning
+planes.ts`) with a `MODULE_REGISTER` entry (plane `P2` for the record-owning
   half, `P9`/Experience covers the cockpit read layer — the entry lists both
   in `owns`), and an explicit `neverDoes` list: never holds money movement
   (FIN owns that; this module references `Transaction`/`BudgetLine` rows, it
   never posts one), never holds statutory board records (`BoardMeeting`,
   `Resolution` stay `eqt`-owned; the new Board Pack is a narrative document
-  that *cites* an `eqt` meeting, it does not replace one), never writes a
+  that _cites_ an `eqt` meeting, it does not replace one), never writes a
   second Decision-like record (reuses `Decision`), never reads another
   tenant's tables directly (extends `group.ts`'s snapshot pattern for any
   group-wide chairman view).
 - **Nav group:** `ceo`, sidebar label `"Chairman's Office"`, inserted into
   `GROUP_ORDER` in `Shell.tsx` after `equity` and before `compliance`. Every
   `NAV_REGISTRY` row for this module sets `archetypes: ['command',
-  'workspace', 'console']` explicitly — omitting it leaks the node into the
+'workspace', 'console']` explicitly — omitting it leaks the node into the
   shareholder/director portal shell (`research-web.md` gotcha 3; this module
   is ERP-only, chairman and the leadership team who work inside the ERP, not
   the equity portal).
@@ -84,7 +84,7 @@ model, §6 Phases, §7 Conventions.
     milestones; they cannot see or edit another leader's owned records
     through this module (they may already see company-wide numbers through
     their existing Finance/HR grants — this module's `@own` scoping is about
-    the *module's own records*, not about re-hiding numbers already visible
+    the _module's own records_, not about re-hiding numbers already visible
     elsewhere).
   - `finance_head` holds `V@all` on the Financial Planning area (Phase 8) —
     the annual budget, scenarios and headcount plan are Finance's own domain
@@ -145,7 +145,7 @@ pointing at the CEO-module record; the module's own screens then show that
 `Decision`'s state and link back to `/command/decisions/:id` for the full
 evidence pack rather than re-rendering it. **`/command/decisions` stays
 exactly where it is** — the new "Decision Log" screen this module could show
-(if any phase wants one) is a filtered *view* over the same `Decision`
+(if any phase wants one) is a filtered _view_ over the same `Decision`
 records (e.g. `subjectType` in a CEO-module set), never a parallel list.
 
 **Exceptions — reused as the only attention mechanism.**
@@ -195,13 +195,13 @@ subject.owner_id`), the tiered `approverResolution` ladder, and the rule that
 **read-model** that queries every domain's own pending-approval rows
 (pending vendor bills, pending share transactions, pending MoUs, any
 CEO-module item awaiting a decision) and renders them in one place; every
-*action* taken from that inbox calls the *owning* domain's own approve
+_action_ taken from that inbox calls the _owning_ domain's own approve
 function (`equity.approveShareTransaction`, `finance.payVendorBill`, etc.) —
 the inbox never grows its own parallel approve code path.
 
 **Board — the statutory layer stays statutory.** `apps/api/src/domains/
 board.ts` already owns `BoardMeeting`, `Resolution`, `BoardPackItem` (a
-per-meeting *file attachment* list, not an authored deck — confirmed absent
+per-meeting _file attachment_ list, not an authored deck — confirmed absent
 as a synthesized document, `research-executive.md` §2 row "board pack").
 Phase 6's Board Pack is a new, generated/authored document (auto-filled
 sections from ERP figures + narrative blocks) that **cites** a `BoardMeeting`
@@ -231,7 +231,7 @@ beyond existing.
 correction is a new version.** `Phase 6 files.` A `BoardPackVersion`/
 `InvestorUpdateVersion` moves `draft → issued`; once issued its content is
 frozen (matching `documents once issued are history`, the house rule already
-applied to invoices and share certificates). *Why:* a board member or
+applied to invoices and share certificates). _Why:_ a board member or
 investor who quotes a number from a pack that was quietly edited after
 circulation is the exact failure this house convention exists to prevent
 elsewhere; a "corrected" pack is a new numbered version that supersedes, not
@@ -243,41 +243,41 @@ identically to a computed one.** `Phase 1.` Every `KpiValue` row carries
 either a `formulaVersionId` + `sourceLineage` (computed) or `enteredById` +
 `manualNote` (manual) — the screen shows a small "manual entry" tag on the
 latter forever, it is never promoted to look computed just because it has
-been entered a few times. *Why:* the failure this prevents is a dashboard
+been entered a few times. _Why:_ the failure this prevents is a dashboard
 number that looks authoritative because it sits next to real computed ones,
 when it is actually one person's typed estimate nobody can audit.
 
 **3.3 "Not yet measured" is distinct from zero and distinct from withheld,
 on every tile this module renders — reusing the exact three-state convention
-`research-web.md` §5 documents.** `All phases, especially 1.` *Why:* a KPI
+`research-web.md` §5 documents.** `All phases, especially 1.` _Why:_ a KPI
 with no data source wired and a KPI genuinely reading zero are opposite
 facts (the first means "we don't know," the second might mean "revenue is
 actually zero this month" or "good, zero open risks") — collapsing them to
 the same rendering is how a founder stops trusting the dashboard, or worse,
 reads silence as good news.
 
-**3.4 The DoA matrix is *data* linked to `AuthorityGrant`, never a second
+**3.4 The DoA matrix is _data_ linked to `AuthorityGrant`, never a second
 threshold hardcoded in route code.** `Phase 5.` A `DoaMatrixEntry` row names
 a decision class and an authority ceiling, and **displays** the ceiling that
 `AuthorityGrant`/`resolveAuthorityCeiling` (the mechanism `decisions.ts`'s
 `AwaitingAuthority` state and `approvals.ts` already use) actually enforces —
-the DoA screen is a legible *view* of grants that already exist, with an edit
+the DoA screen is a legible _view_ of grants that already exist, with an edit
 path that writes a new `AuthorityGrant`, not a separate ceiling field
 somewhere else that could silently diverge from the one actually checked.
-*Why:* two copies of "who can approve up to what" — one enforced, one merely
+_Why:_ two copies of "who can approve up to what" — one enforced, one merely
 displayed — inevitably drift, and the displayed one becomes the one people
 trust while the enforced one is the one that actually decides.
 
 **3.5 No CEO-module domain function compares a role slug.** `All phases.`
 Narrowing is grants and scope resolvers only, matching the platform-wide
 source-grep test (`CRM-FOUND-004`) that already fails a PR containing a
-literal role-slug comparison. *Why:* the whole grant model exists so "what
+literal role-slug comparison. _Why:_ the whole grant model exists so "what
 can the Operations Head see" is answered by reading one matrix, not by
 grepping every domain file for `if (role === 'hr_ops_manager')`.
 
 **3.6 No cross-tenant reads.** `All phases.` Every phase's queries stay
 inside the scoped `prisma` for the acting tenant; nothing in this module
-calls `unscopedPrisma`. *Why:* §2's closing note — it would be the first new
+calls `unscopedPrisma`. _Why:_ §2's closing note — it would be the first new
 code path (outside `group.ts`'s marked publisher section) where a request in
 one tenant reads another's rows, and the next feature after this one would
 be tempted to reuse it.
@@ -287,7 +287,7 @@ be tempted to reuse it.
 pace, pricing change, funding timing) and a **pure projection function**
 computes the resulting P&L/cash/runway from those parameters plus the live
 `cashPosition()`/`budgetVariance()` figures — it never forks or duplicates
-`Transaction` rows. *Why:* two versions of "the books" that can drift and
+`Transaction` rows. _Why:_ two versions of "the books" that can drift and
 both be quoted in a board meeting is worse than no scenario tool at all;
 a scenario must always be reproducible from (assumptions + today's real
 figures), never a frozen copy that silently goes stale.
@@ -299,7 +299,7 @@ captured in-meeting" feature (area 6, feature 7) calls `raiseDecision` with
 `MeetingInstance`, and stores the returned `Decision.id` on a
 `MeetingDecisionLink` row — the meeting screen shows the decision's live
 state by reading `Decision`, not by storing its own copy of "what we
-decided." *Why:* §2's reuse rule, made concrete for the one place a new
+decided." _Why:_ §2's reuse rule, made concrete for the one place a new
 "decision-shaped" record would be most tempting to invent from scratch.
 
 **3.9 The approvals inbox is a read-model; actions call the owning domain.**
@@ -308,7 +308,7 @@ pending rows from several domains' own tables (it does not own a table of
 its own beyond a thin index for sort/filter performance if needed); its
 `POST` action handlers are thin wrappers that call
 `equity.approveShareTransaction`/`finance.payVendorBill`/`decisions.
-disposeDecision`/etc. directly. *Why:* a second approve/reject code path
+disposeDecision`/etc. directly. _Why:_ a second approve/reject code path
 duplicates every permission check, audit write, and self-dealing bar the
 owning domain already has — and the two paths will diverge the first time
 one of them is patched and the other is not.
@@ -318,7 +318,7 @@ one of them is patched and the other is not.
 authority ceiling, and an initiative kill/pause all route through
 `raiseDecision`/the approval gate with the proposer's own approval refused by
 the self-dealing bar — the same mechanism §1's "who sees what" section
-names. *Why:* this is the platform's own stated design rule (area-A feature
+names. _Why:_ this is the platform's own stated design rule (area-A feature
 catalogue's closing "Design Rules for a Founder Dashboard," rule 5) made
 enforceable rather than aspirational: self-approval must be structurally
 disallowed, not merely discouraged by a UI hint.
@@ -487,11 +487,11 @@ Musts may not be cut). Phase number in brackets after the area heading.
 
 - [M] Risk Register — named risk, category, likelihood, impact, mitigation,
   owner, review date, status (open/mitigating/closed) — distinct from
-  `H_RSK`, which measures whether *exceptions* are handled, not a catalogue
+  `H_RSK`, which measures whether _exceptions_ are handled, not a catalogue
   of named risks (`research-executive.md` §6 item 3's confirmed gap).
 - [M] Risk linked optionally to an Initiative (Phase 3) without duplicating
   the initiative's own lightweight risk notes — the register is the single
-  place a *named, tracked* risk lives; an initiative's inline note may
+  place a _named, tracked_ risk lives; an initiative's inline note may
   promote to a full register entry, never the reverse duplication.
 - [M] Policy Register — business/operating policies (expense policy, WFH
   policy, data-retention policy, etc.) as versioned documents with an owner
@@ -511,7 +511,7 @@ Musts may not be cut). Phase number in brackets after the area heading.
 
 - [M] Annual budget by division, building on existing `BudgetLine`/
   `budgetVariance` (§2) rather than a parallel budget table — this phase
-  adds the *planning* layer (multi-line, multi-division authoring UI,
+  adds the _planning_ layer (multi-line, multi-division authoring UI,
   approval routing) the existing single-line `setBudgetLine` lacks.
 - [M] Driver-based scenarios (base/upside/downside) — assumptions only,
   never a ledger copy (§3.7); projects P&L/cash/runway from `cashPosition`/
@@ -690,6 +690,7 @@ not by a Sonnet agent working blind.
 
 **Files (touches every shared file exactly once; no later phase edits any
 of these again):**
+
 - `packages/shared/src/ceo.ts` — every DTO type and enum for every phase
   below (Phase 1 through 9's records from §5, as TypeScript interfaces/enums,
   not Prisma), re-exported from `packages/shared/src/index.ts`.
@@ -708,10 +709,10 @@ of these again):**
 - `apps/api/src/seed/bootstrap.ts` — add one `NAV_REGISTRY` row per screen
   named in §6 phases 1–9 below (nodeKey, label, icon, path, `group: 'ceo'`,
   position 100+N, `requiredPermission`, `archetypes: ['command', 'workspace',
-  'console']`, synonyms) — every path here must match the stub route added to
+'console']`, synonyms) — every path here must match the stub route added to
   `main.tsx` in the same commit (below).
 - `apps/api/src/routes/index.ts` — add `router.use('/ceo', requireAuth,
-  ceoRoutes)` mounting `apps/api/src/routes/ceo/index.ts`.
+ceoRoutes)` mounting `apps/api/src/routes/ceo/index.ts`.
 - `apps/api/src/routes/ceo/index.ts` (new) — imports and mounts one router
   per area: `router.use('/cockpit', cockpitRoutes)`,
   `/strategy`, `/initiatives`, `/rhythm`, `/doa`, `/board`, `/risk`,
@@ -719,19 +720,19 @@ of these again):**
   below). **This file is never edited again after Phase 0** — each phase
   replaces only the stub router file it owns, not this index.
 - `apps/api/src/routes/ceo/{cockpit,strategy,initiatives,rhythm,doa,board,
-  risk,finance,people}.routes.ts` (new, 9 files) — each a stub router: every
+risk,finance,people}.routes.ts` (new, 9 files) — each a stub router: every
   route the owning phase will build returns `501 { message: 'Not built yet.'
-  }` for POST/PATCH and `{ items: [] }` for GET list endpoints, so Phase 0's
+}` for POST/PATCH and `{ items: [] }` for GET list endpoints, so Phase 0's
   own typecheck/tests pass and the nav/route wiring is provably correct
   before any area is built. Each phase **replaces** its stub file wholesale.
 - `apps/web/src/main.tsx` — import and add a `<Route>` for every screen path
   in §6 phases 1–9, pointing at a stub page component.
 - `apps/web/src/pages/ceo/{Cockpit,Strategy,Okrs,Initiatives,Rhythm,Doa,
-  Approvals,BoardPack,InvestorUpdates,Stakeholders,Risk,Policies,Governance,
-  FinancialPlan,Headcount,Leadership,OneOnOnes,Succession,TimeAudit}.tsx`
+Approvals,BoardPack,InvestorUpdates,Stakeholders,Risk,Policies,Governance,
+FinancialPlan,Headcount,Leadership,OneOnOnes,Succession,TimeAudit}.tsx`
   (new stub files, one per screen listed in §6 below) — each renders
   `<PageHeader title="..."/><Card><EmptyState message="This screen is not
-  built yet."/></Card>`. Each owning phase **replaces** its own stub files;
+built yet."/></Card>`. Each owning phase **replaces** its own stub files;
   it may also add further files under `pages/ceo/<area>/` for sub-screens.
 - `apps/web/src/components/Shell.tsx` — add `'ceo'` to `GROUP_ORDER` (after
   `'equity'`), add `ceo: "Chairman's Office"` to `GROUP_LABELS`; add any new
@@ -751,7 +752,7 @@ of these again):**
   `runCeoDetectors()` job registration) so every phase's detectors run
   without any phase touching the scheduler itself.
 - `apps/api/src/domains/ceo/{cockpit,strategy,initiatives,rhythm,doa,board,
-  risk,finance,people}.detectors.ts` (new, 9 stub files) — each exports
+risk,finance,people}.detectors.ts` (new, 9 stub files) — each exports
   `export const detectors: Array<() => Promise<void>> = [];`. Each owning
   phase **replaces** its own file with real detector functions (§2's
   `raiseException` pattern) and adds them to the exported array; it never
@@ -761,39 +762,39 @@ of these again):**
   for it by habit.
 - `docs/acceptance.md` — add one **"Chairman's Office"** subsection with nine
   rows, one per `CEO-<AREA>` prefix, `Tests` column `pending`, `What is
-  pinned` column `pending` — **no other phase may edit this file**; the
+pinned` column `pending` — **no other phase may edit this file**; the
   orchestrator fills every row in Phase 10.
 
 **Nav rows and route paths Phase 0 must create (one row/route per screen
 below; each phase's brief repeats its own subset for convenience, this is
 the master list Phase 0 works from):**
 
-| Screen | Path | nodeKey | requiredPermission | Phase |
-|---|---|---|---|---|
-| Cockpit | `/ceo/cockpit` | `ceo_cockpit` | `ceo_cockpit:V` | 1 |
-| KPI Library | `/ceo/kpi-library` | `ceo_kpi_library` | `kpi_definitions:V` | 1 |
-| Strategy | `/ceo/strategy` | `ceo_strategy` | `strategic_themes:V` | 2 |
-| OKRs | `/ceo/okrs` | `ceo_okrs` | `objectives:V` | 2 |
-| Initiatives | `/ceo/initiatives` | `ceo_initiatives` | `initiatives:V` | 3 |
-| Initiatives detail | `/ceo/initiatives/:id` | — (same component) | — | 3 |
-| Meeting Rhythm | `/ceo/meetings` | `ceo_meetings` | `meeting_series:V` | 4 |
-| Meeting detail | `/ceo/meetings/:id` | — | — | 4 |
-| Delegation of Authority | `/ceo/delegation` | `ceo_delegation` | `doa_matrix:V` | 5 |
-| Approvals Inbox | `/ceo/approvals` | `ceo_approvals` | `ceo_approvals_inbox:V` | 5 |
-| Board Pack | `/ceo/board-pack` | `ceo_board_pack` | `board_packs:V` | 6 |
-| Board Pack document | `/ceo/board-pack/:id/document` | — | — | 6 |
-| Investor Updates | `/ceo/investor-updates` | `ceo_investor_updates` | `investor_updates:V` | 6 |
-| Investor Update document | `/ceo/investor-updates/:id/document` | — | — | 6 |
-| Stakeholders | `/ceo/stakeholders` | `ceo_stakeholders` | `stakeholders:V` | 6 |
-| Risk Register | `/ceo/risks` | `ceo_risks` | `risks:V` | 7 |
-| Policy Register | `/ceo/policies` | `ceo_policies` | `policy_documents:V` | 7 |
-| Governance Overview | `/ceo/governance` | `ceo_governance` | `risks:V` | 7 |
-| Financial Plan | `/ceo/financial-plan` | `ceo_financial_plan` | `financial_scenarios:V` | 8 |
-| Headcount Plan | `/ceo/headcount-plan` | `ceo_headcount_plan` | `headcount_plans:V` | 8 |
-| Leadership | `/ceo/leadership` | `ceo_leadership` | `seats:V` | 9 |
-| 1:1s | `/ceo/one-on-ones` | `ceo_one_on_ones` | `one_on_ones:V` | 9 |
-| Succession | `/ceo/succession` | `ceo_succession` | `succession_candidates:V` | 9 |
-| Time Audit | `/ceo/time-audit` | `ceo_time_audit` | `time_audit:V` | 9 |
+| Screen                   | Path                                 | nodeKey                | requiredPermission        | Phase |
+| ------------------------ | ------------------------------------ | ---------------------- | ------------------------- | ----- |
+| Cockpit                  | `/ceo/cockpit`                       | `ceo_cockpit`          | `ceo_cockpit:V`           | 1     |
+| KPI Library              | `/ceo/kpi-library`                   | `ceo_kpi_library`      | `kpi_definitions:V`       | 1     |
+| Strategy                 | `/ceo/strategy`                      | `ceo_strategy`         | `strategic_themes:V`      | 2     |
+| OKRs                     | `/ceo/okrs`                          | `ceo_okrs`             | `objectives:V`            | 2     |
+| Initiatives              | `/ceo/initiatives`                   | `ceo_initiatives`      | `initiatives:V`           | 3     |
+| Initiatives detail       | `/ceo/initiatives/:id`               | — (same component)     | —                         | 3     |
+| Meeting Rhythm           | `/ceo/meetings`                      | `ceo_meetings`         | `meeting_series:V`        | 4     |
+| Meeting detail           | `/ceo/meetings/:id`                  | —                      | —                         | 4     |
+| Delegation of Authority  | `/ceo/delegation`                    | `ceo_delegation`       | `doa_matrix:V`            | 5     |
+| Approvals Inbox          | `/ceo/approvals`                     | `ceo_approvals`        | `ceo_approvals_inbox:V`   | 5     |
+| Board Pack               | `/ceo/board-pack`                    | `ceo_board_pack`       | `board_packs:V`           | 6     |
+| Board Pack document      | `/ceo/board-pack/:id/document`       | —                      | —                         | 6     |
+| Investor Updates         | `/ceo/investor-updates`              | `ceo_investor_updates` | `investor_updates:V`      | 6     |
+| Investor Update document | `/ceo/investor-updates/:id/document` | —                      | —                         | 6     |
+| Stakeholders             | `/ceo/stakeholders`                  | `ceo_stakeholders`     | `stakeholders:V`          | 6     |
+| Risk Register            | `/ceo/risks`                         | `ceo_risks`            | `risks:V`                 | 7     |
+| Policy Register          | `/ceo/policies`                      | `ceo_policies`         | `policy_documents:V`      | 7     |
+| Governance Overview      | `/ceo/governance`                    | `ceo_governance`       | `risks:V`                 | 7     |
+| Financial Plan           | `/ceo/financial-plan`                | `ceo_financial_plan`   | `financial_scenarios:V`   | 8     |
+| Headcount Plan           | `/ceo/headcount-plan`                | `ceo_headcount_plan`   | `headcount_plans:V`       | 8     |
+| Leadership               | `/ceo/leadership`                    | `ceo_leadership`       | `seats:V`                 | 9     |
+| 1:1s                     | `/ceo/one-on-ones`                   | `ceo_one_on_ones`      | `one_on_ones:V`           | 9     |
+| Succession               | `/ceo/succession`                    | `ceo_succession`       | `succession_candidates:V` | 9     |
+| Time Audit               | `/ceo/time-audit`                    | `ceo_time_audit`       | `time_audit:V`            | 9     |
 
 **Tests:** Phase 0 must pass `pnpm typecheck` and the full existing suite
 (629 tests) unmodified — it adds stub behaviour only, changing no existing
@@ -833,6 +834,7 @@ way it does, or expose a thin re-export if genuinely identical, but do not
 duplicate the ranking logic).
 
 **Build:**
+
 1. `KpiDefinition`/`KpiFormulaVersion`/`KpiTargetBand`/`KpiValue`/
    `KpiReference` models (§5). `cockpit.ts`: `createKpiDefinition(input)`,
    `publishKpiFormula(kpiId, input)` (versions, never overwrites),
@@ -846,7 +848,7 @@ duplicate the ranking logic).
    — diffs the current tiles against the owner's most recent prior
    snapshot, grouped by domain; called once per session by the Cockpit page
    on mount, writing a fresh snapshot after computing the diff (so the next
-   visit diffs against *this* visit, not itself).
+   visit diffs against _this_ visit, not itself).
 4. `cockpit()` — one aggregate function (mirrors `commandCenter()`'s shape)
    returning: north-star tiles, since-you-last-looked digest, 10-domain
    health strip (from `latestPulse`), attention feed top-N, decisions strip
@@ -920,18 +922,19 @@ the function, do not requery `KpiDefinition` directly with a second query
 shape).
 
 **Build:**
+
 1. `VisionStatement`, `ThreeYearPicture`, `AnnualOperatingPlan`,
    `StrategicTheme`, `PlanAssumption` models (§5).
    `strategy.ts`: `setVisionStatement(text, effectiveFrom)` (versions, never
    overwrites), `setThreeYearPicture(input)`, `createAop(fy, division,
-   input)`, `submitAopForApproval(aopId)` (calls `raiseDecision`),
+input)`, `submitAopForApproval(aopId)` (calls `raiseDecision`),
    `activateAop(aopId)` (only after the linked `Decision` is `Implemented`),
    `createTheme(input)`, `aopVariance(fy, division)` (imports
    `budgetVariance`, never re-sums).
 2. `Objective`, `KeyResult`, `CheckIn`, `OkrCycle` models. `createObjective
-   (input)`, `createKeyResult(objectiveId, input)`, `checkIn(keyResultId,
-   input)`, `lockCycle(cycleId)`, `scoreObjective(objectiveId, {score,
-   selfAssessment})`, `alignmentTree(cycleId)` (recursive, flags orphans),
+(input)`, `createKeyResult(objectiveId, input)`, `checkIn(keyResultId,
+input)`, `lockCycle(cycleId)`, `scoreObjective(objectiveId, {score,
+selfAssessment})`, `alignmentTree(cycleId)` (recursive, flags orphans),
    `atRiskDigest()` (no check-in in N days or 2+ declining confidence
    readings).
 3. Web: `Strategy.tsx` — vision/3-year/AOP/themes in tabs
@@ -939,7 +942,7 @@ shape).
    `Okrs.tsx` — alignment tree view, cycle picker, check-in inline form
    (pattern: inline `<form>` per §"Forms," not a modal, matching
    `Agenda`/`VoteForm` precedent). Empty states: `"No vision statement has
-   been recorded yet."`, `"This cycle has no company-level objectives yet."`
+been recorded yet."`, `"This cycle has no company-level objectives yet."`
 
 **Routes:** `GET/POST /ceo/strategy/vision`, `GET/POST
 /ceo/strategy/three-year-picture`, `GET/POST /ceo/strategy/aop`, `POST
@@ -990,10 +993,11 @@ isolation on objectives/AOPs.
 `decisions.ts: raiseDecision` (kill/pause, §3.10).
 
 **Build:**
+
 1. `Initiative`, `InitiativeMilestone`, `InitiativeDependency` models (§5).
    `initiatives.ts`: `createInitiative(input)`, `updateStatus(id, {status,
-   rag, comment})` (comment required on Amber/Red), `addMilestone(id,
-   input)`, `completeMilestone(milestoneId)` (rolls up % complete),
+rag, comment})` (comment required on Amber/Red), `addMilestone(id,
+input)`, `completeMilestone(milestoneId)` (rolls up % complete),
    `addDependency(fromId, toId, type)`, `killOrPause(id, reason)` (calls
    `raiseDecision`, blocks the direct status write until the decision is
    disposed), `portfolioBoard(filters)` (grouped by status/theme/division),
@@ -1053,16 +1057,17 @@ is implemented, ship the manual-entry version and leave a `// TODO: bind to
 KPI Library once available` comment rather than blocking on it).
 
 **Build:**
+
 1. `MeetingSeries`, `MeetingInstance`, `AgendaItem`, `IssueItem`,
    `ActionItem`, `MeetingDecisionLink` models (§5). `rhythm.ts`:
    `createSeries(input)`, `scheduleInstance(seriesId, date)`,
    `recordAttendance(instanceId, attendees)`, `addAgendaNote(instanceId,
-   section, notes)`, `raiseIssue(input)`, `carryIssueForward(issueId,
-   toInstanceId)` (automatic at instance-close time for any open issue),
+section, notes)`, `raiseIssue(input)`, `carryIssueForward(issueId,
+toInstanceId)` (automatic at instance-close time for any open issue),
    `resolveIssue(issueId, instanceId)`, `createActionItem(input)`,
    `completeActionItem(id)`, `recordMeetingDecision(instanceId, decisionId)`
    (§3.8 — links, does not create a second decision record), `closeInstance
-   (instanceId)` (minutes become read-only; refuses if any agenda note is
+(instanceId)` (minutes become read-only; refuses if any agenda note is
    still being edited concurrently — last-write-wins is acceptable, no
    locking needed), `crossMeetingTodos(ownerId)`.
 2. Web: `Rhythm.tsx` — series list + upcoming/past instances.
@@ -1070,7 +1075,7 @@ KPI Library once available` comment rather than blocking on it).
    marked "carried from <date>"), to-dos, attendance, minutes (editable
    pre-close, read-only after), "Record a decision" inline form calling
    `raiseDecision` then `recordMeetingDecision`. Empty state: `"No meeting
-   has been recorded in this series yet."`
+has been recorded in this series yet."`
 
 **Routes:** `GET/POST /ceo/rhythm/series`, `GET/POST
 /ceo/rhythm/instances`, `GET /ceo/rhythm/instances/:id`, `POST
@@ -1114,7 +1119,7 @@ re-appear as carried on the next instance. `CEO-RHY-008` tenant isolation.
 `apps/web/src/components/ceo/doa/*`.
 
 **Reads from:** `platform/permissions.ts: resolveAuthorityCeiling` (§3.4 —
-the DoA matrix *displays* this, never a second ceiling). `platform/
+the DoA matrix _displays_ this, never a second ceiling). `platform/
 approvals.ts` (self-dealing bar, approver resolution ladder — the DoA
 matrix's own change-approval flow reuses this shape). `decisions.ts:
 raiseDecision`/`disposeDecision`. Every domain with a pending-approval
@@ -1124,19 +1129,20 @@ concept, read-only, for the inbox: at minimum `finance.ts`/`books.ts`
 `decisions.ts` (`decisionQueue`, already pending-shaped).
 
 **Build:**
+
 1. `DoaMatrixEntry`, `DelegationLog` models (§5). `doa.ts`:
    `doaMatrix()` (reads every `AuthorityGrant` row grouped by decision
    class/role, joined with any `DoaMatrixEntry` narrative row), `proposeDoa
-   Change(input)` (calls `raiseDecision`, never writes the
+Change(input)` (calls `raiseDecision`, never writes the
    `AuthorityGrant` directly), `applyDoaChange(decisionId)` (only after
    `Implemented`, then writes the new `AuthorityGrant`), `createDelegation
-   (fromPartyId, toPartyId, responsibility, until)`, `endDelegation(id)`.
+(fromPartyId, toPartyId, responsibility, until)`, `endDelegation(id)`.
 2. `approvalsInbox(filters)` — unions: pending vendor bills (import from
    `finance.ts`/`books.ts`), pending share transactions (`equity.ts`),
    pending agreement approvals (`agreements.ts`), open items in
    `decisionQueue()`. Each row carries `{domain, subjectType, subjectId,
-   summary, value?, slaDueAt?, actionEndpoint}` — `actionEndpoint` names the
-   *owning* domain's real route, the inbox UI POSTs there directly, not to a
+summary, value?, slaDueAt?, actionEndpoint}` — `actionEndpoint` names the
+   _owning_ domain's real route, the inbox UI POSTs there directly, not to a
    `doa.routes.ts` action handler that re-implements approval (§3.9).
 3. Detector: `DOA-STALE-ENTRY` — a matrix entry pointing at a since-revoked
    `AuthorityGrant` raises an exception.
@@ -1200,19 +1206,20 @@ optional — same "ship without it, TODO-comment the binding" rule as Phase
 `SupplierBlock`, `Signature`, `rupees`) for the printable views.
 
 **Build:**
+
 1. `BoardPack`, `BoardPackVersion`, `InvestorUpdate`,
    `InvestorUpdateVersion`, `DocumentCirculation`, `Stakeholder`,
    `StakeholderTouch` models (§5). `board.ts` (ceo): `createBoardPack
-   (meetingId, title)`, `draftBoardPackVersion(packId, sections)`,
+(meetingId, title)`, `draftBoardPackVersion(packId, sections)`,
    `autoFillSections(packId)` (pulls P&L/cash/headcount/KPI highlights into
    named sections the author then edits narrative around — this writes into
    the draft, it never runs again once issued), `issueBoardPackVersion
-   (versionId)` (draft → issued, immutable, §3.1), `attachToBoardMeeting
-   (versionId)` (writes a `BoardPackItem` on the cited `eqt.BoardMeeting` —
+(versionId)` (draft → issued, immutable, §3.1), `attachToBoardMeeting
+(versionId)` (writes a `BoardPackItem` on the cited `eqt.BoardMeeting` —
    the one place this phase touches an `eqt` table, through `board.ts`'s own
    `addBoardPackItem` function, never a raw write to its table). Same shape
    for `InvestorUpdate`/`InvestorUpdateVersion`. `recordCirculation
-   (versionId, recipientIds)`, `acknowledgeReceipt(circulationId)`.
+(versionId, recipientIds)`, `acknowledgeReceipt(circulationId)`.
    `createStakeholder(input)`, `logTouch(stakeholderId, input)`.
 2. Web: `BoardPack.tsx`/`InvestorUpdates.tsx` — version list, draft editor
    (section-by-section, auto-filled figures shown read-only with a
@@ -1222,8 +1229,8 @@ optional — same "ship without it, TODO-comment the binding" rule as Phase
    `documentSheet.tsx` pattern exactly as §"Printable documents" specifies
    (route sits above the list/detail route, per `research-web.md` §1).
    `Stakeholders.tsx` — list + touch log. Empty states: `"No board pack has
-   been drafted yet."`, `"Nothing is logged as a touch with this
-   stakeholder yet."`
+been drafted yet."`, `"Nothing is logged as a touch with this
+stakeholder yet."`
 
 **Routes:** `GET/POST /ceo/board/packs`, `GET /ceo/board/packs/:id`, `POST
 /ceo/board/packs/:id/versions`, `POST /ceo/board/packs/versions/:id/issue`,
@@ -1276,11 +1283,12 @@ compliance counters — imports, never re-derives). `exceptions.ts:
 raiseException`.
 
 **Build:**
+
 1. `RiskItem`, `PolicyDocument`, `PolicyAcknowledgement` models (§5).
    `risk.ts`: `createRisk(input)`, `updateRiskStatus(id, {status,
-   mitigation})`, `reviewRisk(id)` (stamps `reviewDate` forward), `risk
-   Register(filters)`. `createPolicyDocument(input)`, `publishPolicyVersion
-   (id, body)` (versions, never overwrites), `acknowledgePolicy(id)`,
+mitigation})`, `reviewRisk(id)` (stamps `reviewDate` forward), `risk
+Register(filters)`. `createPolicyDocument(input)`, `publishPolicyVersion
+(id, body)` (versions, never overwrites), `acknowledgePolicy(id)`,
    `policiesOverdueForReview()`.
 2. `governanceOverview()` — one aggregate: open risks by severity, policies
    overdue for review, DoA matrix summary (imports Phase 5's `doaMatrix()`
@@ -1296,7 +1304,7 @@ raiseException`.
    a business risk's likelihood×impact maps onto the same severity words).
    `Policies.tsx` — document list, version history, acknowledgement tracker.
    `Governance.tsx` — the rollup dashboard. Empty states: `"Nothing is on
-   the risk register yet."`, `"No policy has been published yet."`
+the risk register yet."`, `"No policy has been published yet."`
 
 **Routes:** `GET/POST /ceo/risk/risks`, `POST /ceo/risk/risks/:id/status`,
 `POST /ceo/risk/risks/:id/review`, `GET/POST /ceo/risk/policies`, `POST
@@ -1343,6 +1351,7 @@ headcountByDivision`. `payroll.ts: payrollCostByDivision`, `payrollTrend`.
 `decisions.ts: raiseDecision` (§3.10, over-ceiling budget lines).
 
 **Build:**
+
 1. `FinancialScenario`, `HeadcountPlan`, `HeadcountPlanLine` models (§5).
    `finance.ts` (ceo): `createScenario(input)` (assumptions only, §3.7),
    `projectScenario(scenarioId)` — **pure function**: reads live
@@ -1360,7 +1369,7 @@ headcountByDivision`. `payroll.ts: payrollCostByDivision`, `payrollTrend`.
    the platform function directly, same as Phase 5 does, rather than
    importing anything from Phase 5's files.
 3. `createHeadcountPlan(fy, division, input)`, `addPlanLine(planId,
-   input)`, `headcountVariance(fy, division)` (imports
+input)`, `headcountVariance(fy, division)` (imports
    `headcountByDivision`/`payrollCostByDivision`, compares to plan).
 4. Web: `FinancialPlan.tsx` — scenario picker (base/upside/downside tabs),
    projected P&L/cash/runway charts (`recharts`, following
@@ -1369,7 +1378,7 @@ headcountByDivision`. `payroll.ts: payrollCostByDivision`, `payrollTrend`.
    table under every chart, §"Component vocabulary"), budget authoring
    grid. `Headcount.tsx` — plan vs actual by division/role. Empty states:
    `"No scenario has been modelled yet."`, `"No headcount plan exists for
-   this year yet."`
+this year yet."`
 
 **Routes:** `GET/POST /ceo/finance/scenarios`, `GET
 /ceo/finance/scenarios/:id/projection`, `GET
@@ -1424,11 +1433,12 @@ anonymity floor: any aggregate view in this phase covering fewer than 5
 people withholds, same as that panel does).
 
 **Build:**
+
 1. `Seat`, `SuccessionCandidate`, `OneOnOneSeries`, `OneOnOneInstance`,
    `TimeAuditEntry` models (§5). `people.ts`: `createSeat(input)`,
    `reassignSeat(seatId, newOwnerId)` (versions — old row kept, new row
    created, both readable), `vacantSeats()`. `createSuccessionPlan(seatId,
-   input)`, `updateSuccessionCandidate(id, input)` (chairman-only grant,
+input)`, `updateSuccessionCandidate(id, input)` (chairman-only grant,
    §4.9 — no aggregate rollup of this data is ever exposed to a wider
    audience; there is no "team succession health" tile anywhere in this
    module). `createOneOnOneSeries(input)`, `logOneOnOne(seriesId, input)`
@@ -1444,7 +1454,7 @@ people withholds, same as that panel does).
    the UI). `Succession.tsx` — per-seat candidates, explicitly
    chairman-visible only (no grant for any other role, §1). `TimeAudit.tsx`
    — self-logged entries + rollup chart. Empty states: `"No seat has been
-   defined yet."`, `"This 1:1 series has no logged instances yet."`,
+defined yet."`, `"This 1:1 series has no logged instances yet."`,
    `"No successor has been identified for this seat."` (a true, neutral
    fact, never rendered as an alarm).
 
@@ -1479,6 +1489,7 @@ position id is refused. `CEO-PPL-008` tenant isolation.
 ### Phase 10 — Integration & docs (orchestrator, after every phase 1–9 PR merges)
 
 Not a Sonnet-agent brief — run by whoever merges the phases. Work:
+
 1. `README.md` "What to look at" — add bullets for the Chairman's Office
    surfaces actually shipped (the equity portal shipped without this step;
    §2 of the research flags it as a real gap — this module closes it rather
@@ -1527,16 +1538,16 @@ Not a Sonnet-agent brief — run by whoever merges the phases. Work:
 - Nav rows via `NAV_REGISTRY`, written once by Phase 0 for every screen;
   `GROUP_ORDER`/`GROUP_LABELS` in `Shell.tsx`, also Phase-0-only.
 - Tests through `asUser`/the fixture-role helpers in `apps/api/src/tests/
-  helpers.ts` (`principalFor`, `authFor`), named by requirement; one row in
+helpers.ts` (`principalFor`, `authFor`), named by requirement; one row in
   `docs/acceptance.md` per phase — written by Phase 0 as `pending`, filled
   by Phase 10, **never edited by phases 1–9**.
 - Exact commands (from `env-ready.md`): `cd /home/user/OOSS && pnpm
-  typecheck` (~27s, must pass clean after every phase); `cd apps/api &&
-  npx prisma generate` after adding/editing a schema file, then `DATABASE_URL=
-  "postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public"
-  npx prisma db push --skip-generate` against the test DB before running
+typecheck` (~27s, must pass clean after every phase); `cd apps/api &&
+npx prisma generate` after adding/editing a schema file, then `DATABASE_URL=
+"postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public"
+npx prisma db push --skip-generate` against the test DB before running
   that phase's tests; `cd apps/api && npx vitest run src/tests/ceo/
-  <area>.test.ts` for one phase's file, `npx vitest run` for the full suite
+<area>.test.ts` for one phase's file, `npx vitest run` for the full suite
   (baseline 629 tests passing before this module; each phase's PR should
   report its own new count).
 - After Phase 0 edits `apps/api/src/seed/grants.ts`, a test asserts the

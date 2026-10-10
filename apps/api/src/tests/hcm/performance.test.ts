@@ -103,7 +103,9 @@ describe('HCM-PERFORMANCE-001 — a review cycle is created in phase "self" with
 describe('HCM-PERFORMANCE-002 — a cycle only ever advances one phase at a time', () => {
   it('refuses jumping from self straight to closed', async () => {
     const cycle = await makeCycle('skip-phase');
-    const err = await expectReject(() => asUser('operations@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'closed')));
+    const err = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'closed')),
+    );
     expect(err.status).toBe(422);
     expect(err.message).toMatch(/manager/);
   });
@@ -170,7 +172,10 @@ describe('HCM-PERFORMANCE-004 — a submitted review is final; it cannot be resu
     );
 
     await asUser('operations@kaizen.co.in', () =>
-      submitReviewResponse(assignment.id, { ratings: [{ sectionKey: 'impact', score: 4 }], comments: 'Solid quarter.' }),
+      submitReviewResponse(assignment.id, {
+        ratings: [{ sectionKey: 'impact', score: 4 }],
+        comments: 'Solid quarter.',
+      }),
     );
 
     const fetched = await asUser('operations@kaizen.co.in', () => getReviewAssignment(assignment.id));
@@ -178,7 +183,9 @@ describe('HCM-PERFORMANCE-004 — a submitted review is final; it cannot be resu
     expect(fetched.response?.comments).toBe('Solid quarter.');
 
     const err = await expectReject(() =>
-      asUser('operations@kaizen.co.in', () => submitReviewResponse(assignment.id, { ratings: [{ sectionKey: 'impact', score: 5 }] })),
+      asUser('operations@kaizen.co.in', () =>
+        submitReviewResponse(assignment.id, { ratings: [{ sectionKey: 'impact', score: 5 }] }),
+      ),
     );
     expect(err.status).toBe(409);
   });
@@ -197,7 +204,10 @@ describe('HCM-PERFORMANCE-005 — closing a calibration session snapshots decisi
     await asUser('operations@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'calibration'));
 
     const session = await asUser('operations@kaizen.co.in', () =>
-      openCalibrationSession({ cycleId: cycle.id, participants: [{ employmentRelationshipId: subject.employment.id }] }),
+      openCalibrationSession({
+        cycleId: cycle.id,
+        participants: [{ employmentRelationshipId: subject.employment.id }],
+      }),
     );
     await asUser('operations@kaizen.co.in', () =>
       updateCalibrationDecisions(session.id, [
@@ -219,10 +229,15 @@ describe('HCM-PERFORMANCE-005 — closing a calibration session snapshots decisi
     await asUser('operations@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'manager'));
     await asUser('operations@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'calibration'));
     const session = await asUser('operations@kaizen.co.in', () =>
-      openCalibrationSession({ cycleId: cycle.id, participants: [{ employmentRelationshipId: subject.employment.id }] }),
+      openCalibrationSession({
+        cycleId: cycle.id,
+        participants: [{ employmentRelationshipId: subject.employment.id }],
+      }),
     );
     await asUser('operations@kaizen.co.in', () =>
-      updateCalibrationDecisions(session.id, [{ employmentRelationshipId: subject.employment.id, rating: '3', potential: 'medium' }]),
+      updateCalibrationDecisions(session.id, [
+        { employmentRelationshipId: subject.employment.id, rating: '3', potential: 'medium' },
+      ]),
     );
     await asUser('operations@kaizen.co.in', () => closeCalibrationSession(session.id));
     const err = await expectReject(() => asUser('operations@kaizen.co.in', () => closeCalibrationSession(session.id)));
@@ -231,7 +246,7 @@ describe('HCM-PERFORMANCE-005 — closing a calibration session snapshots decisi
 });
 
 describe('HCM-PERFORMANCE-006 — the Self-Dealing Bar: nobody releases their own final rating', () => {
-  it('refuses when the releaser is the rating\'s subject', async () => {
+  it("refuses when the releaser is the rating's subject", async () => {
     const cycle = await makeCycle('self-release');
     const hrEmployment = await employmentFor('hr@kaizen.co.in');
 
@@ -242,7 +257,10 @@ describe('HCM-PERFORMANCE-006 — the Self-Dealing Bar: nobody releases their ow
     await asUser('hr@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'manager'));
     await asUser('hr@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'calibration'));
     const session = await asUser('hr@kaizen.co.in', () =>
-      openCalibrationSession({ cycleId: cycle.id, participants: [{ employmentRelationshipId: hrEmployment.employmentRelationshipId }] }),
+      openCalibrationSession({
+        cycleId: cycle.id,
+        participants: [{ employmentRelationshipId: hrEmployment.employmentRelationshipId }],
+      }),
     );
     await asUser('hr@kaizen.co.in', () =>
       updateCalibrationDecisions(session.id, [
@@ -272,10 +290,15 @@ describe('HCM-PERFORMANCE-007 — a rating is hidden from its subject until the 
     await asUser('operations@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'manager'));
     await asUser('operations@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'calibration'));
     const session = await asUser('operations@kaizen.co.in', () =>
-      openCalibrationSession({ cycleId: cycle.id, participants: [{ employmentRelationshipId: divya.employmentRelationshipId }] }),
+      openCalibrationSession({
+        cycleId: cycle.id,
+        participants: [{ employmentRelationshipId: divya.employmentRelationshipId }],
+      }),
     );
     await asUser('operations@kaizen.co.in', () =>
-      updateCalibrationDecisions(session.id, [{ employmentRelationshipId: divya.employmentRelationshipId, rating: '3', potential: 'medium' }]),
+      updateCalibrationDecisions(session.id, [
+        { employmentRelationshipId: divya.employmentRelationshipId, rating: '3', potential: 'medium' },
+      ]),
     );
     await asUser('operations@kaizen.co.in', () => closeCalibrationSession(session.id));
     await asUser('operations@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'closed'));
@@ -306,10 +329,15 @@ describe('HCM-PERFORMANCE-008 — the 9-box needs an all-scope grant', () => {
     await asUser('operations@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'manager'));
     await asUser('operations@kaizen.co.in', () => advanceReviewCyclePhase(cycle.id, 'calibration'));
     const session = await asUser('operations@kaizen.co.in', () =>
-      openCalibrationSession({ cycleId: cycle.id, participants: [{ employmentRelationshipId: ravi.employmentRelationshipId }] }),
+      openCalibrationSession({
+        cycleId: cycle.id,
+        participants: [{ employmentRelationshipId: ravi.employmentRelationshipId }],
+      }),
     );
     await asUser('operations@kaizen.co.in', () =>
-      updateCalibrationDecisions(session.id, [{ employmentRelationshipId: ravi.employmentRelationshipId, rating: '5', potential: 'high' }]),
+      updateCalibrationDecisions(session.id, [
+        { employmentRelationshipId: ravi.employmentRelationshipId, rating: '5', potential: 'high' },
+      ]),
     );
     await asUser('operations@kaizen.co.in', () => closeCalibrationSession(session.id));
 
@@ -340,7 +368,9 @@ describe('HCM-PERFORMANCE-009 — feedback is visible to its giver and recipient
     const raviView = await asUser('ravi@kaizen.co.in', () => listFeedback({}));
     expect(raviView.some((f) => f.fromPartyId === divya.personId)).toBe(true);
 
-    const hrView = await asUser('operations@kaizen.co.in', () => listFeedback({ employmentRelationshipId: ravi.employmentRelationshipId }));
+    const hrView = await asUser('operations@kaizen.co.in', () =>
+      listFeedback({ employmentRelationshipId: ravi.employmentRelationshipId }),
+    );
     expect(hrView.length).toBeGreaterThan(0);
   });
 
@@ -384,7 +414,9 @@ describe('HCM-PERFORMANCE-010 — the Self-Dealing Bar: nobody closes their own 
     expect(selfCloseErr.status).toBe(403);
     expect(selfCloseErr.message).toMatch(/Self-Dealing Bar/);
 
-    const closed = await asUser('kavitha@kaizen.co.in', () => closePip(pip.id, 'successful', 'Targets met for three straight weeks.'));
+    const closed = await asUser('kavitha@kaizen.co.in', () =>
+      closePip(pip.id, 'successful', 'Targets met for three straight weeks.'),
+    );
     expect(closed.outcome).toBe('successful');
   });
 });

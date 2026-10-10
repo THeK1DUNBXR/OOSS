@@ -3,7 +3,7 @@
 `packages/shared/src/hr.ts`'s `payroll.ts` instructs payroll and settles it
 (`PayrollRun`/`PayrollInstruction`); `apps/api/src/domains/compliance/payroll.ts`
 makes the statutory numbers on an instruction correct (PF/ESI/PT/LWF, salary
-structures, payslips). This workstream is what happens *around* a run once
+structures, payslips). This workstream is what happens _around_ a run once
 those two have done their part: the ad-hoc lines and arrears somebody
 proposed against it, the double-entry breakdown finance reads it as, the bank
 file it becomes, the reconciliation that catches a swing before the money
@@ -29,7 +29,7 @@ raises about their own payslip.
   posting also records the net-pay cash leg in the books.
 - **BankAdvice** — the NEFT CSV file for a run's net pay, generated once and
   kept verbatim (an audited export). `rows` holds the same beneficiaries
-  structured, so a *view* of the advice can mask each `accountNumber` to its
+  structured, so a _view_ of the advice can mask each `accountNumber` to its
   last 4 digits without touching `fileText`; only the dedicated download path
   reads `fileText` itself.
 - **PayrollReconciliation** — a per-employee delta between two runs, with an
@@ -139,22 +139,22 @@ itself is no longer treated as an export.
 
 ## Acceptance
 
-| ID | What PASS means | Test |
-|---|---|---|
-| HCM-PAYROLLOPS-001 | A journal's debit/credit lines always balance | `payrollops pure logic > HCM-PAYROLLOPS-001` |
-| HCM-PAYROLLOPS-002 | A pay item's code is unique per tenant; it can be deactivated | `pay items > HCM-PAYROLLOPS-002` |
-| HCM-PAYROLLOPS-003 | The proposer of an ad-hoc pay line cannot approve it themselves; a second decision on an already-decided line is refused | `ad-hoc pay lines > HCM-PAYROLLOPS-003` |
-| HCM-PAYROLLOPS-004 | A rejected ad-hoc pay line stays Rejected and is listed by status | `ad-hoc pay lines > HCM-PAYROLLOPS-004` |
-| HCM-PAYROLLOPS-005 | An employee sees only their own arrears; hrOps/financeHead see all | `arrears > HCM-PAYROLLOPS-005` |
-| HCM-PAYROLLOPS-006 | A journal generated from an approved run balances and its lines sum to the run's gross/net totals | `payroll journal > HCM-PAYROLLOPS-006` |
-| HCM-PAYROLLOPS-007 | The preparer of a journal cannot post it themselves; posting records a `Transaction` carrying `payrollRunId` for the net-pay amount | `payroll journal > HCM-PAYROLLOPS-007` |
-| HCM-PAYROLLOPS-008 | Generating a bank advice produces one row per employee with net pay and bank details on file | `bank advice > HCM-PAYROLLOPS-008` |
-| HCM-PAYROLLOPS-009 | An unexplained swing between two runs raises an exception and flags the row; financeHead-only to generate | `payroll reconciliation > HCM-PAYROLLOPS-009` |
-| HCM-PAYROLLOPS-010 | A calendar's milestones must fall in order; a valid one is read back with its live stage | `payroll calendar > HCM-PAYROLLOPS-010` |
-| HCM-PAYROLLOPS-011 | An employee raises a query only on their own employment; another employee cannot | `payroll queries > HCM-PAYROLLOPS-011` |
-| HCM-PAYROLLOPS-012 | A bank advice's view masks every account number to its last 4 digits and never returns `fileText`; the full CSV is served only by the `export`-gated, audited download | `bank advice > HCM-PAYROLLOPS-012` |
-| HCM-PAYROLLOPS-013 | An amount is withheld as null (with a reason) for a caller who lacks the `financial` verb on the resource, and shown to one who holds it | `ad-hoc pay lines > HCM-PAYROLLOPS-013` |
-| HCM-PAYROLLOPS-014 | Net pay cannot be posted from a non-cash (e.g. loan or card) ledger account | `payroll journal > HCM-PAYROLLOPS-014` |
+| ID                 | What PASS means                                                                                                                                                        | Test                                          |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| HCM-PAYROLLOPS-001 | A journal's debit/credit lines always balance                                                                                                                          | `payrollops pure logic > HCM-PAYROLLOPS-001`  |
+| HCM-PAYROLLOPS-002 | A pay item's code is unique per tenant; it can be deactivated                                                                                                          | `pay items > HCM-PAYROLLOPS-002`              |
+| HCM-PAYROLLOPS-003 | The proposer of an ad-hoc pay line cannot approve it themselves; a second decision on an already-decided line is refused                                               | `ad-hoc pay lines > HCM-PAYROLLOPS-003`       |
+| HCM-PAYROLLOPS-004 | A rejected ad-hoc pay line stays Rejected and is listed by status                                                                                                      | `ad-hoc pay lines > HCM-PAYROLLOPS-004`       |
+| HCM-PAYROLLOPS-005 | An employee sees only their own arrears; hrOps/financeHead see all                                                                                                     | `arrears > HCM-PAYROLLOPS-005`                |
+| HCM-PAYROLLOPS-006 | A journal generated from an approved run balances and its lines sum to the run's gross/net totals                                                                      | `payroll journal > HCM-PAYROLLOPS-006`        |
+| HCM-PAYROLLOPS-007 | The preparer of a journal cannot post it themselves; posting records a `Transaction` carrying `payrollRunId` for the net-pay amount                                    | `payroll journal > HCM-PAYROLLOPS-007`        |
+| HCM-PAYROLLOPS-008 | Generating a bank advice produces one row per employee with net pay and bank details on file                                                                           | `bank advice > HCM-PAYROLLOPS-008`            |
+| HCM-PAYROLLOPS-009 | An unexplained swing between two runs raises an exception and flags the row; financeHead-only to generate                                                              | `payroll reconciliation > HCM-PAYROLLOPS-009` |
+| HCM-PAYROLLOPS-010 | A calendar's milestones must fall in order; a valid one is read back with its live stage                                                                               | `payroll calendar > HCM-PAYROLLOPS-010`       |
+| HCM-PAYROLLOPS-011 | An employee raises a query only on their own employment; another employee cannot                                                                                       | `payroll queries > HCM-PAYROLLOPS-011`        |
+| HCM-PAYROLLOPS-012 | A bank advice's view masks every account number to its last 4 digits and never returns `fileText`; the full CSV is served only by the `export`-gated, audited download | `bank advice > HCM-PAYROLLOPS-012`            |
+| HCM-PAYROLLOPS-013 | An amount is withheld as null (with a reason) for a caller who lacks the `financial` verb on the resource, and shown to one who holds it                               | `ad-hoc pay lines > HCM-PAYROLLOPS-013`       |
+| HCM-PAYROLLOPS-014 | Net pay cannot be posted from a non-cash (e.g. loan or card) ledger account                                                                                            | `payroll journal > HCM-PAYROLLOPS-014`        |
 
 21 `it` blocks in total in `apps/api/src/tests/hcm/payrollops.test.ts`,
 covering create → approve/reject → refusal (self-dealing, no-grant, cross-

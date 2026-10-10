@@ -74,7 +74,11 @@ export function MarketingHealthCard() {
                     tone={f.contribution / f.weight < 0.4 ? 'bad' : f.contribution / f.weight < 0.7 ? 'warn' : 'accent'}
                   />
                 </div>
-                <Link to={f.drillPath} className="w-6 shrink-0 text-right text-2xs text-accent-soft hover:underline" title="Open source records">
+                <Link
+                  to={f.drillPath}
+                  className="w-6 shrink-0 text-right text-2xs text-accent-soft hover:underline"
+                  title="Open source records"
+                >
                   →
                 </Link>
               </div>

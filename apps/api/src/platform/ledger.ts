@@ -105,7 +105,8 @@ export async function post(input: PostInput) {
       const account = byId.get(line.accountId);
       if (!account) throw ApiError.notFound('Ledger account');
       if (!account.isPostable) throw ApiError.unprocessable('Control accounts cannot receive journal lines.');
-      if (account.requiresParty && !line.partyId) throw ApiError.unprocessable('This account requires a party dimension.');
+      if (account.requiresParty && !line.partyId)
+        throw ApiError.unprocessable('This account requires a party dimension.');
       if (account.requiresCostCentre && !line.costCentreId) {
         throw ApiError.unprocessable('This account requires a cost-centre dimension.');
       }
@@ -177,7 +178,11 @@ export async function post(input: PostInput) {
       action: 'create',
       subjectType: 'journal_entry',
       subjectId: result.entry.id,
-      after: { entryNumber: result.entry.entryNumber, sourceType: result.entry.sourceType, lineCount: input.lines.length },
+      after: {
+        entryNumber: result.entry.entryNumber,
+        sourceType: result.entry.sourceType,
+        lineCount: input.lines.length,
+      },
     });
     await emit({
       name: EVENTS.JOURNAL_POSTED,

@@ -32,12 +32,30 @@ beforeAll(async () => {
   const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   email = `sess-${stamp}@fixture.test`;
   const person = await unscopedPrisma.person.create({
-    data: { tenantId: tid, recordCode: `PER-SESS-${stamp}`, fullName: 'Session Fixture', primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+    data: {
+      tenantId: tid,
+      recordCode: `PER-SESS-${stamp}`,
+      fullName: 'Session Fixture',
+      primaryEmail: email,
+      primaryEmailNormalised: email,
+      source: 'test',
+    },
   });
   await unscopedPrisma.affiliation.create({
-    data: { tenantId: tid, partyId: person.id, affiliationType: 'employee', counterpartyName: 'Fixture', roleSlug: 'sales', primaryFlag: true, status: 'active', branch: 'Chennai' },
+    data: {
+      tenantId: tid,
+      partyId: person.id,
+      affiliationType: 'employee',
+      counterpartyName: 'Fixture',
+      roleSlug: 'sales',
+      primaryFlag: true,
+      status: 'active',
+      branch: 'Chennai',
+    },
   });
-  const principal = await unscopedPrisma.principal.create({ data: { email, passwordHash: await hashPassword(PASSWORD) } });
+  const principal = await unscopedPrisma.principal.create({
+    data: { email, passwordHash: await hashPassword(PASSWORD) },
+  });
   const user = await unscopedPrisma.user.create({
     data: { tenantId: tid, personId: person.id, email, principalId: principal.id, branch: 'Chennai' },
   });
@@ -110,7 +128,10 @@ describe('0.2 sessions', () => {
     // Whoever replays a rotated token is either the thief or the victim with a
     // stale copy; both cases mean the family can no longer be trusted.
     // Past the ten-second grace: this replay is reuse, not a second tab.
-    await unscopedPrisma.$executeRawUnsafe(`UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`, sessionIdOf(first.refreshToken));
+    await unscopedPrisma.$executeRawUnsafe(
+      `UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`,
+      sessionIdOf(first.refreshToken),
+    );
     const replay = await refreshWithCookie(first.refreshToken);
     expect(replay.status).toBe(401);
     expect((await me(second.token)).status).toBe(401);
@@ -128,20 +149,29 @@ describe('0.2 sessions', () => {
   it('audits login, logout and refresh reuse against a governed session subject', async () => {
     expect(isGoverned('session')).toBe(true);
     const issued = await signIn();
-    const session = await unscopedPrisma.session.findFirstOrThrow({ where: { jti: (jwt.decode(issued.token) as { jti: string }).jti } });
+    const session = await unscopedPrisma.session.findFirstOrThrow({
+      where: { jti: (jwt.decode(issued.token) as { jti: string }).jti },
+    });
     await refreshWithCookie(issued.refreshToken);
     // Past the ten-second grace: this replay is reuse, not a second tab.
-    await unscopedPrisma.$executeRawUnsafe(`UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`, sessionIdOf(issued.refreshToken));
+    await unscopedPrisma.$executeRawUnsafe(
+      `UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`,
+      sessionIdOf(issued.refreshToken),
+    );
     await refreshWithCookie(issued.refreshToken); // replay
     const actions = (
-      await unscopedPrisma.auditRecord.findMany({ where: { tenantId: tid, subjectType: 'session', subjectId: session.id } })
+      await unscopedPrisma.auditRecord.findMany({
+        where: { tenantId: tid, subjectType: 'session', subjectId: session.id },
+      })
     ).map((r) => r.action);
     expect(actions).toContain('login');
     expect(actions).toContain('refresh_reuse');
 
     const second = await signIn();
     await post('/auth/logout', {}, second.token);
-    const row = await unscopedPrisma.session.findFirstOrThrow({ where: { jti: (jwt.decode(second.token) as { jti: string }).jti } });
+    const row = await unscopedPrisma.session.findFirstOrThrow({
+      where: { jti: (jwt.decode(second.token) as { jti: string }).jti },
+    });
     const logoutRows = await unscopedPrisma.auditRecord.findMany({
       where: { tenantId: tid, subjectType: 'session', subjectId: row.id, action: 'logout' },
     });
@@ -157,7 +187,8 @@ describe('0.2 sessions', () => {
  */
 type Res = Awaited<ReturnType<typeof fetch>>;
 const COOKIE = 'kz_refresh';
-const setCookieOf = (res: Res): string | undefined => res.headers.getSetCookie().find((c) => c.startsWith(`${COOKIE}=`));
+const setCookieOf = (res: Res): string | undefined =>
+  res.headers.getSetCookie().find((c) => c.startsWith(`${COOKIE}=`));
 const cookieValueOf = (setCookie: string): string => setCookie.split(';')[0]!.slice(COOKIE.length + 1);
 const sessionIdOf = (cookieValue: string): string => cookieValue.slice(0, cookieValue.indexOf('.'));
 const refreshWithCookie = (cookieValue: string) =>
@@ -239,7 +270,10 @@ describe('0.2 fix round 1: cookie, grace and step-up', () => {
 
   it('step-up survives a refresh while its window is open', async () => {
     const cookie = await signInCookie();
-    await unscopedPrisma.$executeRawUnsafe(`UPDATE sessions SET "stepUpAt" = now() - interval '1 minute' WHERE id = $1`, sessionIdOf(cookie));
+    await unscopedPrisma.$executeRawUnsafe(
+      `UPDATE sessions SET "stepUpAt" = now() - interval '1 minute' WHERE id = $1`,
+      sessionIdOf(cookie),
+    );
     const res = await refreshWithCookie(cookie);
     expect(res.status).toBe(200);
     const claims = jwt.decode(((await res.json()) as { token: string }).token) as { stepUp: boolean };
@@ -248,7 +282,10 @@ describe('0.2 fix round 1: cookie, grace and step-up', () => {
 
   it('step-up lapses on refresh once its window has passed', async () => {
     const cookie = await signInCookie();
-    await unscopedPrisma.$executeRawUnsafe(`UPDATE sessions SET "stepUpAt" = now() - interval '2 hours' WHERE id = $1`, sessionIdOf(cookie));
+    await unscopedPrisma.$executeRawUnsafe(
+      `UPDATE sessions SET "stepUpAt" = now() - interval '2 hours' WHERE id = $1`,
+      sessionIdOf(cookie),
+    );
     const res = await refreshWithCookie(cookie);
     expect(res.status).toBe(200);
     const claims = jwt.decode(((await res.json()) as { token: string }).token) as { stepUp: boolean };

@@ -36,7 +36,8 @@ export function CertificateDocument() {
   if (error) return <ErrorBox error={error} />;
   if (isLoading || !data) return <Loading label="Preparing the certificate" />;
 
-  const watermark = cert && cert.status !== 'issued' ? (cert.status === 'surrendered' ? 'SURRENDERED' : 'CANCELLED') : null;
+  const watermark =
+    cert && cert.status !== 'issued' ? (cert.status === 'surrendered' ? 'SURRENDERED' : 'CANCELLED') : null;
 
   return (
     <Sheet
@@ -56,7 +57,10 @@ export function CertificateDocument() {
             {cert.supersededById && (
               <p className="mt-1 text-2xs text-ink-500">
                 See{' '}
-                <a href={`/equity/certificates/${cert.supersededById}/document`} className="text-accent-soft hover:underline">
+                <a
+                  href={`/equity/certificates/${cert.supersededById}/document`}
+                  className="text-accent-soft hover:underline"
+                >
                   the certificate that replaced it
                 </a>
                 .
@@ -136,9 +140,7 @@ export function CertificateDocument() {
       </table>
 
       <section className="doc-section">
-        <p>
-          Given under the common seal of the company.
-        </p>
+        <p>Given under the common seal of the company.</p>
         <div className="mt-3 flex justify-end">
           <div className="flex h-20 w-20 items-center justify-center rounded-full border border-dashed border-ink-700 text-center text-2xs text-ink-500">
             Common seal

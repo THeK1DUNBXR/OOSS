@@ -29,7 +29,16 @@ import {
   StatusChip,
   Tabs,
 } from '../components/ui.js';
-import { CreateModal, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../components/forms.js';
+import {
+  CreateModal,
+  MoneyInput,
+  NewButton,
+  Row,
+  SelectInput,
+  TextArea,
+  TextInput,
+  messageOf,
+} from '../components/forms.js';
 import { AgeBasisFields, ageBasisBody, type AgeBasisValues } from '../components/learnerAge.js';
 import { FeeMasterCatalog } from './kaizenInvoice/FeeMasterCatalog.js';
 
@@ -41,7 +50,11 @@ export function Courses() {
   const [assigning, setAssigning] = useState<CourseView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data = [], isLoading, error: loadError } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['courses', tab],
     queryFn: () => api.get<CourseView[]>(`/education/courses${tab === 'all' ? '?includeRetired=true' : ''}`),
   });
@@ -83,7 +96,11 @@ export function Courses() {
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="Courses" value={data.length} />
         <Metric label="Priced" value={`${priced} of ${data.length}`} tone={unpriced.length ? 'warn' : 'good'} />
-        <Metric label="Students" value={data.reduce((s, c) => s + c.enrolledCount, 0)} drillTo="/education/enrollments" />
+        <Metric
+          label="Students"
+          value={data.reduce((s, c) => s + c.enrolledCount, 0)}
+          drillTo="/education/enrollments"
+        />
       </div>
 
       {unpriced.length > 0 && (
@@ -128,13 +145,13 @@ export function Courses() {
                   <span className="mono">{c.code}</span> · <RecordCode code={c.recordCode} />
                 </span>
               }
-              actions={
-                <StatusChip status={c.active ? 'on offer' : 'retired'} tone={c.active ? 'good' : 'neutral'} />
-              }
+              actions={<StatusChip status={c.active ? 'on offer' : 'retired'} tone={c.active ? 'good' : 'neutral'} />}
             >
               {c.description && <p className="mb-3 text-2xs text-ink-400">{c.description}</p>}
               <dl className="grid grid-cols-2 gap-x-4">
-                <Field label="Fee">{c.feeAmount === null ? <span className="text-band-watch">not set</span> : money(c.feeAmount)}</Field>
+                <Field label="Fee">
+                  {c.feeAmount === null ? <span className="text-band-watch">not set</span> : money(c.feeAmount)}
+                </Field>
                 <Field label="With tax">{c.feeWithTax === null ? '—' : money(c.feeWithTax)}</Field>
                 <Field label="GST">{c.gstRate ?? 0}%</Field>
                 <Field label="SAC">{c.hsnSac ?? <span className="text-band-watch">not set</span>}</Field>
@@ -180,15 +197,7 @@ export function Courses() {
 }
 
 /** Add or edit. The same fields either way, because a catalogue row has one shape. */
-function CourseForm({
-  open,
-  course,
-  onClose,
-}: {
-  open: boolean;
-  course?: CourseView | null;
-  onClose: () => void;
-}) {
+function CourseForm({ open, course, onClose }: { open: boolean; course?: CourseView | null; onClose: () => void }) {
   const editing = Boolean(course);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -216,16 +225,31 @@ function CourseForm({
     setHsnSac(course?.hsnSac ?? '999293');
     setDivision(course?.division ?? 'education');
     setFeePlanRows(
-      (course?.feePlans ?? []).map((p, i) => ({ id: i, tenureMonths: String(p.tenureMonths), monthlyFee: String(p.monthlyFee) })),
+      (course?.feePlans ?? []).map((p, i) => ({
+        id: i,
+        tenureMonths: String(p.tenureMonths),
+        monthlyFee: String(p.monthlyFee),
+      })),
     );
     setAddonRows(
-      (course?.addons ?? []).map((a, i) => ({ id: i, name: a.name, price: String(a.price), gstRate: String(a.gstRate), notes: a.notes ?? '' })),
+      (course?.addons ?? []).map((a, i) => ({
+        id: i,
+        name: a.name,
+        price: String(a.price),
+        gstRate: String(a.gstRate),
+        notes: a.notes ?? '',
+      })),
     );
   }, [open, course]);
 
   const body = () => ({
     name,
-    code: code || name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').slice(0, 16),
+    code:
+      code ||
+      name
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '-')
+        .slice(0, 16),
     description: description.trim() || null,
     durationWeeks: durationWeeks ? Number(durationWeeks) : null,
     hours: hours === '' ? null : Number(hours),
@@ -238,7 +262,12 @@ function CourseForm({
       .map((p) => ({ tenureMonths: Number(p.tenureMonths), monthlyFee: Number(p.monthlyFee) })),
     addons: addonRows
       .filter((a) => a.name.trim() && a.price !== '')
-      .map((a) => ({ name: a.name.trim(), price: Number(a.price), gstRate: a.gstRate === '' ? null : Number(a.gstRate), notes: a.notes.trim() || null })),
+      .map((a) => ({
+        name: a.name.trim(),
+        price: Number(a.price),
+        gstRate: a.gstRate === '' ? null : Number(a.gstRate),
+        notes: a.notes.trim() || null,
+      })),
   });
 
   const nextRowId = () => Math.random();
@@ -250,11 +279,26 @@ function CourseForm({
       submitLabel={editing ? 'Save it' : 'Add it'}
       onClose={onClose}
       invalidate={[['courses']]}
-      onSubmit={() => (editing ? api.patch(`/education/courses/${course!.id}`, body()) : api.post('/education/courses', body()))}
+      onSubmit={() =>
+        editing ? api.patch(`/education/courses/${course!.id}`, body()) : api.post('/education/courses', body())
+      }
     >
       <Row>
-        <TextInput label="Name" required autoFocus value={name} onChange={setName} placeholder="Full Stack Development" />
-        <TextInput label="Code" hint="made from the name if blank" value={code} onChange={setCode} placeholder="FSD-24" />
+        <TextInput
+          label="Name"
+          required
+          autoFocus
+          value={name}
+          onChange={setName}
+          placeholder="Full Stack Development"
+        />
+        <TextInput
+          label="Code"
+          hint="made from the name if blank"
+          value={code}
+          onChange={setCode}
+          placeholder="FSD-24"
+        />
       </Row>
       <TextArea label="What it covers" value={description} onChange={setDescription} rows={2} />
       <Row>
@@ -288,14 +332,20 @@ function CourseForm({
           placeholder="999293"
           hint="999293 is commercial training and coaching"
         />
-        <TextInput label="Hours" type="number" value={hours} onChange={setHours} hint="contact hours, shown on the catalogue" />
+        <TextInput
+          label="Hours"
+          type="number"
+          value={hours}
+          onChange={setHours}
+          hint="contact hours, shown on the catalogue"
+        />
       </Row>
 
       <div className="mt-2 border-t border-ink-800 pt-3">
         <p className="label mb-2">Tenure-based fee plans</p>
         <p className="mb-2 text-2xs text-ink-500">
-          Sell this course on instalment plans (1/3/6/8-month, each its own monthly rate) instead of, or alongside,
-          the flat fee above.
+          Sell this course on instalment plans (1/3/6/8-month, each its own monthly rate) instead of, or alongside, the
+          flat fee above.
         </p>
         {feePlanRows.map((row) => (
           <Row key={row.id}>
@@ -310,7 +360,9 @@ function CourseForm({
                 <MoneyInput
                   label="Monthly fee"
                   value={row.monthlyFee}
-                  onChange={(v) => setFeePlanRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, monthlyFee: v } : r)))}
+                  onChange={(v) =>
+                    setFeePlanRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, monthlyFee: v } : r)))
+                  }
                 />
               </div>
               <button
@@ -364,7 +416,11 @@ function CourseForm({
                 onChange={(v) => setAddonRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, notes: v } : r)))}
               />
             </Row>
-            <button type="button" className="btn-quiet" onClick={() => setAddonRows((rs) => rs.filter((r) => r.id !== row.id))}>
+            <button
+              type="button"
+              className="btn-quiet"
+              onClick={() => setAddonRows((rs) => rs.filter((r) => r.id !== row.id))}
+            >
               Remove this add-on
             </button>
           </div>
@@ -372,7 +428,9 @@ function CourseForm({
         <button
           type="button"
           className="btn"
-          onClick={() => setAddonRows((rs) => [...rs, { id: nextRowId(), name: '', price: '', gstRate: '18', notes: '' }])}
+          onClick={() =>
+            setAddonRows((rs) => [...rs, { id: nextRowId(), name: '', price: '', gstRate: '18', notes: '' }])
+          }
         >
           + Add an add-on
         </button>
@@ -423,7 +481,12 @@ export function AssignCourse({
   const [institutionId, setInstitutionId] = useState('');
   // The age basis (FX-64): a date of birth decides the minor rule; with none, the
   // staff member's attestation does, and the guardian is required otherwise.
-  const [age, setAge] = useState<AgeBasisValues>({ dateOfBirth: '', adultAttested: false, guardianName: '', guardianPhone: '' });
+  const [age, setAge] = useState<AgeBasisValues>({
+    dateOfBirth: '',
+    adultAttested: false,
+    guardianName: '',
+    guardianPhone: '',
+  });
 
   return (
     <CreateModal

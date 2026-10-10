@@ -47,7 +47,12 @@ export function AgeBasisFields({
   const set = (patch: Partial<AgeBasisValues>) => onChange({ ...values, ...patch });
   return (
     <>
-      <TextInput label="Date of birth" type="date" value={values.dateOfBirth} onChange={(dateOfBirth) => set({ dateOfBirth })} />
+      <TextInput
+        label="Date of birth"
+        type="date"
+        value={values.dateOfBirth}
+        onChange={(dateOfBirth) => set({ dateOfBirth })}
+      />
       {!values.dateOfBirth && (
         <label className="flex items-start gap-2 text-sm text-ink-200">
           <input
@@ -68,7 +73,12 @@ export function AgeBasisFields({
       {guardianRequired && (
         <>
           <Row>
-            <TextInput label="Guardian name" required value={values.guardianName} onChange={(guardianName) => set({ guardianName })} />
+            <TextInput
+              label="Guardian name"
+              required
+              value={values.guardianName}
+              onChange={(guardianName) => set({ guardianName })}
+            />
             <TextInput
               label="Guardian phone"
               required

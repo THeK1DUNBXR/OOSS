@@ -48,7 +48,8 @@ export const LADDER_CONVERGENCES: LadderConvergence[] = [
     policyCode: 'POL-IT-POLICY-PUBLISH',
     from: ['chairman', 'finance_head'],
     to: ['chairman'],
-    reason: 'FX-01: it_policies:approve is held by the chairman alone (docs/plan/cio.md:144); finance_head cannot decide a self-dealing bump',
+    reason:
+      'FX-01: it_policies:approve is held by the chairman alone (docs/plan/cio.md:144); finance_head cannot decide a self-dealing bump',
   },
 ];
 

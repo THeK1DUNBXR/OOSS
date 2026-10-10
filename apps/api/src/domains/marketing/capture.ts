@@ -18,7 +18,14 @@
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { CHANNEL_KEYS, EVENTS, VERTICALS, type ChannelKey, type FormSubmissionStatus, type Vertical } from '@kaizen/shared';
+import {
+  CHANNEL_KEYS,
+  EVENTS,
+  VERTICALS,
+  type ChannelKey,
+  type FormSubmissionStatus,
+  type Vertical,
+} from '@kaizen/shared';
 import { prisma, unscopedPrisma, Prisma } from '../../platform/db.js';
 import { asSystem, currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -67,12 +74,14 @@ export interface FormInput {
 export type { FormView } from '@kaizen/shared';
 
 function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-    .slice(0, 80) || `form-${Date.now()}`;
+  return (
+    name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .slice(0, 80) || `form-${Date.now()}`
+  );
 }
 
 function validateFields(fields: unknown): FormFieldDef[] {
@@ -89,7 +98,13 @@ function validateFields(fields: unknown): FormFieldDef[] {
     if (f.type === 'select' && (!Array.isArray(f.options) || f.options.length === 0)) {
       throw ApiError.badRequest(`fields[${i}] is type 'select' and requires a non-empty options[].`);
     }
-    return { key: f.key, label: f.label, type: f.type as FormFieldType, required: Boolean(f.required), options: f.options };
+    return {
+      key: f.key,
+      label: f.label,
+      type: f.type as FormFieldType,
+      required: Boolean(f.required),
+      options: f.options,
+    };
   });
 }
 
@@ -290,7 +305,13 @@ function str(v: unknown): string | undefined {
 
 /** Tolerant of common aliases: fullName/name/full_name, email, phone/mobile. */
 function personInputFromPayload(payload: Record<string, unknown>): PersonInput {
-  const fullName = str(payload.fullName) ?? str(payload.name) ?? str(payload.full_name) ?? str(payload.email) ?? str(payload.phone) ?? 'Unknown';
+  const fullName =
+    str(payload.fullName) ??
+    str(payload.name) ??
+    str(payload.full_name) ??
+    str(payload.email) ??
+    str(payload.phone) ??
+    'Unknown';
   return {
     fullName,
     primaryEmail: str(payload.email) ?? str(payload.primaryEmail),
@@ -410,7 +431,10 @@ export async function submitPublicForm(
   });
 }
 
-async function resolveCampaignId(utm: Record<string, unknown>, defaultCampaignId: string | null): Promise<string | null> {
+async function resolveCampaignId(
+  utm: Record<string, unknown>,
+  defaultCampaignId: string | null,
+): Promise<string | null> {
   const utmCampaignSlug = str(utm.campaign) ?? str(utm.utm_campaign);
   if (utmCampaignSlug) {
     const campaign = await prisma.marketingCampaign.findFirst({ where: { utmCampaign: utmCampaignSlug } });
@@ -438,7 +462,9 @@ export interface ConvertContext {
  */
 export async function convertSubmission(submissionId: string, ctx: ConvertContext = {}) {
   const auth = currentAuth();
-  const submission = await prisma.marketingFormSubmission.findFirst({ where: { id: submissionId, tenantId: auth.tenantId } });
+  const submission = await prisma.marketingFormSubmission.findFirst({
+    where: { id: submissionId, tenantId: auth.tenantId },
+  });
   if (!submission) throw ApiError.notFound('Submission');
   if (submission.status !== 'received') return submission;
 
@@ -458,7 +484,9 @@ export async function convertSubmission(submissionId: string, ctx: ConvertContex
     throw err;
   }
 
-  const vertical = (VERTICALS as readonly string[]).includes(form.vertical ?? '') ? (form.vertical as Vertical) : 'other';
+  const vertical = (VERTICALS as readonly string[]).includes(form.vertical ?? '')
+    ? (form.vertical as Vertical)
+    : 'other';
 
   const lead = await createLead({
     title: `Web enquiry — ${form.name}`,
@@ -502,7 +530,9 @@ export async function convertSubmission(submissionId: string, ctx: ConvertContex
 export async function rejectSubmission(submissionId: string, reason: string) {
   await assertCan({ resource: 'marketing_forms', verb: 'edit' });
   const auth = currentAuth();
-  const submission = await prisma.marketingFormSubmission.findFirst({ where: { id: submissionId, tenantId: auth.tenantId } });
+  const submission = await prisma.marketingFormSubmission.findFirst({
+    where: { id: submissionId, tenantId: auth.tenantId },
+  });
   if (!submission) throw ApiError.notFound('Submission');
   return prisma.marketingFormSubmission.update({ where: { id: submissionId }, data: { status: 'rejected' } });
 }
@@ -510,7 +540,9 @@ export async function rejectSubmission(submissionId: string, reason: string) {
 export async function markSpamSubmission(submissionId: string) {
   await assertCan({ resource: 'marketing_forms', verb: 'edit' });
   const auth = currentAuth();
-  const submission = await prisma.marketingFormSubmission.findFirst({ where: { id: submissionId, tenantId: auth.tenantId } });
+  const submission = await prisma.marketingFormSubmission.findFirst({
+    where: { id: submissionId, tenantId: auth.tenantId },
+  });
   if (!submission) throw ApiError.notFound('Submission');
   return prisma.marketingFormSubmission.update({ where: { id: submissionId }, data: { status: 'spam' } });
 }
@@ -624,7 +656,10 @@ export async function createShortLink(input: ShortLinkInput) {
 export async function listShortLinks() {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_forms', verb: 'view' });
-  const items = await prisma.marketingShortLink.findMany({ where: { tenantId: auth.tenantId, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+  const items = await prisma.marketingShortLink.findMany({
+    where: { tenantId: auth.tenantId, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
   return { items, total: items.length };
 }
 
@@ -712,7 +747,9 @@ export async function createWebhookEndpoint(provider: string) {
   await assertCan({ resource: 'marketing_settings', verb: 'create' });
   const auth = currentAuth();
 
-  const existing = await prisma.marketingWebhookEndpoint.findFirst({ where: { tenantId: auth.tenantId, provider, deletedAt: null } });
+  const existing = await prisma.marketingWebhookEndpoint.findFirst({
+    where: { tenantId: auth.tenantId, provider, deletedAt: null },
+  });
   if (existing) throw ApiError.conflict(`A webhook endpoint for '${provider}' already exists.`);
 
   const signingSecret = randomBytes(32).toString('hex');
@@ -729,14 +766,25 @@ export async function createWebhookEndpoint(provider: string) {
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'webhook_endpoint', subjectId: endpoint.id, after: { provider, active: true } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'webhook_endpoint',
+    subjectId: endpoint.id,
+    after: { provider, active: true },
+  });
   await emit({
     name: EVENTS.MKT_WEBHOOK_ENDPOINT_PROVISIONED,
     subject: { entityType: 'marketing_webhook_endpoint', entityId: endpoint.id, recordCode },
     newState: { provider },
   });
 
-  return { id: endpoint.id, provider, token, path: `/api/marketing/public/webhooks/${provider}/${token}`, signingSecret };
+  return {
+    id: endpoint.id,
+    provider,
+    token,
+    path: `/api/marketing/public/webhooks/${provider}/${token}`,
+    signingSecret,
+  };
 }
 
 function parseWebhookBody(rawBody: Buffer): Record<string, unknown> {
@@ -761,7 +809,8 @@ function parseWebhookBody(rawBody: Buffer): Record<string, unknown> {
  */
 export async function receiveWebhook(inbound: InboundWebhook, meta: WebhookMeta = {}) {
   if (!KNOWN_WEBHOOK_PROVIDERS.has(inbound.provider)) throw webhookUnauthenticated();
-  if (!inbound.endpointToken || !inbound.rawBody || !inbound.timestamp || !inbound.signature) throw webhookUnauthenticated();
+  if (!inbound.endpointToken || !inbound.rawBody || !inbound.timestamp || !inbound.signature)
+    throw webhookUnauthenticated();
 
   // Unscoped on purpose: there is no session yet, and the token is what finds the tenant.
   const endpoint = await unscopedPrisma.marketingWebhookEndpoint.findFirst({

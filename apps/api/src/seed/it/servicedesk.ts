@@ -20,10 +20,30 @@ interface SlaSeed {
 }
 
 const SLA_POLICIES: SlaSeed[] = [
-  { priority: 'P1', responseMinutes: 30, resolutionMinutes: 4 * 60, note: 'Critical — business-stopping. A starting point, not a target the company has committed to.' },
-  { priority: 'P2', responseMinutes: 60, resolutionMinutes: 8 * 60, note: 'High. A starting point, not a target the company has committed to.' },
-  { priority: 'P3', responseMinutes: 4 * 60, resolutionMinutes: 3 * 24 * 60, note: 'Medium. A starting point, not a target the company has committed to.' },
-  { priority: 'P4', responseMinutes: 24 * 60, resolutionMinutes: 10 * 24 * 60, note: 'Low. A starting point, not a target the company has committed to.' },
+  {
+    priority: 'P1',
+    responseMinutes: 30,
+    resolutionMinutes: 4 * 60,
+    note: 'Critical — business-stopping. A starting point, not a target the company has committed to.',
+  },
+  {
+    priority: 'P2',
+    responseMinutes: 60,
+    resolutionMinutes: 8 * 60,
+    note: 'High. A starting point, not a target the company has committed to.',
+  },
+  {
+    priority: 'P3',
+    responseMinutes: 4 * 60,
+    resolutionMinutes: 3 * 24 * 60,
+    note: 'Medium. A starting point, not a target the company has committed to.',
+  },
+  {
+    priority: 'P4',
+    responseMinutes: 24 * 60,
+    resolutionMinutes: 10 * 24 * 60,
+    note: 'Low. A starting point, not a target the company has committed to.',
+  },
 ];
 
 const SEED_EFFECTIVE_FROM = new Date('2024-01-01T00:00:00.000Z');

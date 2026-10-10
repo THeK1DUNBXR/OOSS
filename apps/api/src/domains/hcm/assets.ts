@@ -86,7 +86,9 @@ async function ownEmploymentWhere(resource: string, verb: 'view' = 'view'): Prom
 async function assertAllScope(resource: string, verb: 'create' | 'edit' | 'approve' | 'delete'): Promise<void> {
   const scope = await scopeFor(resource, verb);
   if (scope !== 'all') {
-    throw ApiError.forbidden(`${resource}:${verb} must be held at "all" scope to act on someone else's record; "${scope}" is not enough.`);
+    throw ApiError.forbidden(
+      `${resource}:${verb} must be held at "all" scope to act on someone else's record; "${scope}" is not enough.`,
+    );
   }
 }
 
@@ -127,7 +129,9 @@ export async function createAsset(input: {
   await assertCan({ resource: 'hcm_assets', verb: 'create' });
   await assertAllScope('hcm_assets', 'create');
   if (!ASSET_CATEGORIES.includes(input.category)) {
-    throw ApiError.badRequest(`"${input.category}" is not an asset category. Expected one of ${ASSET_CATEGORIES.join(', ')}.`);
+    throw ApiError.badRequest(
+      `"${input.category}" is not an asset category. Expected one of ${ASSET_CATEGORIES.join(', ')}.`,
+    );
   }
   const recordCode = await nextRecordCode('HAS');
   const row = await prisma.asset.create({
@@ -165,7 +169,13 @@ export async function transitionAsset(id: string, to: Exclude<HcmAssetStatus, 'a
     throw ApiError.unprocessable(`An asset in "${from}" cannot move to "${to}".`);
   }
   const updated = await prisma.asset.update({ where: { id }, data: { status: to } });
-  await auditWrite({ action: 'update', subjectType: 'asset', subjectId: id, before: { status: from }, after: { status: to } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'asset',
+    subjectId: id,
+    before: { status: from },
+    after: { status: to },
+  });
   return updated;
 }
 
@@ -190,7 +200,12 @@ export async function listAssetAssignments(filter: { employmentRelationshipId?: 
 }
 
 /** Issues an in-stock asset to an employment. Refuses an asset that is not `in_stock`. */
-export async function assignAsset(input: { assetId: string; employmentRelationshipId: string; condition?: AssetCondition; note?: string | null }) {
+export async function assignAsset(input: {
+  assetId: string;
+  employmentRelationshipId: string;
+  condition?: AssetCondition;
+  note?: string | null;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'asset_assignments', verb: 'create' });
   await assertAllScope('asset_assignments', 'create');
@@ -217,7 +232,12 @@ export async function assignAsset(input: { assetId: string; employmentRelationsh
     prisma.asset.update({ where: { id: input.assetId }, data: { status: 'assigned' } }),
   ]);
 
-  await auditWrite({ action: 'create', subjectType: 'asset_assignment', subjectId: assignment.id, after: assignment as never });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'asset_assignment',
+    subjectId: assignment.id,
+    after: assignment as never,
+  });
   await emit({
     name: 'kz.hr.asset.assigned',
     subject: { entityType: 'asset_assignment', entityId: assignment.id },
@@ -241,7 +261,9 @@ export async function returnAsset(assignmentId: string, input: { condition: Asse
   if (!assignment) throw ApiError.notFound('Asset assignment');
   if (assignment.returnedOn) throw ApiError.unprocessable('This assignment was already returned.');
   if (!ASSET_CONDITIONS.includes(input.condition)) {
-    throw ApiError.badRequest(`"${input.condition}" is not a condition. Expected one of ${ASSET_CONDITIONS.join(', ')}.`);
+    throw ApiError.badRequest(
+      `"${input.condition}" is not a condition. Expected one of ${ASSET_CONDITIONS.join(', ')}.`,
+    );
   }
 
   const nextAssetStatus = input.condition === 'poor' ? 'repair' : 'in_stock';
@@ -439,11 +461,17 @@ export async function listLetterRequests(filter: { employmentRelationshipId?: st
   });
 }
 
-export async function createLetterRequest(input: { employmentRelationshipId: string; kind: LetterRequestKind; note?: string | null }) {
+export async function createLetterRequest(input: {
+  employmentRelationshipId: string;
+  kind: LetterRequestKind;
+  note?: string | null;
+}) {
   const auth = currentAuth();
   await assertEmploymentVisible('letter_requests', input.employmentRelationshipId, 'create');
   if (!LETTER_REQUEST_KINDS.includes(input.kind)) {
-    throw ApiError.badRequest(`"${input.kind}" is not a letter kind. Expected one of ${LETTER_REQUEST_KINDS.join(', ')}.`);
+    throw ApiError.badRequest(
+      `"${input.kind}" is not a letter kind. Expected one of ${LETTER_REQUEST_KINDS.join(', ')}.`,
+    );
   }
   const row = await prisma.letterRequest.create({
     data: {
@@ -493,7 +521,15 @@ export async function fulfilLetterRequest(id: string) {
 
   const employment = await prisma.employmentRelationship.findFirst({
     where: { id: request.employmentRelationshipId, tenantId: auth.tenantId },
-    include: { person: true, assignments: { where: { rowStatus: 'Effective' }, include: { position: { include: { job: true } } }, take: 1, orderBy: { effectiveFrom: 'desc' } } },
+    include: {
+      person: true,
+      assignments: {
+        where: { rowStatus: 'Effective' },
+        include: { position: { include: { job: true } } },
+        take: 1,
+        orderBy: { effectiveFrom: 'desc' },
+      },
+    },
   });
   if (!employment) throw ApiError.notFound('Employment relationship');
 
@@ -505,7 +541,9 @@ export async function fulfilLetterRequest(id: string) {
   let updated;
   if (fulfilsViaHrLetter(kind)) {
     if (!HR_LETTER_KINDS.includes(kind as HrLetterKind)) {
-      throw ApiError.internal(`"${kind}" was marked as issuable via HrLetter but is not one of compliance labour's kinds.`);
+      throw ApiError.internal(
+        `"${kind}" was marked as issuable via HrLetter but is not one of compliance labour's kinds.`,
+      );
     }
     const letter = await issueLetter({
       kind: kind as HrLetterKind,
@@ -516,7 +554,13 @@ export async function fulfilLetterRequest(id: string) {
     });
     updated = await prisma.letterRequest.update({
       where: { id },
-      data: { status: 'fulfilled', hrLetterId: letter.id, number: letter.number, fulfilledAt: new Date(), fulfilledById: auth.partyId },
+      data: {
+        status: 'fulfilled',
+        hrLetterId: letter.id,
+        number: letter.number,
+        fulfilledAt: new Date(),
+        fulfilledById: auth.partyId,
+      },
     });
   } else {
     const number = await nextLetterRequestNumber();
@@ -539,7 +583,13 @@ export async function fulfilLetterRequest(id: string) {
     });
   }
 
-  await auditWrite({ action: 'update', subjectType: 'letter_request', subjectId: id, before: { status: from }, after: { status: 'fulfilled' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'letter_request',
+    subjectId: id,
+    before: { status: from },
+    after: { status: 'fulfilled' },
+  });
   await emit({
     name: 'kz.hr.letter_request.issued',
     subject: { entityType: 'letter_request', entityId: id, recordCode: updated.number },
@@ -563,7 +613,13 @@ export async function rejectLetterRequest(id: string, note: string) {
     where: { id },
     data: { status: 'rejected', decisionNote: note, fulfilledById: auth.partyId, fulfilledAt: new Date() },
   });
-  await auditWrite({ action: 'update', subjectType: 'letter_request', subjectId: id, before: { status: from }, after: { status: 'rejected' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'letter_request',
+    subjectId: id,
+    before: { status: from },
+    after: { status: 'rejected' },
+  });
   return updated;
 }
 
@@ -605,7 +661,10 @@ export async function listIdCards(filter: { employmentRelationshipId?: string } 
   const auth = currentAuth();
   await assertCan({ resource: 'hcm_assets', verb: 'view' });
   return prisma.idCard.findMany({
-    where: { tenantId: auth.tenantId, ...(filter.employmentRelationshipId ? { employmentRelationshipId: filter.employmentRelationshipId } : {}) },
+    where: {
+      tenantId: auth.tenantId,
+      ...(filter.employmentRelationshipId ? { employmentRelationshipId: filter.employmentRelationshipId } : {}),
+    },
     orderBy: { issuedOn: 'desc' },
   });
 }
@@ -643,7 +702,13 @@ export async function reportIdCardLost(id: string) {
       },
     }),
   ]);
-  await auditWrite({ action: 'update', subjectType: 'id_card', subjectId: id, before: { status: 'issued' }, after: { status: 'lost' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'id_card',
+    subjectId: id,
+    before: { status: 'issued' },
+    after: { status: 'lost' },
+  });
   await auditWrite({ action: 'create', subjectType: 'id_card', subjectId: reissued.id, after: reissued as never });
   return { lost, reissued };
 }
@@ -656,7 +721,13 @@ export async function returnIdCard(id: string) {
   if (!card) throw ApiError.notFound('ID card');
   if (card.status !== 'issued') throw ApiError.unprocessable(`This card is "${card.status}", not currently issued.`);
   const updated = await prisma.idCard.update({ where: { id }, data: { status: 'returned', returnedOn: new Date() } });
-  await auditWrite({ action: 'update', subjectType: 'id_card', subjectId: id, before: { status: 'issued' }, after: { status: 'returned' } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'id_card',
+    subjectId: id,
+    before: { status: 'issued' },
+    after: { status: 'returned' },
+  });
   return updated;
 }
 

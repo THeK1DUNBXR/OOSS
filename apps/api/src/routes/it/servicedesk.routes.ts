@@ -33,7 +33,10 @@ const router = Router();
 // SLA policies
 // ---------------------------------------------------------------------------
 
-router.get('/sla-policies', handler(async () => listSlaPolicies()));
+router.get(
+  '/sla-policies',
+  handler(async () => listSlaPolicies()),
+);
 
 router.post(
   '/sla-policies',
@@ -67,9 +70,15 @@ router.get(
   }),
 );
 
-router.get('/tickets/summary', handler(async () => summary()));
+router.get(
+  '/tickets/summary',
+  handler(async () => summary()),
+);
 
-router.get('/tickets/:id', handler(async (req) => getTicket(req.params.id)));
+router.get(
+  '/tickets/:id',
+  handler(async (req) => getTicket(req.params.id)),
+);
 
 router.post(
   '/tickets',
@@ -150,7 +159,10 @@ router.get(
   }),
 );
 
-router.get('/knowledge/:id', handler(async (req) => getKnowledgeArticle(req.params.id)));
+router.get(
+  '/knowledge/:id',
+  handler(async (req) => getKnowledgeArticle(req.params.id)),
+);
 
 router.post(
   '/knowledge',
@@ -162,14 +174,23 @@ router.post(
   }),
 );
 
-router.post('/knowledge/:id/publish', handler(async (req) => publishKnowledgeArticle(req.params.id)));
+router.post(
+  '/knowledge/:id/publish',
+  handler(async (req) => publishKnowledgeArticle(req.params.id)),
+);
 
-router.post('/knowledge/:id/helpful', handler(async (req) => markKnowledgeHelpful(req.params.id)));
+router.post(
+  '/knowledge/:id/helpful',
+  handler(async (req) => markKnowledgeHelpful(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // My IT
 // ---------------------------------------------------------------------------
 
-router.get('/my', handler(async () => myIt()));
+router.get(
+  '/my',
+  handler(async () => myIt()),
+);
 
 export default router;

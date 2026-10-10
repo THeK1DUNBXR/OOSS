@@ -7,11 +7,18 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import type {
-  BoardMeetingView, BoardMemberView, ResolutionKind, ResolutionSubject, ResolutionView,
+  BoardMeetingView,
+  BoardMemberView,
+  ResolutionKind,
+  ResolutionSubject,
+  ResolutionView,
 } from '@kaizen/shared';
 import {
-  RESOLUTION_KIND_LABELS, RESOLUTION_OUTCOME_LABELS, RESOLUTION_SUBJECTS_REQUIRING_MEETING,
-  RESOLUTION_SUBJECT_LABELS, VOTE_CHOICE_LABELS,
+  RESOLUTION_KIND_LABELS,
+  RESOLUTION_OUTCOME_LABELS,
+  RESOLUTION_SUBJECTS_REQUIRING_MEETING,
+  RESOLUTION_SUBJECT_LABELS,
+  VOTE_CHOICE_LABELS,
 } from '@kaizen/shared';
 import { api, date, dateTime } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
@@ -44,22 +51,35 @@ export function Resolutions() {
       <PageHeader
         title="Resolutions"
         subtitle="Board and shareholder resolutions, passed at a meeting or by circulation."
-        actions={can('resolutions:E') ? <NewButton label="Propose a resolution" onClick={() => setProposing(true)} /> : undefined}
+        actions={
+          can('resolutions:E') ? (
+            <NewButton label="Propose a resolution" onClick={() => setProposing(true)} />
+          ) : undefined
+        }
       />
 
       {isLoading ? (
         <Loading />
       ) : data!.items.length === 0 ? (
-        <Card><EmptyState message="No resolution has been proposed yet." /></Card>
+        <Card>
+          <EmptyState message="No resolution has been proposed yet." />
+        </Card>
       ) : (
         <div className="space-y-2">
           {data!.items.map((r) => (
-            <Link key={r.id} to={`/equity/resolutions/${r.id}`} className="block rounded-md border border-ink-800 bg-ink-900 p-3 hover:border-ink-700">
+            <Link
+              key={r.id}
+              to={`/equity/resolutions/${r.id}`}
+              className="block rounded-md border border-ink-800 bg-ink-900 p-3 hover:border-ink-700"
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="mono">{r.recordCode}</span>
-                    <StatusChip status={RESOLUTION_OUTCOME_LABELS[r.outcome]} tone={OUTCOME_TONE[r.outcome] ?? 'neutral'} />
+                    <StatusChip
+                      status={RESOLUTION_OUTCOME_LABELS[r.outcome]}
+                      tone={OUTCOME_TONE[r.outcome] ?? 'neutral'}
+                    />
                     <span className="chip border-ink-700 text-ink-400">{RESOLUTION_KIND_LABELS[r.kind]}</span>
                   </div>
                   <p className="mt-1 text-sm font-medium text-ink-100">{r.title}</p>
@@ -89,7 +109,8 @@ function ProposeResolution({ open, onClose }: { open: boolean; onClose: () => vo
     enabled: open,
   });
 
-  const requiresMeeting = subject !== '' && (RESOLUTION_SUBJECTS_REQUIRING_MEETING as ResolutionSubject[]).includes(subject);
+  const requiresMeeting =
+    subject !== '' && (RESOLUTION_SUBJECTS_REQUIRING_MEETING as ResolutionSubject[]).includes(subject);
 
   return (
     <CreateModal
@@ -105,7 +126,7 @@ function ProposeResolution({ open, onClose }: { open: boolean; onClose: () => vo
           title,
           text,
           passedBy: requiresMeeting ? 'meeting' : passedBy,
-          meetingId: (requiresMeeting || passedBy === 'meeting') ? (meetingId || undefined) : undefined,
+          meetingId: requiresMeeting || passedBy === 'meeting' ? meetingId || undefined : undefined,
           subjectRef: subjectRef || undefined,
         })
       }
@@ -116,7 +137,10 @@ function ProposeResolution({ open, onClose }: { open: boolean; onClose: () => vo
           required
           value={kind}
           onChange={(v) => setKind(v as ResolutionKind)}
-          options={Object.entries(RESOLUTION_KIND_LABELS).map(([value, label]) => ({ value: value as ResolutionKind, label }))}
+          options={Object.entries(RESOLUTION_KIND_LABELS).map(([value, label]) => ({
+            value: value as ResolutionKind,
+            label,
+          }))}
         />
         <SelectInput
           label="Subject"
@@ -124,12 +148,20 @@ function ProposeResolution({ open, onClose }: { open: boolean; onClose: () => vo
           value={subject}
           onChange={(v) => setSubject(v as ResolutionSubject)}
           placeholder="Select…"
-          options={Object.entries(RESOLUTION_SUBJECT_LABELS).map(([value, label]) => ({ value: value as ResolutionSubject, label }))}
+          options={Object.entries(RESOLUTION_SUBJECT_LABELS).map(([value, label]) => ({
+            value: value as ResolutionSubject,
+            label,
+          }))}
         />
       </Row>
       <TextInput label="Title" required value={title} onChange={setTitle} />
       <TextArea label="Resolved text" required rows={3} value={text} onChange={setText} />
-      <TextInput label="Subject reference" value={subjectRef} onChange={setSubjectRef} hint="what this acts on, e.g. an allotment or transfer" />
+      <TextInput
+        label="Subject reference"
+        value={subjectRef}
+        onChange={setSubjectRef}
+        hint="what this acts on, e.g. an allotment or transfer"
+      />
 
       {requiresMeeting ? (
         <p className="rounded border-l-2 border-band-watch bg-band-watch/10 px-3 py-2 text-2xs text-band-watch">
@@ -141,7 +173,10 @@ function ProposeResolution({ open, onClose }: { open: boolean; onClose: () => vo
           required
           value={passedBy}
           onChange={(v) => setPassedBy(v as 'meeting' | 'circulation')}
-          options={[{ value: 'circulation', label: 'Circulation' }, { value: 'meeting', label: 'Meeting' }]}
+          options={[
+            { value: 'circulation', label: 'Circulation' },
+            { value: 'meeting', label: 'Meeting' },
+          ]}
         />
       )}
 
@@ -166,7 +201,11 @@ export function ResolutionDetail() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
-  const { data: r, isLoading, error: fetchError } = useQuery({
+  const {
+    data: r,
+    isLoading,
+    error: fetchError,
+  } = useQuery({
     queryKey: ['board', 'resolution', id],
     queryFn: () => api.get<ResolutionView>(`/board/resolutions/${id}`),
   });
@@ -203,13 +242,20 @@ export function ResolutionDetail() {
         subtitle={
           <span className="flex flex-wrap items-center gap-1.5">
             <RecordCode code={resolution.recordCode} />
-            <StatusChip status={RESOLUTION_OUTCOME_LABELS[resolution.outcome]} tone={OUTCOME_TONE[resolution.outcome] ?? 'neutral'} />
+            <StatusChip
+              status={RESOLUTION_OUTCOME_LABELS[resolution.outcome]}
+              tone={OUTCOME_TONE[resolution.outcome] ?? 'neutral'}
+            />
             <span>{RESOLUTION_SUBJECT_LABELS[resolution.subject]}</span>
           </span>
         }
       />
 
-      {error && <div className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</div>}
+      {error && (
+        <div className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </div>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
@@ -224,10 +270,12 @@ export function ResolutionDetail() {
               <ul className="space-y-1.5">
                 {resolution.votes.map((v) => (
                   <li key={v.id} className="flex items-center justify-between gap-2 text-sm text-ink-200">
-                    <span>{v.boardMemberId ? nameById.get(v.boardMemberId) ?? 'Unknown' : 'Shareholder'}</span>
+                    <span>{v.boardMemberId ? (nameById.get(v.boardMemberId) ?? 'Unknown') : 'Shareholder'}</span>
                     <span className="flex items-center gap-1.5">
                       {v.abstainedAsInterested && <span className="chip border-ink-700 text-ink-400">interested</span>}
-                      {v.demandsMeeting && <span className="chip border-band-watch/40 text-band-watch">demands meeting</span>}
+                      {v.demandsMeeting && (
+                        <span className="chip border-band-watch/40 text-band-watch">demands meeting</span>
+                      )}
                       <StatusChip status={VOTE_CHOICE_LABELS[v.choice]} />
                     </span>
                   </li>
@@ -243,7 +291,9 @@ export function ResolutionDetail() {
           {canEdit && resolution.outcome === 'passed' && resolution.kind === 'shareholder_special' && (
             <Card title="MGT-14">
               {resolution.mgt14FiledOn ? (
-                <p className="text-sm text-ink-200">Filed {date(resolution.mgt14FiledOn)} · SRN {resolution.mgt14Srn}</p>
+                <p className="text-sm text-ink-200">
+                  Filed {date(resolution.mgt14FiledOn)} · SRN {resolution.mgt14Srn}
+                </p>
               ) : (
                 <Mgt14Form resolutionId={resolution.id} onFiled={invalidate} />
               )}
@@ -257,7 +307,9 @@ export function ResolutionDetail() {
               <div className="py-1 text-2xs text-ink-500">Passed by</div>
               <div className="text-sm text-ink-200">{resolution.passedBy ?? '—'}</div>
               <div className="mt-2 py-1 text-2xs text-ink-500">Circulated</div>
-              <div className="text-sm text-ink-200">{resolution.circulatedOn ? dateTime(resolution.circulatedOn) : '—'}</div>
+              <div className="text-sm text-ink-200">
+                {resolution.circulatedOn ? dateTime(resolution.circulatedOn) : '—'}
+              </div>
               {resolution.votingClosesOn && (
                 <>
                   <div className="mt-2 py-1 text-2xs text-ink-500">Voting closes</div>
@@ -271,12 +323,18 @@ export function ResolutionDetail() {
                   <CirculateForm resolutionId={resolution.id} onOpened={invalidate} />
                 )}
                 {resolution.outcome === 'open' && resolution.passedBy === 'circulation' && (
-                  <button className="btn-primary" onClick={() => action.mutate(() => api.post(`/board/resolutions/${resolution.id}/close`, {}))}>
+                  <button
+                    className="btn-primary"
+                    onClick={() => action.mutate(() => api.post(`/board/resolutions/${resolution.id}/close`, {}))}
+                  >
                     Close circulation
                   </button>
                 )}
                 {['draft', 'open'].includes(resolution.outcome) && (
-                  <button className="btn" onClick={() => action.mutate(() => api.post(`/board/resolutions/${resolution.id}/withdraw`, {}))}>
+                  <button
+                    className="btn"
+                    onClick={() => action.mutate(() => api.post(`/board/resolutions/${resolution.id}/withdraw`, {}))}
+                  >
                     Withdraw
                   </button>
                 )}
@@ -289,7 +347,15 @@ export function ResolutionDetail() {
   );
 }
 
-function VoteForm({ resolutionId, members, onCast }: { resolutionId: string; members: BoardMemberView[]; onCast: () => void }) {
+function VoteForm({
+  resolutionId,
+  members,
+  onCast,
+}: {
+  resolutionId: string;
+  members: BoardMemberView[];
+  onCast: () => void;
+}) {
   const [boardMemberId, setBoardMemberId] = useState('');
   const [choice, setChoice] = useState<'for' | 'against' | 'abstain'>('for');
   const [interested, setInterested] = useState(false);
@@ -297,7 +363,8 @@ function VoteForm({ resolutionId, members, onCast }: { resolutionId: string; mem
   const [error, setError] = useState<string | null>(null);
 
   const cast = useMutation({
-    mutationFn: () => api.post(`/board/resolutions/${resolutionId}/vote`, { boardMemberId, choice, interested, demandsMeeting }),
+    mutationFn: () =>
+      api.post(`/board/resolutions/${resolutionId}/vote`, { boardMemberId, choice, interested, demandsMeeting }),
     onSuccess: () => {
       setError(null);
       onCast();
@@ -328,12 +395,16 @@ function VoteForm({ resolutionId, members, onCast }: { resolutionId: string; mem
           required
           value={choice}
           onChange={(v) => setChoice(v as typeof choice)}
-          options={[{ value: 'for', label: 'For' }, { value: 'against', label: 'Against' }, { value: 'abstain', label: 'Abstain' }]}
+          options={[
+            { value: 'for', label: 'For' },
+            { value: 'against', label: 'Against' },
+            { value: 'abstain', label: 'Abstain' },
+          ]}
         />
       </Row>
       <label className="flex items-center gap-2 text-xs text-ink-300">
-        <input type="checkbox" checked={interested} onChange={(e) => setInterested(e.target.checked)} />
-        I am interested in this matter — forces abstention
+        <input type="checkbox" checked={interested} onChange={(e) => setInterested(e.target.checked)} />I am interested
+        in this matter — forces abstention
       </label>
       <label className="flex items-center gap-2 text-xs text-ink-300">
         <input type="checkbox" checked={demandsMeeting} onChange={(e) => setDemandsMeeting(e.target.checked)} />
@@ -368,7 +439,13 @@ function CirculateForm({ resolutionId, onOpened }: { resolutionId: string; onOpe
       }}
     >
       {error && <p className="text-2xs text-band-critical">{error}</p>}
-      <TextInput label="Dispatch proof" required value={dispatchProofRef} onChange={setRef} hint="the email or courier record proving it was sent (s.175)" />
+      <TextInput
+        label="Dispatch proof"
+        required
+        value={dispatchProofRef}
+        onChange={setRef}
+        hint="the email or courier record proving it was sent (s.175)"
+      />
       <button className="btn-primary self-start" type="submit" disabled={!dispatchProofRef || open.isPending}>
         Open for circulation
       </button>

@@ -42,21 +42,24 @@ async function grantCount(roleSlug: string): Promise<number> {
 
 describe('POST /admin/grants — no escalation', () => {
   it('refuses a grants:create holder who does not hold invoices:approve, and writes nothing', async () => {
-    await withFixtureRole({ slug: 'w1a_grant_writer', grants: [{ resource: 'grants', verbs: ['create'] }] }, async (writer) => {
-      await withFixtureRole({ slug: 'w1a_grant_target', grants: [] }, async (target) => {
-        const before = await grantCount(target.roleSlug);
+    await withFixtureRole(
+      { slug: 'w1a_grant_writer', grants: [{ resource: 'grants', verbs: ['create'] }] },
+      async (writer) => {
+        await withFixtureRole({ slug: 'w1a_grant_target', grants: [] }, async (target) => {
+          const before = await grantCount(target.roleSlug);
 
-        const res = await postGrant(writer, {
-          roleSlug: target.roleSlug,
-          resource: 'invoices',
-          verbs: ['approve'],
-          scope: 'all',
+          const res = await postGrant(writer, {
+            roleSlug: target.roleSlug,
+            resource: 'invoices',
+            verbs: ['approve'],
+            scope: 'all',
+          });
+          expect(res.status).toBe(403);
+
+          expect(await grantCount(target.roleSlug)).toBe(before);
         });
-        expect(res.status).toBe(403);
-
-        expect(await grantCount(target.roleSlug)).toBe(before);
-      });
-    });
+      },
+    );
   });
 
   it('refuses a grant written to the role the caller holds, even when the caller holds what it grants', async () => {
@@ -80,16 +83,19 @@ describe('POST /admin/grants — no escalation', () => {
   });
 
   it('lets a grants:create holder write an own-scoped grant they do not otherwise hold', async () => {
-    await withFixtureRole({ slug: 'w1a_grant_own_writer', grants: [{ resource: 'grants', verbs: ['create'] }] }, async (writer) => {
-      await withFixtureRole({ slug: 'w1a_grant_own_target', grants: [] }, async (target) => {
-        const res = await postGrant(writer, {
-          roleSlug: target.roleSlug,
-          resource: 'payments',
-          verbs: ['view'],
-          scope: 'own',
+    await withFixtureRole(
+      { slug: 'w1a_grant_own_writer', grants: [{ resource: 'grants', verbs: ['create'] }] },
+      async (writer) => {
+        await withFixtureRole({ slug: 'w1a_grant_own_target', grants: [] }, async (target) => {
+          const res = await postGrant(writer, {
+            roleSlug: target.roleSlug,
+            resource: 'payments',
+            verbs: ['view'],
+            scope: 'own',
+          });
+          expect(res.status).toBe(201);
         });
-        expect(res.status).toBe(201);
-      });
-    });
+      },
+    );
   });
 });

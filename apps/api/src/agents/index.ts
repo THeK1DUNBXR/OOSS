@@ -99,8 +99,9 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
   // Four hard prohibitions apply regardless of any AUTHORITY_GRANT a policy
   // might attempt to issue.
   if (isProhibitedForAgent(input.action)) {
-    const prohibition = HARD_PROHIBITIONS.find((p) => input.action.includes('pay') || input.action.includes('approve'))
-      ?? HARD_PROHIBITIONS[1];
+    const prohibition =
+      HARD_PROHIBITIONS.find((p) => input.action.includes('pay') || input.action.includes('approve')) ??
+      HARD_PROHIBITIONS[1];
     return blocked(
       agent.id,
       input,
@@ -158,13 +159,23 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
   if (countGrant?.countCeiling) {
     const windowStart = windowStartFor(countGrant.countWindow ?? 'day');
     const used = await prisma.agentAction.count({
-      where: { tenantId: auth.tenantId, agentId: agent.id, proposedAt: { gte: windowStart }, state: { in: ['proposed', 'executed'] } },
+      where: {
+        tenantId: auth.tenantId,
+        agentId: agent.id,
+        proposedAt: { gte: windowStart },
+        state: { in: ['proposed', 'executed'] },
+      },
     });
     if (used >= countGrant.countCeiling) {
       await emit({
         name: EVENTS.AGENT_AUTHORITY_SHORTFALL,
         subject: { entityType: 'agent_action', entityId: agent.id },
-        newState: { agentKey: input.agentKey, countCeiling: countGrant.countCeiling, used, window: countGrant.countWindow },
+        newState: {
+          agentKey: input.agentKey,
+          countCeiling: countGrant.countCeiling,
+          used,
+          window: countGrant.countWindow,
+        },
         impact: { domains: ['agt'], severity: 'S1_ATTENTION' },
       });
       return blocked(
@@ -233,12 +244,7 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
   return { actionId: action.id, tier, state: 'proposed', blockedReason: null, autoExecuted: false };
 }
 
-async function blocked(
-  agentId: string,
-  input: ProposeInput,
-  tier: AiTierCode,
-  reason: string,
-): Promise<ProposeResult> {
+async function blocked(agentId: string, input: ProposeInput, tier: AiTierCode, reason: string): Promise<ProposeResult> {
   const auth = currentAuth();
   const action = await prisma.agentAction.create({
     data: {

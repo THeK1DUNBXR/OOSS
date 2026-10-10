@@ -7,10 +7,23 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { handler, str } from '../lib/http.js';
 import {
-  createPlan, activatePlan, listPlans, plan,
-  proposeGrant, approveGrant, cancelGrant, lapseGrant, listGrants, grant,
-  requestExercise, approveExercise, rejectExercise, listExercises,
-  sh6Register, sh6Export, myGrants,
+  createPlan,
+  activatePlan,
+  listPlans,
+  plan,
+  proposeGrant,
+  approveGrant,
+  cancelGrant,
+  lapseGrant,
+  listGrants,
+  grant,
+  requestExercise,
+  approveExercise,
+  rejectExercise,
+  listExercises,
+  sh6Register,
+  sh6Export,
+  myGrants,
 } from '../domains/esop.js';
 
 const router = Router();
@@ -23,8 +36,14 @@ const vestingSchedule = z.object({
 
 // ---- Plans ------------------------------------------------------------------
 
-router.get('/plans', handler(async () => ({ items: await listPlans() })));
-router.get('/plans/:id', handler(async (req) => plan(req.params.id)));
+router.get(
+  '/plans',
+  handler(async () => ({ items: await listPlans() })),
+);
+router.get(
+  '/plans/:id',
+  handler(async (req) => plan(req.params.id)),
+);
 
 router.post(
   '/plans',
@@ -55,8 +74,14 @@ router.post(
 
 // ---- Grants -------------------------------------------------------------------
 
-router.get('/grants', handler(async () => ({ items: await listGrants() })));
-router.get('/grants/:id', handler(async (req) => grant(req.params.id)));
+router.get(
+  '/grants',
+  handler(async () => ({ items: await listGrants() })),
+);
+router.get(
+  '/grants/:id',
+  handler(async (req) => grant(req.params.id)),
+);
 
 router.post(
   '/grants',
@@ -77,7 +102,10 @@ router.post(
   }),
 );
 
-router.post('/grants/:id/approve', handler(async (req) => approveGrant(req.params.id)));
+router.post(
+  '/grants/:id/approve',
+  handler(async (req) => approveGrant(req.params.id)),
+);
 
 router.post(
   '/grants/:id/cancel',
@@ -97,17 +125,25 @@ router.post(
 
 // ---- Exercises ------------------------------------------------------------------
 
-router.get('/exercises', handler(async (req) => ({ items: await listExercises(str(req.query.grantId)) })));
+router.get(
+  '/exercises',
+  handler(async (req) => ({ items: await listExercises(str(req.query.grantId)) })),
+);
 
 router.post(
   '/exercises',
   handler(async (req) => {
-    const body = z.object({ grantId: z.string(), count: z.number().positive(), requestedOn: z.string().optional() }).parse(req.body);
+    const body = z
+      .object({ grantId: z.string(), count: z.number().positive(), requestedOn: z.string().optional() })
+      .parse(req.body);
     return requestExercise(body);
   }),
 );
 
-router.post('/exercises/:id/approve', handler(async (req) => approveExercise(req.params.id)));
+router.post(
+  '/exercises/:id/approve',
+  handler(async (req) => approveExercise(req.params.id)),
+);
 
 router.post(
   '/exercises/:id/reject',
@@ -119,7 +155,10 @@ router.post(
 
 // ---- Register & self-view -----------------------------------------------------
 
-router.get('/register', handler(async () => ({ items: await sh6Register() })));
+router.get(
+  '/register',
+  handler(async () => ({ items: await sh6Register() })),
+);
 
 router.get(
   '/register/sh-6.xlsx',
@@ -138,6 +177,9 @@ router.get(
   }),
 );
 
-router.get('/me', handler(async () => ({ items: await myGrants() })));
+router.get(
+  '/me',
+  handler(async () => ({ items: await myGrants() })),
+);
 
 export default router;

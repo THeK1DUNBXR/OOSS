@@ -30,8 +30,7 @@ export const IT_CHANGE_RISKS = ['low', 'medium', 'high'] as const;
 export type ItChangeRisk = (typeof IT_CHANGE_RISKS)[number];
 
 export type ItChangeState =
-  | 'draft' | 'submitted' | 'approved' | 'scheduled' | 'implemented'
-  | 'reviewed' | 'failed' | 'rolled_back' | 'rejected';
+  'draft' | 'submitted' | 'approved' | 'scheduled' | 'implemented' | 'reviewed' | 'failed' | 'rolled_back' | 'rejected';
 export type ItChangeEvent = 'SUBMIT' | 'APPROVE' | 'REJECT' | 'SCHEDULE' | 'IMPLEMENT' | 'FAIL' | 'REVIEW' | 'ROLLBACK';
 
 // ---------------------------------------------------------------------------
@@ -108,7 +107,9 @@ export const ITSM_CHANGE_VERBS: Record<ItChangeEvent, string> = {
 
 /** Mean time to recovery, in minutes, over resolved incidents only. `null`
  * with none — never zero, and never averaged over rows still open. */
-export function mttrMinutes(rows: Array<{ detectedAt: Date | string; resolvedAt: Date | string | null }>): number | null {
+export function mttrMinutes(
+  rows: Array<{ detectedAt: Date | string; resolvedAt: Date | string | null }>,
+): number | null {
   const resolved = rows.filter((r) => r.resolvedAt != null);
   if (resolved.length === 0) return null;
   const totalMinutes = resolved.reduce((sum, r) => {

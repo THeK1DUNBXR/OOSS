@@ -8,9 +8,18 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import {
-  createShareClass, createHolder, proposeAllotment, proposeTransfer,
-  approveShareTransaction, rejectShareTransaction, makeEffective, reverseShareTransaction,
-  capTable, holdingsFor, certificateDocument, detectOverdueCertificates,
+  createShareClass,
+  createHolder,
+  proposeAllotment,
+  proposeTransfer,
+  approveShareTransaction,
+  rejectShareTransaction,
+  makeEffective,
+  reverseShareTransaction,
+  capTable,
+  holdingsFor,
+  certificateDocument,
+  detectOverdueCertificates,
   listShareLedger,
 } from '../domains/equity.js';
 import * as equity from '../domains/equity.js';
@@ -58,7 +67,14 @@ async function newSecretary() {
     const existing = await unscopedPrisma.user.findFirst({ where: { email } });
     if (existing) return;
     const person = await scopedPrisma.person.create({
-      data: { tenantId: HOLDING, recordCode: await nextRecordCode('PER'), fullName: 'Company Secretary', primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+      data: {
+        tenantId: HOLDING,
+        recordCode: await nextRecordCode('PER'),
+        fullName: 'Company Secretary',
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+        source: 'test',
+      },
     });
     await createOrResetSignIn({ personId: person.id, roleSlug: 'company_secretary', email });
   });
@@ -93,7 +109,13 @@ describe('EQT-REG-001 — the share ledger is append-only: no update path, and a
     const holderA = await newPersonHolder('Reg001 Holder A');
 
     const proposed = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: cls.id, toHolderId: holderA.holder.id, count: 100, pricePerShare: 0, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: cls.id,
+        toHolderId: holderA.holder.id,
+        count: 100,
+        pricePerShare: 0,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     const approved = await asUser('finance@kaizen.co.in', () => approveShareTransaction(proposed.id));
     expect(approved.status).toBe('approved');
@@ -103,7 +125,9 @@ describe('EQT-REG-001 — the share ledger is append-only: no update path, and a
 
     // Reversal needs both `create` and `approve` on `share_ledger`; the
     // finance head holds only `approve`, so this is the chairman's act.
-    const { reversed, reversal } = await asUser('chairman@kaizen.co.in', () => reverseShareTransaction(proposed.id, 'test reversal'));
+    const { reversed, reversal } = await asUser('chairman@kaizen.co.in', () =>
+      reverseShareTransaction(proposed.id, 'test reversal'),
+    );
     expect(reversed.status).toBe('reversed');
     expect(reversed.reversedById).toBe(reversal.id);
     expect(reversal.reversalOfId).toBe(proposed.id);
@@ -124,7 +148,12 @@ describe('EQT-REG-002 — distinctive numbers are gapless per class and never ov
     const holderB = await newPersonHolder('Reg002 Holder B');
 
     const first = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: cls.id, toHolderId: holderA.holder.id, count: 500, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: cls.id,
+        toHolderId: holderA.holder.id,
+        count: 500,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveShareTransaction(first.id));
     const firstEffective = await asUser('finance@kaizen.co.in', () => makeEffective(first.id));
@@ -132,7 +161,12 @@ describe('EQT-REG-002 — distinctive numbers are gapless per class and never ov
     expect(firstEffective.distinctiveTo).toBe('500');
 
     const second = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: cls.id, toHolderId: holderB.holder.id, count: 300, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: cls.id,
+        toHolderId: holderB.holder.id,
+        count: 300,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveShareTransaction(second.id));
     const secondEffective = await asUser('finance@kaizen.co.in', () => makeEffective(second.id));
@@ -146,9 +180,16 @@ describe('EQT-REG-003 — the secretary cannot approve their own proposal and th
     const cls = await newShareClass(`Equity-003a-${Date.now()}`);
     const holderA = await newPersonHolder('Reg003 Holder A');
     const proposed = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: cls.id, toHolderId: holderA.holder.id, count: 10, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: cls.id,
+        toHolderId: holderA.holder.id,
+        count: 10,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
-    const rejection = await expectReject(() => asUser('secretary@kaizen.co.in', () => approveShareTransaction(proposed.id)));
+    const rejection = await expectReject(() =>
+      asUser('secretary@kaizen.co.in', () => approveShareTransaction(proposed.id)),
+    );
     expect(rejection.status).toBe(403);
   });
 
@@ -158,7 +199,12 @@ describe('EQT-REG-003 — the secretary cannot approve their own proposal and th
 
     // Fund holder A first.
     const allot = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: cls.id, toHolderId: holderA.holder.id, count: 1000, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: cls.id,
+        toHolderId: holderA.holder.id,
+        count: 1000,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveShareTransaction(allot.id));
     await asUser('finance@kaizen.co.in', () => makeEffective(allot.id));
@@ -170,10 +216,18 @@ describe('EQT-REG-003 — the secretary cannot approve their own proposal and th
     );
 
     const transfer = await asUser('secretary@kaizen.co.in', () =>
-      proposeTransfer({ shareClassId: cls.id, fromHolderId: holderA.holder.id, toHolderId: chairmanHolder.id, count: 50, effectiveOn: new Date().toISOString() }),
+      proposeTransfer({
+        shareClassId: cls.id,
+        fromHolderId: holderA.holder.id,
+        toHolderId: chairmanHolder.id,
+        count: 50,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
 
-    const rejection = await expectReject(() => asUser('chairman@kaizen.co.in', () => approveShareTransaction(transfer.id)));
+    const rejection = await expectReject(() =>
+      asUser('chairman@kaizen.co.in', () => approveShareTransaction(transfer.id)),
+    );
     expect(rejection.status).toBe(403);
   });
 });
@@ -189,21 +243,38 @@ describe('EQT-REG-004 — the cap table sums to 100.00 on both bases and a pendi
     const holderC = await newPersonHolder('Reg004 Holder C (options)');
 
     const a1 = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: equityClass.id, toHolderId: holderA.holder.id, count: 700, pricePerShare: 10, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: equityClass.id,
+        toHolderId: holderA.holder.id,
+        count: 700,
+        pricePerShare: 10,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveShareTransaction(a1.id));
     await asUser('finance@kaizen.co.in', () => makeEffective(a1.id));
 
     // Priced with no consideration transaction on file — pending.
     const a2 = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: equityClass.id, toHolderId: holderB.holder.id, count: 300, pricePerShare: 10, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: equityClass.id,
+        toHolderId: holderB.holder.id,
+        count: 300,
+        pricePerShare: 10,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     expect(a2.pendingConsideration).toBe(true);
     await asUser('finance@kaizen.co.in', () => approveShareTransaction(a2.id));
     await asUser('finance@kaizen.co.in', () => makeEffective(a2.id));
 
     const opt = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: optionClass.id, toHolderId: holderC.holder.id, count: 100, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: optionClass.id,
+        toHolderId: holderC.holder.id,
+        count: 100,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveShareTransaction(opt.id));
     await asUser('finance@kaizen.co.in', () => makeEffective(opt.id));
@@ -231,13 +302,18 @@ describe('EQT-REG-004 — the cap table sums to 100.00 on both bases and a pendi
 });
 
 describe('EQT-REG-005 — a shareholder reads only their own holdings and a cross-holder read is 404', () => {
-  it('holdings/me resolves the caller\'s own holder, and another holder\'s id is refused with 404', async () => {
+  it("holdings/me resolves the caller's own holder, and another holder's id is refused with 404", async () => {
     const cls = await newShareClass(`Equity-005-${Date.now()}`);
     const holderA = await newPersonHolder('Reg005 Holder A');
     const holderB = await newPersonHolder('Reg005 Holder B');
 
     const a1 = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: cls.id, toHolderId: holderA.holder.id, count: 200, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: cls.id,
+        toHolderId: holderA.holder.id,
+        count: 200,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveShareTransaction(a1.id));
     await asUser('finance@kaizen.co.in', () => makeEffective(a1.id));
@@ -250,7 +326,7 @@ describe('EQT-REG-005 — a shareholder reads only their own holdings and a cros
   });
 });
 
-describe('EQT-REG-006 — an issued certificate\'s document view is byte-identical after a later transfer of other shares', () => {
+describe("EQT-REG-006 — an issued certificate's document view is byte-identical after a later transfer of other shares", () => {
   it('the certificate document is unchanged by an unrelated later transfer', async () => {
     const cls = await newShareClass(`Equity-006-${Date.now()}`);
     const otherCls = await newShareClass(`Equity-006-other-${Date.now()}`);
@@ -259,7 +335,12 @@ describe('EQT-REG-006 — an issued certificate\'s document view is byte-identic
     const holderC = await newPersonHolder('Reg006 Holder C');
 
     const allotA = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: cls.id, toHolderId: holderA.holder.id, count: 100, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: cls.id,
+        toHolderId: holderA.holder.id,
+        count: 100,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveShareTransaction(allotA.id));
     await asUser('finance@kaizen.co.in', () => makeEffective(allotA.id));
@@ -277,12 +358,23 @@ describe('EQT-REG-006 — an issued certificate\'s document view is byte-identic
 
     // Other shares move: an unrelated allotment and transfer, in a different class.
     const allotB = await asUser('secretary@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: otherCls.id, toHolderId: holderB.holder.id, count: 400, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: otherCls.id,
+        toHolderId: holderB.holder.id,
+        count: 400,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveShareTransaction(allotB.id));
     await asUser('finance@kaizen.co.in', () => makeEffective(allotB.id));
     const xfer = await asUser('secretary@kaizen.co.in', () =>
-      proposeTransfer({ shareClassId: otherCls.id, fromHolderId: holderB.holder.id, toHolderId: holderC.holder.id, count: 150, effectiveOn: new Date().toISOString() }),
+      proposeTransfer({
+        shareClassId: otherCls.id,
+        fromHolderId: holderB.holder.id,
+        toHolderId: holderC.holder.id,
+        count: 150,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveShareTransaction(xfer.id));
     await asUser('finance@kaizen.co.in', () => makeEffective(xfer.id));
@@ -334,14 +426,20 @@ describe('EQT-REG-007 — the two-month certificate window raises a compliance i
   });
 });
 
-describe('EQT-REG-008 — a subsidiary may not hold its holding\'s shares (s.19)', () => {
-  it('a holder recorded in the holding\'s own register naming a subsidiary as heldByTenantId is refused', async () => {
+describe("EQT-REG-008 — a subsidiary may not hold its holding's shares (s.19)", () => {
+  it("a holder recorded in the holding's own register naming a subsidiary as heldByTenantId is refused", async () => {
     const subSlug = `eqt-reg-008-sub-${Date.now()}`;
     cleanupTenantSlugs.push(subSlug);
-    const { tenantId: subTenantId } = await seedBootstrap({ tenantSlug: subSlug, tenantName: 'EQT-REG-008 Sub', parentTenantSlug: 'kaizen' });
+    const { tenantId: subTenantId } = await seedBootstrap({
+      tenantSlug: subSlug,
+      tenantName: 'EQT-REG-008 Sub',
+      parentTenantSlug: 'kaizen',
+    });
 
     const rejection = await expectReject(() =>
-      asUser('chairman@kaizen.co.in', () => createHolder({ kind: 'entity', heldByTenantId: subTenantId, residency: 'resident' })),
+      asUser('chairman@kaizen.co.in', () =>
+        createHolder({ kind: 'entity', heldByTenantId: subTenantId, residency: 'resident' }),
+      ),
     );
     expect(rejection.status).toBe(422);
   });
@@ -351,7 +449,11 @@ describe('EQT-REG-009 — a non-resident holder must state the investment basis'
   it('creating a non-resident holder with no investment basis is refused', async () => {
     const rejection = await expectReject(() =>
       asUser('chairman@kaizen.co.in', () =>
-        createHolder({ kind: 'person', person: { fullName: 'NRI Test Holder', email: `nri-${Date.now()}@example.test` }, residency: 'non_resident' }),
+        createHolder({
+          kind: 'person',
+          person: { fullName: 'NRI Test Holder', email: `nri-${Date.now()}@example.test` },
+          residency: 'non_resident',
+        }),
       ),
     );
     expect(rejection.status).toBe(422);
@@ -364,20 +466,49 @@ describe('EQT-REG-010 — the opening-register template imports holders, classes
     const holderName = `Reg010 Import Holder ${Date.now()}`;
 
     const header = [
-      'Holder name', 'Holder kind', 'Email', 'Phone', 'PAN', 'Residency', 'Investment basis',
-      'Share class', 'Instrument', 'Face value', 'Count', 'Distinctive from', 'Distinctive to',
-      'Allotted on', 'Price per share', 'Certificate number',
+      'Holder name',
+      'Holder kind',
+      'Email',
+      'Phone',
+      'PAN',
+      'Residency',
+      'Investment basis',
+      'Share class',
+      'Instrument',
+      'Face value',
+      'Count',
+      'Distinctive from',
+      'Distinctive to',
+      'Allotted on',
+      'Price per share',
+      'Certificate number',
     ];
     const row = [
-      holderName, 'Person', `reg010-${Date.now()}@example.test`, '', '', 'Resident', '',
-      className, 'Equity', '10', '1000', '1', '1000', '01/04/2020', '', 'PAPER/001',
+      holderName,
+      'Person',
+      `reg010-${Date.now()}@example.test`,
+      '',
+      '',
+      'Resident',
+      '',
+      className,
+      'Equity',
+      '10',
+      '1000',
+      '1',
+      '1000',
+      '01/04/2020',
+      '',
+      'PAPER/001',
     ];
     const book = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet([header, row]);
     XLSX.utils.book_append_sheet(book, sheet, 'Data');
     const buffer = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 
-    const staged = await asUser('chairman@kaizen.co.in', () => stageImport({ fileName: 'opening-register.xlsx', buffer }));
+    const staged = await asUser('chairman@kaizen.co.in', () =>
+      stageImport({ fileName: 'opening-register.xlsx', buffer }),
+    );
     expect(staged.kind).toBe('template_opening_register');
 
     const committed = await asUser('chairman@kaizen.co.in', () => commitImport(staged.batchId));
@@ -386,8 +517,16 @@ describe('EQT-REG-010 — the opening-register template imports holders, classes
 
     const { cls, txn, cert } = await asUser('chairman@kaizen.co.in', async () => {
       const cls = await scopedPrisma.shareClass.findFirst({ where: { tenantId: HOLDING, name: className } });
-      const txn = cls ? await scopedPrisma.shareTransaction.findFirst({ where: { tenantId: HOLDING, shareClassId: cls.id, status: 'effective' } }) : null;
-      const cert = txn ? await scopedPrisma.shareCertificate.findFirst({ where: { tenantId: HOLDING, issuedForTransactionId: txn.id } }) : null;
+      const txn = cls
+        ? await scopedPrisma.shareTransaction.findFirst({
+            where: { tenantId: HOLDING, shareClassId: cls.id, status: 'effective' },
+          })
+        : null;
+      const cert = txn
+        ? await scopedPrisma.shareCertificate.findFirst({
+            where: { tenantId: HOLDING, issuedForTransactionId: txn.id },
+          })
+        : null;
       return { cls, txn, cert };
     });
     expect(cls).toBeTruthy();

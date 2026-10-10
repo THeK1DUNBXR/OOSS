@@ -33,7 +33,9 @@ export async function runContinuityTestOverdueJob(): Promise<JobResult> {
   const errors: string[] = [];
   const now = new Date();
 
-  const plans = await prisma.itContinuityPlan.findMany({ where: { tenantId: auth.tenantId, status: 'active', deletedAt: null } });
+  const plans = await prisma.itContinuityPlan.findMany({
+    where: { tenantId: auth.tenantId, status: 'active', deletedAt: null },
+  });
 
   let notified = 0;
   let skippedIdempotent = 0;
@@ -103,7 +105,12 @@ export async function runContinuityNoPlanJob(): Promise<JobResult> {
     // than active — kept alongside the catalogue-driven case above for an
     // application whose catalogue row does not exist (or is not yet seeded).
     prisma.itContinuityPlan.findMany({
-      where: { tenantId: auth.tenantId, deletedAt: null, applicationTier: { lte: 2 }, status: { in: ['draft', 'retired'] } },
+      where: {
+        tenantId: auth.tenantId,
+        deletedAt: null,
+        applicationTier: { lte: 2 },
+        status: { in: ['draft', 'retired'] },
+      },
     }),
   ]);
 

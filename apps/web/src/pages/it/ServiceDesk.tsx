@@ -119,8 +119,18 @@ interface Employee {
   jobTitle: string | null;
 }
 
-const CATEGORY_LABEL: Record<Category, string> = { incident: 'Incident', request: 'Request', access: 'Access', question: 'Question' };
-const PRIORITY_TONE: Record<Priority, 'bad' | 'warn' | 'accent' | 'neutral'> = { P1: 'bad', P2: 'warn', P3: 'accent', P4: 'neutral' };
+const CATEGORY_LABEL: Record<Category, string> = {
+  incident: 'Incident',
+  request: 'Request',
+  access: 'Access',
+  question: 'Question',
+};
+const PRIORITY_TONE: Record<Priority, 'bad' | 'warn' | 'accent' | 'neutral'> = {
+  P1: 'bad',
+  P2: 'warn',
+  P3: 'accent',
+  P4: 'neutral',
+};
 const PRIORITY_WORD: Record<Priority, string> = { P1: 'Critical', P2: 'High', P3: 'Medium', P4: 'Low' };
 const STATUS_TONE: Record<Status, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'> = {
   new: 'neutral',
@@ -180,7 +190,9 @@ export function ItTickets() {
   });
 
   const s = summary.error ? undefined : summary.data;
-  const openTotal = s ? s.openByPriority.P1 + s.openByPriority.P2 + s.openByPriority.P3 + s.openByPriority.P4 + s.openByPriority.none : undefined;
+  const openTotal = s
+    ? s.openByPriority.P1 + s.openByPriority.P2 + s.openByPriority.P3 + s.openByPriority.P4 + s.openByPriority.none
+    : undefined;
 
   if (tickets.error) return <ErrorBox error={tickets.error} />;
 
@@ -189,18 +201,32 @@ export function ItTickets() {
       <PageHeader
         title="Service Desk"
         subtitle="Tickets a person raised — incidents, requests, access and questions. SLA clocks are stamped at triage from the policy table in force that day, a starting point the company has not yet committed to as a target."
-        actions={can('it_tickets:C') && <button className="btn-primary" onClick={() => setNewOpen(true)}>+ New ticket</button>}
+        actions={
+          can('it_tickets:C') && (
+            <button className="btn-primary" onClick={() => setNewOpen(true)}>
+              + New ticket
+            </button>
+          )
+        }
       />
 
       {s?.notYetMeasured ? (
         <Card>
-          <EmptyState message="No tickets have been raised yet." hint="SLA attainment, backlog age and satisfaction all read from tickets that exist — there is nothing to measure until one is raised." />
+          <EmptyState
+            message="No tickets have been raised yet."
+            hint="SLA attainment, backlog age and satisfaction all read from tickets that exist — there is nothing to measure until one is raised."
+          />
         </Card>
       ) : (
         s && (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <Metric label="Open" value={openTotal} drillTo="/it/tickets" />
-            <Metric label="Unassigned" value={s.unassigned} tone={s.unassigned > 0 ? 'warn' : 'good'} drillTo="/it/tickets" />
+            <Metric
+              label="Unassigned"
+              value={s.unassigned}
+              tone={s.unassigned > 0 ? 'warn' : 'good'}
+              drillTo="/it/tickets"
+            />
             <Metric label="Breached" value={s.breached} tone={s.breached > 0 ? 'bad' : 'good'} drillTo="/it/tickets" />
             <Metric
               label="Response SLA"
@@ -214,7 +240,9 @@ export function ItTickets() {
             />
             <Metric
               label="Median resolve"
-              value={s.medianResolveMinutes === null ? 'Not yet measured' : `${Math.round(s.medianResolveMinutes / 60)}h`}
+              value={
+                s.medianResolveMinutes === null ? 'Not yet measured' : `${Math.round(s.medianResolveMinutes / 60)}h`
+              }
               noActionReason="Tickets resolved in the last 30 days."
             />
           </div>
@@ -258,7 +286,9 @@ export function ItTickets() {
                     className="cursor-pointer border-b border-ink-850/60 hover:bg-ink-900/60"
                     onClick={() => navigate(`/it/tickets/${t.id}`)}
                   >
-                    <td className="py-2 pr-3"><PriorityChip priority={t.priority} /></td>
+                    <td className="py-2 pr-3">
+                      <PriorityChip priority={t.priority} />
+                    </td>
                     <td className="py-2 pr-3">
                       <div className="text-ink-100">{t.subject}</div>
                       <div className="text-2xs text-ink-500">
@@ -267,7 +297,9 @@ export function ItTickets() {
                     </td>
                     <td className="py-2 pr-3 text-ink-300">{t.requesterName ?? t.requesterPartyId}</td>
                     <td className="py-2 pr-3 text-ink-300">{t.assigneeName ?? '—'}</td>
-                    <td className="py-2 pr-3"><StatusChip status={t.status} tone={STATUS_TONE[t.status]} /></td>
+                    <td className="py-2 pr-3">
+                      <StatusChip status={t.status} tone={STATUS_TONE[t.status]} />
+                    </td>
                     <td className="whitespace-nowrap py-2 pr-3 tabular-nums text-ink-400">{dateTime(t.createdAt)}</td>
                   </tr>
                 ))}
@@ -304,8 +336,21 @@ function NewTicketModal({ open, onClose }: { open: boolean; onClose: () => void 
         placeholder="Choose one"
         options={Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value: value as Category, label }))}
       />
-      <TextInput label="Subject" value={subject} onChange={setSubject} required placeholder="One line — what is wrong or needed" />
-      <TextArea label="Description" value={description} onChange={setDescription} rows={4} required placeholder="What happened, what you expected, and anything the desk should know." />
+      <TextInput
+        label="Subject"
+        value={subject}
+        onChange={setSubject}
+        required
+        placeholder="One line — what is wrong or needed"
+      />
+      <TextArea
+        label="Description"
+        value={description}
+        onChange={setDescription}
+        rows={4}
+        required
+        placeholder="What happened, what you expected, and anything the desk should know."
+      />
     </CreateModal>
   );
 }
@@ -373,20 +418,30 @@ export function ItTicketDetail() {
         title={t.subject}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
-            <RecordCode code={t.recordCode} /> <PriorityChip priority={t.priority} /> <StatusChip status={t.status} tone={STATUS_TONE[t.status]} /> {CATEGORY_LABEL[t.category]}
+            <RecordCode code={t.recordCode} /> <PriorityChip priority={t.priority} />{' '}
+            <StatusChip status={t.status} tone={STATUS_TONE[t.status]} /> {CATEGORY_LABEL[t.category]}
           </span>
         }
         actions={
           <div className="flex flex-wrap gap-2">
             {canManage && t.status === 'new' && (
-              <button className="btn" onClick={() => setTriageOpen(true)}>Triage</button>
+              <button className="btn" onClick={() => setTriageOpen(true)}>
+                Triage
+              </button>
             )}
             {canManage && (
-              <button className="btn" onClick={() => setAssignOpen(true)}>{t.assigneeName ? 'Reassign' : 'Assign'}</button>
+              <button className="btn" onClick={() => setAssignOpen(true)}>
+                {t.assigneeName ? 'Reassign' : 'Assign'}
+              </button>
             )}
             {canManage &&
               nonTriageTransitions.map((event) => (
-                <button key={event} className="btn" disabled={transitionMut.isPending} onClick={() => transitionMut.mutate(event)}>
+                <button
+                  key={event}
+                  className="btn"
+                  disabled={transitionMut.isPending}
+                  onClick={() => transitionMut.mutate(event)}
+                >
                   {EVENT_LABEL[event]}
                 </button>
               ))}
@@ -394,7 +449,11 @@ export function ItTicketDetail() {
         }
       />
 
-      {error && <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -408,9 +467,15 @@ export function ItTicketDetail() {
                 <EmptyState message="No comments yet." />
               ) : (
                 t.comments.map((c) => (
-                  <div key={c.id} className={`rounded border px-3 py-2 text-sm ${c.internal ? 'border-band-watch/30 bg-band-watch/5' : 'border-ink-800 bg-ink-900'}`}>
+                  <div
+                    key={c.id}
+                    className={`rounded border px-3 py-2 text-sm ${c.internal ? 'border-band-watch/30 bg-band-watch/5' : 'border-ink-800 bg-ink-900'}`}
+                  >
                     <div className="mb-1 flex items-center justify-between text-2xs text-ink-500">
-                      <span>{c.authorName ?? c.authorPartyId}{c.internal && <span className="ml-1.5 text-band-watch">· internal</span>}</span>
+                      <span>
+                        {c.authorName ?? c.authorPartyId}
+                        {c.internal && <span className="ml-1.5 text-band-watch">· internal</span>}
+                      </span>
                       <span>{dateTime(c.createdAt)}</span>
                     </div>
                     <p className="whitespace-pre-wrap text-ink-200">{c.body}</p>
@@ -431,7 +496,11 @@ export function ItTicketDetail() {
               <div className="flex items-center justify-between">
                 {canManage ? (
                   <label className="flex items-center gap-1.5 text-2xs text-ink-400">
-                    <input type="checkbox" checked={commentInternal} onChange={(e) => setCommentInternal(e.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={commentInternal}
+                      onChange={(e) => setCommentInternal(e.target.checked)}
+                    />
                     Internal note (hidden from the requester)
                   </label>
                 ) : (
@@ -464,7 +533,9 @@ export function ItTicketDetail() {
 
           {t.canRate && (
             <Card title="Rate this ticket">
-              <p className="mb-2 text-2xs text-ink-500">How well was this resolved? Set once — this cannot be changed afterwards.</p>
+              <p className="mb-2 text-2xs text-ink-500">
+                How well was this resolved? Set once — this cannot be changed afterwards.
+              </p>
               <div className="flex gap-1">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
@@ -476,7 +547,11 @@ export function ItTicketDetail() {
                   </button>
                 ))}
               </div>
-              <button className="btn-primary mt-3" disabled={rating === 0 || rateMut.isPending} onClick={() => rateMut.mutate(rating)}>
+              <button
+                className="btn-primary mt-3"
+                disabled={rating === 0 || rateMut.isPending}
+                onClick={() => rateMut.mutate(rating)}
+              >
                 {rateMut.isPending ? 'Saving…' : 'Submit rating'}
               </button>
             </Card>
@@ -517,7 +592,9 @@ function TriageModal({ ticket, onClose, onDone }: { ticket: TicketDetail; onClos
       onClose={onClose}
       footer={
         <>
-          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
           <button className="btn-primary" form="triage-form" type="submit" disabled={!priority || mutation.isPending}>
             {mutation.isPending ? 'Saving…' : 'Triage'}
           </button>
@@ -533,7 +610,11 @@ function TriageModal({ ticket, onClose, onDone }: { ticket: TicketDetail; onClos
           mutation.mutate();
         }}
       >
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
         <SelectInput
           label="Priority"
           required
@@ -568,7 +649,7 @@ function AssignModal({ ticket, onClose, onDone }: { ticket: TicketDetail; onClos
     queryKey: ['it-assign-employees'],
     queryFn: () => api.get<Employee[] | { items: Employee[] }>('/hr/employees'),
   });
-  const rows = Array.isArray(employees.data) ? employees.data : employees.data?.items ?? [];
+  const rows = Array.isArray(employees.data) ? employees.data : (employees.data?.items ?? []);
 
   const mutation = useMutation({
     mutationFn: () => api.post(`/it/tickets/${ticket.id}/assign`, { assigneePartyId }),
@@ -586,8 +667,15 @@ function AssignModal({ ticket, onClose, onDone }: { ticket: TicketDetail; onClos
       onClose={onClose}
       footer={
         <>
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" form="assign-form" type="submit" disabled={!assigneePartyId || mutation.isPending}>
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            form="assign-form"
+            type="submit"
+            disabled={!assigneePartyId || mutation.isPending}
+          >
             {mutation.isPending ? 'Assigning…' : 'Assign'}
           </button>
         </>
@@ -602,14 +690,21 @@ function AssignModal({ ticket, onClose, onDone }: { ticket: TicketDetail; onClos
           mutation.mutate();
         }}
       >
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
         <SelectInput
           label="Assign to"
           required
           value={assigneePartyId}
           onChange={setAssigneePartyId}
           placeholder={rows.length ? 'Search employees' : 'No employees on file'}
-          options={rows.map((e) => ({ value: e.personId, label: e.jobTitle ? `${e.fullName} — ${e.jobTitle}` : e.fullName }))}
+          options={rows.map((e) => ({
+            value: e.personId,
+            label: e.jobTitle ? `${e.fullName} — ${e.jobTitle}` : e.fullName,
+          }))}
         />
       </form>
     </Modal>
@@ -625,7 +720,10 @@ export function ItKnowledge() {
   const navigate = useNavigate();
   const [newOpen, setNewOpen] = useState(false);
 
-  const articles = useQuery({ queryKey: ['it-knowledge'], queryFn: () => api.get<KnowledgeArticle[]>('/it/knowledge') });
+  const articles = useQuery({
+    queryKey: ['it-knowledge'],
+    queryFn: () => api.get<KnowledgeArticle[]>('/it/knowledge'),
+  });
 
   if (articles.error) return <ErrorBox error={articles.error} />;
 
@@ -634,13 +732,22 @@ export function ItKnowledge() {
       <PageHeader
         title="Knowledge base"
         subtitle="Articles the desk points a requester to instead of a ticket. Helpful counts are a plain counter — one click each, not one vote per person."
-        actions={can('it_knowledge:C') && <button className="btn-primary" onClick={() => setNewOpen(true)}>+ New article</button>}
+        actions={
+          can('it_knowledge:C') && (
+            <button className="btn-primary" onClick={() => setNewOpen(true)}>
+              + New article
+            </button>
+          )
+        }
       />
       <Card>
         {articles.isLoading ? (
           <Loading label="Loading articles" />
         ) : (articles.data ?? []).length === 0 ? (
-          <EmptyState message="Nothing published yet." hint="Articles the desk has not published are only visible to desk staff." />
+          <EmptyState
+            message="Nothing published yet."
+            hint="Articles the desk has not published are only visible to desk staff."
+          />
         ) : (
           <div className="flex flex-col divide-y divide-ink-850">
             {(articles.data ?? []).map((a) => (
@@ -651,10 +758,15 @@ export function ItKnowledge() {
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm text-ink-100">{a.title}</div>
-                  <div className="text-2xs text-ink-500"><RecordCode code={a.recordCode} /></div>
+                  <div className="text-2xs text-ink-500">
+                    <RecordCode code={a.recordCode} />
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <StatusChip status={a.status} tone={a.status === 'published' ? 'good' : a.status === 'retired' ? 'neutral' : 'warn'} />
+                  <StatusChip
+                    status={a.status}
+                    tone={a.status === 'published' ? 'good' : a.status === 'retired' ? 'neutral' : 'warn'}
+                  />
                   <span className="text-2xs text-ink-500">{a.helpfulCount} helpful</span>
                 </div>
               </button>
@@ -681,7 +793,14 @@ function NewArticleModal({ open, onClose }: { open: boolean; onClose: () => void
       onSubmit={() => api.post('/it/knowledge', { title, body })}
     >
       <TextInput label="Title" value={title} onChange={setTitle} required />
-      <TextArea label="Body" value={body} onChange={setBody} rows={6} required hint="Saved as a draft — publish it from the article once it is ready." />
+      <TextArea
+        label="Body"
+        value={body}
+        onChange={setBody}
+        rows={6}
+        required
+        hint="Saved as a draft — publish it from the article once it is ready."
+      />
     </CreateModal>
   );
 }
@@ -725,7 +844,11 @@ export function ItKnowledgeDetail() {
         title={a.title}
         subtitle={
           <span className="flex items-center gap-2">
-            <RecordCode code={a.recordCode} /> <StatusChip status={a.status} tone={a.status === 'published' ? 'good' : a.status === 'retired' ? 'neutral' : 'warn'} />
+            <RecordCode code={a.recordCode} />{' '}
+            <StatusChip
+              status={a.status}
+              tone={a.status === 'published' ? 'good' : a.status === 'retired' ? 'neutral' : 'warn'}
+            />
           </span>
         }
         actions={
@@ -743,7 +866,11 @@ export function ItKnowledgeDetail() {
           </div>
         }
       />
-      {error && <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
       <Card>
         <p className="whitespace-pre-wrap text-sm text-ink-200">{a.body}</p>
       </Card>
@@ -775,15 +902,21 @@ export function MyIt() {
   if (mine.error) return <ErrorBox error={mine.error} />;
   const m = mine.data;
 
-  const assetRows = Array.isArray(assets.data) ? assets.data : assets.data?.items ?? [];
-  const policyRows = Array.isArray(policies.data) ? policies.data : policies.data?.items ?? [];
+  const assetRows = Array.isArray(assets.data) ? assets.data : (assets.data?.items ?? []);
+  const policyRows = Array.isArray(policies.data) ? policies.data : (policies.data?.items ?? []);
 
   return (
     <div>
       <PageHeader
         title="My IT"
         subtitle="Your tickets, your assigned equipment, and any policy waiting on your acknowledgement — in one place."
-        actions={can('it_tickets:C') && <button className="btn-primary" onClick={() => setNewOpen(true)}>+ Raise a ticket</button>}
+        actions={
+          can('it_tickets:C') && (
+            <button className="btn-primary" onClick={() => setNewOpen(true)}>
+              + Raise a ticket
+            </button>
+          )
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -791,7 +924,10 @@ export function MyIt() {
           {mine.isLoading ? (
             <Loading label="Loading" />
           ) : (m?.tickets.length ?? 0) === 0 ? (
-            <EmptyState message="You have not raised a ticket." hint="Raise one when something is broken or you need access to something." />
+            <EmptyState
+              message="You have not raised a ticket."
+              hint="Raise one when something is broken or you need access to something."
+            />
           ) : (
             <div className="flex flex-col divide-y divide-ink-850">
               {(m?.tickets ?? []).map((t) => (
@@ -802,7 +938,9 @@ export function MyIt() {
                 >
                   <div className="min-w-0">
                     <div className="truncate text-sm text-ink-100">{t.subject}</div>
-                    <div className="text-2xs text-ink-500"><RecordCode code={t.recordCode} /></div>
+                    <div className="text-2xs text-ink-500">
+                      <RecordCode code={t.recordCode} />
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <PriorityChip priority={t.priority} />
@@ -819,7 +957,14 @@ export function MyIt() {
             {assets.isLoading ? (
               <Loading label="Loading" />
             ) : isNotFound(assets.error) || assetRows.length === 0 ? (
-              <EmptyState message="Nothing here yet." hint={isNotFound(assets.error) ? 'The assets workstream has not landed yet.' : 'No equipment is currently assigned to you.'} />
+              <EmptyState
+                message="Nothing here yet."
+                hint={
+                  isNotFound(assets.error)
+                    ? 'The assets workstream has not landed yet.'
+                    : 'No equipment is currently assigned to you.'
+                }
+              />
             ) : (
               <pre className="overflow-x-auto text-2xs text-ink-300">{JSON.stringify(assetRows, null, 2)}</pre>
             )}
@@ -829,7 +974,14 @@ export function MyIt() {
             {policies.isLoading ? (
               <Loading label="Loading" />
             ) : isNotFound(policies.error) || policyRows.length === 0 ? (
-              <EmptyState message="Nothing here yet." hint={isNotFound(policies.error) ? 'The governance workstream has not landed yet.' : 'Nothing is currently awaiting your acknowledgement.'} />
+              <EmptyState
+                message="Nothing here yet."
+                hint={
+                  isNotFound(policies.error)
+                    ? 'The governance workstream has not landed yet.'
+                    : 'Nothing is currently awaiting your acknowledgement.'
+                }
+              />
             ) : (
               <pre className="overflow-x-auto text-2xs text-ink-300">{JSON.stringify(policyRows, null, 2)}</pre>
             )}

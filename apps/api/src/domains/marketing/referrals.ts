@@ -55,7 +55,11 @@ export async function listReferralPrograms(filters: { active?: boolean } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_referrals', verb: 'view' });
   return prisma.marketingReferralProgram.findMany({
-    where: { tenantId: auth.tenantId, deletedAt: null, ...(filters.active !== undefined ? { active: filters.active } : {}) },
+    where: {
+      tenantId: auth.tenantId,
+      deletedAt: null,
+      ...(filters.active !== undefined ? { active: filters.active } : {}),
+    },
     orderBy: { createdAt: 'desc' },
   });
 }
@@ -63,7 +67,9 @@ export async function listReferralPrograms(filters: { active?: boolean } = {}) {
 export async function loadReferralProgram(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_referrals', verb: 'view' });
-  const program = await prisma.marketingReferralProgram.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
+  const program = await prisma.marketingReferralProgram.findFirst({
+    where: { id, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!program) throw ApiError.notFound('Referral program');
   return program;
 }
@@ -71,7 +77,9 @@ export async function loadReferralProgram(id: string) {
 export async function updateReferralProgram(id: string, patch: Partial<ReferralProgramInput>) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_referrals', verb: 'edit' });
-  const program = await prisma.marketingReferralProgram.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
+  const program = await prisma.marketingReferralProgram.findFirst({
+    where: { id, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!program) throw ApiError.notFound('Referral program');
   return prisma.marketingReferralProgram.update({
     where: { id },
@@ -89,7 +97,9 @@ export async function updateReferralProgram(id: string, patch: Partial<ReferralP
 async function setProgramActive(id: string, active: boolean) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_referrals', verb: 'edit' });
-  const program = await prisma.marketingReferralProgram.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
+  const program = await prisma.marketingReferralProgram.findFirst({
+    where: { id, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!program) throw ApiError.notFound('Referral program');
   return prisma.marketingReferralProgram.update({ where: { id }, data: { active } });
 }
@@ -211,7 +221,8 @@ export async function redeemReferral(input: RedeemReferralInput) {
     const resolved = await findOrCreatePerson(input.person);
     referredPersonId = resolved.person.id;
   }
-  if (!referredPersonId) throw ApiError.badRequest('Redeeming a referral requires referredPersonId or an inline person.');
+  if (!referredPersonId)
+    throw ApiError.badRequest('Redeeming a referral requires referredPersonId or an inline person.');
 
   if (referral.referrerPersonId && referral.referrerPersonId === referredPersonId) {
     throw ApiError.conflict('A person cannot redeem their own referral code.');
@@ -264,7 +275,9 @@ export async function redeemReferral(input: RedeemReferralInput) {
 
 async function transitionReferral(id: string, to: ReferralStatus) {
   const auth = currentAuth();
-  const referral = await prisma.marketingReferral.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
+  const referral = await prisma.marketingReferral.findFirst({
+    where: { id, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!referral) throw ApiError.notFound('Referral');
   const from = referral.status as ReferralStatus;
   const allowed = REFERRAL_TRANSITIONS[from] ?? [];
@@ -313,7 +326,10 @@ export async function voidReferral(id: string, reason: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_referrals', verb: 'edit' });
   const { referral, from } = await transitionReferral(id, 'void');
-  const updated = await prisma.marketingReferral.update({ where: { id }, data: { status: 'void', updatedById: auth.partyId } });
+  const updated = await prisma.marketingReferral.update({
+    where: { id },
+    data: { status: 'void', updatedById: auth.partyId },
+  });
   await emit({
     name: EVENTS.MKT_REFERRAL_VOIDED,
     subject: { entityType: 'referral', entityId: id, recordCode: referral.recordCode },
@@ -336,7 +352,9 @@ export async function leaderboard(programId: string): Promise<LeaderboardRow[]> 
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_referrals', verb: 'view' });
 
-  const referrals = await prisma.marketingReferral.findMany({ where: { tenantId: auth.tenantId, programId, deletedAt: null } });
+  const referrals = await prisma.marketingReferral.findMany({
+    where: { tenantId: auth.tenantId, programId, deletedAt: null },
+  });
 
   const personIds = [...new Set(referrals.map((r) => r.referrerPersonId).filter((x): x is string => Boolean(x)))];
   const orgIds = [...new Set(referrals.map((r) => r.referrerOrganizationId).filter((x): x is string => Boolean(x)))];
@@ -365,7 +383,9 @@ export async function leaderboard(programId: string): Promise<LeaderboardRow[]> 
     byReferrer.set(key, row);
   }
 
-  return [...byReferrer.values()].sort((a, b) => b.rewarded - a.rewarded || b.qualified - a.qualified || b.issued - a.issued);
+  return [...byReferrer.values()].sort(
+    (a, b) => b.rewarded - a.rewarded || b.qualified - a.qualified || b.issued - a.issued,
+  );
 }
 
 /** EX-MKT-013: a qualified referral not rewarded more than 30 days later. */

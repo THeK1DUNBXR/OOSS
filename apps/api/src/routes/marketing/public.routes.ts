@@ -27,7 +27,9 @@ const captureLimit = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   store: new PostgresRateLimitStore('capture'),
-  message: { error: { code: 'RATE_LIMITED', message: 'Too many submissions from this address. Try again in a minute.' } },
+  message: {
+    error: { code: 'RATE_LIMITED', message: 'Too many submissions from this address. Try again in a minute.' },
+  },
 });
 
 // Public form submissions arrive as JSON or classic form-encoded posts — the
@@ -58,7 +60,10 @@ router.post(
 router.get(
   '/public/l/:slug',
   handler(async (req, res) => {
-    const { targetUrl } = await resolveAndClick(req.params.slug, { ip: req.ip ?? 'unknown', userAgent: req.headers['user-agent'] });
+    const { targetUrl } = await resolveAndClick(req.params.slug, {
+      ip: req.ip ?? 'unknown',
+      userAgent: req.headers['user-agent'],
+    });
     res.redirect(302, targetUrl);
     return undefined;
   }),

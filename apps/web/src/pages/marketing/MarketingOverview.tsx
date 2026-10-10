@@ -29,7 +29,11 @@ function KpiTile({ kpi }: { kpi: MeasuredKpi }) {
       {kpi.measured ? (
         <>
           <p className="kpi-value">
-            {kpi.unit === 'currency' ? money(kpi.value) : kpi.unit === 'percent' ? `${(kpi.value ?? 0).toFixed(1)}%` : (kpi.value ?? 0).toLocaleString('en-IN')}
+            {kpi.unit === 'currency'
+              ? money(kpi.value)
+              : kpi.unit === 'percent'
+                ? `${(kpi.value ?? 0).toFixed(1)}%`
+                : (kpi.value ?? 0).toLocaleString('en-IN')}
           </p>
           {kpi.delta !== undefined && kpi.delta !== null && (
             <p className={`mt-1 text-2xs ${kpi.delta >= 0 ? 'text-band-strong' : 'text-band-critical'}`}>
@@ -51,7 +55,11 @@ export function MarketingOverview() {
   if (error) return <ErrorBox error={error} />;
   if (!data) return null;
 
-  const funnelData = data.funnel.stages.map((s) => ({ label: s.label, count: s.measured ? s.count : 0, measured: s.measured }));
+  const funnelData = data.funnel.stages.map((s) => ({
+    label: s.label,
+    count: s.measured ? s.count : 0,
+    measured: s.measured,
+  }));
   const anyFunnelMeasured = data.funnel.stages.some((s) => s.measured);
 
   return (
@@ -73,17 +81,35 @@ export function MarketingOverview() {
       <div className="mb-5 grid gap-4 lg:grid-cols-3">
         <Card title="The funnel" subtitle="Touchpoints through to enrolments, this period." className="lg:col-span-2">
           {!anyFunnelMeasured ? (
-            <EmptyState message="Nothing to measure yet." hint="The funnel fills in once touchpoints and leads start being recorded against campaigns." />
+            <EmptyState
+              message="Nothing to measure yet."
+              hint="The funnel fills in once touchpoints and leads start being recorded against campaigns."
+            />
           ) : (
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={funnelData} margin={{ top: 8, right: 8, bottom: 4, left: 8 }}>
                   <CartesianGrid stroke={GRID} vertical={false} />
-                  <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={{ stroke: GRID }} />
-                  <YAxis tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={{ stroke: GRID }} allowDecimals={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: MUTED, fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: GRID }}
+                  />
+                  <YAxis
+                    tick={{ fill: MUTED, fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: GRID }}
+                    allowDecimals={false}
+                  />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', border: `1px solid ${GRID}`, borderRadius: '8px', fontSize: '12px' }}
-                    formatter={(v: number, _n, entry) => [(entry?.payload?.measured ? v : NOT_MEASURED), 'Count']}
+                    contentStyle={{
+                      backgroundColor: '#ffffff',
+                      border: `1px solid ${GRID}`,
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                    formatter={(v: number, _n, entry) => [entry?.payload?.measured ? v : NOT_MEASURED, 'Count']}
                   />
                   <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                     {funnelData.map((d, i) => (
@@ -98,7 +124,10 @@ export function MarketingOverview() {
             <div className="mt-3 flex flex-wrap gap-3 border-t border-ink-800 pt-3 text-2xs text-ink-400">
               {data.funnel.conversionRates.map((r) => (
                 <span key={`${r.from}-${r.to}`}>
-                  {r.from} → {r.to}: <span className="font-semibold text-ink-200">{r.rate === null ? NOT_MEASURED : `${(r.rate * 100).toFixed(1)}%`}</span>
+                  {r.from} → {r.to}:{' '}
+                  <span className="font-semibold text-ink-200">
+                    {r.rate === null ? NOT_MEASURED : `${(r.rate * 100).toFixed(1)}%`}
+                  </span>
                 </span>
               ))}
             </div>
@@ -125,7 +154,10 @@ export function MarketingOverview() {
 
       <Card title="Live campaigns" subtitle="Campaigns currently running.">
         {data.liveCampaigns.length === 0 ? (
-          <EmptyState message="No campaigns are live right now." hint="A campaign shows here once it has been launched." />
+          <EmptyState
+            message="No campaigns are live right now."
+            hint="A campaign shows here once it has been launched."
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="table">
@@ -146,7 +178,10 @@ export function MarketingOverview() {
                       <RecordCode code={c.recordCode} to={`/marketing/campaigns/${c.id}`} />
                     </td>
                     <td>
-                      <Link to={`/marketing/campaigns/${c.id}`} className="text-xs font-medium text-ink-100 hover:text-accent-soft">
+                      <Link
+                        to={`/marketing/campaigns/${c.id}`}
+                        className="text-xs font-medium text-ink-100 hover:text-accent-soft"
+                      >
                         {c.name}
                       </Link>
                     </td>
@@ -154,7 +189,9 @@ export function MarketingOverview() {
                     <td>
                       <StatusChip status={CAMPAIGN_STATUS_LABELS[c.status]} tone="good" />
                     </td>
-                    <td className="text-right tabular-nums text-xs">{money(c.budgetActual)} / {money(c.budgetPlanned)}</td>
+                    <td className="text-right tabular-nums text-xs">
+                      {money(c.budgetActual)} / {money(c.budgetPlanned)}
+                    </td>
                     <td className="text-xs text-ink-400">{c.endAt.slice(0, 10)}</td>
                   </tr>
                 ))}

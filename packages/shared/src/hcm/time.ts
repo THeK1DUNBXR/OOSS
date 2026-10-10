@@ -49,9 +49,7 @@ export function formatHHMM(minutesOfDay: number): string {
 
 /** A shift's paid span, net of its unpaid break — what counts as a full day. */
 export function shiftScheduledMinutes(shift: ShiftDef): number {
-  const span = shift.nightShift
-    ? 1440 - shift.startMinutes + shift.endMinutes
-    : shift.endMinutes - shift.startMinutes;
+  const span = shift.nightShift ? 1440 - shift.startMinutes + shift.endMinutes : shift.endMinutes - shift.startMinutes;
   return Math.max(span - shift.breakMinutes, 0);
 }
 

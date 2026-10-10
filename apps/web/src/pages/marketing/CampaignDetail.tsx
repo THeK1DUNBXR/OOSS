@@ -17,7 +17,17 @@ import {
   type CampaignStatus,
   type ChannelKey,
 } from '@kaizen/shared';
-import { Card, EmptyState, ErrorBox, Field, Loading, PageHeader, RecordCode, StatusChip, Tabs } from '../../components/ui.js';
+import {
+  Card,
+  EmptyState,
+  ErrorBox,
+  Field,
+  Loading,
+  PageHeader,
+  RecordCode,
+  StatusChip,
+  Tabs,
+} from '../../components/ui.js';
 import { CreateModal, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 import { date, dateTime, money, titleCase } from '../../lib/api.js';
@@ -136,7 +146,11 @@ export function CampaignDetail() {
             {campaign.status === 'pending_approval' &&
               (canApprove && !isProposer ? (
                 <>
-                  <button className="btn-primary" disabled={approve.isPending} onClick={() => approve.mutate(undefined)}>
+                  <button
+                    className="btn-primary"
+                    disabled={approve.isPending}
+                    onClick={() => approve.mutate(undefined)}
+                  >
                     Approve
                   </button>
                   <button className="btn" onClick={() => setRejectOpen(true)}>
@@ -170,10 +184,14 @@ export function CampaignDetail() {
       {tab === 'leads' && (
         <Card>
           {campaign.leadCount === 0 ? (
-            <EmptyState message="No leads attributed to this campaign yet." hint="A lead is attributed when it is created with this campaign's UTM or touchpoints." />
+            <EmptyState
+              message="No leads attributed to this campaign yet."
+              hint="A lead is attributed when it is created with this campaign's UTM or touchpoints."
+            />
           ) : (
             <p className="text-sm text-ink-200">
-              <span className="text-2xl font-semibold tabular-nums">{campaign.leadCount}</span> leads attributed to this campaign.
+              <span className="text-2xl font-semibold tabular-nums">{campaign.leadCount}</span> leads attributed to this
+              campaign.
             </p>
           )}
         </Card>
@@ -182,13 +200,27 @@ export function CampaignDetail() {
       {tab === 'sends' && <SendsTab campaignId={campaign.id} />}
       {tab === 'approvals' && <ApprovalsTab approvals={campaign.approvals} />}
 
-      <RejectModal open={rejectOpen} onClose={() => setRejectOpen(false)} onSubmit={(reason) => reject.mutateAsync(reason)} />
-      <CancelModal open={cancelOpen} onClose={() => setCancelOpen(false)} onSubmit={(reason) => cancel.mutateAsync(reason)} />
+      <RejectModal
+        open={rejectOpen}
+        onClose={() => setRejectOpen(false)}
+        onSubmit={(reason) => reject.mutateAsync(reason)}
+      />
+      <CancelModal
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        onSubmit={(reason) => cancel.mutateAsync(reason)}
+      />
     </div>
   );
 }
 
-function SummaryTab({ campaignId, campaign }: { campaignId: string; campaign: import('../../lib/marketingApi.js').CampaignDetailView }) {
+function SummaryTab({
+  campaignId,
+  campaign,
+}: {
+  campaignId: string;
+  campaign: import('../../lib/marketingApi.js').CampaignDetailView;
+}) {
   const { data: utm } = useCampaignUtm(campaignId);
 
   return (
@@ -202,7 +234,9 @@ function SummaryTab({ campaignId, campaign }: { campaignId: string; campaign: im
           </Field>
           <Field label="Target leads">{campaign.targetLeads ?? '—'}</Field>
           <Field label="Target enrolments">{campaign.targetEnrolments ?? '—'}</Field>
-          <Field label="Target pipeline value">{campaign.targetPipelineValue !== null ? money(campaign.targetPipelineValue, campaign.currency) : '—'}</Field>
+          <Field label="Target pipeline value">
+            {campaign.targetPipelineValue !== null ? money(campaign.targetPipelineValue, campaign.currency) : '—'}
+          </Field>
           <Field label="Actual leads">{campaign.leadCount}</Field>
           <Field label="Touchpoints">{campaign.touchpointCount}</Field>
         </dl>
@@ -233,7 +267,9 @@ function SummaryTab({ campaignId, campaign }: { campaignId: string; campaign: im
               <ul className="flex flex-col gap-1.5">
                 {utm.links.map((l) => (
                   <li key={l.channelKey} className="flex items-center gap-2 text-xs">
-                    <span className="chip border-ink-700 bg-ink-850 text-ink-400">{CHANNEL_KEY_LABELS[l.channelKey]}</span>
+                    <span className="chip border-ink-700 bg-ink-850 text-ink-400">
+                      {CHANNEL_KEY_LABELS[l.channelKey]}
+                    </span>
                     <CopyableUrl url={l.url} />
                   </li>
                 ))}
@@ -280,7 +316,10 @@ function TimelineTab({ campaignId }: { campaignId: string }) {
   if (!data || data.length === 0) {
     return (
       <Card>
-        <EmptyState message="Nothing has happened on this campaign yet." hint="Touchpoints, sends and status changes appear here as they occur." />
+        <EmptyState
+          message="Nothing has happened on this campaign yet."
+          hint="Touchpoints, sends and status changes appear here as they occur."
+        />
       </Card>
     );
   }
@@ -348,7 +387,9 @@ function SpendTab({ campaignId, currency, canEdit }: { campaignId: string; curre
                     {s.status === 'recorded' && canEdit && (
                       <button
                         className="ml-2 text-2xs text-accent-soft hover:underline"
-                        onClick={() => reconcile.mutate({ id: s.id, body: { transactionId: s.transactionId ?? undefined } })}
+                        onClick={() =>
+                          reconcile.mutate({ id: s.id, body: { transactionId: s.transactionId ?? undefined } })
+                        }
                       >
                         Reconcile
                       </button>
@@ -382,7 +423,10 @@ function RecordSpendModal({ open, onClose, campaignId }: { open: boolean; onClos
       title="Record spend"
       submitLabel="Record it"
       onClose={onClose}
-      invalidate={[['mkt', 'spends'], ['mkt', 'campaign', campaignId]]}
+      invalidate={[
+        ['mkt', 'spends'],
+        ['mkt', 'campaign', campaignId],
+      ]}
       onSubmit={() =>
         createSpend.mutateAsync({
           campaignId,
@@ -522,7 +566,10 @@ function ApprovalsTab({ approvals }: { approvals: import('../../lib/marketingApi
             <tr key={a.id}>
               <td className="text-xs">{a.requestedByName}</td>
               <td>
-                <StatusChip status={a.decision} tone={a.decision === 'approved' ? 'good' : a.decision === 'rejected' ? 'bad' : 'warn'} />
+                <StatusChip
+                  status={a.decision}
+                  tone={a.decision === 'approved' ? 'good' : a.decision === 'rejected' ? 'bad' : 'warn'}
+                />
               </td>
               <td className="text-xs">{a.decidedByName ?? '—'}</td>
               <td className="text-right tabular-nums text-xs">{money(a.thresholdAmount)}</td>
@@ -538,19 +585,49 @@ function ApprovalsTab({ approvals }: { approvals: import('../../lib/marketingApi
   );
 }
 
-function RejectModal({ open, onClose, onSubmit }: { open: boolean; onClose: () => void; onSubmit: (reason: string) => Promise<unknown> }) {
+function RejectModal({
+  open,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (reason: string) => Promise<unknown>;
+}) {
   const [reason, setReason] = useState('');
   return (
-    <CreateModal open={open} title="Reject campaign" submitLabel="Reject" onClose={onClose} onSubmit={() => onSubmit(reason)} onCreated={() => setReason('')}>
+    <CreateModal
+      open={open}
+      title="Reject campaign"
+      submitLabel="Reject"
+      onClose={onClose}
+      onSubmit={() => onSubmit(reason)}
+      onCreated={() => setReason('')}
+    >
       <TextArea label="Reason" required value={reason} onChange={setReason} />
     </CreateModal>
   );
 }
 
-function CancelModal({ open, onClose, onSubmit }: { open: boolean; onClose: () => void; onSubmit: (reason: string) => Promise<unknown> }) {
+function CancelModal({
+  open,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (reason: string) => Promise<unknown>;
+}) {
   const [reason, setReason] = useState('');
   return (
-    <CreateModal open={open} title="Cancel campaign" submitLabel="Cancel campaign" onClose={onClose} onSubmit={() => onSubmit(reason)} onCreated={() => setReason('')}>
+    <CreateModal
+      open={open}
+      title="Cancel campaign"
+      submitLabel="Cancel campaign"
+      onClose={onClose}
+      onSubmit={() => onSubmit(reason)}
+      onCreated={() => setReason('')}
+    >
       <TextArea label="Reason" required value={reason} onChange={setReason} />
     </CreateModal>
   );

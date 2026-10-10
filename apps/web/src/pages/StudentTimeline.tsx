@@ -80,7 +80,11 @@ export function StudentTimeline() {
   const [billing, setBilling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data, isLoading, error: loadError } = useQuery({
+  const {
+    data,
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['learner-timeline', id],
     queryFn: () => api.get<LearnerTimelineView>(`/education/enrollments/${id}/timeline`),
     enabled: Boolean(id),
@@ -142,8 +146,9 @@ export function StudentTimeline() {
       {e.isMinor && (
         <div className="mb-4 rounded-lg border border-band-critical/40 bg-band-critical/5 px-4 py-2.5">
           <p className="text-xs text-band-critical">
-            This student is a minor. Their timeline is classified restricted rather than internal — things written about a
-            child are not ordinary operational notes, and reaching this page at all requires a clearance that covers it.
+            This student is a minor. Their timeline is classified restricted rather than internal — things written about
+            a child are not ordinary operational notes, and reaching this page at all requires a clearance that covers
+            it.
           </p>
         </div>
       )}
@@ -182,10 +187,7 @@ export function StudentTimeline() {
       </div>
 
       {/* ---- Mark today, and the four things that can be recorded ---------- */}
-      <Card
-        title="Record something"
-        subtitle="Attendance, or anything else worth recording."
-      >
+      <Card title="Record something" subtitle="Attendance, or anything else worth recording.">
         <div className="flex flex-wrap gap-2">
           {['present', 'late', 'absent', 'excused'].map((status) => (
             <button key={status} className="btn" onClick={() => mark.mutate(status)} disabled={mark.isPending}>
@@ -228,14 +230,18 @@ export function StudentTimeline() {
               {data.open.map((row) => (
                 <tr key={row.id}>
                   <td>
-                    <span className={`chip ${row.kind === 'issue' ? 'border-band-critical/40 text-band-critical' : 'border-band-watch/40 text-band-watch'}`}>
+                    <span
+                      className={`chip ${row.kind === 'issue' ? 'border-band-critical/40 text-band-critical' : 'border-band-watch/40 text-band-watch'}`}
+                    >
                       {LEARNER_LOG_LABELS[row.kind as LearnerLogKind] ?? row.kind}
                     </span>
                   </td>
                   <td className="text-xs text-ink-100">{row.title}</td>
                   <td className="text-2xs text-ink-400">{row.severity ? humanize(row.severity) : '—'}</td>
                   <td className="text-2xs text-ink-400">{date(row.raisedOn)}</td>
-                  <td className={`text-right tabular-nums text-2xs ${row.ageDays > 7 ? 'text-band-watch' : 'text-ink-500'}`}>
+                  <td
+                    className={`text-right tabular-nums text-2xs ${row.ageDays > 7 ? 'text-band-watch' : 'text-ink-500'}`}
+                  >
                     {row.ageDays}d
                   </td>
                   <td>
@@ -323,7 +329,11 @@ export function StudentTimeline() {
       ) : (
         <div className="space-y-3">
           {data.days.map((day) => (
-            <Card key={day.day} title={date(day.day)} subtitle={`${day.entries.length} entr${day.entries.length === 1 ? 'y' : 'ies'}`}>
+            <Card
+              key={day.day}
+              title={date(day.day)}
+              subtitle={`${day.entries.length} entr${day.entries.length === 1 ? 'y' : 'ies'}`}
+            >
               <ul className="space-y-2">
                 {day.entries.map((entry) => (
                   <TimelineRow key={entry.id} entry={entry} onResolve={(logId) => resolve.mutate(logId)} />
@@ -370,9 +380,7 @@ function TimelineRow({ entry, onResolve }: { entry: TimelineEntryView; onResolve
           )}
         </div>
         {entry.detail && <p className="mt-0.5 text-2xs text-ink-400">{entry.detail}</p>}
-        {entry.resolutionNote && (
-          <p className="mt-0.5 text-2xs text-band-strong">Resolved: {entry.resolutionNote}</p>
-        )}
+        {entry.resolutionNote && <p className="mt-0.5 text-2xs text-band-strong">Resolved: {entry.resolutionNote}</p>}
         <p className="mt-0.5 text-2xs text-ink-600">
           {entry.recordedBy ? `recorded by ${entry.recordedBy}` : 'recorded'}
           {entry.resolvedAt ? ` · closed ${date(entry.resolvedAt)}` : ''}
@@ -494,9 +502,7 @@ function RecordProgress({ enrollmentId, onClose }: { enrollmentId: string; onClo
         <TextInput label="Score out of 100" type="number" value={score} onChange={setScore} />
       </Row>
       <TextArea label="Note" value={note} onChange={setNote} rows={2} />
-      <p className="text-2xs text-ink-500">
-        One row per student per day. Progress is the mean of the scores.
-      </p>
+      <p className="text-2xs text-ink-500">One row per student per day. Progress is the mean of the scores.</p>
     </CreateModal>
   );
 }
@@ -511,7 +517,11 @@ function RecordProgress({ enrollmentId, onClose }: { enrollmentId: string; onClo
 export function LearnerQueue() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const { data = [], isLoading, error: loadError } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['learner-open'],
     queryFn: () => api.get<any[]>('/education/learner-log/open'),
   });
@@ -529,10 +539,7 @@ export function LearnerQueue() {
 
   return (
     <div>
-      <PageHeader
-        title="Student queries and issues"
-        subtitle="Open questions and problems."
-      />
+      <PageHeader title="Student queries and issues" subtitle="Open questions and problems." />
 
       {error && (
         <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
@@ -572,7 +579,9 @@ export function LearnerQueue() {
                   <td>
                     <span
                       className={`chip ${
-                        row.kind === 'issue' ? 'border-band-critical/40 text-band-critical' : 'border-band-watch/40 text-band-watch'
+                        row.kind === 'issue'
+                          ? 'border-band-critical/40 text-band-critical'
+                          : 'border-band-watch/40 text-band-watch'
                       }`}
                     >
                       {LEARNER_LOG_LABELS[row.kind as LearnerLogKind] ?? row.kind}
@@ -594,7 +603,9 @@ export function LearnerQueue() {
                   <td className={`text-2xs ${row.severity === 'high' ? 'text-band-critical' : 'text-ink-400'}`}>
                     {row.severity ? humanize(row.severity) : '—'}
                   </td>
-                  <td className={`text-right tabular-nums text-2xs ${row.ageDays > 7 ? 'text-band-watch' : 'text-ink-500'}`}>
+                  <td
+                    className={`text-right tabular-nums text-2xs ${row.ageDays > 7 ? 'text-band-watch' : 'text-ink-500'}`}
+                  >
                     {row.ageDays}d
                   </td>
                   <td>

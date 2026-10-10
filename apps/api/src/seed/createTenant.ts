@@ -50,7 +50,9 @@ const ORIGIN_DIVISIONS = ['software', 'skill', 'education'] as const;
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.slug || !args.name) {
-    console.error('Usage: tsx src/seed/createTenant.ts --slug <slug> --name <name> [--parent <slug>] [--origin-division software|skill|education] [--chairman-email <email>]');
+    console.error(
+      'Usage: tsx src/seed/createTenant.ts --slug <slug> --name <name> [--parent <slug>] [--origin-division software|skill|education] [--chairman-email <email>]',
+    );
     process.exit(1);
   }
   if (args['origin-division'] && !ORIGIN_DIVISIONS.includes(args['origin-division'] as never)) {
@@ -71,13 +73,18 @@ async function main() {
     const email = args['chairman-email'].toLowerCase();
     const principal = await unscopedPrisma.principal.findFirst({ where: { email } });
     if (!principal) {
-      console.error(`No principal exists yet for ${email} — create their sign-in first (they must already be able to log in somewhere).`);
+      console.error(
+        `No principal exists yet for ${email} — create their sign-in first (they must already be able to log in somewhere).`,
+      );
     } else {
       const existingUser = await unscopedPrisma.user.findFirst({ where: { tenantId, principalId: principal.id } });
       await asSystem(tenantId, async () => {
         let user = existingUser;
         if (!user) {
-          const source = await unscopedPrisma.user.findFirst({ where: { principalId: principal.id }, include: { person: true } });
+          const source = await unscopedPrisma.user.findFirst({
+            where: { principalId: principal.id },
+            include: { person: true },
+          });
           const person = source
             ? await prisma.person.create({
                 data: {
@@ -94,13 +101,24 @@ async function main() {
             console.error(`Could not resolve a name for ${email} — skipping the director affiliation.`);
             return;
           }
-          user = await prisma.user.create({ data: { tenantId, personId: person.id, email, principalId: principal.id } });
+          user = await prisma.user.create({
+            data: { tenantId, personId: person.id, email, principalId: principal.id },
+          });
         }
 
-        const affiliation = await prisma.affiliation.findFirst({ where: { partyId: user.personId, roleSlug: 'director' } });
+        const affiliation = await prisma.affiliation.findFirst({
+          where: { partyId: user.personId, roleSlug: 'director' },
+        });
         if (!affiliation) {
           await prisma.affiliation.create({
-            data: { tenantId, partyId: user.personId, affiliationType: 'director', roleSlug: 'director', status: 'active', primaryFlag: false },
+            data: {
+              tenantId,
+              partyId: user.personId,
+              affiliationType: 'director',
+              roleSlug: 'director',
+              status: 'active',
+              primaryFlag: false,
+            },
           });
           console.log(`  director affiliation created for ${email} in ${args.slug}`);
         } else {

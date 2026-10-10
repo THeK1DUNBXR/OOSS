@@ -34,9 +34,7 @@ export function isDivision(value: string | null | undefined): value is Division 
 // Ledger vocabulary
 // ---------------------------------------------------------------------------
 
-export const CATEGORY_KINDS = [
-  'income', 'expense', 'asset_purchase', 'transfer', 'tax', 'drawings', 'equity',
-] as const;
+export const CATEGORY_KINDS = ['income', 'expense', 'asset_purchase', 'transfer', 'tax', 'drawings', 'equity'] as const;
 export type CategoryKind = (typeof CATEGORY_KINDS)[number];
 
 /**
@@ -63,7 +61,14 @@ export const CATEGORY_BEHAVIOURS = ['recurring_fixed', 'variable', 'one_time', '
 export type CategoryBehaviour = (typeof CATEGORY_BEHAVIOURS)[number];
 
 export const TRANSACTION_SOURCES = [
-  'manual', 'bank_import', 'payroll', 'invoice', 'vendor_bill', 'recurring', 'asset', 'loan',
+  'manual',
+  'bank_import',
+  'payroll',
+  'invoice',
+  'vendor_bill',
+  'recurring',
+  'asset',
+  'loan',
 ] as const;
 export type TransactionSource = (typeof TRANSACTION_SOURCES)[number];
 
@@ -451,9 +456,26 @@ export function invoicePayable(grandTotal: number | null | undefined, lineTotal:
 // ---------------------------------------------------------------------------
 
 const ONES = [
-  '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
-  'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen',
-  'Eighteen', 'Nineteen',
+  '',
+  'One',
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+  'Ten',
+  'Eleven',
+  'Twelve',
+  'Thirteen',
+  'Fourteen',
+  'Fifteen',
+  'Sixteen',
+  'Seventeen',
+  'Eighteen',
+  'Nineteen',
 ];
 const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
@@ -588,9 +610,7 @@ export function depreciationSchedule(input: DepreciationInput): DepreciationPeri
   let carrying = input.cost;
 
   for (let i = 0; i < input.usefulLifeMonths; i += 1) {
-    const d = new Date(
-      Date.UTC(input.purchaseDate.getUTCFullYear(), input.purchaseDate.getUTCMonth() + i, 1),
-    );
+    const d = new Date(Date.UTC(input.purchaseDate.getUTCFullYear(), input.purchaseDate.getUTCMonth() + i, 1));
     const opening = carrying;
 
     let charge: number;

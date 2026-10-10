@@ -7,7 +7,7 @@ technology portfolio and its budget, and the continuity plan behind each
 system — in the same structural style as the rest of the platform.
 Authority separated, documents final once issued, everything audited,
 deadlines run as jobs rather than remembered by a person, and a health score
-that says *not yet measured* until there is something to measure.
+that says _not yet measured_ until there is something to measure.
 
 On screen the module is called **Technology**. "CIO" is the audience, not a
 label: the sidebar group says Technology, the overview says what the
@@ -24,17 +24,17 @@ answer.
 
 ## Where the platform stands
 
-| Area | Exists | Partial | Absent |
-|---|---|---|---|
-| Asset register | `FixedAsset` (`main.prisma`) — the *books'* capital register: cost, salvage, useful life, SLM/WDV, disposal | — | Serial numbers, assignment to a person, warranty, location, lifecycle (in stock → assigned → repair → retired), hand-over/return acknowledgement |
-| Software and licences | — | `VendorBill` carries a vendor name and a bill; nothing says what was bought or for how many seats | Application catalogue, licence seats and renewals, SaaS subscriptions, seat utilisation, shadow-IT |
-| Vendors and contracts | `Contract` / `Mou` / `PartnerAgreement` — *customer-side* agreements with the approval gate and expiry ladder | `VendorBill.vendorName` is a string, not a master | A vendor master, vendor risk tier, security assessment, DPA, vendor contract with notice period and renewal, tied to the self-dealing bar |
-| Service desk | `ExceptionRecord` (system-raised problems), `Notification`, `Task` | — | A ticket a person raises, priority and SLA clocks from a dated table, assignment, comments, knowledge base, satisfaction |
-| Incidents, problems, changes | `DataBreach` (privacy register) | — | Major-incident timeline (detected → acknowledged → mitigated → resolved), MTTR, post-incident review, problem/known-error, change request with CAB approval, freeze windows |
-| Security and governance | `SecurityPolicy` (MFA/session/password), `BackupRun`, privacy `AccessReview` (stale affiliations), sensitivity registry, hash-chained audit | `H_RSK` rolls up exceptions | An IT risk register with inherent/residual scoring, IT policy documents staff acknowledge, a control library mapped to frameworks, an access-review campaign with a self-review bar, security findings with severity-driven remediation SLAs |
-| Portfolio and budget | `BudgetLine` (finance, by category/period/division), `Project` (delivery) | — | A technology initiative with a business case and stage gates, a roadmap, run-vs-grow technology budget, technical debt |
-| Continuity | `BackupRun` (the platform's own backup) | — | RTO/RPO per application, DR plan and test log, availability readings, maintenance windows |
-| Command Center | Ten domain health scores, attention queue, decision queue | — | An eleventh domain for technology |
+| Area                         | Exists                                                                                                                                      | Partial                                                                                           | Absent                                                                                                                                                                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Asset register               | `FixedAsset` (`main.prisma`) — the _books'_ capital register: cost, salvage, useful life, SLM/WDV, disposal                                 | —                                                                                                 | Serial numbers, assignment to a person, warranty, location, lifecycle (in stock → assigned → repair → retired), hand-over/return acknowledgement                                                                                             |
+| Software and licences        | —                                                                                                                                           | `VendorBill` carries a vendor name and a bill; nothing says what was bought or for how many seats | Application catalogue, licence seats and renewals, SaaS subscriptions, seat utilisation, shadow-IT                                                                                                                                           |
+| Vendors and contracts        | `Contract` / `Mou` / `PartnerAgreement` — _customer-side_ agreements with the approval gate and expiry ladder                               | `VendorBill.vendorName` is a string, not a master                                                 | A vendor master, vendor risk tier, security assessment, DPA, vendor contract with notice period and renewal, tied to the self-dealing bar                                                                                                    |
+| Service desk                 | `ExceptionRecord` (system-raised problems), `Notification`, `Task`                                                                          | —                                                                                                 | A ticket a person raises, priority and SLA clocks from a dated table, assignment, comments, knowledge base, satisfaction                                                                                                                     |
+| Incidents, problems, changes | `DataBreach` (privacy register)                                                                                                             | —                                                                                                 | Major-incident timeline (detected → acknowledged → mitigated → resolved), MTTR, post-incident review, problem/known-error, change request with CAB approval, freeze windows                                                                  |
+| Security and governance      | `SecurityPolicy` (MFA/session/password), `BackupRun`, privacy `AccessReview` (stale affiliations), sensitivity registry, hash-chained audit | `H_RSK` rolls up exceptions                                                                       | An IT risk register with inherent/residual scoring, IT policy documents staff acknowledge, a control library mapped to frameworks, an access-review campaign with a self-review bar, security findings with severity-driven remediation SLAs |
+| Portfolio and budget         | `BudgetLine` (finance, by category/period/division), `Project` (delivery)                                                                   | —                                                                                                 | A technology initiative with a business case and stage gates, a roadmap, run-vs-grow technology budget, technical debt                                                                                                                       |
+| Continuity                   | `BackupRun` (the platform's own backup)                                                                                                     | —                                                                                                 | RTO/RPO per application, DR plan and test log, availability readings, maintenance windows                                                                                                                                                    |
+| Command Center               | Ten domain health scores, attention queue, decision queue                                                                                   | —                                                                                                 | An eleventh domain for technology                                                                                                                                                                                                            |
 
 The gap has the shape the compliance plan found: the platform has the
 structural primitives — governed writes, the record-code generator, the
@@ -101,17 +101,17 @@ These extend rules the platform already enforces elsewhere.
 Every workstream is built side by side, each in its own files, exactly the
 way the compliance workstreams were:
 
-| Layer | Path |
-|---|---|
-| Schema | `apps/api/prisma/schema/it-<ws>.prisma` |
-| Shared types and pure arithmetic | `packages/shared/src/it/<ws>.ts` |
-| Domain | `apps/api/src/domains/it/<ws>.ts` |
-| Routes | `apps/api/src/routes/it/<ws>.routes.ts`, mounted at `/api/it/<segment>` |
-| Seed | `apps/api/src/seed/it/<ws>.ts` (dated tables, defaults; idempotent by code) |
-| Jobs | `apps/api/src/jobs/it/<ws>.ts` exporting `JOBS` |
-| Tests | `apps/api/src/tests/it/<ws>.test.ts` |
-| Web | `apps/web/src/pages/it/<Screen>.tsx`, routed under `/it/...` |
-| Docs | `docs/it/<ws>.md` |
+| Layer                            | Path                                                                        |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| Schema                           | `apps/api/prisma/schema/it-<ws>.prisma`                                     |
+| Shared types and pure arithmetic | `packages/shared/src/it/<ws>.ts`                                            |
+| Domain                           | `apps/api/src/domains/it/<ws>.ts`                                           |
+| Routes                           | `apps/api/src/routes/it/<ws>.routes.ts`, mounted at `/api/it/<segment>`     |
+| Seed                             | `apps/api/src/seed/it/<ws>.ts` (dated tables, defaults; idempotent by code) |
+| Jobs                             | `apps/api/src/jobs/it/<ws>.ts` exporting `JOBS`                             |
+| Tests                            | `apps/api/src/tests/it/<ws>.test.ts`                                        |
+| Web                              | `apps/web/src/pages/it/<Screen>.tsx`, routed under `/it/...`                |
+| Docs                             | `docs/it/<ws>.md`                                                           |
 
 Cross-workstream references are bare string ids (an asset names its
 `fixedAssetId`; a DR plan names its `applicationId`), resolved at the
@@ -127,29 +127,29 @@ edits another's, and so that the chairman's row — generated from
 
 ## Grant matrix
 
-| Resource | Employee | Operations Head | Finance Head | Chairman |
-|---|---|---|---|---|
-| `it_assets` | `V@own` (what is assigned to me) | `VCEDAX` | `VF` | all |
-| `it_applications` | `V@all` (the catalogue) | `VCEDX` | `V` | all |
-| `it_licences` | – | `VCEX` | `VF,approve` | all |
-| `it_vendors` | – | `VCEX` | `V` | all |
-| `it_vendor_contracts` | – | `VCEX` | `VF,approve` | all |
-| `it_tickets` | `VC@own` | `VCEDAX` | `V` | all |
-| `it_sla_policies` | – | `VCE` | `V` | all |
-| `it_knowledge` | `V@all` | `VCEDX` | `V` | all |
-| `it_incidents` | – | `VCEDAX` | `V` | all |
-| `it_problems` | – | `VCEDAX` | `V` | all |
-| `it_changes` | `VC@own` (an engineer proposes) | `VCEX,approve` | `V` | all |
-| `it_risks` | – | `VCEX` | `V` | all |
-| `it_policies` | `V@all` (published policies) | `VCEX` | `V` | all (`approve` publishes) |
-| `it_policy_acknowledgements` | `VC@own` | `V` | `V` | all |
-| `it_controls` | – | `VCEX` | `V` | all |
-| `it_access_reviews` | – | `VCEA` | `V` | all |
-| `it_findings` | – | `VCEDX` | `V` | all |
-| `it_initiatives` | – | `VCEX` | `V,approve` | all |
-| `it_budgets` | – | `VCE` | `VCEDXF,approve` | all |
-| `it_tech_debt` | – | `VCEDX` | `V` | all |
-| `it_continuity` | – | `VCEDX` | `V` | all |
+| Resource                     | Employee                         | Operations Head | Finance Head     | Chairman                  |
+| ---------------------------- | -------------------------------- | --------------- | ---------------- | ------------------------- |
+| `it_assets`                  | `V@own` (what is assigned to me) | `VCEDAX`        | `VF`             | all                       |
+| `it_applications`            | `V@all` (the catalogue)          | `VCEDX`         | `V`              | all                       |
+| `it_licences`                | –                                | `VCEX`          | `VF,approve`     | all                       |
+| `it_vendors`                 | –                                | `VCEX`          | `V`              | all                       |
+| `it_vendor_contracts`        | –                                | `VCEX`          | `VF,approve`     | all                       |
+| `it_tickets`                 | `VC@own`                         | `VCEDAX`        | `V`              | all                       |
+| `it_sla_policies`            | –                                | `VCE`           | `V`              | all                       |
+| `it_knowledge`               | `V@all`                          | `VCEDX`         | `V`              | all                       |
+| `it_incidents`               | –                                | `VCEDAX`        | `V`              | all                       |
+| `it_problems`                | –                                | `VCEDAX`        | `V`              | all                       |
+| `it_changes`                 | `VC@own` (an engineer proposes)  | `VCEX,approve`  | `V`              | all                       |
+| `it_risks`                   | –                                | `VCEX`          | `V`              | all                       |
+| `it_policies`                | `V@all` (published policies)     | `VCEX`          | `V`              | all (`approve` publishes) |
+| `it_policy_acknowledgements` | `VC@own`                         | `V`             | `V`              | all                       |
+| `it_controls`                | –                                | `VCEX`          | `V`              | all                       |
+| `it_access_reviews`          | –                                | `VCEA`          | `V`              | all                       |
+| `it_findings`                | –                                | `VCEDX`         | `V`              | all                       |
+| `it_initiatives`             | –                                | `VCEX`          | `V,approve`      | all                       |
+| `it_budgets`                 | –                                | `VCE`           | `VCEDXF,approve` | all                       |
+| `it_tech_debt`               | –                                | `VCEDX`         | `V`              | all                       |
+| `it_continuity`              | –                                | `VCEDX`         | `V`              | all                       |
 
 The shape is the compensation split, applied to technology: the Operations
 Head runs the desk and proposes spend; the Finance Head approves licences,
@@ -189,6 +189,7 @@ controls that appear only when the lifecycle says they exist), employee's
 own assets on My IT.
 
 **Acceptance.**
+
 - IT-AST-001: PASS when an asset's transitions are exactly those its state
   machine declares, FAIL if `disposed` is reachable from `assigned`.
 - IT-AST-002: PASS when assigning writes an assignment row and returning
@@ -223,6 +224,7 @@ Screens: Applications list and detail (licences, incidents, DR plan
 links), Licences list (tabs: renewing, over-allocated, all) and detail.
 
 **Acceptance.**
+
 - IT-APP-001: PASS when an application with no owner raises an exception
   rather than sitting silently unowned.
 - IT-LIC-001: PASS when the renewal ladder fires once per rung; a second
@@ -256,6 +258,7 @@ licences, assessment history), Contracts list and detail (approve /
 terminate / renew).
 
 **Acceptance.**
+
 - IT-VEN-001: PASS when a vendor whose security assessment is past its
   next-due date raises an exception.
 - IT-VCT-001: PASS when approving a contract one proposed reroutes to the
@@ -267,7 +270,7 @@ terminate / renew).
 
 ### D. Service desk
 
-**Today.** `ExceptionRecord` is what the *system* raises. Nothing a person
+**Today.** `ExceptionRecord` is what the _system_ raises. Nothing a person
 raises exists.
 
 **Build.** `ItSlaPolicy` — dated table: priority (P1 … P4) → response and
@@ -283,7 +286,7 @@ helpful count. SLA job: response and resolution breaches raise exceptions
 on the assignee (or the desk owner when unassigned) once per clock; a
 ticket waiting more than a dated threshold raises a nudge. Summary: open by
 priority, SLA attainment this month (response and resolution, or
-*not yet measured*), median time to resolve, backlog age, satisfaction.
+_not yet measured_), median time to resolve, backlog age, satisfaction.
 Screens: Service Desk (tabs: mine, unassigned, open, breached, all),
 Ticket detail (timeline, comments, assign / triage / resolve / close,
 satisfaction), Knowledge base, and **My IT** — an employee's own tickets,
@@ -291,6 +294,7 @@ own assets, policies awaiting their acknowledgement, and a raise-a-ticket
 form.
 
 **Acceptance.**
+
 - IT-SLA-001: PASS when triage stamps due times from the policy dated as
   in force on the ticket's creation date, not today's.
 - IT-TKT-001: PASS when an employee sees only tickets they raised and can
@@ -299,7 +303,7 @@ form.
   and a re-run raises none.
 - IT-TKT-003: PASS when only the requester can rate a resolved ticket and
   the rating is set once.
-- IT-TKT-004: PASS when SLA attainment reports *not yet measured* with no
+- IT-TKT-004: PASS when SLA attainment reports _not yet measured_ with no
   closed tickets in the period, never 100 %.
 
 ### E. Incidents, problems and changes
@@ -331,6 +335,7 @@ Screens: Incidents list and detail (timeline, updates, declare / acknowledge
 (submit / approve / schedule / implement / review).
 
 **Acceptance.**
+
 - IT-INC-001: PASS when timeline stamps are set once and a second
   `acknowledge` is refused.
 - IT-INC-002: PASS when a sev1 cannot close without a published review and
@@ -374,6 +379,7 @@ Screens: Risks, Policies (list, detail, acknowledge), Controls, Access
 Reviews (campaign, item decisions), Findings.
 
 **Acceptance.**
+
 - IT-RSK-001: PASS when residual score and band come from the dated table
   (pure arithmetic tested without DB) and never from a constant.
 - IT-POL-001: PASS when publishing needs `approve`, the drafter cannot
@@ -413,6 +419,7 @@ by category, run/grow split, tech-debt by severity. Screens: Portfolio
 colours), Technical debt.
 
 **Acceptance.**
+
 - IT-INI-001: PASS when approving an initiative one sponsors reroutes on
   the self-dealing bar; below the ceiling the Finance Head approves
   directly.
@@ -443,6 +450,7 @@ next maintenance. Screens: Continuity (plans by application with test
 history, record a test), Availability, Maintenance windows.
 
 **Acceptance.**
+
 - IT-DR-001: PASS when a tier-1 application without a continuity plan
   raises an exception with the application as subject.
 - IT-DR-002: PASS when a test whose recovery time exceeds RTO raises an
@@ -460,17 +468,18 @@ workstream's summary into a KPI wall: assets and warranty runway, licence
 spend and renewals, vendor contracts expiring, open tickets and SLA
 attainment, incidents and MTTR, change success, risks by band, findings
 overdue, policy acknowledgement, portfolio RAG, budget burn, continuity
-coverage — each tile with a drill path, and each *not yet measured* when
+coverage — each tile with a drill path, and each _not yet measured_ when
 its workstream says so. `H_TEC` — the eleventh Command Center domain,
 computed in `health.ts` from six factors (SLA attainment, incident
 recovery, change success, risk exposure, finding remediation, continuity
 coverage), each omitted while unmeasured; owner resolution prefers the
 Operations Head then the chairman. Nav, `DOMAIN_WORDS`, the acceptance
 crosswalk (`docs/acceptance.md`), `docs/it/README.md`, the README's module
-list and *What to look at*, and one Playwright smoke test that walks the
+list and _What to look at_, and one Playwright smoke test that walks the
 Technology group.
 
 **Acceptance.**
+
 - IT-OVR-001: PASS when the overview renders every tile as not yet
   measured on an empty tenant and no tile reads zero.
 - IT-HLT-001: PASS when `H_TEC` reports `not_yet_measured` with no inputs

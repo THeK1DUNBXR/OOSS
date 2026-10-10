@@ -27,7 +27,7 @@ PIPs, succession).
   close.
 - `FinalRating` — one row per (cycle, employment). Carries `rating`,
   `potential` (the second 9-box axis), `band`, `promotionRecommended`, and
-  `incrementRecommendedPct` — a calibration *recommendation* for WS7
+  `incrementRecommendedPct` — a calibration _recommendation_ for WS7
   compensation to act on, never a disbursement, so it is not withheld-as-null
   the way an actual pay figure would be. `released` gates visibility to the
   subject.
@@ -90,31 +90,31 @@ Every write is grant-checked via `assertCan`/`scopeFor`, tenant-scoped through
 
 ### Routes (`apps/api/src/routes/hcm/performance.routes.ts`, mounted at `/api/hcm/performance`)
 
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/_status` | `{ module: 'performance', ready: true }` |
-| GET | `/my/context` | The caller's own employment relationship id |
-| GET/POST | `/review-cycles` | List / open a cycle |
-| GET | `/review-cycles/:id` | One cycle (404 cross-tenant) |
-| POST | `/review-cycles/:id/phase` | Advance one phase |
-| GET/POST | `/review-templates` | |
-| GET/POST | `/review-assignments` | `?cycleId=&employmentRelationshipId=&mine=true` |
-| GET | `/review-assignments/:id` | With its response, if any |
-| POST | `/review-assignments/:id/submit` | Files the `ReviewResponse` |
-| GET/POST | `/calibrations` | `?cycleId=` |
-| PATCH | `/calibrations/:id` | Record/update decisions while open |
-| POST | `/calibrations/:id/close` | Snapshots decisions to `FinalRating` |
-| GET | `/final-ratings` | `?cycleId=&employmentRelationshipId=` |
-| POST | `/final-ratings/:id/release` | Self-Dealing Bar enforced |
-| GET | `/nine-box?cycleId=` | All-scope only |
-| GET/POST | `/feedback` | `?employmentRelationshipId=&direction=given\|received` |
-| GET/POST | `/one-on-ones` | |
-| PATCH | `/one-on-ones/:id` | Notes/actions/status |
-| GET/POST | `/pips` | |
-| POST | `/pips/:id/checkpoints` | |
-| POST | `/pips/:id/close` | Self-Dealing Bar enforced |
-| GET/POST | `/succession-plans` | |
-| PATCH | `/succession-plans/:id` | Replace the successor list |
+| Method   | Path                             | Notes                                                  |
+| -------- | -------------------------------- | ------------------------------------------------------ |
+| GET      | `/_status`                       | `{ module: 'performance', ready: true }`               |
+| GET      | `/my/context`                    | The caller's own employment relationship id            |
+| GET/POST | `/review-cycles`                 | List / open a cycle                                    |
+| GET      | `/review-cycles/:id`             | One cycle (404 cross-tenant)                           |
+| POST     | `/review-cycles/:id/phase`       | Advance one phase                                      |
+| GET/POST | `/review-templates`              |                                                        |
+| GET/POST | `/review-assignments`            | `?cycleId=&employmentRelationshipId=&mine=true`        |
+| GET      | `/review-assignments/:id`        | With its response, if any                              |
+| POST     | `/review-assignments/:id/submit` | Files the `ReviewResponse`                             |
+| GET/POST | `/calibrations`                  | `?cycleId=`                                            |
+| PATCH    | `/calibrations/:id`              | Record/update decisions while open                     |
+| POST     | `/calibrations/:id/close`        | Snapshots decisions to `FinalRating`                   |
+| GET      | `/final-ratings`                 | `?cycleId=&employmentRelationshipId=`                  |
+| POST     | `/final-ratings/:id/release`     | Self-Dealing Bar enforced                              |
+| GET      | `/nine-box?cycleId=`             | All-scope only                                         |
+| GET/POST | `/feedback`                      | `?employmentRelationshipId=&direction=given\|received` |
+| GET/POST | `/one-on-ones`                   |                                                        |
+| PATCH    | `/one-on-ones/:id`               | Notes/actions/status                                   |
+| GET/POST | `/pips`                          |                                                        |
+| POST     | `/pips/:id/checkpoints`          |                                                        |
+| POST     | `/pips/:id/close`                | Self-Dealing Bar enforced                              |
+| GET/POST | `/succession-plans`              |                                                        |
+| PATCH    | `/succession-plans/:id`          | Replace the successor list                             |
 
 ### Web
 
@@ -133,19 +133,19 @@ scaffold (WS0), as was the `RVW` record-code prefix.
 
 ## Acceptance
 
-| ID | PASS means | Test |
-|---|---|---|
-| HCM-PERFORMANCE-001 | A new cycle gets an `RVW-YYYY-NNNNN` code and opens in phase `self` | `allocates a RVW-prefixed record code and opens in phase self` |
-| HCM-PERFORMANCE-002 | A cycle only ever advances exactly one phase; skipping ahead is refused (422) | `refuses jumping from self straight to closed` / `accepts self -> manager in order` |
-| HCM-PERFORMANCE-003 | A reviewer never reviews themselves outside the self form | `refuses a manager-kind assignment where the reviewer is the subject` / `accepts a self-kind assignment...` |
-| HCM-PERFORMANCE-004 | A submitted review is final; resubmitting is refused (409) | `moves the assignment to submitted and refuses a second submission` |
-| HCM-PERFORMANCE-005 | Closing calibration snapshots each decision into a `FinalRating`; closing twice is refused (409) | `creates a FinalRating row per decision` / `refuses closing an already-closed session` |
-| HCM-PERFORMANCE-006 | The Self-Dealing Bar: nobody releases their own rating (403) | `refuses when the releaser is the rating's subject` |
-| HCM-PERFORMANCE-007 | A rating is invisible to its subject until the cycle is closed **and** released | `is invisible before release, visible to the subject after` |
-| HCM-PERFORMANCE-008 | The 9-box needs an all-scope grant; an own-scoped caller is refused (403) | `refuses an own-scoped employee` / `lets hr_ops_manager compute the cell...` |
-| HCM-PERFORMANCE-009 | Feedback reaches its giver/recipient/HR; giving "from" someone else is refused | `an unrelated employee cannot list feedback...` / `refuses giving feedback "from" someone other than yourself` |
-| HCM-PERFORMANCE-010 | The Self-Dealing Bar: nobody closes their own PIP (403); a different manager can | `refuses when the closer is the PIP subject, accepts a different manager` |
-| HCM-PERFORMANCE-011 | A review cycle from another tenant is a 404, not a leak | `returns 404 rather than the record` |
+| ID                  | PASS means                                                                                       | Test                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| HCM-PERFORMANCE-001 | A new cycle gets an `RVW-YYYY-NNNNN` code and opens in phase `self`                              | `allocates a RVW-prefixed record code and opens in phase self`                                                 |
+| HCM-PERFORMANCE-002 | A cycle only ever advances exactly one phase; skipping ahead is refused (422)                    | `refuses jumping from self straight to closed` / `accepts self -> manager in order`                            |
+| HCM-PERFORMANCE-003 | A reviewer never reviews themselves outside the self form                                        | `refuses a manager-kind assignment where the reviewer is the subject` / `accepts a self-kind assignment...`    |
+| HCM-PERFORMANCE-004 | A submitted review is final; resubmitting is refused (409)                                       | `moves the assignment to submitted and refuses a second submission`                                            |
+| HCM-PERFORMANCE-005 | Closing calibration snapshots each decision into a `FinalRating`; closing twice is refused (409) | `creates a FinalRating row per decision` / `refuses closing an already-closed session`                         |
+| HCM-PERFORMANCE-006 | The Self-Dealing Bar: nobody releases their own rating (403)                                     | `refuses when the releaser is the rating's subject`                                                            |
+| HCM-PERFORMANCE-007 | A rating is invisible to its subject until the cycle is closed **and** released                  | `is invisible before release, visible to the subject after`                                                    |
+| HCM-PERFORMANCE-008 | The 9-box needs an all-scope grant; an own-scoped caller is refused (403)                        | `refuses an own-scoped employee` / `lets hr_ops_manager compute the cell...`                                   |
+| HCM-PERFORMANCE-009 | Feedback reaches its giver/recipient/HR; giving "from" someone else is refused                   | `an unrelated employee cannot list feedback...` / `refuses giving feedback "from" someone other than yourself` |
+| HCM-PERFORMANCE-010 | The Self-Dealing Bar: nobody closes their own PIP (403); a different manager can                 | `refuses when the closer is the PIP subject, accepts a different manager`                                      |
+| HCM-PERFORMANCE-011 | A review cycle from another tenant is a 404, not a leak                                          | `returns 404 rather than the record`                                                                           |
 
 ## What this does not do
 

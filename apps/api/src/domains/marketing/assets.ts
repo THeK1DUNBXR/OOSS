@@ -46,7 +46,9 @@ export async function createAsset(input: AssetInput) {
   await assertCan({ resource: 'marketing_assets', verb: 'create' });
 
   if (input.campaignId) {
-    const campaign = await prisma.marketingCampaign.findFirst({ where: { id: input.campaignId, tenantId: auth.tenantId } });
+    const campaign = await prisma.marketingCampaign.findFirst({
+      where: { id: input.campaignId, tenantId: auth.tenantId },
+    });
     if (!campaign) throw ApiError.notFound('Campaign');
   }
 
@@ -101,7 +103,12 @@ export async function listAssets(filters: AssetListFilters = {}) {
   };
 
   const [items, total] = await Promise.all([
-    prisma.marketingAsset.findMany({ where: where as never, orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.marketingAsset.findMany({
+      where: where as never,
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
     prisma.marketingAsset.count({ where: where as never }),
   ]);
   return { items: items.map(withExpired), total, page, pageSize };
@@ -224,8 +231,12 @@ export async function rejectAsset(id: string, reason: string) {
   const auth = currentAuth();
   const asset = await prisma.marketingAsset.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!asset) throw ApiError.notFound('Asset');
-  if (asset.status !== 'in_review') throw ApiError.conflict(`Only an in-review asset can be rejected (currently ${asset.status}).`);
-  const updated = await prisma.marketingAsset.update({ where: { id }, data: { status: 'draft', updatedById: auth.partyId } });
+  if (asset.status !== 'in_review')
+    throw ApiError.conflict(`Only an in-review asset can be rejected (currently ${asset.status}).`);
+  const updated = await prisma.marketingAsset.update({
+    where: { id },
+    data: { status: 'draft', updatedById: auth.partyId },
+  });
   await emit({
     name: EVENTS.MKT_ASSET_SUBMITTED,
     subject: { entityType: 'marketing_asset', entityId: id, recordCode: asset.recordCode },
@@ -348,7 +359,9 @@ export async function listSocialPosts(filters: { channelKey?: string; from?: Dat
       ...(filters.channelKey ? { channelKey: filters.channelKey } : {}),
       ...(filters.status ? { status: filters.status } : {}),
       ...(filters.from || filters.to
-        ? { scheduledAt: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } }
+        ? {
+            scheduledAt: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) },
+          }
         : {}),
     },
     orderBy: { scheduledAt: 'desc' },
@@ -368,7 +381,8 @@ export async function updateSocialPost(id: string, patch: Partial<SocialPostInpu
   await assertCan({ resource: 'marketing_assets', verb: 'edit' });
   const post = await prisma.marketingSocialPost.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!post) throw ApiError.notFound('Social post');
-  if (!['draft', 'scheduled'].includes(post.status)) throw ApiError.conflict(`Cannot edit a ${post.status} social post.`);
+  if (!['draft', 'scheduled'].includes(post.status))
+    throw ApiError.conflict(`Cannot edit a ${post.status} social post.`);
 
   if (patch.assetIds) await assertAssetsApproved(patch.assetIds, auth.tenantId);
 
@@ -433,12 +447,16 @@ export async function publishSocialPost(id: string, input: PublishSocialPostInpu
   const publishMode: 'manual' | 'adapter' = adapter.isConfigured() ? 'adapter' : 'manual';
 
   if (publishMode === 'manual' && !input.externalUrl) {
-    throw ApiError.badRequest('No publishing adapter is configured for this channel — provide the externalUrl of the post you published by hand.');
+    throw ApiError.badRequest(
+      'No publishing adapter is configured for this channel — provide the externalUrl of the post you published by hand.',
+    );
   }
 
   const metrics = {
     ...(post.metrics as Record<string, unknown>),
-    ...(publishMode === 'manual' ? { publishNote: 'Recorded manually — no publishing adapter is configured for this channel.' } : {}),
+    ...(publishMode === 'manual'
+      ? { publishNote: 'Recorded manually — no publishing adapter is configured for this channel.' }
+      : {}),
   };
 
   const updated = await prisma.marketingSocialPost.update({

@@ -109,7 +109,8 @@ async function claimBatch(tenantId: string, now: Date, ids?: string[]): Promise<
   // Raw SQL bypasses the tenant extension, so the tenant predicate is written
   // out here rather than trusted to it. It also runs inside a transaction: row
   // level security reads the tenant setting, and only a transaction carries it.
-  return prisma.$transaction((tx) => tx.$queryRaw<OutboxRow[]>`
+  return prisma.$transaction(
+    (tx) => tx.$queryRaw<OutboxRow[]>`
     UPDATE outbox_events
        SET "nextAttemptAt" = ${lease}, attempts = attempts + 1
      WHERE id IN (
@@ -122,7 +123,8 @@ async function claimBatch(tenantId: string, now: Date, ids?: string[]): Promise<
         LIMIT ${BATCH_SIZE}
         FOR UPDATE SKIP LOCKED
      )
-    RETURNING id, "tenantId", "eventRecordId", "eventName", payload, attempts, "deliveredTo"`);
+    RETURNING id, "tenantId", "eventRecordId", "eventName", payload, attempts, "deliveredTo"`,
+  );
 }
 
 async function deliverRow(row: OutboxRow, now: Date): Promise<'delivered' | 'retried' | 'dead'> {

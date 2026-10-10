@@ -19,23 +19,30 @@ import { auditWrite } from '../platform/audit.js';
 import { EVENTS } from '@kaizen/shared';
 import { parseCsv, readWorkbook, type Grid } from './parse.js';
 import {
-  detectGrid, detectSourceFormat, detectWorkbook, isTallyLedgerSheet,
-  type Detection, type ImportKind,
+  detectGrid,
+  detectSourceFormat,
+  detectWorkbook,
+  isTallyLedgerSheet,
+  type Detection,
+  type ImportKind,
 } from './detect.js';
 import {
   extractAttendance,
-  extractStudentRegister, extractBankStatement, extractEmployees, extractSalary,
-  extractTallyLedger, extractTrialBalance, extractTemplate, type Extraction,
+  extractStudentRegister,
+  extractBankStatement,
+  extractEmployees,
+  extractSalary,
+  extractTallyLedger,
+  extractTrialBalance,
+  extractTemplate,
+  type Extraction,
 } from './extract.js';
 import { extractTallyXml } from './tallyXml.js';
 import { buildChart, type LedgerChart } from './chart.js';
 import { templateByKind } from './templates.js';
-import {
-  isRegulatedCell, isRegulatedField, sealNormalised, sealRawCells, viewStagedObject,
-} from './sealing.js';
+import { isRegulatedCell, isRegulatedField, sealNormalised, sealRawCells, viewStagedObject } from './sealing.js';
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-
 
 export interface StageResult {
   batchId: string;
@@ -123,7 +130,7 @@ export async function stageImport(input: {
     sourceLabel = chosen.name;
 
     detection = input.sheetOverride
-      ? detected.perSheet.find((d) => d.sheet === input.sheetOverride) ?? detectGrid(chosen.grid, chosen.name)
+      ? (detected.perSheet.find((d) => d.sheet === input.sheetOverride) ?? detectGrid(chosen.grid, chosen.name))
       : detected.primary;
     if (input.kindOverride) detection = { ...detection, kind: input.kindOverride };
 
@@ -343,7 +350,6 @@ export async function importRows(id: string, filter: { status?: string; limit?: 
   }
   return shown;
 }
-
 
 /** Options the commit will honour — target account, division, and so on. */
 export async function setImportOptions(id: string, options: Record<string, unknown>) {

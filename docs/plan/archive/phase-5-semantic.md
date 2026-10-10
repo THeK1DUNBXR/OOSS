@@ -43,7 +43,7 @@ defineMetric('revenue', {
 
 The compiler takes `{ metrics, dimensions, filters, timeGrain, comparison }` and emits SQL with **provable join paths** — it knows the grain of every entity and refuses a combination that would fan out, rather than silently producing it.
 
-**Permissions are applied at compile time, before execution.** Call the existing `visibilityWhere` from `platform/permissions.ts:423` and fold the resulting predicate into the compiled query. A metric the principal has no grant for is not filtered out of the results — it is *not compilable*, and the refusal carries the same five-axis reason the rest of the product uses.
+**Permissions are applied at compile time, before execution.** Call the existing `visibilityWhere` from `platform/permissions.ts:423` and fold the resulting predicate into the compiled query. A metric the principal has no grant for is not filtered out of the results — it is _not compilable_, and the refusal carries the same five-axis reason the rest of the product uses.
 
 Every query runs as a **read-only, tenant-scoped role** with RLS underneath and a `statement_timeout` as a hard backstop. Not because the compiler is untrustworthy, but because that is what defence in depth means.
 

@@ -111,11 +111,21 @@ describe('MKT-EVT — event state machine', () => {
 
   it('requires the institutionId to be an Organization of kind institution in-tenant', async () => {
     const notInstitution = await unscopedPrisma.organization.create({
-      data: { tenantId: TENANT, recordCode: `ORG-EVTTEST-${Date.now()}`, kind: 'organization', name: `Not an institution ${Date.now()}` },
+      data: {
+        tenantId: TENANT,
+        recordCode: `ORG-EVTTEST-${Date.now()}`,
+        kind: 'organization',
+        name: `Not an institution ${Date.now()}`,
+      },
     });
     const rejected = await expectReject(() =>
       asUser(CHAIRMAN, () =>
-        createEvent({ name: 'Bad institution', kind: 'seminar', startAt: new Date(), institutionId: notInstitution.id }),
+        createEvent({
+          name: 'Bad institution',
+          kind: 'seminar',
+          startAt: new Date(),
+          institutionId: notInstitution.id,
+        }),
       ),
     );
     expect(rejected.status).toBe(400);
@@ -124,7 +134,12 @@ describe('MKT-EVT — event state machine', () => {
   it('accepts a real institution', async () => {
     const institution = await makeInstitution('Valid');
     const event = await asUser(CHAIRMAN, () =>
-      createEvent({ name: `mkt-evt-institution-${Date.now()}`, kind: 'college_visit', startAt: new Date(), institutionId: institution.id }),
+      createEvent({
+        name: `mkt-evt-institution-${Date.now()}`,
+        kind: 'college_visit',
+        startAt: new Date(),
+        institutionId: institution.id,
+      }),
     );
     expect(event.institutionId).toBe(institution.id);
   });
@@ -149,21 +164,29 @@ describe('MKT-EVT — registration capacity and duplicates', () => {
     expect(dup.status).toBe(409);
 
     // Capacity of 1 is already full.
-    const overCapacity = await expectReject(() => asUser(CHAIRMAN, () => registerForEvent(event.id, { personId: personB.id })));
+    const overCapacity = await expectReject(() =>
+      asUser(CHAIRMAN, () => registerForEvent(event.id, { personId: personB.id })),
+    );
     expect(overCapacity.status).toBe(409);
   });
 
   it('registration is only accepted while the event is open', async () => {
-    const event = await asUser(CHAIRMAN, () => createEvent({ name: `mkt-evt-notopen-${Date.now()}`, kind: 'demo', startAt: new Date() }));
+    const event = await asUser(CHAIRMAN, () =>
+      createEvent({ name: `mkt-evt-notopen-${Date.now()}`, kind: 'demo', startAt: new Date() }),
+    );
     const person = await makePerson('NotOpen');
-    const rejected = await expectReject(() => asUser(CHAIRMAN, () => registerForEvent(event.id, { personId: person.id })));
+    const rejected = await expectReject(() =>
+      asUser(CHAIRMAN, () => registerForEvent(event.id, { personId: person.id })),
+    );
     expect(rejected.status).toBe(409);
   });
 });
 
 describe('MKT-EVT — check-in creates a touchpoint and follow-up logs an Interaction', () => {
   it('check-in flips status to attended and records an event_attend touchpoint', async () => {
-    const event = await asUser(CHAIRMAN, () => createEvent({ name: `mkt-evt-checkin-${Date.now()}`, kind: 'open_day', startAt: new Date() }));
+    const event = await asUser(CHAIRMAN, () =>
+      createEvent({ name: `mkt-evt-checkin-${Date.now()}`, kind: 'open_day', startAt: new Date() }),
+    );
     await asUser(CHAIRMAN, () => openEvent(event.id));
     const person = await makePerson('CheckIn');
     const reg = await asUser(CHAIRMAN, () => registerForEvent(event.id, { personId: person.id }));
@@ -172,13 +195,17 @@ describe('MKT-EVT — check-in creates a touchpoint and follow-up logs an Intera
     expect(checkedIn.status).toBe('attended');
     expect(checkedIn.checkedInAt).not.toBeNull();
 
-    const touchpoints = await unscopedPrisma.marketingTouchpoint.findMany({ where: { tenantId: TENANT, personId: person.id } });
+    const touchpoints = await unscopedPrisma.marketingTouchpoint.findMany({
+      where: { tenantId: TENANT, personId: person.id },
+    });
     expect(touchpoints.some((t) => t.touchKind === 'visit')).toBe(true);
     expect(touchpoints.some((t) => t.touchKind === 'event_attend')).toBe(true);
   });
 
   it('a follow-up marked done logs a meeting Interaction against the person', async () => {
-    const event = await asUser(CHAIRMAN, () => createEvent({ name: `mkt-evt-followup-${Date.now()}`, kind: 'demo', startAt: new Date() }));
+    const event = await asUser(CHAIRMAN, () =>
+      createEvent({ name: `mkt-evt-followup-${Date.now()}`, kind: 'demo', startAt: new Date() }),
+    );
     await asUser(CHAIRMAN, () => openEvent(event.id));
     const person = await makePerson('FollowUp');
     const reg = await asUser(CHAIRMAN, () => registerForEvent(event.id, { personId: person.id }));
@@ -187,7 +214,9 @@ describe('MKT-EVT — check-in creates a touchpoint and follow-up logs an Intera
     const updated = await asUser(CHAIRMAN, () => followUpRegistration(reg.id, true, 'Called, interested'));
     expect(updated.followUpDone).toBe(true);
 
-    const interactions = await unscopedPrisma.interaction.findMany({ where: { tenantId: TENANT, interactionType: 'meeting' } });
+    const interactions = await unscopedPrisma.interaction.findMany({
+      where: { tenantId: TENANT, interactionType: 'meeting' },
+    });
     const matching = interactions.find((i) =>
       (i.relatedReferences as unknown as Array<{ entityType: string; entityId: string }>).some(
         (r) => r.entityType === 'person' && r.entityId === person.id,
@@ -201,7 +230,12 @@ describe('MKT-EVT — check-in creates a touchpoint and follow-up logs an Intera
 describe('MKT-EVT — convertAttendees and cost per attendee', () => {
   it('creates a lead with source event for each attended registration lacking one', async () => {
     const event = await asUser(CHAIRMAN, () =>
-      createEvent({ name: `mkt-evt-convert-${Date.now()}`, kind: 'placement_drive', startAt: new Date(), division: 'education' }),
+      createEvent({
+        name: `mkt-evt-convert-${Date.now()}`,
+        kind: 'placement_drive',
+        startAt: new Date(),
+        division: 'education',
+      }),
     );
     await asUser(CHAIRMAN, () => openEvent(event.id));
     const person = await makePerson('Attendee');
@@ -211,7 +245,9 @@ describe('MKT-EVT — convertAttendees and cost per attendee', () => {
     const { created } = await asUser(CHAIRMAN, () => convertAttendees(event.id));
     expect(created).toBe(1);
 
-    const lead = await unscopedPrisma.lead.findFirst({ where: { tenantId: TENANT, personId: person.id, source: 'event' } });
+    const lead = await unscopedPrisma.lead.findFirst({
+      where: { tenantId: TENANT, personId: person.id, source: 'event' },
+    });
     expect(lead).not.toBeNull();
     expect(lead?.sourceDetail).toBe(event.recordCode);
 
@@ -261,7 +297,9 @@ describe('MKT-EVT — EX-MKT-008 follow-ups outstanding', () => {
 
 describe('MKT-EVT — cancel and registration cancel', () => {
   it('cancels a registration and leaves the event itself untouched', async () => {
-    const event = await asUser(CHAIRMAN, () => createEvent({ name: `mkt-evt-regcancel-${Date.now()}`, kind: 'fair', startAt: new Date() }));
+    const event = await asUser(CHAIRMAN, () =>
+      createEvent({ name: `mkt-evt-regcancel-${Date.now()}`, kind: 'fair', startAt: new Date() }),
+    );
     await asUser(CHAIRMAN, () => openEvent(event.id));
     const person = await makePerson('RegCancel');
     const reg = await asUser(CHAIRMAN, () => registerForEvent(event.id, { personId: person.id }));
@@ -276,7 +314,9 @@ describe('MKT-EVT — cancel and registration cancel', () => {
 
 describe('MKT-EVT — confirm', () => {
   it('moves a registered registration to confirmed', async () => {
-    const event = await asUser(CHAIRMAN, () => createEvent({ name: `mkt-evt-confirm-${Date.now()}`, kind: 'demo', startAt: new Date() }));
+    const event = await asUser(CHAIRMAN, () =>
+      createEvent({ name: `mkt-evt-confirm-${Date.now()}`, kind: 'demo', startAt: new Date() }),
+    );
     await asUser(CHAIRMAN, () => openEvent(event.id));
     const person = await makePerson('Confirm');
     const reg = await asUser(CHAIRMAN, () => registerForEvent(event.id, { personId: person.id }));
@@ -320,12 +360,19 @@ describe('MKT-AST — asset versioning and the self-approval bar', () => {
 describe('MKT-AST — EX-MKT-012 expired asset still in use', () => {
   it('raises an exception for an approved, expired asset referenced by a scheduled social post', async () => {
     const marker = `mkt-ast-expired-${Date.now()}`;
-    const asset = await asUser(OPERATIONS, () => createAsset({ name: marker, kind: 'creative', expiresAt: new Date(Date.now() - 86_400_000) }));
+    const asset = await asUser(OPERATIONS, () =>
+      createAsset({ name: marker, kind: 'creative', expiresAt: new Date(Date.now() - 86_400_000) }),
+    );
     await asUser(OPERATIONS, () => submitForApproval(asset.id));
     await asUser(CHAIRMAN, () => approveAsset(asset.id));
 
     const post = await asUser(OPERATIONS, () =>
-      createSocialPost({ channelKey: 'social_meta', body: 'Check this out', assetIds: [asset.id], scheduledAt: new Date() }),
+      createSocialPost({
+        channelKey: 'social_meta',
+        body: 'Check this out',
+        assetIds: [asset.id],
+        scheduledAt: new Date(),
+      }),
     );
     // Move it into a state the detector treats as "in use" without going through
     // scheduleSocialPost (which only requires draft → scheduled, already covered
@@ -335,26 +382,37 @@ describe('MKT-AST — EX-MKT-012 expired asset still in use', () => {
     const raised = await asUser(CHAIRMAN, () => detectExpiredAssetsInUse());
     expect(raised).toBeGreaterThanOrEqual(1);
 
-    const exc = await unscopedPrisma.exceptionRecord.findFirst({ where: { tenantId: TENANT, code: 'EX-MKT-012', subjectId: asset.id } });
+    const exc = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { tenantId: TENANT, code: 'EX-MKT-012', subjectId: asset.id },
+    });
     expect(exc).not.toBeNull();
   });
 });
 
 describe('MKT-AST — social post publish, manual mode', () => {
   it('publishing with no configured adapter records publishMode manual and requires an externalUrl', async () => {
-    const asset = await asUser(OPERATIONS, () => createAsset({ name: `mkt-ast-social-${Date.now()}`, kind: 'social_post' }));
+    const asset = await asUser(OPERATIONS, () =>
+      createAsset({ name: `mkt-ast-social-${Date.now()}`, kind: 'social_post' }),
+    );
     await asUser(OPERATIONS, () => submitForApproval(asset.id));
     await asUser(CHAIRMAN, () => approveAsset(asset.id));
 
     const post = await asUser(OPERATIONS, () =>
-      createSocialPost({ channelKey: 'social_linkedin', body: 'Hello world', assetIds: [asset.id], scheduledAt: new Date() }),
+      createSocialPost({
+        channelKey: 'social_linkedin',
+        body: 'Hello world',
+        assetIds: [asset.id],
+        scheduledAt: new Date(),
+      }),
     );
     await asUser(OPERATIONS, () => scheduleSocialPost(post.id));
 
     const missingUrl = await expectReject(() => asUser(OPERATIONS, () => publishSocialPost(post.id, {})));
     expect(missingUrl.status).toBe(400);
 
-    const published = await asUser(OPERATIONS, () => publishSocialPost(post.id, { externalUrl: 'https://linkedin.example/posts/1' }));
+    const published = await asUser(OPERATIONS, () =>
+      publishSocialPost(post.id, { externalUrl: 'https://linkedin.example/posts/1' }),
+    );
     expect(published.publishMode).toBe('manual');
     expect(published.status).toBe('published');
     expect(published.externalUrl).toBe('https://linkedin.example/posts/1');
@@ -369,18 +427,29 @@ describe('MKT-REF — issue and redeem creates a lead and a touchpoint', () => {
   it('redeeming a code resolves the person, logs a referral touchpoint and creates a lead', async () => {
     const referrer = await makePerson('Referrer');
     const program = await asUser(CHAIRMAN, () =>
-      createReferralProgram({ name: `mkt-ref-program-${Date.now()}`, kind: 'student', rewardKind: 'cash', rewardAmount: 500 }),
+      createReferralProgram({
+        name: `mkt-ref-program-${Date.now()}`,
+        kind: 'student',
+        rewardKind: 'cash',
+        rewardAmount: 500,
+      }),
     );
 
-    const referral = await asUser(CHAIRMAN, () => issueReferral({ programId: program.id, referrerPersonId: referrer.id }));
+    const referral = await asUser(CHAIRMAN, () =>
+      issueReferral({ programId: program.id, referrerPersonId: referrer.id }),
+    );
     expect(referral.status).toBe('issued');
     expect(referral.code.length).toBeGreaterThan(3);
 
     const referred = await makePerson('Referred');
-    const redeemed = await asUser(CHAIRMAN, () => redeemReferral({ code: referral.code, referredPersonId: referred.id }));
+    const redeemed = await asUser(CHAIRMAN, () =>
+      redeemReferral({ code: referral.code, referredPersonId: referred.id }),
+    );
     expect(redeemed.status).toBe('used');
 
-    const lead = await unscopedPrisma.lead.findFirst({ where: { tenantId: TENANT, personId: referred.id, source: 'referral' } });
+    const lead = await unscopedPrisma.lead.findFirst({
+      where: { tenantId: TENANT, personId: referred.id, source: 'referral' },
+    });
     expect(lead).not.toBeNull();
     expect(lead?.sourceDetail).toBe(referral.code);
     expect(lead?.campaignId).toBeNull();
@@ -395,10 +464,16 @@ describe('MKT-REF — issue and redeem creates a lead and a touchpoint', () => {
 
   it('rejects a self-referral', async () => {
     const person = await makePerson('SelfReferrer');
-    const program = await asUser(CHAIRMAN, () => createReferralProgram({ name: `mkt-ref-self-${Date.now()}`, kind: 'employee' }));
-    const referral = await asUser(CHAIRMAN, () => issueReferral({ programId: program.id, referrerPersonId: person.id }));
+    const program = await asUser(CHAIRMAN, () =>
+      createReferralProgram({ name: `mkt-ref-self-${Date.now()}`, kind: 'employee' }),
+    );
+    const referral = await asUser(CHAIRMAN, () =>
+      issueReferral({ programId: program.id, referrerPersonId: person.id }),
+    );
 
-    const rejected = await expectReject(() => asUser(CHAIRMAN, () => redeemReferral({ code: referral.code, referredPersonId: person.id })));
+    const rejected = await expectReject(() =>
+      asUser(CHAIRMAN, () => redeemReferral({ code: referral.code, referredPersonId: person.id })),
+    );
     expect(rejected.status).toBe(409);
   });
 });
@@ -407,8 +482,12 @@ describe('MKT-REF — reward is refused on a rewardKind none program', () => {
   it('a program with no reward kind refuses reward()', async () => {
     const referrer = await makePerson('NoRewardReferrer');
     const referred = await makePerson('NoRewardReferred');
-    const program = await asUser(CHAIRMAN, () => createReferralProgram({ name: `mkt-ref-none-${Date.now()}`, kind: 'partner', rewardKind: 'none' }));
-    const referral = await asUser(CHAIRMAN, () => issueReferral({ programId: program.id, referrerPersonId: referrer.id }));
+    const program = await asUser(CHAIRMAN, () =>
+      createReferralProgram({ name: `mkt-ref-none-${Date.now()}`, kind: 'partner', rewardKind: 'none' }),
+    );
+    const referral = await asUser(CHAIRMAN, () =>
+      issueReferral({ programId: program.id, referrerPersonId: referrer.id }),
+    );
     await asUser(CHAIRMAN, () => redeemReferral({ code: referral.code, referredPersonId: referred.id }));
     await asUser(CHAIRMAN, () => qualifyReferral(referral.id));
 
@@ -420,7 +499,9 @@ describe('MKT-REF — reward is refused on a rewardKind none program', () => {
 describe('MKT-REF — leaderboard counts issued/used/qualified/rewarded per referrer', () => {
   it('rolls up correctly across multiple referrals from the same referrer', async () => {
     const referrer = await makePerson('Leaderboard');
-    const program = await asUser(CHAIRMAN, () => createReferralProgram({ name: `mkt-ref-board-${Date.now()}`, kind: 'student', rewardKind: 'credit' }));
+    const program = await asUser(CHAIRMAN, () =>
+      createReferralProgram({ name: `mkt-ref-board-${Date.now()}`, kind: 'student', rewardKind: 'credit' }),
+    );
 
     const r1 = await asUser(CHAIRMAN, () => issueReferral({ programId: program.id, referrerPersonId: referrer.id }));
     const r2 = await asUser(CHAIRMAN, () => issueReferral({ programId: program.id, referrerPersonId: referrer.id }));
@@ -455,7 +536,9 @@ describe('MKT-EVT / MKT-AST / MKT-REF — cross-tenant isolation', () => {
       update: {},
     });
 
-    const event = await asUser(CHAIRMAN, () => createEvent({ name: `mkt-evt-isolated-${Date.now()}`, kind: 'webinar', startAt: new Date() }));
+    const event = await asUser(CHAIRMAN, () =>
+      createEvent({ name: `mkt-evt-isolated-${Date.now()}`, kind: 'webinar', startAt: new Date() }),
+    );
 
     const rejected = await expectReject(() => asSystem(other.id, () => loadEvent(event.id)));
     expect(rejected.status).toBe(404);
@@ -468,7 +551,9 @@ describe('MKT-EVT / MKT-AST / MKT-REF — cross-tenant isolation', () => {
       update: {},
     });
     const asset = await asUser(OPERATIONS, () => createAsset({ name: `mkt-ast-isolated-${Date.now()}`, kind: 'deck' }));
-    const found = await asSystem(other.id, () => unscopedPrisma.marketingAsset.findFirst({ where: { id: asset.id, tenantId: other.id } }));
+    const found = await asSystem(other.id, () =>
+      unscopedPrisma.marketingAsset.findFirst({ where: { id: asset.id, tenantId: other.id } }),
+    );
     expect(found).toBeNull();
   });
 });

@@ -245,17 +245,25 @@ function generatePassword(): string {
  * untouched" — the same three-way `SeededAccount.password` shape the founding
  * accounts already use.
  */
-export async function ensureSignInPrincipal(email: string, reset: boolean): Promise<{ principalId: string; password: string | null }> {
+export async function ensureSignInPrincipal(
+  email: string,
+  reset: boolean,
+): Promise<{ principalId: string; password: string | null }> {
   const lower = email.toLowerCase();
   let principal = await unscopedPrisma.principal.findFirst({ where: { email: lower } });
   let password: string | null = null;
 
   if (!principal) {
     password = generatePassword();
-    principal = await unscopedPrisma.principal.create({ data: { email: lower, passwordHash: await hashPassword(password) } });
+    principal = await unscopedPrisma.principal.create({
+      data: { email: lower, passwordHash: await hashPassword(password) },
+    });
   } else if (reset) {
     password = generatePassword();
-    principal = await unscopedPrisma.principal.update({ where: { id: principal.id }, data: { passwordHash: await hashPassword(password) } });
+    principal = await unscopedPrisma.principal.update({
+      where: { id: principal.id },
+      data: { passwordHash: await hashPassword(password) },
+    });
   }
 
   return { principalId: principal.id, password };
@@ -427,7 +435,9 @@ export async function login(
       where: { email: lower, principalId: null, passwordHash: { not: null }, status: 'active' },
     });
     if (unmigrated?.passwordHash) {
-      principal = await unscopedPrisma.principal.create({ data: { email: lower, passwordHash: unmigrated.passwordHash } });
+      principal = await unscopedPrisma.principal.create({
+        data: { email: lower, passwordHash: unmigrated.passwordHash },
+      });
       await unscopedPrisma.user.updateMany({
         where: { email: lower, principalId: null },
         data: { principalId: principal.id, passwordHash: null },
@@ -481,7 +491,9 @@ export async function login(
   }
 
   if (candidates.length === 0) {
-    throw ApiError.forbidden('This account holds no active affiliation. Access derives from affiliations, never from the person record.');
+    throw ApiError.forbidden(
+      'This account holds no active affiliation. Access derives from affiliations, never from the person record.',
+    );
   }
 
   await unscopedPrisma.principal.update({ where: { id: principal.id }, data: { lastLoginAt: new Date() } });
@@ -502,7 +514,13 @@ export async function login(
  * gate, and only then issue a session.
  */
 async function issueSessionFor(
-  user: { id: string; tenantId: string; personId: string; activeAffiliationId: string | null; mfaEnabledAt: Date | null },
+  user: {
+    id: string;
+    tenantId: string;
+    personId: string;
+    activeAffiliationId: string | null;
+    mfaEnabledAt: Date | null;
+  },
   stepUp: boolean,
 ): Promise<LoginResult | MfaRequiredResult> {
   const affiliations = await unscopedPrisma.affiliation.findMany({
@@ -510,7 +528,9 @@ async function issueSessionFor(
     orderBy: [{ primaryFlag: 'desc' }, { createdAt: 'asc' }],
   });
   if (affiliations.length === 0) {
-    throw ApiError.forbidden('This account holds no active affiliation. Access derives from affiliations, never from the person record.');
+    throw ApiError.forbidden(
+      'This account holds no active affiliation. Access derives from affiliations, never from the person record.',
+    );
   }
 
   // Selection order: exactly one active -> silent; primary_flag; most recently
@@ -526,7 +546,10 @@ async function issueSessionFor(
   // own — `verifyMfaChallenge` is the only thing that accepts it, and only at
   // `/auth/mfa/verify`.
   if (user.mfaEnabledAt) {
-    return { mfaRequired: true, challengeToken: signMfaChallenge({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id }) };
+    return {
+      mfaRequired: true,
+      challengeToken: signMfaChallenge({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id }),
+    };
   }
 
   return completeLogin(user, active, stepUp);
@@ -539,7 +562,9 @@ export async function verifyMfaAndLogin(challengeToken: string, code: string): P
   if (!user || !user.mfaSecret) throw ApiError.unauthorized('MFA challenge is invalid or expired. Sign in again.');
 
   if (!verifyTotp(user.mfaSecret, code)) {
-    throw ApiError.unauthorized('That code is not correct. Codes are valid for about thirty seconds — check the app is still showing a current one.');
+    throw ApiError.unauthorized(
+      'That code is not correct. Codes are valid for about thirty seconds — check the app is still showing a current one.',
+    );
   }
 
   const affiliation = await unscopedPrisma.affiliation.findFirst({
@@ -594,13 +619,19 @@ export async function changePassword(userId: string, currentPassword: string, ne
   });
   // The credential is one thing across entities, so the "last changed" stamp
   // lands on every user of the principal, not only the one that asked.
-  await unscopedPrisma.user.updateMany({ where: { principalId: principal.id }, data: { passwordChangedAt: new Date() } });
+  await unscopedPrisma.user.updateMany({
+    where: { principalId: principal.id },
+    data: { passwordChangedAt: new Date() },
+  });
 }
 
 /** `GET /auth/entities` — the same list `login()` would have offered, for a principal already holding a normal token. */
 export async function entitiesForToken(payload: Omit<TokenPayload, 'jti'>): Promise<EntityOption[]> {
   const user = await unscopedPrisma.user.findFirstOrThrow({ where: { id: payload.userId } });
-  if (!user.principalId) throw ApiError.unauthorized('This account has no principal — sign-in cannot resolve its entities. Contact whoever created the account.');
+  if (!user.principalId)
+    throw ApiError.unauthorized(
+      'This account has no principal — sign-in cannot resolve its entities. Contact whoever created the account.',
+    );
   return entitiesFor(user.principalId);
 }
 
@@ -652,7 +683,12 @@ export async function switchEntity(
   targetTenantId: string,
 ) {
   const target = await unscopedPrisma.user.findFirst({
-    where: { principalId: caller.principalId, tenantId: targetTenantId, status: 'active', tenant: { status: 'active' } },
+    where: {
+      principalId: caller.principalId,
+      tenantId: targetTenantId,
+      status: 'active',
+      tenant: { status: 'active' },
+    },
   });
   if (!target) throw ApiError.notFound('Entity');
 
@@ -744,14 +780,24 @@ export async function refreshSession(refreshCookie: string): Promise<SessionRefr
   if (!user) throw refused();
 
   const active = user.activeAffiliationId
-    ? await unscopedPrisma.affiliation.findFirst({ where: { id: user.activeAffiliationId, tenantId: user.tenantId, status: 'active' } })
+    ? await unscopedPrisma.affiliation.findFirst({
+        where: { id: user.activeAffiliationId, tenantId: user.tenantId, status: 'active' },
+      })
     : null;
   if (!active) throw refused();
 
-  const inGrace = (row: { rotatedAt: Date | null }) => row.rotatedAt !== null && Date.now() - row.rotatedAt.getTime() < REFRESH_GRACE_MS;
-  const stepUp = (row: { stepUpAt: Date | null }) => row.stepUpAt !== null && Date.now() - row.stepUpAt.getTime() < STEP_UP_WINDOW_MS;
+  const inGrace = (row: { rotatedAt: Date | null }) =>
+    row.rotatedAt !== null && Date.now() - row.rotatedAt.getTime() < REFRESH_GRACE_MS;
+  const stepUp = (row: { stepUpAt: Date | null }) =>
+    row.stepUpAt !== null && Date.now() - row.stepUpAt.getTime() < STEP_UP_WINDOW_MS;
   const sameSessionAnswer = async (row: { jti: string; stepUpAt: Date | null }): Promise<SessionRefresh> => ({
-    token: signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp: stepUp(row), jti: row.jti }),
+    token: signToken({
+      userId: user.id,
+      tenantId: user.tenantId,
+      affiliationId: active.id,
+      stepUp: stepUp(row),
+      jti: row.jti,
+    }),
     user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp(row)),
   });
 
@@ -770,7 +816,13 @@ export async function refreshSession(refreshCookie: string): Promise<SessionRefr
       },
     });
     if (rotated.count === 1) {
-      const token = signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp: stepUp(session), jti });
+      const token = signToken({
+        userId: user.id,
+        tenantId: user.tenantId,
+        affiliationId: active.id,
+        stepUp: stepUp(session),
+        jti,
+      });
       return {
         token,
         refreshToken: `${session.id}.${nextSecret}`,
@@ -878,7 +930,14 @@ export async function buildSessionUser(
     roleSlug ? (role?.classificationCeiling ?? ROLE_CLASSIFICATION_CEILING[roleSlug] ?? 'internal') : 'public'
   ) as SensitivityClass;
 
-  const auth = toAuthContext({ userId, tenantId, affiliationId: active.id, stepUp }, user.personId, roleSlug, user.branch, active.orgUnitId, ceiling);
+  const auth = toAuthContext(
+    { userId, tenantId, affiliationId: active.id, stepUp },
+    user.personId,
+    roleSlug,
+    user.branch,
+    active.orgUnitId,
+    ceiling,
+  );
 
   const [grants, authorityGrants, entityCount] = await Promise.all([
     runWithContext(newRequestContext({ auth }), () => resolveGrants(auth)),
@@ -979,10 +1038,9 @@ export async function switchContext(
 
   const requiresStepUp = STEP_UP_ROLES.has(affiliation.roleSlug ?? '');
   if (requiresStepUp && !stepUpProvided) {
-    throw ApiError.forbidden(
-      `Switching into the ${affiliation.roleSlug} context requires step-up re-authentication.`,
-      [{ axis: 'WHO', passed: false, reason: 'step_up_required' }],
-    );
+    throw ApiError.forbidden(`Switching into the ${affiliation.roleSlug} context requires step-up re-authentication.`, [
+      { axis: 'WHO', passed: false, reason: 'step_up_required' },
+    ]);
   }
 
   // Mutates the existing session; no new session is issued. The access token

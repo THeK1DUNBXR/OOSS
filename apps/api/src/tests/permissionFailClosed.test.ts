@@ -83,7 +83,12 @@ describe('an own-scoped grant never reaches unowned rows', () => {
   });
 
   it('a human with own_or_unowned and no branch sees their own rows but not unowned ones', async () => {
-    const human = { ...agentContext(tenantId, 'unused').auth!, principalType: 'human' as const, partyId: OWNER, branch: null };
+    const human = {
+      ...agentContext(tenantId, 'unused').auth!,
+      principalType: 'human' as const,
+      partyId: OWNER,
+      branch: null,
+    };
     const ids = await listPlanIds(scopeWhere('own_or_unowned', human, 'ownerPartyId'));
     expect(ids).toContain(ownedPlanId);
     expect(ids).not.toContain(unownedPlanId);

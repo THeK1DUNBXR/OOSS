@@ -97,7 +97,11 @@ async function partyIdForEmployment(tenantId: string, employmentId: string): Pro
 }
 
 /** The active affiliate holding `roleSlug`, excluding `excludePartyId`. */
-async function partyIdForRole(tenantId: string, roleSlug: string, excludePartyId: string | null): Promise<string | null> {
+async function partyIdForRole(
+  tenantId: string,
+  roleSlug: string,
+  excludePartyId: string | null,
+): Promise<string | null> {
   const affiliation = await prisma.affiliation.findFirst({
     where: {
       tenantId,
@@ -188,7 +192,12 @@ export async function listRequestTypes(activeOnly = false) {
   });
 }
 
-export async function createRequestType(input: { code: string; name: string; approvalChain: ApprovalChain; slaHours?: number }) {
+export async function createRequestType(input: {
+  code: string;
+  name: string;
+  approvalChain: ApprovalChain;
+  slaHours?: number;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'hr_request_types', verb: 'create' });
 
@@ -225,7 +234,13 @@ export interface HrRequestWithApprovals {
   requestedById: string;
   createdAt: Date;
   closedAt: Date | null;
-  approvals: Array<{ level: number; approverPartyId: string | null; decision: string; note: string | null; decidedAt: Date | null }>;
+  approvals: Array<{
+    level: number;
+    approverPartyId: string | null;
+    decision: string;
+    note: string | null;
+    decidedAt: Date | null;
+  }>;
 }
 
 async function openLevel(
@@ -278,7 +293,9 @@ export async function submitRequest(input: { typeId: string; subjectEmploymentId
 
   const chain = type.approvalChain as unknown;
   if (!isValidApprovalChain(chain)) {
-    throw ApiError.unprocessable(`Request type "${type.name}" carries an invalid approval chain and cannot be submitted against.`);
+    throw ApiError.unprocessable(
+      `Request type "${type.name}" carries an invalid approval chain and cannot be submitted against.`,
+    );
   }
 
   const subjectPartyId = await partyIdForEmployment(auth.tenantId, input.subjectEmploymentId);
@@ -405,7 +422,10 @@ export async function decide(requestId: string, approve: boolean, note?: string)
   const auth = currentAuth();
   await assertCan({ resource: 'hr_requests', verb: 'approve' });
 
-  const request = await prisma.hrRequest.findFirst({ where: { id: requestId, tenantId: auth.tenantId }, include: { type: true } });
+  const request = await prisma.hrRequest.findFirst({
+    where: { id: requestId, tenantId: auth.tenantId },
+    include: { type: true },
+  });
   if (!request) throw ApiError.notFound('HR request');
   if (request.status !== 'submitted') {
     throw ApiError.conflict(`This request is already ${request.status}.`);
@@ -413,7 +433,9 @@ export async function decide(requestId: string, approve: boolean, note?: string)
 
   const subjectPartyId = await partyIdForEmployment(auth.tenantId, request.subjectEmploymentId);
   if (tripsSelfDealingBar(auth.partyId, request.requestedById, subjectPartyId)) {
-    throw ApiError.forbidden('The Self-Dealing Bar is unconditional: you may never decide a request you raised or that is about you.');
+    throw ApiError.forbidden(
+      'The Self-Dealing Bar is unconditional: you may never decide a request you raised or that is about you.',
+    );
   }
 
   const approval = await prisma.hrRequestApproval.findFirst({
@@ -547,7 +569,13 @@ export async function listDelegations() {
   });
 }
 
-export async function createDelegation(input: { toPartyId: string; fromDate: Date; toDate: Date; scope?: string; note?: string }) {
+export async function createDelegation(input: {
+  toPartyId: string;
+  fromDate: Date;
+  toDate: Date;
+  scope?: string;
+  note?: string;
+}) {
   const auth = currentAuth();
   await assertCan({ resource: 'authority_delegations', verb: 'create' });
   const fromPartyId = auth.partyId;

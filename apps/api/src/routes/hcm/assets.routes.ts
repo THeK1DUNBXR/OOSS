@@ -5,25 +5,50 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { handler, str } from '../../lib/http.js';
 import {
-  listAssets, createAsset, transitionAsset,
-  listAssetAssignments, assignAsset, returnAsset,
-  listTravelRequests, createTravelRequest, decideTravelRequest, settleTravelRequest,
-  listLetterRequests, createLetterRequest, fulfilLetterRequest, rejectLetterRequest, listIssuedHrLetters,
-  listIdCards, issueIdCard, reportIdCardLost, returnIdCard,
-  assetsPendingCount, assetsPendingForEmployment, myEmployment,
+  listAssets,
+  createAsset,
+  transitionAsset,
+  listAssetAssignments,
+  assignAsset,
+  returnAsset,
+  listTravelRequests,
+  createTravelRequest,
+  decideTravelRequest,
+  settleTravelRequest,
+  listLetterRequests,
+  createLetterRequest,
+  fulfilLetterRequest,
+  rejectLetterRequest,
+  listIssuedHrLetters,
+  listIdCards,
+  issueIdCard,
+  reportIdCardLost,
+  returnIdCard,
+  assetsPendingCount,
+  assetsPendingForEmployment,
+  myEmployment,
 } from '../../domains/hcm/assets.js';
 
 const router = Router();
 
-router.get('/_status', handler(async () => ({ module: 'assets', ready: true })));
+router.get(
+  '/_status',
+  handler(async () => ({ module: 'assets', ready: true })),
+);
 
-router.get('/me/employment', handler(async () => myEmployment()));
+router.get(
+  '/me/employment',
+  handler(async () => myEmployment()),
+);
 
 // ---------------------------------------------------------------------------
 // Assets
 // ---------------------------------------------------------------------------
 
-router.get('/inventory', handler(async (req) => listAssets({ status: str(req.query.status) })));
+router.get(
+  '/inventory',
+  handler(async (req) => listAssets({ status: str(req.query.status) })),
+);
 
 router.post(
   '/inventory',
@@ -50,8 +75,14 @@ router.post(
   }),
 );
 
-router.get('/pending', handler(async () => assetsPendingCount()));
-router.get('/pending/:employmentId', handler(async (req) => ({ pending: await assetsPendingForEmployment(req.params.employmentId) })));
+router.get(
+  '/pending',
+  handler(async () => assetsPendingCount()),
+);
+router.get(
+  '/pending/:employmentId',
+  handler(async (req) => ({ pending: await assetsPendingForEmployment(req.params.employmentId) })),
+);
 
 // ---------------------------------------------------------------------------
 // Assignments
@@ -93,7 +124,9 @@ router.post(
 
 router.get(
   '/travel',
-  handler(async (req) => listTravelRequests({ employmentRelationshipId: str(req.query.employmentId), status: str(req.query.status) })),
+  handler(async (req) =>
+    listTravelRequests({ employmentRelationshipId: str(req.query.employmentId), status: str(req.query.status) }),
+  ),
 );
 
 router.post(
@@ -139,10 +172,15 @@ router.post(
 
 router.get(
   '/letters',
-  handler(async (req) => listLetterRequests({ employmentRelationshipId: str(req.query.employmentId), status: str(req.query.status) })),
+  handler(async (req) =>
+    listLetterRequests({ employmentRelationshipId: str(req.query.employmentId), status: str(req.query.status) }),
+  ),
 );
 
-router.get('/letters/issued/:employmentId', handler(async (req) => listIssuedHrLetters(req.params.employmentId)));
+router.get(
+  '/letters/issued/:employmentId',
+  handler(async (req) => listIssuedHrLetters(req.params.employmentId)),
+);
 
 router.post(
   '/letters',
@@ -158,7 +196,10 @@ router.post(
   }),
 );
 
-router.post('/letters/:id/fulfil', handler(async (req) => fulfilLetterRequest(req.params.id)));
+router.post(
+  '/letters/:id/fulfil',
+  handler(async (req) => fulfilLetterRequest(req.params.id)),
+);
 
 router.post(
   '/letters/:id/reject',
@@ -172,7 +213,10 @@ router.post(
 // ID cards
 // ---------------------------------------------------------------------------
 
-router.get('/idcards', handler(async (req) => listIdCards({ employmentRelationshipId: str(req.query.employmentId) })));
+router.get(
+  '/idcards',
+  handler(async (req) => listIdCards({ employmentRelationshipId: str(req.query.employmentId) })),
+);
 
 router.post(
   '/idcards',
@@ -182,7 +226,13 @@ router.post(
   }),
 );
 
-router.post('/idcards/:id/lost', handler(async (req) => reportIdCardLost(req.params.id)));
-router.post('/idcards/:id/return', handler(async (req) => returnIdCard(req.params.id)));
+router.post(
+  '/idcards/:id/lost',
+  handler(async (req) => reportIdCardLost(req.params.id)),
+);
+router.post(
+  '/idcards/:id/return',
+  handler(async (req) => returnIdCard(req.params.id)),
+);
 
 export default router;

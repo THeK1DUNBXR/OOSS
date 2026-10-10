@@ -40,8 +40,14 @@ router.patch(
   }),
 );
 
-router.post('/plans/:id/approve', handler(async (req) => approvePlan(req.params.id)));
-router.post('/plans/:id/close', handler(async (req) => closePlan(req.params.id)));
+router.post(
+  '/plans/:id/approve',
+  handler(async (req) => approvePlan(req.params.id)),
+);
+router.post(
+  '/plans/:id/close',
+  handler(async (req) => closePlan(req.params.id)),
+);
 
 router.get(
   '/calendar',

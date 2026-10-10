@@ -20,10 +20,10 @@ The gateway owns: provider abstraction, per-tenant and per-task token budgets an
 
 Classify every tool by **reversibility × blast radius**:
 
-| Class | Examples | Gate |
-|---|---|---|
-| Read-only | query the semantic layer, summarise a record | Auto |
-| Reversible single-record write | draft a quote, tag a lead, suggest an owner | Auto + audit |
+| Class                                  | Examples                                                                                                            | Gate                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| Read-only                              | query the semantic layer, summarise a record                                                                        | Auto                       |
+| Reversible single-record write         | draft a quote, tag a lead, suggest an owner                                                                         | Auto + audit               |
 | **Irreversible or externally visible** | post a journal entry, generate an IRN, file a return, run payroll, email a customer, transition an employee's state | **Human approval, always** |
 
 IRN generation is irreversible after 24 hours and GST filing is irreversible outright. Those two are **structurally never auto-approvable**, at any authority ceiling, for any agent. Encode that as a hard prohibition in `packages/shared/src/ai.ts`, not as a configuration default.
@@ -47,7 +47,7 @@ Build it as a scheduled composition, not a chat response:
 
 Natural language over the Phase 5 semantic layer. The model picks metrics, dimensions and filters from the constrained vocabulary; the compiler emits the SQL; the answer renders as a chart plus the exact query, so a user can see what was asked on their behalf. A question outside the covered vocabulary gets "I can't answer that yet, here is what I can answer" — **never a guess**.
 
-Stack RAG *alongside* the semantic layer, never in place of it: RAG for unstructured text (policy documents, GST circulars, contracts, the HR handbook, course syllabi); semantic layer for numbers. RAG over business records fails because relevance ranking is not correctness ranking — a vector search will happily return the 2021 refund policy because it is textually similar.
+Stack RAG _alongside_ the semantic layer, never in place of it: RAG for unstructured text (policy documents, GST circulars, contracts, the HR handbook, course syllabi); semantic layer for numbers. RAG over business records fails because relevance ranking is not correctness ranking — a vector search will happily return the 2021 refund policy because it is textually similar.
 
 Note for the team: **temperature 0 does not give reproducibility** (GPU batch variance). Anything that must be reproducible is deterministic code, not a model call.
 

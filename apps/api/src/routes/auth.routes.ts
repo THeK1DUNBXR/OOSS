@@ -1,7 +1,19 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import {
-  buildSessionUser, changePassword, confirmMfa, enrolMfa, entitiesForToken, identifySwitchCaller, login, logoutSession, logoutWithRefreshCookie, refreshSession, switchContext, switchEntity, verifyMfaAndLogin,
+  buildSessionUser,
+  changePassword,
+  confirmMfa,
+  enrolMfa,
+  entitiesForToken,
+  identifySwitchCaller,
+  login,
+  logoutSession,
+  logoutWithRefreshCookie,
+  refreshSession,
+  switchContext,
+  switchEntity,
+  verifyMfaAndLogin,
 } from '../lib/auth.js';
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../lib/refreshCookie.js';
 import { onboardingState } from '../domains/onboarding.js';
@@ -181,7 +193,14 @@ router.get(
   requireAuth,
   handler(async (req) => {
     const auth = req.ctx!.auth!;
-    return { entities: await entitiesForToken({ userId: auth.userId!, tenantId: auth.tenantId, affiliationId: auth.affiliationId!, stepUp: auth.stepUpVerified }) };
+    return {
+      entities: await entitiesForToken({
+        userId: auth.userId!,
+        tenantId: auth.tenantId,
+        affiliationId: auth.affiliationId!,
+        stepUp: auth.stepUpVerified,
+      }),
+    };
   }),
 );
 
@@ -264,6 +283,10 @@ router.post(
  * The setup checklist, computed from what actually exists rather than from
  * anything the user has ticked.
  */
-router.get('/onboarding', requireAuth, handler(async () => onboardingState()));
+router.get(
+  '/onboarding',
+  requireAuth,
+  handler(async () => onboardingState()),
+);
 
 export default router;

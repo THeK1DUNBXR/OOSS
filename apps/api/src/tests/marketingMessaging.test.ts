@@ -54,7 +54,14 @@ async function grantMarketingConsent(personId: string) {
 
 async function makeApprovedTemplate(channelKey: 'email' | 'sms' | 'whatsapp', extra: Record<string, unknown> = {}) {
   const created = await asUser(CREATOR, () =>
-    createTemplate({ channelKey, name: `Test ${channelKey} ${Date.now()}`, subject: 'Hi {{person.firstName}}', body: 'Hello {{person.firstName}}, {{unsubscribeUrl}}', language: 'en', ...extra } as never),
+    createTemplate({
+      channelKey,
+      name: `Test ${channelKey} ${Date.now()}`,
+      subject: 'Hi {{person.firstName}}',
+      body: 'Hello {{person.firstName}}, {{unsubscribeUrl}}',
+      language: 'en',
+      ...extra,
+    } as never),
   );
   await asUser(CREATOR, () => submitForReview(created.id));
   await asUser(APPROVER, () => approveTemplate(created.id));
@@ -74,7 +81,7 @@ async function ensureMarketingPurposeNotice() {
   if (noticeEnsured) return;
   const codes = await asUser(APPROVER, async () => {
     const { currentNoticePurposeCodes } = await import('../domains/compliance/privacy.js');
-    return currentNoticePurposeCodes((await tenantId()));
+    return currentNoticePurposeCodes(await tenantId());
   });
   if (!codes.has('marketing')) {
     await asUser(APPROVER, () =>
@@ -126,7 +133,14 @@ describe('MKT-MSG-001/002 — template lifecycle & versioning', () => {
   });
 
   it('an SMS template cannot be approved without a dltTemplateId', async () => {
-    const created = await asUser(CREATOR, () => createTemplate({ channelKey: 'sms', name: `SMS ${Date.now()}`, body: 'OTP is {{person.firstName}}', language: 'en' } as never));
+    const created = await asUser(CREATOR, () =>
+      createTemplate({
+        channelKey: 'sms',
+        name: `SMS ${Date.now()}`,
+        body: 'OTP is {{person.firstName}}',
+        language: 'en',
+      } as never),
+    );
     await asUser(CREATOR, () => submitForReview(created.id));
     const err = await expectReject(() => asUser(APPROVER, () => approveTemplate(created.id)));
     expect(err.status).toBe(422);
@@ -134,7 +148,15 @@ describe('MKT-MSG-001/002 — template lifecycle & versioning', () => {
   });
 
   it("a template's creator can never approve it themselves", async () => {
-    const created = await asUser(CREATOR, () => createTemplate({ channelKey: 'email', name: `Self ${Date.now()}`, subject: 'Hi', body: 'Hello {{unsubscribeUrl}}', language: 'en' } as never));
+    const created = await asUser(CREATOR, () =>
+      createTemplate({
+        channelKey: 'email',
+        name: `Self ${Date.now()}`,
+        subject: 'Hi',
+        body: 'Hello {{unsubscribeUrl}}',
+        language: 'en',
+      } as never),
+    );
     await asUser(CREATOR, () => submitForReview(created.id));
     const err = await expectReject(() => asUser(CREATOR, () => approveTemplate(created.id)));
     expect(err.status).toBe(403);
@@ -151,7 +173,11 @@ describe('MKT-MSG-003/004 — sends exclude non-consenting recipients', () => {
 
     const template = await makeApprovedTemplate('email');
     const send = await asUser(CREATOR, () =>
-      createSend({ templateId: template.id, channelKey: 'email', personIds: [consented1.id, consented2.id, noConsent.id] } as never),
+      createSend({
+        templateId: template.id,
+        channelKey: 'email',
+        personIds: [consented1.id, consented2.id, noConsent.id],
+      } as never),
     );
     expect(send.recipientCount).toBe(2);
 
@@ -168,7 +194,9 @@ describe('MKT-MSG-011 — adapter not configured blocks a send', () => {
     const person = await makePerson('Blocked Person', `blocked-${Date.now()}@example.com`, null);
     await grantMarketingConsent(person.id);
     const template = await makeApprovedTemplate('email');
-    const send = await asUser(CREATOR, () => createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never));
+    const send = await asUser(CREATOR, () =>
+      createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never),
+    );
 
     const err = await expectReject(() => asUser(CREATOR, () => requestSend(send.id)));
     expect(err.status).toBe(422);
@@ -191,7 +219,9 @@ describe('MKT-MSG-005 — dispatch with the console adapter', () => {
     const person = await makePerson('Dispatch Person', `dispatch-${Date.now()}@example.com`, null);
     await grantMarketingConsent(person.id);
     const template = await makeApprovedTemplate('email');
-    const send = await asUser(CREATOR, () => createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never));
+    const send = await asUser(CREATOR, () =>
+      createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never),
+    );
 
     await asUser(CREATOR, () => requestSend(send.id));
     const dispatched = await asUser(CREATOR, () => dispatchSend(send.id));
@@ -202,7 +232,7 @@ describe('MKT-MSG-005 — dispatch with the console adapter', () => {
     expect(recipients[0].providerMessageId).toBeTruthy();
 
     const interaction = await unscopedPrisma.interaction.findFirst({
-      where: { tenantId: (await tenantId()), interactionType: 'email' },
+      where: { tenantId: await tenantId(), interactionType: 'email' },
       orderBy: { createdAt: 'desc' },
     });
     expect(interaction).toBeTruthy();
@@ -217,7 +247,9 @@ describe('MKT-MSG-005 — dispatch with the console adapter', () => {
     const person = await makePerson('Delivery Person', `delivery-${Date.now()}@example.com`, null);
     await grantMarketingConsent(person.id);
     const template = await makeApprovedTemplate('email');
-    const send = await asUser(CREATOR, () => createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never));
+    const send = await asUser(CREATOR, () =>
+      createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never),
+    );
     await asUser(CREATOR, () => requestSend(send.id));
     await asUser(CREATOR, () => dispatchSend(send.id));
 
@@ -225,7 +257,9 @@ describe('MKT-MSG-005 — dispatch with the console adapter', () => {
     expect(recipient.providerMessageId).toBeTruthy();
 
     await asUser(CREATOR, () =>
-      applyDeliveryEvents('email', [{ providerMessageId: recipient.providerMessageId!, kind: 'delivered', at: new Date() }]),
+      applyDeliveryEvents('email', [
+        { providerMessageId: recipient.providerMessageId!, kind: 'delivered', at: new Date() },
+      ]),
     );
 
     const reloaded = await asUser(CREATOR, () => loadSend(send.id));
@@ -241,7 +275,9 @@ describe('MKT-MSG-005 — dispatch with the console adapter', () => {
     await grantMarketingConsent(p1.id);
     await grantMarketingConsent(p2.id);
     const template = await makeApprovedTemplate('email');
-    const send = await asUser(CREATOR, () => createSend({ templateId: template.id, channelKey: 'email', personIds: [p1.id, p2.id] } as never));
+    const send = await asUser(CREATOR, () =>
+      createSend({ templateId: template.id, channelKey: 'email', personIds: [p1.id, p2.id] } as never),
+    );
     await asUser(CREATOR, () => requestSend(send.id));
     await asUser(CREATOR, () => dispatchSend(send.id));
 
@@ -253,7 +289,9 @@ describe('MKT-MSG-005 — dispatch with the console adapter', () => {
       ),
     );
 
-    const exc = await unscopedPrisma.exceptionRecord.findFirst({ where: { subjectType: 'marketing_send', subjectId: send.id, code: 'EX-MKT-005' } });
+    const exc = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { subjectType: 'marketing_send', subjectId: send.id, code: 'EX-MKT-005' },
+    });
     expect(exc).toBeTruthy();
   });
 });
@@ -266,7 +304,9 @@ describe('MKT-MSG — sends over the approval threshold need a distinct approver
     const person = await makePerson('Threshold Person', `threshold-${Date.now()}@example.com`, null);
     await grantMarketingConsent(person.id);
     const template = await makeApprovedTemplate('email');
-    const send = await asUser(CREATOR, () => createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never));
+    const send = await asUser(CREATOR, () =>
+      createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never),
+    );
 
     // Force the over-threshold branch directly on the row rather than
     // creating 500 real recipients.

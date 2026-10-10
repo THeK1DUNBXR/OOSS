@@ -27,8 +27,8 @@ the requirement each acceptance ID maps to, and the test that pins it.
   added dependency. `POST /auth/mfa/enrol` returns a secret and an
   `otpauth://` URI once; `POST /auth/mfa/confirm` sets `mfaEnabledAt` once a
   code checks out. A user with `mfaEnabledAt` set gets `{ mfaRequired: true,
-  challengeToken }` from `login()` instead of a session; `POST
-  /auth/mfa/verify` completes it. Pinned by the RFC 6238 Appendix B vector
+challengeToken }` from `login()` instead of a session; `POST
+/auth/mfa/verify` completes it. Pinned by the RFC 6238 Appendix B vector
   test and `login: MFA`.
 - **CMP-COR-002** — an approve-shaped action this workstream owns (a refund
   approval or payout, marking an MCA filing filed) calls
@@ -56,7 +56,7 @@ the requirement each acceptance ID maps to, and the test that pins it.
   otherwise), gzipped, sha256'd, recorded as a `BackupRun` row, raising
   `CMP_BACKUP_FAILED` on error. Scheduled daily (`runComplianceBackupJob`);
   `GET /compliance/corporate/security/backups` and a manual `POST
-  .../security/backups/run`.
+.../security/backups/run`.
 
 ## Company registrations
 
@@ -128,7 +128,7 @@ foreign receipt more than 30 days old with no `fircNumber`.
   Approving refuses a requester approving their own refund
   (`approvedById !== requestedById`, checked directly — never a role
   comparison). Paying calls `books.recordTransaction` with `source:
-  'refund'`, direction `out` — a second, separate Movement fact. `recordCode`
+'refund'`, direction `out` — a second, separate Movement fact. `recordCode`
   comes from document series `N`. `RefundPolicy` is versioned text plus rules
   (`fullWithinDays`/`partialPercent`/`noneAfterStartDays`), seeded with a
   first version — the company has not yet confirmed its own written policy
@@ -137,7 +137,7 @@ foreign receipt more than 30 days old with no `fircNumber`.
 - `Certificate` (kind completion/participation, number from series `T`,
   `verificationCode` unique, final once issued — a correction is a new
   certificate). `GET
-  .../certificates/verify/:code` is public-*shaped* (a code, not an id) but
+.../certificates/verify/:code` is public-_shaped_ (a code, not an id) but
   still sits behind this router's `requireAuth` — stated on the route and on
   screen, not a silent gap. Pinned by `certificate verification`.
 

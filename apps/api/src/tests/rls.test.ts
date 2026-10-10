@@ -106,16 +106,12 @@ describe('RLS-007 the scoped client is refused inside an interactive transaction
   // only way the mistake is visible.
   it('throws for prisma.* used inside prisma.$transaction, and does not return an empty result', async () => {
     await expect(
-      asUser('chairman@kaizen.co.in', async () =>
-        prisma.$transaction(async () => prisma.user.count()),
-      ),
+      asUser('chairman@kaizen.co.in', async () => prisma.$transaction(async () => prisma.user.count())),
     ).rejects.toThrow(/interactive transaction/i);
   });
 
   it('still counts rows through the transaction client', async () => {
-    const count = await asUser('chairman@kaizen.co.in', async () =>
-      prisma.$transaction(async (tx) => tx.user.count()),
-    );
+    const count = await asUser('chairman@kaizen.co.in', async () => prisma.$transaction(async (tx) => tx.user.count()));
     expect(count).toBeGreaterThan(0);
   });
 });

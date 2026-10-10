@@ -219,7 +219,10 @@ if (config.NODE_ENV !== 'test') {
   void addMissingGrantsForAllTenants()
     .then(({ tenants, added }) => {
       if (added.length > 0) {
-        logger.info({ component: 'boot' }, `Grants: ${added.length} new resource(s) granted across ${tenants} tenant(s)`);
+        logger.info(
+          { component: 'boot' },
+          `Grants: ${added.length} new resource(s) granted across ${tenants} tenant(s)`,
+        );
       }
     })
     .catch((error: unknown) => {
@@ -232,7 +235,10 @@ if (config.NODE_ENV !== 'test') {
   void reconcileTenantKinds()
     .then((changes) => {
       if (changes.length > 0) {
-        logger.info({ component: 'boot' }, `Tenant kinds reconciled: ${changes.map((c) => `${c.slug} -> ${c.to}`).join(', ')}`);
+        logger.info(
+          { component: 'boot' },
+          `Tenant kinds reconciled: ${changes.map((c) => `${c.slug} -> ${c.to}`).join(', ')}`,
+        );
       }
     })
     .catch((error: unknown) => {

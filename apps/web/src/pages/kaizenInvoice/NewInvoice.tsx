@@ -77,7 +77,15 @@ interface DocumentedPayment {
 let seq = 0;
 function blankEntry(): CourseEntry {
   seq += 1;
-  return { id: seq, courseId: '', tenureMonths: null, discountPercent: 0, overrideTotal: '', amountPaidNow: '', addons: [] };
+  return {
+    id: seq,
+    courseId: '',
+    tenureMonths: null,
+    discountPercent: 0,
+    overrideTotal: '',
+    amountPaidNow: '',
+    addons: [],
+  };
 }
 
 /**
@@ -116,7 +124,11 @@ function todayISO(): string {
 const TN_STATE_CODE = '33';
 
 export function NewInvoice() {
-  const { data: courses, isLoading: loadingCourses, error: coursesError } = useQuery({
+  const {
+    data: courses,
+    isLoading: loadingCourses,
+    error: coursesError,
+  } = useQuery({
     queryKey: ['courses', { includeRetired: false }],
     queryFn: () => api.get<CourseView[]>('/education/courses'),
   });
@@ -134,7 +146,12 @@ export function NewInvoice() {
   const [studentName, setStudentName] = useState('');
   const [contactNo, setContactNo] = useState('');
   // The learner's age basis (FX-64), sent with every enrolment this invoice makes.
-  const [age, setAge] = useState<AgeBasisValues>({ dateOfBirth: '', adultAttested: false, guardianName: '', guardianPhone: '' });
+  const [age, setAge] = useState<AgeBasisValues>({
+    dateOfBirth: '',
+    adultAttested: false,
+    guardianName: '',
+    guardianPhone: '',
+  });
   const guardianRequired = !adultOnRecord(age.dateOfBirth, age.adultAttested);
   const [fromTN, setFromTN] = useState<'Yes' | 'No'>('Yes');
   const [placeOfSupply, setPlaceOfSupply] = useState('');
@@ -253,7 +270,13 @@ export function NewInvoice() {
           const addon = course.addons.find((x) => x.id === a.courseAddonId);
           if (!addon) continue;
           const addonMonthly = addon.price / tenure;
-          const addonMath = computeRowMath(addonMonthly, tenure, entry.discountPercent, addon.gstRate ?? 18, interState);
+          const addonMath = computeRowMath(
+            addonMonthly,
+            tenure,
+            entry.discountPercent,
+            addon.gstRate ?? 18,
+            interState,
+          );
           rows.push({
             hsnSac: addon.hsnSac,
             courseName: null,
@@ -287,7 +310,11 @@ export function NewInvoice() {
         name: 'Kaizen Infinities',
         tagline: 'Training & Education Services',
         legalName: company.legalName,
-        address: [company.addressLine1, company.addressLine2, company.city ? `${company.city}-${company.pincode ?? ''}` : null]
+        address: [
+          company.addressLine1,
+          company.addressLine2,
+          company.city ? `${company.city}-${company.pincode ?? ''}` : null,
+        ]
           .filter(Boolean)
           .join(', '),
         location: company.stateName ?? '—',
@@ -444,15 +471,29 @@ export function NewInvoice() {
                 </div>
                 <div className="ki-field">
                   <label>Student Name</label>
-                  <input type="text" placeholder="Full name" value={studentName} onChange={(e) => setStudentName(e.target.value)} />
+                  <input
+                    type="text"
+                    placeholder="Full name"
+                    value={studentName}
+                    onChange={(e) => setStudentName(e.target.value)}
+                  />
                 </div>
                 <div className="ki-field">
                   <label>Contact No.</label>
-                  <input type="tel" placeholder="10-digit mobile" value={contactNo} onChange={(e) => setContactNo(e.target.value)} />
+                  <input
+                    type="tel"
+                    placeholder="10-digit mobile"
+                    value={contactNo}
+                    onChange={(e) => setContactNo(e.target.value)}
+                  />
                 </div>
                 <div className="ki-field">
                   <label>Date of birth</label>
-                  <input type="date" value={age.dateOfBirth} onChange={(e) => setAge({ ...age, dateOfBirth: e.target.value })} />
+                  <input
+                    type="date"
+                    value={age.dateOfBirth}
+                    onChange={(e) => setAge({ ...age, dateOfBirth: e.target.value })}
+                  />
                 </div>
                 {!age.dateOfBirth && (
                   <div className="ki-field">
@@ -465,8 +506,8 @@ export function NewInvoice() {
                       I confirm this learner is 18 or over
                     </label>
                     <small>
-                      Tick this only if you have confirmed their age yourself. Your name is recorded against the enrolment.
-                      Without a date of birth and without this, a guardian's name and phone are required.
+                      Tick this only if you have confirmed their age yourself. Your name is recorded against the
+                      enrolment. Without a date of birth and without this, a guardian's name and phone are required.
                     </small>
                   </div>
                 )}
@@ -474,11 +515,19 @@ export function NewInvoice() {
                   <>
                     <div className="ki-field">
                       <label>Guardian name</label>
-                      <input type="text" value={age.guardianName} onChange={(e) => setAge({ ...age, guardianName: e.target.value })} />
+                      <input
+                        type="text"
+                        value={age.guardianName}
+                        onChange={(e) => setAge({ ...age, guardianName: e.target.value })}
+                      />
                     </div>
                     <div className="ki-field">
                       <label>Guardian phone</label>
-                      <input type="tel" value={age.guardianPhone} onChange={(e) => setAge({ ...age, guardianPhone: e.target.value })} />
+                      <input
+                        type="tel"
+                        value={age.guardianPhone}
+                        onChange={(e) => setAge({ ...age, guardianPhone: e.target.value })}
+                      />
                     </div>
                   </>
                 )}
@@ -559,7 +608,10 @@ export function NewInvoice() {
                       <div className="ki-field-row">
                         <div className="ki-field">
                           <label>
-                            Discount % <span style={{ fontWeight: 400, color: 'var(--ki-muted)' }}>(this course + its add-ons)</span>
+                            Discount %{' '}
+                            <span style={{ fontWeight: 400, color: 'var(--ki-muted)' }}>
+                              (this course + its add-ons)
+                            </span>
                           </label>
                           <input
                             type="number"
@@ -586,13 +638,17 @@ export function NewInvoice() {
                       </div>
                       {entry.overrideTotal !== '' && (
                         <div className="ki-hint" style={{ marginTop: -8, marginBottom: 8 }}>
-                          Solved as {entry.discountPercent.toFixed(2)}% off — type in either field, the other follows it.
+                          Solved as {entry.discountPercent.toFixed(2)}% off — type in either field, the other follows
+                          it.
                         </div>
                       )}
 
                       <div className="ki-field">
                         <label>
-                          Amount received now <span style={{ fontWeight: 400, color: 'var(--ki-muted)' }}>(optional — blank leaves it on credit)</span>
+                          Amount received now{' '}
+                          <span style={{ fontWeight: 400, color: 'var(--ki-muted)' }}>
+                            (optional — blank leaves it on credit)
+                          </span>
                         </label>
                         <input
                           type="number"
@@ -652,8 +708,8 @@ export function NewInvoice() {
                   + Add another course
                 </button>
                 <div className="ki-hint" style={{ marginTop: 6 }}>
-                  Each course below becomes its own separate invoice — with its own invoice number, its own add-ons,
-                  and its own tax split — even though you&apos;re entering them together for the same student.
+                  Each course below becomes its own separate invoice — with its own invoice number, its own add-ons, and
+                  its own tax split — even though you&apos;re entering them together for the same student.
                 </div>
 
                 {entries.some((e) => Number(e.amountPaidNow) > 0) && (
@@ -671,7 +727,9 @@ export function NewInvoice() {
                         </select>
                       </div>
                       <div className="ki-field">
-                        <label>Reference <span style={{ fontWeight: 400, color: 'var(--ki-muted)' }}>(optional)</span></label>
+                        <label>
+                          Reference <span style={{ fontWeight: 400, color: 'var(--ki-muted)' }}>(optional)</span>
+                        </label>
                         <input
                           type="text"
                           placeholder="UTR, UPI reference or cheque number"
@@ -693,7 +751,10 @@ export function NewInvoice() {
                 </button>
 
                 {justRaised.length > 0 && (
-                  <div className="ki-hint" style={{ marginTop: 12, padding: 10, border: '1px solid var(--ki-line)', borderRadius: 4 }}>
+                  <div
+                    className="ki-hint"
+                    style={{ marginTop: 12, padding: 10, border: '1px solid var(--ki-line)', borderRadius: 4 }}
+                  >
                     <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--ki-black)' }}>
                       Receipts issued from that sale
                     </div>
@@ -712,7 +773,10 @@ export function NewInvoice() {
                         {d.finalInvoice && (
                           <>
                             {' · settled — '}
-                            <Link to={`/finance/final-invoices/${d.finalInvoice.id}`} style={{ color: 'var(--ki-navy)' }}>
+                            <Link
+                              to={`/finance/final-invoices/${d.finalInvoice.id}`}
+                              style={{ color: 'var(--ki-navy)' }}
+                            >
                               final invoice {d.finalInvoice.recordCode}
                             </Link>
                           </>
@@ -731,29 +795,59 @@ export function NewInvoice() {
               {!companyBlock || invoicePreviews.length === 0 ? (
                 <>
                   {companyBlock && <LedgerHead company={companyBlock} />}
-                  <InfoStrip doc={{ ...sharedDocFields, invoiceNo: '(assigned when saved)', rows: [], grandTotal: 0, amountInWords: '' }} />
-                  <ScheduleStrip doc={{ ...sharedDocFields, invoiceNo: '', rows: [], grandTotal: 0, amountInWords: '' }} />
+                  <InfoStrip
+                    doc={{
+                      ...sharedDocFields,
+                      invoiceNo: '(assigned when saved)',
+                      rows: [],
+                      grandTotal: 0,
+                      amountInWords: '',
+                    }}
+                  />
+                  <ScheduleStrip
+                    doc={{ ...sharedDocFields, invoiceNo: '', rows: [], grandTotal: 0, amountInWords: '' }}
+                  />
                   <div className="ki-empty-note">Select a course on the left to build the invoice(s).</div>
                 </>
               ) : (
                 <>
                   <LedgerHead company={companyBlock} />
-                  <InfoStrip doc={{ ...sharedDocFields, invoiceNo: '(assigned when saved)', rows: [], grandTotal: 0, amountInWords: '' }} />
-                  <ScheduleStrip doc={{ ...sharedDocFields, invoiceNo: '', rows: [], grandTotal: 0, amountInWords: '' }} />
+                  <InfoStrip
+                    doc={{
+                      ...sharedDocFields,
+                      invoiceNo: '(assigned when saved)',
+                      rows: [],
+                      grandTotal: 0,
+                      amountInWords: '',
+                    }}
+                  />
+                  <ScheduleStrip
+                    doc={{ ...sharedDocFields, invoiceNo: '', rows: [], grandTotal: 0, amountInWords: '' }}
+                  />
                   {invoicePreviews.map((p, idx) => (
                     <div className="ki-ledger-section" key={p.entry.id}>
                       <div className="ki-ledger-section-label">
-                        <span className="ki-n">{idx + 1}</span> Invoice {idx + 1} of {invoicePreviews.length} — {p.course.name}
+                        <span className="ki-n">{idx + 1}</span> Invoice {idx + 1} of {invoicePreviews.length} —{' '}
+                        {p.course.name}
                       </div>
                       <LedgerTable rows={p.rows} />
                       <TotalsStrip
-                        doc={{ ...sharedDocFields, invoiceNo: '', rows: [], grandTotal: p.grandTotal, amountInWords: amountInWords(p.grandTotal) }}
+                        doc={{
+                          ...sharedDocFields,
+                          invoiceNo: '',
+                          rows: [],
+                          grandTotal: p.grandTotal,
+                          amountInWords: amountInWords(p.grandTotal),
+                        }}
                       />
                     </div>
                   ))}
                   {invoicePreviews.length > 1 && (
                     <div className="ki-combined-summary">
-                      <span>{invoicePreviews.length} separate invoices will be saved and printed, each with its own invoice number</span>
+                      <span>
+                        {invoicePreviews.length} separate invoices will be saved and printed, each with its own invoice
+                        number
+                      </span>
                       <span>
                         Combined total (reference only, not on any single invoice): <b>{fmtINR(combinedTotal)}</b>
                       </span>
@@ -774,7 +868,15 @@ export function NewInvoice() {
             <div className="ki-print-page" key={i}>
               <div className="ki-print-half">
                 <div className="ki-print-copy">
-                  <div style={{ textAlign: 'right', fontSize: 8, fontWeight: 700, letterSpacing: '0.05em', color: 'var(--ki-navy)' }}>
+                  <div
+                    style={{
+                      textAlign: 'right',
+                      fontSize: 8,
+                      fontWeight: 700,
+                      letterSpacing: '0.05em',
+                      color: 'var(--ki-navy)',
+                    }}
+                  >
                     CUSTOMER COPY
                   </div>
                   <LedgerHead company={companyBlock} />
@@ -786,10 +888,20 @@ export function NewInvoice() {
                   <SignStrip />
                 </div>
               </div>
-              <div className="ki-fold-line">✂ - - - - - - - - - - - - - - - - fold &amp; cut here - - - - - - - - - - - - - - - - ✂</div>
+              <div className="ki-fold-line">
+                ✂ - - - - - - - - - - - - - - - - fold &amp; cut here - - - - - - - - - - - - - - - - ✂
+              </div>
               <div className="ki-print-half">
                 <div className="ki-print-copy">
-                  <div style={{ textAlign: 'right', fontSize: 8, fontWeight: 700, letterSpacing: '0.05em', color: 'var(--ki-navy)' }}>
+                  <div
+                    style={{
+                      textAlign: 'right',
+                      fontSize: 8,
+                      fontWeight: 700,
+                      letterSpacing: '0.05em',
+                      color: 'var(--ki-navy)',
+                    }}
+                  >
                     OFFICE COPY
                   </div>
                   <LedgerHead company={companyBlock} />

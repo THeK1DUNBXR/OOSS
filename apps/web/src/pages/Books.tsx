@@ -30,7 +30,13 @@ import {
 } from '../components/ui.js';
 import { NewButton } from '../components/forms.js';
 import {
-  NewAsset, NewBudgetLine, NewCategory, NewLedgerAccount, NewLoan, NewTransaction, NewVendorBill,
+  NewAsset,
+  NewBudgetLine,
+  NewCategory,
+  NewLedgerAccount,
+  NewLoan,
+  NewTransaction,
+  NewVendorBill,
 } from '../components/createForms.js';
 
 const DIVISION_STYLE: Record<string, string> = {
@@ -121,7 +127,8 @@ export function Ledger() {
   });
 
   const reverse = useMutation({
-    mutationFn: (v: { id: string; reason: string }) => api.post(`/books/transactions/${v.id}/reverse`, { reason: v.reason }),
+    mutationFn: (v: { id: string; reason: string }) =>
+      api.post(`/books/transactions/${v.id}/reverse`, { reason: v.reason }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['books-txns'] });
       void qc.invalidateQueries({ queryKey: ['books-accounts'] });
@@ -146,8 +153,12 @@ export function Ledger() {
         subtitle="Every movement of money. Nothing is deleted; corrections are new entries."
         actions={
           <>
-            <button className="btn" onClick={() => setAdding('category')}>+ Category</button>
-            <button className="btn" onClick={() => setAdding('account')}>+ Account</button>
+            <button className="btn" onClick={() => setAdding('category')}>
+              + Category
+            </button>
+            <button className="btn" onClick={() => setAdding('account')}>
+              + Account
+            </button>
             <NewButton label="Record money" onClick={() => setAdding('txn')} />
           </>
         }
@@ -246,7 +257,10 @@ export function Ledger() {
                       <td>{t.counterparty ?? '—'}</td>
                       <td className="text-2xs text-ink-500">{t.accountName}</td>
                       <td>
-                        <StatusChip status={t.source.replace(/_/g, ' ')} tone={t.source === 'manual' ? 'neutral' : 'accent'} />
+                        <StatusChip
+                          status={t.source.replace(/_/g, ' ')}
+                          tone={t.source === 'manual' ? 'neutral' : 'accent'}
+                        />
                       </td>
                       <td className="num">{t.direction === 'in' ? <Money value={t.amount} /> : ''}</td>
                       <td className="num">{t.direction === 'out' ? <Money value={t.amount} /> : ''}</td>
@@ -344,7 +358,11 @@ export function Payables() {
 
   const pay = useMutation({
     mutationFn: (v: { id: string; amount: number; accountId: string }) =>
-      api.post(`/books/vendor-bills/${v.id}/pay`, { amount: v.amount, accountId: v.accountId, paidOn: new Date().toISOString() }),
+      api.post(`/books/vendor-bills/${v.id}/pay`, {
+        amount: v.amount,
+        accountId: v.accountId,
+        paidOn: new Date().toISOString(),
+      }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['books-bills'] });
       void qc.invalidateQueries({ queryKey: ['books-accounts'] });
@@ -371,14 +389,23 @@ export function Payables() {
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Open bills" value={open.length} noActionReason="Review the bill list below to decide which payments to schedule." />
+        <Metric
+          label="Open bills"
+          value={open.length}
+          noActionReason="Review the bill list below to decide which payments to schedule."
+        />
         <Metric
           label="Outstanding"
           value={amountsVisible ? money(outstanding) : <Withheld reason="no_permission" />}
           tone={outstanding > 0 ? 'warn' : 'good'}
           noActionReason="Review the ledger and payment queue before approving more vendor actions."
         />
-        <Metric label="Overdue" value={overdue.length} tone={overdue.length > 0 ? 'bad' : 'good'} drillTo="/exceptions" />
+        <Metric
+          label="Overdue"
+          value={overdue.length}
+          tone={overdue.length > 0 ? 'bad' : 'good'}
+          drillTo="/exceptions"
+        />
       </div>
 
       {bills.isLoading ? (
@@ -477,10 +504,15 @@ export function Payables() {
         <div className="space-y-3">
           <div>
             <label className="label">Amount</label>
-            <input className="input num" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
+            <input
+              className="input num"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              inputMode="decimal"
+            />
             <p className="mt-1 text-2xs text-ink-500">
-              Outstanding on this bill: {paying?.outstanding === null ? 'withheld' : money(paying?.outstanding ?? 0)}. Paying
-              more than that needs a credit note, not a larger payment.
+              Outstanding on this bill: {paying?.outstanding === null ? 'withheld' : money(paying?.outstanding ?? 0)}.
+              Paying more than that needs a credit note, not a larger payment.
             </p>
           </div>
           <div>
@@ -521,9 +553,13 @@ export function Budget() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['books-budget', period],
     queryFn: () =>
-      api.get<{ period: string; budgetTotal: number | null; actualTotal: number | null; variance: number | null; rows: VarianceRow[] }>(
-        `/books/budget/variance?period=${period}`,
-      ),
+      api.get<{
+        period: string;
+        budgetTotal: number | null;
+        actualTotal: number | null;
+        variance: number | null;
+        rows: VarianceRow[];
+      }>(`/books/budget/variance?period=${period}`),
     retry: false,
   });
 
@@ -539,7 +575,12 @@ export function Budget() {
         subtitle="What was planned against what was spent."
         actions={
           <>
-            <input type="month" className="input w-40" value={period} onChange={(e) => e.target.value && setPeriod(e.target.value)} />
+            <input
+              type="month"
+              className="input w-40"
+              value={period}
+              onChange={(e) => e.target.value && setPeriod(e.target.value)}
+            />
             <NewButton label="Set a budget line" onClick={() => setAdding(true)} />
           </>
         }
@@ -569,7 +610,10 @@ export function Budget() {
         <Loading />
       ) : !data?.rows.length ? (
         <Card>
-          <EmptyState message="No budget set for this month." hint="Without a plan there is nothing to be over or under." />
+          <EmptyState
+            message="No budget set for this month."
+            hint="Without a plan there is nothing to be over or under."
+          />
         </Card>
       ) : (
         <Card bodyClassName="p-0">
@@ -643,8 +687,16 @@ interface LoanRow {
 
 export function Assets() {
   const [adding, setAdding] = useState<'asset' | 'loan' | null>(null);
-  const assets = useQuery({ queryKey: ['books-assets'], queryFn: () => api.get<AssetRow[]>('/books/assets'), retry: false });
-  const loans = useQuery({ queryKey: ['books-loans'], queryFn: () => api.get<LoanRow[]>('/books/loans'), retry: false });
+  const assets = useQuery({
+    queryKey: ['books-assets'],
+    queryFn: () => api.get<AssetRow[]>('/books/assets'),
+    retry: false,
+  });
+  const loans = useQuery({
+    queryKey: ['books-loans'],
+    queryFn: () => api.get<LoanRow[]>('/books/loans'),
+    retry: false,
+  });
 
   if (assets.isError) return <ErrorBox error={assets.error} />;
 
@@ -659,7 +711,9 @@ export function Assets() {
       <PageHeader
         actions={
           <>
-            <button className="btn" onClick={() => setAdding('loan')}>+ Borrowing</button>
+            <button className="btn" onClick={() => setAdding('loan')}>
+              + Borrowing
+            </button>
             <NewButton label="Add an asset" onClick={() => setAdding('asset')} />
           </>
         }
@@ -668,7 +722,11 @@ export function Assets() {
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Assets" value={assets.data?.length ?? 0} noActionReason="Use the asset table below to review the full portfolio and follow up on any actions." />
+        <Metric
+          label="Assets"
+          value={assets.data?.length ?? 0}
+          noActionReason="Use the asset table below to review the full portfolio and follow up on any actions."
+        />
         <Metric
           label="Carrying value"
           value={visible ? money(bookValue) : <Withheld reason="no_permission" />}

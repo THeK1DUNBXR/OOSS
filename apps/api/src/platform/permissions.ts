@@ -190,7 +190,7 @@ export async function evaluate(input: EvaluateInput): Promise<PermissionDecision
 
   // ---- WHAT ----------------------------------------------------------------
   const classification: SensitivityClass =
-    input.classification ?? ((input.record?.sensitivityClass as SensitivityClass | undefined) ?? 'internal');
+    input.classification ?? (input.record?.sensitivityClass as SensitivityClass | undefined) ?? 'internal';
   const ceilingOk = SENSITIVITY_RANK[auth.classificationCeiling] >= SENSITIVITY_RANK[classification];
   if (!ceilingOk) {
     axes.push({
@@ -230,7 +230,11 @@ export async function evaluate(input: EvaluateInput): Promise<PermissionDecision
 
   // ---- WHY -----------------------------------------------------------------
   if (input.requiredPurpose && auth.purpose !== input.requiredPurpose) {
-    axes.push({ axis: 'WHY', passed: false, reason: `Session purpose '${auth.purpose ?? 'none'}' is not bound to '${input.requiredPurpose}'` });
+    axes.push({
+      axis: 'WHY',
+      passed: false,
+      reason: `Session purpose '${auth.purpose ?? 'none'}' is not bound to '${input.requiredPurpose}'`,
+    });
     return deny(axes, 'WHY', 'purpose_unbound');
   }
   if (input.requiredConsent?.length) {
@@ -321,10 +325,7 @@ export async function assertCan(input: EvaluateInput): Promise<PermissionDecisio
   if (!decision.allowed) {
     // A denial that would otherwise have produced an event logs its policy
     // version via the event envelope's reason field.
-    throw ApiError.forbidden(
-      `Denied on ${decision.deniedBy} axis for ${input.resource}:${input.verb}`,
-      decision.axes,
-    );
+    throw ApiError.forbidden(`Denied on ${decision.deniedBy} axis for ${input.resource}:${input.verb}`, decision.axes);
   }
   return decision;
 }
@@ -389,7 +390,6 @@ export function scopeWhere(scope: Scope, auth: AuthContext, ownerField = 'ownerP
   if (clauses.length === 0) return matchNothing(ownerField);
   return clauses.length === 1 ? clauses[0] : { OR: clauses };
 }
-
 
 /**
  * Asserts a grant wide enough to answer a question about everybody.

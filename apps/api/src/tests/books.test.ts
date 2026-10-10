@@ -557,7 +557,13 @@ describe('Money is withheld, never zeroed', () => {
     // instead, and the separation now sits between Finance Head and Employee
     // rather than at the top.
     const entry = await asUser('chairman@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date(), direction: 'out', amount: 100, accountId: account.id, note: 'Chairman entry' }),
+      recordTransaction({
+        txnDate: new Date(),
+        direction: 'out',
+        amount: 100,
+        accountId: account.id,
+        note: 'Chairman entry',
+      }),
     );
     expect(entry.recordCode).toMatch(/^TXN-/);
 
@@ -584,10 +590,24 @@ describe('Periods are IST civil months — the first five and a half hours belon
     const beforeMay = await asUser('chairman@kaizen.co.in', () => profitAndLoss('2033-05'));
 
     await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date('2033-04-30T18:00:00Z'), direction: 'out', amount: 1000, accountId: account.id, categoryId: category.id, note: 'IST-BOUNDARY 23:30 30 Apr' }),
+      recordTransaction({
+        txnDate: new Date('2033-04-30T18:00:00Z'),
+        direction: 'out',
+        amount: 1000,
+        accountId: account.id,
+        categoryId: category.id,
+        note: 'IST-BOUNDARY 23:30 30 Apr',
+      }),
     );
     await asUser('finance@kaizen.co.in', () =>
-      recordTransaction({ txnDate: new Date('2033-04-30T19:00:00Z'), direction: 'out', amount: 5000, accountId: account.id, categoryId: category.id, note: 'IST-BOUNDARY 00:30 1 May' }),
+      recordTransaction({
+        txnDate: new Date('2033-04-30T19:00:00Z'),
+        direction: 'out',
+        amount: 5000,
+        accountId: account.id,
+        categoryId: category.id,
+        note: 'IST-BOUNDARY 00:30 1 May',
+      }),
     );
 
     const april = await asUser('chairman@kaizen.co.in', () => profitAndLoss('2033-04'));

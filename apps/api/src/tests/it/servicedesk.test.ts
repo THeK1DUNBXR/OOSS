@@ -13,7 +13,16 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { dueFrom, slaAttainment, medianMinutes, backlogAgeBuckets } from '@kaizen/shared';
-import { asUser, asPrincipal, authFor, expectReject, prisma, tenantId, unscopedPrisma, type TestPrincipal } from '../helpers.js';
+import {
+  asUser,
+  asPrincipal,
+  authFor,
+  expectReject,
+  prisma,
+  tenantId,
+  unscopedPrisma,
+  type TestPrincipal,
+} from '../helpers.js';
 import { seedBootstrap } from '../../seed/bootstrap.js';
 import {
   createTicket,
@@ -110,13 +119,17 @@ describe('service desk — domain and wiring', () => {
 
   beforeAll(async () => {
     tid = await tenantId();
-    const employee = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'employee@kaizen.co.in', tenant: { slug: 'kaizen' } } });
+    const employee = await unscopedPrisma.user.findFirstOrThrow({
+      where: { email: 'employee@kaizen.co.in', tenant: { slug: 'kaizen' } },
+    });
     employeePartyId = employee.personId;
-    const ops = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } } });
+    const ops = await unscopedPrisma.user.findFirstOrThrow({
+      where: { email: 'operations@kaizen.co.in', tenant: { slug: 'kaizen' } },
+    });
     opsPartyId = ops.personId;
   });
 
-  it('IT-SLA-001: triage stamps due times from the policy in force on the ticket\'s creation date, not today\'s', async () => {
+  it("IT-SLA-001: triage stamps due times from the policy in force on the ticket's creation date, not today's", async () => {
     // A policy from the year 2000, well before the seeded 2024-01-01 table —
     // the only one in force for a ticket created in 2010.
     const oldPolicy = await asUser('operations@kaizen.co.in', () =>
@@ -126,7 +139,7 @@ describe('service desk — domain and wiring', () => {
         resolutionMinutes: 9999,
         businessHoursOnly: false,
         effectiveFrom: new Date('2000-01-01T00:00:00.000Z'),
-        note: 'IT-SLA-001 fixture — an old rate, not today\'s.',
+        note: "IT-SLA-001 fixture — an old rate, not today's.",
       }),
     );
     expect(oldPolicy.responseMinutes).toBe(999);
@@ -176,7 +189,11 @@ describe('service desk — domain and wiring', () => {
     expect(mine.requesterPartyId).toBeTruthy();
 
     const someoneElses = await asUser('divya@kaizen.co.in', () =>
-      createTicket({ category: 'incident', subject: `Divya's ticket ${stamp()}`, description: 'Laptop will not boot.' }),
+      createTicket({
+        category: 'incident',
+        subject: `Divya's ticket ${stamp()}`,
+        description: 'Laptop will not boot.',
+      }),
     );
 
     const priyaList = await asUser('priya@kaizen.co.in', () => listTickets({ tab: 'mine' }));
@@ -186,10 +203,14 @@ describe('service desk — domain and wiring', () => {
     const seeingAnothers = await expectReject(() => asUser('priya@kaizen.co.in', () => getTicket(someoneElses.id)));
     expect(seeingAnothers.status).toBe(403);
 
-    const cannotTriage = await expectReject(() => asUser('priya@kaizen.co.in', () => triageTicket(mine.id, { priority: 'P3' })));
+    const cannotTriage = await expectReject(() =>
+      asUser('priya@kaizen.co.in', () => triageTicket(mine.id, { priority: 'P3' })),
+    );
     expect(cannotTriage.status).toBe(403);
 
-    const cannotAssign = await expectReject(() => asUser('priya@kaizen.co.in', () => assignTicket(mine.id, employeePartyId)));
+    const cannotAssign = await expectReject(() =>
+      asUser('priya@kaizen.co.in', () => assignTicket(mine.id, employeePartyId)),
+    );
     expect(cannotAssign.status).toBe(403);
   });
 
@@ -208,13 +229,23 @@ describe('service desk — domain and wiring', () => {
 
     await asUser('operations@kaizen.co.in', () => runServicedeskJob());
     const afterFirst = await unscopedPrisma.exceptionRecord.count({
-      where: { tenantId: tid, subjectType: 'it_ticket', subjectId: ticket.id, code: { in: ['IT_TICKET_RESPONSE_BREACHED', 'IT_TICKET_RESOLUTION_BREACHED'] } },
+      where: {
+        tenantId: tid,
+        subjectType: 'it_ticket',
+        subjectId: ticket.id,
+        code: { in: ['IT_TICKET_RESPONSE_BREACHED', 'IT_TICKET_RESOLUTION_BREACHED'] },
+      },
     });
     expect(afterFirst).toBe(2); // one per clock
 
     await asUser('operations@kaizen.co.in', () => runServicedeskJob());
     const afterSecond = await unscopedPrisma.exceptionRecord.count({
-      where: { tenantId: tid, subjectType: 'it_ticket', subjectId: ticket.id, code: { in: ['IT_TICKET_RESPONSE_BREACHED', 'IT_TICKET_RESOLUTION_BREACHED'] } },
+      where: {
+        tenantId: tid,
+        subjectType: 'it_ticket',
+        subjectId: ticket.id,
+        code: { in: ['IT_TICKET_RESPONSE_BREACHED', 'IT_TICKET_RESOLUTION_BREACHED'] },
+      },
     });
     expect(afterSecond).toBe(2); // idempotent — nothing new
 
@@ -244,11 +275,17 @@ describe('service desk — domain and wiring', () => {
     expect(stillFour.satisfaction).toBe(4);
   });
 
-  it('permission: an employee cannot see or act on another employee\'s ticket via comments', async () => {
+  it("permission: an employee cannot see or act on another employee's ticket via comments", async () => {
     const ticket = await asUser('ravi@kaizen.co.in', () =>
-      createTicket({ category: 'question', subject: `Ravi's private ticket ${stamp()}`, description: 'Password reset.' }),
+      createTicket({
+        category: 'question',
+        subject: `Ravi's private ticket ${stamp()}`,
+        description: 'Password reset.',
+      }),
     );
-    const denied = await expectReject(() => asUser('divya@kaizen.co.in', () => addComment(ticket.id, { body: 'Can I help?' })));
+    const denied = await expectReject(() =>
+      asUser('divya@kaizen.co.in', () => addComment(ticket.id, { body: 'Can I help?' })),
+    );
     expect(denied.status).toBe(403);
   });
 
@@ -256,14 +293,17 @@ describe('service desk — domain and wiring', () => {
     const ticket = await asUser('employee@kaizen.co.in', () =>
       createTicket({ category: 'incident', subject: `Internal comment fixture ${stamp()}`, description: 'VPN down.' }),
     );
-    const deniedInternal = await expectReject(() => asUser('employee@kaizen.co.in', () => addComment(ticket.id, { body: 'internal note', internal: true }))
+    const deniedInternal = await expectReject(() =>
+      asUser('employee@kaizen.co.in', () => addComment(ticket.id, { body: 'internal note', internal: true })),
     );
     expect(deniedInternal.status).toBe(403);
 
     const publicOk = await asUser('employee@kaizen.co.in', () => addComment(ticket.id, { body: 'Still broken.' }));
     expect(publicOk.internal).toBe(false);
 
-    const opsInternal = await asUser('operations@kaizen.co.in', () => addComment(ticket.id, { body: 'checking VPN concentrator', internal: true }));
+    const opsInternal = await asUser('operations@kaizen.co.in', () =>
+      addComment(ticket.id, { body: 'checking VPN concentrator', internal: true }),
+    );
     expect(opsInternal.internal).toBe(true);
 
     // The requester never sees the internal note in the detail view.
@@ -275,7 +315,11 @@ describe('service desk — domain and wiring', () => {
 
   it('the ticket lifecycle machine runs new -> triaged -> in_progress -> waiting -> resolved -> closed, plus reopen', async () => {
     const ticket = await asUser('employee@kaizen.co.in', () =>
-      createTicket({ category: 'incident', subject: `Lifecycle fixture ${stamp()}`, description: 'Wifi down in Chennai office.' }),
+      createTicket({
+        category: 'incident',
+        subject: `Lifecycle fixture ${stamp()}`,
+        description: 'Wifi down in Chennai office.',
+      }),
     );
     expect(ticket.status).toBe('new');
 
@@ -303,7 +347,9 @@ describe('service desk — domain and wiring', () => {
     expect(reopened.status).toBe('in_progress');
 
     // disposed-from-assigned-style illegal jump: cannot close from in_progress.
-    const illegal = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionTicket(ticket.id, 'CLOSE')));
+    const illegal = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionTicket(ticket.id, 'CLOSE')),
+    );
     expect(illegal.status).toBe(422);
 
     const resolvedAgain = await asUser('operations@kaizen.co.in', () => transitionTicket(ticket.id, 'RESOLVE'));
@@ -311,13 +357,18 @@ describe('service desk — domain and wiring', () => {
     expect(closed.status).toBe('closed');
 
     // closed is terminal — nothing reopens it.
-    const noReopen = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionTicket(closed.id, 'REOPEN')));
+    const noReopen = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionTicket(closed.id, 'REOPEN')),
+    );
     expect(noReopen.status).toBe(422);
   });
 
   it('knowledge base: draft is invisible to an employee, publishing makes it visible, and helpful increments', async () => {
     const article = await asUser('operations@kaizen.co.in', () =>
-      createKnowledgeArticle({ title: `How to reset your VPN ${stamp()}`, body: 'Open the VPN client and click reset.' }),
+      createKnowledgeArticle({
+        title: `How to reset your VPN ${stamp()}`,
+        body: 'Open the VPN client and click reset.',
+      }),
     );
     expect(article.status).toBe('draft');
 
@@ -335,9 +386,13 @@ describe('service desk — domain and wiring', () => {
     expect(helped.helpfulCount).toBe(1);
   });
 
-  it('My IT composes only the caller\'s own tickets, and carries the awaiting note rather than reaching into other workstreams', async () => {
+  it("My IT composes only the caller's own tickets, and carries the awaiting note rather than reaching into other workstreams", async () => {
     const ticket = await asUser('employee@kaizen.co.in', () =>
-      createTicket({ category: 'question', subject: `My IT fixture ${stamp()}`, description: 'How do I request a licence?' }),
+      createTicket({
+        category: 'question',
+        subject: `My IT fixture ${stamp()}`,
+        description: 'How do I request a licence?',
+      }),
     );
     const mine = await asUser('employee@kaizen.co.in', () => myIt());
     expect(mine.tickets.some((t) => t.id === ticket.id)).toBe(true);
@@ -348,7 +403,9 @@ describe('service desk — domain and wiring', () => {
 
   it('permission: the Finance Head holds only view on tickets and cannot raise one', async () => {
     const denied = await expectReject(() =>
-      asUser('finance@kaizen.co.in', () => createTicket({ category: 'question', subject: 'nope', description: 'nope' })),
+      asUser('finance@kaizen.co.in', () =>
+        createTicket({ category: 'question', subject: 'nope', description: 'nope' }),
+      ),
     );
     expect(denied.status).toBe(403);
   });
@@ -376,7 +433,9 @@ describe('IT-TKT-004: SLA attainment reports not yet measured with no closed tic
     const seeded = await seedBootstrap({ tenantSlug: slug, tenantName: `Service desk IT-TKT-004 fixture ${slug}` });
     ttid = seeded.tenantId;
 
-    const user = await unscopedPrisma.user.findFirstOrThrow({ where: { tenantId: ttid, email: 'chairman@kaizen.co.in' } });
+    const user = await unscopedPrisma.user.findFirstOrThrow({
+      where: { tenantId: ttid, email: 'chairman@kaizen.co.in' },
+    });
     const affiliation = await unscopedPrisma.affiliation.findFirstOrThrow({
       where: { partyId: user.personId, tenantId: ttid, status: 'active' },
       orderBy: [{ primaryFlag: 'desc' }, { createdAt: 'asc' }],
@@ -393,7 +452,11 @@ describe('IT-TKT-004: SLA attainment reports not yet measured with no closed tic
 
   it('never reports 100% with nothing behind it: a ticket resolved but backdated outside the current month does not count', async () => {
     const ticket = await asTenantChairman(() =>
-      createTicket({ category: 'question', subject: `Attainment fixture ${stamp()}`, description: 'Resolved, but not this month.' }),
+      createTicket({
+        category: 'question',
+        subject: `Attainment fixture ${stamp()}`,
+        description: 'Resolved, but not this month.',
+      }),
     );
     await asTenantChairman(() => triageTicket(ticket.id, { priority: 'P3' }));
     await asTenantChairman(() => assignTicket(ticket.id, chairman.partyId));

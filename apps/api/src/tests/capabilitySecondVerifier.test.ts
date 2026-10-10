@@ -83,7 +83,9 @@ describe('verifyClaim — the second verifier must be a real, qualified person i
       { slug: 'w1c_second_verifier', grants: [{ resource: 'capabilities', verbs: ['approve'] }] },
       async (second) => {
         await asUser('hr@kaizen.co.in', () => verifyClaim(claim.id, { secondVerifierPartyId: second.partyId }));
-        const event = await unscopedPrisma.verificationEvent.findFirstOrThrow({ where: { capabilityClaimId: claim.id } });
+        const event = await unscopedPrisma.verificationEvent.findFirstOrThrow({
+          where: { capabilityClaimId: claim.id },
+        });
         expect(event.secondVerifierPartyId).toBe(second.partyId);
       },
     );

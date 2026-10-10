@@ -25,10 +25,7 @@ export interface ScheduleIIIHead {
  * is only the fallback so nothing is ever silently unmapped for want of a
  * seeded row.
  */
-export function defaultScheduleIIIHeadForCategory(
-  kind: string,
-  direction: 'in' | 'out',
-): ScheduleIIIHead | null {
+export function defaultScheduleIIIHeadForCategory(kind: string, direction: 'in' | 'out'): ScheduleIIIHead | null {
   if (kind === 'income') {
     return { statement: 'profit_and_loss', head: 'Revenue from operations' };
   }
@@ -150,7 +147,11 @@ export function isLikelyMatch(input: {
 // ---------------------------------------------------------------------------
 
 /** A minimal, correct CSV formatter: quotes a field only when it needs it. */
-export function toCsv(headers: string[], rows: Array<Array<string | number | null | undefined>>, eol: '\n' | '\r\n' = '\n'): string {
+export function toCsv(
+  headers: string[],
+  rows: Array<Array<string | number | null | undefined>>,
+  eol: '\n' | '\r\n' = '\n',
+): string {
   const escape = (v: string | number | null | undefined): string => {
     const s = v === null || v === undefined ? '' : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

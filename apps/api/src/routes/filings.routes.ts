@@ -8,15 +8,25 @@ import { z } from 'zod';
 import { handler, str } from '../lib/http.js';
 import { FILING_FORMS, FILING_STATUSES } from '@kaizen/shared';
 import {
-  mgt1Register, mgt1Export, mgt2Register, mgt2Export,
-  pas3AllotteeList, pas3Export, sh4Data, pas6,
-  recordFiling, listFilings,
+  mgt1Register,
+  mgt1Export,
+  mgt2Register,
+  mgt2Export,
+  pas3AllotteeList,
+  pas3Export,
+  sh4Data,
+  pas6,
+  recordFiling,
+  listFilings,
 } from '../domains/filings.js';
 import { aoc1, aoc1Export, groupBenCandidates, benCandidatesExport } from '../domains/group.js';
 
 const router = Router();
 
-router.get('/mgt-1', handler(async (req) => ({ items: await mgt1Register(str(req.query.shareClassId)) })));
+router.get(
+  '/mgt-1',
+  handler(async (req) => ({ items: await mgt1Register(str(req.query.shareClassId)) })),
+);
 router.get(
   '/mgt-1.xlsx',
   handler(async (req, res) => {
@@ -34,7 +44,10 @@ router.get(
   }),
 );
 
-router.get('/mgt-2', handler(async () => ({ items: await mgt2Register() })));
+router.get(
+  '/mgt-2',
+  handler(async () => ({ items: await mgt2Register() })),
+);
 router.get(
   '/mgt-2.xlsx',
   handler(async (_req, res) => {
@@ -52,7 +65,10 @@ router.get(
   }),
 );
 
-router.get('/pas-3', handler(async (req) => pas3AllotteeList(String(req.query.roundId ?? ''))));
+router.get(
+  '/pas-3',
+  handler(async (req) => pas3AllotteeList(String(req.query.roundId ?? ''))),
+);
 router.get(
   '/pas-3.xlsx',
   handler(async (req, res) => {
@@ -70,13 +86,22 @@ router.get(
   }),
 );
 
-router.get('/sh-4.pdf-data', handler(async (req) => sh4Data(String(req.query.transactionId ?? ''))));
+router.get(
+  '/sh-4.pdf-data',
+  handler(async (req) => sh4Data(String(req.query.transactionId ?? ''))),
+);
 
-router.get('/pas-6.json', handler(async () => pas6()));
+router.get(
+  '/pas-6.json',
+  handler(async () => pas6()),
+);
 
 // Group-dependent exports (equity-portal plan §6 phase 6c) — read the
 // holding tenant's own `EntitySnapshot` rows only; see `domains/group.ts`.
-router.get('/aoc-1', handler(async () => aoc1()));
+router.get(
+  '/aoc-1',
+  handler(async () => aoc1()),
+);
 router.get(
   '/aoc-1.xlsx',
   handler(async (_req, res) => {
@@ -94,7 +119,10 @@ router.get(
   }),
 );
 
-router.get('/ben.json', handler(async () => groupBenCandidates()));
+router.get(
+  '/ben.json',
+  handler(async () => groupBenCandidates()),
+);
 router.get(
   '/ben-2.xlsx',
   handler(async (_req, res) => {
@@ -112,7 +140,10 @@ router.get(
   }),
 );
 
-router.get('/log', handler(async (req) => ({ items: await listFilings(str(req.query.form)) })));
+router.get(
+  '/log',
+  handler(async (req) => ({ items: await listFilings(str(req.query.form)) })),
+);
 
 router.post(
   '/log',

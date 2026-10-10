@@ -1,7 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-const ownerUrl =
-  process.env.TEST_DATABASE_URL ?? 'postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public';
+const ownerUrl = process.env.TEST_DATABASE_URL ?? 'postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public';
 
 /**
  * The acceptance suite runs against a real database inside real request
@@ -29,7 +28,8 @@ export default defineConfig({
       // production does (FX-51). Provisioned by scripts/test-db.sh.
       MIGRATION_DATABASE_URL: ownerUrl,
       UNSCOPED_DATABASE_URL: ownerUrl,
-      DATABASE_URL: process.env.TEST_APP_DATABASE_URL ?? ownerUrl.replace('//kaizen:kaizen@', '//kaizen_app:kaizen_app@'),
+      DATABASE_URL:
+        process.env.TEST_APP_DATABASE_URL ?? ownerUrl.replace('//kaizen:kaizen@', '//kaizen_app:kaizen_app@'),
       NODE_ENV: 'test',
       // Not a fallback: the API has none any more, so the suite supplies its
       // own. Long enough to satisfy the same rule production is held to.

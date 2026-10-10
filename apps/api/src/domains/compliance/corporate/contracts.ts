@@ -96,10 +96,14 @@ export interface ESignProvider {
 export class NotConfiguredProvider implements ESignProvider {
   key = 'not_configured';
   async request(): Promise<ESignRequestResult> {
-    throw ApiError.unprocessable('No e-signature provider is configured for this tenant.', { reasonCode: 'ESIGN_NOT_CONFIGURED' });
+    throw ApiError.unprocessable('No e-signature provider is configured for this tenant.', {
+      reasonCode: 'ESIGN_NOT_CONFIGURED',
+    });
   }
   async status(): Promise<ESignStatusResult> {
-    throw ApiError.unprocessable('No e-signature provider is configured for this tenant.', { reasonCode: 'ESIGN_NOT_CONFIGURED' });
+    throw ApiError.unprocessable('No e-signature provider is configured for this tenant.', {
+      reasonCode: 'ESIGN_NOT_CONFIGURED',
+    });
   }
 }
 
@@ -116,7 +120,9 @@ export async function resolveESignProvider(): Promise<ESignProvider> {
 
 export async function requestESignature(documentId: string, signers: ESignSigner[]) {
   const auth = currentAuth();
-  const document = await prisma.document.findFirst({ where: { id: documentId, tenantId: auth.tenantId, deletedAt: null } });
+  const document = await prisma.document.findFirst({
+    where: { id: documentId, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!document) throw ApiError.notFound('Document');
 
   const provider = await resolveESignProvider();
@@ -142,7 +148,8 @@ export async function requestESignature(documentId: string, signers: ESignSigner
 export async function markESigned(documentId: string): Promise<void> {
   const auth = currentAuth();
   const document = await prisma.document.findFirst({ where: { id: documentId, tenantId: auth.tenantId } });
-  if (!document || !document.eSignRef) throw ApiError.unprocessable('No e-signature request is in progress for this document.');
+  if (!document || !document.eSignRef)
+    throw ApiError.unprocessable('No e-signature request is in progress for this document.');
   await prisma.document.update({ where: { id: documentId }, data: { eSignedAt: new Date() } });
 }
 
@@ -165,7 +172,9 @@ export async function listRetentionRules() {
  */
 export async function applyRetention(documentId: string, anchorDate: Date) {
   const auth = currentAuth();
-  const document = await prisma.document.findFirst({ where: { id: documentId, tenantId: auth.tenantId, deletedAt: null } });
+  const document = await prisma.document.findFirst({
+    where: { id: documentId, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!document) throw ApiError.notFound('Document');
 
   const rule = await prisma.documentRetentionRule.findFirst({

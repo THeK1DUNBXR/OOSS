@@ -13,19 +13,40 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
-  createShareClass, createHolder, proposeAllotment, proposeTransfer,
-  approveShareTransaction, makeEffective, recordValuation,
+  createShareClass,
+  createHolder,
+  proposeAllotment,
+  proposeTransfer,
+  approveShareTransaction,
+  makeEffective,
+  recordValuation,
 } from '../domains/equity.js';
 import { createRound } from '../domains/rounds.js';
 import {
-  mgt1Register, mgt1Export, pas3AllotteeList, pas3Export, sh4Data, pas6,
-  recordFiling, listFilings, checkDematRequirements, runPas6HalfYearly, runFlaReturn,
+  mgt1Register,
+  mgt1Export,
+  pas3AllotteeList,
+  pas3Export,
+  sh4Data,
+  pas6,
+  recordFiling,
+  listFilings,
+  checkDematRequirements,
+  runPas6HalfYearly,
+  runFlaReturn,
 } from '../domains/filings.js';
 import { updateCompanyProfile } from '../domains/companyProfile.js';
 import { updateHolder } from '../domains/equity.js';
 import { seedBootstrap } from '../seed/bootstrap.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { asPrincipal, authFor, expectReject, type TestPrincipal, unscopedPrisma, prisma as scopedPrisma } from './helpers.js';
+import {
+  asPrincipal,
+  authFor,
+  expectReject,
+  type TestPrincipal,
+  unscopedPrisma,
+  prisma as scopedPrisma,
+} from './helpers.js';
 
 let SUB: string;
 const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -53,12 +74,23 @@ async function as<T>(email: 'chairman@kaizen.co.in' | 'finance@kaizen.co.in', fn
 
 async function newHolder(
   label: string,
-  opts: { residency?: 'resident' | 'non_resident'; investmentBasis?: 'repatriable' | 'non_repatriable' | null; dematAccount?: Record<string, unknown> | null } = {},
+  opts: {
+    residency?: 'resident' | 'non_resident';
+    investmentBasis?: 'repatriable' | 'non_repatriable' | null;
+    dematAccount?: Record<string, unknown> | null;
+  } = {},
 ) {
   return as('chairman@kaizen.co.in', async () => {
     const email = `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${suffix}@example.test`;
     const person = await scopedPrisma.person.create({
-      data: { tenantId: SUB, recordCode: await nextRecordCode('PER'), fullName: label, primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+      data: {
+        tenantId: SUB,
+        recordCode: await nextRecordCode('PER'),
+        fullName: label,
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+        source: 'test',
+      },
     });
     return createHolder({
       kind: 'person',
@@ -70,7 +102,12 @@ async function newHolder(
   });
 }
 
-async function newClass(name: string, kind: 'equity' | 'preference' | 'debenture' = 'equity', instrument: string = 'equity', faceValue = 10) {
+async function newClass(
+  name: string,
+  kind: 'equity' | 'preference' | 'debenture' = 'equity',
+  instrument: string = 'equity',
+  faceValue = 10,
+) {
   return as('chairman@kaizen.co.in', () =>
     createShareClass({ name: `${name}-${suffix}`, kind, instrument: instrument as never, faceValue }),
   );
@@ -97,9 +134,22 @@ async function allot(
   return as('finance@kaizen.co.in', () => makeEffective(proposed.id));
 }
 
-async function transfer(shareClassId: string, fromHolderId: string, toHolderId: string, count: number, pricePerShare?: number | null) {
+async function transfer(
+  shareClassId: string,
+  fromHolderId: string,
+  toHolderId: string,
+  count: number,
+  pricePerShare?: number | null,
+) {
   const proposed = await as('chairman@kaizen.co.in', () =>
-    proposeTransfer({ shareClassId, fromHolderId, toHolderId, count, pricePerShare: pricePerShare ?? null, effectiveOn: new Date().toISOString() }),
+    proposeTransfer({
+      shareClassId,
+      fromHolderId,
+      toHolderId,
+      count,
+      pricePerShare: pricePerShare ?? null,
+      effectiveOn: new Date().toISOString(),
+    }),
   );
   await as('finance@kaizen.co.in', () => approveShareTransaction(proposed.id));
   return as('finance@kaizen.co.in', () => makeEffective(proposed.id));
@@ -107,7 +157,11 @@ async function transfer(shareClassId: string, fromHolderId: string, toHolderId: 
 
 beforeAll(async () => {
   const slug = `eqt-fil-${suffix}`;
-  const { tenantId } = await seedBootstrap({ tenantSlug: slug, tenantName: 'EQT Phase 6a Sub', parentTenantSlug: 'kaizen' });
+  const { tenantId } = await seedBootstrap({
+    tenantSlug: slug,
+    tenantName: 'EQT Phase 6a Sub',
+    parentTenantSlug: 'kaizen',
+  });
   SUB = tenantId;
 
   await as('chairman@kaizen.co.in', () =>
@@ -126,7 +180,11 @@ describe('EQT-FIL-001 — the MGT-1 export lists every member per class in statu
     const full = await newHolder('Full Holder 001');
     await as('chairman@kaizen.co.in', () =>
       updateHolder(full.id, {
-        address: '1 MG Road, Bengaluru', occupation: 'Director', nationality: 'Indian', guardianOrSpouseName: 'A. Guardian', panNumber: 'ABCDE1234F',
+        address: '1 MG Road, Bengaluru',
+        occupation: 'Director',
+        nationality: 'Indian',
+        guardianOrSpouseName: 'A. Guardian',
+        panNumber: 'ABCDE1234F',
       }),
     );
     const bare = await newHolder('Bare Holder 001');
@@ -139,9 +197,22 @@ describe('EQT-FIL-001 — the MGT-1 export lists every member per class in statu
     const rows = groups[0].rows;
     expect(rows.map((r) => Object.keys(r))).toEqual(
       rows.map(() => [
-        'folioNumber', 'holderName', 'address', 'email', 'panOrCin', 'guardianOrSpouseName', 'occupation',
-        'nationality', 'becameMemberOn', 'ceasedOn', 'distinctiveNumbers', 'certificateNumbers',
-        'nominalValue', 'amountPaidUp', 'lockIn', 'remarks',
+        'folioNumber',
+        'holderName',
+        'address',
+        'email',
+        'panOrCin',
+        'guardianOrSpouseName',
+        'occupation',
+        'nationality',
+        'becameMemberOn',
+        'ceasedOn',
+        'distinctiveNumbers',
+        'certificateNumbers',
+        'nominalValue',
+        'amountPaidUp',
+        'lockIn',
+        'remarks',
       ]),
     );
 
@@ -166,7 +237,7 @@ describe('EQT-FIL-001 — the MGT-1 export lists every member per class in statu
 
 let roundLinkedTxnId: string;
 
-describe('EQT-FIL-002 — the PAS-3 allottee list covers exactly the round\'s effective allotments', () => {
+describe("EQT-FIL-002 — the PAS-3 allottee list covers exactly the round's effective allotments", () => {
   it('an allotment struck under the round appears; one struck outside it does not', async () => {
     const cls = await newClass('Equity-002');
     const round = await as('chairman@kaizen.co.in', () => createRound({ name: `Seed-002-${suffix}`, kind: 'seed' }));
@@ -239,7 +310,14 @@ describe('EQT-FIL-005 — a fully demat company refuses an allotment to a holder
     const bare = await newHolder('No Demat Account 005');
 
     const rejection = await expectReject(() =>
-      as('chairman@kaizen.co.in', () => proposeAllotment({ shareClassId: cls.id, toHolderId: bare.id, count: 10, effectiveOn: new Date().toISOString() })),
+      as('chairman@kaizen.co.in', () =>
+        proposeAllotment({
+          shareClassId: cls.id,
+          toHolderId: bare.id,
+          count: 10,
+          effectiveOn: new Date().toISOString(),
+        }),
+      ),
     );
     expect(rejection.status).toBe(422);
     expect(rejection.message).toMatch(/Rule 9B/);
@@ -251,7 +329,12 @@ describe('EQT-FIL-005 — a fully demat company refuses an allotment to a holder
     // `mixed` for the rest of the suite — Rule 9B's fully-demat refusal
     // applies to `demat` only, and EQT-FIL-006's PAS-6 job wants demat or
     // mixed, so this is the state every later test in this file runs under.
-    await as('chairman@kaizen.co.in', () => updateCompanyProfile({ dematStatus: 'mixed', isin: `INE${suffix.replace(/\D/g, '').padStart(9, '0').slice(0, 9)}` }));
+    await as('chairman@kaizen.co.in', () =>
+      updateCompanyProfile({
+        dematStatus: 'mixed',
+        isin: `INE${suffix.replace(/\D/g, '').padStart(9, '0').slice(0, 9)}`,
+      }),
+    );
   });
 });
 
@@ -281,9 +364,17 @@ let fcGprTxnId: string;
 describe('EQT-FIL-007 — an allotment to a repatriable non-resident raises FC-GPR at thirty days and a non-repatriable one raises nothing', () => {
   it('repatriable raises EX-EQT-006; non-repatriable raises nothing', async () => {
     const cls = await newClass('Equity-007');
-    const repatriable = await newHolder('Repatriable NRI 007', { residency: 'non_resident', investmentBasis: 'repatriable', dematAccount: { dpId: 'DPX', clientId: 'CX' } });
+    const repatriable = await newHolder('Repatriable NRI 007', {
+      residency: 'non_resident',
+      investmentBasis: 'repatriable',
+      dematAccount: { dpId: 'DPX', clientId: 'CX' },
+    });
     repatriableHolderId = repatriable.id;
-    const nonRepatriable = await newHolder('Non-Repatriable NRI 007', { residency: 'non_resident', investmentBasis: 'non_repatriable', dematAccount: { dpId: 'DPY', clientId: 'CY' } });
+    const nonRepatriable = await newHolder('Non-Repatriable NRI 007', {
+      residency: 'non_resident',
+      investmentBasis: 'non_repatriable',
+      dematAccount: { dpId: 'DPY', clientId: 'CY' },
+    });
 
     const repatriableTxn = await allot(cls.id, repatriable.id, 100);
     fcGprTxnId = repatriableTxn.id;
@@ -306,13 +397,19 @@ describe('EQT-FIL-007 — an allotment to a repatriable non-resident raises FC-G
 describe('EQT-FIL-008 — a transfer between a repatriable non-resident and a resident raises FC-TRS at sixty days', () => {
   it('raises EX-EQT-007 on the transfer', async () => {
     const cls = await newClass('Equity-008');
-    const repatriable = await newHolder('Repatriable NRI 008', { residency: 'non_resident', investmentBasis: 'repatriable', dematAccount: { dpId: 'DPZ', clientId: 'CZ' } });
+    const repatriable = await newHolder('Repatriable NRI 008', {
+      residency: 'non_resident',
+      investmentBasis: 'repatriable',
+      dematAccount: { dpId: 'DPZ', clientId: 'CZ' },
+    });
     const resident = await newHolder('Resident 008', { dematAccount: { dpId: 'DPW', clientId: 'CW' } });
 
     await allot(cls.id, repatriable.id, 500);
     const txn = await transfer(cls.id, repatriable.id, resident.id, 200);
 
-    const exception = await unscopedPrisma.exceptionRecord.findFirst({ where: { tenantId: SUB, code: 'EX-EQT-007', subjectId: txn.id } });
+    const exception = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { tenantId: SUB, code: 'EX-EQT-007', subjectId: txn.id },
+    });
     expect(exception).toBeTruthy();
     const expectedDue = new Date(txn.effectiveOn!).getTime() + 60 * 86_400_000;
     expect(Math.abs(exception!.slaDueAt!.getTime() - expectedDue)).toBeLessThan(60_000);
@@ -322,10 +419,20 @@ describe('EQT-FIL-008 — a transfer between a repatriable non-resident and a re
 describe('EQT-FIL-009 — a price below the fair-value certificate is refused for a non-resident and allowed with a note when none is on record', () => {
   it('no certificate: allowed with a note and EX-EQT-009 once; a certificate on record enforces the floor', async () => {
     const cls = await newClass('Equity-009');
-    const holder = await newHolder('Pricing NRI 009', { residency: 'non_resident', investmentBasis: 'repatriable', dematAccount: { dpId: 'DPP', clientId: 'CPP' } });
+    const holder = await newHolder('Pricing NRI 009', {
+      residency: 'non_resident',
+      investmentBasis: 'repatriable',
+      dematAccount: { dpId: 'DPP', clientId: 'CPP' },
+    });
 
     const noCert = await as('chairman@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: cls.id, toHolderId: holder.id, count: 10, pricePerShare: 5, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: cls.id,
+        toHolderId: holder.id,
+        count: 10,
+        pricePerShare: 5,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     expect(noCert.femaPricingNote).toBe('No fair-value certificate on record');
 
@@ -335,37 +442,62 @@ describe('EQT-FIL-009 — a price below the fair-value certificate is refused fo
     expect(missingCertException).toBeTruthy();
 
     await as('chairman@kaizen.co.in', () =>
-      recordValuation({ asOf: new Date(Date.now() - 86_400_000).toISOString(), basis: 'registered_valuer', perShareByClass: { [cls.id]: 50 } }),
+      recordValuation({
+        asOf: new Date(Date.now() - 86_400_000).toISOString(),
+        basis: 'registered_valuer',
+        perShareByClass: { [cls.id]: 50 },
+      }),
     );
 
     const below = await expectReject(() =>
       as('chairman@kaizen.co.in', () =>
-        proposeAllotment({ shareClassId: cls.id, toHolderId: holder.id, count: 10, pricePerShare: 40, effectiveOn: new Date().toISOString() }),
+        proposeAllotment({
+          shareClassId: cls.id,
+          toHolderId: holder.id,
+          count: 10,
+          pricePerShare: 40,
+          effectiveOn: new Date().toISOString(),
+        }),
       ),
     );
     expect(below.status).toBe(422);
     expect(below.message).toMatch(/FEMA pricing/);
 
     const atFloor = await as('chairman@kaizen.co.in', () =>
-      proposeAllotment({ shareClassId: cls.id, toHolderId: holder.id, count: 10, pricePerShare: 60, effectiveOn: new Date().toISOString() }),
+      proposeAllotment({
+        shareClassId: cls.id,
+        toHolderId: holder.id,
+        count: 10,
+        pricePerShare: 60,
+        effectiveOn: new Date().toISOString(),
+      }),
     );
     expect(atFloor.femaPricingNote).toBeNull();
   });
 });
 
 describe('EQT-FIL-010 — recording the filing closes the item and the FLA item is raised yearly while the holding exists', () => {
-  it('records FC-GPR against EQT-FIL-007\'s allotment, and the FLA sweep raises once for the holding on record', async () => {
-    const openBefore = await unscopedPrisma.exceptionRecord.findFirst({ where: { tenantId: SUB, code: 'EX-EQT-006', subjectId: fcGprTxnId } });
+  it("records FC-GPR against EQT-FIL-007's allotment, and the FLA sweep raises once for the holding on record", async () => {
+    const openBefore = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { tenantId: SUB, code: 'EX-EQT-006', subjectId: fcGprTxnId },
+    });
     expect(openBefore?.state).not.toBe('resolved');
 
     await as('chairman@kaizen.co.in', () =>
       recordFiling({
-        form: 'FC-GPR', relatedType: 'share_transaction', relatedId: fcGprTxnId,
-        periodOrEvent: `Allotment ${fcGprTxnId}`, srn: `SRN-${suffix}`, filedOn: new Date().toISOString(), status: 'filed',
+        form: 'FC-GPR',
+        relatedType: 'share_transaction',
+        relatedId: fcGprTxnId,
+        periodOrEvent: `Allotment ${fcGprTxnId}`,
+        srn: `SRN-${suffix}`,
+        filedOn: new Date().toISOString(),
+        status: 'filed',
       }),
     );
 
-    const closed = await unscopedPrisma.exceptionRecord.findFirst({ where: { tenantId: SUB, code: 'EX-EQT-006', subjectId: fcGprTxnId } });
+    const closed = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { tenantId: SUB, code: 'EX-EQT-006', subjectId: fcGprTxnId },
+    });
     expect(closed?.state).toBe('resolved');
 
     const filings = await as('chairman@kaizen.co.in', () => listFilings('FC-GPR'));
@@ -374,16 +506,24 @@ describe('EQT-FIL-010 — recording the filing closes the item and the FLA item 
     // A repatriable non-resident holding dated well before 31 March, so it
     // exists on that cutoff regardless of when this suite happens to run.
     const cls = await newClass('Equity-010-FLA');
-    const flaHolder = await newHolder('FLA Holder 010', { residency: 'non_resident', investmentBasis: 'repatriable', dematAccount: { dpId: 'DPF', clientId: 'CF' } });
+    const flaHolder = await newHolder('FLA Holder 010', {
+      residency: 'non_resident',
+      investmentBasis: 'repatriable',
+      dematAccount: { dpId: 'DPF', clientId: 'CF' },
+    });
     await allot(cls.id, flaHolder.id, 40, { effectiveOn: '2020-06-01T00:00:00.000Z' });
 
-    const beforeFla = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: SUB, code: 'EX-EQT-008', subjectId: flaHolder.id } });
+    const beforeFla = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: SUB, code: 'EX-EQT-008', subjectId: flaHolder.id },
+    });
     expect(beforeFla).toHaveLength(0);
 
     await as('chairman@kaizen.co.in', () => runFlaReturn());
     await as('chairman@kaizen.co.in', () => runFlaReturn());
 
-    const afterFla = await unscopedPrisma.exceptionRecord.findMany({ where: { tenantId: SUB, code: 'EX-EQT-008', subjectId: flaHolder.id } });
+    const afterFla = await unscopedPrisma.exceptionRecord.findMany({
+      where: { tenantId: SUB, code: 'EX-EQT-008', subjectId: flaHolder.id },
+    });
     expect(afterFla).toHaveLength(1);
   });
 });

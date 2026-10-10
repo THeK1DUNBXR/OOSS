@@ -31,16 +31,54 @@ const WEB = join(ROOT, 'apps/web/src');
 
 /** Utility prefixes that take a colour token. */
 const COLOUR_PREFIXES = [
-  'bg', 'text', 'border', 'ring', 'fill', 'stroke', 'divide', 'outline',
-  'from', 'via', 'to', 'accent', 'caret', 'shadow', 'decoration', 'placeholder',
+  'bg',
+  'text',
+  'border',
+  'ring',
+  'fill',
+  'stroke',
+  'divide',
+  'outline',
+  'from',
+  'via',
+  'to',
+  'accent',
+  'caret',
+  'shadow',
+  'decoration',
+  'placeholder',
 ];
 
 /** Tailwind's own palette names, which need no entry in the config. */
 const BUILTIN = new Set([
-  'inherit', 'current', 'transparent', 'black', 'white',
-  'slate', 'gray', 'grey', 'zinc', 'neutral', 'stone', 'red', 'orange', 'amber',
-  'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo',
-  'violet', 'purple', 'fuchsia', 'pink', 'rose',
+  'inherit',
+  'current',
+  'transparent',
+  'black',
+  'white',
+  'slate',
+  'gray',
+  'grey',
+  'zinc',
+  'neutral',
+  'stone',
+  'red',
+  'orange',
+  'amber',
+  'yellow',
+  'lime',
+  'green',
+  'emerald',
+  'teal',
+  'cyan',
+  'sky',
+  'blue',
+  'indigo',
+  'violet',
+  'purple',
+  'fuchsia',
+  'pink',
+  'rose',
 ]);
 
 /**
@@ -49,12 +87,61 @@ const BUILTIN = new Set([
  * produce noise, and noise is how a check gets switched off.
  */
 const NOT_A_COLOUR = new Set([
-  'xs', '2xs', 'sm', 'base', 'md', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl', '7xl',
-  'left', 'right', 'center', 'justify', 'start', 'end', 'top', 'bottom',
-  'solid', 'dashed', 'dotted', 'double', 'none', 'hidden', 'collapse', 'separate',
-  'wrap', 'nowrap', 'balance', 'pretty', 'clip', 'ellipsis', 'wide', 'wider', 'tight',
-  'auto', 'full', 'screen', 'min', 'max', 'fit', 'px', 'opacity', 'inner',
-  'thin', 'medium', 'bold', 'semibold', 'extrabold', 'black', 'light', 'normal',
+  'xs',
+  '2xs',
+  'sm',
+  'base',
+  'md',
+  'lg',
+  'xl',
+  '2xl',
+  '3xl',
+  '4xl',
+  '5xl',
+  '6xl',
+  '7xl',
+  'left',
+  'right',
+  'center',
+  'justify',
+  'start',
+  'end',
+  'top',
+  'bottom',
+  'solid',
+  'dashed',
+  'dotted',
+  'double',
+  'none',
+  'hidden',
+  'collapse',
+  'separate',
+  'wrap',
+  'nowrap',
+  'balance',
+  'pretty',
+  'clip',
+  'ellipsis',
+  'wide',
+  'wider',
+  'tight',
+  'auto',
+  'full',
+  'screen',
+  'min',
+  'max',
+  'fit',
+  'px',
+  'opacity',
+  'inner',
+  'thin',
+  'medium',
+  'bold',
+  'semibold',
+  'extrabold',
+  'black',
+  'light',
+  'normal',
 ]);
 
 function loadPalette() {
@@ -94,7 +181,10 @@ for (const file of walk(WEB)) {
   const lines = readFileSync(file, 'utf8').split('\n');
   lines.forEach((line, i) => {
     for (const m of line.matchAll(
-      new RegExp(`\\b(?:hover:|focus:|active:|disabled:|group-hover:|focus-visible:|dark:|sm:|md:|lg:|xl:)*(${COLOUR_PREFIXES.join('|')})-([a-zA-Z][\\w-]*)(?:\\/\\d+)?\\b`, 'g'),
+      new RegExp(
+        `\\b(?:hover:|focus:|active:|disabled:|group-hover:|focus-visible:|dark:|sm:|md:|lg:|xl:)*(${COLOUR_PREFIXES.join('|')})-([a-zA-Z][\\w-]*)(?:\\/\\d+)?\\b`,
+        'g',
+      ),
     )) {
       const [, prefix, token] = m;
       if (NOT_A_COLOUR.has(token)) continue;
@@ -110,7 +200,9 @@ for (const file of walk(WEB)) {
 }
 
 if (findings.length) {
-  console.error(`\n${findings.length} Tailwind class${findings.length === 1 ? '' : 'es'} using a token the palette does not define:\n`);
+  console.error(
+    `\n${findings.length} Tailwind class${findings.length === 1 ? '' : 'es'} using a token the palette does not define:\n`,
+  );
   for (const f of findings) console.error(`  ${f.file}:${f.line}  ${f.cls}`);
   console.error('\nTailwind drops these silently — the element renders unstyled.');
   console.error('Define the token in apps/web/tailwind.config.js, or use one that exists.\n');

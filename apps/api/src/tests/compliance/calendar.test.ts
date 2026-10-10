@@ -63,7 +63,12 @@ describe('nextDueDates (pure arithmetic, no DB)', () => {
   });
 
   it('CMP-CAL-ARITH-004: half-yearly — TN Professional Tax due 30 Sep and 31 Mar', () => {
-    const rule: ComplianceDueRule = { halfYearDates: [{ month: 9, day: 30 }, { month: 3, day: 31, yearOffset: 1 }] };
+    const rule: ComplianceDueRule = {
+      halfYearDates: [
+        { month: 9, day: 30 },
+        { month: 3, day: 31, yearOffset: 1 },
+      ],
+    };
     const occ = nextDueDates(rule, 'half_yearly', new Date(Date.UTC(2026, 3, 1)), 12);
     const byPeriod = Object.fromEntries(occ.map((o) => [o.period, o.dueAt.toISOString().slice(0, 10)]));
     expect(byPeriod['FY2026-27-H1']).toBe('2026-09-30');
@@ -73,8 +78,18 @@ describe('nextDueDates (pure arithmetic, no DB)', () => {
   it('CMP-CAL-ARITH-005: annual fixed date — DIR-3 KYC due 30 September every year', () => {
     const rule: ComplianceDueRule = { month: 9, day: 30 };
     const occ = nextDueDates(rule, 'annual', new Date(Date.UTC(2026, 0, 1)), 24);
-    expect(occ.find((o) => o.period === '2026')?.dueAt.toISOString().slice(0, 10)).toBe('2026-09-30');
-    expect(occ.find((o) => o.period === '2027')?.dueAt.toISOString().slice(0, 10)).toBe('2027-09-30');
+    expect(
+      occ
+        .find((o) => o.period === '2026')
+        ?.dueAt.toISOString()
+        .slice(0, 10),
+    ).toBe('2026-09-30');
+    expect(
+      occ
+        .find((o) => o.period === '2027')
+        ?.dueAt.toISOString()
+        .slice(0, 10),
+    ).toBe('2027-09-30');
   });
 
   it('CMP-CAL-ARITH-006: annual, months-after-FY-end shape', () => {
@@ -110,10 +125,27 @@ describe('compliance calendar — domain and wiring', () => {
     const types = await unscopedPrisma.complianceObligationType.findMany({ where: { tenantId: tid } });
     expect(types.length).toBeGreaterThanOrEqual(16);
     for (const code of [
-      'GSTR1', 'GSTR3B', 'TDS_DEPOSIT', 'TDS_24Q', 'TDS_26Q', 'PF_ECR', 'ESI_CONTRIB', 'PT_TN',
-      'ADVANCE_TAX', 'AOC4', 'MGT7', 'DIR3_KYC', 'POSH_ANNUAL', 'ITR_COMPANY', 'FORM16', 'GSTR9',
+      'GSTR1',
+      'GSTR3B',
+      'TDS_DEPOSIT',
+      'TDS_24Q',
+      'TDS_26Q',
+      'PF_ECR',
+      'ESI_CONTRIB',
+      'PT_TN',
+      'ADVANCE_TAX',
+      'AOC4',
+      'MGT7',
+      'DIR3_KYC',
+      'POSH_ANNUAL',
+      'ITR_COMPANY',
+      'FORM16',
+      'GSTR9',
     ]) {
-      expect(types.find((t) => t.code === code), `missing type ${code}`).toBeTruthy();
+      expect(
+        types.find((t) => t.code === code),
+        `missing type ${code}`,
+      ).toBeTruthy();
     }
 
     // GSTR-3B for August 2026 is due 20 September 2026 — force the specific
@@ -143,9 +175,17 @@ describe('compliance calendar — domain and wiring', () => {
 
   it('CMP-CAL-002: filing requires a reference, and evidence when the type requires it', async () => {
     const tidLocal = await tenantId();
-    const type = await unscopedPrisma.complianceObligationType.findFirstOrThrow({ where: { tenantId: tidLocal, code: 'AOC4' } });
+    const type = await unscopedPrisma.complianceObligationType.findFirstOrThrow({
+      where: { tenantId: tidLocal, code: 'AOC4' },
+    });
     const obligation = await unscopedPrisma.complianceObligation.create({
-      data: { tenantId: tidLocal, typeId: type.id, period: `2099-STANDALONE-${stamp()}`, dueAt: new Date('2099-10-30'), status: 'due' },
+      data: {
+        tenantId: tidLocal,
+        typeId: type.id,
+        period: `2099-STANDALONE-${stamp()}`,
+        dueAt: new Date('2099-10-30'),
+        status: 'due',
+      },
     });
 
     const noReference = await expectReject(() =>
@@ -162,7 +202,11 @@ describe('compliance calendar — domain and wiring', () => {
     expect(stillDue.status).toBe('due');
 
     const filed = await asUser('finance@kaizen.co.in', () =>
-      markFiled(obligation.id, { reference: 'MCA-ACK-001', evidenceDocumentId: 'doc-1', note: 'Filed on the MCA portal.' }),
+      markFiled(obligation.id, {
+        reference: 'MCA-ACK-001',
+        evidenceDocumentId: 'doc-1',
+        note: 'Filed on the MCA portal.',
+      }),
     );
     expect(filed.status).toBe('filed');
     expect(filed.reference).toBe('MCA-ACK-001');
@@ -216,11 +260,19 @@ describe('compliance calendar — domain and wiring', () => {
 
   it('the ladder is idempotent: running the daily job twice fires one exception, not two', async () => {
     const tidLocal = await tenantId();
-    const type = await unscopedPrisma.complianceObligationType.findFirstOrThrow({ where: { tenantId: tidLocal, code: 'GSTR3B' } });
+    const type = await unscopedPrisma.complianceObligationType.findFirstOrThrow({
+      where: { tenantId: tidLocal, code: 'GSTR3B' },
+    });
     const dueSoon = new Date();
     dueSoon.setUTCDate(dueSoon.getUTCDate() + 5); // inside the 7-day rung
     const obligation = await unscopedPrisma.complianceObligation.create({
-      data: { tenantId: tidLocal, typeId: type.id, period: `2099-LADDER-TEST-${stamp()}`, dueAt: dueSoon, status: 'upcoming' },
+      data: {
+        tenantId: tidLocal,
+        typeId: type.id,
+        period: `2099-LADDER-TEST-${stamp()}`,
+        dueAt: dueSoon,
+        status: 'upcoming',
+      },
     });
 
     await asUser('finance@kaizen.co.in', () => runComplianceCalendarJob());
@@ -242,9 +294,17 @@ describe('compliance calendar — domain and wiring', () => {
 
   it('the Operations Head cannot file — the hr_ops_manager grant on compliance_obligations has no approve', async () => {
     const tidLocal = await tenantId();
-    const type = await unscopedPrisma.complianceObligationType.findFirstOrThrow({ where: { tenantId: tidLocal, code: 'PF_ECR' } });
+    const type = await unscopedPrisma.complianceObligationType.findFirstOrThrow({
+      where: { tenantId: tidLocal, code: 'PF_ECR' },
+    });
     const obligation = await unscopedPrisma.complianceObligation.create({
-      data: { tenantId: tidLocal, typeId: type.id, period: `2099-OPS-DENIED-${stamp()}`, dueAt: new Date('2099-01-15'), status: 'due' },
+      data: {
+        tenantId: tidLocal,
+        typeId: type.id,
+        period: `2099-OPS-DENIED-${stamp()}`,
+        dueAt: new Date('2099-01-15'),
+        status: 'due',
+      },
     });
 
     const denied = await expectReject(() =>
@@ -258,9 +318,17 @@ describe('compliance calendar — domain and wiring', () => {
 
   it('waiving is a deliberate decision, not filing, and asks for a reason', async () => {
     const tidLocal = await tenantId();
-    const type = await unscopedPrisma.complianceObligationType.findFirstOrThrow({ where: { tenantId: tidLocal, code: 'PT_TN' } });
+    const type = await unscopedPrisma.complianceObligationType.findFirstOrThrow({
+      where: { tenantId: tidLocal, code: 'PT_TN' },
+    });
     const obligation = await unscopedPrisma.complianceObligation.create({
-      data: { tenantId: tidLocal, typeId: type.id, period: `2099-WAIVE-TEST-${stamp()}`, dueAt: new Date('2099-09-30'), status: 'due' },
+      data: {
+        tenantId: tidLocal,
+        typeId: type.id,
+        period: `2099-WAIVE-TEST-${stamp()}`,
+        dueAt: new Date('2099-09-30'),
+        status: 'due',
+      },
     });
 
     const noReason = await expectReject(() => asUser('finance@kaizen.co.in', () => waive(obligation.id, '')));

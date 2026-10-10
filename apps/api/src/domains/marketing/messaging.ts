@@ -213,7 +213,9 @@ function toSendView(row: {
 
 async function requireTemplate(id: string) {
   const auth = currentAuth();
-  const template = await prisma.marketingTemplate.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
+  const template = await prisma.marketingTemplate.findFirst({
+    where: { id, tenantId: auth.tenantId, deletedAt: null },
+  });
   if (!template) throw ApiError.notFound('Template');
   return template;
 }
@@ -233,9 +235,7 @@ function assertDltReady(channelKey: string, dltTemplateId: string | null, waTemp
     );
   }
   if (channelKey === 'whatsapp' && !waTemplateName) {
-    throw ApiError.unprocessable(
-      'A WhatsApp template requires an approved waTemplateName before it can be approved.',
-    );
+    throw ApiError.unprocessable('A WhatsApp template requires an approved waTemplateName before it can be approved.');
   }
 }
 
@@ -269,7 +269,12 @@ export async function createTemplate(data: TemplateInput): Promise<TemplateView>
     },
   });
 
-  await auditWrite({ action: 'create', subjectType: 'marketing_template', subjectId: template.id, after: { recordCode, name: template.name } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'marketing_template',
+    subjectId: template.id,
+    after: { recordCode, name: template.name },
+  });
   await emit({
     name: EVENTS.MKT_TEMPLATE_CREATED,
     subject: { entityType: 'marketing_template', entityId: template.id, recordCode },
@@ -340,7 +345,12 @@ export async function updateTemplate(id: string, data: Partial<TemplateInput>): 
         createdById: auth.partyId,
       },
     });
-    await auditWrite({ action: 'create', subjectType: 'marketing_template', subjectId: created.id, after: { recordCode, version: created.version, previousVersionId: template.id } });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_template',
+      subjectId: created.id,
+      after: { recordCode, version: created.version, previousVersionId: template.id },
+    });
     await emit({
       name: EVENTS.MKT_TEMPLATE_CREATED,
       subject: { entityType: 'marketing_template', entityId: created.id, recordCode },
@@ -363,7 +373,13 @@ export async function updateTemplate(id: string, data: Partial<TemplateInput>): 
       updatedById: auth.partyId,
     },
   });
-  await auditWrite({ action: 'update', subjectType: 'marketing_template', subjectId: id, before: { body: template.body }, after: { body: updated.body } });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'marketing_template',
+    subjectId: id,
+    before: { body: template.body },
+    after: { body: updated.body },
+  });
   return toTemplateView(updated);
 }
 
@@ -376,7 +392,10 @@ export async function submitForReview(id: string): Promise<TemplateView> {
     throw ApiError.unprocessable(`Cannot submit a template from status '${template.status}'.`);
   }
 
-  const updated = await prisma.marketingTemplate.update({ where: { id }, data: { status: 'pending_review', updatedById: auth.partyId } });
+  const updated = await prisma.marketingTemplate.update({
+    where: { id },
+    data: { status: 'pending_review', updatedById: auth.partyId },
+  });
   await emit({
     name: EVENTS.MKT_TEMPLATE_SUBMITTED,
     subject: { entityType: 'marketing_template', entityId: id, recordCode: template.recordCode },
@@ -390,7 +409,11 @@ export async function submitForReview(id: string): Promise<TemplateView> {
  * Approve a template (pending_review → approved). The creator can never
  * approve their own template (self-dealing bar) — see MKT-MSG tests.
  */
-export async function approveTemplate(id: string, dltTemplateId?: string, waTemplateName?: string): Promise<TemplateView> {
+export async function approveTemplate(
+  id: string,
+  dltTemplateId?: string,
+  waTemplateName?: string,
+): Promise<TemplateView> {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_templates', verb: 'approve' });
   const template = await requireTemplate(id);
@@ -401,7 +424,9 @@ export async function approveTemplate(id: string, dltTemplateId?: string, waTemp
     ]);
   }
   if (!TEMPLATE_TRANSITIONS[template.status as TemplateStatus]?.includes('approved')) {
-    throw ApiError.unprocessable(`Cannot approve a template from status '${template.status}'. It must be pending_review.`);
+    throw ApiError.unprocessable(
+      `Cannot approve a template from status '${template.status}'. It must be pending_review.`,
+    );
   }
 
   const finalDlt = dltTemplateId ?? template.dltTemplateId;
@@ -410,7 +435,13 @@ export async function approveTemplate(id: string, dltTemplateId?: string, waTemp
 
   const updated = await prisma.marketingTemplate.update({
     where: { id },
-    data: { status: 'approved', approvedById: auth.partyId, dltTemplateId: finalDlt, waTemplateName: finalWa, updatedById: auth.partyId },
+    data: {
+      status: 'approved',
+      approvedById: auth.partyId,
+      dltTemplateId: finalDlt,
+      waTemplateName: finalWa,
+      updatedById: auth.partyId,
+    },
   });
 
   // Versioning: retire any other row sharing this template's natural key
@@ -451,10 +482,21 @@ export async function rejectTemplate(id: string, reason: string): Promise<Templa
   await assertCan({ resource: 'marketing_templates', verb: 'approve' });
   const template = await requireTemplate(id);
   if (template.status !== 'pending_review') {
-    throw ApiError.unprocessable(`Cannot reject a template from status '${template.status}'. It must be pending_review.`);
+    throw ApiError.unprocessable(
+      `Cannot reject a template from status '${template.status}'. It must be pending_review.`,
+    );
   }
-  const updated = await prisma.marketingTemplate.update({ where: { id }, data: { status: 'draft', updatedById: auth.partyId } });
-  await auditWrite({ action: 'update', subjectType: 'marketing_template', subjectId: id, before: { status: 'pending_review' }, after: { status: 'draft', reason } });
+  const updated = await prisma.marketingTemplate.update({
+    where: { id },
+    data: { status: 'draft', updatedById: auth.partyId },
+  });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'marketing_template',
+    subjectId: id,
+    before: { status: 'pending_review' },
+    after: { status: 'draft', reason },
+  });
   return toTemplateView(updated);
 }
 
@@ -465,7 +507,10 @@ export async function retireTemplate(id: string): Promise<TemplateView> {
   if (!TEMPLATE_TRANSITIONS[template.status as TemplateStatus]?.includes('retired')) {
     throw ApiError.unprocessable(`Cannot retire a template from status '${template.status}'.`);
   }
-  const updated = await prisma.marketingTemplate.update({ where: { id }, data: { status: 'retired', updatedById: auth.partyId } });
+  const updated = await prisma.marketingTemplate.update({
+    where: { id },
+    data: { status: 'retired', updatedById: auth.partyId },
+  });
   await emit({
     name: EVENTS.MKT_TEMPLATE_RETIRED,
     subject: { entityType: 'marketing_template', entityId: id, recordCode: template.recordCode },
@@ -509,7 +554,10 @@ async function buildMergeData(personId: string | null | undefined): Promise<Reco
   return merge;
 }
 
-export async function previewTemplate(id: string, personId?: string): Promise<{ subject?: string; body: string; missing: string[] }> {
+export async function previewTemplate(
+  id: string,
+  personId?: string,
+): Promise<{ subject?: string; body: string; missing: string[] }> {
   await assertCan({ resource: 'marketing_templates', verb: 'view' });
   const template = await requireTemplate(id);
   const mergeData = await buildMergeData(personId ?? null);
@@ -612,7 +660,12 @@ export async function createSend(data: SendInput): Promise<SendView> {
     });
   }
 
-  await auditWrite({ action: 'create', subjectType: 'marketing_send', subjectId: send.id, after: { recordCode, recipientCount: eligible.length } });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'marketing_send',
+    subjectId: send.id,
+    after: { recordCode, recipientCount: eligible.length },
+  });
   return toSendView(send);
 }
 
@@ -651,10 +704,18 @@ export async function listSendRecipients(sendId: string, opts: { status?: string
     where: { sendId: send.id, tenantId: send.tenantId, ...(opts.status ? { status: opts.status } : {}) },
     orderBy: { createdAt: 'asc' },
   });
-  return rows.map((r) => ({ id: r.id, personId: r.personId, status: r.status, reason: r.reason, providerMessageId: r.providerMessageId }));
+  return rows.map((r) => ({
+    id: r.id,
+    personId: r.personId,
+    status: r.status,
+    reason: r.reason,
+    providerMessageId: r.providerMessageId,
+  }));
 }
 
-export async function dryRunSend(id: string): Promise<{ eligible: number; skipped: { personId: string; reason: string }[] }> {
+export async function dryRunSend(
+  id: string,
+): Promise<{ eligible: number; skipped: { personId: string; reason: string }[] }> {
   await assertCan({ resource: 'marketing_sends', verb: 'view' });
   const send = await requireSend(id);
   const { eligible, skipped } = await resolveRecipients({
@@ -791,7 +852,10 @@ export async function cancelSend(id: string): Promise<SendView> {
   if (!SEND_TRANSITIONS[send.status as SendStatus]?.includes('cancelled')) {
     throw ApiError.unprocessable(`Cannot cancel a send from status '${send.status}'.`);
   }
-  const updated = await prisma.marketingSend.update({ where: { id: send.id }, data: { status: 'cancelled', updatedById: auth.partyId } });
+  const updated = await prisma.marketingSend.update({
+    where: { id: send.id },
+    data: { status: 'cancelled', updatedById: auth.partyId },
+  });
   await emit({
     name: EVENTS.MKT_SEND_CANCELLED,
     subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
@@ -847,8 +911,7 @@ export async function dispatchSend(id: string): Promise<SendView> {
 
     for (const recipient of batch) {
       const person = await prisma.person.findFirst({ where: { id: recipient.personId, tenantId: send.tenantId } });
-      const address =
-        send.channelKey === 'email' ? (person?.primaryEmail ?? null) : (person?.primaryPhone ?? null);
+      const address = send.channelKey === 'email' ? (person?.primaryEmail ?? null) : (person?.primaryPhone ?? null);
 
       if (!person || !address) {
         await prisma.marketingSendRecipient.update({
@@ -875,7 +938,9 @@ export async function dispatchSend(id: string): Promise<SendView> {
         anySent = true;
         await markRecipientDispatched(recipient.id, result.providerMessageId ?? null);
 
-        const openLead = await prisma.lead.findFirst({ where: { tenantId: send.tenantId, personId: person.id, leadStatus: 'open' } });
+        const openLead = await prisma.lead.findFirst({
+          where: { tenantId: send.tenantId, personId: person.id, leadStatus: 'open' },
+        });
         await logInteraction({
           interactionType: interactionTypeFor(send.channelKey),
           direction: 'outbound',
@@ -958,7 +1023,10 @@ export async function markRecipientDispatched(recipientId: string, providerMessa
  * rolls the counts up onto the send. Exported for the webhook route another
  * agent writes.
  */
-export async function applyDeliveryEvents(channelKey: string, events: InboundDeliveryEvent[]): Promise<{ applied: number }> {
+export async function applyDeliveryEvents(
+  channelKey: string,
+  events: InboundDeliveryEvent[],
+): Promise<{ applied: number }> {
   const auth = currentAuth();
   const affectedSendIds = new Set<string>();
   let applied = 0;
@@ -987,7 +1055,9 @@ export async function applyDeliveryEvents(channelKey: string, events: InboundDel
 
     // A provider that retries the same event under the same id must not count twice.
     // The id is recorded on the recipient's event log, so the check needs no extra table.
-    const existingEvents = Array.isArray(recipient.events) ? (recipient.events as Array<{ kind?: string; eventId?: string | null }>) : [];
+    const existingEvents = Array.isArray(recipient.events)
+      ? (recipient.events as Array<{ kind?: string; eventId?: string | null }>)
+      : [];
     if (event.eventId && existingEvents.some((e) => e.eventId === event.eventId && e.kind === event.kind)) continue;
 
     // The event is always logged, but the status only moves forward (see RECIPIENT_STATUS_RANK).
@@ -999,7 +1069,12 @@ export async function applyDeliveryEvents(channelKey: string, events: InboundDel
         ...(statusAdvances ? { status: nextStatus } : {}),
         events: [
           ...existingEvents,
-          { kind: event.kind, eventId: event.eventId ?? null, at: event.at.toISOString(), detail: event.detail ?? null },
+          {
+            kind: event.kind,
+            eventId: event.eventId ?? null,
+            at: event.at.toISOString(),
+            detail: event.detail ?? null,
+          },
         ] as never,
       },
     });
@@ -1034,7 +1109,10 @@ export async function applyDeliveryEvents(channelKey: string, events: InboundDel
       await emit({
         name: eventName,
         subject: { entityType: 'marketing_send_recipient', entityId: recipient.id },
-        related: [{ relation: 'send', entityType: 'marketing_send', entityId: send.id }, { relation: 'person', entityType: 'person', entityId: recipient.personId }],
+        related: [
+          { relation: 'send', entityType: 'marketing_send', entityId: send.id },
+          { relation: 'person', entityType: 'person', entityId: recipient.personId },
+        ],
         newState: { status: resultingStatus },
       });
     }
@@ -1108,7 +1186,11 @@ export async function checkSendHealth(sendId: string): Promise<void> {
 }
 
 /** Sends one test message to a specific address, bypassing recipients/consent entirely. Adapter status is honest. */
-export async function sendTest(templateId: string, channelKey: string, to: string): Promise<{ status: string; providerMessageId?: string; error?: string }> {
+export async function sendTest(
+  templateId: string,
+  channelKey: string,
+  to: string,
+): Promise<{ status: string; providerMessageId?: string; error?: string }> {
   await assertCan({ resource: 'marketing_sends', verb: 'create' });
   const template = await requireTemplate(templateId);
   const adapter = getAdapter(channelKey as ChannelKey);

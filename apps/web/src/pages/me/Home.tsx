@@ -86,7 +86,8 @@ export function Home() {
       {home.data && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card title="Pending acknowledgements">
-            {home.data.pendingAcknowledgements.announcements.length === 0 && home.data.pendingAcknowledgements.policies.length === 0 ? (
+            {home.data.pendingAcknowledgements.announcements.length === 0 &&
+            home.data.pendingAcknowledgements.policies.length === 0 ? (
               <EmptyState message="Nothing waiting on you." />
             ) : (
               <ul className="flex flex-col gap-2">
@@ -96,7 +97,11 @@ export function Home() {
                       <p className="text-xs font-medium text-ink-100">{a.title}</p>
                       <p className="text-2xs text-ink-500">Announcement · {dateTime(a.publishAt)}</p>
                     </div>
-                    <button className="btn text-2xs" disabled={ackAnnouncement.isPending} onClick={() => ackAnnouncement.mutate(a.id)}>
+                    <button
+                      className="btn text-2xs"
+                      disabled={ackAnnouncement.isPending}
+                      onClick={() => ackAnnouncement.mutate(a.id)}
+                    >
                       Acknowledge
                     </button>
                   </li>
@@ -107,7 +112,11 @@ export function Home() {
                       <p className="text-xs font-medium text-ink-100">{p.title}</p>
                       <p className="text-2xs text-ink-500">Policy v{p.version}</p>
                     </div>
-                    <button className="btn text-2xs" disabled={ackPolicy.isPending} onClick={() => ackPolicy.mutate(p.id)}>
+                    <button
+                      className="btn text-2xs"
+                      disabled={ackPolicy.isPending}
+                      onClick={() => ackPolicy.mutate(p.id)}
+                    >
                       Acknowledge
                     </button>
                   </li>
@@ -145,7 +154,9 @@ export function Home() {
                   <li key={c.id} className="flex items-center justify-between gap-2 rounded border border-ink-800 p-2">
                     <div>
                       <p className="text-xs font-medium text-ink-100">{c.subject}</p>
-                      <p className="text-2xs text-ink-500 mono">{c.recordCode} · {c.category.replace(/_/g, ' ')}</p>
+                      <p className="text-2xs text-ink-500 mono">
+                        {c.recordCode} · {c.category.replace(/_/g, ' ')}
+                      </p>
                     </div>
                     <StatusChip status={c.status} />
                   </li>
@@ -163,7 +174,9 @@ export function Home() {
                   <li key={k.id} className="rounded border border-ink-800 p-2">
                     <p className="text-xs font-medium text-ink-100">{k.badge}</p>
                     <p className="text-2xs text-ink-400">{k.message}</p>
-                    <p className="text-2xs text-ink-500">{dateTime(k.createdAt)} · {k.points} pts</p>
+                    <p className="text-2xs text-ink-500">
+                      {dateTime(k.createdAt)} · {k.points} pts
+                    </p>
                   </li>
                 ))}
               </ul>
@@ -208,7 +221,7 @@ function AnswerSurveyModal({ survey, onClose }: { survey: PulseSurvey; onClose: 
         api.post(`/hcm/engagement/surveys/${survey.id}/responses`, {
           answers: survey.questions.map((q) => ({
             questionId: q.id,
-            value: q.type === 'text' ? values[q.id] ?? '' : Number(values[q.id] ?? 0),
+            value: q.type === 'text' ? (values[q.id] ?? '') : Number(values[q.id] ?? 0),
           })),
         })
       }
@@ -228,7 +241,7 @@ function AnswerSurveyModal({ survey, onClose }: { survey: PulseSurvey; onClose: 
             label={q.text}
             value={values[q.id] ?? ''}
             onChange={(v) => setValues({ ...values, [q.id]: v })}
-            options={Array.from({ length: (q.type === 'enps' ? 10 : q.scaleMax ?? 10) + 1 }, (_, n) => ({
+            options={Array.from({ length: (q.type === 'enps' ? 10 : (q.scaleMax ?? 10)) + 1 }, (_, n) => ({
               value: String(n),
               label: String(n),
             }))}

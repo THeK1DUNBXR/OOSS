@@ -8,21 +8,49 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import {
-  createShareClass, createHolder, proposeAllotment, approveShareTransaction, makeEffective,
-  recordValuation, capTable,
+  createShareClass,
+  createHolder,
+  proposeAllotment,
+  approveShareTransaction,
+  makeEffective,
+  recordValuation,
+  capTable,
 } from '../domains/equity.js';
 import {
-  createPlan, activatePlan, listPlans, plan,
-  proposeGrant, approveGrant, cancelGrant, lapseGrant, grant, listGrants,
-  runVesting, runExpiredExerciseWindows, handleEmploymentExit,
-  requestExercise, approveExercise, rejectExercise,
-  sh6Register, sh6Export, myGrants,
+  createPlan,
+  activatePlan,
+  listPlans,
+  plan,
+  proposeGrant,
+  approveGrant,
+  cancelGrant,
+  lapseGrant,
+  grant,
+  listGrants,
+  runVesting,
+  runExpiredExerciseWindows,
+  handleEmploymentExit,
+  requestExercise,
+  approveExercise,
+  rejectExercise,
+  sh6Register,
+  sh6Export,
+  myGrants,
 } from '../domains/esop.js';
 import { hire, transitionEmployment } from '../domains/employment.js';
 import { createOrResetSignIn } from '../domains/signIns.js';
 import { updateCompanyProfile } from '../domains/companyProfile.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { asUser, asPrincipal, authFor, expectReject, principalFor, prisma as scopedPrisma, tenantId, unscopedPrisma } from './helpers.js';
+import {
+  asUser,
+  asPrincipal,
+  authFor,
+  expectReject,
+  principalFor,
+  prisma as scopedPrisma,
+  tenantId,
+  unscopedPrisma,
+} from './helpers.js';
 
 let HOLDING: string;
 let POOL_CLASS_ID: string;
@@ -34,7 +62,14 @@ async function newSecretary() {
     const existing = await unscopedPrisma.user.findFirst({ where: { email } });
     if (existing) return;
     const person = await scopedPrisma.person.create({
-      data: { tenantId: HOLDING, recordCode: await nextRecordCode('PER'), fullName: 'Company Secretary', primaryEmail: email, primaryEmailNormalised: email, source: 'test' },
+      data: {
+        tenantId: HOLDING,
+        recordCode: await nextRecordCode('PER'),
+        fullName: 'Company Secretary',
+        primaryEmail: email,
+        primaryEmailNormalised: email,
+        source: 'test',
+      },
     });
     await createOrResetSignIn({ personId: person.id, roleSlug: 'company_secretary', email });
   });
@@ -95,16 +130,27 @@ function monthsAgo(n: number): string {
 }
 
 /** A fresh, active plan under a fresh option pool of the given size. */
-async function newPlan(label: string, opts: { poolSize?: number; dpiit?: boolean; exercisePriceDefault?: number } = {}) {
+async function newPlan(
+  label: string,
+  opts: { poolSize?: number; dpiit?: boolean; exercisePriceDefault?: number } = {},
+) {
   const stamp = `${label}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   if (opts.dpiit) {
-    await asUser('finance@kaizen.co.in', () => updateCompanyProfile({ dpiitRecognisedOn: new Date().toISOString(), dpiitNumber: 'DPIIT-TEST' }));
+    await asUser('finance@kaizen.co.in', () =>
+      updateCompanyProfile({ dpiitRecognisedOn: new Date().toISOString(), dpiitNumber: 'DPIIT-TEST' }),
+    );
   } else {
     await asUser('finance@kaizen.co.in', () => updateCompanyProfile({ dpiitRecognisedOn: null, dpiitNumber: null }));
   }
 
   const pool = await asUser('secretary@kaizen.co.in', () =>
-    createShareClass({ name: `Option Pool ${stamp}`, kind: 'equity', instrument: 'option', faceValue: 0, authorisedCount: opts.poolSize ?? 10_000 }),
+    createShareClass({
+      name: `Option Pool ${stamp}`,
+      kind: 'equity',
+      instrument: 'option',
+      faceValue: 0,
+      authorisedCount: opts.poolSize ?? 10_000,
+    }),
   );
 
   const created = await asUser('secretary@kaizen.co.in', () =>
@@ -127,26 +173,46 @@ beforeAll(async () => {
   HOLDING = await tenantId();
   await newSecretary();
   await ensureCertificateSignatories();
-  const target = await asUser('secretary@kaizen.co.in', () => createShareClass({ name: `ESOP Target Equity ${Date.now()}`, kind: 'equity', instrument: 'equity', faceValue: 10, authorisedCount: 100_000 }));
+  const target = await asUser('secretary@kaizen.co.in', () =>
+    createShareClass({
+      name: `ESOP Target Equity ${Date.now()}`,
+      kind: 'equity',
+      instrument: 'equity',
+      faceValue: 10,
+      authorisedCount: 100_000,
+    }),
+  );
   TARGET_CLASS_ID = target.id;
   POOL_CLASS_ID = target.id; // unused placeholder to satisfy the outer-scope var; each test makes its own pool
   void POOL_CLASS_ID;
 });
 
-describe('EQT-ESP-001 — a grant cannot exceed the pool\'s available options', () => {
+describe("EQT-ESP-001 — a grant cannot exceed the pool's available options", () => {
   it('refuses a grant larger than the pool, naming the over-allocation', async () => {
     const p = await newPlan('001', { poolSize: 100 });
     const emp = await makeEmployee('esp001');
 
     const err = await expectReject(() =>
       asUser('hr@kaizen.co.in', () =>
-        proposeGrant({ planId: p.id, employmentId: emp.employment.id, grantedOn: monthsAgo(0), count: 150, resolutionRef: 'SR-TEST' }),
+        proposeGrant({
+          planId: p.id,
+          employmentId: emp.employment.id,
+          grantedOn: monthsAgo(0),
+          count: 150,
+          resolutionRef: 'SR-TEST',
+        }),
       ),
     );
     expect(err.message).toMatch(/over-allocation/i);
 
     const within = await asUser('hr@kaizen.co.in', () =>
-      proposeGrant({ planId: p.id, employmentId: emp.employment.id, grantedOn: monthsAgo(0), count: 50, resolutionRef: 'SR-TEST' }),
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(0),
+        count: 50,
+        resolutionRef: 'SR-TEST',
+      }),
     );
     expect(within.count).toBe(50);
 
@@ -175,7 +241,15 @@ describe('EQT-ESP-002 — first vesting earlier than twelve months after grant i
   });
 
   it('also refuses a plan whose own default cliff is under twelve months', async () => {
-    const pool = await asUser('secretary@kaizen.co.in', () => createShareClass({ name: `Bad Pool ${Date.now()}`, kind: 'equity', instrument: 'option', faceValue: 0, authorisedCount: 100 }));
+    const pool = await asUser('secretary@kaizen.co.in', () =>
+      createShareClass({
+        name: `Bad Pool ${Date.now()}`,
+        kind: 'equity',
+        instrument: 'option',
+        faceValue: 0,
+        authorisedCount: 100,
+      }),
+    );
     const err = await expectReject(() =>
       asUser('secretary@kaizen.co.in', () =>
         createPlan({
@@ -198,17 +272,33 @@ describe('EQT-ESP-003 — a promoter or over-ten-percent holder is refused witho
     // shares one tenant with the register, rounds and filings tests, so the
     // stake is sized against whatever they have already allotted rather than
     // assumed to be the only equity in existence.
-    const alreadyIssued = (await asUser('chairman@kaizen.co.in', () => capTable())).holderTotals
-      .reduce((sum, h) => sum + h.totalCount, 0);
+    const alreadyIssued = (await asUser('chairman@kaizen.co.in', () => capTable())).holderTotals.reduce(
+      (sum, h) => sum + h.totalCount,
+      0,
+    );
     const majorityCount = Math.max(900, Math.ceil(alreadyIssued * 20));
-    const majorityHolder = await asUser('secretary@kaizen.co.in', () => createHolder({ kind: 'person', personId: emp.person.id, residency: 'resident' }));
+    const majorityHolder = await asUser('secretary@kaizen.co.in', () =>
+      createHolder({ kind: 'person', personId: emp.person.id, residency: 'resident' }),
+    );
     const minorityHolder = await asUser('secretary@kaizen.co.in', () =>
-      createHolder({ kind: 'person', person: { fullName: `Minority ${Date.now()}`, email: `minority.${Date.now()}@example.test` }, residency: 'resident' }),
+      createHolder({
+        kind: 'person',
+        person: { fullName: `Minority ${Date.now()}`, email: `minority.${Date.now()}@example.test` },
+        residency: 'resident',
+      }),
     );
 
-    for (const [holderId, count] of [[majorityHolder.id, majorityCount], [minorityHolder.id, 100]] as const) {
+    for (const [holderId, count] of [
+      [majorityHolder.id, majorityCount],
+      [minorityHolder.id, 100],
+    ] as const) {
       const proposed = await asUser('secretary@kaizen.co.in', () =>
-        proposeAllotment({ shareClassId: TARGET_CLASS_ID, toHolderId: holderId, count, effectiveOn: new Date().toISOString() }),
+        proposeAllotment({
+          shareClassId: TARGET_CLASS_ID,
+          toHolderId: holderId,
+          count,
+          effectiveOn: new Date().toISOString(),
+        }),
       );
       await asUser('chairman@kaizen.co.in', () => approveShareTransaction(proposed.id));
       await asUser('chairman@kaizen.co.in', () => makeEffective(proposed.id));
@@ -216,12 +306,28 @@ describe('EQT-ESP-003 — a promoter or over-ten-percent holder is refused witho
 
     const nonDpiit = await newPlan('003-non-dpiit', { dpiit: false, poolSize: 5 });
     const err = await expectReject(() =>
-      asUser('hr@kaizen.co.in', () => proposeGrant({ planId: nonDpiit.id, employmentId: emp.employment.id, grantedOn: monthsAgo(0), count: 1, resolutionRef: 'SR-TEST' })),
+      asUser('hr@kaizen.co.in', () =>
+        proposeGrant({
+          planId: nonDpiit.id,
+          employmentId: emp.employment.id,
+          grantedOn: monthsAgo(0),
+          count: 1,
+          resolutionRef: 'SR-TEST',
+        }),
+      ),
     );
     expect(err.message).toMatch(/Rule 12\(1\)\(c\)/);
 
     const dpiit = await newPlan('003-dpiit', { dpiit: true, poolSize: 5 });
-    const allowed = await asUser('hr@kaizen.co.in', () => proposeGrant({ planId: dpiit.id, employmentId: emp.employment.id, grantedOn: monthsAgo(0), count: 1, resolutionRef: 'SR-TEST' }));
+    const allowed = await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: dpiit.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(0),
+        count: 1,
+        resolutionRef: 'SR-TEST',
+      }),
+    );
     expect(allowed.promoterCheck.holdsOver10Pct).toBe(true);
     expect(allowed.promoterCheck.dpiitReliefApplied).toBe(true);
   });
@@ -233,7 +339,13 @@ describe('EQT-ESP-004 — the grantee and the proposer cannot approve the grant'
     const emp = await makeEmployee('esp004');
 
     const proposed = await asUser('hr@kaizen.co.in', () =>
-      proposeGrant({ planId: p.id, employmentId: emp.employment.id, grantedOn: monthsAgo(0), count: 10, resolutionRef: 'SR-TEST' }),
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(0),
+        count: 10,
+        resolutionRef: 'SR-TEST',
+      }),
     );
 
     const byProposer = await expectReject(() => asUser('hr@kaizen.co.in', () => approveGrant(proposed.id)));
@@ -254,12 +366,24 @@ describe('EQT-ESP-005 — the vesting job vests due tranches once and skips an e
     const ending = await makeEmployee('esp005-ending');
 
     const grantA = await asUser('hr@kaizen.co.in', () =>
-      proposeGrant({ planId: p.id, employmentId: active.employment.id, grantedOn: monthsAgo(13), count: 12, resolutionRef: 'SR-TEST' }),
+      proposeGrant({
+        planId: p.id,
+        employmentId: active.employment.id,
+        grantedOn: monthsAgo(13),
+        count: 12,
+        resolutionRef: 'SR-TEST',
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveGrant(grantA.id));
 
     const grantB = await asUser('hr@kaizen.co.in', () =>
-      proposeGrant({ planId: p.id, employmentId: ending.employment.id, grantedOn: monthsAgo(13), count: 12, resolutionRef: 'SR-TEST' }),
+      proposeGrant({
+        planId: p.id,
+        employmentId: ending.employment.id,
+        grantedOn: monthsAgo(13),
+        count: 12,
+        resolutionRef: 'SR-TEST',
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveGrant(grantB.id));
 
@@ -318,7 +442,10 @@ describe('EQT-ESP-006 — an exit lapses unvested options immediately and vested
 
     // Force the window closed, as the daily job would find it later.
     await asUser('finance@kaizen.co.in', () =>
-      scopedPrisma.optionGrant.update({ where: { id: g.id }, data: { exerciseWindowEndsOn: new Date(Date.now() - 86_400_000) } }),
+      scopedPrisma.optionGrant.update({
+        where: { id: g.id },
+        data: { exerciseWindowEndsOn: new Date(Date.now() - 86_400_000) },
+      }),
     );
     const swept = await asUser('finance@kaizen.co.in', () => runExpiredExerciseWindows());
     expect(swept).toBeGreaterThanOrEqual(1);
@@ -335,7 +462,13 @@ describe('EQT-ESP-007 — exercise allots shares through the register at the exe
     const emp = await makeEmployee('esp007');
 
     const g = await asUser('hr@kaizen.co.in', () =>
-      proposeGrant({ planId: p.id, employmentId: emp.employment.id, grantedOn: monthsAgo(13), count: 10, resolutionRef: 'SR-TEST' }),
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(13),
+        count: 10,
+        resolutionRef: 'SR-TEST',
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveGrant(g.id));
     await asUser('finance@kaizen.co.in', () => runVesting());
@@ -348,7 +481,9 @@ describe('EQT-ESP-007 — exercise allots shares through the register at the exe
     expect(approved.allotmentTransactionId).toBeTruthy();
 
     const { txn, holder, cert } = await asUser('finance@kaizen.co.in', async () => {
-      const txn = await scopedPrisma.shareTransaction.findFirstOrThrow({ where: { id: approved.allotmentTransactionId! } });
+      const txn = await scopedPrisma.shareTransaction.findFirstOrThrow({
+        where: { id: approved.allotmentTransactionId! },
+      });
       const holder = await scopedPrisma.holder.findFirstOrThrow({ where: { id: txn.toHolderId! } });
       const cert = await scopedPrisma.shareCertificate.findFirst({ where: { issuedForTransactionId: txn.id } });
       return { txn, holder, cert };
@@ -372,7 +507,13 @@ describe('EQT-ESP-008 — the perquisite is computed only from a merchant-banker
     const emp = await makeEmployee('esp008');
 
     const g = await asUser('hr@kaizen.co.in', () =>
-      proposeGrant({ planId: p.id, employmentId: emp.employment.id, grantedOn: monthsAgo(13), count: 10, resolutionRef: 'SR-TEST' }),
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(13),
+        count: 10,
+        resolutionRef: 'SR-TEST',
+      }),
     );
     await asUser('finance@kaizen.co.in', () => approveGrant(g.id));
     await asUser('finance@kaizen.co.in', () => runVesting());
@@ -383,7 +524,11 @@ describe('EQT-ESP-008 — the perquisite is computed only from a merchant-banker
     expect(withoutFmv.perquisiteNote).toMatch(/No merchant-banker FMV on record/);
 
     await asUser('finance@kaizen.co.in', () =>
-      recordValuation({ asOf: new Date().toISOString(), basis: 'merchant_banker', perShareByClass: { [p.targetShareClassId]: 50 } }),
+      recordValuation({
+        asOf: new Date().toISOString(),
+        basis: 'merchant_banker',
+        perShareByClass: { [p.targetShareClassId]: 50 },
+      }),
     );
 
     const withFmv = await asEmployee(emp.person.id, () => requestExercise({ grantId: g.id, count: 1 }));
@@ -393,7 +538,11 @@ describe('EQT-ESP-008 — the perquisite is computed only from a merchant-banker
 
     // A valuation older than 180 days does not count.
     const stale = await asUser('finance@kaizen.co.in', () =>
-      recordValuation({ asOf: new Date(Date.now() - 10 * 86_400_000).toISOString(), basis: 'merchant_banker', perShareByClass: { [p.targetShareClassId]: 999 } }),
+      recordValuation({
+        asOf: new Date(Date.now() - 10 * 86_400_000).toISOString(),
+        basis: 'merchant_banker',
+        perShareByClass: { [p.targetShareClassId]: 999 },
+      }),
     );
     const backdated = new Date(Date.now() - 200 * 86_400_000);
     await asUser('finance@kaizen.co.in', async () => {
@@ -413,8 +562,24 @@ describe('EQT-ESP-009 — the SH-6 register lists every grant in form order and 
     const empA = await makeEmployee('esp009-a');
     const empB = await makeEmployee('esp009-b');
 
-    const gA = await asUser('hr@kaizen.co.in', () => proposeGrant({ planId: p.id, employmentId: empA.employment.id, grantedOn: monthsAgo(20), count: 10, resolutionRef: 'SR-TEST' }));
-    const gB = await asUser('hr@kaizen.co.in', () => proposeGrant({ planId: p.id, employmentId: empB.employment.id, grantedOn: monthsAgo(5), count: 8, resolutionRef: 'SR-TEST' }));
+    const gA = await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: empA.employment.id,
+        grantedOn: monthsAgo(20),
+        count: 10,
+        resolutionRef: 'SR-TEST',
+      }),
+    );
+    const gB = await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: empB.employment.id,
+        grantedOn: monthsAgo(5),
+        count: 8,
+        resolutionRef: 'SR-TEST',
+      }),
+    );
 
     const rows = await asUser('secretary@kaizen.co.in', () => sh6Register());
     const idxA = rows.findIndex((r) => r.grantId === gA.id);
@@ -438,13 +603,29 @@ describe('EQT-ESP-009 — the SH-6 register lists every grant in form order and 
 });
 
 describe('EQT-ESP-010 — an employee sees only their own grants', () => {
-  it('myGrants() returns only the calling employee\'s own grants, with the plain-words tax line', async () => {
+  it("myGrants() returns only the calling employee's own grants, with the plain-words tax line", async () => {
     const p = await newPlan('010');
     const empA = await makeEmployee('esp010-a');
     const empB = await makeEmployee('esp010-b');
 
-    await asUser('hr@kaizen.co.in', () => proposeGrant({ planId: p.id, employmentId: empA.employment.id, grantedOn: monthsAgo(13), count: 5, resolutionRef: 'SR-TEST' }));
-    await asUser('hr@kaizen.co.in', () => proposeGrant({ planId: p.id, employmentId: empB.employment.id, grantedOn: monthsAgo(13), count: 5, resolutionRef: 'SR-TEST' }));
+    await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: empA.employment.id,
+        grantedOn: monthsAgo(13),
+        count: 5,
+        resolutionRef: 'SR-TEST',
+      }),
+    );
+    await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: empB.employment.id,
+        grantedOn: monthsAgo(13),
+        count: 5,
+        resolutionRef: 'SR-TEST',
+      }),
+    );
 
     const mineA = await asEmployee(empA.person.id, () => myGrants());
     expect(mineA.length).toBeGreaterThanOrEqual(1);
@@ -461,16 +642,32 @@ describe('EQT-ESP-010 — an employee sees only their own grants', () => {
   });
 });
 
-describe('lapseGrant and cancelGrant — the secretary\'s manual paths', () => {
+describe("lapseGrant and cancelGrant — the secretary's manual paths", () => {
   it('cancelGrant refuses once any tranche has vested, and lapseGrant is available regardless', async () => {
     const p = await newPlan('cancel-lapse');
     const emp = await makeEmployee('esp-cancel');
 
-    const g = await asUser('hr@kaizen.co.in', () => proposeGrant({ planId: p.id, employmentId: emp.employment.id, grantedOn: monthsAgo(0), count: 10, resolutionRef: 'SR-TEST' }));
+    const g = await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(0),
+        count: 10,
+        resolutionRef: 'SR-TEST',
+      }),
+    );
     const cancelled = await asUser('secretary@kaizen.co.in', () => cancelGrant(g.id, 'Made in error'));
     expect(cancelled.status).toBe('cancelled');
 
-    const g2 = await asUser('hr@kaizen.co.in', () => proposeGrant({ planId: p.id, employmentId: emp.employment.id, grantedOn: monthsAgo(13), count: 10, resolutionRef: 'SR-TEST' }));
+    const g2 = await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(13),
+        count: 10,
+        resolutionRef: 'SR-TEST',
+      }),
+    );
     await asUser('finance@kaizen.co.in', () => approveGrant(g2.id));
     await asUser('finance@kaizen.co.in', () => runVesting());
     await expectReject(() => asUser('secretary@kaizen.co.in', () => cancelGrant(g2.id, 'Too late')));
@@ -484,7 +681,15 @@ describe('rejectExercise', () => {
   it('a finance head can reject a requested exercise', async () => {
     const p = await newPlan('reject');
     const emp = await makeEmployee('esp-reject');
-    const g = await asUser('hr@kaizen.co.in', () => proposeGrant({ planId: p.id, employmentId: emp.employment.id, grantedOn: monthsAgo(13), count: 10, resolutionRef: 'SR-TEST' }));
+    const g = await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(13),
+        count: 10,
+        resolutionRef: 'SR-TEST',
+      }),
+    );
     await asUser('finance@kaizen.co.in', () => approveGrant(g.id));
     await asUser('finance@kaizen.co.in', () => runVesting());
     const requested = await asEmployee(emp.person.id, () => requestExercise({ grantId: g.id, count: 2 }));

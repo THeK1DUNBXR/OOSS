@@ -20,7 +20,10 @@ import {
 const router = Router();
 
 const RuleConditionSchema = z.object({ field: z.string(), op: z.string(), value: z.unknown().optional() });
-const RuleSchema = z.object({ all: z.array(RuleConditionSchema).optional(), any: z.array(RuleConditionSchema).optional() });
+const RuleSchema = z.object({
+  all: z.array(RuleConditionSchema).optional(),
+  any: z.array(RuleConditionSchema).optional(),
+});
 
 const AudienceInputSchema = z.object({
   name: z.string().min(1),
@@ -51,12 +54,19 @@ router.post(
 router.get(
   '/',
   handler(async (req) => {
-    const items = await listAudiences({ kind: str(req.query.kind), entityType: str(req.query.entityType), q: str(req.query.q) });
+    const items = await listAudiences({
+      kind: str(req.query.kind),
+      entityType: str(req.query.entityType),
+      q: str(req.query.q),
+    });
     return { items, total: items.length };
   }),
 );
 
-router.get('/:id', handler(async (req) => loadAudience(req.params.id)));
+router.get(
+  '/:id',
+  handler(async (req) => loadAudience(req.params.id)),
+);
 
 router.post(
   '/',
@@ -74,9 +84,15 @@ router.patch(
   }),
 );
 
-router.delete('/:id', handler(async (req) => deleteAudience(req.params.id)));
+router.delete(
+  '/:id',
+  handler(async (req) => deleteAudience(req.params.id)),
+);
 
-router.post('/:id/evaluate', handler(async (req) => evaluateAudience(req.params.id)));
+router.post(
+  '/:id/evaluate',
+  handler(async (req) => evaluateAudience(req.params.id)),
+);
 
 router.post(
   '/:id/members',
@@ -90,7 +106,10 @@ router.post(
   }),
 );
 
-router.delete('/:id/members/:memberId', handler(async (req) => removeAudienceMember(req.params.id, req.params.memberId)));
+router.delete(
+  '/:id/members/:memberId',
+  handler(async (req) => removeAudienceMember(req.params.id, req.params.memberId)),
+);
 
 router.post(
   '/:id/suppress',

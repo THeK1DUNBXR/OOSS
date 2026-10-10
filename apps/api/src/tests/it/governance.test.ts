@@ -14,7 +14,14 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { riskScore, riskBandFor, remediationDueAt, acknowledgementRate, type RiskScoringBandRow, type RemediationRuleRow } from '@kaizen/shared';
+import {
+  riskScore,
+  riskBandFor,
+  remediationDueAt,
+  acknowledgementRate,
+  type RiskScoringBandRow,
+  type RemediationRuleRow,
+} from '@kaizen/shared';
 import { asUser, expectReject, principalFor, tenantId, unscopedPrisma, withFixtureRole } from '../helpers.js';
 import {
   createRisk,
@@ -109,9 +116,15 @@ describe('pure arithmetic (no DB)', () => {
   });
 
   it('riskBandFor never reads a constant — a different band set changes the answer for the same score', () => {
-    const looser = [{ band: 'low' as const, minScore: 1 }, { band: 'critical' as const, minScore: 10 }];
+    const looser = [
+      { band: 'low' as const, minScore: 1 },
+      { band: 'critical' as const, minScore: 10 },
+    ];
     expect(riskBandFor(12, looser)).toBe('critical');
-    const stricter = [{ band: 'low' as const, minScore: 1 }, { band: 'critical' as const, minScore: 15 }];
+    const stricter = [
+      { band: 'low' as const, minScore: 1 },
+      { band: 'critical' as const, minScore: 15 },
+    ];
     expect(riskBandFor(12, stricter)).toBe('low');
   });
 
@@ -160,11 +173,13 @@ describe('IT governance — domain and wiring', () => {
   // Risks
   // -------------------------------------------------------------------------
 
-  it('IT-RSK-001: a risk\'s score and band come from the dated scoring table, and the set used is recorded', async () => {
+  it("IT-RSK-001: a risk's score and band come from the dated scoring table, and the set used is recorded", async () => {
     const bandSet = await unscopedPrisma.itRiskScoringBand.findMany({ where: { tenantId: tid } });
     expect(bandSet.length).toBeGreaterThan(0);
 
-    const opsHeadForRsk = await unscopedPrisma.affiliation.findFirstOrThrow({ where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' } });
+    const opsHeadForRsk = await unscopedPrisma.affiliation.findFirstOrThrow({
+      where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' },
+    });
     const risk = await asUser('operations@kaizen.co.in', () =>
       createRisk({
         title: `Unpatched servers ${stamp()}`,
@@ -180,15 +195,26 @@ describe('IT governance — domain and wiring', () => {
     expect(risk.scoredUnderBandSetId).toBeTruthy();
 
     // Residual, once treatment brings likelihood/impact down.
-    const updated = await asUser('operations@kaizen.co.in', () => updateRisk(risk.id, { likelihoodResidual: 1, impactResidual: 2 }));
+    const updated = await asUser('operations@kaizen.co.in', () =>
+      updateRisk(risk.id, { likelihoodResidual: 1, impactResidual: 2 }),
+    );
     expect(updated.scoreResidual).toBe(2);
     expect(updated.bandResidual).toBe('low');
   });
 
   it('a risk moves open -> treating -> accepted -> closed via the machine, and a dead transition is refused', async () => {
-    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({ where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' } });
+    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({
+      where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' },
+    });
     const risk = await asUser('operations@kaizen.co.in', () =>
-      createRisk({ title: `Lifecycle risk ${stamp()}`, category: 'ops', ownerPartyId: opsHead.partyId, likelihoodInherent: 3, impactInherent: 3, treatment: 'accept' }),
+      createRisk({
+        title: `Lifecycle risk ${stamp()}`,
+        category: 'ops',
+        ownerPartyId: opsHead.partyId,
+        likelihoodInherent: 3,
+        impactInherent: 3,
+        treatment: 'accept',
+      }),
     );
     const treating = await asUser('operations@kaizen.co.in', () => transitionRisk(risk.id, 'START_TREATING' as never));
     expect(treating.status).toBe('treating');
@@ -197,22 +223,38 @@ describe('IT governance — domain and wiring', () => {
     const closed = await asUser('operations@kaizen.co.in', () => transitionRisk(risk.id, 'CLOSE' as never));
     expect(closed.status).toBe('closed');
 
-    const rejected = await expectReject(() => asUser('operations@kaizen.co.in', () => transitionRisk(risk.id, 'ACCEPT' as never)));
+    const rejected = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => transitionRisk(risk.id, 'ACCEPT' as never)),
+    );
     expect(rejected.status).toBe(422);
   });
 
   it('the risk review overdue ladder fires once per rung and reports on the row', async () => {
-    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({ where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' } });
+    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({
+      where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' },
+    });
     const risk = await asUser('operations@kaizen.co.in', () =>
-      createRisk({ title: `Review-due risk ${stamp()}`, category: 'ops', ownerPartyId: opsHead.partyId, likelihoodInherent: 2, impactInherent: 2, treatment: 'mitigate', reviewDueAt: new Date('2020-01-01') }),
+      createRisk({
+        title: `Review-due risk ${stamp()}`,
+        category: 'ops',
+        ownerPartyId: opsHead.partyId,
+        likelihoodInherent: 2,
+        impactInherent: 2,
+        treatment: 'mitigate',
+        reviewDueAt: new Date('2020-01-01'),
+      }),
     );
 
     await asUser('operations@kaizen.co.in', () => runRiskReviewJob());
-    const firstCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_RSK_REVIEW_OVERDUE', subjectId: risk.id } });
+    const firstCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_RSK_REVIEW_OVERDUE', subjectId: risk.id },
+    });
     expect(firstCount).toBe(1);
 
     await asUser('operations@kaizen.co.in', () => runRiskReviewJob());
-    const secondCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_RSK_REVIEW_OVERDUE', subjectId: risk.id } });
+    const secondCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_RSK_REVIEW_OVERDUE', subjectId: risk.id },
+    });
     expect(secondCount).toBe(1);
   });
 
@@ -238,7 +280,11 @@ describe('IT governance — domain and wiring', () => {
     // exactly the shape the vendor-contract self-dealing test uses, so the
     // chairman is the only account that can even attempt to approve its own draft.
     const draft = await asUser('chairman@kaizen.co.in', () =>
-      createPolicyDraft({ code: `IT-POL-TEST-${stamp()}`, title: 'Test policy', body: 'A body long enough to acknowledge.' }),
+      createPolicyDraft({
+        code: `IT-POL-TEST-${stamp()}`,
+        title: 'Test policy',
+        body: 'A body long enough to acknowledge.',
+      }),
     );
     expect(draft.status).toBe('draft');
 
@@ -252,7 +298,11 @@ describe('IT governance — domain and wiring', () => {
     // The Operations Head holds create but not approve at all — a plain
     // grant denial, distinct from the self-dealing reroute above.
     const opsDrafted = await asUser('operations@kaizen.co.in', () =>
-      createPolicyDraft({ code: `IT-POL-OPS-${stamp()}`, title: 'Ops-drafted policy', body: 'Body text for the ops-drafted policy.' }),
+      createPolicyDraft({
+        code: `IT-POL-OPS-${stamp()}`,
+        title: 'Ops-drafted policy',
+        body: 'Body text for the ops-drafted policy.',
+      }),
     );
     const opsPublish = await expectReject(() => asUser('operations@kaizen.co.in', () => publishPolicy(opsDrafted.id)));
     expect(opsPublish.status).toBe(403);
@@ -262,13 +312,19 @@ describe('IT governance — domain and wiring', () => {
     // gate itself only opens a step, so the rest of this test can exercise
     // immutability and versioning (see its doc comment for why).
     const secondDraft = await asUser('operations@kaizen.co.in', () =>
-      createPolicyDraft({ code: `IT-POL-CLEAN-${stamp()}`, title: 'Cleanly published policy', body: 'Body for a cleanly published policy.' }),
+      createPolicyDraft({
+        code: `IT-POL-CLEAN-${stamp()}`,
+        title: 'Cleanly published policy',
+        body: 'Body for a cleanly published policy.',
+      }),
     );
     const published = await publishForTest(secondDraft.id, 'chairman@kaizen.co.in');
     expect(published.policy.status).toBe('published');
 
     // A published body is immutable.
-    const editAttempt = await expectReject(() => asUser('operations@kaizen.co.in', () => updatePolicyDraft(secondDraft.id, { body: 'Changed after publish.' })));
+    const editAttempt = await expectReject(() =>
+      asUser('operations@kaizen.co.in', () => updatePolicyDraft(secondDraft.id, { body: 'Changed after publish.' })),
+    );
     expect(editAttempt.status).toBe(422);
 
     // A change is a new version, not an edit.
@@ -284,13 +340,19 @@ describe('IT governance — domain and wiring', () => {
       // on a direct apply, so mirror that half of the write too.
       await unscopedPrisma.itPolicyDocument.update({ where: { id: secondDraft.id }, data: { status: 'superseded' } });
     }
-    const supersededOriginal = await unscopedPrisma.itPolicyDocument.findFirstOrThrow({ where: { id: secondDraft.id } });
+    const supersededOriginal = await unscopedPrisma.itPolicyDocument.findFirstOrThrow({
+      where: { id: secondDraft.id },
+    });
     expect(supersededOriginal.status).toBe('superseded');
   });
 
   it('the gate chain: a self-dealing publish opens a step to the chairman role, which the other chairman holder decides', async () => {
     const draft = await asUser('chairman@kaizen.co.in', () =>
-      createPolicyDraft({ code: `IT-POL-CHAIN-${stamp()}`, title: 'Chain test policy', body: 'Body for the gate-chain test.' }),
+      createPolicyDraft({
+        code: `IT-POL-CHAIN-${stamp()}`,
+        title: 'Chain test policy',
+        body: 'Body for the gate-chain test.',
+      }),
     );
 
     const gated = await asUser('chairman@kaizen.co.in', () => publishPolicy(draft.id));
@@ -341,7 +403,11 @@ describe('IT governance — domain and wiring', () => {
 
   it('IT-POL-002: an employee acknowledges a published policy once per version, and the rate counts only current versions', async () => {
     const draft = await asUser('operations@kaizen.co.in', () =>
-      createPolicyDraft({ code: `IT-POL-ACK-${stamp()}`, title: 'Ack test policy', body: 'Body for the acknowledgement test.' }),
+      createPolicyDraft({
+        code: `IT-POL-ACK-${stamp()}`,
+        title: 'Ack test policy',
+        body: 'Body for the acknowledgement test.',
+      }),
     );
     const published = await publishForTest(draft.id, 'chairman@kaizen.co.in');
     expect(published.policy.status).toBe('published');
@@ -355,7 +421,9 @@ describe('IT governance — domain and wiring', () => {
 
     // A second acknowledgement of the same version is a no-op, not a second row.
     await asUser('employee@kaizen.co.in', () => acknowledgePolicy(draft.id));
-    const ackRows = await unscopedPrisma.itPolicyAcknowledgement.findMany({ where: { tenantId: tid, policyId: draft.id } });
+    const ackRows = await unscopedPrisma.itPolicyAcknowledgement.findMany({
+      where: { tenantId: tid, policyId: draft.id },
+    });
     expect(ackRows.length).toBe(1);
 
     const awaitingAfter = await asUser('employee@kaizen.co.in', () => policiesAwaitingCaller());
@@ -363,9 +431,15 @@ describe('IT governance — domain and wiring', () => {
 
     // The employee cannot acknowledge a draft — only a published policy.
     const draftOnly = await asUser('operations@kaizen.co.in', () =>
-      createPolicyDraft({ code: `IT-POL-DRAFTONLY-${stamp()}`, title: 'Still a draft', body: 'Body for a policy that stays a draft.' }),
+      createPolicyDraft({
+        code: `IT-POL-DRAFTONLY-${stamp()}`,
+        title: 'Still a draft',
+        body: 'Body for a policy that stays a draft.',
+      }),
     );
-    const draftAckDenied = await expectReject(() => asUser('employee@kaizen.co.in', () => acknowledgePolicy(draftOnly.id)));
+    const draftAckDenied = await expectReject(() =>
+      asUser('employee@kaizen.co.in', () => acknowledgePolicy(draftOnly.id)),
+    );
     expect(draftAckDenied.status).toBe(422);
 
     const summary = await asUser('operations@kaizen.co.in', () => policiesSummary());
@@ -376,7 +450,7 @@ describe('IT governance — domain and wiring', () => {
     expect(list.length).toBe(1);
   });
 
-  it('an employee sees published policies but the caller\'s own acknowledgement is recorded under their own party — self only', async () => {
+  it("an employee sees published policies but the caller's own acknowledgement is recorded under their own party — self only", async () => {
     const detail = await asUser('operations@kaizen.co.in', () => listPolicies({ status: 'published' }));
     expect(Array.isArray(detail)).toBe(true);
     if (detail.length) {
@@ -387,7 +461,11 @@ describe('IT governance — domain and wiring', () => {
 
   it('listPolicies and policyDetail never leak a draft to a caller who only holds view', async () => {
     const draftOnly = await asUser('operations@kaizen.co.in', () =>
-      createPolicyDraft({ code: `IT-POL-NOLEAK-${stamp()}`, title: 'Not for employees yet', body: 'Body for the leak test.' }),
+      createPolicyDraft({
+        code: `IT-POL-NOLEAK-${stamp()}`,
+        title: 'Not for employees yet',
+        body: 'Body for the leak test.',
+      }),
     );
 
     // The Operations Head drafted it and holds `it_policies:E` — sees it fine.
@@ -419,11 +497,21 @@ describe('IT governance — domain and wiring', () => {
     const controls = await asUser('operations@kaizen.co.in', () => listControls());
     expect(controls.length).toBeGreaterThanOrEqual(10);
 
-    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({ where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' } });
+    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({
+      where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' },
+    });
     const control = await asUser('operations@kaizen.co.in', () =>
-      createControl({ code: `TEST-CTL-${stamp()}`, title: 'Fixture control', frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.1' }], ownerPartyId: opsHead.partyId, frequencyDays: 30 }),
+      createControl({
+        code: `TEST-CTL-${stamp()}`,
+        title: 'Fixture control',
+        frameworkRefs: [{ framework: 'ISO27001', ref: 'A.8.1' }],
+        ownerPartyId: opsHead.partyId,
+        frequencyDays: 30,
+      }),
     );
-    const tested = await asUser('operations@kaizen.co.in', () => recordTest(control.id, { result: 'pass', notes: 'Looked fine.' }));
+    const tested = await asUser('operations@kaizen.co.in', () =>
+      recordTest(control.id, { result: 'pass', notes: 'Looked fine.' }),
+    );
     expect(tested.lastResult).toBe('pass');
     expect(tested.lastTestedAt).toBeTruthy();
 
@@ -432,18 +520,30 @@ describe('IT governance — domain and wiring', () => {
   });
 
   it('the control test overdue job fires once for a control never tested against a short frequency', async () => {
-    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({ where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' } });
+    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({
+      where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' },
+    });
     const control = await asUser('operations@kaizen.co.in', () =>
-      createControl({ code: `OVERDUE-CTL-${stamp()}`, title: 'Never tested control', frameworkRefs: [], ownerPartyId: opsHead.partyId, frequencyDays: 1 }),
+      createControl({
+        code: `OVERDUE-CTL-${stamp()}`,
+        title: 'Never tested control',
+        frameworkRefs: [],
+        ownerPartyId: opsHead.partyId,
+        frequencyDays: 1,
+      }),
     );
     await unscopedPrisma.itControl.update({ where: { id: control.id }, data: { createdAt: new Date('2020-01-01') } });
 
     await asUser('operations@kaizen.co.in', () => runControlTestOverdueJob());
-    const firstCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_CTL_TEST_OVERDUE', subjectId: control.id } });
+    const firstCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_CTL_TEST_OVERDUE', subjectId: control.id },
+    });
     expect(firstCount).toBe(1);
 
     await asUser('operations@kaizen.co.in', () => runControlTestOverdueJob());
-    const secondCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_CTL_TEST_OVERDUE', subjectId: control.id } });
+    const secondCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_CTL_TEST_OVERDUE', subjectId: control.id },
+    });
     expect(secondCount).toBe(1);
 
     // Recording a test re-arms the detector.
@@ -456,11 +556,15 @@ describe('IT governance — domain and wiring', () => {
   // Access reviews
   // -------------------------------------------------------------------------
 
-  it('IT-ACR-001: a reviewer\'s decision on their own access is refused with the self-review bar named', async () => {
-    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({ where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' } });
+  it("IT-ACR-001: a reviewer's decision on their own access is refused with the self-review bar named", async () => {
+    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({
+      where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' },
+    });
     const dueAt = new Date();
     dueAt.setUTCDate(dueAt.getUTCDate() + 14);
-    const campaign = await asUser('operations@kaizen.co.in', () => openCampaign({ name: `Self-review campaign ${stamp()}`, scope: 'all', dueAt }));
+    const campaign = await asUser('operations@kaizen.co.in', () =>
+      openCampaign({ name: `Self-review campaign ${stamp()}`, scope: 'all', dueAt }),
+    );
     expect(campaign.itemCount).toBeGreaterThan(0);
 
     const detail = await asUser('operations@kaizen.co.in', () => campaignDetail(campaign.id));
@@ -477,15 +581,21 @@ describe('IT governance — domain and wiring', () => {
     // someone else's row — not their own — succeeds cleanly.
     const someoneElseItem = detail.items.find((i) => i.partyId !== opsHead.partyId);
     expect(someoneElseItem).toBeTruthy();
-    const decided = await asUser('operations@kaizen.co.in', () => decideItem(campaign.id, someoneElseItem!.id, { decision: 'keep' }));
+    const decided = await asUser('operations@kaizen.co.in', () =>
+      decideItem(campaign.id, someoneElseItem!.id, { decision: 'keep' }),
+    );
     expect(decided.decision).toBe('keep');
   });
 
   it('a campaign cannot close until every item has a decision, and closing is idempotent-safe', async () => {
     const dueAt = new Date();
     dueAt.setUTCDate(dueAt.getUTCDate() + 14);
-    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({ where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' } });
-    const campaign = await asUser('operations@kaizen.co.in', () => openCampaign({ name: `Close-test campaign ${stamp()}`, scope: 'role', scopeRef: 'hr_ops_manager', dueAt }));
+    const opsHead = await unscopedPrisma.affiliation.findFirstOrThrow({
+      where: { tenantId: tid, roleSlug: 'hr_ops_manager', status: 'active' },
+    });
+    const campaign = await asUser('operations@kaizen.co.in', () =>
+      openCampaign({ name: `Close-test campaign ${stamp()}`, scope: 'role', scopeRef: 'hr_ops_manager', dueAt }),
+    );
     expect(campaign.itemCount).toBeGreaterThan(0);
 
     const stillOpen = await expectReject(() => asUser('operations@kaizen.co.in', () => closeCampaign(campaign.id)));
@@ -506,17 +616,28 @@ describe('IT governance — domain and wiring', () => {
 
   it('the access-review campaign overdue detector raises an exception for a campaign past its due date, once — a second run raises nothing new', async () => {
     const dueAt = new Date('2020-01-01');
-    const campaign = await asUser('operations@kaizen.co.in', () => openCampaign({ name: `Overdue campaign ${stamp()}`, scope: 'role', scopeRef: 'hr_ops_manager', dueAt: new Date() }));
+    const campaign = await asUser('operations@kaizen.co.in', () =>
+      openCampaign({
+        name: `Overdue campaign ${stamp()}`,
+        scope: 'role',
+        scopeRef: 'hr_ops_manager',
+        dueAt: new Date(),
+      }),
+    );
     await unscopedPrisma.itAccessReview.update({ where: { id: campaign.id }, data: { dueAt } });
 
     await asUser('operations@kaizen.co.in', () => runAccessReviewOverdueJob());
-    const firstCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_ACR_CAMPAIGN_OVERDUE', subjectId: campaign.id } });
+    const firstCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_ACR_CAMPAIGN_OVERDUE', subjectId: campaign.id },
+    });
     expect(firstCount).toBe(1);
     const notifiedRow = await unscopedPrisma.itAccessReview.findFirstOrThrow({ where: { id: campaign.id } });
     expect(notifiedRow.overdueNotifiedAt).toBeTruthy();
 
     await asUser('operations@kaizen.co.in', () => runAccessReviewOverdueJob());
-    const secondCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_ACR_CAMPAIGN_OVERDUE', subjectId: campaign.id } });
+    const secondCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_ACR_CAMPAIGN_OVERDUE', subjectId: campaign.id },
+    });
     expect(secondCount).toBe(1);
   });
 
@@ -524,7 +645,7 @@ describe('IT governance — domain and wiring', () => {
   // Findings
   // -------------------------------------------------------------------------
 
-  it('IT-FND-001: a finding\'s due date follows the remediation table in force at creation, and the overdue ladder is idempotent', async () => {
+  it("IT-FND-001: a finding's due date follows the remediation table in force at creation, and the overdue ladder is idempotent", async () => {
     const rules = await unscopedPrisma.itRemediationRule.findMany({ where: { tenantId: tid } });
     const critical = rules.find((r) => r.severity === 'critical');
     expect(critical).toBeTruthy();
@@ -537,21 +658,32 @@ describe('IT governance — domain and wiring', () => {
     expect(new Date(finding.dueAt).toISOString().slice(0, 10)).toBe(expectedDueAt.toISOString().slice(0, 10));
 
     // Force it overdue and run the ladder twice.
-    await unscopedPrisma.itSecurityFinding.update({ where: { id: finding.id }, data: { dueAt: new Date('2020-01-01'), overdueNotifiedRungs: [] } });
+    await unscopedPrisma.itSecurityFinding.update({
+      where: { id: finding.id },
+      data: { dueAt: new Date('2020-01-01'), overdueNotifiedRungs: [] },
+    });
     await asUser('operations@kaizen.co.in', () => runFindingOverdueJob());
-    const firstCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_FND_OVERDUE', subjectId: finding.id } });
+    const firstCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_FND_OVERDUE', subjectId: finding.id },
+    });
     expect(firstCount).toBe(1);
 
     await asUser('operations@kaizen.co.in', () => runFindingOverdueJob());
-    const secondCount = await unscopedPrisma.exceptionRecord.count({ where: { tenantId: tid, code: 'IT_FND_OVERDUE', subjectId: finding.id } });
+    const secondCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_FND_OVERDUE', subjectId: finding.id },
+    });
     expect(secondCount).toBe(1);
   });
 
   it('a finding moves open -> in_progress -> fixed -> verified, and a later change to the remediation table never rewrites it', async () => {
-    const finding = await asUser('operations@kaizen.co.in', () => createFinding({ title: `Lifecycle finding ${stamp()}`, source: 'scan', severity: 'medium' }));
+    const finding = await asUser('operations@kaizen.co.in', () =>
+      createFinding({ title: `Lifecycle finding ${stamp()}`, source: 'scan', severity: 'medium' }),
+    );
     const originalDueAt = finding.dueAt;
 
-    await unscopedPrisma.itRemediationRule.create({ data: { tenantId: tid, severity: 'medium', days: 1, effectiveFrom: new Date('2099-01-01') } });
+    await unscopedPrisma.itRemediationRule.create({
+      data: { tenantId: tid, severity: 'medium', days: 1, effectiveFrom: new Date('2099-01-01') },
+    });
 
     const inProgress = await asUser('operations@kaizen.co.in', () => transitionFinding(finding.id, 'START' as never));
     expect(inProgress.status).toBe('in_progress');
@@ -571,7 +703,9 @@ describe('IT governance — domain and wiring', () => {
   // -------------------------------------------------------------------------
 
   it('an employee can acknowledge a published policy but reaches nothing else on risks, controls, access reviews or findings', async () => {
-    const publishedPolicies = await unscopedPrisma.itPolicyDocument.findFirst({ where: { tenantId: tid, status: 'published' } });
+    const publishedPolicies = await unscopedPrisma.itPolicyDocument.findFirst({
+      where: { tenantId: tid, status: 'published' },
+    });
     expect(publishedPolicies).toBeTruthy();
     const ack = await asUser('employee@kaizen.co.in', () => acknowledgePolicy(publishedPolicies!.id));
     expect(ack).toBeTruthy();
@@ -580,13 +714,19 @@ describe('IT governance — domain and wiring', () => {
     expect(deniedRisks.status).toBe(403);
     const deniedControls = await expectReject(() => asUser('employee@kaizen.co.in', () => listControls()));
     expect(deniedControls.status).toBe(403);
-    const deniedFindings = await expectReject(() => asUser('employee@kaizen.co.in', () => createFinding({ title: 'x', source: 'scan', severity: 'low' })));
+    const deniedFindings = await expectReject(() =>
+      asUser('employee@kaizen.co.in', () => createFinding({ title: 'x', source: 'scan', severity: 'low' })),
+    );
     expect(deniedFindings.status).toBe(403);
   });
 
   it('the Operations Head cannot publish a policy — the grant has no approve, self-dealing or not', async () => {
     const draft = await asUser('operations@kaizen.co.in', () =>
-      createPolicyDraft({ code: `IT-POL-OPSNOPUB-${stamp()}`, title: 'Ops cannot publish', body: 'Body for the ops-cannot-publish test.' }),
+      createPolicyDraft({
+        code: `IT-POL-OPSNOPUB-${stamp()}`,
+        title: 'Ops cannot publish',
+        body: 'Body for the ops-cannot-publish test.',
+      }),
     );
     const denied = await expectReject(() => asUser('operations@kaizen.co.in', () => publishPolicy(draft.id)));
     expect(denied.status).toBe(403);
@@ -601,7 +741,16 @@ describe('IT governance — domain and wiring', () => {
     expect(Array.isArray(controls)).toBe(true);
 
     const deniedRiskCreate = await expectReject(() =>
-      asUser('finance@kaizen.co.in', () => createRisk({ title: 'x', category: 'y', ownerPartyId: 'z', likelihoodInherent: 1, impactInherent: 1, treatment: 'accept' })),
+      asUser('finance@kaizen.co.in', () =>
+        createRisk({
+          title: 'x',
+          category: 'y',
+          ownerPartyId: 'z',
+          likelihoodInherent: 1,
+          impactInherent: 1,
+          treatment: 'accept',
+        }),
+      ),
     );
     expect(deniedRiskCreate.status).toBe(403);
     const deniedFindingCreate = await expectReject(() =>
@@ -614,8 +763,10 @@ describe('IT governance — domain and wiring', () => {
     expect(deniedPolicyCreate.status).toBe(403);
   });
 
-  it('a fixture role holding it_policy_acknowledgements:C but not @own cannot acknowledge on another party\'s behalf', async () => {
-    const publishedPolicy = await unscopedPrisma.itPolicyDocument.findFirst({ where: { tenantId: tid, status: 'published' } });
+  it("a fixture role holding it_policy_acknowledgements:C but not @own cannot acknowledge on another party's behalf", async () => {
+    const publishedPolicy = await unscopedPrisma.itPolicyDocument.findFirst({
+      where: { tenantId: tid, status: 'published' },
+    });
     expect(publishedPolicy).toBeTruthy();
 
     await withFixtureRole(

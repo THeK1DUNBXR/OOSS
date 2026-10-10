@@ -183,7 +183,8 @@ function sortDeep(v: unknown): unknown {
     const toJSON = (v as { toJSON?: () => unknown }).toJSON;
     if (typeof toJSON === 'function') return sortDeep(toJSON.call(v));
     const out: Record<string, unknown> = {};
-    for (const k of Object.keys(v as Record<string, unknown>).sort()) out[k] = sortDeep((v as Record<string, unknown>)[k]);
+    for (const k of Object.keys(v as Record<string, unknown>).sort())
+      out[k] = sortDeep((v as Record<string, unknown>)[k]);
     return out;
   }
   return v;
@@ -390,11 +391,7 @@ export async function auditWrite(input: AuditWriteInput): Promise<void> {
  * projection that excludes the regulated field from its output produces no
  * record — the hook inspects the outgoing response shape, not the schema.
  */
-export async function auditRegulatedRead(
-  subjectType: string,
-  subjectId: string,
-  fieldsRead: string[],
-): Promise<void> {
+export async function auditRegulatedRead(subjectType: string, subjectId: string, fieldsRead: string[]): Promise<void> {
   if (fieldsRead.length === 0) return;
   const auth = currentAuth();
   await createChainedAuditRecord({

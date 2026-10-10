@@ -12,12 +12,58 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { useQuery } from '@tanstack/react-query';
 import type { NavNodeView, NotificationView } from '@kaizen/shared';
 import {
-  Activity, AlertTriangle, Award, Bell, Book, Building2, Calculator, Calendar, ChevronDown,
-  ChevronRight, ChevronsUpDown, Circle, Clipboard, Clock, Coins, Columns3, DoorOpen, File,
-  FileText, Gauge, GraduationCap, Home, Inbox, Kanban, Key, Layers, Lock, Map as MapIcon,
-  Menu, Network, Package, PieChart, Receipt, Scale, ScrollText, Search, Settings, Shield, ShieldCheck,
-  Sparkles, Target, TrendingUp, Users, Wallet, X, type LucideIcon,
-  Server, Laptop, Ticket, GitBranch, Bug, Wrench,
+  Activity,
+  AlertTriangle,
+  Award,
+  Bell,
+  Book,
+  Building2,
+  Calculator,
+  Calendar,
+  ChevronDown,
+  ChevronRight,
+  ChevronsUpDown,
+  Circle,
+  Clipboard,
+  Clock,
+  Coins,
+  Columns3,
+  DoorOpen,
+  File,
+  FileText,
+  Gauge,
+  GraduationCap,
+  Home,
+  Inbox,
+  Kanban,
+  Key,
+  Layers,
+  Lock,
+  Map as MapIcon,
+  Menu,
+  Network,
+  Package,
+  PieChart,
+  Receipt,
+  Scale,
+  ScrollText,
+  Search,
+  Settings,
+  Shield,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  TrendingUp,
+  Users,
+  Wallet,
+  X,
+  type LucideIcon,
+  Server,
+  Laptop,
+  Ticket,
+  GitBranch,
+  Bug,
+  Wrench,
 } from 'lucide-react';
 import { useSession } from '../lib/session.js';
 import { api, relative } from '../lib/api.js';
@@ -29,21 +75,61 @@ import { SetupBanner } from '../pages/Start.js';
 
 /** One consistent stroke and weight — a real icon system, not a dingbat per row. */
 const ICONS: Record<string, LucideIcon> = {
-  gauge: Gauge, home: Home, inbox: Inbox, columns: Columns3, target: Target, trending: TrendingUp,
-  building: Building2, users: Users, message: Bell, package: Package, calculator: Calculator,
-  file: File, scroll: ScrollText, clipboard: Clipboard, shield: Shield, receipt: Receipt,
-  wallet: Wallet, coins: Coins, graduation: GraduationCap, badge: Award, kanban: Kanban,
-  alert: AlertTriangle, scale: Scale, settings: Settings, map: MapIcon, key: Key, bot: Circle,
-  activity: Activity, clock: Clock, search: Search, layers: Layers,
-  sparkle: Sparkles, lock: Lock, list: FileText, book: Book, chart: PieChart,
+  gauge: Gauge,
+  home: Home,
+  inbox: Inbox,
+  columns: Columns3,
+  target: Target,
+  trending: TrendingUp,
+  building: Building2,
+  users: Users,
+  message: Bell,
+  package: Package,
+  calculator: Calculator,
+  file: File,
+  scroll: ScrollText,
+  clipboard: Clipboard,
+  shield: Shield,
+  receipt: Receipt,
+  wallet: Wallet,
+  coins: Coins,
+  graduation: GraduationCap,
+  badge: Award,
+  kanban: Kanban,
+  alert: AlertTriangle,
+  scale: Scale,
+  settings: Settings,
+  map: MapIcon,
+  key: Key,
+  bot: Circle,
+  activity: Activity,
+  clock: Clock,
+  search: Search,
+  layers: Layers,
+  sparkle: Sparkles,
+  lock: Lock,
+  list: FileText,
+  book: Book,
+  chart: PieChart,
   // Technology (docs/plan/cio.md)
-  server: Server, laptop: Laptop, ticket: Ticket, git: GitBranch, bug: Bug, wrench: Wrench,
-  network: Network, calendar: Calendar, doorexit: DoorOpen,
+  server: Server,
+  laptop: Laptop,
+  ticket: Ticket,
+  git: GitBranch,
+  bug: Bug,
+  wrench: Wrench,
+  network: Network,
+  calendar: Calendar,
+  doorexit: DoorOpen,
 };
 
 function NavIcon({ icon, className = 'h-[18px] w-[18px]' }: { icon: string; className?: string }) {
   const Cmp = ICONS[icon];
-  return Cmp ? <Cmp className={className} strokeWidth={1.75} aria-hidden /> : <Circle className={className} strokeWidth={1.75} aria-hidden />;
+  return Cmp ? (
+    <Cmp className={className} strokeWidth={1.75} aria-hidden />
+  ) : (
+    <Circle className={className} strokeWidth={1.75} aria-hidden />
+  );
 }
 
 // Ordinary business words are kept as they are — a salesperson knows what a
@@ -175,7 +261,9 @@ export function Shell() {
           >
             <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
             <span className="flex-1">Search people, accounts, deals, agreements…</span>
-            <kbd className="hidden rounded-sm border border-ink-700 px-1.5 py-0.5 font-mono text-2xs text-ink-500 sm:inline-flex">⌘K</kbd>
+            <kbd className="hidden rounded-sm border border-ink-700 px-1.5 py-0.5 font-mono text-2xs text-ink-500 sm:inline-flex">
+              ⌘K
+            </kbd>
           </button>
 
           <div className="relative">
@@ -251,7 +339,20 @@ export function Shell() {
 
 // Fixed group order, so the shell reads the way the work reads: your own
 // surface first, then the domains, then the platform underneath them.
-const GROUP_ORDER = ['main', 'money', 'equity', 'ceo', 'me', 'people', 'customers', 'delivery', 'marketing', 'compliance', 'technology', 'setup'];
+const GROUP_ORDER = [
+  'main',
+  'money',
+  'equity',
+  'ceo',
+  'me',
+  'people',
+  'customers',
+  'delivery',
+  'marketing',
+  'compliance',
+  'technology',
+  'setup',
+];
 
 /** The sidebar's content, shared between its desktop in-flow rendering and
  *  its mobile drawer overlay — one nav, two placements. */
@@ -281,9 +382,7 @@ function SidebarNav({
       if (node.group === 'portal') continue;
       map.set(node.group, [...(map.get(node.group) ?? []), node]);
     }
-    return [...map.entries()].sort(
-      (a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0]),
-    );
+    return [...map.entries()].sort((a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0]));
   }, [nav]);
 
   return (
@@ -337,9 +436,7 @@ function SidebarNav({
                     to={node.path}
                     className={({ isActive }) =>
                       `sidebar-link ${
-                        isActive || location.pathname.startsWith(`${node.path}/`)
-                          ? 'sidebar-link-active'
-                          : ''
+                        isActive || location.pathname.startsWith(`${node.path}/`) ? 'sidebar-link-active' : ''
                       }`
                     }
                   >
@@ -360,15 +457,17 @@ function SidebarNav({
           className="flex w-full items-center gap-2 rounded-full px-2 py-2 text-left transition-colors hover:bg-[#232326]"
         >
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-gold bg-gold font-display text-2xs font-black text-[#0F0F12]">
-            {user.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+            {user.fullName
+              .split(' ')
+              .map((n) => n[0])
+              .slice(0, 2)
+              .join('')}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-semibold text-white">{user.fullName}</p>
             {/* The persistent "you are acting as" affordance the non-union
                 rule makes necessary. */}
-            <p className="truncate text-2xs text-[#9a9aa3]">
-              signed in as {words(user.roleSlug).toLowerCase()}
-            </p>
+            <p className="truncate text-2xs text-[#9a9aa3]">signed in as {words(user.roleSlug).toLowerCase()}</p>
           </div>
           <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-[#9a9aa3]" strokeWidth={1.75} aria-hidden />
         </button>
@@ -413,9 +512,7 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
           <EntitySwitcher variant="dark" />
         </div>
       )}
-      <p className="mb-1.5 px-1 text-2xs text-[#9a9aa3]">
-        Which of your relationships are you answerable as?
-      </p>
+      <p className="mb-1.5 px-1 text-2xs text-[#9a9aa3]">Which of your relationships are you answerable as?</p>
       {user.affiliations.map((a) => (
         <div key={a.id}>
           <button
@@ -438,9 +535,7 @@ function ContextSwitcher({ onDone }: { onDone: () => void }) {
           </button>
           {stepUpFor === a.id && (
             <div className="mt-1 space-y-1.5 rounded-sm bg-[#232326] p-2">
-              <p className="text-2xs text-[#9a9aa3]">
-                This one asks for your password again.
-              </p>
+              <p className="text-2xs text-[#9a9aa3]">This one asks for your password again.</p>
               <input
                 type="password"
                 value={password}
@@ -500,7 +595,10 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-ink-100/40 p-4 pt-24 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-ink-100/40 p-4 pt-24 backdrop-blur-sm"
+      onClick={onClose}
+    >
       <div className="glass w-full max-w-2xl rounded-lg" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
@@ -514,7 +612,11 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
             <>
               <p className="section-title px-2 py-1">Surfaces</p>
               {navMatches.map((n) => (
-                <button key={n.key} onClick={() => go(n.path)} className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-850">
+                <button
+                  key={n.key}
+                  onClick={() => go(n.path)}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-xs text-ink-200 hover:bg-ink-850"
+                >
                   <span className="flex h-4 w-4 shrink-0 items-center justify-center text-ink-500">
                     <NavIcon icon={n.icon} className="h-4 w-4" />
                   </span>
@@ -527,7 +629,11 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
             <>
               <p className="section-title px-2 py-1">Records</p>
               {data.results.map((r) => (
-                <button key={`${r.type}:${r.id}`} onClick={() => go(r.path)} className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left hover:bg-ink-850">
+                <button
+                  key={`${r.type}:${r.id}`}
+                  onClick={() => go(r.path)}
+                  className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-left hover:bg-ink-850"
+                >
                   <span className="mono w-28 shrink-0">{r.recordCode}</span>
                   <span className="flex-1 truncate text-xs text-ink-100">{r.label}</span>
                   <span className="shrink-0 text-2xs text-ink-500">{r.sub || r.type}</span>
@@ -537,7 +643,8 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
           )}
           {q.trim().length >= 2 && !data?.results?.length && navMatches.length === 0 && (
             <p className="px-3 py-6 text-center text-xs text-ink-500">
-              Nothing matches within what you may reach. Every candidate passes the five-axis filter before it is returned.
+              Nothing matches within what you may reach. Every candidate passes the five-axis filter before it is
+              returned.
             </p>
           )}
           {q.trim().length < 2 && (

@@ -103,83 +103,251 @@ export function parseCell(cell: string): { verbs: Verb[]; scope: Scope } | null 
  * `pnpm test` asserts this list matches what the code actually asks for.
  */
 export const ALL_RESOURCES = [
-  'activities', 'agents', 'applications', 'assets', 'assignments', 'attendance',
-  'audit', 'budgets', 'capabilities', 'categories', 'company_profile',
-  'compensation', 'contracts', 'courses',
-  'decisions', 'documents', 'education', 'employees', 'events', 'exceptions',
-  'goals', 'grants', 'gst_filings', 'health_scores', 'imports', 'institutions',
+  'activities',
+  'agents',
+  'applications',
+  'assets',
+  'assignments',
+  'attendance',
+  'audit',
+  'budgets',
+  'capabilities',
+  'categories',
+  'company_profile',
+  'compensation',
+  'contracts',
+  'courses',
+  'decisions',
+  'documents',
+  'education',
+  'employees',
+  'events',
+  'exceptions',
+  'goals',
+  'grants',
+  'gst_filings',
+  'health_scores',
+  'imports',
+  'institutions',
   'interactions',
-  'invoices', 'jobs', 'leads', 'learning', 'leave', 'ledger_accounts', 'mous',
-  'offerings', 'opportunities', 'organizations', 'partner_agreements',
-  'payments', 'payroll', 'people', 'performance_evidence', 'pipeline_definitions',
-  'pipeline_stages', 'pipeline_transitions', 'policies', 'positions',
-  'price_book_entries', 'projects', 'proposals', 'quotes', 'receivables',
-  'relationships', 'reports', 'requisitions', 'restricted_interactions',
-  'routing_rules', 'students', 'tasks', 'territories', 'transactions', 'users',
-  'vendor_bills', 'win_loss_reviews',
+  'invoices',
+  'jobs',
+  'leads',
+  'learning',
+  'leave',
+  'ledger_accounts',
+  'mous',
+  'offerings',
+  'opportunities',
+  'organizations',
+  'partner_agreements',
+  'payments',
+  'payroll',
+  'people',
+  'performance_evidence',
+  'pipeline_definitions',
+  'pipeline_stages',
+  'pipeline_transitions',
+  'policies',
+  'positions',
+  'price_book_entries',
+  'projects',
+  'proposals',
+  'quotes',
+  'receivables',
+  'relationships',
+  'reports',
+  'requisitions',
+  'restricted_interactions',
+  'routing_rules',
+  'students',
+  'tasks',
+  'territories',
+  'transactions',
+  'users',
+  'vendor_bills',
+  'win_loss_reviews',
   // Equity & board (phase 0 declares them; §3.4 fills in the cells; phase 1
   // ships the screens). Kept in lockstep with RESOURCES in
   // `@kaizen/shared/permissions.ts` — a test asserts the two lists agree.
-  'cap_table', 'share_classes', 'holders', 'share_ledger', 'share_certificates',
-  'valuations', 'entity_documents', 'board_meetings', 'resolutions',
-  'board_documents', 'compliance', 'group', 'holdings',
+  'cap_table',
+  'share_classes',
+  'holders',
+  'share_ledger',
+  'share_certificates',
+  'valuations',
+  'entity_documents',
+  'board_meetings',
+  'resolutions',
+  'board_documents',
+  'compliance',
+  'group',
+  'holdings',
   // Rounds, instruments, valuations, scenarios (phase 4).
   'rounds',
   // ESOP (phase 5).
-  'esop_plans', 'option_grants',
+  'esop_plans',
+  'option_grants',
   // Chairman's Office (docs/plan/ceo-office.md §6, Phase 0). Kept in lockstep
   // with RESOURCES in `@kaizen/shared/permissions.ts` — a test asserts the
   // two lists agree.
-  'kpi_definitions', 'ceo_cockpit',                                   // Phase 1
-  'strategic_themes', 'objectives', 'key_results',                    // Phase 2
-  'initiatives',                                                      // Phase 3
-  'meeting_series', 'meeting_instances',                              // Phase 4
-  'doa_matrix', 'ceo_approvals_inbox',                                // Phase 5
-  'board_packs', 'investor_updates', 'stakeholders',                  // Phase 6
-  'risks', 'policy_documents',                                        // Phase 7
-  'financial_scenarios', 'headcount_plans',                           // Phase 8
-  'seats', 'one_on_ones', 'succession_candidates', 'time_audit',      // Phase 9
+  'kpi_definitions',
+  'ceo_cockpit', // Phase 1
+  'strategic_themes',
+  'objectives',
+  'key_results', // Phase 2
+  'initiatives', // Phase 3
+  'meeting_series',
+  'meeting_instances', // Phase 4
+  'doa_matrix',
+  'ceo_approvals_inbox', // Phase 5
+  'board_packs',
+  'investor_updates',
+  'stakeholders', // Phase 6
+  'risks',
+  'policy_documents', // Phase 7
+  'financial_scenarios',
+  'headcount_plans', // Phase 8
+  'seats',
+  'one_on_ones',
+  'succession_candidates',
+  'time_audit', // Phase 9
   // Compliance (docs/plan/compliance.md), one group per workstream.
-  'compliance_obligations',                                   // A
-  'debit_notes', 'einvoicing',                                // B
-  'tds', 'tax_filings',                                       // C
-  'accounting_periods',                                       // D
-  'rate_tables', 'payslips', 'salary_structures',             // E
-  'holidays', 'posh_cases', 'disciplinary_cases', 'hr_letters', 'statutory_registers', // F
-  'consents', 'data_requests', 'breaches', 'privacy_notices', // G
-  'board_resolutions', 'corporate_registers', 'refunds', 'certificates', 'security_settings', // H
+  'compliance_obligations', // A
+  'debit_notes',
+  'einvoicing', // B
+  'tds',
+  'tax_filings', // C
+  'accounting_periods', // D
+  'rate_tables',
+  'payslips',
+  'salary_structures', // E
+  'holidays',
+  'posh_cases',
+  'disciplinary_cases',
+  'hr_letters',
+  'statutory_registers', // F
+  'consents',
+  'data_requests',
+  'breaches',
+  'privacy_notices', // G
+  'board_resolutions',
+  'corporate_registers',
+  'refunds',
+  'certificates',
+  'security_settings', // H
   // Technology (docs/plan/cio.md), one group per workstream.
-  'it_assets',                                                // A
-  'it_applications', 'it_licences',                           // B
-  'it_vendors', 'it_vendor_contracts',                        // C
-  'it_tickets', 'it_sla_policies', 'it_knowledge',            // D
-  'it_incidents', 'it_problems', 'it_changes',                // E
-  'it_risks', 'it_policies', 'it_policy_acknowledgements', 'it_controls', 'it_access_reviews', 'it_findings', // F
-  'it_initiatives', 'it_budgets', 'it_tech_debt',             // G
-  'it_continuity',                                            // H
+  'it_assets', // A
+  'it_applications',
+  'it_licences', // B
+  'it_vendors',
+  'it_vendor_contracts', // C
+  'it_tickets',
+  'it_sla_policies',
+  'it_knowledge', // D
+  'it_incidents',
+  'it_problems',
+  'it_changes', // E
+  'it_risks',
+  'it_policies',
+  'it_policy_acknowledgements',
+  'it_controls',
+  'it_access_reviews',
+  'it_findings', // F
+  'it_initiatives',
+  'it_budgets',
+  'it_tech_debt', // G
+  'it_continuity', // H
   // Marketing (mkt, Canon H_MKT). Kept in lockstep with RESOURCES in
   // `@kaizen/shared/permissions.ts`.
-  'campaigns', 'audiences', 'marketing_templates', 'marketing_sends', 'marketing_journeys',
-  'marketing_forms', 'marketing_events', 'marketing_assets', 'marketing_budgets',
-  'marketing_referrals', 'marketing_analytics', 'marketing_settings',
+  'campaigns',
+  'audiences',
+  'marketing_templates',
+  'marketing_sends',
+  'marketing_journeys',
+  'marketing_forms',
+  'marketing_events',
+  'marketing_assets',
+  'marketing_budgets',
+  'marketing_referrals',
+  'marketing_analytics',
+  'marketing_settings',
   // HCM/HRMS (docs/plan/hcm.md), one group per workstream. Kept in lockstep
   // with RESOURCES in `@kaizen/shared/permissions.ts`. `hcm_one_on_ones` and
   // `hcm_policy_documents`, not `one_on_ones`/`policy_documents`: those are
   // already the Chairman's Office's own resources (above) — a distinct
   // grant cell from an HR manager's 1:1s and HR's policy library.
-  'employee_profiles', 'employee_documents', 'reporting_lines', 'org_design', 'employee_changes', // WS1 workforce
-  'shifts', 'rosters', 'clock_events', 'timesheets', 'overtime_requests', 'comp_offs', 'attendance_regularisations', // WS2 time
-  'leave_policies', 'leave_accruals', 'leave_approval_chains', // WS3 leavepolicy
-  'job_postings', 'candidates', 'interviews', 'scorecards', 'offers', 'referrals', 'background_verifications', 'onboarding_tasks', // WS4 recruiting
-  'review_cycles', 'reviews', 'calibrations', 'feedback', 'hcm_one_on_ones', 'pips', 'succession_plans', // WS5 performance
-  'training_programs', 'training_sessions', 'training_enrollments', 'certifications', 'idps', 'training_budgets', // WS6 learning
-  'pay_grades', 'salary_revisions', 'variable_pay', 'benefit_plans', 'benefit_enrollments', 'employee_loans', 'expense_claims', // WS7 compensation
-  'pay_items', 'adhoc_pay', 'arrears', 'payroll_journals', 'bank_advices', 'payroll_reconciliations', 'payroll_calendar', 'payroll_queries', // WS8 payrollops
-  'announcements', 'recognitions', 'surveys', 'hr_cases', 'hcm_policy_documents', 'exit_interviews', // WS9 engagement
-  'resignations', 'exit_clearances', 'no_dues', 'alumni', 'notice_policies', // WS10 separations
-  'hcm_assets', 'asset_assignments', 'travel_requests', 'letter_requests', // WS11 assets
-  'hr_analytics', 'hr_reports', // WS12 analytics
-  'hr_requests', 'hr_request_types', 'authority_delegations', // WS13 workflow
+  'employee_profiles',
+  'employee_documents',
+  'reporting_lines',
+  'org_design',
+  'employee_changes', // WS1 workforce
+  'shifts',
+  'rosters',
+  'clock_events',
+  'timesheets',
+  'overtime_requests',
+  'comp_offs',
+  'attendance_regularisations', // WS2 time
+  'leave_policies',
+  'leave_accruals',
+  'leave_approval_chains', // WS3 leavepolicy
+  'job_postings',
+  'candidates',
+  'interviews',
+  'scorecards',
+  'offers',
+  'referrals',
+  'background_verifications',
+  'onboarding_tasks', // WS4 recruiting
+  'review_cycles',
+  'reviews',
+  'calibrations',
+  'feedback',
+  'hcm_one_on_ones',
+  'pips',
+  'succession_plans', // WS5 performance
+  'training_programs',
+  'training_sessions',
+  'training_enrollments',
+  'certifications',
+  'idps',
+  'training_budgets', // WS6 learning
+  'pay_grades',
+  'salary_revisions',
+  'variable_pay',
+  'benefit_plans',
+  'benefit_enrollments',
+  'employee_loans',
+  'expense_claims', // WS7 compensation
+  'pay_items',
+  'adhoc_pay',
+  'arrears',
+  'payroll_journals',
+  'bank_advices',
+  'payroll_reconciliations',
+  'payroll_calendar',
+  'payroll_queries', // WS8 payrollops
+  'announcements',
+  'recognitions',
+  'surveys',
+  'hr_cases',
+  'hcm_policy_documents',
+  'exit_interviews', // WS9 engagement
+  'resignations',
+  'exit_clearances',
+  'no_dues',
+  'alumni',
+  'notice_policies', // WS10 separations
+  'hcm_assets',
+  'asset_assignments',
+  'travel_requests',
+  'letter_requests', // WS11 assets
+  'hr_analytics',
+  'hr_reports', // WS12 analytics
+  'hr_requests',
+  'hr_request_types',
+  'authority_delegations', // WS13 workflow
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */
@@ -1156,8 +1324,7 @@ export const ROLE_DEFINITIONS: Array<{
   {
     slug: 'chairman',
     name: 'Chairman',
-    description:
-      'Owner of the system. Every resource, every verb, every scope — nothing is hidden or inaccessible.',
+    description: 'Owner of the system. Every resource, every verb, every scope — nothing is hidden or inaccessible.',
     archetype: 'command',
     classificationCeiling: 'regulated',
   },

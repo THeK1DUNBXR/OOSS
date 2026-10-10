@@ -37,8 +37,10 @@ export async function principalFor(email: string): Promise<TestPrincipal> {
   // principal, several entities), so the lookup names the tenant rather
   // than taking whichever row the database returns first.
   const user =
-    (await unscopedPrisma.user.findFirst({ where: { email, tenant: { slug: 'kaizen' } }, include: { person: true } })) ??
-    (await unscopedPrisma.user.findFirstOrThrow({ where: { email }, include: { person: true } }));
+    (await unscopedPrisma.user.findFirst({
+      where: { email, tenant: { slug: 'kaizen' } },
+      include: { person: true },
+    })) ?? (await unscopedPrisma.user.findFirstOrThrow({ where: { email }, include: { person: true } }));
   const affiliation = await unscopedPrisma.affiliation.findFirstOrThrow({
     where: { partyId: user.personId, status: 'active' },
     orderBy: [{ primaryFlag: 'desc' }, { createdAt: 'asc' }],
@@ -93,7 +95,9 @@ export async function asPrincipal<T>(auth: AuthContext, fn: () => Promise<T>): P
 }
 
 /** Asserts that `fn` rejects, and returns the error for inspection. */
-export async function expectReject(fn: () => Promise<unknown>): Promise<{ code?: string; message: string; status?: number }> {
+export async function expectReject(
+  fn: () => Promise<unknown>,
+): Promise<{ code?: string; message: string; status?: number }> {
   try {
     await fn();
   } catch (err) {
@@ -224,7 +228,12 @@ export async function withFixtureRole<T>(
  * Session row a real sign-in would, then signs the access token against it.
  * Tokens minted by `signToken` alone have no live session and are refused.
  */
-export async function sessionToken(p: { userId: string; tenantId: string; affiliationId: string; stepUp: boolean }): Promise<string> {
+export async function sessionToken(p: {
+  userId: string;
+  tenantId: string;
+  affiliationId: string;
+  stepUp: boolean;
+}): Promise<string> {
   const jti = randomUUID();
   await unscopedPrisma.session.create({
     data: {

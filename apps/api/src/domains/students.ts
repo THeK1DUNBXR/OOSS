@@ -257,12 +257,19 @@ export async function attachStudentProfile(personId: string, input: StudentInput
   // the minor rule turns on it. FX-64.
   const statedDob = input.dateOfBirth ? parseStatedDateOfBirth(input.dateOfBirth) : null;
   if (person.dateOfBirth && statedDob && istDateKey(statedDob) !== istDateKey(person.dateOfBirth)) {
-    throw ApiError.conflict('This person already has a different date of birth on file. Correct it on their record first.');
+    throw ApiError.conflict(
+      'This person already has a different date of birth on file. Correct it on their record first.',
+    );
   }
   const dateOfBirth = person.dateOfBirth ?? statedDob;
   const adultAttested = input.adultAttested === true;
   // Refused before the date of birth is written, so a refusal changes nothing.
-  assertMinorHasGuardian({ dateOfBirth, adultAttested, guardianName: input.guardianName, guardianPhone: input.guardianPhone });
+  assertMinorHasGuardian({
+    dateOfBirth,
+    adultAttested,
+    guardianName: input.guardianName,
+    guardianPhone: input.guardianPhone,
+  });
   if (!person.dateOfBirth && statedDob) {
     await prisma.person.update({ where: { id: personId }, data: { dateOfBirth: statedDob } });
     await auditWrite({
@@ -343,8 +350,7 @@ export async function updateStudent(id: string, input: Partial<StudentInput>): P
   const next = {
     funding: (input.funding ?? profile.funding) as FundingSource,
     sponsorId: input.sponsorId !== undefined ? input.sponsorId : profile.sponsorId,
-    fundingFramework:
-      input.fundingFramework !== undefined ? input.fundingFramework : profile.fundingFramework,
+    fundingFramework: input.fundingFramework !== undefined ? input.fundingFramework : profile.fundingFramework,
     institutionId: input.institutionId !== undefined ? input.institutionId : profile.institutionId,
   };
   await assertFundingCoherent(next.funding, next.sponsorId, next.fundingFramework, next.institutionId);
@@ -530,9 +536,7 @@ function toView(row: Row, enrolmentCount: number): StudentView {
       : null,
     funding: row.funding,
     fundingFramework: row.fundingFramework,
-    sponsor: row.sponsor
-      ? { id: row.sponsor.id, name: row.sponsor.name, recordCode: row.sponsor.recordCode }
-      : null,
+    sponsor: row.sponsor ? { id: row.sponsor.id, name: row.sponsor.name, recordCode: row.sponsor.recordCode } : null,
     deliveryLocation: row.deliveryLocation,
     billable: isBillable(row.funding),
     enrolmentCount,
@@ -552,9 +556,6 @@ async function assertRegistrationFree(registrationNumber: string | null, exceptI
     include: { person: { select: { fullName: true } } },
   });
   if (clash) {
-    throw ApiError.conflict(
-      `Registration number ${registrationNumber} already belongs to ${clash.person.fullName}.`,
-    );
+    throw ApiError.conflict(`Registration number ${registrationNumber} already belongs to ${clash.person.fullName}.`);
   }
 }
-

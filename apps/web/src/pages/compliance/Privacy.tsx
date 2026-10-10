@@ -68,7 +68,10 @@ export function CompliancePrivacy() {
 
 function NoticeTab() {
   const qc = useQueryClient();
-  const notice = useQuery({ queryKey: ['privacy-notice'], queryFn: () => api.get<any>('/compliance/privacy/notice/current') });
+  const notice = useQuery({
+    queryKey: ['privacy-notice'],
+    queryFn: () => api.get<any>('/compliance/privacy/notice/current'),
+  });
   const ack = useMutation({
     mutationFn: () => api.post('/compliance/privacy/notice/acknowledge', { channel: 'in_app' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['privacy-notice'] }),
@@ -97,7 +100,9 @@ function NoticeTab() {
               <span className="font-medium text-ink-100">{p.label}</span>
               <StatusChip status={p.lawfulBasis} />
             </div>
-            <p className="mt-1 text-ink-400">{p.dataCategories?.join(', ')} — retained {p.retention}</p>
+            <p className="mt-1 text-ink-400">
+              {p.dataCategories?.join(', ')} — retained {p.retention}
+            </p>
           </div>
         ))}
       </div>
@@ -140,13 +145,16 @@ function ConsentsTab() {
             <div className="flex items-center justify-between text-xs">
               <div>
                 <span className="font-medium text-ink-100">{c.purposeCode}</span>
-                <span className="ml-2 text-2xs text-ink-500" title={c.personId}>{c.personFullName ?? c.personId}</span>
+                <span className="ml-2 text-2xs text-ink-500" title={c.personId}>
+                  {c.personFullName ?? c.personId}
+                </span>
                 {c.guardianOfPersonId && <span className="ml-2 text-2xs text-ink-500">guardian consent</span>}
               </div>
               <StatusChip status={c.status} tone={statusTone(c.status)} />
             </div>
             <p className="mt-1 text-2xs text-ink-500">
-              {c.grantedAt ? `Granted ${dateTime(c.grantedAt)}` : ''} {c.withdrawnAt ? `· withdrawn ${dateTime(c.withdrawnAt)}` : ''}
+              {c.grantedAt ? `Granted ${dateTime(c.grantedAt)}` : ''}{' '}
+              {c.withdrawnAt ? `· withdrawn ${dateTime(c.withdrawnAt)}` : ''}
             </p>
             {c.status === 'granted' && (
               <button className="btn mt-2" onClick={() => withdraw.mutate(c.id)} disabled={withdraw.isPending}>
@@ -161,12 +169,16 @@ function ConsentsTab() {
         title="Grant consent"
         onClose={() => setOpen(false)}
         invalidate={[['consents']]}
-        onSubmit={() =>
-          api.post('/compliance/privacy/consents', { personId, purposeCode, channel })
-        }
+        onSubmit={() => api.post('/compliance/privacy/consents', { personId, purposeCode, channel })}
       >
         <TextInput label="Person id" value={personId} onChange={setPersonId} required />
-        <TextInput label="Purpose code" value={purposeCode} onChange={setPurposeCode} required hint="from the current notice" />
+        <TextInput
+          label="Purpose code"
+          value={purposeCode}
+          onChange={setPurposeCode}
+          required
+          hint="from the current notice"
+        />
         <TextInput label="Channel" value={channel} onChange={setChannel} required />
       </CreateModal>
     </>
@@ -182,7 +194,10 @@ function RequestsTab() {
   const [kind, setKind] = useState<'access' | 'correction' | 'erasure' | 'nomination'>('access');
   const [note, setNote] = useState('');
 
-  const requests = useQuery({ queryKey: ['data-requests'], queryFn: () => api.get<any[]>('/compliance/privacy/requests') });
+  const requests = useQuery({
+    queryKey: ['data-requests'],
+    queryFn: () => api.get<any[]>('/compliance/privacy/requests'),
+  });
   const fulfil = useMutation({
     mutationFn: (id: string) => api.post(`/compliance/privacy/requests/${id}/fulfil`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['data-requests'] }),
@@ -222,10 +237,22 @@ function RequestsTab() {
         title="Raise a data-principal request"
         onClose={() => setOpen(false)}
         invalidate={[['data-requests']]}
-        onSubmit={() => api.post('/compliance/privacy/requests', { personId: personId || undefined, kind, note: note || undefined })}
+        onSubmit={() =>
+          api.post('/compliance/privacy/requests', { personId: personId || undefined, kind, note: note || undefined })
+        }
       >
-        <TextInput label="Person id" value={personId} onChange={setPersonId} placeholder="Leave blank to raise your own" />
-        <SelectInput label="Kind" value={kind} onChange={(v) => setKind(v as any)} options={['access', 'correction', 'erasure', 'nomination'].map((k) => ({ value: k, label: k }))} />
+        <TextInput
+          label="Person id"
+          value={personId}
+          onChange={setPersonId}
+          placeholder="Leave blank to raise your own"
+        />
+        <SelectInput
+          label="Kind"
+          value={kind}
+          onChange={(v) => setKind(v as any)}
+          options={['access', 'correction', 'erasure', 'nomination'].map((k) => ({ value: k, label: k }))}
+        />
         <TextArea label="Note" value={note} onChange={setNote} />
       </CreateModal>
     </>
@@ -243,7 +270,8 @@ function BreachesTab() {
 
   const breaches = useQuery({ queryKey: ['breaches'], queryFn: () => api.get<any[]>('/compliance/privacy/breaches') });
   const transition = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) => api.post(`/compliance/privacy/breaches/${id}/transition`, { status }),
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api.post(`/compliance/privacy/breaches/${id}/transition`, { status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['breaches'] }),
   });
 
@@ -261,7 +289,9 @@ function BreachesTab() {
       </div>
       {breaches.isLoading && <Loading />}
       {breaches.error && <ErrorBox error={breaches.error} />}
-      {breaches.data && breaches.data.length === 0 && <EmptyState message="No breach has been registered. That is the state to be in, not a screen that has never been looked at." />}
+      {breaches.data && breaches.data.length === 0 && (
+        <EmptyState message="No breach has been registered. That is the state to be in, not a screen that has never been looked at." />
+      )}
       <div className="flex flex-col gap-2">
         {breaches.data?.map((b) => {
           const hoursSince = (Date.now() - new Date(b.detectedAt).getTime()) / 3_600_000;
@@ -280,7 +310,11 @@ function BreachesTab() {
                 </p>
               )}
               {nextStatus[b.status] && (
-                <button className="btn mt-2" onClick={() => transition.mutate({ id: b.id, status: nextStatus[b.status] })} disabled={transition.isPending}>
+                <button
+                  className="btn mt-2"
+                  onClick={() => transition.mutate({ id: b.id, status: nextStatus[b.status] })}
+                  disabled={transition.isPending}
+                >
                   Mark {nextStatus[b.status].replace('_', ' ')}
                 </button>
               )}
@@ -302,8 +336,18 @@ function BreachesTab() {
         }
       >
         <TextArea label="What happened" value={description} onChange={setDescription} required />
-        <TextInput label="Detected at" value={detectedAt} onChange={setDetectedAt} placeholder="ISO timestamp, blank for now" />
-        <TextInput label="Principals affected" value={principalsAffected} onChange={setPrincipalsAffected} type="number" />
+        <TextInput
+          label="Detected at"
+          value={detectedAt}
+          onChange={setDetectedAt}
+          placeholder="ISO timestamp, blank for now"
+        />
+        <TextInput
+          label="Principals affected"
+          value={principalsAffected}
+          onChange={setPrincipalsAffected}
+          type="number"
+        />
       </CreateModal>
     </>
   );
@@ -313,7 +357,10 @@ function BreachesTab() {
 
 function AccessReviewTab() {
   const qc = useQueryClient();
-  const review = useQuery({ queryKey: ['access-review'], queryFn: () => api.get<any>('/compliance/privacy/access-review') });
+  const review = useQuery({
+    queryKey: ['access-review'],
+    queryFn: () => api.get<any>('/compliance/privacy/access-review'),
+  });
   const run = useMutation({
     mutationFn: () => api.post('/compliance/privacy/access-review/run', {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['access-review'] }),
@@ -327,7 +374,9 @@ function AccessReviewTab() {
   return (
     <>
       <div className="mb-3 flex items-center justify-between">
-        <p className="text-2xs text-ink-500">{review.data ? `Last run ${dateTime(review.data.generatedAt)}` : 'Never run'}</p>
+        <p className="text-2xs text-ink-500">
+          {review.data ? `Last run ${dateTime(review.data.generatedAt)}` : 'Never run'}
+        </p>
         <button className="btn-primary" onClick={() => run.mutate()} disabled={run.isPending}>
           {run.isPending ? 'Running…' : 'Run now'}
         </button>
@@ -366,14 +415,18 @@ function RetentionTab() {
           {schedule.map((s) => (
             <div key={`${s.retentionClass}-${s.effectiveFrom}`} className="flex justify-between">
               <span>{s.retentionClass}</span>
-              <span className="text-ink-400">{s.years} years, from {date(s.effectiveFrom)}</span>
+              <span className="text-ink-400">
+                {s.years} years, from {date(s.effectiveFrom)}
+              </span>
             </div>
           ))}
         </div>
       </Card>
       <Card>
         <h2 className="mb-2 text-sm font-semibold text-ink-50">
-          {retention.data?.latest ? `Report — ${dateTime(retention.data.latest.generatedAt)}` : 'No report generated yet'}
+          {retention.data?.latest
+            ? `Report — ${dateTime(retention.data.latest.generatedAt)}`
+            : 'No report generated yet'}
         </h2>
         <p className="mb-2 text-2xs text-ink-500">Counts past window are reported, never purged automatically.</p>
         {snapshot.length === 0 ? (
@@ -399,7 +452,10 @@ function RetentionTab() {
 
 function EncryptionTab() {
   const qc = useQueryClient();
-  const status = useQuery({ queryKey: ['encryption-status'], queryFn: () => api.get<any>('/compliance/privacy/encrypt-at-rest/status') });
+  const status = useQuery({
+    queryKey: ['encryption-status'],
+    queryFn: () => api.get<any>('/compliance/privacy/encrypt-at-rest/status'),
+  });
   const backfill = useMutation({
     mutationFn: () => api.post('/compliance/privacy/encrypt-at-rest/backfill', {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['encryption-status'] }),
@@ -413,25 +469,30 @@ function EncryptionTab() {
     <Card>
       <h2 className="mb-2 text-sm font-semibold text-ink-50">Field-level encryption at rest</h2>
       <p className="mb-3 text-2xs text-ink-500">
-        PAN, Aadhaar and bank values on employment records. Structural exclusion from responses is not the same
-        thing as encryption at rest — this is what closes that gap for what is already stored.
+        PAN, Aadhaar and bank values on employment records. Structural exclusion from responses is not the same thing as
+        encryption at rest — this is what closes that gap for what is already stored.
       </p>
       {!s?.keyConfigured && (
         <p className="mb-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-xs text-band-critical">
-          Real encryption is not set up on this server yet — values are protected with a placeholder key. Have
-          whoever manages the deployment fix this before it holds real staff data.
+          Real encryption is not set up on this server yet — values are protected with a placeholder key. Have whoever
+          manages the deployment fix this before it holds real staff data.
         </p>
       )}
       <div className="mb-3 flex gap-6 text-xs">
-        <span>Encrypted: <strong className="text-ink-100">{s?.encrypted ?? 0}</strong></span>
-        <span>Plaintext: <strong className="text-band-critical">{s?.plaintext ?? 0}</strong></span>
+        <span>
+          Encrypted: <strong className="text-ink-100">{s?.encrypted ?? 0}</strong>
+        </span>
+        <span>
+          Plaintext: <strong className="text-band-critical">{s?.plaintext ?? 0}</strong>
+        </span>
       </div>
       <button className="btn-primary" onClick={() => backfill.mutate()} disabled={backfill.isPending}>
         {backfill.isPending ? 'Encrypting…' : 'Encrypt existing values'}
       </button>
       {s?.lastRun && (
         <p className="mt-3 text-2xs text-ink-500">
-          Last run {dateTime(s.lastRun.ranAt)} — {s.lastRun.valuesEncrypted} encrypted, {s.lastRun.alreadyEncrypted} already were.
+          Last run {dateTime(s.lastRun.ranAt)} — {s.lastRun.valuesEncrypted} encrypted, {s.lastRun.alreadyEncrypted}{' '}
+          already were.
         </p>
       )}
     </Card>

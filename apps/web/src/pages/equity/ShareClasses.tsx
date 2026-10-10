@@ -9,7 +9,13 @@
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { SHARE_INSTRUMENTS, SHARE_INSTRUMENT_LABELS, type ShareClassKind, type ShareClassView, type ShareInstrument } from '@kaizen/shared';
+import {
+  SHARE_INSTRUMENTS,
+  SHARE_INSTRUMENT_LABELS,
+  type ShareClassKind,
+  type ShareClassView,
+  type ShareInstrument,
+} from '@kaizen/shared';
 import { api, money } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
 import { Card, EmptyState, ErrorBox, Field, Loading, PageHeader } from '../../components/ui.js';
@@ -99,13 +105,14 @@ function NewShareClass({ open, onClose }: { open: boolean; onClose: () => void }
                 trigger: trigger || undefined,
               }
             : null,
-          redemptionTerms: redeemOn || premium || fromReserves
-            ? {
-                redeemOn: redeemOn || undefined,
-                premium: premium ? Number(premium) : undefined,
-                fromReserves,
-              }
-            : null,
+          redemptionTerms:
+            redeemOn || premium || fromReserves
+              ? {
+                  redeemOn: redeemOn || undefined,
+                  premium: premium ? Number(premium) : undefined,
+                  fromReserves,
+                }
+              : null,
         })
       }
     >
@@ -147,13 +154,22 @@ function NewShareClass({ open, onClose }: { open: boolean; onClose: () => void }
               value={liquidationPreferenceMultiple}
               onChange={setLiqPref}
             />
-            <TextInput label="Dividend rate" type="number" hint="% a year" value={dividendRate} onChange={setDividendRate} />
+            <TextInput
+              label="Dividend rate"
+              type="number"
+              hint="% a year"
+              value={dividendRate}
+              onChange={setDividendRate}
+            />
           </Row>
           <SelectInput
             label="Anti-dilution"
             value={antiDilution}
             onChange={(v) => setAntiDilution(v as AntiDilution)}
-            options={(['none', 'broad', 'full_ratchet'] as AntiDilution[]).map((v) => ({ value: v, label: ANTI_DILUTION_LABELS[v] }))}
+            options={(['none', 'broad', 'full_ratchet'] as AntiDilution[]).map((v) => ({
+              value: v,
+              label: ANTI_DILUTION_LABELS[v],
+            }))}
           />
           <div className="grid gap-2 sm:grid-cols-2">
             {(
@@ -184,7 +200,13 @@ function NewShareClass({ open, onClose }: { open: boolean; onClose: () => void }
               placeholder="Not convertible"
               options={(existingClasses.data?.items ?? []).map((c) => ({ value: c.id, label: c.name }))}
             />
-            <TextInput label="Ratio" type="number" hint="underlying shares per unit" value={ratio} onChange={setRatio} />
+            <TextInput
+              label="Ratio"
+              type="number"
+              hint="underlying shares per unit"
+              value={ratio}
+              onChange={setRatio}
+            />
           </Row>
           <Row>
             <TextInput label="Price floor" type="number" value={priceFloor} onChange={setPriceFloor} />
@@ -195,9 +217,17 @@ function NewShareClass({ open, onClose }: { open: boolean; onClose: () => void }
               label="At the option of"
               value={atOptionOf}
               onChange={(v) => setAtOptionOf(v as typeof atOptionOf)}
-              options={(['holder', 'company', 'mandatory'] as const).map((v) => ({ value: v, label: AT_OPTION_OF_LABELS[v] }))}
+              options={(['holder', 'company', 'mandatory'] as const).map((v) => ({
+                value: v,
+                label: AT_OPTION_OF_LABELS[v],
+              }))}
             />
-            <TextInput label="Trigger" value={trigger} onChange={setTrigger} placeholder="A qualified financing, an IPO…" />
+            <TextInput
+              label="Trigger"
+              value={trigger}
+              onChange={setTrigger}
+              placeholder="A qualified financing, an IPO…"
+            />
           </Row>
         </div>
       </fieldset>
@@ -243,7 +273,10 @@ export function ShareClasses() {
         <Loading />
       ) : rows.length === 0 ? (
         <Card>
-          <EmptyState message="No share class is set up yet." hint="Add one before the first allotment can be proposed." />
+          <EmptyState
+            message="No share class is set up yet."
+            hint="Add one before the first allotment can be proposed."
+          />
         </Card>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -261,11 +294,15 @@ export function ShareClasses() {
                   {typeof rights?.liquidationPreferenceMultiple === 'number' && (
                     <Field label="Liquidation preference">{rights.liquidationPreferenceMultiple}×</Field>
                   )}
-                  {typeof rights?.dividendRate === 'number' && <Field label="Dividend rate">{rights.dividendRate}%</Field>}
+                  {typeof rights?.dividendRate === 'number' && (
+                    <Field label="Dividend rate">{rights.dividendRate}%</Field>
+                  )}
                   {Boolean(rights?.antiDilution) && rights.antiDilution !== 'none' && (
                     <Field label="Anti-dilution">{String(rights.antiDilution).replace(/_/g, ' ')}</Field>
                   )}
-                  {Boolean(rights?.participating || rights?.proRata || rights?.boardSeat || rights?.informationRights) && (
+                  {Boolean(
+                    rights?.participating || rights?.proRata || rights?.boardSeat || rights?.informationRights,
+                  ) && (
                     <Field label="Also carries">
                       {[
                         rights.participating && 'participating',

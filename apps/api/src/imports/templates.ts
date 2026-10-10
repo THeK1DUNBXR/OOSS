@@ -85,10 +85,33 @@ const SPECS: TemplateSpec[] = [
     title: 'Courses',
     what: 'What you teach. A course is the syllabus; a batch is one run of it.',
     columns: [
-      { name: 'Course name', field: 'name', required: true, note: 'What you call it.', example: 'Full Stack Development' },
-      { name: 'Course code', field: 'code', required: true, note: 'Short and unique. Used to point batches at this course.', example: 'FSD-101' },
-      { name: 'Duration (weeks)', field: 'durationWeeks', note: 'A whole number of weeks. Leave blank if it varies.', example: '12', as: 'number' },
-      { name: 'Description', field: 'description', note: 'Optional.', example: 'React, Node and PostgreSQL, project-led.' },
+      {
+        name: 'Course name',
+        field: 'name',
+        required: true,
+        note: 'What you call it.',
+        example: 'Full Stack Development',
+      },
+      {
+        name: 'Course code',
+        field: 'code',
+        required: true,
+        note: 'Short and unique. Used to point batches at this course.',
+        example: 'FSD-101',
+      },
+      {
+        name: 'Duration (weeks)',
+        field: 'durationWeeks',
+        note: 'A whole number of weeks. Leave blank if it varies.',
+        example: '12',
+        as: 'number',
+      },
+      {
+        name: 'Description',
+        field: 'description',
+        note: 'Optional.',
+        example: 'React, Node and PostgreSQL, project-led.',
+      },
     ],
     notes: [
       'A course code that already exists is skipped rather than duplicated, so re-uploading a corrected file is safe.',
@@ -101,12 +124,35 @@ const SPECS: TemplateSpec[] = [
     what: 'Each run of a course: when it goes, how many it holds, and whose campus it runs on.',
     needsFirst: 'Courses, and Colleges if a batch runs on a campus.',
     columns: [
-      { name: 'Course code', field: 'courseCode', required: true, note: 'Must match a course code you have already imported or created.', example: 'FSD-101' },
-      { name: 'Batch name', field: 'name', required: true, note: 'How you refer to this run. Students point at it by this name.', example: 'FSD — Sept 2026, Madurai' },
+      {
+        name: 'Course code',
+        field: 'courseCode',
+        required: true,
+        note: 'Must match a course code you have already imported or created.',
+        example: 'FSD-101',
+      },
+      {
+        name: 'Batch name',
+        field: 'name',
+        required: true,
+        note: 'How you refer to this run. Students point at it by this name.',
+        example: 'FSD — Sept 2026, Madurai',
+      },
       { name: 'Starts', field: 'startDate', required: true, note: 'DD/MM/YYYY.', example: '15/09/2026', as: 'date' },
-      { name: 'Ends', field: 'endDate', note: 'DD/MM/YYYY. Leave blank if it is not fixed.', example: '10/12/2026', as: 'date' },
+      {
+        name: 'Ends',
+        field: 'endDate',
+        note: 'DD/MM/YYYY. Leave blank if it is not fixed.',
+        example: '10/12/2026',
+        as: 'date',
+      },
       { name: 'Capacity', field: 'capacity', note: 'Seats. Leave blank for 30.', example: '30', as: 'number' },
-      { name: 'Runs at (college)', field: 'institutionName', note: 'The college hosting it, if any. Must already be on file as a college.', example: 'Thiagarajar College of Engineering' },
+      {
+        name: 'Runs at (college)',
+        field: 'institutionName',
+        note: 'The college hosting it, if any. Must already be on file as a college.',
+        example: 'Thiagarajar College of Engineering',
+      },
     ],
     notes: [
       'Where a batch runs is a different fact from where each student came from. A batch on one campus can hold students from four colleges.',
@@ -118,15 +164,43 @@ const SPECS: TemplateSpec[] = [
     title: 'Colleges',
     what: 'Institutions you recruit students from.',
     columns: [
-      { name: 'College name', field: 'name', required: true, note: 'The full name, as it is written on their letterhead.', example: 'Thiagarajar College of Engineering' },
-      { name: 'Kind', field: 'institutionType', note: 'Engineering college, arts & science college, polytechnic, university, school or ITI.', example: 'Engineering college' },
-      { name: 'Management', field: 'managementType', note: 'Government, aided, self-financing, autonomous or private.', example: 'Autonomous' },
+      {
+        name: 'College name',
+        field: 'name',
+        required: true,
+        note: 'The full name, as it is written on their letterhead.',
+        example: 'Thiagarajar College of Engineering',
+      },
+      {
+        name: 'Kind',
+        field: 'institutionType',
+        note: 'Engineering college, arts & science college, polytechnic, university, school or ITI.',
+        example: 'Engineering college',
+      },
+      {
+        name: 'Management',
+        field: 'managementType',
+        note: 'Government, aided, self-financing, autonomous or private.',
+        example: 'Autonomous',
+      },
       { name: 'District', field: 'district', note: '', example: 'Madurai' },
       { name: 'State', field: 'state', note: '', example: 'Tamil Nadu' },
-      { name: 'Students on campus', field: 'studentCount', note: 'Roughly. Leave blank rather than guessing.', example: '5200', as: 'number' },
+      {
+        name: 'Students on campus',
+        field: 'studentCount',
+        note: 'Roughly. Leave blank rather than guessing.',
+        example: '5200',
+        as: 'number',
+      },
       { name: 'Established', field: 'establishedYear', note: 'Year.', example: '1957', as: 'number' },
       { name: 'Website', field: 'website', note: '', example: 'https://www.tce.edu' },
-      { name: 'Also a client?', field: 'alsoAClient', note: 'Yes if you also invoice them. A college can be both.', example: 'No', as: 'yesno' },
+      {
+        name: 'Also a client?',
+        field: 'alsoAClient',
+        note: 'Yes if you also invoice them. A college can be both.',
+        example: 'No',
+        as: 'yesno',
+      },
     ],
     notes: [
       'A college on this list is marked as a college, which is what lets students be recorded as having come from it.',
@@ -139,11 +213,33 @@ const SPECS: TemplateSpec[] = [
     title: 'Client companies',
     what: 'Companies you invoice.',
     columns: [
-      { name: 'Company name', field: 'name', required: true, note: 'The registered name.', example: 'Sundaram Textiles Ltd' },
+      {
+        name: 'Company name',
+        field: 'name',
+        required: true,
+        note: 'The registered name.',
+        example: 'Sundaram Textiles Ltd',
+      },
       { name: 'Website', field: 'website', note: '', example: 'https://sundaramtextiles.in' },
-      { name: 'Tier', field: 'tier', note: 'Strategic, key or standard. Leave blank if you do not tier them.', example: 'Key' },
-      { name: 'Payment terms (days)', field: 'paymentTermsDays', note: 'Leave blank for 30.', example: '45', as: 'number' },
-      { name: 'Billing email', field: 'billingEmail', note: 'Where invoices go.', example: 'accounts@sundaramtextiles.in' },
+      {
+        name: 'Tier',
+        field: 'tier',
+        note: 'Strategic, key or standard. Leave blank if you do not tier them.',
+        example: 'Key',
+      },
+      {
+        name: 'Payment terms (days)',
+        field: 'paymentTermsDays',
+        note: 'Leave blank for 30.',
+        example: '45',
+        as: 'number',
+      },
+      {
+        name: 'Billing email',
+        field: 'billingEmail',
+        note: 'Where invoices go.',
+        example: 'accounts@sundaramtextiles.in',
+      },
       { name: 'Billing address', field: 'billingAddress', note: '', example: '14 Bypass Road, Madurai 625010' },
     ],
     notes: ['A name already on file gains the client marking rather than becoming a second record.'],
@@ -156,19 +252,59 @@ const SPECS: TemplateSpec[] = [
     needsFirst: 'Training batches, and Colleges if the students were recruited from one.',
     columns: [
       { name: 'Student name', field: 'fullName', required: true, note: 'Their full name.', example: 'Karthik Raman' },
-      { name: 'Phone', field: 'primaryPhone', note: 'How a repeat student is recognised as the same person. Worth filling in.', example: '9843012345' },
+      {
+        name: 'Phone',
+        field: 'primaryPhone',
+        note: 'How a repeat student is recognised as the same person. Worth filling in.',
+        example: '9843012345',
+      },
       { name: 'Email', field: 'primaryEmail', note: '', example: 'karthik.raman@example.com' },
-      { name: 'Batch name', field: 'cohortName', required: true, note: 'Must match a batch name exactly.', example: 'FSD — Sept 2026, Madurai' },
-      { name: 'From (college)', field: 'institutionName', note: 'The college they came from. Leave blank for a direct enrolment.', example: 'Thiagarajar College of Engineering' },
-      { name: 'Date of birth', field: 'dateOfBirth', note: 'DD/MM/YYYY. Decides whether the student is under 18.', example: '02/06/2008', as: 'date' },
-      { name: 'Adult (18 or over)', field: 'adultAttested', note: 'Yes only if you have confirmed, with no date of birth, that they are 18 or over. Your name is recorded against it.', example: '', as: 'yesno' },
-      { name: 'Guardian name', field: 'guardianName', note: 'Required for a student under 18 with no date of birth above.', example: '', regulated: true },
-      { name: 'Guardian phone', field: 'guardianPhone', note: 'Required for a student under 18 with no date of birth above.', example: '', regulated: true },
+      {
+        name: 'Batch name',
+        field: 'cohortName',
+        required: true,
+        note: 'Must match a batch name exactly.',
+        example: 'FSD — Sept 2026, Madurai',
+      },
+      {
+        name: 'From (college)',
+        field: 'institutionName',
+        note: 'The college they came from. Leave blank for a direct enrolment.',
+        example: 'Thiagarajar College of Engineering',
+      },
+      {
+        name: 'Date of birth',
+        field: 'dateOfBirth',
+        note: 'DD/MM/YYYY. Decides whether the student is under 18.',
+        example: '02/06/2008',
+        as: 'date',
+      },
+      {
+        name: 'Adult (18 or over)',
+        field: 'adultAttested',
+        note: 'Yes only if you have confirmed, with no date of birth, that they are 18 or over. Your name is recorded against it.',
+        example: '',
+        as: 'yesno',
+      },
+      {
+        name: 'Guardian name',
+        field: 'guardianName',
+        note: 'Required for a student under 18 with no date of birth above.',
+        example: '',
+        regulated: true,
+      },
+      {
+        name: 'Guardian phone',
+        field: 'guardianPhone',
+        note: 'Required for a student under 18 with no date of birth above.',
+        example: '',
+        regulated: true,
+      },
     ],
     notes: [
       'A phone or email that matches somebody already on file enrols that person rather than creating a second copy of them.',
       'A row with no date of birth and no guardian is refused, unless "Adult (18 or over)" is Yes. A row for a student under 18 needs a guardian name and phone.',
-      "Guardian contact is regulated under the DPDP Act: it is read-audited, and withheld from anybody whose clearance does not reach it.",
+      'Guardian contact is regulated under the DPDP Act: it is read-audited, and withheld from anybody whose clearance does not reach it.',
     ],
   },
   {
@@ -181,7 +317,12 @@ const SPECS: TemplateSpec[] = [
       { name: 'Contact name', field: 'fullName', required: true, note: '', example: 'Meena Sundaram' },
       { name: 'Phone', field: 'primaryPhone', note: '', example: '9840011223' },
       { name: 'Email', field: 'primaryEmail', note: '', example: 'meena@sundaramtextiles.in' },
-      { name: 'Organisation', field: 'organizationName', note: 'The company or college they are at. Must already be on file.', example: 'Sundaram Textiles Ltd' },
+      {
+        name: 'Organisation',
+        field: 'organizationName',
+        note: 'The company or college they are at. Must already be on file.',
+        example: 'Sundaram Textiles Ltd',
+      },
       { name: 'Job title', field: 'jobTitle', note: '', example: 'Head of Learning & Development' },
     ],
     notes: [
@@ -197,7 +338,12 @@ const SPECS: TemplateSpec[] = [
       { name: 'Staff name', field: 'fullName', required: true, note: '', example: 'Anitha Devi' },
       { name: 'Employee code', field: 'employeeCode', note: 'Yours, if you use them.', example: 'KI-014' },
       { name: 'Designation', field: 'designation', note: '', example: 'Senior Engineer' },
-      { name: 'Division', field: 'division', note: 'Software, Skill Development, Education or Shared.', example: 'Software' },
+      {
+        name: 'Division',
+        field: 'division',
+        note: 'Software, Skill Development, Education or Shared.',
+        example: 'Software',
+      },
       { name: 'Branch', field: 'branch', note: 'Where they sit.', example: 'Madurai' },
       { name: 'Phone', field: 'phone', note: '', example: '9843055667' },
       { name: 'Email', field: 'email', note: '', example: 'anitha@kaizen.co.in' },
@@ -215,11 +361,34 @@ const SPECS: TemplateSpec[] = [
     title: 'Bank & cash accounts',
     what: 'Somewhere money sits: a bank account, cash in hand, a card, a loan account.',
     columns: [
-      { name: 'Account name', field: 'name', required: true, note: 'How you refer to it.', example: 'HDFC Current — Madurai' },
-      { name: 'Type', field: 'accountType', note: 'Bank, Cash, Card, Loan or Wallet. Leave blank for Bank.', example: 'Bank' },
+      {
+        name: 'Account name',
+        field: 'name',
+        required: true,
+        note: 'How you refer to it.',
+        example: 'HDFC Current — Madurai',
+      },
+      {
+        name: 'Type',
+        field: 'accountType',
+        note: 'Bank, Cash, Card, Loan or Wallet. Leave blank for Bank.',
+        example: 'Bank',
+      },
       { name: 'Last 4 digits', field: 'displayReference', note: 'Never the full number.', example: '4821' },
-      { name: 'Opening balance', field: 'openingBalance', note: 'What it held on the opening date. Leave blank for zero.', example: '185000', as: 'number' },
-      { name: 'Opening date', field: 'openingDate', note: 'DD/MM/YYYY. The date the opening balance is as of.', example: '01/04/2026', as: 'date' },
+      {
+        name: 'Opening balance',
+        field: 'openingBalance',
+        note: 'What it held on the opening date. Leave blank for zero.',
+        example: '185000',
+        as: 'number',
+      },
+      {
+        name: 'Opening date',
+        field: 'openingDate',
+        note: 'DD/MM/YYYY. The date the opening balance is as of.',
+        example: '01/04/2026',
+        as: 'date',
+      },
     ],
     notes: [
       'A name already on file is left alone rather than duplicated, so re-uploading a corrected file is safe.',
@@ -233,11 +402,37 @@ const SPECS: TemplateSpec[] = [
     what: "The company's own chart: what money is earned or spent under. Not a statutory chart.",
     columns: [
       { name: 'Category name', field: 'name', required: true, note: 'What you call it.', example: 'Building Rent' },
-      { name: 'Type', field: 'kind', note: 'Income, Expense, Asset purchase, Tax, Transfer, Equity or Drawings. Leave blank for Expense.', example: 'Expense' },
-      { name: 'How it behaves', field: 'behaviour', note: 'Recurring fixed, Variable, One-time or Annual. Leave blank for Variable.', example: 'Recurring fixed' },
-      { name: 'Parent category', field: 'parentName', note: 'The category this sits under, if any. Must already be on file.', example: '' },
-      { name: 'Usually which division', field: 'defaultDivision', note: 'Software, Skill Development, Education or Shared. Overridable per entry.', example: 'Shared' },
-      { name: 'Cannot be deferred?', field: 'mustPay', note: 'Yes for rent, salaries, statutory dues — a cost the company cannot put off.', example: 'No', as: 'yesno' },
+      {
+        name: 'Type',
+        field: 'kind',
+        note: 'Income, Expense, Asset purchase, Tax, Transfer, Equity or Drawings. Leave blank for Expense.',
+        example: 'Expense',
+      },
+      {
+        name: 'How it behaves',
+        field: 'behaviour',
+        note: 'Recurring fixed, Variable, One-time or Annual. Leave blank for Variable.',
+        example: 'Recurring fixed',
+      },
+      {
+        name: 'Parent category',
+        field: 'parentName',
+        note: 'The category this sits under, if any. Must already be on file.',
+        example: '',
+      },
+      {
+        name: 'Usually which division',
+        field: 'defaultDivision',
+        note: 'Software, Skill Development, Education or Shared. Overridable per entry.',
+        example: 'Shared',
+      },
+      {
+        name: 'Cannot be deferred?',
+        field: 'mustPay',
+        note: 'Yes for rent, salaries, statutory dues — a cost the company cannot put off.',
+        example: 'No',
+        as: 'yesno',
+      },
     ],
     notes: [
       'A name already on file is left alone rather than duplicated, so re-uploading a corrected file is safe.',
@@ -253,11 +448,33 @@ const SPECS: TemplateSpec[] = [
     columns: [
       { name: 'Vendor name', field: 'vendorName', required: true, note: 'The supplier.', example: 'ARA Systems' },
       { name: 'Vendor GSTIN', field: 'vendorGstin', note: '', example: '33AABCA1234H1Z8' },
-      { name: 'Bill number', field: 'billNumber', required: true, note: "The supplier's own number, or one you invent for a bill that never had one.", example: 'ARA/2026/0142' },
+      {
+        name: 'Bill number',
+        field: 'billNumber',
+        required: true,
+        note: "The supplier's own number, or one you invent for a bill that never had one.",
+        example: 'ARA/2026/0142',
+      },
       { name: 'Bill date', field: 'billDate', required: true, note: 'DD/MM/YYYY.', example: '12/08/2026', as: 'date' },
-      { name: 'Due date', field: 'dueDate', note: 'DD/MM/YYYY. Leave blank if there is no term.', example: '11/09/2026', as: 'date' },
-      { name: 'Category', field: 'categoryName', note: 'What it was for. Must already be on file. Leave blank to categorise later.', example: 'Office supplies' },
-      { name: 'Division', field: 'division', note: 'Software, Skill Development, Education or Shared.', example: 'Shared' },
+      {
+        name: 'Due date',
+        field: 'dueDate',
+        note: 'DD/MM/YYYY. Leave blank if there is no term.',
+        example: '11/09/2026',
+        as: 'date',
+      },
+      {
+        name: 'Category',
+        field: 'categoryName',
+        note: 'What it was for. Must already be on file. Leave blank to categorise later.',
+        example: 'Office supplies',
+      },
+      {
+        name: 'Division',
+        field: 'division',
+        note: 'Software, Skill Development, Education or Shared.',
+        example: 'Shared',
+      },
       { name: 'Amount before GST', field: 'subtotal', required: true, note: '', example: '42000', as: 'number' },
       { name: 'GST', field: 'taxAmount', note: 'Leave blank for zero.', example: '7560', as: 'number' },
       { name: 'Note', field: 'note', note: '', example: '' },
@@ -273,22 +490,81 @@ const SPECS: TemplateSpec[] = [
     title: 'Opening register',
     what: 'The share register as it stands today — holders, classes and the allotments already made — so the first cap table is not typed in by hand.',
     columns: [
-      { name: 'Holder name', field: 'holderName', required: true, note: 'Full name of the person, or the registered name of the organisation.', example: 'Karthik Raman' },
+      {
+        name: 'Holder name',
+        field: 'holderName',
+        required: true,
+        note: 'Full name of the person, or the registered name of the organisation.',
+        example: 'Karthik Raman',
+      },
       { name: 'Holder kind', field: 'holderKind', required: true, note: 'Person or Organisation.', example: 'Person' },
       { name: 'Email', field: 'email', note: '', example: 'karthik@example.com' },
       { name: 'Phone', field: 'phone', note: '', example: '9843012345' },
       { name: 'PAN', field: 'panNumber', note: 'Optional.', example: 'ABCDE1234F', regulated: true },
-      { name: 'Residency', field: 'residency', note: 'Resident or Non-resident. Leave blank for Resident.', example: 'Resident' },
-      { name: 'Investment basis', field: 'investmentBasis', note: 'Repatriable or Non-repatriable. Required only for a non-resident holder.', example: '' },
-      { name: 'Share class', field: 'shareClassName', required: true, note: 'A new class is created if this name is not already on file, provided face value and instrument are also given.', example: 'Equity' },
-      { name: 'Instrument', field: 'instrument', note: 'Equity, Preference, etc. Required when the class is new.', example: 'Equity' },
+      {
+        name: 'Residency',
+        field: 'residency',
+        note: 'Resident or Non-resident. Leave blank for Resident.',
+        example: 'Resident',
+      },
+      {
+        name: 'Investment basis',
+        field: 'investmentBasis',
+        note: 'Repatriable or Non-repatriable. Required only for a non-resident holder.',
+        example: '',
+      },
+      {
+        name: 'Share class',
+        field: 'shareClassName',
+        required: true,
+        note: 'A new class is created if this name is not already on file, provided face value and instrument are also given.',
+        example: 'Equity',
+      },
+      {
+        name: 'Instrument',
+        field: 'instrument',
+        note: 'Equity, Preference, etc. Required when the class is new.',
+        example: 'Equity',
+      },
       { name: 'Face value', field: 'faceValue', note: 'Required when the class is new.', example: '10', as: 'number' },
       { name: 'Count', field: 'count', required: true, note: 'Number of shares.', example: '1000', as: 'number' },
-      { name: 'Distinctive from', field: 'distinctiveFrom', required: true, note: 'The first distinctive number in the range on the existing certificate.', example: '1', as: 'number' },
-      { name: 'Distinctive to', field: 'distinctiveTo', required: true, note: 'The last distinctive number in the range.', example: '1000', as: 'number' },
-      { name: 'Allotted on', field: 'allottedOn', required: true, note: 'DD/MM/YYYY.', example: '01/04/2020', as: 'date' },
-      { name: 'Price per share', field: 'pricePerShare', note: 'Leave blank if not known.', example: '10', as: 'number' },
-      { name: 'Certificate number', field: 'certificateNumber', note: 'The number already printed on the paper certificate, if one exists.', example: 'KIPL/C/20-21/001' },
+      {
+        name: 'Distinctive from',
+        field: 'distinctiveFrom',
+        required: true,
+        note: 'The first distinctive number in the range on the existing certificate.',
+        example: '1',
+        as: 'number',
+      },
+      {
+        name: 'Distinctive to',
+        field: 'distinctiveTo',
+        required: true,
+        note: 'The last distinctive number in the range.',
+        example: '1000',
+        as: 'number',
+      },
+      {
+        name: 'Allotted on',
+        field: 'allottedOn',
+        required: true,
+        note: 'DD/MM/YYYY.',
+        example: '01/04/2020',
+        as: 'date',
+      },
+      {
+        name: 'Price per share',
+        field: 'pricePerShare',
+        note: 'Leave blank if not known.',
+        example: '10',
+        as: 'number',
+      },
+      {
+        name: 'Certificate number',
+        field: 'certificateNumber',
+        note: 'The number already printed on the paper certificate, if one exists.',
+        example: 'KIPL/C/20-21/001',
+      },
     ],
     notes: [
       'Every row becomes an effective allotment, dated as given — this is the opening position, not a proposal working through approval.',
@@ -302,8 +578,7 @@ export const TEMPLATES: Record<string, TemplateSpec> = Object.fromEntries(SPECS.
 
 export const templateBySlug = (slug: string): TemplateSpec | undefined => TEMPLATES[slug];
 
-export const templateByKind = (kind: string): TemplateSpec | undefined =>
-  SPECS.find((s) => s.kind === kind);
+export const templateByKind = (kind: string): TemplateSpec | undefined => SPECS.find((s) => s.kind === kind);
 
 /** What the download list shows. */
 export function listTemplates() {
@@ -367,7 +642,11 @@ export function buildTemplateWorkbook(spec: TemplateSpec): Buffer {
 // Recognising a filled-in one on the way back
 // ---------------------------------------------------------------------------
 
-const norm = (s: unknown): string => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+const norm = (s: unknown): string =>
+  String(s ?? '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 
 /**
  * Which template this grid is, if any.
@@ -393,7 +672,12 @@ export function detectTemplate(grid: Grid): { spec: TemplateSpec; headerRow: num
       const better = SPECS.filter((s) => s !== spec).some((s) => {
         const req = s.columns.filter((c) => c.required).map((c) => norm(c.name));
         if (!req.length || !req.every((r) => row.includes(r))) return false;
-        return s.columns.filter((c) => !c.required).map((c) => norm(c.name)).filter((o) => row.includes(o)).length > score;
+        return (
+          s.columns
+            .filter((c) => !c.required)
+            .map((c) => norm(c.name))
+            .filter((o) => row.includes(o)).length > score
+        );
       });
       if (!better) return { spec, headerRow: i };
     }

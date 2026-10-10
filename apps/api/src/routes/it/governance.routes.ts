@@ -53,7 +53,9 @@ const router = Router();
 
 router.get(
   '/risks',
-  handler(async (req) => listRisks({ status: str(req.query.status), band: str(req.query.band), category: str(req.query.category) })),
+  handler(async (req) =>
+    listRisks({ status: str(req.query.status), band: str(req.query.band), category: str(req.query.category) }),
+  ),
 );
 
 router.post(
@@ -76,9 +78,15 @@ router.post(
   }),
 );
 
-router.get('/risks/summary', handler(async () => risksSummary()));
+router.get(
+  '/risks/summary',
+  handler(async () => risksSummary()),
+);
 
-router.get('/risks/:id', handler(async (req) => riskDetail(req.params.id)));
+router.get(
+  '/risks/:id',
+  handler(async (req) => riskDetail(req.params.id)),
+);
 
 router.patch(
   '/risks/:id',
@@ -112,7 +120,10 @@ router.post(
 // Policies
 // ---------------------------------------------------------------------------
 
-router.get('/policies', handler(async (req) => listPolicies({ status: str(req.query.status), code: str(req.query.code) })));
+router.get(
+  '/policies',
+  handler(async (req) => listPolicies({ status: str(req.query.status), code: str(req.query.code) })),
+);
 
 router.post(
   '/policies',
@@ -130,11 +141,20 @@ router.post(
   }),
 );
 
-router.get('/policies/summary', handler(async () => policiesSummary()));
+router.get(
+  '/policies/summary',
+  handler(async () => policiesSummary()),
+);
 
-router.get('/policies/awaiting', handler(async () => policiesAwaitingCaller()));
+router.get(
+  '/policies/awaiting',
+  handler(async () => policiesAwaitingCaller()),
+);
 
-router.get('/policies/:id', handler(async (req) => policyDetail(req.params.id)));
+router.get(
+  '/policies/:id',
+  handler(async (req) => policyDetail(req.params.id)),
+);
 
 router.patch(
   '/policies/:id',
@@ -151,21 +171,39 @@ router.patch(
   }),
 );
 
-router.post('/policies/:id/publish', handler(async (req) => publishPolicy(req.params.id)));
+router.post(
+  '/policies/:id/publish',
+  handler(async (req) => publishPolicy(req.params.id)),
+);
 
-router.post('/policies/:id/new-version', handler(async (req) => newVersionOf(req.params.id)));
+router.post(
+  '/policies/:id/new-version',
+  handler(async (req) => newVersionOf(req.params.id)),
+);
 
-router.post('/policies/:id/retire', handler(async (req) => retirePolicy(req.params.id)));
+router.post(
+  '/policies/:id/retire',
+  handler(async (req) => retirePolicy(req.params.id)),
+);
 
-router.post('/policies/:id/acknowledge', handler(async (req) => acknowledgePolicy(req.params.id)));
+router.post(
+  '/policies/:id/acknowledge',
+  handler(async (req) => acknowledgePolicy(req.params.id)),
+);
 
-router.get('/policies/:id/acknowledgements', handler(async (req) => acknowledgementsFor(req.params.id)));
+router.get(
+  '/policies/:id/acknowledgements',
+  handler(async (req) => acknowledgementsFor(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Controls
 // ---------------------------------------------------------------------------
 
-router.get('/controls', handler(async (req) => listControls({ status: str(req.query.status), framework: str(req.query.framework) })));
+router.get(
+  '/controls',
+  handler(async (req) => listControls({ status: str(req.query.status), framework: str(req.query.framework) })),
+);
 
 router.post(
   '/controls',
@@ -183,9 +221,15 @@ router.post(
   }),
 );
 
-router.get('/controls/summary', handler(async () => controlsSummary()));
+router.get(
+  '/controls/summary',
+  handler(async () => controlsSummary()),
+);
 
-router.get('/controls/:id', handler(async (req) => controlDetail(req.params.id)));
+router.get(
+  '/controls/:id',
+  handler(async (req) => controlDetail(req.params.id)),
+);
 
 router.patch(
   '/controls/:id',
@@ -206,7 +250,9 @@ router.patch(
 router.post(
   '/controls/:id/test',
   handler(async (req) => {
-    const body = z.object({ result: z.string(), notes: z.string().nullish(), evidenceDocumentId: z.string().nullish() }).parse(req.body);
+    const body = z
+      .object({ result: z.string(), notes: z.string().nullish(), evidenceDocumentId: z.string().nullish() })
+      .parse(req.body);
     return recordTest(req.params.id, body);
   }),
 );
@@ -215,7 +261,10 @@ router.post(
 // Access reviews
 // ---------------------------------------------------------------------------
 
-router.get('/access-reviews', handler(async (req) => listCampaigns({ status: str(req.query.status) })));
+router.get(
+  '/access-reviews',
+  handler(async (req) => listCampaigns({ status: str(req.query.status) })),
+);
 
 router.post(
   '/access-reviews',
@@ -232,9 +281,15 @@ router.post(
   }),
 );
 
-router.get('/access-reviews/summary', handler(async () => accessReviewsSummary()));
+router.get(
+  '/access-reviews/summary',
+  handler(async () => accessReviewsSummary()),
+);
 
-router.get('/access-reviews/:id', handler(async (req) => campaignDetail(req.params.id)));
+router.get(
+  '/access-reviews/:id',
+  handler(async (req) => campaignDetail(req.params.id)),
+);
 
 router.post(
   '/access-reviews/:id/items/:itemId/decide',
@@ -244,13 +299,19 @@ router.post(
   }),
 );
 
-router.post('/access-reviews/:id/close', handler(async (req) => closeCampaign(req.params.id)));
+router.post(
+  '/access-reviews/:id/close',
+  handler(async (req) => closeCampaign(req.params.id)),
+);
 
 // ---------------------------------------------------------------------------
 // Findings
 // ---------------------------------------------------------------------------
 
-router.get('/findings', handler(async (req) => listFindings({ status: str(req.query.status), severity: str(req.query.severity) })));
+router.get(
+  '/findings',
+  handler(async (req) => listFindings({ status: str(req.query.status), severity: str(req.query.severity) })),
+);
 
 router.post(
   '/findings',
@@ -270,14 +331,22 @@ router.post(
   }),
 );
 
-router.get('/findings/summary', handler(async () => findingsSummary()));
+router.get(
+  '/findings/summary',
+  handler(async () => findingsSummary()),
+);
 
-router.get('/findings/:id', handler(async (req) => findingDetail(req.params.id)));
+router.get(
+  '/findings/:id',
+  handler(async (req) => findingDetail(req.params.id)),
+);
 
 router.patch(
   '/findings/:id',
   handler(async (req) => {
-    const body = z.object({ description: z.string().nullish(), changeId: z.string().nullish(), cvss: z.number().nullish() }).parse(req.body);
+    const body = z
+      .object({ description: z.string().nullish(), changeId: z.string().nullish(), cvss: z.number().nullish() })
+      .parse(req.body);
     return updateFinding(req.params.id, body);
   }),
 );

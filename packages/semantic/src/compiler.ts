@@ -98,7 +98,10 @@ export function compileMetricQuery(graph: MetricGraph, request: CompileRequest):
     whereClauses.push(`(${request.visibilityPredicate})`);
   }
 
-  const groupBy = dimensions.length > 0 ? ` GROUP BY ${dimensions.map((dimension) => `base.${quoteIdentifier(dimension)}`).join(', ')}` : '';
+  const groupBy =
+    dimensions.length > 0
+      ? ` GROUP BY ${dimensions.map((dimension) => `base.${quoteIdentifier(dimension)}`).join(', ')}`
+      : '';
   const sql = `SELECT ${selectedSql} FROM ${quoteIdentifier(sourceEntity.table)} AS base WHERE ${whereClauses.join(' AND ')}${groupBy};`;
 
   return {
@@ -114,7 +117,11 @@ export function compileMetricQuery(graph: MetricGraph, request: CompileRequest):
   };
 }
 
-export function buildFilterClause(filter: MetricFilter, bindings: Record<string, unknown>, tableAlias = 'base'): string {
+export function buildFilterClause(
+  filter: MetricFilter,
+  bindings: Record<string, unknown>,
+  tableAlias = 'base',
+): string {
   const field = `${tableAlias}.${quoteIdentifier(filter.field)}`;
   const paramName = `${sanitizeBinding(filter.field)}_${Object.keys(bindings).length}`;
 
@@ -134,7 +141,12 @@ export function buildFilterClause(filter: MetricFilter, bindings: Record<string,
   return `${field} ${operator} :${paramName}`;
 }
 
-export function withTenantScope(query: string, tenantId: string, tenantColumn = 'tenant_id', visibilityPredicate?: string | null): string {
+export function withTenantScope(
+  query: string,
+  tenantId: string,
+  tenantColumn = 'tenant_id',
+  visibilityPredicate?: string | null,
+): string {
   const clauses = [`${quoteIdentifier(tenantColumn)} = ${sqlLiteral(tenantId)}`];
   if (visibilityPredicate) {
     clauses.push(`(${visibilityPredicate})`);
@@ -146,7 +158,9 @@ export function makeReadOnlyGuard(timeoutMs: number): string {
   return `SET LOCAL statement_timeout = '${timeoutMs}ms';`;
 }
 
-export function explainMetricGraph(graph: MetricGraph): Record<string, { source: string; grain: string; requires: string | null }> {
+export function explainMetricGraph(
+  graph: MetricGraph,
+): Record<string, { source: string; grain: string; requires: string | null }> {
   return Object.fromEntries(
     Object.entries(graph.metrics).map(([name, metric]) => [
       name,
@@ -159,7 +173,14 @@ export function explainMetricGraph(graph: MetricGraph): Record<string, { source:
   );
 }
 
-function validateDimensionPath(sourceEntity: { dimensions?: Record<string, unknown>; joins?: Record<string, { kind: string; target: string; cardinality: 'one' | 'many'; path?: string }> }, metricSource: string, field: string): void {
+function validateDimensionPath(
+  sourceEntity: {
+    dimensions?: Record<string, unknown>;
+    joins?: Record<string, { kind: string; target: string; cardinality: 'one' | 'many'; path?: string }>;
+  },
+  metricSource: string,
+  field: string,
+): void {
   if (field === 'tenant_id') return;
 
   if (!field.includes('.')) {

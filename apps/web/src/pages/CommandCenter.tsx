@@ -79,7 +79,9 @@ export function CommandCenter() {
             <span className="text-xs text-ink-400">the longest one has been waiting</span>
           </div>
         )}
-        <span className="ml-auto text-2xs text-ink-500">Correct as of {new Date(data.asOf).toLocaleString('en-IN')}</span>
+        <span className="ml-auto text-2xs text-ink-500">
+          Correct as of {new Date(data.asOf).toLocaleString('en-IN')}
+        </span>
       </div>
 
       <PulseStrip pulse={data.pulse} />
@@ -129,7 +131,11 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
                   {domainName(p.domainCode, p.domainName)}
                 </span>
                 {p.trend && (
-                  <span className={p.trend === 'up' ? 'text-band-strong' : p.trend === 'down' ? 'text-band-critical' : 'text-ink-500'}>
+                  <span
+                    className={
+                      p.trend === 'up' ? 'text-band-strong' : p.trend === 'down' ? 'text-band-critical' : 'text-ink-500'
+                    }
+                  >
                     {p.trend === 'up' ? '↗' : p.trend === 'down' ? '↘' : '→'}
                   </span>
                 )}
@@ -216,7 +222,9 @@ function PulseStrip({ pulse }: { pulse: HealthScoreView[] }) {
                     <ContributionBar
                       value={f.contribution}
                       max={f.weight}
-                      tone={f.contribution / f.weight < 0.4 ? 'bad' : f.contribution / f.weight < 0.7 ? 'warn' : 'accent'}
+                      tone={
+                        f.contribution / f.weight < 0.4 ? 'bad' : f.contribution / f.weight < 0.7 ? 'warn' : 'accent'
+                      }
                     />
                   </div>
                   <div className="mt-2 flex items-center justify-between text-2xs text-ink-500">
@@ -248,7 +256,8 @@ function AttentionQueue({ items }: { items: ExceptionView[] }) {
   const navigate = useNavigate();
 
   const ack = useMutation({
-    mutationFn: (id: string) => api.post(`/command/exceptions/${id}/acknowledge`, { note: 'Acknowledged from the Command Center.' }),
+    mutationFn: (id: string) =>
+      api.post(`/command/exceptions/${id}/acknowledge`, { note: 'Acknowledged from the Command Center.' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['command-center'] }),
   });
 
@@ -256,14 +265,15 @@ function AttentionQueue({ items }: { items: ExceptionView[] }) {
     <Card
       title="Needs your attention"
       subtitle="Yours to handle, overdue, or unclaimed."
-      actions={<Link to="/exceptions" className="btn-ghost">See everything</Link>}
+      actions={
+        <Link to="/exceptions" className="btn-ghost">
+          See everything
+        </Link>
+      }
       bodyClassName="max-h-[26rem] overflow-y-auto p-0"
     >
       {items.length === 0 ? (
-        <EmptyState
-          message="Nothing needs you right now."
-          hint="Nothing is waiting on you."
-        />
+        <EmptyState message="Nothing needs you right now." hint="Nothing is waiting on you." />
       ) : (
         <ul className="divide-y divide-ink-850">
           {items.map((e) => (
@@ -284,16 +294,21 @@ function AttentionQueue({ items }: { items: ExceptionView[] }) {
                       </span>
                     )}
                     {e.escalationRung > 0 && (
-                      <span className="chip border-ink-700 text-ink-400" title={`Escalation step ${e.escalationRung} — ${titleCase(e.escalationTrigger)}`}>
+                      <span
+                        className="chip border-ink-700 text-ink-400"
+                        title={`Escalation step ${e.escalationRung} — ${titleCase(e.escalationTrigger)}`}
+                      >
                         Escalated
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-xs font-medium text-ink-100" title={e.code}>{e.label}</p>
+                  <p className="mt-1 text-xs font-medium text-ink-100" title={e.code}>
+                    {e.label}
+                  </p>
                   <p className="mt-0.5 line-clamp-2 text-2xs text-ink-400">{e.detail}</p>
                   <p className="mt-1 text-2xs text-ink-500">
-                    {e.subjectLabel} · {e.ownerName ? `with ${e.ownerName}` : 'not yet assigned to anyone'} ·
-                    noticed {relative(e.raisedAt)}
+                    {e.subjectLabel} · {e.ownerName ? `with ${e.ownerName}` : 'not yet assigned to anyone'} · noticed{' '}
+                    {relative(e.raisedAt)}
                   </p>
                   {e.ranked && (
                     <p className="mt-1 text-2xs italic text-ink-600" title="Why this is where it is in the list.">
@@ -359,7 +374,8 @@ function DecisionQueue({ items }: { items: DecisionView[] }) {
                     <p className="mt-1 text-xs font-medium text-ink-100">{d.question}</p>
                     <p className="mt-0.5 text-2xs text-ink-500">
                       {d.subjectLabel} · came to you {relative(d.raisedAt)}
-                      {d.pointOfNoReturn && ` · too late to act after ${new Date(d.pointOfNoReturn).toLocaleDateString('en-IN')}`}
+                      {d.pointOfNoReturn &&
+                        ` · too late to act after ${new Date(d.pointOfNoReturn).toLocaleDateString('en-IN')}`}
                     </p>
                   </div>
                   <button className="btn-primary shrink-0" onClick={() => setOpen(d)}>
@@ -421,7 +437,12 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
           </button>
           <button
             className="btn-primary"
-            disabled={dispose.isPending || !rationale || (disposition === 'decide' && !chosenOption) || (disposition === 'defer' && !deferUntil)}
+            disabled={
+              dispose.isPending ||
+              !rationale ||
+              (disposition === 'decide' && !chosenOption) ||
+              (disposition === 'defer' && !deferUntil)
+            }
             onClick={() => dispose.mutate()}
           >
             {dispose.isPending ? 'Saving…' : `Save this ${words(disposition).toLowerCase()}`}
@@ -434,7 +455,8 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
           <p className="text-sm font-medium text-ink-50">{decision.question}</p>
           <p className="mt-1 text-2xs text-ink-500">
             {decision.subjectLabel} · {words(decision.authorityBasis)}
-            {decision.requiredAuthorityValue && ` · ${money(decision.requiredAuthorityValue, decision.currency ?? 'INR')}`}
+            {decision.requiredAuthorityValue &&
+              ` · ${money(decision.requiredAuthorityValue, decision.currency ?? 'INR')}`}
           </p>
         </div>
 
@@ -442,9 +464,8 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
           <div className="rounded border border-band-watch/40 bg-band-watch/5 p-3">
             <p className="text-xs font-medium text-band-watch">Some background is still missing</p>
             <p className="mt-1 text-2xs text-ink-400">
-              Still to come: {pack.missingComponents.map((m) => words(m).toLowerCase()).join(', ')}. Until
-              that is in, the only thing you can do here is ask for it — deciding without it would not be
-              a real decision.
+              Still to come: {pack.missingComponents.map((m) => words(m).toLowerCase()).join(', ')}. Until that is in,
+              the only thing you can do here is ask for it — deciding without it would not be a real decision.
             </p>
           </div>
         )}
@@ -496,7 +517,8 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
           <div>
             <p className="mb-1 text-2xs uppercase tracking-wide text-ink-500">Constraints and grant exercised</p>
             <p className="text-2xs text-ink-300">
-              {pack.constraintsAndGrant.constraint} <span className="text-ink-500">({pack.constraintsAndGrant.grantExercised})</span>
+              {pack.constraintsAndGrant.constraint}{' '}
+              <span className="text-ink-500">({pack.constraintsAndGrant.grantExercised})</span>
             </p>
           </div>
         </div>
@@ -527,7 +549,12 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
           <>
             <div>
               <label className="label">Chosen option</label>
-              <input className="input" value={chosenOption} onChange={(e) => setChosenOption(e.target.value)} placeholder="What are you deciding?" />
+              <input
+                className="input"
+                value={chosenOption}
+                onChange={(e) => setChosenOption(e.target.value)}
+                placeholder="What are you deciding?"
+              />
             </div>
             <div>
               <label className="label">
@@ -543,7 +570,9 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
                   onChange={(e) => setConfidence(Number(e.target.value))}
                   className="flex-1"
                 />
-                <span className="w-12 text-right text-sm tabular-nums text-ink-100">{Math.round(confidence * 100)}%</span>
+                <span className="w-12 text-right text-sm tabular-nums text-ink-100">
+                  {Math.round(confidence * 100)}%
+                </span>
               </div>
             </div>
           </>
@@ -555,8 +584,8 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
             <input type="date" className="input" value={deferUntil} onChange={(e) => setDeferUntil(e.target.value)} />
             {decision.pointOfNoReturn && (
               <p className="mt-1 text-2xs text-band-watch">
-                Refused outright — not merely warned — if this falls after the point of no return
-                ({new Date(decision.pointOfNoReturn).toLocaleDateString('en-IN')}).
+                Refused outright — not merely warned — if this falls after the point of no return (
+                {new Date(decision.pointOfNoReturn).toLocaleDateString('en-IN')}).
               </p>
             )}
           </div>
@@ -564,11 +593,15 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
 
         <div>
           <label className="label">Rationale (required)</label>
-          <textarea className="input min-h-20" value={rationale} onChange={(e) => setRationale(e.target.value)} placeholder="Why this, and why now?" />
+          <textarea
+            className="input min-h-20"
+            value={rationale}
+            onChange={(e) => setRationale(e.target.value)}
+            placeholder="Why this, and why now?"
+          />
         </div>
 
         {error && <p className="text-2xs text-band-critical">{error}</p>}
-
       </div>
     </Modal>
   );
@@ -583,7 +616,11 @@ function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChange
     <Card
       title="What changed"
       subtitle={`Since you last looked, ${new Date(data.watermark).toLocaleString('en-IN')}. ${data.suppressedBelowMateriality} smaller changes are not listed — they were too minor to be worth your time.`}
-      actions={<button className="btn-ghost" onClick={onSeen}>I have read this</button>}
+      actions={
+        <button className="btn-ghost" onClick={onSeen}>
+          I have read this
+        </button>
+      }
       bodyClassName="max-h-[26rem] overflow-y-auto p-0"
     >
       {data.narrative && (
@@ -607,7 +644,10 @@ function WhatChanged({ data, onSeen }: { data: CommandCenterResponse['whatChange
                     <span className="text-xs font-medium text-ink-100">{d.headline}</span>
                     {d.severity && <SeverityChip severity={d.severity} />}
                     {d.newToView && (
-                      <span className="chip border-accent/40 text-accent-soft" title="This is not new — you just gained access to it. It was already there.">
+                      <span
+                        className="chip border-accent/40 text-accent-soft"
+                        title="This is not new — you just gained access to it. It was already there."
+                      >
                         Newly visible to you
                       </span>
                     )}
@@ -659,11 +699,16 @@ function LiveAndHandled({ data }: { data: CommandCenterResponse['liveAndHandled'
           {data.rows.map((r) => (
             <tr key={r.automationClass}>
               <td>
-                <p className="text-xs text-ink-100" title={r.topDefinition ?? undefined}>{r.label}</p>
+                <p className="text-xs text-ink-100" title={r.topDefinition ?? undefined}>
+                  {r.label}
+                </p>
               </td>
               <td className="text-right tabular-nums">
                 {r.count === 0 ? (
-                  <span className="text-ink-500" title="An automation class that normally fires and suddenly does not is itself a signal.">
+                  <span
+                    className="text-ink-500"
+                    title="An automation class that normally fires and suddenly does not is itself a signal."
+                  >
                     nothing ran
                   </span>
                 ) : (
@@ -671,8 +716,12 @@ function LiveAndHandled({ data }: { data: CommandCenterResponse['liveAndHandled'
                 )}
               </td>
               <td className="text-right tabular-nums">{r.successRate.toFixed(0)}%</td>
-              <td className={`text-right tabular-nums ${r.exceptionCount > 0 ? 'text-band-critical' : ''}`}>{r.exceptionCount}</td>
-              <td className={`text-right tabular-nums ${r.authorityShortfall > 0 ? 'text-band-watch' : ''}`}>{r.authorityShortfall}</td>
+              <td className={`text-right tabular-nums ${r.exceptionCount > 0 ? 'text-band-critical' : ''}`}>
+                {r.exceptionCount}
+              </td>
+              <td className={`text-right tabular-nums ${r.authorityShortfall > 0 ? 'text-band-watch' : ''}`}>
+                {r.authorityShortfall}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -721,10 +770,7 @@ function PeopleCapability() {
   });
 
   return (
-    <Card
-      title="People & Capability"
-      subtitle="Capacity, coverage and single points of failure, by team."
-    >
+    <Card title="People & Capability" subtitle="Capacity, coverage and single points of failure, by team.">
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {data.map((u) => (
           <div key={u.unit} className="rounded-lg border border-ink-800 bg-ink-950 p-3">

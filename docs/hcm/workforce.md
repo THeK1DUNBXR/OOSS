@@ -25,7 +25,7 @@ then applied.
   `Grade` (code/name/level only — **no pay range**; WS7's `PayGrade` owns
   pay), `GradeAssignment`.
 - `EmployeeStatusChange` — `transfer | promotion | demotion |
-  redesignation`, `pending_approval → approved|rejected → applied`. Proposed
+redesignation`, `pending_approval → approved|rejected → applied`. Proposed
   by anyone holding `employee_changes:create`; decided by anyone holding
   `employee_changes:approve` **other than the proposer, and other than the
   employment the change is about** (unconditional and two-sided, same shape
@@ -73,20 +73,20 @@ audit record.
 
 ## Acceptance
 
-| ID | PASS means | Test |
-| --- | --- | --- |
-| HCM-WORKFORCE-001 | HR can write and read the full profile extension | `HCM-WORKFORCE-001` |
-| HCM-WORKFORCE-002 | Passport number reads back in full on one's own record | `HCM-WORKFORCE-002` |
-| HCM-WORKFORCE-003 | An employee can upload their own document but cannot verify it (403) | `HCM-WORKFORCE-003` |
-| HCM-WORKFORCE-004 | HR verifies once; a second verify on the same document is refused (400) | `HCM-WORKFORCE-004` |
-| HCM-WORKFORCE-005 | A new primary reporting line closes the old one; the org chart nests correctly | `HCM-WORKFORCE-005` |
-| HCM-WORKFORCE-006 | An employment cannot report to itself (400) | `HCM-WORKFORCE-006` |
-| HCM-WORKFORCE-007 | Directory search finds an employee by name | `HCM-WORKFORCE-007` |
-| HCM-WORKFORCE-008 | Employee 360 aggregates profile, documents and reporting lines | `HCM-WORKFORCE-008` |
-| HCM-WORKFORCE-009 | A non-existent employment id 404s on the 360 aggregate | `HCM-WORKFORCE-009` |
-| HCM-WORKFORCE-010 | Cost centre, location and grade can be created and listed | `HCM-WORKFORCE-010` |
-| HCM-WORKFORCE-011 | The proposer of a status change may never decide it (403, Self-Dealing Bar) | `HCM-WORKFORCE-011` |
-| HCM-WORKFORCE-012 | A different decider can approve; applying writes the grade assignment; re-deciding/re-applying are refused (409) | `HCM-WORKFORCE-012` |
+| ID                | PASS means                                                                                                            | Test                |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| HCM-WORKFORCE-001 | HR can write and read the full profile extension                                                                      | `HCM-WORKFORCE-001` |
+| HCM-WORKFORCE-002 | Passport number reads back in full on one's own record                                                                | `HCM-WORKFORCE-002` |
+| HCM-WORKFORCE-003 | An employee can upload their own document but cannot verify it (403)                                                  | `HCM-WORKFORCE-003` |
+| HCM-WORKFORCE-004 | HR verifies once; a second verify on the same document is refused (400)                                               | `HCM-WORKFORCE-004` |
+| HCM-WORKFORCE-005 | A new primary reporting line closes the old one; the org chart nests correctly                                        | `HCM-WORKFORCE-005` |
+| HCM-WORKFORCE-006 | An employment cannot report to itself (400)                                                                           | `HCM-WORKFORCE-006` |
+| HCM-WORKFORCE-007 | Directory search finds an employee by name                                                                            | `HCM-WORKFORCE-007` |
+| HCM-WORKFORCE-008 | Employee 360 aggregates profile, documents and reporting lines                                                        | `HCM-WORKFORCE-008` |
+| HCM-WORKFORCE-009 | A non-existent employment id 404s on the 360 aggregate                                                                | `HCM-WORKFORCE-009` |
+| HCM-WORKFORCE-010 | Cost centre, location and grade can be created and listed                                                             | `HCM-WORKFORCE-010` |
+| HCM-WORKFORCE-011 | The proposer of a status change may never decide it (403, Self-Dealing Bar)                                           | `HCM-WORKFORCE-011` |
+| HCM-WORKFORCE-012 | A different decider can approve; applying writes the grade assignment; re-deciding/re-applying are refused (409)      | `HCM-WORKFORCE-012` |
 | HCM-WORKFORCE-013 | The subject of a status change may never decide it themselves, even holding the approve grant (403, Self-Dealing Bar) | `HCM-WORKFORCE-013` |
 
 ## What this does not do

@@ -124,7 +124,11 @@ interface ApplicationsSummary {
 interface LicencesSummary {
   notYetMeasured: boolean;
   annualisedSpend: number | null;
-  annualisedSpendByApplication: Array<{ applicationId: string; applicationName: string; annualisedCost: number | null }>;
+  annualisedSpendByApplication: Array<{
+    applicationId: string;
+    applicationName: string;
+    annualisedCost: number | null;
+  }>;
   renewingIn90Days: number;
   overAllocated: number;
   underUsed: number;
@@ -211,7 +215,11 @@ export function ItApplications() {
       ) : (
         s && (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Metric label="Applications" value={Object.values(s.byStatus).reduce((a, b) => a + b, 0)} noActionReason="The whole catalogue." />
+            <Metric
+              label="Applications"
+              value={Object.values(s.byStatus).reduce((a, b) => a + b, 0)}
+              noActionReason="The whole catalogue."
+            />
             <Metric label="Tier 1" value={s.byTier['1'] ?? 0} noActionReason="Business-stopping if it goes down." />
             <Metric
               label="No owner"
@@ -269,7 +277,9 @@ export function ItApplications() {
                     <td className="py-2 pr-3 tabular-nums text-ink-300">T{a.tier}</td>
                     <td className="py-2 pr-3 text-ink-300">{a.hosting}</td>
                     <td className="py-2 pr-3 text-ink-300">{a.category}</td>
-                    <td className="py-2 pr-3 text-ink-300">{a.ownerPartyId ? a.ownerPartyId : <span className="text-band-critical">unowned</span>}</td>
+                    <td className="py-2 pr-3 text-ink-300">
+                      {a.ownerPartyId ? a.ownerPartyId : <span className="text-band-critical">unowned</span>}
+                    </td>
                     <td className="py-2 pr-3">
                       <StatusChip status={a.status} tone={STATUS_TONE[a.status]} />
                     </td>
@@ -328,7 +338,9 @@ function NewApplicationModal({ onClose }: { onClose: () => void }) {
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
           <button type="submit" form="new-application-form" className="btn-primary" disabled={mutation.isPending}>
             {mutation.isPending ? 'Saving…' : 'Add application'}
           </button>
@@ -338,33 +350,62 @@ function NewApplicationModal({ onClose }: { onClose: () => void }) {
       <form
         id="new-application-form"
         className="flex flex-col gap-3"
-        onSubmit={(e) => { e.preventDefault(); setError(null); mutation.mutate(); }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          mutation.mutate();
+        }}
       >
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
         <TextInput label="Name" required autoFocus value={name} onChange={setName} />
         <Row>
           <TextInput label="Vendor" value={vendorName} onChange={setVendorName} placeholder="Optional" />
-          <TextInput label="Category" required value={category} onChange={setCategory} placeholder="e.g. productivity, crm, finance" />
+          <TextInput
+            label="Category"
+            required
+            value={category}
+            onChange={setCategory}
+            placeholder="e.g. productivity, crm, finance"
+          />
         </Row>
         <Row>
-          <SelectInput label="Tier" required value={tier} onChange={setTier} options={[
-            { value: '1', label: '1 — business-stopping' },
-            { value: '2', label: '2' },
-            { value: '3', label: '3' },
-            { value: '4', label: '4 — low' },
-          ]} />
-          <SelectInput label="Hosting" required value={hosting} onChange={setHosting} options={[
-            { value: 'saas', label: 'SaaS' },
-            { value: 'on_prem', label: 'On-premises' },
-            { value: 'cloud', label: 'Cloud (self-managed)' },
-          ]} />
+          <SelectInput
+            label="Tier"
+            required
+            value={tier}
+            onChange={setTier}
+            options={[
+              { value: '1', label: '1 — business-stopping' },
+              { value: '2', label: '2' },
+              { value: '3', label: '3' },
+              { value: '4', label: '4 — low' },
+            ]}
+          />
+          <SelectInput
+            label="Hosting"
+            required
+            value={hosting}
+            onChange={setHosting}
+            options={[
+              { value: 'saas', label: 'SaaS' },
+              { value: 'on_prem', label: 'On-premises' },
+              { value: 'cloud', label: 'Cloud (self-managed)' },
+            ]}
+          />
         </Row>
         <SelectInput
           label="Owner"
           value={ownerPartyId}
           onChange={setOwnerPartyId}
           placeholder={people.rows.length ? 'Nobody yet — leave unowned' : 'Nobody on file yet'}
-          options={people.rows.map((p) => ({ value: p.id, label: p.primaryPhone ? `${p.fullName} — ${p.primaryPhone}` : p.fullName }))}
+          options={people.rows.map((p) => ({
+            value: p.id,
+            label: p.primaryPhone ? `${p.fullName} — ${p.primaryPhone}` : p.fullName,
+          }))}
           hint="An application with nobody accountable for it is flagged, not silently allowed."
         />
         <SelectInput
@@ -442,12 +483,24 @@ export function ItApplicationDetail() {
     <div>
       <PageHeader
         title={app.name}
-        subtitle={<><RecordCode code={app.recordCode} /> · {app.category} · {app.hosting} · tier {app.tier}</>}
+        subtitle={
+          <>
+            <RecordCode code={app.recordCode} /> · {app.category} · {app.hosting} · tier {app.tier}
+          </>
+        }
         actions={
           <div className="flex flex-wrap gap-2">
             {can('it_applications:E') &&
               app.availableTransitions.map((ev) => (
-                <button key={ev} className="btn" disabled={transition.isPending} onClick={() => { setError(null); transition.mutate(ev); }}>
+                <button
+                  key={ev}
+                  className="btn"
+                  disabled={transition.isPending}
+                  onClick={() => {
+                    setError(null);
+                    transition.mutate(ev);
+                  }}
+                >
                   {TRANSITION_LABEL[ev]}
                 </button>
               ))}
@@ -455,16 +508,30 @@ export function ItApplicationDetail() {
         }
       />
 
-      {error && <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <dl className="divide-y divide-ink-850">
-            <Field label="Status"><StatusChip status={app.status} tone={STATUS_TONE[app.status]} /></Field>
+            <Field label="Status">
+              <StatusChip status={app.status} tone={STATUS_TONE[app.status]} />
+            </Field>
             <Field label="Vendor">{app.vendorName ?? '—'}</Field>
             <Field label="Data classification handled">{app.dataClassificationHandled}</Field>
             <Field label="Single sign-on">{app.sso ? 'Yes' : 'No'}</Field>
-            <Field label="URL">{app.url ? <a href={app.url} target="_blank" rel="noreferrer" className="text-accent-soft hover:underline">{app.url}</a> : '—'}</Field>
+            <Field label="URL">
+              {app.url ? (
+                <a href={app.url} target="_blank" rel="noreferrer" className="text-accent-soft hover:underline">
+                  {app.url}
+                </a>
+              ) : (
+                '—'
+              )}
+            </Field>
             <Field label="Notes">{app.notes ?? '—'}</Field>
             <Field label="Owner">
               {app.ownerPartyId ? (
@@ -484,10 +551,20 @@ export function ItApplicationDetail() {
                   value={ownerPartyId}
                   onChange={setOwnerPartyId}
                   placeholder="Choose a person"
-                  options={people.rows.map((p) => ({ value: p.id, label: p.primaryPhone ? `${p.fullName} — ${p.primaryPhone}` : p.fullName }))}
+                  options={people.rows.map((p) => ({
+                    value: p.id,
+                    label: p.primaryPhone ? `${p.fullName} — ${p.primaryPhone}` : p.fullName,
+                  }))}
                 />
               </div>
-              <button className="btn" disabled={!ownerPartyId || setOwner.isPending} onClick={() => { setError(null); setOwner.mutate(); }}>
+              <button
+                className="btn"
+                disabled={!ownerPartyId || setOwner.isPending}
+                onClick={() => {
+                  setError(null);
+                  setOwner.mutate();
+                }}
+              >
                 {setOwner.isPending ? 'Saving…' : 'Set owner'}
               </button>
             </div>
@@ -501,9 +578,21 @@ export function ItApplicationDetail() {
             application id — not duplicated here.
           </p>
           <ul className="mt-2 flex flex-col gap-1 text-xs">
-            <li><Link to="/it/continuity" className="text-accent-soft hover:underline">Continuity plans →</Link></li>
-            <li><Link to="/it/incidents" className="text-accent-soft hover:underline">Incidents →</Link></li>
-            <li><Link to="/it/changes" className="text-accent-soft hover:underline">Changes →</Link></li>
+            <li>
+              <Link to="/it/continuity" className="text-accent-soft hover:underline">
+                Continuity plans →
+              </Link>
+            </li>
+            <li>
+              <Link to="/it/incidents" className="text-accent-soft hover:underline">
+                Incidents →
+              </Link>
+            </li>
+            <li>
+              <Link to="/it/changes" className="text-accent-soft hover:underline">
+                Changes →
+              </Link>
+            </li>
           </ul>
         </Card>
       </div>
@@ -511,7 +600,11 @@ export function ItApplicationDetail() {
       <Card className="mt-4">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-400">Licences</h3>
-          {can('it_licences:C') && <Link to={`/it/licences?new=${app.id}`} className="btn-sm">Add a licence</Link>}
+          {can('it_licences:C') && (
+            <Link to={`/it/licences?new=${app.id}`} className="btn-sm">
+              Add a licence
+            </Link>
+          )}
         </div>
         {app.licences.length === 0 ? (
           <EmptyState message="No licences recorded for this application." />
@@ -532,13 +625,21 @@ export function ItApplicationDetail() {
                 {app.licences.map((l) => (
                   <tr key={l.id} className="border-b border-ink-850/60">
                     <td className="py-2 pr-3">
-                      <Link to={`/it/licences/${l.id}`} className="text-ink-100 hover:underline"><RecordCode code={l.recordCode} /></Link>
+                      <Link to={`/it/licences/${l.id}`} className="text-ink-100 hover:underline">
+                        <RecordCode code={l.recordCode} />
+                      </Link>
                     </td>
                     <td className="py-2 pr-3 text-ink-300">{l.kind}</td>
-                    <td className="py-2 pr-3 tabular-nums text-ink-300">{l.seatsInUse}/{l.seatsPurchased}</td>
-                    <td className="py-2 pr-3 tabular-nums text-ink-300">{can('it_licences:F') ? money(l.costPerPeriod, l.currency) : <Withheld reason="no_permission" />}</td>
+                    <td className="py-2 pr-3 tabular-nums text-ink-300">
+                      {l.seatsInUse}/{l.seatsPurchased}
+                    </td>
+                    <td className="py-2 pr-3 tabular-nums text-ink-300">
+                      {can('it_licences:F') ? money(l.costPerPeriod, l.currency) : <Withheld reason="no_permission" />}
+                    </td>
                     <td className="py-2 pr-3 text-ink-300">{l.renewalDate ? date(l.renewalDate) : '—'}</td>
-                    <td className="py-2 pr-3"><StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} /></td>
+                    <td className="py-2 pr-3">
+                      <StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -584,14 +685,34 @@ export function ItLicences() {
       />
 
       {s?.notYetMeasured ? (
-        <Card><EmptyState message="No licences recorded yet." /></Card>
+        <Card>
+          <EmptyState message="No licences recorded yet." />
+        </Card>
       ) : (
         s && (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Metric label="Annualised spend" value={can('it_licences:F') ? money(s.annualisedSpend) : <Withheld reason="no_permission" />} noActionReason="Normalised across billing cycles." />
-            <Metric label="Renewing in 90 days" value={s.renewingIn90Days} tone={s.renewingIn90Days > 0 ? 'warn' : 'good'} drillTo="/it/licences" />
-            <Metric label="Over-allocated" value={s.overAllocated} tone={s.overAllocated > 0 ? 'bad' : 'good'} drillTo="/it/licences" />
-            <Metric label="Seats purchased vs in use" value={`${s.seatsInUse}/${s.seatsPurchased}`} noActionReason="Across every un-cancelled licence." />
+            <Metric
+              label="Annualised spend"
+              value={can('it_licences:F') ? money(s.annualisedSpend) : <Withheld reason="no_permission" />}
+              noActionReason="Normalised across billing cycles."
+            />
+            <Metric
+              label="Renewing in 90 days"
+              value={s.renewingIn90Days}
+              tone={s.renewingIn90Days > 0 ? 'warn' : 'good'}
+              drillTo="/it/licences"
+            />
+            <Metric
+              label="Over-allocated"
+              value={s.overAllocated}
+              tone={s.overAllocated > 0 ? 'bad' : 'good'}
+              drillTo="/it/licences"
+            />
+            <Metric
+              label="Seats purchased vs in use"
+              value={`${s.seatsInUse}/${s.seatsPurchased}`}
+              noActionReason="Across every un-cancelled licence."
+            />
           </div>
         )
       )}
@@ -630,13 +751,25 @@ export function ItLicences() {
                   return (
                     <tr key={l.id} className="border-b border-ink-850/60">
                       <td className="py-2 pr-3">
-                        <Link to={`/it/licences/${l.id}`} className="text-ink-100 hover:underline"><RecordCode code={l.recordCode} /></Link>
+                        <Link to={`/it/licences/${l.id}`} className="text-ink-100 hover:underline">
+                          <RecordCode code={l.recordCode} />
+                        </Link>
                       </td>
                       <td className="py-2 pr-3 text-ink-300">{l.application?.name ?? l.applicationId}</td>
-                      <td className={`py-2 pr-3 tabular-nums ${over ? 'text-band-critical' : 'text-ink-300'}`}>{l.seatsInUse}/{l.seatsPurchased}</td>
-                      <td className="py-2 pr-3 tabular-nums text-ink-300">{can('it_licences:F') ? `${money(l.costPerPeriod, l.currency)}/${l.billingCycle}` : <Withheld reason="no_permission" />}</td>
+                      <td className={`py-2 pr-3 tabular-nums ${over ? 'text-band-critical' : 'text-ink-300'}`}>
+                        {l.seatsInUse}/{l.seatsPurchased}
+                      </td>
+                      <td className="py-2 pr-3 tabular-nums text-ink-300">
+                        {can('it_licences:F') ? (
+                          `${money(l.costPerPeriod, l.currency)}/${l.billingCycle}`
+                        ) : (
+                          <Withheld reason="no_permission" />
+                        )}
+                      </td>
                       <td className="py-2 pr-3 text-ink-300">{l.renewalDate ? date(l.renewalDate) : '—'}</td>
-                      <td className="py-2 pr-3"><StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} /></td>
+                      <td className="py-2 pr-3">
+                        <StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} />
+                      </td>
                     </tr>
                   );
                 })}
@@ -661,7 +794,10 @@ export function ItLicences() {
 
 function NewLicenceModal({ onClose, defaultApplicationId }: { onClose: () => void; defaultApplicationId?: string }) {
   const qc = useQueryClient();
-  const apps = useQuery({ queryKey: ['it-applications-picker'], queryFn: () => api.get<ItApplication[]>('/it/applications') });
+  const apps = useQuery({
+    queryKey: ['it-applications-picker'],
+    queryFn: () => api.get<ItApplication[]>('/it/applications'),
+  });
   const [applicationId, setApplicationId] = useState(defaultApplicationId ?? '');
   const [kind, setKind] = useState<LicenceKind>('per_seat');
   const [seatsPurchased, setSeatsPurchased] = useState('0');
@@ -698,15 +834,29 @@ function NewLicenceModal({ onClose, defaultApplicationId }: { onClose: () => voi
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
           <button type="submit" form="new-licence-form" className="btn-primary" disabled={mutation.isPending}>
             {mutation.isPending ? 'Saving…' : 'Add licence'}
           </button>
         </>
       }
     >
-      <form id="new-licence-form" className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); setError(null); mutation.mutate(); }}>
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      <form
+        id="new-licence-form"
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          mutation.mutate();
+        }}
+      >
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
         <SelectInput
           label="Application"
           required
@@ -715,26 +865,50 @@ function NewLicenceModal({ onClose, defaultApplicationId }: { onClose: () => voi
           placeholder="Choose an application"
           options={(apps.data ?? []).map((a) => ({ value: a.id, label: a.name }))}
         />
-        <SelectInput label="Kind" required value={kind} onChange={setKind} options={[
-          { value: 'per_seat', label: 'Per seat' },
-          { value: 'site', label: 'Site' },
-          { value: 'perpetual', label: 'Perpetual' },
-          { value: 'usage', label: 'Usage' },
-        ]} />
+        <SelectInput
+          label="Kind"
+          required
+          value={kind}
+          onChange={setKind}
+          options={[
+            { value: 'per_seat', label: 'Per seat' },
+            { value: 'site', label: 'Site' },
+            { value: 'perpetual', label: 'Perpetual' },
+            { value: 'usage', label: 'Usage' },
+          ]}
+        />
         <Row>
           <TextInput label="Seats purchased" type="number" value={seatsPurchased} onChange={setSeatsPurchased} />
-          <TextInput label="Seats in use" type="number" value={seatsInUse} onChange={setSeatsInUse} hint="Typed in, not metered." />
+          <TextInput
+            label="Seats in use"
+            type="number"
+            value={seatsInUse}
+            onChange={setSeatsInUse}
+            hint="Typed in, not metered."
+          />
         </Row>
         <Row>
           <MoneyInput label="Cost per period" value={costPerPeriod} onChange={setCostPerPeriod} required />
-          <SelectInput label="Billing cycle" required value={billingCycle} onChange={setBillingCycle} options={[
-            { value: 'monthly', label: 'Monthly' },
-            { value: 'quarterly', label: 'Quarterly' },
-            { value: 'annual', label: 'Annual' },
-            { value: 'one_off', label: 'One-off' },
-          ]} />
+          <SelectInput
+            label="Billing cycle"
+            required
+            value={billingCycle}
+            onChange={setBillingCycle}
+            options={[
+              { value: 'monthly', label: 'Monthly' },
+              { value: 'quarterly', label: 'Quarterly' },
+              { value: 'annual', label: 'Annual' },
+              { value: 'one_off', label: 'One-off' },
+            ]}
+          />
         </Row>
-        <TextInput label="Renewal date" type="date" value={renewalDate} onChange={setRenewalDate} hint="Optional — leave blank for a perpetual licence." />
+        <TextInput
+          label="Renewal date"
+          type="date"
+          value={renewalDate}
+          onChange={setRenewalDate}
+          hint="Optional — leave blank for a perpetual licence."
+        />
       </form>
     </Modal>
   );
@@ -768,13 +942,19 @@ export function ItLicenceDetail() {
 
   const seatsMutation = useMutation({
     mutationFn: () => api.post(`/it/licences/${id}/seats`, { seatsInUse: Number(seats) }),
-    onSuccess: () => { invalidateAll(); setSeats(''); },
+    onSuccess: () => {
+      invalidateAll();
+      setSeats('');
+    },
     onError: (e: unknown) => setError(messageOf(e)),
   });
 
   const decideMutation = useMutation({
     mutationFn: (approve: boolean) => api.post(`/it/licences/${id}/approve-renewal`, { approve, note: decisionNote }),
-    onSuccess: () => { invalidateAll(); setDecisionNote(''); },
+    onSuccess: () => {
+      invalidateAll();
+      setDecisionNote('');
+    },
     onError: (e: unknown) => setError(messageOf(e)),
   });
 
@@ -786,34 +966,60 @@ export function ItLicenceDetail() {
     <div>
       <PageHeader
         title={l.application?.name ?? l.applicationId}
-        subtitle={<><RecordCode code={l.recordCode} /> · {l.kind} · {l.billingCycle}</>}
+        subtitle={
+          <>
+            <RecordCode code={l.recordCode} /> · {l.kind} · {l.billingCycle}
+          </>
+        }
         actions={
           <div className="flex flex-wrap gap-2">
             {can('it_licences:E') && l.status !== 'cancelled' && !l.pendingRenewalApprovalStepId && (
-              <button className="btn" onClick={() => setRenewOpen(true)}>Propose renewal</button>
+              <button className="btn" onClick={() => setRenewOpen(true)}>
+                Propose renewal
+              </button>
             )}
             {can('it_licences:E') && l.status !== 'cancelled' && (
-              <button className="btn" onClick={() => setCancelOpen(true)}>Cancel</button>
+              <button className="btn" onClick={() => setCancelOpen(true)}>
+                Cancel
+              </button>
             )}
           </div>
         }
       />
 
-      {error && <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
+      {error && (
+        <p className="mb-4 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+          {error}
+        </p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <dl className="divide-y divide-ink-850">
-            <Field label="Status"><StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} /></Field>
+            <Field label="Status">
+              <StatusChip status={l.status} tone={LICENCE_STATUS_TONE[l.status]} />
+            </Field>
             <Field label="Seats">
               {l.seatsInUse} in use of {l.seatsPurchased} purchased
-              {l.seatUtilisation.percent !== null ? ` (${l.seatUtilisation.percent}%)` : ' (not yet measured — nothing purchased)'}
+              {l.seatUtilisation.percent !== null
+                ? ` (${l.seatUtilisation.percent}%)`
+                : ' (not yet measured — nothing purchased)'}
               {l.seatUtilisation.overAllocated && <span className="ml-2 text-band-critical">over-allocated</span>}
               <p className="mt-0.5 text-2xs italic text-ink-500">Typed in — the platform does not meter logins.</p>
             </Field>
-            <Field label="Cost">{can('it_licences:F') ? `${money(l.costPerPeriod, l.currency)} / ${l.billingCycle}` : <Withheld reason="no_permission" />}</Field>
-            <Field label="Annualised cost">{can('it_licences:F') ? money(l.annualisedCost, l.currency) : <Withheld reason="no_permission" />}</Field>
-            <Field label="Term">{l.termStart ? date(l.termStart) : '—'} to {l.termEnd ? date(l.termEnd) : '—'}</Field>
+            <Field label="Cost">
+              {can('it_licences:F') ? (
+                `${money(l.costPerPeriod, l.currency)} / ${l.billingCycle}`
+              ) : (
+                <Withheld reason="no_permission" />
+              )}
+            </Field>
+            <Field label="Annualised cost">
+              {can('it_licences:F') ? money(l.annualisedCost, l.currency) : <Withheld reason="no_permission" />}
+            </Field>
+            <Field label="Term">
+              {l.termStart ? date(l.termStart) : '—'} to {l.termEnd ? date(l.termEnd) : '—'}
+            </Field>
             <Field label="Renewal date">{l.renewalDate ? date(l.renewalDate) : '—'}</Field>
             <Field label="Auto-renew">{l.autoRenew ? 'Yes' : 'No'}</Field>
             {l.cancelledReason && <Field label="Cancelled">{l.cancelledReason}</Field>}
@@ -822,9 +1028,22 @@ export function ItLicenceDetail() {
           {can('it_licences:E') && l.status !== 'cancelled' && (
             <div className="mt-3 flex items-end gap-2 border-t border-ink-850 pt-3">
               <div className="flex-1">
-                <TextInput label="Update seats in use" type="number" value={seats} onChange={setSeats} placeholder={String(l.seatsInUse)} />
+                <TextInput
+                  label="Update seats in use"
+                  type="number"
+                  value={seats}
+                  onChange={setSeats}
+                  placeholder={String(l.seatsInUse)}
+                />
               </div>
-              <button className="btn" disabled={!seats || seatsMutation.isPending} onClick={() => { setError(null); seatsMutation.mutate(); }}>
+              <button
+                className="btn"
+                disabled={!seats || seatsMutation.isPending}
+                onClick={() => {
+                  setError(null);
+                  seatsMutation.mutate();
+                }}
+              >
                 {seatsMutation.isPending ? 'Saving…' : 'Update'}
               </button>
             </div>
@@ -833,17 +1052,25 @@ export function ItLicenceDetail() {
           {l.pendingRenewalApprovalStepId && (
             <div className="mt-3 rounded border border-band-watch/40 bg-band-watch/10 p-3 text-xs text-ink-200">
               <p className="mb-2 font-medium">
-                A renewal to {l.pendingRenewalTermEnd ? date(l.pendingRenewalTermEnd) : '—'} is awaiting a decision. The person who proposed
-                it cannot decide it — the Self-Dealing Bar is unconditional.
+                A renewal to {l.pendingRenewalTermEnd ? date(l.pendingRenewalTermEnd) : '—'} is awaiting a decision. The
+                person who proposed it cannot decide it — the Self-Dealing Bar is unconditional.
               </p>
               {can('it_licences:approve') && (
                 <div className="flex flex-col gap-2">
                   <TextArea label="Decision note" value={decisionNote} onChange={setDecisionNote} rows={2} />
                   <div className="flex gap-2">
-                    <button className="btn-primary" disabled={decideMutation.isPending} onClick={() => decideMutation.mutate(true)}>
+                    <button
+                      className="btn-primary"
+                      disabled={decideMutation.isPending}
+                      onClick={() => decideMutation.mutate(true)}
+                    >
                       Approve renewal
                     </button>
-                    <button className="btn" disabled={decideMutation.isPending} onClick={() => decideMutation.mutate(false)}>
+                    <button
+                      className="btn"
+                      disabled={decideMutation.isPending}
+                      onClick={() => decideMutation.mutate(false)}
+                    >
                       Decline
                     </button>
                   </div>
@@ -914,7 +1141,10 @@ function RenewModal({
         newBillingCycle,
         note: note || undefined,
       }),
-    onSuccess: () => { onDone(); onClose(); },
+    onSuccess: () => {
+      onDone();
+      onClose();
+    },
     onError: (e: unknown) => setError(messageOf(e)),
   });
 
@@ -925,30 +1155,54 @@ function RenewModal({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
           <button type="submit" form="renew-licence-form" className="btn-primary" disabled={mutation.isPending}>
             {mutation.isPending ? 'Proposing…' : 'Propose renewal'}
           </button>
         </>
       }
     >
-      <form id="renew-licence-form" className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); setError(null); mutation.mutate(); }}>
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
-        <p className="text-2xs text-ink-500">A renewal you propose is never one you can approve — it always goes to Finance.</p>
+      <form
+        id="renew-licence-form"
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          mutation.mutate();
+        }}
+      >
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
+        <p className="text-2xs text-ink-500">
+          A renewal you propose is never one you can approve — it always goes to Finance.
+        </p>
         <TextInput label="New term end" type="date" required value={newTermEnd} onChange={setNewTermEnd} />
         <Row>
           <MoneyInput
             label="New cost per period"
             value={newCostPerPeriod}
             onChange={setNewCostPerPeriod}
-            hint={currentCost === null ? 'You cannot see the current cost — leave blank to keep it unchanged.' : undefined}
+            hint={
+              currentCost === null ? 'You cannot see the current cost — leave blank to keep it unchanged.' : undefined
+            }
           />
-          <SelectInput label="Billing cycle" required value={newBillingCycle} onChange={setNewBillingCycle} options={[
-            { value: 'monthly', label: 'Monthly' },
-            { value: 'quarterly', label: 'Quarterly' },
-            { value: 'annual', label: 'Annual' },
-            { value: 'one_off', label: 'One-off' },
-          ]} />
+          <SelectInput
+            label="Billing cycle"
+            required
+            value={newBillingCycle}
+            onChange={setNewBillingCycle}
+            options={[
+              { value: 'monthly', label: 'Monthly' },
+              { value: 'quarterly', label: 'Quarterly' },
+              { value: 'annual', label: 'Annual' },
+              { value: 'one_off', label: 'One-off' },
+            ]}
+          />
         </Row>
         <TextArea label="Note" value={note} onChange={setNote} rows={2} />
       </form>
@@ -962,7 +1216,10 @@ function CancelModal({ licenceId, onClose, onDone }: { licenceId: string; onClos
 
   const mutation = useMutation({
     mutationFn: () => api.post(`/it/licences/${licenceId}/cancel`, { reason }),
-    onSuccess: () => { onDone(); onClose(); },
+    onSuccess: () => {
+      onDone();
+      onClose();
+    },
     onError: (e: unknown) => setError(messageOf(e)),
   });
 
@@ -973,16 +1230,37 @@ function CancelModal({ licenceId, onClose, onDone }: { licenceId: string; onClos
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>Back</button>
+          <button type="button" className="btn" onClick={onClose}>
+            Back
+          </button>
           <button type="submit" form="cancel-licence-form" className="btn-primary" disabled={mutation.isPending}>
             {mutation.isPending ? 'Cancelling…' : 'Cancel licence'}
           </button>
         </>
       }
     >
-      <form id="cancel-licence-form" className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); setError(null); mutation.mutate(); }}>
-        {error && <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>}
-        <TextArea label="Reason" value={reason} onChange={setReason} rows={3} required hint="A deliberate decision, not a status you forget to come back to." />
+      <form
+        id="cancel-licence-form"
+        className="flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setError(null);
+          mutation.mutate();
+        }}
+      >
+        {error && (
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
+        )}
+        <TextArea
+          label="Reason"
+          value={reason}
+          onChange={setReason}
+          rows={3}
+          required
+          hint="A deliberate decision, not a status you forget to come back to."
+        />
       </form>
     </Modal>
   );

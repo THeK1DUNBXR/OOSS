@@ -117,7 +117,10 @@ export function ComplianceCalendar() {
     },
   });
 
-  const rows = useMemo(() => [...(obligations.data ?? [])].sort((a, b) => a.dueAt.localeCompare(b.dueAt)), [obligations.data]);
+  const rows = useMemo(
+    () => [...(obligations.data ?? [])].sort((a, b) => a.dueAt.localeCompare(b.dueAt)),
+    [obligations.data],
+  );
 
   if (obligations.error) return <ErrorBox error={obligations.error} />;
 
@@ -151,10 +154,25 @@ export function ComplianceCalendar() {
       ) : (
         s && (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Metric label="Due soon" value={s.byStatus.due} tone={s.byStatus.due > 0 ? 'warn' : 'neutral'} noActionReason="Within 30 days of the deadline." />
-            <Metric label="Overdue" value={s.byStatus.overdue} tone={s.byStatus.overdue > 0 ? 'bad' : 'good'} noActionReason="Past the due date, not filed or waived." />
+            <Metric
+              label="Due soon"
+              value={s.byStatus.due}
+              tone={s.byStatus.due > 0 ? 'warn' : 'neutral'}
+              noActionReason="Within 30 days of the deadline."
+            />
+            <Metric
+              label="Overdue"
+              value={s.byStatus.overdue}
+              tone={s.byStatus.overdue > 0 ? 'bad' : 'good'}
+              noActionReason="Past the due date, not filed or waived."
+            />
             <Metric label="Upcoming" value={s.byStatus.upcoming} noActionReason="More than 30 days out." />
-            <Metric label="Filed this FY" value={s.filedThisFy} tone="good" noActionReason="Recorded with a reference from the portal." />
+            <Metric
+              label="Filed this FY"
+              value={s.filedThisFy}
+              tone="good"
+              noActionReason="Recorded with a reference from the portal."
+            />
           </div>
         )
       )}
@@ -176,7 +194,9 @@ export function ComplianceCalendar() {
           <Loading label="Loading the calendar" />
         ) : rows.length === 0 ? (
           <EmptyState
-            message={domain === 'all' ? 'Nothing on the calendar yet.' : `Nothing on the calendar for ${DOMAIN_LABEL[domain]}.`}
+            message={
+              domain === 'all' ? 'Nothing on the calendar yet.' : `Nothing on the calendar for ${DOMAIN_LABEL[domain]}.`
+            }
             hint="Generate the upcoming obligations, or widen the filter."
           />
         ) : (
@@ -261,7 +281,15 @@ export function ComplianceCalendar() {
   );
 }
 
-function FileModal({ obligation, onClose, onFiled }: { obligation: Obligation; onClose: () => void; onFiled: () => void }) {
+function FileModal({
+  obligation,
+  onClose,
+  onFiled,
+}: {
+  obligation: Obligation;
+  onClose: () => void;
+  onFiled: () => void;
+}) {
   const [reference, setReference] = useState('');
   const [evidenceDocumentId, setEvidenceDocumentId] = useState('');
   const [note, setNote] = useState('');
@@ -307,10 +335,18 @@ function FileModal({ obligation, onClose, onFiled }: { obligation: Obligation; o
         }}
       >
         {error && (
-          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
         )}
         <Field label="Period">{obligation.period}</Field>
-        <TextInput label="Reference" value={reference} onChange={setReference} required hint="ARN, challan, or acknowledgement number" />
+        <TextInput
+          label="Reference"
+          value={reference}
+          onChange={setReference}
+          required
+          hint="ARN, challan, or acknowledgement number"
+        />
         {obligation.type.evidenceRequired && (
           <TextInput
             label="Evidence document ID"
@@ -326,7 +362,15 @@ function FileModal({ obligation, onClose, onFiled }: { obligation: Obligation; o
   );
 }
 
-function WaiveModal({ obligation, onClose, onWaived }: { obligation: Obligation; onClose: () => void; onWaived: () => void }) {
+function WaiveModal({
+  obligation,
+  onClose,
+  onWaived,
+}: {
+  obligation: Obligation;
+  onClose: () => void;
+  onWaived: () => void;
+}) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -365,10 +409,19 @@ function WaiveModal({ obligation, onClose, onWaived }: { obligation: Obligation;
         }}
       >
         {error && (
-          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">{error}</p>
+          <p className="rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
+            {error}
+          </p>
         )}
         <Field label="Period">{obligation.period}</Field>
-        <TextArea label="Reason" value={reason} onChange={setReason} rows={3} required hint="A deliberate decision not to file, not a status you forget to come back to." />
+        <TextArea
+          label="Reason"
+          value={reason}
+          onChange={setReason}
+          rows={3}
+          required
+          hint="A deliberate decision not to file, not a status you forget to come back to."
+        />
       </form>
     </Modal>
   );

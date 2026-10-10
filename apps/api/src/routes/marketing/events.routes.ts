@@ -60,7 +60,10 @@ router.get(
   }),
 );
 
-router.get('/:id', handler(async (req) => loadEvent(req.params.id)));
+router.get(
+  '/:id',
+  handler(async (req) => loadEvent(req.params.id)),
+);
 
 router.post(
   '/',
@@ -80,10 +83,22 @@ router.patch(
   }),
 );
 
-router.post('/:id/open', handler(async (req) => openEvent(req.params.id)));
-router.post('/:id/close', handler(async (req) => closeEvent(req.params.id)));
-router.post('/:id/start', handler(async (req) => startEvent(req.params.id)));
-router.post('/:id/complete', handler(async (req) => completeEvent(req.params.id)));
+router.post(
+  '/:id/open',
+  handler(async (req) => openEvent(req.params.id)),
+);
+router.post(
+  '/:id/close',
+  handler(async (req) => closeEvent(req.params.id)),
+);
+router.post(
+  '/:id/start',
+  handler(async (req) => startEvent(req.params.id)),
+);
+router.post(
+  '/:id/complete',
+  handler(async (req) => completeEvent(req.params.id)),
+);
 
 router.post(
   '/:id/cancel',
@@ -120,10 +135,22 @@ router.post(
   }),
 );
 
-router.post('/registrations/:id/confirm', handler(async (req) => confirmRegistration(req.params.id)));
-router.post('/registrations/:id/check-in', handler(async (req) => checkInRegistration(req.params.id)));
-router.post('/registrations/:id/no-show', handler(async (req) => markNoShow(req.params.id)));
-router.post('/registrations/:id/cancel', handler(async (req) => cancelRegistration(req.params.id)));
+router.post(
+  '/registrations/:id/confirm',
+  handler(async (req) => confirmRegistration(req.params.id)),
+);
+router.post(
+  '/registrations/:id/check-in',
+  handler(async (req) => checkInRegistration(req.params.id)),
+);
+router.post(
+  '/registrations/:id/no-show',
+  handler(async (req) => markNoShow(req.params.id)),
+);
+router.post(
+  '/registrations/:id/cancel',
+  handler(async (req) => cancelRegistration(req.params.id)),
+);
 
 router.post(
   '/registrations/:id/follow-up',
@@ -134,7 +161,10 @@ router.post(
   }),
 );
 
-router.post('/:id/convert-attendees', handler(async (req) => convertAttendees(req.params.id)));
+router.post(
+  '/:id/convert-attendees',
+  handler(async (req) => convertAttendees(req.params.id)),
+);
 
 router.get(
   '/:id/export',

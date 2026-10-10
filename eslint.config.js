@@ -21,14 +21,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: [
-      '**/dist/**',
-      '**/node_modules/**',
-      'apps/web/public/**',
-      'packages/*/dist/**',
-      'docs/**',
-      '.claude/**',
-    ],
+    ignores: ['**/dist/**', '**/node_modules/**', 'apps/web/public/**', 'packages/*/dist/**', 'docs/**', '.claude/**'],
   },
 
   js.configs.recommended,

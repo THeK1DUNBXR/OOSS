@@ -38,7 +38,11 @@ export function Offerings() {
   const { can } = useSession();
   const [priceFor, setPriceFor] = useState<OfferingView | null>(null);
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['offerings'],
     queryFn: () => api.get<OfferingView[]>('/commercial/offerings'),
   });
@@ -78,7 +82,12 @@ export function Offerings() {
                   <span className="mono">{o.offeringCode}</span> · {titleCase(o.vertical)}
                 </span>
               }
-              actions={<StatusChip status={humanize(o.status)} tone={o.status === 'active' ? 'good' : o.status === 'retired' ? 'neutral' : 'warn'} />}
+              actions={
+                <StatusChip
+                  status={humanize(o.status)}
+                  tone={o.status === 'active' ? 'good' : o.status === 'retired' ? 'neutral' : 'warn'}
+                />
+              }
             >
               <p className="text-2xs text-ink-400">{o.description}</p>
 
@@ -93,7 +102,9 @@ export function Offerings() {
 
               <div className="mt-3 border-t border-ink-850 pt-3">
                 {o.coverageGap ? (
-                  <p className="text-2xs text-band-watch">No price book entry — reps can select this but cannot price it.</p>
+                  <p className="text-2xs text-band-watch">
+                    No price book entry — reps can select this but cannot price it.
+                  </p>
                 ) : (
                   o.activePriceBookEntries.map((p) => (
                     <div key={p.id} className="flex items-center justify-between gap-2 text-2xs">
@@ -155,7 +166,9 @@ function NewPriceModal({ offering, onClose }: { offering: OfferingView | null; o
       onClose={onClose}
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
           <button className="btn-primary" onClick={() => publish.mutate()} disabled={!unitPrice || publish.isPending}>
             Publish version
           </button>
@@ -175,13 +188,22 @@ function NewPriceModal({ offering, onClose }: { offering: OfferingView | null; o
             <label className="label">Billing frequency</label>
             <select className="input" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
               {['one_time', 'monthly', 'annual', 'per_seat', 'milestone'].map((f) => (
-                <option key={f} value={f}>{titleCase(f)}</option>
+                <option key={f} value={f}>
+                  {titleCase(f)}
+                </option>
               ))}
             </select>
           </div>
           <div>
             <label className="label">Max discount %</label>
-            <input className="input" type="number" min={0} max={100} value={maxDiscountPct} onChange={(e) => setMaxDiscountPct(e.target.value)} />
+            <input
+              className="input"
+              type="number"
+              min={0}
+              max={100}
+              value={maxDiscountPct}
+              onChange={(e) => setMaxDiscountPct(e.target.value)}
+            />
             <p className="mt-1 text-2xs text-ink-500">Required. There is no default.</p>
           </div>
         </div>
@@ -197,7 +219,11 @@ function NewPriceModal({ offering, onClose }: { offering: OfferingView | null; o
 
 export function Quotes() {
   const qc = useQueryClient();
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['quotes'],
     queryFn: () => api.get<QuoteView[]>('/commercial/quotes'),
   });
@@ -211,10 +237,7 @@ export function Quotes() {
 
   return (
     <div>
-      <PageHeader
-        title="Quotes"
-        subtitle="Prices quoted to customers. Each line keeps the price it was quoted at."
-      />
+      <PageHeader title="Quotes" subtitle="Prices quoted to customers. Each line keeps the price it was quoted at." />
 
       {isLoading ? (
         <Loading />
@@ -232,7 +255,9 @@ export function Quotes() {
                   <span className="mono">{q.recordCode}</span> <span className="ml-2">v{q.version}</span>
                 </span>
               }
-              subtitle={q.issuedAt ? `Issued ${date(q.issuedAt)} · valid until ${date(q.validUntil)}` : 'Not yet issued'}
+              subtitle={
+                q.issuedAt ? `Issued ${date(q.issuedAt)} · valid until ${date(q.validUntil)}` : 'Not yet issued'
+              }
               actions={
                 <>
                   <StatusChip
@@ -250,9 +275,7 @@ export function Quotes() {
               {q.blockedReason && (
                 <div className="mb-3 rounded border border-band-critical/40 bg-band-critical/5 px-3 py-2">
                   <p className="text-xs text-band-critical">Issue blocked — {q.blockedReason}</p>
-                  <p className="mt-1 text-2xs text-ink-400">
-                    The whole quote is held until it is approved.
-                  </p>
+                  <p className="mt-1 text-2xs text-ink-400">The whole quote is held until it is approved.</p>
                 </div>
               )}
 
@@ -311,7 +334,11 @@ export function Quotes() {
 
 export function Proposals() {
   const qc = useQueryClient();
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['proposals'],
     queryFn: () => api.get<any[]>('/commercial/proposals'),
   });
@@ -331,15 +358,14 @@ export function Proposals() {
 
   return (
     <div>
-      <PageHeader
-        title="Proposals"
-        subtitle="What has been proposed, and where each one stands."
-      />
+      <PageHeader title="Proposals" subtitle="What has been proposed, and where each one stands." />
 
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="No proposals." /></Card>
+        <Card>
+          <EmptyState message="No proposals." />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
@@ -357,7 +383,9 @@ export function Proposals() {
             <tbody>
               {data.map((p) => (
                 <tr key={p.id}>
-                  <td><RecordCode code={p.recordCode} /></td>
+                  <td>
+                    <RecordCode code={p.recordCode} />
+                  </td>
                   <td className="text-xs text-ink-100">{p.title}</td>
                   <td className="text-right tabular-nums text-xs">{money(p.totalValue, p.currency)}</td>
                   <td className="text-2xs text-ink-400">{p.sentAt ? relative(p.sentAt) : '—'}</td>
@@ -368,20 +396,33 @@ export function Proposals() {
                       tone={p.response === 'accepted' ? 'good' : p.response === 'rejected' ? 'bad' : 'neutral'}
                     />
                     {p.stalledNotifiedAt && (
-                      <p className="mt-0.5 text-2xs text-band-watch" title="Flagged automatically after too long with no reply. Weekends are not counted.">stalled</p>
+                      <p
+                        className="mt-0.5 text-2xs text-band-watch"
+                        title="Flagged automatically after too long with no reply. Weekends are not counted."
+                      >
+                        stalled
+                      </p>
                     )}
                   </td>
                   <td>
                     <div className="flex gap-1">
                       {!p.sentAt && (
-                        <button className="btn-ghost" onClick={() => send.mutate(p.id)}>Send</button>
+                        <button className="btn-ghost" onClick={() => send.mutate(p.id)}>
+                          Send
+                        </button>
                       )}
                       {p.sentAt && p.response === 'pending' && (
                         <>
-                          <button className="btn-ghost" onClick={() => respond.mutate({ id: p.id, response: 'accepted' })}>
+                          <button
+                            className="btn-ghost"
+                            onClick={() => respond.mutate({ id: p.id, response: 'accepted' })}
+                          >
                             Accepted
                           </button>
-                          <button className="btn-ghost" onClick={() => respond.mutate({ id: p.id, response: 'rejected' })}>
+                          <button
+                            className="btn-ghost"
+                            onClick={() => respond.mutate({ id: p.id, response: 'rejected' })}
+                          >
                             Rejected
                           </button>
                         </>
@@ -410,14 +451,21 @@ export function Agreements() {
   const [error, setError] = useState<string | null>(null);
   const [gateResult, setGateResult] = useState<any>(null);
 
-  const { data = [], isLoading, error: loadError } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error: loadError,
+  } = useQuery({
     queryKey: ['agreements', kind],
     queryFn: () => api.get<AgreementView[]>(`/commercial/${KIND_PATHS[kind]}`),
   });
 
   const transition = useMutation({
     mutationFn: ({ id, toStatus }: { id: string; toStatus: string }) =>
-      api.post<any>(`/commercial/${KIND_PATHS[kind]}/${id}/transition`, { toStatus, note: 'Transitioned from the agreements surface.' }),
+      api.post<any>(`/commercial/${KIND_PATHS[kind]}/${id}/transition`, {
+        toStatus,
+        note: 'Transitioned from the agreements surface.',
+      }),
     onSuccess: (res) => {
       setError(null);
       // A non-permitted gate does not throw: it opens an approval step against
@@ -433,10 +481,7 @@ export function Agreements() {
 
   return (
     <div>
-      <PageHeader
-        title="Agreements"
-        subtitle="MoUs, contracts and partner agreements."
-      />
+      <PageHeader title="Agreements" subtitle="MoUs, contracts and partner agreements." />
 
       <Tabs
         tabs={[
@@ -457,7 +502,9 @@ export function Agreements() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message={`No ${kind.replace('_', ' ')}s.`} /></Card>
+        <Card>
+          <EmptyState message={`No ${kind.replace('_', ' ')}s.`} />
+        </Card>
       ) : (
         <div className="space-y-3">
           {data.map((a) => (
@@ -479,7 +526,10 @@ export function Agreements() {
                       }
                     />
                     {a.strategicValue === 'high' && (
-                      <span className="chip border-accent/40 text-accent-soft" title="Escalates to the top approval tier on an OR gate, regardless of value.">
+                      <span
+                        className="chip border-accent/40 text-accent-soft"
+                        title="Escalates to the top approval tier on an OR gate, regardless of value."
+                      >
                         strategic
                       </span>
                     )}
@@ -498,7 +548,10 @@ export function Agreements() {
                     <span>
                       value <span className="tabular-nums text-ink-200">{money(a.commercialValue, a.currency)}</span>
                       {a.commercialValue === 0 && (
-                        <span className="ml-1 text-ink-600" title="Zero is a valid coverage-instrument state for an MoU; a contract must be priced.">
+                        <span
+                          className="ml-1 text-ink-600"
+                          title="Zero is a valid coverage-instrument state for an MoU; a contract must be priced."
+                        >
                           (coverage instrument)
                         </span>
                       )}
@@ -526,14 +579,21 @@ export function Agreements() {
                       className={a.requiresApprovalFor.includes(t) ? 'btn-primary' : 'btn-ghost'}
                       onClick={() => transition.mutate({ id: a.id, toStatus: t })}
                       disabled={transition.isPending}
-                      title={a.requiresApprovalFor.includes(t) ? 'A privileged transition — runs the approval gate.' : undefined}
+                      title={
+                        a.requiresApprovalFor.includes(t)
+                          ? 'A privileged transition — runs the approval gate.'
+                          : undefined
+                      }
                     >
                       → {titleCase(t)}
                       {a.requiresApprovalFor.includes(t) && ' ⛨'}
                     </button>
                   ))}
                   {a.availableTransitions.length === 0 && (
-                    <span className="text-2xs text-ink-600" title="expiring, expired and renewed are job-driven, never user transitions.">
+                    <span
+                      className="text-2xs text-ink-600"
+                      title="expiring, expired and renewed are job-driven, never user transitions."
+                    >
                       no user transition available
                     </span>
                   )}
@@ -555,8 +615,8 @@ export function Agreements() {
               {gateResult.selfDealingBarTripped && (
                 <Field label="Self-Dealing Bar">
                   <span className="text-band-watch">
-                    Tripped — the approver may never be the subject owner. Resolution rerouted to the next tier, and
-                    the attempt is audited as a watched pattern.
+                    Tripped — the approver may never be the subject owner. Resolution rerouted to the next tier, and the
+                    attempt is audited as a watched pattern.
                   </span>
                 </Field>
               )}
@@ -611,7 +671,9 @@ export function Approvals() {
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="Nothing is waiting for approval." /></Card>
+        <Card>
+          <EmptyState message="Nothing is waiting for approval." />
+        </Card>
       ) : (
         <div className="space-y-3">
           {data.map((s) => (
@@ -621,7 +683,9 @@ export function Approvals() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="chip border-accent/40 text-accent-soft">{humanize(s.action)}</span>
                     <StatusChip status={humanize(s.state)} tone={s.state === 'escalated' ? 'warn' : 'neutral'} />
-                    {s.slaBreached && <span className="chip border-band-critical/40 text-band-critical">SLA breached</span>}
+                    {s.slaBreached && (
+                      <span className="chip border-band-critical/40 text-band-critical">SLA breached</span>
+                    )}
                     {s.selfDealingBarTripped && (
                       <span className="chip border-band-watch/40 text-band-watch">self-dealing bar</span>
                     )}
@@ -640,10 +704,18 @@ export function Approvals() {
                   />
                 </div>
                 <div className="flex shrink-0 flex-col gap-1.5">
-                  <button className="btn-primary" onClick={() => decide.mutate({ id: s.id, approve: true })} disabled={decide.isPending}>
+                  <button
+                    className="btn-primary"
+                    onClick={() => decide.mutate({ id: s.id, approve: true })}
+                    disabled={decide.isPending}
+                  >
                     Approve
                   </button>
-                  <button className="btn-danger" onClick={() => decide.mutate({ id: s.id, approve: false })} disabled={decide.isPending}>
+                  <button
+                    className="btn-danger"
+                    onClick={() => decide.mutate({ id: s.id, approve: false })}
+                    disabled={decide.isPending}
+                  >
                     Decline
                   </button>
                 </div>
@@ -664,7 +736,11 @@ export function WinLoss() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<WinLossReviewView | null>(null);
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['win-loss'],
     queryFn: () => api.get<WinLossReviewView[]>('/commercial/win-loss'),
   });
@@ -681,15 +757,29 @@ export function WinLoss() {
 
   return (
     <div>
-      <PageHeader
-        title="Win / Loss Review"
-        subtitle="Why deals were won or lost."
-      />
+      <PageHeader title="Win / Loss Review" subtitle="Why deals were won or lost." />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Reviews" value={data.length} sub="Across opportunities and MoUs" drillTo="/commercial/win-loss" />
-        <Metric label="Pending" value={pending} tone={pending > 0 ? 'warn' : 'neutral'} sub="Not yet completed" drillTo="/commercial/win-loss" />
-        <Metric label="Overdue" value={overdue} tone={overdue > 0 ? 'bad' : 'good'} sub="Mandatory and past the grace period" drillTo="/exceptions" />
+        <Metric
+          label="Reviews"
+          value={data.length}
+          sub="Across opportunities and MoUs"
+          drillTo="/commercial/win-loss"
+        />
+        <Metric
+          label="Pending"
+          value={pending}
+          tone={pending > 0 ? 'warn' : 'neutral'}
+          sub="Not yet completed"
+          drillTo="/commercial/win-loss"
+        />
+        <Metric
+          label="Overdue"
+          value={overdue}
+          tone={overdue > 0 ? 'bad' : 'good'}
+          sub="Mandatory and past the grace period"
+          drillTo="/exceptions"
+        />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -697,7 +787,9 @@ export function WinLoss() {
           {isLoading ? (
             <Loading />
           ) : data.length === 0 ? (
-            <Card><EmptyState message="No reviews yet." /></Card>
+            <Card>
+              <EmptyState message="No reviews yet." />
+            </Card>
           ) : (
             <div className="space-y-3">
               {data.map((r) => (
@@ -708,7 +800,10 @@ export function WinLoss() {
                         <RecordCode code={r.recordCode} />
                         <StatusChip status={humanize(r.outcome)} tone={r.outcome === 'won' ? 'good' : 'bad'} />
                         {r.mandatory && (
-                          <span className="chip border-accent/40 text-accent-soft" title={`Mandatory under: ${r.mandatoryBasis}`}>
+                          <span
+                            className="chip border-accent/40 text-accent-soft"
+                            title={`Mandatory under: ${r.mandatoryBasis}`}
+                          >
                             mandatory
                           </span>
                         )}
@@ -720,7 +815,11 @@ export function WinLoss() {
                         {r.mandatoryBasis === 'not_mandatory' ? 'Below both thresholds' : humanize(r.mandatoryBasis)}
                         {r.commercialValueSnapshot !== null && ` · ${money(r.commercialValueSnapshot)} frozen at close`}
                       </p>
-                      {r.competitorName && <p className="mt-1 text-2xs text-ink-400">Lost to {r.competitorName} at {r.realLostStage}</p>}
+                      {r.competitorName && (
+                        <p className="mt-1 text-2xs text-ink-400">
+                          Lost to {r.competitorName} at {r.realLostStage}
+                        </p>
+                      )}
                       {r.lesson && <p className="mt-1.5 text-2xs italic text-ink-300">"{r.lesson}"</p>}
                     </div>
                     {!r.completedAt && (
@@ -746,7 +845,9 @@ export function WinLoss() {
                   <p className="mt-1 text-2xs leading-relaxed text-ink-400">{l.body}</p>
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {(l.tags ?? []).map((t: string, i: number) => (
-                      <span key={i} className="chip border-ink-800 text-ink-500">{t}</span>
+                      <span key={i} className="chip border-ink-800 text-ink-500">
+                        {t}
+                      </span>
                     ))}
                   </div>
                 </li>
@@ -796,8 +897,14 @@ function CompleteReviewModal({ review, onClose }: { review: WinLossReviewView | 
       onClose={onClose}
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={() => complete.mutate()} disabled={complete.isPending || (review.mandatory && !lesson)}>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => complete.mutate()}
+            disabled={complete.isPending || (review.mandatory && !lesson)}
+          >
             Record
           </button>
         </>
@@ -819,13 +926,20 @@ function CompleteReviewModal({ review, onClose }: { review: WinLossReviewView | 
         </div>
         <div>
           <label className="label">Real lost stage</label>
-          <input className="input" value={realLostStage} onChange={(e) => setRealLostStage(e.target.value)} placeholder="Where the deal was actually lost, not where it was marked" />
+          <input
+            className="input"
+            value={realLostStage}
+            onChange={(e) => setRealLostStage(e.target.value)}
+            placeholder="Where the deal was actually lost, not where it was marked"
+          />
         </div>
         <div>
           <label className="label">Lost reason</label>
           <select className="input" value={lostReason} onChange={(e) => setLostReason(e.target.value)}>
             {LOST_REASONS.map((r) => (
-              <option key={r} value={r}>{titleCase(r)}</option>
+              <option key={r} value={r}>
+                {titleCase(r)}
+              </option>
             ))}
           </select>
         </div>
@@ -837,7 +951,12 @@ function CompleteReviewModal({ review, onClose }: { review: WinLossReviewView | 
         )}
         <div>
           <label className="label">Lesson {review.mandatory && '(required)'}</label>
-          <textarea className="input min-h-20" value={lesson} onChange={(e) => setLesson(e.target.value)} placeholder="What would we do differently, and at which stage?" />
+          <textarea
+            className="input min-h-20"
+            value={lesson}
+            onChange={(e) => setLesson(e.target.value)}
+            placeholder="What would we do differently, and at which stage?"
+          />
         </div>
         {error && <p className="text-2xs text-band-critical">{error}</p>}
       </div>

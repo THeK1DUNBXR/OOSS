@@ -66,7 +66,11 @@ export function Invoices() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [justCollected, setJustCollected] = useState<JustCollected | null>(null);
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['invoices'],
     queryFn: () => api.get<InvoiceView[]>('/finance/invoices'),
   });
@@ -99,7 +103,11 @@ export function Invoices() {
           invoice={collecting}
           onClose={() => setCollecting(null)}
           onCollected={(result, invoice) =>
-            setJustCollected({ invoiceLabel: invoice.label, receipt: result.receipt, finalInvoice: result.finalInvoice })
+            setJustCollected({
+              invoiceLabel: invoice.label,
+              receipt: result.receipt,
+              finalInvoice: result.finalInvoice,
+            })
           }
         />
       )}
@@ -113,11 +121,13 @@ export function Invoices() {
       {justCollected && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded border-l-2 border-band-strong bg-band-strong/10 px-3 py-2 text-sm text-band-strong">
           <span>
-            Receipt <b className="mono">{justCollected.receipt.recordCode}</b> issued against {justCollected.invoiceLabel}.
+            Receipt <b className="mono">{justCollected.receipt.recordCode}</b> issued against{' '}
+            {justCollected.invoiceLabel}.
             {justCollected.finalInvoice && (
               <>
-                {' '}This settles it — final invoice <b className="mono">{justCollected.finalInvoice.recordCode}</b> was raised
-                automatically.
+                {' '}
+                This settles it — final invoice <b className="mono">{justCollected.finalInvoice.recordCode}</b> was
+                raised automatically.
               </>
             )}
           </span>
@@ -246,7 +256,9 @@ export function Invoices() {
                       </td>
                       <td className="mono text-2xs text-ink-500">{l.hsnSac ?? '—'}</td>
                       <td className="text-right tabular-nums text-2xs text-ink-400">{l.quantity}</td>
-                      <td className="text-right tabular-nums text-2xs text-ink-400">{moneyExact(l.unitPrice, inv.currency)}</td>
+                      <td className="text-right tabular-nums text-2xs text-ink-400">
+                        {moneyExact(l.unitPrice, inv.currency)}
+                      </td>
                       <td className="text-right tabular-nums text-2xs text-ink-400">{l.gstRate ?? 0}%</td>
                       <td className="text-right tabular-nums text-xs">{moneyExact(l.amount, inv.currency)}</td>
                     </tr>
@@ -256,7 +268,8 @@ export function Invoices() {
 
               <div className="mt-3 flex flex-wrap justify-end gap-5 border-t border-ink-800 pt-3 text-xs">
                 <span className="text-ink-400">
-                  Taxable <span className="ml-1 tabular-nums text-ink-200">{moneyExact(inv.taxableValue, inv.currency)}</span>
+                  Taxable{' '}
+                  <span className="ml-1 tabular-nums text-ink-200">{moneyExact(inv.taxableValue, inv.currency)}</span>
                 </span>
                 <span className="text-ink-400">
                   {inv.interState ? 'IGST' : 'CGST + SGST'}{' '}
@@ -268,7 +281,8 @@ export function Invoices() {
                 </span>
                 {inv.paymentType !== 'credit' && (
                   <span className="text-accent-soft">
-                    Paid at issue <span className="ml-1 tabular-nums">{moneyExact(inv.amountPayableNow, inv.currency)}</span>
+                    Paid at issue{' '}
+                    <span className="ml-1 tabular-nums">{moneyExact(inv.amountPayableNow, inv.currency)}</span>
                     {inv.paymentMode && (
                       <span className="ml-1 text-ink-500">
                         by {PAYMENT_MODE_LABELS[inv.paymentMode as PaymentMode] ?? inv.paymentMode}
@@ -276,7 +290,11 @@ export function Invoices() {
                     )}
                   </span>
                 )}
-                <span className={(inv.outstanding ?? 0) > 0 ? 'font-medium text-band-watch' : 'font-medium text-band-strong'}>
+                <span
+                  className={
+                    (inv.outstanding ?? 0) > 0 ? 'font-medium text-band-watch' : 'font-medium text-band-strong'
+                  }
+                >
                   Outstanding <span className="ml-1 tabular-nums">{moneyExact(inv.outstanding, inv.currency)}</span>
                 </span>
               </div>
@@ -301,7 +319,10 @@ export function Invoices() {
                   </button>
                 )}
                 {inv.gstFilingId && (
-                  <span className="chip border-ink-700 text-ink-500" title="Reported in a filed GSTR-1. The period is closed and this invoice can no longer be changed.">
+                  <span
+                    className="chip border-ink-700 text-ink-500"
+                    title="Reported in a filed GSTR-1. The period is closed and this invoice can no longer be changed."
+                  >
                     reported
                   </span>
                 )}
@@ -400,16 +421,19 @@ function TakePayment({
           options={PAYMENT_MODES.map((m) => ({ value: m, label: PAYMENT_MODE_LABELS[m] }))}
         />
       </Row>
-      <TextInput label="Reference" value={reference} onChange={setReference} placeholder="UTR, UPI reference or cheque number" />
+      <TextInput
+        label="Reference"
+        value={reference}
+        onChange={setReference}
+        placeholder="UTR, UPI reference or cheque number"
+      />
 
       <p className="text-2xs text-ink-500">
         {after > 0
           ? `A part payment: the receipt will say ₹${taking.toLocaleString('en-IN')} of ₹${(invoice.total ?? 0).toLocaleString('en-IN')}, leaving ₹${after.toLocaleString('en-IN')} owed.`
           : 'This clears the invoice. The receipt will say so, and the final invoice naming every receipt is raised for it automatically.'}
       </p>
-      <p className="text-2xs text-ink-600">
-        The invoice is not changed. A receipt is issued for what is paid.
-      </p>
+      <p className="text-2xs text-ink-600">The invoice is not changed. A receipt is issued for what is paid.</p>
     </CreateModal>
   );
 }
@@ -419,7 +443,11 @@ export function Payments() {
   const qc = useQueryClient();
   const [allocating, setAllocating] = useState<PaymentView | null>(null);
 
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['payments'],
     queryFn: () => api.get<PaymentView[]>('/finance/payments'),
   });
@@ -446,13 +474,20 @@ export function Payments() {
           sub="A payment may legitimately exist before its obligation is issued"
           drillTo="/finance/payments"
         />
-        <Metric label="Receipts" value={data.reduce((s, p) => s + p.receipts.length, 0)} sub="The allocation join" drillTo="/finance/payments" />
+        <Metric
+          label="Receipts"
+          value={data.reduce((s, p) => s + p.receipts.length, 0)}
+          sub="The allocation join"
+          drillTo="/finance/payments"
+        />
       </div>
 
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="No payments received yet." /></Card>
+        <Card>
+          <EmptyState message="No payments received yet." />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
@@ -471,18 +506,28 @@ export function Payments() {
             <tbody>
               {data.map((p) => (
                 <tr key={p.id}>
-                  <td><RecordCode code={p.recordCode} /></td>
+                  <td>
+                    <RecordCode code={p.recordCode} />
+                  </td>
                   <td className="mono">{p.gatewayReference}</td>
                   <td className="text-2xs text-ink-400">{relative(p.receivedAt)}</td>
                   <td className="text-right tabular-nums text-xs">{moneyExact(p.amount, p.currency)}</td>
-                  <td className="text-right tabular-nums text-xs text-ink-400">{moneyExact(p.allocated, p.currency)}</td>
-                  <td className={`text-right tabular-nums text-xs ${(p.unallocated ?? 0) > 0 ? 'text-band-watch' : 'text-ink-500'}`}>
+                  <td className="text-right tabular-nums text-xs text-ink-400">
+                    {moneyExact(p.allocated, p.currency)}
+                  </td>
+                  <td
+                    className={`text-right tabular-nums text-xs ${(p.unallocated ?? 0) > 0 ? 'text-band-watch' : 'text-ink-500'}`}
+                  >
                     {moneyExact(p.unallocated, p.currency)}
                   </td>
-                  <td><StatusChip status={p.status} tone={p.status === 'received' ? 'good' : 'neutral'} /></td>
+                  <td>
+                    <StatusChip status={p.status} tone={p.status === 'received' ? 'good' : 'neutral'} />
+                  </td>
                   <td>
                     {(p.unallocated ?? 0) > 0 && (
-                      <button className="btn-ghost" onClick={() => setAllocating(p)}>Allocate</button>
+                      <button className="btn-ghost" onClick={() => setAllocating(p)}>
+                        Allocate
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -531,8 +576,14 @@ function AllocateModal({ payment, onClose }: { payment: PaymentView | null; onCl
       onClose={onClose}
       footer={
         <>
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={() => allocate.mutate()} disabled={!invoiceId || !amount || allocate.isPending}>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => allocate.mutate()}
+            disabled={!invoiceId || !amount || allocate.isPending}
+          >
             Create receipt
           </button>
         </>
@@ -540,7 +591,8 @@ function AllocateModal({ payment, onClose }: { payment: PaymentView | null; onCl
     >
       <div className="space-y-3">
         <p className="text-2xs text-ink-400">
-          Unallocated: <span className="tabular-nums text-ink-100">{moneyExact(payment.unallocated, payment.currency)}</span>
+          Unallocated:{' '}
+          <span className="tabular-nums text-ink-100">{moneyExact(payment.unallocated, payment.currency)}</span>
         </p>
         <div>
           <label className="label">Against invoice</label>
@@ -564,7 +616,11 @@ function AllocateModal({ payment, onClose }: { payment: PaymentView | null; onCl
 }
 
 export function Receivables() {
-  const { data = [], isLoading, error } = useQuery({
+  const {
+    data = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['receivables'],
     queryFn: () => api.get<ReceivablesSummary[]>('/finance/receivables'),
   });
@@ -573,15 +629,14 @@ export function Receivables() {
 
   return (
     <div>
-      <PageHeader
-        title="Receivables"
-        subtitle="What is owed, and how late it is."
-      />
+      <PageHeader title="Receivables" subtitle="What is owed, and how late it is." />
 
       {isLoading ? (
         <Loading />
       ) : data.length === 0 ? (
-        <Card><EmptyState message="Nothing is outstanding — everything billed has been paid." /></Card>
+        <Card>
+          <EmptyState message="Nothing is outstanding — everything billed has been paid." />
+        </Card>
       ) : (
         <Card bodyClassName="p-0 overflow-x-auto">
           <table className="table">
@@ -610,7 +665,10 @@ export function Receivables() {
                       <span className="text-2xs text-ink-600">current</span>
                     )}
                   </td>
-                  <td className="text-2xs text-ink-500" title="When this row was last recomputed from the invoices and payments behind it">
+                  <td
+                    className="text-2xs text-ink-500"
+                    title="When this row was last recomputed from the invoices and payments behind it"
+                  >
                     {relative(r.hydratedAt)}
                   </td>
                 </tr>

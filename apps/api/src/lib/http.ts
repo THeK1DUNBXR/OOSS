@@ -153,7 +153,9 @@ export function errorMiddleware(err: unknown, req: Request, res: Response, _next
     return;
   }
   if (errType === 'entity.too.large') {
-    res.status(413).json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large.', requestId } });
+    res
+      .status(413)
+      .json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large.', requestId } });
     return;
   }
 
