@@ -40,6 +40,7 @@ import {
   publishRefundPolicy,
   listCertificates,
   issueCertificate,
+  revokeCertificate,
   verifyCertificate,
 } from '../../domains/compliance/corporate.js';
 import { currentAuth } from '../../platform/context.js';
@@ -297,6 +298,11 @@ router.post(
     });
     return issueCertificate(schema.parse(req.body));
   }),
+);
+
+router.post(
+  '/certificates/:id/revoke',
+  handler(async (req) => revokeCertificate(req.params.id, z.object({ reason: z.string().min(1) }).parse(req.body).reason)),
 );
 
 // Public-shaped (a verification code, not an id) but still behind requireAuth

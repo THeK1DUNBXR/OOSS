@@ -439,18 +439,28 @@ describe('CMP-COR-004: a refund is its own Movement fact', () => {
 describe('certificate verification', () => {
   it('issues a certificate with a unique verification code, and verifies it back', async () => {
     const { issueCertificate, verifyCertificate } = await import('../../domains/compliance/corporate.js');
-    const certificate = await asUser('chairman@kaizen.co.in', () =>
-      issueCertificate({ enrollmentId: 'ENR-fixture-0001', kind: 'completion', snapshot: { learnerName: 'Test Learner', courseName: 'Test Course' } }),
-    );
-    expect(certificate.number).toMatch(/\/T\//);
+    // A certificate needs a real, completed enrolment behind it (FX-80).
+    const enrolment = await unscopedPrisma.enrollment.findFirstOrThrow({ where: { tenantId: await tenantId() } });
+    await unscopedPrisma.enrollment.update({ where: { id: enrolment.id }, data: { status: 'completed', completedAt: new Date() } });
+    try {
+      const certificate = await asUser('chairman@kaizen.co.in', () =>
+        issueCertificate({ enrollmentId: enrolment.id, kind: 'completion', snapshot: { learnerName: 'Test Learner', courseName: 'Test Course' } }),
+      );
+      expect(certificate.number).toMatch(/\/T\//);
 
-    const verified = await asUser('chairman@kaizen.co.in', () => verifyCertificate(certificate.verificationCode));
-    expect(verified.valid).toBe(true);
-    expect(verified.number).toBe(certificate.number);
+      const verified = await asUser('chairman@kaizen.co.in', () => verifyCertificate(certificate.verificationCode));
+      expect(verified.valid).toBe(true);
+      expect(verified.number).toBe(certificate.number);
 
-    await asUser('chairman@kaizen.co.in', async () => {
-      const bad = await expectReject(() => verifyCertificate('not-a-real-code'));
-      expect(bad.message).toMatch(/not found/i);
-    });
+      await asUser('chairman@kaizen.co.in', async () => {
+        const bad = await expectReject(() => verifyCertificate('not-a-real-code'));
+        expect(bad.message).toMatch(/not found/i);
+      });
+    } finally {
+      await unscopedPrisma.enrollment.update({
+        where: { id: enrolment.id },
+        data: { status: enrolment.status, completedAt: enrolment.completedAt },
+      });
+    }
   });
 });
