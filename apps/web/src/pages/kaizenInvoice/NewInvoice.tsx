@@ -20,6 +20,7 @@ import type { CompanyProfileView, CourseView, PaymentMode } from '@kaizen/shared
 import { api } from '../../lib/api.js';
 import { ErrorBox, Loading, PageHeader } from '../../components/ui.js';
 import { messageOf } from '../../components/forms.js';
+import { adultOnRecord, ageBasisBody, type AgeBasisValues } from '../../components/learnerAge.js';
 import { KI_APP_CSS } from './style.js';
 import { computeRowMath, fmtINR } from './calc.js';
 import {
@@ -132,6 +133,9 @@ export function NewInvoice() {
   const [enrollmentDate, setEnrollmentDate] = useState(todayISO());
   const [studentName, setStudentName] = useState('');
   const [contactNo, setContactNo] = useState('');
+  // The learner's age basis (FX-64), sent with every enrolment this invoice makes.
+  const [age, setAge] = useState<AgeBasisValues>({ dateOfBirth: '', adultAttested: false, guardianName: '', guardianPhone: '' });
+  const guardianRequired = !adultOnRecord(age.dateOfBirth, age.adultAttested);
   const [fromTN, setFromTN] = useState<'Yes' | 'No'>('Yes');
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [entries, setEntries] = useState<CourseEntry[]>(() => [blankEntry()]);
@@ -297,6 +301,7 @@ export function NewInvoice() {
     invoicePreviews.length > 0 &&
     studentName.trim().length > 0 &&
     contactNo.trim().length > 0 &&
+    (!guardianRequired || (age.guardianName.trim().length > 0 && age.guardianPhone.trim().length > 0)) &&
     (fromTN === 'Yes' || placeOfSupply) &&
     !submitting;
 
@@ -308,9 +313,9 @@ export function NewInvoice() {
       const invoiceIds: string[] = [];
 
       for (const preview of invoicePreviews) {
-        const assignBody: { personId?: string; fullName?: string; primaryPhone?: string | null } = personId
-          ? { personId }
-          : { fullName: studentName.trim(), primaryPhone: contactNo.trim() || null };
+        const assignBody: Record<string, unknown> = personId
+          ? { personId, ...ageBasisBody(age) }
+          : { fullName: studentName.trim(), primaryPhone: contactNo.trim() || null, ...ageBasisBody(age) };
         const enrollment: { id: string; personId: string } = await api.post(
           `/education/courses/${preview.course.id}/assign`,
           assignBody,
@@ -445,6 +450,38 @@ export function NewInvoice() {
                   <label>Contact No.</label>
                   <input type="tel" placeholder="10-digit mobile" value={contactNo} onChange={(e) => setContactNo(e.target.value)} />
                 </div>
+                <div className="ki-field">
+                  <label>Date of birth</label>
+                  <input type="date" value={age.dateOfBirth} onChange={(e) => setAge({ ...age, dateOfBirth: e.target.value })} />
+                </div>
+                {!age.dateOfBirth && (
+                  <div className="ki-field">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={age.adultAttested}
+                        onChange={(e) => setAge({ ...age, adultAttested: e.target.checked })}
+                      />{' '}
+                      I confirm this learner is 18 or over
+                    </label>
+                    <small>
+                      Tick this only if you have confirmed their age yourself. Your name is recorded against the enrolment.
+                      Without a date of birth and without this, a guardian's name and phone are required.
+                    </small>
+                  </div>
+                )}
+                {guardianRequired && (
+                  <>
+                    <div className="ki-field">
+                      <label>Guardian name</label>
+                      <input type="text" value={age.guardianName} onChange={(e) => setAge({ ...age, guardianName: e.target.value })} />
+                    </div>
+                    <div className="ki-field">
+                      <label>Guardian phone</label>
+                      <input type="tel" value={age.guardianPhone} onChange={(e) => setAge({ ...age, guardianPhone: e.target.value })} />
+                    </div>
+                  </>
+                )}
                 <div className="ki-field">
                   <label>Student is from Tamil Nadu?</label>
                   <select value={fromTN} onChange={(e) => setFromTN(e.target.value as 'Yes' | 'No')}>

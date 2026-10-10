@@ -44,6 +44,7 @@ import {
 } from '@kaizen/shared';
 import { api, titleCase } from '../lib/api.js';
 import { CreateModal, MoneyInput, Row, SelectInput, TextArea, TextInput } from './forms.js';
+import { AgeBasisFields, ageBasisBody, type AgeBasisValues } from './learnerAge.js';
 
 /**
  * A list endpoint's rows, whichever shape it returns them in.
@@ -1092,6 +1093,9 @@ export function NewStudent({
   const [sponsorId, setSponsor] = useState('');
   const [fundingFramework, setFramework] = useState('');
   const [deliveryLocation, setLocation] = useState('');
+  // Only a new student carries an age basis: the edit form's record has no date
+  // of birth to show, and changing one is not part of editing a profile. FX-64.
+  const [age, setAge] = useState<AgeBasisValues>({ dateOfBirth: '', adultAttested: false, guardianName: '', guardianPhone: '' });
 
   useEffect(() => {
     if (!open) return;
@@ -1107,6 +1111,7 @@ export function NewStudent({
     setSponsor(student?.sponsor?.id ?? '');
     setFramework(student?.fundingFramework ?? '');
     setLocation(student?.deliveryLocation ?? '');
+    setAge({ dateOfBirth: '', adultAttested: false, guardianName: '', guardianPhone: '' });
   }, [open, student]);
 
   const { data: institutions } = useQuery({
@@ -1139,6 +1144,7 @@ export function NewStudent({
     sponsorId: funding === 'sponsor' ? sponsorId || null : null,
     fundingFramework: funding === 'scheme' ? fundingFramework || null : null,
     deliveryLocation: deliveryLocation || null,
+    ...(editing ? {} : ageBasisBody(age)),
   });
 
   return (
@@ -1158,6 +1164,7 @@ export function NewStudent({
       <p className="text-2xs text-ink-500">
         One of the two is needed, so somebody already on file is recognised.
       </p>
+      {!editing && <AgeBasisFields values={age} onChange={setAge} />}
       <Row>
         <TextInput
           label="Registration number"

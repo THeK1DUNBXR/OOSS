@@ -30,6 +30,7 @@ import {
   Tabs,
 } from '../components/ui.js';
 import { CreateModal, MoneyInput, NewButton, Row, SelectInput, TextArea, TextInput, messageOf } from '../components/forms.js';
+import { AgeBasisFields, ageBasisBody, type AgeBasisValues } from '../components/learnerAge.js';
 import { FeeMasterCatalog } from './kaizenInvoice/FeeMasterCatalog.js';
 
 export function Courses() {
@@ -420,9 +421,9 @@ export function AssignCourse({
   const [primaryEmail, setEmail] = useState('');
   const [cohortId, setCohortId] = useState('');
   const [institutionId, setInstitutionId] = useState('');
-  const [isMinor, setIsMinor] = useState(false);
-  const [guardianName, setGuardianName] = useState('');
-  const [guardianPhone, setGuardianPhone] = useState('');
+  // The age basis (FX-64): a date of birth decides the minor rule; with none, the
+  // staff member's attestation does, and the guardian is required otherwise.
+  const [age, setAge] = useState<AgeBasisValues>({ dateOfBirth: '', adultAttested: false, guardianName: '', guardianPhone: '' });
 
   return (
     <CreateModal
@@ -438,9 +439,7 @@ export function AssignCourse({
             ? { personId: existingId }
             : { fullName, primaryPhone: primaryPhone || null, primaryEmail: primaryEmail || null }),
           institutionId: institutionId || null,
-          isMinor,
-          guardianName: guardianName || null,
-          guardianPhone: guardianPhone || null,
+          ...ageBasisBody(age),
         })
       }
     >
@@ -507,16 +506,7 @@ export function AssignCourse({
         hint="leave blank for a direct enrolment"
       />
 
-      <label className="flex items-center gap-2 text-sm text-ink-200">
-        <input type="checkbox" checked={isMinor} onChange={(e) => setIsMinor(e.target.checked)} />
-        Under 18
-      </label>
-      {isMinor && (
-        <Row>
-          <TextInput label="Guardian name" value={guardianName} onChange={setGuardianName} />
-          <TextInput label="Guardian phone" required type="tel" value={guardianPhone} onChange={setGuardianPhone} />
-        </Row>
-      )}
+      <AgeBasisFields values={age} onChange={setAge} />
 
       <p className="text-2xs text-ink-500">
         Assigning a course starts the student's timeline: attendance, weekly scores, their questions, their feedback and

@@ -78,7 +78,7 @@
 
 **`apps/api/src/domains/compliance/payroll.ts`** (867 lines) — listPfRateTables:66 · PfRateTableInput:72 · createPfRateTable:83 · currentPfRateTable:92 · listEsiRateTables:114 · EsiRateTableInput:120 · createEsiRateTable:127 · currentEsiRateTable:140 · listPtSlabTables:146 · PtSlabTableInput:152 · createPtSlabTable:159 · currentPtSlabs:174 · listLwfRateTables:180 · LwfRateTableInput:186 · createLwfRateTable:195 · currentLwfRateTable:218 · listMinimumWageTables:224 · MinimumWageTableInput:230 · createMinimumWageTable:237 · listSalaryStructures:267 · SalaryStructureInput:279 · proposeSalaryStructure:291 · approveSalaryStructure:325 · computeInstruction:373 · listPayslips:624 · getPayslip:662 · payslipDocument:677 · exportEcr:686 · exportEsic:722 · settleOffboarding:754 · setEngagementType:820 · BankDetailsInput:834 · setBankDetails:843
 
-**`apps/api/src/domains/compliance/privacy.ts`** (1352 lines) — NoticePurpose:59 · getCurrentNotice:67 · publishNotice:81 · acknowledgeNotice:124 · currentNoticePurposeCodes:154 · resolvePurpose:174 · grantConsent:184 · withdrawConsent:244 · listConsentsForPerson:290 · grantedConsentCodes:306 · MinorGateInput:324 · assertMinorHasGuardian:346 · requireGuardianConsentForMinor:370 · flagMajorityTransitions:415 · raiseDataRequest:448 · listDataRequests:480 · ErasureBlocker:561 · fulfilDataRequest:728 · refuseDataRequest:925 · detectOverdueDataRequests:936 · raiseBreach:965 · transitionBreach:1009 · listBreaches:1039 · runBreachLadder:1054 · runRetentionReport:1089 · getRetention:1118 · runAccessReview:1157 · encryptField:1256 · decryptField:1265 · readRegulated:1278 · backfillEncryptAtRest:1288 · encryptionStatus:1327
+**`apps/api/src/domains/compliance/privacy.ts`** (1366 lines) — NoticePurpose:59 · getCurrentNotice:67 · publishNotice:81 · acknowledgeNotice:124 · currentNoticePurposeCodes:154 · resolvePurpose:174 · grantConsent:184 · withdrawConsent:244 · listConsentsForPerson:290 · grantedConsentCodes:306 · MinorGateInput:324 · parseStatedDateOfBirth:345 · assertMinorHasGuardian:358 · requireGuardianConsentForMinor:384 · flagMajorityTransitions:429 · raiseDataRequest:462 · listDataRequests:494 · ErasureBlocker:575 · fulfilDataRequest:742 · refuseDataRequest:939 · detectOverdueDataRequests:950 · raiseBreach:979 · transitionBreach:1023 · listBreaches:1053 · runBreachLadder:1068 · runRetentionReport:1103 · getRetention:1132 · runAccessReview:1171 · encryptField:1270 · decryptField:1279 · readRegulated:1292 · backfillEncryptAtRest:1302 · encryptionStatus:1341
 
 **`apps/api/src/domains/compliance/tax.ts`** (1073 lines) — fyOf:72 · fyStartYear:76 · fyRange:80 · fyMonths:86 · Quarter:97 · quarterOf:99 · periodsOfQuarter:107 · depositDueDate:112 · ComputeVendorTdsInput:159 · computeVendorTds:170 · waiveVendorTds:237 · listVendorBillsForTds:306 · tdsSectionRates:320 · listApplicabilityRules:326 · setApplicabilityRule:332 · setMsmeTerms:346 · msmeExposure:374 · runMsmeLadder:395 · pendingTdsLiability:436 · listChallans:461 · CreateChallanInput:476 · createChallan:485 · MarkChallanPaidInput:510 · markChallanPaid:521 · runTdsDepositDueJob:567 · upsertDeclaration:626 · SalaryProjection:653 · salaryProjection:675 · applySalaryTds:721 · advanceTaxRate:754 · AdvanceTaxEstimate:761 · advanceTaxEstimateFor:770 · recordAdvanceTaxPayment:812 · TdsReturnRow:834 · prepareTdsReturn:887 · fileTdsReturn:920 · listTdsReturns:942 · tdsReturnDetail:951 · exportTdsReturnCsv:960 · IssueCertificateInput:974 · issueCertificate:988 · listCertificates:1046 · certificateDocument:1056
 
@@ -86,7 +86,7 @@
 
 **`apps/api/src/domains/decisions.ts`** (440 lines) — RaiseDecisionInput:34 · raiseDecision:48 · decisionQueue:170 · DispositionInput:216 · disposeDecision:228 · reviewDecision:378 · decisionCalibration:417
 
-**`apps/api/src/domains/education.ts`** (398 lines) — ENROLLMENT_STATUSES:26 · EnrollmentStatus:27 · enrolStudent:39 · setEnrollmentStatus:313
+**`apps/api/src/domains/education.ts`** (394 lines) — ENROLLMENT_STATUSES:32 · EnrollmentStatus:33 · enrolStudent:35 · setEnrollmentStatus:309
 
 **`apps/api/src/domains/employment.ts`** (1357 lines) — listOrgUnits:77 · createOrgUnit:86 · listJobs:105 · createJob:111 · listPositions:117 · createPosition:132 · transitionPosition:167 · listEmployments:192 · getEmployment:215 · redactRegulatedEmploymentFields:253 · hire:315 · EmploymentTransitionInput:423 · transitionEmployment:438 · setConfirmationState:551 · EmployeeProfileInput:576 · updateEmployeeProfile:660 · proposeAssignment:818 · transitionAssignment:872 · proposeCompensation:918 · transitionCompensation:991 · currentCompensation:1065 · listCompensationForEmployment:1110 · transitionOnboarding:1159 · transitionOffboarding:1186 · detectOverdueConfirmations:1227 · detectMissingCompensation:1266 · headcountByDivision:1315
 
@@ -242,7 +242,7 @@
 
 **`apps/api/src/domains/statutory.ts`** (241 lines) — StatutoryRuleInput:12 · listStatutoryRules:22 · createStatutoryRule:35 · StatutoryRuleNotFoundError:64 · ruleAt:85 · approveStatutoryRule:122 · holdStatutoryRule:209
 
-**`apps/api/src/domains/students.ts`** (531 lines) — STUDENT_STATUSES:42 · StudentStatus:43 · StudentInput:45 · StudentView:74 · createStudent:193 · attachStudentProfile:226 · updateStudent:299 · StudentQuery:374 · listStudents:386 · loadStudent:432 · studentOf:443 · isBillable:481
+**`apps/api/src/domains/students.ts`** (561 lines) — STUDENT_STATUSES:48 · StudentStatus:49 · StudentInput:51 · StudentView:82 · createStudent:201 · attachStudentProfile:234 · updateStudent:329 · StudentQuery:404 · listStudents:416 · loadStudent:462 · studentOf:473 · isBillable:511
 
 **`apps/api/src/domains/surfaces.ts`** (245 lines) — navigationFor:33 · surfaceCompositionFor:88 · universalSearch:167
 
@@ -312,11 +312,11 @@
 
 **`apps/api/src/imports/classify.ts`** (109 lines) — LedgerClass:15 · classifyLedger:19 · isAccountName:77 · divisionFor:88 · JOURNAL_ACCOUNT_NAME:107 · JOURNAL_ACCOUNT_TYPE:108
 
-**`apps/api/src/imports/commit.ts`** (1580 lines) — CommitResult:39 · commitImport:79 · revertImport:729
+**`apps/api/src/imports/commit.ts`** (1617 lines) — CommitResult:39 · commitImport:79 · revertImport:729
 
 **`apps/api/src/imports/detect.ts`** (286 lines) — ImportKind:18 · Detection:47 · findHeaderRow:73 · detectGrid:106 · detectWorkbook:219 · isTallyLedgerSheet:255 · countLedgers:259 · detectSourceFormat:269
 
-**`apps/api/src/imports/extract.ts`** (1095 lines) — StagedRow:17 · Extraction:26 · extractTallyLedger:71 · extractTrialBalance:286 · extractBankStatement:337 · extractEmployees:476 · extractSalary:533 · extractAttendance:590 · extractStudentRegister:708 · extractTemplate:985
+**`apps/api/src/imports/extract.ts`** (1098 lines) — StagedRow:17 · Extraction:26 · extractTallyLedger:71 · extractTrialBalance:286 · extractBankStatement:337 · extractEmployees:476 · extractSalary:533 · extractAttendance:590 · extractStudentRegister:708 · extractTemplate:988
 
 **`apps/api/src/imports/matchName.ts`** (110 lines) — Candidate:16 · MatchResult:21 · normaliseName:44 · matchPerson:81 · matchFailure:104
 
@@ -326,7 +326,7 @@
 
 **`apps/api/src/imports/tallyXml.ts`** (162 lines) — extractTallyXml:51 · looksLikeTallyXml:158
 
-**`apps/api/src/imports/templates.ts`** (394 lines) — TemplateKind:34 · TemplateColumn:47 · TemplateSpec:60 · TEMPLATES:292 · templateBySlug:294 · templateByKind:296 · listTemplates:300 · buildTemplateWorkbook:324 · detectTemplate:370
+**`apps/api/src/imports/templates.ts`** (395 lines) — TemplateKind:34 · TemplateColumn:47 · TemplateSpec:60 · TEMPLATES:293 · templateBySlug:295 · templateByKind:297 · listTemplates:301 · buildTemplateWorkbook:325 · detectTemplate:371
 
 ## API jobs / events / agents
 
@@ -528,9 +528,9 @@
 
 **`apps/api/src/routes/compliance/tax.routes.ts`** (177 lines) — GET /vendor-bills:44 · GET /rates:45 · GET /applicability-rules:46 · GET /msme/exposure:79 · GET /challans:83 · GET /salary/:employmentId/projection:116 · POST /salary/apply/:payrollRunId:117 · GET /returns:135 · GET /returns/:id:136 · GET /certificates:162 · GET /certificates/:id/document:170 · GET /current-fy:174
 
-**`apps/api/src/routes/crm.routes.ts`** (1115 lines) — GET /search:77 · GET /organizations:434 · GET /institutions:435 · GET /organizations/:id:437 · GET /institutions/:id:438 · DELETE /organizations/:id/account:530 · GET ${l.pipelineId}:${l.stageKey}:712 · GET /leads/:id/routing-audit:830 · GET ${o.pipelineId}:${o.stageKey}:860 · GET /forecast:1036
+**`apps/api/src/routes/crm.routes.ts`** (1122 lines) — GET /search:77 · GET /organizations:434 · GET /institutions:435 · GET /organizations/:id:437 · GET /institutions/:id:438 · DELETE /organizations/:id/account:530 · GET ${l.pipelineId}:${l.stageKey}:719 · GET /leads/:id/routing-audit:837 · GET ${o.pipelineId}:${o.stageKey}:867 · GET /forecast:1043
 
-**`apps/api/src/routes/education.routes.ts`** (708 lines) — POST /courses/:id/retire:276
+**`apps/api/src/routes/education.routes.ts`** (711 lines) — POST /courses/:id/retire:276
 
 **`apps/api/src/routes/equity.routes.ts`** (407 lines) — GET /share-classes:35 · GET /holders:78 · GET /holders/:id:79 · GET /ledger:121 · POST /ledger/:id/approve:160 · POST /ledger/:id/effective:170 · GET /cap-table:182 · GET /holdings/me:184 · GET /holdings/:holderId:185 · GET /certificates:189 · GET /certificates/:id:190 · GET /certificates/:id/document:191 · GET /valuations:195 · GET /documents:219 · GET /rounds:264 · GET /rounds/:id:265 · PATCH /rounds/:id:275 · POST /rounds/:id/open:277 · POST /rounds/:id/close:278 · POST /rounds/:id/cancel:279 · GET /rounds/:id/rights:306
 
@@ -628,7 +628,7 @@
 
 **`apps/web/src/pages/Commercial.tsx`** (847 lines) — Offerings:35 · Quotes:198 · Proposals:312 · Agreements:407 · Approvals:578 · WinLoss:663
 
-**`apps/web/src/pages/Courses.tsx`** (529 lines) — Courses:35 · AssignCourse:394
+**`apps/web/src/pages/Courses.tsx`** (519 lines) — Courses:36 · AssignCourse:395
 
 **`apps/web/src/pages/Decisions.tsx`** (181 lines) — Decisions:28
 
@@ -826,7 +826,7 @@
 
 **`apps/web/src/pages/kaizenInvoice/LedgerSheet.tsx`** (278 lines) — LedgerHead:60 · InfoStrip:82 · InfoGrid:104 · InfoRow:108 · ScheduleStrip:117 · DateBoxGrid:133 · DateBoxItem:141 · LedgerTable:152 · TotalsStrip:209 · NoteStrip:224 · SignStrip:245 · Watermark:255 · LedgerSheet:259
 
-**`apps/web/src/pages/kaizenInvoice/NewInvoice.tsx`** (774 lines) — NewInvoice:117
+**`apps/web/src/pages/kaizenInvoice/NewInvoice.tsx`** (811 lines) — NewInvoice:118
 
 **`apps/web/src/pages/kaizenInvoice/PrintPortal.tsx`** (49 lines) — PrintPortal:32
 
