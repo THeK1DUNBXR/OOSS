@@ -252,6 +252,8 @@
 
 ## API platform
 
+**`apps/api/src/platform/approvalPolicySync.ts`** (133 lines) — LADDER_CONVERGENCES:45 · ApprovalPolicySyncResult:54 · reconcileApprovalGatePolicies:62 · reconcileApprovalGatePoliciesForAllTenants:120
+
 **`apps/api/src/platform/approvals.ts`** (411 lines) — ApprovalPolicyContent:36 · DEFAULT_APPROVAL_POLICY:52 · GateSubject:65 · GateResult:88 · evaluateApprovalGate:115 · decideApprovalStep:316
 
 **`apps/api/src/platform/audit.ts`** (443 lines) — AUDIT_ACTIONS:19 · AuditAction:30 · registerGovernedEntities:39 · governedEntities:45 · isGoverned:51 · diffForAudit:126 · computeAuditHash:190 · createChainedAuditRecord:224 · verifyAuditChain:276 · chainUnhashedAuditRecords:322 · AuditWriteInput:344 · auditWrite:353 · auditRegulatedRead:387 · auditExport:410 · auditBulkOperation:425

@@ -18,6 +18,7 @@ import { reconcileNavForAllTenants } from './platform/navSync.js';
 import { addMissingGrantsForAllTenants } from './platform/grantSync.js';
 import { reconcileTenantKinds } from './platform/tenantKind.js';
 import { reconcileMarketingDefaultsForAllTenants } from './platform/marketingSync.js';
+import { reconcileApprovalGatePoliciesForAllTenants } from './platform/approvalPolicySync.js';
 import { assertProductionSecrets } from './lib/auth.js';
 
 /** `CORS_ORIGINS` is comma-separated; an empty entry is a typo, not an origin. */
@@ -243,6 +244,19 @@ if (config.NODE_ENV !== 'test') {
     })
     .catch((error: unknown) => {
       logger.error({ component: 'boot', err: error }, 'Marketing defaults could not be reconciled at boot');
+    });
+
+  // Approval ladders the seed will not rewrite (it skips an existing v1). A
+  // tenant seeded before FX-01 routes IT-policy publishes to a finance_head who
+  // cannot decide them until this publishes the chairman-only version.
+  void reconcileApprovalGatePoliciesForAllTenants()
+    .then(({ tenants, published }) => {
+      if (published > 0) {
+        logger.info({ component: 'boot' }, `Approval ladders reconciled across ${tenants} tenant(s): ${published} new version(s)`);
+      }
+    })
+    .catch((error: unknown) => {
+      logger.error({ component: 'boot', err: error }, 'Approval ladders could not be reconciled at boot');
     });
 
   app.listen(port, () => {
