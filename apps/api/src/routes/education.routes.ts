@@ -30,6 +30,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { auditRegulatedRead } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
 import { enrolStudent, setEnrollmentStatus, ENROLLMENT_STATUSES } from '../domains/education.js';
+import { readRegulated } from '../domains/compliance/privacy.js';
 import {
   listCourses,
   createCourse,
@@ -190,7 +191,12 @@ router.get(
       };
       // Structurally excluded from the response shape, not merely nulled.
       return canSeeRegulated
-        ? { ...base, guardianName: e.guardianName, guardianPhone: e.guardianPhone, guardianEmail: e.guardianEmail }
+        ? {
+            ...base,
+            guardianName: readRegulated(e.guardianName),
+            guardianPhone: readRegulated(e.guardianPhone),
+            guardianEmail: readRegulated(e.guardianEmail),
+          }
         : base;
     });
   }),

@@ -3546,6 +3546,10 @@ model Enrollment {
   guardianPhone String?
   guardianEmail String?
   isMinor       Boolean @default(false)
+  /// The guardian consent this enrolment rests on, when it is a minor's. Null
+  /// for an adult. The consent row is what makes the processing lawful; the
+  /// guardian contact alone is not evidence of consent.
+  guardianConsentId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

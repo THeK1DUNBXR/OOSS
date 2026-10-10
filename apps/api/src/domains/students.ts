@@ -35,7 +35,7 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { findOrCreatePerson, normalisePhone, normaliseEmail } from './identity.js';
-import { requireGuardianConsentForMinor } from './compliance/privacy.js';
+import { encryptField, requireGuardianConsentForMinor } from './compliance/privacy.js';
 
 registerGovernedEntities('edu', ['student_profile']);
 
@@ -266,8 +266,9 @@ export async function attachStudentProfile(personId: string, input: StudentInput
       placeOfSupply: input.placeOfSupply ?? null,
       gstin: input.gstin ?? null,
       attachedById: auth.partyId,
-      guardianName: input.guardianName ?? null,
-      guardianPhone: input.guardianPhone ?? null,
+      // Regulated: encrypted like PAN and bank values (CMP-DPD-004). FX-64.
+      guardianName: input.guardianName?.trim() ? encryptField(input.guardianName.trim()) : null,
+      guardianPhone: input.guardianPhone?.trim() ? encryptField(input.guardianPhone.trim()) : null,
       guardianConsentId,
     },
   });

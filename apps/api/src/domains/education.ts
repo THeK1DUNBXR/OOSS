@@ -18,6 +18,9 @@ import { assertCan } from '../platform/permissions.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { createAffiliation } from './identity.js';
+import { assertMinorHasGuardian, encryptField, readRegulated, requireGuardianConsentForMinor } from './compliance/privacy.js';
+
+type PersonRow = NonNullable<Awaited<ReturnType<typeof prisma.person.findFirst>>>;
 
 export const ENROLLMENT_STATUSES = ['reserved', 'confirmed', 'active', 'completed', 'withdrawn', 'deferred'] as const;
 export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number];
@@ -70,12 +73,12 @@ export async function enrolStudent(input: unknown) {
     collegeName = college.name;
   }
 
-  // A minor's guardian contact is DPDP-covered. Recording a minor without one
-  // is refused rather than accepted and left incomplete, because the missing
-  // field is the one that matters if anything goes wrong.
-  if (body.isMinor && !body.guardianPhone && !body.guardianEmail) {
-    throw ApiError.badRequest('A student under 18 needs a guardian phone or email on the record.');
-  }
+  // Guardian contact is DPDP-covered and stored encrypted. Minority is measured
+  // from the date of birth on file; the caller's `isMinor` is consulted only
+  // where no date of birth is on file (see assertMinorHasGuardian). FX-64.
+  const guardianName = body.guardianName?.trim() || null;
+  const guardianPhone = body.guardianPhone?.trim() || null;
+  const guardianEmail = body.guardianEmail?.trim() || null;
 
   // A student is a person like any other. Somebody who was a lead last year
   // and is a learner now is one record with two roles, not two people.
@@ -98,10 +101,10 @@ export async function enrolStudent(input: unknown) {
   const phoneKey = body.primaryPhone?.replace(/\D/g, '') || null;
   const emailKey = body.primaryEmail?.toLowerCase() || null;
 
-  let person;
+  let existing: PersonRow | null = null;
   if (body.personId) {
-    person = await prisma.person.findFirst({ where: { id: body.personId, tenantId: auth.tenantId } });
-    if (!person) throw ApiError.notFound('Person');
+    existing = await prisma.person.findFirst({ where: { id: body.personId, tenantId: auth.tenantId } });
+    if (!existing) throw ApiError.notFound('Person');
   } else {
     const matches =
       phoneKey || emailKey
@@ -127,19 +130,31 @@ export async function enrolStudent(input: unknown) {
       );
     }
 
-    person =
-      matches[0] ??
-      (await prisma.person.create({
-        data: {
-          tenantId: auth.tenantId,
-          recordCode: await nextRecordCode('PER'),
-          fullName: body.fullName!,
-          ...(emailKey ? { primaryEmail: body.primaryEmail, primaryEmailNormalised: emailKey } : {}),
-          ...(phoneKey ? { primaryPhone: body.primaryPhone, primaryPhoneNormalised: phoneKey } : {}),
-          source: 'enrollment',
-        },
-      }));
+    existing = matches[0] ?? null;
   }
+
+  // Refused before anything is written: a refused enrolment must not leave a
+  // person behind (see the note above). The consent row is written later, once
+  // there is a person to attach it to.
+  const minor = assertMinorHasGuardian({
+    dateOfBirth: existing?.dateOfBirth ?? null,
+    assumeMinor: body.isMinor === true,
+    guardianName,
+    guardianPhone,
+  });
+
+  const person =
+    existing ??
+    (await prisma.person.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('PER'),
+        fullName: body.fullName!,
+        ...(emailKey ? { primaryEmail: body.primaryEmail, primaryEmailNormalised: emailKey } : {}),
+        ...(phoneKey ? { primaryPhone: body.primaryPhone, primaryPhoneNormalised: phoneKey } : {}),
+        source: 'enrollment',
+      },
+    }));
 
   // The same person on the same batch twice is a mistake every time, and it
   // is the mistake a list of near-identical rows is made of.
@@ -152,6 +167,19 @@ export async function enrolStudent(input: unknown) {
     );
   }
 
+  // The consent a minor's enrolment rests on. Written only after every refusal
+  // above has passed, and stamped on the enrolment so the rule can be audited
+  // from the enrolment itself.
+  const guardianConsentId = minor
+    ? await requireGuardianConsentForMinor({
+        personId: person.id,
+        dateOfBirth: person.dateOfBirth,
+        assumeMinor: body.isMinor === true,
+        guardianName,
+        guardianPhone,
+      })
+    : null;
+
   const enrollment = await prisma.enrollment.create({
     data: {
       tenantId: auth.tenantId,
@@ -160,10 +188,11 @@ export async function enrolStudent(input: unknown) {
       cohortId: cohort.id,
       institutionId: body.institutionId ?? null,
       status: 'reserved',
-      isMinor: body.isMinor ?? false,
-      guardianName: body.guardianName ?? null,
-      guardianPhone: body.guardianPhone ?? null,
-      guardianEmail: body.guardianEmail ?? null,
+      isMinor: minor,
+      guardianName: guardianName ? encryptField(guardianName) : null,
+      guardianPhone: guardianPhone ? encryptField(guardianPhone) : null,
+      guardianEmail: guardianEmail ? encryptField(guardianEmail) : null,
+      guardianConsentId,
     },
   });
 
@@ -204,7 +233,14 @@ export async function enrolStudent(input: unknown) {
     confidentiality: enrollment.isMinor ? 'restricted' : 'internal',
     impact: { domains: ['edu'] },
   });
-  return enrollment;
+  // Handed back in the clear to the caller who supplied them; what is stored
+  // is the ciphertext.
+  return {
+    ...enrollment,
+    guardianName: readRegulated(enrollment.guardianName),
+    guardianPhone: readRegulated(enrollment.guardianPhone),
+    guardianEmail: readRegulated(enrollment.guardianEmail),
+  };
 }
 
 /**

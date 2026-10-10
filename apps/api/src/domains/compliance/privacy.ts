@@ -326,23 +326,48 @@ export interface MinorGateInput {
   dateOfBirth: Date | null;
   guardianName?: string | null;
   guardianPhone?: string | null;
+  /**
+   * A caller's claim that the student is a minor. Consulted only when no date
+   * of birth is on file: a measured age always wins, so a claim can never make
+   * somebody with a known adult age subject to the minor's rule, and a claim
+   * with no age to check against is held to the minor's rule rather than
+   * waved through. FX-64.
+   */
+  assumeMinor?: boolean;
 }
 
 /**
- * CMP-DPD-003. If `dateOfBirth` puts the student under 18, refuses unless a
- * guardian name and phone are given, and returns the id of the Consent row
- * recorded for them so the caller can stamp `guardianConsentId`. Returns
- * `null` when the student is not (measurably) a minor — nothing to gate.
+ * Whether the minor rule applies, and if it does, refuses unless a guardian
+ * name and phone are given. Pure, so a caller can refuse before anything is
+ * written; the consent row is written only by `requireGuardianConsentForMinor`.
+ * Returns true when the rule applies.
  */
-export async function requireGuardianConsentForMinor(input: MinorGateInput): Promise<string | null> {
-  if (isMinor(input.dateOfBirth) !== true) return null;
+export function assertMinorHasGuardian(input: Omit<MinorGateInput, 'personId'>): boolean {
+  const measured = isMinor(input.dateOfBirth);
+  const applies = measured === true || (measured === null && input.assumeMinor === true);
+  if (!applies) return false;
 
   if (!input.guardianName?.trim() || !input.guardianPhone?.trim()) {
+    const basis =
+      measured === true
+        ? `This student is under 18 (age ${ageInYears(input.dateOfBirth)})`
+        : 'This student is recorded as a minor, and no date of birth is on file to show otherwise';
     throw ApiError.badRequest(
-      `This student is under 18 (age ${ageInYears(input.dateOfBirth)}). A minor cannot be enrolled without a named guardian and a recorded guardian consent — give a guardian name and phone.`,
+      `${basis}. A minor cannot be enrolled without a named guardian and a recorded guardian consent — give a guardian name and phone.`,
       { reason: 'MINOR_GUARDIAN_CONSENT_REQUIRED' },
     );
   }
+  return true;
+}
+
+/**
+ * CMP-DPD-003. If the minor rule applies, refuses unless a guardian name and
+ * phone are given, and returns the id of the Consent row recorded for them so
+ * the caller can stamp `guardianConsentId`. Returns `null` when the rule does
+ * not apply — nothing to gate.
+ */
+export async function requireGuardianConsentForMinor(input: MinorGateInput): Promise<string | null> {
+  if (!assertMinorHasGuardian(input)) return null;
 
   const auth = currentAuth();
   const consent = await prisma.consent.create({
@@ -354,7 +379,7 @@ export async function requireGuardianConsentForMinor(input: MinorGateInput): Pro
       status: 'granted',
       grantedAt: new Date(),
       channel: 'guardian_intake',
-      evidence: { guardianName: input.guardianName, guardianPhone: input.guardianPhone } as never,
+      evidence: { guardianName: encryptField(input.guardianName!.trim()), guardianPhone: encryptField(input.guardianPhone!.trim()) } as never,
       guardianOfPersonId: input.personId,
     },
   });
@@ -369,7 +394,7 @@ export async function requireGuardianConsentForMinor(input: MinorGateInput): Pro
       channel: 'guardian_intake',
       event: 'granted',
       givenAt: consent.grantedAt,
-      evidence: { guardianName: input.guardianName, guardianPhone: input.guardianPhone } as never,
+      evidence: { guardianName: encryptField(input.guardianName!.trim()), guardianPhone: encryptField(input.guardianPhone!.trim()) } as never,
     },
   });
   await auditWrite({ action: 'create', subjectType: 'consent_ledger', subjectId: consent.id, after: { event: 'granted', purpose: 'education_delivery' } });
@@ -509,7 +534,15 @@ async function assembleAccessExport(tenantId: string, personId: string) {
     person,
     affiliations,
     employments: employmentsDecrypted,
-    studentProfile,
+    // The export is for the data principal, so the guardian values come out in
+    // the clear here, as the employment values above do.
+    studentProfile: studentProfile
+      ? {
+          ...studentProfile,
+          guardianName: readRegulated(studentProfile.guardianName),
+          guardianPhone: readRegulated(studentProfile.guardianPhone),
+        }
+      : null,
     dataMap: [
       { source: 'person', fields: ['fullName', 'email', 'phone', 'dateOfBirth'].map((field) => ({ field, purpose: FIELD_PURPOSES[field] })) },
       { source: 'affiliations', purpose: 'employment|education_delivery', fields: ['roleSlug', 'status', 'effectiveFrom', 'effectiveTo'] },
