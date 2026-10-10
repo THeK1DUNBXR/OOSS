@@ -1,5 +1,6 @@
 import { prisma } from '../platform/db.js';
 import { Prisma } from '@prisma/client';
+import { istDateKey } from '@kaizen/shared';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan } from '../platform/permissions.js';
@@ -52,20 +53,47 @@ export async function createStatutoryRule(input: StatutoryRuleInput) {
   return row;
 }
 
-/** Resolves the tenant's rule in force on a date. Missing rules fail closed. */
-export async function statutoryRuleAt(domain: string, key: string, jurisdiction: string, at: Date) {
+/**
+ * Thrown instead of falling back to a constant. A missing statutory parameter
+ * is a stop, because a silent default is a wrong payslip that surfaces later as
+ * a notice.
+ */
+export class StatutoryRuleNotFoundError extends Error {
+  readonly code = 'STATUTORY_RULE_NOT_FOUND';
+  constructor(
+    readonly key: string,
+    readonly jurisdiction: string,
+    readonly onDate: string,
+  ) {
+    super(`No approved statutory rule for ${key} in ${jurisdiction} effective on ${onDate} (IST).`);
+    this.name = 'StatutoryRuleNotFoundError';
+  }
+}
+
+/**
+ * The APPROVED rule in force on the IST date of `at`. DRAFT and HOLD rows are
+ * never returned, even when their dates cover `at`: a parameter that has not
+ * been signed off must not change a calculation.
+ *
+ * Reads tenant rows only. Platform pack rows (tenantId NULL) need an explicit
+ * decision about reading outside the scoped client, which injects the tenant
+ * into every query (platform/db.ts), so they are not resolved here yet.
+ */
+export async function ruleAt(key: string, jurisdiction: string, at: Date) {
   const auth = currentAuth();
+  const onDate = istDateKey(at);
+  const day = new Date(`${onDate}T00:00:00.000Z`);
   const row = await prisma.statutoryRule.findFirst({
     where: {
       tenantId: auth.tenantId,
-      domain,
       key,
       jurisdiction,
-      effectiveFrom: { lte: at },
-      OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }],
+      status: 'APPROVED',
+      effectiveFrom: { lte: day },
+      OR: [{ effectiveTo: null }, { effectiveTo: { gt: day } }],
     },
     orderBy: { effectiveFrom: 'desc' },
   });
-  if (!row) throw ApiError.unprocessable(`No statutory rule is effective for ${domain}/${key} in ${jurisdiction}.`);
+  if (!row) throw new StatutoryRuleNotFoundError(key, jurisdiction, onDate);
   return row;
 }
