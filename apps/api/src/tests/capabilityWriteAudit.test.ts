@@ -75,3 +75,27 @@ describe('capability writes are audited [FX-22]', () => {
     expect(rows.map((r) => r.action)).toContain('update');
   });
 });
+
+describe('capability writes emit past-tense events [W1 follow-up]', () => {
+  async function eventFor(eventName: string, subjectEntityId: string) {
+    return unscopedPrisma.eventRecord.findFirst({
+      where: { tenantId: await tenantId(), eventName, subjectEntityId },
+    });
+  }
+
+  it('createSkill emits kz.hr.skill.created', async () => {
+    const skill = await asUser('hr@kaizen.co.in', () => createSkill({ name: `W1 event skill ${stamp()}` }));
+    expect(await eventFor('kz.hr.skill.created', skill.id)).not.toBeNull();
+  });
+
+  it('addEvidence emits kz.hr.evidence.added', async () => {
+    const tid = await tenantId();
+    const arun = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'arun@kaizen.co.in' } });
+    const skill = await unscopedPrisma.skill.create({ data: { tenantId: tid, name: `W1 event evidence ${stamp()}` } });
+    const claim = await asUser('hr@kaizen.co.in', () =>
+      assertClaim({ partyId: arun.personId, skillId: skill.id, tier: 'claimed' }),
+    );
+    const evidence = await asUser('hr@kaizen.co.in', () => addEvidence(claim.id, { description: 'Event probe' }));
+    expect(await eventFor('kz.hr.evidence.added', evidence.id)).not.toBeNull();
+  });
+});

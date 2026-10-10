@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { decideApprovalStep } from '../platform/approvals.js';
 import { escalateApprovalStep } from '../jobs/scheduler.js';
 import { pauseAgent } from '../agents/index.js';
+import { asSystem } from '../platform/context.js';
 import { asUser, expectReject, principalFor, tenantId, unscopedPrisma, withFixtureRole } from './helpers.js';
 
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -175,5 +176,21 @@ describe('agent pause and resume are audited', () => {
     expect(row.status).toBe('active');
     const audits = await unscopedPrisma.auditRecord.count({ where: { subjectType: 'agent_principal', subjectId: agentId } });
     expect(audits).toBe(0);
+  });
+});
+
+describe('escalation written by the scheduler is audited as the system principal', () => {
+  it('an escalated step leaves one audit row with actorType system', async () => {
+    const step = await openStep({ slaDueAt: new Date(Date.now() - 86_400_000) });
+    const snapshot = await unscopedPrisma.approvalStep.findFirstOrThrow({ where: { id: step.id } });
+
+    const escalated = await asSystem(step.tenantId, () => escalateApprovalStep(snapshot));
+    expect(escalated).toBe(true);
+
+    const audits = await unscopedPrisma.auditRecord.findMany({
+      where: { tenantId: step.tenantId, subjectType: 'approval_step', subjectId: step.id },
+    });
+    expect(audits).toHaveLength(1);
+    expect(audits[0].actorType).toBe('system');
   });
 });
