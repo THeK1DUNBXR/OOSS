@@ -80,3 +80,75 @@ describe('POST /crm/people/:id/affiliations — access role', () => {
     });
   });
 });
+
+describe('POST /crm/people/:id/affiliations — no escalation', () => {
+  it('refuses an assigner naming a role on their own party, and writes nothing', async () => {
+    const ops = await principalFor('operations@kaizen.co.in');
+    expect(ops.roleSlug).toBe('hr_ops_manager');
+    const before = await unscopedPrisma.affiliation.count({ where: { partyId: ops.partyId } });
+
+    const res = await postAffiliation(ops, ops.partyId, { roleSlug: 'hr_ops_manager' });
+    expect(res.status).toBe(403);
+
+    const after = await unscopedPrisma.affiliation.count({ where: { partyId: ops.partyId } });
+    expect(after).toBe(before);
+  });
+
+  it('refuses hr_ops_manager assigning chairman, and writes nothing', async () => {
+    const ops = await principalFor('operations@kaizen.co.in');
+    const target = await principalFor('arun@kaizen.co.in');
+    const before = await unscopedPrisma.affiliation.count({ where: { partyId: target.partyId } });
+
+    const res = await postAffiliation(ops, target.partyId, { roleSlug: 'chairman' });
+    expect(res.status).toBe(403);
+
+    const after = await unscopedPrisma.affiliation.count({ where: { partyId: target.partyId } });
+    expect(after).toBe(before);
+  });
+
+  it('lets the chairman assign hr_ops_manager, which the chairman wholly covers', async () => {
+    const chairman = await principalFor('chairman@kaizen.co.in');
+    expect(chairman.roleSlug).toBe('chairman');
+    await withFixtureRole({ slug: 'w1a_aff_ops_target', grants: [] }, async (fixture) => {
+      const res = await postAffiliation(chairman, fixture.partyId, { roleSlug: 'hr_ops_manager' });
+      expect(res.ok).toBe(true);
+      const created = (await res.json()) as { roleSlug: string | null };
+      expect(created.roleSlug).toBe('hr_ops_manager');
+    });
+  });
+
+  it('lets an assigner name a role whose grants are all within their own', async () => {
+    const ops = await principalFor('operations@kaizen.co.in');
+    await withFixtureRole({ slug: 'w1a_aff_low', grants: [{ resource: 'people', verbs: ['view'], scope: 'own' }] }, async (low) => {
+      await withFixtureRole({ slug: 'w1a_aff_low_target', grants: [] }, async (target) => {
+        const res = await postAffiliation(ops, target.partyId, { roleSlug: low.roleSlug });
+        expect(res.ok).toBe(true);
+      });
+    });
+  });
+
+  it('refuses a role whose view grant is wider than the assigner holds, though the assigner may assign', async () => {
+    // The route asserts people:edit before createAffiliation asserts people:assign,
+    // so the narrow assigner needs both to reach the coverage check.
+    const grants = [
+      { resource: 'people', verbs: ['edit', 'assign'], scope: 'all' },
+      { resource: 'people', verbs: ['view'], scope: 'own' },
+    ];
+    await withFixtureRole({ slug: 'w1a_aff_narrow', grants }, async (narrow) => {
+      await withFixtureRole(
+        { slug: 'w1a_aff_wide', grants: [{ resource: 'people', verbs: ['view'], scope: 'all' }] },
+        async (wide) => {
+          await withFixtureRole({ slug: 'w1a_aff_wide_target', grants: [] }, async (target) => {
+            const before = await unscopedPrisma.affiliation.count({ where: { partyId: target.partyId } });
+
+            const res = await postAffiliation(narrow, target.partyId, { roleSlug: wide.roleSlug });
+            expect(res.status).toBe(403);
+
+            const after = await unscopedPrisma.affiliation.count({ where: { partyId: target.partyId } });
+            expect(after).toBe(before);
+          });
+        },
+      );
+    });
+  });
+});
