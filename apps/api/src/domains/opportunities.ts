@@ -26,7 +26,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { assertCan, scopeFor } from '../platform/permissions.js';
 import { notify, raiseException } from '../platform/exceptions.js';
 import { entryStage, loadPipelineWithStages, stageFor, validateTransition } from './pipelines.js';
@@ -230,6 +230,10 @@ export async function advanceStage(
   return { opportunity: updated, wonGateSatisfied: Boolean(updated.contractId || updated.mouId) };
 }
 
+// Registered at module load, so this module alone is enough for the handoff's
+// audit write to be accepted (see corporate/board.ts for the failure this avoids).
+registerGovernedEntities('prj', ['project']);
+
 /**
  * Won immediately triggers the handoff opening the PROJECT / ENROLLMENT record
  * where all further delivery tracking happens. Post-award state lives entirely
@@ -251,6 +255,10 @@ async function handoffOnWin(opportunity: { id: string; tenantId: string; title: 
       startDate: new Date(),
     },
   });
+
+  // The handoff creates the project; the education routes that later edit it
+  // are the other writer, and each registers `project` at module load.
+  await auditWrite({ action: 'create', subjectType: 'project', subjectId: project.id, after: project });
 
   await emit({
     name: EVENTS.OPPORTUNITY_HANDED_OFF,

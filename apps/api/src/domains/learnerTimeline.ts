@@ -33,8 +33,12 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan } from '../platform/permissions.js';
-import { auditWrite } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
+
+// daily_progress is written only here; registered at module load so this module
+// alone is enough for the write to be audited (see corporate/board.ts).
+registerGovernedEntities('edu', ['daily_progress']);
 
 /**
  * Loads the enrolment and applies the batch narrowing.
@@ -255,6 +259,13 @@ export async function recordDailyProgress(
           recordedById: auth.partyId,
         },
       });
+  await auditWrite({
+    action: existing ? 'update' : 'create',
+    subjectType: 'daily_progress',
+    subjectId: row.id,
+    before: existing,
+    after: row,
+  });
 
   // The enrolment's headline progress is the mean of the scores recorded, never
   // a field somebody keeps up to date by hand — the same rule attendance already
@@ -266,6 +277,13 @@ export async function recordDailyProgress(
   if (scored.length) {
     const mean = Math.round(scored.reduce((s, r) => s + (r.score ?? 0), 0) / scored.length);
     await prisma.enrollment.update({ where: { id: enrollmentId }, data: { progressPct: mean } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'enrollment',
+      subjectId: enrollmentId,
+      before: { progressPct: enrollment.progressPct },
+      after: { progressPct: mean },
+    });
   }
 
   await emit({

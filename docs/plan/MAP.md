@@ -50,7 +50,7 @@
 
 **`apps/api/src/domains/compliance/calendar.ts`** (345 lines) — resolveOwnerPartyId:36 · GenerateResult:72 · generateObligations:85 · ObligationFilter:153 · listTypes:160 · listObligations:166 · obligationDetail:182 · MarkFiledInput:197 · markFiled:212 · waive:271 · summary:310
 
-**`apps/api/src/domains/compliance/corporate/board.ts`** (144 lines) — listBoardMeetings:16 · getBoardMeeting:26 · createBoardMeeting:37 · updateBoardMeetingMinutes:65 · recordBoardMeeting:79 · addBoardResolution:97
+**`apps/api/src/domains/compliance/corporate/board.ts`** (149 lines) — listBoardMeetings:21 · getBoardMeeting:31 · createBoardMeeting:42 · updateBoardMeetingMinutes:70 · recordBoardMeeting:84 · addBoardResolution:102
 
 **`apps/api/src/domains/compliance/corporate/certificates.ts`** (140 lines) — listCertificates:35 · issueCertificate:44 · verifyCertificate:89 · revokeCertificate:117
 
@@ -60,15 +60,15 @@
 
 **`apps/api/src/domains/compliance/corporate/fema.ts`** (101 lines) — ForeignReceiptInput:18 · setForeignReceiptDetails:25 · detectMissingFircs:65
 
-**`apps/api/src/domains/compliance/corporate/mca.ts`** (61 lines) — listMcaFilings:17 · createMcaFiling:26 · markMcaFilingFiled:38
+**`apps/api/src/domains/compliance/corporate/mca.ts`** (64 lines) — listMcaFilings:20 · createMcaFiling:29 · markMcaFilingFiled:41
 
 **`apps/api/src/domains/compliance/corporate/rateLimit.ts`** (92 lines) — TokenBucketLimiter:20 · loginEmailLimiter:61 · loginRateLimit:79
 
-**`apps/api/src/domains/compliance/corporate/refunds.ts`** (155 lines) — listRefunds:25 · requestRefund:34 · approveRefund:71 · payRefund:98 · currentRefundPolicy:131 · listRefundPolicyVersions:136 · publishRefundPolicy:141
+**`apps/api/src/domains/compliance/corporate/refunds.ts`** (158 lines) — listRefunds:28 · requestRefund:37 · approveRefund:74 · payRefund:101 · currentRefundPolicy:134 · listRefundPolicyVersions:139 · publishRefundPolicy:144
 
-**`apps/api/src/domains/compliance/corporate/registers.ts`** (108 lines) — RegisterEntryInput:16 · listRegisterEntries:23 · createRegisterEntry:41 · currentRegister:75 · exportRegisterCsv:92
+**`apps/api/src/domains/compliance/corporate/registers.ts`** (111 lines) — RegisterEntryInput:19 · listRegisterEntries:26 · createRegisterEntry:44 · currentRegister:78 · exportRegisterCsv:95
 
-**`apps/api/src/domains/compliance/corporate/security.ts`** (199 lines) — securityPolicy:28 · updateSecurityPolicy:37 · assertStepUpForApprove:67 · BackupOutcome:104 · runBackup:118 · listBackups:194
+**`apps/api/src/domains/compliance/corporate/security.ts`** (202 lines) — securityPolicy:31 · updateSecurityPolicy:40 · assertStepUpForApprove:70 · BackupOutcome:107 · runBackup:121 · listBackups:197
 
 **`apps/api/src/domains/compliance/corporate/totp.ts`** (111 lines) — base32Encode:14 · base32Decode:30 · generateTotpSecret:49 · hotpRaw:58 · totpRaw:72 · totp:77 · verifyTotp:86 · otpauthUri:100
 
@@ -80,7 +80,7 @@
 
 **`apps/api/src/domains/compliance/privacy.ts`** (1169 lines) — NoticePurpose:59 · getCurrentNotice:67 · publishNotice:81 · acknowledgeNotice:124 · currentNoticePurposeCodes:154 · resolvePurpose:174 · grantConsent:184 · withdrawConsent:244 · listConsentsForPerson:290 · grantedConsentCodes:306 · MinorGateInput:324 · assertMinorHasGuardian:345 · requireGuardianConsentForMinor:369 · flagMajorityTransitions:414 · raiseDataRequest:447 · listDataRequests:479 · fulfilDataRequest:628 · refuseDataRequest:742 · detectOverdueDataRequests:753 · raiseBreach:782 · transitionBreach:826 · listBreaches:856 · runBreachLadder:871 · runRetentionReport:906 · getRetention:935 · runAccessReview:974 · encryptField:1073 · decryptField:1082 · readRegulated:1095 · backfillEncryptAtRest:1105 · encryptionStatus:1144
 
-**`apps/api/src/domains/compliance/tax.ts`** (1068 lines) — fyOf:67 · fyStartYear:71 · fyRange:75 · fyMonths:81 · Quarter:92 · quarterOf:94 · periodsOfQuarter:102 · depositDueDate:107 · ComputeVendorTdsInput:154 · computeVendorTds:165 · waiveVendorTds:232 · listVendorBillsForTds:301 · tdsSectionRates:315 · listApplicabilityRules:321 · setApplicabilityRule:327 · setMsmeTerms:341 · msmeExposure:369 · runMsmeLadder:390 · pendingTdsLiability:431 · listChallans:456 · CreateChallanInput:471 · createChallan:480 · MarkChallanPaidInput:505 · markChallanPaid:516 · runTdsDepositDueJob:562 · upsertDeclaration:621 · SalaryProjection:648 · salaryProjection:670 · applySalaryTds:716 · advanceTaxRate:749 · AdvanceTaxEstimate:756 · advanceTaxEstimateFor:765 · recordAdvanceTaxPayment:807 · TdsReturnRow:829 · prepareTdsReturn:882 · fileTdsReturn:915 · listTdsReturns:937 · tdsReturnDetail:946 · exportTdsReturnCsv:955 · IssueCertificateInput:969 · issueCertificate:983 · listCertificates:1041 · certificateDocument:1051
+**`apps/api/src/domains/compliance/tax.ts`** (1073 lines) — fyOf:72 · fyStartYear:76 · fyRange:80 · fyMonths:86 · Quarter:97 · quarterOf:99 · periodsOfQuarter:107 · depositDueDate:112 · ComputeVendorTdsInput:159 · computeVendorTds:170 · waiveVendorTds:237 · listVendorBillsForTds:306 · tdsSectionRates:320 · listApplicabilityRules:326 · setApplicabilityRule:332 · setMsmeTerms:346 · msmeExposure:374 · runMsmeLadder:395 · pendingTdsLiability:436 · listChallans:461 · CreateChallanInput:476 · createChallan:485 · MarkChallanPaidInput:510 · markChallanPaid:521 · runTdsDepositDueJob:567 · upsertDeclaration:626 · SalaryProjection:653 · salaryProjection:675 · applySalaryTds:721 · advanceTaxRate:754 · AdvanceTaxEstimate:761 · advanceTaxEstimateFor:770 · recordAdvanceTaxPayment:812 · TdsReturnRow:834 · prepareTdsReturn:887 · fileTdsReturn:920 · listTdsReturns:942 · tdsReturnDetail:951 · exportTdsReturnCsv:960 · IssueCertificateInput:974 · issueCertificate:988 · listCertificates:1046 · certificateDocument:1056
 
 **`apps/api/src/domains/courses.ts`** (475 lines) — CourseFeePlanInput:33 · CourseAddonInput:38 · CourseInput:46 · listCourses:67 · createCourse:179 · updateCourse:250 · retireCourse:350 · AssignCourseInput:419 · assignCourse:443
 
@@ -166,7 +166,7 @@
 
 **`apps/api/src/domains/leads.ts`** (444 lines) — LeadInput:24 · scoreLead:44 · createLead:91 · applyRouting:163 · reassignLead:212 · advanceLeadStage:247 · convertLead:281 · LeadListFilters:338 · listLeads:350 · leadIsUnrouted:392 · detectUntouchedLeads:400
 
-**`apps/api/src/domains/learnerTimeline.ts`** (557 lines) — LearnerLogInput:70 · recordLearnerLog:79 · resolveLearnerLog:171 · recordDailyProgress:221 · TimelineEntry:291 · learnerTimeline:317 · openLearnerItems:514
+**`apps/api/src/domains/learnerTimeline.ts`** (575 lines) — LearnerLogInput:74 · recordLearnerLog:83 · resolveLearnerLog:175 · recordDailyProgress:225 · TimelineEntry:309 · learnerTimeline:335 · openLearnerItems:532
 
 **`apps/api/src/domains/leave.ts`** (604 lines) — listLeaveTypes:44 · createLeaveType:50 · postLeaveTransaction:95 · accrueEntitlement:148 · leaveBalances:186 · leaveLedger:196 · listLeaveRequests:228 · createLeaveRequest:249 · transitionLeaveRequest:331 · recordAttendance:466 · transitionAttendance:528 · attendanceForPeriod:553 · lockAttendancePeriod:571
 
@@ -218,7 +218,7 @@
 
 **`apps/api/src/domains/onboarding.ts`** (244 lines) — OnboardingStep:30 · OnboardingState:56 · onboardingState:64 · hasImported:179 · applyTenantOnboardingTransition:184 · tenantOnboardingState:202
 
-**`apps/api/src/domains/opportunities.ts`** (673 lines) — OpportunityInput:34 · createOpportunity:49 · openRenewalOpportunity:104 · StageChangeResult:127 · advanceStage:132 · ForecastChangeInput:270 · changeForecastCategory:278 · PipelineRollup:406 · forecastRollup:418 · coverageByPosition:503 · detectStageAgeBreaches:527 · demoteStaleCommits:568 · detectChronicRecommits:593 · listOpportunities:624
+**`apps/api/src/domains/opportunities.ts`** (681 lines) — OpportunityInput:34 · createOpportunity:49 · openRenewalOpportunity:104 · StageChangeResult:127 · advanceStage:132 · ForecastChangeInput:278 · changeForecastCategory:286 · PipelineRollup:414 · forecastRollup:426 · coverageByPosition:511 · detectStageAgeBreaches:535 · demoteStaleCommits:576 · detectChronicRecommits:601 · listOpportunities:632
 
 **`apps/api/src/domains/organizations.ts`** (679 lines) — ORGANIZATION_KINDS:42 · OrganizationKind:43 · OrganizationInput:45 · resourceFor:82 · createOrganization:86 · updateOrganization:156 · setOrganizationRoles:194 · reclassifyOrganization:225 · AccountInput:264 · attachAccount:284 · updateAccount:326 · InstitutionProfileInput:360 · attachInstitutionProfile:385 · updateInstitutionProfile:452 · detachAccount:504 · assembleOrganization360:542 · computeRelationshipStatus:630 · isInstitution:672
 
@@ -278,7 +278,7 @@
 
 **`apps/api/src/platform/ledger.ts`** (259 lines) — SourceType:9 · JournalLineInput:22 · PostInput:34 · post:61 · reverse:191 · balanceOf:239
 
-**`apps/api/src/platform/lifecycle.ts`** (141 lines) — TransitionInput:25 · TransitionResult:58 · transition:74 · availableTransitions:124 · assertNotTerminal:132
+**`apps/api/src/platform/lifecycle.ts`** (144 lines) — TransitionInput:25 · TransitionResult:58 · transition:74 · availableTransitions:127 · assertNotTerminal:135
 
 **`apps/api/src/platform/llm.ts`** (300 lines) — LlmRegion:11 · LlmTask:12 · ApprovalClassification:13 · PERSONAL_DATA_FIELDS:22 · ModelGatewayConfig:54 · ModelGatewayCall:75 · ModelGatewayResult:82 · BriefingMetricSpec:91 · normalizeAction:97 · classifyAction:101 · assertActionAllowed:116 · isIndiaRegionRequired:127 · allowInferenceRegion:131 · redactPersonalFields:142 · sanitizeForModel:165 · ModelGateway:183 · createGateway:273 · safeBriefingComposition:277 · assertAllowedSemanticQuery:290
 
@@ -522,7 +522,7 @@
 
 **`apps/api/src/routes/crm.routes.ts`** (1115 lines) — GET /search:77 · GET /organizations:434 · GET /institutions:435 · GET /organizations/:id:437 · GET /institutions/:id:438 · DELETE /organizations/:id/account:530 · GET ${l.pipelineId}:${l.stageKey}:712 · GET /leads/:id/routing-audit:830 · GET ${o.pipelineId}:${o.stageKey}:860 · GET /forecast:1036
 
-**`apps/api/src/routes/education.routes.ts`** (648 lines) — POST /courses/:id/retire:269
+**`apps/api/src/routes/education.routes.ts`** (690 lines) — POST /courses/:id/retire:276
 
 **`apps/api/src/routes/equity.routes.ts`** (407 lines) — GET /share-classes:35 · GET /holders:78 · GET /holders/:id:79 · GET /ledger:121 · POST /ledger/:id/approve:160 · POST /ledger/:id/effective:170 · GET /cap-table:182 · GET /holdings/me:184 · GET /holdings/:holderId:185 · GET /certificates:189 · GET /certificates/:id:190 · GET /certificates/:id/document:191 · GET /valuations:195 · GET /documents:219 · GET /rounds:264 · GET /rounds/:id:265 · PATCH /rounds/:id:275 · POST /rounds/:id/open:277 · POST /rounds/:id/close:278 · POST /rounds/:id/cancel:279 · GET /rounds/:id/rights:306
 

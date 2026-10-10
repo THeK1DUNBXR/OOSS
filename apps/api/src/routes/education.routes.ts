@@ -27,7 +27,7 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, scopeFor } from '../platform/permissions.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { auditRegulatedRead } from '../platform/audit.js';
+import { auditRegulatedRead, auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
 import { enrolStudent, setEnrollmentStatus, ENROLLMENT_STATUSES } from '../domains/education.js';
 import { readRegulated } from '../domains/compliance/privacy.js';
@@ -45,6 +45,13 @@ import {
   learnerTimeline,
   openLearnerItems,
 } from '../domains/learnerTimeline.js';
+
+// The subjects this file writes that no domain module registers. Registered
+// here so that importing the routes is enough for their audit writes to be
+// accepted. `project` is also registered by domains/opportunities.ts, where
+// projects are created; the registry is a set, so the repeat is harmless.
+registerGovernedEntities('edu', ['attendance']);
+registerGovernedEntities('prj', ['project']);
 
 const router = Router();
 
@@ -345,6 +352,7 @@ router.post(
         status: 'planned',
       },
     });
+    await auditWrite({ action: 'create', subjectType: 'cohort', subjectId: cohort.id, after: cohort });
     res.status(201).json(cohort);
     return undefined;
   }),
@@ -405,6 +413,9 @@ router.post(
     });
 
     const sessionDate = new Date(input.sessionDate);
+    const priorAttendance = await prisma.attendance.findUnique({
+      where: { enrollmentId_sessionDate: { enrollmentId: req.params.id, sessionDate } },
+    });
     const record = await prisma.attendance.upsert({
       where: { enrollmentId_sessionDate: { enrollmentId: req.params.id, sessionDate } },
       create: {
@@ -417,6 +428,14 @@ router.post(
       },
       update: { status: input.status, note: input.note ?? null, recordedById: auth.partyId },
     });
+    // `upsert` does not say which branch ran, so the prior read decides the verb.
+    await auditWrite({
+      action: priorAttendance ? 'update' : 'create',
+      subjectType: 'attendance',
+      subjectId: record.id,
+      before: priorAttendance,
+      after: record,
+    });
 
     // Recompute attendance and the risk flag from live records, never a
     // hand-maintained field.
@@ -428,6 +447,13 @@ router.post(
     await prisma.enrollment.update({
       where: { id: req.params.id },
       data: { attendancePct: pct, atRisk, ...(atRisk ? {} : { atRiskNotifiedAt: null }) },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'enrollment',
+      subjectId: enrollment.id,
+      before: { attendancePct: enrollment.attendancePct, atRisk: enrollment.atRisk },
+      after: { attendancePct: pct, atRisk },
     });
 
     if (atRisk && !enrollment.atRiskNotifiedAt) {
@@ -444,7 +470,15 @@ router.post(
         triggerFingerprint: 'learner_at_risk',
         ladderRung: 1,
       });
-      await prisma.enrollment.update({ where: { id: req.params.id }, data: { atRiskNotifiedAt: new Date() } });
+      const notifiedAt = new Date();
+      await prisma.enrollment.update({ where: { id: req.params.id }, data: { atRiskNotifiedAt: notifiedAt } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'enrollment',
+        subjectId: enrollment.id,
+        before: { atRiskNotifiedAt: enrollment.atRiskNotifiedAt },
+        after: { atRiskNotifiedAt: notifiedAt },
+      });
       await emit({
         name: EVENTS.LEARNER_RISK_DETECTED,
         subject: { entityType: 'enrollment', entityId: enrollment.id, recordCode: enrollment.recordCode },
@@ -614,10 +648,14 @@ router.post(
   handler(async (req) => {
     await assertCan({ resource: 'projects', verb: 'edit' });
     const auth = currentAuth();
-    return prisma.project.update({
+    const before = await prisma.project.findFirst({ where: { id: req.params.id } });
+    if (!before) throw ApiError.notFound('Project');
+    const after = await prisma.project.update({
       where: { id: req.params.id },
       data: { handoffAcceptedAt: new Date(), status: 'active', managerPartyId: auth.partyId },
     });
+    await auditWrite({ action: 'update', subjectType: 'project', subjectId: after.id, before, after });
+    return after;
   }),
 );
 
@@ -632,7 +670,9 @@ router.patch(
       targetEndDate: z.string().nullish(),
     });
     const input = schema.parse(req.body);
-    return prisma.project.update({
+    const before = await prisma.project.findFirst({ where: { id: req.params.id } });
+    if (!before) throw ApiError.notFound('Project');
+    const after = await prisma.project.update({
       where: { id: req.params.id },
       data: {
         ...(input.status ? { status: input.status, ...(input.status === 'delivered' ? { actualEndDate: new Date() } : {}) } : {}),
@@ -641,6 +681,8 @@ router.patch(
         ...(input.targetEndDate !== undefined ? { targetEndDate: input.targetEndDate ? new Date(input.targetEndDate) : null } : {}),
       },
     });
+    await auditWrite({ action: 'update', subjectType: 'project', subjectId: after.id, before, after });
+    return after;
   }),
 );
 
