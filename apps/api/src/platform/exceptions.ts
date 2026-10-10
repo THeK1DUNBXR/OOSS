@@ -17,6 +17,7 @@ import {
   type NotificationPriority,
   type SeverityCode,
 } from '@kaizen/shared';
+import { Prisma } from '@prisma/client';
 import { prisma } from './db.js';
 import { currentAuth } from './context.js';
 import { emit } from './eventBus.js';
@@ -169,7 +170,7 @@ const RESOLVE_FROM = ['open', 'acknowledged', 'escalated'] as const;
 async function transitionException(
   id: string,
   from: readonly string[],
-  apply: { state: string; data: Record<string, unknown> },
+  apply: { state: string; data: Prisma.ExceptionRecordUpdateManyMutationInput },
   audit: { before: Record<string, unknown>; after: Record<string, unknown> },
   event: { name: string; newState: Record<string, unknown> },
 ) {
