@@ -248,7 +248,7 @@ apps/api/prisma/schema/
 | MKT-GOV-002 | Every state transition emits kz.mkt.<entity>.<verb> event | All campaign/send/journey/event/template/asset/referral/budget transitions fire canonical events | tests/marketingEvents.test.ts |
 | MKT-GOV-003 | AI-MKT-007 (send approval) and AI-MKT-008 (budget approval) PROHIBITED | AI tier for send/budget approval is PROHIBITED; AgentAction.propose rejects | tests/marketingGovernance.test.ts |
 | MKT-GOV-004 | Marketing never approves own campaign/budget; self-dealing bar applies | platform/approvals.ts reroutes interested approver away from self | tests/marketingGovernance.test.ts |
-| MKT-INT-001 | Inbound webhook accepted only from recognised provider, recorded before processing | POST /public/webhooks/:provider validates provider in [email,sms,whatsapp,forms]; stores MarketingWebhookInbound before parse | tests/marketingIntegration.test.ts |
+| MKT-INT-001 | Inbound webhook accepted only from recognised provider, recorded before processing | POST /api/marketing/public/webhooks/:provider/:endpointToken (routes/marketing/public.routes.ts:61); the token names the tenant, provider in [email,sms,whatsapp,forms] (capture.ts:700); stores MarketingWebhookInbound before parse (capture.ts:813) | tests/marketingIntegration.test.ts |
 | MKT-INT-002 | Provider webhook failure retried, never silently dropped | Webhook parse error recorded in status; job retries; error field populated | tests/marketingIntegration.test.ts |
 | MKT-INT-003 | Channel with providerAdapter null treated as not configured, never silent no-op | Send with providerAdapter=null raises EX-MKT-011, not queued silently | tests/marketingIntegration.test.ts |
 
