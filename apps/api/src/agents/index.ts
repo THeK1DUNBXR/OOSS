@@ -32,6 +32,18 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 // how a human accepting an AI proposal left no trace.
 registerGovernedEntities('agt', ['agent_action']);
 
+// Ordered by how much the tier lets an agent do unattended, least first. The
+// array order in packages/shared/src/ai.ts is not this order: PROHIBITED sits
+// last there but is the most restrictive, so the clamp cannot rely on index.
+const TIER_RANK: Record<AiTierCode, number> = {
+  PROHIBITED: 0,
+  READ: 1,
+  RECOMMEND: 2,
+  DRAFT: 3,
+  EXECUTE_WITH_APPROVAL: 4,
+  AUTONOMOUS_WITHIN_POLICY: 5,
+};
+
 export interface ProposeInput {
   agentKey: string;
   tool: string;
@@ -99,8 +111,12 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
 
   const touchpoint = touchpointFor(input.tool);
   // An individual action may classify lower than the agent's ceiling tier, but
-  // never higher.
-  const tier: AiTierCode = touchpoint?.tier ?? (agent.tier as AiTierCode);
+  // never higher. The clamp is to the more restrictive of the two: taking the
+  // touchpoint's tier whatever the ceiling let a READ agent run an AUTONOMOUS
+  // tool unattended (FX-05).
+  const ceilingTier = agent.tier as AiTierCode;
+  const touchpointTier = touchpoint?.tier ?? ceilingTier;
+  const tier: AiTierCode = TIER_RANK[touchpointTier] <= TIER_RANK[ceilingTier] ? touchpointTier : ceilingTier;
   const tierSpec = AI_TIER_BY_CODE[tier];
 
   if (tier === 'PROHIBITED') {
