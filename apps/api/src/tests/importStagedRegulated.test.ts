@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
-import { asUser, prisma, withFixtureRole } from './helpers.js';
+import { asUser, prisma, unscopedPrisma, withFixtureRole } from './helpers.js';
 import { stageImport, importRows } from '../imports/service.js';
 import { commitImport } from '../imports/commit.js';
 import { TEMPLATES, buildTemplateWorkbook, type TemplateSpec } from '../imports/templates.js';
@@ -143,5 +143,33 @@ describe('Staged import rows and regulated cells', () => {
       importRows(staged.batchId),
     );
     expect(await asUser('chairman@kaizen.co.in', readsAudited)).toBe(before + 1);
+  });
+
+  it('a purge that fails after the commit is logged, and the commit stands', async () => {
+    // A trigger that refuses the blanking write is the real failure, not a
+    // stub: the purge's own transaction is what rolls back.
+    const fn = 'kz_test_refuse_purge';
+    await asUser('chairman@kaizen.co.in', async () => {
+      const staged = await stageMinorStudent(GUARDIAN_PHONE);
+      await unscopedPrisma.$executeRawUnsafe(
+        `CREATE OR REPLACE FUNCTION ${fn}() RETURNS trigger AS $$ BEGIN IF NEW.raw = '{}'::jsonb THEN RAISE EXCEPTION 'purge refused for test'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql`,
+      );
+      await unscopedPrisma.$executeRawUnsafe(
+        `CREATE TRIGGER ${fn} BEFORE UPDATE ON import_rows FOR EACH ROW EXECUTE FUNCTION ${fn}()`,
+      );
+      try {
+        // The row's own error (no batch of that name) is not what this test is
+        // about. What matters is that the commit returns rather than throwing.
+        await commitImport(staged.batchId);
+
+        const batch = await prisma.importBatch.findFirst({ where: { id: staged.batchId } });
+        expect(batch?.status).toBe('committed');
+        const rows = await prisma.importRow.findMany({ where: { batchId: staged.batchId } });
+        expect(rows.some((r) => JSON.stringify(r.raw) !== '{}')).toBe(true);
+      } finally {
+        await unscopedPrisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS ${fn} ON import_rows`);
+        await unscopedPrisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${fn}()`);
+      }
+    });
   });
 });
