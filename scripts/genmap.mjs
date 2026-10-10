@@ -20,7 +20,10 @@ const P = (s) => out.push(s);
 function walk(dir, exts, acc = []) {
   if (!existsSync(dir)) return acc;
   for (const e of readdirSync(dir)) {
-    if (e === 'node_modules' || e === 'dist' || e === '.git') continue;
+    // `worktrees` holds full checkouts made by Claude Code subagents
+    // (.claude/worktrees). Indexing them made a local map differ from CI's
+    // and failed map:check on a clean runner.
+    if (e === 'node_modules' || e === 'dist' || e === '.git' || e === 'worktrees') continue;
     const p = join(dir, e);
     if (statSync(p).isDirectory()) walk(p, exts, acc);
     else if (exts.some((x) => e.endsWith(x))) acc.push(p);

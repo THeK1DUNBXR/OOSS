@@ -570,3 +570,29 @@ describe('Money is withheld, never zeroed', () => {
     expect(err.status).toBe(403);
   });
 });
+
+// ===========================================================================
+// Period boundaries are IST midnights, not 05:30 IST
+// ===========================================================================
+
+describe('Periods are IST civil months — the first five and a half hours belong to the new month', () => {
+  // 2033-04-30T18:00Z is 23:30 IST on 30 April; 2033-04-30T19:00Z is 00:30 IST on 1 May.
+  it('counts a 00:30 IST entry on the 1st in that month, not the one before', async () => {
+    const account = await bankAccount();
+    const category = await categoryNamed('General Expenses');
+    const before = await asUser('chairman@kaizen.co.in', () => profitAndLoss('2033-04'));
+    const beforeMay = await asUser('chairman@kaizen.co.in', () => profitAndLoss('2033-05'));
+
+    await asUser('finance@kaizen.co.in', () =>
+      recordTransaction({ txnDate: new Date('2033-04-30T18:00:00Z'), direction: 'out', amount: 1000, accountId: account.id, categoryId: category.id, note: 'IST-BOUNDARY 23:30 30 Apr' }),
+    );
+    await asUser('finance@kaizen.co.in', () =>
+      recordTransaction({ txnDate: new Date('2033-04-30T19:00:00Z'), direction: 'out', amount: 5000, accountId: account.id, categoryId: category.id, note: 'IST-BOUNDARY 00:30 1 May' }),
+    );
+
+    const april = await asUser('chairman@kaizen.co.in', () => profitAndLoss('2033-04'));
+    const may = await asUser('chairman@kaizen.co.in', () => profitAndLoss('2033-05'));
+    expect(april.expense).toBe(round2(before.expense + 1000));
+    expect(may.expense).toBe(round2(beforeMay.expense + 5000));
+  });
+});

@@ -15,7 +15,7 @@
  */
 
 import type { Prisma } from '@prisma/client';
-import { EVENTS, SPEND_STATUSES, type ChannelKey, type BudgetView, type BudgetVarianceRow, type SpendView, type VendorView } from '@kaizen/shared';
+import { EVENTS, SPEND_STATUSES, istMidnight, istMonthKey, type ChannelKey, type BudgetView, type BudgetVarianceRow, type SpendView, type VendorView } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -83,10 +83,10 @@ async function budgetSpendTotal(tenantId: string, budget: { division: string; pe
   if (rest?.startsWith('Q')) {
     const q = Number(rest.slice(1));
     const startMonth = (q - 1) * 3;
-    spendDateFilter = { gte: new Date(Date.UTC(year, startMonth, 1)), lt: new Date(Date.UTC(year, startMonth + 3, 1)) };
+    spendDateFilter = { gte: istMidnight(year, startMonth + 1, 1), lt: istMidnight(year, startMonth + 4, 1) };
   } else if (rest) {
     const month = Number(rest) - 1;
-    spendDateFilter = { gte: new Date(Date.UTC(year, month, 1)), lt: new Date(Date.UTC(year, month + 1, 1)) };
+    spendDateFilter = { gte: istMidnight(year, month + 1, 1), lt: istMidnight(year, month + 2, 1) };
   }
 
   const agg = await prisma.marketingSpend.aggregate({
@@ -264,8 +264,8 @@ export interface SpendInput {
   vendorBillId?: string | null;
 }
 
-function periodFor(date: Date): string {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+export function periodFor(date: Date): string {
+  return istMonthKey(date);
 }
 
 async function toSpendView(row: {

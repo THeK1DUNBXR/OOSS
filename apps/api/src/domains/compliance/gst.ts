@@ -8,6 +8,8 @@
  * read from a dated rate table, never a constant here.
  */
 
+import { istMidnight, istMonthKey, istYearMonth } from '@kaizen/shared';
+import { recordCodeYear } from '../../platform/recordCode.js';
 import {
   computeGst,
   round2,
@@ -273,7 +275,7 @@ export function registerGstComplianceHooks() {
 
 async function nextRcmNumber(at: Date): Promise<string> {
   const tenantId = currentAuth().tenantId;
-  const year = at.getUTCFullYear();
+  const year = recordCodeYear(at);
   const row = await prisma.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId, entityType: 'CMP:RCM', year } },
     create: { tenantId, entityType: 'CMP:RCM', year, nextSequence: 2 },
@@ -312,7 +314,7 @@ export async function applyReverseCharge(billId: string, input: RcmInput) {
   const interState = Boolean(profile.stateCode && supplierState && supplierState !== profile.stateCode);
   const gst = computeGst([{ taxableValue, gstRate: input.ratePct }], interState);
 
-  const period = `${bill.billDate.getUTCFullYear()}-${String(bill.billDate.getUTCMonth() + 1).padStart(2, '0')}`;
+  const period = istMonthKey(bill.billDate);
   const number = await nextRcmNumber(bill.billDate);
 
   const [, selfInvoice] = await prisma.$transaction([
@@ -661,8 +663,8 @@ export async function importGstr2b(input: Gstr2bImportInput) {
 async function billsForPeriod(period: string): Promise<BookedBill[]> {
   const auth = currentAuth();
   const [year, month] = period.split('-').map(Number);
-  const from = new Date(Date.UTC(year, month - 1, 1));
-  const to = new Date(Date.UTC(year, month, 1));
+  const from = istMidnight(year, month, 1);
+  const to = istMidnight(year, month + 1, 1);
   const bills = await prisma.vendorBill.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, billDate: { gte: from, lt: to } },
     select: { id: true, vendorGstin: true, billNumber: true, subtotal: true, taxAmount: true },
@@ -835,8 +837,9 @@ export async function detectLateGstFilings() {
   const auth = currentAuth();
   const today = new Date();
   const periods = new Set<string>();
+  const { year: todayYear, month: todayMonth } = istYearMonth(today);
   for (let i = 0; i < 3; i += 1) {
-    const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - i, 1));
+    const d = new Date(Date.UTC(todayYear, todayMonth - 1 - i, 1));
     periods.add(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
   }
 

@@ -10,7 +10,7 @@
  * duplicate or a malformed code.
  */
 
-import { formatRecordCode, RECORD_CODE_MAX_SEQUENCE, type RecordTypeCode } from '@kaizen/shared';
+import { formatRecordCode, istYearMonth, RECORD_CODE_MAX_SEQUENCE, type RecordTypeCode } from '@kaizen/shared';
 import { prisma } from './db.js';
 import { currentTenantId } from './context.js';
 import { ApiError } from './errors.js';
@@ -30,9 +30,17 @@ export class SequenceExhaustedError extends Error {
  * event envelope's `occurredAt`, so a record created at the year boundary can
  * never have a code/event year mismatch.
  */
+/**
+ * The year a record code carries, read in IST. 00:30 IST on 1 January is
+ * 19:00 UTC on 31 December; a UTC year would number it last year's sequence.
+ */
+export function recordCodeYear(at: Date): number {
+  return istYearMonth(at).year;
+}
+
 export async function nextRecordCode(type: RecordTypeCode, at: Date = new Date()): Promise<string> {
   const tenantId = currentTenantId();
-  const year = at.getUTCFullYear();
+  const year = recordCodeYear(at);
 
   const row = await prisma.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId, entityType: type, year } },
@@ -52,7 +60,7 @@ export async function nextRecordCode(type: RecordTypeCode, at: Date = new Date()
 /** Allocates a batch atomically — used by seed and backfill paths. */
 export async function nextRecordCodes(type: RecordTypeCode, count: number, at: Date = new Date()): Promise<string[]> {
   const tenantId = currentTenantId();
-  const year = at.getUTCFullYear();
+  const year = recordCodeYear(at);
 
   const row = await prisma.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId, entityType: type, year } },

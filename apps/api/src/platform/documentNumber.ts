@@ -26,7 +26,7 @@
  * issued.
  */
 
-import { financialYearOf, type RecordTypeCode } from '@kaizen/shared';
+import { financialYearOf, istFinancialYearStart, type RecordTypeCode } from '@kaizen/shared';
 import { prisma } from './db.js';
 import { currentTenantId } from './context.js';
 import { ApiError } from './errors.js';
@@ -89,9 +89,13 @@ export function financialYearLabel(at: Date, format: YearFormat = 'short'): stri
 /** The longest a tax invoice number may be before the portal refuses it. */
 export const MAX_INVOICE_NUMBER_LENGTH = 16;
 
-function financialYearStart(at: Date): number {
-  const year = at.getUTCFullYear();
-  return at.getUTCMonth() >= 3 ? year : year - 1;
+/**
+ * IST, because the sequence is keyed by year: a UTC reading on 1 April puts
+ * the first invoices of the new year into the old year's series, which
+ * restarts the count at the wrong number on the portal (FX-40).
+ */
+export function financialYearStart(at: Date): number {
+  return istFinancialYearStart(at);
 }
 
 /**

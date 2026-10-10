@@ -6,6 +6,8 @@
  */
 export const IST = 'Asia/Kolkata' as const;
 
+const IST_OFFSET_MS = (5 * 60 + 30) * 60_000;
+
 const formatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: IST,
   year: 'numeric',
@@ -23,9 +25,37 @@ export function istMonthKey(date: Date): string {
   return `${year}-${String(month).padStart(2, '0')}`;
 }
 
-export function istFinancialYear(date: Date): string {
+/** The IST calendar year and month (1-12) of an instant. */
+export function istYearMonth(date: Date): { year: number; month: number } {
   const { year, month } = istParts(date);
-  const start = month >= 4 ? year : year - 1;
+  return { year, month };
+}
+
+/**
+ * The calendar year a financial year starts in: 2026 for FY2026-27. Starts on
+ * 1 April IST, so 00:30 IST on 1 April is already the new year.
+ */
+export function istFinancialYearStart(date: Date): number {
+  const { year, month } = istParts(date);
+  return month >= 4 ? year : year - 1;
+}
+
+/**
+ * The instant IST midnight starts on a civil date. Period and FY boundaries
+ * are IST midnights; `Date.UTC(y, m, d)` is 05:30 IST, which puts the first
+ * five and a half hours of a new period into the old one.
+ */
+export function istMidnight(year: number, month1: number, day: number): Date {
+  return new Date(Date.UTC(year, month1 - 1, day) - IST_OFFSET_MS);
+}
+
+/** The last millisecond of an IST civil date, for inclusive "on or before" deadlines. */
+export function istEndOfDay(year: number, month1: number, day: number): Date {
+  return new Date(istMidnight(year, month1, day + 1).getTime() - 1);
+}
+
+export function istFinancialYear(date: Date): string {
+  const start = istFinancialYearStart(date);
   return `FY${start}-${String((start + 1) % 100).padStart(2, '0')}`;
 }
 

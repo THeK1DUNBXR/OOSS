@@ -22,6 +22,26 @@ import {
   reconciliationReport,
 } from '../../domains/compliance/books.js';
 import { extractTallyXml } from '../../imports/tallyXml.js';
+import { istEndOfDay, round2 } from '@kaizen/shared';
+
+/**
+ * Writes to an audit record as an operator with database access would. The
+ * trigger is disabled inside one transaction, so a failed update rolls the
+ * DISABLE back with it; the ENABLE in `finally` covers the case where the
+ * transaction machinery itself fails. Table-level, so it blocks other writers
+ * for the window — acceptable only because this suite runs serially.
+ */
+async function tamperAuditRecordBypassingTrigger(id: string, data: Record<string, unknown>) {
+  try {
+    await unscopedPrisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`ALTER TABLE "audit_records" DISABLE TRIGGER "audit_record_immutable"`);
+      await tx.auditRecord.update({ where: { id }, data: data as never });
+      await tx.$executeRawUnsafe(`ALTER TABLE "audit_records" ENABLE TRIGGER "audit_record_immutable"`);
+    });
+  } finally {
+    await unscopedPrisma.$executeRawUnsafe(`ALTER TABLE "audit_records" ENABLE TRIGGER "audit_record_immutable"`);
+  }
+}
 
 let TENANT: string;
 
@@ -144,18 +164,28 @@ describe('CMP-AUD-002 — the AuditRecord hash chain', () => {
     });
 
     // Tampered directly, the way an operator bypassing the application would —
-    // the diff is rewritten but the hash is left as it was.
-    await unscopedPrisma.auditRecord.update({ where: { id: record.id }, data: { diff: { tampered: true } as never } });
+    // the diff is rewritten but the hash is left as it was. The immutability
+    // trigger is what stops the application from doing this; verifyAuditChain
+    // is what catches someone who can disable it. So the trigger is disabled
+    // for exactly this write, inside a transaction, and never weakened.
+    await tamperAuditRecordBypassingTrigger(record.id, { diff: { tampered: true } });
 
     const result = await asUser('finance@kaizen.co.in', () => verifyAuditChain(TENANT));
     expect(result.ok).toBe(false);
     expect(result.brokenAt).toBe(record.id);
 
     // Left tampered for the rest of the suite would break every subsequent
-    // verify call — restore it.
-    await unscopedPrisma.auditRecord.update({ where: { id: record.id }, data: { diff: record.diff as never } });
+    // verify call — restore it, the same way.
+    await tamperAuditRecordBypassingTrigger(record.id, { diff: record.diff });
     const restored = await asUser('finance@kaizen.co.in', () => verifyAuditChain(TENANT));
     expect(restored.ok).toBe(true);
+
+    // The invariant the bypass above exists to get around: a plain update
+    // through the ORM is refused by the live trigger.
+    const refused = await expectReject(() =>
+      unscopedPrisma.auditRecord.update({ where: { id: record.id }, data: { diff: { again: true } as never } }),
+    );
+    expect(refused.message).toContain('audit records are immutable');
   });
 
   it('a viewer without audit:view cannot call verify', async () => {
@@ -375,5 +405,59 @@ describe('Bank reconciliation', () => {
     );
     const result = await asUser('finance@kaizen.co.in', () => matchBankLines(account.id));
     expect(result.unmatchedBank).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ===========================================================================
+// IST period boundaries in the close snapshot and the financial year
+// ===========================================================================
+
+describe('IST boundaries — a closed month does not take the next month\'s first hours', () => {
+  // 2031-04-30T18:00Z is 23:30 IST on 30 April (April); 2031-04-30T19:00Z is 00:30 IST on 1 May (May).
+  it('the April close snapshot includes 23:30 IST on 30 April and excludes 00:30 IST on 1 May', async () => {
+    const account = await bankAccount();
+    const category = await categoryNamed('General Expenses');
+    await asUser('finance@kaizen.co.in', () =>
+      recordTransaction({ txnDate: new Date('2031-04-30T18:00:00Z'), direction: 'out', amount: 1000, accountId: account.id, categoryId: category.id, note: 'CLOSE-BOUNDARY in April' }),
+    );
+    const expected = await asUser('finance@kaizen.co.in', () => trialBalance(istEndOfDay(2031, 4, 30)));
+
+    await asUser('finance@kaizen.co.in', () =>
+      recordTransaction({ txnDate: new Date('2031-04-30T19:00:00Z'), direction: 'out', amount: 5000, accountId: account.id, categoryId: category.id, note: 'CLOSE-BOUNDARY in May' }),
+    );
+    await asUser('finance@kaizen.co.in', () => requestClosePeriod('2031-04'));
+    const closed = await asUser('chairman@kaizen.co.in', () => closePeriod('2031-04'));
+
+    // A purchase is double-entry, so the totals barely move; the bank and expense rows do.
+    // Rows are compared by name, because the ledger's row order is not guaranteed.
+    type Row = { name: string; debit: number; credit: number };
+    const byName = (a: Row, b: Row) => a.name.localeCompare(b.name);
+    const snapshot = closed.snapshot as unknown as { asOf: string; rows: Row[]; totalDebit: number; totalCredit: number };
+    expect(snapshot.asOf).toBe('2031-04-30');
+    expect([...snapshot.rows].sort(byName)).toEqual([...expected.rows].sort(byName));
+    expect(snapshot.totalDebit).toBe(expected.totalDebit);
+    expect(snapshot.totalCredit).toBe(expected.totalCredit);
+    // trialBalance plugs any residual into an 'Opening balances / equity' row, so
+    // this equality holds by construction; it is kept as the tripwire for a
+    // future change that removes the plug without making the ledger balance.
+    expect(snapshot.totalDebit).toBe(snapshot.totalCredit);
+  });
+
+  // Financial year 2034-35 starts at 00:00 IST on 1 April 2034, which is 2034-03-31T18:30Z.
+  // 2034-03-31T19:00Z is 00:30 IST on 1 April, so it belongs to FY2034-35, not FY2033-34.
+  it('a 00:30 IST entry on 1 April is in the new financial year, not the one ending 31 March', async () => {
+    const account = await bankAccount();
+    const category = await categoryNamed('General Expenses');
+    const before = await asUser('chairman@kaizen.co.in', () => statementForFy(2033));
+    const beforeNext = await asUser('chairman@kaizen.co.in', () => statementForFy(2034));
+
+    await asUser('finance@kaizen.co.in', () =>
+      recordTransaction({ txnDate: new Date('2034-03-31T19:00:00Z'), direction: 'out', amount: 700, accountId: account.id, categoryId: category.id, note: 'FY-BOUNDARY 00:30 1 Apr' }),
+    );
+
+    const after = await asUser('chairman@kaizen.co.in', () => statementForFy(2033));
+    const afterNext = await asUser('chairman@kaizen.co.in', () => statementForFy(2034));
+    expect(after.profitAndLoss.expense).toBe(before.profitAndLoss.expense);
+    expect(afterNext.profitAndLoss.expense).toBe(round2(beforeNext.profitAndLoss.expense + 700));
   });
 });

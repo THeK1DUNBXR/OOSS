@@ -185,8 +185,9 @@ say "Installing dependencies"
 pnpm install --silent || die "pnpm install failed."
 ok "dependencies installed"
 
-say "Applying the schema"
-(cd apps/api && pnpm db:push >/dev/null 2>&1) || die "prisma db push failed. Check DATABASE_URL in apps/api/.env"
+say "Applying the migrations"
+# db:push is `migrate deploy` plus generate; the seed below needs the generated client.
+(cd apps/api && pnpm db:push >/dev/null 2>&1) || die "prisma migrate deploy failed. Check DATABASE_URL in apps/api/.env"
 ok "schema applied"
 
 say "Seeding"

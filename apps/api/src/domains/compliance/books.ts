@@ -13,12 +13,14 @@
  * everything else.
  */
 
+import { istFinancialYearStart } from '@kaizen/shared';
 import { createHash } from 'node:crypto';
 import {
   round2,
   monthKey,
   financialYearOf,
   financialYearRange,
+  monthRange,
   isTrading,
   defaultScheduleIIIHeadForCategory,
   defaultScheduleIIIHeadForLedgerGroup,
@@ -129,9 +131,11 @@ export async function closePeriod(period: string) {
     );
   }
 
-  const [year, month] = period.split('-').map(Number);
-  const asOf = new Date(Date.UTC(year, month, 1));
-  const snapshot = await trialBalance(new Date(asOf.getTime() - 1));
+  // The last instant of the IST month. Taking Date.UTC(y, m, 1) - 1ms here
+  // (23:59:59.999 UTC on the last day, i.e. 05:29 IST on the 1st) put the
+  // first five and a half hours of the next month into the closed snapshot.
+  const { to } = monthRange(period);
+  const snapshot = await trialBalance(new Date(to.getTime() - 1));
 
   const updated = await prisma.accountingPeriod.update({
     where: { id: row.id },
@@ -492,7 +496,7 @@ export async function depreciationReport(fyStartYear: number) {
     let itCharge: number | null = null;
     let itOpeningWdv: number | null = null;
     if (block) {
-      const acquisitionFyStart = asset.purchaseDate.getUTCMonth() >= 3 ? asset.purchaseDate.getUTCFullYear() : asset.purchaseDate.getUTCFullYear() - 1;
+      const acquisitionFyStart = istFinancialYearStart(asset.purchaseDate);
       let wdv = cost;
       for (let y = acquisitionFyStart; y <= fyStartYear; y += 1) {
         const { to: yearTo } = financialYearRange(y);

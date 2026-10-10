@@ -17,7 +17,7 @@
  * the health score already tracks.
  */
 
-import { EVENTS, nextDueDates, type ComplianceDueRule, type ComplianceRecurrence } from '@kaizen/shared';
+import { EVENTS, istFinancialYearStart, istMidnight, nextDueDates, type ComplianceDueRule, type ComplianceRecurrence } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -335,9 +335,9 @@ export async function summary() {
   }
 
   const now = new Date();
-  const fyStartYear = now.getUTCMonth() >= 3 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-  const fyStart = new Date(Date.UTC(fyStartYear, 3, 1));
-  const fyEnd = new Date(Date.UTC(fyStartYear + 1, 3, 1));
+  const fyStartYear = istFinancialYearStart(now);
+  const fyStart = istMidnight(fyStartYear, 4, 1);
+  const fyEnd = istMidnight(fyStartYear + 1, 4, 1);
   const filedThisFy = rows.filter((r) => r.status === 'filed' && r.filedAt && r.filedAt >= fyStart && r.filedAt < fyEnd).length;
 
   return { notYetMeasured: false, byStatus, byDomain, filedThisFy };

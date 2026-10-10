@@ -325,38 +325,43 @@ one.
 
 ## Deploying
 
-The API is served from the company's own server in India. The client was
-deployed to Cloudflare as a Worker named **ooss**, which served the built SPA
-and forwarded `/api` to the API; that Worker is being removed.
+The app runs on one server the company owns, in India. Caddy terminates TLS and
+reverse-proxies every request to the API process, and the API serves both
+`/api` and the built client from one origin. `deploy/Caddyfile` is the whole
+front end.
 
 ```bash
-pnpm run build:worker    # builds apps/web/dist
-pnpm run deploy          # builds, then wrangler deploy
-pnpm run preview         # builds, then wrangler dev locally
+pnpm run build                                  # shared, semantic, api, then web (apps/web/dist)
+ZEN_DOMAIN=zen.example.co.in caddy run --config deploy/Caddyfile
+WEB_DIST_DIR=/srv/zen/apps/web/dist \
+NODE_ENV=production DATABASE_URL=... JWT_SECRET=... FIELD_ENCRYPTION_KEY=... \
+  pnpm --filter @kaizen/api start               # node dist/server.js on PORT (default 4000)
 ```
 
-Set **`API_ORIGIN`** on the Worker to the URL of the running API. Until it is
-set, every `/api` call returns a 503 saying exactly that, which the client
-renders — an unconfigured deployment should say what is missing rather than
-fail blankly.
+- **`WEB_DIST_DIR`** turns on client serving. Unset, the API answers `/api` and
+  404s everything else, which is what development wants because Vite serves the
+  client. Set, it serves `/assets` with a one-year immutable cache, serves
+  `index.html` with `no-cache`, and falls back to `index.html` for client routes
+  such as `/people/employees`. An unknown `/api` path still returns the JSON 404.
+- **`ZEN_DOMAIN`** is the public hostname Caddy obtains a certificate for. Ports
+  80 and 443 must reach the box for the ACME challenge.
+- **`API_PORT`** is the port Caddy proxies to (default `4000`, matching `PORT`).
+  The API listens on every interface, so firewall the API port: Caddy should be
+  the only route in.
+- Run the API under a process manager (systemd or similar) so a crash restarts
+  it; Caddy will return 502 in the meantime rather than hang.
 
-### Why the API is not on Cloudflare
+### Why not a hosted edge
 
-Pages and Workers are the same runtime, so this is not a Workers-versus-Pages
-question. The API cannot run on either as written:
+The app is internal, holds personal data of employees and customers, and the
+DPDP cross-border rules make routing it through a third-party edge something
+we have to justify. One server in India, with TLS terminated on that server,
+keeps every request, log line and certificate on our own infrastructure.
 
-- **Prisma reaches PostgreSQL over TCP.** On Cloudflare that needs a driver
-  adapter plus a Hyperdrive binding, and Hyperdrive is created against a
-  specific database in a specific account.
-- **The job scheduler is a long-lived interval.** Cloudflare has no long-lived
-  process; the equivalent is a Cron Trigger or a Durable Object.
-- **Express 4 is built on Node's stream-based req/res**, not on `fetch`.
-
-Porting it is real work — `@prisma/adapter-pg` over Hyperdrive, a fetch-based
-router in place of Express, and the scheduler moved to Cron Triggers. Until
-that is done the API runs on any Node host with a PostgreSQL connection, and
-this Worker points at it. A Worker that deployed green and then failed on every
-request would be worse than an honest split.
+Earlier the client was served from a Cloudflare Worker that forwarded `/api` to
+the API. That split is removed: it put a foreign network between every user
+and the data, and it needed a second deployment target to keep in step with
+the first.
 
 
 ---

@@ -32,6 +32,7 @@ import {
   type PurposeCode,
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma, num } from '../../platform/db.js';
+import { config } from '../../platform/config.js';
 import { currentAuth, type AuthContext } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
@@ -941,15 +942,23 @@ const DEV_ENCRYPTION_KEY = 'kaizen-dev-field-encryption-key-DO-NOT-USE-IN-PRODUC
 let warnedAboutDevKey = false;
 
 function encryptionKey(): Buffer {
-  const secret = process.env.FIELD_ENCRYPTION_KEY;
-  if (!secret && !warnedAboutDevKey) {
-    warnedAboutDevKey = true;
-    // eslint-disable-next-line no-console
-    console.warn(
-      '[compliance/privacy] FIELD_ENCRYPTION_KEY is not set. Falling back to a well-known development key — ' +
-        'regulated fields encrypted under it are not protected against anyone with the source. Set ' +
-        'FIELD_ENCRYPTION_KEY before this reaches a real deployment.',
-    );
+  const secret = config.FIELD_ENCRYPTION_KEY;
+  if (!secret) {
+    // config.ts refuses to boot in production without the key, so this throw
+    // only guards a path that somehow got past the gate. Failing here is
+    // cheaper than encrypting regulated data under a public constant.
+    if (config.NODE_ENV === 'production') {
+      throw new Error('FIELD_ENCRYPTION_KEY is required in production');
+    }
+    if (!warnedAboutDevKey) {
+      warnedAboutDevKey = true;
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[compliance/privacy] FIELD_ENCRYPTION_KEY is not set. Falling back to a well-known development key — ' +
+          'regulated fields encrypted under it are not protected against anyone with the source. Set ' +
+          'FIELD_ENCRYPTION_KEY before this reaches a real deployment.',
+      );
+    }
   }
   return scryptSync(secret ?? DEV_ENCRYPTION_KEY, 'kaizen-field-encryption-v1', 32);
 }
@@ -1048,7 +1057,7 @@ export async function encryptionStatus() {
   }
 
   const lastRun = await prisma.encryptionBackfillRun.findFirst({ where: { tenantId: auth.tenantId }, orderBy: { ranAt: 'desc' } });
-  return { plaintext, encrypted, lastRun, keyConfigured: Boolean(process.env.FIELD_ENCRYPTION_KEY) };
+  return { plaintext, encrypted, lastRun, keyConfigured: Boolean(config.FIELD_ENCRYPTION_KEY) };
 }
 
 export type { PurposeCode };

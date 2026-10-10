@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { extname, join, sep } from 'node:path';
 import routes from './routes/index.js';
 import { contextMiddleware, errorMiddleware } from './lib/http.js';
 import { startScheduler } from './jobs/scheduler.js';
@@ -13,9 +14,14 @@ import { reconcileTenantKinds } from './platform/tenantKind.js';
 import { reconcileMarketingDefaultsForAllTenants } from './platform/marketingSync.js';
 import { assertProductionSecrets } from './lib/auth.js';
 
-export function createApp() {
+export function createApp({ webDistDir = config.WEB_DIST_DIR }: { webDistDir?: string } = {}) {
   const app = express();
 
+  // Caddy is the only thing that reaches this process, over loopback. Without
+  // this every request's req.ip is 127.0.0.1 and the per-IP rate limits in
+  // marketing/capture.ts and compliance/corporate/rateLimit.ts count the whole
+  // internet as one client.
+  app.set('trust proxy', 'loopback');
   app.use(cors());
   app.use(express.json({ limit: '2mb' }));
   app.use(contextMiddleware);
@@ -37,12 +43,50 @@ export function createApp() {
 
   app.use('/api', routes);
 
+  if (webDistDir) serveClient(app, webDistDir);
+
   app.use((_req, res) => {
     res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No such route' } });
   });
 
   app.use(errorMiddleware);
   return app;
+}
+
+/**
+ * The built client, served from the same origin as the API.
+ *
+ * Hashed files under /assets are named by content, so a URL never changes
+ * meaning and can be cached forever. index.html is the one file that names
+ * them, so it must never be cached — a cached shell points at chunks a later
+ * deploy deleted, and the user sees a blank page until a hard reload.
+ *
+ * Client routes fall back to index.html. A path with a file extension, or
+ * anything under /assets, is not a client route: if it is missing it stays a
+ * 404 so a stale tab fails visibly instead of executing HTML as JavaScript.
+ */
+function serveClient(app: express.Express, webDistDir: string): void {
+  app.use(
+    express.static(webDistDir, {
+      index: false,
+      setHeaders(res, filePath) {
+        if (filePath.endsWith(`${sep}index.html`)) {
+          res.setHeader('Cache-Control', 'no-cache');
+        } else if (filePath.includes(`${sep}assets${sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
+    }),
+  );
+
+  const indexHtml = join(webDistDir, 'index.html');
+  app.get(/^(?!\/(api|health)(\/|$)).*$/, (req, res, next) => {
+    if (req.path.startsWith('/assets/') || extname(req.path)) return next();
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(indexHtml, (err) => {
+      if (err) next(err);
+    });
+  });
 }
 
 const port = config.PORT;

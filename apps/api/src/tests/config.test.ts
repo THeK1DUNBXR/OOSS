@@ -7,7 +7,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ConfigError, parseEnv } from '../platform/config.js';
+import { createHmac } from 'node:crypto';
+import { config, ConfigError, parseEnv } from '../platform/config.js';
 
 /** A minimal environment that parses, so each case can break exactly one thing. */
 const valid = {
@@ -93,5 +94,43 @@ describe('environment config', () => {
   it('has no TENANT_ENFORCE_MODE — the tenant gate has no off switch', () => {
     const parsed = parseEnv({ ...valid, TENANT_ENFORCE_MODE: 'warn' }) as Record<string, unknown>;
     expect(parsed.TENANT_ENFORCE_MODE).toBeUndefined();
+  });
+});
+
+describe('field encryption key and marketing unsubscribe secret', () => {
+  it('refuses to boot in production without FIELD_ENCRYPTION_KEY, and names it', () => {
+    // The dev key is a public constant in privacy.ts. Under it, every PAN and
+    // bank value written by a production deploy is encrypted with a key anyone
+    // with the source can compute, so the encryption protects nothing.
+    expect(() => parseEnv({ ...valid, NODE_ENV: 'production' })).toThrow(ConfigError);
+    try {
+      parseEnv({ ...valid, NODE_ENV: 'production' });
+    } catch (err) {
+      expect((err as ConfigError).message).toContain('FIELD_ENCRYPTION_KEY');
+    }
+  });
+
+  it('allows an absent FIELD_ENCRYPTION_KEY outside production, so development still boots', () => {
+    expect(() => parseEnv({ ...valid, NODE_ENV: 'development' })).not.toThrow();
+    expect(() => parseEnv({ ...valid, NODE_ENV: 'test' })).not.toThrow();
+  });
+
+  it('does not sign marketing unsubscribe tokens with the literal dev-secret-change-me', async () => {
+    // Old code: `process.env.MARKETING_UNSUBSCRIBE_SECRET || process.env.JWT_SECRET
+    // || 'dev-secret-change-me'`, so a process with no JWT_SECRET in its
+    // environment signed unsubscribe links with a string printed in this repo.
+    const { unsubscribeToken } = await import('../domains/marketing/preferences.js');
+    const saved = { m: process.env.MARKETING_UNSUBSCRIBE_SECRET, j: process.env.JWT_SECRET };
+    delete process.env.MARKETING_UNSUBSCRIBE_SECRET;
+    delete process.env.JWT_SECRET;
+    try {
+      const token = unsubscribeToken('person-1');
+      const literal = createHmac('sha256', 'dev-secret-change-me').update('person-1').digest('hex');
+      expect(token).not.toBe(literal);
+      expect(token).toBe(createHmac('sha256', config.JWT_SECRET).update('person-1').digest('hex'));
+    } finally {
+      if (saved.m !== undefined) process.env.MARKETING_UNSUBSCRIBE_SECRET = saved.m;
+      if (saved.j !== undefined) process.env.JWT_SECRET = saved.j;
+    }
   });
 });

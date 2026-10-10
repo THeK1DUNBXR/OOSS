@@ -15,6 +15,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { EVENTS, type ChannelKey } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
+import { config } from '../../platform/config.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
@@ -269,7 +270,10 @@ export async function eligibleForChannel(personIds: string[], channelKey: Channe
 // ---------------------------------------------------------------------------
 
 function unsubscribeSecret(): string {
-  return process.env.MARKETING_UNSUBSCRIBE_SECRET || process.env.JWT_SECRET || 'dev-secret-change-me';
+  // JWT_SECRET is mandatory in config.ts, so this chain always ends in a secret
+  // that was supplied from outside. A literal here would be a forgeable link
+  // for every person on every tenant in any process that lost the variable.
+  return config.MARKETING_UNSUBSCRIBE_SECRET ?? config.JWT_SECRET;
 }
 
 /** HMAC-SHA256 over the personId — stable, non-expiring, never reversible. */

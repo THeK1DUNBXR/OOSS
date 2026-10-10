@@ -1,4 +1,5 @@
 import type { JobDefinition, JobResult } from '../scheduler.js';
+import { istYearMonth } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 
@@ -16,7 +17,8 @@ function round2(n: number): number {
 export async function runGratuityAccrual(): Promise<JobResult> {
   const auth = currentAuth();
   const now = new Date();
-  const asOfDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const { year, month } = istYearMonth(now);
+  const asOfDate = new Date(Date.UTC(year, month - 1, 1));
 
   const employments = await prisma.employmentRelationship.findMany({
     where: { tenantId: auth.tenantId, deletedAt: null, engagementType: 'employee', status: { in: ['Active', 'OnLeave', 'NoticePeriod'] } },

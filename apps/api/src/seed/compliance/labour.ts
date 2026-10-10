@@ -4,6 +4,7 @@
  */
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { istYearMonth } from '@kaizen/shared';
 
 /**
  * The three fixed national holidays for the current calendar year, plus a
@@ -14,7 +15,7 @@ import { currentAuth } from '../../platform/context.js';
  */
 async function seedHolidays() {
   const tenantId = currentAuth().tenantId;
-  const year = new Date().getUTCFullYear();
+  const year = istYearMonth(new Date()).year;
   const national = [
     { date: new Date(Date.UTC(year, 0, 26)), name: 'Republic Day' },
     { date: new Date(Date.UTC(year, 7, 15)), name: 'Independence Day' },

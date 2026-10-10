@@ -25,20 +25,15 @@
     "map:check": "node scripts/genmap.mjs --check",
     "jobs:run": "pnpm --filter @kaizen/api jobs:run",
     "setup": "pnpm install && pnpm --filter @kaizen/shared build && pnpm --filter @kaizen/semantic build && pnpm db:push && pnpm db:seed",
-    "build:worker": "pnpm --filter @kaizen/shared build && pnpm --filter @kaizen/web build",
-    "deploy": "pnpm run build:worker && wrangler deploy",
-    "preview": "pnpm run build:worker && wrangler dev",
     "db:wipe": "pnpm --filter @kaizen/api wipe"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260908.1",
     "@eslint/js": "^9.39.5",
     "concurrently": "^9.1.0",
     "eslint": "^9",
     "prettier": "^3.9.6",
     "tailwindcss": "3.4.19",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8",
-    "wrangler": "^4.130.0"
+    "typescript-eslint": "^8"
   }
 }

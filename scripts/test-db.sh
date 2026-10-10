@@ -28,6 +28,8 @@ if ! exists; then
 fi
 
 cd "${ROOT}/apps/api"
-DATABASE_URL="${URL}" npx prisma db push --skip-generate >/dev/null
+# Migrations, not db push: db push never installed the triggers the migration
+# history carries, so the suite would test a schema production does not have.
+DATABASE_URL="${URL}" npx prisma migrate deploy >/dev/null
 DATABASE_URL="${URL}" npx tsx src/tests/fixtures/run.ts >/dev/null
 echo "${DB} ready  ->  ${URL}"

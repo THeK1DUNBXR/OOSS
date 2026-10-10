@@ -7,9 +7,12 @@
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "db:push": "prisma db push --skip-generate && prisma generate",
+    "db:push": "prisma migrate deploy && prisma generate",
+    "db:deploy": "prisma migrate deploy",
+    "db:validate": "DATABASE_URL=postgresql://validate:validate@localhost:5432/validate prisma validate",
+    "db:drift": "test -n \"$SHADOW_DATABASE_URL\" || { echo 'SHADOW_DATABASE_URL is required' >&2; exit 1; } && prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema --shadow-database-url \"$SHADOW_DATABASE_URL\" --exit-code",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma db push --force-reset --skip-generate && prisma generate && tsx src/seed/index.ts",
+    "db:reset": "prisma migrate reset --force --skip-generate && prisma generate && tsx src/seed/index.ts",
     "generate": "prisma generate",
     "seed": "tsx src/seed/index.ts",
     "tenant:create": "tsx src/seed/createTenant.ts",
@@ -53,8 +56,5 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
-  },
-  "prisma": {
-    "schema": "prisma/schema"
   }
 }

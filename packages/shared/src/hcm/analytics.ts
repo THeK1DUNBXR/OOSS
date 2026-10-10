@@ -12,6 +12,7 @@
  */
 
 import { monthKey } from '../finance.js';
+import { istYearMonth } from '../time.js';
 export { monthKey };
 
 export const HCM_ANALYTICS_MODULE = 'analytics' as const;
@@ -68,8 +69,9 @@ export type AnalyticsReport = (typeof ANALYTICS_REPORTS)[number];
 /** The `count` trailing month keys ending at (and including) `asOf`'s month, oldest first. */
 export function trailingMonths(count: number, asOf: Date = new Date()): string[] {
   const out: string[] = [];
+  const { year, month } = istYearMonth(asOf);
   for (let i = count - 1; i >= 0; i -= 1) {
-    out.push(monthKey(new Date(Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth() - i, 1))));
+    out.push(monthKey(new Date(Date.UTC(year, month - 1 - i, 1))));
   }
   return out;
 }

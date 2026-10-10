@@ -62,6 +62,7 @@ import {
   computePaymentSchedule,
   invoicePayable,
   isInterState,
+  istMonthKey,
   isValidGstin,
   paymentTypeFor,
   placeOfSupplyLabel,
@@ -255,6 +256,16 @@ export function totalsOf(invoice: {
 // ---------------------------------------------------------------------------
 
 /**
+ * The GST period an invoice falls in, in IST. A UTC month here checks the lock
+ * against March for an invoice dated 1 April, so an April invoice issued in the
+ * first five and a half hours of the day could be edited after April's GSTR-1
+ * was filed, or refused because March's was (FX-42).
+ */
+export function filingPeriodOf(date: Date): string {
+  return istMonthKey(date);
+}
+
+/**
  * Refuses a change to an invoice whose month has been filed.
  *
  * A filed GSTR-1 is a statement of every outward supply in that month. Editing
@@ -265,7 +276,7 @@ export function totalsOf(invoice: {
  */
 export async function assertPeriodOpen(date: Date, what: string): Promise<void> {
   const auth = currentAuth();
-  const period = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  const period = filingPeriodOf(date);
   const filed = await prisma.gstFiling.findFirst({
     where: { tenantId: auth.tenantId, period, status: 'filed' },
     orderBy: { filedAt: 'desc' },

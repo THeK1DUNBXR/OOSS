@@ -53,6 +53,7 @@ import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { istYearMonth } from '@kaizen/shared';
 import { raiseException } from '../platform/exceptions.js';
 import { capTable, listShareClasses, listValuations } from './equity.js';
 import { companyProfile } from './companyProfile.js';
@@ -98,10 +99,10 @@ async function buildHolderKeyIndex(): Promise<Map<string, HolderKeyMeta>> {
   return out;
 }
 
-function lastCompleteMonthKey(now = new Date()): string {
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth(); // 0-indexed; -1 for last month
-  const d = new Date(Date.UTC(y, m - 1, 1));
+export function lastCompleteMonthKey(now = new Date()): string {
+  // Read in IST: on 1 May at 00:30 IST the UTC month is still April, one month behind.
+  const { year, month } = istYearMonth(now);
+  const d = new Date(Date.UTC(year, month - 2, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 

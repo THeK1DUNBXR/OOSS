@@ -8,12 +8,13 @@
 
 import { prisma } from '../../../platform/db.js';
 import { currentTenantId } from '../../../platform/context.js';
+import { recordCodeYear } from '../../../platform/recordCode.js';
 
 export type CorporatePrefix = 'BM' | 'BR' | 'REG' | 'MCA';
 
 export async function nextCorporateCode(prefix: CorporatePrefix, at: Date = new Date()): Promise<string> {
   const tenantId = currentTenantId();
-  const year = at.getUTCFullYear();
+  const year = recordCodeYear(at);
   const entityType = `CMPCOR:${prefix}`;
 
   const row = await prisma.recordSequence.upsert({

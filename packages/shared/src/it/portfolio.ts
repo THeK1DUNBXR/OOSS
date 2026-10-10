@@ -10,6 +10,7 @@
 
 import { createMachine, type Machine } from '../hr.js';
 import type { ItSummaryBase } from './common.js';
+import { istFinancialYearStart, istMidnight } from '../time.js';
 
 // ---------------------------------------------------------------------------
 // Themes, categories, RAG
@@ -118,9 +119,7 @@ export function formatFy(startYear: number): string {
 
 /** The FY containing `at` (India's April-March year), as `FY2026-27`. */
 export function fyFor(at: Date): string {
-  const y = at.getUTCFullYear();
-  const startYear = at.getUTCMonth() >= 3 ? y : y - 1; // month 3 = April, 0-indexed
-  return formatFy(startYear);
+  return formatFy(istFinancialYearStart(at));
 }
 
 export interface FyWindow {
@@ -133,8 +132,8 @@ export function fyWindow(fy: string): FyWindow {
   const startYear = parseFy(fy);
   if (startYear === null) throw new Error(`Not a financial year in the FYyyyy-yy shape: '${fy}'.`);
   return {
-    start: new Date(Date.UTC(startYear, 3, 1)),
-    end: new Date(Date.UTC(startYear + 1, 3, 1)),
+    start: istMidnight(startYear, 4, 1),
+    end: istMidnight(startYear + 1, 4, 1),
   };
 }
 
