@@ -185,6 +185,49 @@ describe('CMP-DPD-002: erasure inside the statutory retention floor', () => {
     expect(scrubbed.fullName).toBe(`erased:${person.id}`);
     expect(scrubbed.deletedAt).not.toBeNull();
   });
+
+  // FX-62. The floor is measured against a RetentionSchedule row. With no row
+  // the window cannot be measured, so erasure must not proceed on the
+  // assumption that nothing is held. The old code treated "no schedule" as
+  // "no blocker" and erased.
+  it('refuses erasure when the floor applies but no retention schedule exists for the class', async () => {
+    const { person } = await makeEmployee('erase-no-schedule');
+    const saved = await unscopedPrisma.retentionSchedule.findMany({
+      where: { tenantId: TENANT, retentionClass: 'employee_record' },
+    });
+    await unscopedPrisma.retentionSchedule.deleteMany({ where: { tenantId: TENANT, retentionClass: 'employee_record' } });
+    try {
+      const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'erasure' }));
+      const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
+
+      expect(fulfilled.status).toBe('refused');
+      expect(fulfilled.refusalReason).toMatch(/employee_record/);
+      const untouched = await unscopedPrisma.person.findFirstOrThrow({ where: { id: person.id } });
+      expect(untouched.fullName).not.toBe(`erased:${person.id}`);
+      expect(untouched.deletedAt).toBeNull();
+    } finally {
+      await unscopedPrisma.retentionSchedule.createMany({ data: saved });
+    }
+  });
+
+  // FX-62, dependent stores. Erasure blanked Person core and left the
+  // guardian and address on StudentProfile, which are personal values.
+  it('blanks the personal values held on the StudentProfile as well as the Person core', async () => {
+    const person = await asUser('operations@kaizen.co.in', () => makePerson('erase-dependents'));
+    await asUser('operations@kaizen.co.in', () =>
+      prisma.studentProfile.create({
+        data: { tenantId: TENANT, personId: person.id, guardianName: 'Parent Name', guardianPhone: '9800000001', address: '12 Example Street' },
+      }),
+    );
+    const request = await asUser('operations@kaizen.co.in', () => raiseDataRequest({ personId: person.id, kind: 'erasure' }));
+    const fulfilled = await asUser('operations@kaizen.co.in', () => fulfilDataRequest(request.id));
+    expect(fulfilled.status).toBe('fulfilled');
+
+    const profile = await unscopedPrisma.studentProfile.findFirstOrThrow({ where: { personId: person.id } });
+    expect(profile.guardianName).toBeNull();
+    expect(profile.guardianPhone).toBeNull();
+    expect(profile.address).toBeNull();
+  });
 });
 
 // ===========================================================================
