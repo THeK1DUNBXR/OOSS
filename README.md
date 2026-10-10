@@ -325,8 +325,9 @@ one.
 
 ## Deploying
 
-The client deploys to Cloudflare as a Worker named **ooss**, which serves the
-built SPA and forwards `/api` to the API.
+The API is served from the company's own server in India. The client was
+deployed to Cloudflare as a Worker named **ooss**, which served the built SPA
+and forwarded `/api` to the API; that Worker is being removed.
 
 ```bash
 pnpm run build:worker    # builds apps/web/dist

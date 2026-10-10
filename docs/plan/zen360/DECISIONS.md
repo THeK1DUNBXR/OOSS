@@ -263,3 +263,28 @@ Still open after round 6 (supersedes the round 5 list; the round 5 item "VPS pro
 - Reverse proxy and network protection choice.
 - Static public IP availability (office or ISP).
 - Internet and power redundancy.
+
+## Owner answers, round 7 (recorded 2026-10-10)
+
+Answers given by the owner in a seventh round. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, including the round 6 "Still open" list, which is superseded by the list at the end of this section. Where no answer is recorded here, the recommendation above stands.
+
+- **Server operations and off-site backup owner (owner answer).** An internal IT person or team will own server operations and off-site backup. The name is not yet given.
+- **Reverse proxy (owner answer).** Caddy, with automatic TLS and certificate renewal.
+- **Connectivity and power (owner answer).** The office has a static public IP. It has a second internet line and backup power, both.
+  - Implication, not an owner statement: this resolves the static public IP and internet and power redundancy risks listed in round 6. The P7 static egress IP dependency and the single-site power and internet risk are resolved on this answer. Off-site backup and server operations still need the named owner above.
+- **D-03 payments scope (owner answer).** Record only. No online payment gateway.
+- **Cashbook cutover (owner answer).** The cashbook moves to the new ledger at a financial year start (1 April), and only after the trial balance ties to the paisa.
+- **D-09 approvals (owner answer).**
+  - Founder-only approval classes are: payroll run, large payments, and statutory filings.
+  - If an approver is absent for 24 hours, the request escalates to the named alternate stored on the request.
+  - Reserved matters are named by the founder at onboarding and entered as data.
+- **D-11 service-level numbers (owner answer).** Measure first, set later. Build the mechanism, collect about one month of real data, then the owner sets the numbers.
+- **Resend data-hosting check and chat-retention legal check (owner answer).** Both are done by the internal finance head before the first outside user. Internal testing proceeds meanwhile.
+
+Still open after round 7 (supersedes the round 6 list):
+
+- Real statutory sign-off beyond the internal finance head. Statutory values stay DRAFT.
+- Ten CI gates and ledger gate tests, to be drafted by Claude for owner approval. The 00-BRIEF.md file is missing.
+- Name of the internal IT owner for server operations and off-site backup.
+- Large-payment threshold value and other thresholds, to be set at onboarding.
+- Expense receipt storage. Object storage remains deferred.
