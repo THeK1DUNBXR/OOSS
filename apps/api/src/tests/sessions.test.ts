@@ -61,10 +61,13 @@ const post = (path: string, body: unknown, token?: string) =>
   });
 const me = (token: string) => fetch(`${base}/api/auth/me`, { headers: { authorization: `Bearer ${token}` } });
 
+// The refresh secret arrives in the httpOnly cookie; it is surfaced here so the
+// tests can present it the way the browser would.
 async function signIn(): Promise<Issued> {
   const res = await post('/auth/login', { email, password: PASSWORD });
   expect(res.status).toBe(200);
-  return (await res.json()) as Issued;
+  const body = (await res.json()) as Omit<Issued, 'refreshToken'>;
+  return { ...body, refreshToken: cookieValueOf(setCookieOf(res)!) };
 }
 
 describe('0.2 sessions', () => {
@@ -91,13 +94,13 @@ describe('0.2 sessions', () => {
     expect((await post('/auth/logout', {}, issued.token)).status).toBe(200);
 
     expect((await me(issued.token)).status).toBe(401);
-    const refreshed = await post('/auth/refresh', { refreshToken: issued.refreshToken });
+    const refreshed = await refreshWithCookie(issued.refreshToken);
     expect(refreshed.status).toBe(401);
   });
 
   it('rotates the refresh token, and replaying the old one revokes the whole session', async () => {
     const first = await signIn();
-    const res = await post('/auth/refresh', { refreshToken: first.refreshToken });
+    const res = await refreshWithCookie(first.refreshToken);
     expect(res.status).toBe(200);
     const second = (await res.json()) as Issued;
     expect(second.refreshToken).not.toBe(first.refreshToken);
@@ -106,10 +109,12 @@ describe('0.2 sessions', () => {
 
     // Whoever replays a rotated token is either the thief or the victim with a
     // stale copy; both cases mean the family can no longer be trusted.
-    const replay = await post('/auth/refresh', { refreshToken: first.refreshToken });
+    // Past the ten-second grace: this replay is reuse, not a second tab.
+    await unscopedPrisma.$executeRawUnsafe(`UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`, sessionIdOf(first.refreshToken));
+    const replay = await refreshWithCookie(first.refreshToken);
     expect(replay.status).toBe(401);
     expect((await me(second.token)).status).toBe(401);
-    expect((await post('/auth/refresh', { refreshToken: second.refreshToken })).status).toBe(401);
+    expect((await refreshWithCookie(second.refreshToken)).status).toBe(401);
   });
 
   it('throttles login per email in Postgres as well as per address', async () => {
@@ -124,8 +129,10 @@ describe('0.2 sessions', () => {
     expect(isGoverned('session')).toBe(true);
     const issued = await signIn();
     const session = await unscopedPrisma.session.findFirstOrThrow({ where: { jti: (jwt.decode(issued.token) as { jti: string }).jti } });
-    await post('/auth/refresh', { refreshToken: issued.refreshToken });
-    await post('/auth/refresh', { refreshToken: issued.refreshToken }); // replay
+    await refreshWithCookie(issued.refreshToken);
+    // Past the ten-second grace: this replay is reuse, not a second tab.
+    await unscopedPrisma.$executeRawUnsafe(`UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`, sessionIdOf(issued.refreshToken));
+    await refreshWithCookie(issued.refreshToken); // replay
     const actions = (
       await unscopedPrisma.auditRecord.findMany({ where: { tenantId: tid, subjectType: 'session', subjectId: session.id } })
     ).map((r) => r.action);

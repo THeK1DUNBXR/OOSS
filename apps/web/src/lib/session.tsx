@@ -12,6 +12,7 @@ import {
   api,
   chooseEntity as apiChooseEntity,
   getToken,
+  restoreSession,
   login as apiLogin,
   logout as apiLogout,
   onUnauthorized,
@@ -75,7 +76,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!getToken()) {
+    // A page load has no token in memory; the refresh cookie is the way back in.
+    if (!getToken() && !(await restoreSession())) {
       setUser(null);
       setLoading(false);
       return;

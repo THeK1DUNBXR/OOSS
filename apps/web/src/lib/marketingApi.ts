@@ -67,22 +67,24 @@ import type {
   TouchpointView,
   VendorView,
 } from '@kaizen/shared';
-import { ApiClientError, api, getToken } from './api.js';
+import { ApiClientError, api, fetchWithRenewal, getToken } from './api.js';
 
 // ---------------------------------------------------------------------------
 // Purpose-tagged POST — the same request shape as `api.post`, plus one header
 // ---------------------------------------------------------------------------
 
 async function purposePost<T>(path: string, body?: unknown): Promise<T> {
-  const token = getToken();
-  const res = await fetch(`/api${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Purpose': 'marketing',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
+  const res = await fetchWithRenewal(path, () => {
+    const token = getToken();
+    return {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Purpose': 'marketing',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    };
   });
   if (res.status === 204) return undefined as T;
   const text = await res.text();

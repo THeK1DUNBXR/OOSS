@@ -347,3 +347,11 @@ Removes only the rows this batch created in the subsidiary, and clears
 `migratedToTenantId` on the sources — safe only while the subsidiary has not
 yet acquired a life of its own. It refuses outright if the subsidiary carries
 any transaction or register row from outside the batch.
+
+## Deploying the session change (0.2)
+
+Access tokens are now bound to a server-side Session. Tokens issued before this
+deploy carry no `jti` and are refused, so every signed-in user is asked to sign
+in once after the deploy. Expect one re-login per user; there is nothing to
+migrate. Sessions are 30 days from sign-in, and the refresh secret lives in an
+httpOnly cookie scoped to `/api/auth`, which Caddy passes through unchanged.

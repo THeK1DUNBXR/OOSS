@@ -49,6 +49,20 @@ const TOKEN_TTL = '15m';
  * that started it, so a forgotten browser cannot stay signed in indefinitely.
  */
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * How long a rotated-away refresh secret still counts as a second tab rather
+ * than a thief. Two tabs refresh at about the same moment; the second arrives
+ * with the secret the first has just replaced. Ten seconds covers that and
+ * nothing a person would do by hand.
+ */
+const REFRESH_GRACE_MS = 10_000;
+/**
+ * How long a completed second factor counts once the session has it. No step-up
+ * window was defined anywhere in the codebase, so this is set to the access
+ * token's own fifteen minutes: step-up never outlives the token that first
+ * carried it. Owner to confirm; see the 0.2 report.
+ */
+const STEP_UP_WINDOW_MS = 15 * 60 * 1000;
 const MFA_CHALLENGE_TTL = '5m';
 const SELECTION_TOKEN_TTL = '5m';
 
@@ -341,6 +355,7 @@ async function completeLogin(
       jti,
       refreshTokenHash: hashRefreshSecret(refreshSecret),
       expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+      stepUpAt: stepUp ? new Date() : null,
     },
   });
 
@@ -357,14 +372,16 @@ async function completeLogin(
   return {
     token,
     refreshToken: `${session.id}.${refreshSecret}`,
+    refreshExpiresAt: session.expiresAt,
     user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp),
   };
 }
 
 export interface LoginResult {
   token: string;
-  /** `<sessionId>.<secret>`. Rotates on every refresh; the old one is then reuse. */
+  /** `<sessionId>.<secret>`. Set as a cookie by the route, never returned in a body. Rotates on every refresh. */
   refreshToken: string;
+  refreshExpiresAt: Date;
   user: SessionUser;
 }
 
@@ -686,61 +703,121 @@ export async function switchEntity(
   return issued;
 }
 
+/** What a refresh hands back. A grace-window answer carries no new secret, so the cookie is left alone. */
+export interface SessionRefresh {
+  token: string;
+  refreshToken?: string;
+  refreshExpiresAt?: Date;
+  user: SessionUser;
+}
+
+function splitRefreshCookie(value: string): { sessionId: string; secretHash: string } | null {
+  const dot = value.indexOf('.');
+  if (dot <= 0 || dot === value.length - 1) return null;
+  return { sessionId: value.slice(0, dot), secretHash: hashRefreshSecret(value.slice(dot + 1)) };
+}
+
 /**
  * `POST /auth/refresh`. Rotates the refresh secret and issues a new access
  * token under a new jti, which the Session row now records as the live one.
+ * The secret comes from the httpOnly cookie only.
  *
- * Presenting the secret rotated away from is reuse: either the browser was
- * copied, or the legitimate holder is replaying a stale copy. The two cannot
- * be told apart, so the whole session is revoked and the event audited, and
- * the caller signs in again. There is no grace window; a rotated secret is
- * dead the moment it is replaced.
+ * Presenting the secret rotated away from has two readings. Inside
+ * REFRESH_GRACE_MS of the rotation it is the same person's second tab: a new
+ * access token for the same session is issued, with no further rotation and no
+ * cookie change, so the winner's secret keeps working. After the grace it is
+ * reuse: the session is revoked and the event audited.
+ *
+ * Step-up carries through: the stamp on the session counts for the new token
+ * only while its own window is open.
  */
-export async function refreshSession(refreshToken: string): Promise<LoginResult> {
+export async function refreshSession(refreshCookie: string): Promise<SessionRefresh> {
   const refused = () => ApiError.unauthorized('This session has ended. Sign in again.');
-  const dot = refreshToken.indexOf('.');
-  if (dot <= 0 || dot === refreshToken.length - 1) throw refused();
-  const sessionId = refreshToken.slice(0, dot);
-  const presented = hashRefreshSecret(refreshToken.slice(dot + 1));
+  const parts = splitRefreshCookie(refreshCookie);
+  if (!parts) throw refused();
+  const presented = parts.secretHash;
 
-  const session = await unscopedPrisma.session.findUnique({ where: { id: sessionId } });
+  const session = await unscopedPrisma.session.findUnique({ where: { id: parts.sessionId } });
   if (!session || session.revokedAt || session.expiresAt <= new Date()) throw refused();
 
   const user = await unscopedPrisma.user.findFirst({ where: { id: session.userId, status: 'active' } });
   if (!user) throw refused();
 
-  if (presented === session.refreshTokenHash) {
-    const active = user.activeAffiliationId
-      ? await unscopedPrisma.affiliation.findFirst({ where: { id: user.activeAffiliationId, tenantId: user.tenantId, status: 'active' } })
-      : null;
-    if (!active) throw refused();
+  const active = user.activeAffiliationId
+    ? await unscopedPrisma.affiliation.findFirst({ where: { id: user.activeAffiliationId, tenantId: user.tenantId, status: 'active' } })
+    : null;
+  if (!active) throw refused();
 
+  const inGrace = (row: { rotatedAt: Date | null }) => row.rotatedAt !== null && Date.now() - row.rotatedAt.getTime() < REFRESH_GRACE_MS;
+  const stepUp = (row: { stepUpAt: Date | null }) => row.stepUpAt !== null && Date.now() - row.stepUpAt.getTime() < STEP_UP_WINDOW_MS;
+  const sameSessionAnswer = async (row: { jti: string; stepUpAt: Date | null }): Promise<SessionRefresh> => ({
+    token: signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp: stepUp(row), jti: row.jti }),
+    user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp(row)),
+  });
+
+  if (presented === session.refreshTokenHash) {
     const nextSecret = randomBytes(32).toString('base64url');
     const jti = randomUUID();
     // Conditional on the hash still being current, so two requests racing with
-    // the same secret cannot both rotate it: the loser falls through to reuse.
+    // the same secret cannot both rotate it. The loser reads the winner's row below.
     const rotated = await unscopedPrisma.session.updateMany({
       where: { id: session.id, refreshTokenHash: session.refreshTokenHash, revokedAt: null },
-      data: { refreshTokenHash: hashRefreshSecret(nextSecret), previousRefreshTokenHash: session.refreshTokenHash, jti },
+      data: {
+        refreshTokenHash: hashRefreshSecret(nextSecret),
+        previousRefreshTokenHash: session.refreshTokenHash,
+        rotatedAt: new Date(),
+        jti,
+      },
     });
     if (rotated.count === 1) {
-      const token = signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp: false, jti });
+      const token = signToken({ userId: user.id, tenantId: user.tenantId, affiliationId: active.id, stepUp: stepUp(session), jti });
       return {
         token,
         refreshToken: `${session.id}.${nextSecret}`,
-        user: await buildSessionUser(user.id, user.tenantId, active.id, false),
+        refreshExpiresAt: session.expiresAt,
+        user: await buildSessionUser(user.id, user.tenantId, active.id, stepUp(session)),
       };
+    }
+    const fresh = await unscopedPrisma.session.findUnique({ where: { id: session.id } });
+    if (fresh && !fresh.revokedAt && fresh.previousRefreshTokenHash === presented && inGrace(fresh)) {
+      return sameSessionAnswer(fresh);
     }
     throw await refuseReuse(session.id, user.tenantId, user.personId, active.roleSlug);
   }
 
   if (session.previousRefreshTokenHash && presented === session.previousRefreshTokenHash) {
-    throw await refuseReuse(session.id, user.tenantId, user.personId, null);
+    if (inGrace(session)) return sameSessionAnswer(session);
+    throw await refuseReuse(session.id, user.tenantId, user.personId, active.roleSlug);
   }
 
   // A secret this session never issued: refused, and the session is left alone,
   // because whoever sent it has learned nothing about the session.
   throw refused();
+}
+
+/**
+ * `POST /auth/logout` without a bearer token: the access token had expired, so
+ * the refresh cookie is the only thing that names the session. Only the current
+ * or the immediately previous secret counts, so a stale cookie cannot end a
+ * session it no longer belongs to.
+ */
+export async function logoutWithRefreshCookie(refreshCookie: string): Promise<void> {
+  const parts = splitRefreshCookie(refreshCookie);
+  if (!parts) return;
+  const session = await unscopedPrisma.session.findUnique({ where: { id: parts.sessionId } });
+  if (!session || session.revokedAt) return;
+  if (parts.secretHash !== session.refreshTokenHash && parts.secretHash !== session.previousRefreshTokenHash) return;
+
+  const revoked = await unscopedPrisma.session.updateMany({
+    where: { id: session.id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (revoked.count !== 1) return;
+  const user = await unscopedPrisma.user.findFirst({ where: { id: session.userId } });
+  await runWithContext(actingAs(session.tenantId, user?.personId ?? null, null), async () => {
+    await auditWrite({ action: 'logout', subjectType: 'session', subjectId: session.id });
+    await emit({ name: EVENTS.SESSION_REVOKED, subject: { entityType: 'session', entityId: session.id } });
+  });
 }
 
 /** Revokes the session on a reused refresh secret, audits and emits it, and returns the error to throw. */
@@ -912,7 +989,10 @@ export async function switchContext(
   // is re-keyed to a fresh jti, so the Session row is told which token is live.
   const jti = randomUUID();
   await unscopedPrisma.user.update({ where: { id: userId }, data: { activeAffiliationId: affiliationId } });
-  await unscopedPrisma.session.update({ where: { id: sessionId }, data: { jti } });
+  await unscopedPrisma.session.update({
+    where: { id: sessionId },
+    data: { jti, stepUpAt: stepUpProvided ? new Date() : null },
+  });
 
   await asSystem(tenantId, async () => {
     await emit({

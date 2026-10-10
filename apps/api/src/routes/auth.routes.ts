@@ -1,8 +1,9 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { z } from 'zod';
 import {
-  buildSessionUser, changePassword, confirmMfa, enrolMfa, entitiesForToken, identifySwitchCaller, login, logoutSession, refreshSession, switchContext, switchEntity, verifyMfaAndLogin,
+  buildSessionUser, changePassword, confirmMfa, enrolMfa, entitiesForToken, identifySwitchCaller, login, logoutSession, logoutWithRefreshCookie, refreshSession, switchContext, switchEntity, verifyMfaAndLogin,
 } from '../lib/auth.js';
+import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../lib/refreshCookie.js';
 import { onboardingState } from '../domains/onboarding.js';
 import { handler, requireAuth } from '../lib/http.js';
 import { ApiError } from '../platform/errors.js';
@@ -14,6 +15,17 @@ import { loginRateLimit } from '../domains/compliance/corporate/rateLimit.js';
 
 const router = Router();
 
+/**
+ * Moves the refresh secret out of a sign-in result and into its cookie, so the
+ * body the page script receives never carries it. Results without a secret
+ * (the entity picker, a second-factor challenge) pass through unchanged.
+ */
+function sendSession<T extends object>(res: Response, result: T): Omit<T, 'refreshToken' | 'refreshExpiresAt'> {
+  const { refreshToken, refreshExpiresAt, ...body } = result as T & { refreshToken?: string; refreshExpiresAt?: Date };
+  if (refreshToken && refreshExpiresAt) setRefreshCookie(res, refreshToken, refreshExpiresAt);
+  return body as Omit<T, 'refreshToken' | 'refreshExpiresAt'>;
+}
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -23,33 +35,38 @@ const loginSchema = z.object({
 router.post(
   '/login',
   loginRateLimit,
-  handler(async (req) => {
+  handler(async (req, res) => {
     const input = loginSchema.parse(req.body);
-    return login(input.email, input.password, input.tenantSlug);
+    return sendSession(res, await login(input.email, input.password, input.tenantSlug));
   }),
 );
 
 /**
- * Trades a live refresh secret for a new access token and a rotated secret.
- * Unauthenticated by design: the refresh secret is the credential, and the
- * access token it replaces may already have expired.
+ * Trades the refresh cookie for a new access token and a rotated cookie.
+ * Unauthenticated by design: the cookie is the credential, and the access token
+ * it replaces may already have expired. A secret in the body is ignored.
  */
 router.post(
   '/refresh',
-  handler(async (req) => {
-    const schema = z.object({ refreshToken: z.string().min(1) });
-    const input = schema.parse(req.body);
-    return refreshSession(input.refreshToken);
+  handler(async (req, res) => {
+    const cookie = readRefreshCookie(req);
+    if (!cookie) throw ApiError.unauthorized('This session has ended. Sign in again.');
+    return sendSession(res, await refreshSession(cookie));
   }),
 );
 
-/** Ends the caller's session. The access token stops working on its next request. */
+/**
+ * Ends the session. Works with a bearer token, with the refresh cookie alone
+ * (the access token had expired), or with both. Either way the cookie is cleared.
+ */
 router.post(
   '/logout',
-  requireAuth,
-  handler(async (req) => {
-    const auth = req.ctx!.auth!;
-    if (auth.sessionId) await logoutSession(auth.sessionId);
+  handler(async (req, res) => {
+    const auth = req.ctx?.auth;
+    if (auth?.sessionId) await logoutSession(auth.sessionId);
+    const cookie = readRefreshCookie(req);
+    if (cookie) await logoutWithRefreshCookie(cookie);
+    clearRefreshCookie(res);
     return { ok: true };
   }),
 );
@@ -57,10 +74,10 @@ router.post(
 /** Step two of a login for a user with `mfaEnabledAt` set — see `lib/auth.ts`. */
 router.post(
   '/mfa/verify',
-  handler(async (req) => {
+  handler(async (req, res) => {
     const schema = z.object({ challengeToken: z.string(), code: z.string() });
     const input = schema.parse(req.body);
-    return verifyMfaAndLogin(input.challengeToken, input.code);
+    return sendSession(res, await verifyMfaAndLogin(input.challengeToken, input.code));
   }),
 );
 
@@ -146,7 +163,7 @@ router.post(
  */
 router.post(
   '/switch-entity',
-  handler(async (req) => {
+  handler(async (req, res) => {
     const schema = z.object({ tenantId: z.string() });
     const input = schema.parse(req.body);
 
@@ -154,7 +171,7 @@ router.post(
     if (!header?.startsWith('Bearer ')) throw ApiError.unauthorized();
     const caller = await identifySwitchCaller(header.slice(7));
 
-    return switchEntity(caller, input.tenantId);
+    return sendSession(res, await switchEntity(caller, input.tenantId));
   }),
 );
 

@@ -6,44 +6,27 @@
 
 import type { EntitySelectionResponse, SessionUser } from '@kaizen/shared';
 
-const TOKEN_KEY = 'kaizen.token';
-const REFRESH_KEY = 'kaizen.refreshToken';
+/**
+ * The access token lives in memory only. localStorage would hand it to any
+ * script on the page, and it is re-issued from the httpOnly refresh cookie on
+ * every page load (restoreSession), so nothing is lost by not persisting it.
+ */
+let accessToken: string | null = null;
+
+/** Earlier builds kept the token and refresh secret in localStorage. Clear them once. */
+try {
+  localStorage.removeItem('kaizen.token');
+  localStorage.removeItem('kaizen.refreshToken');
+} catch {
+  /* private window */
+}
 
 export function getToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  return accessToken;
 }
 
-/** Clearing the access token also forgets the refresh secret: a signed-out browser must not keep the means to sign back in. */
 export function setToken(token: string | null) {
-  try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(REFRESH_KEY);
-    }
-  } catch {
-    /* private window */
-  }
-}
-
-function getRefreshToken(): string | null {
-  try {
-    return localStorage.getItem(REFRESH_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function setRefreshToken(refreshToken: string) {
-  try {
-    localStorage.setItem(REFRESH_KEY, refreshToken);
-  } catch {
-    /* private window */
-  }
+  accessToken = token;
 }
 
 export interface ApiFailure {
@@ -92,31 +75,57 @@ const NO_REFRESH_PATHS = new Set([...AUTH_PATHS, '/auth/refresh', '/auth/logout'
 
 /**
  * One refresh in flight at a time. Five requests failing together on an expired
- * access token must present the same secret once; a second presentation of a
- * rotated secret is read by the server as reuse and ends the session.
+ * access token must present the cookie once. Across tabs the Web Locks API
+ * serialises the refresh, so a second tab waits and then presents the cookie
+ * the first tab has already rotated, rather than racing it (the server's grace
+ * window covers the case where no lock is available).
  */
 let refreshing: Promise<boolean> | null = null;
 
-function refreshAccessToken(): Promise<boolean> {
-  if (!refreshing) {
-    refreshing = (async () => {
-      const refreshToken = getRefreshToken();
-      if (!refreshToken) return false;
-      const res = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
-      if (!res.ok) return false;
-      const issued = (await res.json()) as SessionIssued;
-      setToken(issued.token);
-      if (issued.refreshToken) setRefreshToken(issued.refreshToken);
-      return true;
-    })().finally(() => {
-      refreshing = null;
+async function refreshOnce(): Promise<boolean> {
+  try {
+    // The cookie is sent by the browser; the body carries nothing the server reads.
+    const res = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
     });
+    if (!res.ok) return false;
+    const issued = (await res.json()) as SessionIssued;
+    setToken(issued.token);
+    return true;
+  } catch {
+    return false;
   }
+}
+
+function refreshAccessToken(): Promise<boolean> {
+  if (refreshing) return refreshing;
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  const viaLock = async (): Promise<boolean> => (locks ? await locks.request('kz-refresh', refreshOnce) : await refreshOnce());
+  const pending = viaLock();
+  refreshing = pending.finally(() => {
+    refreshing = null;
+  });
   return refreshing;
+}
+
+/** Renews the access token from the refresh cookie, for a page load that has none in memory. */
+export function restoreSession(): Promise<boolean> {
+  return refreshAccessToken();
+}
+
+/**
+ * fetch with one renewal: a 401 on an authorised call refreshes the access
+ * token once and repeats the call. Used by the helpers that cannot go through
+ * request() because they stream a file either way.
+ */
+export async function fetchWithRenewal(path: string, build: () => RequestInit): Promise<Response> {
+  const first = await fetch(`/api${path}`, build());
+  if (first.status !== 401 || NO_REFRESH_PATHS.has(path)) return first;
+  if (!(await refreshAccessToken())) return first;
+  return fetch(`/api${path}`, build());
 }
 
 async function request<T>(path: string, init?: RequestInit, tokenOverride?: string, retried = false): Promise<T> {
@@ -182,9 +191,9 @@ export const api = {
    * which is what an unauthenticated anchor would have saved.
    */
   download: async (path: string, fallbackName: string): Promise<void> => {
-    const token = getToken();
-    const res = await fetch(`/api${path}`, {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    const res = await fetchWithRenewal(path, () => {
+      const token = getToken();
+      return { headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) } };
     });
     if (!res.ok) {
       const text = await res.text();
@@ -222,16 +231,18 @@ export const api = {
    * because the default JSON header would be a lie about the bytes.
    */
   upload: async <T>(path: string, file: File, headers: Record<string, string> = {}): Promise<T> => {
-    const token = getToken();
-    const res = await fetch(`/api${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': file.type || 'application/octet-stream',
-        'X-File-Name': encodeHeader(file.name),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...headers,
-      },
-      body: file,
+    const res = await fetchWithRenewal(path, () => {
+      const token = getToken();
+      return {
+        method: 'POST',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'X-File-Name': encodeHeader(file.name),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...headers,
+        },
+        body: file,
+      };
     });
 
     const text = await res.text();
@@ -265,11 +276,7 @@ export type SessionIssued = { token: string; refreshToken?: string; user: Sessio
 export type LoginOutcome = SessionIssued | MfaRequired | EntitySelectionResponse;
 
 function storeIfSession<T extends SessionIssued | MfaRequired | EntitySelectionResponse>(res: T): T {
-  if ('token' in res) {
-    setToken(res.token);
-    const { refreshToken } = res as Partial<SessionIssued>;
-    if (refreshToken) setRefreshToken(refreshToken);
-  }
+  if ('token' in res) setToken(res.token);
   return res;
 }
 
@@ -312,36 +319,19 @@ export async function switchContext(affiliationId: string, stepUpPassword?: stri
 }
 
 /**
- * Ends the session on the server as well as in the browser. The access token
- * may already have expired, in which case the refresh secret is the only thing
- * left that can name the session, so it is spent once to reach the revoke call.
+ * Ends the session on the server as well as in the browser. The server revokes
+ * whichever it is given: the bearer token's session, or the refresh cookie's
+ * when the access token had already expired. It also clears the cookie.
  */
 export function logout() {
   const token = getToken();
-  const refreshToken = getRefreshToken();
   setToken(null);
-  void revokeSession(token, refreshToken);
-}
-
-async function revokeSession(token: string | null, refreshToken: string | null): Promise<void> {
-  const revoke = (bearer: string) =>
-    fetch('/api/auth/logout', {
-      method: 'POST',
-      keepalive: true,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bearer}` },
-    });
-  try {
-    if (token && (await revoke(token)).ok) return;
-    if (!refreshToken) return;
-    const res = await fetch('/api/auth/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (res.ok) await revoke(((await res.json()) as SessionIssued).token);
-  } catch {
-    // Offline: the server session still lapses at its own thirty-day limit.
-  }
+  void fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'same-origin',
+    keepalive: true,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  }).catch(() => undefined);
 }
 
 // ---------------------------------------------------------------------------

@@ -1242,6 +1242,15 @@ model Session {
   /// keep refreshing, so the whole session is revoked (lib/auth.ts refreshSession).
   previousRefreshTokenHash String?
 
+  /// When the secret was last rotated. A replay of `previousRefreshTokenHash`
+  /// inside a short grace is a second tab, not a thief (lib/auth.ts refreshSession).
+  rotatedAt DateTime?
+
+  /// When this session last proved a second factor. Carried through a refresh
+  /// only while its own window is open, so step-up does not lapse with the
+  /// fifteen-minute access token.
+  stepUpAt DateTime?
+
   issuedAt  DateTime  @default(now())
   expiresAt DateTime
   revokedAt DateTime?
