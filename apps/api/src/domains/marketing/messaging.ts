@@ -873,10 +873,7 @@ export async function dispatchSend(id: string): Promise<SendView> {
 
       if (result.status === 'sent') {
         anySent = true;
-        await prisma.marketingSendRecipient.update({
-          where: { id: recipient.id },
-          data: { status: 'sent', providerMessageId: result.providerMessageId ?? null },
-        });
+        await markRecipientDispatched(recipient.id, result.providerMessageId ?? null);
 
         const openLead = await prisma.lead.findFirst({ where: { tenantId: send.tenantId, personId: person.id, leadStatus: 'open' } });
         await logInteraction({
@@ -940,6 +937,20 @@ export function advancesRecipientStatus(current: string, next: string): boolean 
   const from = RECIPIENT_STATUS_RANK[current] ?? -1;
   if (from >= TERMINAL_RECIPIENT_RANK) return false;
   return to > from;
+}
+
+/**
+ * Records a successful provider hand-off. Only a queued recipient can move to
+ * sent: a second dispatch pass that read the row before it was delivered must
+ * not regress it, and must not replace the providerMessageId the delivery
+ * webhooks match on (FX-50 follow-up).
+ */
+export async function markRecipientDispatched(recipientId: string, providerMessageId: string | null): Promise<void> {
+  const statusesBeforeSent = Object.keys(RECIPIENT_STATUS_RANK).filter((s) => advancesRecipientStatus(s, 'sent'));
+  await prisma.marketingSendRecipient.updateMany({
+    where: { id: recipientId, status: { in: statusesBeforeSent } },
+    data: { status: 'sent', providerMessageId },
+  });
 }
 
 /**
