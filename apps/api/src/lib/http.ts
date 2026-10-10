@@ -131,7 +131,10 @@ export function errorMiddleware(err: unknown, req: Request, res: Response, _next
   // express.json and express.urlencoded reject a bad body before any route runs,
   // with an error that carries a `type` but is not an ApiError. The caller caused
   // these, so they are 4xx with fixed text. Left to the 500 branch they would
-  // page on-call for every client that sends malformed JSON.
+  // page on-call for every client that sends malformed JSON. They are returned
+  // here without logging: on Node 22 the parser's message can carry a fragment
+  // of the body, which is personal data, and the request line already records
+  // the status.
   const errType = typeof err === 'object' && err !== null ? (err as { type?: unknown }).type : undefined;
   if (errType === 'entity.parse.failed') {
     res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'The request body is not valid JSON.', requestId } });

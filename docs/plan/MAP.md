@@ -200,7 +200,7 @@
 
 **`apps/api/src/domains/marketing/campaigns.ts`** (792 lines) — MarketingPolicy:43 · getMarketingPolicy:61 · setMarketingPolicy:68 · CampaignCreateInput:83 · CampaignUpdateInput:104 · CampaignListFilters:106 · recomputeCampaignActual:226 · createCampaign:253 · listCampaigns:303 · getCampaign:343 · updateCampaign:383 · deleteCampaign:424 · submitCampaign:464 · approveCampaign:509 · rejectCampaign:538 · launchCampaign:597 · pauseCampaign:601 · resumeCampaign:605 · completeCampaign:609 · archiveCampaign:613 · cancelCampaign:617 · CampaignTimelineEntry:637 · campaignTimeline:644 · CampaignUtmView:693 · campaignUtm:700 · autoCompleteExpiredCampaigns:724 · detectStaleCampaigns:753
 
-**`apps/api/src/domains/marketing/capture.ts`** (871 lines) — FORM_FIELD_TYPES:47 · FormFieldType:48 · FormFieldDef:50 · FormInput:58 · createForm:100 · FormListFilters:140 · listForms:145 · loadForm:163 · updateForm:173 · publishForm:202 · unpublishForm:216 · archiveForm:225 · rotateToken:227 · formEmbedInfo:235 · resetRateLimitForTests:294 · SubmitMeta:322 · submitPublicForm:334 · ConvertContext:448 · convertSubmission:461 · rejectSubmission:524 · markSpamSubmission:532 · listFormSubmissions:540 · submitFormResponse:554 · detectUnconvertedSubmissions:562 · ShortLinkInput:602 · createShortLink:610 · listShortLinks:646 · resolveAndClick:676 · InboundWebhook:704 · WebhookMeta:714 · createWebhookEndpoint:732 · receiveWebhook:784
+**`apps/api/src/domains/marketing/capture.ts`** (854 lines) — FORM_FIELD_TYPES:47 · FormFieldType:48 · FormFieldDef:50 · FormInput:58 · createForm:100 · FormListFilters:140 · listForms:145 · loadForm:163 · updateForm:173 · publishForm:202 · unpublishForm:216 · archiveForm:225 · rotateToken:227 · formEmbedInfo:235 · SubmitMeta:302 · submitPublicForm:314 · ConvertContext:426 · convertSubmission:439 · rejectSubmission:502 · markSpamSubmission:510 · listFormSubmissions:518 · submitFormResponse:532 · detectUnconvertedSubmissions:540 · ShortLinkInput:580 · createShortLink:588 · listShortLinks:624 · resolveAndClick:654 · InboundWebhook:682 · WebhookMeta:692 · createWebhookEndpoint:710 · receiveWebhook:762
 
 **`apps/api/src/domains/marketing/events.ts`** (672 lines) — EventInput:48 · createEvent:75 · EventListFilters:111 · listEvents:122 · loadEvent:172 · updateEvent:198 · openEvent:268 · closeEvent:269 · startEvent:270 · completeEvent:271 · cancelEvent:273 · RegisterInput:305 · registerForEvent:343 · listEventRegistrations:407 · confirmRegistration:445 · checkInRegistration:450 · markNoShow:477 · cancelRegistration:488 · followUpRegistration:500 · convertAttendees:534 · exportRegistrations:585 · detectFollowUpsOutstanding:626 · EventView:661
 
@@ -284,7 +284,7 @@
 
 **`apps/api/src/platform/llm.ts`** (300 lines) — LlmRegion:11 · LlmTask:12 · ApprovalClassification:13 · PERSONAL_DATA_FIELDS:22 · ModelGatewayConfig:54 · ModelGatewayCall:75 · ModelGatewayResult:82 · BriefingMetricSpec:91 · normalizeAction:97 · classifyAction:101 · assertActionAllowed:116 · isIndiaRegionRequired:127 · allowInferenceRegion:131 · redactPersonalFields:142 · sanitizeForModel:165 · ModelGateway:183 · createGateway:273 · safeBriefingComposition:277 · assertAllowedSemanticQuery:290
 
-**`apps/api/src/platform/logger.ts`** (68 lines) — SAFE_FIELDS:14 · allowlistFields:38 · LoggerOptions:46 · createLogger:51 · logger:67
+**`apps/api/src/platform/logger.ts`** (69 lines) — SAFE_FIELDS:14 · allowlistFields:39 · LoggerOptions:47 · createLogger:52 · logger:68
 
 **`apps/api/src/platform/marketingSync.ts`** (50 lines) — MarketingSyncResult:24 · reconcileMarketingDefaults:30 · reconcileMarketingDefaultsForAllTenants:39
 
@@ -292,7 +292,7 @@
 
 **`apps/api/src/platform/permissions.ts`** (544 lines) — ResolvedGrant:36 · invalidateGrantCache:50 · resolveGrants:54 · ScopedRecord:100 · EvaluateInput:113 · evaluate:131 · resolveAuthorityCeiling:295 · assertCan:317 · can:330 · holdsScopeResolver:344 · scopeFor:356 · scopeWhere:369 · assertScopeAll:396 · visibilityWhere:423 · FilterResult:441 · FilterOptions:446 · FIELD_PURPOSES:467 · applyFieldVisibility:488 · canSeeMoney:539
 
-**`apps/api/src/platform/rateLimitStore.ts`** (73 lines) — PostgresRateLimitStore:19
+**`apps/api/src/platform/rateLimitStore.ts`** (108 lines) — purgeExpiredRateLimitBuckets:37 · PostgresRateLimitStore:45
 
 **`apps/api/src/platform/recordCode.ts`** (93 lines) — SequenceExhaustedError:18 · recordCodeYear:37 · nextRecordCode:41 · nextRecordCodes:61 · rejectRecordCodeEdit:86
 
@@ -382,9 +382,9 @@
 
 **`apps/api/src/lib/auth.ts`** (736 lines) — assertProductionSecrets:64 · TokenPayload:96 · SelectionTokenPayload:109 · signToken:114 · verifyToken:118 · MfaChallengePayload:126 · hashPassword:157 · ensureSignInPrincipal:177 · EntitySelectionResult:241 · assertPasswordAllowed:252 · LoginResult:293 · MfaRequiredResult:298 · login:321 · verifyMfaAndLogin:446 · enrolMfa:471 · confirmMfa:477 · changePassword:493 · entitiesForToken:511 · identifySwitchCaller:523 · switchEntity:550 · buildSessionUser:596 · toAuthContext:670 · switchContext:702
 
-**`apps/api/src/lib/http.ts`** (170 lines) — contextMiddleware:28 · requireAuth:87 · handler:93 · errorMiddleware:109 · parsePaging:143 · str:149 · bool:153 · date:159 · numeric:165
+**`apps/api/src/lib/http.ts`** (187 lines) — contextMiddleware:28 · requireAuth:87 · handler:93 · errorMiddleware:109 · parsePaging:160 · str:166 · bool:170 · date:176 · numeric:182
 
-**`apps/api/src/lib/requestLog.ts`** (35 lines) — requestLog:15
+**`apps/api/src/lib/requestLog.ts`** (38 lines) — requestLog:15
 
 **`apps/api/src/lib/webhookSignature.ts`** (57 lines) — WEBHOOK_PATH_PREFIX:13 · WEBHOOK_TOLERANCE_SECONDS:15 · captureWebhookRawBody:24 · rawBodyOf:28 · computeWebhookSignature:32 · verifyWebhookSignature:42
 
