@@ -97,14 +97,14 @@ describe('POST /crm/tasks/:id/complete — state and ownership', () => {
 
     const first = await fetch(`${base}/crm/tasks/${task.id}/complete`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${tokenFor(ops)}` },
+      headers: { Authorization: `Bearer ${await tokenFor(ops)}` },
     });
     expect(first.status).toBe(200);
     const afterFirst = await unscopedPrisma.task.findFirstOrThrow({ where: { id: task.id } });
 
     const second = await fetch(`${base}/crm/tasks/${task.id}/complete`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${tokenFor(ops)}` },
+      headers: { Authorization: `Bearer ${await tokenFor(ops)}` },
     });
     expect(second.status).toBe(409);
 
@@ -131,7 +131,7 @@ describe('POST /crm/tasks/:id/complete — state and ownership', () => {
 
     const res = await fetch(`${base}/crm/tasks/${task.id}/complete`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${tokenFor(ops)}` },
+      headers: { Authorization: `Bearer ${await tokenFor(ops)}` },
     });
     expect(res.status).toBe(200);
 
@@ -158,7 +158,7 @@ describe('POST /crm/tasks/:id/complete — state and ownership', () => {
       async (p) => {
         const res = await fetch(`${base}/crm/tasks/${task.id}/complete`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${tokenFor(p)}` },
+          headers: { Authorization: `Bearer ${await tokenFor(p)}` },
         });
         return res.status;
       },
