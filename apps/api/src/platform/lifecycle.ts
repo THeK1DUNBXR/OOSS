@@ -118,17 +118,37 @@ export async function transitionInTx<S extends string, E extends string, T>(
   },
 ): Promise<{ result: TransitionResult<S>; value: T }> {
   const decided = await decide(input);
-  return governedWrite(async (tx) => {
-    const value = await options.write(tx, decided.to);
-    await recordTransition(input, decided.to, decided.eventName, tx);
-    if (options.alsoEmit) await options.alsoEmit(tx, decided.to);
-    if (options.after) await options.after(tx, decided.to, value);
-    return { result: decided, value };
-  });
+  return governedWrite((tx) => applyDecided(tx, input, decided, options));
+}
+
+/**
+ * Writes a transition that `decide` has already approved, inside the caller's
+ * transaction. For a caller that opens the transaction itself and has more than
+ * one transition to write in it (an offer accepted and its application moved):
+ * the grant check reads on the scoped client, which throws inside a transaction
+ * it did not open, so it runs first, through `decide`, outside.
+ */
+export async function applyDecided<S extends string, E extends string, T>(
+  tx: DbTx,
+  input: TransitionInput<S, E>,
+  decided: TransitionResult<S>,
+  options: {
+    write: (tx: DbTx, to: S) => Promise<T>;
+    alsoEmit?: (tx: DbTx, to: S) => Promise<void>;
+    after?: (tx: DbTx, to: S, value: T) => Promise<void>;
+  },
+): Promise<{ result: TransitionResult<S>; value: T }> {
+  const value = await options.write(tx, decided.to);
+  await recordTransition(input, decided.to, decided.eventName, tx);
+  if (options.alsoEmit) await options.alsoEmit(tx, decided.to);
+  if (options.after) await options.after(tx, decided.to, value);
+  return { result: decided, value };
 }
 
 /** The grant check, then the machine. Shared by both forms so they cannot disagree. */
-async function decide<S extends string, E extends string>(input: TransitionInput<S, E>): Promise<TransitionResult<S>> {
+export async function decide<S extends string, E extends string>(
+  input: TransitionInput<S, E>,
+): Promise<TransitionResult<S>> {
   await assertCan({
     resource: input.resource,
     verb: input.verb ?? 'edit',
