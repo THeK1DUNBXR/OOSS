@@ -12,7 +12,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../server.js';
 import { hashPassword } from '../lib/auth.js';
-import { generateTotpSecret } from '../domains/compliance/corporate/totp.js';
+import jwt from 'jsonwebtoken';
+import { generateTotpSecret, totp } from '../domains/compliance/corporate/totp.js';
+import { config } from '../platform/config.js';
 import { addMissingGrants } from '../platform/grantSync.js';
 import authRoutes from '../routes/auth.routes.js';
 import { tenantId, unscopedPrisma } from './helpers.js';
@@ -131,8 +133,7 @@ const post = (path: string, body: unknown, token?: string) =>
     body: JSON.stringify(body),
   });
 
-const recover = (token: string | undefined, body: unknown) =>
-  post('/auth/account-recovery', body, token);
+const recover = (token: string | undefined, body: unknown) => post('/auth/account-recovery', body, token);
 
 const me = (token: string) => fetch(`${base}/api/auth/me`, { headers: { authorization: `Bearer ${token}` } });
 
@@ -143,7 +144,10 @@ const refreshWithCookie = (cookieValue: string) =>
     body: '{}',
   });
 
-async function login(email: string, password: string): Promise<{ status: number; body: Record<string, unknown>; cookie?: string }> {
+async function login(
+  email: string,
+  password: string,
+): Promise<{ status: number; body: Record<string, unknown>; cookie?: string }> {
   const res = await post('/auth/login', { email, password });
   const set = setCookieOf(res);
   return {
@@ -158,6 +162,10 @@ async function signedInToken(account: Account): Promise<string> {
   expect(res.status).toBe(200);
   return res.body.token as string;
 }
+
+/** A database row as text, for scanning it for secrets. BigInt columns (the event `seq`) need a string form. */
+const rowText = (row: unknown): string =>
+  JSON.stringify(row, (_key, value: unknown) => (typeof value === 'bigint' ? value.toString() : value));
 
 /** The row a refusal must leave exactly as it was. */
 async function credentialOf(principalId: string): Promise<string> {
@@ -203,7 +211,13 @@ describe('account recovery: the founder recovers an employee', () => {
 
     const res = await recover(founder.token, { userId: target.userId, reason: GOOD_REASON });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { userId: string; email: string; password: string; mfaReset: boolean; sessionsRevoked: number };
+    const body = (await res.json()) as {
+      userId: string;
+      email: string;
+      password: string;
+      mfaReset: boolean;
+      sessionsRevoked: number;
+    };
     expect(body.userId).toBe(target.userId);
     expect(body.email).toBe(target.email);
     expect(body.mfaReset).toBe(false);
@@ -228,7 +242,7 @@ describe('account recovery: the founder recovers an employee', () => {
     expect(recovery).toHaveLength(1);
     expect(recovery[0]!.actorId).toBe(founder.personId);
     expect(recovery[0]!.meta).toMatchObject({ reason: GOOD_REASON, resetMfa: false, sessionsRevoked: 2 });
-    const auditText = JSON.stringify(recovery[0]);
+    const auditText = rowText(recovery[0]);
     expect(auditText).not.toContain(body.password);
     expect(auditText).not.toContain(target.password);
     expect(auditText).not.toMatch(SECRET_PATTERN);
@@ -238,8 +252,8 @@ describe('account recovery: the founder recovers an employee', () => {
       where: { tenantId: tid, eventName: 'kz.idn.account.recovered', subjectEntityId: target.userId },
     });
     expect(events).toHaveLength(1);
-    expect(JSON.stringify(events[0])).not.toContain(body.password);
-    expect(JSON.stringify(events[0])).not.toMatch(SECRET_PATTERN);
+    expect(rowText(events[0])).not.toContain(body.password);
+    expect(rowText(events[0])).not.toMatch(SECRET_PATTERN);
   });
 });
 
@@ -318,7 +332,11 @@ describe('account recovery: refusals', () => {
 
   it('a target in another tenant is 404, indistinguishable from a missing user', async () => {
     const otherTenant = await unscopedPrisma.tenant.create({
-      data: { name: `Recovery other ${stamp}`, slug: `rec-other-${stamp}-${Math.floor(Math.random() * 1e6)}`, status: 'active' },
+      data: {
+        name: `Recovery other ${stamp}`,
+        slug: `rec-other-${stamp}-${Math.floor(Math.random() * 1e6)}`,
+        status: 'active',
+      },
     });
     const foreign = await makeAccount('foreign', 'employee', { tenantId: otherTenant.id });
     const before = await credentialOf(foreign.principalId);
@@ -360,7 +378,11 @@ describe('account recovery: refusals', () => {
   it('a principal that also holds a user in another entity is 409, because one password would cross the tenant line', async () => {
     const shared = await makeAccount('shared', 'employee');
     const otherTenant = await unscopedPrisma.tenant.create({
-      data: { name: `Recovery shared ${stamp}`, slug: `rec-shared-${stamp}-${Math.floor(Math.random() * 1e6)}`, status: 'active' },
+      data: {
+        name: `Recovery shared ${stamp}`,
+        slug: `rec-shared-${stamp}-${Math.floor(Math.random() * 1e6)}`,
+        status: 'active',
+      },
     });
     await addEntityUser(shared, otherTenant.id);
     const before = await credentialOf(shared.principalId);
@@ -379,6 +401,77 @@ describe('account recovery: refusals', () => {
   });
 });
 
+describe('account recovery: tokens minted before the recovery', () => {
+  const challengeFor = async (userId: string, personId: string, tenant: string, issuedAt: number) => {
+    const affiliation = await unscopedPrisma.affiliation.findFirstOrThrow({
+      where: { partyId: personId, tenantId: tenant },
+    });
+    return jwt.sign(
+      { userId, tenantId: tenant, affiliationId: affiliation.id, mfaChallenge: true, iat: issuedAt },
+      config.JWT_SECRET,
+      { expiresIn: '5m' },
+    );
+  };
+  const verify = (challengeToken: string, code: string) => post('/auth/mfa/verify', { challengeToken, code });
+
+  it('an MFA challenge minted before the recovery is refused, even with a current TOTP code', async () => {
+    const target = await makeAccount('challenged', 'employee');
+    const secret = generateTotpSecret();
+    await unscopedPrisma.user.update({
+      where: { id: target.userId },
+      data: { mfaSecret: secret, mfaEnabledAt: new Date() },
+    });
+    // Minted five seconds back, so whole-second `iat` cannot blur the order against the recovery.
+    const before = Math.floor(Date.now() / 1000) - 5;
+    const control = await challengeFor(target.userId, target.personId, tid, before);
+    expect((await verify(control, totp(secret))).status).toBe(200);
+
+    const stale = await challengeFor(target.userId, target.personId, tid, before);
+    const res = await recover(founder.token, { userId: target.userId, reason: GOOD_REASON });
+    expect(res.status).toBe(200);
+    // resetMfa was not asked for, so the TOTP secret is still good: only the credential changed.
+    expect((await verify(stale, totp(secret))).status).toBe(401);
+  });
+
+  it('a selection token minted before the recovery is refused at switch-entity', async () => {
+    const target = await makeAccount('selector', 'employee');
+    const before = Math.floor(Date.now() / 1000) - 5;
+    const minted = jwt.sign(
+      { principalId: target.principalId, purpose: 'select-entity', iat: before },
+      config.JWT_SECRET,
+      {
+        expiresIn: '5m',
+      },
+    );
+    const control = await post('/auth/switch-entity', { tenantId: tid }, minted);
+    expect(control.status).not.toBe(401);
+
+    const res = await recover(founder.token, { userId: target.userId, reason: GOOD_REASON });
+    expect(res.status).toBe(200);
+    const after = await post('/auth/switch-entity', { tenantId: tid }, minted);
+    expect(after.status).toBe(401);
+  });
+
+  it('a challenge minted after the recovery still completes', async () => {
+    const target = await makeAccount('reenrolled', 'employee');
+    const secret = generateTotpSecret();
+    await unscopedPrisma.user.update({
+      where: { id: target.userId },
+      data: { mfaSecret: secret, mfaEnabledAt: new Date() },
+    });
+    const res = await recover(founder.token, { userId: target.userId, reason: GOOD_REASON });
+    expect(res.status).toBe(200);
+    const { password } = (await res.json()) as { password: string };
+    // The check is whole-second, so a challenge issued in the same second as the
+    // recovery is refused on purpose; wait for the boundary before the employee signs in.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const challenged = await login(target.email, password);
+    expect(challenged.body.mfaRequired).toBe(true);
+    const done = await verify(challenged.body.challengeToken as string, totp(secret));
+    expect(done.status).toBe(200);
+  });
+});
+
 describe('account recovery: no SMS or phone-based recovery', () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
@@ -392,10 +485,16 @@ describe('account recovery: no SMS or phone-based recovery', () => {
 
   it('no route matching recover, reset or forgot accepts a phone number as its only input', async () => {
     const stack = (authRoutes as unknown as { stack: Array<{ route?: { path: string } }> }).stack;
-    const matching = stack.flatMap((layer) => (layer.route ? [layer.route.path] : [])).filter((p) => /recover|reset|forgot/i.test(p));
+    const matching = stack
+      .flatMap((layer) => (layer.route ? [layer.route.path] : []))
+      .filter((p) => /recover|reset|forgot/i.test(p));
     expect(matching.length).toBeGreaterThan(0);
     for (const path of matching) {
-      const res = await post(`/auth${path}`, { phone: '+919876543210', mobile: '9876543210', otp: '123456' }, itAdmin.token);
+      const res = await post(
+        `/auth${path}`,
+        { phone: '+919876543210', mobile: '9876543210', otp: '123456' },
+        itAdmin.token,
+      );
       expect(res.status, path).toBeGreaterThanOrEqual(400);
       expect(res.status, path).not.toBe(202);
     }

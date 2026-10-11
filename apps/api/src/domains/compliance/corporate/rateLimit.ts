@@ -39,6 +39,27 @@ const loginEmailLimit = rateLimit({
   message: LOGIN_REFUSED,
 });
 
+const RECOVERY_REFUSED = {
+  error: {
+    code: 'RATE_LIMITED',
+    message: 'Too many recovery requests. Wait a minute and try again.',
+  },
+};
+
+/**
+ * `POST /auth/account-recovery`, per address. Ten a minute is far above any
+ * real recovery desk's pace, and it stops a compromised recoverer's session
+ * from working through every account in the entity in one sitting.
+ */
+export const recoveryRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  store: new PostgresRateLimitStore('recovery:ip'),
+  message: RECOVERY_REFUSED,
+});
+
 export function loginRateLimit(req: Request, res: Response, next: NextFunction): void {
   // express-rate-limit answers the refusal itself and does not call `next`,
   // so reaching a callback means the request is still under that limit.

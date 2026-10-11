@@ -12,6 +12,8 @@
 
 ## API domains
 
+**`apps/api/src/domains/accountRecovery.ts`** (139 lines) — RECOVERY_REASON_MIN_CHARS:26 · RecoverAccountInput:42 · RecoverAccountResult:50 · recoverAccount:59
+
 **`apps/api/src/domains/agreements.ts`** (711 lines) — AgreementKind:38 · createMou:44 · createContract:122 · createPartnerAgreement:196 · TransitionResult:339 · transitionAgreement:346 · runExpiryLadder:490 · renewAgreement:625 · auditWonWithoutContract:686
 
 **`apps/api/src/domains/allocation.ts`** (178 lines) — paiseOf:38 · paiseOfInput:47 · lockPayment:56 · lockInvoice:65 · lockFeeInstalment:74 · lockAndLoadInvoice:87 · lockAndLoadFeeInstalment:106 · positionOfInvoice:123 · outstandingOfInstalment:138 · poundsOf:148 · clampZero:153 · assertFits:162 · overdrawnRefusal:170
@@ -70,7 +72,7 @@
 
 **`apps/api/src/domains/compliance/corporate/mca.ts`** (78 lines) — listMcaFilings:20 · createMcaFiling:29 · markMcaFilingFiled:53
 
-**`apps/api/src/domains/compliance/corporate/rateLimit.ts`** (53 lines) — loginRateLimit:42
+**`apps/api/src/domains/compliance/corporate/rateLimit.ts`** (74 lines) — recoveryRateLimit:54 · loginRateLimit:63
 
 **`apps/api/src/domains/compliance/corporate/refunds.ts`** (215 lines) — listRefunds:28 · requestRefund:37 · approveRefund:83 · payRefund:119 · currentRefundPolicy:182 · listRefundPolicyVersions:187 · publishRefundPolicy:192
 
@@ -414,7 +416,7 @@
 
 **`apps/api/src/jobs/scheduler.ts`** (1207 lines) — JobResult:58 · SideEffects:69 · JobDefinition:71 · PendingJobDefinition:100 · ALL_JOBS:112 · escalateApprovalStep:479 · computeDailyMetrics:530 · RunOptions:575 · claimFiring:611 · runJobsForTenant:735 · runAllTenants:761 · runManualJobs:794 · retryLimit:820 · ClaimStatus:824 · ClaimResult:826 · AttemptFence:837 · claimAttempt:859 · heartbeatAttempt:890 · finishAttempt:901 · failAttempt:919 · runClaimedOccurrence:1012 · TickOutcome:1079 · TickOptions:1090 · tickOnce:1106 · assertSchedulable:1166 · startScheduler:1180 · stopScheduler:1203
 
-**`apps/api/src/lib/auth.ts`** (1154 lines) — assertProductionSecrets:89 · TokenPayload:121 · SelectionTokenPayload:136 · signToken:141 · hashRefreshSecret:146 · liveSessionFor:155 · verifyToken:189 · MfaChallengePayload:197 · hashPassword:228 · ensureSignInPrincipal:248 · EntitySelectionResult:320 · assertPasswordAllowed:331 · LoginResult:388 · MfaRequiredResult:396 · login:419 · verifyMfaAndLogin:559 · enrolMfa:586 · confirmMfa:592 · changePassword:608 · entitiesForToken:629 · identifySwitchCaller:644 · switchEntity:681 · SessionRefresh:743 · refreshSession:770 · logoutWithRefreshCookie:933 · logoutSession:986 · buildSessionUser:996 · toAuthContext:1077 · switchContext:1109
+**`apps/api/src/lib/auth.ts`** (1242 lines) — assertProductionSecrets:89 · TokenPayload:121 · SelectionTokenPayload:136 · signToken:141 · hashRefreshSecret:146 · liveSessionFor:155 · verifyToken:189 · MfaChallengePayload:197 · hashPassword:228 · ensureSignInPrincipal:248 · EntitySelectionResult:320 · assertPasswordAllowed:331 · LoginResult:388 · MfaRequiredResult:396 · login:419 · verifyMfaAndLogin:559 · enrolMfa:591 · confirmMfa:597 · changePassword:613 · principalHoldsOtherEntities:642 · recoverSignIn:666 · entitiesForToken:712 · identifySwitchCaller:727 · switchEntity:769 · SessionRefresh:831 · refreshSession:858 · logoutWithRefreshCookie:1021 · logoutSession:1074 · buildSessionUser:1084 · toAuthContext:1165 · switchContext:1197
 
 **`apps/api/src/lib/http.ts`** (201 lines) — ceilingForRole:30 · contextMiddleware:43 · requireAuth:99 · handler:105 · errorMiddleware:121 · parsePaging:174 · str:180 · bool:184 · date:190 · numeric:196
 
@@ -456,7 +458,7 @@
 
 **`packages/shared/src/esop.ts`** (209 lines) — ESOP_PLAN_STATUSES:13 · EsopPlanStatus:14 · VESTING_FREQUENCIES:16 · VestingFrequency:17 · VESTING_FREQUENCY_MONTHS:19 · OPTION_GRANT_STATUSES:25 · OptionGrantStatus:34 · VESTING_EVENT_STATUSES:36 · VestingEventStatus:37 · OPTION_EXERCISE_STATUSES:39 · OptionExerciseStatus:40 · FMV_BASES:42 · FmvBasis:43 · ESOP_MIN_CLIFF_MONTHS:46 · ESOP_SINGLE_GRANT_RESOLUTION_THRESHOLD_PCT:49 · ESOP_FMV_VALIDITY_DAYS:52 · VestingScheduleInput:58 · VestingTranche:64 · firstVestingIsRuleTwelveCompliant:82 · generateVestingTranches:92 · EsopPlanPoolView:118 · EsopPlanView:127 · PromoterCheck:144 · OptionGrantView:150 · OptionExerciseView:175 · esopTaxLine:197
 
-**`packages/shared/src/events.ts`** (1076 lines) — EventName:11 · EVENT_NAME_PATTERN:19 · TENSE_GRANDFATHERED:75 · isPastTenseVerb:127 · isCanonicalEventName:131 · LEGACY_EVENT_CROSSWALK:143 · CANONICAL_TO_LEGACY:170 · EVENTS:175 · hrTransitionEvent:928 · KnownEventName:932 · ActorType:939 · EventActor:941 · EventSubject:949 · EventRelatedRef:955 · EventReason:961 · EventSource:969 · EventMateriality:977 · EventImpact:983 · EventOwner:989 · EventIntegrity:994 · EventEnvelope:999 · SEVERITIES:1028 · SeverityCode:1029 · SEVERITY_RANK:1031 · NOTIFICATION_PRIORITIES:1039 · NotificationPriority:1040 · ESCALATION_TRIGGERS:1043 · EscalationTrigger:1044 · SENSITIVITY_CLASSES:1050 · SensitivityClass:1051 · SENSITIVITY_RANK:1053 · maxSensitivity:1061 · WITHHOLD_REASONS:1067 · WithholdReason:1075
+**`packages/shared/src/events.ts`** (1080 lines) — EventName:11 · EVENT_NAME_PATTERN:19 · TENSE_GRANDFATHERED:75 · isPastTenseVerb:127 · isCanonicalEventName:131 · LEGACY_EVENT_CROSSWALK:143 · CANONICAL_TO_LEGACY:170 · EVENTS:175 · hrTransitionEvent:932 · KnownEventName:936 · ActorType:943 · EventActor:945 · EventSubject:953 · EventRelatedRef:959 · EventReason:965 · EventSource:973 · EventMateriality:981 · EventImpact:987 · EventOwner:993 · EventIntegrity:998 · EventEnvelope:1003 · SEVERITIES:1032 · SeverityCode:1033 · SEVERITY_RANK:1035 · NOTIFICATION_PRIORITIES:1043 · NotificationPriority:1044 · ESCALATION_TRIGGERS:1047 · EscalationTrigger:1048 · SENSITIVITY_CLASSES:1054 · SensitivityClass:1055 · SENSITIVITY_RANK:1057 · maxSensitivity:1065 · WITHHOLD_REASONS:1071 · WithholdReason:1079
 
 **`packages/shared/src/finance.ts`** (841 lines) — DIVISIONS:19 · Division:20 · DIVISION_LABELS:22 · isDivision:29 · CATEGORY_KINDS:37 · CategoryKind:38 · NON_TRADING_KINDS:49 · isTrading:51 · CATEGORY_BEHAVIOURS:60 · CategoryBehaviour:61 · TRANSACTION_SOURCES:63 · TransactionSource:73 · LEDGER_GROUPS:75 · LedgerGroup:76 · monthKey:86 · monthRange:96 · financialYearOf:102 · financialYearRange:107 · monthsBack:112 · GstLineInput:126 · GstBreakdown:133 · round2:150 · computeGst:166 · isInterState:206 · GST_RATES:212 · GST_STATE_CODES:226 · stateNameFor:269 · placeOfSupplyLabel:275 · stateCodeOf:282 · isValidGstin:300 · gstinCheckDigit:317 · supplyTypeOf:338 · GstHeads:346 · GstSetOff:352 · setOffInputCredit:374 · outstandingOfMinor:427 · outstandingOf:438 · paymentTypeForMinor:454 · paymentTypeFor:465 · invoicePayableMinor:492 · invoicePayable:502 · amountInWords:570 · PaymentSchedule:643 · computePaymentSchedule:655 · DepreciationPeriod:668 · DepreciationInput:675 · depreciationSchedule:693 · bookValueAt:732 · AmortisationPeriod:747 · emi:757 · amortisationSchedule:767 · loanBalanceAt:806 · runwayMonths:836
 
@@ -510,7 +512,7 @@
 
 **`packages/shared/src/money.ts`** (146 lines) — add:16 · sub:20 · neg:24 · abs:28 · compare:33 · isZero:37 · parseMinor:47 · formatMinor:60 · mulRatio:73 · allocate:97 · applyBps:122 · convertPpm:131
 
-**`packages/shared/src/permissions.ts`** (554 lines) — VERBS:22 · VerbLetter:32 · Verb:33 · DISTINCT_GRANT_VERBS:36 · SCOPES:38 · Scope:39 · ParsedGrant:41 · parseGrant:52 · formatGrant:84 · RESOURCES:103 · Resource:366 · ROLE_SLUGS:394 · RoleSlug:408 · APPROVAL_LADDER:411 · APPROVAL_EXCLUDED_ROLES:413 · MONEY_FIELDS:419 · REGULATED_EXCLUDED_FIELDS:469 · AXES:496 · AxisCode:507 · AxisOutcome:509 · PermissionDecision:515 · ROLE_CLASSIFICATION_CEILING:530
+**`packages/shared/src/permissions.ts`** (558 lines) — VERBS:22 · VerbLetter:32 · Verb:33 · DISTINCT_GRANT_VERBS:36 · SCOPES:38 · Scope:39 · ParsedGrant:41 · parseGrant:52 · formatGrant:84 · RESOURCES:103 · Resource:370 · ROLE_SLUGS:398 · RoleSlug:412 · APPROVAL_LADDER:415 · APPROVAL_EXCLUDED_ROLES:417 · MONEY_FIELDS:423 · REGULATED_EXCLUDED_FIELDS:473 · AXES:500 · AxisCode:511 · AxisOutcome:513 · PermissionDecision:519 · ROLE_CLASSIFICATION_CEILING:534
 
 **`packages/shared/src/planes.ts`** (390 lines) — PLANES:8 · PlaneCode:71 · BOUNDED_CONTEXTS:78 · BoundedContext:103 · ModuleRegisterEntry:110 · MODULE_REGISTER:119
 
