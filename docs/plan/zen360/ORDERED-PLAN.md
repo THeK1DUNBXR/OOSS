@@ -2,6 +2,8 @@
 
 Status: planning only. Nothing in this plan is built. This file is not authority over the decisions in `docs/plan/zen360/DECISIONS.md`; where they differ, DECISIONS.md governs.
 
+Round 18b (DECISIONS.md, 2026-10-11) defers tenancy and all hosting. Items marked DEFERRED or moved below are superseded by round 18b and are kept as history.
+
 Effort: no effort estimate is stated in the docs. Phase 0 is mostly new build, and the owner accepted that. Each phase ends at a stop rule, not at a week count.
 
 Statutory values: none appear in this plan. Statutory values stay unverified and DRAFT until a qualified person signs them off (see DECISIONS.md, round 10, still open).
@@ -38,7 +40,8 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 - **Time helpers.** Add `packages/shared/src/time.ts`. Use it for FX-40 (`documentNumber.ts:92-94`), FX-41 (`domains/compliance/tax.ts:60-63`) and FX-42 (`invoicing.ts:266-269`).
   - Test: `fyOf(2026-03-31T19:00Z) === '2026-27'`.
 - **0.8 CI.** Add ESLint and Prettier. Remove the dead classes at `Start.tsx:100,109` and `People.tsx:56`. Add a build identity. Replace `db push` with a migration baseline. The migration baseline sits in Wave 0 (DECISIONS.md, round 10).
-- **Hosting.** Remove the Cloudflare Worker (`worker/index.ts`). Serve everything from the own server behind Caddy.
+- ~~**Worker removal.** Remove the Cloudflare Worker (`worker/index.ts`).~~ **Done; the removal stands** (round 19b, item 2).
+- ~~**Hosting.** Serve everything from the own server behind Caddy.~~ **Replacement hosting DEFERRED until after Phase 1 (superseded by round 18b, item 3).** Server, reverse proxy, caching and routing move to "After Phase 1: hosting and operations (deferred)".
 
 ### Wave 1: authority, audit, security, statutory data
 
@@ -49,10 +52,10 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 - **FX-01 and FX-04.** `decideApprovalStep` (`approvals.ts:309`) and `decideAgentAction` (`agents/index.ts:251`).
   - Test: an ungranted user gets 403 and the state is unchanged.
 - **FX-02, FX-03, FX-05.** `hr.routes.ts:844-856`, `crm.routes.ts:243-257`, `agents/index.ts:95-98`.
-- **FX-50.** Webhook per-tenant HMAC and dedupe.
+- **FX-50.** Webhook dedupe, and HMAC with a single webhook secret. Per-tenant HMAC is **DEFERRED (superseded by round 18b, item 1)**; FX-50 is now a single secret.
 - **FX-61, FX-80.**
 - **FX-24.** Postgres outbox (D-16).
-- **FX-51.** RLS on every table: ENABLE and FORCE, default deny, a non-owner app role, and a boot check that the role has neither `rolsuper` nor `rolbypassrls`.
+- ~~**FX-51.** RLS on every table: ENABLE and FORCE, default deny, a non-owner app role, and a boot check that the role has neither `rolsuper` nor `rolbypassrls`.~~ **MERGED (#33; round 19b, item 1); extra proof deferred.** Existing ledger-table RLS and tenant scoping stay (round 18b, implications (a) and (g)).
 - **FX-06, FX-07, FX-62 to FX-65.** Exceptions, merge, privacy.
 - **0.4 Logging.** pino with allowlist redaction (G11).
 - **0.3 HTTP hardening.** helmet. CORS allowlist (FX-52, `server.ts:19`). express-rate-limit with a Postgres store. Error leak fix at `http.ts:116-118`.
@@ -76,8 +79,8 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 - **Payment allocation.** `FOR UPDATE` with a DB CHECK. Invoice numbering inside the same transaction (`invoicing.ts:584`).
 - **1.1 Ledger models.** `LedgerEntity`, `AccountingPeriod`, `JournalEntry` (with `entityId`), `JournalLine` (bigint), `LedgerAccount`.
 - **1.2 Ledger migration.** Hand-written migration with: a deferred balance trigger, immutability, a period trigger, a two-line minimum, RLS with both USING and WITH CHECK, and `SET LOCAL` via `set_config(..., true)`.
-  - BLOCKED-BY PgBouncer in transaction mode.
-  - BLOCKED-BY the non-owner role set up on the own server.
+  - ~~BLOCKED-BY PgBouncer in transaction mode.~~ **Superseded by round 18b, item 2:** PgBouncer is not a blocker. Revisit only if connections run short.
+  - ~~BLOCKED-BY the non-owner role set up on the own server.~~ **Superseded by round 18b, item 5:** the non-owner role is a dev and CI database setting, needed for the immutability test. It is not a hosting item.
 - **1.3 Posting.** `post()` is the sole writer (enforced by a lint rule). Idempotency key. A reversal refuses to reverse a reversal (`books.ts:264`).
 - **1.4 Balances.** Derived balances and a nightly drift check. Ledger gate tests L1 to L3. FX-30 to FX-35.
 - **1.5 Cashbook migration, then delete `model Transaction`.**
@@ -85,14 +88,9 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
   - BLOCKED-BY confirmation of the Kaizen figures: 1,123 vouchers, 66 accounts, a gap of about 40,500. UNVERIFIED.
   - Cutover at a financial year start (1 April), after the trial balance ties to the paisa.
 
-### Wave 4: operations (own server)
+### Wave 4: operations (own server) — moved after Phase 1 (superseded by round 18b)
 
-- Postgres and PgBouncer.
-- Backups with tested restores and an off-site copy.
-- Monitoring and alerts.
-- Caddy TLS renewal.
-- Non-owner DB role.
-- Internal IT owner, as a level assignment at onboarding (DECISIONS.md, round 10).
+Moved to "After Phase 1: hosting and operations (deferred)" below. The non-owner DB role is not moved: it stays in item 1.2 as a dev and CI setting (round 18b, item 5).
 
 ### Wave 5: ledger consumers and interface (parallel within the wave)
 
@@ -125,13 +123,13 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
   - BLOCKED-BY 3.1 sign-off.
 - Level-based access system, assigned at onboarding.
 - Thresholds, reserved matters and alternates are entered as data during onboarding ("tbd during onboard").
-- A static public IP exists.
+- ~~A static public IP exists.~~ **DEFERRED (superseded by round 18b, item 3):** hosting.
 
 ### Wave 7: proof
 
 - Concurrency suite.
-- Tenant-leakage fuzzer. Needs second-tenant test data.
-- All 12 CI gates, as listed in `docs/plan/zen360/CI-GATES-DRAFT.md`.
+- ~~Tenant-leakage fuzzer. Needs second-tenant test data.~~ **DEFERRED (round 18b, item 1).**
+- All CI gates in `docs/plan/zen360/CI-GATES-DRAFT.md` except G7, which is **DEFERRED (round 18b, item 1)**. Mandatory: G1 to G6, G8 to G12 and ledger tests L1 to L3.
 
 ---
 
@@ -194,11 +192,31 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
   - BLOCKED-BY the chat-retention legal check (D-14).
 - **Wave 4 (realtime):** SSE served directly by the Express API. The Worker spike is dropped. A notification worker with do-not-disturb.
 - **Wave 5 (automation):** rules cannot post journals, generate IRNs, file returns, run payroll, or email customers without approval.
-- **Wave 6 (voice and video):** LiveKit, self-hosted on the own server in India.
-  - Ports: TCP 7880 and 7881, UDP 50000 to 60000, TURN/TLS on 443, public IP.
+- **Wave 6 (voice and video):** LiveKit. ~~Self-hosted on the own server in India.~~ **Superseded by round 18b, item 4:** the code needs only a configurable server address; hosting deferred. Development and tests use a local setup. Where the server runs is a hosting decision after Phase 1.
+  - Ports: TCP 7880 and 7881, UDP 50000 to 60000, TURN/TLS on 443, public IP. **Hosting detail, DEFERRED (round 18b, item 4).** Kept as history.
   - 5-minute join tokens. Opaque room names. Webhook verification with event-id idempotency.
   - No recording, egress or transcripts.
-  - Per-tenant isolation and E2EE are UNVERIFIED.
+  - Per-tenant LiveKit isolation is **DEFERRED (round 18b, item 1)**. E2EE is still UNVERIFIED.
+
+---
+
+## After Phase 1: hosting and operations (deferred)
+
+Moved out of Phase 0 by round 18b (DECISIONS.md, 2026-10-11, items 3 and 4). The owner will consider hosting separately after Phase 1: how to host efficiently, and which caching and routing to use. The round 6 and round 7 own-server answers are provisional history until then. Nothing in this section is scheduled.
+
+Items moved here from Phase 0 Wave 4 and Wave 0 (round 18b):
+
+- Postgres operations. PgBouncer is not a blocker (round 18b, item 2). Revisit only if connections run short.
+- Backups with tested restores and an off-site copy. The owner named Databasus as the backup setup. It is a PostgreSQL backup tool, not a connection pooler, and it does not make the app faster. Its documentation has not been read, and nothing here evaluates it.
+- Monitoring and alerts.
+- Caddy as the reverse proxy, and Caddy TLS renewal (round 7).
+- Static public IP, a second line and backup power (round 7). Redundancy notes are provisional.
+- Serving everything from one origin, the replacement for the Phase 0 Wave 0 "Hosting" item. Undecided until after Phase 1. The Worker removal itself is done. Confirmed by owner (round 19b, item 2): removal stands.
+- Server hosting for LiveKit (Phase 1 Wave 6). The code needs only a configurable server address.
+- Caching and routing. Not yet decided.
+- Internal IT owner, as a level assignment at onboarding (round 10). Still tbd during onboard (round 18b, open list).
+
+Not moved: the non-owner database role stays in item 1.2 as a dev and CI setting (round 18b, item 5).
 
 ---
 
@@ -220,7 +238,7 @@ Levels are split by stakeholder type:
 - External auditors and accountants.
 - Board and investors.
 
-The level template ships with the app and is editable per tenant at onboarding. Each person holds one level, plus named extra duties. Exact duties per level and read scope are not yet defined (DECISIONS.md, round 10).
+The level template ships with the app. ~~Editable per tenant at onboarding.~~ **Per-tenant editing is DEFERRED (round 18b, item 1).** Each person holds one level, plus named extra duties. Exact duties per level and read scope are not yet defined (DECISIONS.md, round 10).
 
 ---
 
@@ -233,8 +251,9 @@ The level template ships with the app and is editable per tenant at onboarding. 
   - Expense receipt storage location.
   - D-11 numbers after the one-month measurement.
   - Legal checks before the first outside user: Resend data hosting, and chat retention (D-14).
+- Still open after round 18b (DECISIONS.md, 2026-10-11): hosting, caching and routing (after Phase 1); whether onboarding and level mapping stay in Phase 0; questionnaire approval; statutory sign-off holder and IT owner (tbd during onboard); D-11 numbers; Resend data-hosting and chat-retention legal checks.
 - Phase 0 is mostly new build, with no effort estimates.
 - Item 3.1 (statutory master pack, Wave 1) is pulled early by the owner, overriding the "do not reorder" rule.
 - The founder's exemption from maker-checker is a segregation-of-duties risk for founder-only classes (payroll run, large payments, statutory filings).
-- On-premises, single-site risk: everything runs on one own server.
+- ~~On-premises, single-site risk: everything runs on one own server.~~ Superseded by round 18b: hosting is deferred until after Phase 1, so the hosting shape and its single-site risk are open.
 - Test counts differ across documents: `ci.yml` says 382, `docs/plan/archive/phase-8-proof.md` says 370, `docs/plan/archive/phase-0-stabilise.md` says 372. There is no single source of truth yet.

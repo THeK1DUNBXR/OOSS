@@ -139,8 +139,16 @@ describe('FX-24 dispatcher and past-tense grammar', () => {
 
     startOutboxDispatcher({ intervalMs: 25 });
     try {
+      // Wait for the settle write, not for the handler. The handler pushes its
+      // id before the dispatcher records `dispatched`, so stopping on the push
+      // read the row while it was still pending. Bounded, so a real failure
+      // reports the state rather than hanging.
       const deadline = Date.now() + 10_000;
-      while (seenIds.length === 0 && Date.now() < deadline) {
+      let state = '';
+      while (Date.now() < deadline) {
+        state = (await unscopedPrisma.outboxEvent.findFirstOrThrow({ where: { tenantId: TENANT, eventName: NAME } }))
+          .state;
+        if (state === 'dispatched' || state === 'dead') break;
         await new Promise((r) => setTimeout(r, 25));
       }
     } finally {
