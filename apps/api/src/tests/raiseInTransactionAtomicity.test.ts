@@ -29,6 +29,7 @@ import { rejectRegularisation, submitRegularisation } from '../domains/hcm/time.
 import { changeForecastCategory } from '../domains/opportunities.js';
 import { decideApprovalStep } from '../platform/approvals.js';
 import { submitResignation } from '../domains/hcm/separations.js';
+import { createQuote, issueQuote } from '../domains/commercial.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
@@ -424,5 +425,32 @@ describe('submitting a resignation notifies HR ops in the same transaction', () 
     expect(
       await unscopedPrisma.resignation.count({ where: { tenantId: TENANT, employmentRelationshipId: employment.id } }),
     ).toBe(before);
+  });
+});
+
+describe('blocking a quote for discount approval notifies the approver in the same transaction', () => {
+  it('when the notification cannot be recorded, the quote is not blocked and no approval step is written', async () => {
+    const ARUN = 'arun@kaizen.co.in';
+    const entry = await unscopedPrisma.priceBookEntry.findFirstOrThrow({
+      where: { status: 'active', maxDiscountPct: { gte: 10 } },
+    });
+    const opp = await unscopedPrisma.opportunity.findFirstOrThrow({ where: { outcome: null } });
+    const quote = await asUser(ARUN, () =>
+      createQuote(opp.id, [
+        { priceBookEntryId: entry.id, quantity: 1, discountPct: Math.min(entry.maxDiscountPct + 15, 100) },
+      ]),
+    );
+    const before = await unscopedPrisma.quote.findUniqueOrThrow({ where: { id: quote.id } });
+
+    await refuseNotificationInserts();
+    await expectReject(() => asUser(ARUN, () => issueQuote(quote.id)));
+
+    const after = await unscopedPrisma.quote.findUniqueOrThrow({ where: { id: quote.id } });
+    expect(after.status).toBe(before.status);
+    expect(
+      await unscopedPrisma.approvalStep.count({
+        where: { tenantId: TENANT, subjectType: 'quote', subjectId: quote.id },
+      }),
+    ).toBe(0);
   });
 });
