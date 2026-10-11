@@ -660,3 +660,19 @@ Still open after round 19b (recorded 2026-10-11, supersedes the round 18b list):
 - Resend data-hosting and chat-retention legal checks.
 - E2EE in LiveKit stays UNVERIFIED. Per-tenant LiveKit isolation is deferred with tenancy (round 18b item 1).
 - Round numbering: two sections titled round 18 exist, and a round 19 section dated 2026-10-10 exists above this one.
+
+## Owner answers, round 20 (recorded 2026-10-11)
+
+Owner answers given after round 19b (recorded 2026-10-11). Each item is an owner answer.
+
+1. **Gate G7 stays DEFERRED as a whole (owner answer, item 1).** The check that every new tenant table sets up RLS is not split out as a named CI gate. The merged test from PR #33 stays in the test suite; it is not a named gate. This answers the round 19b question on G7 in CI-GATES-DRAFT.md.
+2. **The README.md hosting section is LEFT AS IS (owner answer, item 2).** The section (README.md lines ~330-354, own server behind Caddy) stays as the provisional round 6/7 answer. CLAUDE.md says hosting is undecided until after Phase 1, so the two differ knowingly. Neither is edited to match the other in this round.
+
+Still open after round 20 (recorded 2026-10-11, supersedes the round 19b list):
+
+- Hosting, caching and routing (after Phase 1).
+- Whether onboarding and level mapping stay in Phase 0 (round 18b implication (d)).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.

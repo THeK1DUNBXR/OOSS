@@ -83,7 +83,7 @@ What exists in the repository today is noted per gate, so the owner can see how 
 
 ### G7. Tenant isolation and row-level security negative tests (DEFERRED, round 18b)
 
-- **Status (round 18b, 2026-10-11): DEFERRED.** Owner answer, item 1. Both checks (a) and (b) wait for commercialisation. Not mandatory in any wave. The ledger-table RLS already in the migration and the existing tenant scoping stay. CLAUDE.md rule 6 still binds new code.
+- **Status (round 18b, 2026-10-11): DEFERRED.** Owner answer, item 1. Both checks (a) and (b) wait for commercialisation. Not mandatory in any wave. G7 stays deferred as a whole (round 20); it is not split into a named RLS-coverage gate. The ledger-table RLS already in the migration and the existing tenant scoping stay. CLAUDE.md rule 6 still binds new code.
 
 - **Checks (a), RLS negative tests run as the non-owner application role:**
   - a query under tenant B's context returns zero rows owned by tenant A, for every tenant-scoped table;
@@ -307,7 +307,7 @@ Status after round 10 (owner answers recorded in DECISIONS.md, "Owner answers, r
 10. **Statutory gate (G10).** RESOLVED: G10 checks structure only and fails on hard-coded rates. It never checks values. Values, sign-off and ownership stay with the internal finance head (DECISIONS round 3, D-02). Statutory sign-off still needs a real qualified person, even when the duty is held by a level.
 11. **CI database approach (G3).** RESOLVED (round 10, item 2): the CI migration baseline sits in Wave 0, and the G3 row in section 3 and the G3 section now say Wave 0 (previously "from B"). Still open: who owns the baseline; the owner did not name an owner in round 10.
 12. **Fast-check.** RESOLVED: fast-check (MIT) approved as a test-only dependency.
-13. **Tenancy gate G7 and the leakage fuzzer.** DEFERRED by owner answer, round 18b, item 1. Recorded here, not re-opened.
+13. **Tenancy gate G7 and the leakage fuzzer.** DEFERRED by owner answer, round 18b, item 1. G7 stays deferred as a whole (round 20): the RLS-on-new-tenant-tables check is not split out as a named gate. The merged test from PR #33 stays in the test suite without being a named gate. Recorded here, not re-opened.
 
 ---
 
