@@ -182,3 +182,38 @@ describe('Settlement — a receipt that settles a course-fee invoice is not bloc
     }
   });
 });
+
+describe('Settlement — a receipt that settles a generic invoice is not blocked by a closed current month', () => {
+  it('the statement is raised in the open period, the receipt stands, and EX-FIN-009 is raised', async () => {
+    const org = await unscopedPrisma.organization.findFirstOrThrow({ where: { tenantId: TENANT } });
+    const invoice = await asUser(FINANCE, () =>
+      createInvoice({
+        organizationId: org.id,
+        lines: [{ description: unique('Generic settle'), unitPrice: 2000, gstRate: 18 }],
+      }),
+    );
+
+    const today = monthKey(new Date());
+    await asUser(FINANCE, () => requestClosePeriod(today));
+    await asUser(CHAIRMAN, () => closePeriod(today));
+    try {
+      const amount = round2(Number(invoice.grandTotal.toString()));
+      await asUser(FINANCE, () =>
+        collectInvoicePayment(invoice.id, {
+          amount,
+          mode: 'bank_transfer',
+          receivedAt: new Date('2026-09-15T06:00:00Z'),
+        }),
+      );
+
+      const final = await unscopedPrisma.finalInvoice.findFirstOrThrow({
+        where: { tenantId: TENANT, invoiceId: invoice.id },
+      });
+      expect(final.settled).toBe(true);
+      expect(monthKey(final.issuedAt)).not.toBe(today);
+      expect(await exceptionsFor('EX-FIN-009', final.id)).toBe(1);
+    } finally {
+      await asUser(CHAIRMAN, () => reopenPeriod(today, 'W2 probe finished; reopening the current month'));
+    }
+  });
+});
