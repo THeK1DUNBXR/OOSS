@@ -26,10 +26,7 @@ import { emittedEvents, setEventCapture } from '../platform/eventBus.js';
 import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
 
 const CHAIRMAN = 'chairman@kaizen.co.in';
-const MIGRATION = new URL(
-  '../../prisma/migrations/20261013130000_task_source_kind/migration.sql',
-  import.meta.url,
-);
+const MIGRATION = new URL('../../prisma/migrations/20261013130000_task_source_kind/migration.sql', import.meta.url);
 
 let KAIZEN: string;
 
@@ -152,9 +149,7 @@ describe('createTask refuses at the write boundary', () => {
     const title = `Refused kind ${uniq()}`;
     const owner = await personIn(KAIZEN);
     const err = await asUser(CHAIRMAN, () =>
-      expectReject(() =>
-        createTask({ title, ownerPartyId: owner, sourceKind: 'invoice' as never, sourceId: 'x' }),
-      ),
+      expectReject(() => createTask({ title, ownerPartyId: owner, sourceKind: 'invoice' as never, sourceId: 'x' })),
     );
     expect(err.status).toBe(422);
     expect(await taskCountWithTitle(title)).toBe(0);
@@ -165,9 +160,7 @@ describe('createTask refuses at the write boundary', () => {
     const owner = await personIn(KAIZEN);
     const foreign = await commitmentInOtherTenant();
     const err = await asUser(CHAIRMAN, () =>
-      expectReject(() =>
-        createTask({ title, ownerPartyId: owner, sourceKind: 'commitment', sourceId: foreign }),
-      ),
+      expectReject(() => createTask({ title, ownerPartyId: owner, sourceKind: 'commitment', sourceId: foreign })),
     );
     expect(err.status).toBe(422);
     expect(await taskCountWithTitle(title)).toBe(0);
@@ -219,9 +212,7 @@ describe('createTask refuses at the write boundary', () => {
     });
     expect(audit).not.toBeNull();
 
-    const events = emittedEvents.filter(
-      (e) => e.eventName === EVENTS.TASK_CREATED && e.subject.entityId === task.id,
-    );
+    const events = emittedEvents.filter((e) => e.eventName === EVENTS.TASK_CREATED && e.subject.entityId === task.id);
     expect(events).toHaveLength(1);
   });
 });
@@ -312,7 +303,12 @@ describe('the backfill in the migration', () => {
       { relatedType: 'decision', relatedId: decision.id, expectKind: 'decision', expectSource: decision.id },
       { relatedType: 'case', relatedId: caseRow.id, expectKind: 'case', expectSource: caseRow.id },
       { relatedType: 'exception', relatedId: exception.id, expectKind: 'exception', expectSource: exception.id },
-      { relatedType: 'onboarding_task', relatedId: onboarding.id, expectKind: 'onboarding_task', expectSource: onboarding.id },
+      {
+        relatedType: 'onboarding_task',
+        relatedId: onboarding.id,
+        expectKind: 'onboarding_task',
+        expectSource: onboarding.id,
+      },
       // The id exists, in another tenant: the same as an id that does not exist.
       { relatedType: 'commitment', relatedId: foreignCommitment, expectKind: 'manual', expectSource: null },
       // A registry kind with no row behind it.

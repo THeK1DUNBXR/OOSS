@@ -204,6 +204,12 @@ export async function logInteraction(input: InteractionInput) {
           relatedInteractionId: interaction.id,
           relatedType: input.relatedReferences[0].entityType,
           relatedId: input.relatedReferences[0].entityId,
+          // An interaction is not a registry kind, so its next action is a manual
+          // task. The reference it was logged against stays in relatedType/relatedId;
+          // it is not promoted to a typed source, because the reference is not
+          // checked to be a commitment, case or the like.
+          sourceKind: 'manual',
+          sourceId: null,
           createdById: auth.partyId,
         },
       });
