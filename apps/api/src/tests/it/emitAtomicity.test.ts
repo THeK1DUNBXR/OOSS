@@ -19,6 +19,7 @@ import { createRisk } from '../../domains/it/governance/risks.js';
 import { createFinding, transitionFinding } from '../../domains/it/governance/findings.js';
 import { createVendor } from '../../domains/it/vendors.js';
 import { declareFreeze } from '../../domains/it/itsm.js';
+import { createTicket, transitionTicket, triageTicket } from '../../domains/it/servicedesk.js';
 
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
@@ -155,5 +156,80 @@ describe('IT governed writes commit with their audit row and event, or not at al
 
     expect(await unscopedPrisma.itChangeFreeze.count({ where: { tenantId: tid, name } })).toBe(0);
     expect(await outboxCount(EVENTS.IT_CHANGE_FREEZE_DECLARED)).toBe(before);
+  });
+});
+
+describe('IT service-desk transition: the status, its audit row and its event commit together', () => {
+  const OPS = 'operations@kaizen.co.in';
+  const TICKET_TRIGGER = 'it_emit_refuse_ticket_update';
+
+  async function refuseTicketUpdates(): Promise<void> {
+    await unscopedPrisma.$executeRawUnsafe(
+      `CREATE OR REPLACE FUNCTION ${TICKET_TRIGGER}() RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN RAISE EXCEPTION '${INJECTED}'; END; $$`,
+    );
+    await unscopedPrisma.$executeRawUnsafe(
+      `CREATE TRIGGER ${TICKET_TRIGGER} BEFORE UPDATE ON it_tickets FOR EACH ROW EXECUTE FUNCTION ${TICKET_TRIGGER}()`,
+    );
+  }
+
+  async function restoreTicketUpdates(): Promise<void> {
+    await unscopedPrisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS ${TICKET_TRIGGER} ON it_tickets`);
+    await unscopedPrisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${TICKET_TRIGGER}()`);
+  }
+
+  /** Every outbox row whose envelope names this ticket as its subject, whatever the event name. */
+  async function eventsFor(ticketId: string): Promise<number> {
+    return unscopedPrisma.outboxEvent.count({
+      where: { tenantId: await tenantId(), payload: { path: ['subject', 'entityId'], equals: ticketId } },
+    });
+  }
+
+  async function auditUpdatesFor(ticketId: string): Promise<number> {
+    return unscopedPrisma.auditRecord.count({
+      where: { tenantId: await tenantId(), subjectType: 'it_ticket', subjectId: ticketId, action: 'update' },
+    });
+  }
+
+  async function triagedTicket(): Promise<string> {
+    const ticket = await asUser(OPS, () =>
+      createTicket({ category: 'incident', subject: `Transition probe ${stamp()}`, description: 'Printer offline.' }),
+    );
+    await asUser(OPS, () => triageTicket(ticket.id, { priority: 'P2' }));
+    return ticket.id;
+  }
+
+  it('an audit failure leaves the ticket in its state and writes no event', async () => {
+    const id = await triagedTicket();
+    const events = await eventsFor(id);
+    const audits = await auditUpdatesFor(id);
+
+    await refuseAuditInserts();
+    await expect(asUser(OPS, () => transitionTicket(id, 'START'))).rejects.toThrow(INJECTED);
+    await restoreAuditInserts();
+
+    expect((await unscopedPrisma.itTicket.findFirstOrThrow({ where: { id } })).status).toBe('triaged');
+    expect(await eventsFor(id)).toBe(events);
+    expect(await auditUpdatesFor(id)).toBe(audits);
+  });
+
+  it('a failed status write leaves no audit row and no event behind', async () => {
+    // The audit row and the event are written before the status change, so a
+    // refused status write used to leave both committed for a transition that
+    // did not happen. The trigger refuses the UPDATE on it_tickets only.
+    const id = await triagedTicket();
+    const events = await eventsFor(id);
+    const audits = await auditUpdatesFor(id);
+
+    await refuseTicketUpdates();
+    try {
+      await expect(asUser(OPS, () => transitionTicket(id, 'START'))).rejects.toThrow(INJECTED);
+    } finally {
+      await restoreTicketUpdates();
+    }
+
+    expect((await unscopedPrisma.itTicket.findFirstOrThrow({ where: { id } })).status).toBe('triaged');
+    expect(await auditUpdatesFor(id)).toBe(audits);
+    expect(await eventsFor(id)).toBe(events);
   });
 });
