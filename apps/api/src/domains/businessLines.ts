@@ -42,7 +42,7 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const WHOLE = 10000;
 
 /** An IST calendar day given as YYYY-MM-DD, stored as UTC midnight. */
-function istDay(iso: string): Date {
+export function istDay(iso: string): Date {
   if (!ISO_DAY.test(iso)) throw ApiError.badRequest('Dates are IST calendar days, given as YYYY-MM-DD.');
   const d = new Date(`${iso}T00:00:00.000Z`);
   // Date rolls an impossible day such as 2030-02-31 into March; the round trip catches it.
@@ -53,21 +53,21 @@ function istDay(iso: string): Date {
 }
 
 /** Today's IST day. A UTC read would put 00:00-05:30 IST in yesterday. */
-function todayIst(): Date {
+export function todayIst(): Date {
   return istDay(istDateKey(new Date()));
 }
 
-function isoDay(d: Date): string {
+export function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function reasonOf(text: string): string {
+export function reasonOf(text: string): string {
   const note = text.trim();
   if (note.length < 3) throw ApiError.badRequest('Every registry change states why it is made.');
   return note;
 }
 
-function textOf(value: string, field: string, max: number): string {
+export function textOf(value: string, field: string, max: number): string {
   const v = value.trim();
   if (v.length === 0 || v.length > max) throw ApiError.badRequest(`${field} is required, at most ${max} characters.`);
   return v;
@@ -83,7 +83,7 @@ function retiredOn(line: Pick<BusinessLine, 'effectiveTo'>, day: Date): boolean 
  * it is in force that day. A line not yet in force and a retired line are
  * refused separately so the message says which.
  */
-function assertOpenOn(line: BusinessLine, day: Date, use: string): void {
+export function assertOpenOn(line: BusinessLine, day: Date, use: string): void {
   if (line.effectiveFrom > day) {
     throw ApiError.conflict(
       `Business line ${line.code} is not in force until ${isoDay(line.effectiveFrom)}, so it cannot take ${use} from ${isoDay(day)}.`,
@@ -136,7 +136,7 @@ const RACE_CODES = new Set(['23P01', '40001', '40P01', 'P2034']);
 const RACE_MESSAGE =
   /exclusion constraint|could not serialize|deadlock detected|must total 10000 basis points|basis points must total/;
 
-function isRaceLoss(err: unknown): boolean {
+export function isRaceLoss(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;
   const e = err as { code?: unknown; meta?: { code?: unknown }; message?: unknown };
   if (typeof e.code === 'string' && RACE_CODES.has(e.code)) return true;
@@ -144,7 +144,7 @@ function isRaceLoss(err: unknown): boolean {
   return typeof e.message === 'string' && RACE_MESSAGE.test(e.message);
 }
 
-const RACE_MESSAGE_TEXT =
+export const RACE_MESSAGE_TEXT =
   'Another change to this subject, line or day landed first. Read the current state and try again.';
 
 /** A split states its shares on every successor or on none, and the stated ones total 10,000. */

@@ -31,12 +31,57 @@ model BusinessLine {
   successorsTo      BusinessLineSuccessor[] @relation("SuccessorTo")
   distributionLines LineDistributionLine[]
   orgUnits          OrgUnit[]
+  units             Unit[]
   journalLines      JournalLine[]
   cases             Case[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
   @@map("business_lines")
+}
+
+/// A unit is a dated row that belongs to a business line, or to none (a support
+/// unit). One code names every row of one unit: a move closes the row it has and
+/// opens another under the same code, so the code is the identity across history
+/// and each row is one version of it. `OrgUnit` is the existing reporting
+/// hierarchy and is not changed by this table (SPINE-CONTRACT s.1.0, Opus
+/// decision 12). Dates are IST calendar days stored as UTC midnight (CLAUDE.md
+/// rule 3). The rules Prisma cannot express are in migration
+/// 20261013110000_business_line_units: lineId, parentUnitId, code, tenantId and
+/// effectiveFrom are immutable at the database, rows of one code do not overlap,
+/// and the status agrees with the end date.
+model Unit {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Immutable. Names the unit across every row it has had.
+  code String
+  name String
+  /// `closed` exactly when `effectiveTo` is set (CHECK in the migration).
+  status String @default("active")
+
+  /// Immutable on a row. The line the unit delivers from this row's day; a move
+  /// closes this row and opens one with the new line.
+  lineId       String?
+  /// Immutable on a row, for the same reason. Cycles are refused in the domain.
+  parentUnitId String?
+
+  effectiveFrom DateTime  @db.Date
+  /// Exclusive, as on BusinessLine: from this IST day the row is no longer in force.
+  effectiveTo   DateTime? @db.Date
+
+  line     BusinessLine? @relation(fields: [tenantId, lineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  parent   Unit?         @relation("UnitTree", fields: [tenantId, parentUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  children Unit[]        @relation("UnitTree")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, id])
+  @@index([tenantId, code])
+  @@index([tenantId, lineId])
+  @@index([tenantId, parentUnitId])
+  @@map("units")
 }
 
 /// A dated split or merge: `fromLineId` hands `effectiveFrom` onward to

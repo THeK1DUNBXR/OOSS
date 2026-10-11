@@ -911,6 +911,13 @@ export const EVENTS = {
   BUSINESS_LINE_SUCCESSOR_RECORDED: 'kz.org.business_line_successor.recorded',
   LINE_DISTRIBUTION_RECORDED: 'kz.org.line_distribution.recorded',
   LINE_DISTRIBUTION_SUPERSEDED: 'kz.org.line_distribution.superseded',
+
+  // --- Organisation: business-line units (SPINE-CONTRACT s.1.0). Emitted by
+  // apps/api/src/domains/units.ts. A move emits one `moved`; its two rows are
+  // audited separately.
+  UNIT_OPENED: 'kz.org.unit.opened',
+  UNIT_CLOSED: 'kz.org.unit.closed',
+  UNIT_MOVED: 'kz.org.unit.moved',
 } as const;
 
 /**
