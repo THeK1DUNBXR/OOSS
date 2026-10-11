@@ -22,7 +22,7 @@ Markers: `BLOCKED-BY` marks a work item that cannot start until the named condit
 6. Every stop-ship fix starts with a failing test on the old code, in a separate first commit.
 7. Statutory values are date-effective `StatutoryRule` rows, seeded DRAFT until sign-off. The interim sign-off holder is the internal finance head.
 8. Statutory uncertainty means stop and flag it. Do not guess.
-9. Open source is learned from by reading and rewriting, never by copying (owner method).
+9. Open source is learned from by reading and rewriting, never by copying (owner method). Exception for the mail component only: copy code from open-source mail projects where relevant and log provenance (round 22 clarification, DECISIONS.md, 2026-10-12).
 
 ---
 
@@ -179,7 +179,7 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
 - COM-15: notifications in-app and by email via Resend.
   - BLOCKED-BY the Resend data-hosting check, before the first outside user.
 - COM-02: internal-only shared inbox.
-- Employee company mailboxes and in-app inbox (round 21, OPEN, new large scope, not estimated). Owner answers: the app creates and hosts each employee's mailbox; the inbox sends and reads mail and links it to customers (Z3 capture pulled in for employee mail only). Round 22 owner decision: FORK Stalwart Mail Server and adapt it to Zen 360. Unresearched caveats (licence AGPL-3.0, Enterprise features, JMAP, release cadence, hosting conflict) are listed in DECISIONS.md round 22. Still OPEN and not estimated. No CAP row or spec yet. MVP, v2 and later feature phasing is in DECISIONS.md round 22. See DECISIONS.md round 21 and round 22.
+- Employee company mailboxes and in-app inbox (round 21, OPEN, new large scope, not estimated). Owner answers: the app creates and hosts each employee's mailbox; the inbox sends and reads mail and links it to customers (Z3 capture pulled in for employee mail only). Round 22 owner decision, clarified 2026-10-12: copy code from open-source mail projects where relevant (Stalwart and others) into our own mail component, and log provenance in `docs/plan/zen360/MAIL-PROVENANCE.md`. This is not a literal fork. Unresearched caveats (licence AGPL-3.0, Enterprise features, JMAP, release cadence, hosting conflict) are listed in DECISIONS.md round 22. Still OPEN and not estimated. No CAP row or spec yet. MVP, v2 and later feature phasing is in DECISIONS.md round 22. See DECISIONS.md round 21 and round 22.
 - COM-11: meetings and minutes, typed by people. No recordings.
 - Standups are dropped.
 
@@ -227,7 +227,7 @@ Not moved: the non-owner database role stays in item 1.2 as a dev and CI setting
 ## Open-source use
 
 - Read and learn only. No third-party code is copied, whatever its licence (owner method).
-  - Exception on record: the round 22 Stalwart fork (owner decision) is third-party code adapted into the product. It conflicts with this rule and needs its own licence and method review before any code is taken. Not resolved here.
+  - Exception on record (round 22 clarification, 2026-10-12): for the mail component only, copy code from open-source mail projects where relevant and log provenance. Copying AGPL, GPL or EUPL code carries licence obligations that reach the combined app; the owner accepts this and defers it to their team. Each copied file goes in MAIL-PROVENANCE.md. Not resolved here.
 - Dependencies allowed: pino, express-rate-limit, fast-check (test-only), the LiveKit SDK and server as a service, React Aria, TanStack Table, hey-api, Playwright, schemathesis (dev).
 - Licences to verify before use: helmet, croner, Stalwart Mail Server (AGPL-3.0 and Enterprise Licence v2 terms, unread; round 22).
 - Ideas studied: pg_ledger, pgledger, Formance, pg-boss, xstate, OpenFGA, Zulip, Taiga, Vikunja, Plane, Kimai, frappe hrms, ERPNext, OpenProject, OpenFisca, Catala.

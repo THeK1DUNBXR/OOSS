@@ -288,7 +288,7 @@ No figure is entered in this document or in code. OPEN 10: where DRAFT rows come
 
 ## 10. Phasing against ORDERED-PLAN
 
-OP Wave 6 lists commitment, case, document store, typed task source, decision keys, founder exception view, Z3 handover gate, P7 onboarding (BLOCKED-BY 3.1), the level-based access system "assigned at onboarding", thresholds as data, static public IP (OP:115-128). Wave 4 lists the internal IT owner "as a level assignment at onboarding" (OP:95).
+OP Wave 6 lists commitment, case, document store, typed task source, decision keys, founder exception view, Z3 handover gate, P7 onboarding (no longer BLOCKED-BY 3.1; round 22 item d), the level-based access system "assigned at onboarding", thresholds as data, static public IP (OP:115-128). Wave 4 lists the internal IT owner "as a level assignment at onboarding" (OP:95).
 
 | When                                                   | What                                                                                                                                                                                                               |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

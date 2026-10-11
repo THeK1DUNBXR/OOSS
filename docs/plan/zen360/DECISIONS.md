@@ -766,3 +766,25 @@ Still open after round 22 (recorded 2026-10-11, supersedes the round 21 list for
 - Statutory sign-off holder and IT owner (tbd during onboard).
 - D-11 numbers.
 - Resend data-hosting and chat-retention legal checks.
+
+### Round 22 clarification (recorded 2026-10-12)
+
+Owner clarification of item f. "Fork" in the round 22 answer does NOT mean a literal GitHub fork of Stalwart Mail Server, and does NOT mean running a modified Stalwart. It means: copy code from Stalwart's repository and/or other open-source or public solutions wherever relevant into Zen 360's own mail component.
+
+This supersedes, for the mail component only:
+
+- the round 22 wording "fork Stalwart Mail Server and adapt it" (item f above, ORDERED-PLAN.md and ROADMAP.md 1E);
+- the "read and learn only, never copy" open-source rule (D-04 round 5, DECISIONS.md:214; ORDERED-PLAN.md "Open-source use").
+
+The rule stays in force for every other part of the app.
+
+Consequences, stated plainly. These are not decisions; the owner has accepted them and defers the detail to their team.
+
+i. **Licence effect of copying.** Copying AGPL-3.0 code (Stalwart, SnappyMail, SuiteCRM, EspoCRM), GPL-3.0 code (Mailcow, Maddy, Roundcube) or EUPL code into our code makes that part a derivative work. It must then be offered under the same licence to the users of the product, and it may reach the rest of the application it is combined with. MIT-licensed code (Mox, Haraka, Postal) needs only its copyright and licence notice kept. The licences above are as listed in the owner's brief; they are not checked against the upstream LICENSE files.
+ii. **Language.** Stalwart is Rust and Zen 360 is TypeScript. Most of what would be taken is a port or a rewrite, not a copy. Whether a close port counts as a derivative work is a legal question for counsel. It is not answered here.
+iii. **Owner position.** The owner accepts the consequences in (i) and (ii) and defers the decision on them to the owner's team, including on commercialisation.
+iv. **Mitigation to adopt.** Keep a provenance log at `docs/plan/zen360/MAIL-PROVENANCE.md` with one row for each copied or ported file: our file, upstream project, upstream path and commit, licence, date copied, and who approved it. This lets the team later rewrite the code or change its licence. Copied code keeps the upstream licence header and notices.
+v. **Limit on proprietary products.** Paid or proprietary products are not copied and not reverse-engineered. Only their public feature lists are used.
+vi. **Still applies to copied code.** Copied code must follow CLAUDE.md: tenant scope (rule 6), audit and governed entities (rule 5), no mocks in the API test suite, and money and dates per rules 1 and 3. Hosting and DNS conflicts (round 18b, 19b and round 22) remain open.
+
+Still open, unchanged by this clarification: email hosting against the "hosting after Phase 1" deferral; the domain and DNS owner; mailbox limits and retention; access rules for reading other people's mail; DPDP duties (needs counsel).
