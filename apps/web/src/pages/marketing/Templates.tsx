@@ -20,17 +20,8 @@ import {
   type TemplateView,
 } from '@kaizen/shared';
 import { dateTime } from '../../lib/api.js';
-import {
-  Card,
-  EmptyState,
-  ErrorBox,
-  Field,
-  Loading,
-  Modal,
-  PageHeader,
-  RecordCode,
-  StatusChip,
-} from '../../components/ui.js';
+import { Card, ErrorBox, Field, Loading, Modal, PageHeader, RecordCode, StatusChip } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { CreateModal, messageOf, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 import {
   useApproveTemplate,
@@ -62,6 +53,45 @@ const STATUS_TONE: Record<TemplateStatus, 'neutral' | 'good' | 'accent' | 'warn'
  * ever genuinely absent from a payload, rather than throwing.
  */
 type TemplateRow = TemplateView & { createdById?: string | null };
+
+const TEMPLATE_COLUMNS: ReadonlyArray<DataTableColumn<TemplateRow>> = [
+  { id: 'code', header: 'Code', cell: (t) => <RecordCode code={t.recordCode} />, sortValue: (t) => t.recordCode },
+  {
+    id: 'name',
+    header: 'Name',
+    cell: (t) => t.name,
+    cellClassName: 'text-xs font-medium text-ink-100',
+    sortValue: (t) => t.name,
+  },
+  {
+    id: 'channel',
+    header: 'Channel',
+    cell: (t) => CHANNEL_KEY_LABELS[t.channelKey],
+    cellClassName: 'text-xs text-ink-300',
+    sortValue: (t) => CHANNEL_KEY_LABELS[t.channelKey],
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (t) => <StatusChip status={TEMPLATE_STATUS_LABELS[t.status]} tone={STATUS_TONE[t.status]} />,
+    sortValue: (t) => TEMPLATE_STATUS_LABELS[t.status],
+  },
+  {
+    id: 'version',
+    header: 'Version',
+    align: 'right',
+    cell: (t) => `v${t.version}`,
+    cellClassName: 'text-xs',
+    sortValue: (t) => t.version,
+  },
+  {
+    id: 'created',
+    header: 'Created',
+    cell: (t) => dateTime(t.createdAt),
+    cellClassName: 'text-2xs text-ink-500',
+    sortValue: (t) => t.createdAt,
+  },
+];
 
 export function Templates() {
   const { can } = useSession();
@@ -115,47 +145,18 @@ export function Templates() {
         </select>
       </div>
 
-      {isLoading ? (
-        <Loading />
-      ) : !data?.items.length ? (
-        <Card>
-          <EmptyState
-            message="No templates yet."
-            hint="A send or journey step needs an approved template before it can go out."
-          />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Channel</th>
-                <th>Status</th>
-                <th className="text-right">Version</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data.items as TemplateRow[]).map((t) => (
-                <tr key={t.id} className="cursor-pointer" onClick={() => setOpenId(t.id)}>
-                  <td>
-                    <RecordCode code={t.recordCode} />
-                  </td>
-                  <td className="text-xs font-medium text-ink-100">{t.name}</td>
-                  <td className="text-xs text-ink-300">{CHANNEL_KEY_LABELS[t.channelKey]}</td>
-                  <td>
-                    <StatusChip status={TEMPLATE_STATUS_LABELS[t.status]} tone={STATUS_TONE[t.status]} />
-                  </td>
-                  <td className="text-right tabular-nums text-xs">v{t.version}</td>
-                  <td className="text-2xs text-ink-500">{dateTime(t.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card bodyClassName="p-0">
+        <DataTable
+          caption="Templates"
+          columns={TEMPLATE_COLUMNS}
+          rows={(data?.items ?? []) as TemplateRow[]}
+          rowKey={(t) => t.id}
+          loading={isLoading}
+          emptyMessage="No templates yet."
+          emptyHint="A send or journey step needs an approved template before it can go out."
+          rowAction={{ label: (t) => `Open template ${t.name}`, onActivate: (t) => setOpenId(t.id) }}
+        />
+      </Card>
 
       <NewTemplate open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(id) => setOpenId(id)} />
       {openId && <TemplateDrawer id={openId} onClose={() => setOpenId(null)} />}

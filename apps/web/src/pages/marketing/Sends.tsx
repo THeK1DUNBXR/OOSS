@@ -23,11 +23,11 @@ import {
   type ChannelKey,
   type RecipientStatus,
   type SendStatus,
+  type SendView,
 } from '@kaizen/shared';
 import { dateTime } from '../../lib/api.js';
 import {
   Card,
-  EmptyState,
   ErrorBox,
   Field,
   Loading,
@@ -38,6 +38,7 @@ import {
   StatusChip,
 } from '../../components/ui.js';
 import { NOT_MEASURED } from '../../lib/words.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { CreateModal, messageOf, Row, SelectInput, TextInput } from '../../components/forms.js';
 import {
   useApproveSend,
@@ -53,6 +54,7 @@ import {
   useSends,
   useSendTest,
   useTemplates,
+  type SendRecipientView,
 } from '../../lib/marketingApi.js';
 import { useSession } from '../../lib/session.js';
 
@@ -91,6 +93,57 @@ function groupSkipped(skipped: Array<{ personId: string; reason: string }>) {
 // List
 // ---------------------------------------------------------------------------
 
+const SEND_LIST_COLUMNS: ReadonlyArray<DataTableColumn<SendView>> = [
+  {
+    id: 'code',
+    header: 'Code',
+    cell: (s) => <RecordCode code={s.recordCode} />,
+    sortValue: (s) => s.recordCode,
+  },
+  {
+    id: 'template',
+    header: 'Template',
+    cell: (s) => s.templateName,
+    cellClassName: 'text-xs font-medium text-ink-100',
+    sortValue: (s) => s.templateName,
+  },
+  {
+    id: 'channel',
+    header: 'Channel',
+    cell: (s) => CHANNEL_KEY_LABELS[s.channelKey],
+    cellClassName: 'text-xs text-ink-300',
+    sortValue: (s) => CHANNEL_KEY_LABELS[s.channelKey],
+  },
+  {
+    id: 'audience',
+    header: 'Audience',
+    cell: (s) => s.audienceName ?? '—',
+    cellClassName: 'text-xs text-ink-300',
+    sortValue: (s) => s.audienceName,
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (s) => <StatusChip status={SEND_STATUS_LABELS[s.status]} tone={STATUS_TONE[s.status]} />,
+    sortValue: (s) => SEND_STATUS_LABELS[s.status],
+  },
+  {
+    id: 'recipients',
+    header: 'Recipients',
+    align: 'right',
+    cell: (s) => s.recipientCount,
+    cellClassName: 'text-xs',
+    sortValue: (s) => s.recipientCount,
+  },
+  {
+    id: 'scheduled',
+    header: 'Scheduled',
+    cell: (s) => (s.scheduledAt ? dateTime(s.scheduledAt) : 'not scheduled'),
+    cellClassName: 'text-2xs text-ink-500',
+    sortValue: (s) => s.scheduledAt,
+  },
+];
+
 export function Sends() {
   const { can } = useSession();
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -113,46 +166,18 @@ export function Sends() {
         }
       />
 
-      {isLoading ? (
-        <Loading />
-      ) : !data?.items.length ? (
-        <Card>
-          <EmptyState message="No sends yet." hint="A send needs an approved template and an audience." />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Template</th>
-                <th>Channel</th>
-                <th>Audience</th>
-                <th>Status</th>
-                <th className="text-right">Recipients</th>
-                <th>Scheduled</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((s) => (
-                <tr key={s.id} className="cursor-pointer" onClick={() => setOpenId(s.id)}>
-                  <td>
-                    <RecordCode code={s.recordCode} />
-                  </td>
-                  <td className="text-xs font-medium text-ink-100">{s.templateName}</td>
-                  <td className="text-xs text-ink-300">{CHANNEL_KEY_LABELS[s.channelKey]}</td>
-                  <td className="text-xs text-ink-300">{s.audienceName ?? '—'}</td>
-                  <td>
-                    <StatusChip status={SEND_STATUS_LABELS[s.status]} tone={STATUS_TONE[s.status]} />
-                  </td>
-                  <td className="text-right tabular-nums text-xs">{s.recipientCount}</td>
-                  <td className="text-2xs text-ink-500">{s.scheduledAt ? dateTime(s.scheduledAt) : 'not scheduled'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card bodyClassName="p-0">
+        <DataTable
+          caption="Sends"
+          columns={SEND_LIST_COLUMNS}
+          rows={data?.items ?? []}
+          rowKey={(s) => s.id}
+          loading={isLoading}
+          emptyMessage="No sends yet."
+          emptyHint="A send needs an approved template and an audience."
+          rowAction={{ label: (s) => `Open send ${s.recordCode}`, onActivate: (s) => setOpenId(s.id) }}
+        />
+      </Card>
 
       <NewSendWizard open={wizardOpen} onClose={() => setWizardOpen(false)} onDone={(id) => setOpenId(id)} />
       {openId && <SendQuickView id={openId} onClose={() => setOpenId(null)} />}
@@ -384,6 +409,29 @@ export function SendDetail() {
   );
 }
 
+const RECIPIENT_COLUMNS: ReadonlyArray<DataTableColumn<SendRecipientView>> = [
+  {
+    id: 'person',
+    header: 'Person',
+    cell: (r) => r.personName,
+    cellClassName: 'text-xs text-ink-200',
+    sortValue: (r) => r.personName,
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (r) => <StatusChip status={RECIPIENT_STATUS_LABELS[r.status as RecipientStatus] ?? r.status} />,
+    sortValue: (r) => RECIPIENT_STATUS_LABELS[r.status as RecipientStatus] ?? r.status,
+  },
+  {
+    id: 'reason',
+    header: 'Reason',
+    cell: (r) => r.reason ?? '—',
+    cellClassName: 'text-2xs text-ink-500',
+    sortValue: (r) => r.reason,
+  },
+];
+
 function SendDetailBody({ id }: { id: string }) {
   const { user, can } = useSession();
   const { data, isLoading, error } = useSend(id);
@@ -549,36 +597,15 @@ function SendDetailBody({ id }: { id: string }) {
         }
         bodyClassName="p-0"
       >
-        {recipients.isLoading ? (
-          <Loading />
-        ) : !recipients.data?.length ? (
-          <div className="p-4">
-            <EmptyState message="No recipients match." />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Person</th>
-                  <th>Status</th>
-                  <th>Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recipients.data.map((r) => (
-                  <tr key={r.id}>
-                    <td className="text-xs text-ink-200">{r.personName}</td>
-                    <td>
-                      <StatusChip status={RECIPIENT_STATUS_LABELS[r.status as RecipientStatus] ?? r.status} />
-                    </td>
-                    <td className="text-2xs text-ink-500">{r.reason ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          caption="Send recipients"
+          columns={RECIPIENT_COLUMNS}
+          rows={recipients.data ?? []}
+          rowKey={(r) => r.id}
+          loading={recipients.isLoading}
+          error={recipients.error}
+          emptyMessage="No recipients match."
+        />
       </Card>
 
       <SendTestDialog

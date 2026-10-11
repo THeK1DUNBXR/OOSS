@@ -19,6 +19,7 @@ import {
   useAssets,
 } from '../../lib/marketingApi.js';
 import { Card, EmptyState, ErrorBox, Loading, Modal, PageHeader, StatusChip } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { CreateModal, Row, SelectInput, TextArea, TextInput, messageOf, NewButton } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 
@@ -57,6 +58,77 @@ export function Social() {
     return [...byWeek.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
   }, [items]);
 
+  // The row actions close over the mutations and the modal setters, so the columns live here.
+  const postColumns: ReadonlyArray<DataTableColumn<SocialPostView>> = [
+    {
+      id: 'when',
+      header: 'When',
+      cell: (p) => dateTime(p.scheduledAt),
+      cellClassName: 'text-2xs text-ink-400',
+      sortValue: (p) => p.scheduledAt,
+    },
+    {
+      id: 'channel',
+      header: 'Channel',
+      cell: (p) => CHANNEL_KEY_LABELS[p.channelKey] ?? p.channelKey,
+      cellClassName: 'text-xs text-ink-300',
+      sortValue: (p) => CHANNEL_KEY_LABELS[p.channelKey] ?? p.channelKey,
+    },
+    {
+      id: 'body',
+      header: 'Body',
+      cell: (p) => p.body,
+      cellClassName: 'max-w-sm truncate text-xs text-ink-200',
+      sortValue: (p) => p.body,
+    },
+    {
+      id: 'campaign',
+      header: 'Campaign',
+      cell: (p) => p.campaignName ?? '—',
+      cellClassName: 'text-xs text-ink-300',
+      sortValue: (p) => p.campaignName,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (p) => (
+        <StatusChip
+          status={p.status}
+          tone={
+            p.status === 'published' ? 'good' : p.status === 'failed' || p.status === 'cancelled' ? 'bad' : 'neutral'
+          }
+        />
+      ),
+      sortValue: (p) => p.status,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (p) => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          {can('marketing_assets:E') && (p.status === 'draft' || p.status === 'scheduled') && (
+            <>
+              <button className="btn-quiet btn-sm" onClick={() => setPublishing(p)}>
+                Publish
+              </button>
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => cancel.mutate(p.id, { onError: (e) => setError(messageOf(e)) })}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+          {can('marketing_assets:E') && p.status === 'published' && (
+            <button className="btn-quiet btn-sm" onClick={() => setMetricsFor(p)}>
+              Metrics
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div>
       <PageHeader
@@ -79,64 +151,13 @@ export function Social() {
         <div className="space-y-5">
           {weeks.map(([wk, posts]) => (
             <Card key={wk} title={`Week of ${date(wk)}`} bodyClassName="p-0">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Channel</th>
-                    <th>Body</th>
-                    <th>Campaign</th>
-                    <th>Status</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {posts
-                    .sort((a, b) => (a.scheduledAt < b.scheduledAt ? -1 : 1))
-                    .map((p) => (
-                      <tr key={p.id}>
-                        <td className="text-2xs text-ink-400">{dateTime(p.scheduledAt)}</td>
-                        <td className="text-xs text-ink-300">{CHANNEL_KEY_LABELS[p.channelKey] ?? p.channelKey}</td>
-                        <td className="max-w-sm truncate text-xs text-ink-200">{p.body}</td>
-                        <td className="text-xs text-ink-300">{p.campaignName ?? '—'}</td>
-                        <td>
-                          <StatusChip
-                            status={p.status}
-                            tone={
-                              p.status === 'published'
-                                ? 'good'
-                                : p.status === 'failed' || p.status === 'cancelled'
-                                  ? 'bad'
-                                  : 'neutral'
-                            }
-                          />
-                        </td>
-                        <td>
-                          <div className="flex flex-wrap justify-end gap-1.5">
-                            {can('marketing_assets:E') && (p.status === 'draft' || p.status === 'scheduled') && (
-                              <>
-                                <button className="btn-quiet btn-sm" onClick={() => setPublishing(p)}>
-                                  Publish
-                                </button>
-                                <button
-                                  className="btn-quiet btn-sm"
-                                  onClick={() => cancel.mutate(p.id, { onError: (e) => setError(messageOf(e)) })}
-                                >
-                                  Cancel
-                                </button>
-                              </>
-                            )}
-                            {can('marketing_assets:E') && p.status === 'published' && (
-                              <button className="btn-quiet btn-sm" onClick={() => setMetricsFor(p)}>
-                                Metrics
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
+              <DataTable
+                caption={`Scheduled posts, week of ${date(wk)}`}
+                columns={postColumns}
+                rows={[...posts].sort((a, b) => (a.scheduledAt < b.scheduledAt ? -1 : 1))}
+                rowKey={(p) => p.id}
+                emptyMessage="No posts scheduled in this week."
+              />
             </Card>
           ))}
         </div>

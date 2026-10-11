@@ -6,8 +6,9 @@
 
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Link } from 'react-router-dom';
-import { CAMPAIGN_STATUS_LABELS } from '@kaizen/shared';
+import { CAMPAIGN_STATUS_LABELS, type CampaignView } from '@kaizen/shared';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, RecordCode, StatusChip } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { NOT_MEASURED } from '../../lib/words.js';
 import { money } from '../../lib/api.js';
 import { useMarketingOverview, type MeasuredKpi } from '../../lib/marketingApi.js';
@@ -47,6 +48,56 @@ function KpiTile({ kpi }: { kpi: MeasuredKpi }) {
     </div>
   );
 }
+
+const LIVE_CAMPAIGN_COLUMNS: ReadonlyArray<DataTableColumn<CampaignView>> = [
+  {
+    id: 'code',
+    header: 'Code',
+    cell: (c) => <RecordCode code={c.recordCode} to={`/marketing/campaigns/${c.id}`} />,
+    sortValue: (c) => c.recordCode,
+  },
+  {
+    id: 'campaign',
+    header: 'Campaign',
+    cell: (c) => (
+      <Link to={`/marketing/campaigns/${c.id}`} className="text-xs font-medium text-ink-100 hover:text-accent-soft">
+        {c.name}
+      </Link>
+    ),
+    sortValue: (c) => c.name,
+  },
+  {
+    id: 'division',
+    header: 'Division',
+    cell: (c) => c.division,
+    cellClassName: 'text-xs text-ink-300',
+    sortValue: (c) => c.division,
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (c) => <StatusChip status={CAMPAIGN_STATUS_LABELS[c.status]} tone="good" />,
+    sortValue: (c) => CAMPAIGN_STATUS_LABELS[c.status],
+  },
+  {
+    id: 'budget',
+    header: 'Budget',
+    align: 'right',
+    cell: (c) => (
+      <>
+        {money(c.budgetActual)} / {money(c.budgetPlanned)}
+      </>
+    ),
+    cellClassName: 'text-xs',
+  },
+  {
+    id: 'ends',
+    header: 'Ends',
+    cell: (c) => c.endAt.slice(0, 10),
+    cellClassName: 'text-xs text-ink-400',
+    sortValue: (c) => c.endAt,
+  },
+];
 
 export function MarketingOverview() {
   const { data, isLoading, error } = useMarketingOverview();
@@ -153,52 +204,14 @@ export function MarketingOverview() {
       </div>
 
       <Card title="Live campaigns" subtitle="Campaigns currently running.">
-        {data.liveCampaigns.length === 0 ? (
-          <EmptyState
-            message="No campaigns are live right now."
-            hint="A campaign shows here once it has been launched."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Code</th>
-                  <th>Campaign</th>
-                  <th>Division</th>
-                  <th>Status</th>
-                  <th className="text-right">Budget</th>
-                  <th>Ends</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.liveCampaigns.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      <RecordCode code={c.recordCode} to={`/marketing/campaigns/${c.id}`} />
-                    </td>
-                    <td>
-                      <Link
-                        to={`/marketing/campaigns/${c.id}`}
-                        className="text-xs font-medium text-ink-100 hover:text-accent-soft"
-                      >
-                        {c.name}
-                      </Link>
-                    </td>
-                    <td className="text-xs text-ink-300">{c.division}</td>
-                    <td>
-                      <StatusChip status={CAMPAIGN_STATUS_LABELS[c.status]} tone="good" />
-                    </td>
-                    <td className="text-right tabular-nums text-xs">
-                      {money(c.budgetActual)} / {money(c.budgetPlanned)}
-                    </td>
-                    <td className="text-xs text-ink-400">{c.endAt.slice(0, 10)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          caption="Live campaigns"
+          columns={LIVE_CAMPAIGN_COLUMNS}
+          rows={data.liveCampaigns}
+          rowKey={(c) => c.id}
+          emptyMessage="No campaigns are live right now."
+          emptyHint="A campaign shows here once it has been launched."
+        />
       </Card>
     </div>
   );

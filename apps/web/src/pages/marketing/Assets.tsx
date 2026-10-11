@@ -11,7 +11,14 @@
  */
 
 import { useState } from 'react';
-import { ASSET_KINDS, ASSET_KIND_LABELS, ASSET_TRANSITIONS, type AssetKind, type AssetView } from '@kaizen/shared';
+import {
+  ASSET_KINDS,
+  ASSET_KIND_LABELS,
+  ASSET_TRANSITIONS,
+  type AssetKind,
+  type AssetView,
+  type ClaimView,
+} from '@kaizen/shared';
 import { date, titleCase } from '../../lib/api.js';
 import {
   useAssets,
@@ -29,6 +36,7 @@ import {
   useCampaigns,
 } from '../../lib/marketingApi.js';
 import { Card, EmptyState, ErrorBox, Field, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { CreateModal, Row, SelectInput, TextArea, TextInput, messageOf, NewButton } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 
@@ -298,6 +306,70 @@ function ClaimsRegister() {
   if (claims.error) return <ErrorBox error={claims.error} />;
   const items = claims.data?.items ?? [];
 
+  // Built inside the component: the action cell closes over the mutations and the error setter.
+  const columns: ReadonlyArray<DataTableColumn<ClaimView>> = [
+    {
+      id: 'claim',
+      header: 'Claim',
+      cell: (c) => c.text,
+      cellClassName: 'max-w-md text-xs text-ink-100',
+      sortValue: (c) => c.text,
+    },
+    {
+      id: 'evidence',
+      header: 'Evidence',
+      cell: (c) => c.evidenceRef || '—',
+      cellClassName: 'text-2xs text-ink-400',
+      sortValue: (c) => c.evidenceRef,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (c) => (
+        <StatusChip
+          status={c.status}
+          tone={c.status === 'approved' ? 'good' : c.status === 'rejected' ? 'bad' : 'neutral'}
+        />
+      ),
+      sortValue: (c) => c.status,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (c) => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          {can('marketing_assets:approve') && c.status === 'proposed' && (
+            <>
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => approve.mutate(c.id, { onError: (e) => setError(messageOf(e)) })}
+              >
+                Approve
+              </button>
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => {
+                  const reason = prompt('Reason for rejecting this claim?');
+                  if (reason) reject.mutate({ id: c.id, reason }, { onError: (e) => setError(messageOf(e)) });
+                }}
+              >
+                Reject
+              </button>
+            </>
+          )}
+          {can('marketing_assets:E') && c.status === 'approved' && (
+            <button
+              className="btn-quiet btn-sm"
+              onClick={() => retire.mutate(c.id, { onError: (e) => setError(messageOf(e)) })}
+            >
+              Retire
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div>
       <div className="mb-4 flex justify-end">
@@ -308,70 +380,16 @@ function ClaimsRegister() {
           {error}
         </p>
       )}
-      {items.length === 0 ? (
-        <Card>
-          <EmptyState message="No claims proposed yet." hint="Only approved claims may be printed or published." />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Claim</th>
-                <th>Evidence</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((c) => (
-                <tr key={c.id}>
-                  <td className="max-w-md text-xs text-ink-100">{c.text}</td>
-                  <td className="text-2xs text-ink-400">{c.evidenceRef || '—'}</td>
-                  <td>
-                    <StatusChip
-                      status={c.status}
-                      tone={c.status === 'approved' ? 'good' : c.status === 'rejected' ? 'bad' : 'neutral'}
-                    />
-                  </td>
-                  <td>
-                    <div className="flex flex-wrap justify-end gap-1.5">
-                      {can('marketing_assets:approve') && c.status === 'proposed' && (
-                        <>
-                          <button
-                            className="btn-quiet btn-sm"
-                            onClick={() => approve.mutate(c.id, { onError: (e) => setError(messageOf(e)) })}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            className="btn-quiet btn-sm"
-                            onClick={() => {
-                              const reason = prompt('Reason for rejecting this claim?');
-                              if (reason)
-                                reject.mutate({ id: c.id, reason }, { onError: (e) => setError(messageOf(e)) });
-                            }}
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-                      {can('marketing_assets:E') && c.status === 'approved' && (
-                        <button
-                          className="btn-quiet btn-sm"
-                          onClick={() => retire.mutate(c.id, { onError: (e) => setError(messageOf(e)) })}
-                        >
-                          Retire
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card bodyClassName="p-0">
+        <DataTable
+          caption="Claims register"
+          columns={columns}
+          rows={items}
+          rowKey={(c) => c.id}
+          emptyMessage="No claims proposed yet."
+          emptyHint="Only approved claims may be printed or published."
+        />
+      </Card>
 
       <CreateModal
         open={creating}
