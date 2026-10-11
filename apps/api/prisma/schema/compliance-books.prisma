@@ -97,6 +97,7 @@ model JournalEntry {
 
   @@unique([tenantId, entityId, entryNumber])
   @@unique([tenantId, idempotencyKey])
+  @@unique([tenantId, id])
   @@index([tenantId, entityId, entryDate])
   @@map("journal_entries")
 }
@@ -105,7 +106,8 @@ model JournalLine {
   id              String        @id @default(cuid())
   tenantId        String
   entryId         String
-  entry           JournalEntry  @relation(fields: [entryId], references: [id])
+  /// Composite with tenantId: a line can only name an entry of its own tenant.
+  entry           JournalEntry  @relation(fields: [tenantId, entryId], references: [tenantId, id])
   lineNo          Int
   accountId       String
   account         LedgerAccount @relation(fields: [accountId], references: [id])
@@ -143,8 +145,8 @@ model JournalReversal {
   createdAt       DateTime     @default(now())
   /// Party that posted the reversal. Null only for backfilled legacy rows.
   createdById     String?
-  reversedEntry   JournalEntry @relation("ReversedEntry", fields: [reversedEntryId], references: [id])
-  reversalEntry   JournalEntry @relation("ReversalEntry", fields: [reversalEntryId], references: [id])
+  reversedEntry   JournalEntry @relation("ReversedEntry", fields: [tenantId, reversedEntryId], references: [tenantId, id])
+  reversalEntry   JournalEntry @relation("ReversalEntry", fields: [tenantId, reversalEntryId], references: [tenantId, id])
 
   @@unique([tenantId, reversedEntryId])
   @@unique([tenantId, reversalEntryId])
