@@ -52,7 +52,7 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan, can, canSeeMoney, assertScopeAll, scopeFor } from '../platform/permissions.js';
-import { transition } from '../platform/lifecycle.js';
+import { transition, transitionInTx } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
 import { assertEmploymentVisible } from '../platform/recordScope.js';
 import { normalisePhone, normaliseEmail } from './identity.js';
@@ -481,97 +481,109 @@ export async function transitionEmployment(id: string, event: EmploymentEvent, i
           : (input.separationType ?? 'termination');
   }
 
-  const result = await transition({
-    machine: employmentRelationshipMachine,
-    eventObject: 'employment',
-    verbs: EMPLOYMENT_EVENT_VERB,
-    resource: 'employees',
-    subjectType: 'employment_relationship',
-    subjectId: id,
-    recordCode: employment.recordCode,
-    ownerPartyId: employment.personId,
-    from,
-    event,
-    detail: separating ? { separationType } : undefined,
-    reasonNote: input.note ?? null,
-  });
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.employmentRelationship.update({
-      where: { id },
-      data: {
-        status: result.to,
-        ...(separating
-          ? {
-              separationType,
-              separationDate: new Date(),
-              rehireEligible: input.rehireEligible ?? null,
-              rehireIneligibleReason: input.rehireIneligibleReason ?? null,
-            }
-          : {}),
-      },
-    });
-
-    // Resigning opens the offboarding workflow; the notice period is where it
-    // starts, not the last working day.
-    if (event === 'SUBMIT_RESIGNATION') {
-      const existing = await tx.offboarding.findUnique({ where: { employmentRelationshipId: id } });
-      if (!existing) {
-        const offboarding = await tx.offboarding.create({
-          data: { tenantId: auth.tenantId, employmentRelationshipId: id, status: 'NoticePeriodActive' },
-        });
-        await auditWrite({
-          action: 'create',
-          subjectType: 'offboarding',
-          subjectId: offboarding.id,
-          after: { employmentRelationshipId: id, status: 'NoticePeriodActive' },
-          tx,
-        });
-      }
-    }
-
-    // Leaving for any reason ends the employee affiliation. Access follows the
-    // affiliation, so this is what actually removes their reach.
-    if (!isEmployed(result.to)) {
-      await tx.affiliation.updateMany({
-        where: { tenantId: auth.tenantId, partyId: row.personId, affiliationType: 'employee', status: 'active' },
-        data: { status: 'ended', effectiveTo: new Date() },
-      });
-    }
-
-    if (event === 'SUBMIT_RESIGNATION') {
-      await emit({
-        name: EVENTS.OFFBOARDING_INITIATED,
-        subject: { entityType: 'offboarding', entityId: id },
-        related: [{ relation: 'offboards', entityType: 'employment_relationship', entityId: id }],
-        newState: { status: 'NoticePeriodActive', noticePeriodDays: employment.noticePeriodDays },
-        impact: { domains: ['hr'] },
-        tx,
-      });
-    }
-
-    return row;
-  });
-
-  // An absence breach is a fact the company has to act on within a window, so
-  // it is raised as an exception rather than left as a status somebody might
-  // notice.
-  if (event === 'ABSENCE_BREACH') {
-    await raiseException({
-      code: 'EX-HR-001',
-      label: 'Unexplained absence breach',
-      severity: 'S3_HIGH_RISK',
+  // The status change, its audit row and its event commit with the offboarding
+  // it opens and with the EX-HR-001 an absence breach raises. Before, transition()
+  // committed the audit and the event first, so a refused offboarding or raise
+  // left the employee's history saying they had resigned or breached while the
+  // status still read Active.
+  const { value: updated } = await transitionInTx(
+    {
+      machine: employmentRelationshipMachine,
+      eventObject: 'employment',
+      verbs: EMPLOYMENT_EVENT_VERB,
+      resource: 'employees',
       subjectType: 'employment_relationship',
       subjectId: id,
-      subjectLabel: employment.recordCode,
-      detail:
-        'The absence threshold was crossed. This resolves either by accepting an explanation or by ' +
-        'confirming abandonment — it does not lapse on its own.',
+      recordCode: employment.recordCode,
       ownerPartyId: employment.personId,
-      triggerFingerprint: `absence_breach:${id}`,
-      ladderRung: 1,
-    });
-  }
+      from,
+      event,
+      detail: separating ? { separationType } : undefined,
+      reasonNote: input.note ?? null,
+    },
+    {
+      write: async (tx, to) => {
+        const row = await tx.employmentRelationship.update({
+          where: { id },
+          data: {
+            status: to,
+            ...(separating
+              ? {
+                  separationType,
+                  separationDate: new Date(),
+                  rehireEligible: input.rehireEligible ?? null,
+                  rehireIneligibleReason: input.rehireIneligibleReason ?? null,
+                }
+              : {}),
+          },
+        });
+
+        // Resigning opens the offboarding workflow; the notice period is where it
+        // starts, not the last working day.
+        if (event === 'SUBMIT_RESIGNATION') {
+          const existing = await tx.offboarding.findUnique({ where: { employmentRelationshipId: id } });
+          if (!existing) {
+            const offboarding = await tx.offboarding.create({
+              data: { tenantId: auth.tenantId, employmentRelationshipId: id, status: 'NoticePeriodActive' },
+            });
+            await auditWrite({
+              action: 'create',
+              subjectType: 'offboarding',
+              subjectId: offboarding.id,
+              after: { employmentRelationshipId: id, status: 'NoticePeriodActive' },
+              tx,
+            });
+          }
+        }
+
+        // Leaving for any reason ends the employee affiliation. Access follows the
+        // affiliation, so this is what actually removes their reach.
+        if (!isEmployed(to)) {
+          await tx.affiliation.updateMany({
+            where: { tenantId: auth.tenantId, partyId: row.personId, affiliationType: 'employee', status: 'active' },
+            data: { status: 'ended', effectiveTo: new Date() },
+          });
+        }
+
+        return row;
+      },
+      after: async (tx) => {
+        if (event === 'SUBMIT_RESIGNATION') {
+          await emit({
+            name: EVENTS.OFFBOARDING_INITIATED,
+            subject: { entityType: 'offboarding', entityId: id },
+            related: [{ relation: 'offboards', entityType: 'employment_relationship', entityId: id }],
+            newState: { status: 'NoticePeriodActive', noticePeriodDays: employment.noticePeriodDays },
+            impact: { domains: ['hr'] },
+            tx,
+          });
+        }
+
+        // An absence breach is a fact the company has to act on within a window, so
+        // it is raised as an exception rather than left as a status somebody might
+        // notice.
+        if (event === 'ABSENCE_BREACH') {
+          await raiseException(
+            {
+              code: 'EX-HR-001',
+              label: 'Unexplained absence breach',
+              severity: 'S3_HIGH_RISK',
+              subjectType: 'employment_relationship',
+              subjectId: id,
+              subjectLabel: employment.recordCode,
+              detail:
+                'The absence threshold was crossed. This resolves either by accepting an explanation or by ' +
+                'confirming abandonment — it does not lapse on its own.',
+              ownerPartyId: employment.personId,
+              triggerFingerprint: `absence_breach:${id}`,
+              ladderRung: 1,
+            },
+            tx,
+          );
+        }
+      },
+    },
+  );
 
   return updated;
 }
@@ -1289,30 +1301,41 @@ export async function transitionOffboarding(id: string, event: OffboardingEvent,
   });
   if (!record) throw ApiError.notFound('Offboarding');
 
-  const result = await transition({
-    machine: offboardingMachine,
-    eventObject: 'offboarding',
-    verbs: OFFBOARDING_EVENT_VERB,
-    resource: 'employees',
-    subjectType: 'offboarding',
-    subjectId: id,
-    ownerPartyId: record.employmentRelationship.personId,
-    from: record.status as OffboardingState,
-    event,
-    reasonNote: note ?? null,
-  });
-
-  const updated = await prisma.offboarding.update({
-    where: { id },
-    data: { status: result.to, disputeReason: event === 'DISPUTE' ? (note ?? 'disputed') : null },
-  });
-  if (result.to === 'ClosedArchived' || result.to === 'FFSettlementCompleted') {
-    // Access revocation and the exit paperwork attach here (workstreams F, G).
-    await runHooks('offboarding.completed', {
-      offboarding: updated,
-      employmentRelationship: record.employmentRelationship,
-    });
-  }
+  // The archive, the access revocation and the exit letters commit together. The
+  // hooks run inside the transaction: before, they ran after the archive had
+  // committed, so a refused relieving letter left the offboarding ClosedArchived
+  // with no letter and no checklist.
+  const { value: updated } = await transitionInTx(
+    {
+      machine: offboardingMachine,
+      eventObject: 'offboarding',
+      verbs: OFFBOARDING_EVENT_VERB,
+      resource: 'employees',
+      subjectType: 'offboarding',
+      subjectId: id,
+      ownerPartyId: record.employmentRelationship.personId,
+      from: record.status as OffboardingState,
+      event,
+      reasonNote: note ?? null,
+    },
+    {
+      write: (tx, to) =>
+        tx.offboarding.update({
+          where: { id },
+          data: { status: to, disputeReason: event === 'DISPUTE' ? (note ?? 'disputed') : null },
+        }),
+      after: async (tx, to, offboarding) => {
+        if (to === 'ClosedArchived' || to === 'FFSettlementCompleted') {
+          // Access revocation and the exit paperwork attach here (workstreams F, G).
+          await runHooks('offboarding.completed', {
+            offboarding,
+            employmentRelationship: record.employmentRelationship,
+            tx,
+          });
+        }
+      },
+    },
+  );
   return updated;
 }
 

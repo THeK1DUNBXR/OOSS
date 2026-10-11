@@ -25,7 +25,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, assertScopeAll } from '../platform/permissions.js';
-import { transition } from '../platform/lifecycle.js';
+import { transition, transitionInTx } from '../platform/lifecycle.js';
 import { hire } from './employment.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
@@ -240,50 +240,61 @@ export async function transitionApplication(
     );
   }
 
-  const result = await transition({
-    machine: applicationMachine,
-    eventObject: 'application',
-    verbs: APPLICATION_EVENT_VERB,
-    resource: 'applications',
-    subjectType: 'application',
-    subjectId: id,
-    recordCode: application.recordCode,
-    ownerPartyId: application.candidatePartyId,
-    from: application.status as ApplicationState,
-    event,
-    detail: { funnelBucket: applicationFunnelBucket(application.status as ApplicationState) },
-    reasonNote: input.note ?? input.rejectionReason ?? null,
-  });
-
-  const updated = await prisma.application.update({
-    where: { id },
-    data: {
-      status: result.to,
-      ...(input.rejectionReason ? { rejectionReason: input.rejectionReason } : {}),
-      ...(input.screeningOutcome ? { screeningOutcome: input.screeningOutcome } : {}),
+  // The application's status, its audit row, its event and the appointment letter
+  // of an accepted offer commit together. Before, transition() committed the audit
+  // and the event first, so a refused letter left the application OfferAccepted in
+  // the history with no appointment letter and the status still read OfferExtended.
+  const { value: updated } = await transitionInTx(
+    {
+      machine: applicationMachine,
+      eventObject: 'application',
+      verbs: APPLICATION_EVENT_VERB,
+      resource: 'applications',
+      subjectType: 'application',
+      subjectId: id,
+      recordCode: application.recordCode,
+      ownerPartyId: application.candidatePartyId,
+      from: application.status as ApplicationState,
+      event,
+      detail: { funnelBucket: applicationFunnelBucket(application.status as ApplicationState) },
+      reasonNote: input.note ?? input.rejectionReason ?? null,
     },
-  });
-
-  // CMP-LAB-003: an accepted offer generates an appointment letter as a
-  // final document, not a bare state flip.
-  if (result.to === 'OfferAccepted') {
-    const [candidate, position] = await Promise.all([
-      prisma.person.findFirst({ where: { id: application.candidatePartyId, tenantId: auth.tenantId } }),
-      prisma.position.findFirst({
-        where: { id: application.requisition.positionId, tenantId: auth.tenantId },
-        include: { job: true },
-      }),
-    ]);
-    const { issueLetter } = await import('./compliance/labour.js');
-    await issueLetter({
-      kind: 'appointment',
-      applicationId: id,
-      employeeName: candidate?.fullName ?? 'Candidate',
-      legalEntity: 'Kaizen Infinities Pvt Ltd',
-      designation: position?.job.title ?? null,
-      hireEffectiveDate: application.requisition.targetStartDate ?? null,
-    });
-  }
+    {
+      write: (tx, to) =>
+        tx.application.update({
+          where: { id },
+          data: {
+            status: to,
+            ...(input.rejectionReason ? { rejectionReason: input.rejectionReason } : {}),
+            ...(input.screeningOutcome ? { screeningOutcome: input.screeningOutcome } : {}),
+          },
+        }),
+      // CMP-LAB-003: an accepted offer generates an appointment letter as a
+      // final document, not a bare state flip.
+      after: async (tx, to) => {
+        if (to !== 'OfferAccepted') return;
+        const [candidate, position] = await Promise.all([
+          tx.person.findFirst({ where: { id: application.candidatePartyId, tenantId: auth.tenantId } }),
+          tx.position.findFirst({
+            where: { id: application.requisition.positionId, tenantId: auth.tenantId },
+            include: { job: true },
+          }),
+        ]);
+        const { issueLetter } = await import('./compliance/labour.js');
+        await issueLetter(
+          {
+            kind: 'appointment',
+            applicationId: id,
+            employeeName: candidate?.fullName ?? 'Candidate',
+            legalEntity: 'Kaizen Infinities Pvt Ltd',
+            designation: position?.job.title ?? null,
+            hireEffectiveDate: application.requisition.targetStartDate ?? null,
+          },
+          tx,
+        );
+      },
+    },
+  );
 
   return updated;
 }

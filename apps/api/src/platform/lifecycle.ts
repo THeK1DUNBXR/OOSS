@@ -91,18 +91,30 @@ export async function transition<S extends string, E extends string>(
  * (commit 64c868c's probe). Here the grant check and the machine check still
  * come first, outside the transaction, for the reason given on `transition`.
  * Inside it the order is the one governedWrite.ts documents: `write`, then
- * `auditWrite`, then `emit`, then `alsoEmit`. The audit lock is taken before
- * the event lock, so the order is not cosmetic.
+ * the transition's `auditWrite`, then its `emit`, then `after`. The audit lock
+ * is taken before the event lock, so the order is not cosmetic.
+ *
+ * `write` may audit a row of its own, but it must not emit before the
+ * transition does: the first governed call in a transaction takes the audit
+ * lock, and an emit ahead of any audit would take the event lock first.
  *
  * `alsoEmit` is for a further event that describes this same transition under
  * another name (a summary). It runs after the transition's own event so that it
  * too follows the audit row.
+ *
+ * `after` is the work that follows the transition: a letter it issues, an
+ * exception it raises, a hook it runs. Each of those needs the same transaction,
+ * or a refusal leaves the status changed with the consequence missing (the
+ * offboarding archived with no relieving letter; the employee Absconded with no
+ * EX-HR-001 to act on). It runs after `alsoEmit`, with the value `write`
+ * returned, so anything it audits or emits follows the transition's audit row.
  */
 export async function transitionInTx<S extends string, E extends string, T>(
   input: TransitionInput<S, E>,
   options: {
     write: (tx: DbTx, to: S) => Promise<T>;
     alsoEmit?: (tx: DbTx, to: S) => Promise<void>;
+    after?: (tx: DbTx, to: S, value: T) => Promise<void>;
   },
 ): Promise<{ result: TransitionResult<S>; value: T }> {
   const decided = await decide(input);
@@ -110,6 +122,7 @@ export async function transitionInTx<S extends string, E extends string, T>(
     const value = await options.write(tx, decided.to);
     await recordTransition(input, decided.to, decided.eventName, tx);
     if (options.alsoEmit) await options.alsoEmit(tx, decided.to);
+    if (options.after) await options.after(tx, decided.to, value);
     return { result: decided, value };
   });
 }
