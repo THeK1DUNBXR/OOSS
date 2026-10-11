@@ -2725,6 +2725,8 @@ model EntitySnapshotHistory {
   originDivision  String?
   asOf            DateTime
   sourceEventHash String?
+  /// SHA-256 of the published payload, minus `asOf` and `publishedAt`. A publish whose payload matches the latest row for its source adds no row.
+  contentHash     String?
   capTable        Json
   shareClasses    Json
   board           Json
@@ -4058,7 +4060,8 @@ model DailyMetric {
   /// Set on the two retired metrics so a reader knows the formula was defective.
   retired Boolean @default(false)
 
-  @@index([tenantId, date, metric])
+  /// One row per metric per IST day. A rerun updates this row; it never adds one.
+  @@unique([tenantId, date, metric])
   @@map("daily_metrics")
 }
 

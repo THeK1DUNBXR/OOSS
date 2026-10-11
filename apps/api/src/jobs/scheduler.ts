@@ -15,7 +15,7 @@
  * "all MoUs expiring in 30 days" does so once per tenant, never once globally.
  */
 
-import { EVENTS } from '@kaizen/shared';
+import { EVENTS, istDayStart } from '@kaizen/shared';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { prisma, unscopedPrisma } from '../platform/db.js';
@@ -504,9 +504,10 @@ export async function escalateApprovalStep(step: {
  */
 export async function computeDailyMetrics(now: Date = new Date()): Promise<number> {
   const auth = currentAuth();
-  const date = new Date(now);
-  date.setUTCHours(0, 0, 0, 0);
-  const dayStart = new Date(date);
+  // The bucket is the IST day of the run. UTC midnight put a 19:00Z run on the
+  // previous IST day (CLAUDE.md rule 3).
+  const date = istDayStart(now);
+  const dayStart = date;
 
   const [revenueWon, dealsWon, activitiesLogged, leadsCreated, enrollmentsCreated, activeMous] = await Promise.all([
     prisma.opportunity.findMany({
@@ -529,17 +530,14 @@ export async function computeDailyMetrics(now: Date = new Date()): Promise<numbe
     { metric: 'active_mous', value: activeMous },
   ];
 
+  // Upsert on the unique (tenant, IST day, metric) key: a rerun, or two runs
+  // racing, leave one row per metric rather than a find-then-create gap.
   for (const m of metrics) {
-    const existing = await prisma.dailyMetric.findFirst({
-      where: { tenantId: auth.tenantId, date, metric: m.metric },
+    await prisma.dailyMetric.upsert({
+      where: { tenantId_date_metric: { tenantId: auth.tenantId, date, metric: m.metric } },
+      create: { tenantId: auth.tenantId, date, metric: m.metric, value: m.value },
+      update: { value: m.value, computedAt: new Date() },
     });
-    if (existing) {
-      await prisma.dailyMetric.update({ where: { id: existing.id }, data: { value: m.value, computedAt: new Date() } });
-    } else {
-      await prisma.dailyMetric.create({
-        data: { tenantId: auth.tenantId, date, metric: m.metric, value: m.value },
-      });
-    }
   }
 
   return metrics.length;

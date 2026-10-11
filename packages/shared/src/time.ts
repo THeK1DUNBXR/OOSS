@@ -70,6 +70,16 @@ export function istMidnight(year: number, month1: number, day: number): Date {
   return new Date(Date.UTC(year, month1 - 1, day) - IST_OFFSET_MS);
 }
 
+/**
+ * The instant the IST civil day containing `date` begins. A daily bucket is
+ * keyed by this, so a run at 19:00Z on 11 October is the 12 October bucket:
+ * 00:30 IST on the 12th, and its midnight is 18:30Z on the 11th.
+ */
+export function istDayStart(date: Date): Date {
+  const { year, month, day } = istParts(date);
+  return istMidnight(year, month, day);
+}
+
 /** The last millisecond of an IST civil date, for inclusive "on or before" deadlines. */
 export function istEndOfDay(year: number, month1: number, day: number): Date {
   return new Date(istMidnight(year, month1, day + 1).getTime() - 1);

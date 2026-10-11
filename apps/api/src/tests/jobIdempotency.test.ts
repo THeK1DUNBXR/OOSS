@@ -19,6 +19,7 @@ import { computeDailyMetrics } from '../jobs/scheduler.js';
 import { healthAsOfDay } from '../domains/health.js';
 import { runBackup } from '../domains/compliance/corporate/security.js';
 import { JOBS as CORPORATE_JOBS } from '../jobs/compliance/corporate.js';
+import { istDayStart } from '@kaizen/shared';
 import { tenantId, unscopedPrisma } from './helpers.js';
 
 const cleanupTenantSlugs: string[] = [];
@@ -119,6 +120,11 @@ describe('#29 runComplianceBackupJob — a failed rerun never touches an earlier
     process.env.BACKUP_DIR = backupDir;
     process.env.PG_DUMP_BIN = fakeDump(binDir, 'ok2', 'ONE-DUMP', 0);
     const job = CORPORATE_JOBS.find((j) => j.name === 'runComplianceBackupJob')!;
+    // The once-per-day guard looks at every tenant's completed backups, so
+    // earlier tests' rows (or a stale run's) must not count as today's dump.
+    await unscopedPrisma.backupRun.deleteMany({
+      where: { status: 'completed', startedAt: { gte: istDayStart(new Date()) } },
+    });
     const startedAfter = new Date();
 
     const first = await asSystem(KAIZEN, () => job.run());

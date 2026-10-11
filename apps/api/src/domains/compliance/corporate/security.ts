@@ -11,9 +11,9 @@
  * this particular session came to exist, not a role-slug comparison.
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { prisma, unscopedPrisma } from '../../../platform/db.js';
@@ -22,6 +22,7 @@ import { ApiError } from '../../../platform/errors.js';
 import { assertCan } from '../../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js';
 import { raiseException } from '../../../platform/exceptions.js';
+import { istDateKey, istDayStart } from '@kaizen/shared';
 
 // Registered beside the writer for the reason given in corporate/board.ts.
 registerGovernedEntities('cmp_corporate', ['security_policy']);
@@ -115,37 +116,51 @@ export interface BackupOutcome {
 }
 
 /**
- * Runs `pg_dump` via `child_process` to `BACKUP_DIR/kaizen-<date>.sql.gz` when
- * `BACKUP_DIR` is set. Unset is a deliberately quiet no-op — a tenant running
- * this against a managed Postgres with its own snapshot policy should not see
- * a daily failure notification for a job it never asked to run.
+ * Runs `pg_dump` via `child_process` when `BACKUP_DIR` is set. Unset is a
+ * deliberately quiet no-op — a tenant running this against a managed Postgres
+ * with its own snapshot policy should not see a daily failure notification
+ * for a job it never asked to run.
+ *
+ * One dump is the whole database, because the database is shared by every
+ * tenant and `pg_dump` cannot filter by tenant. The dump therefore goes to
+ * `BACKUP_DIR/platform/`, not into a tenant's folder: a per-tenant copy would
+ * place every other tenant's data where that tenant can reach it (CLAUDE.md
+ * rule 6). Each run gets its own file, so a rerun can never overwrite an
+ * earlier backup. The partial output is written to `<file>.tmp` and renamed
+ * only on success.
  */
 export async function runBackup(tenantId: string): Promise<BackupOutcome> {
   const dir = process.env.BACKUP_DIR;
   if (!dir) return { status: 'skipped' };
 
-  const date = new Date().toISOString().slice(0, 10);
-  const path = `${dir}/kaizen-${date}.sql.gz`;
+  const runId = randomUUID();
+  const platformDir = `${dir}/platform`;
+  const path = `${platformDir}/${runId}.sql.gz`;
+  const tmpPath = `${path}.tmp`;
+  const date = istDateKey(new Date());
 
   const run = await unscopedPrisma.backupRun.create({
-    data: { tenantId, status: 'running', path },
+    data: { id: runId, tenantId, status: 'running', path },
   });
 
   try {
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    if (!existsSync(platformDir)) mkdirSync(platformDir, { recursive: true });
 
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) throw new Error('DATABASE_URL is not set.');
 
     await new Promise<void>((resolve, reject) => {
       // `PG_DUMP_BIN` is the seam the tests use to inject a dump failure without a live pg_dump.
-      const dump = spawn(process.env.PG_DUMP_BIN ?? 'pg_dump', [databaseUrl], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const dump = spawn(process.env.PG_DUMP_BIN ?? 'pg_dump', [pgDumpUrl(databaseUrl)], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
       let stderr = '';
       dump.stderr.on('data', (chunk: Buffer) => {
         stderr += chunk.toString();
       });
       const gzip = createGzip();
-      const out = createWriteStream(path);
+      // `wx` refuses to open an existing file, so a stale .tmp is never silently reused.
+      const out = createWriteStream(tmpPath, { flags: 'wx' });
       dump.on('error', reject);
       pipeline(dump.stdout, gzip, out).then(resolve, reject);
       dump.on('close', (code) => {
@@ -153,6 +168,7 @@ export async function runBackup(tenantId: string): Promise<BackupOutcome> {
       });
     });
 
+    renameSync(tmpPath, path);
     const sizeBytes = statSync(path).size;
     const hash = await hashFile(path);
 
@@ -164,6 +180,7 @@ export async function runBackup(tenantId: string): Promise<BackupOutcome> {
     return { status: 'completed', path, sizeBytes, sha256: hash };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    rmSync(tmpPath, { force: true });
     await unscopedPrisma.backupRun.update({
       where: { id: run.id },
       data: { status: 'failed', finishedAt: new Date(), error: message },
@@ -186,6 +203,33 @@ export async function runBackup(tenantId: string): Promise<BackupOutcome> {
 
     return { status: 'failed', error: message };
   }
+}
+
+/**
+ * The scheduled path. Every tenant runs this job each night, but the dump is
+ * platform-wide, so only the first tenant to reach it on an IST day dumps; the
+ * rest are skipped. A manual run from the route is not gated: an operator who
+ * asks for a backup gets one.
+ */
+export async function runScheduledBackup(tenantId: string): Promise<BackupOutcome> {
+  if (!process.env.BACKUP_DIR) return { status: 'skipped' };
+  const completedToday = await unscopedPrisma.backupRun.findFirst({
+    where: { status: 'completed', startedAt: { gte: istDayStart(new Date()) } },
+    select: { id: true },
+  });
+  if (completedToday) return { status: 'skipped' };
+  return runBackup(tenantId);
+}
+
+/**
+ * pg_dump rejects Prisma's `?schema=` query parameter ("invalid URI query
+ * parameter"), and the app's own DATABASE_URL carries it. The parameter names
+ * the Prisma schema, which pg_dump does not need.
+ */
+function pgDumpUrl(databaseUrl: string): string {
+  const url = new URL(databaseUrl);
+  url.searchParams.delete('schema');
+  return url.toString();
 }
 
 function hashFile(path: string): Promise<string> {

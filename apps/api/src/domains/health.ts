@@ -27,6 +27,7 @@ import {
   SEVERITY_RANK,
   HEALTH_BAND_SEVERITY_FLOOR,
   HEALTH_DOMAINS,
+  istDayStart,
   bandFor,
   distanceToEdge,
   mttrMinutes,
@@ -1067,14 +1068,13 @@ function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 86_400_000);
 }
 
+/**
+ * The day a health score is keyed to. IST midnight, not UTC midnight: a
+ * 19:00Z run is the next IST day's score (CLAUDE.md rule 3). The unique key
+ * on (tenant, domain, asOf) makes a rerun on the same IST day an overwrite.
+ */
 export function healthAsOfDay(now: Date): Date {
-  return startOfDay(now);
-}
-
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setUTCHours(0, 0, 0, 0);
-  return x;
+  return istDayStart(now);
 }
 
 function fmt(n: number): string {

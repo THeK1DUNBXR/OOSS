@@ -300,6 +300,19 @@ export async function buildEntitySnapshot(sourceTenantId: string): Promise<Built
 }
 
 /**
+ * A section's JSON without its own clock. `capTable()` stamps `asOf: new
+ * Date()` at the top of its section, so two builds of unchanged data differ
+ * by that stamp alone. Only a section's direct `asOf` is dropped: a clock
+ * nested deeper stays in the hash, so the failure mode is one extra history
+ * row, never a lost one.
+ */
+function contentOf(section: unknown): string {
+  return JSON.stringify(section, function (this: unknown, key: string, value: unknown) {
+    return key === 'asOf' && this === section ? undefined : value;
+  });
+}
+
+/**
  * Builds, then writes into the parent (skipping silently when the tenant has
  * no parent — most tenants never publish) and emits `kz.eqt.snapshot.
  * published` in both tenants. Kept idempotent per `sourceTenantId`
@@ -342,9 +355,33 @@ export async function publishEntitySnapshot(
           data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
         });
 
-    await prisma.entitySnapshotHistory.create({
-      data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
+    // History records what changed, so a publish whose payload matches the
+    // latest row for this source adds nothing. `asOf` and `publishedAt` are
+    // excluded: they move on every run by definition. A payload that goes
+    // A -> B -> A is still recorded at each step, since only the latest row is
+    // compared.
+    const contentHash = createHash('sha256')
+      .update(
+        JSON.stringify({
+          capTable: contentOf(built.capTable),
+          shareClasses: contentOf(built.shareClasses),
+          board: contentOf(built.board),
+          financial: contentOf(built.financial),
+          compliance: contentOf(built.compliance),
+          valuation: contentOf(built.valuation ?? null),
+        }),
+      )
+      .digest('hex');
+    const latestHistory = await prisma.entitySnapshotHistory.findFirst({
+      where: { tenantId: parentTenantId, sourceTenantId },
+      orderBy: { publishedAt: 'desc' },
+      select: { contentHash: true },
     });
+    if (latestHistory?.contentHash !== contentHash) {
+      await prisma.entitySnapshotHistory.create({
+        data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared, contentHash },
+      });
+    }
 
     await emit({
       name: EVENTS.SNAPSHOT_PUBLISHED,
