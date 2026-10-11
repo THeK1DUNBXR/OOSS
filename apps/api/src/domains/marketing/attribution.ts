@@ -267,6 +267,20 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
     },
   });
 
+  // One record for the whole run, not one per lead: the replace is a derived
+  // rewrite of rows that a rerun reproduces, so the window and count are what
+  // an auditor needs to trace a figure back to the run that produced it.
+  // Written before the first per-lead event, not after the loop: an event of the
+  // run must never precede the audit record that scopes it (the order the
+  // governed write path keeps, governedWrite.ts). The count is therefore the run's
+  // scope, the leads it set out to attribute; a lead that fails aborts the run and
+  // is visible as the failed job, not as a smaller count here.
+  await auditBulkOperation('marketing_attribution', 'recompute', {
+    windowFrom: from.toISOString(),
+    windowTo: to.toISOString(),
+    leadsInScope: leads.length,
+  });
+
   let processed = 0;
   for (const lead of leads) {
     const touches: Touch[] = lead.personId ? await touchesForPerson(lead.personId, lead.createdAt) : [];
@@ -309,15 +323,6 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
     });
     processed += 1;
   }
-
-  // One record for the whole run, not one per lead: the replace is a derived
-  // rewrite of rows that a rerun reproduces, so the window and count are what
-  // an auditor needs to trace a figure back to the run that produced it.
-  await auditBulkOperation('marketing_attribution', 'recompute', {
-    windowFrom: from.toISOString(),
-    windowTo: to.toISOString(),
-    leadsProcessed: processed,
-  });
 
   return processed;
 }
