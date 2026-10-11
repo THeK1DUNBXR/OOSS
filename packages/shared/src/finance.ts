@@ -80,6 +80,7 @@ export type LedgerGroup = (typeof LEDGER_GROUPS)[number];
 // ---------------------------------------------------------------------------
 
 import { istFinancialYear, istMidnight, istMonthKey } from './time.js';
+import { formatMinor, parseMinor } from './money.js';
 
 /** `YYYY-MM` for a date, in IST. */
 export function monthKey(d: Date): string {
@@ -140,7 +141,12 @@ export interface GstBreakdown {
   grandTotal: number;
 }
 
-/** Rupees, to two places, without the drift of repeated float addition. */
+/**
+ * @deprecated Float rounding, and one paisa low on some ties at crore
+ * magnitudes (KNOWN in apps/api/src/tests/financeCharacterisation.test.ts).
+ * The GST arithmetic still runs on it: moving that changes GST figures, which
+ * is the accountant's decision (D-02). New money code uses packages/shared/src/money.ts.
+ */
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
@@ -418,8 +424,23 @@ export function setOffInputCredit(output: GstHeads, credit: GstHeads): GstSetOff
  * where somebody is taking a part payment — and four independently written
  * subtractions is how a screen comes to disagree with a ledger.
  */
+export function outstandingOfMinor(payable: bigint, allocated: bigint, creditNoted: bigint = 0n): bigint {
+  const left = payable - allocated - creditNoted;
+  return left > 0n ? left : 0n;
+}
+
+/**
+ * @deprecated Number adapter over {@link outstandingOfMinor}. Kept for callers
+ * that still hold rupees as a float; new code takes paise. Non-finite input
+ * falls through to the old float expression so NaN stays NaN, not a thrown
+ * parse error inside a render.
+ */
 export function outstandingOf(payable: number, allocated: number, creditNoted = 0): number {
-  return round2(Math.max(payable - allocated - creditNoted, 0));
+  const p = paiseAtEdge(payable);
+  const a = paiseAtEdge(allocated);
+  const c = paiseAtEdge(creditNoted);
+  if (p === null || a === null || c === null) return round2(Math.max(payable - allocated - creditNoted, 0));
+  return rupeesAtEdge(outstandingOfMinor(p, a, c));
 }
 
 /**
@@ -430,11 +451,28 @@ export function outstandingOf(payable: number, allocated: number, creditNoted = 
  * a smaller figure produces a document that contradicts itself, and the customer
  * is the one who finds out.
  */
-export function paymentTypeFor(payable: number, payingNow: number): 'full' | 'part' | 'credit' {
-  const now = round2(payingNow);
-  if (now <= 0) return 'credit';
-  if (now >= round2(payable) - 0.001) return 'full';
+export function paymentTypeForMinor(payable: bigint, payingNow: bigint): 'full' | 'part' | 'credit' {
+  if (payingNow <= 0n) return 'credit';
+  if (payingNow >= payable) return 'full';
   return 'part';
+}
+
+/**
+ * @deprecated Number adapter over {@link paymentTypeForMinor}. The old
+ * `>= payable - 0.001` tolerance is gone: both sides are already rounded to the
+ * paisa, so a tolerance under a paisa could never change the answer.
+ */
+export function paymentTypeFor(payable: number, payingNow: number): 'full' | 'part' | 'credit' {
+  const p = paiseAtEdge(payable);
+  const n = paiseAtEdge(payingNow);
+  if (p === null || n === null) {
+    // Non-finite input: the old comparisons, which answer 'part' for NaN.
+    const now = round2(payingNow);
+    if (now <= 0) return 'credit';
+    if (now >= round2(payable)) return 'full';
+    return 'part';
+  }
+  return paymentTypeForMinor(p, n);
 }
 
 /**
@@ -447,8 +485,42 @@ export function paymentTypeFor(payable: number, payingNow: number): 'full' | 'pa
  * correct reading of an older invoice, and it keeps a seven-month-old ledger
  * from restating itself the day this code ships.
  */
+/**
+ * Zero is unset here, as it is on stored rows: a row raised before tax was
+ * priced carries a grand total of zero, and the line total is its only figure.
+ */
+export function invoicePayableMinor(grandTotal: bigint | null | undefined, lineTotal: bigint): bigint {
+  return grandTotal !== null && grandTotal !== undefined && grandTotal > 0n ? grandTotal : lineTotal;
+}
+
+/**
+ * @deprecated Number adapter over {@link invoicePayableMinor}. A grand total
+ * that is set as a float (positive before rounding) is the answer even when it
+ * rounds to zero, as the old code had it. The paise helper would call that
+ * zero "unset", so the adapter takes the set case itself.
+ */
 export function invoicePayable(grandTotal: number | null | undefined, lineTotal: number): number {
-  return grandTotal && grandTotal > 0 ? round2(grandTotal) : round2(lineTotal);
+  const line = paiseAtEdge(lineTotal);
+  const isSet = typeof grandTotal === 'number' && grandTotal > 0;
+  const grand = isSet ? paiseAtEdge(grandTotal) : null;
+  if (line === null || (isSet && grand === null)) {
+    return grandTotal && grandTotal > 0 ? round2(grandTotal) : round2(lineTotal);
+  }
+  return rupeesAtEdge(grand ?? line);
+}
+
+/**
+ * The number-to-paise edge. A float is rounded to two places here, as round2
+ * always did, and only then parsed; null for a non-finite value, which the
+ * adapters hand to the old float expression.
+ */
+function paiseAtEdge(value: number): bigint | null {
+  return Number.isFinite(value) ? parseMinor(round2(value).toFixed(2)) : null;
+}
+
+/** Paise back to a number, at the edge only: Number of the exact decimal, which is the nearest float to it. */
+function rupeesAtEdge(paise: bigint): number {
+  return Number(formatMinor(paise));
 }
 
 // ---------------------------------------------------------------------------
@@ -500,12 +572,27 @@ export function amountInWords(value: number): string {
   const rupees = Math.floor(rounded);
   const paise = Math.round((rounded - rupees) * 100);
 
+  const sign = value < 0 ? 'Minus ' : '';
+  const whole = rupees > 0 ? wholeRupeesInWords(rupees) : 'Zero';
+  const paisePart = paise > 0 ? ` and ${twoDigits(paise)} Paise` : '';
+  return `${sign}Rupees ${whole}${paisePart} Only`;
+}
+
+/**
+ * A whole number of rupees in Indian words, for a positive integer.
+ *
+ * The crore count is written in the same words, recursively. Indexing a
+ * two-digit table with it printed "undefined Crore" from 100 crore up, on the
+ * invoice meant to settle a dispute about its figure.
+ */
+function wholeRupeesInWords(rupees: number): string {
   const parts: string[] = [];
   const push = (n: number, label: string) => {
     if (n > 0) parts.push(`${twoDigits(n)} ${label}`);
   };
 
-  push(Math.floor(rupees / 10_000_000), 'Crore');
+  const crore = Math.floor(rupees / 10_000_000);
+  if (crore > 0) parts.push(`${wholeRupeesInWords(crore)} Crore`);
   push(Math.floor((rupees % 10_000_000) / 100_000), 'Lakh');
   push(Math.floor((rupees % 100_000) / 1_000), 'Thousand');
   push(Math.floor((rupees % 1_000) / 100), 'Hundred');
@@ -515,11 +602,7 @@ export function amountInWords(value: number): string {
     if (parts.length > 0) parts.push('and');
     parts.push(twoDigits(last));
   }
-
-  const sign = value < 0 ? 'Minus ' : '';
-  const whole = parts.length ? parts.join(' ') : 'Zero';
-  const paisePart = paise > 0 ? ` and ${twoDigits(paise)} Paise` : '';
-  return `${sign}Rupees ${whole}${paisePart} Only`;
+  return parts.join(' ');
 }
 
 // ---------------------------------------------------------------------------
@@ -534,22 +617,27 @@ export function amountInWords(value: number): string {
 // monthly instalments starts a month later instead.
 // ---------------------------------------------------------------------------
 
+// These are calendar dates, not instants. Local-midnight parsing with UTC
+// read-back moved every date a day early on an IST host, so the arithmetic
+// runs in UTC from start to finish and the host's zone never enters it.
+function calendarDateUtc(iso: string): Date {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(Date.UTC(year!, month! - 1, day!));
+}
+
 function addDaysIso(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + days);
+  const d = calendarDateUtc(iso);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
 function firstOfMonthAheadIso(iso: string, monthsAhead: number): string {
-  const d = new Date(`${iso}T00:00:00`);
-  const nd = new Date(d.getFullYear(), d.getMonth() + monthsAhead, 1);
-  return nd.toISOString().slice(0, 10);
+  const d = calendarDateUtc(iso);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + monthsAhead, 1)).toISOString().slice(0, 10);
 }
 
 function daysBetweenIso(a: string, b: string): number {
-  const da = new Date(`${a}T00:00:00`).getTime();
-  const db = new Date(`${b}T00:00:00`).getTime();
-  return Math.round((db - da) / 86_400_000);
+  return Math.round((calendarDateUtc(b).getTime() - calendarDateUtc(a).getTime()) / 86_400_000);
 }
 
 export interface PaymentSchedule {
@@ -622,9 +710,13 @@ export function depreciationSchedule(input: DepreciationInput): DepreciationPeri
     }
 
     // Never write below the salvage value, and let the final period absorb the
-    // rounding rather than leaving a few paise stranded forever.
+    // rounding rather than leaving a few paise stranded forever. Only the
+    // straight-line schedule has a rounding remainder to absorb: a written-down
+    // balance is meant to decline geometrically, and forcing its last month to
+    // salvage would write off the whole balance in one period.
     const floor = input.salvageValue;
-    if (opening - charge < floor) charge = round2(opening - floor);
+    const finalStraightLine = input.method !== 'wdv' && i === input.usefulLifeMonths - 1;
+    if (finalStraightLine || opening - charge < floor) charge = round2(opening - floor);
     if (charge < 0) charge = 0;
 
     carrying = round2(opening - charge);

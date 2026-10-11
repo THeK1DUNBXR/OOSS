@@ -30,6 +30,7 @@
 import { EVENTS, round2, type PaymentMode } from '@kaizen/shared';
 import { raiseException } from '../platform/exceptions.js';
 import { prisma, num } from '../platform/db.js';
+import { minorOf } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -104,9 +105,12 @@ export async function listReceipts(filter: { invoiceId?: string; limit?: number 
     feeInstalmentId: r.feeInstalmentId,
     customerName: nameOf.get(r.invoice?.organizationId ?? r.invoice?.personId ?? '') ?? null,
     amount: num(r.allocatedAmount) ?? 0,
+    amountMinor: minorOf(r.allocatedAmount),
     currency: r.invoice?.currency ?? r.payment.currency,
     subjectTotal: num(r.subjectTotal) ?? 0,
+    subjectTotalMinor: minorOf(r.subjectTotal),
     balanceAfter: num(r.balanceAfter) ?? 0,
+    balanceAfterMinor: minorOf(r.balanceAfter),
     paymentMode: r.paymentMode ?? r.payment.method,
     paymentReference: r.paymentReference ?? r.payment.gatewayReference,
     paymentCode: r.payment.recordCode,
