@@ -13,10 +13,11 @@
  * an event it is itself downstream of, and refuses.
  */
 
-import { EVENTS, round2, type EventEnvelope } from '@kaizen/shared';
+import { EVENTS, allocate, type EventEnvelope } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { subscribe, wouldLoop } from '../platform/eventBus.js';
 import { createInvoice, rehydrateReceivables, issueFeeInstalments } from '../domains/finance.js';
+import { paiseOf, poundsOf } from '../domains/allocation.js';
 import { ensureWinLossReview } from '../domains/winLoss.js';
 import { computeSensitivity } from '../domains/interactions.js';
 import { markSnapshotDirty } from '../domains/group.js';
@@ -45,7 +46,12 @@ const DEFAULT_FEE_PLAN: FeePlanPart[] = [
   { share: 0.3, dueInDays: 90 },
 ];
 
-/** A course's plan when it has a usable one, the default otherwise. */
+/**
+ * A course's plan when it has a usable one, the default otherwise. A share is a
+ * fraction configured to four places: it is turned into basis points once, here,
+ * and the shares must come to exactly 10,000. A tolerance on the sum would accept
+ * a plan that bills a different total, which is the bug the split below removes.
+ */
 export function instalmentPlan(raw: unknown): FeePlanPart[] {
   if (!Array.isArray(raw) || raw.length === 0) return DEFAULT_FEE_PLAN;
   const parts = raw
@@ -53,11 +59,23 @@ export function instalmentPlan(raw: unknown): FeePlanPart[] {
     .map((p) => ({ share: Number(p.share), dueInDays: Number(p.dueInDays) }))
     .filter((p) => Number.isFinite(p.share) && p.share > 0 && Number.isFinite(p.dueInDays));
   if (!parts.length) return DEFAULT_FEE_PLAN;
-  // A plan that does not add up to the fee would under- or over-bill silently,
-  // which is the same class of bug as the one being fixed.
-  const total = parts.reduce((s, p) => s + p.share, 0);
-  if (Math.abs(total - 1) > 0.001) return DEFAULT_FEE_PLAN;
+  const basisPoints = parts.map((p) => Math.round(p.share * 10_000));
+  if (basisPoints.reduce((s, bp) => s + bp, 0) !== 10_000) return DEFAULT_FEE_PLAN;
   return parts;
+}
+
+/**
+ * The instalment amounts for a fee, in rupees, summing to the fee to the paisa.
+ * allocate() gives the leftover paisa to the first instalment whose share has a
+ * fraction, in plan order (MONEY-LEDGER-CONTRACT decision 1). A fee of 100000.01
+ * on 40/30/30 is 40000.01, 30000.00, 30000.00.
+ */
+export function instalmentAmounts(
+  fee: { toFixed(digits: number): string } | number,
+  plan: FeePlanPart[],
+): number[] {
+  const weights = plan.map((p) => BigInt(Math.round(p.share * 10_000)));
+  return allocate(paiseOf(fee), weights).map(poundsOf);
 }
 
 export function registerSubscribers(): void {
@@ -127,19 +145,20 @@ export function registerSubscribers(): void {
     // then ignored its price. A ₹25,000 course raised a ₹60,000 fee plan, and
     // `priceLines` two files away (`invoicing.ts:465`) had been reading the
     // right field the whole time.
-    const total = num(enrollment.cohort?.course?.feeAmount) ?? 0;
-    if (total <= 0) {
+    const fee = enrollment.cohort?.course?.feeAmount;
+    if (!fee || paiseOf(fee) <= 0n) {
       // No price on the course is not a reason to invent one. The enrolment
       // stands; somebody prices the course and the plan is raised then.
       return;
     }
 
     const plan = instalmentPlan(enrollment.cohort?.course?.feePlan);
+    const amounts = instalmentAmounts(fee, plan);
     const now = Date.now();
     await issueFeeInstalments(
       enrollment.id,
-      plan.map((part) => ({
-        amount: round2(total * part.share),
+      plan.map((part, i) => ({
+        amount: amounts[i]!,
         dueDate: new Date(now + part.dueInDays * 86_400_000),
       })),
     );
