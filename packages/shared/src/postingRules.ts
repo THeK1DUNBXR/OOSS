@@ -145,3 +145,117 @@ export function assertBalancedLines(lines: readonly PostingLine[], label: string
     throw new PostingRuleError(`${label} does not balance: out by ${total} paise.`, 'UNBALANCED_SOURCE');
   }
 }
+
+export interface InvoiceIssueSource {
+  partyId: string;
+  grandTotalMinor: bigint;
+  /** One entry per invoice line: its taxable value and the business line it is earned under. */
+  revenue: ReadonlyArray<{ lineId: string | null | undefined; taxableMinor: bigint }>;
+  cgstMinor: bigint;
+  sgstMinor: bigint;
+  igstMinor: bigint;
+  /** Signed: positive when the invoice total was rounded up to the rupee. */
+  roundOffMinor: bigint;
+}
+
+/**
+ * The entry an invoice posts when it is issued (accrual; contract D3). The
+ * receivable is debited for the grand total and each piece of it is credited
+ * to its own role: revenue per business line, then each tax, then round-off.
+ *
+ * Every component is a figure the invoice already stores, so nothing is split
+ * here and nothing is rounded. The build refuses when the components do not
+ * add to the grand total, because a split that quietly absorbed the gap would
+ * hide the mismatch the books exist to show.
+ *
+ * An income line with no business line is refused, whatever its amount (O2).
+ * A default "unassigned" line would hide revenue by line, which is the defect
+ * the business-line registry exists to prevent.
+ */
+export function buildInvoiceIssueEntry(source: InvoiceIssueSource, accounts: ResolvedPostingAccounts): PostingLine[] {
+  requireBigints({
+    grandTotalMinor: source.grandTotalMinor,
+    cgstMinor: source.cgstMinor,
+    sgstMinor: source.sgstMinor,
+    igstMinor: source.igstMinor,
+    roundOffMinor: source.roundOffMinor,
+  });
+  if (source.revenue.length === 0) {
+    throw new PostingRuleError('An invoice issue needs at least one revenue line.', 'UNBALANCED_SOURCE');
+  }
+
+  const revenue = source.revenue.map((line, index) => {
+    requireBigints({ [`revenue[${index}].taxableMinor`]: line.taxableMinor });
+    if (!line.lineId) {
+      throw new PostingRuleError(
+        `Revenue line ${index + 1} has no business line. An income line is refused without one (O2).`,
+        'INCOME_LINE_WITHOUT_BUSINESS_LINE',
+      );
+    }
+    return { lineId: line.lineId, taxableMinor: line.taxableMinor };
+  });
+
+  const taxable = revenue.reduce((sum, line) => sum + line.taxableMinor, 0n);
+  const components = taxable + source.cgstMinor + source.sgstMinor + source.igstMinor + source.roundOffMinor;
+  if (components !== source.grandTotalMinor) {
+    throw new PostingRuleError(
+      `Invoice components do not add to the grand total: out by ${source.grandTotalMinor - components} paise.`,
+      'UNBALANCED_SOURCE',
+    );
+  }
+
+  const lines: PostingLine[] = [
+    {
+      accountId: accountFor(accounts, 'TRADE_RECEIVABLE'),
+      amountMinor: source.grandTotalMinor,
+      partyId: source.partyId,
+    },
+  ];
+  for (const line of revenue) {
+    if (line.taxableMinor === 0n) continue;
+    lines.push({
+      accountId: accountFor(accounts, 'REVENUE', line.lineId),
+      amountMinor: -line.taxableMinor,
+      lineId: line.lineId,
+    });
+  }
+  if (source.cgstMinor !== 0n)
+    lines.push({ accountId: accountFor(accounts, 'OUTPUT_CGST'), amountMinor: -source.cgstMinor });
+  if (source.sgstMinor !== 0n)
+    lines.push({ accountId: accountFor(accounts, 'OUTPUT_SGST'), amountMinor: -source.sgstMinor });
+  if (source.igstMinor !== 0n)
+    lines.push({ accountId: accountFor(accounts, 'OUTPUT_IGST'), amountMinor: -source.igstMinor });
+  if (source.roundOffMinor !== 0n)
+    lines.push({ accountId: accountFor(accounts, 'ROUND_OFF'), amountMinor: -source.roundOffMinor });
+
+  assertBalancedLines(lines, 'Invoice issue');
+  return lines;
+}
+
+export interface ReceiptAllocationSource {
+  partyId: string;
+  /** Positive paise: the amount of the receipt applied to the receivable. */
+  amountMinor: bigint;
+  /** The payment mode, which is the scope of the BANK role (contract A4). */
+  paymentMode: string;
+}
+
+/**
+ * The entry a receipt posts when it is allocated to the receivable: the bank
+ * for the payment mode is debited and the party's receivable is credited.
+ */
+export function buildReceiptAllocationEntry(
+  source: ReceiptAllocationSource,
+  accounts: ResolvedPostingAccounts,
+): PostingLine[] {
+  requireBigints({ amountMinor: source.amountMinor });
+  if (source.amountMinor <= 0n) {
+    throw new PostingRuleError('A receipt allocation must be a positive amount.', 'INVALID_AMOUNT');
+  }
+  const lines: PostingLine[] = [
+    { accountId: accountFor(accounts, 'BANK', source.paymentMode), amountMinor: source.amountMinor },
+    { accountId: accountFor(accounts, 'TRADE_RECEIVABLE'), amountMinor: -source.amountMinor, partyId: source.partyId },
+  ];
+  assertBalancedLines(lines, 'Receipt allocation');
+  return lines;
+}

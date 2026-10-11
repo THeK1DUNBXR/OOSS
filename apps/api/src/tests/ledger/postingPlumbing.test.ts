@@ -23,7 +23,11 @@ import {
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../../platform/db.js';
 import { post, postInTx } from '../../platform/ledger.js';
-import { PostingRoleUnmappedError, resolvePostingAccount, resolvePostingAccounts } from '../../platform/postingRoles.js';
+import {
+  PostingRoleUnmappedError,
+  resolvePostingAccount,
+  resolvePostingAccounts,
+} from '../../platform/postingRoles.js';
 import { assertTrialBalance, journalTrialBalance } from '../../platform/balances.js';
 import { asUser, tenantId } from '../helpers.js';
 
@@ -45,10 +49,16 @@ let entityId: string;
 let lineId: string;
 let otherLineId: string;
 /** Fixture account ids by short name. TEST ONLY: these are not the chart the finance head maps (A1). */
-const acct = {} as Record<'bank' | 'receivable' | 'revenue' | 'cgst' | 'sgst' | 'igst' | 'roundOff' | 'effA' | 'effB', string>;
+const acct = {} as Record<
+  'bank' | 'receivable' | 'revenue' | 'cgst' | 'sgst' | 'igst' | 'roundOff' | 'effA' | 'effB',
+  string
+>;
 
 /** Runs `fn` as the application role, with the tenant set the way platform/db.ts sets it. */
-function asAppRole<T>(fn: (tx: Parameters<Parameters<typeof app.$transaction>[0]>[0]) => Promise<T>, t = tid): Promise<T> {
+function asAppRole<T>(
+  fn: (tx: Parameters<Parameters<typeof app.$transaction>[0]>[0]) => Promise<T>,
+  t = tid,
+): Promise<T> {
   return app.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.tenant_id', ${t}, true)`;
     return fn(tx);
@@ -56,7 +66,9 @@ function asAppRole<T>(fn: (tx: Parameters<Parameters<typeof app.$transaction>[0]
 }
 
 /** Runs `fn` as the table owner, with the tenant set. Owner rows are still under FORCE RLS. */
-function asOwner<T>(fn: (tx: Parameters<Parameters<typeof unscopedPrisma.$transaction>[0]>[0]) => Promise<T>): Promise<T> {
+function asOwner<T>(
+  fn: (tx: Parameters<Parameters<typeof unscopedPrisma.$transaction>[0]>[0]) => Promise<T>,
+): Promise<T> {
   return unscopedPrisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tid}, true)`;
     return fn(tx);
@@ -92,12 +104,14 @@ async function mapRole(
   effectiveFrom: string,
   effectiveTo: string | null = null,
 ) {
-  await asAppRole((tx) => tx.$executeRaw`
+  await asAppRole(
+    (tx) => tx.$executeRaw`
     INSERT INTO "ledger_posting_roles"
       ("id", "tenantId", "role", "scopeKey", "ledgerAccountId", "effectiveFrom", "effectiveTo", "setById")
     VALUES (${randomUUID()}, ${tid}, ${role}, ${scopeKey}, ${ledgerAccountId},
             ${effectiveFrom}::date, ${effectiveTo}::date, ${randomUUID()})
-    ON CONFLICT ("tenantId", "role", "scopeKey", "effectiveFrom") DO NOTHING`);
+    ON CONFLICT ("tenantId", "role", "scopeKey", "effectiveFrom") DO NOTHING`,
+  );
 }
 
 /** Throws when the tenant's journal does not balance. Taken after every committed step. */
@@ -222,7 +236,9 @@ describe('postInTx: the same core as post(), inside the caller transaction', () 
     expect(await unscopedPrisma.journalEntry.count({ where: { tenantId: tid, idempotencyKey: key } })).toBe(0);
     expect(await unscopedPrisma.journalLine.count({ where: { tenantId: tid, entryId: written } })).toBe(0);
     expect(
-      await unscopedPrisma.auditRecord.count({ where: { tenantId: tid, subjectType: 'journal_entry', subjectId: written } }),
+      await unscopedPrisma.auditRecord.count({
+        where: { tenantId: tid, subjectType: 'journal_entry', subjectId: written },
+      }),
     ).toBe(0);
     expect(
       await unscopedPrisma.eventRecord.count({
@@ -286,13 +302,17 @@ describe('ledger_posting_roles: insert-only, tenant-scoped, with a DB-side refus
   it('refuses UPDATE and DELETE for the application role', async () => {
     const id = randomUUID();
     const scope = `pplumb-immut-${randomUUID()}`;
-    await asAppRole((tx) => tx.$executeRaw`
+    await asAppRole(
+      (tx) => tx.$executeRaw`
       INSERT INTO "ledger_posting_roles"
         ("id", "tenantId", "role", "scopeKey", "ledgerAccountId", "effectiveFrom", "setById")
-      VALUES (${id}, ${tid}, 'BANK', ${scope}, ${acct.bank!}, '2001-01-01'::date, ${randomUUID()})`);
+      VALUES (${id}, ${tid}, 'BANK', ${scope}, ${acct.bank!}, '2001-01-01'::date, ${randomUUID()})`,
+    );
 
     await expect(
-      asAppRole((tx) => tx.$executeRaw`UPDATE "ledger_posting_roles" SET "ledgerAccountId" = ${acct.effA!} WHERE "id" = ${id}`),
+      asAppRole(
+        (tx) => tx.$executeRaw`UPDATE "ledger_posting_roles" SET "ledgerAccountId" = ${acct.effA!} WHERE "id" = ${id}`,
+      ),
     ).rejects.toThrow(/permission denied|insert-only/);
     await expect(
       asAppRole((tx) => tx.$executeRaw`DELETE FROM "ledger_posting_roles" WHERE "id" = ${id}`),
@@ -302,28 +322,37 @@ describe('ledger_posting_roles: insert-only, tenant-scoped, with a DB-side refus
   it('refuses UPDATE and DELETE for the table owner too: the trigger binds every role', async () => {
     const id = randomUUID();
     const scope = `pplumb-owner-${randomUUID()}`;
-    await asAppRole((tx) => tx.$executeRaw`
+    await asAppRole(
+      (tx) => tx.$executeRaw`
       INSERT INTO "ledger_posting_roles"
         ("id", "tenantId", "role", "scopeKey", "ledgerAccountId", "effectiveFrom", "setById")
-      VALUES (${id}, ${tid}, 'BANK', ${scope}, ${acct.bank!}, '2001-01-01'::date, ${randomUUID()})`);
+      VALUES (${id}, ${tid}, 'BANK', ${scope}, ${acct.bank!}, '2001-01-01'::date, ${randomUUID()})`,
+    );
 
     await expect(
-      asOwner((tx) => tx.$executeRaw`UPDATE "ledger_posting_roles" SET "ledgerAccountId" = ${acct.effA!} WHERE "id" = ${id}`),
+      asOwner(
+        (tx) => tx.$executeRaw`UPDATE "ledger_posting_roles" SET "ledgerAccountId" = ${acct.effA!} WHERE "id" = ${id}`,
+      ),
     ).rejects.toThrow(/insert-only/);
     await expect(
       asOwner((tx) => tx.$executeRaw`DELETE FROM "ledger_posting_roles" WHERE "id" = ${id}`),
     ).rejects.toThrow(/insert-only/);
-    const still = await unscopedPrisma.$queryRaw<{ n: number }[]>`SELECT 1::int AS n FROM "ledger_posting_roles" WHERE "id" = ${id}`;
+    const still = await unscopedPrisma.$queryRaw<
+      { n: number }[]
+    >`SELECT 1::int AS n FROM "ledger_posting_roles" WHERE "id" = ${id}`;
     expect(still).toHaveLength(1);
   });
 
   it('keeps the mappings inside the tenant: another tenant reads none of them and cannot write one for this tenant', async () => {
-    const mine = await asAppRole((tx) => tx.$queryRaw<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM "ledger_posting_roles" WHERE "tenantId" = ${tid}`);
+    const mine = await asAppRole(
+      (tx) => tx.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM "ledger_posting_roles" WHERE "tenantId" = ${tid}`,
+    );
     expect(mine[0]!.n).toBeGreaterThan(0);
 
     const theirs = await asAppRole(
-      (tx) => tx.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "ledger_posting_roles" WHERE "tenantId" = ${tid}`,
+      (tx) =>
+        tx.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "ledger_posting_roles" WHERE "tenantId" = ${tid}`,
       otherTid,
     );
     expect(theirs[0]!.n).toBe(0);
@@ -341,11 +370,13 @@ describe('ledger_posting_roles: insert-only, tenant-scoped, with a DB-side refus
 
   it('refuses a window that ends on or before it starts', async () => {
     await expect(
-      asAppRole((tx) => tx.$executeRaw`
+      asAppRole(
+        (tx) => tx.$executeRaw`
         INSERT INTO "ledger_posting_roles"
           ("id", "tenantId", "role", "scopeKey", "ledgerAccountId", "effectiveFrom", "effectiveTo", "setById")
         VALUES (${randomUUID()}, ${tid}, 'BANK', ${`window-${randomUUID()}`}, ${acct.bank!},
-                '2030-06-01'::date, '2030-06-01'::date, ${randomUUID()})`),
+                '2030-06-01'::date, '2030-06-01'::date, ${randomUUID()})`,
+      ),
     ).rejects.toThrow(/ledger_posting_roles_effective_window/);
   });
 });
@@ -354,10 +385,12 @@ describe('resolvePostingAccount: fails closed, never falls back to a default', (
   it('refuses an unmapped role with a typed error', async () => {
     const day = new Date('2044-06-15T00:00:00.000Z');
     const err = await asChairman(() =>
-      prisma.$transaction((tx) => resolvePostingAccount(tx, 'CASH', '', day)).then(
-        () => null,
-        (e: unknown) => e,
-      ),
+      prisma
+        .$transaction((tx) => resolvePostingAccount(tx, 'CASH', '', day))
+        .then(
+          () => null,
+          (e: unknown) => e,
+        ),
     );
     expect(err).toBeInstanceOf(PostingRoleUnmappedError);
     expect(err).toMatchObject({ status: 422, code: 'POSTING_ROLE_UNMAPPED' });
@@ -415,7 +448,14 @@ describe('resolvePostingAccount: fails closed, never falls back to a default', (
     await expect(
       asChairman(() =>
         prisma.$transaction((tx) =>
-          resolvePostingAccounts(tx, [{ role: 'TRADE_RECEIVABLE', scopeKey: '' }, { role: 'CASH', scopeKey: '' }], day),
+          resolvePostingAccounts(
+            tx,
+            [
+              { role: 'TRADE_RECEIVABLE', scopeKey: '' },
+              { role: 'CASH', scopeKey: '' },
+            ],
+            day,
+          ),
         ),
       ),
     ).rejects.toBeInstanceOf(PostingRoleUnmappedError);
@@ -445,7 +485,13 @@ describe('pure builders: balanced bigint lines, fixture accounts only', () => {
   });
 
   it('balances a round-off of +0.40 and of -0.30 to the paisa, on the round-off account', () => {
-    const base = { partyId: party, revenue: [{ lineId, taxableMinor: 10000n }], cgstMinor: 900n, sgstMinor: 900n, igstMinor: 0n };
+    const base = {
+      partyId: party,
+      revenue: [{ lineId, taxableMinor: 10000n }],
+      cgstMinor: 900n,
+      sgstMinor: 900n,
+      igstMinor: 0n,
+    };
     const up = buildInvoiceIssueEntry({ ...base, grandTotalMinor: 11840n, roundOffMinor: 40n }, fixtureAccounts());
     const down = buildInvoiceIssueEntry({ ...base, grandTotalMinor: 11770n, roundOffMinor: -30n }, fixtureAccounts());
     expect(up.reduce((sum, l) => sum + l.amountMinor, 0n)).toBe(0n);
@@ -472,11 +518,21 @@ describe('pure builders: balanced bigint lines, fixture accounts only', () => {
   });
 
   it('refuses an income line with no business line (O2), whether lineId is null or absent', () => {
-    const source = { partyId: party, grandTotalMinor: 11800n, cgstMinor: 900n, sgstMinor: 900n, igstMinor: 0n, roundOffMinor: 0n };
+    const source = {
+      partyId: party,
+      grandTotalMinor: 11800n,
+      cgstMinor: 900n,
+      sgstMinor: 900n,
+      igstMinor: 0n,
+      roundOffMinor: 0n,
+    };
     for (const revenue of [
       [{ lineId: null, taxableMinor: 10000n }],
       [{ lineId: undefined, taxableMinor: 10000n }],
-      [{ lineId, taxableMinor: 4000n }, { lineId: '', taxableMinor: 6000n }],
+      [
+        { lineId, taxableMinor: 4000n },
+        { lineId: '', taxableMinor: 6000n },
+      ],
     ]) {
       expect(() => buildInvoiceIssueEntry({ ...source, revenue }, fixtureAccounts())).toThrow(PostingRuleError);
       expect(() => buildInvoiceIssueEntry({ ...source, revenue }, fixtureAccounts())).toThrow(/business line/);
@@ -521,7 +577,10 @@ describe('pure builders: balanced bigint lines, fixture accounts only', () => {
   });
 
   it('builds a balanced receipt allocation: bank debited, receivable credited, for the payment mode', () => {
-    const lines = buildReceiptAllocationEntry({ partyId: party, amountMinor: 11800n, paymentMode: 'UPI' }, fixtureAccounts());
+    const lines = buildReceiptAllocationEntry(
+      { partyId: party, amountMinor: 11800n, paymentMode: 'UPI' },
+      fixtureAccounts(),
+    );
     expect(lines).toEqual([
       { accountId: acct.bank, amountMinor: 11800n },
       { accountId: acct.receivable, amountMinor: -11800n, partyId: party },
