@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
 const ownerUrl = process.env.TEST_DATABASE_URL ?? 'postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public';
@@ -31,6 +33,10 @@ export default defineConfig({
       DATABASE_URL:
         process.env.TEST_APP_DATABASE_URL ?? ownerUrl.replace('//kaizen:kaizen@', '//kaizen_app:kaizen_app@'),
       NODE_ENV: 'test',
+      // The document store writes real bytes. A directory outside the repo, so a
+      // test run leaves nothing in the checkout; the tests count objects before
+      // and after, so leftovers from an earlier run do not matter.
+      DOCUMENT_STORAGE_DIR: process.env.TEST_DOCUMENT_STORAGE_DIR ?? join(tmpdir(), 'kaizen-test-documents'),
       // Not a fallback: the API has none any more, so the suite supplies its
       // own. Long enough to satisfy the same rule production is held to.
       JWT_SECRET: 'test-only-secret-not-used-anywhere-else-0123456789',
