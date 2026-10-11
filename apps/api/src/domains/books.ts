@@ -24,7 +24,9 @@ import {
   monthKey,
   monthRange,
   monthsBack,
+  istMonthKey,
   istYearMonth,
+  formatMinor,
   depreciationSchedule,
   amortisationSchedule,
   bookValueAt,
@@ -315,15 +317,35 @@ export async function checkTransactionAllowed(input: Pick<TransactionInput, 'txn
  * run inside one, and the permission check and the period veto have already
  * run outside it, so nothing here needs the outer client.
  */
-export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
-  const auth = currentAuth();
-  const db = tx ?? (prisma as unknown as DbTx);
+/** TransactionInput with the amount as bigint paise (FX-72). */
+export interface TransactionInputMinor extends Omit<TransactionInput, 'amount'> {
+  amount: bigint;
+}
 
+export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
   if (input.amount <= 0) {
     // The direction carries the sign, so a negative amount would be a second,
     // contradictory way of saying the same thing.
     throw ApiError.unprocessable('An amount is always positive — `direction` says which way the money went.');
   }
+  return insertTransaction(input, input.amount, tx);
+}
+
+/**
+ * writeTransaction for an amount held as bigint paise. The amount reaches the
+ * column as the exact decimal text formatMinor gives, so no float is involved
+ * on the way in. The import commit uses it (FX-72); payroll is to follow (PR7).
+ */
+export async function writeTransactionMinor(input: TransactionInputMinor, tx?: DbTx) {
+  if (input.amount <= 0n) {
+    throw ApiError.unprocessable('An amount is always positive — `direction` says which way the money went.');
+  }
+  return insertTransaction(input, formatMinor(input.amount), tx);
+}
+
+async function insertTransaction(input: Omit<TransactionInput, 'amount'>, amount: number | string, tx?: DbTx) {
+  const auth = currentAuth();
+  const db = tx ?? (prisma as unknown as DbTx);
 
   const account = await db.ledgerAccount.findFirst({
     where: { id: input.accountId, tenantId: auth.tenantId, deletedAt: null },
@@ -354,7 +376,7 @@ export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
       recordCode,
       txnDate: input.txnDate,
       direction: input.direction,
-      amount: input.amount,
+      amount,
       accountId: input.accountId,
       categoryId: input.categoryId ?? null,
       division,
@@ -380,7 +402,7 @@ export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
     after: {
       recordCode,
       direction: input.direction,
-      amount: input.amount,
+      amount,
       accountId: input.accountId,
       categoryId: input.categoryId ?? null,
       txnDate: input.txnDate,
@@ -393,7 +415,7 @@ export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
     subject: { entityType: 'transaction', entityId: txn.id, recordCode },
     newState: {
       direction: input.direction,
-      amount: input.amount,
+      amount,
       division,
       categoryId: input.categoryId,
       source: txn.source,
@@ -404,6 +426,34 @@ export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
   });
 
   return txn;
+}
+
+/**
+ * The period veto for a write made inside the caller's transaction (FX-72).
+ *
+ * The hook at compliance/books.ts:281 refuses only `closed`, and it reads
+ * through the scoped client, which cannot run inside an interactive transaction,
+ * so it cannot be used by the import commit. This reads the period under FOR
+ * SHARE, the lock closePeriod takes FOR UPDATE on, so a close cannot land between
+ * the check and the write. The rule is the ledger's (POSTABLE_PERIOD_STATUSES,
+ * platform/ledger.ts:51): open and reopened post, `closing` does not. A month
+ * with no period row is open, as periodStatus() reads it (compliance/books.ts:115-121).
+ */
+export async function assertPeriodPostableInTx(tx: DbTx, txnDate: Date): Promise<void> {
+  const auth = currentAuth();
+  const month = istMonthKey(txnDate);
+  const rows = await tx.$queryRaw<Array<{ status: string }>>`
+    SELECT "status" FROM "cmp_accounting_periods"
+    WHERE "tenantId" = ${auth.tenantId} AND "period" = ${month}
+    FOR SHARE`;
+  const status = rows[0]?.status ?? 'open';
+  if (status === 'open' || status === 'reopened') return;
+  throw ApiError.unprocessable(
+    status === 'closing'
+      ? `This entry is dated ${month}, which is being closed. It takes no entries until the close completes or is reopened.`
+      : `This entry is dated ${month}, which is a closed accounting period. Reopen it first, with a reason, before recording anything dated inside it.`,
+    { period: month, reasonCode: 'accounting_period_closed' },
+  );
 }
 
 /**
