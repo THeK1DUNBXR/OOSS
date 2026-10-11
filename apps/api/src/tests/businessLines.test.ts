@@ -19,7 +19,15 @@ import {
   retireBusinessLine,
   setLineDistribution,
 } from '../domains/businessLines.js';
+import { PrismaClient } from '@prisma/client';
 import { asUser, expectReject, tenantId } from './helpers.js';
+
+const APP_URL =
+  process.env.TEST_APP_DATABASE_URL ??
+  (process.env.TEST_DATABASE_URL ?? 'postgresql://kaizen:kaizen@127.0.0.1:5432/kaizen_test?schema=public').replace(
+    '//kaizen:kaizen@',
+    '//kaizen_app:kaizen_app@',
+  );
 
 const CHAIRMAN = 'chairman@kaizen.co.in';
 const EMPLOYEE = 'employee@kaizen.co.in';
@@ -632,6 +640,52 @@ describe('BusinessLine: distributions (dated, basis points)', () => {
       where: { tenantId: tid, eventName: 'kz.org.line_distribution.recorded', subjectEntityId: headers[1]!.id },
     });
     expect(recorded).not.toBeNull();
+  });
+});
+
+describe('BusinessLine: concurrency and the registry as history', () => {
+  it('answers a race for the same subject and day with 409 for the losers, never a database error', async () => {
+    const a = await line();
+    const cc = await costCentre();
+    const results = await Promise.allSettled(
+      [1, 2, 3, 4].map(() =>
+        asUser(CHAIRMAN, () =>
+          setLineDistribution({
+            subject: { costCentreId: cc.id },
+            effectiveFrom: '2030-08-01',
+            shares: [{ lineId: a.id, basisPoints: 10000 }],
+            reason: 'race',
+          }),
+        ),
+      ),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    for (const r of results) {
+      if (r.status === 'rejected') expect((r.reason as { status?: number }).status).toBe(409);
+    }
+  });
+
+  it('refuses a DELETE from the application role on every registry table', async () => {
+    const a = await line();
+    const app = new PrismaClient({ datasourceUrl: APP_URL });
+    try {
+      for (const [table, id] of [
+        ['business_lines', a.id],
+        ['business_line_successors', 'none'],
+        ['line_distributions', 'none'],
+        ['line_distribution_lines', 'none'],
+      ] as const) {
+        await expect(
+          app.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tid}, true)`;
+            await tx.$executeRawUnsafe(`DELETE FROM "${table}" WHERE "id" = $1`, id);
+          }),
+        ).rejects.toThrow(/permission denied/i);
+      }
+    } finally {
+      await app.$disconnect();
+    }
+    expect(await unscopedPrisma.businessLine.count({ where: { id: a.id } })).toBe(1);
   });
 });
 
