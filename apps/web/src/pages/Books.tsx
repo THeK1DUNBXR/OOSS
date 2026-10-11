@@ -176,6 +176,7 @@ export function Ledger() {
               value={a.balance === null ? <Withheld reason="no_permission" /> : money(a.balance)}
               sub={`${titleCase(a.accountType)}${a.displayReference ? ` · ${a.displayReference}` : ''}`}
               tone={(a.balance ?? 0) < 0 ? 'bad' : 'neutral'}
+              noActionReason="The postings that move this balance are in the transaction table below"
             />
           ))}
         </div>

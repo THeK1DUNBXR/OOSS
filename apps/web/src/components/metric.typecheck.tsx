@@ -9,7 +9,13 @@ export function MetricWithDrill() {
 }
 
 export function MetricWithReason() {
-  return <Metric label="Attendance" value={12} noActionReason="Computed from today's attendance snapshot; the snapshot has no per-record view yet" />;
+  return (
+    <Metric
+      label="Attendance"
+      value={12}
+      noActionReason="Computed from today's attendance snapshot; the snapshot has no per-record view yet"
+    />
+  );
 }
 
 export function MetricWithNeither() {

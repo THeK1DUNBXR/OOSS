@@ -147,7 +147,12 @@ export function Invoices() {
 
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
         <Metric label="Invoices" value={data.length} drillTo="/finance/invoices" />
-        <Metric label="Drafts" value={drafts.length} sub="The only state whose lines can still be changed" />
+        <Metric
+          label="Drafts"
+          value={drafts.length}
+          sub="The only state whose lines can still be changed"
+          noActionReason="Counted from the invoice rows listed below"
+        />
         <Metric
           label="Outstanding"
           value={money(outstanding)}

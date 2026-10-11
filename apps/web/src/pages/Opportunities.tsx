@@ -255,7 +255,6 @@ export function OpportunityDetail() {
               ? 'warn'
               : 'neutral'
           }
-          noActionReason={currentStage?.stageAgeBudgetDays ? undefined : 'No budget set for this stage.'}
           drillTo="/exceptions"
         />
         <Metric

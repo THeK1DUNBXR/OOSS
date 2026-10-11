@@ -254,7 +254,12 @@ export function Employees() {
       <PageHeader title="Employees" subtitle="Everyone the company employs, and where each stands." />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="On the books" value={onBooks.length} sub="Active, on leave, suspended or serving notice" />
+        <Metric
+          label="On the books"
+          value={onBooks.length}
+          sub="Active, on leave, suspended or serving notice"
+          noActionReason="Counted from the employee list below"
+        />
         <Metric
           label="In probation"
           value={probation.length}
@@ -262,11 +267,17 @@ export function Employees() {
           sub="A confirmation nobody closes is an exposure for them, not just paperwork"
           drillTo="/exceptions"
         />
-        <Metric label="Serving notice" value={leaving.length} tone={leaving.length > 0 ? 'warn' : 'neutral'} />
+        <Metric
+          label="Serving notice"
+          value={leaving.length}
+          tone={leaving.length > 0 ? 'warn' : 'neutral'}
+          noActionReason="Counted from the employee list below"
+        />
         <Metric
           label="Monthly pay cost"
           value={costKnown ? money(monthlyCost) : <Withheld reason="no_permission" />}
           sub={costKnown ? 'Compensation in force today' : 'You can see the headcount without the cost'}
+          noActionReason="Summed over the employee list below; withheld when the cost is not visible to you"
         />
       </div>
 
@@ -901,11 +912,21 @@ export function Leave() {
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Awaiting a decision" value={awaiting.length} tone={awaiting.length > 0 ? 'warn' : 'good'} />
-        <Metric label="Open requests" value={data.filter((r) => OPEN.includes(r.status)).length} />
+        <Metric
+          label="Awaiting a decision"
+          value={awaiting.length}
+          tone={awaiting.length > 0 ? 'warn' : 'good'}
+          noActionReason="Counted from the leave requests listed below"
+        />
+        <Metric
+          label="Open requests"
+          value={data.filter((r) => OPEN.includes(r.status)).length}
+          noActionReason="Counted from the leave requests listed below"
+        />
         <Metric
           label="Days requested"
           value={data.filter((r) => OPEN.includes(r.status)).reduce((s, r) => s + (r.days ?? 0), 0)}
+          noActionReason="Summed from the open requests listed below"
         />
       </div>
 
@@ -1076,10 +1097,20 @@ export function Attendance() {
       )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-4">
-        <Metric label="Days recorded" value={data.length} />
-        <Metric label="Worked" value={hours(worked)} />
-        <Metric label="Overtime" value={hours(overtime)} tone={overtime > 0 ? 'warn' : 'neutral'} />
-        <Metric label="Disputed" value={disputed} tone={disputed > 0 ? 'bad' : 'good'} />
+        <Metric label="Days recorded" value={data.length} noActionReason="Counted from the day rows listed below" />
+        <Metric label="Worked" value={hours(worked)} noActionReason="Summed from the day rows listed below" />
+        <Metric
+          label="Overtime"
+          value={hours(overtime)}
+          tone={overtime > 0 ? 'warn' : 'neutral'}
+          noActionReason="Summed from the day rows listed below"
+        />
+        <Metric
+          label="Disputed"
+          value={disputed}
+          tone={disputed > 0 ? 'bad' : 'good'}
+          noActionReason="Counted from the day rows listed below"
+        />
       </div>
 
       <Card title="Whose attendance" className="mb-4">
@@ -1234,15 +1265,26 @@ export function Payroll() {
 
       {latest && (
         <div className="mb-5 grid gap-3 sm:grid-cols-4">
-          <Metric label="Latest period" value={latest.payPeriod} sub={latest.status} />
-          <Metric label="Headcount" value={latest.headcount} />
+          <Metric
+            label="Latest period"
+            value={latest.payPeriod}
+            sub={latest.status}
+            noActionReason="Taken from the latest run in the table below"
+          />
+          <Metric
+            label="Headcount"
+            value={latest.headcount}
+            noActionReason="Taken from the latest run in the table below"
+          />
           <Metric
             label="Gross"
             value={latest.grossTotal === null ? <Withheld reason="no_permission" /> : money(latest.grossTotal)}
+            noActionReason="Taken from the latest run in the table below"
           />
           <Metric
             label="Net"
             value={latest.netTotal === null ? <Withheld reason="no_permission" /> : money(latest.netTotal)}
+            noActionReason="Taken from the latest run in the table below"
           />
         </div>
       )}
@@ -1442,10 +1484,10 @@ export function Hiring() {
 
       {funnel && (
         <div className="mb-5 grid gap-3 sm:grid-cols-4">
-          <Metric label="In process" value={funnel.buckets.open ?? 0} />
-          <Metric label="At offer" value={funnel.buckets.offer ?? 0} tone="warn" />
-          <Metric label="Joined" value={funnel.buckets.hired ?? 0} tone="good" />
-          <Metric label="Closed" value={funnel.buckets.closed ?? 0} />
+          <Metric label="In process" value={funnel.buckets.open ?? 0} drillTo="/people/recruiting" />
+          <Metric label="At offer" value={funnel.buckets.offer ?? 0} tone="warn" drillTo="/people/recruiting" />
+          <Metric label="Joined" value={funnel.buckets.hired ?? 0} tone="good" drillTo="/people/recruiting" />
+          <Metric label="Closed" value={funnel.buckets.closed ?? 0} drillTo="/people/recruiting" />
         </div>
       )}
 

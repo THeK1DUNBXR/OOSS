@@ -209,8 +209,9 @@ export function ItIncidents() {
           <Metric
             label="MTTR (30d)"
             value={summary.mttrMinutes30d == null ? 'Not yet measured' : `${Math.round(summary.mttrMinutes30d)}m`}
-            noActionReason={summary.mttrMinutes30d == null ? 'No incident resolved in the last 30 days.' : undefined}
-            drillTo={summary.mttrMinutes30d != null ? '/it/incidents' : undefined}
+            {...(summary.mttrMinutes30d != null
+              ? { drillTo: '/it/incidents' }
+              : { noActionReason: 'No incident resolved in the last 30 days.' })}
           />
           <Metric
             label="Customer-facing, open"
@@ -771,12 +772,9 @@ export function ItChanges() {
           <Metric
             label="Success rate (90d)"
             value={summary.successRate90d == null ? 'Not yet measured' : `${Math.round(summary.successRate90d * 100)}%`}
-            noActionReason={
-              summary.successRate90d == null
-                ? 'No change has reached reviewed/failed/rolled back in 90 days.'
-                : undefined
-            }
-            drillTo={summary.successRate90d != null ? '/it/changes' : undefined}
+            {...(summary.successRate90d != null
+              ? { drillTo: '/it/changes' }
+              : { noActionReason: 'No change has reached reviewed/failed/rolled back in 90 days.' })}
           />
           <Metric
             label="Freeze in force"

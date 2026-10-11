@@ -404,7 +404,7 @@ function CompOffCard() {
         label="Available"
         value={balance.toFixed(2)}
         sub="days"
-        noActionReason={available.length === 0 ? 'Nothing to use yet.' : undefined}
+        noActionReason="Summed from the available comp-offs in the table below"
       />
       {compOffs.isLoading && <Loading />}
       {compOffs.error && <ErrorBox error={compOffs.error} />}

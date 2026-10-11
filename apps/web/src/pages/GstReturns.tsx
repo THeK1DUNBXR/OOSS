@@ -346,10 +346,10 @@ function Gstr1View({ data }: { data: any }) {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-4">
-        <Metric label="Invoices reported" value={data.totals.invoiceCount} />
-        <Metric label="Taxable value" value={money(data.totals.taxableValue)} />
-        <Metric label="Tax" value={money(data.totals.tax)} />
-        <Metric label="Invoice value" value={money(data.totals.invoiceValue)} />
+        <Metric label="Invoices reported" value={data.totals.invoiceCount} drillTo="/finance/invoices/history" />
+        <Metric label="Taxable value" value={money(data.totals.taxableValue)} drillTo="/finance/invoices/history" />
+        <Metric label="Tax" value={money(data.totals.tax)} drillTo="/finance/invoices/history" />
+        <Metric label="Invoice value" value={money(data.totals.invoiceValue)} drillTo="/finance/invoices/history" />
       </div>
 
       <Card
@@ -562,13 +562,18 @@ function Gstr3bView({ data }: { data: any }) {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-4">
-        <Metric label="Outward taxable supplies" value={money(data.outwardSupplies.taxableValue)} />
-        <Metric label="Output tax" value={money(data.outwardSupplies.tax)} />
-        <Metric label="Credit available" value={money(data.inputTaxCredit.total)} />
+        <Metric
+          label="Outward taxable supplies"
+          value={money(data.outwardSupplies.taxableValue)}
+          drillTo="/finance/invoices/history"
+        />
+        <Metric label="Output tax" value={money(data.outwardSupplies.tax)} drillTo="/finance/invoices/history" />
+        <Metric label="Credit available" value={money(data.inputTaxCredit.total)} drillTo="/finance/payables" />
         <Metric
           label="Payable in cash"
           value={money(data.payment.totalPayableInCash)}
           tone={data.payment.totalPayableInCash > 0 ? 'warn' : 'good'}
+          noActionReason="Output tax less input tax credit; both figures above are the drill targets for it"
         />
       </div>
 

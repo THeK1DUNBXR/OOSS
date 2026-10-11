@@ -555,16 +555,22 @@ function BankTab() {
       {report.data && (
         <>
           <div className="mb-4 flex flex-wrap gap-6">
-            <Metric label="Matched" value={String(report.data.matchedCount)} />
+            <Metric
+              label="Matched"
+              value={String(report.data.matchedCount)}
+              noActionReason="Matched pairs are not listed on this screen; only the unmatched lines below are"
+            />
             <Metric
               label="Unmatched bank lines"
               value={String(report.data.unmatchedBankCount)}
               tone={report.data.unmatchedBankCount ? 'warn' : 'good'}
+              noActionReason="Listed line by line in the Unmatched bank table below"
             />
             <Metric
               label="Unmatched ledger entries"
               value={String(report.data.unmatchedLedgerCount)}
               tone={report.data.unmatchedLedgerCount ? 'warn' : 'good'}
+              noActionReason="Listed line by line in the Unmatched ledger table below"
             />
           </div>
           <div className="grid gap-6 md:grid-cols-2">

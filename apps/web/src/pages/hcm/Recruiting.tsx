@@ -118,7 +118,9 @@ function PipelineTab() {
           value={
             funnel.data?.offerAcceptanceRatePct != null ? `${funnel.data.offerAcceptanceRatePct}%` : 'Not measured'
           }
-          noActionReason={funnel.data?.offerAcceptanceRatePct == null ? 'No offer has been decided yet.' : undefined}
+          {...(funnel.data?.offerAcceptanceRatePct == null
+            ? { noActionReason: 'No offer has been decided yet.' }
+            : { drillTo: '/people/recruiting' })}
         />
         <Metric
           label="Open applications"

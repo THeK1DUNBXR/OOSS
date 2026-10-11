@@ -166,23 +166,32 @@ export function StudentTimeline() {
               ? 'no sessions recorded yet'
               : `${data.counts.present} of ${data.counts.sessions} sessions`
           }
+          noActionReason="Derived from the attendance entries in the timeline below"
         />
         <Metric
           label="Progress"
           value={data.days.some((d) => d.entries.some((x) => x.kind === 'progress')) ? `${e.progressPct}%` : '—'}
           sub="mean of the scores recorded"
+          noActionReason="Mean of the progress entries in the timeline below"
         />
         <Metric
           label="Open queries"
           value={data.counts.openQueries}
           tone={data.counts.openQueries > 0 ? 'warn' : 'good'}
+          noActionReason="Open queries for this student are listed in the timeline below"
         />
-        <Metric label="Open issues" value={data.counts.openIssues} tone={data.counts.openIssues > 0 ? 'bad' : 'good'} />
+        <Metric
+          label="Open issues"
+          value={data.counts.openIssues}
+          tone={data.counts.openIssues > 0 ? 'bad' : 'good'}
+          noActionReason="Open issues for this student are listed in the timeline below"
+        />
         <Metric
           label="Owed"
           value={money(owed)}
           tone={owed > 0 ? 'warn' : 'good'}
           sub={data.counts.meanRating !== null ? `feedback averages ${data.counts.meanRating}/5` : undefined}
+          noActionReason="Payable less allocated, across the invoices listed below"
         />
       </div>
 
@@ -548,9 +557,24 @@ export function LearnerQueue() {
       )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Open" value={data.length} tone={data.length > 0 ? 'warn' : 'good'} />
-        <Metric label="Issues" value={issues.length} tone={issues.length > 0 ? 'bad' : 'good'} />
-        <Metric label="Older than a week" value={stale.length} tone={stale.length > 0 ? 'bad' : 'good'} />
+        <Metric
+          label="Open"
+          value={data.length}
+          tone={data.length > 0 ? 'warn' : 'good'}
+          noActionReason="Counted from the queue rows listed below"
+        />
+        <Metric
+          label="Issues"
+          value={issues.length}
+          tone={issues.length > 0 ? 'bad' : 'good'}
+          noActionReason="The issue rows among the queue listed below"
+        />
+        <Metric
+          label="Older than a week"
+          value={stale.length}
+          tone={stale.length > 0 ? 'bad' : 'good'}
+          noActionReason="The queue rows listed below that are more than seven days old"
+        />
       </div>
 
       {isLoading ? (

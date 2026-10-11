@@ -225,8 +225,9 @@ export function ItApplications() {
               label="No owner"
               value={s.unowned}
               tone={s.unowned > 0 ? 'bad' : 'good'}
-              drillTo={s.unowned > 0 ? '/it/applications?status=active' : undefined}
-              noActionReason={s.unowned === 0 ? 'Every application has an accountable owner.' : undefined}
+              {...(s.unowned > 0
+                ? { drillTo: '/it/applications?status=active' }
+                : { noActionReason: 'Every application has an accountable owner.' })}
             />
             <Metric label="Retired" value={s.byStatus.retired} noActionReason="Kept for the record." />
           </div>

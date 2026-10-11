@@ -94,8 +94,13 @@ export function Courses() {
       )}
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric label="Courses" value={data.length} />
-        <Metric label="Priced" value={`${priced} of ${data.length}`} tone={unpriced.length ? 'warn' : 'good'} />
+        <Metric label="Courses" value={data.length} noActionReason="Counted from the course list below" />
+        <Metric
+          label="Priced"
+          value={`${priced} of ${data.length}`}
+          tone={unpriced.length ? 'warn' : 'good'}
+          noActionReason="Each course's fee plan is shown in the list below"
+        />
         <Metric
           label="Students"
           value={data.reduce((s, c) => s + c.enrolledCount, 0)}

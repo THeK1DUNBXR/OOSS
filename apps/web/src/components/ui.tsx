@@ -129,14 +129,21 @@ export function RecordCode({ code, to }: { code: string | null | undefined; to?:
   return <span className="mono">{code}</span>;
 }
 
-export type MetricProps = {
+type MetricBase = {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
-  drillTo?: string;
-  noActionReason?: string;
   tone?: 'neutral' | 'good' | 'warn' | 'bad';
 };
+
+/**
+ * Exactly one of the two is required. Both were optional before, so a number
+ * could reach the screen with neither: a dead number is a defect, not a layout
+ * choice (phase-4 audit 4.2a). The `never` on the other arm also makes passing
+ * both an error: a drill target and a reason there is none contradict each other.
+ */
+export type MetricProps = MetricBase &
+  ({ drillTo: string; noActionReason?: never } | { noActionReason: string; drillTo?: never });
 
 /**
  * Metrics are best when they point to action, but some KPIs are intentionally
