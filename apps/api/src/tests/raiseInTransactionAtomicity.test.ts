@@ -16,7 +16,7 @@
  * not a mock: the insert really is refused by the database.
  */
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
+import { asUser, expectReject, prisma, principalFor, tenantId, unscopedPrisma } from './helpers.js';
 import { markChallanPaid } from '../domains/compliance/tax.js';
 import { closeRound, createRound } from '../domains/rounds.js';
 import { accrueEntitlement, createLeaveRequest, transitionLeaveRequest, leaveBalances } from '../domains/leave.js';
@@ -27,6 +27,7 @@ import { createPlan, recordTest, transitionPlan } from '../domains/it/continuity
 import { campaignDetail, decideItem, openCampaign } from '../domains/it/governance.js';
 import { rejectRegularisation, submitRegularisation } from '../domains/hcm/time.js';
 import { changeForecastCategory } from '../domains/opportunities.js';
+import { decideApprovalStep } from '../platform/approvals.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
@@ -366,5 +367,33 @@ describe('a forecast demotion notifies the deal owner in the same transaction', 
 
     const after = await unscopedPrisma.opportunity.findUniqueOrThrow({ where: { id: opp!.id } });
     expect(after.forecastCategory).toBe('best_case');
+  });
+});
+
+describe('deciding an approval step notifies the requester in the same transaction', () => {
+  it('when the notification cannot be recorded, the step is not decided', async () => {
+    const requester = await principalFor('chairman@kaizen.co.in');
+    const approver = await principalFor('finance@kaizen.co.in');
+    const step = await unscopedPrisma.approvalStep.create({
+      data: {
+        tenantId: TENANT,
+        subjectType: 'it_licence',
+        subjectId: unique('w2-atomic-step'),
+        subjectLabel: 'Atomicity probe licence',
+        action: 'it_licence.renew',
+        resource: 'it_licences',
+        requestedById: requester.partyId,
+        resolvedApproverId: approver.partyId,
+        resolvedApproverRole: 'finance_head',
+        resolutionTier: 0,
+      },
+    });
+
+    await refuseNotificationInserts();
+    await expectReject(() => asUser(FINANCE, () => decideApprovalStep(step.id, true, 'atomicity probe')));
+
+    const after = await unscopedPrisma.approvalStep.findUniqueOrThrow({ where: { id: step.id } });
+    expect(after.state).toBe(step.state);
+    expect(after.state).not.toBe('approved');
   });
 });
