@@ -13,7 +13,7 @@
  * The rules the writer checks before the database does, so a refusal says what
  * is wrong: the hash, the successor of a version, the lifecycle table, the
  * retention class. The database keeps the same rules for any writer that skips
- * this module (migration 20261012120000_document_store).
+ * this module (migration 20261013090000_document_store).
  */
 
 import { createHash, randomUUID } from 'node:crypto';
