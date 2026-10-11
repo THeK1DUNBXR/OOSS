@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { EVENTS } from '@kaizen/shared';
-import { auditBulkOperation, auditExport, auditRegulatedRead } from '../platform/audit.js';
+import { auditBulkOperation, auditExport, auditRegulatedRead, auditWrite } from '../platform/audit.js';
 import { prisma, unscopedPrisma, type DbTx } from '../platform/db.js';
 import { raiseException } from '../platform/exceptions.js';
 import { issueLetter } from '../domains/compliance/labour.js';
@@ -164,5 +164,25 @@ describe('letter issue and audit helpers run inside the caller transaction', () 
       0,
     );
     expect(await unscopedPrisma.auditRecord.count({ where: { tenantId: tid, subjectId: readSubject } })).toBe(0);
+  });
+});
+
+describe('audit diffs carry bigint values', () => {
+  it('auditWrite stores a bigint in the after payload as its decimal string, and the row is hashed', async () => {
+    const tid = await tenantId();
+    const subjectId = `ptx-bigint-${randomUUID().slice(0, 8)}`;
+
+    await asUser('chairman@kaizen.co.in', () =>
+      auditWrite({
+        action: 'create',
+        subjectType: 'exception',
+        subjectId,
+        after: { seq: 12345678901234567890n, code: 'PTX-BIG' },
+      }),
+    );
+
+    const row = await unscopedPrisma.auditRecord.findFirstOrThrow({ where: { tenantId: tid, subjectId } });
+    expect(row.diff).toEqual({ seq: '12345678901234567890', code: 'PTX-BIG' });
+    expect(row.hash).not.toBeNull();
   });
 });
