@@ -15,6 +15,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import * as XLSX from 'xlsx';
 import { EVENTS, istMonthKey, parseMinor } from '@kaizen/shared';
 import { asUser, tenantId, unscopedPrisma } from './helpers.js';
 import { stageImport, setImportOptions } from '../imports/service.js';
@@ -487,5 +488,65 @@ describe('compensation and attendance rows are tombstoned, and the readers hide 
     expect(recommitted.errors).toEqual([]);
     const live = await asUser(CHAIRMAN, () => attendanceForPeriod(employmentId, '2013-08'));
     expect(live.map((r) => r.id).sort()).toEqual([...writtenIds].sort());
+  });
+});
+
+describe('a pay record a batch matched rather than created is not voided by that batch revert', () => {
+  it('batch B reuses the record batch A created; reverting B leaves it active and still read as current pay', async () => {
+    const name = uniqueName('MATCH');
+    const code = `KD/S/2026/${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    const people = ['Name,Designation,Employee Code', `${name},Analyst,${code}`].join('\n');
+    const emp = await asUser(CHAIRMAN, () =>
+      stageImport({ fileName: `${uniqueTag('MATCHEMP')}.csv`, buffer: Buffer.from(people, 'utf8') }),
+    );
+    expect((await asUser(CHAIRMAN, () => commitImport(emp.batchId))).errors).toEqual([]);
+    const person = await unscopedPrisma.person.findFirstOrThrow({ where: { tenantId: TENANT, fullName: name } });
+    const employment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
+      where: { tenantId: TENANT, personId: person.id },
+    });
+    // Staging refuses a salary row whose key (person, period label, amount) is
+    // already committed, so B must come from another period. The period label is
+    // the sheet's name, so each batch is its own workbook with its own sheet.
+    const stageSalary = (period: string) => {
+      const book = XLSX.utils.book_new();
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ['Name', 'Designation', 'Actual Salary'],
+        [name, 'Analyst', 50000],
+      ]);
+      XLSX.utils.book_append_sheet(book, sheet, period);
+      const buffer = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+      return asUser(CHAIRMAN, () =>
+        stageImport({ fileName: `${uniqueTag('SALMATCH')}.xlsx`, buffer, kindOverride: 'salary' }),
+      );
+    };
+
+    const batchA = await stageSalary('January salary');
+    const committedA = await asUser(CHAIRMAN, () => commitImport(batchA.batchId));
+    expect(committedA.errors).toEqual([]);
+    const recordA = await unscopedPrisma.compensationRecord.findFirstOrThrow({
+      where: { tenantId: TENANT, employmentRelationshipId: employment.id, status: 'Effective' },
+    });
+
+    // Batch B names the same person and the same pay, so commit reuses A's record.
+    const batchB = await stageSalary('February salary');
+    const committedB = await asUser(CHAIRMAN, () => commitImport(batchB.batchId));
+    expect(committedB.errors).toEqual([]);
+
+    await asUser(CHAIRMAN, () => revertImport(batchB.batchId));
+
+    // A's record is not B's to void: still active, and still the current pay.
+    const afterA = await unscopedPrisma.compensationRecord.findUniqueOrThrow({ where: { id: recordA.id } });
+    expect(afterA.voidedAt).toBeNull();
+    expect(afterA.status).toBe('Effective');
+    const current = await asUser(CHAIRMAN, () => currentCompensation(employment.id));
+    expect(current?.id).toBe(recordA.id);
+    expect(await asUser(CHAIRMAN, () => listCompensationForEmployment(employment.id))).toHaveLength(1);
+    // B created no pay record, and its row says it matched A's: nothing to undo.
+    expect(committedB.created.compensationRecord ?? 0).toBe(0);
+    const rowsB = await rowsFor(batchB.batchId);
+    expect(rowsB.map((r) => [r.status, r.entityId])).toEqual([['matched', recordA.id]]);
+    expect((await batchFor(batchB.batchId)).status).toBe('reverted');
+
+    assertTrialBalance(await asUser(CHAIRMAN, () => journalTrialBalance(ALL_TIME)));
   });
 });
