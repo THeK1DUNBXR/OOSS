@@ -218,6 +218,9 @@ export async function decideItem(reviewId: string, itemId: string, input: Decide
   // commit together. The campaign's audit row sits before the emit: every
   // governed write takes the audit lock before the event lock (governedWrite.ts),
   // and an emit ahead of a later audit in the same transaction would reverse that.
+  // Read before the transaction: the resolver reads through the scoped client, which
+  // refuses to run inside one.
+  const opsHead = input.decision === 'revoke' ? await resolveOpsHeadPartyId() : null;
   const decided = await prisma.$transaction(async (tx) => {
     const decided = await tx.itAccessReviewItem.update({
       where: { id: itemId },
@@ -261,26 +264,29 @@ export async function decideItem(reviewId: string, itemId: string, input: Decide
       impact: { domains: [IT_DOMAIN] },
       tx,
     });
+    // A `revoke` decision is a finding for the desk to act on, not a write this
+    // workstream makes to `Affiliation` — that model lives outside these files. The
+    // finding is the consequence of the decision, so it commits or rolls back with it;
+    // raised after the commit, a failed raise left a revoke with no finding for the desk.
+    if (input.decision === 'revoke') {
+      await raiseException(
+        {
+          code: 'IT_ACR_REVOKE_REQUESTED',
+          label: `Access review: revoke ${item.roleSlug ?? 'access'} for ${item.partyId}`,
+          severity: 'S2_WARNING',
+          subjectType: 'it_access_review_item',
+          subjectId: itemId,
+          subjectLabel: campaign.recordCode,
+          domain: IT_DOMAIN,
+          detail: `${campaign.name} (${campaign.recordCode}) recommends revoking access for party ${item.partyId}${item.roleSlug ? ` (role ${item.roleSlug})` : ''}. The affiliation itself is not changed automatically — this needs a deliberate offboarding action.`,
+          ownerPartyId: opsHead,
+          triggerFingerprint: `it_access_review_revoke_${itemId}`,
+        },
+        tx,
+      );
+    }
     return decided;
   });
-
-  // A `revoke` decision is a finding for the desk to act on, not a write this
-  // workstream makes to `Affiliation` — that model lives outside these files.
-  if (input.decision === 'revoke') {
-    const opsHead = await resolveOpsHeadPartyId();
-    await raiseException({
-      code: 'IT_ACR_REVOKE_REQUESTED',
-      label: `Access review: revoke ${item.roleSlug ?? 'access'} for ${item.partyId}`,
-      severity: 'S2_WARNING',
-      subjectType: 'it_access_review_item',
-      subjectId: itemId,
-      subjectLabel: campaign.recordCode,
-      domain: IT_DOMAIN,
-      detail: `${campaign.name} (${campaign.recordCode}) recommends revoking access for party ${item.partyId}${item.roleSlug ? ` (role ${item.roleSlug})` : ''}. The affiliation itself is not changed automatically — this needs a deliberate offboarding action.`,
-      ownerPartyId: opsHead,
-      triggerFingerprint: `it_access_review_revoke_${itemId}`,
-    });
-  }
 
   return decided;
 }
