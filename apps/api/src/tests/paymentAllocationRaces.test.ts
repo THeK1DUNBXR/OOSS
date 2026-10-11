@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { asUser, prisma, tenantId, unscopedPrisma } from './helpers.js';
 import { createInvoice, collectInvoicePayment, totalsOf } from '../domains/invoicing.js';
-import { allocatePayment, recordPayment } from '../domains/finance.js';
+import { allocatePayment, issueFeeInstalments, recordPayment } from '../domains/finance.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
 
 let TENANT: string;
@@ -106,6 +106,30 @@ describe('concurrent allocations of one payment', () => {
     });
 
     expect(outcome.allocated).toBeLessThanOrEqual(7_000);
+    expect(outcome.settled.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
+  });
+});
+
+describe('concurrent allocations to one fee instalment', () => {
+  it('parallel allocations never take more than the instalment is for', async () => {
+    const outcome = await asUser('latha@kaizen.co.in', async () => {
+      const enrollment = await unscopedPrisma.enrollment.findFirstOrThrow({ where: { tenantId: await tenantId() } });
+      const [instalment] = await issueFeeInstalments(enrollment.id, [{ amount: 10_000, dueDate: new Date() }]);
+      const payment = await recordPayment({ amount: 100_000, gatewayReference: `ALLOC-FEE-${stamp()}` });
+      const settled = await Promise.allSettled(
+        Array.from({ length: 8 }, () =>
+          asUser('latha@kaizen.co.in', () =>
+            allocatePayment({ paymentId: payment.id, feeInstalmentId: instalment!.id, amount: 3_000 }),
+          ),
+        ),
+      );
+      const receipts = await prisma.receipt.findMany({ where: { feeInstalmentId: instalment!.id } });
+      const taken = receipts.reduce((s, r) => s + Number(r.allocatedAmount.toString()), 0);
+      return { settled, taken };
+    });
+
+    // 3 * 3,000 = 9,000 fits in 10,000; the fourth would take it to 12,000.
+    expect(outcome.taken).toBeLessThanOrEqual(10_000);
     expect(outcome.settled.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
   });
 });
