@@ -91,6 +91,7 @@ $$;
 --    rounds a third decimal away on insert, so a value that has one can only be
 --    there if the column drifted to an unconstrained type or a restore brought
 --    one in. Rounding it here would hide exactly that, so the migration stops.
+-- GUARD BEGIN
 DO $$
 BEGIN
   IF EXISTS (
@@ -102,6 +103,7 @@ BEGIN
   END IF;
 END
 $$;
+-- GUARD END
 
 ALTER TABLE "decisions"
   ALTER COLUMN "requiredAuthorityValue" TYPE BIGINT

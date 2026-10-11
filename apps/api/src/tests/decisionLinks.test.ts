@@ -24,7 +24,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Server } from 'node:http';
@@ -380,11 +380,29 @@ describe('Decision money migration (20261013150000_decision_links_money)', () =>
     return url.toString();
   }
 
-  function psql(url: string, args: string[]): string {
+  /** The application role's URL for the same database, as rls.test.ts builds it. */
+  function appDbUrl(name: string): string {
+    const url = new URL(APP_URL);
+    url.pathname = `/${name}`;
+    url.search = '';
+    return url.toString();
+  }
+
+  function psql(url: string, args: string[], input?: string): string {
     return execFileSync('psql', [url, '-X', '-q', '-v', 'ON_ERROR_STOP=1', ...args], {
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: input === undefined ? ['ignore', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
+      input,
     });
+  }
+
+  /** The guard block as the migration file writes it, between its GUARD markers. */
+  function guardBlock(): string {
+    const sql = readFileSync(migrationFile, 'utf8');
+    const start = sql.indexOf('-- GUARD BEGIN');
+    const end = sql.indexOf('-- GUARD END');
+    if (start < 0 || end < 0) throw new Error('the migration has no GUARD BEGIN / GUARD END markers');
+    return sql.slice(start, end);
   }
 
   function admin(sql: string): void {
@@ -412,6 +430,11 @@ describe('Decision money migration (20261013150000_decision_links_money)', () =>
     for (const dir of priorMigrations) {
       psql(dbUrl(PRE_DB), ['-f', join(MIGRATIONS_DIR, dir, 'migration.sql')]);
     }
+    // The migration walks the tenants table, so a fixture tenant has to be a row in it.
+    psql(dbUrl(PRE_DB), [
+      '-c',
+      `INSERT INTO "tenants" ("id", "name", "slug", "updatedAt") VALUES ('migration-fixture', 'Migration fixture', 'migration-fixture', now())`,
+    ]);
   }, 600_000);
 
   afterAll(() => {
@@ -495,6 +518,33 @@ describe('Decision money migration (20261013150000_decision_links_money)', () =>
       }
     } finally {
       await client.$disconnect();
+      dropDb(name);
+    }
+  });
+
+  it('the guard sees every tenant through row-level security, as the bound table owner does', async () => {
+    // FORCE RLS binds the table owner in production. A guard that reads decisions
+    // with no tenant set sees none of them and passes whatever the data holds.
+    // The local owner has BYPASSRLS, so the block runs through the application
+    // role, which RLS binds the same way.
+    const name = copyOfPre(`kaizen_w6dec_rls_${stamp}`);
+    const client = new PrismaClient({ datasourceUrl: dbUrl(name) });
+    try {
+      await client.$executeRawUnsafe('ALTER TABLE "decisions" ALTER COLUMN "requiredAuthorityValue" TYPE NUMERIC');
+      await seedDecision(client, 'mig-rls', '12345.675');
+    } finally {
+      await client.$disconnect();
+    }
+
+    let stderr = '';
+    try {
+      psql(appDbUrl(name), ['-f', '-'], guardBlock());
+    } catch (err) {
+      stderr = String((err as { stderr?: string }).stderr ?? err);
+    }
+    try {
+      expect(stderr).toMatch(/more than two decimal places/);
+    } finally {
       dropDb(name);
     }
   });
