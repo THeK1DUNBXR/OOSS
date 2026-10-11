@@ -29,6 +29,8 @@ export interface FounderRow {
   title: string;
   state: string;
   ownerPartyId: string | null;
+  /** The owner's name in this tenant, or null when nobody owns the row. */
+  ownerName: string | null;
   /** ISO instant, UTC. */
   timestamp: string;
   timestampKind: FounderTimestampKind;

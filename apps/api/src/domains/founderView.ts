@@ -36,9 +36,12 @@ import { tiersClearedBy } from './cases.js';
 /** Rows shown per source. The count is always the whole number, never this cap. */
 const ROW_CAP = 50;
 
+/** A row as a source reads it. The owner's name is added once, for all sources together. */
+type SourceRow = Omit<FounderRow, 'ownerName'>;
+
 interface SourceLoad {
   count: number;
-  rows: FounderRow[];
+  rows: SourceRow[];
 }
 
 export interface FounderSource {
@@ -73,7 +76,7 @@ const exceptionSource: FounderSource = {
     ]);
     return {
       count,
-      rows: rows.map((r): FounderRow => ({
+      rows: rows.map((r): SourceRow => ({
         sourceKind: 'exception',
         sourceId: r.id,
         recordCode: r.recordCode,
@@ -113,7 +116,7 @@ const commitmentSource: FounderSource = {
     ]);
     return {
       count,
-      rows: rows.map((c): FounderRow => ({
+      rows: rows.map((c): SourceRow => ({
         sourceKind: 'commitment',
         sourceId: c.id,
         recordCode: c.recordCode,
@@ -151,7 +154,7 @@ const decisionSource: FounderSource = {
     ]);
     return {
       count,
-      rows: rows.map((d): FounderRow => ({
+      rows: rows.map((d): SourceRow => ({
         sourceKind: 'decision',
         sourceId: d.id,
         recordCode: d.recordCode,
@@ -189,7 +192,7 @@ const approvalSource: FounderSource = {
     ]);
     return {
       count,
-      rows: rows.map((s): FounderRow => ({
+      rows: rows.map((s): SourceRow => ({
         sourceKind: 'approval_step',
         sourceId: s.id,
         recordCode: null,
@@ -231,7 +234,7 @@ const caseSource: FounderSource = {
     ]);
     return {
       count,
-      rows: rows.map((k): FounderRow => ({
+      rows: rows.map((k): SourceRow => ({
         sourceKind: 'case',
         sourceId: k.id,
         recordCode: k.recordCode,
@@ -262,7 +265,17 @@ async function tableExists(table: string): Promise<boolean> {
   return rows[0]?.present === true;
 }
 
-async function readSource(source: FounderSource, now: Date, into: FounderRow[]): Promise<FounderSourceStatus> {
+async function ownerNamesFor(ids: Array<string | null>): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  if (unique.length === 0) return new Map();
+  const people = await prisma.person.findMany({
+    where: { tenantId: currentAuth().tenantId, id: { in: unique } },
+    select: { id: true, fullName: true },
+  });
+  return new Map(people.map((p) => [p.id, p.fullName]));
+}
+
+async function readSource(source: FounderSource, now: Date, into: SourceRow[]): Promise<FounderSourceStatus> {
   if (!(await can({ resource: source.gate, verb: 'view' }))) {
     return { status: 'withheld', reason: `Your role does not hold view on ${source.gate}.` };
   }
@@ -286,11 +299,14 @@ async function readSource(source: FounderSource, now: Date, into: FounderRow[]):
 export async function founderView(sources: readonly FounderSource[] = FOUNDER_SOURCES): Promise<FounderViewResponse> {
   const now = new Date();
   const statuses = {} as Record<FounderSourceKind, FounderSourceStatus>;
-  const rows: FounderRow[] = [];
+  const found: SourceRow[] = [];
   for (const source of sources) {
-    statuses[source.kind] = await readSource(source, now, rows);
+    statuses[source.kind] = await readSource(source, now, found);
   }
+  const names = await ownerNamesFor(found.map((r) => r.ownerPartyId));
   // ISO instants in UTC sort correctly as strings, so the merged list reads oldest first.
-  rows.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const rows: FounderRow[] = found
+    .map((r) => ({ ...r, ownerName: r.ownerPartyId ? (names.get(r.ownerPartyId) ?? null) : null }))
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   return { asOf: now.toISOString(), scope: 'tenant', sources: statuses, rows };
 }
