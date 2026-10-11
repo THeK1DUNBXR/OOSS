@@ -2738,6 +2738,8 @@ model EntitySnapshotHistory {
   createdAt DateTime @default(now())
 
   @@index([tenantId, sourceTenantId, publishedAt])
+  /// Race guard for `publishEntitySnapshot`: one row per distinct payload per source.
+  @@unique([tenantId, sourceTenantId, contentHash])
   @@map("entity_snapshot_history")
 }
 

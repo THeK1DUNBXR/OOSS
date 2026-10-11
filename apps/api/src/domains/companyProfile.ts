@@ -92,9 +92,16 @@ export async function companyProfile() {
   if (existing) return existing;
 
   const tenant = await prisma.tenant.findFirstOrThrow({ where: { id: auth.tenantId } });
-  return prisma.companyProfile.create({
-    data: { tenantId: auth.tenantId, legalName: tenant.name },
-  });
+  try {
+    return await prisma.companyProfile.create({
+      data: { tenantId: auth.tenantId, legalName: tenant.name },
+    });
+  } catch (err) {
+    // Two first readers race to create the profile (a publish and a read, or two
+    // publishes). The loser's unique violation means the winner's row exists now.
+    if ((err as { code?: string }).code !== 'P2002') throw err;
+    return prisma.companyProfile.findFirstOrThrow({ where: { tenantId: auth.tenantId } });
+  }
 }
 
 export async function updateCompanyProfile(input: CompanyProfileInput) {

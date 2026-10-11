@@ -321,7 +321,26 @@ function contentOf(section: unknown): string {
  * accumulating duplicates; the full history survives regardless, in
  * `EntitySnapshotHistory`.
  */
+// Publishes for one source run one after another within this process. The
+// check-then-create on the current snapshot and the history row raced when a
+// scheduled tick and a manual publish overlapped; the unique keys still catch
+// a race across processes, and the losing write then reads the winner's row.
+const publishQueue = new Map<string, Promise<unknown>>();
+
 export async function publishEntitySnapshot(
+  sourceTenantId: string,
+): Promise<{ published: boolean; parentTenantId: string | null }> {
+  const previous = publishQueue.get(sourceTenantId) ?? Promise.resolve();
+  const run = previous.catch(() => {}).then(() => publishEntitySnapshotOnce(sourceTenantId));
+  publishQueue.set(sourceTenantId, run);
+  try {
+    return await run;
+  } finally {
+    if (publishQueue.get(sourceTenantId) === run) publishQueue.delete(sourceTenantId);
+  }
+}
+
+async function publishEntitySnapshotOnce(
   sourceTenantId: string,
 ): Promise<{ published: boolean; parentTenantId: string | null }> {
   const source = await unscopedPrisma.tenant.findFirst({ where: { id: sourceTenantId } });
@@ -349,11 +368,23 @@ export async function publishEntitySnapshot(
       publishedAt: new Date(),
     };
 
-    const row = existing
-      ? await prisma.entitySnapshot.update({ where: { id: existing.id }, data: shared })
-      : await prisma.entitySnapshot.create({
+    let row;
+    if (existing) {
+      row = await prisma.entitySnapshot.update({ where: { id: existing.id }, data: shared });
+    } else {
+      try {
+        row = await prisma.entitySnapshot.create({
           data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
         });
+      } catch (err) {
+        // Another publish created the parent's row between our read and our write.
+        if ((err as { code?: string }).code !== 'P2002') throw err;
+        const winner = await prisma.entitySnapshot.findFirstOrThrow({
+          where: { tenantId: parentTenantId, sourceTenantId },
+        });
+        row = await prisma.entitySnapshot.update({ where: { id: winner.id }, data: shared });
+      }
+    }
 
     // History records what changed, so a publish whose payload matches the
     // latest row for this source adds nothing. `asOf` and `publishedAt` are
@@ -377,10 +408,17 @@ export async function publishEntitySnapshot(
       orderBy: { publishedAt: 'desc' },
       select: { contentHash: true },
     });
+    // The unique key on (tenant, source, contentHash) is the race guard: two
+    // publishes that both read the old latest row and both try to insert the
+    // same content collide here, and the loser's violation means the row exists.
     if (latestHistory?.contentHash !== contentHash) {
-      await prisma.entitySnapshotHistory.create({
-        data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared, contentHash },
-      });
+      try {
+        await prisma.entitySnapshotHistory.create({
+          data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared, contentHash },
+        });
+      } catch (err) {
+        if ((err as { code?: string }).code !== 'P2002') throw err;
+      }
     }
 
     await emit({

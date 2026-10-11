@@ -163,7 +163,10 @@ describe('#18 / #19 publish_entity_snapshots — a publish with nothing new adds
     const row = await unscopedPrisma.entitySnapshotHistory.findFirstOrThrow({ where: { sourceTenantId: subId } });
     const { id: _id, createdAt: _createdAt, ...rest } = row;
     await expect(
-      unscopedPrisma.entitySnapshotHistory.create({ data: { ...rest, recordCode: `${rest.recordCode}-dup` } }),
+      unscopedPrisma.entitySnapshotHistory.create({
+        // Json columns read back as JsonValue and need the same cast group.ts applies on write.
+        data: { ...rest, recordCode: `${rest.recordCode}-dup` } as never,
+      }),
     ).rejects.toThrow();
   });
 });

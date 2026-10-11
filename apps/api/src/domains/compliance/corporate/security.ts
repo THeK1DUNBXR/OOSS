@@ -242,8 +242,20 @@ function hashFile(path: string): Promise<string> {
   });
 }
 
+/**
+ * Starts a dump from an operator action. The dump is the whole database, so
+ * it takes the same permission as changing the security policy; the scheduled
+ * path does not come through here.
+ */
+export async function runManualBackup(tenantId: string): Promise<BackupOutcome> {
+  await assertCan({ resource: 'security_settings', verb: 'edit' });
+  return runBackup(tenantId);
+}
+
 export async function listBackups() {
-  await assertCan({ resource: 'security_settings', verb: 'view' });
+  // Rows carry the platform dump's path, so the listing needs the admin permission,
+  // not view (which a read-only role also holds).
+  await assertCan({ resource: 'security_settings', verb: 'edit' });
   const auth = currentAuth();
   return prisma.backupRun.findMany({ where: { tenantId: auth.tenantId }, orderBy: { startedAt: 'desc' }, take: 90 });
 }
