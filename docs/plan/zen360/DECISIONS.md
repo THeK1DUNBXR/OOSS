@@ -788,3 +788,21 @@ v. **Limit on proprietary products.** Paid or proprietary products are not copie
 vi. **Still applies to copied code.** Copied code must follow CLAUDE.md: tenant scope (rule 6), audit and governed entities (rule 5), no mocks in the API test suite, and money and dates per rules 1 and 3. Hosting and DNS conflicts (round 18b, 19b and round 22) remain open.
 
 Still open, unchanged by this clarification: email hosting against the "hosting after Phase 1" deferral; the domain and DNS owner; mailbox limits and retention; access rules for reading other people's mail; DPDP duties (needs counsel).
+
+### Round 22 second clarification (recorded 2026-10-12)
+
+Owner statement: the app is for personal use for now. Licence and legal concerns about copying open-source mail code are out of scope. The owner's team handles them later.
+
+This supersedes, for the mail component only, the licence consequences listed in the first clarification above:
+
+- item i (licence effect of copying: copyleft, derivative work, licence reach into the rest of the app);
+- item ii (whether a close port is a derivative work, for counsel);
+- item iii (owner position on the licence consequences);
+- item iv, in part (copied code keeps the upstream licence header and notices);
+- the Stalwart licence caveats in item f: AGPL-3.0 and Enterprise Licence v2 terms.
+
+This removes the licence caveats only. Nothing else changes. CLAUDE.md still applies in full, including rule 6 (tenant scope), rule 5 (audit and governed entities), DPDP and personal-data handling (no personal data to an inference API without `applyFieldVisibility`, and India residency where a tenant requires it), and human approval before any agent emails a customer. This clarification did not change those rules.
+
+`MAIL-PROVENANCE.md` stays as a plain engineering record of what was copied from where. It is not a legal control.
+
+Still open, unchanged: mail hosting against the "hosting after Phase 1" deferral; the domain and DNS owner; mailbox limits and retention; access rules for reading other people's mail; DPDP duties (needs counsel). The mail item stays OPEN and not estimated.
