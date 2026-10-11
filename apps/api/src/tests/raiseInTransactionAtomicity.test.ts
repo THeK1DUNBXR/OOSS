@@ -21,6 +21,7 @@ import { markChallanPaid } from '../domains/compliance/tax.js';
 import { closeRound, createRound } from '../domains/rounds.js';
 import { accrueEntitlement, createLeaveRequest, transitionLeaveRequest, leaveBalances } from '../domains/leave.js';
 import { hire, transitionEmployment } from '../domains/employment.js';
+import { createPartnerAgreement } from '../domains/agreements.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
@@ -178,6 +179,34 @@ describe('approving leave taken beyond entitlement raises EX-HR-004 in the same 
     expect(
       await unscopedPrisma.exceptionRecord.count({
         where: { tenantId: TENANT, code: 'EX-HR-004', subjectId: request.id },
+      }),
+    ).toBe(0);
+  });
+});
+
+describe('a partner agreement that duplicates an active channel raises EX-CRM-013 in the same transaction', () => {
+  it('when the raise cannot be recorded, no agreement is written', async () => {
+    const active = await unscopedPrisma.partnerAgreement.findFirstOrThrow({
+      where: { tenantId: TENANT, status: { in: ['signed', 'active'] }, deletedAt: null },
+    });
+    const title = unique('W2-ATOMIC-AGREEMENT');
+    const before = await unscopedPrisma.partnerAgreement.count({ where: { tenantId: TENANT, title } });
+
+    await refuseExceptionAudit();
+    await expectReject(() =>
+      asUser(CHAIRMAN, () =>
+        createPartnerAgreement({
+          title,
+          partnerOrganizationId: active.partnerOrganizationId,
+          agreementType: active.agreementType as never,
+        }),
+      ),
+    );
+
+    expect(await unscopedPrisma.partnerAgreement.count({ where: { tenantId: TENANT, title } })).toBe(before);
+    expect(
+      await unscopedPrisma.exceptionRecord.count({
+        where: { tenantId: TENANT, code: 'EX-CRM-013', subjectLabel: { startsWith: title } },
       }),
     ).toBe(0);
   });
