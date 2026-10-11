@@ -118,6 +118,20 @@ export async function periodStatus(date: Date): Promise<string> {
   return row?.status ?? 'open';
 }
 
+/**
+ * The first instant, from `now` onwards, that falls in an open accounting period.
+ * `now` itself when its month is open; otherwise the IST start of the next month
+ * that is open. Used only for money that has already arrived.
+ */
+export async function openAccountingDate(now: Date): Promise<Date> {
+  let date = now;
+  for (let i = 0; i < 24; i++) {
+    if ((await periodStatus(date)) !== 'closed') return date;
+    date = monthRange(monthKey(date)).to;
+  }
+  throw ApiError.unprocessable('No open accounting period in the next two years to record this payment in.');
+}
+
 /** Step one of the two-party close: any accounting_periods `edit` holder asks for a period to be closed. */
 export async function requestClosePeriod(period: string) {
   const auth = currentAuth();

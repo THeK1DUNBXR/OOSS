@@ -136,10 +136,15 @@ describe('Books writes emit their event', () => {
   });
 
   it('a budget line set emits kz.fin.budget_line.set', async () => {
+    // Setting the same line again is a write too, so the count is compared before and after.
     const line = await asUser(FINANCE, () =>
       setBudgetLine({ period: '2016-06', categoryId: CATEGORY_ID, division: null, amount: 1000 }),
     );
-    expect(await eventsFor('kz.fin.budget_line.set', line.id)).toHaveLength(1);
+    const before = (await eventsFor('kz.fin.budget_line.set', line.id)).length;
+    await asUser(FINANCE, () =>
+      setBudgetLine({ period: '2016-06', categoryId: CATEGORY_ID, division: null, amount: 1000 }),
+    );
+    expect((await eventsFor('kz.fin.budget_line.set', line.id)).length).toBe(before + 1);
   });
 
   it('a draft invoice priced for GST emits kz.fin.invoice.tax_priced', async () => {

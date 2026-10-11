@@ -91,49 +91,9 @@ describe('Closed period — a bill-dated TDS or reverse-charge write is refused 
   });
 });
 
-describe('Closed period — a payment-dated TDS write is refused and writes nothing', () => {
-  it('marking a TDS challan paid on a date in the closed period is refused, and the challan stays pending', async () => {
-    const challan = await unscopedPrisma.tdsChallan.create({
-      data: {
-        tenantId: TENANT,
-        recordCode: unique('W2-CHALLAN'),
-        month: '2026-09',
-        sectionGroup: '194C_IND',
-        amount: 100,
-        deducteeCount: 1,
-      },
-    });
-    const err = await expectReject(() =>
-      asUser(CHAIRMAN, () =>
-        markChallanPaid(challan.id, {
-          bsrCode: '0000000',
-          challanNo: 'W2-PROBE',
-          paidOn: new Date('2017-10-15T06:00:00Z'),
-        }),
-      ),
-    );
-    expectClosedRefusal(err);
-    const after = await unscopedPrisma.tdsChallan.findUniqueOrThrow({ where: { id: challan.id } });
-    expect(after.status).not.toBe('paid');
-  });
-
-  it('recording an advance-tax payment dated in the closed period is refused, and no payment row is written', async () => {
-    const reference = unique('W2 advance tax');
-    const err = await expectReject(() =>
-      asUser(FINANCE, () =>
-        recordAdvanceTaxPayment({
-          fy: '2017-18',
-          instalmentDate: new Date('2017-10-15T06:00:00Z'),
-          amount: 5000,
-          paidOn: new Date('2017-10-15T06:00:00Z'),
-          reference,
-        }),
-      ),
-    );
-    expectClosedRefusal(err);
-    expect(await unscopedPrisma.advanceTaxPayment.count({ where: { tenantId: TENANT, reference } })).toBe(0);
-  });
-});
+// Money out (a challan marked paid, an advance-tax payment) is no longer refused by a
+// closed month: it is booked in the open period and EX-FIN-008 is raised. See
+// moneyOutAndSettlementPeriod.test.ts.
 
 describe('Closed period — a write stamped today is refused while the current month is closed', () => {
   it('a debit note, a final invoice and a course-fee final invoice are each refused; nothing is written', async () => {

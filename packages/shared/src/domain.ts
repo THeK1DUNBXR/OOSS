@@ -947,6 +947,13 @@ export const EXCEPTION_CODES = {
   // reached the bank is worse than a dated entry the accountant must look at.
   // Interim policy, pending the accountant's confirmation of the treatment.
   EX_FIN_007: { code: 'EX-FIN-007', label: 'Payment received for a closed period', severity: 'S2_WARNING' },
+  // Money that has left the bank on a date in a closed period. Recorded with the
+  // real paid date and booked in the open period; the same interim policy as
+  // EX-FIN-007, pending the accountant's confirmation.
+  EX_FIN_008: { code: 'EX-FIN-008', label: 'Payment made for a closed period', severity: 'S2_WARNING' },
+  // A receipt settled an invoice while the current month was closed, so the final
+  // invoice is dated in the open period. Interim policy, as EX-FIN-007.
+  EX_FIN_009: { code: 'EX-FIN-009', label: 'Invoice settled for a closed period', severity: 'S2_WARNING' },
   // A student's complaint. Held at the same rung as an absence breach because
   // the thing that makes it serious is the same: a clock is running and somebody
   // outside the company is waiting.

@@ -34,7 +34,7 @@ import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
-import { periodStatus as accountingPeriodStatus } from './compliance/books.js';
+import { openAccountingDate, periodStatus as accountingPeriodStatus } from './compliance/books.js';
 import { invoiceLabel, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
 
 /**
@@ -97,20 +97,6 @@ export async function issueFeeInstalments(
 // ---------------------------------------------------------------------------
 // Movement — append-only, idempotent on gatewayReference
 // ---------------------------------------------------------------------------
-
-/**
- * The first instant, from `now` onwards, that falls in an open accounting period.
- * `now` itself when its month is open; otherwise the IST start of the next month
- * that is open. Used only for money that has already arrived.
- */
-async function openAccountingDate(now: Date): Promise<Date> {
-  let date = now;
-  for (let i = 0; i < 24; i++) {
-    if ((await accountingPeriodStatus(date)) !== 'closed') return date;
-    date = monthRange(monthKey(date)).to;
-  }
-  throw ApiError.unprocessable('No open accounting period in the next two years to record this payment in.');
-}
 
 export async function recordPayment(input: {
   amount: number;

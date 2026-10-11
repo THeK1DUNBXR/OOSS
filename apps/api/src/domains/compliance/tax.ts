@@ -42,6 +42,7 @@ import { assertCan } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { registerHook, runHooks } from '../../platform/hooks.js';
+import { openAccountingDate, periodStatus as accountingPeriodStatus } from './books.js';
 
 // payroll_run is owned by domains/payroll.ts, but apply-salary-TDS (below)
 // audits an update to it from here. Registered here too, so a job importing
@@ -590,7 +591,12 @@ export async function markChallanPaid(id: string, input: MarkChallanPaidInput) {
     );
   }
 
-  await runHooks('accounting_document.before_write', { date: input.paidOn, what: 'This challan payment' });
+  // Interim policy, pending the accountant's confirmation (EX-FIN-008): money that
+  // has left the bank is never refused by a closed month. The challan keeps its
+  // real paid date, which drives interest and the return; the books take it in
+  // the current open period and the accountant is told.
+  const paidInClosedPeriod = (await accountingPeriodStatus(input.paidOn)) === 'closed';
+  const bookedOn = paidInClosedPeriod ? await openAccountingDate(new Date()) : null;
   const paid = await prisma.tdsChallan.update({
     where: { id },
     data: {
@@ -598,9 +604,23 @@ export async function markChallanPaid(id: string, input: MarkChallanPaidInput) {
       bsrCode: input.bsrCode,
       challanNo: input.challanNo,
       paidOn: input.paidOn,
+      bookedOn,
       paidById: auth.partyId,
     },
   });
+  if (paidInClosedPeriod) {
+    await raiseException({
+      code: 'EX-FIN-008',
+      label: 'Payment made for a closed period',
+      severity: 'S2_WARNING',
+      subjectType: 'tds_challan',
+      subjectId: challan.id,
+      subjectLabel: challan.recordCode,
+      detail: `The deposit was made on ${input.paidOn.toISOString().slice(0, 10)}, in a closed period. It is booked from ${bookedOn?.toISOString().slice(0, 10)}; the paid date is kept. Confirm the treatment with the accountant.`,
+      triggerFingerprint: `challan_paid_closed:${challan.id}`,
+      ladderRung: 1,
+    });
+  }
 
   // Stamp the bills this challan covers, so a bill can answer "which challan was this deposited in".
   const { from, to } = monthRange(challan.month);
@@ -939,7 +959,9 @@ export async function recordAdvanceTaxPayment(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'create' });
-  await runHooks('accounting_document.before_write', { date: input.paidOn, what: 'This advance-tax payment' });
+  // Interim policy, pending the accountant's confirmation (EX-FIN-008): see markChallanPaid.
+  const paidInClosedPeriod = (await accountingPeriodStatus(input.paidOn)) === 'closed';
+  const bookedOn = paidInClosedPeriod ? await openAccountingDate(new Date()) : null;
   const row = await prisma.advanceTaxPayment.create({
     data: {
       tenantId: auth.tenantId,
@@ -947,10 +969,23 @@ export async function recordAdvanceTaxPayment(input: {
       instalmentDate: input.instalmentDate,
       amount: input.amount,
       paidOn: input.paidOn,
+      bookedOn,
       reference: input.reference ?? null,
       createdById: auth.partyId,
     },
   });
+  if (paidInClosedPeriod) {
+    await raiseException({
+      code: 'EX-FIN-008',
+      label: 'Payment made for a closed period',
+      severity: 'S2_WARNING',
+      subjectType: 'advance_tax_payment',
+      subjectId: row.id,
+      detail: `The advance-tax payment was made on ${input.paidOn.toISOString().slice(0, 10)}, in a closed period. It is booked from ${bookedOn?.toISOString().slice(0, 10)}; the paid date is kept. Confirm the treatment with the accountant.`,
+      triggerFingerprint: `advance_tax_paid_closed:${row.id}`,
+      ladderRung: 1,
+    });
+  }
   await auditWrite({
     action: 'create',
     subjectType: 'advance_tax_payment',

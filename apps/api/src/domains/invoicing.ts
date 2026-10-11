@@ -1348,8 +1348,8 @@ export async function collectInvoicePayment(
       const final = await finalizeCourseFeeInvoice(invoice.id, 'settled');
       finalInvoice = { id: final.id, recordCode: final.recordCode };
     } else {
-      const { raiseFinalInvoice } = await import('./receipts.js');
-      const final = await raiseFinalInvoice(invoice.id, {});
+      const { raiseFinalInvoiceOnSettlement } = await import('./receipts.js');
+      const final = await raiseFinalInvoiceOnSettlement(invoice.id);
       finalInvoice = { id: final.id, recordCode: final.recordCode };
     }
   }

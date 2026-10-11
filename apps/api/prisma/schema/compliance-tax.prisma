@@ -105,6 +105,10 @@ model TdsChallan {
   bsrCode       String?
   challanNo     String?
   paidOn        DateTime?
+  /// The open accounting period the payment is booked in, when `paidOn` fell in a
+  /// closed one. `paidOn` stays the real date: it drives interest and the return.
+  /// Interim policy, pending the accountant (EX-FIN-008).
+  bookedOn      DateTime?
   /// pending | paid
   status        String    @default("pending")
 
@@ -199,6 +203,10 @@ model AdvanceTaxPayment {
   instalmentDate DateTime
   amount         Decimal  @default(0) @db.Decimal(14, 2)
   paidOn         DateTime
+  /// The open accounting period the payment is booked in, when `paidOn` fell in a
+  /// closed one. `paidOn` stays the real date. Interim policy, pending the
+  /// accountant (EX-FIN-008).
+  bookedOn       DateTime?
   reference      String?
   createdById    String?
 
