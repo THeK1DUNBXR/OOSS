@@ -257,6 +257,8 @@ export async function submitResignation(input: {
 
   // The filing had no audit row before this; the write, its audit row and its
   // event now commit together, and the notification goes out after commit.
+  // A read, so it runs before the transaction: the resolver uses the scoped client.
+  const hrOwner = await hrOpsOwnerId(auth.tenantId);
   const row = await governedWrite(async (tx) => {
     const created = await tx.resignation.create({
       data: {
@@ -284,21 +286,23 @@ export async function submitResignation(input: {
       impact: { domains: ['hr'] },
       tx,
     });
+    // The HR notice is part of the filing: it commits or rolls back with the resignation.
+    if (hrOwner) {
+      await notify(
+        {
+          recipientPartyId: hrOwner,
+          priority: 'N2_NORMAL',
+          title: `Resignation filed: ${employment.person.fullName}`,
+          body: `Requested last day ${input.requestedLastDay.toISOString().slice(0, 10)}, ${noticeDays} days' notice.`,
+          subjectType: 'resignation',
+          subjectId: created.id,
+          drillPath: `/people/separations`,
+        },
+        tx,
+      );
+    }
     return created;
   });
-
-  const hrOwner = await hrOpsOwnerId(auth.tenantId);
-  if (hrOwner) {
-    await notify({
-      recipientPartyId: hrOwner,
-      priority: 'N2_NORMAL',
-      title: `Resignation filed: ${employment.person.fullName}`,
-      body: `Requested last day ${input.requestedLastDay.toISOString().slice(0, 10)}, ${noticeDays} days' notice.`,
-      subjectType: 'resignation',
-      subjectId: row.id,
-      drillPath: `/people/separations`,
-    });
-  }
 
   return row;
 }
