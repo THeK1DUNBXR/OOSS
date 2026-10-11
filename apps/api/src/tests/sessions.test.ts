@@ -335,8 +335,8 @@ describe('0.2 fix round 2: lost response and older secrets', () => {
 
   it('an older secret presented after the newer one was used revokes the session', async () => {
     const s1 = await signInCookie();
-    const s2 = cookieValueOf(setCookieOf((await refreshWithCookie(s1)))!);
-    const s3 = cookieValueOf(setCookieOf((await refreshWithCookie(s2)))!);
+    const s2 = cookieValueOf(setCookieOf(await refreshWithCookie(s1))!);
+    const s3 = cookieValueOf(setCookieOf(await refreshWithCookie(s2))!);
 
     expect((await refreshWithCookie(s1)).status).toBe(401);
     expect((await refreshWithCookie(s3)).status).toBe(401);
