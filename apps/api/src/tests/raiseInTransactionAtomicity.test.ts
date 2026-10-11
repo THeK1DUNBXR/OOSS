@@ -23,6 +23,7 @@ import { accrueEntitlement, createLeaveRequest, transitionLeaveRequest, leaveBal
 import { hire, transitionEmployment } from '../domains/employment.js';
 import { createPartnerAgreement } from '../domains/agreements.js';
 import { createApplication, createLicence, proposeRenewal } from '../domains/it/software.js';
+import { createPlan, recordTest, transitionPlan } from '../domains/it/continuity.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
@@ -261,5 +262,32 @@ describe('proposing an IT licence renewal notifies the approver in the same tran
         where: { tenantId: TENANT, subjectType: 'it_licence', subjectId: licence.id },
       }),
     ).toBe(0);
+  });
+});
+
+describe('recording a DR test that breaches its RTO raises IT_DR_RTO_EXCEEDED in the same transaction', () => {
+  it('when the raise cannot be recorded, no test row is written', async () => {
+    const OPS = 'operations@kaizen.co.in';
+    const plan = await asUser(OPS, () =>
+      createPlan({
+        applicationId: unique('w2-atomic-app'),
+        applicationName: 'Atomicity order service',
+        applicationTier: 2,
+        rtoMinutes: 60,
+        rpoMinutes: 15,
+        backupMethod: 'nightly snapshot',
+        backupFrequency: 'daily',
+      }),
+    );
+    await asUser(OPS, () => transitionPlan(plan.id, 'active'));
+
+    await refuseExceptionAudit();
+    await expectReject(() =>
+      asUser(OPS, () =>
+        recordTest(plan.id, { kind: 'restore', outcome: 'fail', actualRecoveryMinutes: 500, actualDataLossMinutes: 5 }),
+      ),
+    );
+
+    expect(await unscopedPrisma.itContinuityTest.count({ where: { tenantId: TENANT, planId: plan.id } })).toBe(0);
   });
 });
