@@ -33,7 +33,6 @@ import {
   loanBalanceAt,
   runwayMonths,
   isTrading,
-  parseMinor,
   type Division,
   type GstLineInput,
 } from '@kaizen/shared';
@@ -44,6 +43,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, assertScopeAll } from '../platform/permissions.js';
+import { paiseSum } from '../platform/wire.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { registerGovernedEntities, auditWrite } from '../platform/audit.js';
@@ -334,7 +334,8 @@ export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
 /**
  * writeTransaction for an amount held as bigint paise. The amount reaches the
  * column as the exact decimal text formatMinor gives, so no float is involved
- * on the way in. The import commit uses it (FX-72); payroll is to follow (PR7).
+ * on the way in. The import commit (FX-72) and payroll (FX-73a) both write
+ * through it.
  */
 export async function writeTransactionMinor(input: TransactionInputMinor, tx?: DbTx) {
   if (input.amount <= 0n) {
@@ -1581,16 +1582,6 @@ export async function lockPayrollRunForPosting(tx: DbTx, tenantId: string, runId
 }
 
 /**
- * The legacy writer still takes a JavaScript number (`TransactionInput.amount`).
- * The paise sum is computed exactly above; this is the one point it becomes a
- * rupee figure, and paise over 100 is the nearest double to the rupee amount, so
- * it reaches the Decimal column unchanged.
- */
-export function paiseToRupees(paise: bigint): number {
-  return Number(paise) / 100;
-}
-
-/**
  * Posts a disbursed payroll run to the books.
  *
  * This is the join between People and Finance. Without it, salaries are the
@@ -1632,20 +1623,20 @@ export async function postPayrollToBooks(payrollRunId: string, accountId: string
   const byDivision = new Map<string, bigint>();
   for (const i of run.instructions) {
     const key = i.division ?? 'shared';
-    byDivision.set(key, (byDivision.get(key) ?? 0n) + parseMinor(i.netAmount.toFixed(2)));
+    byDivision.set(key, (byDivision.get(key) ?? 0n) + paiseSum([i.netAmount]));
   }
 
   const created = await governedWrite(async (tx) => {
     await lockPayrollRunForPosting(tx, auth.tenantId, run.id);
-    const legs: Awaited<ReturnType<typeof writeTransaction>>[] = [];
+    const legs: Awaited<ReturnType<typeof writeTransactionMinor>>[] = [];
     for (const [division, paise] of byDivision) {
       if (paise <= 0n) continue;
       legs.push(
-        await writeTransaction(
+        await writeTransactionMinor(
           {
             txnDate: run.disbursedAt ?? new Date(),
             direction: 'out',
-            amount: paiseToRupees(paise),
+            amount: paise,
             accountId,
             categoryId: salaryCategory?.id ?? null,
             division,

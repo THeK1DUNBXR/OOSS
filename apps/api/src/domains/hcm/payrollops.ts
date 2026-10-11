@@ -28,7 +28,6 @@ import {
   PAY_ITEM_KINDS,
   EVENTS,
   isEncryptedFieldValue,
-  parseMinor,
   type NeftBeneficiary,
 } from '@kaizen/shared';
 import { Prisma } from '@prisma/client';
@@ -41,8 +40,9 @@ import { assertCan, canSeeMoney, scopeFor } from '../../platform/permissions.js'
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { auditWrite, auditExport, auditBulkOperation, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
+import { paiseSum } from '../../platform/wire.js';
 import { payrollCostByDivision } from '../payroll.js';
-import { checkTransactionAllowed, lockPayrollRunForPosting, paiseToRupees, writeTransaction } from '../books.js';
+import { checkTransactionAllowed, lockPayrollRunForPosting, writeTransactionMinor } from '../books.js';
 import { encryptField, readRegulated } from '../compliance/privacy.js';
 
 /** Withholds a money field for a caller who cannot see it — null, never zero, with a reason. Same shape as `hcm/compensation.ts`'s `money()`. */
@@ -518,7 +518,7 @@ export async function postPayrollJournal(id: string, accountId: string) {
   // that total also carries the statutory/other deductions payable, which
   // moves the company's money to a different payee on a different day, not
   // straight to employees now. Read as paise, so no float touches the figure.
-  const netPaise = parseMinor(run.netTotal.toFixed(2));
+  const netPaise = paiseSum([run.netTotal]);
   const txnDate = new Date();
 
   // The permission check and the period veto run before the transaction opens,
@@ -534,11 +534,11 @@ export async function postPayrollJournal(id: string, accountId: string) {
     if (!locked) throw ApiError.notFound('Payroll journal');
     if (locked.status === 'Posted') throw ApiError.conflict('This journal is already posted.');
 
-    const txn = await writeTransaction(
+    const txn = await writeTransactionMinor(
       {
         txnDate,
         direction: 'out',
-        amount: paiseToRupees(netPaise),
+        amount: netPaise,
         accountId,
         division: null,
         counterparty: `Payroll ${run.payPeriod}`,
