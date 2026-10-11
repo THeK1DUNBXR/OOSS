@@ -24,6 +24,14 @@ import {
 } from '../../components/ui.js';
 import { NewButton, SelectInput, TextArea, TextInput, MoneyInput, Row, messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
+import { itVendorApi } from '../../lib/itApi.js';
+import type {
+  ItVendorContractTransitionResult,
+  ItVendorContractView,
+  ItVendorView,
+  VendorContractStatus,
+  VendorEvent,
+} from '@kaizen/shared';
 
 const TIERS = [1, 2, 3, 4] as const;
 const RISKS = ['low', 'medium', 'high', 'critical'] as const;
@@ -50,12 +58,12 @@ export function ItVendors() {
     error,
   } = useQuery({
     queryKey: ['it-vendors'],
-    queryFn: () => api.get<any[]>('/it/vendors'),
+    queryFn: () => itVendorApi.vendors.list(),
   });
 
   const { data: summary } = useQuery({
     queryKey: ['it-vendors-summary'],
-    queryFn: () => api.get<any>('/it/vendors/summary'),
+    queryFn: () => itVendorApi.vendors.summary(),
   });
 
   if (error) return <ErrorBox error={error} />;
@@ -275,18 +283,18 @@ export function ItVendorDetail() {
     error: loadError,
   } = useQuery({
     queryKey: ['it-vendor', id],
-    queryFn: () => api.get<any>(`/it/vendors/${id}`),
+    queryFn: () => itVendorApi.vendors.get(id ?? ''),
     enabled: Boolean(id),
   });
 
   const { data: contracts = [] } = useQuery({
     queryKey: ['it-vendor-contracts', id],
-    queryFn: () => api.get<any[]>(`/it/contracts?vendorId=${id}`),
+    queryFn: () => itVendorApi.contracts.forVendor(id ?? ''),
     enabled: Boolean(id),
   });
 
   const transition = useMutation({
-    mutationFn: (event: string) => api.post(`/it/vendors/${id}/transition`, { event }),
+    mutationFn: (event: VendorEvent) => itVendorApi.vendors.transition(id ?? '', event),
     onSuccess: () => {
       setError(null);
       qc.invalidateQueries({ queryKey: ['it-vendor', id] });
@@ -306,7 +314,7 @@ export function ItVendorDetail() {
         actions={
           <div className="flex gap-1.5">
             {can('it_vendors:E') &&
-              vendor.availableTransitions.map((t: string) => (
+              vendor.availableTransitions.map((t) => (
                 <button
                   key={t}
                   className="btn-ghost"
@@ -393,7 +401,7 @@ export function ItVendorDetail() {
               <EmptyState message="No assessments recorded yet." />
             ) : (
               <ul className="divide-y divide-ink-850">
-                {vendor.riskAssessments.map((a: any) => (
+                {vendor.riskAssessments.map((a) => (
                   <li key={a.id} className="px-4 py-3">
                     <div className="flex items-center justify-between gap-2">
                       <StatusChip
@@ -417,7 +425,7 @@ export function ItVendorDetail() {
               <EmptyState message="No contracts with this vendor yet." />
             ) : (
               <ul className="divide-y divide-ink-850">
-                {contracts.map((c: any) => (
+                {contracts.map((c) => (
                   <li key={c.id} className="px-4 py-3">
                     <Link to={`/it/contracts/${c.id}`} className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -439,7 +447,9 @@ export function ItVendorDetail() {
                         <p className="mt-1 text-xs text-ink-100">{c.title}</p>
                       </div>
                       {can('it_vendor_contracts:F') && (
-                        <span className="tabular-nums text-xs text-ink-200">{money(c.value, c.currency)}</span>
+                        <span className="tabular-nums text-xs text-ink-200">
+                          {money(c.value, c.currency ?? undefined)}
+                        </span>
                       )}
                     </Link>
                   </li>
@@ -541,17 +551,17 @@ export function ItVendorContracts() {
     error,
   } = useQuery({
     queryKey: ['it-vendor-contracts-all'],
-    queryFn: () => api.get<any[]>('/it/contracts'),
+    queryFn: () => itVendorApi.contracts.list(),
   });
 
   const { data: summary } = useQuery({
     queryKey: ['it-contracts-summary'],
-    queryFn: () => api.get<any>('/it/contracts/summary'),
+    queryFn: () => itVendorApi.contracts.summary(),
   });
 
   const { data: vendors = [] } = useQuery({
     queryKey: ['it-vendors-for-contracts'],
-    queryFn: () => api.get<any[]>('/it/vendors'),
+    queryFn: () => itVendorApi.vendors.list(),
     enabled: creating,
   });
 
@@ -645,7 +655,9 @@ export function ItVendorContracts() {
                   </td>
                   <td className="text-xs text-ink-100">{c.title}</td>
                   <td className="text-2xs text-ink-400">{c.vendorName ?? '—'}</td>
-                  {showValue && <td className="text-right tabular-nums text-xs">{money(c.value, c.currency)}</td>}
+                  {showValue && (
+                    <td className="text-right tabular-nums text-xs">{money(c.value, c.currency ?? undefined)}</td>
+                  )}
                   <td className="text-2xs text-ink-400">{c.endDate ? date(c.endDate) : '—'}</td>
                   <td>
                     <StatusChip
@@ -673,7 +685,7 @@ export function ItVendorContracts() {
   );
 }
 
-function NewContractModal({ vendors, open, onClose }: { vendors: any[]; open: boolean; onClose: () => void }) {
+function NewContractModal({ vendors, open, onClose }: { vendors: ItVendorView[]; open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const [vendorId, setVendorId] = useState('');
   const [title, setTitle] = useState('');
@@ -755,7 +767,7 @@ export function ItVendorContractDetail() {
   const qc = useQueryClient();
   const { can } = useSession();
   const [error, setError] = useState<string | null>(null);
-  const [gateResult, setGateResult] = useState<any>(null);
+  const [gateResult, setGateResult] = useState<ItVendorContractTransitionResult | null>(null);
   const [terminating, setTerminating] = useState(false);
   const [renewing, setRenewing] = useState(false);
 
@@ -765,12 +777,12 @@ export function ItVendorContractDetail() {
     error: loadError,
   } = useQuery({
     queryKey: ['it-vendor-contract', id],
-    queryFn: () => api.get<any>(`/it/contracts/${id}`),
+    queryFn: () => itVendorApi.contracts.get(id ?? ''),
     enabled: Boolean(id),
   });
 
   const transition = useMutation({
-    mutationFn: (toStatus: string) => api.post<any>(`/it/contracts/${id}/transition`, { toStatus }),
+    mutationFn: (toStatus: VendorContractStatus) => itVendorApi.contracts.transition(id ?? '', toStatus),
     onSuccess: (res) => {
       setError(null);
       if (!res.applied) setGateResult(res);
@@ -793,8 +805,8 @@ export function ItVendorContractDetail() {
         actions={
           <div className="flex flex-wrap gap-1.5">
             {contract.availableTransitions
-              .filter((t: string) => t !== 'terminated')
-              .map((t: string) => {
+              .filter((t: VendorContractStatus) => t !== 'terminated')
+              .map((t: VendorContractStatus) => {
                 const gated = contract.requiresApprovalFor.includes(t);
                 if (gated && !can('it_vendor_contracts:approve')) return null;
                 return (
@@ -853,7 +865,7 @@ export function ItVendorContractDetail() {
                 {contract.vendorName}
               </Link>
             </Field>
-            {showValue && <Field label="Value">{money(contract.value, contract.currency)}</Field>}
+            {showValue && <Field label="Value">{money(contract.value, contract.currency ?? undefined)}</Field>}
             <Field label="Term">{contract.termMonths ? `${contract.termMonths} months` : '—'}</Field>
             <Field label="Start / End">
               {contract.startDate ? date(contract.startDate) : '—'} → {contract.endDate ? date(contract.endDate) : '—'}
@@ -967,7 +979,7 @@ function RenewModal({
   onClose,
 }: {
   contractId: string;
-  contract: any;
+  contract: ItVendorContractView;
   open: boolean;
   onClose: () => void;
 }) {
@@ -976,7 +988,7 @@ function RenewModal({
   const [error, setError] = useState<string | null>(null);
 
   const renew = useMutation({
-    mutationFn: () => api.post<any>(`/it/contracts/${contractId}/renew`, { endDate }),
+    mutationFn: () => api.post<{ id: string }>(`/it/contracts/${contractId}/renew`, { endDate }),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['it-vendor-contracts-all'] });
       onClose();

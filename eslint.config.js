@@ -43,8 +43,8 @@ export default tseslint.config(
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' },
       ],
-      // 114 occurrences today. Real, worth fixing, and not worth blocking a
-      // build on until Phase 4.1 generates the client that replaces them.
+      // Warn everywhere except apps/web, where it is an error (see the web
+      // block below). Elsewhere the `any`s are real but not on the screen path.
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-empty-object-type': 'warn',
       // An `await` that was meant to be there and is not is a race, and this
@@ -62,6 +62,41 @@ export default tseslint.config(
     languageOptions: {
       globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly', __dirname: 'readonly' },
     },
+  },
+
+  // ---------------------------------------------------------------------
+  // Web: no new `any`. The typed client (apps/web/src/lib/itApi.ts and the
+  // domain modules that follow it) is what replaces the untyped calls.
+  // ---------------------------------------------------------------------
+  {
+    files: ['apps/web/**/*.{ts,tsx}'],
+    rules: { '@typescript-eslint/no-explicit-any': 'error' },
+  },
+
+  // Ratchet. These files still carried `any` when the rule became an error for
+  // apps/web. Each one is debt: remove it from this list when its last `any`
+  // goes, and do not add to it. Typing a page means deleting its entry.
+  {
+    files: [
+      'apps/web/src/pages/Admin.tsx',
+      'apps/web/src/pages/compliance/Payroll.tsx',
+      'apps/web/src/pages/compliance/Gst.tsx',
+      'apps/web/src/pages/GstReturns.tsx',
+      'apps/web/src/pages/Opportunities.tsx',
+      'apps/web/src/pages/compliance/Privacy.tsx',
+      'apps/web/src/pages/Leads.tsx',
+      'apps/web/src/pages/Workspace.tsx',
+      'apps/web/src/pages/Commercial.tsx',
+      'apps/web/src/pages/Parties.tsx',
+      'apps/web/src/pages/People.tsx',
+      'apps/web/src/pages/Courses.tsx',
+      'apps/web/src/pages/Pipeline.tsx',
+      'apps/web/src/pages/Education.tsx',
+      'apps/web/src/pages/it/Itsm.tsx',
+      'apps/web/src/pages/marketing/Audiences.tsx',
+      'apps/web/src/pages/StudentTimeline.tsx',
+    ],
+    rules: { '@typescript-eslint/no-explicit-any': 'warn' },
   },
 
   // Tests say what they mean; the strictness that helps production code gets
