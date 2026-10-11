@@ -4562,7 +4562,15 @@ model CompensationRecord {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Set when an import revert voids this row (FX-71a). A voided row keeps its
+  /// figures and is left out by every reader; it is never deleted.
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+  voidBatchId String?
+
   @@index([tenantId, employmentRelationshipId, status])
+  @@index([tenantId, voidBatchId])
   @@map("compensation_records")
 }
 
@@ -4686,8 +4694,16 @@ model WorkAttendance {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// Set when an import revert voids this day (FX-71a). A voided row keeps its
+  /// figures and is left out by every reader; it is never deleted.
+  voidedAt    DateTime?
+  voidedById  String?
+  voidReason  String?
+  voidBatchId String?
+
   @@unique([employmentRelationshipId, workDate])
   @@index([tenantId, workDate])
+  @@index([tenantId, voidBatchId])
   @@map("work_attendances")
 }
 
