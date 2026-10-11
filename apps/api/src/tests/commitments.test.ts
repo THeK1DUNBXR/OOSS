@@ -553,9 +553,7 @@ describe('the missed job', () => {
     const met = await inState('met', past());
     const cancelled = await inState('cancelled', past());
 
-    const result = await asSystem(KAIZEN, () =>
-      runJobsForTenant(KAIZEN, { jobNames: ['runCommitmentMissedJob'] }),
-    );
+    const result = await asSystem(KAIZEN, () => runJobsForTenant(KAIZEN, { jobNames: ['runCommitmentMissedJob'] }));
     expect(result.runCommitmentMissedJob!.errors).toEqual([]);
 
     expect(await stateOf(overdue)).toBe('missed');
@@ -577,9 +575,7 @@ describe('the missed job', () => {
     const historyBefore = (await historyOf(overdue)).length;
     const auditBefore = (await auditOf(overdue)).length;
 
-    const rerun = await asSystem(KAIZEN, () =>
-      runJobsForTenant(KAIZEN, { jobNames: ['runCommitmentMissedJob'] }),
-    );
+    const rerun = await asSystem(KAIZEN, () => runJobsForTenant(KAIZEN, { jobNames: ['runCommitmentMissedJob'] }));
 
     expect(rerun.runCommitmentMissedJob!.notified).toBe(0);
     expect(await stateOf(overdue)).toBe('missed');

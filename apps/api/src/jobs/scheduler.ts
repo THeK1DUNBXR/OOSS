@@ -51,6 +51,7 @@ import { raiseException, escalateException } from '../platform/exceptions.js';
 import { COMPLIANCE_JOBS } from './compliance/index.js';
 import { IT_JOBS } from './it/index.js';
 import { MARKETING_JOBS } from './marketing.js';
+import { JOBS as COMMITMENT_JOBS } from './commitments.js';
 
 export interface JobResult {
   processed: number;
@@ -360,6 +361,7 @@ export const ALL_JOBS: JobDefinition[] = [
   ...COMPLIANCE_JOBS,
   ...IT_JOBS,
   ...MARKETING_JOBS,
+  ...COMMITMENT_JOBS,
 ];
 
 // ---------------------------------------------------------------------------
