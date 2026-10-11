@@ -1418,6 +1418,7 @@ async function privacyOwnerPartyId(tenantId: string): Promise<string | null> {
 
 const DEV_ENCRYPTION_KEY = 'kaizen-dev-field-encryption-key-DO-NOT-USE-IN-PRODUCTION';
 let warnedAboutDevKey = false;
+let derivedKey: { material: string; key: Buffer } | null = null;
 
 function encryptionKey(): Buffer {
   const secret = config.FIELD_ENCRYPTION_KEY;
@@ -1438,7 +1439,13 @@ function encryptionKey(): Buffer {
       );
     }
   }
-  return scryptSync(secret ?? DEV_ENCRYPTION_KEY, 'kaizen-field-encryption-v1', 32);
+  // scrypt is deliberately slow, and a register read decrypts every holder's
+  // PAN. Deriving once per secret keeps a list read from paying that per row.
+  const material = secret ?? DEV_ENCRYPTION_KEY;
+  if (derivedKey?.material === material) return derivedKey.key;
+  const key = scryptSync(material, 'kaizen-field-encryption-v1', 32);
+  derivedKey = { material, key };
+  return key;
 }
 
 /** AES-256-GCM. The IV, the auth tag and the ciphertext travel together in the
