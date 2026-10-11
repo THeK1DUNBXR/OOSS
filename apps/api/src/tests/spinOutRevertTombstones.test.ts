@@ -41,6 +41,8 @@ interface Pair {
   sub: string;
   batchId: string;
   legacyNetBeforeCommit: number;
+  /** The holding course's code, when the fixture carries one. */
+  courseCode: string | null;
 }
 
 async function principalIn(tid: string): Promise<TestPrincipal> {
@@ -116,7 +118,8 @@ async function assertJournalBalances(tid: string): Promise<void> {
 }
 
 /** A holding with two education-tagged cashbook rows, and a subsidiary spun out of it. */
-async function spinOutPair(label: string): Promise<Pair> {
+async function spinOutPair(label: string, options: { withCourse?: boolean } = {}): Promise<Pair> {
+  let courseCode: string | null = null;
   const holdSlug = `w5spin-${label}-hold-${suffix}`;
   const subSlug = `w5spin-${label}-sub-${suffix}`;
   const hold = await seedBootstrap({ tenantSlug: holdSlug, tenantName: `W5 ${label} Holding ${suffix}` });
@@ -178,6 +181,18 @@ async function spinOutPair(label: string): Promise<Pair> {
         },
       });
     }
+    if (options.withCourse) {
+      courseCode = `DIP-${label}-${suffix}`;
+      await scopedPrisma.course.create({
+        data: {
+          tenantId: hold.tenantId,
+          recordCode: await nextRecordCode('CRS'),
+          name: `Diploma ${label} ${suffix}`,
+          code: courseCode,
+          division: 'education',
+        },
+      });
+    }
   });
 
   const legacyNetBeforeCommit = await legacyNet(sub.tenantId);
@@ -187,7 +202,18 @@ async function spinOutPair(label: string): Promise<Pair> {
     faceValue: 10,
     className: `Equity ${label} ${suffix}`,
   });
-  return { hold: hold.tenantId, sub: sub.tenantId, batchId: batch.batchId, legacyNetBeforeCommit };
+  return {
+    hold: hold.tenantId,
+    sub: sub.tenantId,
+    batchId: batch.batchId,
+    legacyNetBeforeCommit,
+    courseCode,
+  };
+}
+
+/** The released form of a unique key (FX-71b): deterministic per batch, so a redo can take the original value. */
+function releasedKey(value: string, batchId: string): string {
+  return `${value}~reverted~${batchId}`;
 }
 
 function revertInput(p: Pair, reason: string) {
@@ -407,5 +433,82 @@ describe('FX-71b — a failure between the two transactions is completed by the 
     const rejection = await expectReject(() => revertSpinOut(revertInput(E, 'third attempt')));
     expect(rejection.status).toBe(409);
     expect(await holdingPointerCount(E)).toBe(0);
+  });
+});
+
+describe('FX-71b — a revert releases the keys it marks, so a redo of the same division succeeds', () => {
+  let G: Pair;
+
+  beforeAll(async () => {
+    G = await spinOutPair('g', { withCourse: true });
+    await assertJournalBalances(G.hold);
+    await assertJournalBalances(G.sub);
+  }, 120_000);
+
+  it('releases the course code once, and a resumed revert does not suffix it again', async () => {
+    expect(G.courseCode).not.toBeNull();
+    const interrupted = await expectReject(() =>
+      revertSpinOut({
+        ...revertInput(G, 'interrupted, then resumed'),
+        afterSubsidiaryCommit: async () => {
+          throw new Error('injected failure between the two transactions');
+        },
+      }),
+    );
+    expect(interrupted.message).toMatch(/injected failure/);
+
+    const resumed = await revertSpinOut(revertInput(G, 'interrupted, then resumed'));
+    expect(resumed.resumed).toBe(true);
+
+    const course = await unscopedPrisma.course.findFirstOrThrow({
+      where: { tenantId: G.sub, spinOutBatchId: G.batchId },
+    });
+    expect(course.code).toBe(releasedKey(G.courseCode!, G.batchId));
+    expect(course.spinOutRevertedAt).not.toBeNull();
+    await assertJournalBalances(G.hold);
+    await assertJournalBalances(G.sub);
+  });
+
+  it('keeps the original course code in the tombstone and in the audit before-image', async () => {
+    const [tombstone] = await unscopedPrisma.$queryRaw<
+      Array<{ keys: Array<{ model: string; from: string; to: string }> }>
+    >`SELECT "removed"->'releasedKeys' AS keys FROM "spinout_tombstones"
+       WHERE "tenantId" = ${G.sub} AND "batchId" = ${G.batchId}`;
+    expect(tombstone!.keys).toContainEqual(
+      expect.objectContaining({ model: 'course', from: G.courseCode, to: releasedKey(G.courseCode!, G.batchId) }),
+    );
+
+    const course = await unscopedPrisma.course.findFirstOrThrow({
+      where: { tenantId: G.sub, spinOutBatchId: G.batchId },
+    });
+    const audited = await unscopedPrisma.auditRecord.findFirst({
+      where: {
+        tenantId: G.sub,
+        subjectType: 'course',
+        subjectId: course.id,
+        action: 'update',
+        diff: { path: ['code', 'from'], equals: G.courseCode! },
+      },
+    });
+    expect(audited).not.toBeNull();
+  });
+
+  it('a redo of the same division into the same subsidiary succeeds, and the books carry the redo', async () => {
+    const redo = await commitSpinOut({
+      holdingTenantId: G.hold,
+      division: 'education',
+      faceValue: 10,
+      className: `Equity redo ${suffix}`,
+    });
+    expect(redo.batchId).not.toBe(G.batchId);
+
+    const liveCourses = await unscopedPrisma.course.count({
+      where: { tenantId: G.sub, code: G.courseCode!, spinOutRevertedAt: null },
+    });
+    expect(liveCourses).toBe(1);
+    // The redo carries the same 1000 in and 250 out as the first commit did.
+    expect(await legacyNet(G.sub)).toBe(750);
+    await assertJournalBalances(G.hold);
+    await assertJournalBalances(G.sub);
   });
 });
