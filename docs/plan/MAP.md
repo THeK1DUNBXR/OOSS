@@ -506,11 +506,11 @@
 
 **`apps/web/src/pages/Commercial.tsx`** (966 lines) — Offerings:35 · Quotes:220 · Proposals:335 · Agreements:448 · Approvals:638 · WinLoss:735
 
-**`apps/web/src/pages/Courses.tsx`** (587 lines) — Courses:45 · AssignCourse:458
+**`apps/web/src/pages/Courses.tsx`** (587 lines) — Courses:46 · AssignCourse:457
 
 **`apps/web/src/pages/Decisions.tsx`** (198 lines) — Decisions:38
 
-**`apps/web/src/pages/Education.tsx`** (378 lines) — Cohorts:34 · Enrollments:114 · Projects:284
+**`apps/web/src/pages/Education.tsx`** (420 lines) — Cohorts:36 · Enrollments:116 · Projects:313
 
 **`apps/web/src/pages/Executive.tsx`** (854 lines) — Executive:283
 
@@ -544,7 +544,7 @@
 
 **`apps/web/src/pages/Start.tsx`** (337 lines) — Start:46 · SetupBanner:312
 
-**`apps/web/src/pages/StudentTimeline.tsx`** (649 lines) — StudentTimeline:75 · LearnerQueue:526
+**`apps/web/src/pages/StudentTimeline.tsx`** (707 lines) — StudentTimeline:77 · LearnerQueue:551
 
 **`apps/web/src/pages/Students.tsx`** (363 lines) — Students:90 · StudentDetail:210
 
@@ -712,7 +712,7 @@
 
 **`apps/web/src/pages/marketing/Assets.tsx`** (401 lines) — Assets:37
 
-**`apps/web/src/pages/marketing/Audiences.tsx`** (747 lines) — Audiences:68
+**`apps/web/src/pages/marketing/Audiences.tsx`** (755 lines) — Audiences:70
 
 **`apps/web/src/pages/marketing/Budget.tsx`** (460 lines) — Budget:35
 
@@ -720,17 +720,17 @@
 
 **`apps/web/src/pages/marketing/CampaignDetail.tsx`** (635 lines) — CampaignDetail:68
 
-**`apps/web/src/pages/marketing/Campaigns.tsx`** (323 lines) — Campaigns:49
+**`apps/web/src/pages/marketing/Campaigns.tsx`** (356 lines) — Campaigns:51
 
-**`apps/web/src/pages/marketing/Consent.tsx`** (396 lines) — Consent:55
+**`apps/web/src/pages/marketing/Consent.tsx`** (389 lines) — Consent:48
 
 **`apps/web/src/pages/marketing/Forms.tsx`** (1013 lines) — Forms:98
 
-**`apps/web/src/pages/marketing/Journeys.tsx`** (597 lines) — Journeys:69
+**`apps/web/src/pages/marketing/Journeys.tsx`** (595 lines) — Journeys:70
 
 **`apps/web/src/pages/marketing/MarketingEvents.tsx`** (563 lines) — MarketingEvents:62 · MarketingEventDetail:237
 
-**`apps/web/src/pages/marketing/MarketingHealthCard.tsx`** (92 lines) — MarketingHealthCard:18
+**`apps/web/src/pages/marketing/MarketingHealthCard.tsx`** (91 lines) — MarketingHealthCard:17
 
 **`apps/web/src/pages/marketing/MarketingOverview.tsx`** (206 lines) — MarketingOverview:51
 
@@ -738,7 +738,7 @@
 
 **`apps/web/src/pages/marketing/MarketingShell.tsx`** (66 lines) — MarketingShell:38
 
-**`apps/web/src/pages/marketing/Plans.tsx`** (142 lines) — Plans:26
+**`apps/web/src/pages/marketing/Plans.tsx`** (160 lines) — Plans:28
 
 **`apps/web/src/pages/marketing/Referrals.tsx`** (512 lines) — Referrals:42
 
