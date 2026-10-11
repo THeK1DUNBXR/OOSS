@@ -415,6 +415,9 @@ describe('FV-005 — another tenant’s rows never appear', () => {
         ownerPartyId: otherOwner.id,
         dueAt: new Date(Date.now() - DAY),
         state: 'missed',
+        // The check constraint refuses a confirmed or later state without its confirmer.
+        confirmedById: otherOwner.id,
+        confirmedAt: new Date(Date.now() - 2 * DAY),
         sourceType: 'manual',
         subjectType: 'mou',
         subjectId: 'foreign',
