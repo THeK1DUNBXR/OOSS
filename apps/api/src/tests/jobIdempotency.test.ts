@@ -157,6 +157,20 @@ describe('#18 / #19 publish_entity_snapshots — a publish with nothing new adds
     expect(count).toBe(1);
   });
 
+  it('a source that goes A -> B -> A has three history rows: a return to an earlier state is a change', async () => {
+    const subId = await freshSubsidiary('idem-snap-aba');
+    const cin = (value: string | null) =>
+      unscopedPrisma.companyProfile.updateMany({ where: { tenantId: subId }, data: { cin: value } });
+    await publishEntitySnapshot(subId); // A: profile created with no CIN
+    await cin('U72900KA2020PTC000001');
+    await publishEntitySnapshot(subId); // B
+    await cin(null);
+    await publishEntitySnapshot(subId); // A again
+
+    const count = await unscopedPrisma.entitySnapshotHistory.count({ where: { sourceTenantId: subId } });
+    expect(count).toBe(3);
+  });
+
   it('the database refuses a second history row with the same source and content hash', async () => {
     const subId = await freshSubsidiary('idem-snap-key');
     await publishEntitySnapshot(subId);
