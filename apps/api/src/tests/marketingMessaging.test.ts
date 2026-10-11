@@ -6,7 +6,7 @@
  * exercised, per the house convention (see tests/helpers.ts).
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { grantConsent, publishNotice } from '../domains/compliance/privacy.js';
@@ -27,6 +27,8 @@ import {
   listSendRecipients,
 } from '../domains/marketing/messaging.js';
 import { createJourney, activateJourney, enrolPerson, tick, loadJourney } from '../domains/marketing/journeys.js';
+import { ConsoleAdapter } from '../domains/marketing/adapters/console.js';
+import type { OutboundMessage } from '../domains/marketing/adapters/types.js';
 
 const CREATOR = 'operations@kaizen.co.in'; // hr_ops_manager: holds marketing_templates/sends VCEDXF,approve
 const APPROVER = 'chairman@kaizen.co.in'; // superadmin — a distinct principal from CREATOR
@@ -385,5 +387,141 @@ describe('MKT-MSG — cross-tenant isolation', () => {
 
     const err = await expectReject(() => asUser(CREATOR, () => loadTemplate(foreignTemplate.id)));
     expect(err.status).toBe(404);
+  });
+});
+
+/**
+ * Counts what actually reached the provider, per recipient. Wraps the console
+ * adapter's real send rather than replacing it, so the send still happens and
+ * the test measures the double-send, not a stub. `delayMs` widens the window
+ * so overlapping runs really overlap; `crashOn` throws once after the provider
+ * has accepted that recipient's message, the crash the marks must survive.
+ */
+function countAdapterSends(opts: { delayMs?: number; crashOn?: string } = {}) {
+  const sentTo = new Map<string, number>();
+  const original = ConsoleAdapter.prototype.send;
+  let crashed = false;
+  vi.spyOn(ConsoleAdapter.prototype, 'send').mockImplementation(async function (
+    this: ConsoleAdapter,
+    msg: OutboundMessage,
+  ) {
+    if (opts.delayMs) await new Promise((resolve) => setTimeout(resolve, opts.delayMs));
+    const result = await original.call(this, msg);
+    sentTo.set(msg.to.personId, (sentTo.get(msg.to.personId) ?? 0) + 1);
+    if (opts.crashOn === msg.to.personId && !crashed) {
+      crashed = true;
+      throw new Error('process crashed after the provider accepted the message');
+    }
+    return result;
+  });
+  return sentTo;
+}
+
+describe('MKT-MSG-005a — a recipient is claimed before it is sent, so it is never sent twice', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('two overlapping dispatch runs send each recipient exactly once', async () => {
+    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    resetAdapterCacheForTests();
+    const sentTo = countAdapterSends({ delayMs: 15 });
+
+    const people = [];
+    for (let i = 0; i < 4; i += 1) {
+      const p = await makePerson(`Overlap ${i}`, `overlap-${i}-${Date.now()}@example.com`, null);
+      await grantMarketingConsent(p.id);
+      people.push(p);
+    }
+    const template = await makeApprovedTemplate('email');
+    const send = await asUser(CREATOR, () =>
+      createSend({ templateId: template.id, channelKey: 'email', personIds: people.map((p) => p.id) } as never),
+    );
+    await asUser(CREATOR, () => requestSend(send.id));
+
+    await Promise.all([asUser(CREATOR, () => dispatchSend(send.id)), asUser(CREATOR, () => dispatchSend(send.id))]);
+
+    for (const p of people) expect(sentTo.get(p.id) ?? 0).toBe(1);
+    const recipients = await asUser(CREATOR, () => listSendRecipients(send.id));
+    expect(recipients.every((r) => r.status === 'sent')).toBe(true);
+  });
+
+  it('a crash between the provider accepting a message and the sent mark does not resend on the next run', async () => {
+    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    resetAdapterCacheForTests();
+
+    const crashing = await makePerson('Crash Target', `crash-${Date.now()}@example.com`, null);
+    const other = await makePerson('Crash Other', `crash-other-${Date.now()}@example.com`, null);
+    await grantMarketingConsent(crashing.id);
+    await grantMarketingConsent(other.id);
+    const template = await makeApprovedTemplate('email');
+    const send = await asUser(CREATOR, () =>
+      createSend({ templateId: template.id, channelKey: 'email', personIds: [crashing.id, other.id] } as never),
+    );
+    await asUser(CREATOR, () => requestSend(send.id));
+
+    const sentTo = countAdapterSends({ crashOn: crashing.id });
+    await expect(asUser(CREATOR, () => dispatchSend(send.id))).rejects.toThrow('process crashed');
+    await asUser(CREATOR, () => dispatchSend(send.id));
+
+    expect(sentTo.get(crashing.id)).toBe(1);
+    expect(sentTo.get(other.id)).toBe(1);
+  });
+
+  it('a claim older than the lease is surfaced as unknown delivery and is not resent', async () => {
+    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    resetAdapterCacheForTests();
+
+    const person = await makePerson('Stale Claim', `stale-${Date.now()}@example.com`, null);
+    await grantMarketingConsent(person.id);
+    const template = await makeApprovedTemplate('email');
+    const send = await asUser(CREATOR, () =>
+      createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never),
+    );
+    await asUser(CREATOR, () => requestSend(send.id));
+    const recipient = await unscopedPrisma.marketingSendRecipient.findFirst({ where: { sendId: send.id } });
+    // A worker that claimed this recipient and died: the claim is hours old.
+    await unscopedPrisma.marketingSendRecipient.update({
+      where: { id: recipient!.id },
+      data: { status: 'sending', claimedAt: new Date(Date.now() - 6 * 60 * 60_000) } as never,
+    });
+
+    const sentTo = countAdapterSends();
+    await asUser(CREATOR, () => dispatchSend(send.id));
+
+    expect(sentTo.get(person.id) ?? 0).toBe(0);
+    const [after] = await asUser(CREATOR, () => listSendRecipients(send.id));
+    expect(after.status).toBe('unknown_delivery');
+  });
+});
+
+describe('MKT-MSG-008a — a journey step is claimed before it is sent', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('two overlapping ticks for the same due step send it once', async () => {
+    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    resetAdapterCacheForTests();
+    const sentTo = countAdapterSends({ delayMs: 15 });
+
+    const person = await makePerson('Step Once', `step-once-${Date.now()}@example.com`, null);
+    await grantMarketingConsent(person.id);
+    const template = await makeApprovedTemplate('email');
+    const journey = await asUser(CREATOR, () =>
+      createJourney({
+        name: `Single step ${Date.now()}`,
+        triggerKind: 'manual',
+        steps: [{ delayDays: 0, templateId: template.id, channelKey: 'email' }],
+      }),
+    );
+    await asUser(CREATOR, () => activateJourney(journey.id));
+    const run = await asUser(CREATOR, () => enrolPerson(journey.id, person.id));
+
+    await Promise.all([asUser(CREATOR, () => tick()), asUser(CREATOR, () => tick())]);
+
+    expect(sentTo.get(person.id) ?? 0).toBe(1);
+    const after = await unscopedPrisma.marketingJourneyRun.findFirst({ where: { id: run.id } });
+    expect(after?.currentStep).toBe(1);
   });
 });
