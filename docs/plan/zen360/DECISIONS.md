@@ -547,7 +547,7 @@ Consequences and open points:
 
 ## Owner answers, round 18a (recorded 2026-10-10, during Wave 0 and Wave 1 implementation)
 
-*renamed from round 18 to remove a numbering collision (2026-10-11)*
+_renamed from round 18 to remove a numbering collision (2026-10-11)_
 
 - **(a) IT-policy self-dealing approvals go to the chairman.** FX-01 now requires the approver to hold `it_policies:approve`, and only the chairman holds it (`docs/plan/cio.md:144`). So the self-dealing publish step routes to the chairman, not to `finance_head`. Implication: tenants seeded before this change still carry the old approval chain, so a new policy version is needed. Open.
 - **(b) No role means no access.** An affiliation with no access role grants nothing. It used to fall back to `sales`. Before deploy, `report:roleless` lists the people affected.
@@ -564,7 +564,7 @@ Still open after round 18a:
 
 ## Owner answers, round 19a (recorded 2026-10-10, access-model plan review)
 
-*renamed from round 19 to remove a numbering collision (2026-10-11)*
+_renamed from round 19 to remove a numbering collision (2026-10-11)_
 
 Context: the access-model plan draft (`docs/plan/zen360/ACCESS-MODEL-PLAN.md`, DRAFT v2) and the owner's corrections given during its drafting.
 
@@ -590,7 +590,7 @@ Consequence for the plan: the registry and its foreign keys land in Waves 2–3,
 
 ## Owner answers, round 18b (recorded 2026-10-11)
 
-*renamed from round 18 to remove a numbering collision (2026-10-11)*
+_renamed from round 18 to remove a numbering collision (2026-10-11)_
 
 Owner answers given after round 17. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, except where this round says it supersedes or provisionally holds an earlier answer. This round supersedes the round 17 "Still open" list. Where no answer is recorded here, the earlier rounds and the drafts stand.
 
@@ -604,7 +604,7 @@ Numbering note: an earlier section is also titled "Owner answers, round 18a (rec
    - per-tenant encryption keys (round 5, item 6);
    - separate subsidiary tenants and the holding-company link (D-01);
    - per-tenant editing of access-level templates.
-   Existing tenant scoping in the code stays untouched.
+     Existing tenant scoping in the code stays untouched.
 2. **PgBouncer is not a blocker (owner answer, item 2).** This supersedes the ORDERED-PLAN item 1.2 blocker that named PgBouncer in transaction mode. Revisit only if connections run short.
 3. **All hosting decisions are deferred until after Phase 1 (owner answer, item 3).** The owner will separately consider how to host efficiently and which caching and routing to use. This covers:
    - server operations (ORDERED-PLAN Wave 4);
@@ -638,7 +638,7 @@ Still open after round 18b (recorded 2026-10-11, supersedes the round 17 list):
 
 ## Owner answers, round 19b (recorded 2026-10-11)
 
-*renamed from round 19 to remove a numbering collision (2026-10-11)*
+_renamed from round 19 to remove a numbering collision (2026-10-11)_
 
 Owner answers given after round 18b (recorded 2026-10-11). Each item is an owner answer unless it is marked as a note or an implication. This round answers round 18b implications (f), (g) and (h), and clarifies what "defer FX-51" meant in round 18b item 1.
 

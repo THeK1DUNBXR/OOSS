@@ -11,7 +11,7 @@ Work in this order.
 2. **0.1 Config and secrets.** `platform/config.ts` with Zod validation at load. Remove the fallback at `auth.ts:31` and `TENANT_ENFORCE_MODE` at `context.ts:94`. Add the FX-60 boot refusal at `privacy.ts:944-954`.
 3. **Time helpers.** `packages/shared/src/time.ts`. Used for FX-40, FX-41 and FX-42 (see ORDERED-PLAN for the file lines).
 4. **0.8 CI.** ESLint and Prettier. Remove the dead classes at `Start.tsx:100,109` and `People.tsx:56`. Build identity. Replace `db push` with a migration baseline.
-Not active: the Cloudflare Worker removal is done and stands (DECISIONS.md, round 19b, item 2). **Hosting** (server, reverse proxy, caching, routing) is undecided until after Phase 1 (round 18b, item 3). See [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), "After Phase 1: hosting and operations (deferred)".
+   Not active: the Cloudflare Worker removal is done and stands (DECISIONS.md, round 19b, item 2). **Hosting** (server, reverse proxy, caching, routing) is undecided until after Phase 1 (round 18b, item 3). See [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), "After Phase 1: hosting and operations (deferred)".
 
 ## Status (2026-10-10)
 
