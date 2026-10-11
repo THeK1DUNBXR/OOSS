@@ -22,6 +22,7 @@ import {
 } from '@tanstack/react-query';
 import type {
   AssetKind,
+  CommandCenterResponse,
   AssetStatus,
   AssetView,
   AttributionModel,
@@ -461,9 +462,40 @@ export interface AiDraftResponse {
 // mk — raw typed functions, one per endpoint
 // ---------------------------------------------------------------------------
 
+/** One row of `GET /crm/people` as the audience, consent and journey pickers read it. */
+export interface CrmPersonHit {
+  id: string;
+  recordCode: string;
+  fullName: string;
+  primaryEmail: string | null;
+  primaryPhone: string | null;
+}
+
+/**
+ * A row from the audience member picker. Its route varies by entity type
+ * (people, organizations, institutions, leads), so only the fields the picker
+ * reads are declared, and each is optional for the entity that lacks it.
+ */
+export interface CrmEntityHit {
+  id: string;
+  recordCode: string;
+  fullName?: string | null;
+  name?: string | null;
+  title?: string | null;
+}
+
+/** CRM search for the pickers that add a person or record to a marketing list. */
+export const crmSearch = {
+  people: (q: string, pageSize = 10) => api.get<Page<CrmPersonHit>>(`/crm/people${qs({ q, pageSize })}`),
+  /** `path` is one of the `/crm/*` list routes an audience's entity type maps to. */
+  entities: (path: string, q: string, pageSize = 10) => api.get<Page<CrmEntityHit>>(`${path}${qs({ q, pageSize })}`),
+};
+
 export const mk = {
   // Overview / analytics -----------------------------------------------------
   getOverview: () => api.get<MarketingOverviewResponse>(`${BASE}/overview`),
+  /** Command Center read the marketing health card picks its H_MKT tile from (routes at `/command`). */
+  commandCenter: () => api.get<CommandCenterResponse>('/command'),
   getFunnel: (params?: { from?: string; to?: string; division?: string; campaignId?: string }) =>
     api.get<FunnelResponse>(`${BASE}/analytics/funnel${qs(params)}`),
   getChannelPerformance: (params?: { from?: string; to?: string }) =>

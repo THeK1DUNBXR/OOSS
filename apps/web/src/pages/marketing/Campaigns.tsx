@@ -16,6 +16,7 @@ import {
   DIVISION_LABELS,
   type CampaignObjective,
   type CampaignStatus,
+  type CampaignView,
   type ChannelKey,
 } from '@kaizen/shared';
 import {
@@ -32,6 +33,7 @@ import { CreateModal, Row, SelectInput, TextArea, TextInput } from '../../compon
 import { NewButton } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 import { money, titleCase } from '../../lib/api.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { mk, useCampaigns } from '../../lib/marketingApi.js';
 import { Link } from 'react-router-dom';
 
@@ -66,6 +68,71 @@ export function Campaigns() {
   const pending = items.filter((c) => c.status === 'pending_approval').length;
   const spend = items.reduce((s, c) => s + c.budgetActual, 0);
   const planned = items.reduce((s, c) => s + c.budgetPlanned, 0);
+
+  const campaignColumns: ReadonlyArray<DataTableColumn<CampaignView>> = [
+    {
+      id: 'code',
+      header: 'Code',
+      sortValue: (c) => c.recordCode,
+      cell: (c) => <RecordCode code={c.recordCode} to={`/marketing/campaigns/${c.id}`} />,
+    },
+    {
+      id: 'campaign',
+      header: 'Campaign',
+      sortValue: (c) => c.name,
+      cell: (c) => (
+        <>
+          <Link to={`/marketing/campaigns/${c.id}`} className="text-xs font-medium text-ink-100 hover:text-accent-soft">
+            {c.name}
+          </Link>
+          <p className="text-2xs text-ink-500">{c.channelMix.map((k) => CHANNEL_KEY_LABELS[k]).join(', ')}</p>
+        </>
+      ),
+    },
+    {
+      id: 'division',
+      header: 'Division',
+      sortValue: (c) => c.division,
+      cellClassName: 'text-xs text-ink-300',
+      cell: (c) => titleCase(c.division),
+    },
+    {
+      id: 'objective',
+      header: 'Objective',
+      sortValue: (c) => c.objective,
+      cellClassName: 'text-xs text-ink-300',
+      cell: (c) => CAMPAIGN_OBJECTIVE_LABELS[c.objective],
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (c) => c.status,
+      cell: (c) => <StatusChip status={CAMPAIGN_STATUS_LABELS[c.status]} tone={STATUS_TONE[c.status] ?? 'neutral'} />,
+    },
+    {
+      id: 'budget',
+      header: 'Budget',
+      align: 'right',
+      sortValue: (c) => c.budgetActual,
+      cellClassName: 'tabular-nums text-xs',
+      cell: (c) => (
+        <>
+          {money(c.budgetActual, c.currency)} / {money(c.budgetPlanned, c.currency)}
+        </>
+      ),
+    },
+    {
+      id: 'window',
+      header: 'Window',
+      sortValue: (c) => c.startAt,
+      cellClassName: 'text-xs text-ink-400',
+      cell: (c) => (
+        <>
+          {c.startAt.slice(0, 10)} – {c.endAt.slice(0, 10)}
+        </>
+      ),
+    },
+  ];
 
   if (error) return <ErrorBox error={error} />;
 
@@ -136,49 +203,15 @@ export function Campaigns() {
           />
         </Card>
       ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Campaign</th>
-                <th>Division</th>
-                <th>Objective</th>
-                <th>Status</th>
-                <th className="text-right">Budget</th>
-                <th>Window</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <RecordCode code={c.recordCode} to={`/marketing/campaigns/${c.id}`} />
-                  </td>
-                  <td>
-                    <Link
-                      to={`/marketing/campaigns/${c.id}`}
-                      className="text-xs font-medium text-ink-100 hover:text-accent-soft"
-                    >
-                      {c.name}
-                    </Link>
-                    <p className="text-2xs text-ink-500">{c.channelMix.map((k) => CHANNEL_KEY_LABELS[k]).join(', ')}</p>
-                  </td>
-                  <td className="text-xs text-ink-300">{titleCase(c.division)}</td>
-                  <td className="text-xs text-ink-300">{CAMPAIGN_OBJECTIVE_LABELS[c.objective]}</td>
-                  <td>
-                    <StatusChip status={CAMPAIGN_STATUS_LABELS[c.status]} tone={STATUS_TONE[c.status] ?? 'neutral'} />
-                  </td>
-                  <td className="text-right tabular-nums text-xs">
-                    {money(c.budgetActual, c.currency)} / {money(c.budgetPlanned, c.currency)}
-                  </td>
-                  <td className="text-xs text-ink-400">
-                    {c.startAt.slice(0, 10)} – {c.endAt.slice(0, 10)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <Card bodyClassName="p-0">
+          <DataTable
+            caption="Campaigns"
+            columns={campaignColumns}
+            rows={items}
+            rowKey={(c) => c.id}
+            emptyMessage="No campaigns match these filters."
+            emptyHint="Clear the objective filter to see every campaign."
+          />
         </Card>
       )}
 

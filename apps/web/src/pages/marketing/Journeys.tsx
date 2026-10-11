@@ -25,7 +25,7 @@ import {
   type JourneyStep,
   type JourneyTriggerKind,
 } from '@kaizen/shared';
-import { api, dateTime } from '../../lib/api.js';
+import { dateTime } from '../../lib/api.js';
 import {
   Card,
   EmptyState,
@@ -39,6 +39,7 @@ import {
 } from '../../components/ui.js';
 import { CreateModal, messageOf, Row, SelectInput, TextInput } from '../../components/forms.js';
 import {
+  crmSearch,
   useActivateJourney,
   useAudiences,
   useCreateJourney,
@@ -402,10 +403,7 @@ function JourneyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
   const { data: personSearch, isFetching: searchingPeople } = useQuery({
     queryKey: ['mkt', 'journey-enrol-search', enrolQuery],
-    queryFn: () =>
-      api.get<{ items: Array<{ id: string; recordCode: string; fullName: string }> }>(
-        `/crm/people?q=${encodeURIComponent(enrolQuery)}&pageSize=10`,
-      ),
+    queryFn: () => crmSearch.people(enrolQuery),
     enabled: enrolQuery.length >= 2,
   });
 

@@ -21,9 +21,11 @@ import {
   type AudienceRule,
   type AudienceRuleOp,
 } from '@kaizen/shared';
-import { api, date, dateTime, titleCase } from '../../lib/api.js';
+import { date, dateTime, titleCase } from '../../lib/api.js';
 import {
   AudienceField,
+  crmSearch,
+  mk,
   useAddAudienceMembers,
   useAudience,
   useAudienceFields,
@@ -183,15 +185,21 @@ function NewAudience({
         const created = result as { id: string } | undefined;
         if (created?.id) onCreated(created.id);
       }}
-      onSubmit={() =>
-        api.post(`/marketing/audiences`, {
+      onSubmit={() => {
+        // The selects start empty and the modal has no native required check,
+        // so an unchosen kind was sent to the server as ''. Refusing here names
+        // what is missing.
+        if (!kind || !entityType) {
+          return Promise.reject(new Error('Choose what kind of audience this is and what it holds.'));
+        }
+        return mk.createAudience({
           name,
           kind,
           entityType,
           description: description || undefined,
           rules: kind === 'dynamic' ? emptyRule() : undefined,
-        })
-      }
+        });
+      }}
     >
       <TextInput label="Name" required value={name} onChange={setName} placeholder="e.g. Warm leads — last 30 days" />
       <Row>
@@ -687,13 +695,13 @@ function StaticMemberAdd({
 
   const { data, isFetching } = useQuery({
     queryKey: ['mkt', 'audience-member-search', entityType, q],
-    queryFn: () => api.get<{ items: any[] }>(`${path}?q=${encodeURIComponent(q)}&pageSize=10`),
+    queryFn: () => crmSearch.entities(path, q),
     enabled: q.length >= 2,
   });
 
   const results: SearchResult[] = useMemo(
     () =>
-      (data?.items ?? []).map((it: any) => ({
+      (data?.items ?? []).map((it) => ({
         id: it.id,
         recordCode: it.recordCode,
         label: it.fullName ?? it.name ?? it.title ?? it.recordCode,

@@ -9,11 +9,13 @@ import {
   MARKETING_PLAN_STATUS_LABELS,
   MARKETING_PLAN_TRANSITIONS,
   type MarketingPlanStatus,
+  type PlanView,
 } from '@kaizen/shared';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip } from '../../components/ui.js';
 import { CreateModal, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 import { titleCase } from '../../lib/api.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { useApprovePlan, useClosePlan, useCreatePlan, usePlans } from '../../lib/marketingApi.js';
 
 const STATUS_TONE: Record<MarketingPlanStatus, 'neutral' | 'good' | 'warn' | 'bad' | 'accent'> = {
@@ -32,6 +34,60 @@ export function Plans() {
 
   const canWrite = can('marketing_settings:E');
   const canApprove = can('marketing_settings:approve');
+
+  const planColumns: ReadonlyArray<DataTableColumn<PlanView>> = [
+    { id: 'period', header: 'Period', sortValue: (p) => p.period, cellClassName: 'text-xs', cell: (p) => p.period },
+    {
+      id: 'division',
+      header: 'Division',
+      sortValue: (p) => p.division,
+      cellClassName: 'text-xs',
+      cell: (p) => titleCase(p.division),
+    },
+    {
+      id: 'theme',
+      header: 'Theme',
+      sortValue: (p) => p.theme,
+      cellClassName: 'text-xs font-medium text-ink-200',
+      cell: (p) => p.theme,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (p) => p.status,
+      cell: (p) => <StatusChip status={MARKETING_PLAN_STATUS_LABELS[p.status]} tone={STATUS_TONE[p.status]} />,
+    },
+    {
+      id: 'campaigns',
+      header: 'Campaigns',
+      align: 'right',
+      sortValue: (p) => p.campaignIds.length,
+      cellClassName: 'tabular-nums text-xs',
+      cell: (p) => p.campaignIds.length,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (p) => {
+        const allowed = new Set(MARKETING_PLAN_TRANSITIONS[p.status]);
+        return (
+          <>
+            {canApprove && allowed.has('approved') && (
+              <button className="text-2xs text-accent-soft hover:underline" onClick={() => approve.mutate(p.id)}>
+                Approve
+              </button>
+            )}
+            {canWrite && allowed.has('closed') && (
+              <button className="ml-2 text-2xs text-accent-soft hover:underline" onClick={() => close.mutate(p.id)}>
+                Close
+              </button>
+            )}
+          </>
+        );
+      },
+    },
+  ];
 
   if (error) return <ErrorBox error={error} />;
 
@@ -53,53 +109,15 @@ export function Plans() {
           />
         </Card>
       ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Period</th>
-                <th>Division</th>
-                <th>Theme</th>
-                <th>Status</th>
-                <th className="text-right">Campaigns</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((p) => {
-                const allowed = new Set(MARKETING_PLAN_TRANSITIONS[p.status]);
-                return (
-                  <tr key={p.id}>
-                    <td className="text-xs">{p.period}</td>
-                    <td className="text-xs">{titleCase(p.division)}</td>
-                    <td className="text-xs font-medium text-ink-200">{p.theme}</td>
-                    <td>
-                      <StatusChip status={MARKETING_PLAN_STATUS_LABELS[p.status]} tone={STATUS_TONE[p.status]} />
-                    </td>
-                    <td className="text-right tabular-nums text-xs">{p.campaignIds.length}</td>
-                    <td className="text-right">
-                      {canApprove && allowed.has('approved') && (
-                        <button
-                          className="text-2xs text-accent-soft hover:underline"
-                          onClick={() => approve.mutate(p.id)}
-                        >
-                          Approve
-                        </button>
-                      )}
-                      {canWrite && allowed.has('closed') && (
-                        <button
-                          className="ml-2 text-2xs text-accent-soft hover:underline"
-                          onClick={() => close.mutate(p.id)}
-                        >
-                          Close
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <Card bodyClassName="p-0">
+          <DataTable
+            caption="Marketing plans by period"
+            columns={planColumns}
+            rows={data.items}
+            rowKey={(p) => p.id}
+            emptyMessage="No plan has been created yet."
+            emptyHint="A plan groups a quarter's campaigns under one theme and set of goals."
+          />
         </Card>
       )}
 
