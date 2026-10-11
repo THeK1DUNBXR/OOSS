@@ -28,6 +28,7 @@ import {
   PAY_ITEM_KINDS,
   EVENTS,
   isEncryptedFieldValue,
+  parseMinor,
   type NeftBeneficiary,
 } from '@kaizen/shared';
 import { Prisma } from '@prisma/client';
@@ -41,7 +42,7 @@ import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { auditWrite, auditExport, auditBulkOperation, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { payrollCostByDivision } from '../payroll.js';
-import { recordTransaction } from '../books.js';
+import { checkTransactionAllowed, lockPayrollRunForPosting, paiseToRupees, writeTransaction } from '../books.js';
 import { encryptField, readRegulated } from '../compliance/privacy.js';
 
 /** Withholds a money field for a caller who cannot see it — null, never zero, with a reason. Same shape as `hcm/compensation.ts`'s `money()`. */
@@ -478,12 +479,14 @@ export async function generatePayrollJournal(payrollRunId: string) {
 }
 
 /**
- * Posts the net-pay disbursement leg into the books, via `recordTransaction`
- * — the one exported, clean create function `books.ts` offers. That call is
- * single-entry (one account, one direction, one amount), so this posts only
- * the cash-out side; the full division-wise debit/credit breakdown stays on
- * the journal row itself, which is the record of how that cash figure was
- * arrived at.
+ * Posts the net-pay disbursement leg into the books: one cash-out `Transaction`
+ * for the run's net total, and the journal row marked `Posted` with that
+ * transaction's id. The writes and the status commit in one transaction, so a
+ * failure leaves the journal `Prepared` with no leg written (FX-73a).
+ *
+ * That call is single-entry, so this posts only the cash-out side; the full
+ * division-wise debit/credit breakdown stays on the journal row itself, which is
+ * the record of how that cash figure was arrived at.
  */
 export async function postPayrollJournal(id: string, accountId: string) {
   const auth = currentAuth();
@@ -514,41 +517,63 @@ export async function postPayrollJournal(id: string, accountId: string) {
   // The cash leg is the net pay payable, not the journal's total credit —
   // that total also carries the statutory/other deductions payable, which
   // moves the company's money to a different payee on a different day, not
-  // straight to employees now.
-  const txn = await recordTransaction({
-    txnDate: new Date(),
-    direction: 'out',
-    amount: num(run.netTotal) ?? 0,
-    accountId,
-    division: null,
-    counterparty: `Payroll ${run.payPeriod}`,
-    method: 'bank_transfer',
-    reference: run.recordCode,
-    note: `Net pay disbursement for ${run.payPeriod} (${run.headcount} employee${run.headcount === 1 ? '' : 's'}).`,
-    source: 'payroll',
-    payrollRunId: run.id,
-  });
+  // straight to employees now. Read as paise, so no float touches the figure.
+  const netPaise = parseMinor(run.netTotal.toFixed(2));
+  const txnDate = new Date();
 
-  const row = await prisma.payrollJournal.update({
-    where: { id },
-    data: { status: 'Posted', transactionId: txn.id, postedById: auth.partyId, postedAt: new Date() },
+  // The permission check and the period veto run before the transaction opens,
+  // as they do for every cashbook entry (books.ts checkTransactionAllowed).
+  await checkTransactionAllowed({ txnDate, source: 'payroll' });
+
+  return governedWrite(async (tx) => {
+    // The run lock is the guard. A concurrent post of this journal, or a books
+    // post of the same run, waits here and is refused by what the first wrote.
+    await lockPayrollRunForPosting(tx, auth.tenantId, run.id);
+
+    const locked = await tx.payrollJournal.findFirst({ where: { id, tenantId: auth.tenantId } });
+    if (!locked) throw ApiError.notFound('Payroll journal');
+    if (locked.status === 'Posted') throw ApiError.conflict('This journal is already posted.');
+
+    const txn = await writeTransaction(
+      {
+        txnDate,
+        direction: 'out',
+        amount: paiseToRupees(netPaise),
+        accountId,
+        division: null,
+        counterparty: `Payroll ${run.payPeriod}`,
+        method: 'bank_transfer',
+        reference: run.recordCode,
+        note: `Net pay disbursement for ${run.payPeriod} (${run.headcount} employee${run.headcount === 1 ? '' : 's'}).`,
+        source: 'payroll',
+        payrollRunId: run.id,
+      },
+      tx,
+    );
+
+    const row = await tx.payrollJournal.update({
+      where: { id },
+      data: { status: 'Posted', transactionId: txn.id, postedById: auth.partyId, postedAt: new Date() },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'payroll_journal',
+      subjectId: id,
+      before: locked as never,
+      after: row as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.PAYROLL_JOURNAL_POSTED,
+      subject: { entityType: 'payroll_journal', entityId: row.id },
+      related: [{ relation: 'posts_as', entityType: 'transaction', entityId: txn.id }],
+      newState: { payPeriod: row.payPeriod, totalDebit: num(row.totalDebit), totalCredit: num(row.totalCredit) },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+    return row;
   });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'payroll_journal',
-    subjectId: id,
-    before: journal as never,
-    after: row as never,
-  });
-  await emit({
-    name: EVENTS.PAYROLL_JOURNAL_POSTED,
-    subject: { entityType: 'payroll_journal', entityId: row.id },
-    related: [{ relation: 'posts_as', entityType: 'transaction', entityId: txn.id }],
-    newState: { payPeriod: row.payPeriod, totalDebit: num(row.totalDebit), totalCredit: num(row.totalCredit) },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr', 'fin'] },
-  });
-  return row;
 }
 
 // ---------------------------------------------------------------------------
