@@ -1,0 +1,79 @@
+// The Commitment record (Wave 6, OP:115; SPINE-CONTRACT 1.1; OPUS decision 9).
+//
+// A commitment is a promise one named person owns, due at a UTC instant. Anyone
+// may propose one, a person or a model, and a proposal stays `proposed` until a
+// human confirms it: the domain refuses a confirmation from any other principal.
+// Each state change writes a CommitmentEvent row, and those rows are append-only.
+//
+// What Prisma cannot express is raw SQL in migration 20261012120000_commitment_record:
+// the state list, backup not equal to owner, a confirmed row carrying who and
+// when, and the trigger that refuses UPDATE and DELETE on commitment_events.
+// The transition table is COMMITMENT_TRANSITIONS in domains/commitments.ts.
+
+model Commitment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// CMT-YYYY-NNNNN, generator-assigned and never edited (platform/recordCode.ts).
+  recordCode String
+  title      String
+  /// The owner's next step, in their words. A promise with no next step is still a promise.
+  nextAction String?
+
+  ownerPartyId  String
+  backupPartyId String?
+
+  /// A UTC instant. Lateness is an instant comparison; a report that shows a day shows an IST day.
+  dueAt DateTime
+
+  /// proposed | confirmed | met | missed | cancelled.
+  state String @default("proposed")
+
+  /// manual | agent | decision | exception | interaction. Where the promise came from.
+  sourceType String
+  sourceId   String?
+
+  confirmedById String?
+  confirmedAt   DateTime?
+
+  /// What the promise is about. Plain strings, as on Task: the caller checks the subject exists.
+  subjectType String
+  subjectId   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner     Person  @relation("CommitmentOwner", fields: [tenantId, ownerPartyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  backup    Person? @relation("CommitmentBackup", fields: [tenantId, backupPartyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  confirmer Person? @relation("CommitmentConfirmer", fields: [tenantId, confirmedById], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  events CommitmentEvent[]
+
+  @@unique([tenantId, recordCode])
+  @@unique([tenantId, id])
+  @@index([tenantId, state, dueAt])
+  @@index([tenantId, ownerPartyId, state])
+  @@map("commitments")
+}
+
+/// One row per change of state, and one per reassignment (fromState equals
+/// toState there). The creation row has no fromState. Append-only: a trigger
+/// refuses UPDATE and DELETE for every role, so a correction is a new row.
+model CommitmentEvent {
+  id       String @id @default(cuid())
+  tenantId String
+
+  commitmentId String
+  fromState    String?
+  toState      String
+  /// Null when the scheduled job made the change; the audit row then records a system actor.
+  actorPartyId String?
+  reason       String?
+  at           DateTime @default(now())
+
+  commitment Commitment @relation(fields: [tenantId, commitmentId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  actor      Person?    @relation("CommitmentEventActor", fields: [tenantId, actorPartyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, commitmentId, at])
+  @@map("commitment_events")
+}

@@ -289,6 +289,14 @@ model Person {
   marketingReferralsAsReferrer MarketingReferral[]          @relation("MarketingReferralReferrer")
   marketingReferralsAsReferred MarketingReferral[]          @relation("MarketingReferralReferred")
 
+  commitmentsOwned     Commitment[]      @relation("CommitmentOwner")
+  commitmentsBackedUp  Commitment[]      @relation("CommitmentBackup")
+  commitmentsConfirmed Commitment[]      @relation("CommitmentConfirmer")
+  commitmentEvents     CommitmentEvent[] @relation("CommitmentEventActor")
+
+  /// The composite key the commitment tables reference, so an owner, backup or
+  /// actor is always a person of the same tenant (CLAUDE.md rule 6).
+  @@unique([tenantId, id])
   @@unique([tenantId, recordCode])
   @@index([tenantId, primaryPhoneNormalised])
   @@index([tenantId, primaryEmailNormalised])
