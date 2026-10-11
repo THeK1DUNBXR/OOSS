@@ -43,7 +43,7 @@ import { assertCan } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { registerHook, runHooks } from '../../platform/hooks.js';
-import { openAccountingDate, periodStatus as accountingPeriodStatus } from './books.js';
+import { openAccountingDate, periodRefusesEntries } from './books.js';
 
 // payroll_run is owned by domains/payroll.ts, but apply-salary-TDS (below)
 // audits an update to it from here. Registered here too, so a job importing
@@ -600,7 +600,7 @@ export async function markChallanPaid(id: string, input: MarkChallanPaidInput) {
   // has left the bank is never refused by a closed month. The challan keeps its
   // real paid date, which drives interest and the return; the books take it in
   // the current open period and the accountant is told.
-  const paidInClosedPeriod = (await accountingPeriodStatus(input.paidOn)) === 'closed';
+  const paidInClosedPeriod = await periodRefusesEntries(input.paidOn);
   const bookedOn = paidInClosedPeriod ? await openAccountingDate(new Date()) : null;
   const settled = await governedWrite(async (tx) => {
     const paid = await tx.tdsChallan.update({
@@ -976,7 +976,7 @@ export async function recordAdvanceTaxPayment(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'create' });
   // Interim policy, pending the accountant's confirmation (EX-FIN-008): see markChallanPaid.
-  const paidInClosedPeriod = (await accountingPeriodStatus(input.paidOn)) === 'closed';
+  const paidInClosedPeriod = await periodRefusesEntries(input.paidOn);
   const bookedOn = paidInClosedPeriod ? await openAccountingDate(new Date()) : null;
   const row = await prisma.advanceTaxPayment.create({
     data: {

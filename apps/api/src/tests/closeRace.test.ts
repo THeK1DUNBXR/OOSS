@@ -15,7 +15,7 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
-import { istMonthKey } from '@kaizen/shared';
+import { istMonthKey, monthRange } from '@kaizen/shared';
 import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
 import { recordTransaction } from '../domains/books.js';
 import { closePeriod, openAccountingDate, requestClosePeriod, trialBalance } from '../domains/compliance/books.js';
@@ -141,12 +141,15 @@ describe('T70-10: a legacy write that reaches the close while it waits for the l
     const gate = new Promise<void>((resolve) => (release = resolve));
     let signalHeld!: () => void;
     const held = new Promise<void>((resolve) => (signalHeld = resolve));
-    const holding = unscopedPrisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${TENANT}, true)`;
-      await tx.$queryRaw`SELECT "id" FROM "cmp_accounting_periods" WHERE "id" = ${period.id} FOR SHARE`;
-      signalHeld();
-      await gate;
-    }, { timeout: 60_000, maxWait: 10_000 });
+    const holding = unscopedPrisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.tenant_id', ${TENANT}, true)`;
+        await tx.$queryRaw`SELECT "id" FROM "cmp_accounting_periods" WHERE "id" = ${period.id} FOR SHARE`;
+        signalHeld();
+        await gate;
+      },
+      { timeout: 60_000, maxWait: 10_000 },
+    );
     // The close must not start until the lock is held, or it could finish before the hold exists.
     await held;
 
@@ -175,18 +178,21 @@ describe('T70-10: a legacy write that reaches the close while it waits for the l
     expect(await countTransactions(reference)).toBe(0);
 
     // The stored figures are the books as they stand once the close has taken them.
-    const snapshot = closed.snapshot as unknown as {
-      cashbook: unknown;
+    const { journal, ...cashbook } = closed.snapshot as unknown as {
       journal: { asOf: string; debitsMinor: string; creditsMinor: string; lineCount: number };
+      asOf: string;
+      rows: unknown[];
+      totalDebit: number;
+      totalCredit: number;
     };
-    expect(JSON.parse(JSON.stringify(snapshot.cashbook))).toEqual(
-      JSON.parse(JSON.stringify(await asUser(CHAIRMAN, () => trialBalance(TB_ASOF)))),
-    );
+    // The close takes its figures as of the last instant of the month, so the live figures are read at that instant.
+    const monthEnd = new Date(monthRange(FEB).to.getTime() - 1);
+    expect(cashbook).toEqual(JSON.parse(JSON.stringify(await asUser(CHAIRMAN, () => trialBalance(monthEnd)))));
     assertTrialBalance({
-      asOf: snapshot.journal.asOf,
-      debitsMinor: BigInt(snapshot.journal.debitsMinor),
-      creditsMinor: BigInt(snapshot.journal.creditsMinor),
-      lineCount: snapshot.journal.lineCount,
+      asOf: journal.asOf,
+      debitsMinor: BigInt(journal.debitsMinor),
+      creditsMinor: BigInt(journal.creditsMinor),
+      lineCount: journal.lineCount,
     });
     await assertJournalBalances();
   });

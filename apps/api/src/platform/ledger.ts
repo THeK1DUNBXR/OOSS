@@ -47,8 +47,12 @@ export interface PostInput {
   reversalOfId?: string;
 }
 
-/** Periods that take postings. `closing` is refused: its snapshot must not move under it. */
-const POSTABLE_PERIOD_STATUSES = ['open', 'reopened'];
+/**
+ * Periods that take postings. `closing` is refused: its snapshot must not move under it.
+ * Exported so the legacy cashbook's period veto (domains/compliance/books.ts) applies
+ * the same rule; a second copy of this list let a write into a closing month through.
+ */
+export const POSTABLE_PERIOD_STATUSES: readonly string[] = ['open', 'reopened'];
 
 const ENTRY_INCLUDE = { lines: { orderBy: { lineNo: 'asc' } } } as const;
 

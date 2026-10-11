@@ -52,7 +52,7 @@
 
 **`apps/api/src/domains/companyProfile.ts`** (320 lines) — CompanyProfileInput:38 · companyProfile:90 · updateCompanyProfile:108 · documentPrefix:266 · documentNumbering:277 · supplyingParty:292 · assertRegistered:311
 
-**`apps/api/src/domains/compliance/books.ts`** (1100 lines) — listPeriods:79 · periodStatus:115 · openAccountingDate:127 · requestClosePeriod:137 · closePeriod:169 · reopenPeriod:231 · sweepRetention:309 · retentionReport:379 · statementForFy:442 · classifyAssetClass:539 · depreciationReport:572 · trialBalance:684 · trialBalanceCsv:755 · generalLedgerCsv:763 · tallyExportXml:801 · BankLineInput:850 · importBankStatement:881 · matchBankLines:968 · reconciliationReport:1047 · fingerprint:1097
+**`apps/api/src/domains/compliance/books.ts`** (1150 lines) — listPeriods:82 · periodStatus:118 · periodRefusesEntries:131 · openAccountingDate:140 · requestClosePeriod:150 · closePeriod:182 · reopenPeriod:269 · sweepRetention:354 · retentionReport:424 · statementForFy:487 · classifyAssetClass:584 · depreciationReport:617 · trialBalance:733 · trialBalanceCsv:805 · generalLedgerCsv:813 · tallyExportXml:851 · BankLineInput:900 · importBankStatement:931 · matchBankLines:1018 · reconciliationReport:1097 · fingerprint:1147
 
 **`apps/api/src/domains/compliance/calendar.ts`** (392 lines) — resolveOwnerPartyId:44 · GenerateResult:83 · generateObligations:96 · ObligationFilter:185 · listTypes:192 · listObligations:198 · obligationDetail:214 · MarkFiledInput:229 · markFiled:244 · waive:309 · summary:355
 
@@ -104,7 +104,7 @@
 
 **`apps/api/src/domains/filings.ts`** (1000 lines) — assertDematCompliant:60 · assertFemaPricingFloor:99 · handleAllotmentEffectiveForFema:156 · handleTransferEffectiveForFema:182 · runFlaReturn:225 · checkDematRequirements:321 · latestHalfYearEnd:382 · runPas6HalfYearly:391 · pas6:426 · mgt1Register:534 · mgt2Register:556 · mgt1Export:625 · mgt2Export:644 · pas3AllotteeList:666 · pas3Export:746 · sh4Data:799 · RecordFilingInput:871 · recordFiling:883 · listFilings:959
 
-**`apps/api/src/domains/finance.ts`** (589 lines) — issueFeeInstalments:78 · recordPayment:115 · reversePayment:217 · allocatePayment:273 · issueCreditNote:471 · rehydrateReceivables:534 · detectOverduePayments:542
+**`apps/api/src/domains/finance.ts`** (591 lines) — issueFeeInstalments:78 · recordPayment:115 · reversePayment:219 · allocatePayment:275 · issueCreditNote:473 · rehydrateReceivables:536 · detectOverduePayments:544
 
 **`apps/api/src/domains/group.ts`** (1499 lines) — lastCompleteMonthKey:116 · buildEntitySnapshot:246 · publishEntitySnapshot:389 · publishNow:503 · refreshGroup:516 · groupStructure:536 · groupHolders:624 · groupFinancials:759 · groupCompliance:854 · entitySnapshotView:906 · aoc1:963 · aoc1Export:1067 · groupBenCandidates:1360 · benCandidatesExport:1419 · publishDirtySnapshots:1472 · publishNightlySnapshot:1482 · markSnapshotDirty:1489
 
@@ -266,7 +266,7 @@
 
 **`apps/api/src/platform/audit.ts`** (522 lines) — AUDIT_ACTIONS:20 · AuditAction:34 · registerGovernedEntities:43 · governedEntities:49 · isGoverned:55 · diffForAudit:134 · computeAuditHash:177 · hashPayloadOf:185 · createChainedAuditRecord:216 · AuditChainVerification:283 · verifyAuditChain:303 · chainUnhashedAuditRecords:372 · AuditWriteInput:400 · auditWrite:415 · auditRegulatedRead:455 · auditExport:482 · auditBulkOperation:500
 
-**`apps/api/src/platform/balances.ts`** (205 lines) — DRIFT_BALANCE_CODE:21 · DRIFT_TRIAL_BALANCE_CODE:22 · JournalTrialBalance:24 · journalTrialBalance:40 · assertTrialBalance:63 · BalanceDriftReport:77 · checkAccountBalanceSnapshots:105
+**`apps/api/src/platform/balances.ts`** (209 lines) — DRIFT_BALANCE_CODE:21 · DRIFT_TRIAL_BALANCE_CODE:22 · JournalTrialBalance:24 · journalTrialBalance:40 · assertTrialBalance:67 · BalanceDriftReport:81 · checkAccountBalanceSnapshots:109
 
 **`apps/api/src/platform/build.ts`** (120 lines) — BuildStamp:27 · BUILD:96 · STARTED_AT:99 · buildsBehind:109 · buildLabel:116
 
@@ -292,7 +292,7 @@
 
 **`apps/api/src/platform/hooks.ts`** (60 lines) — HookName:29 · HookFn:39 · registerHook:44 · runHooks:53 · hookCount:57
 
-**`apps/api/src/platform/ledger.ts`** (373 lines) — SourceType:10 · JournalLineInput:23 · PostInput:38 · reversalLinkFor:101 · post:288 · reverse:308 · balanceOf:353
+**`apps/api/src/platform/ledger.ts`** (377 lines) — SourceType:10 · JournalLineInput:23 · PostInput:38 · POSTABLE_PERIOD_STATUSES:55 · reversalLinkFor:105 · post:292 · reverse:312 · balanceOf:357
 
 **`apps/api/src/platform/lifecycle.ts`** (193 lines) — TransitionInput:27 · TransitionResult:60 · transition:76 · transitionInTx:101 · availableTransitions:179 · assertNotTerminal:184
 
