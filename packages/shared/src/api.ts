@@ -135,7 +135,11 @@ export interface TenantConfig {
   inferenceRegion?: InferenceRegion | null;
   /** Explicit overrides for the tenant's feature gates, each keyed by a capability. */
   featureGates?: Partial<Record<TenantFeature, boolean>>;
-  /** Product onboarding status and last step, kept in the existing `tenant.config` JSON. */
+  /**
+   * Written by the write-on-read that every GET ran until PR10. Nothing writes it now: the onboarding
+   * run table is authoritative, and migration 20261013140000_onboarding_run backfilled from this key.
+   * Kept so that migration can read it and old rows still parse.
+   */
   onboarding?: TenantOnboardingStateRecord;
 }
 
@@ -183,22 +187,62 @@ export interface TenantOnboardingStateRecord {
   blockedReason?: string;
 }
 
+/**
+ * The legal moves of the onboarding run (SPINE-CONTRACT 1.8; OPUS decision 7).
+ *
+ * `blocked` is a real state, not a flag: a blocked run is not doing setup, and
+ * the checklist must say so. A block is legal from every state that is doing
+ * setup. It is not legal from `blocked` itself, because a second block would
+ * overwrite the state the run came from.
+ *
+ * `active` keeps its ACTIVATE self-loop as the way to record a re-confirmation.
+ * It is legal, and it is still a row in the history, so a repeated call is seen.
+ *
+ * RESUME has no entry here. It returns to the state the run was blocked from,
+ * which is history, not table: see resolveTenantOnboardingTransition. Returning
+ * every resume to company_profile would throw away the setup a tenant had done.
+ */
+export const TENANT_ONBOARDING_TRANSITIONS: Record<
+  TenantOnboardingState,
+  Partial<Record<TenantOnboardingEvent, TenantOnboardingState>>
+> = {
+  draft: { START: 'company_profile', BLOCK: 'blocked' },
+  company_profile: { SETUP_COMPANY: 'statutory_configured', BLOCK: 'blocked' },
+  statutory_configured: { CONFIGURE_STATUTORY: 'openings_imported', BLOCK: 'blocked' },
+  openings_imported: { IMPORT_OPENINGS: 'verified', BLOCK: 'blocked' },
+  verified: { VERIFY: 'active', BLOCK: 'blocked' },
+  active: { ACTIVATE: 'active', BLOCK: 'blocked' },
+  blocked: {},
+};
+
+/**
+ * The state a command moves a run to, or undefined when the move is not legal.
+ * `blockedFrom` is the state the run was blocked from, read from its history by
+ * the caller; only a resume uses it.
+ */
+export function resolveTenantOnboardingTransition(
+  state: TenantOnboardingState,
+  event: TenantOnboardingEvent,
+  blockedFrom?: TenantOnboardingState,
+): TenantOnboardingState | undefined {
+  if (state === 'blocked') {
+    if (event !== 'RESUME') return undefined;
+    return blockedFrom !== undefined && blockedFrom !== 'blocked' ? blockedFrom : undefined;
+  }
+  return TENANT_ONBOARDING_TRANSITIONS[state][event];
+}
+
+/**
+ * Kept for the callers that only ever asked about the forward path. An illegal
+ * move returns the state unchanged, as it always did; a resume from blocked with
+ * no origin also returns blocked, because there is nowhere to go back to.
+ */
 export function nextTenantOnboardingState(
   state: TenantOnboardingState | undefined,
   event: TenantOnboardingEvent,
 ): TenantOnboardingState {
-  const transitions: Record<TenantOnboardingState, Partial<Record<TenantOnboardingEvent, TenantOnboardingState>>> = {
-    draft: { START: 'company_profile', BLOCK: 'blocked' },
-    company_profile: { SETUP_COMPANY: 'statutory_configured', BLOCK: 'blocked' },
-    statutory_configured: { CONFIGURE_STATUTORY: 'openings_imported', BLOCK: 'blocked' },
-    openings_imported: { IMPORT_OPENINGS: 'verified', BLOCK: 'blocked' },
-    verified: { VERIFY: 'active', BLOCK: 'blocked' },
-    active: { ACTIVATE: 'active', BLOCK: 'blocked' },
-    blocked: { RESUME: 'company_profile' },
-  };
-
   const current = state ?? 'draft';
-  return transitions[current]?.[event] ?? current;
+  return resolveTenantOnboardingTransition(current, event) ?? current;
 }
 
 export function tenantOnboardingStepFor(state: TenantOnboardingState): string {

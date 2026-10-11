@@ -213,6 +213,15 @@ export const EVENTS = {
   TENANT_SPIN_OUT_PREVIEWED: 'kz.sys.spin_out.previewed',
   TENANT_SPIN_OUT_COMMITTED: 'kz.sys.spin_out.committed',
   TENANT_SPIN_OUT_REVERTED: 'kz.sys.spin_out.reverted',
+  // The onboarding run (PR10). One name per state reached, in the past tense the grammar
+  // requires. `activated` is the ACTIVATE self-loop's name too: a re-confirmation is a fact.
+  ONBOARDING_COMPANY_PROFILE_RECORDED: 'kz.sys.onboarding.company_profile_recorded',
+  ONBOARDING_STATUTORY_CONFIGURED: 'kz.sys.onboarding.statutory_configured',
+  ONBOARDING_OPENINGS_IMPORTED: 'kz.sys.onboarding.openings_imported',
+  ONBOARDING_VERIFIED: 'kz.sys.onboarding.verified',
+  ONBOARDING_ACTIVATED: 'kz.sys.onboarding.activated',
+  ONBOARDING_BLOCKED: 'kz.sys.onboarding.blocked',
+  ONBOARDING_RESUMED: 'kz.sys.onboarding.resumed',
 
   // --- CRM: organisation specialisations ------------------------------------
   CRM_ORGANIZATION_CREATED: 'kz.crm.organization.created',

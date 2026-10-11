@@ -63,7 +63,9 @@ function uniq(): string {
 }
 
 /** A tenant of its own, with a role that holds company_profile view and edit, and one human in it. */
-async function fixtureTenant(config: Record<string, unknown> = {}): Promise<{ tenantId: string; principal: TestPrincipal }> {
+async function fixtureTenant(
+  config: Record<string, unknown> = {},
+): Promise<{ tenantId: string; principal: TestPrincipal }> {
   const slug = `onb-${uniq()}`;
   const tenant = await unscopedPrisma.tenant.create({
     data: { name: `Onboarding ${slug}`, slug, config: config as never },
@@ -343,7 +345,9 @@ describe('a read writes nothing', () => {
 describe('the backfill', () => {
   it('maps every tenant: each of the seven JSON statuses to itself, anything else and no status to draft', async () => {
     const cases: Array<[string, Record<string, unknown>, TenantOnboardingState]> = [
-      ...TENANT_ONBOARDING_STATES.map((s) => [s, { onboarding: { status: s } }, s] as [string, Record<string, unknown>, TenantOnboardingState]),
+      ...TENANT_ONBOARDING_STATES.map(
+        (s) => [s, { onboarding: { status: s } }, s] as [string, Record<string, unknown>, TenantOnboardingState],
+      ),
       ['no onboarding key', {}, 'draft'],
       ['a status that is not a state', { onboarding: { status: 'half_done' } }, 'draft'],
     ];
@@ -442,8 +446,12 @@ describe('tenant isolation', () => {
     try {
       const counts = await app.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.tenant_id', ${intruder.tenantId}, true)`;
-        const runs = await tx.$queryRaw<{ n: bigint }[]>`SELECT count(*)::bigint AS n FROM "tenant_onboarding_runs" WHERE "id" = ${run.id}`;
-        const moves = await tx.$queryRaw<{ n: bigint }[]>`SELECT count(*)::bigint AS n FROM "onboarding_transitions" WHERE "runId" = ${run.id}`;
+        const runs = await tx.$queryRaw<
+          { n: bigint }[]
+        >`SELECT count(*)::bigint AS n FROM "tenant_onboarding_runs" WHERE "id" = ${run.id}`;
+        const moves = await tx.$queryRaw<
+          { n: bigint }[]
+        >`SELECT count(*)::bigint AS n FROM "onboarding_transitions" WHERE "runId" = ${run.id}`;
         return [Number(runs[0]!.n), Number(moves[0]!.n)];
       });
       expect(counts).toEqual([0, 0]);
@@ -493,12 +501,17 @@ describe('tenant policy reads onboarding from the run', () => {
 
     const doneRun = await as(done.principal, () => tenantOnboardingRun());
     const freshRun = await as(fresh.principal, () => tenantOnboardingRun());
-    expect(resolveTenantRuntimePolicy({ onboarding: { status: 'active', step: 'Activated' } }, doneRun.state).onboardingComplete).toBe(true);
+    expect(
+      resolveTenantRuntimePolicy({ onboarding: { status: 'active', step: 'Activated' } }, doneRun.state)
+        .onboardingComplete,
+    ).toBe(true);
     expect(resolveTenantRuntimePolicy({}, freshRun.state).onboardingComplete).toBe(false);
   });
 
   it('the JSON status alone no longer makes a tenant complete: the run decides', () => {
-    expect(resolveTenantRuntimePolicy({ onboarding: { status: 'active', step: 'Activated' } }, 'draft').onboardingComplete).toBe(false);
+    expect(
+      resolveTenantRuntimePolicy({ onboarding: { status: 'active', step: 'Activated' } }, 'draft').onboardingComplete,
+    ).toBe(false);
     expect(resolveTenantRuntimePolicy({ onboardingComplete: true }, 'draft').onboardingComplete).toBe(true);
   });
 });
