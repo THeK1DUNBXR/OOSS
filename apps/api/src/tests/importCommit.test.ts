@@ -241,14 +241,16 @@ describe('the commit runs in chunks of 500, one transaction each', () => {
     expect(result.errors).toEqual([]);
     expect(await countFor(tag)).toBe(1001);
 
-    // Every row a chunk transaction commits is stamped with that transaction's
-    // id (xmin). Distinct xmin values among the committed rows are therefore the
-    // chunk transactions, counted in Postgres rather than by wrapping the client.
+    // Each Transaction row is written once, inside the chunk that wrote it, so
+    // its xmin is that chunk's transaction id. Counting the distinct ids is
+    // counting the chunk transactions, in Postgres rather than by wrapping the
+    // client. The import rows cannot be used: purgeStagedRaw rewrites every one
+    // of them after the commit, which gives them a single xmin.
     // 500 + 500 + 1 is three chunks; one transaction per row would be 1,001.
     const perChunk = await unscopedPrisma.$queryRaw<Array<{ xid: string; n: bigint }>>`
-      SELECT "xmin"::text AS xid, COUNT(*) AS n FROM "import_rows"
-      WHERE "batchId" = ${staged.batchId} AND "status" = 'committed'
-      GROUP BY "xmin" ORDER BY MIN("rowNumber")`;
+      SELECT "xmin"::text AS xid, COUNT(*) AS n FROM "transactions"
+      WHERE "tenantId" = ${TENANT} AND "note" LIKE ${`${tag}%`}
+      GROUP BY "xmin" ORDER BY COUNT(*) DESC`;
     expect(perChunk.map((c) => Number(c.n))).toEqual([500, 500, 1]);
   }, 240_000);
 
