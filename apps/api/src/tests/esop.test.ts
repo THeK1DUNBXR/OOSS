@@ -813,3 +813,40 @@ describe('EQT-ESP-011 — overlapping or repeated ESOP jobs never vest or lapse 
     expect(await auditCount(g.id)).toBe(auditBefore + 1);
   });
 });
+
+describe('EQT-ESP-012 — a redelivered employment exit applies once', () => {
+  it('handling the same exit event twice changes the grant once and writes one audit row', async () => {
+    const p = await newPlan('012');
+    const emp = await makeEmployee('esp012');
+    const g = await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(25),
+        count: 36,
+        vestingOverride: { cliffMonths: 12, totalMonths: 36, frequency: 'annual' },
+        resolutionRef: 'SR-TEST',
+      }),
+    );
+    await asUser('finance@kaizen.co.in', () => approveGrant(g.id));
+    await asUser('finance@kaizen.co.in', () => runVesting());
+    const beforeExit = await asUser('finance@kaizen.co.in', () => grant(g.id));
+    expect(beforeExit.vested).toBe(24);
+
+    const auditBefore = await unscopedPrisma.auditRecord.count({
+      where: { tenantId: HOLDING, subjectType: 'option_grant', subjectId: g.id },
+    });
+    const exitDate = new Date();
+    await asUser('hr@kaizen.co.in', () => handleEmploymentExit(emp.employment.id, exitDate));
+    await asUser('hr@kaizen.co.in', () => handleEmploymentExit(emp.employment.id, exitDate));
+
+    const after = await asUser('finance@kaizen.co.in', () => grant(g.id));
+    expect(after.lapsed).toBe(12);
+    expect(after.vested).toBe(24);
+    expect(after.status).toBe('partly_vested');
+    const auditAfter = await unscopedPrisma.auditRecord.count({
+      where: { tenantId: HOLDING, subjectType: 'option_grant', subjectId: g.id },
+    });
+    expect(auditAfter).toBe(auditBefore + 1);
+  });
+});
