@@ -46,7 +46,7 @@ describe('register writes commit with their audit row and event, or not at all',
     await refuseAuditInserts();
     await expect(
       asUser('chairman@kaizen.co.in', () =>
-        createShareClass({ name, kind: 'equity', instrument: 'equity_shares', faceValue: 10 }),
+        createShareClass({ name, kind: 'equity', instrument: 'equity', faceValue: 10 }),
       ),
     ).rejects.toThrow(INJECTED);
     await restoreAuditInserts();
@@ -65,7 +65,7 @@ describe('register writes commit with their audit row and event, or not at all',
     });
 
     await asUser('chairman@kaizen.co.in', () =>
-      createShareClass({ name, kind: 'equity', instrument: 'equity_shares', faceValue: 10 }),
+      createShareClass({ name, kind: 'equity', instrument: 'equity', faceValue: 10 }),
     );
 
     expect(await unscopedPrisma.shareClass.count({ where: { tenantId: tid, name } })).toBe(1);
