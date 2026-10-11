@@ -54,8 +54,8 @@ registerGovernedEntities('it', ['it_ticket', 'it_ticket_comment', 'it_knowledge_
 
 /** The role whose active affiliation runs the desk — the exception owner
  * for a ticket nobody is assigned to. Data, never a role-slug branch in the
- * logic that consumes it (`runServicedeskJob` reads the return value; it
- * does not compare `roleSlug === 'hr_ops_manager'` anywhere). */
+ * logic that consumes it (`runServicedeskJob` reads the return value and
+ * never branches on the slug). */
 const DESK_OWNER_ROLE_SLUG = 'hr_ops_manager';
 
 export async function resolveDeskOwnerPartyId(): Promise<string | null> {
