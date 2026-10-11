@@ -27,7 +27,7 @@ import {
   type IccMemberFact,
 } from '@kaizen/shared';
 import { financialYearOf, istYearMonth } from '@kaizen/shared';
-import { prisma, num, unscopedPrisma, type DbTx } from '../../platform/db.js';
+import { prisma, num, unscopedPrisma, Prisma, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
@@ -179,55 +179,80 @@ async function recomputeLeaveBalance(tx: DbTx, leaveBalanceId: string) {
  */
 export async function runLeaveYearClose(): Promise<JobResult> {
   const auth = currentAuth();
+  // Financial year in IST: the close runs at 00:00 on 1 April IST, which is
+  // still 31 March in UTC, so a UTC year would close the wrong year.
   const fy = financialYearOf(new Date());
   const types = await prisma.leaveType.findMany({
     where: { tenantId: auth.tenantId, carryForwardCapDays: { not: null } },
   });
 
   let processed = 0;
+  let skippedIdempotent = 0;
+  const errors: string[] = [];
   for (const type of types) {
-    const already = await prisma.leaveYearClose.findUnique({
-      where: { tenantId_leaveTypeId_fy: { tenantId: auth.tenantId, leaveTypeId: type.id, fy } },
-    });
-    if (already) continue;
-
     const cap = num(type.carryForwardCapDays) ?? 0;
-    const balances = await prisma.leaveBalance.findMany({ where: { tenantId: auth.tenantId, leaveTypeId: type.id } });
+    let closedBalances: { id: string; balanceDays: unknown }[];
+    try {
+      // The claim is the first write in the transaction. Two overlapping runs
+      // race on its unique key: exactly one inserts it, and the other fails
+      // here having written nothing, because the rollback takes its claim
+      // attempt with it. A run that crashes mid-type rolls back the claim too,
+      // so the next run closes the type rather than finding a half-closed year.
+      closedBalances = await prisma.$transaction(
+        async (tx) => {
+          await tx.leaveYearClose.create({
+            data: { tenantId: auth.tenantId, leaveTypeId: type.id, fy, balancesClosed: 0 },
+          });
+          const balances = await tx.leaveBalance.findMany({
+            where: { tenantId: auth.tenantId, leaveTypeId: type.id },
+          });
+          for (const balance of balances) {
+            const current = num(balance.balanceDays) ?? 0;
+            const { lapsed } = carryForwardSplit(current, cap);
 
-    let closed = 0;
-    for (const balance of balances) {
-      const current = num(balance.balanceDays) ?? 0;
-      const { lapsed } = carryForwardSplit(current, cap);
-
-      await prisma.leaveTransaction.create({
-        data: {
-          tenantId: auth.tenantId,
-          leaveBalanceId: balance.id,
-          txnType: lapsed > 0 ? 'lapse' : 'carry_forward',
-          amountDays: lapsed > 0 ? -lapsed : 0,
-          note:
-            lapsed > 0
-              ? `FY close ${fy}: ${current} days trimmed to the ${cap}-day carry-forward cap for ${type.name}.`
-              : `FY close ${fy}: ${current} days carried forward in full for ${type.name}.`,
+            await tx.leaveTransaction.create({
+              data: {
+                tenantId: auth.tenantId,
+                leaveBalanceId: balance.id,
+                txnType: lapsed > 0 ? 'lapse' : 'carry_forward',
+                amountDays: lapsed > 0 ? -lapsed : 0,
+                note:
+                  lapsed > 0
+                    ? `FY close ${fy}: ${current} days trimmed to the ${cap}-day carry-forward cap for ${type.name}.`
+                    : `FY close ${fy}: ${current} days carried forward in full for ${type.name}.`,
+              },
+            });
+            await recomputeLeaveBalance(tx, balance.id);
+          }
+          await tx.leaveYearClose.update({
+            where: { tenantId_leaveTypeId_fy: { tenantId: auth.tenantId, leaveTypeId: type.id, fy } },
+            data: { balancesClosed: balances.length },
+          });
+          return balances;
         },
-      });
-      await recomputeLeaveBalance(prisma, balance.id);
-      closed += 1;
+        // Interactive transactions default to 5 seconds, which a tenant with a
+        // large balance table would exceed partway through a type.
+        { timeout: 60_000 },
+      );
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        skippedIdempotent += 1; // another run holds this type's claim for the FY
+        continue;
+      }
+      errors.push(`${type.code}: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
     }
 
-    await prisma.leaveYearClose.create({
-      data: { tenantId: auth.tenantId, leaveTypeId: type.id, fy, balancesClosed: closed },
-    });
     await emit({
       name: 'kz.hr.leave_year_close.closed',
       subject: { entityType: 'leave_year_close', entityId: type.id, recordCode: `${type.code}-${fy}` },
-      newState: { leaveTypeId: type.id, fy, balancesClosed: closed },
+      newState: { leaveTypeId: type.id, fy, balancesClosed: closedBalances.length },
       impact: { domains: ['hr'] },
     });
-    processed += closed;
+    processed += closedBalances.length;
   }
 
-  return { processed, notified: 0, skippedIdempotent: types.length - processed ? 0 : 0, errors: [] };
+  return { processed, notified: 0, skippedIdempotent, errors };
 }
 
 /** POST /compliance/labour/leave/:employmentId/encash. */
