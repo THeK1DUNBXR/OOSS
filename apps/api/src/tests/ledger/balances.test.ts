@@ -16,7 +16,7 @@ import { unscopedPrisma } from '../../platform/db.js';
 import { asSystem } from '../../platform/context.js';
 import { balanceOf, post, reverse } from '../../platform/ledger.js';
 import { assertTrialBalance, journalTrialBalance } from '../../platform/balances.js';
-import { closePeriod } from '../../domains/compliance/books.js';
+import { closePeriod, reopenPeriod } from '../../domains/compliance/books.js';
 import { ALL_JOBS } from '../../jobs/scheduler.js';
 
 const APP_URL =
@@ -279,5 +279,43 @@ describe('1.4 trial balance and drift are per tenant', () => {
     const result = await runDrift(empty);
     expect(result.errors).toEqual([]);
     expect(result.processed).toBe(0);
+  });
+});
+
+describe('1.4 a period reopened, posted into and closed again is re-snapshotted, not compared with its old row', () => {
+  let l: Ledger;
+  beforeAll(async () => {
+    l = await freshLedger('reclose');
+    await openPeriod(l, '2030-09');
+    await postOn(l, '2030-09-10', 4000n);
+    await unscopedPrisma.accountingPeriod.updateMany({
+      where: { tenantId: l.tid, period: '2030-09' },
+      data: { status: 'closing' },
+    });
+    await asSystem(l.tid, () => closePeriod('2030-09'));
+    await runDrift(l);
+  });
+
+  it('a late posting into the reopened period, then a second close, raises nothing and writes version 2', async () => {
+    await asSystem(l.tid, () => reopenPeriod('2030-09', 'Late invoice'));
+    await postOn(l, '2030-09-25', 600n);
+    await unscopedPrisma.accountingPeriod.updateMany({
+      where: { tenantId: l.tid, period: '2030-09' },
+      data: { status: 'closing' },
+    });
+    await asSystem(l.tid, () => closePeriod('2030-09'));
+
+    const report = await runDrift(l);
+    expect(report.errors).toEqual([]);
+    expect(await exceptionsFor(l, DRIFT_CODE)).toHaveLength(0);
+
+    const versions = await unscopedPrisma.accountBalanceSnapshot.findMany({
+      where: { tenantId: l.tid, accountId: l.bank },
+      orderBy: { version: 'asc' },
+    });
+    expect(versions.map((v) => [v.version, v.balanceMinor])).toEqual([
+      [1, 4000n],
+      [2, 4600n],
+    ]);
   });
 });
