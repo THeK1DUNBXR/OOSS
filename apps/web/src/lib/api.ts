@@ -4,7 +4,7 @@
  * given and shows withheld reason codes where the server named them.
  */
 
-import type { EntitySelectionResponse, SessionUser } from '@kaizen/shared';
+import { formatMinor, type EntitySelectionResponse, type SessionUser } from '@kaizen/shared';
 
 /**
  * The access token lives in memory only. localStorage would hand it to any
@@ -361,6 +361,20 @@ export function money(value: number | null | undefined, currency = 'INR'): strin
 export function moneyExact(value: number | null | undefined, currency = 'INR'): string {
   if (value === null || value === undefined) return '—';
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value);
+}
+
+/**
+ * A paise amount from the wire (a decimal string), shown in full with two places.
+ * It stays bigint to the end: the abbreviated forms above need a float, and a
+ * float is how a paise amount loses its last digit on the way to the screen.
+ */
+export function moneyMinor(minor: string | null | undefined, currency = 'INR'): string {
+  if (minor === null || minor === undefined) return '—';
+  const paise = BigInt(minor);
+  const [whole, fraction] = formatMinor(paise < 0n ? -paise : paise).split('.');
+  const grouped = new Intl.NumberFormat('en-IN').format(BigInt(whole ?? '0'));
+  const symbol = currency === 'INR' ? '₹' : currency === 'USD' ? '$' : `${currency} `;
+  return `${paise < 0n ? '-' : ''}${symbol}${grouped}.${fraction ?? '00'}`;
 }
 
 export function date(value: string | null | undefined): string {

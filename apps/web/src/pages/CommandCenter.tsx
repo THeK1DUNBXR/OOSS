@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CommandCenterResponse, DecisionView, ExceptionView, HealthScoreView } from '@kaizen/shared';
-import { api, money, relative, titleCase } from '../lib/api.js';
+import { api, money, moneyMinor, relative, titleCase } from '../lib/api.js';
 import { NOT_MEASURED, domainAsks, domainName, words } from '../lib/words.js';
 import {
   BandChip,
@@ -455,8 +455,8 @@ function DecisionModal({ decision, onClose }: { decision: DecisionView | null; o
           <p className="text-sm font-medium text-ink-50">{decision.question}</p>
           <p className="mt-1 text-2xs text-ink-500">
             {decision.subjectLabel} · {words(decision.authorityBasis)}
-            {decision.requiredAuthorityValue &&
-              ` · ${money(decision.requiredAuthorityValue, decision.currency ?? 'INR')}`}
+            {decision.requiredAuthorityMinor !== null &&
+              ` · ${moneyMinor(decision.requiredAuthorityMinor, decision.currency ?? 'INR')}`}
           </p>
         </div>
 

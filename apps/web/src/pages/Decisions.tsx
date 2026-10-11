@@ -9,7 +9,7 @@ import { useState } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 import type { DecisionView } from '@kaizen/shared';
-import { api, date, money, relative, titleCase } from '../lib/api.js';
+import { api, date, moneyMinor, relative, titleCase } from '../lib/api.js';
 import {
   Card,
   ContributionBar,
@@ -100,9 +100,9 @@ export function Decisions() {
                         tone={d.state === 'AwaitingAuthority' ? 'accent' : d.state === 'Analysing' ? 'warn' : 'neutral'}
                       />
                       <span className="chip border-ink-700 text-ink-400">{titleCase(d.authorityBasis)}</span>
-                      {d.requiredAuthorityValue !== null && (
+                      {d.requiredAuthorityMinor !== null && (
                         <span className="chip border-ink-700 text-ink-400">
-                          {money(d.requiredAuthorityValue, d.currency ?? 'INR')}
+                          {moneyMinor(d.requiredAuthorityMinor, d.currency ?? 'INR')}
                         </span>
                       )}
                     </div>

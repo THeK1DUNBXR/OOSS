@@ -91,7 +91,11 @@ async function targetIn(tid: string, linkType: (typeof TARGET_TYPES)[number]): P
   const s = suffix();
   switch (linkType) {
     case 'task':
-      return (await unscopedPrisma.task.create({ data: { tenantId: tid, recordCode: `TSK-LINK-${s}`, title: `Link task ${s}` } })).id;
+      return (
+        await unscopedPrisma.task.create({
+          data: { tenantId: tid, recordCode: `TSK-LINK-${s}`, title: `Link task ${s}` },
+        })
+      ).id;
     case 'commitment': {
       const owner = await personIn(tid);
       return (
@@ -182,7 +186,9 @@ async function linksOf(decisionId: string) {
 }
 
 async function eventsOf(decisionId: string) {
-  return unscopedPrisma.eventRecord.findMany({ where: { subjectEntityId: decisionId, eventName: EVENTS.DECISION_LINKED } });
+  return unscopedPrisma.eventRecord.findMany({
+    where: { subjectEntityId: decisionId, eventName: EVENTS.DECISION_LINKED },
+  });
 }
 
 beforeAll(async () => {
@@ -431,7 +437,9 @@ describe('Decision money migration (20261013150000_decision_links_money)', () =>
           WHERE table_name = 'decisions' AND column_name = 'requiredAuthorityMinor'`;
         expect(column?.data_type).toBe('bigint');
 
-        const rows = await after.$queryRaw<{ id: string; minor: string | null }[]>`SELECT "id", "requiredAuthorityMinor"::text AS minor
+        const rows = await after.$queryRaw<
+          { id: string; minor: string | null }[]
+        >`SELECT "id", "requiredAuthorityMinor"::text AS minor
           FROM "decisions" WHERE "tenantId" = 'migration-fixture' ORDER BY "id"`;
         expect(Object.fromEntries(rows.map((r) => [r.id, r.minor]))).toEqual({
           'mig-a': '1234567',
@@ -441,7 +449,9 @@ describe('Decision money migration (20261013150000_decision_links_money)', () =>
           'mig-e': '999999999999999999',
         });
 
-        const [old] = await after.$queryRaw<{ present: boolean }[]>`SELECT EXISTS (SELECT 1 FROM information_schema.columns
+        const [old] = await after.$queryRaw<
+          { present: boolean }[]
+        >`SELECT EXISTS (SELECT 1 FROM information_schema.columns
           WHERE table_name = 'decisions' AND column_name = 'requiredAuthorityValue') AS present`;
         expect(old?.present).toBe(false);
       } finally {
