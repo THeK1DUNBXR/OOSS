@@ -116,6 +116,81 @@ export function computeHash(payload: Record<string, unknown>, prevHash: string |
 }
 
 /**
+ * The stored columns the chain hash covers. `chainBodyOf` rebuilds the object
+ * `emit` hashed from these, so the writer and the verifier share one definition
+ * of what is hashed. Keep the two in step: a field added to the body and not
+ * here makes every record fail verification.
+ */
+export interface ChainFields {
+  eventId: string;
+  eventName: string;
+  eventVersion: number;
+  tenantId: string;
+  occurredAt: Date;
+  actorType: string;
+  actorPartyId: string | null;
+  actorAccessRole: string | null;
+  actorAgentId: string | null;
+  onBehalfOfPartyId: string | null;
+  subjectEntityType: string;
+  subjectEntityId: string;
+  subjectRecordCode: string | null;
+  related: unknown;
+  previousState: unknown;
+  newState: unknown;
+  reason: unknown;
+  correlationId: string;
+  causationId: string | null;
+}
+
+export function chainBodyOf(row: ChainFields): Record<string, unknown> {
+  return {
+    eventId: row.eventId,
+    eventName: row.eventName,
+    eventVersion: row.eventVersion,
+    tenantId: row.tenantId,
+    occurredAt: row.occurredAt.toISOString(),
+    actorType: row.actorType,
+    actorPartyId: row.actorPartyId,
+    actorAccessRole: row.actorAccessRole,
+    actorAgentId: row.actorAgentId,
+    onBehalfOfPartyId: row.onBehalfOfPartyId,
+    subject: { entityType: row.subjectEntityType, entityId: row.subjectEntityId, recordCode: row.subjectRecordCode },
+    related: row.related ?? [],
+    previousState: row.previousState ?? null,
+    newState: row.newState ?? null,
+    reason: row.reason ?? null,
+    correlationId: row.correlationId,
+    causationId: row.causationId,
+  };
+}
+
+const CHAIN_FIELDS_SELECT = {
+  seq: true,
+  eventId: true,
+  eventName: true,
+  eventVersion: true,
+  tenantId: true,
+  occurredAt: true,
+  actorType: true,
+  actorPartyId: true,
+  actorAccessRole: true,
+  actorAgentId: true,
+  onBehalfOfPartyId: true,
+  subjectEntityType: true,
+  subjectEntityId: true,
+  subjectRecordCode: true,
+  related: true,
+  previousState: true,
+  newState: true,
+  reason: true,
+  correlationId: true,
+  causationId: true,
+  prevHash: true,
+  hash: true,
+} as const;
+
+/**
  * Retries left over after the lock. Small on purpose: with the advisory lock
  * below, a conflict should be rare rather than routine.
  */
@@ -412,8 +487,14 @@ export async function emit(input: EmitInput): Promise<EventEnvelope> {
   return envelope;
 }
 
+/**
+ * The legacy row copies the canonical row's fields, but not its identity. `seq`
+ * must be dropped too: copied, it ties the canonical row for the head, so the
+ * next append chains onto the legacy row's hash and collides with it on every
+ * retry (`prevHash` is unique per tenant).
+ */
 function stripId(record: Record<string, unknown>) {
-  const { id, ...rest } = record;
+  const { id: _id, seq: _seq, ...rest } = record;
   return rest;
 }
 
@@ -439,39 +520,61 @@ export async function wouldLoop(envelope: EventEnvelope, candidateEventName: str
   return false;
 }
 
-/**
- * Walks a tenant's chain and reports the first discontinuity. The platform
- * alerts on chain-continuity failure per tenant rather than merely logging it.
- */
-export async function verifyChain(
-  tenantId: string,
-  limit = 5000,
-): Promise<{
+export interface ChainVerification {
   valid: boolean;
+  /** Records examined, in append order, up to and including the first failure. */
   checked: number;
   brokenAt: string | null;
-}> {
+  /**
+   * True only when the walk reached the end of the tenant's chain without a
+   * failure. A `maxRows` cap that stops the walk early leaves it false, so a
+   * caller cannot read "valid" as "the whole trail is intact" from a partial walk.
+   */
+  complete: boolean;
+}
+
+const VERIFY_PAGE_SIZE = 1000;
+
+/**
+ * Walks a tenant's chain, recomputing every record's hash from its stored
+ * fields, and reports the first record that fails. The platform alerts on
+ * chain-continuity failure per tenant rather than merely logging it.
+ *
+ * It used to compare linkage only, so an edited record still read as valid. It
+ * also stopped at 5,000 rows and said `valid: true` about the rest, and it
+ * skipped legacy rows that the append head does chain through.
+ */
+export async function verifyChain(tenantId: string, opts: { maxRows?: number } = {}): Promise<ChainVerification> {
   // Deliberately the unscoped client: the tenant is supplied explicitly and
   // the point of the walk is to be independent of the request context that
   // wrote the chain, so an auditor can verify it out of band.
-  const events = await unscopedPrisma.eventRecord.findMany({
-    where: { tenantId, legacyName: null },
+  let expectedPrev: string | null = null;
+  let cursor: bigint | null = null;
+  let checked = 0;
+
+  for (;;) {
+    const want = opts.maxRows === undefined ? VERIFY_PAGE_SIZE : Math.min(VERIFY_PAGE_SIZE, opts.maxRows - checked);
+    if (want <= 0) return { valid: true, checked, brokenAt: null, complete: false };
+
     // By sequence, for the same reason the append reads the head that way:
     // several records share a millisecond, so `recordedAt asc` walks them in an
-    // arbitrary order and reports a perfectly sound chain as broken. The
-    // verifier had the same ambiguity as the writer, and it is worse here —
-    // a false "tamper detected" on an audit trail is not a small bug.
-    orderBy: { seq: 'asc' },
-    take: limit,
-    select: { eventId: true, prevHash: true, hash: true },
-  });
+    // arbitrary order and reports a perfectly sound chain as broken. A
+    // sequence cursor also lets the walk page without skipping records.
+    const rows = await unscopedPrisma.eventRecord.findMany({
+      where: { tenantId, ...(cursor === null ? {} : { seq: { gt: cursor } }) },
+      orderBy: { seq: 'asc' },
+      take: want,
+      select: CHAIN_FIELDS_SELECT,
+    });
+    if (rows.length === 0) return { valid: true, checked, brokenAt: null, complete: true };
 
-  let expectedPrev: string | null = null;
-  for (const e of events) {
-    if (e.prevHash !== expectedPrev) {
-      return { valid: false, checked: events.length, brokenAt: e.eventId };
+    for (const row of rows) {
+      checked += 1;
+      if (row.prevHash !== expectedPrev || computeHash(chainBodyOf(row), row.prevHash) !== row.hash) {
+        return { valid: false, checked, brokenAt: row.eventId, complete: false };
+      }
+      expectedPrev = row.hash;
     }
-    expectedPrev = e.hash;
+    cursor = rows[rows.length - 1].seq;
   }
-  return { valid: true, checked: events.length, brokenAt: null };
 }

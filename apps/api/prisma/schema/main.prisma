@@ -1010,10 +1010,12 @@ model EventRecord {
   /// permanently broken with no way back. Tamper-evidence was the entire point
   /// of the design and it did not survive two requests arriving together.
   ///
-  /// This is the real fix: the second writer's insert fails loudly and retries
+  /// This is the backstop: the second writer's insert fails loudly and retries
   /// against the new head instead of silently forking. NULL is exempt in
-  /// Postgres, so the genesis event of a tenant is not covered — that is one
-  /// row, written once, and the serializable transaction covers it.
+  /// Postgres, so the genesis is covered by a hand-written partial unique index
+  /// (`event_records_tenantId_genesis_key`, migration 20261011100000) that
+  /// Prisma cannot express. The append itself is serialised by an advisory lock
+  /// in platform/eventBus.ts, not by a serializable transaction.
   @@unique([tenantId, prevHash])
   @@index([tenantId, recordedAt])
   @@index([tenantId, eventName, occurredAt])

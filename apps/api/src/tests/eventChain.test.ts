@@ -108,7 +108,7 @@ describe('0.6 hash chain: appends', () => {
     });
     const { id: _id, seq: _seq, ...rest } = genesis;
     const attempt = unscopedPrisma.eventRecord.create({
-      data: { ...rest, eventId: ulid(), hash: 'forged-genesis' },
+      data: { ...rest, eventId: ulid(), hash: 'forged-genesis' } as never,
     });
     await expect(attempt).rejects.toMatchObject({ code: 'P2002' });
   });
@@ -125,7 +125,7 @@ describe('0.6 hash chain: appends', () => {
     expect(head.prevHash).not.toBeNull();
     const { id: _id, seq: _seq, ...rest } = head;
     const attempt = unscopedPrisma.eventRecord.create({
-      data: { ...rest, eventId: ulid(), hash: 'forked' },
+      data: { ...rest, eventId: ulid(), hash: 'forked' } as never,
     });
     await expect(attempt).rejects.toMatchObject({ code: 'P2002' });
   });
