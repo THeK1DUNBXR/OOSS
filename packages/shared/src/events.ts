@@ -564,6 +564,18 @@ export const EVENTS = {
   PAYROLL_POSTED_TO_BOOKS: 'kz.fin.payroll.posted',
   JOURNAL_POSTED: 'kz.fin.journal.posted',
   JOURNAL_REVERSED: 'kz.fin.journal.reversed',
+  // The books' own records. Past tense, one object per name, as the grammar asks.
+  LEDGER_ACCOUNT_CREATED: 'kz.fin.ledger_account.created',
+  LEDGER_CATEGORY_CREATED: 'kz.fin.ledger_category.created',
+  VENDOR_BILL_OVERDUE_FLAGGED: 'kz.fin.vendor_bill.overdue_flagged',
+  ACCOUNTING_PERIOD_OPENED: 'kz.fin.accounting_period.opened',
+  ACCOUNTING_PERIOD_CLOSE_REQUESTED: 'kz.fin.accounting_period.close_requested',
+  ACCOUNTING_PERIOD_CLOSED: 'kz.fin.accounting_period.closed',
+  ACCOUNTING_PERIOD_REOPENED: 'kz.fin.accounting_period.reopened',
+  BANK_STATEMENT_IMPORTED: 'kz.fin.bank_statement.imported',
+  BANK_STATEMENT_LINE_MATCHED: 'kz.fin.bank_statement_line.matched',
+  TRANSACTION_RECONCILED: 'kz.fin.transaction.reconciled',
+  RETENTION_REVIEW_RECORDED: 'kz.fin.retention_review.recorded',
 
   // GST returns. Preparing one and filing it are separate events because they
   // are separate acts with different consequences: the first is arithmetic, the

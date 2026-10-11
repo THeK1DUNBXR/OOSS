@@ -126,6 +126,13 @@ export async function createAccount(input: {
       openingBalance: num(account.openingBalance),
     },
   });
+  await emit({
+    name: EVENTS.LEDGER_ACCOUNT_CREATED,
+    subject: { entityType: 'ledger_account', entityId: account.id },
+    newState: { name: account.name, accountType: account.accountType, ledgerGroup: account.ledgerGroup },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return account;
 }
 
@@ -164,6 +171,13 @@ export async function createCategory(input: {
     subjectType: 'ledger_category',
     subjectId: category.id,
     after: { name: category.name, kind: category.kind, parentId: category.parentId },
+  });
+  await emit({
+    name: EVENTS.LEDGER_CATEGORY_CREATED,
+    subject: { entityType: 'ledger_category', entityId: category.id },
+    newState: { name: category.name, kind: category.kind },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
   });
   return category;
 }
@@ -626,6 +640,13 @@ export async function payVendorBill(
     after: { paidAmount: paid, status },
   });
 
+  await emit({
+    name: EVENTS.VENDOR_BILL_PAID,
+    subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode: bill.recordCode },
+    newState: { amount: input.amount, paidAmount: paid, status },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return { bill: updated, transaction: txn };
 }
 
@@ -698,6 +719,15 @@ export async function detectOverdueBills(): Promise<number> {
     });
   }
 
+  for (const bill of overdue) {
+    await emit({
+      name: EVENTS.VENDOR_BILL_OVERDUE_FLAGGED,
+      subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode: bill.recordCode },
+      newState: { dueDate: bill.dueDate },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+    });
+  }
   return overdue.length;
 }
 
@@ -775,6 +805,13 @@ export async function priceInvoiceGst(
     after: { interState: input.interState, placeOfSupply: input.placeOfSupply ?? null, grandTotal: gst.grandTotal },
   });
 
+  await emit({
+    name: EVENTS.INVOICE_TAX_PRICED,
+    subject: { entityType: 'invoice', entityId: invoiceId, recordCode: invoice.recordCode },
+    newState: { interState: input.interState, grandTotal: gst.grandTotal },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return { invoice: updated, gst };
 }
 
@@ -874,6 +911,12 @@ export async function setBudgetLine(input: {
     after: { period: input.period, categoryId: input.categoryId, amount: input.amount },
   });
 
+  await emit({
+    name: EVENTS.BUDGET_LINE_SET,
+    subject: { entityType: 'budget_line', entityId: line.id },
+    newState: { period: input.period, categoryId: input.categoryId, amount: input.amount },
+    impact: { domains: ['fin'] },
+  });
   return line;
 }
 
@@ -1047,6 +1090,13 @@ export async function createAsset(input: {
     after: { recordCode, name: input.name, cost: input.cost, purchaseDate: input.purchaseDate, method: asset.method },
   });
 
+  await emit({
+    name: EVENTS.FIXED_ASSET_RECORDED,
+    subject: { entityType: 'fixed_asset', entityId: asset.id, recordCode },
+    newState: { cost: input.cost, purchaseDate: input.purchaseDate, usefulLifeMonths: input.usefulLifeMonths },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return asset;
 }
 
@@ -1133,6 +1183,13 @@ export async function createLoan(input: {
     subjectType: 'loan',
     subjectId: loan.id,
     after: { recordCode, lender: input.lender, principal: input.principal, startDate: input.startDate },
+  });
+  await emit({
+    name: EVENTS.LOAN_RECORDED,
+    subject: { entityType: 'loan', entityId: loan.id, recordCode },
+    newState: { principal: input.principal, annualRate: input.annualRate, tenureMonths: input.tenureMonths },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
   });
   return loan;
 }
@@ -1223,6 +1280,13 @@ export async function generateRecurring(period: string): Promise<{ created: numb
       subjectId: rule.id,
       before: { lastGeneratedPeriod: rule.lastGeneratedPeriod },
       after: { lastGeneratedPeriod: period },
+    });
+    await emit({
+      name: EVENTS.RECURRING_GENERATED,
+      subject: { entityType: 'recurring_rule', entityId: rule.id },
+      newState: { period, amount: num(rule.amount) ?? 0, direction: rule.direction },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
     });
     created += 1;
   }

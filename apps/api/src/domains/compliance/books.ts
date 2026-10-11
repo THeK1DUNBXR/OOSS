@@ -16,6 +16,7 @@
 import { istFinancialYearStart } from '@kaizen/shared';
 import { createHash } from 'node:crypto';
 import {
+  EVENTS,
   round2,
   monthKey,
   financialYearOf,
@@ -38,6 +39,7 @@ import { assertCan, assertScopeAll, canSeeMoney } from '../../platform/permissio
 import { auditWrite, auditExport, verifyAuditChain, chainUnhashedAuditRecords } from '../../platform/audit.js';
 import { registerHook } from '../../platform/hooks.js';
 import { registerGovernedEntities } from '../../platform/audit.js';
+import { emit } from '../../platform/eventBus.js';
 import { raiseException } from '../../platform/exceptions.js';
 
 export { verifyAuditChain };
@@ -90,6 +92,15 @@ async function ensurePeriod(period: string): Promise<{ id: string; status: strin
   const created = await prisma.accountingPeriod.create({
     data: { tenantId: auth.tenantId, period, fy: fyOf(new Date(Date.UTC(year, month - 1, 1))), status: 'open' },
   });
+  // Opening a period is itself a books write: it is the row a close is later
+  // requested against, so its creation is a fact the chain should carry.
+  await emit({
+    name: EVENTS.ACCOUNTING_PERIOD_OPENED,
+    subject: { entityType: 'accounting_period', entityId: created.id },
+    newState: { period, status: 'open' },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   await auditWrite({
     action: 'create',
     subjectType: 'accounting_period',
@@ -125,6 +136,13 @@ export async function requestClosePeriod(period: string) {
     subjectId: row.id,
     before: { status: row.status },
     after: { status: 'closing', requestedById: auth.partyId },
+  });
+  await emit({
+    name: EVENTS.ACCOUNTING_PERIOD_CLOSE_REQUESTED,
+    subject: { entityType: 'accounting_period', entityId: row.id },
+    newState: { period, status: 'closing' },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
   });
   return updated;
 }
@@ -165,6 +183,13 @@ export async function closePeriod(period: string) {
     before: { status: 'closing' },
     after: { status: 'closed', closedById: auth.partyId },
   });
+  await emit({
+    name: EVENTS.ACCOUNTING_PERIOD_CLOSED,
+    subject: { entityType: 'accounting_period', entityId: row.id },
+    newState: { period, status: 'closed' },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return updated;
 }
 
@@ -186,6 +211,13 @@ export async function reopenPeriod(period: string, reason: string) {
     subjectId: row.id,
     before: { status: 'closed' },
     after: { status: 'reopened', reopenReason: reason },
+  });
+  await emit({
+    name: EVENTS.ACCOUNTING_PERIOD_REOPENED,
+    subject: { entityType: 'accounting_period', entityId: row.id },
+    newState: { status: 'reopened' },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
   });
   return updated;
 }
@@ -279,6 +311,12 @@ export async function sweepRetention(): Promise<number> {
         subjectType: 'retention_review',
         subjectId: review.id,
         after: { entityType: spec.entityType, entityId: row.id as string, status: 'flagged' },
+      });
+      await emit({
+        name: EVENTS.RETENTION_REVIEW_RECORDED,
+        subject: { entityType: 'retention_review', entityId: review.id },
+        newState: { entityType: spec.entityType, entityId: row.id as string, status: 'flagged' },
+        impact: { domains: ['fin'] },
       });
       flagged += 1;
     }
@@ -816,6 +854,13 @@ export async function importBankStatement(accountId: string, lines: BankLineInpu
     });
   }
   await auditExport('bank_statement_line', `import:${accountId}`, lines.length);
+  await emit({
+    name: EVENTS.BANK_STATEMENT_IMPORTED,
+    subject: { entityType: 'ledger_account', entityId: accountId },
+    newState: { lines: lines.length },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return { imported: lines.length };
 }
 
@@ -873,6 +918,22 @@ export async function matchBankLines(accountId: string) {
       subjectId: candidate.id,
       before: { reconciledAt: null },
       after: { reconciledAt: now },
+    });
+    await emit({
+      name: EVENTS.BANK_STATEMENT_LINE_MATCHED,
+      subject: { entityType: 'bank_statement_line', entityId: line.id },
+      related: [{ relation: 'matched_to', entityType: 'transaction', entityId: candidate.id }],
+      newState: { matchedAt: now },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+    });
+    await emit({
+      name: EVENTS.TRANSACTION_RECONCILED,
+      subject: { entityType: 'transaction', entityId: candidate.id },
+      related: [{ relation: 'matched_by', entityType: 'bank_statement_line', entityId: line.id }],
+      newState: { reconciledAt: now },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
     });
     matched += 1;
   }
