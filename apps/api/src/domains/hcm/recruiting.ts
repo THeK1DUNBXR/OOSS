@@ -33,10 +33,15 @@ import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, assertScopeAll, canSeeMoney, scopeFor } from '../../platform/permissions.js';
-import { transition } from '../../platform/lifecycle.js';
+import { transition, decide, applyDecided, type TransitionInput } from '../../platform/lifecycle.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { findOrCreatePerson, type PersonInput } from '../identity.js';
-import { joinFromApplication, transitionApplication } from '../hiring.js';
+import {
+  joinFromApplication,
+  prepareApplicationTransition,
+  applyApplicationTransition,
+  type PreparedApplicationTransition,
+} from '../hiring.js';
 
 registerGovernedEntities('hcm_recruiting', [
   'job_posting',
@@ -557,7 +562,10 @@ export async function transitionOffer(
     }
   }
 
-  const result = await transition({
+  // The grant and machine checks for the offer, and the read and grant for the
+  // application below, run before the transaction opens: the scoped client throws
+  // inside a transaction it did not open. Both are written inside it.
+  const offerInput: TransitionInput<OfferState, OfferEvent> = {
     machine: offerMachine,
     eventObject: 'offer',
     verbs: OFFER_EVENT_VERB,
@@ -570,16 +578,18 @@ export async function transitionOffer(
     from: offer.status as OfferState,
     event,
     reasonNote: input.note ?? input.declineReason ?? null,
-  });
+  };
+  const decided = await decide(offerInput);
 
   // Drives the matching Application event now that feasibility was checked
   // above. RESCIND still tolerates a refusal here (see the comment above) —
   // everything else already passed the pre-check, so this should not throw,
   // but the guard stays as the actual source of truth rather than trusting
   // the pre-check alone against a concurrent change.
+  let applicationMove: PreparedApplicationTransition | null = null;
   if (applicationEventFor[event]) {
     try {
-      await transitionApplication(offer.applicationId, applicationEventFor[event]!, {
+      applicationMove = await prepareApplicationTransition(offer.applicationId, applicationEventFor[event]!, {
         note: `Offer ${offer.recordCode} ${OFFER_EVENT_VERB[event]}`,
         rejectionReason: event === 'DECLINE' ? input.declineReason : undefined,
       });
@@ -588,53 +598,61 @@ export async function transitionOffer(
     }
   }
 
-  // The status write, its audit row and the named event commit together. The
-  // generic transition() and the transitionApplication() call above run outside
-  // this transaction: transition() is not tx-aware, and transitionApplication
-  // is a nested service call that writes through the scoped client.
-  const updated = await governedWrite(async (tx) => {
-    const row = await tx.offerLetter.update({
-      where: { id },
-      data: {
-        status: result.to,
-        ...(event === 'APPROVE' ? { approvedByPartyId: auth.partyId, approvedAt: new Date() } : {}),
-        ...(event === 'SEND' ? { sentAt: new Date() } : {}),
-        ...(event === 'ACCEPT' || event === 'DECLINE' ? { decidedAt: new Date() } : {}),
-        ...(event === 'DECLINE' ? { declineReason: input.declineReason } : {}),
+  // The offer's status, its audit rows, its events and the application's move (and,
+  // for an accepted offer, the appointment letter) commit together. Before, the
+  // offer's transition() and the application's transition each committed on their
+  // own: a refused appointment letter left the offer's audit row and event recorded
+  // for an offer that still read Sent.
+  return governedWrite(async (tx) => {
+    const { value: updated } = await applyDecided(tx, offerInput, decided, {
+      write: async (tx, to) => {
+        const row = await tx.offerLetter.update({
+          where: { id },
+          data: {
+            status: to,
+            ...(event === 'APPROVE' ? { approvedByPartyId: auth.partyId, approvedAt: new Date() } : {}),
+            ...(event === 'SEND' ? { sentAt: new Date() } : {}),
+            ...(event === 'ACCEPT' || event === 'DECLINE' ? { decidedAt: new Date() } : {}),
+            ...(event === 'DECLINE' ? { declineReason: input.declineReason } : {}),
+          },
+        });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'offer_letter',
+          subjectId: id,
+          before: { status: offer.status } as never,
+          after: { status: row.status } as never,
+          tx,
+        });
+        return row;
+      },
+      // The named events the scaffold registered, emitted alongside the generic
+      // lifecycle event the transition writes, so a subscriber keyed to
+      // `EVENTS.OFFER_ACCEPTED` etc. does not have to know the transition grammar.
+      alsoEmit: async (tx, to) => {
+        const named: Partial<Record<OfferEvent, string>> = {
+          APPROVE: EVENTS.OFFER_APPROVED,
+          SEND: EVENTS.OFFER_SENT,
+          ACCEPT: EVENTS.OFFER_ACCEPTED,
+          DECLINE: EVENTS.OFFER_DECLINED,
+        };
+        if (named[event]) {
+          await emit({
+            name: named[event]!,
+            subject: { entityType: 'offer_letter', entityId: id, recordCode: offer.recordCode },
+            related: [{ relation: 'for', entityType: 'application', entityId: offer.applicationId }],
+            newState: { status: to },
+            impact: { domains: ['hr'] },
+            tx,
+          });
+        }
+      },
+      after: async (tx) => {
+        if (applicationMove) await applyApplicationTransition(tx, applicationMove);
       },
     });
-    await auditWrite({
-      action: 'update',
-      subjectType: 'offer_letter',
-      subjectId: id,
-      before: { status: offer.status } as never,
-      after: { status: row.status } as never,
-      tx,
-    });
-
-    // The named events the scaffold registered, emitted alongside the generic
-    // lifecycle event `transition()` already wrote, so a subscriber keyed to
-    // `EVENTS.OFFER_ACCEPTED` etc. does not have to know the transition grammar.
-    const named: Partial<Record<OfferEvent, string>> = {
-      APPROVE: EVENTS.OFFER_APPROVED,
-      SEND: EVENTS.OFFER_SENT,
-      ACCEPT: EVENTS.OFFER_ACCEPTED,
-      DECLINE: EVENTS.OFFER_DECLINED,
-    };
-    if (named[event]) {
-      await emit({
-        name: named[event]!,
-        subject: { entityType: 'offer_letter', entityId: id, recordCode: offer.recordCode },
-        related: [{ relation: 'for', entityType: 'application', entityId: offer.applicationId }],
-        newState: { status: row.status },
-        impact: { domains: ['hr'] },
-        tx,
-      });
-    }
-    return row;
+    return updated;
   });
-
-  return updated;
 }
 
 /** Joins the candidate exactly as `hiring.ts` does, then instantiates this employment's onboarding checklist from the active templates. */

@@ -29,7 +29,7 @@ import {
 } from '@kaizen/shared';
 import { HR_LETTER_KINDS, istDateKey, istYearMonth, type HrLetterKind } from '@kaizen/shared';
 import { governedWrite } from '../../platform/governedWrite.js';
-import { prisma, num } from '../../platform/db.js';
+import { prisma, num, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
@@ -446,10 +446,15 @@ export async function settleTravelRequest(id: string, expenseClaimId: string) {
 // Letter requests
 // ---------------------------------------------------------------------------
 
-async function nextLetterRequestNumber(): Promise<string> {
+/**
+ * Takes the caller's transaction: the number is part of the fulfilment, so a
+ * rolled-back fulfilment must not consume one. The scoped client throws inside a
+ * transaction it did not open.
+ */
+async function nextLetterRequestNumber(tx: DbTx): Promise<string> {
   const auth = currentAuth();
   const year = istYearMonth(new Date()).year;
-  const row = await prisma.recordSequence.upsert({
+  const row = await tx.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId: auth.tenantId, entityType: 'HCM:LREQ', year } },
     create: { tenantId: auth.tenantId, entityType: 'HCM:LREQ', year, nextSequence: 2 },
     update: { nextSequence: { increment: 1 } },
@@ -552,67 +557,81 @@ export async function fulfilLetterRequest(id: string) {
   const employeeName = employment.person.fullName;
   const designation = employment.assignments[0]?.position.job.title ?? null;
   const issuedOn = istDateKey(new Date());
-
-  let updated;
-  if (fulfilsViaHrLetter(kind)) {
-    if (!HR_LETTER_KINDS.includes(kind as HrLetterKind)) {
-      throw ApiError.internal(
-        `"${kind}" was marked as issuable via HrLetter but is not one of compliance labour's kinds.`,
-      );
-    }
-    const letter = await issueLetter({
-      kind: kind as HrLetterKind,
-      employmentRelationshipId: employment.id,
-      employeeName,
-      legalEntity: employment.legalEntity,
-      designation,
-    });
-    updated = await prisma.letterRequest.update({
-      where: { id },
-      data: {
-        status: 'fulfilled',
-        hrLetterId: letter.id,
-        number: letter.number,
-        fulfilledAt: new Date(),
-        fulfilledById: auth.partyId,
-      },
-    });
-  } else {
-    const number = await nextLetterRequestNumber();
-    const body = buildOwnLetterBody(kind as Exclude<LetterRequestKind, 'experience'>, {
-      employeeName,
-      legalEntity: employment.legalEntity,
-      designation,
-      issuedOn,
-      number,
-    });
-    updated = await prisma.letterRequest.update({
-      where: { id },
-      data: {
-        status: 'fulfilled',
-        number,
-        snapshot: { body, issuedOn } as never,
-        fulfilledAt: new Date(),
-        fulfilledById: auth.partyId,
-      },
-    });
+  const fulfilledById = auth.partyId;
+  const viaHrLetter = fulfilsViaHrLetter(kind);
+  if (viaHrLetter && !HR_LETTER_KINDS.includes(kind as HrLetterKind)) {
+    throw ApiError.internal(
+      `"${kind}" was marked as issuable via HrLetter but is not one of compliance labour's kinds.`,
+    );
   }
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'letter_request',
-    subjectId: id,
-    before: { status: from },
-    after: { status: 'fulfilled' },
+  // The fulfilment, the letter it issues, its audit row and its event commit
+  // together. Before, the letter committed in its own transaction and then the
+  // request was marked fulfilled outside any: a refused audit row left a
+  // fulfilled request with no audit trail, and a refused update left a letter
+  // with its request still open, so the next attempt issued a second one.
+  return governedWrite(async (tx) => {
+    let updated;
+    if (viaHrLetter) {
+      const letter = await issueLetter(
+        {
+          kind: kind as HrLetterKind,
+          employmentRelationshipId: employment.id,
+          employeeName,
+          legalEntity: employment.legalEntity,
+          designation,
+        },
+        tx,
+      );
+      updated = await tx.letterRequest.update({
+        where: { id },
+        data: {
+          status: 'fulfilled',
+          hrLetterId: letter.id,
+          number: letter.number,
+          fulfilledAt: new Date(),
+          fulfilledById,
+        },
+      });
+    } else {
+      const number = await nextLetterRequestNumber(tx);
+      const body = buildOwnLetterBody(kind as Exclude<LetterRequestKind, 'experience'>, {
+        employeeName,
+        legalEntity: employment.legalEntity,
+        designation,
+        issuedOn,
+        number,
+      });
+      updated = await tx.letterRequest.update({
+        where: { id },
+        data: {
+          status: 'fulfilled',
+          number,
+          snapshot: { body, issuedOn } as never,
+          fulfilledAt: new Date(),
+          fulfilledById,
+        },
+      });
+    }
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'letter_request',
+      subjectId: id,
+      before: { status: from },
+      after: { status: 'fulfilled' },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.letter_request.issued',
+      subject: { entityType: 'letter_request', entityId: id, recordCode: updated.number },
+      newState: { status: 'fulfilled', kind },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: 'kz.hr.letter_request.issued',
-    subject: { entityType: 'letter_request', entityId: id, recordCode: updated.number },
-    newState: { status: 'fulfilled', kind },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
-  return updated;
 }
 
 export async function rejectLetterRequest(id: string, note: string) {
@@ -624,18 +643,35 @@ export async function rejectLetterRequest(id: string, note: string) {
   if (!canTransitionLetterRequest(from, 'rejected')) {
     throw ApiError.unprocessable(`A letter request in "${from}" cannot be rejected.`);
   }
-  const updated = await prisma.letterRequest.update({
-    where: { id },
-    data: { status: 'rejected', decisionNote: note, fulfilledById: auth.partyId, fulfilledAt: new Date() },
+  const employment = await prisma.employmentRelationship.findFirst({
+    where: { id: request.employmentRelationshipId, tenantId: auth.tenantId },
   });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'letter_request',
-    subjectId: id,
-    before: { status: from },
-    after: { status: 'rejected' },
+  // The decision, its audit row and its event commit together. The rejection had
+  // no event at all before, so nothing downstream heard that a letter was refused;
+  // this adds the same kind of event fulfilment already emits.
+  return governedWrite(async (tx) => {
+    const updated = await tx.letterRequest.update({
+      where: { id },
+      data: { status: 'rejected', decisionNote: note, fulfilledById: auth.partyId, fulfilledAt: new Date() },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'letter_request',
+      subjectId: id,
+      before: { status: from },
+      after: { status: 'rejected' },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.letter_request.rejected',
+      subject: { entityType: 'letter_request', entityId: id, recordCode: updated.number },
+      newState: { status: 'rejected' },
+      owner: { partyId: employment?.personId ?? null },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
-  return updated;
 }
 
 /**

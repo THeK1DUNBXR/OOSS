@@ -1211,6 +1211,13 @@ export async function recordCodeOfConductAck(employmentRelationshipId: string) {
 // Offboarding hook — relieving/experience letters, Form 10C/19 checklist
 // ---------------------------------------------------------------------------
 
+/**
+ * Runs inside `transitionOffboarding`'s transaction (`payload.tx`). The two
+ * letters, the checklist and the relieving-letter link commit with the archive
+ * that triggered them. Before, they ran in their own transactions after the
+ * archive had committed, so a refused letter left the offboarding archived with
+ * no relieving letter and a checklist that never got its statutory forms.
+ */
 export async function handleOffboardingCompleted(payload: {
   offboarding: { id: string; checklist: unknown; employmentRelationshipId: string };
   employmentRelationship: {
@@ -1221,38 +1228,45 @@ export async function handleOffboardingCompleted(payload: {
     separationDate: Date | null;
     separationType: string | null;
   };
+  tx: DbTx;
 }) {
-  const { offboarding, employmentRelationship } = payload;
+  const { offboarding, employmentRelationship, tx } = payload;
   const auth = currentAuth();
 
-  const person = await prisma.person.findFirst({
+  const person = await tx.person.findFirst({
     where: { id: employmentRelationship.personId, tenantId: auth.tenantId },
   });
-  const assignment = await prisma.assignment.findFirst({
+  const assignment = await tx.assignment.findFirst({
     where: { tenantId: auth.tenantId, employmentRelationshipId: employmentRelationship.id },
     include: { position: { include: { job: true } } },
     orderBy: { createdAt: 'desc' },
   });
 
-  const relieving = await issueLetter({
-    kind: 'relieving',
-    employmentRelationshipId: employmentRelationship.id,
-    employeeName: person?.fullName ?? 'Employee',
-    legalEntity: employmentRelationship.legalEntity,
-    designation: assignment?.position.job.title ?? null,
-    lastWorkingDay: employmentRelationship.separationDate,
-    separationType: employmentRelationship.separationType,
-  });
+  const relieving = await issueLetter(
+    {
+      kind: 'relieving',
+      employmentRelationshipId: employmentRelationship.id,
+      employeeName: person?.fullName ?? 'Employee',
+      legalEntity: employmentRelationship.legalEntity,
+      designation: assignment?.position.job.title ?? null,
+      lastWorkingDay: employmentRelationship.separationDate,
+      separationType: employmentRelationship.separationType,
+    },
+    tx,
+  );
 
-  await issueLetter({
-    kind: 'experience',
-    employmentRelationshipId: employmentRelationship.id,
-    employeeName: person?.fullName ?? 'Employee',
-    legalEntity: employmentRelationship.legalEntity,
-    designation: assignment?.position.job.title ?? null,
-    hireEffectiveDate: employmentRelationship.hireEffectiveDate,
-    lastWorkingDay: employmentRelationship.separationDate,
-  });
+  await issueLetter(
+    {
+      kind: 'experience',
+      employmentRelationshipId: employmentRelationship.id,
+      employeeName: person?.fullName ?? 'Employee',
+      legalEntity: employmentRelationship.legalEntity,
+      designation: assignment?.position.job.title ?? null,
+      hireEffectiveDate: employmentRelationship.hireEffectiveDate,
+      lastWorkingDay: employmentRelationship.separationDate,
+    },
+    tx,
+  );
 
   const existingChecklist = Array.isArray(offboarding.checklist) ? (offboarding.checklist as unknown[]) : [];
   const checklist = [
@@ -1261,7 +1275,7 @@ export async function handleOffboardingCompleted(payload: {
     { item: 'Form 19 (PF final settlement)', status: 'pending', addedAt: new Date().toISOString() },
   ];
 
-  await prisma.offboarding.update({
+  await tx.offboarding.update({
     where: { id: offboarding.id },
     data: { checklist: checklist as never, relievingLetterDocumentId: relieving.id },
   });

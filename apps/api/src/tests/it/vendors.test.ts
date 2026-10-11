@@ -228,6 +228,60 @@ describe('vendors and contracts — domain and wiring', () => {
     expect(expired.status).toBe('expired');
   });
 
+  it('IT-VCT-002b: a rung whose record cannot be written leaves no exception, and the next run raises it once', async () => {
+    const vendor = await asUser('operations@kaizen.co.in', () =>
+      createVendor({ name: `Rung Vendor ${stamp()}`, category: 'infra' }),
+    );
+    const contract = await asUser('operations@kaizen.co.in', () =>
+      createVendorContract({ vendorId: vendor.id, title: `Rung Contract ${stamp()}`, value: 50000, noticeDays: 30 }),
+    );
+    const endDate = new Date();
+    endDate.setUTCDate(endDate.getUTCDate() + 35);
+    await unscopedPrisma.itVendorContract.update({ where: { id: contract.id }, data: { status: 'active', endDate } });
+
+    // Fault injection: the rung record for this one contract is refused by the
+    // database. The status flip is not a rung write, so it still commits.
+    await unscopedPrisma.$executeRawUnsafe(
+      `CREATE OR REPLACE FUNCTION w2fu_refuse_rung() RETURNS trigger LANGUAGE plpgsql AS $$
+       BEGIN
+         IF NEW.id = TG_ARGV[0] THEN RAISE EXCEPTION 'injected rung refusal'; END IF;
+         RETURN NEW;
+       END; $$`,
+    );
+    await unscopedPrisma.$executeRawUnsafe(
+      `CREATE TRIGGER w2fu_refuse_rung BEFORE UPDATE ON it_vendor_contracts
+       FOR EACH ROW WHEN (NEW."noticeNotifiedRungs" IS DISTINCT FROM OLD."noticeNotifiedRungs")
+       EXECUTE FUNCTION w2fu_refuse_rung('${contract.id}')`,
+    );
+    try {
+      // The job absorbs a per-row failure into its result; the old code let the
+      // rung write escape the job. Either way nothing may be raised for this row.
+      await asUser('operations@kaizen.co.in', () => runVendorContractNoticeLadder()).catch(() => undefined);
+      const raisedFirst = await unscopedPrisma.exceptionRecord.count({
+        where: { tenantId: tid, code: 'IT_VCT_NOTICE', subjectId: contract.id },
+      });
+      expect(raisedFirst).toBe(0);
+    } finally {
+      await unscopedPrisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS w2fu_refuse_rung ON it_vendor_contracts`);
+      await unscopedPrisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS w2fu_refuse_rung()`);
+    }
+
+    await asUser('operations@kaizen.co.in', () => runVendorContractNoticeLadder());
+    const rerunCount = await unscopedPrisma.exceptionRecord.count({
+      where: { tenantId: tid, code: 'IT_VCT_NOTICE', subjectId: contract.id },
+    });
+    expect(rerunCount).toBe(1);
+    const row = await unscopedPrisma.itVendorContract.findFirstOrThrow({ where: { id: contract.id } });
+    expect(row.noticeNotifiedRungs).toContain(7);
+
+    await asUser('operations@kaizen.co.in', () => runVendorContractNoticeLadder());
+    expect(
+      await unscopedPrisma.exceptionRecord.count({
+        where: { tenantId: tid, code: 'IT_VCT_NOTICE', subjectId: contract.id },
+      }),
+    ).toBe(1);
+  });
+
   it('IT-VCT-003: terminating requires a reason and leaves the approval history intact', async () => {
     const vendor = await asUser('operations@kaizen.co.in', () =>
       createVendor({ name: `Terminable Vendor ${stamp()}`, category: 'infra' }),
