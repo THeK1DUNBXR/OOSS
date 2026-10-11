@@ -70,11 +70,18 @@ function fixtureRow(tenantId: string, i: number, prevHash: string | null, hashVe
  * re-enabled by the rollback path or the commit, never left off.
  */
 async function tamperEventRecordBypassingTrigger(tenantId: string, eventId: string, data: Record<string, unknown>) {
-  await unscopedPrisma.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(`ALTER TABLE "event_records" DISABLE TRIGGER "event_record_immutable"`);
-    await tx.eventRecord.updateMany({ where: { tenantId, eventId }, data: data as never });
-    await tx.$executeRawUnsafe(`ALTER TABLE "event_records" ENABLE TRIGGER "event_record_immutable"`);
-  });
+  try {
+    await unscopedPrisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`ALTER TABLE "event_records" DISABLE TRIGGER "event_record_immutable"`);
+      await tx.eventRecord.updateMany({ where: { tenantId, eventId }, data: data as never });
+      await tx.$executeRawUnsafe(`ALTER TABLE "event_records" ENABLE TRIGGER "event_record_immutable"`);
+    });
+  } finally {
+    // The ALTER is transactional, so a failed update rolls the disable back
+    // with it. This re-enable is the belt for the case the transaction did
+    // not reach its own ENABLE, mirroring tamperAuditRecordBypassingTrigger.
+    await unscopedPrisma.$executeRawUnsafe(`ALTER TABLE "event_records" ENABLE TRIGGER "event_record_immutable"`);
+  }
 }
 
 async function bulkChain(tenantId: string, n: number): Promise<{ eventId: string; hash: string }[]> {

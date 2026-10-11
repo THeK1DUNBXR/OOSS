@@ -108,8 +108,8 @@ async function allotIn(tid: string, shareClassId: string, toHolderId: string, co
 }
 
 async function cleanupSnapshotsFor(sourceTenantId: string) {
-  await unscopedPrisma.entitySnapshot.deleteMany({ where: { sourceTenantId } }).catch(() => {});
-  await unscopedPrisma.entitySnapshotHistory.deleteMany({ where: { sourceTenantId } }).catch(() => {});
+  await unscopedPrisma.entitySnapshot.deleteMany({ where: { sourceTenantId } });
+  await unscopedPrisma.entitySnapshotHistory.deleteMany({ where: { sourceTenantId } });
 }
 
 beforeAll(async () => {
@@ -121,17 +121,13 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Snapshots are removed so the holding's group screen does not carry this
+  // file's fixtures into other tests. The tenants are left in place: a delete
+  // cascades into the immutable event_records, and the swallowed delete that
+  // used to run here never succeeded. Slugs carry Date.now(), so a rerun on
+  // the same database cannot collide with them.
   const tenants = await unscopedPrisma.tenant.findMany({ where: { slug: { in: cleanupTenantSlugs } } });
   for (const t of tenants) await cleanupSnapshotsFor(t.id);
-
-  const bySlug = new Map(tenants.map((t) => [t.slug, t] as const));
-  const ordered = [...cleanupTenantSlugs].reverse(); // children before parents
-  for (const slug of ordered) {
-    const t = bySlug.get(slug);
-    if (!t) continue;
-    await unscopedPrisma.exceptionRecord.deleteMany({ where: { tenantId: t.id } }).catch(() => {});
-    await unscopedPrisma.tenant.delete({ where: { id: t.id } }).catch(() => {});
-  }
 });
 
 describe('EQT-FIL-011 — the AOC-1 statement lists each subsidiary from its snapshot and says not published where a figure is absent', () => {

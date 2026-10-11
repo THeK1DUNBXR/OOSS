@@ -11,7 +11,7 @@
  * code that calls `assertCan`.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { asSystem } from '../platform/context.js';
 import { unscopedPrisma, prisma } from '../platform/db.js';
 import { ALL_JOBS, runJobsForTenant } from '../jobs/scheduler.js';
@@ -53,20 +53,10 @@ beforeAll(async () => {
   PIPELINE_ID = pipeline.id;
 });
 
-afterAll(async () => {
-  // Cascades via onDelete: Cascade on Tenant relations where declared; the
-  // marketing tables use bare tenantId scalars so they are cleared explicitly.
-  await unscopedPrisma.marketingSpend.deleteMany({ where: { tenantId: TENANT_ID } });
-  await unscopedPrisma.marketingTouchpoint.deleteMany({ where: { tenantId: TENANT_ID } });
-  await unscopedPrisma.opportunity.deleteMany({ where: { tenantId: TENANT_ID } });
-  await unscopedPrisma.lead.deleteMany({ where: { tenantId: TENANT_ID } });
-  await unscopedPrisma.marketingCampaign.deleteMany({ where: { tenantId: TENANT_ID } });
-  await unscopedPrisma.pipelineStage.deleteMany({ where: { tenantId: TENANT_ID } });
-  await unscopedPrisma.pipelineDefinition.deleteMany({ where: { tenantId: TENANT_ID } });
-  await unscopedPrisma.agentAction.deleteMany({ where: { tenantId: TENANT_ID } });
-  await unscopedPrisma.agentPrincipal.deleteMany({ where: { tenantId: TENANT_ID } });
-  await unscopedPrisma.tenant.delete({ where: { id: TENANT_ID } });
-});
+// No teardown. The tenant is hard-deleted nowhere in the suite: its cascade
+// reaches event_records, which a trigger keeps immutable (the audit trail), so
+// a delete fails the file. The slug carries Date.now(), so a rerun on the same
+// database creates a fresh tenant and never collides with this run's rows.
 
 function run<T>(fn: () => Promise<T>): Promise<T> {
   return asSystem(TENANT_ID, fn);
@@ -238,16 +228,12 @@ describe('MKT-ANA-004 / MKT-GOV — H_MKT health domain', () => {
     const freshTenant = await unscopedPrisma.tenant.create({
       data: { slug: `mkt-ana-neverlive-${Date.now()}`, name: 'H_MKT never-live test tenant' },
     });
-    try {
-      await asSystem(freshTenant.id, async () => {
-        const result = await computeDomainHealth('H_MKT');
-        expect(result.state).toBe('not_yet_measured');
-        expect(result.score).toBeNull();
-        expect(result.band).toBeNull();
-      });
-    } finally {
-      await unscopedPrisma.tenant.delete({ where: { id: freshTenant.id } });
-    }
+    await asSystem(freshTenant.id, async () => {
+      const result = await computeDomainHealth('H_MKT');
+      expect(result.state).toBe('not_yet_measured');
+      expect(result.score).toBeNull();
+      expect(result.band).toBeNull();
+    });
   });
 
   it('reports a scored band once a campaign has gone live and leads exist, with a drill path on every factor', async () => {

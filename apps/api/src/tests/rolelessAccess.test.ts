@@ -71,13 +71,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   server?.close();
-  // Children before parents: grants reference roles, and the tenant is last.
-  await unscopedPrisma.grant.deleteMany({ where: { tenantId } });
-  await unscopedPrisma.accessRole.deleteMany({ where: { tenantId } });
-  await unscopedPrisma.affiliation.deleteMany({ where: { tenantId } });
-  await unscopedPrisma.user.deleteMany({ where: { tenantId } });
-  await unscopedPrisma.person.deleteMany({ where: { tenantId } });
-  await unscopedPrisma.tenant.deleteMany({ where: { id: tenantId } });
+  // The tenant is not deleted: its cascade reaches the immutable event_records.
+  // The stamp in TENANT_SLUG makes a rerun on the same database a fresh tenant.
 });
 
 describe('a null role grants nothing', () => {
