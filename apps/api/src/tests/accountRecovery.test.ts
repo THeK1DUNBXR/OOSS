@@ -472,6 +472,104 @@ describe('account recovery: tokens minted before the recovery', () => {
   });
 });
 
+describe('account recovery: a recoverer assumes no role they do not hold', () => {
+  it('hr_ops_manager cannot recover a finance_head: 403, nothing changes', async () => {
+    const target = await makeAccount('finhead', 'finance_head');
+    const before = await credentialOf(target.principalId);
+    const res = await recover(itAdmin.token, { userId: target.userId, reason: GOOD_REASON });
+    expect(res.status).toBe(403);
+    expect(await credentialOf(target.principalId)).toBe(before);
+    expect((await login(target.email, target.password)).status).toBe(200);
+  });
+
+  it('chairman can recover a finance_head, because the chairman holds every grant that role confers', async () => {
+    const target = await makeAccount('finheadok', 'finance_head');
+    const res = await recover(founder.token, { userId: target.userId, reason: GOOD_REASON });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('account recovery: a recovered sign-in must change its password first', () => {
+  it('confines the recovered sign-in to change-password until the password is changed', async () => {
+    const target = await makeAccount('confined', 'employee');
+    const res = await recover(founder.token, { userId: target.userId, reason: GOOD_REASON });
+    expect(res.status).toBe(200);
+    const { password: oneTime } = (await res.json()) as { password: string };
+
+    const signed = await login(target.email, oneTime);
+    expect(signed.status).toBe(200);
+    const token = signed.body.token as string;
+
+    const blocked = await me(token);
+    expect(blocked.status).toBe(403);
+    expect(((await blocked.json()) as { error: { code: string } }).error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+    const navigation = await fetch(`${base}/api/auth/navigation`, { headers: { authorization: `Bearer ${token}` } });
+    expect(navigation.status).toBe(403);
+
+    const newPassword = 'Confined-Chosen-4w!pass';
+    const changed = await post('/auth/change-password', { currentPassword: oneTime, newPassword }, token);
+    expect(changed.status).toBe(200);
+    expect((await me(token)).status).toBe(200);
+
+    // The one-time password is spent: it no longer signs in.
+    expect((await login(target.email, oneTime)).status).toBe(401);
+    expect((await login(target.email, newPassword)).status).toBe(200);
+  });
+
+  it('keeps logout open to a confined sign-in, so the employee can always end the session', async () => {
+    const target = await makeAccount('loggedout', 'employee');
+    const res = await recover(founder.token, { userId: target.userId, reason: GOOD_REASON });
+    const { password: oneTime } = (await res.json()) as { password: string };
+    const signed = await login(target.email, oneTime);
+    const token = signed.body.token as string;
+    expect((await post('/auth/logout', {}, token)).status).toBe(200);
+    expect((await me(token)).status).toBe(401);
+  });
+});
+
+describe('account recovery: an MFA-enabled recoverer must confirm with a current code', () => {
+  const signedInWithMfa = async (account: Account, secret: string): Promise<string> => {
+    const first = await login(account.email, account.password);
+    expect(first.body.mfaRequired).toBe(true);
+    const res = await post('/auth/mfa/verify', { challengeToken: first.body.challengeToken, code: totp(secret) });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { token: string }).token;
+  };
+
+  it('without a current code the recovery is 401 and changes nothing', async () => {
+    const chair = await makeAccount('mfachair', 'chairman');
+    const secret = generateTotpSecret();
+    await unscopedPrisma.user.update({
+      where: { id: chair.userId },
+      data: { mfaSecret: secret, mfaEnabledAt: new Date() },
+    });
+    const token = await signedInWithMfa(chair, secret);
+    const target = await makeAccount('stepup', 'employee');
+    const before = await credentialOf(target.principalId);
+
+    const missing = await recover(token, { userId: target.userId, reason: GOOD_REASON });
+    expect(missing.status).toBe(401);
+    // A code ten minutes away is outside the one-step drift window, so it is simply wrong.
+    const stale = totp(secret, new Date(Date.now() + 10 * 60_000));
+    const wrong = await recover(token, { userId: target.userId, reason: GOOD_REASON, totpCode: stale });
+    expect(wrong.status).toBe(401);
+    expect(await credentialOf(target.principalId)).toBe(before);
+  });
+
+  it('with a current code the MFA-enabled chairman recovers the account', async () => {
+    const chair = await makeAccount('mfachair2', 'chairman');
+    const secret = generateTotpSecret();
+    await unscopedPrisma.user.update({
+      where: { id: chair.userId },
+      data: { mfaSecret: secret, mfaEnabledAt: new Date() },
+    });
+    const token = await signedInWithMfa(chair, secret);
+    const target = await makeAccount('stepupok', 'employee');
+    const res = await recover(token, { userId: target.userId, reason: GOOD_REASON, totpCode: totp(secret) });
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('account recovery: no SMS or phone-based recovery', () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
