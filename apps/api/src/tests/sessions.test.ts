@@ -116,26 +116,27 @@ describe('0.2 sessions', () => {
     expect(refreshed.status).toBe(401);
   });
 
-  it('rotates the refresh token, and replaying the old one revokes the whole session', async () => {
+  it('rotates the refresh token, and an older secret presented after a newer one was used revokes the whole session', async () => {
     const first = await signIn();
     const res = await refreshWithCookie(first.refreshToken);
     expect(res.status).toBe(200);
-    const second = (await res.json()) as Issued;
+    const second = {
+      token: ((await res.json()) as { token: string }).token,
+      refreshToken: cookieValueOf(setCookieOf(res)!),
+    };
     expect(second.refreshToken).not.toBe(first.refreshToken);
     expect(second.token).not.toBe(first.token);
     expect((await me(second.token)).status).toBe(200);
 
-    // Whoever replays a rotated token is either the thief or the victim with a
-    // stale copy; both cases mean the family can no longer be trusted.
-    // Past the ten-second grace: this replay is reuse, not a second tab.
-    await unscopedPrisma.$executeRawUnsafe(
-      `UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`,
-      sessionIdOf(first.refreshToken),
-    );
-    const replay = await refreshWithCookie(first.refreshToken);
-    expect(replay.status).toBe(401);
+    // The second secret is used, so the first is now two rotations old. Its
+    // replay is theft or a stale copy; either way the family is not trusted.
+    const used = await refreshWithCookie(second.refreshToken);
+    expect(used.status).toBe(200);
+    const third = cookieValueOf(setCookieOf(used)!);
+
+    expect((await refreshWithCookie(first.refreshToken)).status).toBe(401);
     expect((await me(second.token)).status).toBe(401);
-    expect((await refreshWithCookie(second.refreshToken)).status).toBe(401);
+    expect((await refreshWithCookie(third)).status).toBe(401);
   });
 
   it('throttles login per email in Postgres as well as per address', async () => {
@@ -152,13 +153,10 @@ describe('0.2 sessions', () => {
     const session = await unscopedPrisma.session.findFirstOrThrow({
       where: { jti: (jwt.decode(issued.token) as { jti: string }).jti },
     });
-    await refreshWithCookie(issued.refreshToken);
-    // Past the ten-second grace: this replay is reuse, not a second tab.
-    await unscopedPrisma.$executeRawUnsafe(
-      `UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`,
-      sessionIdOf(issued.refreshToken),
-    );
-    await refreshWithCookie(issued.refreshToken); // replay
+    const rotated = await refreshWithCookie(issued.refreshToken);
+    const newer = cookieValueOf(setCookieOf(rotated)!);
+    await refreshWithCookie(newer); // the newer secret is used
+    await refreshWithCookie(issued.refreshToken); // an older secret: reuse
     const actions = (
       await unscopedPrisma.auditRecord.findMany({
         where: { tenantId: tid, subjectType: 'session', subjectId: session.id },
