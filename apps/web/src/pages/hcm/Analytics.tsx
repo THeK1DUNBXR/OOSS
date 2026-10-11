@@ -362,9 +362,21 @@ function DashboardTab() {
     <div className="flex flex-col gap-5">
       {/* ---- KPI tiles ---- */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <Metric label="Current headcount" value={latestHeadcount} noActionReason="See the trend chart below." />
-        <Metric label="Joiners (12 mo)" value={joinersTotal} noActionReason="See the trend chart below." />
-        <Metric label="Leavers (12 mo)" value={leaversTotal} noActionReason="See the trend chart below." />
+        <Metric
+          label="Current headcount"
+          value={latestHeadcount}
+          noActionReason="The latest point in the trend chart below"
+        />
+        <Metric
+          label="Joiners (12 mo)"
+          value={joinersTotal}
+          noActionReason="Summed from the monthly series in the trend chart below"
+        />
+        <Metric
+          label="Leavers (12 mo)"
+          value={leaversTotal}
+          noActionReason="Summed from the monthly series in the trend chart below"
+        />
         <Metric
           label="Attrition (annualised)"
           value={pct(d.attrition.annualizedRatePct)}
@@ -388,7 +400,7 @@ function DashboardTab() {
           label="Overtime hours (3 mo)"
           value={num1(d.overtime.totalHours)}
           sub={d.overtime.totalAmount !== null ? money(d.overtime.totalAmount) : 'Amount withheld'}
-          noActionReason="See the chart below."
+          noActionReason="Summed from the three months of data in the chart below"
         />
         <Metric
           label="Leave liability (days)"

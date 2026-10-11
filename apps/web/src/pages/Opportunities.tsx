@@ -29,6 +29,7 @@ import {
   StatusChip,
   Tabs,
 } from '../components/ui.js';
+import { NOT_MEASURED } from '../lib/words.js';
 import { useSession } from '../lib/session.js';
 import { humanize, withheldWord } from '../lib/words.js';
 
@@ -586,7 +587,7 @@ export function Forecast() {
           />
           <Metric
             label="Pipelines"
-            value={data?.perPipeline.length ?? 0}
+            value={data ? data.perPipeline.length : NOT_MEASURED}
             sub="Each with its own motion-native vocabulary"
             drillTo="/admin/pipelines"
           />

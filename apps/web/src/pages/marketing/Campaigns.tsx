@@ -78,12 +78,16 @@ export function Campaigns() {
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Metric label="Live" value={live} noActionReason="Filter the list below by status." />
-        <Metric label="Pending approval" value={pending} noActionReason="Filter the list below by status." />
+        <Metric label="Live" value={live} noActionReason="Counted from the campaign list below, by status" />
+        <Metric
+          label="Pending approval"
+          value={pending}
+          noActionReason="Counted from the campaign list below, by status"
+        />
         <Metric
           label="Spend vs budget"
           value={`${money(spend)} / ${money(planned)}`}
-          noActionReason="Open Budget for the breakdown."
+          noActionReason="Summed from this campaign's budget lines, which are on the Budget tab rather than this screen"
         />
       </div>
 

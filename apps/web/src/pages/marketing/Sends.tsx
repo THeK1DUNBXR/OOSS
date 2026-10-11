@@ -37,6 +37,7 @@ import {
   RecordCode,
   StatusChip,
 } from '../../components/ui.js';
+import { NOT_MEASURED } from '../../lib/words.js';
 import { CreateModal, messageOf, Row, SelectInput, TextInput } from '../../components/forms.js';
 import {
   useApproveSend,
@@ -327,15 +328,16 @@ function NewSendWizard({
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
+                {/* Not the draft's recipient count: that is before exclusions, so it is not an eligible figure. */}
                 <Metric
                   label="Eligible"
-                  value={dryRun.data?.eligible ?? draft.data?.recipientCount ?? 0}
+                  value={dryRun.data ? dryRun.data.eligible : NOT_MEASURED}
                   tone="good"
                   noActionReason="Will receive this send once requested."
                 />
                 <Metric
                   label="Skipped"
-                  value={dryRun.data?.skipped.length ?? 0}
+                  value={dryRun.data ? dryRun.data.skipped.length : NOT_MEASURED}
                   tone={(dryRun.data?.skipped.length ?? 0) > 0 ? 'warn' : 'neutral'}
                   noActionReason="Excluded for a recorded, falsifiable reason."
                 />

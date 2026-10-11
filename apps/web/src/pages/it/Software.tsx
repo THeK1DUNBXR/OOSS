@@ -220,6 +220,7 @@ export function ItApplications() {
               value={Object.values(s.byStatus).reduce((a, b) => a + b, 0)}
               noActionReason="The whole catalogue."
             />
+            {/* byTier is built from the applications present, so a tier with none is absent, and absent is zero. */}
             <Metric label="Tier 1" value={s.byTier['1'] ?? 0} noActionReason="Business-stopping if it goes down." />
             <Metric
               label="No owner"

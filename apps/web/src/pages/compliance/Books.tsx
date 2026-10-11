@@ -240,7 +240,7 @@ function AuditTab() {
               label="Broken at"
               value={verify.data.brokenAt ?? '—'}
               tone="bad"
-              noActionReason="Use the broken record detail to investigate and repair the hash chain."
+              noActionReason="The first link in the hash chain that fails to verify; it is a position, not a listed record"
             />
           )}
         </div>

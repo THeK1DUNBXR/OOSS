@@ -339,15 +339,19 @@ export function MarketingEventDetail() {
         <Metric
           label="Status"
           value={<StatusChip status={e.status} tone={e.status === 'completed' ? 'good' : 'neutral'} />}
-          noActionReason="the state machine drives this"
+          noActionReason="A workflow state rather than a count, so there is no list behind it"
         />
         <Metric
           label="Registered"
           value={e.registeredCount}
           sub={e.capacity ? `of ${e.capacity} seats` : 'no capacity limit'}
-          noActionReason="see the table below"
+          noActionReason="Counted from the registrations listed below"
         />
-        <Metric label="Attended" value={e.attendedCount} noActionReason="see the table below" />
+        <Metric
+          label="Attended"
+          value={e.attendedCount}
+          noActionReason="Counted from the registrations listed below, by attendance"
+        />
         <Metric
           label="Cost per attendee"
           value={e.costPerAttendee === null ? '—' : money(e.costPerAttendee)}

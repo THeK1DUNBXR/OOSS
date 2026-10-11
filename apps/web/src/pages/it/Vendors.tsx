@@ -92,6 +92,7 @@ export function ItVendors() {
             sub="Past next-due date"
             drillTo="/exceptions"
           />
+          {/* byTier only holds tiers that have a vendor, so an absent tier is a real zero. */}
           <Metric
             label="Tier 1 vendors"
             value={summary.byTier?.[1] ?? 0}

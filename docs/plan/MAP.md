@@ -498,9 +498,9 @@
 
 ## Web pages
 
-**`apps/web/src/pages/Admin.tsx`** (1104 lines) — PipelineAdmin:36 · TerritoryAdmin:166 · Governance:297 · Agents:496 · Events:720 · Jobs:816 · Audit:922 · PlatformModel:1036
+**`apps/web/src/pages/Admin.tsx`** (1105 lines) — PipelineAdmin:37 · TerritoryAdmin:167 · Governance:298 · Agents:497 · Events:721 · Jobs:817 · Audit:923 · PlatformModel:1037
 
-**`apps/web/src/pages/Books.tsx`** (844 lines) — Ledger:97 · Payables:342 · Budget:550 · Assets:689
+**`apps/web/src/pages/Books.tsx`** (857 lines) — Ledger:98 · Payables:343 · Budget:547 · Assets:702
 
 **`apps/web/src/pages/CommandCenter.tsx`** (803 lines) — CommandCenter:30
 
@@ -508,7 +508,7 @@
 
 **`apps/web/src/pages/Courses.tsx`** (587 lines) — Courses:45 · AssignCourse:458
 
-**`apps/web/src/pages/Decisions.tsx`** (197 lines) — Decisions:37
+**`apps/web/src/pages/Decisions.tsx`** (198 lines) — Decisions:38
 
 **`apps/web/src/pages/Education.tsx`** (378 lines) — Cohorts:34 · Enrollments:114 · Projects:284
 
@@ -518,7 +518,7 @@
 
 **`apps/web/src/pages/Finance.tsx`** (688 lines) — Invoices:60 · Payments:446 · Receivables:623
 
-**`apps/web/src/pages/GstReturns.tsx`** (1083 lines) — GstReturns:71 · CompanyDetails:698
+**`apps/web/src/pages/GstReturns.tsx`** (1107 lines) — GstReturns:71 · CompanyDetails:722
 
 **`apps/web/src/pages/Import.tsx`** (811 lines) — ImportPage:115
 
@@ -530,7 +530,7 @@
 
 **`apps/web/src/pages/MyOptions.tsx`** (7 lines) — MyOptions:4
 
-**`apps/web/src/pages/Opportunities.tsx`** (655 lines) — Opportunities:43 · OpportunityDetail:155 · Forecast:545
+**`apps/web/src/pages/Opportunities.tsx`** (656 lines) — Opportunities:44 · OpportunityDetail:156 · Forecast:546
 
 **`apps/web/src/pages/Parties.tsx`** (553 lines) — Institutions:261 · Organizations:276 · BodyDetail:298
 
@@ -548,7 +548,7 @@
 
 **`apps/web/src/pages/Students.tsx`** (363 lines) — Students:90 · StudentDetail:210
 
-**`apps/web/src/pages/Workspace.tsx`** (414 lines) — Workspace:31 · Exceptions:248
+**`apps/web/src/pages/Workspace.tsx`** (415 lines) — Workspace:32 · Exceptions:249
 
 **`apps/web/src/pages/board/Board.tsx`** (317 lines) — Board:34
 
@@ -646,7 +646,7 @@
 
 **`apps/web/src/pages/equity/Valuations.tsx`** (162 lines) — Valuations:89
 
-**`apps/web/src/pages/hcm/Analytics.tsx`** (649 lines) — Analytics:323
+**`apps/web/src/pages/hcm/Analytics.tsx`** (661 lines) — Analytics:323
 
 **`apps/web/src/pages/hcm/Approvals.tsx`** (174 lines) — Approvals:162
 
@@ -692,9 +692,9 @@
 
 **`apps/web/src/pages/it/ServiceDesk.tsx`** (996 lines) — ItTickets:168 · ItTicketDetail:362 · ItKnowledge:718 · ItKnowledgeDetail:808 · MyIt:885
 
-**`apps/web/src/pages/it/Software.tsx`** (1269 lines) — ItApplications:185 · ItApplicationDetail:445 · ItLicences:659 · ItLicenceDetail:922
+**`apps/web/src/pages/it/Software.tsx`** (1270 lines) — ItApplications:185 · ItApplicationDetail:446 · ItLicences:660 · ItLicenceDetail:923
 
-**`apps/web/src/pages/it/Vendors.tsx`** (1015 lines) — ItVendors:42 · ItVendorDetail:264 · ItVendorContracts:532 · ItVendorContractDetail:752
+**`apps/web/src/pages/it/Vendors.tsx`** (1016 lines) — ItVendors:42 · ItVendorDetail:265 · ItVendorContracts:533 · ItVendorContractDetail:753
 
 **`apps/web/src/pages/kaizenInvoice/FeeMasterCatalog.tsx`** (122 lines) — FeeMasterCatalog:22
 
@@ -720,7 +720,7 @@
 
 **`apps/web/src/pages/marketing/CampaignDetail.tsx`** (635 lines) — CampaignDetail:68
 
-**`apps/web/src/pages/marketing/Campaigns.tsx`** (319 lines) — Campaigns:49
+**`apps/web/src/pages/marketing/Campaigns.tsx`** (323 lines) — Campaigns:49
 
 **`apps/web/src/pages/marketing/Consent.tsx`** (396 lines) — Consent:55
 
@@ -728,7 +728,7 @@
 
 **`apps/web/src/pages/marketing/Journeys.tsx`** (597 lines) — Journeys:69
 
-**`apps/web/src/pages/marketing/MarketingEvents.tsx`** (559 lines) — MarketingEvents:62 · MarketingEventDetail:237
+**`apps/web/src/pages/marketing/MarketingEvents.tsx`** (563 lines) — MarketingEvents:62 · MarketingEventDetail:237
 
 **`apps/web/src/pages/marketing/MarketingHealthCard.tsx`** (92 lines) — MarketingHealthCard:18
 
@@ -742,7 +742,7 @@
 
 **`apps/web/src/pages/marketing/Referrals.tsx`** (512 lines) — Referrals:42
 
-**`apps/web/src/pages/marketing/Sends.tsx`** (643 lines) — Sends:93 · SendDetail:374
+**`apps/web/src/pages/marketing/Sends.tsx`** (645 lines) — Sends:94 · SendDetail:376
 
 **`apps/web/src/pages/marketing/Social.tsx`** (289 lines) — Social:37
 

@@ -346,10 +346,26 @@ function Gstr1View({ data }: { data: any }) {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-4">
-        <Metric label="Invoices reported" value={data.totals.invoiceCount} drillTo="/finance/invoices/history" />
-        <Metric label="Taxable value" value={money(data.totals.taxableValue)} drillTo="/finance/invoices/history" />
-        <Metric label="Tax" value={money(data.totals.tax)} drillTo="/finance/invoices/history" />
-        <Metric label="Invoice value" value={money(data.totals.invoiceValue)} drillTo="/finance/invoices/history" />
+        <Metric
+          label="Invoices reported"
+          value={data.totals.invoiceCount}
+          noActionReason="Counted from the invoices in the tables below for this return period"
+        />
+        <Metric
+          label="Taxable value"
+          value={money(data.totals.taxableValue)}
+          noActionReason="Summed from the invoices in the tables below for this return period"
+        />
+        <Metric
+          label="Tax"
+          value={money(data.totals.tax)}
+          noActionReason="Summed from the invoices in the tables below for this return period"
+        />
+        <Metric
+          label="Invoice value"
+          value={money(data.totals.invoiceValue)}
+          noActionReason="Summed from the invoices in the tables below for this return period"
+        />
       </div>
 
       <Card
@@ -565,15 +581,23 @@ function Gstr3bView({ data }: { data: any }) {
         <Metric
           label="Outward taxable supplies"
           value={money(data.outwardSupplies.taxableValue)}
-          drillTo="/finance/invoices/history"
+          noActionReason="Summed from the invoices in the 3.1(a) table below for this return period"
         />
-        <Metric label="Output tax" value={money(data.outwardSupplies.tax)} drillTo="/finance/invoices/history" />
-        <Metric label="Credit available" value={money(data.inputTaxCredit.total)} drillTo="/finance/payables" />
+        <Metric
+          label="Output tax"
+          value={money(data.outwardSupplies.tax)}
+          noActionReason="Summed from the invoices in the 3.1(a) table below for this return period"
+        />
+        <Metric
+          label="Credit available"
+          value={money(data.inputTaxCredit.total)}
+          noActionReason="Summed from the supplier bills in the 4(A) table below for this return period"
+        />
         <Metric
           label="Payable in cash"
           value={money(data.payment.totalPayableInCash)}
           tone={data.payment.totalPayableInCash > 0 ? 'warn' : 'good'}
-          noActionReason="Output tax less input tax credit; both figures above are the drill targets for it"
+          noActionReason="Output tax less input tax credit; both figures are shown above in this return"
         />
       </div>
 
