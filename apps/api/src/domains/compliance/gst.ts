@@ -25,13 +25,16 @@ import {
   lateFee,
   interest,
   type Gstr2bB2bRow,
+  type Gstr2bMatchResult,
   type BookedBill,
 } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma, num, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { emit } from '../../platform/eventBus.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { registerHook, runHooks } from '../../platform/hooks.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../../platform/documentNumber.js';
@@ -42,6 +45,7 @@ registerGovernedEntities('cmp_gst', [
   'rcm_self_invoice',
   'einvoice_config',
   'gstr2b_import',
+  'gstr2b_match',
   'course_gst_exemption',
 ]);
 
@@ -667,7 +671,16 @@ export interface Gstr2bImportInput {
   b2b: Gstr2bB2bRow[];
 }
 
-/** Imports the offline-utility JSON's b2b rows for a period and matches them. */
+/**
+ * Imports the offline-utility JSON's b2b rows for a period and matches them.
+ *
+ * The import row, its audit row and the new match set commit together. For a
+ * period that already has an import, the upsert runs first and takes the row
+ * lock, so two re-imports of one period run one after the other and the second
+ * supersedes the first's set. Without that lock both could leave their sets
+ * current, and the count of current rows would double. (A period's first
+ * import has no row to lock; the unique key on the import row serialises it.)
+ */
 export async function importGstr2b(input: Gstr2bImportInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'gst_filings', verb: 'create' });
@@ -676,27 +689,34 @@ export async function importGstr2b(input: Gstr2bImportInput) {
     throw ApiError.badRequest('Period has to be YYYY-MM.');
   }
 
-  const importRow = await prisma.gstr2bImport.upsert({
-    where: { tenantId_period: { tenantId: auth.tenantId, period: input.period } },
-    create: {
-      tenantId: auth.tenantId,
-      period: input.period,
-      rows: input.b2b as unknown as object,
-      importedById: auth.partyId,
-    },
-    update: { rows: input.b2b as unknown as object, importedById: auth.partyId, importedAt: new Date() },
+  // Read before the transaction: the scoped client refuses to run inside one
+  // (platform/db.ts), and the bills are not written by the import.
+  const results = matchGstr2b(await billsForPeriod(input.period), input.b2b);
+
+  return governedWrite(async (tx) => {
+    const importRow = await tx.gstr2bImport.upsert({
+      where: { tenantId_period: { tenantId: auth.tenantId, period: input.period } },
+      create: {
+        tenantId: auth.tenantId,
+        period: input.period,
+        rows: input.b2b as unknown as object,
+        importedById: auth.partyId,
+      },
+      update: { rows: input.b2b as unknown as object, importedById: auth.partyId, importedAt: new Date() },
+    });
+
+    await supersedeGstr2bMatches(tx, { importId: importRow.id, period: input.period, results });
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'gstr2b_import',
+      subjectId: importRow.id,
+      after: { period: input.period, rows: input.b2b.length },
+      tx,
+    });
+
+    return importRow;
   });
-
-  await recomputeGstr2bMatches(input.period, input.b2b);
-
-  await auditWrite({
-    action: 'create',
-    subjectType: 'gstr2b_import',
-    subjectId: importRow.id,
-    after: { period: input.period, rows: input.b2b.length },
-  });
-
-  return importRow;
 }
 
 async function billsForPeriod(period: string): Promise<BookedBill[]> {
@@ -717,17 +737,30 @@ async function billsForPeriod(period: string): Promise<BookedBill[]> {
   }));
 }
 
-async function recomputeGstr2bMatches(period: string, rows: Gstr2bB2bRow[]) {
+/**
+ * Makes `results` the period's current match set and supersedes the set it
+ * replaces. A superseded row is kept, not deleted: the ITC a filer claimed from
+ * an earlier reading of the portal has to stay provable after a re-import.
+ * The caller's transaction holds both statements, so a reader sees the old set
+ * or the new one, never a mix.
+ */
+async function supersedeGstr2bMatches(
+  tx: DbTx,
+  input: { importId: string; period: string; results: Gstr2bMatchResult[] },
+) {
   const auth = currentAuth();
-  const bills = await billsForPeriod(period);
-  const results = matchGstr2b(bills, rows);
+  const { importId, period, results } = input;
 
-  await prisma.gstr2bMatch.deleteMany({ where: { tenantId: auth.tenantId, period } });
+  const { count: supersededRows } = await tx.gstr2bMatch.updateMany({
+    where: { tenantId: auth.tenantId, period, supersededAt: null },
+    data: { supersededAt: new Date() },
+  });
   if (results.length) {
-    await prisma.gstr2bMatch.createMany({
+    await tx.gstr2bMatch.createMany({
       data: results.map((r) => ({
         tenantId: auth.tenantId,
         period,
+        importId,
         vendorBillId: r.vendorBillId,
         status: r.status,
         difference: r.difference,
@@ -736,12 +769,33 @@ async function recomputeGstr2bMatches(period: string, rows: Gstr2bB2bRow[]) {
       })),
     });
   }
-  return results;
+
+  // The match set has no id of its own, so the audit row names the import it
+  // was reconciled from.
+  await auditWrite({
+    action: 'update',
+    subjectType: 'gstr2b_match',
+    subjectId: importId,
+    before: { currentRows: supersededRows },
+    after: { period, currentRows: results.length },
+    tx,
+  });
+  await emit({
+    name: 'kz.cmp.itc_reconciliation.superseded',
+    subject: { entityType: 'gstr2b_match', entityId: importId },
+    previousState: { currentRows: supersededRows },
+    newState: { currentRows: results.length },
+    tx,
+  });
 }
 
+/** The current match set: superseded rows belong to earlier readings of the portal. */
 export async function gstr2bMatches(period: string) {
   const auth = currentAuth();
-  return prisma.gstr2bMatch.findMany({ where: { tenantId: auth.tenantId, period }, orderBy: { status: 'asc' } });
+  return prisma.gstr2bMatch.findMany({
+    where: { tenantId: auth.tenantId, period, supersededAt: null },
+    orderBy: { status: 'asc' },
+  });
 }
 
 /** Eligible ITC per the 2B upload against what the books have claimed. */
@@ -754,7 +808,7 @@ export async function gstr2bSummary(period: string) {
   const bills = await billsForPeriod(period);
   const claimedInBooks = round2(bills.reduce((s, b) => s + b.taxAmount, 0));
 
-  const matches = await prisma.gstr2bMatch.findMany({ where: { tenantId: auth.tenantId, period } });
+  const matches = await prisma.gstr2bMatch.findMany({ where: { tenantId: auth.tenantId, period, supersededAt: null } });
   const byStatus = { matched: 0, missing_in_2b: 0, missing_in_books: 0, mismatch: 0 } as Record<string, number>;
   for (const m of matches) byStatus[m.status] = (byStatus[m.status] ?? 0) + 1;
 
