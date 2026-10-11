@@ -81,7 +81,47 @@ export interface EnrollmentRow {
 
 export interface EnrollmentQuery {
   atRisk?: boolean;
+  /** education.routes.ts:141 filters the list to one person. */
+  personId?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Students — crm.routes.ts GET /students and GET /students/:id
+// ---------------------------------------------------------------------------
+
+/**
+ * A student is a CRM person with a funded place on a course, so the record is
+ * served by the CRM routes (crm.routes.ts:593, :608) and read here, where the
+ * Students screens that list and open it live. The shape is the one that page
+ * reads, with the fields the route returns for a learner.
+ */
+export interface StudentRow {
+  id: string;
+  personId: string;
+  recordCode: string;
+  fullName: string;
+  primaryPhone: string | null;
+  primaryEmail: string | null;
+  registrationNumber: string | null;
+  status: string;
+  address: string | null;
+  placeOfSupply: string | null;
+  gstin: string | null;
+  institution: { id: string; name: string; recordCode: string } | null;
+  funding: string;
+  fundingFramework: string | null;
+  sponsor: { id: string; name: string; recordCode: string } | null;
+  deliveryLocation: string | null;
+  billable: boolean;
+  enrolmentCount: number;
+  createdAt: string;
+}
+
+export type StudentQuery = {
+  status?: string;
+  funding?: string;
+  q?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Projects after award — education.routes.ts GET /projects
@@ -222,7 +262,15 @@ export const edu = {
   cohorts: (params: { status?: string } = {}) => api.get<CohortRow[]>(`${BASE}/cohorts${qs(params)}`),
 
   enrollments: (params: EnrollmentQuery = {}) =>
-    api.get<EnrollmentRow[]>(`${BASE}/enrollments${qs({ atRisk: params.atRisk ? true : undefined })}`),
+    api.get<EnrollmentRow[]>(
+      `${BASE}/enrollments${qs({ atRisk: params.atRisk ? true : undefined, personId: params.personId })}`,
+    ),
+
+  /** crm.routes.ts GET /students, the list the Students screen filters. */
+  students: (params: StudentQuery = {}) => api.get<Page<StudentRow>>(`/crm/students${qs(params)}`),
+
+  /** crm.routes.ts GET /students/:id. */
+  student: (id: string) => api.get<StudentRow>(`/crm/students/${id}`),
 
   /** education.routes.ts POST /enrollments/:id/status. */
   setEnrollmentStatus: (id: string, status: string) => api.post(`${BASE}/enrollments/${id}/status`, { status }),

@@ -23,7 +23,8 @@ import {
   type FundingSource,
   type DeliveryLocation,
 } from '@kaizen/shared';
-import { api, date } from '../lib/api.js';
+import { date } from '../lib/api.js';
+import { edu, type StudentRow } from '../lib/educationApi.js';
 import { humanize } from '../lib/words.js';
 import {
   Card,
@@ -38,28 +39,6 @@ import {
 } from '../components/ui.js';
 import { NewStudent } from '../components/createForms.js';
 import { useSession } from '../lib/session.js';
-
-interface StudentRow {
-  id: string;
-  personId: string;
-  recordCode: string;
-  fullName: string;
-  primaryPhone: string | null;
-  primaryEmail: string | null;
-  registrationNumber: string | null;
-  status: string;
-  address: string | null;
-  placeOfSupply: string | null;
-  gstin: string | null;
-  institution: { id: string; name: string; recordCode: string } | null;
-  funding: string;
-  fundingFramework: string | null;
-  sponsor: { id: string; name: string; recordCode: string } | null;
-  deliveryLocation: string | null;
-  billable: boolean;
-  enrolmentCount: number;
-  createdAt: string;
-}
 
 /** Who is paying, in one phrase, for a card that has one line for it. */
 function payer(s: StudentRow): string {
@@ -104,14 +83,10 @@ export function Students() {
     setSearch(rest, { replace: true });
   }, [search, setSearch]);
 
-  const params = new URLSearchParams();
-  if (tab !== 'all') params.set('status', tab);
-  if (funding) params.set('funding', funding);
-  if (q) params.set('q', q);
-
   const { data, isLoading, error } = useQuery({
     queryKey: ['students', tab, funding, q],
-    queryFn: () => api.get<{ items: StudentRow[]; total: number }>(`/crm/students?${params}`),
+    queryFn: () =>
+      edu.students({ status: tab !== 'all' ? tab : undefined, funding: funding || undefined, q: q || undefined }),
   });
 
   if (error) return <ErrorBox error={error} />;
@@ -214,7 +189,7 @@ export function StudentDetail() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['student', id],
-    queryFn: () => api.get<StudentRow>(`/crm/students/${id}`),
+    queryFn: () => edu.student(id!),
     enabled: Boolean(id),
   });
 
@@ -223,17 +198,7 @@ export function StudentDetail() {
   // are; it links there rather than reproducing it badly.
   const enrolments = useQuery({
     queryKey: ['enrollments', 'person', data?.personId],
-    queryFn: () =>
-      api.get<
-        Array<{
-          id: string;
-          recordCode: string;
-          cohortName: string;
-          courseName: string;
-          status: string;
-          enrolledAt: string | null;
-        }>
-      >(`/education/enrollments?personId=${data!.personId}`),
+    queryFn: () => edu.enrollments({ personId: data!.personId }),
     enabled: Boolean(data?.personId),
     // An employee raises invoices and does not read the class register, so this
     // is a 403 for them rather than an outage. The panel says so instead of
