@@ -267,10 +267,12 @@ describe('tenant isolation', () => {
   it('the list shows only the caller tenant', async () => {
     const row = await propose();
     const intruder = await otherTenant();
-    const mine = await asUser(CHAIRMAN, () => listCommitments());
-    expect(mine.map((c) => c.id)).toContain(row.id);
-    const theirs = await asPrincipal(authFor(intruder), () => listCommitments());
-    expect(theirs.map((c) => c.id)).not.toContain(row.id);
+    // Filtered by owner so the result does not depend on how many other rows the
+    // shared tenant holds: the list is paged by due date.
+    const mine = await asUser(CHAIRMAN, () => listCommitments({ ownerPartyId: row.ownerPartyId }));
+    expect(mine.map((c) => c.id)).toEqual([row.id]);
+    const theirs = await asPrincipal(authFor(intruder), () => listCommitments({ ownerPartyId: row.ownerPartyId }));
+    expect(theirs).toEqual([]);
   });
 
   it('a proposal cannot name an owner or backup from another tenant', async () => {
@@ -495,8 +497,9 @@ describe('a state change commits with its CommitmentEvent, its audit row and its
   it('when the audit row cannot be written, the confirmation does not happen', async () => {
     const row = await propose();
     await refuseCommitmentAudit('update');
-    await asUser(CHAIRMAN, () => expectReject(() => confirmCommitment(row.id)));
+    const err = await asUser(CHAIRMAN, () => expectReject(() => confirmCommitment(row.id)));
     await restoreFaults();
+    expect(err.message).toMatch(/injected commitment audit failure/);
     expect(await stateOf(row.id)).toBe('proposed');
     expect((await historyOf(row.id)).map((e) => e.toState)).toEqual(['proposed']);
     expect(await eventsOf(row.id, 'kz.gov.commitment.confirmed')).toHaveLength(0);
@@ -506,8 +509,9 @@ describe('a state change commits with its CommitmentEvent, its audit row and its
     const id = await inState('confirmed');
     const auditBefore = (await auditOf(id)).length;
     await refuseCommitmentEvent('kz.gov.commitment.met');
-    await asUser(CHAIRMAN, () => expectReject(() => markCommitmentMet(id)));
+    const err = await asUser(CHAIRMAN, () => expectReject(() => markCommitmentMet(id)));
     await restoreFaults();
+    expect(err.message).toMatch(/injected commitment event failure|event chain/);
     expect(await stateOf(id)).toBe('confirmed');
     expect((await historyOf(id)).map((e) => e.toState)).toEqual(['proposed', 'confirmed']);
     expect(await auditOf(id)).toHaveLength(auditBefore);
