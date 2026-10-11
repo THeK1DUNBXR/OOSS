@@ -127,33 +127,46 @@ export async function runVendorContractNoticeLadder(): Promise<JobResult> {
       ? `This contract will renew unless notice is given by ${nd.toISOString().slice(0, 10)}.`
       : `This contract will lapse at ${endDate.toISOString().slice(0, 10)} unless renewed — no auto-renewal is set.`;
 
+    // The exception and the rung record it answers commit together. Raised
+    // outside a transaction, a failed rung write left the exception committed
+    // with the rung unrecorded, so the record and the exception disagreed until a
+    // later run happened to succeed. A failed attempt now leaves neither, and the
+    // next daily run raises it once. The status flip above stays in its own
+    // transaction: it is guarded by its own status check, and it must not roll
+    // back with a notice that keeps failing.
     try {
-      await raiseException({
-        code: 'IT_VCT_NOTICE',
-        label: overdue
-          ? `${row.vendor.name} — notice date passed`
-          : `${row.vendor.name} — notice due in ${rung} day${rung === 1 ? '' : 's'}`,
-        severity: severityForRung(rung),
-        subjectType: 'it_vendor_contract',
-        subjectId: row.id,
-        subjectLabel: row.recordCode,
-        domain: 'it',
-        detail: `${row.recordCode} — ${row.title}. ${renewalWording}`,
-        ownerPartyId: row.ownerPartyId,
-        slaDueAt: nd,
-        triggerFingerprint: 'it_vendor_contract_notice_ladder',
-        ladderRung: rung,
+      await prisma.$transaction(async (tx) => {
+        await raiseException(
+          {
+            code: 'IT_VCT_NOTICE',
+            label: overdue
+              ? `${row.vendor.name} — notice date passed`
+              : `${row.vendor.name} — notice due in ${rung} day${rung === 1 ? '' : 's'}`,
+            severity: severityForRung(rung),
+            subjectType: 'it_vendor_contract',
+            subjectId: row.id,
+            subjectLabel: row.recordCode,
+            domain: 'it',
+            detail: `${row.recordCode} — ${row.title}. ${renewalWording}`,
+            ownerPartyId: row.ownerPartyId,
+            slaDueAt: nd,
+            triggerFingerprint: 'it_vendor_contract_notice_ladder',
+            ladderRung: rung,
+          },
+          tx,
+        );
+        await tx.itVendorContract.update({
+          where: { id: row.id },
+          data: { noticeNotifiedRungs: [...new Set([...already, ...crossed])] },
+        });
       });
       notified += 1;
     } catch (err) {
+      // A rung write that fails here is recorded per row and the loop continues.
+      // Before, it escaped the job and stopped the rows after this one for the day.
       errors.push(err instanceof Error ? err.message : String(err));
       continue;
     }
-
-    await prisma.itVendorContract.update({
-      where: { id: row.id },
-      data: { noticeNotifiedRungs: [...new Set([...already, ...crossed])] },
-    });
   }
 
   return { processed: rows.length, notified, skippedIdempotent: rows.length - notified - statusFlips, errors };
