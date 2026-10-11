@@ -785,22 +785,26 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
         tx,
       });
 
+      // The approver's notice is part of the block: it commits or rolls back with it.
+      if (approver?.partyId) {
+        await notify(
+          {
+            recipientPartyId: approver.partyId,
+            priority: 'N3_HIGH',
+            title: `Discount approval required: ${quote.recordCode}`,
+            body: row.blockedReason ?? 'A quote line exceeds its discount ceiling.',
+            severity: 'S2_WARNING',
+            subjectType: 'quote',
+            subjectId: quoteId,
+            drillPath: `/commercial/quotes/${quoteId}`,
+          },
+          tx,
+        );
+      }
+
       return { row, stepId: step.id };
     });
     const { row: blockedQuote, stepId } = blocked;
-
-    if (approver?.partyId) {
-      await notify({
-        recipientPartyId: approver.partyId,
-        priority: 'N3_HIGH',
-        title: `Discount approval required: ${quote.recordCode}`,
-        body: blockedQuote.blockedReason ?? 'A quote line exceeds its discount ceiling.',
-        severity: 'S2_WARNING',
-        subjectType: 'quote',
-        subjectId: quoteId,
-        drillPath: `/commercial/quotes/${quoteId}`,
-      });
-    }
 
     return { issued: false, quote: blockedQuote, blockedLines, approvalStepId: stepId };
   }
