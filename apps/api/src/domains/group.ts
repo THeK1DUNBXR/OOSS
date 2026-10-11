@@ -313,6 +313,46 @@ function contentOf(section: unknown): string {
 }
 
 /**
+ * Appends the payload as the next history row for this source, unless it equals
+ * the latest row's payload. The unique key on (tenant, source, seq) makes the
+ * append race-safe: a concurrent writer that took the same seq fails here, so
+ * the loser re-reads the latest row, skips if it now matches, and otherwise
+ * takes the next seq. Two attempts cover two writers; a third conflict is an
+ * error, not a silent drop.
+ */
+async function appendHistory(
+  tenantId: string,
+  sourceTenantId: string,
+  shared: Record<string, unknown>,
+  contentHash: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const latest = await prisma.entitySnapshotHistory.findFirst({
+      where: { tenantId, sourceTenantId },
+      orderBy: { seq: 'desc' },
+      select: { seq: true, contentHash: true },
+    });
+    if (latest?.contentHash === contentHash) return;
+    try {
+      await prisma.entitySnapshotHistory.create({
+        // The Json columns in `shared` are cast on write, as in publishEntitySnapshotOnce.
+        data: {
+          tenantId,
+          recordCode: await nextRecordCode('ESN'),
+          ...shared,
+          contentHash,
+          seq: (latest?.seq ?? 0) + 1,
+        } as never,
+      });
+      return;
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'P2002') throw err;
+    }
+  }
+  throw new Error(`Snapshot history for ${sourceTenantId} lost two concurrent appends; retry the publish.`);
+}
+
+/**
  * Builds, then writes into the parent (skipping silently when the tenant has
  * no parent — most tenants never publish) and emits `kz.eqt.snapshot.
  * published` in both tenants. Kept idempotent per `sourceTenantId`
@@ -386,11 +426,10 @@ async function publishEntitySnapshotOnce(
       }
     }
 
-    // History records what changed, so a publish whose payload matches the
-    // latest row for this source adds nothing. `asOf` and `publishedAt` are
-    // excluded: they move on every run by definition. A payload that goes
-    // A -> B -> A is still recorded at each step, since only the latest row is
-    // compared.
+    // History records what changed. `asOf` and `publishedAt` are excluded from
+    // the hash: they move on every run by definition. A payload is skipped only
+    // when it equals the latest row's; a return to an earlier payload (A -> B
+    // -> A) is a change and is recorded.
     const contentHash = createHash('sha256')
       .update(
         JSON.stringify({
@@ -403,23 +442,7 @@ async function publishEntitySnapshotOnce(
         }),
       )
       .digest('hex');
-    const latestHistory = await prisma.entitySnapshotHistory.findFirst({
-      where: { tenantId: parentTenantId, sourceTenantId },
-      orderBy: { publishedAt: 'desc' },
-      select: { contentHash: true },
-    });
-    // The unique key on (tenant, source, contentHash) is the race guard: two
-    // publishes that both read the old latest row and both try to insert the
-    // same content collide here, and the loser's violation means the row exists.
-    if (latestHistory?.contentHash !== contentHash) {
-      try {
-        await prisma.entitySnapshotHistory.create({
-          data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared, contentHash },
-        });
-      } catch (err) {
-        if ((err as { code?: string }).code !== 'P2002') throw err;
-      }
-    }
+    await appendHistory(parentTenantId, sourceTenantId, shared, contentHash);
 
     await emit({
       name: EVENTS.SNAPSHOT_PUBLISHED,

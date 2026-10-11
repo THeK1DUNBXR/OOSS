@@ -2738,8 +2738,9 @@ model EntitySnapshotHistory {
   createdAt DateTime @default(now())
 
   @@index([tenantId, sourceTenantId, publishedAt])
-  /// Race guard for `publishEntitySnapshot`: one row per distinct payload per source.
-  @@unique([tenantId, sourceTenantId, contentHash])
+  /// Next number per (tenant, source), assigned by `publishEntitySnapshot`. The unique key is the race guard: a loser of a concurrent insert re-reads the latest row.
+  seq Int
+  @@unique([tenantId, sourceTenantId, seq])
   @@map("entity_snapshot_history")
 }
 

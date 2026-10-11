@@ -171,7 +171,7 @@ describe('#18 / #19 publish_entity_snapshots — a publish with nothing new adds
     expect(count).toBe(3);
   });
 
-  it('the database refuses a second history row with the same source and content hash', async () => {
+  it('the database refuses a second history row at the same source sequence number', async () => {
     const subId = await freshSubsidiary('idem-snap-key');
     await publishEntitySnapshot(subId);
     const row = await unscopedPrisma.entitySnapshotHistory.findFirstOrThrow({ where: { sourceTenantId: subId } });
