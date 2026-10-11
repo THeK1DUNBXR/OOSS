@@ -12,6 +12,8 @@ import { createHolder, holder, updateHolder, encryptHolderPansAtRest } from '../
 import { commitImport } from '../imports/commit.js';
 import { stageImport } from '../imports/service.js';
 import { asUser, unscopedPrisma, withFixtureRole } from './helpers.js';
+import { mgt1Export, mgt2Export, pas3Export } from '../domains/filings.js';
+import { ApiError } from '../platform/errors.js';
 
 const PAN = 'ABCDE1234F';
 const LAST4 = PAN.slice(-4);
@@ -175,5 +177,53 @@ describe('Holder PAN re-encrypt pass', () => {
 
     const view = await asUser('chairman@kaizen.co.in', () => holder(created.id));
     expect(view.panNumber).toBe(PAN);
+  });
+});
+
+/** The rejection a call makes, or null if it resolved. */
+async function rejectionOf(p: Promise<unknown>): Promise<ApiError | null> {
+  try {
+    await p;
+    return null;
+  } catch (err) {
+    return err as ApiError;
+  }
+}
+
+describe('Statutory file exports carry the full PAN or nothing', () => {
+  it('MGT-1 export is refused with 403 below the regulated ceiling', async () => {
+    await withFixtureRole(
+      {
+        slug: 'pan_export_confidential',
+        classificationCeiling: 'confidential',
+        grants: [{ resource: 'compliance', verbs: ['view'], scope: 'all' }],
+      },
+      async () => {
+        const err = await rejectionOf(mgt1Export());
+        expect(err).toBeInstanceOf(ApiError);
+        expect(err?.status).toBe(403);
+        expect(err?.message).toMatch(/regulated/i);
+      },
+    );
+  });
+
+  it('MGT-2 and PAS-3 exports are refused the same way, before the round is looked up', async () => {
+    await withFixtureRole(
+      {
+        slug: 'pan_export_confidential_2',
+        classificationCeiling: 'confidential',
+        grants: [{ resource: 'compliance', verbs: ['view'], scope: 'all' }],
+      },
+      async () => {
+        expect((await rejectionOf(mgt2Export()))?.status).toBe(403);
+        expect((await rejectionOf(pas3Export('no-such-round')))?.status).toBe(403);
+      },
+    );
+  });
+
+  it('a regulated caller still gets the MGT-1 file', async () => {
+    const buf = await asUser('chairman@kaizen.co.in', () => mgt1Export());
+    expect(Buffer.isBuffer(buf)).toBe(true);
+    expect(buf.length).toBeGreaterThan(0);
   });
 });
