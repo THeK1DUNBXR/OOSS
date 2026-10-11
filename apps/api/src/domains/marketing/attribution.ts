@@ -23,7 +23,15 @@ import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
 import { raiseException } from '../../platform/exceptions.js';
+import { auditBulkOperation, registerGovernedEntities } from '../../platform/audit.js';
 import { scoreLead } from '../leads.js';
+
+// Attribution rows are derived and rewritten on every recompute, but the rewrite
+// still changes what a report shows, so the subject is governed. Registration
+// is what makes it a governed subject: auditWrite no-ops or refuses an
+// unregistered subjectType (platform/audit.ts isGoverned), and the bulk record
+// written at the end of computeAttribution names this subject.
+registerGovernedEntities('mkt', ['marketing_attribution']);
 
 /** Sub-log tables never carry a human-facing record code (see RECORD_TYPE_CODES comment) — a short random one only needs to be unique per tenant. */
 function internalCode(prefix: string): string {
@@ -161,56 +169,67 @@ async function touchesForPerson(personId: string, upTo: Date): Promise<Touch[]> 
   return rows.map((r) => ({ campaignId: r.campaignId, channelKey: r.channelKey, occurredAt: r.occurredAt }));
 }
 
+/**
+ * Replaces one subject's rows for every model in a single transaction. The
+ * advisory lock serialises overlapping recomputes of the same subject: without
+ * it, two runs each delete the subject's rows and then each insert a full set,
+ * and the table has no unique key to stop the second set. The lock is taken
+ * inside the transaction so it releases with the replace, never half-way.
+ */
 async function writeAttributionRows(
   subjectField: 'leadId' | 'opportunityId' | 'enrollmentId',
   subjectId: string,
   touches: Touch[],
 ): Promise<number> {
   const auth = currentAuth();
-  let written = 0;
 
-  for (const model of ATTRIBUTION_MODELS) {
-    // Replaces prior rows for this subject+model — computed and stored, never
-    // appended to, so a re-run is idempotent rather than duplicating history.
-    await prisma.marketingAttribution.deleteMany({ where: { [subjectField]: subjectId, model } as never });
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${subjectId}))`;
+    let written = 0;
 
-    if (touches.length === 0) {
-      await prisma.marketingAttribution.create({
-        data: {
-          tenantId: auth.tenantId,
-          recordCode: internalCode('ATB'),
-          [subjectField]: subjectId,
-          model,
-          campaignId: null,
-          channelKey: UNATTRIBUTED_CHANNEL,
-          weight: 1,
-          createdById: auth.partyId,
-        } as never,
-      });
-      written += 1;
-      continue;
+    for (const model of ATTRIBUTION_MODELS) {
+      // Replaces prior rows for this subject+model — computed and stored, never
+      // appended to, so a re-run is idempotent rather than duplicating history.
+      await tx.marketingAttribution.deleteMany({ where: { [subjectField]: subjectId, model } as never });
+
+      if (touches.length === 0) {
+        await tx.marketingAttribution.create({
+          data: {
+            tenantId: auth.tenantId,
+            recordCode: internalCode('ATB'),
+            [subjectField]: subjectId,
+            model,
+            campaignId: null,
+            channelKey: UNATTRIBUTED_CHANNEL,
+            weight: 1,
+            createdById: auth.partyId,
+          } as never,
+        });
+        written += 1;
+        continue;
+      }
+
+      const weights = weightsForModel(model, touches.length);
+      for (let i = 0; i < touches.length; i += 1) {
+        if (weights[i] <= 0) continue;
+        await tx.marketingAttribution.create({
+          data: {
+            tenantId: auth.tenantId,
+            recordCode: internalCode('ATB'),
+            [subjectField]: subjectId,
+            model,
+            campaignId: touches[i].campaignId,
+            channelKey: touches[i].channelKey || UNATTRIBUTED_CHANNEL,
+            weight: weights[i],
+            createdById: auth.partyId,
+          } as never,
+        });
+        written += 1;
+      }
     }
 
-    const weights = weightsForModel(model, touches.length);
-    for (let i = 0; i < touches.length; i += 1) {
-      if (weights[i] <= 0) continue;
-      await prisma.marketingAttribution.create({
-        data: {
-          tenantId: auth.tenantId,
-          recordCode: internalCode('ATB'),
-          [subjectField]: subjectId,
-          model,
-          campaignId: touches[i].campaignId,
-          channelKey: touches[i].channelKey || UNATTRIBUTED_CHANNEL,
-          weight: weights[i],
-          createdById: auth.partyId,
-        } as never,
-      });
-      written += 1;
-    }
-  }
-
-  return written;
+    return written;
+  });
 }
 
 /**
@@ -263,6 +282,15 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
     });
     processed += 1;
   }
+
+  // One record for the whole run, not one per lead: the replace is a derived
+  // rewrite of rows that a rerun reproduces, so the window and count are what
+  // an auditor needs to trace a figure back to the run that produced it.
+  await auditBulkOperation('marketing_attribution', 'recompute', {
+    windowFrom: from.toISOString(),
+    windowTo: to.toISOString(),
+    leadsProcessed: processed,
+  });
 
   return processed;
 }

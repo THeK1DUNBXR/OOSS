@@ -194,7 +194,7 @@
 
 **`apps/api/src/domains/marketing/assets.ts`** (517 lines) — AssetInput:33 · createAsset:44 · AssetListFilters:81 · listAssets:90 · loadAsset:121 · updateAsset:135 · submitForApproval:208 · approveAsset:215 · rejectAsset:229 · retireAsset:250 · detectExpiredAssetsInUse:260 · SocialPostInput:307 · createSocialPost:328 · listSocialPosts:352 · loadSocialPost:371 · updateSocialPost:379 · scheduleSocialPost:410 · PublishSocialPostInput:426 · publishSocialPost:438 · cancelSocialPost:481 · SocialMetricsInput:491 · recordSocialMetrics:499 · AssetView:508
 
-**`apps/api/src/domains/marketing/attribution.ts`** (661 lines) — TouchpointInput:37 · recordTouchpoint:51 · TouchpointFilters:99 · listTouchpoints:107 · computeAttribution:221 · attributionForLead:270 · AttributionSummaryRow:275 · summarise:285 · ScoreRuleCondition:333 · ScoreRuleInput:340 · createScoreRule:348 · listScoreRules:365 · updateScoreRule:374 · deleteScoreRule:390 · seedDefaultScoreRules:476 · ScorePreview:522 · previewScore:534 · applyScores:578 · detectUnattributedLeads:607 · listLeadScoreRules:649 · updateLeadScoreRule:651 · scoreLeadNow:655
+**`apps/api/src/domains/marketing/attribution.ts`** (689 lines) — TouchpointInput:45 · recordTouchpoint:59 · TouchpointFilters:107 · listTouchpoints:115 · computeAttribution:240 · attributionForLead:298 · AttributionSummaryRow:303 · summarise:313 · ScoreRuleCondition:361 · ScoreRuleInput:368 · createScoreRule:376 · listScoreRules:393 · updateScoreRule:402 · deleteScoreRule:418 · seedDefaultScoreRules:504 · ScorePreview:550 · previewScore:562 · applyScores:606 · detectUnattributedLeads:635 · listLeadScoreRules:677 · updateLeadScoreRule:679 · scoreLeadNow:683
 
 **`apps/api/src/domains/marketing/audiences.ts`** (694 lines) — audienceFields:123 · evaluateRules:200 · AudienceInput:298 · createAudience:312 · listAudiences:348 · loadAudience:379 · updateAudience:390 · deleteAudience:420 · previewAudience:437 · evaluateAudience:454 · addAudienceMember:513 · removeAudienceMember:550 · suppressMember:569 · listAudienceMembers:592 · audiencePersonIds:624 · suppressedPersonIds:670
 
@@ -390,7 +390,7 @@
 
 **`apps/api/src/jobs/it/vendors.ts`** (260 lines) — runVendorContractNoticeLadder:37 · runVendorAssessmentOverdueJob:134 · runVendorDpaMissingJob:195 · JOBS:231
 
-**`apps/api/src/jobs/marketing.ts`** (244 lines) — MARKETING_JOBS:177
+**`apps/api/src/jobs/marketing.ts`** (253 lines) — MARKETING_JOBS:186
 
 **`apps/api/src/jobs/schedule.ts`** (136 lines) — SCHEDULE_TZ:20 · TICK_MS:23 · MAX_ATTEMPTS:26 · isValidCron:46 · nextFireAfter:56 · dueOccurrence:74 · occurrencesBetween:95 · backoffMs:113 · CATCH_UP_MS:126 · LEASE_MS:134 · HEARTBEAT_MS:135
 

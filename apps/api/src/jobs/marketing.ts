@@ -9,20 +9,29 @@
  * Several of these call into sibling `domains/marketing/*.ts` detector and
  * dispatch functions that are developed independently and may not have
  * landed a given export yet. Every such call goes through `callDetector`,
- * which imports the module dynamically and treats a missing/erroring export
- * as "processed 0, logged, move on" rather than failing the job (and, by
- * extension, the whole tenant's scheduled run) outright. This keeps the job
- * registry green — every marketing job name is always registered and always
- * completes — while sibling implementations catch up.
+ * which imports the module dynamically. A missing export is recorded as
+ * "processed 0, reported in errors" so the job registry stays green while
+ * siblings catch up. A call that throws is a real failure and fails that job.
  */
 
 import type { JobDefinition, JobResult } from './scheduler.js';
 import { prisma } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
-import { ATTRIBUTION_MODELS } from '@kaizen/shared';
+import { istDateKey, istMidnight } from '@kaizen/shared';
+import { computeAttribution } from '../domains/marketing/attribution.js';
 
 function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 86_400_000);
+}
+
+/**
+ * Start of the IST calendar day `n` days ago. A UTC-midnight window would cut
+ * the oldest day at 05:30 IST, so a lead created that morning could fall out
+ * of a recompute the day before its attribution was due.
+ */
+function istStartOfDaysAgo(n: number): Date {
+  const [year, month, day] = istDateKey(daysAgo(n)).split('-').map(Number);
+  return istMidnight(year, month, day);
 }
 
 /**
@@ -48,9 +57,10 @@ const MODULE_LOADERS: Record<string, () => Promise<Record<string, unknown>>> = {
 
 /**
  * Imports `domains/marketing/<mod>.js` (via the static loader map above) and
- * calls `fn(...args)`. A missing module, a missing export, or a thrown error
- * are all logged and treated as zero work done — never a hard failure of the
- * job itself.
+ * calls `fn(...args)`. A missing module or export is a sibling not yet landed:
+ * it is reported in `error` and counts as zero work (messaging.dispatchQueuedSends
+ * relies on that to fall back). A thrown error is a real failure and is
+ * rethrown so the JobRun is marked failed.
  */
 async function callDetector(
   mod: string,
@@ -79,9 +89,13 @@ async function callDetector(
     }
     return { count: 0, error: null };
   } catch (err) {
+    // Rethrown, not swallowed: the scheduler marks a JobRun failed only when
+    // run() throws. Swallowing here made all seven marketing jobs report
+    // `completed` on a database error, which is how the attribution recompute
+    // went unnoticed while every write was failing.
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[jobs/marketing] ${mod}.${fn} failed — skipping: ${message}`);
-    return { count: 0, error: message };
+    console.error(`[jobs/marketing] ${mod}.${fn} failed: ${message}`);
+    throw err;
   }
 }
 
@@ -131,21 +145,16 @@ async function reevaluateDynamicAudiences(): Promise<JobResult> {
   return summarise(results);
 }
 
+/**
+ * computeAttribution takes a creation-date range and writes every model for
+ * each lead in it, so this is one call over the window rather than one per
+ * lead and model. It is called directly, not through callDetector: a failure
+ * here must fail the JobRun, and callDetector is the path that used to turn
+ * a failure into a successful run with zero rows.
+ */
 async function recomputeAttribution(): Promise<JobResult> {
-  const auth = currentAuth();
-  const touched = await prisma.marketingTouchpoint.findMany({
-    where: { tenantId: auth.tenantId, deletedAt: null, occurredAt: { gte: daysAgo(90) }, leadId: { not: null } },
-    distinct: ['leadId'],
-    select: { leadId: true },
-    take: 2000,
-  });
-
-  const results = await Promise.all(
-    touched.flatMap((t) =>
-      ATTRIBUTION_MODELS.map((model) => callDetector('attribution', 'computeAttribution', t.leadId, model)),
-    ),
-  );
-  return summarise(results);
+  const processed = await computeAttribution(istStartOfDaysAgo(90), new Date());
+  return { processed, notified: processed, skippedIdempotent: 0, errors: [] };
 }
 
 async function applyLeadScores(): Promise<JobResult> {
