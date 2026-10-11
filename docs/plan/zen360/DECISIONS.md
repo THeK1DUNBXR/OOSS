@@ -629,3 +629,26 @@ Still open after round 18 (recorded 2026-10-11, supersedes the round 17 list):
 - D-11 numbers.
 - Resend data-hosting and chat-retention legal checks.
 - E2EE in LiveKit stays UNVERIFIED. Per-tenant LiveKit isolation is deferred with tenancy (item 1). This bullet is drafted from the ORDERED-PLAN Wave 6 marker, not an owner answer.
+
+## Owner answers, round 19 (recorded 2026-10-11)
+
+Owner answers given after round 18 (recorded 2026-10-11). Each item is an owner answer unless it is marked as a note or an implication. This round answers round 18 implications (f), (g) and (h), and clarifies what "defer FX-51" meant in round 18 item 1.
+
+Numbering note: this section is titled round 19 by the owner's request. An earlier section, "Owner answers, round 19 (recorded 2026-10-10, access-model plan review)", already has that title. Two sections are titled round 18 (see the round 18 numbering note). Read the date to tell them apart.
+
+1. **Row-level security stays (owner answer, item a).** The tenant_rls migration, the app running as a role bound by the security rules, and the test that requires every new tenant table to set up the same security are KEPT. They were merged to main in PR #33. They cost nothing now, and CLAUDE.md rule 6 still requires them for new code. Only the extra proof work stays deferred: the tenant-leakage fuzzer, gate G7, per-tenant keys and HMAC, and subsidiary tenants. Removing RLS later would be a new migration, not a revert.
+   - Clarification of round 18 implication (g): FX-51's substance is merged and stays. The "defer FX-51" wording in round 18 item 1 means no further tenancy work beyond what is merged.
+   - Note (not an owner answer): Claude checked through the GitHub API that PR #33 is closed and merged into main on 2026-10-11, and that the FX-51 RLS commits are in main's history. Claude did not read the full PR diff, so the exact scope of PR #33 comes from the owner's message.
+2. **The Cloudflare Worker removal stands (owner answer, item b).** The Worker that served the built client and proxied `/api` stays removed. Only the hosting choices that replace it (reverse proxy, caching, routing) wait until after Phase 1. This answers round 18 implication (h).
+3. **CLAUDE.md says hosting is undecided until after Phase 1 (owner answer, item c).** The CLAUDE.md hosting sentence now says that hosting (server, reverse proxy, caching, routing) is undecided until after Phase 1. The sentence that named the company's own server and Caddy is removed. This answers round 18 implication (f), which had left that line unedited.
+
+Still open after round 19 (recorded 2026-10-11, supersedes the round 18 list):
+
+- Hosting, caching and routing (after Phase 1).
+- Whether onboarding and level mapping stay in Phase 0 (round 18 implication (d)).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.
+- E2EE in LiveKit stays UNVERIFIED. Per-tenant LiveKit isolation is deferred with tenancy (round 18 item 1).
+- Round numbering: two sections titled round 18 exist, and a round 19 section dated 2026-10-10 exists above this one.

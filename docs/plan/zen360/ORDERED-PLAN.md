@@ -54,7 +54,7 @@ Stop rule for each wave: the wave's listed items are merged, and the gates named
 - **FX-50.** Webhook dedupe, and HMAC with a single webhook secret. Per-tenant HMAC is **DEFERRED (superseded by round 18, item 1)**; FX-50 is now a single secret.
 - **FX-61, FX-80.**
 - **FX-24.** Postgres outbox (D-16).
-- ~~**FX-51.** RLS on every table: ENABLE and FORCE, default deny, a non-owner app role, and a boot check that the role has neither `rolsuper` nor `rolbypassrls`.~~ **DEFERRED (superseded by round 18, item 1).** Existing ledger-table RLS and tenant scoping stay (round 18, implications (a) and (g)).
+- ~~**FX-51.** RLS on every table: ENABLE and FORCE, default deny, a non-owner app role, and a boot check that the role has neither `rolsuper` nor `rolbypassrls`.~~ **MERGED (#33; round 19, item 1); extra proof deferred.** Existing ledger-table RLS and tenant scoping stay (round 18, implications (a) and (g)).
 - **FX-06, FX-07, FX-62 to FX-65.** Exceptions, merge, privacy.
 - **0.4 Logging.** pino with allowlist redaction (G11).
 - **0.3 HTTP hardening.** helmet. CORS allowlist (FX-52, `server.ts:19`). express-rate-limit with a Postgres store. Error leak fix at `http.ts:116-118`.
