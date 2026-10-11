@@ -451,30 +451,36 @@ export async function transitionLeaveRequest(id: string, event: LeaveRequestEven
       }
     }
 
+    // The exception is the consequence of this approval: the hold is posted and the
+    // request approved in one transaction, so the exception commits or rolls back
+    // with them. Raised after the commit, a failed raise left an approved request
+    // with a hold and nothing to act on.
+    // Taking leave the employee does not have is not blocked — sometimes it is
+    // granted deliberately — but it is never silent.
+    if (posting === 'deduction' || posting === 'hold') {
+      const balance = await tx.leaveBalance.findFirst({
+        where: { employmentRelationshipId: request.employmentRelationshipId, leaveTypeId: request.leaveTypeId },
+      });
+      if (balance && (num(balance.balanceDays) ?? 0) < 0) {
+        await raiseException(
+          {
+            code: 'EX-HR-004',
+            label: 'Leave taken beyond entitlement',
+            severity: 'S2_WARNING',
+            subjectType: 'leave_request',
+            subjectId: id,
+            subjectLabel: request.recordCode,
+            detail: `${request.leaveType.name} balance is now ${num(balance.balanceDays)} days. The request was allowed; the shortfall needs a decision.`,
+            ownerPartyId: request.employmentRelationship.personId,
+            triggerFingerprint: `leave_negative:${request.employmentRelationshipId}:${request.leaveTypeId}`,
+            ladderRung: 1,
+          },
+          tx,
+        );
+      }
+    }
     return row;
   });
-
-  // Taking leave the employee does not have is not blocked — sometimes it is
-  // granted deliberately — but it is never silent.
-  if (posting === 'deduction' || posting === 'hold') {
-    const balance = await prisma.leaveBalance.findFirst({
-      where: { employmentRelationshipId: request.employmentRelationshipId, leaveTypeId: request.leaveTypeId },
-    });
-    if (balance && (num(balance.balanceDays) ?? 0) < 0) {
-      await raiseException({
-        code: 'EX-HR-004',
-        label: 'Leave taken beyond entitlement',
-        severity: 'S2_WARNING',
-        subjectType: 'leave_request',
-        subjectId: id,
-        subjectLabel: request.recordCode,
-        detail: `${request.leaveType.name} balance is now ${num(balance.balanceDays)} days. The request was allowed; the shortfall needs a decision.`,
-        ownerPartyId: request.employmentRelationship.personId,
-        triggerFingerprint: `leave_negative:${request.employmentRelationshipId}:${request.leaveTypeId}`,
-        ladderRung: 1,
-      });
-    }
-  }
 
   return updated;
 }
