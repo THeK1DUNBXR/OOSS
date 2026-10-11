@@ -23,7 +23,7 @@ import { governedEntities } from '../platform/audit.js';
 import { wireInt } from '../platform/wire.js';
 import { assertCanWriteGrant } from '../platform/roleAssignment.js';
 import { agentRoster, decideAgentAction, pauseAgent, revokeAuthority, propose } from '../agents/index.js';
-import { ALL_JOBS, runJobsForTenant } from '../jobs/scheduler.js';
+import { ALL_JOBS, runManualJobs } from '../jobs/scheduler.js';
 
 const router = Router();
 
@@ -393,7 +393,7 @@ router.post(
     const input = schema.parse(req.body ?? {});
     // Manual and scheduled execution share the same substrate and the same
     // idempotency-key store, so they can never diverge.
-    return runJobsForTenant(auth.tenantId, input);
+    return runManualJobs(auth.tenantId, input);
   }),
 );
 

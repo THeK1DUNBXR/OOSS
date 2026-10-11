@@ -56,6 +56,8 @@ export async function runAssetOrphanedDetectorJob(): Promise<JobResult> {
 export const JOBS: JobDefinition[] = [
   {
     name: 'runAssetWarrantyLadderJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'IT assets: warranty ladder 90/30/7/expired (IT-AST)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -63,6 +65,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runAssetInRepairTooLongJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'IT assets: in-repair-too-long detector (IT-AST)',
     automationClass: 'threshold_response',
     cron: '15 6 * * *',
@@ -70,6 +74,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runAssetOrphanedDetectorJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: "IT assets: orphaned asset detector — holder's affiliation ended (IT-AST-005)",
     automationClass: 'threshold_response',
     cron: '30 6 * * *',

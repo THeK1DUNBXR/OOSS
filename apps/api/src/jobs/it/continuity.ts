@@ -215,6 +215,8 @@ export async function runMaintenanceWindowNoticeJob(): Promise<JobResult> {
 export const JOBS: JobDefinition[] = [
   {
     name: 'runContinuityTestOverdueJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Continuity: DR-test overdue ladder (-7/0/+30 days) (IT-DR)',
     automationClass: 'threshold_response',
     cron: '0 7 * * *',
@@ -222,6 +224,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runContinuityNoPlanJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Continuity: tier-1/2 application without an active plan (IT-DR)',
     automationClass: 'threshold_response',
     cron: '0 7 * * *',
@@ -229,6 +233,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runMaintenanceWindowNoticeJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Continuity: maintenance window starting within 24h, owner not yet notified',
     automationClass: 'threshold_response',
     cron: '*/30 * * * *',

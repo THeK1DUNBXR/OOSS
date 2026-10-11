@@ -5,6 +5,8 @@ import { sweepRetention } from '../../domains/compliance/books.js';
 export const JOBS: JobDefinition[] = [
   {
     name: 'runRetentionSweepJob',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Records past their statutory retention floor',
     automationClass: 'data_maintenance',
     cron: '0 3 1 * *', // once a month

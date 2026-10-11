@@ -47,7 +47,7 @@ const probeNames: string[] = [];
 function probe(
   cron: string,
   body: (signal: AbortSignal) => Promise<JobResult> = async () => ok,
-  shape: Pick<JobDefinition, 'sideEffects' | 'idempotent'> = {},
+  shape: Pick<JobDefinition, 'sideEffects' | 'idempotent'> = { sideEffects: 'internal', idempotent: false },
 ) {
   const name = `probe.job${++seq}.${randomUUID().slice(0, 8)}`;
   probeNames.push(name);
@@ -337,6 +337,8 @@ describe('manual runs and the registry', () => {
       label: 'bad',
       automationClass: 'probe',
       cron: 'every tuesday',
+      sideEffects: 'none',
+      idempotent: true,
       run: async () => ok,
     };
     expect(() => assertSchedulable([bad])).toThrow(/probe\.badcron/);
@@ -380,5 +382,22 @@ describe('manual runs and the registry', () => {
       }
     }
     expect(unregistered.map((u) => u.split(' ')[0]).sort()).toEqual([...PENDING_DECISION].sort());
+  });
+});
+
+describe('every registered job declares what it does', () => {
+  it('declares sideEffects and idempotent explicitly, with no default left', () => {
+    const SIDE_EFFECTS = ['none', 'internal', 'external'];
+    const undeclared = ALL_JOBS.filter(
+      (j) => !SIDE_EFFECTS.includes(j.sideEffects as string) || typeof j.idempotent !== 'boolean',
+    ).map((j) => j.name);
+    expect(undeclared).toEqual([]);
+  });
+
+  it('pins the audit count of external, non-idempotent jobs (each gets one attempt)', () => {
+    // From JOB-IDEMPOTENCY.md: 50 external, none declared idempotent. A change
+    // here means the audit was re-run or a classification moved; update both together.
+    const oneShot = ALL_JOBS.filter((j) => j.sideEffects === 'external' && !j.idempotent).length;
+    expect(oneShot).toBe(50);
   });
 });

@@ -7,10 +7,10 @@
  * for the integrator to spread into `ALL_JOBS` the same way `COMPLIANCE_JOBS`
  * is spread in today.
  */
-import type { JobDefinition } from '../scheduler.js';
+import type { PendingJobDefinition } from '../scheduler.js';
 import { runCertificationExpiryLadder, runMandatoryTrainingOverdueCheck } from '../../domains/hcm/learning.js';
 
-export const LEARNING_JOBS: JobDefinition[] = [
+export const LEARNING_JOBS: PendingJobDefinition[] = [
   {
     name: 'hcm_learning_certification_expiry',
     label: 'Certification expiry ladder (90/30/7 days)',
@@ -28,6 +28,6 @@ export const LEARNING_JOBS: JobDefinition[] = [
 ];
 
 /** Registers both jobs against a scheduler-shaped registry, for a host that supports dynamic registration instead of a static array spread. */
-export function registerLearningJobs(register: (job: JobDefinition) => void): void {
+export function registerLearningJobs(register: (job: PendingJobDefinition) => void): void {
   for (const job of LEARNING_JOBS) register(job);
 }

@@ -11,6 +11,8 @@ function counted(n: number): JobResult {
 export const JOBS: JobDefinition[] = [
   {
     name: 'runComplianceBackupJob',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Daily backup (pg_dump, when BACKUP_DIR is set)',
     automationClass: 'data_maintenance',
     cron: '0 2 * * *',
@@ -25,6 +27,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runFemaFircSweepJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Foreign receipts missing a FIRC (CMP_FEMA_FIRC_MISSING)',
     automationClass: 'threshold_response',
     cron: '0 7 1 * *',

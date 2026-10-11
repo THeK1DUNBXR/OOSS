@@ -172,6 +172,8 @@ async function autoCompleteCampaigns(): Promise<JobResult> {
 export const MARKETING_JOBS: JobDefinition[] = [
   {
     name: 'marketing.journeys.tick',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Marketing: advance due journey runs',
     automationClass: 'communication_dispatch',
     cron: '*/5 * * * *',
@@ -179,13 +181,19 @@ export const MARKETING_JOBS: JobDefinition[] = [
   },
   {
     name: 'marketing.sends.dispatch',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Marketing: dispatch queued sends',
     automationClass: 'communication_dispatch',
     cron: '*/2 * * * *',
+    // Sends email to people outside the company. A retry after a failure can
+    // send the same message twice, so this job is one attempt.
     run: dispatchQueuedSends,
   },
   {
     name: 'marketing.audiences.reevaluate',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Marketing: re-evaluate dynamic audiences',
     automationClass: 'data_maintenance',
     cron: '0 * * * *',
@@ -193,6 +201,8 @@ export const MARKETING_JOBS: JobDefinition[] = [
   },
   {
     name: 'marketing.attribution.recompute',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Marketing: recompute attribution (last 90 days)',
     automationClass: 'data_maintenance',
     cron: '0 3 * * *',
@@ -200,6 +210,8 @@ export const MARKETING_JOBS: JobDefinition[] = [
   },
   {
     name: 'marketing.scores.apply',
+    sideEffects: 'internal',
+    idempotent: true,
     label: 'Marketing: apply lead score rules',
     automationClass: 'data_maintenance',
     cron: '0 4 * * *',
@@ -207,6 +219,8 @@ export const MARKETING_JOBS: JobDefinition[] = [
   },
   {
     name: 'marketing.detectors',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Marketing: exception detectors sweep',
     automationClass: 'threshold_response',
     cron: '*/30 * * * *',
@@ -214,6 +228,8 @@ export const MARKETING_JOBS: JobDefinition[] = [
   },
   {
     name: 'marketing.campaigns.autocomplete',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Marketing: auto-complete expired campaigns',
     automationClass: 'routine_administration',
     cron: '0 * * * *',

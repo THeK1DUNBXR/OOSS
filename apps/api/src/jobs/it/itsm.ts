@@ -168,6 +168,8 @@ export async function runChangeWindowMissedJob(): Promise<JobResult> {
 export const JOBS: JobDefinition[] = [
   {
     name: 'runItsmStaleIncidentJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'ITSM: stale sev1/sev2 incident with no recent update',
     automationClass: 'threshold_response',
     cron: '*/15 * * * *',
@@ -175,6 +177,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runItsmReviewOverdueJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'ITSM: sev1/sev2 resolved without a published review',
     automationClass: 'threshold_response',
     cron: '0 7 * * *',
@@ -182,6 +186,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runItsmChangeWindowMissedJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'ITSM: change window passed without implementation',
     automationClass: 'threshold_response',
     cron: '0 * * * *',

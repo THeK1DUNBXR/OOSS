@@ -59,11 +59,28 @@ export interface JobResult {
   errors: string[];
 }
 
+/**
+ * What a body does beyond this database. `external` covers anything another
+ * party can observe: an email or message, a filing, a payment, a webhook.
+ */
+export type SideEffects = 'none' | 'internal' | 'external';
+
 export interface JobDefinition {
   name: string;
   label: string;
   automationClass: string;
   cron: string;
+  /**
+   * Required on every definition, so a job cannot be added without deciding this.
+   * `external` is any effect another party can observe: a message, a filing, a payment, a webhook.
+   */
+  sideEffects: SideEffects;
+  /**
+   * True only when a second run of the same occurrence changes nothing a
+   * second time. Declared `false` unless the audit says `yes`. An external,
+   * non-idempotent job gets one attempt, because a retry would repeat the side effect.
+   */
+  idempotent: boolean;
   /**
    * The signal aborts when the attempt times out or its lease is lost. A body
    * with a loop checks it between units of work; a body that ignores it keeps
@@ -71,6 +88,13 @@ export interface JobDefinition {
    */
   run: (signal: AbortSignal) => Promise<JobResult>;
 }
+
+/**
+ * A definition declared but not registered. It has no sideEffects or idempotent
+ * declaration yet, so it cannot be added to ALL_JOBS until it has one: the
+ * registry's type is JobDefinition and requires both.
+ */
+export type PendingJobDefinition = Omit<JobDefinition, 'sideEffects' | 'idempotent'>;
 
 const empty = (): JobResult => ({ processed: 0, notified: 0, skippedIdempotent: 0, errors: [] });
 
@@ -85,6 +109,8 @@ function counted(n: number): JobResult {
 export const ALL_JOBS: JobDefinition[] = [
   {
     name: 'runMouExpiryJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'MoU expiry ladder (90/60/30/7)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -92,6 +118,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runContractExpiryJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Contract expiry ladder (120/90/60/30)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -99,6 +127,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runPartnerAgreementExpiryJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Partner agreement expiry ladder',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -106,6 +136,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runLeadUntouchedJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Lead untouched detector',
     automationClass: 'escalation_routing',
     cron: '0 * * * *',
@@ -113,6 +145,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runTaskOverdueJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Task overdue detector',
     automationClass: 'escalation_routing',
     cron: '0 * * * *',
@@ -120,6 +154,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runStageAgeBreachJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Stage age budget breach detector',
     automationClass: 'threshold_response',
     cron: '0 7 * * *',
@@ -127,6 +163,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runProposalPendingJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Stalled proposal chase',
     automationClass: 'communication_dispatch',
     cron: '0 8 * * *',
@@ -134,6 +172,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runPaymentPendingJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Overdue payment detector',
     automationClass: 'financial_processing',
     cron: '0 9 * * *',
@@ -143,6 +183,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runStaleCommitJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Move deals down when their close date goes stale',
     automationClass: 'threshold_response',
     cron: '0 5 * * *',
@@ -154,6 +196,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runWinLossOverdueJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Win/loss review overdue detector',
     automationClass: 'routine_administration',
     cron: '0 10 * * *',
@@ -161,6 +205,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runMergeCandidateSweepJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Stale merge candidate sweep',
     automationClass: 'data_maintenance',
     cron: '0 11 * * *',
@@ -168,6 +214,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runCertificateWindowJob',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'EX-EQT-002 share certificate window (SH-1, two months)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -176,6 +224,8 @@ export const ALL_JOBS: JobDefinition[] = [
   // ESOP (equity-portal plan §6, phase 5).
   {
     name: 'esop_vesting',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'ESOP: vest tranches due today',
     automationClass: 'routine_administration',
     cron: '0 2 * * *',
@@ -183,6 +233,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runEsopExerciseWindowJob',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'ESOP: lapse a vested-unexercised balance past its post-exit window',
     automationClass: 'threshold_response',
     cron: '0 3 * * *',
@@ -191,6 +243,8 @@ export const ALL_JOBS: JobDefinition[] = [
   // Filings, demat, FEMA (equity-portal plan §6 phase 6a).
   {
     name: 'runDematStatusCheckJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'EX-EQT-004/005 demat status (Rule 9B)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -198,6 +252,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runPas6HalfYearlyJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'EX-EQT-010 PAS-6 reconciliation, half-yearly',
     automationClass: 'routine_administration',
     cron: '0 7 * * *',
@@ -205,6 +261,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runFlaReturnJob',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'EX-EQT-008 FLA return, yearly',
     automationClass: 'routine_administration',
     cron: '0 8 1 4 *',
@@ -215,6 +273,8 @@ export const ALL_JOBS: JobDefinition[] = [
     // `config.snapshotDirty` by the `kz.eqt.*` subscribers in
     // `events/handlers.ts` — most ticks touch no tenant at all.
     name: 'publish_entity_snapshots',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Publish dirty entity snapshots to the parent tenant',
     automationClass: 'data_maintenance',
     cron: '*/15 * * * *',
@@ -224,6 +284,8 @@ export const ALL_JOBS: JobDefinition[] = [
     // The backstop against a missed subscriber: every subsidiary republishes
     // once a night regardless of the dirty flag.
     name: 'publish_entity_snapshots_nightly',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Nightly full entity snapshot publish',
     automationClass: 'data_maintenance',
     cron: '30 2 * * *',
@@ -231,6 +293,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runOfferingCoverageJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'DET-CRM-OFF-01 offering coverage gap',
     automationClass: 'data_maintenance',
     cron: '0 12 * * *',
@@ -238,6 +302,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runWonWithoutContractAuditJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'EX-CRM-011 won-without-artefact sweep',
     automationClass: 'data_maintenance',
     cron: '0 13 * * *',
@@ -245,6 +311,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runSlaEscalationJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'SLA expiry escalation',
     automationClass: 'escalation_routing',
     cron: '*/30 * * * *',
@@ -252,6 +320,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runDailyMetricsJob',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Daily metrics',
     automationClass: 'routine_administration',
     cron: '0 1 * * *',
@@ -259,6 +329,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runHealthScoreJob',
+    sideEffects: 'internal',
+    idempotent: true,
     label: 'Cross-domain health scores',
     automationClass: 'routine_administration',
     cron: '30 1 * * *',
@@ -269,6 +341,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'board_compliance',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Board compliance calendar',
     automationClass: 'routine_administration',
     cron: '0 2 * * *',
@@ -276,6 +350,8 @@ export const ALL_JOBS: JobDefinition[] = [
   },
   {
     name: 'runCeoDetectorsJob',
+    sideEffects: 'none',
+    idempotent: true,
     label: "Chairman's Office detectors",
     automationClass: 'routine_administration',
     cron: '0 3 * * *',
@@ -686,6 +762,17 @@ export async function runAllTenants(opts: RunOptions = {}): Promise<Record<strin
   return out;
 }
 
+/**
+ * The manual entry point for one tenant: the admin route and anything else
+ * that runs jobs on request. It goes through the same claims as the scheduler,
+ * so a manual run and a concurrent manual run of the same instant cannot both
+ * execute a job.
+ */
+export async function runManualJobs(tenantId: string, opts: RunOptions = {}): Promise<Record<string, JobResult>> {
+  const all = await runAllTenants({ ...opts, tenantId });
+  return all[tenantId] ?? {};
+}
+
 let timer: NodeJS.Timeout | null = null;
 
 /**
@@ -700,6 +787,16 @@ const JOB_TIMEOUT_MS = 5 * 60_000;
  * claims made by the same process cannot pass each other's fence.
  */
 const newWorkerId = (): string => `${hostname()}:${process.pid}:${randomUUID()}`;
+
+/**
+ * Attempts a job may make. An external, non-idempotent body gets one: a retry
+ * would send the email or take the payment again, and a timeout or a crash is
+ * not evidence that the side effect did not happen. Those go to the
+ * dead-letter, where somebody can see what happened before anything repeats.
+ */
+export function retryLimit(job: JobDefinition): number {
+  return job.sideEffects === 'external' && !job.idempotent ? 1 : MAX_ATTEMPTS;
+}
 
 export type ClaimStatus = 'completed' | 'failed' | 'timed_out' | 'dead' | 'skipped' | 'lease_lost' | 'stale';
 
@@ -741,6 +838,7 @@ export async function claimAttempt(
   jobName: string,
   scheduledFor: Date,
   workerId: string,
+  maxAttempts: number = MAX_ATTEMPTS,
 ): Promise<{ id: string; attempt: number } | null> {
   const leaseSecs = LEASE_MS / 1000;
   const rows = await unscopedPrisma.$queryRaw<Array<{ id: string; attempt: number }>>`
@@ -755,7 +853,7 @@ export async function claimAttempt(
         "leaseUntil" = (now() AT TIME ZONE 'UTC') + make_interval(secs => ${leaseSecs}),
         "heartbeatAt" = NULL,
         "runAfter" = NULL
-    WHERE job_claims.attempt < ${MAX_ATTEMPTS}
+    WHERE job_claims.attempt < ${maxAttempts}
       AND ((job_claims.status IN ('claimed', 'running') AND job_claims."leaseUntil" <= (now() AT TIME ZONE 'UTC'))
         OR (job_claims.status IN ('failed', 'timed_out') AND job_claims."runAfter" <= (now() AT TIME ZONE 'UTC')))
     RETURNING id, attempt`;
@@ -800,8 +898,9 @@ export async function failAttempt(
   error: string,
   timedOut: boolean,
   durationMs: number,
+  maxAttempts: number = MAX_ATTEMPTS,
 ): Promise<'failed' | 'timed_out' | 'dead' | 'stale'> {
-  const exhausted = f.attempt >= MAX_ATTEMPTS;
+  const exhausted = f.attempt >= maxAttempts;
   const status = exhausted ? 'dead' : timedOut ? 'timed_out' : 'failed';
   const backoffSecs = backoffMs(f.attempt) / 1000;
   const n = await unscopedPrisma.$executeRaw`
@@ -851,7 +950,7 @@ async function emitJobFailed(
  * is dead), and a failure whose occurrence has left the catch-up window (nothing
  * will retry it, so it is dead). Both are dead-lettered and announced.
  */
-async function sweepTenant(tenantId: string, notBefore: Date): Promise<void> {
+async function sweepTenant(tenantId: string, notBefore: Date, oneShotJobs: string[]): Promise<void> {
   const swept = await unscopedPrisma.$queryRaw<
     Array<{ jobName: string; scheduledFor: Date; attempt: number; lastError: string | null }>
   >`
@@ -862,7 +961,8 @@ async function sweepTenant(tenantId: string, notBefore: Date): Promise<void> {
         "leaseUntil" = (now() AT TIME ZONE 'UTC'),
         "lastError" = COALESCE("lastError", 'abandoned')
     WHERE "tenantId" = ${tenantId}
-      AND ((status IN ('claimed', 'running') AND "leaseUntil" <= (now() AT TIME ZONE 'UTC') AND attempt >= ${MAX_ATTEMPTS})
+      AND ((status IN ('claimed', 'running') AND "leaseUntil" <= (now() AT TIME ZONE 'UTC')
+            AND ("jobName" = ANY(${oneShotJobs}::text[]) OR attempt >= ${MAX_ATTEMPTS}))
         OR (status IN ('failed', 'timed_out') AND "scheduledFor" < ${notBefore.toISOString()}::timestamp))
     RETURNING "jobName", "scheduledFor", attempt, "lastError"`;
 
@@ -895,7 +995,8 @@ export async function runClaimedOccurrence(
   const workerId = opts.workerId ?? newWorkerId();
   const timeoutMs = opts.timeoutMs ?? JOB_TIMEOUT_MS;
 
-  const claim = await claimAttempt(tenantId, job.name, scheduledFor, workerId);
+  const limit = retryLimit(job);
+  const claim = await claimAttempt(tenantId, job.name, scheduledFor, workerId, limit);
   if (!claim) return { status: 'skipped' };
   const fence: AttemptFence = { id: claim.id, workerId, attempt: claim.attempt };
 
@@ -946,7 +1047,7 @@ export async function runClaimedOccurrence(
     return done ? { status: 'completed', result: attemptRun.result } : { status: 'stale' };
   }
 
-  const outcome = await failAttempt(fence, attemptRun.error, attemptRun.timedOut, durationMs);
+  const outcome = await failAttempt(fence, attemptRun.error, attemptRun.timedOut, durationMs, limit);
   if (outcome === 'stale') return { status: 'stale', error: attemptRun.error };
   await emitJobFailed(tenantId, job.name, scheduledFor, fence.attempt, attemptRun.error, outcome === 'dead');
   return { status: outcome, error: attemptRun.error };
@@ -989,7 +1090,11 @@ export async function tickOnce(now: Date = new Date(), opts: TickOptions = {}): 
     : await unscopedPrisma.tenant.findMany({ where: { status: 'active' }, select: { id: true } });
 
   for (const tenant of tenants) {
-    await sweepTenant(tenant.id, notBefore);
+    await sweepTenant(
+      tenant.id,
+      notBefore,
+      jobs.filter((j) => retryLimit(j) === 1).map((j) => j.name),
+    );
 
     const retriable = await unscopedPrisma.jobClaim.findMany({
       where: { tenantId: tenant.id, status: { in: ['failed', 'timed_out'] }, scheduledFor: { gte: notBefore } },

@@ -231,6 +231,8 @@ export async function runVendorDpaMissingJob(): Promise<JobResult> {
 export const JOBS: JobDefinition[] = [
   {
     name: 'runVendorContractNoticeLadder',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Vendor contracts: notice-period ladder, expiring/expired flips (IT-VCT)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -238,6 +240,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runVendorAssessmentOverdueJob',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Vendors: security-assessment overdue ladder (IT_VEN_ASSESSMENT_OVERDUE)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -245,6 +249,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runVendorDpaMissingJob',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Vendors: high/critical risk with no DPA on file (IT_VEN_DPA_MISSING)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',

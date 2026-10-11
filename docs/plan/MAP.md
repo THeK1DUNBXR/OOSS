@@ -344,23 +344,23 @@
 
 **`apps/api/src/events/handlers.ts`** (271 lines) — instalmentPlan:49 · registerSubscribers:63
 
-**`apps/api/src/jobs/compliance/books.ts`** (17 lines) — JOBS:5
+**`apps/api/src/jobs/compliance/books.ts`** (19 lines) — JOBS:5
 
-**`apps/api/src/jobs/compliance/calendar.ts`** (117 lines) — runComplianceCalendarJob:31 · JOBS:108
+**`apps/api/src/jobs/compliance/calendar.ts`** (119 lines) — runComplianceCalendarJob:31 · JOBS:108
 
-**`apps/api/src/jobs/compliance/corporate.ts`** (34 lines) — JOBS:11
+**`apps/api/src/jobs/compliance/corporate.ts`** (38 lines) — JOBS:11
 
-**`apps/api/src/jobs/compliance/gst.ts`** (17 lines) — JOBS:5
+**`apps/api/src/jobs/compliance/gst.ts`** (19 lines) — JOBS:5
 
 **`apps/api/src/jobs/compliance/index.ts`** (22 lines) — COMPLIANCE_JOBS:12
 
-**`apps/api/src/jobs/compliance/labour.ts`** (28 lines) — JOBS:5
+**`apps/api/src/jobs/compliance/labour.ts`** (34 lines) — JOBS:5
 
-**`apps/api/src/jobs/compliance/payroll.ts`** (86 lines) — runGratuityAccrual:17 · JOBS:77
+**`apps/api/src/jobs/compliance/payroll.ts`** (88 lines) — runGratuityAccrual:17 · JOBS:77
 
-**`apps/api/src/jobs/compliance/privacy.ts`** (53 lines) — JOBS:13
+**`apps/api/src/jobs/compliance/privacy.ts`** (63 lines) — JOBS:13
 
-**`apps/api/src/jobs/compliance/tax.ts`** (23 lines) — JOBS:7
+**`apps/api/src/jobs/compliance/tax.ts`** (27 lines) — JOBS:7
 
 **`apps/api/src/jobs/hcm/engagement.ts`** (20 lines) — JOBS:11
 
@@ -370,29 +370,29 @@
 
 **`apps/api/src/jobs/hcm/time.ts`** (30 lines) — JOBS:14
 
-**`apps/api/src/jobs/it/assets.ts`** (79 lines) — runAssetWarrantyLadderJob:13 · runAssetInRepairTooLongJob:24 · runAssetOrphanedDetectorJob:40 · JOBS:56
+**`apps/api/src/jobs/it/assets.ts`** (85 lines) — runAssetWarrantyLadderJob:13 · runAssetInRepairTooLongJob:24 · runAssetOrphanedDetectorJob:40 · JOBS:56
 
-**`apps/api/src/jobs/it/continuity.ts`** (238 lines) — runContinuityTestOverdueJob:31 · runContinuityNoPlanJob:92 · runMaintenanceWindowNoticeJob:165 · JOBS:215
+**`apps/api/src/jobs/it/continuity.ts`** (244 lines) — runContinuityTestOverdueJob:31 · runContinuityNoPlanJob:92 · runMaintenanceWindowNoticeJob:165 · JOBS:215
 
-**`apps/api/src/jobs/it/governance.ts`** (187 lines) — runRiskReviewJob:24 · runFindingOverdueJob:34 · runAccessReviewOverdueJob:44 · runControlTestOverdueJob:58 · runPolicyReacknowledgementJob:99 · JOBS:150
+**`apps/api/src/jobs/it/governance.ts`** (197 lines) — runRiskReviewJob:24 · runFindingOverdueJob:34 · runAccessReviewOverdueJob:44 · runControlTestOverdueJob:58 · runPolicyReacknowledgementJob:99 · JOBS:150
 
 **`apps/api/src/jobs/it/index.ts`** (22 lines) — IT_JOBS:12
 
-**`apps/api/src/jobs/it/itsm.ts`** (191 lines) — runStaleIncidentJob:25 · runReviewOverdueJob:71 · runChangeWindowMissedJob:117 · JOBS:168
+**`apps/api/src/jobs/it/itsm.ts`** (197 lines) — runStaleIncidentJob:25 · runReviewOverdueJob:71 · runChangeWindowMissedJob:117 · JOBS:168
 
-**`apps/api/src/jobs/it/portfolio.ts`** (141 lines) — runStaleInitiativeJob:29 · runBudgetBurnJob:78 · JOBS:125
+**`apps/api/src/jobs/it/portfolio.ts`** (145 lines) — runStaleInitiativeJob:29 · runBudgetBurnJob:78 · JOBS:125
 
-**`apps/api/src/jobs/it/servicedesk.ts`** (171 lines) — runServicedeskJob:31 · JOBS:162
+**`apps/api/src/jobs/it/servicedesk.ts`** (173 lines) — runServicedeskJob:31 · JOBS:162
 
-**`apps/api/src/jobs/it/software.ts`** (76 lines) — runItSoftwareJob:20 · runItSoftwareJobForTenant:62 · JOBS:66
+**`apps/api/src/jobs/it/software.ts`** (78 lines) — runItSoftwareJob:20 · runItSoftwareJobForTenant:62 · JOBS:66
 
-**`apps/api/src/jobs/it/vendors.ts`** (254 lines) — runVendorContractNoticeLadder:37 · runVendorAssessmentOverdueJob:134 · runVendorDpaMissingJob:195 · JOBS:231
+**`apps/api/src/jobs/it/vendors.ts`** (260 lines) — runVendorContractNoticeLadder:37 · runVendorAssessmentOverdueJob:134 · runVendorDpaMissingJob:195 · JOBS:231
 
-**`apps/api/src/jobs/marketing.ts`** (223 lines) — MARKETING_JOBS:172
+**`apps/api/src/jobs/marketing.ts`** (239 lines) — MARKETING_JOBS:172
 
 **`apps/api/src/jobs/schedule.ts`** (136 lines) — SCHEDULE_TZ:20 · TICK_MS:23 · MAX_ATTEMPTS:26 · isValidCron:46 · nextFireAfter:56 · dueOccurrence:74 · occurrencesBetween:95 · backoffMs:113 · CATCH_UP_MS:126 · LEASE_MS:134 · HEARTBEAT_MS:135
 
-**`apps/api/src/jobs/scheduler.ts`** (1079 lines) — JobResult:55 · JobDefinition:62 · ALL_JOBS:85 · escalateApprovalStep:378 · RunOptions:476 · claimFiring:512 · runJobsForTenant:636 · runAllTenants:662 · ClaimStatus:704 · ClaimResult:706 · AttemptFence:717 · claimAttempt:739 · heartbeatAttempt:769 · finishAttempt:780 · failAttempt:798 · runClaimedOccurrence:889 · TickOutcome:955 · TickOptions:966 · tickOnce:982 · assertSchedulable:1038 · startScheduler:1052 · stopScheduler:1075
+**`apps/api/src/jobs/scheduler.ts`** (1184 lines) — JobResult:55 · SideEffects:66 · JobDefinition:68 · PendingJobDefinition:97 · ALL_JOBS:109 · escalateApprovalStep:454 · RunOptions:552 · claimFiring:588 · runJobsForTenant:712 · runAllTenants:738 · runManualJobs:771 · retryLimit:797 · ClaimStatus:801 · ClaimResult:803 · AttemptFence:814 · claimAttempt:836 · heartbeatAttempt:867 · finishAttempt:878 · failAttempt:896 · runClaimedOccurrence:989 · TickOutcome:1056 · TickOptions:1067 · tickOnce:1083 · assertSchedulable:1143 · startScheduler:1157 · stopScheduler:1180
 
 **`apps/api/src/lib/auth.ts`** (1154 lines) — assertProductionSecrets:89 · TokenPayload:121 · SelectionTokenPayload:136 · signToken:141 · hashRefreshSecret:146 · liveSessionFor:155 · verifyToken:189 · MfaChallengePayload:197 · hashPassword:228 · ensureSignInPrincipal:248 · EntitySelectionResult:320 · assertPasswordAllowed:331 · LoginResult:388 · MfaRequiredResult:396 · login:419 · verifyMfaAndLogin:559 · enrolMfa:586 · confirmMfa:592 · changePassword:608 · entitiesForToken:629 · identifySwitchCaller:644 · switchEntity:681 · SessionRefresh:743 · refreshSession:770 · logoutWithRefreshCookie:933 · logoutSession:986 · buildSessionUser:996 · toAuthContext:1077 · switchContext:1109
 

@@ -66,6 +66,8 @@ export async function runItSoftwareJobForTenant(tenantId: string): Promise<JobRe
 export const JOBS: JobDefinition[] = [
   {
     name: 'runItSoftwareJob',
+    sideEffects: 'external',
+    idempotent: false,
     label:
       'Technology — applications & licences: renewal ladder, seat exceptions, unowned applications (IT-LIC/IT-APP)',
     automationClass: 'threshold_response',

@@ -5,6 +5,8 @@ import { detectLateGstFilings } from '../../domains/compliance/gst.js';
 export const JOBS: JobDefinition[] = [
   {
     name: 'runGstLateFilingJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'GST late-filing exposure (Sec 47/50)',
     automationClass: 'threshold_response',
     cron: '0 7 * * *',

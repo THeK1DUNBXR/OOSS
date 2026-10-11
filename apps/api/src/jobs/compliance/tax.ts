@@ -7,6 +7,8 @@ const counted = (n: number) => ({ processed: n, notified: n, skippedIdempotent: 
 export const JOBS: JobDefinition[] = [
   {
     name: 'runTdsDepositDueJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'CMP-TDS-002 TDS deposit-due ladder',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -14,6 +16,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runMsme45DayJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'CMP-TDS-003 MSME 45-day payment term sweep',
     automationClass: 'threshold_response',
     cron: '0 7 * * *',

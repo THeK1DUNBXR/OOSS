@@ -108,6 +108,8 @@ export async function runComplianceCalendarJob(): Promise<JobResult> {
 export const JOBS: JobDefinition[] = [
   {
     name: 'runComplianceCalendarJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Compliance calendar: generate, due/overdue, 30/7/1 ladder (CMP-CAL)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
