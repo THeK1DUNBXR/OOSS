@@ -26,6 +26,7 @@ import { ApiError } from '../../platform/errors.js';
 import { assertCan, assertScopeAll, scopeFor } from '../../platform/permissions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { transitionAttendance } from '../leave.js';
 import type { JobResult } from '../../jobs/scheduler.js';
@@ -164,26 +165,29 @@ export async function createShift(input: {
   parseHHMM(input.startTime);
   parseHHMM(input.endTime);
 
-  const row = await prisma.shift.create({
-    data: {
-      tenantId: auth.tenantId,
-      code: input.code,
-      name: input.name,
-      startTime: input.startTime,
-      endTime: input.endTime,
-      graceMinutes: input.graceMinutes ?? 0,
-      breakMinutes: input.breakMinutes ?? 0,
-      nightShift: input.nightShift ?? false,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.shift.create({
+      data: {
+        tenantId: auth.tenantId,
+        code: input.code,
+        name: input.name,
+        startTime: input.startTime,
+        endTime: input.endTime,
+        graceMinutes: input.graceMinutes ?? 0,
+        breakMinutes: input.breakMinutes ?? 0,
+        nightShift: input.nightShift ?? false,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'shift', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: EVENTS.SHIFT_CREATED,
+      subject: { entityType: 'shift', entityId: row.id },
+      newState: { code: row.code, name: row.name },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await auditWrite({ action: 'create', subjectType: 'shift', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.SHIFT_CREATED,
-    subject: { entityType: 'shift', entityId: row.id },
-    newState: { code: row.code, name: row.name },
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 export async function updateShift(
@@ -234,26 +238,37 @@ export async function assignRoster(input: {
   const shift = await prisma.shift.findFirst({ where: { id: input.shiftId, tenantId: auth.tenantId } });
   if (!shift) throw ApiError.notFound('Shift');
 
-  const row = await prisma.rosterAssignment.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      shiftId: input.shiftId,
-      effectiveFrom: dayStart(input.effectiveFrom),
-      effectiveTo: input.effectiveTo ? dayStart(input.effectiveTo) : null,
-      weeklyOffDays: input.weeklyOffDays ?? [0],
-      note: input.note ?? null,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.rosterAssignment.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        shiftId: input.shiftId,
+        effectiveFrom: dayStart(input.effectiveFrom),
+        effectiveTo: input.effectiveTo ? dayStart(input.effectiveTo) : null,
+        weeklyOffDays: input.weeklyOffDays ?? [0],
+        note: input.note ?? null,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'roster_assignment',
+      subjectId: row.id,
+      after: row as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.ROSTER_PUBLISHED,
+      subject: { entityType: 'roster_assignment', entityId: row.id },
+      related: [
+        { relation: 'assigns', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+      ],
+      newState: { shiftId: input.shiftId, effectiveFrom: ymd(row.effectiveFrom) },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await auditWrite({ action: 'create', subjectType: 'roster_assignment', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.ROSTER_PUBLISHED,
-    subject: { entityType: 'roster_assignment', entityId: row.id },
-    related: [{ relation: 'assigns', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { shiftId: input.shiftId, effectiveFrom: ymd(row.effectiveFrom) },
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 /** The roster row covering `on` (default today) for one employment, or null if none is assigned. */
@@ -320,30 +335,36 @@ export async function recordClockEvent(input: {
     throw ApiError.unprocessable('No open clock-in to close. Clock in first.');
   }
 
-  const row = await prisma.clockEvent.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      kind: input.kind,
-      occurredAt: input.occurredAt ?? new Date(),
-      source: input.source ?? 'web',
-      ip: input.ip ?? null,
-      deviceId: input.deviceId ?? null,
-      lat: input.lat ?? null,
-      long: input.long ?? null,
-      note: input.note ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const row = await tx.clockEvent.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        kind: input.kind,
+        occurredAt: input.occurredAt ?? new Date(),
+        source: input.source ?? 'web',
+        ip: input.ip ?? null,
+        deviceId: input.deviceId ?? null,
+        lat: input.lat ?? null,
+        long: input.long ?? null,
+        note: input.note ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.CLOCK_EVENT_RECORDED,
-    subject: { entityType: 'clock_event', entityId: row.id },
-    related: [{ relation: 'punches', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { kind: row.kind, occurredAt: row.occurredAt.toISOString(), source: row.source },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({ action: 'create', subjectType: 'clock_event', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: EVENTS.CLOCK_EVENT_RECORDED,
+      subject: { entityType: 'clock_event', entityId: row.id },
+      related: [
+        { relation: 'punches', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+      ],
+      newState: { kind: row.kind, occurredAt: row.occurredAt.toISOString(), source: row.source },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return row;
+    return row;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -554,18 +575,29 @@ export async function submitTimesheet(id: string) {
   const entryCount = await prisma.timesheetEntry.count({ where: { timesheetId: id } });
   if (entryCount === 0) throw ApiError.unprocessable('Add at least one entry before submitting.');
 
-  const updated = await prisma.timesheet.update({
-    where: { id },
-    data: { status: 'submitted', submittedAt: new Date(), decisionNote: null },
+  return governedWrite(async (tx) => {
+    const updated = await tx.timesheet.update({
+      where: { id },
+      data: { status: 'submitted', submittedAt: new Date(), decisionNote: null },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'timesheet',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: 'submitted' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.TIMESHEET_SUBMITTED,
+      subject: { entityType: 'timesheet', entityId: id, recordCode: row.recordCode },
+      related: [{ relation: 'covers', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
+      newState: { status: 'submitted', totalHours: num(row.totalHours) },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: EVENTS.TIMESHEET_SUBMITTED,
-    subject: { entityType: 'timesheet', entityId: id, recordCode: row.recordCode },
-    related: [{ relation: 'covers', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
-    newState: { status: 'submitted', totalHours: num(row.totalHours) },
-    impact: { domains: ['hr'] },
-  });
-  return updated;
 }
 
 async function decideTimesheet(id: string, approve: boolean, note: string | null) {
@@ -583,25 +615,36 @@ async function decideTimesheet(id: string, approve: boolean, note: string | null
   if (row.status !== 'submitted')
     throw ApiError.unprocessable(`Timesheet is ${row.status}; only a submitted timesheet can be decided.`);
 
-  const updated = await prisma.timesheet.update({
-    where: { id },
-    data: {
-      status: approve ? 'approved' : 'rejected',
-      decidedById: auth.partyId,
-      decidedAt: new Date(),
-      decisionNote: note,
-    },
+  return governedWrite(async (tx) => {
+    const updated = await tx.timesheet.update({
+      where: { id },
+      data: {
+        status: approve ? 'approved' : 'rejected',
+        decidedById: auth.partyId,
+        decidedAt: new Date(),
+        decisionNote: note,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'timesheet',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: updated.status },
+      tx,
+    });
+    await emit({
+      name: approve ? EVENTS.TIMESHEET_APPROVED : EVENTS.TIMESHEET_REJECTED,
+      subject: { entityType: 'timesheet', entityId: id, recordCode: row.recordCode },
+      related: [{ relation: 'covers', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
+      previousState: { status: row.status },
+      newState: { status: updated.status, note },
+      reason: { reasonCode: approve ? 'approved' : 'rejected' },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: approve ? EVENTS.TIMESHEET_APPROVED : EVENTS.TIMESHEET_REJECTED,
-    subject: { entityType: 'timesheet', entityId: id, recordCode: row.recordCode },
-    related: [{ relation: 'covers', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
-    previousState: { status: row.status },
-    newState: { status: updated.status, note },
-    reason: { reasonCode: approve ? 'approved' : 'rejected' },
-    impact: { domains: ['hr'] },
-  });
-  return updated;
 }
 
 export const approveTimesheet = (id: string, note?: string) => decideTimesheet(id, true, note ?? null);
@@ -630,25 +673,29 @@ export async function requestOvertime(input: {
   if (input.hours <= 0 || input.hours > 12)
     throw ApiError.badRequest('Overtime hours must be more than 0 and no more than 12 for a single request.');
 
-  const row = await prisma.overtimeRequest.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      date: dayStart(input.date),
-      hours: input.hours,
-      reason: input.reason ?? null,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.overtimeRequest.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        date: dayStart(input.date),
+        hours: input.hours,
+        reason: input.reason ?? null,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'overtime_request', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: EVENTS.OVERTIME_REQUEST_SUBMITTED,
+      subject: { entityType: 'overtime_request', entityId: row.id },
+      related: [
+        { relation: 'requests_for', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+      ],
+      newState: { date: ymd(row.date), hours: input.hours },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.OVERTIME_REQUEST_SUBMITTED,
-    subject: { entityType: 'overtime_request', entityId: row.id },
-    related: [
-      { relation: 'requests_for', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-    ],
-    newState: { date: ymd(row.date), hours: input.hours },
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 async function decideOvertime(id: string, approve: boolean, note: string | null) {
@@ -666,59 +713,80 @@ async function decideOvertime(id: string, approve: boolean, note: string | null)
   if (row.status !== 'requested')
     throw ApiError.unprocessable(`Overtime request is ${row.status}; only a requested one can be decided.`);
 
-  const updated = await prisma.overtimeRequest.update({
-    where: { id },
-    data: {
-      status: approve ? 'approved' : 'rejected',
-      decidedById: auth.partyId,
-      decidedAt: new Date(),
-      decisionNote: note,
-    },
-  });
+  // The decision and, when approved, the comp-off it earns commit together: a
+  // comp-off with no approved overtime behind it is the case this prevents.
+  return governedWrite(async (tx) => {
+    const updated = await tx.overtimeRequest.update({
+      where: { id },
+      data: {
+        status: approve ? 'approved' : 'rejected',
+        decidedById: auth.partyId,
+        decidedAt: new Date(),
+        decisionNote: note,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'overtime_request',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: updated.status },
+      tx,
+    });
 
-  await emit({
-    name: approve ? EVENTS.OVERTIME_REQUEST_APPROVED : EVENTS.OVERTIME_REQUEST_REJECTED,
-    subject: { entityType: 'overtime_request', entityId: id },
-    related: [
-      { relation: 'requests_for', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
-    ],
-    previousState: { status: row.status },
-    newState: { status: updated.status, note },
-    reason: { reasonCode: approve ? 'approved' : 'rejected' },
-    impact: { domains: ['hr'] },
-  });
+    await emit({
+      name: approve ? EVENTS.OVERTIME_REQUEST_APPROVED : EVENTS.OVERTIME_REQUEST_REJECTED,
+      subject: { entityType: 'overtime_request', entityId: id },
+      related: [
+        { relation: 'requests_for', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
+      ],
+      previousState: { status: row.status },
+      newState: { status: updated.status, note },
+      reason: { reasonCode: approve ? 'approved' : 'rejected' },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  // Approving overtime is also what earns the comp-off — a separate "earn"
-  // step would let one exist without the other ever having happened.
-  if (approve) {
-    const days = compOffDaysForHours(num(row.hours) ?? 0);
-    if (days > 0) {
-      const earnedOn = new Date();
-      const compOff = await prisma.compOff.create({
-        data: {
-          tenantId: auth.tenantId,
-          employmentRelationshipId: row.employmentRelationshipId,
-          earnedFrom: 'overtime',
-          sourceRef: row.id,
-          earnedOn,
-          days,
-          expiresOn: compOffExpiryDate(earnedOn),
-        },
-      });
-      await emit({
-        name: EVENTS.COMP_OFF_EARNED,
-        subject: { entityType: 'comp_off', entityId: compOff.id },
-        related: [
-          { relation: 'earned_from', entityType: 'overtime_request', entityId: row.id },
-          { relation: 'credited_to', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
-        ],
-        newState: { days, expiresOn: ymd(compOff.expiresOn) },
-        impact: { domains: ['hr'] },
-      });
+    // Approving overtime is also what earns the comp-off — a separate "earn"
+    // step would let one exist without the other ever having happened.
+    if (approve) {
+      const days = compOffDaysForHours(num(row.hours) ?? 0);
+      if (days > 0) {
+        const earnedOn = new Date();
+        const compOff = await tx.compOff.create({
+          data: {
+            tenantId: auth.tenantId,
+            employmentRelationshipId: row.employmentRelationshipId,
+            earnedFrom: 'overtime',
+            sourceRef: row.id,
+            earnedOn,
+            days,
+            expiresOn: compOffExpiryDate(earnedOn),
+          },
+        });
+        await auditWrite({
+          action: 'create',
+          subjectType: 'comp_off',
+          subjectId: compOff.id,
+          after: compOff as never,
+          tx,
+        });
+        await emit({
+          name: EVENTS.COMP_OFF_EARNED,
+          subject: { entityType: 'comp_off', entityId: compOff.id },
+          related: [
+            { relation: 'earned_from', entityType: 'overtime_request', entityId: row.id },
+            { relation: 'credited_to', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
+          ],
+          newState: { days, expiresOn: ymd(compOff.expiresOn) },
+          impact: { domains: ['hr'] },
+          tx,
+        });
+      }
     }
-  }
 
-  return updated;
+    return updated;
+  });
 }
 
 export const approveOvertimeRequest = (id: string, note?: string) => decideOvertime(id, true, note ?? null);
@@ -738,27 +806,31 @@ export async function earnCompOffForHolidayWork(input: {
     throw ApiError.badRequest('Comp-off for one day worked must be more than 0 and no more than 2 days.');
 
   const earnedOn = dayStart(input.earnedOn);
-  const row = await prisma.compOff.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      earnedFrom: 'holiday_work',
-      earnedOn,
-      days: input.days,
-      expiresOn: compOffExpiryDate(earnedOn),
-      note: input.note ?? null,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.compOff.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        earnedFrom: 'holiday_work',
+        earnedOn,
+        days: input.days,
+        expiresOn: compOffExpiryDate(earnedOn),
+        note: input.note ?? null,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'comp_off', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: EVENTS.COMP_OFF_EARNED,
+      subject: { entityType: 'comp_off', entityId: row.id },
+      related: [
+        { relation: 'credited_to', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+      ],
+      newState: { days: input.days, expiresOn: ymd(row.expiresOn) },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.COMP_OFF_EARNED,
-    subject: { entityType: 'comp_off', entityId: row.id },
-    related: [
-      { relation: 'credited_to', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-    ],
-    newState: { days: input.days, expiresOn: ymd(row.expiresOn) },
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 // ---------------------------------------------------------------------------
@@ -785,20 +857,31 @@ export async function consumeCompOff(id: string, consumedOn: Date = new Date()) 
     throw ApiError.unprocessable(`This comp-off expired on ${ymd(row.expiresOn)} and can no longer be consumed.`);
   }
 
-  const updated = await prisma.compOff.update({
-    where: { id },
-    data: { status: 'consumed', consumedOn: dayStart(consumedOn) },
+  return governedWrite(async (tx) => {
+    const updated = await tx.compOff.update({
+      where: { id },
+      data: { status: 'consumed', consumedOn: dayStart(consumedOn) },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'comp_off',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: 'consumed' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.COMP_OFF_CONSUMED,
+      subject: { entityType: 'comp_off', entityId: id },
+      related: [
+        { relation: 'credited_to', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
+      ],
+      newState: { consumedOn: ymd(updated.consumedOn!) },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: EVENTS.COMP_OFF_CONSUMED,
-    subject: { entityType: 'comp_off', entityId: id },
-    related: [
-      { relation: 'credited_to', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
-    ],
-    newState: { consumedOn: ymd(updated.consumedOn!) },
-    impact: { domains: ['hr'] },
-  });
-  return updated;
 }
 
 /** The comp-off expiry sweep. Every `available` row past its `expiresOn` becomes `expired`, with an event per row rather than a silent bulk update. */
@@ -815,15 +898,26 @@ export async function runCompOffExpiry(): Promise<JobResult> {
   });
 
   for (const row of expiring) {
-    await prisma.compOff.update({ where: { id: row.id }, data: { status: 'expired' } });
-    await emit({
-      name: EVENTS.COMP_OFF_EXPIRED,
-      subject: { entityType: 'comp_off', entityId: row.id },
-      related: [
-        { relation: 'credited_to', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
-      ],
-      newState: { expiresOn: ymd(row.expiresOn), days: num(row.days) },
-      impact: { domains: ['hr'] },
+    await governedWrite(async (tx) => {
+      await tx.compOff.update({ where: { id: row.id }, data: { status: 'expired' } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'comp_off',
+        subjectId: row.id,
+        before: { status: row.status },
+        after: { status: 'expired' },
+        tx,
+      });
+      await emit({
+        name: EVENTS.COMP_OFF_EXPIRED,
+        subject: { entityType: 'comp_off', entityId: row.id },
+        related: [
+          { relation: 'credited_to', entityType: 'employment_relationship', entityId: row.employmentRelationshipId },
+        ],
+        newState: { expiresOn: ymd(row.expiresOn), days: num(row.days) },
+        impact: { domains: ['hr'] },
+        tx,
+      });
     });
   }
 
@@ -886,26 +980,40 @@ export async function submitRegularisation(input: { employmentRelationshipId: st
     await asSystem(auth.tenantId, () => transitionAttendance(attendance!.id, 'DISPUTE', input.reason));
   }
 
-  const row = await prisma.attendanceRegularisation.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      workAttendanceId: attendance.id,
-      date: day,
-      reason: input.reason,
-    },
+  // The transitionAttendance call above is a nested service call that runs
+  // outside this transaction; the regularisation row, its audit and its event
+  // commit together.
+  const attendanceId = attendance.id;
+  return governedWrite(async (tx) => {
+    const row = await tx.attendanceRegularisation.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        workAttendanceId: attendanceId,
+        date: day,
+        reason: input.reason,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'attendance_regularisation',
+      subjectId: row.id,
+      after: row as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.ATTENDANCE_REGULARISATION_SUBMITTED,
+      subject: { entityType: 'attendance_regularisation', entityId: row.id },
+      related: [
+        { relation: 'covers', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+        { relation: 'disputes', entityType: 'work_attendance', entityId: attendanceId },
+      ],
+      newState: { date: ymd(day), reason: input.reason },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.ATTENDANCE_REGULARISATION_SUBMITTED,
-    subject: { entityType: 'attendance_regularisation', entityId: row.id },
-    related: [
-      { relation: 'covers', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-      { relation: 'disputes', entityType: 'work_attendance', entityId: attendance.id },
-    ],
-    newState: { date: ymd(day), reason: input.reason },
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 async function decideRegularisation(
@@ -938,24 +1046,37 @@ async function decideRegularisation(
     await asSystem(auth.tenantId, () => transitionAttendance(row.workAttendanceId, 'REGULARISE', note ?? undefined));
   }
 
-  const updated = await prisma.attendanceRegularisation.update({
-    where: { id },
-    data: {
-      status: approve ? 'approved' : 'rejected',
-      decidedById: auth.partyId,
-      decidedAt: new Date(),
-      decisionNote: note,
-    },
-  });
-
-  await emit({
-    name: approve ? EVENTS.ATTENDANCE_REGULARISATION_APPROVED : EVENTS.ATTENDANCE_REGULARISATION_REJECTED,
-    subject: { entityType: 'attendance_regularisation', entityId: id },
-    related: [{ relation: 'covers', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
-    previousState: { status: row.status },
-    newState: { status: updated.status, note },
-    reason: { reasonCode: approve ? 'approved' : 'rejected' },
-    impact: { domains: ['hr'] },
+  // The WorkAttendance transition above and the exception below stay outside
+  // this transaction: both are nested service calls on the scoped client.
+  const updated = await governedWrite(async (tx) => {
+    const decided = await tx.attendanceRegularisation.update({
+      where: { id },
+      data: {
+        status: approve ? 'approved' : 'rejected',
+        decidedById: auth.partyId,
+        decidedAt: new Date(),
+        decisionNote: note,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'attendance_regularisation',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: decided.status },
+      tx,
+    });
+    await emit({
+      name: approve ? EVENTS.ATTENDANCE_REGULARISATION_APPROVED : EVENTS.ATTENDANCE_REGULARISATION_REJECTED,
+      subject: { entityType: 'attendance_regularisation', entityId: id },
+      related: [{ relation: 'covers', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
+      previousState: { status: row.status },
+      newState: { status: decided.status, note },
+      reason: { reasonCode: approve ? 'approved' : 'rejected' },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return decided;
   });
 
   if (!approve) {

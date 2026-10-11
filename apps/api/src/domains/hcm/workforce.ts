@@ -21,6 +21,7 @@ import {
   type StatusChangeTarget,
 } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
@@ -137,24 +138,28 @@ export async function upsertProfileExtension(employmentRelationshipId: string, i
     dependants: (input.dependants ?? before?.dependants ?? []) as never,
   };
 
-  const row = await prisma.employeeProfileExtension.upsert({
-    where: { employmentRelationshipId },
-    create: data,
-    update: data,
-  });
-
-  await auditWrite({
-    action: before ? 'update' : 'create',
-    subjectType: 'employee_profile_extension',
-    subjectId: row.id,
-    before: before as never,
-    after: row as never,
-  });
-  await emit({
-    name: 'kz.hr.employee_profile.updated',
-    subject: { entityType: 'employee_profile_extension', entityId: row.id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: employmentRelationshipId }],
-    newState: { employmentRelationshipId },
+  const row = await governedWrite(async (tx) => {
+    const saved = await tx.employeeProfileExtension.upsert({
+      where: { employmentRelationshipId },
+      create: data,
+      update: data,
+    });
+    await auditWrite({
+      action: before ? 'update' : 'create',
+      subjectType: 'employee_profile_extension',
+      subjectId: saved.id,
+      before: before as never,
+      after: saved as never,
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.employee_profile.updated',
+      subject: { entityType: 'employee_profile_extension', entityId: saved.id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: employmentRelationshipId }],
+      newState: { employmentRelationshipId },
+      tx,
+    });
+    return saved;
   });
 
   return redactProfileExtension(row, await canSeeFullProfile(employment.personId));
@@ -192,30 +197,35 @@ export async function uploadEmployeeDocument(employmentRelationshipId: string, i
   const employment = await requireEmployment(employmentRelationshipId);
   await assertCan({ resource: 'employee_documents', verb: 'create', record: { ownerPartyId: employment.personId } });
 
-  const row = await prisma.employeeDocument.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId,
-      kind: input.kind,
-      filename: input.filename,
-      mimeType: input.mimeType,
-      content: input.content,
-      expiresOn: input.expiresOn ?? null,
-      uploadedById: auth.partyId,
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.employeeDocument.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId,
+        kind: input.kind,
+        filename: input.filename,
+        mimeType: input.mimeType,
+        content: input.content,
+        expiresOn: input.expiresOn ?? null,
+        uploadedById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'employee_document',
-    subjectId: row.id,
-    after: { ...row, content: '[redacted]' } as never,
-  });
-  await emit({
-    name: 'kz.hr.employee_document.uploaded',
-    subject: { entityType: 'employee_document', entityId: row.id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: employmentRelationshipId }],
-    newState: { kind: row.kind, filename: row.filename },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'employee_document',
+      subjectId: created.id,
+      after: { ...created, content: '[redacted]' } as never,
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.employee_document.uploaded',
+      subject: { entityType: 'employee_document', entityId: created.id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: employmentRelationshipId }],
+      newState: { kind: created.kind, filename: created.filename },
+      tx,
+    });
+    return created;
   });
 
   const { content: _content, ...rest } = row;
@@ -233,22 +243,27 @@ export async function verifyEmployeeDocument(id: string, note?: string) {
   if (!before) throw ApiError.notFound('Employee document');
   if (before.verified) throw ApiError.badRequest('This document is already verified.');
 
-  const row = await prisma.employeeDocument.update({
-    where: { id },
-    data: { verified: true, verifiedById: auth.partyId, verifiedAt: new Date() },
-  });
+  const row = await governedWrite(async (tx) => {
+    const updated = await tx.employeeDocument.update({
+      where: { id },
+      data: { verified: true, verifiedById: auth.partyId, verifiedAt: new Date() },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'employee_document',
-    subjectId: id,
-    before: { ...before, content: '[redacted]' } as never,
-    after: { ...row, content: '[redacted]' } as never,
-  });
-  await emit({
-    name: 'kz.hr.employee_document.verified',
-    subject: { entityType: 'employee_document', entityId: id },
-    newState: { verified: true, note: note ?? null },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employee_document',
+      subjectId: id,
+      before: { ...before, content: '[redacted]' } as never,
+      after: { ...updated, content: '[redacted]' } as never,
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.employee_document.verified',
+      subject: { entityType: 'employee_document', entityId: id },
+      newState: { verified: true, note: note ?? null },
+      tx,
+    });
+    return updated;
   });
 
   const { content: _content, ...rest } = row;
@@ -308,11 +323,11 @@ export async function setReportingLine(input: SetReportingLineInput) {
     where: { employmentRelationshipId: input.employmentRelationshipId, kind, effectiveTo: null },
   });
 
-  const row = await prisma.$transaction(async (tx) => {
+  return governedWrite(async (tx) => {
     if (previous) {
       await tx.reportingLine.update({ where: { id: previous.id }, data: { effectiveTo: effectiveFrom } });
     }
-    return tx.reportingLine.create({
+    const row = await tx.reportingLine.create({
       data: {
         tenantId: auth.tenantId,
         employmentRelationshipId: input.employmentRelationshipId,
@@ -322,24 +337,25 @@ export async function setReportingLine(input: SetReportingLineInput) {
         createdById: auth.partyId,
       },
     });
-  });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'reporting_line',
-    subjectId: row.id,
-    before: previous as never,
-    after: row as never,
+    await auditWrite({
+      action: 'create',
+      subjectType: 'reporting_line',
+      subjectId: row.id,
+      before: previous as never,
+      after: row as never,
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.reporting_line.changed',
+      subject: { entityType: 'reporting_line', entityId: row.id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+      previousState: previous ? { managerEmploymentRelationshipId: previous.managerEmploymentRelationshipId } : null,
+      newState: { managerEmploymentRelationshipId: input.managerEmploymentRelationshipId, kind },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: 'kz.hr.reporting_line.changed',
-    subject: { entityType: 'reporting_line', entityId: row.id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    previousState: previous ? { managerEmploymentRelationshipId: previous.managerEmploymentRelationshipId } : null,
-    newState: { managerEmploymentRelationshipId: input.managerEmploymentRelationshipId, kind },
-  });
-
-  return row;
 }
 
 /** The whole tenant's current primary-line tree, for `/org-chart`. */
@@ -657,28 +673,36 @@ export async function proposeStatusChange(input: ProposeStatusChangeInput) {
   await assertCan({ resource: 'employee_changes', verb: 'create' });
   await requireEmployment(input.employmentRelationshipId);
 
-  const row = await prisma.employeeStatusChange.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      kind: input.kind,
-      changes: input.changes as never,
-      reason: input.reason,
-      effectiveDate: input.effectiveDate,
-      status: 'pending_approval',
-      proposedById: auth.partyId ?? 'unknown',
-    },
-  });
+  return governedWrite(async (tx) => {
+    const row = await tx.employeeStatusChange.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        kind: input.kind,
+        changes: input.changes as never,
+        reason: input.reason,
+        effectiveDate: input.effectiveDate,
+        status: 'pending_approval',
+        proposedById: auth.partyId ?? 'unknown',
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'employee_status_change', subjectId: row.id, after: row as never });
-  await emit({
-    name: 'kz.hr.employee_change.submitted',
-    subject: { entityType: 'employee_status_change', entityId: row.id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { kind: row.kind, status: row.status },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'employee_status_change',
+      subjectId: row.id,
+      after: row as never,
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.employee_change.submitted',
+      subject: { entityType: 'employee_status_change', entityId: row.id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+      newState: { kind: row.kind, status: row.status },
+      tx,
+    });
+    return row;
   });
-
-  return row;
 }
 
 export async function listStatusChanges(employmentRelationshipId?: string) {
@@ -738,31 +762,35 @@ export async function decideStatusChange(id: string, approve: boolean, note?: st
     );
   }
 
-  const updated = await prisma.employeeStatusChange.update({
-    where: { id },
-    data: {
-      status: approve ? 'approved' : 'rejected',
-      decidedById: auth.partyId,
-      decidedAt: new Date(),
-      decisionNote: note ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.employeeStatusChange.update({
+      where: { id },
+      data: {
+        status: approve ? 'approved' : 'rejected',
+        decidedById: auth.partyId,
+        decidedAt: new Date(),
+        decisionNote: note ?? null,
+      },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'employee_status_change',
-    subjectId: id,
-    before: row as never,
-    after: updated as never,
-  });
-  await emit({
-    name: approve ? 'kz.hr.employee_change.approved' : 'kz.hr.employee_change.rejected',
-    subject: { entityType: 'employee_status_change', entityId: id },
-    previousState: { status: row.status },
-    newState: { status: updated.status, note: note ?? null },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employee_status_change',
+      subjectId: id,
+      before: row as never,
+      after: updated as never,
+      tx,
+    });
+    await emit({
+      name: approve ? 'kz.hr.employee_change.approved' : 'kz.hr.employee_change.rejected',
+      subject: { entityType: 'employee_status_change', entityId: id },
+      previousState: { status: row.status },
+      newState: { status: updated.status, note: note ?? null },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 /** Applies an approved status change: writes the new grade/cost-centre/location assignment. */
@@ -781,7 +809,7 @@ export async function applyStatusChange(id: string) {
   const diff = statusChangeDiff(current, target);
   const effectiveFrom = row.effectiveDate;
 
-  await prisma.$transaction(async (tx) => {
+  return governedWrite(async (tx) => {
     if (target.gradeId) {
       await tx.gradeAssignment.updateMany({
         where: { employmentRelationshipId: row.employmentRelationshipId, effectiveTo: null },
@@ -824,24 +852,27 @@ export async function applyStatusChange(id: string) {
         },
       });
     }
-    await tx.employeeStatusChange.update({ where: { id }, data: { status: 'applied', appliedAt: new Date() } });
-  });
+    const updated = await tx.employeeStatusChange.update({
+      where: { id },
+      data: { status: 'applied', appliedAt: new Date() },
+    });
 
-  const updated = await prisma.employeeStatusChange.findFirstOrThrow({ where: { id } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employee_status_change',
+      subjectId: id,
+      before: row as never,
+      after: { ...updated, diff } as never,
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.employee_change.applied',
+      subject: { entityType: 'employee_status_change', entityId: id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
+      newState: { diff },
+      tx,
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'employee_status_change',
-    subjectId: id,
-    before: row as never,
-    after: { ...updated, diff } as never,
+    return updated;
   });
-  await emit({
-    name: 'kz.hr.employee_change.applied',
-    subject: { entityType: 'employee_status_change', entityId: id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: row.employmentRelationshipId }],
-    newState: { diff },
-  });
-
-  return updated;
 }

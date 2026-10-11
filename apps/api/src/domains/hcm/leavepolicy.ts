@@ -28,8 +28,10 @@ import {
   type EventEnvelope,
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma, num } from '../../platform/db.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit, subscribe } from '../../platform/eventBus.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, scopeFor } from '../../platform/permissions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
@@ -37,6 +39,14 @@ import { raiseException } from '../../platform/exceptions.js';
 import { accrueEntitlement } from '../leave.js';
 import { leaveWorkingDayCount } from '../compliance/labour.js';
 import type { JobResult } from '../../jobs/scheduler.js';
+
+registerGovernedEntities('hcm_leave_policy', [
+  'leave_policy',
+  'leave_policy_rule',
+  'accrual_run',
+  'leave_approval_chain',
+  'leave_request_approval',
+]);
 
 const ACCRUAL_FREQUENCIES = ['monthly', 'quarterly', 'yearly', 'none'] as const;
 
@@ -91,27 +101,37 @@ export async function createLeavePolicy(input: CreateLeavePolicyInput) {
     throw ApiError.unprocessable('A policy cannot end before it starts.');
   }
 
-  const policy = await prisma.leavePolicy.create({
-    data: {
-      tenantId: auth.tenantId,
-      name: input.name,
-      description: input.description ?? null,
-      engagementTypes: input.engagementTypes ?? [],
-      orgUnitIds: input.orgUnitIds ?? [],
-      gradeCodes: input.gradeCodes ?? [],
-      effectiveFrom: input.effectiveFrom,
-      effectiveTo: input.effectiveTo ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const policy = await tx.leavePolicy.create({
+      data: {
+        tenantId: auth.tenantId,
+        name: input.name,
+        description: input.description ?? null,
+        engagementTypes: input.engagementTypes ?? [],
+        orgUnitIds: input.orgUnitIds ?? [],
+        gradeCodes: input.gradeCodes ?? [],
+        effectiveFrom: input.effectiveFrom,
+        effectiveTo: input.effectiveTo ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.LEAVE_POLICY_CREATED,
-    subject: { entityType: 'leave_policy', entityId: policy.id },
-    newState: { name: policy.name, effectiveFrom: input.effectiveFrom },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'leave_policy',
+      subjectId: policy.id,
+      after: policy as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.LEAVE_POLICY_CREATED,
+      subject: { entityType: 'leave_policy', entityId: policy.id },
+      newState: { name: policy.name, effectiveFrom: input.effectiveFrom },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return policy;
+    return policy;
+  });
 }
 
 export async function updateLeavePolicy(
@@ -127,28 +147,39 @@ export async function updateLeavePolicy(
     throw ApiError.badRequest(`"${patch.status}" is not a policy status. Expected active or retired.`);
   }
 
-  const policy = await prisma.leavePolicy.update({
-    where: { id },
-    data: {
-      name: patch.name ?? undefined,
-      description: patch.description === undefined ? undefined : patch.description,
-      engagementTypes: patch.engagementTypes ?? undefined,
-      orgUnitIds: patch.orgUnitIds ?? undefined,
-      gradeCodes: patch.gradeCodes ?? undefined,
-      effectiveFrom: patch.effectiveFrom ?? undefined,
-      effectiveTo: patch.effectiveTo === undefined ? undefined : patch.effectiveTo,
-      status: patch.status ?? undefined,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const policy = await tx.leavePolicy.update({
+      where: { id },
+      data: {
+        name: patch.name ?? undefined,
+        description: patch.description === undefined ? undefined : patch.description,
+        engagementTypes: patch.engagementTypes ?? undefined,
+        orgUnitIds: patch.orgUnitIds ?? undefined,
+        gradeCodes: patch.gradeCodes ?? undefined,
+        effectiveFrom: patch.effectiveFrom ?? undefined,
+        effectiveTo: patch.effectiveTo === undefined ? undefined : patch.effectiveTo,
+        status: patch.status ?? undefined,
+      },
+    });
 
-  await emit({
-    name: EVENTS.LEAVE_POLICY_UPDATED,
-    subject: { entityType: 'leave_policy', entityId: policy.id },
-    newState: { name: policy.name, status: policy.status },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'leave_policy',
+      subjectId: id,
+      before: existing as never,
+      after: policy as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.LEAVE_POLICY_UPDATED,
+      subject: { entityType: 'leave_policy', entityId: policy.id },
+      newState: { name: policy.name, status: policy.status },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return policy;
+    return policy;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -210,33 +241,43 @@ export async function createPolicyRule(leavePolicyId: string, input: UpsertLeave
     );
   }
 
-  const rule = await prisma.leavePolicyRule.create({
-    data: {
-      tenantId: auth.tenantId,
-      leavePolicyId,
-      leaveTypeId: input.leaveTypeId,
-      accrualFrequency: frequency,
-      accrualDays: input.accrualDays ?? 0,
-      prorateOnJoin: input.prorateOnJoin ?? true,
-      maxBalanceDays: input.maxBalanceDays ?? null,
-      carryForwardCapDays: input.carryForwardCapDays ?? null,
-      negativeAllowed: input.negativeAllowed ?? false,
-      minNoticeDays: input.minNoticeDays ?? 0,
-      maxConsecutiveDays: input.maxConsecutiveDays ?? null,
-      sandwichRule: input.sandwichRule ?? false,
-      requiresDocumentAfterDays: input.requiresDocumentAfterDays ?? null,
-      applicableGender: input.applicableGender ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const rule = await tx.leavePolicyRule.create({
+      data: {
+        tenantId: auth.tenantId,
+        leavePolicyId,
+        leaveTypeId: input.leaveTypeId,
+        accrualFrequency: frequency,
+        accrualDays: input.accrualDays ?? 0,
+        prorateOnJoin: input.prorateOnJoin ?? true,
+        maxBalanceDays: input.maxBalanceDays ?? null,
+        carryForwardCapDays: input.carryForwardCapDays ?? null,
+        negativeAllowed: input.negativeAllowed ?? false,
+        minNoticeDays: input.minNoticeDays ?? 0,
+        maxConsecutiveDays: input.maxConsecutiveDays ?? null,
+        sandwichRule: input.sandwichRule ?? false,
+        requiresDocumentAfterDays: input.requiresDocumentAfterDays ?? null,
+        applicableGender: input.applicableGender ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.LEAVE_POLICY_UPDATED,
-    subject: { entityType: 'leave_policy', entityId: leavePolicyId },
-    newState: { ruleAdded: leaveType.code },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'leave_policy_rule',
+      subjectId: rule.id,
+      after: rule as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.LEAVE_POLICY_UPDATED,
+      subject: { entityType: 'leave_policy', entityId: leavePolicyId },
+      newState: { ruleAdded: leaveType.code },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return rule;
+    return rule;
+  });
 }
 
 export async function updatePolicyRule(id: string, patch: Partial<UpsertLeavePolicyRuleInput>) {
@@ -251,32 +292,43 @@ export async function updatePolicyRule(id: string, patch: Partial<UpsertLeavePol
     );
   }
 
-  const updated = await prisma.leavePolicyRule.update({
-    where: { id },
-    data: {
-      accrualFrequency: patch.accrualFrequency ? assertFrequency(patch.accrualFrequency) : undefined,
-      accrualDays: patch.accrualDays ?? undefined,
-      prorateOnJoin: patch.prorateOnJoin ?? undefined,
-      maxBalanceDays: patch.maxBalanceDays === undefined ? undefined : patch.maxBalanceDays,
-      carryForwardCapDays: patch.carryForwardCapDays === undefined ? undefined : patch.carryForwardCapDays,
-      negativeAllowed: patch.negativeAllowed ?? undefined,
-      minNoticeDays: patch.minNoticeDays ?? undefined,
-      maxConsecutiveDays: patch.maxConsecutiveDays === undefined ? undefined : patch.maxConsecutiveDays,
-      sandwichRule: patch.sandwichRule ?? undefined,
-      requiresDocumentAfterDays:
-        patch.requiresDocumentAfterDays === undefined ? undefined : patch.requiresDocumentAfterDays,
-      applicableGender: patch.applicableGender === undefined ? undefined : patch.applicableGender,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.leavePolicyRule.update({
+      where: { id },
+      data: {
+        accrualFrequency: patch.accrualFrequency ? assertFrequency(patch.accrualFrequency) : undefined,
+        accrualDays: patch.accrualDays ?? undefined,
+        prorateOnJoin: patch.prorateOnJoin ?? undefined,
+        maxBalanceDays: patch.maxBalanceDays === undefined ? undefined : patch.maxBalanceDays,
+        carryForwardCapDays: patch.carryForwardCapDays === undefined ? undefined : patch.carryForwardCapDays,
+        negativeAllowed: patch.negativeAllowed ?? undefined,
+        minNoticeDays: patch.minNoticeDays ?? undefined,
+        maxConsecutiveDays: patch.maxConsecutiveDays === undefined ? undefined : patch.maxConsecutiveDays,
+        sandwichRule: patch.sandwichRule ?? undefined,
+        requiresDocumentAfterDays:
+          patch.requiresDocumentAfterDays === undefined ? undefined : patch.requiresDocumentAfterDays,
+        applicableGender: patch.applicableGender === undefined ? undefined : patch.applicableGender,
+      },
+    });
 
-  await emit({
-    name: EVENTS.LEAVE_POLICY_UPDATED,
-    subject: { entityType: 'leave_policy', entityId: rule.leavePolicyId },
-    newState: { ruleUpdated: id },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'leave_policy_rule',
+      subjectId: id,
+      before: rule as never,
+      after: updated as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.LEAVE_POLICY_UPDATED,
+      subject: { entityType: 'leave_policy', entityId: rule.leavePolicyId },
+      newState: { ruleUpdated: id },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export async function deletePolicyRule(id: string) {
@@ -284,12 +336,22 @@ export async function deletePolicyRule(id: string) {
   await assertCan({ resource: 'leave_policies', verb: 'delete' });
   const rule = await prisma.leavePolicyRule.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!rule) throw ApiError.notFound('Leave policy rule');
-  await prisma.leavePolicyRule.delete({ where: { id } });
-  await emit({
-    name: EVENTS.LEAVE_POLICY_UPDATED,
-    subject: { entityType: 'leave_policy', entityId: rule.leavePolicyId },
-    newState: { ruleRemoved: id },
-    impact: { domains: ['hr'] },
+  await governedWrite(async (tx) => {
+    await tx.leavePolicyRule.delete({ where: { id } });
+    await auditWrite({
+      action: 'delete',
+      subjectType: 'leave_policy_rule',
+      subjectId: id,
+      before: rule as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.LEAVE_POLICY_UPDATED,
+      subject: { entityType: 'leave_policy', entityId: rule.leavePolicyId },
+      newState: { ruleRemoved: id },
+      impact: { domains: ['hr'] },
+      tx,
+    });
   });
   return { deleted: true };
 }
@@ -521,24 +583,37 @@ export async function runAccrualForRule(
     processed += 1;
   }
 
-  const run = await prisma.accrualRun.create({
-    data: {
-      tenantId: auth.tenantId,
-      leavePolicyRuleId,
-      leaveTypeId: rule.leaveTypeId,
-      period,
-      status: 'completed',
-      employeesProcessed: processed,
-      totalDaysAccrued: totalAccrued,
-      createdById: auth.partyId,
-    },
-  });
-
-  await emit({
-    name: EVENTS.LEAVE_ACCRUAL_RUN_COMPLETED,
-    subject: { entityType: 'accrual_run', entityId: run.id },
-    newState: { leavePolicyRuleId, period, employeesProcessed: processed, totalDaysAccrued: totalAccrued },
-    impact: { domains: ['hr'] },
+  // The per-employment accrueEntitlement calls above are nested service calls
+  // on the scoped client, so only the run record, its audit row and its event
+  // are one unit here.
+  const run = await governedWrite(async (tx) => {
+    const created = await tx.accrualRun.create({
+      data: {
+        tenantId: auth.tenantId,
+        leavePolicyRuleId,
+        leaveTypeId: rule.leaveTypeId,
+        period,
+        status: 'completed',
+        employeesProcessed: processed,
+        totalDaysAccrued: totalAccrued,
+        createdById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'accrual_run',
+      subjectId: created.id,
+      after: created as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.LEAVE_ACCRUAL_RUN_COMPLETED,
+      subject: { entityType: 'accrual_run', entityId: created.id },
+      newState: { leavePolicyRuleId, period, employeesProcessed: processed, totalDaysAccrued: totalAccrued },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return created;
   });
 
   return { run, idempotent: false };
@@ -643,24 +718,34 @@ export async function createApprovalChain(input: {
     if (!policy) throw ApiError.notFound('Leave policy');
   }
 
-  const chain = await prisma.leaveApprovalChain.create({
-    data: {
-      tenantId: auth.tenantId,
-      name: input.name,
-      leavePolicyId: input.leavePolicyId ?? null,
-      levels: levels as never,
-      isDefault: input.isDefault ?? false,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const chain = await tx.leaveApprovalChain.create({
+      data: {
+        tenantId: auth.tenantId,
+        name: input.name,
+        leavePolicyId: input.leavePolicyId ?? null,
+        levels: levels as never,
+        isDefault: input.isDefault ?? false,
+      },
+    });
 
-  await emit({
-    name: EVENTS.LEAVE_APPROVAL_CHAIN_UPDATED,
-    subject: { entityType: 'leave_approval_chain', entityId: chain.id },
-    newState: { name: chain.name, levels: levels.length },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'leave_approval_chain',
+      subjectId: chain.id,
+      after: chain as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.LEAVE_APPROVAL_CHAIN_UPDATED,
+      subject: { entityType: 'leave_approval_chain', entityId: chain.id },
+      newState: { name: chain.name, levels: levels.length },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return chain;
+    return chain;
+  });
 }
 
 export async function updateApprovalChain(id: string, patch: { name?: string; levels?: unknown; isDefault?: boolean }) {
@@ -670,23 +755,34 @@ export async function updateApprovalChain(id: string, patch: { name?: string; le
   if (!chain) throw ApiError.notFound('Leave approval chain');
 
   const levels = patch.levels !== undefined ? validateLevels(patch.levels) : undefined;
-  const updated = await prisma.leaveApprovalChain.update({
-    where: { id },
-    data: {
-      name: patch.name ?? undefined,
-      levels: levels ? (levels as never) : undefined,
-      isDefault: patch.isDefault ?? undefined,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.leaveApprovalChain.update({
+      where: { id },
+      data: {
+        name: patch.name ?? undefined,
+        levels: levels ? (levels as never) : undefined,
+        isDefault: patch.isDefault ?? undefined,
+      },
+    });
 
-  await emit({
-    name: EVENTS.LEAVE_APPROVAL_CHAIN_UPDATED,
-    subject: { entityType: 'leave_approval_chain', entityId: id },
-    newState: { name: updated.name },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'leave_approval_chain',
+      subjectId: id,
+      before: chain as never,
+      after: updated as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.LEAVE_APPROVAL_CHAIN_UPDATED,
+      subject: { entityType: 'leave_approval_chain', entityId: id },
+      newState: { name: updated.name },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export async function deleteApprovalChain(id: string) {
@@ -849,34 +945,45 @@ export async function decideApprovalLevel(id: string, decision: 'approved' | 're
     throw ApiError.badRequest(`"${decision}" is not a decision. Expected approved or rejected.`);
   }
 
-  const updated = await prisma.leaveRequestApproval.update({
-    where: { id },
-    data: {
-      decision,
-      decidedAt: new Date(),
-      note: note ?? null,
-      approverPartyId: approval.approverPartyId ?? auth.partyId,
-    },
-  });
-
-  await emit({
-    name: EVENTS.LEAVE_APPROVAL_CHAIN_UPDATED,
-    subject: { entityType: 'leave_request', entityId: request.id, recordCode: request.recordCode },
-    newState: { level: approval.level, decision },
-    owner: { partyId: request.employmentRelationship.personId },
-    impact: { domains: ['hr'] },
-  });
-
-  if (decision === 'rejected') {
-    // A rejected level does not chase further levels — the chain stops here,
-    // and the substantive REJECT still runs through leave.ts's own machine.
-    await prisma.leaveRequestApproval.updateMany({
-      where: { tenantId: auth.tenantId, leaveRequestId: request.id, decision: 'pending' },
-      data: { decision: 'skipped', decidedAt: new Date(), note: `Skipped: level ${approval.level} rejected.` },
+  return governedWrite(async (tx) => {
+    const updated = await tx.leaveRequestApproval.update({
+      where: { id },
+      data: {
+        decision,
+        decidedAt: new Date(),
+        note: note ?? null,
+        approverPartyId: approval.approverPartyId ?? auth.partyId,
+      },
     });
-  }
 
-  return updated;
+    await auditWrite({
+      action: 'update',
+      subjectType: 'leave_request_approval',
+      subjectId: id,
+      before: { decision: approval.decision },
+      after: { decision },
+      tx,
+    });
+    await emit({
+      name: EVENTS.LEAVE_APPROVAL_CHAIN_UPDATED,
+      subject: { entityType: 'leave_request', entityId: request.id, recordCode: request.recordCode },
+      newState: { level: approval.level, decision },
+      owner: { partyId: request.employmentRelationship.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    if (decision === 'rejected') {
+      // A rejected level does not chase further levels — the chain stops here,
+      // and the substantive REJECT still runs through leave.ts's own machine.
+      await tx.leaveRequestApproval.updateMany({
+        where: { tenantId: auth.tenantId, leaveRequestId: request.id, decision: 'pending' },
+        data: { decision: 'skipped', decidedAt: new Date(), note: `Skipped: level ${approval.level} rejected.` },
+      });
+    }
+
+    return updated;
+  });
 }
 
 // ---------------------------------------------------------------------------
