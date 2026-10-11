@@ -670,60 +670,70 @@ export async function runVesting(): Promise<number> {
 }
 
 /**
+ * Budget for each ESOP job or exit transaction. Each runs about six statements,
+ * and under the load of the full test run the 5 s Prisma default was exceeded
+ * mid-job and the transaction was closed. This is set per call, not as a
+ * global Prisma default, so no other write inherits the longer budget.
+ */
+const ESOP_TX_TIMEOUT_MS = 20_000;
+
+/**
  * Vests one tranche, or does nothing. Returns false when another run already
  * vested it or the grant has since stopped accepting vesting.
  *
- * The order matters. The tranche is claimed first, so two overlapping runs
- * queue on that row and only one moves it out of `scheduled`. The grant is
- * then locked, and the vested total is summed from the vested tranches
- * inside the lock. The `vested` column on the grant is a cache of that sum,
- * not a counter carried forward between runs: a counter read before the lock
- * is how a tranche was once counted twice.
+ * The order matters, and it is the same in every ESOP write: the grant is
+ * locked first, then its tranches. A tranche-first order here against a
+ * grant-first exit would deadlock. Under the grant lock the vested total is
+ * summed from the vested tranches, so the `vested` column is a cache of that
+ * sum rather than a counter carried forward between runs.
  */
 async function vestTranche(trancheId: string, grantId: string, trancheCount: number): Promise<boolean> {
   const auth = currentAuth();
   try {
-    await prisma.$transaction(async (tx) => {
-      const now = new Date();
-      const claimed = await tx.vestingEvent.updateMany({
-        where: { id: trancheId, tenantId: auth.tenantId, status: 'scheduled' },
-        data: { status: 'vested', vestedOn: now },
-      });
-      if (claimed.count !== 1) throw new AlreadyApplied();
+    await prisma.$transaction(
+      async (tx) => {
+        const now = new Date();
+        const locked = await tx.optionGrant.updateMany({
+          where: { id: grantId, tenantId: auth.tenantId, status: { in: ['granted', 'partly_vested'] } },
+          data: { updatedAt: now },
+        });
+        if (locked.count !== 1) throw new AlreadyApplied();
 
-      const locked = await tx.optionGrant.updateMany({
-        where: { id: grantId, tenantId: auth.tenantId, status: { in: ['granted', 'partly_vested'] } },
-        data: { updatedAt: now },
-      });
-      if (locked.count !== 1) throw new AlreadyApplied();
+        const claimed = await tx.vestingEvent.updateMany({
+          where: { id: trancheId, tenantId: auth.tenantId, status: 'scheduled' },
+          data: { status: 'vested', vestedOn: now },
+        });
+        if (claimed.count !== 1) throw new AlreadyApplied();
 
-      const grantNow = await tx.optionGrant.findFirst({ where: { id: grantId, tenantId: auth.tenantId } });
-      if (!grantNow) throw new AlreadyApplied();
+        const grantNow = await tx.optionGrant.findFirst({ where: { id: grantId, tenantId: auth.tenantId } });
+        if (!grantNow) throw new AlreadyApplied();
 
-      const tranches = await tx.vestingEvent.aggregate({
-        where: { tenantId: auth.tenantId, grantId, status: 'vested' },
-        _sum: { count: true },
-      });
-      const vested = num(tranches._sum.count) ?? 0;
-      const status = nextGrantStatus(num(grantNow.count) ?? 0, vested, num(grantNow.exercised) ?? 0);
+        const tranches = await tx.vestingEvent.aggregate({
+          where: { tenantId: auth.tenantId, grantId, status: 'vested' },
+          _sum: { count: true },
+        });
+        const vested = num(tranches._sum.count) ?? 0;
+        const status = nextGrantStatus(num(grantNow.count) ?? 0, vested, num(grantNow.exercised) ?? 0);
 
-      await tx.optionGrant.update({ where: { id: grantId }, data: { vested: dec(vested)!, status } });
-      await auditWrite({
-        action: 'update',
-        subjectType: 'option_grant',
-        subjectId: grantId,
-        before: { vested: num(grantNow.vested) ?? 0, status: grantNow.status },
-        after: { vested, status },
-        meta: { tranche: trancheId, trancheCount },
-        tx,
-      });
-      await emit({
-        name: EVENTS.OPTION_VESTED,
-        subject: { entityType: 'option_grant', entityId: grantId, recordCode: grantNow.recordCode },
-        newState: { vested, status, tranche: trancheCount },
-        tx,
-      });
-    });
+        await tx.optionGrant.update({ where: { id: grantId }, data: { vested: dec(vested)!, status } });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'option_grant',
+          subjectId: grantId,
+          before: { vested: num(grantNow.vested) ?? 0, status: grantNow.status },
+          after: { vested, status },
+          meta: { tranche: trancheId, trancheCount },
+          tx,
+        });
+        await emit({
+          name: EVENTS.OPTION_VESTED,
+          subject: { entityType: 'option_grant', entityId: grantId, recordCode: grantNow.recordCode },
+          newState: { vested, status, tranche: trancheCount },
+          tx,
+        });
+      },
+      { timeout: ESOP_TX_TIMEOUT_MS },
+    );
     return true;
   } catch (err) {
     if (err instanceof AlreadyApplied) return false;
@@ -766,51 +776,54 @@ export async function runExpiredExerciseWindows(): Promise<number> {
 async function lapseAfterWindow(grantId: string): Promise<boolean> {
   const auth = currentAuth();
   try {
-    await prisma.$transaction(async (tx) => {
-      const now = new Date();
-      const locked = await tx.optionGrant.updateMany({
-        where: {
-          id: grantId,
-          tenantId: auth.tenantId,
-          status: { in: OPEN_FOR_LAPSE },
-          exerciseWindowEndsOn: { not: null, lte: now },
-        },
-        data: { updatedAt: now },
-      });
-      if (locked.count !== 1) throw new AlreadyApplied();
+    await prisma.$transaction(
+      async (tx) => {
+        const now = new Date();
+        const locked = await tx.optionGrant.updateMany({
+          where: {
+            id: grantId,
+            tenantId: auth.tenantId,
+            status: { in: OPEN_FOR_LAPSE },
+            exerciseWindowEndsOn: { not: null, lte: now },
+          },
+          data: { updatedAt: now },
+        });
+        if (locked.count !== 1) throw new AlreadyApplied();
 
-      const g = await tx.optionGrant.findFirst({ where: { id: grantId, tenantId: auth.tenantId } });
-      if (!g) throw new AlreadyApplied();
-      const remaining = (num(g.vested) ?? 0) - (num(g.exercised) ?? 0);
-      if (remaining <= 0) throw new AlreadyApplied();
+        const g = await tx.optionGrant.findFirst({ where: { id: grantId, tenantId: auth.tenantId } });
+        if (!g) throw new AlreadyApplied();
+        const remaining = (num(g.vested) ?? 0) - (num(g.exercised) ?? 0);
+        if (remaining <= 0) throw new AlreadyApplied();
 
-      const lapsedBefore = num(g.lapsed) ?? 0;
-      const lapsedAfter = lapsedBefore + remaining;
-      await tx.optionGrant.update({
-        where: { id: grantId },
-        data: {
-          lapsed: dec(lapsedAfter)!,
-          status: 'lapsed',
-          lapsedOn: now,
-          lapseReason: g.lapseReason ?? 'The post-exit exercise window closed with a vested balance unexercised.',
-        },
-      });
-      await auditWrite({
-        action: 'update',
-        subjectType: 'option_grant',
-        subjectId: grantId,
-        before: { status: g.status, lapsed: lapsedBefore },
-        after: { status: 'lapsed', lapsed: lapsedAfter },
-        meta: { reason: 'exercise_window_expired' },
-        tx,
-      });
-      await emit({
-        name: EVENTS.OPTION_LAPSED,
-        subject: { entityType: 'option_grant', entityId: grantId, recordCode: g.recordCode },
-        newState: { status: 'lapsed', count: remaining, reason: 'exercise_window_expired' },
-        tx,
-      });
-    });
+        const lapsedBefore = num(g.lapsed) ?? 0;
+        const lapsedAfter = lapsedBefore + remaining;
+        await tx.optionGrant.update({
+          where: { id: grantId },
+          data: {
+            lapsed: dec(lapsedAfter)!,
+            status: 'lapsed',
+            lapsedOn: now,
+            lapseReason: g.lapseReason ?? 'The post-exit exercise window closed with a vested balance unexercised.',
+          },
+        });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'option_grant',
+          subjectId: grantId,
+          before: { status: g.status, lapsed: lapsedBefore },
+          after: { status: 'lapsed', lapsed: lapsedAfter },
+          meta: { reason: 'exercise_window_expired' },
+          tx,
+        });
+        await emit({
+          name: EVENTS.OPTION_LAPSED,
+          subject: { entityType: 'option_grant', entityId: grantId, recordCode: g.recordCode },
+          newState: { status: 'lapsed', count: remaining, reason: 'exercise_window_expired' },
+          tx,
+        });
+      },
+      { timeout: ESOP_TX_TIMEOUT_MS },
+    );
     return true;
   } catch (err) {
     if (err instanceof AlreadyApplied) return false;
@@ -831,57 +844,104 @@ export async function handleEmploymentExit(employmentId: string, exitDate: Date)
     where: {
       tenantId: auth.tenantId,
       employmentId,
-      status: { in: ['proposed', 'granted', 'partly_vested', 'fully_vested'] },
+      status: { in: EXIT_OPEN_STATUSES },
     },
+    select: { id: true },
   });
 
-  for (const g of grants) {
-    const count = num(g.count) ?? 0;
-    const vested = num(g.vested) ?? 0;
-    const exercised = num(g.exercised) ?? 0;
-    const alreadyLapsed = num(g.lapsed) ?? 0;
-    const unvested = count - vested - alreadyLapsed;
-    const vestedUnexercised = vested - exercised;
+  for (const g of grants) await applyExitToGrant(g.id, exitDate);
+}
 
-    if (unvested > 0) {
-      await prisma.vestingEvent.updateMany({
-        where: { tenantId: auth.tenantId, grantId: g.id, status: 'scheduled' },
-        data: { status: 'lapsed' },
-      });
-    }
+const EXIT_OPEN_STATUSES = ['proposed', 'granted', 'partly_vested', 'fully_vested'];
 
-    const totalLapsedNow = alreadyLapsed + Math.max(unvested, 0);
-    const stillOutstanding = vestedUnexercised > 0;
+/**
+ * Applies one exit to one grant, once. The exit event is at-least-once, so a
+ * redelivery must find nothing to do. The marker is `exerciseWindowEndsOn`:
+ * an exit that leaves a vested balance sets it, and an exit that lapses the
+ * whole grant moves the status out of EXIT_OPEN_STATUSES. The guard repeats
+ * both tests under the grant's row lock, so only the first delivery writes,
+ * and that write carries its audit row and event in the same transaction.
+ */
+async function applyExitToGrant(grantId: string, exitDate: Date): Promise<void> {
+  const auth = currentAuth();
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        const now = new Date();
+        const locked = await tx.optionGrant.updateMany({
+          where: {
+            id: grantId,
+            tenantId: auth.tenantId,
+            status: { in: EXIT_OPEN_STATUSES },
+            exerciseWindowEndsOn: null,
+          },
+          data: { updatedAt: now },
+        });
+        if (locked.count !== 1) throw new AlreadyApplied();
 
-    let exerciseWindowEndsOn: Date | null = null;
-    if (stillOutstanding) {
-      const planRow = await prisma.esopPlan.findFirst({ where: { id: g.planId, tenantId: auth.tenantId } });
-      const months = planRow?.exerciseWindowMonthsAfterExit ?? 3;
-      exerciseWindowEndsOn = new Date(exitDate);
-      exerciseWindowEndsOn.setUTCMonth(exerciseWindowEndsOn.getUTCMonth() + months);
-    }
+        const g = await tx.optionGrant.findFirst({ where: { id: grantId, tenantId: auth.tenantId } });
+        if (!g) throw new AlreadyApplied();
 
-    const nextStatus = !stillOutstanding ? 'lapsed' : g.status;
+        const count = num(g.count) ?? 0;
+        const vested = num(g.vested) ?? 0;
+        const exercised = num(g.exercised) ?? 0;
+        const alreadyLapsed = num(g.lapsed) ?? 0;
+        const unvested = count - vested - alreadyLapsed;
+        const vestedUnexercised = vested - exercised;
 
-    const updated = await prisma.optionGrant.update({
-      where: { id: g.id },
-      data: {
-        lapsed: dec(totalLapsedNow)!,
-        status: nextStatus,
-        lapsedOn: !stillOutstanding ? exitDate : g.lapsedOn,
-        lapseReason: !stillOutstanding ? 'Employment ended with an unvested balance.' : g.lapseReason,
-        exerciseWindowEndsOn,
+        if (unvested > 0) {
+          await tx.vestingEvent.updateMany({
+            where: { tenantId: auth.tenantId, grantId, status: 'scheduled' },
+            data: { status: 'lapsed' },
+          });
+        }
+
+        const totalLapsedNow = alreadyLapsed + Math.max(unvested, 0);
+        const stillOutstanding = vestedUnexercised > 0;
+
+        let exerciseWindowEndsOn: Date | null = null;
+        if (stillOutstanding) {
+          const planRow = await tx.esopPlan.findFirst({ where: { id: g.planId, tenantId: auth.tenantId } });
+          const months = planRow?.exerciseWindowMonthsAfterExit ?? 3;
+          exerciseWindowEndsOn = new Date(exitDate);
+          exerciseWindowEndsOn.setUTCMonth(exerciseWindowEndsOn.getUTCMonth() + months);
+        }
+
+        const nextStatus = !stillOutstanding ? 'lapsed' : g.status;
+
+        await tx.optionGrant.update({
+          where: { id: grantId },
+          data: {
+            lapsed: dec(totalLapsedNow)!,
+            status: nextStatus,
+            lapsedOn: !stillOutstanding ? exitDate : g.lapsedOn,
+            lapseReason: !stillOutstanding ? 'Employment ended with an unvested balance.' : g.lapseReason,
+            exerciseWindowEndsOn,
+          },
+        });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'option_grant',
+          subjectId: grantId,
+          before: { status: g.status, lapsed: alreadyLapsed },
+          after: { status: nextStatus, lapsed: totalLapsedNow },
+          meta: { reason: 'employment_exit' },
+          tx,
+        });
+        if (unvested > 0) {
+          await emit({
+            name: EVENTS.OPTION_LAPSED,
+            subject: { entityType: 'option_grant', entityId: grantId, recordCode: g.recordCode },
+            newState: { status: nextStatus, count: unvested, reason: 'employment_ended_unvested' },
+            tx,
+          });
+        }
       },
-    });
-    void updated;
-
-    if (unvested > 0) {
-      await emit({
-        name: EVENTS.OPTION_LAPSED,
-        subject: { entityType: 'option_grant', entityId: g.id, recordCode: g.recordCode },
-        newState: { status: nextStatus, count: unvested, reason: 'employment_ended_unvested' },
-      });
-    }
+      { timeout: ESOP_TX_TIMEOUT_MS },
+    );
+  } catch (err) {
+    if (err instanceof AlreadyApplied) return;
+    throw err;
   }
 }
 
