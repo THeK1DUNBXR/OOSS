@@ -5,7 +5,7 @@
 // human confirms it: the domain refuses a confirmation from any other principal.
 // Each state change writes a CommitmentEvent row, and those rows are append-only.
 //
-// What Prisma cannot express is raw SQL in migration 20261012120000_commitment_record:
+// What Prisma cannot express is raw SQL in migration 20261013100000_commitment_record:
 // the state list, backup not equal to owner, a confirmed row carrying who and
 // when, and the trigger that refuses UPDATE and DELETE on commitment_events.
 // The transition table is COMMITMENT_TRANSITIONS in domains/commitments.ts.
