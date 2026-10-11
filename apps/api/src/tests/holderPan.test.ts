@@ -14,7 +14,7 @@ import { stageImport } from '../imports/service.js';
 import { asUser, unscopedPrisma, withFixtureRole } from './helpers.js';
 
 const PAN = 'ABCDE1234F';
-const LAST4 = '1234';
+const LAST4 = PAN.slice(-4);
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 100000)}`;
 
 async function rawPan(holderId: string): Promise<string | null> {

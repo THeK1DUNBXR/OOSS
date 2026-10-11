@@ -20,16 +20,19 @@
 
 import {
   EVENTS,
+  SENSITIVITY_RANK,
+  isEncryptedFieldValue,
   type CapTableInputRow,
   type ShareClassKind,
   type ShareInstrument,
   computeCapTable,
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma, dec, num } from '../platform/db.js';
-import { currentAuth } from '../platform/context.js';
+import { currentAuth, getContext } from '../platform/context.js';
+import { encryptField, readRegulated } from './compliance/privacy.js';
 import { assertCan, assertScopeAll, can, canSeeMoney, scopeFor } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
-import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { auditBulkOperation, auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../platform/documentNumber.js';
@@ -234,6 +237,34 @@ async function assertNotHoldingsAncestor(heldByTenantId: string, thisTenantId: s
   }
 }
 
+/**
+ * Holder PAN is a regulated identifier (CMP-DPD-004), so every writer seals it
+ * before the column is touched: the register is written by the holder form,
+ * the opening-register import and the re-encrypt pass, and a writer that skips
+ * this leaves plaintext on disk. A value already sealed is passed through, so
+ * a caller that re-reads and re-writes a row cannot seal it twice.
+ */
+export function sealHolderPan(pan: string | null | undefined): string | null {
+  const trimmed = pan?.trim();
+  if (!trimmed) return null;
+  return isEncryptedFieldValue(trimmed) ? trimmed : encryptField(trimmed);
+}
+
+/**
+ * The PAN a holder read may show. Decrypted only at the regulated ceiling;
+ * below it the PAN is masked to its last four characters. A read with no
+ * principal in scope (a background job) is treated as below the ceiling, so
+ * nothing outside an authorised request ever sees the full value.
+ */
+export function holderPanFor(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  const plain = readRegulated(stored);
+  if (!plain) return null;
+  const ceiling = getContext()?.auth?.classificationCeiling ?? 'public';
+  if (SENSITIVITY_RANK[ceiling] >= SENSITIVITY_RANK.regulated) return plain;
+  return plain.length > 4 ? 'X'.repeat(plain.length - 4) + plain.slice(-4) : 'X'.repeat(plain.length);
+}
+
 export async function createHolder(input: HolderInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'holders', verb: 'create' });
@@ -288,7 +319,7 @@ export async function createHolder(input: HolderInput) {
       folioNumber,
       residency: input.residency ?? 'resident',
       investmentBasis: input.investmentBasis ?? null,
-      panNumber: input.panNumber ?? null,
+      panNumber: sealHolderPan(input.panNumber),
       nominee: (input.nominee ?? undefined) as never,
       jointHolders: (input.jointHolders ?? undefined) as never,
       address: input.address ?? null,
@@ -347,7 +378,7 @@ export async function updateHolder(id: string, input: HolderUpdateInput) {
     data: {
       ...(input.residency !== undefined ? { residency: input.residency } : {}),
       ...(input.investmentBasis !== undefined ? { investmentBasis: input.investmentBasis } : {}),
-      ...(input.panNumber !== undefined ? { panNumber: input.panNumber } : {}),
+      ...(input.panNumber !== undefined ? { panNumber: sealHolderPan(input.panNumber) } : {}),
       ...(input.nominee !== undefined ? { nominee: input.nominee as never } : {}),
       ...(input.jointHolders !== undefined ? { jointHolders: input.jointHolders as never } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
@@ -430,6 +461,7 @@ export async function holderView(row: {
   nationality?: string | null;
   guardianOrSpouseName?: string | null;
   dematAccount?: unknown;
+  panNumber?: string | null;
 }) {
   let displayName = row.folioNumber;
   if (row.kind === 'person' && row.personId) {
@@ -459,7 +491,44 @@ export async function holderView(row: {
     nationality: row.nationality ?? null,
     guardianOrSpouseName: row.guardianOrSpouseName ?? null,
     dematAccount: (row.dematAccount ?? null) as Record<string, unknown> | null,
+    panNumber: holderPanFor(row.panNumber),
   };
+}
+
+/**
+ * One-off, and safe to re-run: seals each holder PAN still on disk as
+ * plaintext, for rows written before `sealHolderPan` existed. Scoped to the
+ * current tenant, so a run for one entity never reads another's rows.
+ */
+export async function encryptHolderPansAtRest(): Promise<{
+  holdersScanned: number;
+  valuesEncrypted: number;
+  alreadyEncrypted: number;
+}> {
+  const auth = currentAuth();
+  await assertCan({ resource: 'security_settings', verb: 'edit' });
+
+  const rows = await prisma.holder.findMany({
+    where: { tenantId: auth.tenantId, panNumber: { not: null } },
+    select: { id: true, panNumber: true },
+  });
+
+  let holdersScanned = 0;
+  let valuesEncrypted = 0;
+  let alreadyEncrypted = 0;
+  for (const row of rows) {
+    if (!row.panNumber) continue;
+    holdersScanned += 1;
+    if (isEncryptedFieldValue(row.panNumber)) {
+      alreadyEncrypted += 1;
+      continue;
+    }
+    await prisma.holder.update({ where: { id: row.id }, data: { panNumber: encryptField(row.panNumber) } });
+    valuesEncrypted += 1;
+  }
+
+  await auditBulkOperation('holder', 'encrypt_pan_at_rest', { holdersScanned, valuesEncrypted, alreadyEncrypted });
+  return { holdersScanned, valuesEncrypted, alreadyEncrypted };
 }
 
 /**

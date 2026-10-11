@@ -182,6 +182,24 @@ idempotent: plaintext is detected by the missing `enc:v1:` prefix, so a second
 run converts nothing. It changes only the storage encoding; the bank file
 content is unchanged, and no advice is deleted or regenerated.
 
+## Sealing holder PANs written before the equity writers sealed them
+
+Until the equity writers sealed holder PAN, the holder form, the holder update
+and the opening-register import wrote `Holder.panNumber` in clear. New writes
+are sealed with `encryptField`. Run this once per deployment to seal the old
+rows:
+
+```bash
+cd apps/api
+npx tsx scripts/encrypt-holder-pans.ts               # every tenant
+npx tsx scripts/encrypt-holder-pans.ts <tenant-slug> # one tenant
+```
+
+It prints scanned, converted and already-encrypted counts per tenant, and is
+idempotent in the same way as the bank advice pass. Reads are unchanged for
+callers at the regulated ceiling; everyone else sees the PAN masked to its last
+four characters, before and after the run.
+
 ## Jobs
 
 ```bash

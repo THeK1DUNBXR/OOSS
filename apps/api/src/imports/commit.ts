@@ -1558,7 +1558,7 @@ async function commitOpeningRegisterRow(data: Record<string, unknown>) {
   if (!holderName || !shareClassName) return null;
 
   const { findOrCreatePerson } = await import('../domains/identity.js');
-  const { nextFolioNumber } = await import('../domains/equity.js');
+  const { nextFolioNumber, sealHolderPan } = await import('../domains/equity.js');
 
   const kind = text(data.holderKind)?.toLowerCase().startsWith('org') ? 'organization' : 'person';
 
@@ -1621,7 +1621,7 @@ async function commitOpeningRegisterRow(data: Record<string, unknown>) {
         folioNumber: await nextFolioNumber(),
         residency,
         investmentBasis,
-        panNumber: text(data.panNumber),
+        panNumber: sealHolderPan(text(data.panNumber)),
       },
     });
   }

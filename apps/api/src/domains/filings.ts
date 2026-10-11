@@ -512,7 +512,7 @@ async function mgt1RowsForClass(shareClassId: string): Promise<Mgt1Row[]> {
       holderName: view.displayName,
       address: holder.address ?? '',
       email,
-      panOrCin: holder.panNumber ?? '',
+      panOrCin: view.panNumber ?? '',
       guardianOrSpouseName: holder.guardianOrSpouseName ?? '',
       occupation: holder.occupation ?? '',
       nationality: holder.nationality ?? (holder.residency === 'non_resident' ? 'Not recorded' : 'Indian'),
@@ -673,7 +673,7 @@ export async function pas3AllotteeList(roundId: string): Promise<{ round: Record
     rows.push({
       holderName: view.displayName,
       address: holder.address ?? '',
-      pan: holder.panNumber ?? '',
+      pan: view.panNumber ?? '',
       nationality: holder.nationality ?? (holder.residency === 'non_resident' ? 'Not recorded' : 'Indian'),
       shareClassName: shareClass.name,
       count,

@@ -56,6 +56,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { istYearMonth } from '@kaizen/shared';
 import { raiseException } from '../platform/exceptions.js';
 import { capTable, listShareClasses, listValuations } from './equity.js';
+import { decryptField } from './compliance/privacy.js';
 import { companyProfile } from './companyProfile.js';
 import { headcountByDivision } from './employment.js';
 import { profitAndLoss, cashPosition } from './books.js';
@@ -93,7 +94,10 @@ async function buildHolderKeyIndex(): Promise<Map<string, HolderKeyMeta>> {
   const out = new Map<string, HolderKeyMeta>();
   for (const h of holders) {
     const email = h.kind === 'person' && h.personId ? (emailByPersonId.get(h.personId) ?? null) : null;
-    const { key, matchedBy } = holderKeyFor({ email, panHash: h.panNumber ? panHash(h.panNumber) : null });
+    // The hash is taken over the plaintext PAN. Sealing is randomised, so hashing the
+    // stored value would give every holder a different key and no two tenants would match.
+    const pan = h.panNumber ? decryptField(h.panNumber) : null;
+    const { key, matchedBy } = holderKeyFor({ email, panHash: pan ? panHash(pan) : null });
     out.set(h.id, {
       holderId: h.id,
       kind: h.kind,
