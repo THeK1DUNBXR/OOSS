@@ -24,7 +24,7 @@ import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
 import { raiseException } from '../../platform/exceptions.js';
-import { auditBulkOperation, registerGovernedEntities } from '../../platform/audit.js';
+import { auditBulkOperation } from '../../platform/audit.js';
 import { scoreLead } from '../leads.js';
 
 // Attribution rows are derived and rewritten on every recompute, but the rewrite

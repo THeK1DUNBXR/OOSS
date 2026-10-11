@@ -76,10 +76,10 @@ const OPEN_STATES = ['open', 'acknowledged', 'escalated'] as const;
  * chain is released after each statement rather than at commit.
  */
 function txOf(db: DbTx): DbTx | undefined {
-  return db === prisma ? undefined : db;
+  return (db as unknown) === prisma ? undefined : db;
 }
 
-async function findOpenException(input: RaiseExceptionInput, db: DbTx = prisma) {
+async function findOpenException(input: RaiseExceptionInput, db: DbTx = prisma as unknown as DbTx) {
   return db.exceptionRecord.findFirst({
     where: {
       tenantId: currentAuth().tenantId,
@@ -94,7 +94,7 @@ async function findOpenException(input: RaiseExceptionInput, db: DbTx = prisma) 
 function absorbIntoOpen(
   open: { id: string; severity: string; escalationRung: number },
   input: RaiseExceptionInput,
-  db: DbTx = prisma,
+  db: DbTx = prisma as unknown as DbTx,
 ) {
   if (SEVERITY_RANK[input.severity] > SEVERITY_RANK[open.severity as SeverityCode]) {
     return escalateException(open.id, 'severity_increase', input.severity, undefined, open.escalationRung, db);
@@ -111,7 +111,7 @@ function isUniqueViolation(err: unknown): boolean {
  * the exception, its audit row, its event and its owner notification then commit
  * or roll back with that write. Omitted, it writes on its own, as before.
  */
-export async function raiseException(input: RaiseExceptionInput, db: DbTx = prisma) {
+export async function raiseException(input: RaiseExceptionInput, db: DbTx = prisma as unknown as DbTx) {
   const auth = currentAuth();
   const tx = txOf(db);
 
@@ -328,7 +328,7 @@ export async function escalateException(
   newSeverity?: SeverityCode,
   escalateToPartyId?: string | null,
   observedRung?: number,
-  db: DbTx = prisma,
+  db: DbTx = prisma as unknown as DbTx,
 ) {
   const tx = txOf(db);
   const existing = await db.exceptionRecord.findFirst({ where: { id } });
@@ -424,7 +424,7 @@ export interface NotifyInput {
   drillPath?: string;
 }
 
-export async function notify(input: NotifyInput, db: DbTx = prisma) {
+export async function notify(input: NotifyInput, db: DbTx = prisma as unknown as DbTx) {
   const auth = currentAuth();
   return db.notification.create({
     data: {

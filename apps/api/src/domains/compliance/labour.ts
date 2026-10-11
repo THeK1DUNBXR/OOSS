@@ -671,7 +671,7 @@ export async function validateCommittee() {
 // POSH — Complaints
 // ---------------------------------------------------------------------------
 
-async function nextLabourNumber(entity: string, db: DbTx = prisma): Promise<string> {
+async function nextLabourNumber(entity: string, db: DbTx = prisma as unknown as DbTx): Promise<string> {
   const auth = currentAuth();
   const year = istYearMonth(new Date()).year;
   const row = await db.recordSequence.upsert({
@@ -1089,7 +1089,7 @@ interface IssueLetterInput {
  * write; the sequence number, the letter, its audit row and its event then commit
  * or roll back together. Omitted, it writes on its own, as before.
  */
-export async function issueLetter(input: IssueLetterInput, db: DbTx = prisma) {
+export async function issueLetter(input: IssueLetterInput, db: DbTx = prisma as unknown as DbTx) {
   const auth = currentAuth();
   // The letter, its audit row and its event are one fact and must commit together.
   // A caller's transaction is used as it is; without one, governedWrite opens its own.
@@ -1137,7 +1137,7 @@ export async function issueLetter(input: IssueLetterInput, db: DbTx = prisma) {
     });
     return row;
   };
-  if (db !== prisma) return run(db);
+  if ((db as unknown) !== prisma) return run(db);
   return governedWrite(run);
 }
 

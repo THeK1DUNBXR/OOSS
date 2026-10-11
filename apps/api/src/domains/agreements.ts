@@ -325,7 +325,12 @@ async function loadAgreement(kind: AgreementKind, id: string) {
   return prisma.partnerAgreement.findFirst({ where: { id } });
 }
 
-async function updateAgreement(kind: AgreementKind, id: string, data: Record<string, unknown>, db: DbTx = prisma) {
+async function updateAgreement(
+  kind: AgreementKind,
+  id: string,
+  data: Record<string, unknown>,
+  db: DbTx = prisma as unknown as DbTx,
+) {
   if (kind === 'mou') return db.mou.update({ where: { id }, data: data as never });
   if (kind === 'contract') return db.contract.update({ where: { id }, data: data as never });
   return db.partnerAgreement.update({ where: { id }, data: data as never });

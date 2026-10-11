@@ -217,7 +217,11 @@ async function toCampaignViewSingle(row: NonNullable<CampaignRow>): Promise<Camp
 }
 
 /** Sum of every non-deleted MarketingSpend row against this campaign. */
-async function campaignSpendTotal(tenantId: string, campaignId: string, db: DbTx = prisma): Promise<number> {
+async function campaignSpendTotal(
+  tenantId: string,
+  campaignId: string,
+  db: DbTx = prisma as unknown as DbTx,
+): Promise<number> {
   const agg = await db.marketingSpend.aggregate({
     where: { tenantId, campaignId, deletedAt: null },
     _sum: { amount: true },
@@ -230,7 +234,10 @@ async function campaignSpendTotal(tenantId: string, campaignId: string, db: DbTx
  * (MKT-CMP-005) — this is the one place that writes it. `db` is the caller's
  * transaction when the spend that moved the total commits with it (recordSpend).
  */
-export async function recomputeCampaignActual(campaignId: string, db: DbTx = prisma): Promise<number> {
+export async function recomputeCampaignActual(
+  campaignId: string,
+  db: DbTx = prisma as unknown as DbTx,
+): Promise<number> {
   const auth = currentAuth();
   const total = await campaignSpendTotal(auth.tenantId, campaignId, db);
   await db.marketingCampaign.update({ where: { id: campaignId }, data: { budgetActual: total } });
