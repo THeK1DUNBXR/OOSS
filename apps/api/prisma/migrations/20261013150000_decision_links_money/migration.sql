@@ -92,15 +92,26 @@ $$;
 --    there if the column drifted to an unconstrained type or a restore brought
 --    one in. Rounding it here would hide exactly that, so the migration stops.
 -- GUARD BEGIN
+-- This migration runs as the table owner, and FORCE RLS binds the owner
+-- (20261010235900_tenant_rls). Read with no tenant set, decisions shows no rows,
+-- so the guard walks the tenants and sets the tenant on each pass. CI's owner is
+-- a superuser that bypasses RLS, which is why only a run as the application role
+-- shows the difference (decisionLinks.test.ts).
 DO $$
+DECLARE
+  tenant RECORD;
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM "decisions"
-    WHERE "requiredAuthorityValue" <> round("requiredAuthorityValue", 2)
-  ) THEN
-    RAISE EXCEPTION 'decisions.requiredAuthorityValue holds a value with more than two decimal places; this migration will not round it into paise. Correct the value and re-run.'
-      USING ERRCODE = 'data_exception';
-  END IF;
+  FOR tenant IN SELECT "id" FROM "tenants" LOOP
+    PERFORM set_config('app.tenant_id', tenant."id", true);
+    IF EXISTS (
+      SELECT 1 FROM "decisions"
+      WHERE "requiredAuthorityValue" <> round("requiredAuthorityValue", 2)
+    ) THEN
+      RAISE EXCEPTION 'decisions.requiredAuthorityValue holds a value with more than two decimal places; this migration will not round it into paise. Correct the value and re-run.'
+        USING ERRCODE = 'data_exception';
+    END IF;
+  END LOOP;
+  PERFORM set_config('app.tenant_id', '', true);
 END
 $$;
 -- GUARD END
