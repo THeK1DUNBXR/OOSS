@@ -425,20 +425,23 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
       confidentiality: 'confidential',
       tx,
     });
+    // The requester's notice is part of the decision: it commits or rolls back with it.
+    if (step.requestedById) {
+      await notify(
+        {
+          recipientPartyId: step.requestedById,
+          priority: 'N2_NORMAL',
+          title: `${approve ? 'Approved' : 'Declined'}: ${step.subjectLabel ?? step.subjectId}`,
+          body: note,
+          subjectType: step.subjectType,
+          subjectId: step.subjectId,
+          drillPath: `/${step.subjectType}s/${step.subjectId}`,
+        },
+        tx,
+      );
+    }
     return decided;
   });
-
-  if (step.requestedById) {
-    await notify({
-      recipientPartyId: step.requestedById,
-      priority: 'N2_NORMAL',
-      title: `${approve ? 'Approved' : 'Declined'}: ${step.subjectLabel ?? step.subjectId}`,
-      body: note,
-      subjectType: step.subjectType,
-      subjectId: step.subjectId,
-      drillPath: `/${step.subjectType}s/${step.subjectId}`,
-    });
-  }
 
   return updated;
 }
