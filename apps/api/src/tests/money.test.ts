@@ -216,7 +216,9 @@ describe('property tests (seeded, no new dependency)', () => {
       const magnitude = rng.bigBelow(2n * 10n ** 12n) - 10n ** 12n;
       const k = rng.int(1, 50);
       const weights: bigint[] = Array.from({ length: k }, () => BigInt(rng.int(0, 1000)));
-      if (weights.every((w) => w === 0n)) weights[0] = 1n;
+      // An explicit boolean return: TS infers `w is 0n` from `w === 0n`, which
+      // narrows `weights` to `0n[]` in the branch below and refuses the 1n.
+      if (weights.every((w): boolean => w === 0n)) weights[0] = 1n;
       const total = magnitude;
 
       const parts = allocate(total, weights);
