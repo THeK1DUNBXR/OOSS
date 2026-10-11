@@ -26,6 +26,7 @@ import { createApplication, createLicence, proposeRenewal } from '../domains/it/
 import { createPlan, recordTest, transitionPlan } from '../domains/it/continuity.js';
 import { campaignDetail, decideItem, openCampaign } from '../domains/it/governance.js';
 import { rejectRegularisation, submitRegularisation } from '../domains/hcm/time.js';
+import { changeForecastCategory } from '../domains/opportunities.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
@@ -346,5 +347,24 @@ describe('declining an attendance regularisation raises EX-HR-006 in the same tr
         where: { tenantId: TENANT, code: 'EX-HR-006', subjectId: before.workAttendanceId },
       }),
     ).toBe(0);
+  });
+});
+
+describe('a forecast demotion notifies the deal owner in the same transaction', () => {
+  it('when the notification cannot be recorded, the forecast category is unchanged', async () => {
+    const opp = await unscopedPrisma.opportunity.findFirst({
+      where: { tenantId: TENANT, outcome: null, forecastCategory: 'best_case', ownerPartyId: { not: null } },
+    });
+    expect(opp).toBeTruthy();
+
+    await refuseNotificationInserts();
+    await expectReject(() =>
+      asUser(CHAIRMAN, () =>
+        changeForecastCategory({ opportunityId: opp!.id, to: 'pipeline', reason: 'Atomicity probe.' }),
+      ),
+    );
+
+    const after = await unscopedPrisma.opportunity.findUniqueOrThrow({ where: { id: opp!.id } });
+    expect(after.forecastCategory).toBe('best_case');
   });
 });
