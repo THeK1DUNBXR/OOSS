@@ -79,7 +79,7 @@ export const TENSE_GRANDFATHERED: ReadonlySet<string> = new Set([
   // is why none has a participle to find.
   'kz.hr.compensation.effective', // CompensationRecord ACTIVATE (employment.ts:1036)
   'kz.hr.leave.extension_in_progress', // LeaveRequest EXTENSION_RUNNING (leave.ts:341)
-  'kz.hr.ticket.waiting', // IT ticket WAIT (it/servicedesk.ts, via lifecycle.transition)
+  'kz.hr.ticket.waiting', // IT ticket WAIT before it was filed under kz.it.ticket.moved_to_waiting; kept so stored history passes the grammar
   'kz.ceo.key_result.checked_in',
   'kz.crm.contract.expiring',
   'kz.crm.opportunity.handed_off',
@@ -789,6 +789,14 @@ export const EVENTS = {
   // D. Service desk
   IT_TICKET_RAISED: 'kz.it.ticket.raised',
   IT_TICKET_TRANSITIONED: 'kz.it.ticket.transitioned',
+  // One name per ticket transition, the verbs in TICKET_EVENT_VERB (it/servicedesk.ts).
+  IT_TICKET_TRIAGED: 'kz.it.ticket.triaged',
+  IT_TICKET_STARTED: 'kz.it.ticket.started',
+  IT_TICKET_MOVED_TO_WAITING: 'kz.it.ticket.moved_to_waiting',
+  IT_TICKET_RESUMED: 'kz.it.ticket.resumed',
+  IT_TICKET_RESOLVED: 'kz.it.ticket.resolved',
+  IT_TICKET_CLOSED: 'kz.it.ticket.closed',
+  IT_TICKET_REOPENED: 'kz.it.ticket.reopened',
   IT_TICKET_ASSIGNED: 'kz.it.ticket.assigned',
   IT_TICKET_SLA_BREACHED: 'kz.it.ticket.sla_breached',
   IT_TICKET_RATED: 'kz.it.ticket.rated',
@@ -806,6 +814,7 @@ export const EVENTS = {
   IT_RISK_CREATED: 'kz.it.risk.created',
   IT_RISK_TRANSITIONED: 'kz.it.risk.transitioned',
   IT_POLICY_PUBLISHED: 'kz.it.policy.published',
+  IT_POLICY_RETIRED: 'kz.it.policy.retired',
   IT_POLICY_ACKNOWLEDGED: 'kz.it.policy.acknowledged',
   IT_CONTROL_TESTED: 'kz.it.control.tested',
   IT_ACCESS_REVIEW_OPENED: 'kz.it.access_review.opened',

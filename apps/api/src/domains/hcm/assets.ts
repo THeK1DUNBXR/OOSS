@@ -28,6 +28,7 @@ import {
   type TravelRequestStatus,
 } from '@kaizen/shared';
 import { HR_LETTER_KINDS, istDateKey, istYearMonth, type HrLetterKind } from '@kaizen/shared';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -219,8 +220,8 @@ export async function assignAsset(input: {
     throw ApiError.badRequest(`"${condition}" is not a condition. Expected one of ${ASSET_CONDITIONS.join(', ')}.`);
   }
 
-  const [assignment] = await prisma.$transaction([
-    prisma.assetAssignment.create({
+  return governedWrite(async (tx) => {
+    const assignment = await tx.assetAssignment.create({
       data: {
         tenantId: auth.tenantId,
         assetId: input.assetId,
@@ -228,28 +229,30 @@ export async function assignAsset(input: {
         condition,
         note: input.note ?? null,
       },
-    }),
-    prisma.asset.update({ where: { id: input.assetId }, data: { status: 'assigned' } }),
-  ]);
+    });
+    await tx.asset.update({ where: { id: input.assetId }, data: { status: 'assigned' } });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'asset_assignment',
-    subjectId: assignment.id,
-    after: assignment as never,
+    await auditWrite({
+      action: 'create',
+      subjectType: 'asset_assignment',
+      subjectId: assignment.id,
+      after: assignment as never,
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.asset.assigned',
+      subject: { entityType: 'asset_assignment', entityId: assignment.id },
+      related: [
+        { relation: 'asset', entityType: 'asset', entityId: input.assetId },
+        { relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+      ],
+      newState: { assetId: input.assetId, employmentRelationshipId: input.employmentRelationshipId },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return assignment;
   });
-  await emit({
-    name: 'kz.hr.asset.assigned',
-    subject: { entityType: 'asset_assignment', entityId: assignment.id },
-    related: [
-      { relation: 'asset', entityType: 'asset', entityId: input.assetId },
-      { relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-    ],
-    newState: { assetId: input.assetId, employmentRelationshipId: input.employmentRelationshipId },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
-  return assignment;
 }
 
 /** Returns an open assignment. `condition` on return decides whether the asset goes back to stock or to repair. */
@@ -267,29 +270,31 @@ export async function returnAsset(assignmentId: string, input: { condition: Asse
   }
 
   const nextAssetStatus = input.condition === 'poor' ? 'repair' : 'in_stock';
-  const [updated] = await prisma.$transaction([
-    prisma.assetAssignment.update({
+  return governedWrite(async (tx) => {
+    const updated = await tx.assetAssignment.update({
       where: { id: assignmentId },
       data: { returnedOn: new Date(), condition: input.condition, note: input.note ?? assignment.note },
-    }),
-    prisma.asset.update({ where: { id: assignment.assetId }, data: { status: nextAssetStatus } }),
-  ]);
+    });
+    await tx.asset.update({ where: { id: assignment.assetId }, data: { status: nextAssetStatus } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'asset_assignment',
-    subjectId: assignmentId,
-    before: { returnedOn: null },
-    after: { returnedOn: updated.returnedOn, condition: input.condition },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'asset_assignment',
+      subjectId: assignmentId,
+      before: { returnedOn: null },
+      after: { returnedOn: updated.returnedOn, condition: input.condition },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.asset.returned',
+      subject: { entityType: 'asset_assignment', entityId: assignmentId },
+      related: [{ relation: 'asset', entityType: 'asset', entityId: assignment.assetId }],
+      newState: { condition: input.condition, assetStatus: nextAssetStatus },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: 'kz.hr.asset.returned',
-    subject: { entityType: 'asset_assignment', entityId: assignmentId },
-    related: [{ relation: 'asset', entityType: 'asset', entityId: assignment.assetId }],
-    newState: { condition: input.condition, assetStatus: nextAssetStatus },
-    impact: { domains: ['hr'] },
-  });
-  return updated;
 }
 
 // ---------------------------------------------------------------------------
@@ -334,31 +339,34 @@ export async function createTravelRequest(input: {
     throw ApiError.badRequest('The return date cannot be before the departure date.');
   }
   const recordCode = await nextRecordCode('TRV');
-  const row = await prisma.travelRequest.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      employmentRelationshipId: input.employmentRelationshipId,
-      purpose: input.purpose,
-      fromLocation: input.fromLocation,
-      toLocation: input.toLocation,
-      startDate: input.startDate,
-      endDate: input.endDate,
-      mode: input.mode,
-      estimatedCost: input.estimatedCost,
-      advanceRequested: input.advanceRequested ?? null,
-      note: input.note ?? null,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.travelRequest.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        employmentRelationshipId: input.employmentRelationshipId,
+        purpose: input.purpose,
+        fromLocation: input.fromLocation,
+        toLocation: input.toLocation,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        mode: input.mode,
+        estimatedCost: input.estimatedCost,
+        advanceRequested: input.advanceRequested ?? null,
+        note: input.note ?? null,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'travel_request', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: 'kz.hr.travel_request.submitted',
+      subject: { entityType: 'travel_request', entityId: row.id, recordCode },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+      newState: { status: 'submitted' },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await auditWrite({ action: 'create', subjectType: 'travel_request', subjectId: row.id, after: row as never });
-  await emit({
-    name: 'kz.hr.travel_request.submitted',
-    subject: { entityType: 'travel_request', entityId: row.id, recordCode },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { status: 'submitted' },
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 async function loadTravelRequest(id: string) {
@@ -386,27 +394,31 @@ export async function decideTravelRequest(id: string, decision: 'approved' | 're
     throw ApiError.forbidden('The Self-Dealing Bar is unconditional: you may never decide your own travel request.');
   }
 
-  const updated = await prisma.travelRequest.update({
-    where: { id },
-    data: { status: decision, approverPartyId: auth.partyId, decidedAt: new Date(), decisionNote: note ?? null },
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'travel_request',
-    subjectId: id,
-    before: { status: from },
-    after: { status: decision },
-  });
-  if (decision === 'approved') {
-    await emit({
-      name: 'kz.hr.travel_request.approved',
-      subject: { entityType: 'travel_request', entityId: id, recordCode: updated.recordCode },
-      newState: { status: 'approved' },
-      owner: { partyId: employment.personId },
-      impact: { domains: ['hr'] },
+  return governedWrite(async (tx) => {
+    const updated = await tx.travelRequest.update({
+      where: { id },
+      data: { status: decision, approverPartyId: auth.partyId, decidedAt: new Date(), decisionNote: note ?? null },
     });
-  }
-  return updated;
+    await auditWrite({
+      action: 'update',
+      subjectType: 'travel_request',
+      subjectId: id,
+      before: { status: from },
+      after: { status: decision },
+      tx,
+    });
+    if (decision === 'approved') {
+      await emit({
+        name: 'kz.hr.travel_request.approved',
+        subject: { entityType: 'travel_request', entityId: id, recordCode: updated.recordCode },
+        newState: { status: 'approved' },
+        owner: { partyId: employment.personId },
+        impact: { domains: ['hr'] },
+        tx,
+      });
+    }
+    return updated;
+  });
 }
 
 /** Records the settlement of an approved, travelled request — by id only, into WS7's ExpenseClaim. */
@@ -473,24 +485,27 @@ export async function createLetterRequest(input: {
       `"${input.kind}" is not a letter kind. Expected one of ${LETTER_REQUEST_KINDS.join(', ')}.`,
     );
   }
-  const row = await prisma.letterRequest.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      requestedById: auth.partyId,
-      kind: input.kind,
-      decisionNote: input.note ?? null,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.letterRequest.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        requestedById: auth.partyId,
+        kind: input.kind,
+        decisionNote: input.note ?? null,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'letter_request', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: 'kz.hr.letter_request.submitted',
+      subject: { entityType: 'letter_request', entityId: row.id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+      newState: { status: 'requested', kind: input.kind },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await auditWrite({ action: 'create', subjectType: 'letter_request', subjectId: row.id, after: row as never });
-  await emit({
-    name: 'kz.hr.letter_request.submitted',
-    subject: { entityType: 'letter_request', entityId: row.id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { status: 'requested', kind: input.kind },
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 async function loadLetterRequest(id: string) {

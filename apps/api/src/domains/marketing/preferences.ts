@@ -67,31 +67,40 @@ export async function setChannelPreference(personId: string, channelKey: string,
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_settings', verb: 'edit' });
 
-  const recordCode = await nextRecordCode('SND'); // no dedicated prefix registered for preferences; reuses the send-series pool, distinguished by table.
-  const pref = await prisma.marketingPreference.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      personId,
-      channelKey,
-      optedIn,
-      source,
-      changedAt: new Date(),
-      createdById: auth.partyId,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('SND', new Date(), tx); // no dedicated prefix registered for preferences; reuses the send-series pool, distinguished by table.
+    const pref = await tx.marketingPreference.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        personId,
+        channelKey,
+        optedIn,
+        source,
+        changedAt: new Date(),
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'preference', subjectId: pref.id, after: { channelKey, optedIn } });
-  await emit({
-    name: EVENTS.MKT_PREFERENCE_CHANGED,
-    subject: { entityType: 'preference', entityId: pref.id, recordCode },
-    related: [{ relation: 'subject', entityType: 'person', entityId: personId }],
-    newState: { channelKey, optedIn },
-    owner: { partyId: personId },
-    impact: { domains: ['mkt'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'preference',
+      subjectId: pref.id,
+      after: { channelKey, optedIn },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_PREFERENCE_CHANGED,
+      subject: { entityType: 'preference', entityId: pref.id, recordCode },
+      related: [{ relation: 'subject', entityType: 'person', entityId: personId }],
+      newState: { channelKey, optedIn },
+      owner: { partyId: personId },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
 
-  return pref;
+    return pref;
+  });
 }
 
 export async function setDoNotContact(personId: string, doNotContact: boolean, reason: string) {
@@ -99,38 +108,42 @@ export async function setDoNotContact(personId: string, doNotContact: boolean, r
   await assertCan({ resource: 'marketing_settings', verb: 'edit' });
   if (doNotContact && !reason?.trim()) throw ApiError.badRequest('A reason is required to set do-not-contact.');
 
-  const recordCode = await nextRecordCode('SND');
-  const pref = await prisma.marketingPreference.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      personId,
-      channelKey: 'all',
-      optedIn: !doNotContact,
-      doNotContact,
-      reason: reason || null,
-      changedAt: new Date(),
-      createdById: auth.partyId,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('SND', new Date(), tx);
+    const pref = await tx.marketingPreference.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        personId,
+        channelKey: 'all',
+        optedIn: !doNotContact,
+        doNotContact,
+        reason: reason || null,
+        changedAt: new Date(),
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'preference',
-    subjectId: pref.id,
-    after: { doNotContact, reason },
-  });
-  await emit({
-    name: EVENTS.MKT_PREFERENCE_CHANGED,
-    subject: { entityType: 'preference', entityId: pref.id, recordCode },
-    related: [{ relation: 'subject', entityType: 'person', entityId: personId }],
-    newState: { doNotContact },
-    reason: reason ? { reasonCode: 'do_not_contact', note: reason } : null,
-    owner: { partyId: personId },
-    impact: { domains: ['mkt'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'preference',
+      subjectId: pref.id,
+      after: { doNotContact, reason },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_PREFERENCE_CHANGED,
+      subject: { entityType: 'preference', entityId: pref.id, recordCode },
+      related: [{ relation: 'subject', entityType: 'person', entityId: personId }],
+      newState: { doNotContact },
+      reason: reason ? { reasonCode: 'do_not_contact', note: reason } : null,
+      owner: { partyId: personId },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
 
-  return pref;
+    return pref;
+  });
 }
 
 /** Most recent preference row per channel — preferences are append-only history, this is the current state. */

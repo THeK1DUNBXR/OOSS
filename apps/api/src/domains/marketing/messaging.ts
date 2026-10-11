@@ -50,7 +50,7 @@ import { marketingPolicy } from './settings.js';
 // Types & schemas
 // ============================================================================
 
-registerGovernedEntities('mkt', ['marketing_template', 'marketing_send']);
+registerGovernedEntities('mkt', ['marketing_template', 'marketing_send', 'marketing_send_recipient']);
 
 export interface TemplateView {
   id: string;
@@ -324,36 +324,40 @@ export async function createTemplate(data: TemplateInput): Promise<TemplateView>
 
   const parsed = TemplateInputSchema.parse(data);
   const mergeFields = extractMergeFields(`${parsed.body} ${parsed.subject ?? ''}`);
-  const recordCode = await nextRecordCode('TPL');
+  const template = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('TPL', new Date(), tx);
+    const created = await tx.marketingTemplate.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        channelKey: parsed.channelKey,
+        name: parsed.name,
+        subject: parsed.subject ?? null,
+        body: parsed.body,
+        mergeFields,
+        status: 'draft',
+        dltTemplateId: parsed.dltTemplateId ?? null,
+        waTemplateName: parsed.waTemplateName ?? null,
+        version: 1,
+        language: parsed.language,
+        createdById: auth.partyId,
+      },
+    });
 
-  const template = await prisma.marketingTemplate.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      channelKey: parsed.channelKey,
-      name: parsed.name,
-      subject: parsed.subject ?? null,
-      body: parsed.body,
-      mergeFields,
-      status: 'draft',
-      dltTemplateId: parsed.dltTemplateId ?? null,
-      waTemplateName: parsed.waTemplateName ?? null,
-      version: 1,
-      language: parsed.language,
-      createdById: auth.partyId,
-    },
-  });
-
-  await auditWrite({
-    action: 'create',
-    subjectType: 'marketing_template',
-    subjectId: template.id,
-    after: { recordCode, name: template.name },
-  });
-  await emit({
-    name: EVENTS.MKT_TEMPLATE_CREATED,
-    subject: { entityType: 'marketing_template', entityId: template.id, recordCode },
-    newState: { channelKey: template.channelKey, status: template.status, version: template.version },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_template',
+      subjectId: created.id,
+      after: { recordCode, name: created.name },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_TEMPLATE_CREATED,
+      subject: { entityType: 'marketing_template', entityId: created.id, recordCode },
+      newState: { channelKey: created.channelKey, status: created.status, version: created.version },
+      tx,
+    });
+    return created;
   });
 
   return toTemplateView(template);
@@ -402,35 +406,40 @@ export async function updateTemplate(id: string, data: Partial<TemplateInput>): 
   const mergeFields = extractMergeFields(`${nextBody} ${nextSubject ?? ''}`);
 
   if (template.status === 'approved') {
-    const recordCode = await nextRecordCode('TPL');
-    const created = await prisma.marketingTemplate.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode,
-        channelKey: template.channelKey,
-        name: data.name ?? template.name,
-        subject: data.subject ?? template.subject,
-        body: nextBody,
-        mergeFields,
-        status: 'draft',
-        dltTemplateId: data.dltTemplateId ?? null,
-        waTemplateName: data.waTemplateName ?? null,
-        version: template.version + 1,
-        language: data.language ?? template.language,
-        createdById: auth.partyId,
-      },
-    });
-    await auditWrite({
-      action: 'create',
-      subjectType: 'marketing_template',
-      subjectId: created.id,
-      after: { recordCode, version: created.version, previousVersionId: template.id },
-    });
-    await emit({
-      name: EVENTS.MKT_TEMPLATE_CREATED,
-      subject: { entityType: 'marketing_template', entityId: created.id, recordCode },
-      related: [{ relation: 'previous_version', entityType: 'marketing_template', entityId: template.id }],
-      newState: { version: created.version, status: created.status },
+    const created = await prisma.$transaction(async (tx) => {
+      const recordCode = await nextRecordCode('TPL', new Date(), tx);
+      const row = await tx.marketingTemplate.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode,
+          channelKey: template.channelKey,
+          name: data.name ?? template.name,
+          subject: data.subject ?? template.subject,
+          body: nextBody,
+          mergeFields,
+          status: 'draft',
+          dltTemplateId: data.dltTemplateId ?? null,
+          waTemplateName: data.waTemplateName ?? null,
+          version: template.version + 1,
+          language: data.language ?? template.language,
+          createdById: auth.partyId,
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'marketing_template',
+        subjectId: row.id,
+        after: { recordCode, version: row.version, previousVersionId: template.id },
+        tx,
+      });
+      await emit({
+        name: EVENTS.MKT_TEMPLATE_CREATED,
+        subject: { entityType: 'marketing_template', entityId: row.id, recordCode },
+        related: [{ relation: 'previous_version', entityType: 'marketing_template', entityId: template.id }],
+        newState: { version: row.version, status: row.status },
+        tx,
+      });
+      return row;
     });
     return toTemplateView(created);
   }
@@ -467,15 +476,27 @@ export async function submitForReview(id: string): Promise<TemplateView> {
     throw ApiError.unprocessable(`Cannot submit a template from status '${template.status}'.`);
   }
 
-  const updated = await prisma.marketingTemplate.update({
-    where: { id },
-    data: { status: 'pending_review', updatedById: auth.partyId },
-  });
-  await emit({
-    name: EVENTS.MKT_TEMPLATE_SUBMITTED,
-    subject: { entityType: 'marketing_template', entityId: id, recordCode: template.recordCode },
-    previousState: { status: template.status },
-    newState: { status: 'pending_review' },
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingTemplate.update({
+      where: { id },
+      data: { status: 'pending_review', updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_template',
+      subjectId: id,
+      before: { status: template.status },
+      after: { status: 'pending_review' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_TEMPLATE_SUBMITTED,
+      subject: { entityType: 'marketing_template', entityId: id, recordCode: template.recordCode },
+      previousState: { status: template.status },
+      newState: { status: 'pending_review' },
+      tx,
+    });
+    return row;
   });
   return toTemplateView(updated);
 }
@@ -508,46 +529,69 @@ export async function approveTemplate(
   const finalWa = waTemplateName ?? template.waTemplateName;
   assertDltReady(template.channelKey, finalDlt, finalWa);
 
-  const updated = await prisma.marketingTemplate.update({
-    where: { id },
-    data: {
-      status: 'approved',
-      approvedById: auth.partyId,
-      dltTemplateId: finalDlt,
-      waTemplateName: finalWa,
-      updatedById: auth.partyId,
-    },
-  });
-
-  // Versioning: retire any other row sharing this template's natural key
-  // (tenant, channel, name) that is still approved — the new version has
-  // just taken over as the live one.
-  const siblings = await prisma.marketingTemplate.findMany({
-    where: {
-      tenantId: auth.tenantId,
-      channelKey: template.channelKey,
-      name: template.name,
-      status: 'approved',
-      id: { not: id },
-      deletedAt: null,
-    },
-  });
-  for (const sibling of siblings) {
-    await prisma.marketingTemplate.update({ where: { id: sibling.id }, data: { status: 'retired' } });
-    await emit({
-      name: EVENTS.MKT_TEMPLATE_RETIRED,
-      subject: { entityType: 'marketing_template', entityId: sibling.id, recordCode: sibling.recordCode },
-      previousState: { status: 'approved' },
-      newState: { status: 'retired' },
-      reason: { reasonCode: 'superseded_by_new_version' },
+  // One transaction for the whole handover: the new version goes live and the
+  // old one retires together, or neither happens.
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingTemplate.update({
+      where: { id },
+      data: {
+        status: 'approved',
+        approvedById: auth.partyId,
+        dltTemplateId: finalDlt,
+        waTemplateName: finalWa,
+        updatedById: auth.partyId,
+      },
     });
-  }
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_template',
+      subjectId: id,
+      before: { status: template.status },
+      after: { status: 'approved', dltTemplateId: finalDlt, waTemplateName: finalWa },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.MKT_TEMPLATE_APPROVED,
-    subject: { entityType: 'marketing_template', entityId: id, recordCode: template.recordCode },
-    previousState: { status: template.status },
-    newState: { status: 'approved', dltTemplateId: finalDlt, waTemplateName: finalWa },
+    // Versioning: retire any other row sharing this template's natural key
+    // (tenant, channel, name) that is still approved — the new version has
+    // just taken over as the live one.
+    const siblings = await tx.marketingTemplate.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        channelKey: template.channelKey,
+        name: template.name,
+        status: 'approved',
+        id: { not: id },
+        deletedAt: null,
+      },
+    });
+    for (const sibling of siblings) {
+      await tx.marketingTemplate.update({ where: { id: sibling.id }, data: { status: 'retired' } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'marketing_template',
+        subjectId: sibling.id,
+        before: { status: 'approved' },
+        after: { status: 'retired', supersededBy: id },
+        tx,
+      });
+      await emit({
+        name: EVENTS.MKT_TEMPLATE_RETIRED,
+        subject: { entityType: 'marketing_template', entityId: sibling.id, recordCode: sibling.recordCode },
+        previousState: { status: 'approved' },
+        newState: { status: 'retired' },
+        reason: { reasonCode: 'superseded_by_new_version' },
+        tx,
+      });
+    }
+
+    await emit({
+      name: EVENTS.MKT_TEMPLATE_APPROVED,
+      subject: { entityType: 'marketing_template', entityId: id, recordCode: template.recordCode },
+      previousState: { status: template.status },
+      newState: { status: 'approved', dltTemplateId: finalDlt, waTemplateName: finalWa },
+      tx,
+    });
+    return row;
   });
   return toTemplateView(updated);
 }
@@ -582,15 +626,27 @@ export async function retireTemplate(id: string): Promise<TemplateView> {
   if (!TEMPLATE_TRANSITIONS[template.status as TemplateStatus]?.includes('retired')) {
     throw ApiError.unprocessable(`Cannot retire a template from status '${template.status}'.`);
   }
-  const updated = await prisma.marketingTemplate.update({
-    where: { id },
-    data: { status: 'retired', updatedById: auth.partyId },
-  });
-  await emit({
-    name: EVENTS.MKT_TEMPLATE_RETIRED,
-    subject: { entityType: 'marketing_template', entityId: id, recordCode: template.recordCode },
-    previousState: { status: template.status },
-    newState: { status: 'retired' },
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingTemplate.update({
+      where: { id },
+      data: { status: 'retired', updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_template',
+      subjectId: id,
+      before: { status: template.status },
+      after: { status: 'retired' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_TEMPLATE_RETIRED,
+      subject: { entityType: 'marketing_template', entityId: id, recordCode: template.recordCode },
+      previousState: { status: template.status },
+      newState: { status: 'retired' },
+      tx,
+    });
+    return row;
   });
   return toTemplateView(updated);
 }
@@ -854,31 +910,57 @@ export async function requestSend(id: string): Promise<SendView> {
   }
 
   const policy = await marketingPolicy();
-  const requestedRow = await prisma.marketingSend.update({
-    where: { id: send.id },
-    data: { requestedById: auth.partyId },
-  });
 
   if (send.recipientCount > policy.sendApprovalThreshold) {
-    await emit({
-      name: EVENTS.MKT_SEND_REQUESTED,
-      subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
-      newState: { status: 'draft', recipientCount: send.recipientCount, awaitingApproval: true },
+    const requestedRow = await prisma.$transaction(async (tx) => {
+      const row = await tx.marketingSend.update({
+        where: { id: send.id },
+        data: { requestedById: auth.partyId },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'marketing_send',
+        subjectId: send.id,
+        before: { status: 'draft' },
+        after: { status: 'draft', requestedById: auth.partyId, awaitingApproval: true },
+        tx,
+      });
+      await emit({
+        name: EVENTS.MKT_SEND_REQUESTED,
+        subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
+        newState: { status: 'draft', recipientCount: send.recipientCount, awaitingApproval: true },
+        tx,
+      });
+      return row;
     });
     return toSendView(requestedRow);
   }
 
-  const queued = await prisma.marketingSend.update({ where: { id: send.id }, data: { status: 'queued' } });
-  await emit({
-    name: EVENTS.MKT_SEND_REQUESTED,
-    subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
-    newState: { status: 'queued' },
-  });
-  await emit({
-    name: EVENTS.MKT_SEND_QUEUED,
-    subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
-    previousState: { status: 'draft' },
-    newState: { status: 'queued' },
+  const queued = await prisma.$transaction(async (tx) => {
+    await tx.marketingSend.update({ where: { id: send.id }, data: { requestedById: auth.partyId } });
+    const row = await tx.marketingSend.update({ where: { id: send.id }, data: { status: 'queued' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_send',
+      subjectId: send.id,
+      before: { status: 'draft' },
+      after: { status: 'queued', requestedById: auth.partyId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SEND_REQUESTED,
+      subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
+      newState: { status: 'queued' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SEND_QUEUED,
+      subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
+      previousState: { status: 'draft' },
+      newState: { status: 'queued' },
+      tx,
+    });
+    return row;
   });
   return toSendView(queued);
 }
@@ -902,20 +984,33 @@ export async function approveSend(id: string): Promise<SendView> {
     throw ApiError.unprocessable('This send does not require approval.');
   }
 
-  const updated = await prisma.marketingSend.update({
-    where: { id: send.id },
-    data: { status: 'queued', approvedById: auth.partyId },
-  });
-  await emit({
-    name: EVENTS.MKT_SEND_APPROVED,
-    subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
-    newState: { status: 'queued', approvedById: auth.partyId },
-  });
-  await emit({
-    name: EVENTS.MKT_SEND_QUEUED,
-    subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
-    previousState: { status: 'draft' },
-    newState: { status: 'queued' },
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingSend.update({
+      where: { id: send.id },
+      data: { status: 'queued', approvedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_send',
+      subjectId: send.id,
+      before: { status: 'draft' },
+      after: { status: 'queued', approvedById: auth.partyId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SEND_APPROVED,
+      subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
+      newState: { status: 'queued', approvedById: auth.partyId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SEND_QUEUED,
+      subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
+      previousState: { status: 'draft' },
+      newState: { status: 'queued' },
+      tx,
+    });
+    return row;
   });
   return toSendView(updated);
 }
@@ -927,15 +1022,27 @@ export async function cancelSend(id: string): Promise<SendView> {
   if (!SEND_TRANSITIONS[send.status as SendStatus]?.includes('cancelled')) {
     throw ApiError.unprocessable(`Cannot cancel a send from status '${send.status}'.`);
   }
-  const updated = await prisma.marketingSend.update({
-    where: { id: send.id },
-    data: { status: 'cancelled', updatedById: auth.partyId },
-  });
-  await emit({
-    name: EVENTS.MKT_SEND_CANCELLED,
-    subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
-    previousState: { status: send.status },
-    newState: { status: 'cancelled' },
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingSend.update({
+      where: { id: send.id },
+      data: { status: 'cancelled', updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_send',
+      subjectId: send.id,
+      before: { status: send.status },
+      after: { status: 'cancelled' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SEND_CANCELLED,
+      subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
+      previousState: { status: send.status },
+      newState: { status: 'cancelled' },
+      tx,
+    });
+    return row;
   });
   return toSendView(updated);
 }
@@ -1058,15 +1165,28 @@ export async function dispatchSend(id: string): Promise<SendView> {
       where: { sendId: send.id, tenantId: send.tenantId, status: 'failed' },
     })) > 0;
   const finalStatus: SendStatus = anyFailed ? 'failed' : 'sent';
-  const updated = await prisma.marketingSend.update({
-    where: { id: send.id },
-    data: { status: finalStatus, sentAt: new Date() },
-  });
-
-  await emit({
-    name: finalStatus === 'sent' ? EVENTS.MKT_SEND_SENT : EVENTS.MKT_SEND_FAILED,
-    subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
-    newState: { status: finalStatus },
+  // The adapter sends above are external side effects and stay outside any
+  // transaction; only the terminal status and its event commit together here.
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingSend.update({
+      where: { id: send.id },
+      data: { status: finalStatus, sentAt: new Date() },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_send',
+      subjectId: send.id,
+      before: { status: send.status },
+      after: { status: finalStatus },
+      tx,
+    });
+    await emit({
+      name: finalStatus === 'sent' ? EVENTS.MKT_SEND_SENT : EVENTS.MKT_SEND_FAILED,
+      subject: { entityType: 'marketing_send', entityId: send.id, recordCode: send.recordCode },
+      newState: { status: finalStatus },
+      tx,
+    });
+    return row;
   });
 
   await checkSendHealth(send.id);
@@ -1165,23 +1285,6 @@ export async function applyDeliveryEvents(
     // The event is always logged, but the status only moves forward (see RECIPIENT_STATUS_RANK).
     const statusAdvances = advancesRecipientStatus(recipient.status, nextStatus);
     const resultingStatus = statusAdvances ? nextStatus : recipient.status;
-    await prisma.marketingSendRecipient.update({
-      where: { id: recipient.id },
-      data: {
-        ...(statusAdvances ? { status: nextStatus } : {}),
-        events: [
-          ...existingEvents,
-          {
-            kind: event.kind,
-            eventId: event.eventId ?? null,
-            at: event.at.toISOString(),
-            detail: event.detail ?? null,
-          },
-        ] as never,
-      },
-    });
-    applied += 1;
-    affectedSendIds.add(send.id);
 
     const counterField =
       event.kind === 'delivered'
@@ -1195,9 +1298,6 @@ export async function applyDeliveryEvents(
               : event.kind === 'unsubscribed'
                 ? 'unsubscribedCount'
                 : null;
-    if (counterField) {
-      await prisma.marketingSend.update({ where: { id: send.id }, data: { [counterField]: { increment: 1 } } });
-    }
 
     const recipientEventName: Record<string, string | undefined> = {
       delivered: EVENTS.MKT_SEND_RECIPIENT_DELIVERED,
@@ -1207,17 +1307,61 @@ export async function applyDeliveryEvents(
       unsubscribed: EVENTS.MKT_SEND_RECIPIENT_UNSUBSCRIBED,
     };
     const eventName = recipientEventName[event.kind];
-    if (eventName) {
-      await emit({
-        name: eventName,
-        subject: { entityType: 'marketing_send_recipient', entityId: recipient.id },
-        related: [
-          { relation: 'send', entityType: 'marketing_send', entityId: send.id },
-          { relation: 'person', entityType: 'person', entityId: recipient.personId },
-        ],
-        newState: { status: resultingStatus },
+
+    // One delivery's status, counter and event commit together, so a retried
+    // webhook never finds the counter moved without its event, or the reverse.
+    await prisma.$transaction(async (tx) => {
+      await tx.marketingSendRecipient.update({
+        where: { id: recipient.id },
+        data: {
+          ...(statusAdvances ? { status: nextStatus } : {}),
+          events: [
+            ...existingEvents,
+            {
+              kind: event.kind,
+              eventId: event.eventId ?? null,
+              at: event.at.toISOString(),
+              detail: event.detail ?? null,
+            },
+          ] as never,
+        },
       });
-    }
+      await auditWrite({
+        action: 'update',
+        subjectType: 'marketing_send_recipient',
+        subjectId: recipient.id,
+        before: { status: recipient.status },
+        after: { status: resultingStatus, deliveryEvent: event.kind },
+        tx,
+      });
+
+      if (counterField) {
+        await tx.marketingSend.update({ where: { id: send.id }, data: { [counterField]: { increment: 1 } } });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'marketing_send',
+          subjectId: send.id,
+          meta: { counter: counterField },
+          after: { [counterField]: 'incremented' },
+          tx,
+        });
+      }
+
+      if (eventName) {
+        await emit({
+          name: eventName,
+          subject: { entityType: 'marketing_send_recipient', entityId: recipient.id },
+          related: [
+            { relation: 'send', entityType: 'marketing_send', entityId: send.id },
+            { relation: 'person', entityType: 'person', entityId: recipient.personId },
+          ],
+          newState: { status: resultingStatus },
+          tx,
+        });
+      }
+    });
+    applied += 1;
+    affectedSendIds.add(send.id);
 
     if (event.kind === 'clicked') {
       const rc = await nextRecordCode('LNK');

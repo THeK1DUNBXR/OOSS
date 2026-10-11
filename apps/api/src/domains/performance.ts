@@ -28,7 +28,8 @@ import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, can, scopeFor, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
-import { auditRegulatedRead, registerGovernedEntities } from '../platform/audit.js';
+import { auditRegulatedRead, auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { claimFromLearningCompletion } from './capability.js';
 import { assertEmploymentVisible, employmentVisibilityWhere } from '../platform/recordScope.js';
 
@@ -36,7 +37,7 @@ import { assertEmploymentVisible, employmentVisibilityWhere } from '../platform/
 // Goals
 // ---------------------------------------------------------------------------
 
-registerGovernedEntities('performance', ['goal']);
+registerGovernedEntities('performance', ['goal', 'performance_evidence', 'learning_record']);
 
 export async function listGoals(employmentRelationshipId: string) {
   const auth = currentAuth();
@@ -62,27 +63,40 @@ export async function createGoal(input: {
   });
   if (!employment) throw ApiError.notFound('Employment relationship');
 
-  const goal = await prisma.goal.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      description: input.description,
-      keyResultRef: input.keyResultRef ?? null,
-      periodLabel: input.periodLabel ?? null,
-      dueAt: input.dueAt ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const goal = await tx.goal.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        description: input.description,
+        keyResultRef: input.keyResultRef ?? null,
+        periodLabel: input.periodLabel ?? null,
+        dueAt: input.dueAt ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.GOAL_CREATED,
-    subject: { entityType: 'goal', entityId: goal.id },
-    related: [{ relation: 'held_by', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { status: 'Draft', description: input.description, keyResultRef: input.keyResultRef },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'goal',
+      subjectId: goal.id,
+      after: { employmentRelationshipId: input.employmentRelationshipId, status: 'Draft' },
+      tx,
+    });
 
-  return goal;
+    await emit({
+      name: EVENTS.GOAL_CREATED,
+      subject: { entityType: 'goal', entityId: goal.id },
+      related: [
+        { relation: 'held_by', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+      ],
+      newState: { status: 'Draft', description: input.description, keyResultRef: input.keyResultRef },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return goal;
+  });
 }
 
 export async function transitionGoal(id: string, event: GoalEvent, note?: string) {
@@ -205,32 +219,45 @@ export async function recordEvidence(input: {
   });
   if (!employment) throw ApiError.notFound('Employment relationship');
 
-  const evidence = await prisma.performanceEvidence.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      kind: input.kind,
-      description: input.description,
-      recordedByPartyId: auth.partyId,
-      caseScoped,
-      caseRef: input.caseRef ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const evidence = await tx.performanceEvidence.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        kind: input.kind,
+        description: input.description,
+        recordedByPartyId: auth.partyId,
+        caseScoped,
+        caseRef: input.caseRef ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.PERFORMANCE_EVIDENCE_RECORDED,
-    subject: { entityType: 'performance_evidence', entityId: evidence.id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    // The description is deliberately not in the event body. A case-scoped
-    // note would otherwise be readable by anyone who can read the event log,
-    // which is a wider audience than the case.
-    newState: { kind: input.kind, caseScoped: evidence.caseScoped },
-    owner: { partyId: employment.personId },
-    confidentiality: evidence.caseScoped ? 'restricted' : 'internal',
-    impact: { domains: ['hr'] },
-  });
+    // The audit row names the recorder and the kind, never the description: the
+    // audit log is read more widely than a case is.
+    await auditWrite({
+      action: 'create',
+      subjectType: 'performance_evidence',
+      subjectId: evidence.id,
+      after: { employmentRelationshipId: input.employmentRelationshipId, kind: input.kind, caseScoped },
+      tx,
+    });
 
-  return evidence;
+    await emit({
+      name: EVENTS.PERFORMANCE_EVIDENCE_RECORDED,
+      subject: { entityType: 'performance_evidence', entityId: evidence.id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+      // The description is deliberately not in the event body. A case-scoped
+      // note would otherwise be readable by anyone who can read the event log,
+      // which is a wider audience than the case.
+      newState: { kind: input.kind, caseScoped: evidence.caseScoped },
+      owner: { partyId: employment.personId },
+      confidentiality: evidence.caseScoped ? 'restricted' : 'internal',
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return evidence;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -266,22 +293,33 @@ export async function enrolInLearning(input: { employmentRelationshipId: string;
   const auth = currentAuth();
   await assertCan({ resource: 'learning', verb: 'create' });
 
-  const record = await prisma.learningRecord.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      learningActivityId: input.learningActivityId,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const record = await tx.learningRecord.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        learningActivityId: input.learningActivityId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.LEARNING_RECORD_ENROLLED,
-    subject: { entityType: 'learning_record', entityId: record.id },
-    newState: { status: 'Enrolled', learningActivityId: input.learningActivityId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'learning_record',
+      subjectId: record.id,
+      after: { employmentRelationshipId: input.employmentRelationshipId, learningActivityId: input.learningActivityId },
+      tx,
+    });
 
-  return record;
+    await emit({
+      name: EVENTS.LEARNING_RECORD_ENROLLED,
+      subject: { entityType: 'learning_record', entityId: record.id },
+      newState: { status: 'Enrolled', learningActivityId: input.learningActivityId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return record;
+  });
 }
 
 /**
@@ -299,18 +337,32 @@ export async function completeLearning(id: string, input: { skillId?: string | n
   if (!record) throw ApiError.notFound('Learning record');
   if (record.status === 'Completed') return record;
 
-  const updated = await prisma.learningRecord.update({
-    where: { id },
-    data: { status: 'Completed', completedAt: new Date() },
-  });
+  const updated = await governedWrite(async (tx) => {
+    const row = await tx.learningRecord.update({
+      where: { id },
+      data: { status: 'Completed', completedAt: new Date() },
+    });
 
-  await emit({
-    name: EVENTS.LEARNING_RECORD_COMPLETED,
-    subject: { entityType: 'learning_record', entityId: id },
-    previousState: { status: record.status },
-    newState: { status: 'Completed', isCompliance: record.learningActivity.isCompliance },
-    owner: { partyId: record.employmentRelationship.personId },
-    impact: { domains: ['hr'] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'learning_record',
+      subjectId: id,
+      before: { status: record.status },
+      after: { status: 'Completed' },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.LEARNING_RECORD_COMPLETED,
+      subject: { entityType: 'learning_record', entityId: id },
+      previousState: { status: record.status },
+      newState: { status: 'Completed', isCompliance: record.learningActivity.isCompliance },
+      owner: { partyId: record.employmentRelationship.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return row;
   });
 
   if (input.skillId) {

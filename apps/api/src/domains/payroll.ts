@@ -22,7 +22,8 @@ import { transition } from '../platform/lifecycle.js';
 import { currentCompensation } from './employment.js';
 import { runHooks } from '../platform/hooks.js';
 import { computeInstruction } from './compliance/payroll.js';
-import { registerGovernedEntities } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 
 registerGovernedEntities('hcm_payroll', ['payroll_run']);
 
@@ -107,15 +108,9 @@ export async function openPayrollRun(payPeriod: string) {
     },
   });
 
-  const recordCode = await nextRecordCode('PRN');
-
-  const run = await prisma.payrollRun.create({
-    data: { tenantId: auth.tenantId, recordCode, payPeriod, preparedById: auth.partyId },
-  });
-
-  let grossTotal = 0;
-  let headcount = 0;
-
+  // Compensation is read before the run opens. The reads go through the scoped
+  // client, which refuses to run inside the transaction below.
+  const lines: Array<{ employmentRelationshipId: string; gross: number; division: string }> = [];
   for (const employment of employments) {
     const pay = await currentCompensation(employment.id, periodEnd);
     // Somebody with no compensation in force is still listed, at zero, rather
@@ -123,37 +118,55 @@ export async function openPayrollRun(payPeriod: string) {
     // beside their name is not. `detectMissingCompensation` raises it too.
     const gross = num(pay?.amount) ?? 0;
     const division = employment.assignments[0]?.position.orgUnit.division ?? 'shared';
+    lines.push({ employmentRelationshipId: employment.id, gross, division });
+  }
+  const grossTotal = lines.reduce((sum, l) => sum + l.gross, 0);
+  const headcount = lines.length;
 
-    await prisma.payrollInstruction.create({
-      data: {
-        tenantId: auth.tenantId,
-        employmentRelationshipId: employment.id,
-        payrollRunId: run.id,
-        payPeriod,
-        grossAmount: gross,
-        netAmount: gross,
-        division,
-      },
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('PRN', undefined, tx);
+    const run = await tx.payrollRun.create({
+      data: { tenantId: auth.tenantId, recordCode, payPeriod, preparedById: auth.partyId },
     });
 
-    grossTotal += gross;
-    headcount += 1;
-  }
+    for (const line of lines) {
+      await tx.payrollInstruction.create({
+        data: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: line.employmentRelationshipId,
+          payrollRunId: run.id,
+          payPeriod,
+          grossAmount: line.gross,
+          netAmount: line.gross,
+          division: line.division,
+        },
+      });
+    }
 
-  const updated = await prisma.payrollRun.update({
-    where: { id: run.id },
-    data: { grossTotal, netTotal: grossTotal, headcount },
+    const updated = await tx.payrollRun.update({
+      where: { id: run.id },
+      data: { grossTotal, netTotal: grossTotal, headcount },
+    });
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'payroll_run',
+      subjectId: run.id,
+      after: { recordCode, payPeriod, headcount, status: 'Draft' },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.PAYROLL_RUN_CREATED,
+      subject: { entityType: 'payroll_run', entityId: run.id, recordCode },
+      newState: { payPeriod, headcount, status: 'Draft' },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+
+    return updated;
   });
-
-  await emit({
-    name: EVENTS.PAYROLL_RUN_CREATED,
-    subject: { entityType: 'payroll_run', entityId: run.id, recordCode },
-    newState: { payPeriod, headcount, status: 'Draft' },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr', 'fin'] },
-  });
-
-  return updated;
 }
 
 /** Records deductions against one instruction, before the run is approved. */

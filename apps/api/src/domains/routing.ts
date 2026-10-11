@@ -21,6 +21,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { raiseException } from '../platform/exceptions.js';
 import { auditWrite } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -403,27 +404,30 @@ export async function createTerritory(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'territories', verb: 'create' });
 
-  const recordCode = await nextRecordCode('TER');
-  const territory = await prisma.territory.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name,
-      geoAreaRef: input.geoAreaRef ?? [],
-      appliesToVerticals: input.appliesToVerticals ?? [],
-      appliesToAccountKind: input.appliesToAccountKind ?? 'any',
-      ownerPositionId: input.ownerPositionId ?? null,
-      ownerPartyId: input.ownerPartyId ?? null,
-      capacityCeiling: input.capacityCeiling ?? 50,
-    },
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('TER', undefined, tx);
+    const territory = await tx.territory.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name,
+        geoAreaRef: input.geoAreaRef ?? [],
+        appliesToVerticals: input.appliesToVerticals ?? [],
+        appliesToAccountKind: input.appliesToAccountKind ?? 'any',
+        ownerPositionId: input.ownerPositionId ?? null,
+        ownerPartyId: input.ownerPartyId ?? null,
+        capacityCeiling: input.capacityCeiling ?? 50,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'territory', subjectId: territory.id, after: territory, tx });
+    await emit({
+      name: EVENTS.TERRITORY_CREATED,
+      subject: { entityType: 'territory', entityId: territory.id, recordCode },
+      newState: { name: territory.name, capacityCeiling: territory.capacityCeiling },
+      tx,
+    });
+    return territory;
   });
-  await auditWrite({ action: 'create', subjectType: 'territory', subjectId: territory.id, after: territory });
-  await emit({
-    name: EVENTS.TERRITORY_CREATED,
-    subject: { entityType: 'territory', entityId: territory.id, recordCode },
-    newState: { name: territory.name, capacityCeiling: territory.capacityCeiling },
-  });
-  return territory;
 }
 
 export async function updateRoutingRule(
@@ -435,16 +439,19 @@ export async function updateRoutingRule(
   const before = await prisma.routingRule.findFirst({ where: { id: ruleId } });
   if (!before) throw ApiError.notFound('Routing rule');
 
-  const after = await prisma.routingRule.update({ where: { id: ruleId }, data: input as never });
-  await auditWrite({ action: 'update', subjectType: 'routing_rule', subjectId: ruleId, before, after });
-  await emit({
-    name: EVENTS.ROUTING_RULE_UPDATED,
-    subject: { entityType: 'routing_rule', entityId: ruleId, recordCode: null },
-    newState: {
-      active: after.active,
-      tieBreakMarginPoints: after.tieBreakMarginPoints,
-      factorWeights: after.factorWeights,
-    },
+  return governedWrite(async (tx) => {
+    const after = await tx.routingRule.update({ where: { id: ruleId }, data: input as never });
+    await auditWrite({ action: 'update', subjectType: 'routing_rule', subjectId: ruleId, before, after, tx });
+    await emit({
+      name: EVENTS.ROUTING_RULE_UPDATED,
+      subject: { entityType: 'routing_rule', entityId: ruleId, recordCode: null },
+      newState: {
+        active: after.active,
+        tieBreakMarginPoints: after.tieBreakMarginPoints,
+        factorWeights: after.factorWeights,
+      },
+      tx,
+    });
+    return after;
   });
-  return after;
 }

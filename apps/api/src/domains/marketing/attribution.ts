@@ -17,8 +17,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { EVENTS, ATTRIBUTION_MODELS, type AttributionModel, type ChannelKey } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma, num, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
@@ -37,6 +38,8 @@ registerGovernedEntities('mkt', ['marketing_attribution']);
 function internalCode(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
 }
+
+registerGovernedEntities('mkt', ['marketing_touchpoint']);
 
 // ---------------------------------------------------------------------------
 // Touchpoints — immutable
@@ -70,38 +73,48 @@ export async function recordTouchpoint(input: TouchpointInput) {
     );
   }
 
-  const touchpoint = await prisma.marketingTouchpoint.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: internalCode('TCH'),
-      personId: input.personId ?? null,
-      organizationId: input.organizationId ?? null,
-      leadId: input.leadId ?? null,
-      campaignId: input.campaignId ?? null,
-      channelKey: input.channelKey,
-      touchKind: input.touchKind,
-      occurredAt: input.occurredAt ?? new Date(),
-      utm: (input.utm ?? {}) as never,
-      sourceRef: input.sourceRef ?? null,
-      cost: input.cost ?? null,
-      createdById: auth.partyId,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const touchpoint = await tx.marketingTouchpoint.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: internalCode('TCH'),
+        personId: input.personId ?? null,
+        organizationId: input.organizationId ?? null,
+        leadId: input.leadId ?? null,
+        campaignId: input.campaignId ?? null,
+        channelKey: input.channelKey,
+        touchKind: input.touchKind,
+        occurredAt: input.occurredAt ?? new Date(),
+        utm: (input.utm ?? {}) as never,
+        sourceRef: input.sourceRef ?? null,
+        cost: input.cost ?? null,
+        createdById: auth.partyId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.MKT_TOUCHPOINT_RECORDED,
-    subject: { entityType: 'marketing_touchpoint', entityId: touchpoint.id, recordCode: touchpoint.recordCode },
-    related: [
-      ...(input.personId ? [{ relation: 'contact', entityType: 'person', entityId: input.personId }] : []),
-      ...(input.leadId ? [{ relation: 'lead', entityType: 'lead', entityId: input.leadId }] : []),
-      ...(input.campaignId
-        ? [{ relation: 'campaign', entityType: 'marketing_campaign', entityId: input.campaignId }]
-        : []),
-    ],
-    newState: { channelKey: input.channelKey, touchKind: input.touchKind },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_touchpoint',
+      subjectId: touchpoint.id,
+      after: { channelKey: input.channelKey, touchKind: input.touchKind },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_TOUCHPOINT_RECORDED,
+      subject: { entityType: 'marketing_touchpoint', entityId: touchpoint.id, recordCode: touchpoint.recordCode },
+      related: [
+        ...(input.personId ? [{ relation: 'contact', entityType: 'person', entityId: input.personId }] : []),
+        ...(input.leadId ? [{ relation: 'lead', entityType: 'lead', entityId: input.leadId }] : []),
+        ...(input.campaignId
+          ? [{ relation: 'campaign', entityType: 'marketing_campaign', entityId: input.campaignId }]
+          : []),
+      ],
+      newState: { channelKey: input.channelKey, touchKind: input.touchKind },
+      tx,
+    });
 
-  return touchpoint;
+    return touchpoint;
+  });
 }
 
 export interface TouchpointFilters {
@@ -170,66 +183,67 @@ async function touchesForPerson(personId: string, upTo: Date): Promise<Touch[]> 
 }
 
 /**
- * Replaces one subject's rows for every model in a single transaction. The
- * advisory lock serialises overlapping recomputes of the same subject: without
- * it, two runs each delete the subject's rows and then each insert a full set,
- * and the table has no unique key to stop the second set. The lock is taken
- * inside the transaction so it releases with the replace, never half-way.
+ * Replaces one subject's rows for every model, inside the caller's transaction
+ * (`db`, from computeAttribution), so the rows commit with the lead's audit and
+ * event or not at all. The advisory lock serialises overlapping recomputes of
+ * the same subject: without it, two runs each delete the subject's rows and
+ * then each insert a full set, and the table has no unique key to stop the
+ * second set. The lock is taken inside the transaction, so it releases with the
+ * replace, never half-way.
  */
 async function writeAttributionRows(
+  db: DbTx,
   subjectField: 'leadId' | 'opportunityId' | 'enrollmentId',
   subjectId: string,
   touches: Touch[],
 ): Promise<number> {
   const auth = currentAuth();
 
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${subjectId}))`;
-    let written = 0;
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${subjectId}))`;
+  let written = 0;
 
-    for (const model of ATTRIBUTION_MODELS) {
-      // Replaces prior rows for this subject+model — computed and stored, never
-      // appended to, so a re-run is idempotent rather than duplicating history.
-      await tx.marketingAttribution.deleteMany({ where: { [subjectField]: subjectId, model } as never });
+  for (const model of ATTRIBUTION_MODELS) {
+    // Replaces prior rows for this subject+model — computed and stored, never
+    // appended to, so a re-run is idempotent rather than duplicating history.
+    await db.marketingAttribution.deleteMany({ where: { [subjectField]: subjectId, model } as never });
 
-      if (touches.length === 0) {
-        await tx.marketingAttribution.create({
-          data: {
-            tenantId: auth.tenantId,
-            recordCode: internalCode('ATB'),
-            [subjectField]: subjectId,
-            model,
-            campaignId: null,
-            channelKey: UNATTRIBUTED_CHANNEL,
-            weight: 1,
-            createdById: auth.partyId,
-          } as never,
-        });
-        written += 1;
-        continue;
-      }
-
-      const weights = weightsForModel(model, touches.length);
-      for (let i = 0; i < touches.length; i += 1) {
-        if (weights[i] <= 0) continue;
-        await tx.marketingAttribution.create({
-          data: {
-            tenantId: auth.tenantId,
-            recordCode: internalCode('ATB'),
-            [subjectField]: subjectId,
-            model,
-            campaignId: touches[i].campaignId,
-            channelKey: touches[i].channelKey || UNATTRIBUTED_CHANNEL,
-            weight: weights[i],
-            createdById: auth.partyId,
-          } as never,
-        });
-        written += 1;
-      }
+    if (touches.length === 0) {
+      await db.marketingAttribution.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode: internalCode('ATB'),
+          [subjectField]: subjectId,
+          model,
+          campaignId: null,
+          channelKey: UNATTRIBUTED_CHANNEL,
+          weight: 1,
+          createdById: auth.partyId,
+        } as never,
+      });
+      written += 1;
+      continue;
     }
 
-    return written;
-  });
+    const weights = weightsForModel(model, touches.length);
+    for (let i = 0; i < touches.length; i += 1) {
+      if (weights[i] <= 0) continue;
+      await db.marketingAttribution.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode: internalCode('ATB'),
+          [subjectField]: subjectId,
+          model,
+          campaignId: touches[i].campaignId,
+          channelKey: touches[i].channelKey || UNATTRIBUTED_CHANNEL,
+          weight: weights[i],
+          createdById: auth.partyId,
+        } as never,
+      });
+      written += 1;
+    }
+  }
+
+  return written;
 }
 
 /**
@@ -254,7 +268,6 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
   });
 
   let processed = 0;
-  const pendingEvents: Parameters<typeof emit>[0][] = [];
   for (const lead of leads) {
     const touches: Touch[] = lead.personId ? await touchesForPerson(lead.personId, lead.createdAt) : [];
     if (lead.campaignId || lead.channelKey) {
@@ -266,22 +279,33 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
     }
     touches.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
 
-    const rowsForLead = await writeAttributionRows('leadId', lead.id, touches);
-    let rowsForOpportunity = 0;
-    let rowsForEnrollment = 0;
+    // One transaction per lead: the rows and the event for a lead commit or
+    // roll back together, so a failed lead leaves its previous attribution intact.
+    await prisma.$transaction(async (tx) => {
+      const rowsForLead = await writeAttributionRows(tx, 'leadId', lead.id, touches);
+      let rowsForOpportunity = 0;
+      let rowsForEnrollment = 0;
 
-    if (lead.convertedOpportunityId) {
-      rowsForOpportunity = await writeAttributionRows('opportunityId', lead.convertedOpportunityId, touches);
-      const enrollment = await prisma.enrollment.findFirst({ where: { opportunityId: lead.convertedOpportunityId } });
-      if (enrollment) rowsForEnrollment = await writeAttributionRows('enrollmentId', enrollment.id, touches);
-    }
+      if (lead.convertedOpportunityId) {
+        rowsForOpportunity = await writeAttributionRows(tx, 'opportunityId', lead.convertedOpportunityId, touches);
+        const enrollment = await tx.enrollment.findFirst({ where: { opportunityId: lead.convertedOpportunityId } });
+        if (enrollment) rowsForEnrollment = await writeAttributionRows(tx, 'enrollmentId', enrollment.id, touches);
+      }
 
-    // Held until the run audit is written, so the order is write → audit → emit
-    // (CLAUDE.md rule 5) rather than emitting per lead inside the loop.
-    pendingEvents.push({
-      name: EVENTS.MKT_ATTRIBUTION_COMPUTED,
-      subject: { entityType: 'lead', entityId: lead.id },
-      newState: { touchCount: touches.length, rowsForLead, rowsForOpportunity, rowsForEnrollment },
+      await auditWrite({
+        action: 'update',
+        subjectType: 'lead',
+        subjectId: lead.id,
+        meta: { source: 'attribution' },
+        after: { touchCount: touches.length, rowsForLead, rowsForOpportunity, rowsForEnrollment },
+        tx,
+      });
+      await emit({
+        name: EVENTS.MKT_ATTRIBUTION_COMPUTED,
+        subject: { entityType: 'lead', entityId: lead.id },
+        newState: { touchCount: touches.length, rowsForLead, rowsForOpportunity, rowsForEnrollment },
+        tx,
+      });
     });
     processed += 1;
   }
@@ -294,11 +318,6 @@ export async function computeAttribution(from: Date, to: Date): Promise<number> 
     windowTo: to.toISOString(),
     leadsProcessed: processed,
   });
-
-  // No subscriber consumes kz.mkt.attribution.computed (grep of apps/ and
-  // packages/ at this commit finds only this emit and the EVENTS entry), so
-  // the per-lead events are kept as they were, only moved after the audit.
-  for (const event of pendingEvents) await emit(event);
 
   return processed;
 }

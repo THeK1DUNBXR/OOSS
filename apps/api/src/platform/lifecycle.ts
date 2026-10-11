@@ -20,6 +20,8 @@ import { emit } from './eventBus.js';
 import { auditWrite } from './audit.js';
 import { assertCan } from './permissions.js';
 import { ApiError } from './errors.js';
+import { governedWrite } from './governedWrite.js';
+import type { DbTx } from './db.js';
 import type { Resource, Verb } from '@kaizen/shared';
 
 export interface TransitionInput<S extends string, E extends string> {
@@ -74,6 +76,46 @@ export interface TransitionResult<S extends string> {
 export async function transition<S extends string, E extends string>(
   input: TransitionInput<S, E>,
 ): Promise<TransitionResult<S>> {
+  const decided = await decide(input);
+  await recordTransition(input, decided.to, decided.eventName);
+  return decided;
+}
+
+/**
+ * The transaction-aware form of `transition`, for a caller that persists its
+ * status change itself and needs that change, its audit row and its event to
+ * commit together.
+ *
+ * `transition()` audits and emits before the caller's write runs, so a refused
+ * write left an audit row and an event for a change that never happened
+ * (commit 64c868c's probe). Here the grant check and the machine check still
+ * come first, outside the transaction, for the reason given on `transition`.
+ * Inside it the order is the one governedWrite.ts documents: `write`, then
+ * `auditWrite`, then `emit`, then `alsoEmit`. The audit lock is taken before
+ * the event lock, so the order is not cosmetic.
+ *
+ * `alsoEmit` is for a further event that describes this same transition under
+ * another name (a summary). It runs after the transition's own event so that it
+ * too follows the audit row.
+ */
+export async function transitionInTx<S extends string, E extends string, T>(
+  input: TransitionInput<S, E>,
+  options: {
+    write: (tx: DbTx, to: S) => Promise<T>;
+    alsoEmit?: (tx: DbTx, to: S) => Promise<void>;
+  },
+): Promise<{ result: TransitionResult<S>; value: T }> {
+  const decided = await decide(input);
+  return governedWrite(async (tx) => {
+    const value = await options.write(tx, decided.to);
+    await recordTransition(input, decided.to, decided.eventName, tx);
+    if (options.alsoEmit) await options.alsoEmit(tx, decided.to);
+    return { result: decided, value };
+  });
+}
+
+/** The grant check, then the machine. Shared by both forms so they cannot disagree. */
+async function decide<S extends string, E extends string>(input: TransitionInput<S, E>): Promise<TransitionResult<S>> {
   await assertCan({
     resource: input.resource,
     verb: input.verb ?? 'edit',
@@ -91,10 +133,20 @@ export async function transition<S extends string, E extends string>(
   const eventName = input.eventPrefix
     ? `${input.eventPrefix}.${input.eventObject}.${input.verbs[input.event]}`
     : hrTransitionEvent(input.eventObject, input.verbs[input.event]);
+  return { from: input.from, to, eventName };
+}
 
-  // Audit before emit, so that a refused audit (an unregistered subject throws)
-  // stops the transition before any event is published. Emitting first let
-  // subscribers act on a transition that then failed to be recorded.
+/**
+ * Audit before emit, so that a refused audit (an unregistered subject throws)
+ * stops the transition before any event is published. Emitting first let
+ * subscribers act on a transition that then failed to be recorded.
+ */
+async function recordTransition<S extends string, E extends string>(
+  input: TransitionInput<S, E>,
+  to: S,
+  eventName: string,
+  tx?: DbTx,
+): Promise<void> {
   await auditWrite({
     action: 'update',
     subjectType: input.subjectType,
@@ -102,6 +154,7 @@ export async function transition<S extends string, E extends string>(
     before: { status: input.from },
     after: { status: to, ...input.detail },
     meta: { transition: input.event, machine: input.machine.name },
+    tx,
   });
 
   await emit({
@@ -113,9 +166,8 @@ export async function transition<S extends string, E extends string>(
     reason: input.reasonNote ? { reasonCode: input.event, note: input.reasonNote } : null,
     owner: { partyId: input.ownerPartyId ?? null },
     impact: { domains: [input.impactDomain ?? 'hr'] },
+    tx,
   });
-
-  return { from: input.from, to, eventName };
 }
 
 /**

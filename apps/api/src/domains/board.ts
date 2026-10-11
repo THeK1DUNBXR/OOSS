@@ -24,9 +24,10 @@ import {
   type ResolutionSubject,
   type VoteChoice,
 } from '@kaizen/shared';
-import { prisma } from '../platform/db.js';
+import { prisma, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
@@ -35,7 +36,7 @@ import { assertCanAssignRole } from '../platform/roleAssignment.js';
 
 // board_meeting is also registered by compliance/corporate.ts; this module writes
 // it too, and board.test.ts loads this module without the compliance tree.
-registerGovernedEntities('board', ['board_member', 'board_meeting', 'resolution']);
+registerGovernedEntities('board', ['board_member', 'board_meeting', 'resolution', 'compliance_item', 'vote']);
 
 const DAY_MS = 86_400_000;
 
@@ -81,49 +82,62 @@ export async function addBoardMember(input: AddBoardMemberInput) {
     await assertCanAssignRole({ roleSlug: 'director', targetPartyId: input.personId });
   }
 
-  const recordCode = await nextRecordCode('BDM');
-  const member = await prisma.boardMember.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      personId: input.personId,
-      role: input.role,
-      din: input.din ?? null,
-      appointedOn: input.appointedOn,
-      nominatedByHolderRef: input.nominatedByHolderRef ?? null,
-      status: 'active',
-    },
-  });
+  // The seat, its affiliation and the audit and event commit together: a seat
+  // added with no record of who appointed it is an unaudited change to the
+  // board.
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('BDM', new Date(), tx);
+    const member = await tx.boardMember.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        personId: input.personId,
+        role: input.role,
+        din: input.din ?? null,
+        appointedOn: input.appointedOn,
+        nominatedByHolderRef: input.nominatedByHolderRef ?? null,
+        status: 'active',
+      },
+    });
 
-  // A board seat in the director family is a fact about the person's
-  // relationship to this entity — the same affiliation-on-creation pattern
-  // `signIns.ts` uses for a sign-in. This never creates a User or a
-  // Principal; that stays the sign-in action's job.
-  if (directorFamily) {
-    const existing = existingDirector;
-    if (!existing) {
-      await prisma.affiliation.create({
-        data: {
-          tenantId: auth.tenantId,
-          partyId: input.personId,
-          affiliationType: 'director',
-          roleSlug: 'director',
-          status: 'active',
-          primaryFlag: false,
-        },
-      });
-    } else if (existing.status !== 'active') {
-      await prisma.affiliation.update({ where: { id: existing.id }, data: { status: 'active' } });
+    // A board seat in the director family is a fact about the person's
+    // relationship to this entity — the same affiliation-on-creation pattern
+    // `signIns.ts` uses for a sign-in. This never creates a User or a
+    // Principal; that stays the sign-in action's job.
+    if (directorFamily) {
+      const existing = existingDirector;
+      if (!existing) {
+        await tx.affiliation.create({
+          data: {
+            tenantId: auth.tenantId,
+            partyId: input.personId,
+            affiliationType: 'director',
+            roleSlug: 'director',
+            status: 'active',
+            primaryFlag: false,
+          },
+        });
+      } else if (existing.status !== 'active') {
+        await tx.affiliation.update({ where: { id: existing.id }, data: { status: 'active' } });
+      }
     }
-  }
 
-  await emit({
-    name: EVENTS.BOARD_MEMBER_ADDED,
-    subject: { entityType: 'board_member', entityId: member.id, recordCode },
-    newState: { personId: input.personId, role: input.role },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'board_member',
+      subjectId: member.id,
+      after: { personId: input.personId, role: input.role, status: 'active' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.BOARD_MEMBER_ADDED,
+      subject: { entityType: 'board_member', entityId: member.id, recordCode },
+      newState: { personId: input.personId, role: input.role },
+      tx,
+    });
+
+    return member;
   });
-
-  return member;
 }
 
 export async function ceaseBoardMember(id: string, ceasedOn: Date = new Date()) {
@@ -131,19 +145,32 @@ export async function ceaseBoardMember(id: string, ceasedOn: Date = new Date()) 
   const member = await prisma.boardMember.findFirst({ where: { id } });
   if (!member) throw ApiError.notFound('Board member');
 
-  const updated = await prisma.boardMember.update({
-    where: { id },
-    data: { status: 'ceased', ceasedOn },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.boardMember.update({
+      where: { id },
+      data: { status: 'ceased', ceasedOn },
+    });
 
-  await emit({
-    name: EVENTS.BOARD_MEMBER_CEASED,
-    subject: { entityType: 'board_member', entityId: id, recordCode: member.recordCode },
-    previousState: { status: member.status },
-    newState: { status: 'ceased', ceasedOn },
-  });
+    // No audit row was written for a board member ceasing before this. The
+    // row sits in the same transaction as the status change for that reason.
+    await auditWrite({
+      action: 'update',
+      subjectType: 'board_member',
+      subjectId: id,
+      before: { status: member.status },
+      after: { status: 'ceased', ceasedOn: ceasedOn.toISOString() },
+      tx,
+    });
+    await emit({
+      name: EVENTS.BOARD_MEMBER_CEASED,
+      subject: { entityType: 'board_member', entityId: id, recordCode: member.recordCode },
+      previousState: { status: member.status },
+      newState: { status: 'ceased', ceasedOn },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export interface DeclareInterestsInput {
@@ -257,31 +284,40 @@ export async function callMeeting(input: CallMeetingInput) {
   }
 
   const quorumRequired = quorumFor(await activeVotingMemberCount());
-  const recordCode = await nextRecordCode('BRD');
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('BRD', new Date(), tx);
+    const meeting = await tx.boardMeeting.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        kind: input.kind,
+        title: input.title,
+        noticeSentOn,
+        scheduledFor: input.scheduledFor,
+        mode: input.mode,
+        venue: input.venue ?? null,
+        quorumRequired,
+        agenda: agenda as never,
+        status: 'called',
+      },
+    });
 
-  const meeting = await prisma.boardMeeting.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      kind: input.kind,
-      title: input.title,
-      noticeSentOn,
-      scheduledFor: input.scheduledFor,
-      mode: input.mode,
-      venue: input.venue ?? null,
-      quorumRequired,
-      agenda: agenda as never,
-      status: 'called',
-    },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'board_meeting',
+      subjectId: meeting.id,
+      after: { recordCode, kind: meeting.kind, scheduledFor: meeting.scheduledFor, status: 'called' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MEETING_CALLED,
+      subject: { entityType: 'board_meeting', entityId: meeting.id, recordCode },
+      newState: { scheduledFor: input.scheduledFor, quorumRequired, shortNotice: clearDays < noticeDays },
+      tx,
+    });
+
+    return meeting;
   });
-
-  await emit({
-    name: EVENTS.MEETING_CALLED,
-    subject: { entityType: 'board_meeting', entityId: meeting.id, recordCode },
-    newState: { scheduledFor: input.scheduledFor, quorumRequired, shortNotice: clearDays < noticeDays },
-  });
-
-  return meeting;
 }
 
 async function getMeetingOrThrow(id: string) {
@@ -332,18 +368,29 @@ export async function markHeld(meetingId: string, heldOn: Date = new Date()) {
     );
   }
 
-  const updated = await prisma.boardMeeting.update({
-    where: { id: meetingId },
-    data: { status: 'held', heldOn },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.boardMeeting.update({
+      where: { id: meetingId },
+      data: { status: 'held', heldOn },
+    });
 
-  await emit({
-    name: EVENTS.MEETING_HELD,
-    subject: { entityType: 'board_meeting', entityId: meetingId, recordCode: meeting.recordCode },
-    newState: { heldOn },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'board_meeting',
+      subjectId: meetingId,
+      before: { status: meeting.status },
+      after: { status: 'held', heldOn: heldOn.toISOString() },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MEETING_HELD,
+      subject: { entityType: 'board_meeting', entityId: meetingId, recordCode: meeting.recordCode },
+      newState: { heldOn },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export async function draftMinutes(meetingId: string, input: { text: string; documentRef?: string }) {
@@ -367,18 +414,30 @@ export async function circulateMinutes(meetingId: string) {
   const meeting = await getMeetingOrThrow(meetingId);
   if (!meeting.minutesDraftedOn) throw ApiError.unprocessable('Minutes must be drafted before they can be circulated.');
 
-  const updated = await prisma.boardMeeting.update({
-    where: { id: meetingId },
-    data: { status: 'minutes_circulated', minutesCirculatedOn: new Date() },
-  });
+  return governedWrite(async (tx) => {
+    const circulatedOn = new Date();
+    const updated = await tx.boardMeeting.update({
+      where: { id: meetingId },
+      data: { status: 'minutes_circulated', minutesCirculatedOn: circulatedOn },
+    });
 
-  await emit({
-    name: EVENTS.MEETING_MINUTED,
-    subject: { entityType: 'board_meeting', entityId: meetingId, recordCode: meeting.recordCode },
-    newState: { stage: 'circulated' },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'board_meeting',
+      subjectId: meetingId,
+      before: { status: meeting.status },
+      after: { status: 'minutes_circulated', minutesCirculatedOn: circulatedOn.toISOString() },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MEETING_MINUTED,
+      subject: { entityType: 'board_meeting', entityId: meetingId, recordCode: meeting.recordCode },
+      newState: { stage: 'circulated' },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export interface EnterMinutesInput {
@@ -405,36 +464,45 @@ export async function enterMinutes(meetingId: string, input: EnterMinutesInput =
     throw ApiError.badRequest('A late minutes entry needs a reason on record.');
   }
 
-  const updated = await prisma.boardMeeting.update({
-    where: { id: meetingId },
-    data: { status: 'minutes_entered', minutesEnteredOn: now },
-  });
-
-  if (late) {
-    await auditWrite({
-      action: 'update',
-      subjectType: 'board_meeting',
-      subjectId: meetingId,
-      after: { minutesEnteredOn: now, late: true, daysSinceHeld: Math.floor(daysSinceHeld), reason: input.reason },
+  return governedWrite(async (tx) => {
+    const updated = await tx.boardMeeting.update({
+      where: { id: meetingId },
+      data: { status: 'minutes_entered', minutesEnteredOn: now },
     });
-  }
 
-  await emit({
-    name: EVENTS.MEETING_MINUTED,
-    subject: { entityType: 'board_meeting', entityId: meetingId, recordCode: meeting.recordCode },
-    newState: { stage: 'entered', late, reason: late ? input.reason : undefined },
+    // Only a late entry is audited (kept as before): an on-time entry has
+    // always been recorded by the event alone.
+    if (late) {
+      await auditWrite({
+        action: 'update',
+        subjectType: 'board_meeting',
+        subjectId: meetingId,
+        after: { minutesEnteredOn: now, late: true, daysSinceHeld: Math.floor(daysSinceHeld), reason: input.reason },
+        tx,
+      });
+    }
+
+    await emit({
+      name: EVENTS.MEETING_MINUTED,
+      subject: { entityType: 'board_meeting', entityId: meetingId, recordCode: meeting.recordCode },
+      newState: { stage: 'entered', late, reason: late ? input.reason : undefined },
+      tx,
+    });
+
+    // Minutes entered on time clears the corresponding compliance item.
+    await closeOpenComplianceItems(
+      {
+        kind: 'minutes_entry_30d',
+        relatedType: 'board_meeting',
+        relatedId: meetingId,
+        resolvedOn: now,
+        filedRef: late ? `Late: ${input.reason}` : null,
+      },
+      tx,
+    );
+
+    return updated;
   });
-
-  // Minutes entered on time clears the corresponding compliance item.
-  await closeOpenComplianceItems({
-    kind: 'minutes_entry_30d',
-    relatedType: 'board_meeting',
-    relatedId: meetingId,
-    resolvedOn: now,
-    filedRef: late ? `Late: ${input.reason}` : null,
-  });
-
-  return updated;
 }
 
 export async function signMinutes(meetingId: string, documentRef?: string) {
@@ -458,15 +526,26 @@ export async function cancelMeeting(meetingId: string, reason?: string) {
   await assertCan({ resource: 'board_meetings', verb: 'edit' });
   const meeting = await getMeetingOrThrow(meetingId);
 
-  const updated = await prisma.boardMeeting.update({ where: { id: meetingId }, data: { status: 'cancelled' } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.boardMeeting.update({ where: { id: meetingId }, data: { status: 'cancelled' } });
 
-  await emit({
-    name: EVENTS.MEETING_CANCELLED,
-    subject: { entityType: 'board_meeting', entityId: meetingId, recordCode: meeting.recordCode },
-    newState: { reason: reason ?? null },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'board_meeting',
+      subjectId: meetingId,
+      before: { status: meeting.status },
+      after: { status: 'cancelled', reason: reason ?? null },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MEETING_CANCELLED,
+      subject: { entityType: 'board_meeting', entityId: meetingId, recordCode: meeting.recordCode },
+      newState: { reason: reason ?? null },
+      tx,
+    });
+
+    return updated;
   });
-
-  return updated;
 }
 
 /** The view carries a present-attendee count as a fact, not something the
@@ -550,31 +629,41 @@ export async function proposeResolution(input: ProposeResolutionInput) {
     );
   }
 
-  const recordCode = await nextRecordCode('RES');
-  const resolution = await prisma.resolution.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      kind: input.kind,
-      subject: input.subject,
-      title: input.title,
-      text: input.text,
-      passedBy: input.passedBy,
-      meetingId: input.meetingId ?? null,
-      requiresMeeting,
-      subjectRef: input.subjectRef ?? null,
-      proposedByPartyId: auth.partyId ?? 'system',
-      outcome: 'draft',
-    },
-  });
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('RES', new Date(), tx);
+    const resolution = await tx.resolution.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        kind: input.kind,
+        subject: input.subject,
+        title: input.title,
+        text: input.text,
+        passedBy: input.passedBy,
+        meetingId: input.meetingId ?? null,
+        requiresMeeting,
+        subjectRef: input.subjectRef ?? null,
+        proposedByPartyId: auth.partyId ?? 'system',
+        outcome: 'draft',
+      },
+    });
 
-  await emit({
-    name: EVENTS.RESOLUTION_PROPOSED,
-    subject: { entityType: 'resolution', entityId: resolution.id, recordCode },
-    newState: { subject: input.subject, passedBy: input.passedBy, requiresMeeting },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'resolution',
+      subjectId: resolution.id,
+      after: { recordCode, subject: input.subject, passedBy: input.passedBy, outcome: 'draft' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.RESOLUTION_PROPOSED,
+      subject: { entityType: 'resolution', entityId: resolution.id, recordCode },
+      newState: { subject: input.subject, passedBy: input.passedBy, requiresMeeting },
+      tx,
+    });
 
-  return resolution;
+    return resolution;
+  });
 }
 
 async function getResolutionOrThrow(id: string) {
@@ -598,23 +687,34 @@ export async function openForCirculation(resolutionId: string, input: OpenForCir
     throw ApiError.badRequest('Dispatch proof is required before a circular resolution is opened (s.175).');
   }
 
-  const updated = await prisma.resolution.update({
-    where: { id: resolutionId },
-    data: {
-      outcome: 'open',
-      circulatedOn: new Date(),
-      dispatchProofRef: input.dispatchProofRef,
-      votingClosesOn: input.votingClosesOn ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.resolution.update({
+      where: { id: resolutionId },
+      data: {
+        outcome: 'open',
+        circulatedOn: new Date(),
+        dispatchProofRef: input.dispatchProofRef,
+        votingClosesOn: input.votingClosesOn ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.RESOLUTION_CIRCULATED,
-    subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
-    newState: { dispatchProofRef: input.dispatchProofRef },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'resolution',
+      subjectId: resolutionId,
+      before: { outcome: resolution.outcome },
+      after: { outcome: 'open', dispatchProofRef: input.dispatchProofRef },
+      tx,
+    });
+    await emit({
+      name: EVENTS.RESOLUTION_CIRCULATED,
+      subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
+      newState: { dispatchProofRef: input.dispatchProofRef },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 /** True when this board member's declared interests name the resolution's subject. */
@@ -643,32 +743,42 @@ export async function castVote(resolutionId: string, input: CastVoteInput) {
   const abstainedAsInterested = Boolean(input.interested) || (member ? isInterested(member, resolution) : false);
   const choice: VoteChoice = abstainedAsInterested ? 'abstain' : input.choice;
 
-  const vote = await prisma.vote.upsert({
-    where: { resolutionId_boardMemberId: { resolutionId, boardMemberId: input.boardMemberId } },
-    create: {
-      tenantId: currentAuth().tenantId,
-      resolutionId,
-      boardMemberId: input.boardMemberId,
-      choice,
-      abstainedAsInterested,
-      demandsMeeting: Boolean(input.demandsMeeting),
-    },
-    update: {
-      choice,
-      abstainedAsInterested,
-      demandsMeeting: Boolean(input.demandsMeeting),
-      castAt: new Date(),
-    },
-  });
+  return governedWrite(async (tx) => {
+    const vote = await tx.vote.upsert({
+      where: { resolutionId_boardMemberId: { resolutionId, boardMemberId: input.boardMemberId } },
+      create: {
+        tenantId: currentAuth().tenantId,
+        resolutionId,
+        boardMemberId: input.boardMemberId,
+        choice,
+        abstainedAsInterested,
+        demandsMeeting: Boolean(input.demandsMeeting),
+      },
+      update: {
+        choice,
+        abstainedAsInterested,
+        demandsMeeting: Boolean(input.demandsMeeting),
+        castAt: new Date(),
+      },
+    });
 
-  await emit({
-    name: EVENTS.VOTE_CAST,
-    subject: { entityType: 'vote', entityId: vote.id },
-    related: [{ relation: 'resolution', entityType: 'resolution', entityId: resolutionId }],
-    newState: { choice, abstainedAsInterested, demandsMeeting: Boolean(input.demandsMeeting) },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'vote',
+      subjectId: vote.id,
+      after: { resolutionId, boardMemberId: input.boardMemberId, choice, abstainedAsInterested },
+      tx,
+    });
+    await emit({
+      name: EVENTS.VOTE_CAST,
+      subject: { entityType: 'vote', entityId: vote.id },
+      related: [{ relation: 'resolution', entityType: 'resolution', entityId: resolutionId }],
+      newState: { choice, abstainedAsInterested, demandsMeeting: Boolean(input.demandsMeeting) },
+      tx,
+    });
 
-  return vote;
+    return vote;
+  });
 }
 
 export async function closeCirculation(resolutionId: string) {
@@ -685,16 +795,27 @@ export async function closeCirculation(resolutionId: string) {
   const demandThreshold = meetingDemandThreshold(memberCount);
 
   if (demandCount >= demandThreshold && demandCount > 0) {
-    const updated = await prisma.resolution.update({
-      where: { id: resolutionId },
-      data: { outcome: 'meeting_demanded' },
+    return governedWrite(async (tx) => {
+      const updated = await tx.resolution.update({
+        where: { id: resolutionId },
+        data: { outcome: 'meeting_demanded' },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'resolution',
+        subjectId: resolutionId,
+        before: { outcome: resolution.outcome },
+        after: { outcome: 'meeting_demanded' },
+        tx,
+      });
+      await emit({
+        name: EVENTS.RESOLUTION_FAILED,
+        subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
+        newState: { outcome: 'meeting_demanded', demandCount, demandThreshold },
+        tx,
+      });
+      return updated;
     });
-    await emit({
-      name: EVENTS.RESOLUTION_FAILED,
-      subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
-      newState: { outcome: 'meeting_demanded', demandCount, demandThreshold },
-    });
-    return updated;
   }
 
   const interestedCount = votes.filter((v) => v.abstainedAsInterested).length;
@@ -702,17 +823,30 @@ export async function closeCirculation(resolutionId: string) {
   const forCount = votes.filter((v) => v.choice === 'for').length;
   const passed = entitled > 0 && forCount > entitled / 2;
 
-  const updated = await prisma.resolution.update({
-    where: { id: resolutionId },
-    data: { outcome: passed ? 'passed' : 'failed', passedOn: passed ? new Date() : null },
+  const updated = await governedWrite(async (tx) => {
+    const next = await tx.resolution.update({
+      where: { id: resolutionId },
+      data: { outcome: passed ? 'passed' : 'failed', passedOn: passed ? new Date() : null },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'resolution',
+      subjectId: resolutionId,
+      before: { outcome: resolution.outcome },
+      after: { outcome: next.outcome, passedOn: next.passedOn?.toISOString() ?? null },
+      tx,
+    });
+    await emit({
+      name: passed ? EVENTS.RESOLUTION_PASSED : EVENTS.RESOLUTION_FAILED,
+      subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
+      newState: { outcome: next.outcome, forCount, entitled },
+      tx,
+    });
+    return next;
   });
 
-  await emit({
-    name: passed ? EVENTS.RESOLUTION_PASSED : EVENTS.RESOLUTION_FAILED,
-    subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
-    newState: { outcome: updated.outcome, forCount, entitled },
-  });
-
+  // The MGT-14 item is raised after the outcome commits: it is its own
+  // governed write, and a failure to raise it must not undo a passed vote.
   if (passed && resolution.kind === 'shareholder_special') {
     await raiseMgt14Item(resolution.id, resolution.recordCode, new Date());
   }
@@ -736,39 +870,70 @@ export async function passAtMeeting(resolutionId: string, meetingId: string, vot
   }
 
   const auth = currentAuth();
-  const records: Array<{ choice: string; abstainedAsInterested: boolean }> = [];
+  // Director rows are read before the transaction opens: the scoped client
+  // cannot be used inside it.
+  const members: Array<{ interests: unknown } | null> = [];
   for (const v of votes) {
-    const member = await prisma.boardMember.findFirst({ where: { id: v.boardMemberId } });
-    const abstainedAsInterested = Boolean(v.interested) || (member ? isInterested(member, resolution) : false);
-    const choice: VoteChoice = abstainedAsInterested ? 'abstain' : v.choice;
-    const vote = await prisma.vote.upsert({
-      where: { resolutionId_boardMemberId: { resolutionId, boardMemberId: v.boardMemberId } },
-      create: { tenantId: auth.tenantId, resolutionId, boardMemberId: v.boardMemberId, choice, abstainedAsInterested },
-      update: { choice, abstainedAsInterested, castAt: new Date() },
-    });
-    records.push(vote);
+    members.push(await prisma.boardMember.findFirst({ where: { id: v.boardMemberId } }));
   }
 
-  // s.184: a director marked interested is excluded from the count for this item.
-  const counted = records.filter((v) => !v.abstainedAsInterested);
-  const forCount = counted.filter((v) => v.choice === 'for').length;
-  const againstCount = counted.filter((v) => v.choice === 'against').length;
-  const passed = forCount > againstCount;
+  const { updated, passed } = await governedWrite(async (tx) => {
+    const recorded: Array<{ choice: string; abstainedAsInterested: boolean }> = [];
+    for (const [i, v] of votes.entries()) {
+      const member = members[i];
+      const abstainedAsInterested = Boolean(v.interested) || (member ? isInterested(member, resolution) : false);
+      const choice: VoteChoice = abstainedAsInterested ? 'abstain' : v.choice;
+      const vote = await tx.vote.upsert({
+        where: { resolutionId_boardMemberId: { resolutionId, boardMemberId: v.boardMemberId } },
+        create: {
+          tenantId: auth.tenantId,
+          resolutionId,
+          boardMemberId: v.boardMemberId,
+          choice,
+          abstainedAsInterested,
+        },
+        update: { choice, abstainedAsInterested, castAt: new Date() },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'vote',
+        subjectId: vote.id,
+        after: { resolutionId, boardMemberId: v.boardMemberId, choice, abstainedAsInterested },
+        tx,
+      });
+      recorded.push(vote);
+    }
 
-  const updated = await prisma.resolution.update({
-    where: { id: resolutionId },
-    data: {
-      outcome: passed ? 'passed' : 'failed',
-      passedOn: passed ? new Date() : null,
-      meetingId,
-      passedBy: 'meeting',
-    },
-  });
+    // s.184: a director marked interested is excluded from the count for this item.
+    const counted = recorded.filter((v) => !v.abstainedAsInterested);
+    const for_ = counted.filter((v) => v.choice === 'for').length;
+    const against = counted.filter((v) => v.choice === 'against').length;
+    const didPass = for_ > against;
 
-  await emit({
-    name: passed ? EVENTS.RESOLUTION_PASSED : EVENTS.RESOLUTION_FAILED,
-    subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
-    newState: { outcome: updated.outcome, forCount, againstCount, meetingId },
+    const next = await tx.resolution.update({
+      where: { id: resolutionId },
+      data: {
+        outcome: didPass ? 'passed' : 'failed',
+        passedOn: didPass ? new Date() : null,
+        meetingId,
+        passedBy: 'meeting',
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'resolution',
+      subjectId: resolutionId,
+      before: { outcome: resolution.outcome },
+      after: { outcome: next.outcome, passedBy: 'meeting', meetingId },
+      tx,
+    });
+    await emit({
+      name: didPass ? EVENTS.RESOLUTION_PASSED : EVENTS.RESOLUTION_FAILED,
+      subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
+      newState: { outcome: next.outcome, forCount: for_, againstCount: against, meetingId },
+      tx,
+    });
+    return { updated: next, passed: didPass };
   });
 
   if (passed && resolution.kind === 'shareholder_special') {
@@ -785,42 +950,59 @@ export async function withdraw(resolutionId: string) {
     throw ApiError.unprocessable('Only a draft or open resolution can be withdrawn.');
   }
 
-  const updated = await prisma.resolution.update({ where: { id: resolutionId }, data: { outcome: 'withdrawn' } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.resolution.update({ where: { id: resolutionId }, data: { outcome: 'withdrawn' } });
 
-  await emit({
-    name: EVENTS.RESOLUTION_WITHDRAWN,
-    subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
-    newState: { outcome: 'withdrawn' },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'resolution',
+      subjectId: resolutionId,
+      before: { outcome: resolution.outcome },
+      after: { outcome: 'withdrawn' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.RESOLUTION_WITHDRAWN,
+      subject: { entityType: 'resolution', entityId: resolutionId, recordCode: resolution.recordCode },
+      newState: { outcome: 'withdrawn' },
+      tx,
+    });
+
+    return updated;
   });
-
-  return updated;
 }
 
 export async function recordMgt14(resolutionId: string, srn: string, filedOn: Date) {
   await assertCan({ resource: 'resolutions', verb: 'edit' });
-  const resolution = await getResolutionOrThrow(resolutionId);
+  await getResolutionOrThrow(resolutionId);
 
-  const updated = await prisma.resolution.update({
-    where: { id: resolutionId },
-    data: { mgt14Srn: srn, mgt14FiledOn: filedOn },
+  return governedWrite(async (tx) => {
+    const updated = await tx.resolution.update({
+      where: { id: resolutionId },
+      data: { mgt14Srn: srn, mgt14FiledOn: filedOn },
+    });
+
+    await closeOpenComplianceItems(
+      {
+        kind: 'mgt14_30d',
+        relatedType: 'resolution',
+        relatedId: resolutionId,
+        resolvedOn: filedOn,
+        filedRef: srn,
+      },
+      tx,
+    );
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'resolution',
+      subjectId: resolutionId,
+      after: { mgt14Srn: srn, mgt14FiledOn: filedOn },
+      tx,
+    });
+
+    return updated;
   });
-
-  await closeOpenComplianceItems({
-    kind: 'mgt14_30d',
-    relatedType: 'resolution',
-    relatedId: resolutionId,
-    resolvedOn: filedOn,
-    filedRef: srn,
-  });
-
-  await auditWrite({
-    action: 'update',
-    subjectType: 'resolution',
-    subjectId: resolutionId,
-    after: { mgt14Srn: srn, mgt14FiledOn: filedOn },
-  });
-
-  return updated;
 }
 
 export async function listResolutions(filter: { outcome?: string; meetingId?: string } = {}) {
@@ -884,52 +1066,84 @@ export async function resolveComplianceItem(id: string, input: ResolveCompliance
     throw ApiError.badRequest('Waiving a compliance item needs a reason on record.');
   }
 
-  const updated = await prisma.complianceItem.update({
-    where: { id },
-    data: {
-      status: input.waived ? 'waived' : 'done',
-      resolvedOn: new Date(),
-      filedRef: input.waived ? (input.reason ?? null) : (input.filedRef ?? item.filedRef),
-    },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.complianceItem.update({
+      where: { id },
+      data: {
+        status: input.waived ? 'waived' : 'done',
+        resolvedOn: new Date(),
+        filedRef: input.waived ? (input.reason ?? null) : (input.filedRef ?? item.filedRef),
+      },
+    });
 
-  await emit({
-    name: EVENTS.COMPLIANCE_ITEM_RESOLVED,
-    subject: { entityType: 'compliance_item', entityId: id, recordCode: item.recordCode },
-    newState: { status: updated.status },
-  });
-
-  return updated;
-}
-
-async function closeOpenComplianceItems(input: {
-  kind: string;
-  relatedType: string;
-  relatedId: string;
-  resolvedOn: Date;
-  filedRef: string | null;
-}) {
-  const auth = currentAuth();
-  const open = await prisma.complianceItem.findMany({
-    where: {
-      tenantId: auth.tenantId,
-      kind: input.kind,
-      relatedType: input.relatedType,
-      relatedId: input.relatedId,
-      status: 'open',
-    },
-  });
-  for (const item of open) {
-    await prisma.complianceItem.update({
-      where: { id: item.id },
-      data: { status: 'done', resolvedOn: input.resolvedOn, filedRef: input.filedRef ?? item.filedRef },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'compliance_item',
+      subjectId: id,
+      before: { status: item.status },
+      after: { status: updated.status, filedRef: updated.filedRef },
+      tx,
     });
     await emit({
       name: EVENTS.COMPLIANCE_ITEM_RESOLVED,
-      subject: { entityType: 'compliance_item', entityId: item.id, recordCode: item.recordCode },
-      newState: { status: 'done' },
+      subject: { entityType: 'compliance_item', entityId: id, recordCode: item.recordCode },
+      newState: { status: updated.status },
+      tx,
     });
-  }
+
+    return updated;
+  });
+}
+
+/**
+ * Closes the open items of one kind against one related record. Called inside
+ * the caller's transaction when it has one (`tx`), so a minutes entry and the
+ * compliance item it clears commit together; standalone otherwise.
+ */
+async function closeOpenComplianceItems(
+  input: {
+    kind: string;
+    relatedType: string;
+    relatedId: string;
+    resolvedOn: Date;
+    filedRef: string | null;
+  },
+  tx?: DbTx,
+): Promise<void> {
+  const auth = currentAuth();
+  const work = async (db: DbTx): Promise<void> => {
+    const open = await db.complianceItem.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        kind: input.kind,
+        relatedType: input.relatedType,
+        relatedId: input.relatedId,
+        status: 'open',
+      },
+    });
+    for (const item of open) {
+      await db.complianceItem.update({
+        where: { id: item.id },
+        data: { status: 'done', resolvedOn: input.resolvedOn, filedRef: input.filedRef ?? item.filedRef },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'compliance_item',
+        subjectId: item.id,
+        before: { status: item.status },
+        after: { status: 'done' },
+        tx: db,
+      });
+      await emit({
+        name: EVENTS.COMPLIANCE_ITEM_RESOLVED,
+        subject: { entityType: 'compliance_item', entityId: item.id, recordCode: item.recordCode },
+        newState: { status: 'done' },
+        tx: db,
+      });
+    }
+  };
+  if (tx) return work(tx);
+  return governedWrite(work);
 }
 
 interface RaiseComplianceItemInput {
@@ -955,25 +1169,35 @@ async function raiseComplianceItem(input: RaiseComplianceItemInput): Promise<voi
   });
   if (existing) return;
 
-  const recordCode = await nextRecordCode('CPL');
-  const item = await prisma.complianceItem.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      kind: input.kind,
-      title: input.title,
-      basis: input.basis,
-      dueOn: input.dueOn,
-      relatedType: input.relatedType,
-      relatedId: input.relatedId,
-      raisedByJob: true,
-    },
-  });
+  await governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('CPL', new Date(), tx);
+    const item = await tx.complianceItem.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        kind: input.kind,
+        title: input.title,
+        basis: input.basis,
+        dueOn: input.dueOn,
+        relatedType: input.relatedType,
+        relatedId: input.relatedId,
+        raisedByJob: true,
+      },
+    });
 
-  await emit({
-    name: EVENTS.COMPLIANCE_ITEM_RAISED,
-    subject: { entityType: 'compliance_item', entityId: item.id, recordCode },
-    newState: { kind: input.kind, dueOn: input.dueOn },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'compliance_item',
+      subjectId: item.id,
+      after: { kind: input.kind, dueOn: input.dueOn },
+      tx,
+    });
+    await emit({
+      name: EVENTS.COMPLIANCE_ITEM_RAISED,
+      subject: { entityType: 'compliance_item', entityId: item.id, recordCode },
+      newState: { kind: input.kind, dueOn: input.dueOn },
+      tx,
+    });
   });
 }
 

@@ -43,6 +43,8 @@ import { getAdapter } from './adapters/registry.js';
 import { onFormSubmitted } from './journeys.js';
 import { applyDeliveryEvents } from './messaging.js';
 
+registerGovernedEntities('mkt', ['marketing_form', 'marketing_form_submission']);
+
 function internalCode(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
 }
@@ -118,32 +120,41 @@ export async function createForm(input: FormInput) {
 
   const fields = validateFields(input.fields);
   const slug = input.slug ? slugify(input.slug) : slugify(input.name);
-  const recordCode = await nextRecordCode('FRM');
-
   try {
-    const form = await prisma.marketingForm.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode,
-        name: input.name,
-        slug,
-        fields: fields as never,
-        vertical: input.vertical,
-        defaultCampaignId: input.defaultCampaignId ?? null,
-        thankYouMessage: input.thankYouMessage ?? 'Thanks — we will be in touch shortly.',
-        active: false,
-        publicToken: newPublicToken(),
-        createdById: auth.partyId,
-      },
-    });
+    return await prisma.$transaction(async (tx) => {
+      const recordCode = await nextRecordCode('FRM', new Date(), tx);
+      const form = await tx.marketingForm.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode,
+          name: input.name,
+          slug,
+          fields: fields as never,
+          vertical: input.vertical,
+          defaultCampaignId: input.defaultCampaignId ?? null,
+          thankYouMessage: input.thankYouMessage ?? 'Thanks — we will be in touch shortly.',
+          active: false,
+          publicToken: newPublicToken(),
+          createdById: auth.partyId,
+        },
+      });
 
-    await emit({
-      name: EVENTS.MKT_FORM_CREATED,
-      subject: { entityType: 'marketing_form', entityId: form.id, recordCode: form.recordCode },
-      newState: { slug: form.slug, active: form.active },
-    });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'marketing_form',
+        subjectId: form.id,
+        after: { slug: form.slug, active: form.active },
+        tx,
+      });
+      await emit({
+        name: EVENTS.MKT_FORM_CREATED,
+        subject: { entityType: 'marketing_form', entityId: form.id, recordCode: form.recordCode },
+        newState: { slug: form.slug, active: form.active },
+        tx,
+      });
 
-    return form;
+      return form;
+    });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       throw ApiError.conflict(`A form with slug '${slug}' already exists.`);
@@ -219,13 +230,24 @@ export async function publishForm(id: string) {
   const auth = currentAuth();
   const form = await prisma.marketingForm.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!form) throw ApiError.notFound('Form');
-  const updated = await prisma.marketingForm.update({ where: { id }, data: { active: true } });
-  await emit({
-    name: EVENTS.MKT_FORM_PUBLISHED,
-    subject: { entityType: 'marketing_form', entityId: id, recordCode: form.recordCode },
-    newState: { active: true },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingForm.update({ where: { id }, data: { active: true } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_form',
+      subjectId: id,
+      before: { active: form.active },
+      after: { active: true },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_FORM_PUBLISHED,
+      subject: { entityType: 'marketing_form', entityId: id, recordCode: form.recordCode },
+      newState: { active: true },
+      tx,
+    });
+    return updated;
   });
-  return updated;
 }
 
 export async function unpublishForm(id: string) {
@@ -390,20 +412,41 @@ export async function submitPublicForm(
 
     const campaignId = await resolveCampaignId(utm, form.defaultCampaignId);
 
-    const submission = await prisma.marketingFormSubmission.create({
-      data: {
-        tenantId: form.tenantId,
-        recordCode: internalCode('SUB'),
-        formId: form.id,
-        payload: payload as never,
-        utm: utm as never,
-        status: 'received',
-        ip: meta.ip ?? null,
-        userAgent: meta.userAgent ?? null,
-      },
-    });
+    // recordTouchpoint and convertSubmission open transactions of their own, so
+    // they cannot run inside this one. The submission, its count and its event
+    // commit together first; the touchpoint and the conversion follow.
+    const submission = await prisma.$transaction(async (tx) => {
+      const created = await tx.marketingFormSubmission.create({
+        data: {
+          tenantId: form.tenantId,
+          recordCode: internalCode('SUB'),
+          formId: form.id,
+          payload: payload as never,
+          utm: utm as never,
+          status: 'received',
+          ip: meta.ip ?? null,
+          userAgent: meta.userAgent ?? null,
+        },
+      });
 
-    await prisma.marketingForm.update({ where: { id: form.id }, data: { submissionCount: { increment: 1 } } });
+      await tx.marketingForm.update({ where: { id: form.id }, data: { submissionCount: { increment: 1 } } });
+
+      await auditWrite({
+        action: 'create',
+        subjectType: 'marketing_form_submission',
+        subjectId: created.id,
+        after: { status: 'received', formId: form.id },
+        tx,
+      });
+      await emit({
+        name: EVENTS.MKT_FORM_SUBMISSION_RECEIVED,
+        subject: { entityType: 'marketing_form_submission', entityId: created.id, recordCode: created.recordCode },
+        related: [{ relation: 'form', entityType: 'marketing_form', entityId: form.id }],
+        newState: { status: 'received' },
+        tx,
+      });
+      return created;
+    });
 
     // No personId yet — findOrCreatePerson runs a moment later, inside
     // convertSubmission. The submission's own record code anchors the
@@ -414,13 +457,6 @@ export async function submitPublicForm(
       touchKind: 'form',
       utm,
       sourceRef: submission.recordCode,
-    });
-
-    await emit({
-      name: EVENTS.MKT_FORM_SUBMISSION_RECEIVED,
-      subject: { entityType: 'marketing_form_submission', entityId: submission.id, recordCode: submission.recordCode },
-      related: [{ relation: 'form', entityType: 'marketing_form', entityId: form.id }],
-      newState: { status: 'received' },
     });
 
     // The schema carries no per-form autoConvert flag/column, so every
@@ -496,30 +532,54 @@ export async function convertSubmission(submissionId: string, ctx: ConvertContex
     sourceDetail: form.slug,
   });
 
-  // createLead's LeadInput carries no campaignId/channelKey/utm — those are
-  // marketing-specific columns Lead gained for this module, written back here.
-  await prisma.lead.update({
-    where: { id: lead.id },
-    data: {
-      campaignId: ctx.campaignId ?? null,
-      channelKey: (ctx.channelKey ?? 'website') as never,
-      utm: (ctx.utm ?? submission.utm ?? {}) as never,
-    },
-  });
+  // createLead (CRM) runs its own writes and event, so it stays outside this
+  // transaction. What follows is marketing's own: the lead's marketing columns
+  // and the submission's conversion commit together, with their audit rows and
+  // the event.
+  const updated = await prisma.$transaction(async (tx) => {
+    // createLead's LeadInput carries no campaignId/channelKey/utm — those are
+    // marketing-specific columns Lead gained for this module, written back here.
+    await tx.lead.update({
+      where: { id: lead.id },
+      data: {
+        campaignId: ctx.campaignId ?? null,
+        channelKey: (ctx.channelKey ?? 'website') as never,
+        utm: (ctx.utm ?? submission.utm ?? {}) as never,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'lead',
+      subjectId: lead.id,
+      meta: { source: 'marketing_form_conversion' },
+      after: { campaignId: ctx.campaignId ?? null, channelKey: ctx.channelKey ?? 'website' },
+      tx,
+    });
 
-  const updated = await prisma.marketingFormSubmission.update({
-    where: { id: submissionId },
-    data: { status: 'converted', personId, leadId: lead.id },
-  });
+    const row = await tx.marketingFormSubmission.update({
+      where: { id: submissionId },
+      data: { status: 'converted', personId, leadId: lead.id },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_form_submission',
+      subjectId: submissionId,
+      before: { status: 'received' },
+      after: { status: 'converted', personId, leadId: lead.id },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.MKT_FORM_SUBMISSION_CONVERTED,
-    subject: { entityType: 'marketing_form_submission', entityId: submissionId, recordCode: submission.recordCode },
-    related: [
-      { relation: 'person', entityType: 'person', entityId: personId },
-      { relation: 'lead', entityType: 'lead', entityId: lead.id },
-    ],
-    newState: { status: 'converted' },
+    await emit({
+      name: EVENTS.MKT_FORM_SUBMISSION_CONVERTED,
+      subject: { entityType: 'marketing_form_submission', entityId: submissionId, recordCode: submission.recordCode },
+      related: [
+        { relation: 'person', entityType: 'person', entityId: personId },
+        { relation: 'lead', entityType: 'lead', entityId: lead.id },
+      ],
+      newState: { status: 'converted' },
+      tx,
+    });
+    return row;
   });
 
   await onFormSubmitted(personId);
@@ -712,7 +772,7 @@ export async function resolveAndClick(slug: string, meta: SubmitMeta = {}): Prom
 
 const KNOWN_WEBHOOK_PROVIDERS = new Set(['email', 'sms', 'whatsapp', 'forms']);
 
-registerGovernedEntities('mkt', ['webhook_endpoint']);
+registerGovernedEntities('mkt', ['webhook_endpoint', 'marketing_webhook_inbound']);
 
 export interface InboundWebhook {
   provider: string;
@@ -755,27 +815,32 @@ export async function createWebhookEndpoint(provider: string) {
   const signingSecret = randomBytes(32).toString('hex');
   const token = randomBytes(24).toString('base64url');
   const recordCode = internalCode('WHE');
-  const endpoint = await prisma.marketingWebhookEndpoint.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      provider,
-      token,
-      secretCipher: encryptField(signingSecret),
-      createdById: auth.partyId,
-    },
-  });
+  const endpoint = await prisma.$transaction(async (tx) => {
+    const created = await tx.marketingWebhookEndpoint.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        provider,
+        token,
+        secretCipher: encryptField(signingSecret),
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'webhook_endpoint',
-    subjectId: endpoint.id,
-    after: { provider, active: true },
-  });
-  await emit({
-    name: EVENTS.MKT_WEBHOOK_ENDPOINT_PROVISIONED,
-    subject: { entityType: 'marketing_webhook_endpoint', entityId: endpoint.id, recordCode },
-    newState: { provider },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'webhook_endpoint',
+      subjectId: created.id,
+      after: { provider, active: true },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_WEBHOOK_ENDPOINT_PROVISIONED,
+      subject: { entityType: 'marketing_webhook_endpoint', entityId: created.id, recordCode },
+      newState: { provider },
+      tx,
+    });
+    return created;
   });
 
   return {
@@ -879,15 +944,28 @@ export async function receiveWebhook(inbound: InboundWebhook, meta: WebhookMeta 
         await applyDeliveryEvents(provider, events);
       }
 
-      await prisma.marketingWebhookInbound.update({
-        where: { id: row.id },
-        data: { status: 'processed', processedAt: new Date() },
-      });
-
-      await emit({
-        name: EVENTS.MKT_WEBHOOK_RECEIVED,
-        subject: { entityType: 'marketing_webhook_inbound', entityId: row.id, recordCode: row.recordCode },
-        newState: { provider, status: 'processed' },
+      // The delivery's effects above run in their own transactions (submitPublicForm,
+      // applyDeliveryEvents), so they cannot join this one. The processed mark and
+      // its event do, so a crash cannot leave one without the other.
+      await prisma.$transaction(async (tx) => {
+        await tx.marketingWebhookInbound.update({
+          where: { id: row.id },
+          data: { status: 'processed', processedAt: new Date() },
+        });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'marketing_webhook_inbound',
+          subjectId: row.id,
+          before: { status: 'received' },
+          after: { status: 'processed' },
+          tx,
+        });
+        await emit({
+          name: EVENTS.MKT_WEBHOOK_RECEIVED,
+          subject: { entityType: 'marketing_webhook_inbound', entityId: row.id, recordCode: row.recordCode },
+          newState: { provider, status: 'processed' },
+          tx,
+        });
       });
 
       return { accepted: true as const, status: 'processed' as const, duplicate: false };

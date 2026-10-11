@@ -23,6 +23,7 @@
 import { EVENTS, IT_DOMAIN, testOverdueRung } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { emit } from '../../platform/eventBus.js';
 import { resolveOperationsHeadPartyId } from '../../domains/it/continuity.js';
@@ -200,12 +201,26 @@ export async function runMaintenanceWindowNoticeJob(): Promise<JobResult> {
       continue;
     }
 
-    const stamped = await prisma.itMaintenanceWindow.update({ where: { id: window.id }, data: { notifiedAt: now } });
-    await emit({
-      name: EVENTS.IT_MAINTENANCE_SCHEDULED,
-      subject: { entityType: 'it_maintenance_window', entityId: window.id, recordCode: window.recordCode },
-      newState: { notifiedAt: stamped.notifiedAt },
-      impact: { domains: [IT_DOMAIN] },
+    // The stamp that stops the notice re-firing, its audit row and its event
+    // commit together, as in the other job stamps.
+    await prisma.$transaction(async (tx) => {
+      const stamped = await tx.itMaintenanceWindow.update({ where: { id: window.id }, data: { notifiedAt: now } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'it_maintenance_window',
+        subjectId: window.id,
+        before: { notifiedAt: window.notifiedAt },
+        after: { notifiedAt: stamped.notifiedAt },
+        meta: { job: 'it_maintenance_window_notice' },
+        tx,
+      });
+      await emit({
+        name: EVENTS.IT_MAINTENANCE_SCHEDULED,
+        subject: { entityType: 'it_maintenance_window', entityId: window.id, recordCode: window.recordCode },
+        newState: { notifiedAt: stamped.notifiedAt },
+        impact: { domains: [IT_DOMAIN] },
+        tx,
+      });
     });
   }
 

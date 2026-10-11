@@ -28,6 +28,7 @@ import {
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
@@ -121,25 +122,31 @@ export async function generateObligations(horizonMonths: number = DEFAULT_HORIZO
         continue;
       }
 
-      const recordCode = await nextRecordCode('CMP');
-      const obligation = await prisma.complianceObligation.create({
-        data: {
-          tenantId: auth.tenantId,
-          typeId: type.id,
-          period: occ.period,
-          dueAt: occ.dueAt,
-          status: 'upcoming',
-          recordCode,
-        },
+      // One obligation and its audit row commit together; the unowned flag is
+      // raised after, because raiseException is not transaction-aware yet
+      // (platform/exceptions.ts) and must not run inside this write.
+      const obligation = await governedWrite(async (tx) => {
+        const recordCode = await nextRecordCode('CMP', new Date(), tx);
+        const row = await tx.complianceObligation.create({
+          data: {
+            tenantId: auth.tenantId,
+            typeId: type.id,
+            period: occ.period,
+            dueAt: occ.dueAt,
+            status: 'upcoming',
+            recordCode,
+          },
+        });
+        await auditWrite({
+          action: 'create',
+          subjectType: 'compliance_obligation',
+          subjectId: row.id,
+          after: { recordCode, typeCode: type.code, period: occ.period, dueAt: occ.dueAt },
+          tx,
+        });
+        return row;
       });
       created += 1;
-
-      await auditWrite({
-        action: 'create',
-        subjectType: 'compliance_obligation',
-        subjectId: obligation.id,
-        after: { recordCode, typeCode: type.code, period: occ.period, dueAt: occ.dueAt },
-      });
 
       const ownerPartyId = await resolveOwnerPartyId(type.ownerRoleSlug);
       if (!ownerPartyId) {
@@ -150,11 +157,21 @@ export async function generateObligations(horizonMonths: number = DEFAULT_HORIZO
   }
 
   if (created) {
-    await emit({
-      name: EVENTS.COMPLIANCE_OBLIGATIONS_GENERATED,
-      subject: { entityType: 'compliance_obligation', entityId: 'bulk', recordCode: null },
-      newState: { created, skipped, unowned, horizonMonths },
-      impact: { domains: ['gov'] },
+    await governedWrite(async (tx) => {
+      await auditWrite({
+        action: 'create',
+        subjectType: 'compliance_obligation',
+        subjectId: 'bulk',
+        after: { created, skipped, unowned, horizonMonths },
+        tx,
+      });
+      await emit({
+        name: EVENTS.COMPLIANCE_OBLIGATIONS_GENERATED,
+        subject: { entityType: 'compliance_obligation', entityId: 'bulk', recordCode: null },
+        newState: { created, skipped, unowned, horizonMonths },
+        impact: { domains: ['gov'] },
+        tx,
+      });
     });
   }
 
@@ -254,33 +271,37 @@ export async function markFiled(id: string, input: MarkFiledInput) {
     );
   }
 
-  const filed = await prisma.complianceObligation.update({
-    where: { id },
-    data: {
-      status: 'filed',
-      filedAt: new Date(),
-      filedById: auth.partyId,
-      reference,
-      evidenceDocumentId: input.evidenceDocumentId ?? null,
-      ...(input.note ? { note: input.note } : {}),
-    },
-  });
+  return governedWrite(async (tx) => {
+    const filed = await tx.complianceObligation.update({
+      where: { id },
+      data: {
+        status: 'filed',
+        filedAt: new Date(),
+        filedById: auth.partyId,
+        reference,
+        evidenceDocumentId: input.evidenceDocumentId ?? null,
+        ...(input.note ? { note: input.note } : {}),
+      },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'compliance_obligation',
-    subjectId: id,
-    before: { status: obligation.status },
-    after: { status: 'filed', reference, filedById: auth.partyId },
-  });
-  await emit({
-    name: EVENTS.COMPLIANCE_OBLIGATION_FILED,
-    subject: { entityType: 'compliance_obligation', entityId: id, recordCode: filed.recordCode },
-    newState: { status: 'filed', reference },
-    impact: { domains: [obligation.type.domain] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'compliance_obligation',
+      subjectId: id,
+      before: { status: obligation.status },
+      after: { status: 'filed', reference, filedById: auth.partyId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.COMPLIANCE_OBLIGATION_FILED,
+      subject: { entityType: 'compliance_obligation', entityId: id, recordCode: filed.recordCode },
+      newState: { status: 'filed', reference },
+      impact: { domains: [obligation.type.domain] },
+      tx,
+    });
 
-  return filed;
+    return filed;
+  });
 }
 
 /** A deliberate decision not to file — distinct from filing, and distinct
@@ -301,26 +322,30 @@ export async function waive(id: string, reason: string) {
     throw ApiError.conflict(`${obligation.recordCode ?? obligation.id} is already filed and cannot be waived.`);
   }
 
-  const waived = await prisma.complianceObligation.update({
-    where: { id },
-    data: { status: 'waived', note: trimmed },
-  });
+  return governedWrite(async (tx) => {
+    const waived = await tx.complianceObligation.update({
+      where: { id },
+      data: { status: 'waived', note: trimmed },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'compliance_obligation',
-    subjectId: id,
-    before: { status: obligation.status },
-    after: { status: 'waived', note: trimmed },
-  });
-  await emit({
-    name: EVENTS.COMPLIANCE_OBLIGATION_WAIVED,
-    subject: { entityType: 'compliance_obligation', entityId: id, recordCode: waived.recordCode },
-    newState: { status: 'waived', reason: trimmed },
-    impact: { domains: [obligation.type.domain] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'compliance_obligation',
+      subjectId: id,
+      before: { status: obligation.status },
+      after: { status: 'waived', note: trimmed },
+      tx,
+    });
+    await emit({
+      name: EVENTS.COMPLIANCE_OBLIGATION_WAIVED,
+      subject: { entityType: 'compliance_obligation', entityId: id, recordCode: waived.recordCode },
+      newState: { status: 'waived', reason: trimmed },
+      impact: { domains: [obligation.type.domain] },
+      tx,
+    });
 
-  return waived;
+    return waived;
+  });
 }
 
 // ---------------------------------------------------------------------------

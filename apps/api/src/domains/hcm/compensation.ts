@@ -25,6 +25,7 @@ import {
 } from '@kaizen/shared';
 import { EVENTS } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
@@ -43,6 +44,7 @@ registerGovernedEntities('hcm_compensation', [
   'benefit_enrollment',
   'employee_loan',
   'expense_claim',
+  'compensation_record',
 ]);
 
 /** Withholds a money field for a caller who cannot see it — null, never zero, with a reason. */
@@ -238,25 +240,35 @@ export async function createRevisionCycle(input: RevisionCycleInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'salary_revisions', verb: 'create' });
   const recordCode = await nextRecordCode('SREV');
-  const row = await prisma.salaryRevisionCycle.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name,
-      effectiveDate: input.effectiveDate,
-      budgetPct: input.budgetPct,
-      status: 'draft',
-      proposedById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.salaryRevisionCycle.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name,
+        effectiveDate: input.effectiveDate,
+        budgetPct: input.budgetPct,
+        status: 'draft',
+        proposedById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'salary_revision_cycle',
+      subjectId: row.id,
+      after: row as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.SALARY_REVISION_PROPOSED,
+      subject: { entityType: 'salary_revision_cycle', entityId: row.id, recordCode },
+      newState: { status: 'draft', name: input.name, budgetPct: input.budgetPct },
+      impact: { domains: ['hr', 'fin'] },
+      confidentiality: 'confidential',
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.SALARY_REVISION_PROPOSED,
-    subject: { entityType: 'salary_revision_cycle', entityId: row.id, recordCode },
-    newState: { status: 'draft', name: input.name, budgetPct: input.budgetPct },
-    impact: { domains: ['hr', 'fin'] },
-    confidentiality: 'confidential',
-  });
-  return row;
 }
 
 export interface RevisionLineInput {
@@ -462,18 +474,29 @@ export async function approveCycle(id: string) {
     );
   }
 
-  const row = await prisma.salaryRevisionCycle.update({
-    where: { id },
-    data: { status: 'approved', approvedById: auth.partyId },
+  return governedWrite(async (tx) => {
+    const row = await tx.salaryRevisionCycle.update({
+      where: { id },
+      data: { status: 'approved', approvedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'salary_revision_cycle',
+      subjectId: id,
+      before: { status: cycle.status },
+      after: { status: 'approved' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.SALARY_REVISION_APPROVED,
+      subject: { entityType: 'salary_revision_cycle', entityId: id, recordCode: cycle.recordCode },
+      newState: { status: 'approved', increasePct: budget.increasePct },
+      impact: { domains: ['hr', 'fin'] },
+      confidentiality: 'confidential',
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.SALARY_REVISION_APPROVED,
-    subject: { entityType: 'salary_revision_cycle', entityId: id, recordCode: cycle.recordCode },
-    newState: { status: 'approved', increasePct: budget.increasePct },
-    impact: { domains: ['hr', 'fin'] },
-    confidentiality: 'confidential',
-  });
-  return row;
 }
 
 /**
@@ -501,7 +524,9 @@ export async function applyCycle(id: string) {
   let applied = 0;
   for (const line of lines) {
     const amount = num(line.approvedCtc ?? line.proposedCtc) ?? 0;
-    const record = await prisma.$transaction(async (tx) => {
+    // One transaction per line: a line's superseded record, its new record,
+    // the line's status and both events land together, or the line stays approved.
+    await governedWrite(async (tx) => {
       await tx.compensationRecord.updateMany({
         where: {
           tenantId: auth.tenantId,
@@ -510,7 +535,7 @@ export async function applyCycle(id: string) {
         },
         data: { status: 'Superseded', effectiveTo: cycle.effectiveDate },
       });
-      return tx.compensationRecord.create({
+      const record = await tx.compensationRecord.create({
         data: {
           tenantId: auth.tenantId,
           employmentRelationshipId: line.employmentRelationshipId,
@@ -521,34 +546,54 @@ export async function applyCycle(id: string) {
           effectiveFrom: cycle.effectiveDate,
         },
       });
-    });
-    await prisma.salaryRevisionLine.update({
-      where: { id: line.id },
-      data: { status: 'applied', appliedAt: new Date(), compensationRecordId: record.id },
-    });
-    await emit({
-      name: EVENTS.COMPENSATION_RECORD_CREATED,
-      subject: { entityType: 'compensation_record', entityId: record.id },
-      related: [
-        { relation: 'pays', entityType: 'employment_relationship', entityId: line.employmentRelationshipId },
-        { relation: 'applies', entityType: 'salary_revision_line', entityId: line.id },
-      ],
-      newState: { status: 'Effective', amount, revisionReason: 'annual_cycle' },
-      confidentiality: 'confidential',
-      impact: { domains: ['hr', 'fin'] },
+      await tx.salaryRevisionLine.update({
+        where: { id: line.id },
+        data: { status: 'applied', appliedAt: new Date(), compensationRecordId: record.id },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'compensation_record',
+        subjectId: record.id,
+        after: record as never,
+        tx,
+      });
+      await emit({
+        name: EVENTS.COMPENSATION_RECORD_CREATED,
+        subject: { entityType: 'compensation_record', entityId: record.id },
+        related: [
+          { relation: 'pays', entityType: 'employment_relationship', entityId: line.employmentRelationshipId },
+          { relation: 'applies', entityType: 'salary_revision_line', entityId: line.id },
+        ],
+        newState: { status: 'Effective', amount, revisionReason: 'annual_cycle' },
+        confidentiality: 'confidential',
+        impact: { domains: ['hr', 'fin'] },
+        tx,
+      });
     });
     applied += 1;
   }
-  const row = await prisma.salaryRevisionCycle.update({
-    where: { id },
-    data: { status: 'applied', appliedAt: new Date() },
-  });
-  await emit({
-    name: EVENTS.SALARY_REVISION_APPLIED,
-    subject: { entityType: 'salary_revision_cycle', entityId: id, recordCode: cycle.recordCode },
-    newState: { status: 'applied', linesApplied: applied },
-    impact: { domains: ['hr', 'fin'] },
-    confidentiality: 'confidential',
+  const row = await governedWrite(async (tx) => {
+    const updated = await tx.salaryRevisionCycle.update({
+      where: { id },
+      data: { status: 'applied', appliedAt: new Date() },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'salary_revision_cycle',
+      subjectId: id,
+      before: { status: cycle.status },
+      after: { status: 'applied' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.SALARY_REVISION_APPLIED,
+      subject: { entityType: 'salary_revision_cycle', entityId: id, recordCode: cycle.recordCode },
+      newState: { status: 'applied', linesApplied: applied },
+      impact: { domains: ['hr', 'fin'] },
+      confidentiality: 'confidential',
+      tx,
+    });
+    return updated;
   });
   return { cycle: row, linesApplied: applied };
 }
@@ -679,23 +724,34 @@ export async function approvePayout(id: string, note?: string) {
       { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
     ]);
   }
-  const row = await prisma.variablePayout.update({
-    where: { id },
-    data: {
-      status: 'approved',
-      approvedById: auth.partyId,
-      approvedAmount: payout.computedAmount,
-      note: note ?? payout.note,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.variablePayout.update({
+      where: { id },
+      data: {
+        status: 'approved',
+        approvedById: auth.partyId,
+        approvedAmount: payout.computedAmount,
+        note: note ?? payout.note,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'variable_payout',
+      subjectId: id,
+      before: { status: payout.status },
+      after: { status: 'approved' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.VARIABLE_PAY_APPROVED,
+      subject: { entityType: 'variable_payout', entityId: id },
+      newState: { status: 'approved' },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.VARIABLE_PAY_APPROVED,
-    subject: { entityType: 'variable_payout', entityId: id },
-    newState: { status: 'approved' },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr', 'fin'] },
-  });
-  return row;
 }
 
 /** Marks a payout as paid — the hook payroll's ad-hoc line reads from. */
@@ -705,15 +761,26 @@ export async function markPayoutPaid(id: string) {
   const payout = await prisma.variablePayout.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!payout) throw ApiError.notFound('Variable payout');
   if (payout.status !== 'approved') throw ApiError.conflict('Only an approved payout can be marked paid.');
-  const row = await prisma.variablePayout.update({ where: { id }, data: { status: 'paid', paidAt: new Date() } });
-  await emit({
-    name: EVENTS.VARIABLE_PAY_PAID,
-    subject: { entityType: 'variable_payout', entityId: id },
-    newState: { status: 'paid' },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr', 'fin'] },
+  return governedWrite(async (tx) => {
+    const row = await tx.variablePayout.update({ where: { id }, data: { status: 'paid', paidAt: new Date() } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'variable_payout',
+      subjectId: id,
+      before: { status: payout.status },
+      after: { status: 'paid' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.VARIABLE_PAY_PAID,
+      subject: { entityType: 'variable_payout', entityId: id },
+      newState: { status: 'paid' },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+    return row;
   });
-  return row;
 }
 
 // ---------------------------------------------------------------------------
@@ -774,18 +841,30 @@ export async function enrolInBenefit(planId: string, employmentRelationshipId: s
     plan.enrolmentOpensOn && plan.enrolmentClosesOn && (now < plan.enrolmentOpensOn || now > plan.enrolmentClosesOn)
       ? 'waitlisted'
       : 'enrolled';
-  const row = await prisma.benefitEnrollment.upsert({
-    where: { tenantId_planId_employmentRelationshipId: { tenantId: auth.tenantId, planId, employmentRelationshipId } },
-    create: { tenantId: auth.tenantId, planId, employmentRelationshipId, dependants: dependants as never, status },
-    update: { dependants: dependants as never, status, cancelledAt: null },
+  return governedWrite(async (tx) => {
+    const row = await tx.benefitEnrollment.upsert({
+      where: {
+        tenantId_planId_employmentRelationshipId: { tenantId: auth.tenantId, planId, employmentRelationshipId },
+      },
+      create: { tenantId: auth.tenantId, planId, employmentRelationshipId, dependants: dependants as never, status },
+      update: { dependants: dependants as never, status, cancelledAt: null },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'benefit_enrollment',
+      subjectId: row.id,
+      after: row as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.BENEFIT_ENROLLMENT_CREATED,
+      subject: { entityType: 'benefit_enrollment', entityId: row.id },
+      newState: { status },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.BENEFIT_ENROLLMENT_CREATED,
-    subject: { entityType: 'benefit_enrollment', entityId: row.id },
-    newState: { status },
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 export async function cancelBenefitEnrollment(id: string) {
@@ -915,18 +994,29 @@ export async function approveLoan(id: string, note?: string) {
       { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
     ]);
   }
-  const row = await prisma.employeeLoan.update({
-    where: { id },
-    data: { status: 'approved', approvedById: auth.partyId, decidedAt: new Date(), note: note ?? loan.note },
+  return governedWrite(async (tx) => {
+    const row = await tx.employeeLoan.update({
+      where: { id },
+      data: { status: 'approved', approvedById: auth.partyId, decidedAt: new Date(), note: note ?? loan.note },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employee_loan',
+      subjectId: id,
+      before: { status: loan.status },
+      after: { status: 'approved' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.EMPLOYEE_LOAN_APPROVED,
+      subject: { entityType: 'employee_loan', entityId: id, recordCode: loan.recordCode },
+      newState: { status: 'approved' },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.EMPLOYEE_LOAN_APPROVED,
-    subject: { entityType: 'employee_loan', entityId: id, recordCode: loan.recordCode },
-    newState: { status: 'approved' },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr', 'fin'] },
-  });
-  return row;
 }
 
 export async function rejectLoan(id: string, note: string) {
@@ -958,18 +1048,29 @@ export async function disburseLoan(id: string, startDate: Date) {
   const loan = await prisma.employeeLoan.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!loan) throw ApiError.notFound('Employee loan');
   if (loan.status !== 'approved') throw ApiError.conflict('Only an approved loan can be disbursed.');
-  const row = await prisma.employeeLoan.update({
-    where: { id },
-    data: { status: 'disbursed', disbursedAt: new Date(), startDate },
+  return governedWrite(async (tx) => {
+    const row = await tx.employeeLoan.update({
+      where: { id },
+      data: { status: 'disbursed', disbursedAt: new Date(), startDate },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employee_loan',
+      subjectId: id,
+      before: { status: loan.status },
+      after: { status: 'disbursed' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.EMPLOYEE_LOAN_DISBURSED,
+      subject: { entityType: 'employee_loan', entityId: id, recordCode: loan.recordCode },
+      newState: { status: 'disbursed' },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.EMPLOYEE_LOAN_DISBURSED,
-    subject: { entityType: 'employee_loan', entityId: id, recordCode: loan.recordCode },
-    newState: { status: 'disbursed' },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr', 'fin'] },
-  });
-  return row;
 }
 
 /** Records a repayment against the outstanding balance; closes the loan once it reaches zero. */
@@ -981,20 +1082,31 @@ export async function recordLoanRepayment(id: string, amount: number) {
   if (loan.status !== 'disbursed') throw ApiError.conflict('Only a disbursed loan can take a repayment.');
   const outstanding = Math.max((num(loan.outstandingPrincipal) ?? 0) - amount, 0);
   const closing = outstanding <= 0;
-  const row = await prisma.employeeLoan.update({
-    where: { id },
-    data: { outstandingPrincipal: outstanding, ...(closing ? { status: 'closed', closedAt: new Date() } : {}) },
-  });
-  if (closing) {
-    await emit({
-      name: EVENTS.EMPLOYEE_LOAN_CLOSED,
-      subject: { entityType: 'employee_loan', entityId: id, recordCode: loan.recordCode },
-      newState: { status: 'closed' },
-      confidentiality: 'confidential',
-      impact: { domains: ['hr', 'fin'] },
+  return governedWrite(async (tx) => {
+    const row = await tx.employeeLoan.update({
+      where: { id },
+      data: { outstandingPrincipal: outstanding, ...(closing ? { status: 'closed', closedAt: new Date() } : {}) },
     });
-  }
-  return row;
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employee_loan',
+      subjectId: id,
+      before: { status: loan.status, outstandingPrincipal: loan.outstandingPrincipal as never },
+      after: { status: row.status, outstandingPrincipal: row.outstandingPrincipal as never },
+      tx,
+    });
+    if (closing) {
+      await emit({
+        name: EVENTS.EMPLOYEE_LOAN_CLOSED,
+        subject: { entityType: 'employee_loan', entityId: id, recordCode: loan.recordCode },
+        newState: { status: 'closed' },
+        confidentiality: 'confidential',
+        impact: { domains: ['hr', 'fin'] },
+        tx,
+      });
+    }
+    return row;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1017,26 +1129,30 @@ export async function submitExpenseClaim(input: ExpenseClaimInput) {
   await assertEmploymentVisible('expense_claims', input.employmentRelationshipId, 'create');
   if (input.amount <= 0) throw ApiError.badRequest('An expense claim needs an amount above zero.');
   const recordCode = await nextRecordCode('EXP');
-  const row = await prisma.expenseClaim.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      employmentRelationshipId: input.employmentRelationshipId,
-      category: input.category,
-      amount: input.amount,
-      receipts: (input.receipts ?? []) as never,
-      note: input.note ?? null,
-      status: 'submitted',
-      submittedById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.expenseClaim.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        employmentRelationshipId: input.employmentRelationshipId,
+        category: input.category,
+        amount: input.amount,
+        receipts: (input.receipts ?? []) as never,
+        note: input.note ?? null,
+        status: 'submitted',
+        submittedById: auth.partyId,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'expense_claim', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: EVENTS.EXPENSE_CLAIM_SUBMITTED,
+      subject: { entityType: 'expense_claim', entityId: row.id, recordCode },
+      newState: { status: 'submitted', category: input.category },
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.EXPENSE_CLAIM_SUBMITTED,
-    subject: { entityType: 'expense_claim', entityId: row.id, recordCode },
-    newState: { status: 'submitted', category: input.category },
-    impact: { domains: ['hr', 'fin'] },
-  });
-  return row;
 }
 
 export async function listExpenseClaims(employmentRelationshipId?: string) {
@@ -1086,17 +1202,28 @@ export async function approveExpenseClaim(id: string, note?: string) {
       { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
     ]);
   }
-  const row = await prisma.expenseClaim.update({
-    where: { id },
-    data: { status: 'approved', approvedById: auth.partyId, decidedAt: new Date(), note: note ?? claim.note },
+  return governedWrite(async (tx) => {
+    const row = await tx.expenseClaim.update({
+      where: { id },
+      data: { status: 'approved', approvedById: auth.partyId, decidedAt: new Date(), note: note ?? claim.note },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'expense_claim',
+      subjectId: id,
+      before: { status: claim.status },
+      after: { status: 'approved' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.EXPENSE_CLAIM_APPROVED,
+      subject: { entityType: 'expense_claim', entityId: id, recordCode: claim.recordCode },
+      newState: { status: 'approved' },
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.EXPENSE_CLAIM_APPROVED,
-    subject: { entityType: 'expense_claim', entityId: id, recordCode: claim.recordCode },
-    newState: { status: 'approved' },
-    impact: { domains: ['hr', 'fin'] },
-  });
-  return row;
 }
 
 export async function rejectExpenseClaim(id: string, note: string) {
@@ -1116,17 +1243,28 @@ export async function rejectExpenseClaim(id: string, note: string) {
       { axis: 'WHO', passed: false, reason: 'proposer_is_approver' },
     ]);
   }
-  const row = await prisma.expenseClaim.update({
-    where: { id },
-    data: { status: 'rejected', approvedById: auth.partyId, decidedAt: new Date(), note },
+  return governedWrite(async (tx) => {
+    const row = await tx.expenseClaim.update({
+      where: { id },
+      data: { status: 'rejected', approvedById: auth.partyId, decidedAt: new Date(), note },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'expense_claim',
+      subjectId: id,
+      before: { status: claim.status },
+      after: { status: 'rejected' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.EXPENSE_CLAIM_REJECTED,
+      subject: { entityType: 'expense_claim', entityId: id, recordCode: claim.recordCode },
+      newState: { status: 'rejected', note },
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.EXPENSE_CLAIM_REJECTED,
-    subject: { entityType: 'expense_claim', entityId: id, recordCode: claim.recordCode },
-    newState: { status: 'rejected', note },
-    impact: { domains: ['hr', 'fin'] },
-  });
-  return row;
 }
 
 /**
@@ -1146,15 +1284,26 @@ export async function reimburseExpenseClaim(id: string, note?: string) {
   const claim = await prisma.expenseClaim.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!claim) throw ApiError.notFound('Expense claim');
   if (claim.status !== 'approved') throw ApiError.conflict('Only an approved claim can be marked reimbursed.');
-  const row = await prisma.expenseClaim.update({
-    where: { id },
-    data: { status: 'reimbursed', reimbursedAt: new Date(), note: note ?? claim.note },
+  return governedWrite(async (tx) => {
+    const row = await tx.expenseClaim.update({
+      where: { id },
+      data: { status: 'reimbursed', reimbursedAt: new Date(), note: note ?? claim.note },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'expense_claim',
+      subjectId: id,
+      before: { status: claim.status },
+      after: { status: 'reimbursed' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.EXPENSE_CLAIM_REIMBURSED,
+      subject: { entityType: 'expense_claim', entityId: id, recordCode: claim.recordCode },
+      newState: { status: 'reimbursed' },
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.EXPENSE_CLAIM_REIMBURSED,
-    subject: { entityType: 'expense_claim', entityId: id, recordCode: claim.recordCode },
-    newState: { status: 'reimbursed' },
-    impact: { domains: ['hr', 'fin'] },
-  });
-  return row;
 }

@@ -32,6 +32,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan, can } from '../platform/permissions.js';
 
 export const ORGANIZATION_KINDS = ['institution', 'organization'] as const;
@@ -102,32 +103,38 @@ export async function createOrganization(input: OrganizationInput) {
     );
   }
 
-  const recordCode = await nextRecordCode('ORG');
-  const org = await prisma.organization.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      kind,
-      roles,
-      name: input.name,
-      website: input.website ?? null,
-      parentOrgId: input.parentOrgId ?? null,
-      tags: input.tags ?? [],
-      ownerPartyId: input.ownerPartyId ?? null,
-      locations: (input.locations ?? []) as never,
-    },
-  });
+  const org = await governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('ORG', undefined, tx);
+    const created = await tx.organization.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        kind,
+        roles,
+        name: input.name,
+        website: input.website ?? null,
+        parentOrgId: input.parentOrgId ?? null,
+        tags: input.tags ?? [],
+        ownerPartyId: input.ownerPartyId ?? null,
+        locations: (input.locations ?? []) as never,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'organization',
-    subjectId: org.id,
-    after: { name: org.name, kind: org.kind, roles: org.roles },
-  });
-  await emit({
-    name: EVENTS.CRM_ORGANIZATION_CREATED,
-    subject: { entityType: 'organization', entityId: org.id, recordCode },
-    newState: { name: org.name, kind: org.kind },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'organization',
+      subjectId: created.id,
+      after: { name: created.name, kind: created.kind, roles: created.roles },
+      tx,
+    });
+    await emit({
+      name: EVENTS.CRM_ORGANIZATION_CREATED,
+      subject: { entityType: 'organization', entityId: created.id, recordCode },
+      newState: { name: created.name, kind: created.kind },
+      tx,
+    });
+
+    return created;
   });
 
   // Attached through the same functions the standalone endpoints call, so the
@@ -284,30 +291,39 @@ export async function attachAccount(organizationId: string, input: AccountInput)
   const existing = await prisma.account.findFirst({ where: { organizationId } });
   if (existing) throw ApiError.conflict('This body already has billing details.');
 
-  const account = await prisma.account.create({
-    data: {
-      tenantId: auth.tenantId,
-      organizationId,
-      tier: input.tier ?? 'standard',
-      ownerPartyId: input.ownerPartyId ?? org.ownerPartyId,
-      billingEmail: input.billingEmail ?? null,
-      billingAddress: input.billingAddress ?? null,
-      paymentTermsDays: input.paymentTermsDays ?? 30,
-      annualRevenueBand: input.annualRevenueBand ?? null,
-      employeeCountBand: input.employeeCountBand ?? null,
-      attachedById: auth.partyId,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const account = await tx.account.create({
+      data: {
+        tenantId: auth.tenantId,
+        organizationId,
+        tier: input.tier ?? 'standard',
+        ownerPartyId: input.ownerPartyId ?? org.ownerPartyId,
+        billingEmail: input.billingEmail ?? null,
+        billingAddress: input.billingAddress ?? null,
+        paymentTermsDays: input.paymentTermsDays ?? 30,
+        annualRevenueBand: input.annualRevenueBand ?? null,
+        employeeCountBand: input.employeeCountBand ?? null,
+        attachedById: auth.partyId,
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'account', subjectId: account.id, after: { tier: account.tier } });
-  await emit({
-    name: EVENTS.ACCOUNT_ATTACHED,
-    subject: { entityType: 'account', entityId: account.id },
-    related: [{ relation: 'specialises', entityType: 'organization', entityId: organizationId }],
-    newState: { tier: account.tier },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'account',
+      subjectId: account.id,
+      after: { tier: account.tier },
+      tx,
+    });
+    await emit({
+      name: EVENTS.ACCOUNT_ATTACHED,
+      subject: { entityType: 'account', entityId: account.id },
+      related: [{ relation: 'specialises', entityType: 'organization', entityId: organizationId }],
+      newState: { tier: account.tier },
+      tx,
+    });
 
-  return account;
+    return account;
+  });
 }
 
 /**
@@ -394,44 +410,48 @@ export async function attachInstitutionProfile(organizationId: string, input: In
   const existing = await prisma.institutionProfile.findFirst({ where: { organizationId } });
   if (existing) throw ApiError.conflict('This institution already has its school or college details.');
 
-  const profile = await prisma.institutionProfile.create({
-    data: {
-      tenantId: auth.tenantId,
-      organizationId,
-      institutionType: input.institutionType ?? null,
-      managementType: input.managementType ?? null,
-      address: input.address ?? null,
-      district: input.district ?? null,
-      taluk: input.taluk ?? null,
-      state: input.state ?? null,
-      latitude: input.latitude ?? null,
-      longitude: input.longitude ?? null,
-      // Never fabricated — left null instead.
-      externalIdentifier: input.externalIdentifier ?? null,
-      establishedYear: input.establishedYear ?? null,
-      studentCount: input.studentCount ?? null,
-      departments: input.departments ?? [],
-      strategicPriority: input.strategicPriority ?? null,
-      engagements: input.engagements ?? [],
-      accreditation: input.accreditation ?? null,
-      attachedById: auth.partyId,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const profile = await tx.institutionProfile.create({
+      data: {
+        tenantId: auth.tenantId,
+        organizationId,
+        institutionType: input.institutionType ?? null,
+        managementType: input.managementType ?? null,
+        address: input.address ?? null,
+        district: input.district ?? null,
+        taluk: input.taluk ?? null,
+        state: input.state ?? null,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+        // Never fabricated — left null instead.
+        externalIdentifier: input.externalIdentifier ?? null,
+        establishedYear: input.establishedYear ?? null,
+        studentCount: input.studentCount ?? null,
+        departments: input.departments ?? [],
+        strategicPriority: input.strategicPriority ?? null,
+        engagements: input.engagements ?? [],
+        accreditation: input.accreditation ?? null,
+        attachedById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'institution_profile',
-    subjectId: profile.id,
-    after: { district: profile.district },
-  });
-  await emit({
-    name: EVENTS.INSTITUTION_PROFILE_ATTACHED,
-    subject: { entityType: 'institution_profile', entityId: profile.id },
-    related: [{ relation: 'specialises', entityType: 'organization', entityId: organizationId }],
-    newState: { institutionType: profile.institutionType, district: profile.district },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'institution_profile',
+      subjectId: profile.id,
+      after: { district: profile.district },
+      tx,
+    });
+    await emit({
+      name: EVENTS.INSTITUTION_PROFILE_ATTACHED,
+      subject: { entityType: 'institution_profile', entityId: profile.id },
+      related: [{ relation: 'specialises', entityType: 'organization', entityId: organizationId }],
+      newState: { institutionType: profile.institutionType, district: profile.district },
+      tx,
+    });
 
-  return profile;
+    return profile;
+  });
 }
 
 /**
@@ -516,11 +536,21 @@ export async function detachAccount(organizationId: string) {
   const account = await prisma.account.findFirst({ where: { organizationId } });
   if (!account) throw ApiError.notFound('Billing details');
 
-  await prisma.account.delete({ where: { id: account.id } });
-  await emit({
-    name: EVENTS.ACCOUNT_DETACHED,
-    subject: { entityType: 'account', entityId: account.id },
-    related: [{ relation: 'specialised', entityType: 'organization', entityId: organizationId }],
+  await governedWrite(async (tx) => {
+    await tx.account.delete({ where: { id: account.id } });
+    await auditWrite({
+      action: 'delete',
+      subjectType: 'account',
+      subjectId: account.id,
+      before: { tier: account.tier, organizationId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.ACCOUNT_DETACHED,
+      subject: { entityType: 'account', entityId: account.id },
+      related: [{ relation: 'specialised', entityType: 'organization', entityId: organizationId }],
+      tx,
+    });
   });
   return { detached: true };
 }

@@ -19,10 +19,13 @@ import {
 } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
+
+registerGovernedEntities('mkt', ['marketing_plan']);
 
 export interface PlanInput {
   period: string;
@@ -58,26 +61,37 @@ export async function createPlan(input: PlanInput): Promise<PlanView> {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_settings', verb: 'create' });
 
-  const recordCode = await nextRecordCode('PLN');
-  const row = await prisma.marketingPlan.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      period: input.period,
-      division: input.division,
-      theme: input.theme ?? null,
-      goals: (input.goals ?? {}) as never,
-      campaignIds: input.campaignIds ?? [],
-      status: 'draft',
-      createdById: auth.partyId,
-    },
-  });
+  const row = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('PLN', new Date(), tx);
+    const created = await tx.marketingPlan.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        period: input.period,
+        division: input.division,
+        theme: input.theme ?? null,
+        goals: (input.goals ?? {}) as never,
+        campaignIds: input.campaignIds ?? [],
+        status: 'draft',
+        createdById: auth.partyId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.MKT_PLAN_CREATED,
-    subject: { entityType: 'marketing_plan', entityId: row.id, recordCode },
-    newState: { status: 'draft', period: input.period, division: input.division },
-    impact: { domains: ['mkt'] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_plan',
+      subjectId: created.id,
+      after: { period: input.period, division: input.division, status: 'draft' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_PLAN_CREATED,
+      subject: { entityType: 'marketing_plan', entityId: created.id, recordCode },
+      newState: { status: 'draft', period: input.period, division: input.division },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return created;
   });
 
   return toPlanView(row);
@@ -140,16 +154,28 @@ export async function approvePlan(id: string): Promise<PlanView> {
     );
   }
 
-  const updated = await prisma.marketingPlan.update({
-    where: { id },
-    data: { status: 'approved', updatedById: auth.partyId },
-  });
-  await emit({
-    name: EVENTS.MKT_PLAN_APPROVED,
-    subject: { entityType: 'marketing_plan', entityId: id, recordCode: row.recordCode },
-    previousState: { status: row.status },
-    newState: { status: 'approved' },
-    impact: { domains: ['mkt'] },
+  const updated = await prisma.$transaction(async (tx) => {
+    const next = await tx.marketingPlan.update({
+      where: { id },
+      data: { status: 'approved', updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_plan',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: 'approved' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_PLAN_APPROVED,
+      subject: { entityType: 'marketing_plan', entityId: id, recordCode: row.recordCode },
+      previousState: { status: row.status },
+      newState: { status: 'approved' },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return next;
   });
   return toPlanView(updated);
 }
@@ -169,16 +195,28 @@ export async function closePlan(id: string): Promise<PlanView> {
     throw ApiError.conflict(`Cannot close: plan is ${row.status}, must be approved or active.`);
   }
 
-  const updated = await prisma.marketingPlan.update({
-    where: { id },
-    data: { status: 'closed', updatedById: auth.partyId },
-  });
-  await emit({
-    name: EVENTS.MKT_PLAN_CLOSED,
-    subject: { entityType: 'marketing_plan', entityId: id, recordCode: row.recordCode },
-    previousState: { status: row.status },
-    newState: { status: 'closed' },
-    impact: { domains: ['mkt'] },
+  const updated = await prisma.$transaction(async (tx) => {
+    const next = await tx.marketingPlan.update({
+      where: { id },
+      data: { status: 'closed', updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_plan',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: 'closed' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_PLAN_CLOSED,
+      subject: { entityType: 'marketing_plan', entityId: id, recordCode: row.recordCode },
+      previousState: { status: row.status },
+      newState: { status: 'closed' },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return next;
   });
   return toPlanView(updated);
 }

@@ -27,7 +27,8 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { hire } from './employment.js';
-import { registerGovernedEntities } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 
 // ---------------------------------------------------------------------------
 // Requisitions
@@ -66,28 +67,39 @@ export async function createRequisition(input: {
   });
   if (!position) throw ApiError.notFound('Position');
 
-  const recordCode = await nextRecordCode('REQ');
-  const requisition = await prisma.requisition.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      positionId: input.positionId,
-      budgetLineId: input.budgetLineId ?? position.budgetLineId,
-      raisedByPartyId: auth.partyId,
-      targetStartDate: input.targetStartDate ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('REQ', undefined, tx);
+    const requisition = await tx.requisition.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        positionId: input.positionId,
+        budgetLineId: input.budgetLineId ?? position.budgetLineId,
+        raisedByPartyId: auth.partyId,
+        targetStartDate: input.targetStartDate ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.REQUISITION_CREATED,
-    subject: { entityType: 'requisition', entityId: requisition.id, recordCode },
-    related: [{ relation: 'fills', entityType: 'position', entityId: input.positionId }],
-    newState: { status: 'Draft', positionId: input.positionId, targetStartDate: input.targetStartDate },
-    owner: { partyId: auth.partyId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'requisition',
+      subjectId: requisition.id,
+      after: { recordCode, positionId: input.positionId, status: 'Draft' },
+      tx,
+    });
 
-  return requisition;
+    await emit({
+      name: EVENTS.REQUISITION_CREATED,
+      subject: { entityType: 'requisition', entityId: requisition.id, recordCode },
+      related: [{ relation: 'fills', entityType: 'position', entityId: input.positionId }],
+      newState: { status: 'Draft', positionId: input.positionId, targetStartDate: input.targetStartDate },
+      owner: { partyId: auth.partyId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return requisition;
+  });
 }
 
 export async function transitionRequisition(id: string, event: RequisitionEvent, note?: string) {
@@ -174,29 +186,40 @@ export async function createApplication(input: { requisitionId: string; candidat
     );
   }
 
-  const recordCode = await nextRecordCode('APP');
-  const application = await prisma.application.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      requisitionId: input.requisitionId,
-      candidatePartyId: input.candidatePartyId,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('APP', undefined, tx);
+    const application = await tx.application.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        requisitionId: input.requisitionId,
+        candidatePartyId: input.candidatePartyId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.APPLICATION_CREATED,
-    subject: { entityType: 'application', entityId: application.id, recordCode },
-    related: [
-      { relation: 'against', entityType: 'requisition', entityId: input.requisitionId },
-      { relation: 'by', entityType: 'person', entityId: input.candidatePartyId },
-    ],
-    newState: { status: 'Applied' },
-    owner: { partyId: input.candidatePartyId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'application',
+      subjectId: application.id,
+      after: { recordCode, requisitionId: input.requisitionId, status: 'Applied' },
+      tx,
+    });
 
-  return application;
+    await emit({
+      name: EVENTS.APPLICATION_CREATED,
+      subject: { entityType: 'application', entityId: application.id, recordCode },
+      related: [
+        { relation: 'against', entityType: 'requisition', entityId: input.requisitionId },
+        { relation: 'by', entityType: 'person', entityId: input.candidatePartyId },
+      ],
+      newState: { status: 'Applied' },
+      owner: { partyId: input.candidatePartyId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return application;
+  });
 }
 
 export async function transitionApplication(

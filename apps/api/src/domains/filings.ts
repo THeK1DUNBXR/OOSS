@@ -36,6 +36,7 @@ import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { istEndOfDay, istYearMonth, SENSITIVITY_RANK } from '@kaizen/shared';
+import { governedWrite } from '../platform/governedWrite.js';
 import { raiseException, resolveException } from '../platform/exceptions.js';
 import { companyProfile } from './companyProfile.js';
 import { effectiveBalance, holderView, outgoingCount } from './equity.js';
@@ -886,28 +887,35 @@ export async function recordFiling(input: RecordFilingInput) {
   if (!FILING_FORMS.includes(input.form))
     throw ApiError.badRequest(`"${input.form}" is not a form this platform files.`);
 
-  const row = await prisma.filing.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('FIL'),
-      form: input.form,
-      relatedType: input.relatedType ?? null,
-      relatedId: input.relatedId ?? null,
-      periodOrEvent: input.periodOrEvent,
-      srn: input.srn ?? null,
-      filedOn: input.filedOn ? new Date(input.filedOn) : null,
-      dueOn: input.dueOn ? new Date(input.dueOn) : null,
-      status: input.status,
-      note: input.note ?? null,
-      recordedByPartyId: auth.partyId ?? 'system',
-    },
-  });
+  // The filing log entry, its audit row and its event commit together: a
+  // statutory filing with no record of who logged it is what this prevents.
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.filing.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('FIL', undefined, tx),
+        form: input.form,
+        relatedType: input.relatedType ?? null,
+        relatedId: input.relatedId ?? null,
+        periodOrEvent: input.periodOrEvent,
+        srn: input.srn ?? null,
+        filedOn: input.filedOn ? new Date(input.filedOn) : null,
+        dueOn: input.dueOn ? new Date(input.dueOn) : null,
+        status: input.status,
+        note: input.note ?? null,
+        recordedByPartyId: auth.partyId ?? 'system',
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'filing', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.FILING_RECORDED,
-    subject: { entityType: 'filing', entityId: row.id, recordCode: row.recordCode },
-    newState: { form: row.form, status: row.status },
+    await auditWrite({ action: 'create', subjectType: 'filing', subjectId: created.id, after: created as never, tx });
+    await emit({
+      name: EVENTS.FILING_RECORDED,
+      subject: { entityType: 'filing', entityId: created.id, recordCode: created.recordCode },
+      newState: { form: created.form, status: created.status },
+      tx,
+    });
+
+    return created;
   });
 
   if (input.status === 'filed') {

@@ -479,3 +479,34 @@ describe('IT-TKT-004: SLA attainment reports not yet measured with no closed tic
     expect(slaAttainment([])).toBeNull();
   });
 });
+
+describe('IT ticket transitions publish under kz.it.ticket, never the people namespace', () => {
+  it('raise, triage, start and wait publish kz.it.ticket.* names, and no kz.hr.ticket.* name', async () => {
+    const ops = 'operations@kaizen.co.in';
+    const ticket = await asUser(ops, () =>
+      createTicket({ category: 'incident', subject: `Event name probe ${stamp()}`, description: 'VPN down.' }),
+    );
+    await asUser(ops, () => triageTicket(ticket.id, { priority: 'P2' }));
+    await asUser(ops, () => transitionTicket(ticket.id, 'START'));
+    await asUser(ops, () => transitionTicket(ticket.id, 'WAIT'));
+
+    const rows = await unscopedPrisma.outboxEvent.findMany({
+      where: { tenantId: await tenantId(), payload: { path: ['subject', 'entityId'], equals: ticket.id } },
+      select: { eventName: true },
+    });
+    const names = rows.map((r) => r.eventName).sort();
+
+    // `moved_to_waiting`, not `waiting`: a state name is not a past participle,
+    // and the tense rule only exempts the historical kz.hr.ticket.waiting.
+    expect(names).toEqual(
+      [
+        'kz.it.ticket.moved_to_waiting',
+        'kz.it.ticket.raised',
+        'kz.it.ticket.started',
+        'kz.it.ticket.transitioned',
+        'kz.it.ticket.transitioned',
+        'kz.it.ticket.triaged',
+      ].sort(),
+    );
+  });
+});

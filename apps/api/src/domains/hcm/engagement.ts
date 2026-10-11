@@ -22,7 +22,8 @@ import {
   type SurveyAnswer,
   type SurveyQuestion,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma } from '../../platform/db.js';
+import { prisma, unscopedPrisma, type DbTx } from '../../platform/db.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
@@ -137,35 +138,38 @@ export async function createAnnouncement(input: AnnouncementInput) {
 
   const recordCode = await nextEngagementNumber('ANN');
   const publishAt = input.publishAt ?? new Date();
-  const row = await prisma.announcement.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title,
-      body: input.body,
-      audienceType,
-      audienceDivision: input.audienceDivision ?? null,
-      audienceOrgUnitId: input.audienceOrgUnitId ?? null,
-      audienceLocation: input.audienceLocation ?? null,
-      publishAt,
-      expiresAt: input.expiresAt ?? null,
-      pinned: input.pinned ?? false,
-      acknowledgementRequired: input.acknowledgementRequired ?? false,
-      status: input.publishNow !== false && publishAt.getTime() <= Date.now() ? 'published' : 'draft',
-      createdById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.announcement.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title,
+        body: input.body,
+        audienceType,
+        audienceDivision: input.audienceDivision ?? null,
+        audienceOrgUnitId: input.audienceOrgUnitId ?? null,
+        audienceLocation: input.audienceLocation ?? null,
+        publishAt,
+        expiresAt: input.expiresAt ?? null,
+        pinned: input.pinned ?? false,
+        acknowledgementRequired: input.acknowledgementRequired ?? false,
+        status: input.publishNow !== false && publishAt.getTime() <= Date.now() ? 'published' : 'draft',
+        createdById: auth.partyId,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'announcement', subjectId: row.id, after: row as never, tx });
+    if (row.status === 'published') await emitAnnouncementPublished(row.id, recordCode, tx);
+    return row;
   });
-  await auditWrite({ action: 'create', subjectType: 'announcement', subjectId: row.id, after: row as never });
-  if (row.status === 'published') await emitAnnouncementPublished(row.id, recordCode);
-  return row;
 }
 
-async function emitAnnouncementPublished(id: string, recordCode: string) {
+async function emitAnnouncementPublished(id: string, recordCode: string, tx?: DbTx) {
   await emit({
     name: 'kz.hr.announcement.published',
     subject: { entityType: 'announcement', entityId: id, recordCode },
     newState: { status: 'published' },
     impact: { domains: ['hr'] },
+    tx,
   });
 }
 
@@ -175,19 +179,22 @@ export async function publishAnnouncement(id: string) {
   const row = await prisma.announcement.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Announcement');
   if (row.status === 'published') return row;
-  const updated = await prisma.announcement.update({
-    where: { id },
-    data: { status: 'published', publishAt: new Date() },
+  return governedWrite(async (tx) => {
+    const updated = await tx.announcement.update({
+      where: { id },
+      data: { status: 'published', publishAt: new Date() },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'announcement',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: 'published' },
+      tx,
+    });
+    await emitAnnouncementPublished(id, row.recordCode, tx);
+    return updated;
   });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'announcement',
-    subjectId: id,
-    before: { status: row.status },
-    after: { status: 'published' },
-  });
-  await emitAnnouncementPublished(id, row.recordCode);
-  return updated;
 }
 
 export async function withdrawAnnouncement(id: string) {
@@ -267,32 +274,36 @@ export async function giveRecognition(input: RecognitionInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'recognitions', verb: 'create' });
   if (!auth.partyId) throw ApiError.badRequest('No party on this session to give recognition from.');
+  const fromPartyId = auth.partyId;
   if (input.toPartyId === auth.partyId) throw ApiError.badRequest('You cannot give yourself recognition.');
   if (!input.badge.trim() || !input.message.trim())
     throw ApiError.badRequest('A badge and a message are both required.');
 
   const recordCode = await nextEngagementNumber('REC');
-  const row = await prisma.recognition.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      fromPartyId: auth.partyId,
-      toPartyId: input.toPartyId,
-      badge: input.badge,
-      message: input.message,
-      points: input.points ?? 0,
-      public: input.public ?? true,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.recognition.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        fromPartyId,
+        toPartyId: input.toPartyId,
+        badge: input.badge,
+        message: input.message,
+        points: input.points ?? 0,
+        public: input.public ?? true,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'recognition', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: 'kz.hr.recognition.given',
+      subject: { entityType: 'recognition', entityId: row.id, recordCode },
+      related: [{ relation: 'recognizes', entityType: 'person', entityId: input.toPartyId }],
+      newState: { badge: row.badge, points: row.points },
+      tx,
+      impact: { domains: ['hr'] },
+    });
+    return row;
   });
-  await auditWrite({ action: 'create', subjectType: 'recognition', subjectId: row.id, after: row as never });
-  await emit({
-    name: 'kz.hr.recognition.given',
-    subject: { entityType: 'recognition', entityId: row.id, recordCode },
-    related: [{ relation: 'recognizes', entityType: 'person', entityId: input.toPartyId }],
-    newState: { badge: row.badge, points: row.points },
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 /** GET /recognitions. HR (all scope) sees the full ledger; everyone else sees only recognitions they gave or received. */
@@ -352,33 +363,42 @@ export async function createPulseSurvey(input: PulseSurveyInput) {
   if (input.closesAt.getTime() <= input.opensAt.getTime()) throw ApiError.badRequest('closesAt must be after opensAt.');
 
   const recordCode = await nextEngagementNumber('SUR');
-  const row = await prisma.pulseSurvey.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title,
-      questions: input.questions as never,
-      anonymous: input.anonymous ?? false,
-      opensAt: input.opensAt,
-      closesAt: input.closesAt,
-      audienceType: input.audienceType ?? 'all',
-      audienceDivision: input.audienceDivision ?? null,
-      audienceOrgUnitId: input.audienceOrgUnitId ?? null,
-      audienceLocation: input.audienceLocation ?? null,
-      status: input.opensAt.getTime() <= Date.now() ? 'open' : 'draft',
-      createdById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.pulseSurvey.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title,
+        questions: input.questions as never,
+        anonymous: input.anonymous ?? false,
+        opensAt: input.opensAt,
+        closesAt: input.closesAt,
+        audienceType: input.audienceType ?? 'all',
+        audienceDivision: input.audienceDivision ?? null,
+        audienceOrgUnitId: input.audienceOrgUnitId ?? null,
+        audienceLocation: input.audienceLocation ?? null,
+        status: input.opensAt.getTime() <= Date.now() ? 'open' : 'draft',
+        createdById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'pulse_survey',
+      subjectId: row.id,
+      after: { title: row.title },
+      tx,
+    });
+    if (row.status === 'open') await emitSurveyOpened(row.id, recordCode, tx);
+    return row;
   });
-  await auditWrite({ action: 'create', subjectType: 'pulse_survey', subjectId: row.id, after: { title: row.title } });
-  if (row.status === 'open') await emitSurveyOpened(row.id, recordCode);
-  return row;
 }
 
-async function emitSurveyOpened(id: string, recordCode: string) {
+async function emitSurveyOpened(id: string, recordCode: string, tx?: DbTx) {
   await emit({
     name: 'kz.hr.survey.opened',
     subject: { entityType: 'pulse_survey', entityId: id, recordCode },
     newState: { status: 'open' },
+    tx,
   });
 }
 
@@ -388,9 +408,19 @@ export async function openPulseSurvey(id: string) {
   const row = await prisma.pulseSurvey.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Pulse survey');
   if (row.status !== 'draft') throw ApiError.conflict(`Survey is already ${row.status}.`);
-  const updated = await prisma.pulseSurvey.update({ where: { id }, data: { status: 'open' } });
-  await emitSurveyOpened(id, row.recordCode);
-  return updated;
+  return governedWrite(async (tx) => {
+    const updated = await tx.pulseSurvey.update({ where: { id }, data: { status: 'open' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'pulse_survey',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: 'open' },
+      tx,
+    });
+    await emitSurveyOpened(id, row.recordCode, tx);
+    return updated;
+  });
 }
 
 export async function closePulseSurvey(id: string) {
@@ -399,20 +429,24 @@ export async function closePulseSurvey(id: string) {
   const row = await prisma.pulseSurvey.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Pulse survey');
   if (row.status !== 'open') throw ApiError.conflict(`Only an open survey can be closed (this one is ${row.status}).`);
-  const updated = await prisma.pulseSurvey.update({ where: { id }, data: { status: 'closed' } });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'pulse_survey',
-    subjectId: id,
-    before: { status: row.status },
-    after: { status: 'closed' },
+  return governedWrite(async (tx) => {
+    const updated = await tx.pulseSurvey.update({ where: { id }, data: { status: 'closed' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'pulse_survey',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: 'closed' },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.survey.closed',
+      subject: { entityType: 'pulse_survey', entityId: id, recordCode: row.recordCode },
+      newState: { status: 'closed' },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: 'kz.hr.survey.closed',
-    subject: { entityType: 'pulse_survey', entityId: id, recordCode: row.recordCode },
-    newState: { status: 'closed' },
-  });
-  return updated;
 }
 
 export async function listPulseSurveys() {
@@ -634,8 +668,8 @@ export async function createHrCase(input: HrCaseInput) {
   const recordCode = await nextRecordCode('CASE');
   const slaDueAt = new Date(Date.now() + (HR_CASE_SLA_HOURS[priority] ?? 96) * 3_600_000);
 
-  const row = await prisma.$transaction(async (tx) => {
-    const created = await tx.hrCase.create({
+  return governedWrite(async (tx) => {
+    const row = await tx.hrCase.create({
       data: {
         tenantId: auth.tenantId,
         recordCode,
@@ -648,28 +682,29 @@ export async function createHrCase(input: HrCaseInput) {
       },
     });
     await tx.hrCaseMessage.create({
-      data: { tenantId: auth.tenantId, caseId: created.id, authorPartyId: auth.partyId!, body: input.body },
+      data: { tenantId: auth.tenantId, caseId: row.id, authorPartyId: auth.partyId!, body: input.body },
     });
-    return created;
-  });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'hr_case',
-    subjectId: row.id,
-    after: { category: row.category, status: row.status },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'hr_case',
+      subjectId: row.id,
+      after: { category: row.category, status: row.status },
+      tx,
+    });
+    // A confidential case is marked `restricted` on the wire the same way a POSH
+    // complaint is — the fact of its existence travels no further than the
+    // event bus's own confidentiality classification lets it.
+    await emit({
+      name: 'kz.hr.hr_case.opened',
+      subject: { entityType: 'hr_case', entityId: row.id, recordCode },
+      newState: { category: confidential ? 'confidential' : row.category, status: row.status },
+      confidentiality: confidential ? 'restricted' : 'internal',
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  // A confidential case is marked `restricted` on the wire the same way a POSH
-  // complaint is — the fact of its existence travels no further than the
-  // event bus's own confidentiality classification lets it.
-  await emit({
-    name: 'kz.hr.hr_case.opened',
-    subject: { entityType: 'hr_case', entityId: row.id, recordCode },
-    newState: { category: confidential ? 'confidential' : row.category, status: row.status },
-    confidentiality: confidential ? 'restricted' : 'internal',
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 /**
@@ -772,29 +807,33 @@ export async function transitionHrCase(id: string, status: HrCaseStatus, note?: 
   if (status === 'resolved' && !row.resolvedAt) data.resolvedAt = new Date();
   if (status === 'closed' && !row.closedAt) data.closedAt = new Date();
 
-  const updated = await prisma.hrCase.update({ where: { id }, data });
-  if (note?.trim())
-    await prisma.hrCaseMessage.create({
-      data: { tenantId: auth.tenantId, caseId: id, authorPartyId: auth.partyId ?? 'system', body: note },
+  return governedWrite(async (tx) => {
+    const updated = await tx.hrCase.update({ where: { id }, data });
+    if (note?.trim())
+      await tx.hrCaseMessage.create({
+        data: { tenantId: auth.tenantId, caseId: id, authorPartyId: auth.partyId ?? 'system', body: note },
+      });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'hr_case',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status },
+      tx,
     });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'hr_case',
-    subjectId: id,
-    before: { status: row.status },
-    after: { status },
-  });
 
-  if (status === 'resolved' || status === 'closed') {
-    await emit({
-      name: 'kz.hr.hr_case.resolved',
-      subject: { entityType: 'hr_case', entityId: id, recordCode: row.recordCode },
-      newState: { status },
-      confidentiality: row.confidential ? 'restricted' : 'internal',
-      impact: { domains: ['hr'] },
-    });
-  }
-  return updated;
+    if (status === 'resolved' || status === 'closed') {
+      await emit({
+        name: 'kz.hr.hr_case.resolved',
+        subject: { entityType: 'hr_case', entityId: id, recordCode: row.recordCode },
+        newState: { status },
+        confidentiality: row.confidential ? 'restricted' : 'internal',
+        impact: { domains: ['hr'] },
+        tx,
+      });
+    }
+    return updated;
+  });
 }
 
 /** Daily job — HCM-ENGAGEMENT-*: an open case past its SLA due date raises an exception on the HR ops owner. Runs over every case, confidential included; nothing about a grievance's category leaks into the exception body. */
@@ -847,34 +886,38 @@ export async function createPolicyDocument(input: PolicyDocumentInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'hcm_policy_documents', verb: 'create' });
   const recordCode = await nextEngagementNumber('POL');
-  const row = await prisma.policyDocument.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title,
-      version: input.version,
-      body: input.body,
-      effectiveFrom: input.effectiveFrom,
-      acknowledgementRequired: input.acknowledgementRequired ?? true,
-      status: input.effectiveFrom.getTime() <= Date.now() ? 'published' : 'draft',
-      createdById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.policyDocument.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title,
+        version: input.version,
+        body: input.body,
+        effectiveFrom: input.effectiveFrom,
+        acknowledgementRequired: input.acknowledgementRequired ?? true,
+        status: input.effectiveFrom.getTime() <= Date.now() ? 'published' : 'draft',
+        createdById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'policy_document',
+      subjectId: row.id,
+      after: { title: row.title, version: row.version },
+      tx,
+    });
+    if (row.status === 'published') await emitPolicyPublished(row.id, recordCode, tx);
+    return row;
   });
-  await auditWrite({
-    action: 'create',
-    subjectType: 'policy_document',
-    subjectId: row.id,
-    after: { title: row.title, version: row.version },
-  });
-  if (row.status === 'published') await emitPolicyPublished(row.id, recordCode);
-  return row;
 }
 
-async function emitPolicyPublished(id: string, recordCode: string) {
+async function emitPolicyPublished(id: string, recordCode: string, tx?: DbTx) {
   await emit({
     name: 'kz.hr.policy_document.published',
     subject: { entityType: 'policy_document', entityId: id, recordCode },
     newState: { status: 'published' },
+    tx,
   });
 }
 
@@ -883,21 +926,24 @@ export async function publishPolicyDocument(id: string) {
   await assertCan({ resource: 'hcm_policy_documents', verb: 'edit' });
   const row = await prisma.policyDocument.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Policy document');
-  // Publishing a new version of the same title supersedes any prior published version.
-  await prisma.policyDocument.updateMany({
-    where: { tenantId: auth.tenantId, title: row.title, status: 'published', NOT: { id } },
-    data: { status: 'superseded' },
+  return governedWrite(async (tx) => {
+    // Publishing a new version of the same title supersedes any prior published version.
+    await tx.policyDocument.updateMany({
+      where: { tenantId: auth.tenantId, title: row.title, status: 'published', NOT: { id } },
+      data: { status: 'superseded' },
+    });
+    const updated = await tx.policyDocument.update({ where: { id }, data: { status: 'published' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'policy_document',
+      subjectId: id,
+      before: { status: row.status },
+      after: { status: 'published' },
+      tx,
+    });
+    await emitPolicyPublished(id, row.recordCode, tx);
+    return updated;
   });
-  const updated = await prisma.policyDocument.update({ where: { id }, data: { status: 'published' } });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'policy_document',
-    subjectId: id,
-    before: { status: row.status },
-    after: { status: 'published' },
-  });
-  await emitPolicyPublished(id, row.recordCode);
-  return updated;
 }
 
 export async function listPolicyDocuments() {
@@ -917,19 +963,29 @@ export async function acknowledgePolicyDocument(id: string) {
   const row = await prisma.policyDocument.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Policy document');
   if (row.status !== 'published') throw ApiError.conflict('Only a published policy can be acknowledged.');
-  const ack = await prisma.policyAcknowledgement.upsert({
-    where: {
-      tenantId_policyDocumentId_partyId: { tenantId: auth.tenantId, policyDocumentId: id, partyId: auth.partyId },
-    },
-    create: { tenantId: auth.tenantId, policyDocumentId: id, partyId: auth.partyId },
-    update: {},
+  return governedWrite(async (tx) => {
+    const ack = await tx.policyAcknowledgement.upsert({
+      where: {
+        tenantId_policyDocumentId_partyId: { tenantId: auth.tenantId, policyDocumentId: id, partyId: auth.partyId! },
+      },
+      create: { tenantId: auth.tenantId, policyDocumentId: id, partyId: auth.partyId! },
+      update: {},
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'policy_document',
+      subjectId: id,
+      after: { acknowledgedByPartyId: auth.partyId },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.policy_document.acknowledged',
+      subject: { entityType: 'policy_document', entityId: id, recordCode: row.recordCode },
+      newState: { partyId: auth.partyId },
+      tx,
+    });
+    return ack;
   });
-  await emit({
-    name: 'kz.hr.policy_document.acknowledged',
-    subject: { entityType: 'policy_document', entityId: id, recordCode: row.recordCode },
-    newState: { partyId: auth.partyId },
-  });
-  return ack;
 }
 
 export async function policyAckStatus(id: string) {
@@ -974,31 +1030,35 @@ export async function createExitInterview(input: ExitInterviewInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'exit_interviews', verb: 'create' });
   const recordCode = await nextEngagementNumber('EXI');
-  const row = await prisma.exitInterview.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      offboardingId: input.offboardingId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      questionnaire: input.questionnaire as never,
-      themes: (input.themes ?? []) as never,
-      conductedById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.exitInterview.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        offboardingId: input.offboardingId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        questionnaire: input.questionnaire as never,
+        themes: (input.themes ?? []) as never,
+        conductedById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'exit_interview',
+      subjectId: row.id,
+      after: { employmentRelationshipId: row.employmentRelationshipId },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.exit_interview.completed',
+      subject: { entityType: 'exit_interview', entityId: row.id, recordCode },
+      newState: { employmentRelationshipId: row.employmentRelationshipId },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await auditWrite({
-    action: 'create',
-    subjectType: 'exit_interview',
-    subjectId: row.id,
-    after: { employmentRelationshipId: row.employmentRelationshipId },
-  });
-  await emit({
-    name: 'kz.hr.exit_interview.completed',
-    subject: { entityType: 'exit_interview', entityId: row.id, recordCode },
-    newState: { employmentRelationshipId: row.employmentRelationshipId },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 /** HR-only — exit interviews are never visible to the person they are about. */

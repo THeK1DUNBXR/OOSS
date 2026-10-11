@@ -40,6 +40,9 @@ import {
 // that union, so every workstream that drives a lifecycle machine through it
 // needs this same local cast until the shared file is updated.
 const TICKETS_RESOURCE = 'it_tickets' as unknown as Resource;
+// Without these two, transition() files a ticket under kz.hr.ticket.* and
+// stamps its impact as `hr`, so IT subscribers never see the transition.
+const TICKET_EVENT_PREFIX = 'kz.it';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
@@ -48,7 +51,7 @@ import { ApiError } from '../../platform/errors.js';
 import { assertCan, assertScopeAll, matchNothing, scopeFor } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
-import { transition, availableTransitions } from '../../platform/lifecycle.js';
+import { transition, transitionInTx, availableTransitions } from '../../platform/lifecycle.js';
 
 registerGovernedEntities('it', ['it_ticket', 'it_ticket_comment', 'it_knowledge_article', 'it_sla_policy']);
 
@@ -212,32 +215,37 @@ export async function createTicket(input: CreateTicketInput) {
   }
 
   const recordCode = await nextRecordCode('TKT');
-  const ticket = await prisma.itTicket.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      requesterPartyId,
-      category: input.category,
-      subject: input.subject.trim(),
-      description: input.description.trim(),
-      assetId: input.assetId ?? null,
-      applicationId: input.applicationId ?? null,
-      status: 'new',
-    },
-  });
+  const ticket = await prisma.$transaction(async (tx) => {
+    const ticket = await tx.itTicket.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        requesterPartyId,
+        category: input.category,
+        subject: input.subject.trim(),
+        description: input.description.trim(),
+        assetId: input.assetId ?? null,
+        applicationId: input.applicationId ?? null,
+        status: 'new',
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_ticket',
-    subjectId: ticket.id,
-    after: { recordCode, category: input.category },
-  });
-  await emit({
-    name: EVENTS.IT_TICKET_RAISED,
-    subject: { entityType: 'it_ticket', entityId: ticket.id, recordCode },
-    newState: { status: 'new', category: input.category },
-    owner: { partyId: requesterPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_ticket',
+      subjectId: ticket.id,
+      after: { recordCode, category: input.category },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_TICKET_RAISED,
+      subject: { entityType: 'it_ticket', entityId: ticket.id, recordCode },
+      newState: { status: 'new', category: input.category },
+      owner: { partyId: requesterPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return ticket;
   });
 
   return ticket;
@@ -358,6 +366,8 @@ export async function triageTicket(id: string, input: TriageInput) {
     from: ticket.status as ItTicketStatus,
     event: 'TRIAGE',
     detail: { priority: input.priority, respondDueAt, resolveDueAt },
+    eventPrefix: TICKET_EVENT_PREFIX,
+    impactDomain: IT_DOMAIN,
   });
 
   const updated = await prisma.itTicket.update({
@@ -387,21 +397,26 @@ export async function assignTicket(id: string, assigneePartyId: string) {
   const person = await prisma.person.findFirst({ where: { id: assigneePartyId, tenantId: auth.tenantId } });
   if (!person) throw ApiError.badRequest('The assignee must be a known person.');
 
-  const updated = await prisma.itTicket.update({ where: { id }, data: { assigneePartyId } });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itTicket.update({ where: { id }, data: { assigneePartyId } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_ticket',
-    subjectId: id,
-    before: { assigneePartyId: ticket.assigneePartyId },
-    after: { assigneePartyId },
-  });
-  await emit({
-    name: EVENTS.IT_TICKET_ASSIGNED,
-    subject: { entityType: 'it_ticket', entityId: id, recordCode: ticket.recordCode },
-    newState: { assigneePartyId },
-    owner: { partyId: assigneePartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_ticket',
+      subjectId: id,
+      before: { assigneePartyId: ticket.assigneePartyId },
+      after: { assigneePartyId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_TICKET_ASSIGNED,
+      subject: { entityType: 'it_ticket', entityId: id, recordCode: ticket.recordCode },
+      newState: { assigneePartyId },
+      owner: { partyId: assigneePartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;
@@ -420,43 +435,54 @@ export async function transitionTicket(id: string, event: ItTicketEvent, note?: 
   if (event === 'WAIT') detail.waitingSince = now;
   if (event === 'START' && !ticket.firstRespondedAt) detail.firstRespondedAt = now;
 
-  const result = await transition({
-    machine: ticketMachine,
-    eventObject: 'ticket',
-    verbs: TICKET_EVENT_VERB,
-    resource: TICKETS_RESOURCE,
-    verb: 'edit',
-    subjectType: 'it_ticket',
-    subjectId: id,
-    recordCode: ticket.recordCode,
-    ownerPartyId: ticket.assigneePartyId ?? ticket.requesterPartyId,
-    from: ticket.status as ItTicketStatus,
-    event,
-    detail,
-    reasonNote: note ?? null,
-  });
-
-  const data: Record<string, unknown> = { status: result.to };
-  if (event === 'RESOLVE') data.resolvedAt = now;
-  if (event === 'CLOSE') data.closedAt = now;
-  if (event === 'REOPEN') {
-    data.resolvedAt = null;
-    data.closedAt = null;
-    data.satisfaction = null;
-  }
-  if (event === 'WAIT') data.waitingSince = now;
-  if (event === 'RESUME') data.waitingSince = null;
-  if (event === 'START' && !ticket.firstRespondedAt) data.firstRespondedAt = now;
-
-  const updated = await prisma.itTicket.update({ where: { id }, data });
-
-  await emit({
-    name: EVENTS.IT_TICKET_TRANSITIONED,
-    subject: { entityType: 'it_ticket', entityId: id, recordCode: ticket.recordCode },
-    previousState: { status: ticket.status },
-    newState: { status: result.to },
-    impact: { domains: [IT_DOMAIN] },
-  });
+  // One transaction for the status, its audit row and both events. The summary
+  // event is a distinct name for the same transition, so it sits after the
+  // transition's own event and after the audit row, as governedWrite.ts orders it.
+  const { value: updated } = await transitionInTx(
+    {
+      machine: ticketMachine,
+      eventObject: 'ticket',
+      verbs: TICKET_EVENT_VERB,
+      resource: TICKETS_RESOURCE,
+      verb: 'edit',
+      subjectType: 'it_ticket',
+      subjectId: id,
+      recordCode: ticket.recordCode,
+      ownerPartyId: ticket.assigneePartyId ?? ticket.requesterPartyId,
+      from: ticket.status as ItTicketStatus,
+      event,
+      detail,
+      reasonNote: note ?? null,
+      eventPrefix: TICKET_EVENT_PREFIX,
+      impactDomain: IT_DOMAIN,
+    },
+    {
+      write: (tx, to) => {
+        const data: Record<string, unknown> = { status: to };
+        if (event === 'RESOLVE') data.resolvedAt = now;
+        if (event === 'CLOSE') data.closedAt = now;
+        if (event === 'REOPEN') {
+          data.resolvedAt = null;
+          data.closedAt = null;
+          data.satisfaction = null;
+        }
+        if (event === 'WAIT') data.waitingSince = now;
+        if (event === 'RESUME') data.waitingSince = null;
+        if (event === 'START' && !ticket.firstRespondedAt) data.firstRespondedAt = now;
+        return tx.itTicket.update({ where: { id }, data });
+      },
+      alsoEmit: async (tx, to) => {
+        await emit({
+          name: EVENTS.IT_TICKET_TRANSITIONED,
+          subject: { entityType: 'it_ticket', entityId: id, recordCode: ticket.recordCode },
+          previousState: { status: ticket.status },
+          newState: { status: to },
+          impact: { domains: [IT_DOMAIN] },
+          tx,
+        });
+      },
+    },
+  );
 
   return updated;
 }
@@ -527,14 +553,18 @@ export async function rateTicket(id: string, satisfaction: number) {
     throw ApiError.badRequest('Satisfaction is a whole number from 1 to 5.');
   }
 
-  const updated = await prisma.itTicket.update({ where: { id }, data: { satisfaction } });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itTicket.update({ where: { id }, data: { satisfaction } });
 
-  await auditWrite({ action: 'update', subjectType: 'it_ticket', subjectId: id, after: { satisfaction } });
-  await emit({
-    name: EVENTS.IT_TICKET_RATED,
-    subject: { entityType: 'it_ticket', entityId: id, recordCode: ticket.recordCode },
-    newState: { satisfaction },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({ action: 'update', subjectType: 'it_ticket', subjectId: id, after: { satisfaction }, tx });
+    await emit({
+      name: EVENTS.IT_TICKET_RATED,
+      subject: { entityType: 'it_ticket', entityId: id, recordCode: ticket.recordCode },
+      newState: { satisfaction },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;
@@ -609,23 +639,28 @@ export async function publishKnowledgeArticle(id: string) {
 
   if (article.status === 'published') throw ApiError.conflict('Already published.');
 
-  const updated = await prisma.itKnowledgeArticle.update({
-    where: { id },
-    data: { status: 'published', publishedAt: new Date() },
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itKnowledgeArticle.update({
+      where: { id },
+      data: { status: 'published', publishedAt: new Date() },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_knowledge_article',
-    subjectId: id,
-    before: { status: article.status },
-    after: { status: 'published' },
-  });
-  await emit({
-    name: EVENTS.IT_KNOWLEDGE_PUBLISHED,
-    subject: { entityType: 'it_knowledge_article', entityId: id, recordCode: article.recordCode },
-    newState: { status: 'published' },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_knowledge_article',
+      subjectId: id,
+      before: { status: article.status },
+      after: { status: 'published' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_KNOWLEDGE_PUBLISHED,
+      subject: { entityType: 'it_knowledge_article', entityId: id, recordCode: article.recordCode },
+      newState: { status: 'published' },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;

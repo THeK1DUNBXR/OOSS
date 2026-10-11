@@ -149,8 +149,9 @@ describe('FX-04 — accepting or rejecting an agent proposal requires a grant an
     expect(row.state).toBe('executed');
     expect(row.humanActorId).toBe(chairman.partyId);
 
+    // The proposal writes its own create row; this test is about the decision's row.
     const audit = await unscopedPrisma.auditRecord.findFirst({
-      where: { subjectType: 'agent_action', subjectId: actionId },
+      where: { subjectType: 'agent_action', subjectId: actionId, action: 'update' },
     });
     expect(audit).not.toBeNull();
     expect(audit!.actorId).toBe(chairman.partyId);
