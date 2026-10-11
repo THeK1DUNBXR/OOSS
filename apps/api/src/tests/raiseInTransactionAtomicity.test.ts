@@ -24,6 +24,7 @@ import { hire, transitionEmployment } from '../domains/employment.js';
 import { createPartnerAgreement } from '../domains/agreements.js';
 import { createApplication, createLicence, proposeRenewal } from '../domains/it/software.js';
 import { createPlan, recordTest, transitionPlan } from '../domains/it/continuity.js';
+import { campaignDetail, decideItem, openCampaign } from '../domains/it/governance.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
@@ -289,5 +290,28 @@ describe('recording a DR test that breaches its RTO raises IT_DR_RTO_EXCEEDED in
     );
 
     expect(await unscopedPrisma.itContinuityTest.count({ where: { tenantId: TENANT, planId: plan.id } })).toBe(0);
+  });
+});
+
+describe('a revoke decision in an access review raises IT_ACR_REVOKE_REQUESTED in the same transaction', () => {
+  it('when the raise cannot be recorded, the decision is not recorded', async () => {
+    const OPS = 'operations@kaizen.co.in';
+    const dueAt = new Date();
+    dueAt.setUTCDate(dueAt.getUTCDate() + 14);
+    const campaign = await asUser(OPS, () => openCampaign({ name: unique('W2-ATOMIC-CAMPAIGN'), scope: 'all', dueAt }));
+    const detail = await asUser(OPS, () => campaignDetail(campaign.id));
+    const item = detail.items.find((i) => i.decision == null && i.partyId !== undefined);
+    expect(item).toBeTruthy();
+
+    await refuseExceptionAudit();
+    await expectReject(() => asUser(OPS, () => decideItem(campaign.id, item!.id, { decision: 'revoke' })));
+
+    const after = await unscopedPrisma.itAccessReviewItem.findUniqueOrThrow({ where: { id: item!.id } });
+    expect(after.decision).toBeNull();
+    expect(
+      await unscopedPrisma.exceptionRecord.count({
+        where: { tenantId: TENANT, code: 'IT_ACR_REVOKE_REQUESTED', subjectId: item!.id },
+      }),
+    ).toBe(0);
   });
 });
