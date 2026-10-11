@@ -983,6 +983,187 @@ export interface CreateApprovalChainBody {
   levels: ApprovalChainLevel[];
 }
 
+// ---------------------------------------------------------------------------
+// Time and attendance: shifts, rosters, clock punches, timesheets, overtime, comp-off, regularisations
+// ---------------------------------------------------------------------------
+
+/** One row of `GET /hcm/time/shifts` (domains/hcm/time.ts listShifts). */
+export interface TimeShift {
+  id: string;
+  code: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  graceMinutes: number;
+  breakMinutes: number;
+  nightShift: boolean;
+  active: boolean;
+}
+
+/** One row of `GET /hcm/time/rosters` (listRosterAssignments). */
+export interface TimeRosterRow {
+  id: string;
+  employmentRelationshipId: string;
+  shiftId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  weeklyOffDays: number[];
+}
+
+/** One row of `GET /hcm/time/clock` (listClockEvents): a raw punch. */
+export interface TimeClockEvent {
+  id: string;
+  kind: string;
+  occurredAt: string;
+  source: string;
+}
+
+/** One row of `GET /hcm/time/timesheets` (listTimesheets). Hours are Decimal, so they arrive as strings. */
+export interface TimeTimesheet {
+  id: string;
+  recordCode: string;
+  employmentRelationshipId: string;
+  weekStart: string;
+  status: string;
+  totalHours: string | number;
+}
+
+/** One row of `GET /hcm/time/overtime` (listOvertimeRequests). */
+export interface TimeOvertimeRow {
+  id: string;
+  employmentRelationshipId: string;
+  date: string;
+  hours: string | number;
+  reason: string | null;
+  status: string;
+}
+
+/** One row of `GET /hcm/time/comp-offs` (listCompOffs). */
+export interface TimeCompOffRow {
+  id: string;
+  employmentRelationshipId: string;
+  earnedFrom: string;
+  earnedOn: string;
+  days: string | number;
+  expiresOn: string;
+  status: string;
+}
+
+/** One row of `GET /hcm/time/regularisations` (listRegularisations). */
+export interface TimeRegularisationRow {
+  id: string;
+  employmentRelationshipId: string;
+  date: string;
+  reason: string;
+  status: string;
+}
+
+export interface CreateTimeShiftBody {
+  code: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  graceMinutes: number;
+  breakMinutes: number;
+  nightShift: boolean;
+}
+
+export interface AssignRosterBody {
+  employmentRelationshipId: string;
+  shiftId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  weeklyOffDays: number[];
+}
+
+export interface HolidayWorkCompOffBody {
+  employmentRelationshipId: string;
+  earnedOn: string;
+  days: number;
+  note: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Assets, travel, letters and ID cards
+// ---------------------------------------------------------------------------
+
+/** One row of `GET /hcm/assets/inventory` (listAssets). `cost` is a Decimal string, withheld as null without the financial grant. */
+export interface Asset {
+  id: string;
+  recordCode: string;
+  tag: string;
+  category: string;
+  serial: string | null;
+  purchaseDate: string | null;
+  cost: string | null;
+  status: string;
+  note: string | null;
+}
+
+/** One row of `GET /hcm/assets/assignments` (listAssetAssignments), with the asset it names. */
+export interface AssetAssignment {
+  id: string;
+  assetId: string;
+  employmentRelationshipId: string;
+  issuedOn: string;
+  returnedOn: string | null;
+  condition: string;
+  asset: Asset;
+}
+
+/** One row of `GET /hcm/assets/travel` (listTravelRequests). Money fields are Decimal strings, withheld as null without the financial grant. */
+export interface TravelRequest {
+  id: string;
+  recordCode: string;
+  employmentRelationshipId: string;
+  purpose: string;
+  fromLocation: string;
+  toLocation: string;
+  startDate: string;
+  endDate: string;
+  mode: string;
+  estimatedCost: string | null;
+  advanceRequested: string | null;
+  status: string;
+  expenseClaimId: string | null;
+}
+
+/** One row of `GET /hcm/assets/letters` (listLetterRequests). `snapshot` is the letter body, set once fulfilled. */
+export interface LetterRequest {
+  id: string;
+  employmentRelationshipId: string;
+  kind: string;
+  status: string;
+  number: string | null;
+  hrLetterId: string | null;
+  snapshot: { body: string } | null;
+  createdAt: string;
+}
+
+/** One row of `GET /hcm/assets/idcards` (listIdCards). */
+export interface IdCard {
+  id: string;
+  employmentRelationshipId: string;
+  cardNumber: string;
+  status: string;
+  issuedOn: string;
+  returnedOn: string | null;
+}
+
+export interface CreateAssetBody {
+  tag: string;
+  category: string;
+  serial?: string;
+  cost?: number;
+  note?: string;
+}
+
+export interface IssueAssetBody {
+  assetId: string;
+  employmentRelationshipId: string;
+  condition: 'good' | 'fair' | 'poor';
+}
+
 export const hcmApi = {
   hr: {
     employees: (status = '') =>
@@ -1202,6 +1383,85 @@ export const hcmApi = {
       list: () => api.get<ApprovalChain[]>('/hcm/leavepolicy/approval-chains'),
       create: (body: CreateApprovalChainBody) => api.post('/hcm/leavepolicy/approval-chains', body),
       remove: (id: string) => api.del(`/hcm/leavepolicy/approval-chains/${id}`),
+    },
+  },
+  time: {
+    shifts: {
+      list: () => api.get<TimeShift[]>('/hcm/time/shifts'),
+      create: (body: CreateTimeShiftBody) => api.post('/hcm/time/shifts', body),
+    },
+    rosters: {
+      list: () => api.get<TimeRosterRow[]>('/hcm/time/rosters'),
+      assign: (body: AssignRosterBody) => api.post('/hcm/time/rosters', body),
+    },
+    clock: {
+      list: (employmentRelationshipId: string) =>
+        api.get<TimeClockEvent[]>(`/hcm/time/clock?employmentRelationshipId=${employmentRelationshipId}`),
+    },
+    timesheets: {
+      list: (employmentId: string) =>
+        api.get<TimeTimesheet[]>(
+          `/hcm/time/timesheets${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`,
+        ),
+      approve: (id: string) => api.post(`/hcm/time/timesheets/${id}/approve`, {}),
+      reject: (id: string, note: string) => api.post(`/hcm/time/timesheets/${id}/reject`, { note }),
+    },
+    overtime: {
+      list: (employmentId: string) =>
+        api.get<TimeOvertimeRow[]>(
+          `/hcm/time/overtime${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`,
+        ),
+      /** Approving also earns the comp-off, which is why the comp-off list is invalidated on success. */
+      decide: (id: string, approve: boolean) =>
+        api.post(
+          `/hcm/time/overtime/${id}/${approve ? 'approve' : 'reject'}`,
+          approve ? {} : { note: 'Not approved.' },
+        ),
+    },
+    compOffs: {
+      list: (employmentId: string) =>
+        api.get<TimeCompOffRow[]>(
+          `/hcm/time/comp-offs${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`,
+        ),
+      consume: (id: string) => api.post(`/hcm/time/comp-offs/${id}/consume`, {}),
+      recordHolidayWork: (body: HolidayWorkCompOffBody) => api.post('/hcm/time/comp-offs/holiday-work', body),
+    },
+    regularisations: {
+      list: (employmentId: string) =>
+        api.get<TimeRegularisationRow[]>(
+          `/hcm/time/regularisations${employmentId ? `?employmentRelationshipId=${employmentId}` : ''}`,
+        ),
+      approve: (id: string) => api.post(`/hcm/time/regularisations/${id}/approve`, {}),
+      reject: (id: string, note: string) => api.post(`/hcm/time/regularisations/${id}/reject`, { note }),
+    },
+  },
+  assets: {
+    inventory: {
+      list: (status = '') => api.get<Asset[]>(`/hcm/assets/inventory${status ? `?status=${status}` : ''}`),
+      create: (body: CreateAssetBody) => api.post('/hcm/assets/inventory', body),
+      transition: (id: string, status: string) => api.post(`/hcm/assets/inventory/${id}/transition`, { status }),
+    },
+    assignments: {
+      list: () => api.get<AssetAssignment[]>('/hcm/assets/assignments'),
+      issue: (body: IssueAssetBody) => api.post('/hcm/assets/assignments', body),
+      return: (id: string, condition: string) => api.post(`/hcm/assets/assignments/${id}/return`, { condition }),
+    },
+    travel: {
+      list: () => api.get<TravelRequest[]>('/hcm/assets/travel'),
+      decide: (id: string, decision: 'approved' | 'rejected') =>
+        api.post(`/hcm/assets/travel/${id}/decide`, { decision }),
+      settle: (id: string, expenseClaimId: string) => api.post(`/hcm/assets/travel/${id}/settle`, { expenseClaimId }),
+    },
+    letters: {
+      list: () => api.get<LetterRequest[]>('/hcm/assets/letters'),
+      fulfil: (id: string) => api.post(`/hcm/assets/letters/${id}/fulfil`),
+      reject: (id: string, note: string) => api.post(`/hcm/assets/letters/${id}/reject`, { note }),
+    },
+    idCards: {
+      list: () => api.get<IdCard[]>('/hcm/assets/idcards'),
+      issue: (employmentRelationshipId: string) => api.post('/hcm/assets/idcards', { employmentRelationshipId }),
+      reportLost: (id: string) => api.post(`/hcm/assets/idcards/${id}/lost`),
+      returnCard: (id: string) => api.post(`/hcm/assets/idcards/${id}/return`),
     },
   },
   workforce: {
