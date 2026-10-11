@@ -368,26 +368,31 @@ export async function recordTest(planId: string, input: RecordTestInput) {
       impact: { domains: [IT_DOMAIN] },
       tx,
     });
+    // A breached RTO is a consequence of this test, so its exception commits or rolls
+    // back with the row. Raised after the commit, a failed raise left a breached test
+    // with nothing to act on.
+    if (rtoBreached(test, plan)) {
+      await raiseException(
+        {
+          code: 'IT_DR_RTO_EXCEEDED',
+          label: `${plan.applicationName} DR test exceeded its RTO/RPO`,
+          severity: 'S3_HIGH_RISK',
+          subjectType: 'it_continuity_test',
+          subjectId: test.id,
+          subjectLabel: recordCode,
+          domain: IT_DOMAIN,
+          detail:
+            `${plan.recordCode} promises RTO ${plan.rtoMinutes}m / RPO ${plan.rpoMinutes}m for ${plan.applicationName}. ` +
+            `The ${test.kind} test on ${testedAt.toISOString().slice(0, 10)} recorded ` +
+            `${test.actualRecoveryMinutes ?? '—'}m recovery and ${test.actualDataLossMinutes ?? '—'}m of data loss.`,
+          ownerPartyId: plan.ownerPartyId,
+          triggerFingerprint: 'it_continuity_test_rto_exceeded',
+        },
+        tx,
+      );
+    }
     return test;
   });
-
-  if (rtoBreached(test, plan)) {
-    await raiseException({
-      code: 'IT_DR_RTO_EXCEEDED',
-      label: `${plan.applicationName} DR test exceeded its RTO/RPO`,
-      severity: 'S3_HIGH_RISK',
-      subjectType: 'it_continuity_test',
-      subjectId: test.id,
-      subjectLabel: recordCode,
-      domain: IT_DOMAIN,
-      detail:
-        `${plan.recordCode} promises RTO ${plan.rtoMinutes}m / RPO ${plan.rpoMinutes}m for ${plan.applicationName}. ` +
-        `The ${test.kind} test on ${testedAt.toISOString().slice(0, 10)} recorded ` +
-        `${test.actualRecoveryMinutes ?? '—'}m recovery and ${test.actualDataLossMinutes ?? '—'}m of data loss.`,
-      ownerPartyId: plan.ownerPartyId,
-      triggerFingerprint: 'it_continuity_test_rto_exceeded',
-    });
-  }
 
   return test;
 }
