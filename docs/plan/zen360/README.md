@@ -61,7 +61,7 @@ The P1s that go with these: FX-05 (the agent tier ceiling is not enforced, `agen
    - `Task` is untyped (`relatedType`/`relatedId` strings).
      These are **new**, not in any plan file, and they are what the proposal's first pilot actually needs.
 4. **Multi-entity is half-built.** `CompanyProfile.tenantId @unique` (`main.prisma:97`) means one tenant is one company. Groups exist as a tenant tree with `EntitySnapshot`. `LedgerEntity` and `JournalEntry.entityId` are in the schema, but nothing writes them. Intercompany is one-sided (`Transaction.intercompanyTenantId`) with no pairing or eliminations, and group totals are floats (`group.ts:132-141`). Decision A must be taken before Phase 1 posts anything (D-01).
-5. **Communication capture is absent.** There are no mailbox, telephony, recording or transcript models or adapters. The only senders are marketing-only, env-gated (generic HTTP email, MSG91, WhatsApp Cloud templates), and those map _sent_ to _delivered_ (`whatsappCloud.ts:51`, `msg91.ts:44`). "All communication through the app" is the proposal's most expensive and most legally exposed line (recording consent, DPDP, provider cost). Treat it as an integration programme with its own decision (D-13). Do not build it in-house.
+5. **Communication capture is absent.** There are no mailbox, telephony, recording or transcript models or adapters. The only senders are marketing-only, env-gated (generic HTTP email, MSG91, WhatsApp Cloud templates), and those map _sent_ to _delivered_ (`whatsappCloud.ts:51`, `msg91.ts:44`). "All communication through the app" is the proposal's most expensive and most legally exposed line (recording consent, DPDP, provider cost). Treat it as an integration programme with its own decision (D-13). Do not build it in-house. Exception: employee company mailboxes are planned in Phase 1E (round 21, OPEN; round 22 clarification on copying open-source mail code, DECISIONS.md).
 6. **The AI is a shell.** `platform/llm.ts` is a gateway with no provider call, and its PII list misses fields (FX-65). The README's "AI-native" line (`README.md:3`) is still unsupported. The proposal names runtimes without evaluation gates. Keep all AI behind plan Phases 5–6 and decide the claim now (D-15).
 
 ## 4. Sequencing: proposal phases mapped onto the plan
@@ -86,7 +86,7 @@ The proposal's Phases 0–4 collide by name with plan Phases 0–8 (its "Phase 1
 
 **Where the proposal should change the plan:**
 
-- The plan has no operating-control spine (Z2), no customer case, no continuity/backup-owner concept, no intercompany or consolidation work, no comms capture and no portals. These are real gaps, now captured as Z2–Z4.
+- The plan has no operating-control spine (Z2), no customer case, no continuity/backup-owner concept, no intercompany or consolidation work, no comms capture beyond employee mailboxes (planned in Phase 1E, OPEN) and no portals. These are real gaps, now captured as Z2–Z4.
 - Plan gates are engineering-only. Adopt the proposal's operating gate (p61): named owner, end-to-end scenario, negative access test, support plan, training, export and rollback. Apply it on top of "Done means".
 
 ## 5. Decisions needed (full register in `DECISIONS.md`)
