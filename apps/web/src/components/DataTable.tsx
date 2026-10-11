@@ -31,6 +31,18 @@ export type DataTableColumn<T> = {
 
 export type DataTableSort = { columnId: string; direction: 'asc' | 'desc' };
 
+/**
+ * Opens a record from its row. A bare onClick on the `<tr>` is not reachable
+ * by keyboard, so activation is a real button in the first column instead.
+ * That column's cell content becomes the button's content, so it must not hold
+ * a link or button of its own.
+ */
+export type DataTableRowAction<T> = {
+  /** The button's accessible name. Name the record, e.g. "Open journey Welcome series". */
+  label: (row: T) => string;
+  onActivate: (row: T) => void;
+};
+
 export type DataTableProps<T> = {
   /**
    * Read by screen readers as the table's name. Required because a table with
@@ -40,13 +52,19 @@ export type DataTableProps<T> = {
   caption: string;
   columns: ReadonlyArray<DataTableColumn<T>>;
   rows: ReadonlyArray<T>;
-  rowKey: (row: T) => string;
+  /**
+   * React key. `index` is the row's position in `rows`, for callers whose records have no
+   * unique field of their own (budget variance rows carry none). A duplicate key makes React
+   * reuse or drop rows.
+   */
+  rowKey: (row: T, index: number) => string;
   /** Shown when there are no rows. An empty list must say what would fill it. */
   emptyMessage: string;
   emptyHint?: string;
   loading?: boolean;
   error?: unknown;
   defaultSort?: DataTableSort;
+  rowAction?: DataTableRowAction<T>;
   className?: string;
 };
 
@@ -74,18 +92,21 @@ export function DataTable<T>({
   loading = false,
   error,
   defaultSort,
+  rowAction,
   className = '',
 }: DataTableProps<T>) {
   const [sort, setSort] = useState<DataTableSort | undefined>(defaultSort);
 
+  // Each row keeps its index in `rows` so its key does not change when the sort does.
   const sortedRows = useMemo(() => {
+    const indexed = rows.map((row, index) => ({ row, index }));
     const active = columns.find((c) => c.id === sort?.columnId);
-    if (!sort || !active?.sortValue) return rows;
+    if (!sort || !active?.sortValue) return indexed;
     const pick = active.sortValue;
     const sign = sort.direction === 'asc' ? 1 : -1;
-    return [...rows].sort((x, y) => {
-      const a = pick(x);
-      const b = pick(y);
+    return indexed.sort((x, y) => {
+      const a = pick(x.row);
+      const b = pick(y.row);
       // Missing values go last whichever way the column runs. Negating the
       // comparison would put them first on a descending sort.
       if (isMissing(a) || isMissing(b)) return Number(isMissing(a)) - Number(isMissing(b));
@@ -155,15 +176,27 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {sortedRows.map((row) => (
-            <tr key={rowKey(row)}>
-              {columns.map((column) => {
+          {sortedRows.map(({ row, index }) => (
+            <tr key={rowKey(row, index)}>
+              {columns.map((column, columnIndex) => {
+                const content = column.cell(row);
                 return (
                   <td
                     key={column.id}
                     className={`${column.align === 'right' ? 'text-right tabular-nums' : ''} ${column.cellClassName ?? ''}`}
                   >
-                    {column.cell(row)}
+                    {rowAction && columnIndex === 0 ? (
+                      <button
+                        type="button"
+                        aria-label={rowAction.label(row)}
+                        onClick={() => rowAction.onActivate(row)}
+                        className="block w-full cursor-pointer text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                      >
+                        {content}
+                      </button>
+                    ) : (
+                      content
+                    )}
                   </td>
                 );
               })}
