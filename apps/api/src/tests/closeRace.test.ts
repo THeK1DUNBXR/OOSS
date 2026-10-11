@@ -16,8 +16,8 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { istMonthKey, monthRange } from '@kaizen/shared';
-import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
-import { recordTransaction } from '../domains/books.js';
+import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
+import { recordTransaction, writeTransaction } from '../domains/books.js';
 import { closePeriod, openAccountingDate, requestClosePeriod, trialBalance } from '../domains/compliance/books.js';
 import { assertTrialBalance, journalTrialBalance } from '../platform/balances.js';
 
@@ -58,12 +58,19 @@ async function openPeriodForTest(month: string) {
   });
 }
 
+/** A month no earlier run has used. Periods persist in the test database, so a fixed month is fresh only once. */
+function freshMonth(): string {
+  const year = 2100 + Math.floor(Math.random() * 90);
+  const month = 1 + Math.floor(Math.random() * 12);
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
 /** A cashbook receipt into the bank account, dated mid-month in IST. */
-function receiptIn(month: string, reference: string) {
+function receiptIn(month: string, reference: string, amount = 1000) {
   return {
     txnDate: new Date(`${month}-15T06:00:00.000Z`),
     direction: 'in' as const,
-    amount: 1000,
+    amount,
     accountId: ACCOUNT_ID,
     categoryId: CATEGORY_ID,
     reference,
@@ -82,7 +89,8 @@ async function assertJournalBalances(): Promise<void> {
 }
 
 /**
- * Resolves once some backend is waiting for a lock. While the period lock is
+ * Resolves once some backend is waiting for a lock, or once `isDone` reports the
+ * awaited call has settled, whichever comes first. While the period lock is
  * held, the only session that can be waiting on it is the close, so this is
  * the close parked at its lock. It waits on database state, not on the clock.
  * pg_stat_activity is not used: the scoped client connects under a role that
@@ -91,20 +99,47 @@ async function assertJournalBalances(): Promise<void> {
  * A row-level wait is a transactionid lock, and those rows carry no database
  * OID, hence the `database IS NULL` branch.
  */
-async function untilBlockedOnLock(): Promise<void> {
+async function lockWaiting(): Promise<boolean> {
+  const rows = await unscopedPrisma.$queryRaw<Array<{ n: bigint }>>`
+    SELECT count(*)::bigint AS "n" FROM pg_locks
+    WHERE NOT "granted"
+      AND ("database" IS NULL
+        OR "database" = (SELECT "oid" FROM pg_database WHERE "datname" = current_database()))`;
+  return Number(rows[0]?.n ?? 0) > 0;
+}
+
+async function untilBlockedOnLock(isDone: () => boolean = () => false): Promise<void> {
   // A deadline is only a ceiling on a hung test. The close reads the legacy
   // trial balance before it reaches the lock, which can take seconds on a busy host.
   const deadline = Date.now() + 25_000;
   while (Date.now() < deadline) {
-    const rows = await unscopedPrisma.$queryRaw<Array<{ n: bigint }>>`
-      SELECT count(*)::bigint AS "n" FROM pg_locks
-      WHERE NOT "granted"
-        AND ("database" IS NULL
-          OR "database" = (SELECT "oid" FROM pg_database WHERE "datname" = current_database()))`;
-    if (Number(rows[0]?.n ?? 0) > 0) return;
+    if (isDone()) return;
+    if (await lockWaiting()) return;
     await new Promise((resolve) => setImmediate(resolve));
   }
   throw new Error('the close never reached the period lock');
+}
+
+async function periodStatusOf(month: string): Promise<string | undefined> {
+  const row = await unscopedPrisma.accountingPeriod.findFirst({
+    where: { tenantId: TENANT, period: month },
+    select: { status: true },
+  });
+  return row?.status;
+}
+
+/**
+ * Resolves once the close has moved the period, or once it is parked on a lock.
+ * Either way the status read after it says whether the close got past the open write.
+ */
+async function untilStatusMovedOrWaiting(month: string): Promise<void> {
+  const deadline = Date.now() + 25_000;
+  while (Date.now() < deadline) {
+    if ((await periodStatusOf(month)) !== 'open') return;
+    if (await lockWaiting()) return;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  throw new Error('the close neither moved the period nor waited on a lock');
 }
 
 describe('T70-9: a legacy write in a closing period is refused', () => {
@@ -205,6 +240,96 @@ describe('money that has already arrived moves past a closing month', () => {
 
     const date = await asUser(FINANCE, () => openAccountingDate(new Date(`${MAR}-15T06:00:00.000Z`)));
     expect(istMonthKey(date)).toBe('2029-04');
+    await assertJournalBalances();
+  });
+});
+
+describe('T70-13: a legacy write holding the period lock makes the close wait, and its amount is in the snapshot', () => {
+  it('the close cannot move the period while a write is open; the write is in the snapshot; a write after the close is refused', async () => {
+    const month = freshMonth();
+    const monthEnd = new Date(monthRange(month).to.getTime() - 1);
+    const refA = unique('W5 open write');
+    const refB = unique('W5 after close');
+    // The row exists before write A starts. Otherwise the close would create it, and that
+    // creation is audited, which queues on the audit chain lock write A holds. The wait
+    // would then look like the period lock. With the row present, the only thing the
+    // close can wait on is the period row.
+    await openPeriodForTest(month);
+
+    // Write A: the legacy entry and its period lock in one transaction, held open until released.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let signalHeld!: () => void;
+    const held = new Promise<void>((resolve) => (signalHeld = resolve));
+    const writeA = asUser(FINANCE, () =>
+      prisma.$transaction(
+        async (tx) => {
+          const txn = await writeTransaction(receiptIn(month, refA, 2500), tx);
+          signalHeld();
+          await gate;
+          return txn;
+        },
+        { timeout: 60_000, maxWait: 10_000 },
+      ),
+    );
+    await Promise.race([held, writeA]);
+
+    // The close's first step, the request, takes the period row. It must queue behind write A.
+    // Write A holds the audit chain lock too, so the close can also park after its status
+    // update, on the audit write. The status read is the test: a committed update is visible.
+    const requesting = asUser(FINANCE, () => requestClosePeriod(month));
+    try {
+      await untilStatusMovedOrWaiting(month);
+      expect(await periodStatusOf(month)).toBe('open');
+    } finally {
+      release();
+    }
+
+    const txnA = await writeA;
+    expect(txnA.recordCode).toMatch(/^TXN/);
+    expect((await requesting).status).toBe('closing');
+    await assertJournalBalances();
+
+    const closed = await asUser(CHAIRMAN, () => closePeriod(month));
+    expect(closed.status).toBe('closed');
+    expect(await countTransactions(refA)).toBe(1);
+
+    // The snapshot is the books as they stood once write A had committed.
+    const { journal, ...cashbook } = closed.snapshot as unknown as {
+      journal: { asOf: string; debitsMinor: string; creditsMinor: string; lineCount: number };
+      asOf: string;
+      rows: unknown[];
+      totalDebit: number;
+      totalCredit: number;
+    };
+    expect(cashbook).toEqual(JSON.parse(JSON.stringify(await asUser(CHAIRMAN, () => trialBalance(monthEnd)))));
+    assertTrialBalance({
+      asOf: journal.asOf,
+      debitsMinor: BigInt(journal.debitsMinor),
+      creditsMinor: BigInt(journal.creditsMinor),
+      lineCount: journal.lineCount,
+    });
+    await assertJournalBalances();
+
+    // A write after the close is refused and writes nothing.
+    const refusal = await expectReject(() => asUser(FINANCE, () => recordTransaction(receiptIn(month, refB))));
+    expect(refusal.status).toBe(422);
+    expect(await countTransactions(refB)).toBe(0);
+    await assertJournalBalances();
+  });
+});
+
+describe('T70-14: a legacy write into a month with no period row creates the row under the lock', () => {
+  it('the row exists and is open after the write, and the entry is booked', async () => {
+    const month = freshMonth();
+    const reference = unique('W5 no period row');
+    expect(await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period: month } })).toBeNull();
+
+    await asUser(FINANCE, () => recordTransaction(receiptIn(month, reference)));
+
+    const row = await unscopedPrisma.accountingPeriod.findFirst({ where: { tenantId: TENANT, period: month } });
+    expect(row?.status).toBe('open');
+    expect(await countTransactions(reference)).toBe(1);
     await assertJournalBalances();
   });
 });
