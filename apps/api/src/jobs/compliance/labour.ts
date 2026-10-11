@@ -5,6 +5,8 @@ import { runLeaveYearClose, runWeeklyHoursCheck, runPoshOverdueCheck } from '../
 export const JOBS: JobDefinition[] = [
   {
     name: 'runLeaveYearCloseJob',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Leave carry-forward and lapse at FY close (CMP-LAB-004)',
     automationClass: 'financial_processing',
     cron: '0 1 1 4 *',
@@ -12,6 +14,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runWeeklyHoursCheckJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Weekly working-hours cap check and overtime accrual (CMP-LAB-002)',
     automationClass: 'threshold_response',
     cron: '0 2 * * 1',
@@ -19,6 +23,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runPoshOverdueCheckJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'POSH inquiry overdue detector (CMP-LAB-001)',
     automationClass: 'escalation_routing',
     cron: '0 7 * * *',

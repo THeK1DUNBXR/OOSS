@@ -26,6 +26,7 @@ import {
   type DelegationFact,
 } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, scopeFor } from '../../platform/permissions.js';
@@ -338,13 +339,13 @@ export async function submitRequest(input: { typeId: string; subjectEmploymentId
     delegations,
   );
 
+  await auditWrite({ action: 'create', subjectType: 'hr_request', subjectId: request.id, after: request as never });
   await emit({
     name: EVENTS.HR_REQUEST_SUBMITTED,
     subject: { entityType: 'hr_request', entityId: request.id, recordCode },
     newState: { typeCode: type.code, level: 1, status: 'submitted' },
     impact: { domains: ['hcm'], severity: 'S1_ATTENTION' },
   });
-  await auditWrite({ action: 'create', subjectType: 'hr_request', subjectId: request.id, after: request as never });
 
   return getRequest(request.id);
 }
@@ -583,24 +584,33 @@ export async function createDelegation(input: {
   if (input.toDate <= input.fromDate) throw ApiError.badRequest('toDate must be after fromDate.');
   if (input.toPartyId === fromPartyId) throw ApiError.badRequest('Cannot delegate to yourself.');
 
-  const row = await prisma.delegationOfAuthority.create({
-    data: {
-      tenantId: auth.tenantId,
-      fromPartyId,
-      toPartyId: input.toPartyId,
-      fromDate: input.fromDate,
-      toDate: input.toDate,
-      scope: input.scope ?? 'all',
-      note: input.note ?? null,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.delegationOfAuthority.create({
+      data: {
+        tenantId: auth.tenantId,
+        fromPartyId,
+        toPartyId: input.toPartyId,
+        fromDate: input.fromDate,
+        toDate: input.toDate,
+        scope: input.scope ?? 'all',
+        note: input.note ?? null,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'authority_delegation',
+      subjectId: row.id,
+      after: row as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.AUTHORITY_DELEGATION_CREATED,
+      subject: { entityType: 'authority_delegation', entityId: row.id },
+      newState: { fromPartyId, toPartyId: input.toPartyId, scope: row.scope },
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: EVENTS.AUTHORITY_DELEGATION_CREATED,
-    subject: { entityType: 'authority_delegation', entityId: row.id },
-    newState: { fromPartyId, toPartyId: input.toPartyId, scope: row.scope },
-  });
-  await auditWrite({ action: 'create', subjectType: 'authority_delegation', subjectId: row.id, after: row as never });
-  return row;
 }
 
 export async function revokeDelegation(id: string) {
@@ -609,12 +619,21 @@ export async function revokeDelegation(id: string) {
   const row = await prisma.delegationOfAuthority.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!row) throw ApiError.notFound('Delegation');
   if (row.fromPartyId !== auth.partyId) throw ApiError.forbidden('Only the delegator may revoke a delegation.');
-  const updated = await prisma.delegationOfAuthority.update({ where: { id }, data: { revokedAt: new Date() } });
-  await emit({
-    name: EVENTS.AUTHORITY_DELEGATION_ENDED,
-    subject: { entityType: 'authority_delegation', entityId: id },
-    newState: { revokedAt: updated.revokedAt },
+  return governedWrite(async (tx) => {
+    const updated = await tx.delegationOfAuthority.update({ where: { id }, data: { revokedAt: new Date() } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'authority_delegation',
+      subjectId: id,
+      after: updated as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.AUTHORITY_DELEGATION_ENDED,
+      subject: { entityType: 'authority_delegation', entityId: id },
+      newState: { revokedAt: updated.revokedAt },
+      tx,
+    });
+    return updated;
   });
-  await auditWrite({ action: 'update', subjectType: 'authority_delegation', subjectId: id, after: updated as never });
-  return updated;
 }

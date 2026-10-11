@@ -126,37 +126,42 @@ export async function createApplication(input: CreateApplicationInput) {
   }
 
   const recordCode = await nextRecordCode('SWA');
-  const app = await prisma.itApplication.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name.trim(),
-      vendorName: input.vendorName ?? null,
-      vendorId: input.vendorId ?? null,
-      category: input.category,
-      tier: input.tier ?? 3,
-      hosting: input.hosting,
-      ownerPartyId: input.ownerPartyId ?? null,
-      dataClassificationHandled: input.dataClassificationHandled ?? 'internal',
-      sso: input.sso ?? false,
-      status: 'evaluating',
-      url: input.url ?? null,
-      notes: input.notes ?? null,
-    },
-  });
+  const app = await prisma.$transaction(async (tx) => {
+    const app = await tx.itApplication.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name.trim(),
+        vendorName: input.vendorName ?? null,
+        vendorId: input.vendorId ?? null,
+        category: input.category,
+        tier: input.tier ?? 3,
+        hosting: input.hosting,
+        ownerPartyId: input.ownerPartyId ?? null,
+        dataClassificationHandled: input.dataClassificationHandled ?? 'internal',
+        sso: input.sso ?? false,
+        status: 'evaluating',
+        url: input.url ?? null,
+        notes: input.notes ?? null,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_application',
-    subjectId: app.id,
-    after: { recordCode, name: app.name },
-  });
-  await emit({
-    name: EVENTS.IT_APPLICATION_CREATED,
-    subject: { entityType: 'it_application', entityId: app.id, recordCode },
-    newState: { name: app.name, status: app.status, tier: app.tier },
-    owner: { partyId: app.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_application',
+      subjectId: app.id,
+      after: { recordCode, name: app.name },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_APPLICATION_CREATED,
+      subject: { entityType: 'it_application', entityId: app.id, recordCode },
+      newState: { name: app.name, status: app.status, tier: app.tier },
+      owner: { partyId: app.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return app;
   });
 
   return app;
@@ -273,24 +278,29 @@ export async function transitionApplication(id: string, event: ItApplicationEven
   }
   const to = itApplicationMachine.apply(from, event);
 
-  const updated = await prisma.itApplication.update({ where: { id }, data: { status: to } });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itApplication.update({ where: { id }, data: { status: to } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_application',
-    subjectId: id,
-    before: { status: from },
-    after: { status: to },
-    meta: { transition: event, note: note ?? null },
-  });
-  await emit({
-    name: EVENTS.IT_APPLICATION_TRANSITIONED,
-    subject: { entityType: 'it_application', entityId: id, recordCode: app.recordCode },
-    previousState: { status: from },
-    newState: { status: to },
-    owner: { partyId: app.ownerPartyId },
-    reason: note ? { note } : null,
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_application',
+      subjectId: id,
+      before: { status: from },
+      after: { status: to },
+      meta: { transition: event, note: note ?? null },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_APPLICATION_TRANSITIONED,
+      subject: { entityType: 'it_application', entityId: id, recordCode: app.recordCode },
+      previousState: { status: from },
+      newState: { status: to },
+      owner: { partyId: app.ownerPartyId },
+      reason: note ? { note } : null,
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return { ...updated, availableTransitions: availableTransitions(itApplicationMachine, to) };
@@ -361,41 +371,50 @@ export async function createLicence(input: CreateLicenceInput) {
   if (input.costPerPeriod < 0) throw ApiError.badRequest('Cost per period cannot be negative.');
 
   const recordCode = await nextRecordCode('LIC');
-  const licence = await prisma.itLicence.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      applicationId: input.applicationId,
-      kind: input.kind,
-      seatsPurchased: input.seatsPurchased ?? 0,
-      seatsInUse: input.seatsInUse ?? 0,
-      costPerPeriod: input.costPerPeriod,
-      currency: input.currency ?? 'INR',
-      billingCycle: input.billingCycle,
-      termStart: input.termStart ?? null,
-      termEnd: input.termEnd ?? null,
-      renewalDate: input.renewalDate ?? null,
-      noticeDays: input.noticeDays ?? 30,
-      autoRenew: input.autoRenew ?? false,
-      vendorContractId: input.vendorContractId ?? null,
-      lastVendorBillId: input.lastVendorBillId ?? null,
-      status: 'active',
-    },
-  });
+  const licence = await prisma.$transaction(async (tx) => {
+    const licence = await tx.itLicence.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        applicationId: input.applicationId,
+        kind: input.kind,
+        seatsPurchased: input.seatsPurchased ?? 0,
+        seatsInUse: input.seatsInUse ?? 0,
+        costPerPeriod: input.costPerPeriod,
+        currency: input.currency ?? 'INR',
+        billingCycle: input.billingCycle,
+        termStart: input.termStart ?? null,
+        termEnd: input.termEnd ?? null,
+        renewalDate: input.renewalDate ?? null,
+        noticeDays: input.noticeDays ?? 30,
+        autoRenew: input.autoRenew ?? false,
+        vendorContractId: input.vendorContractId ?? null,
+        lastVendorBillId: input.lastVendorBillId ?? null,
+        status: 'active',
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_licence',
-    subjectId: licence.id,
-    after: { recordCode, applicationId: input.applicationId },
-  });
-  await emit({
-    name: EVENTS.IT_LICENCE_CREATED,
-    subject: { entityType: 'it_licence', entityId: licence.id, recordCode },
-    related: [{ relation: 'licenses', entityType: 'it_application', entityId: application.id }],
-    newState: { kind: licence.kind, seatsPurchased: licence.seatsPurchased, costPerPeriod: num(licence.costPerPeriod) },
-    owner: { partyId: application.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_licence',
+      subjectId: licence.id,
+      after: { recordCode, applicationId: input.applicationId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_LICENCE_CREATED,
+      subject: { entityType: 'it_licence', entityId: licence.id, recordCode },
+      related: [{ relation: 'licenses', entityType: 'it_application', entityId: application.id }],
+      newState: {
+        kind: licence.kind,
+        seatsPurchased: licence.seatsPurchased,
+        costPerPeriod: num(licence.costPerPeriod),
+      },
+      owner: { partyId: application.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return licence;
   });
 
   return licence;
@@ -576,95 +595,112 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
   });
   const policyVersion = policy?.versions[0];
 
-  const step = await prisma.approvalStep.create({
-    data: {
-      tenantId: auth.tenantId,
-      policyId: policy?.id ?? null,
-      policyVersion: policyVersion?.version ?? null,
+  // The gate step, the licence's pointer to it, its event-log row, the audit
+  // record and the proposed event commit together. A licence that points at a
+  // step which was never opened (or a step with no event) is the failure mode
+  // the renewal ladder cannot recover from.
+  const { step, updated } = await prisma.$transaction(async (tx) => {
+    const step = await tx.approvalStep.create({
+      data: {
+        tenantId: auth.tenantId,
+        policyId: policy?.id ?? null,
+        policyVersion: policyVersion?.version ?? null,
+        subjectType: 'it_licence',
+        subjectId: id,
+        subjectLabel: licence.recordCode ?? id,
+        action: 'it_licence.renew',
+        // approveRenewal checks `it_licences:approve`; the step must carry the same grant.
+        resource: 'it_licences',
+        requestedById: auth.partyId ?? 'system',
+        requestedValue: annualised,
+        currency: licence.currency,
+        resolvedApproverId: approver?.partyId ?? null,
+        resolvedApproverRole: approver?.roleSlug ?? 'finance_head',
+        resolutionTier: 0,
+        selfDealingBarTripped: false,
+        slaDueAt: addBusinessDays(new Date(), 3),
+      },
+    });
+
+    const updated = await tx.itLicence.update({
+      where: { id },
+      data: {
+        pendingRenewalProposedById: auth.partyId,
+        pendingRenewalApprovalStepId: step.id,
+        pendingRenewalTermEnd: input.newTermEnd,
+        pendingRenewalCostPerPeriod: costPerPeriod,
+        pendingRenewalNote: input.note ?? null,
+      },
+    });
+
+    await tx.itLicenceEvent.create({
+      data: {
+        tenantId: auth.tenantId,
+        licenceId: id,
+        kind: 'renewal_proposed',
+        actorPartyId: auth.partyId,
+        note: input.note ?? null,
+        detail: {
+          approvalStepId: step.id,
+          newTermEnd: input.newTermEnd,
+          newCostPerPeriod: costPerPeriod,
+          annualisedCost: annualised,
+        },
+      },
+    });
+
+    await auditWrite({
+      action: 'update',
       subjectType: 'it_licence',
       subjectId: id,
-      subjectLabel: licence.recordCode ?? id,
-      action: 'it_licence.renew',
-      // approveRenewal checks `it_licences:approve`; the step must carry the same grant.
-      resource: 'it_licences',
-      requestedById: auth.partyId ?? 'system',
-      requestedValue: annualised,
-      currency: licence.currency,
-      resolvedApproverId: approver?.partyId ?? null,
-      resolvedApproverRole: approver?.roleSlug ?? 'finance_head',
-      resolutionTier: 0,
-      selfDealingBarTripped: false,
-      slaDueAt: addBusinessDays(new Date(), 3),
-    },
-  });
-
-  const updated = await prisma.itLicence.update({
-    where: { id },
-    data: {
-      pendingRenewalProposedById: auth.partyId,
-      pendingRenewalApprovalStepId: step.id,
-      pendingRenewalTermEnd: input.newTermEnd,
-      pendingRenewalCostPerPeriod: costPerPeriod,
-      pendingRenewalNote: input.note ?? null,
-    },
-  });
-
-  await prisma.itLicenceEvent.create({
-    data: {
-      tenantId: auth.tenantId,
-      licenceId: id,
-      kind: 'renewal_proposed',
-      actorPartyId: auth.partyId,
-      note: input.note ?? null,
-      detail: {
-        approvalStepId: step.id,
-        newTermEnd: input.newTermEnd,
-        newCostPerPeriod: costPerPeriod,
-        annualisedCost: annualised,
-      },
-    },
-  });
-
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_licence',
-    subjectId: id,
-    before: { pendingRenewalApprovalStepId: null },
-    after: { pendingRenewalApprovalStepId: step.id },
-  });
-  await emit({
-    name: EVENTS.IT_LICENCE_RENEWAL_PROPOSED,
-    subject: { entityType: 'it_licence', entityId: id, recordCode: licence.recordCode },
-    related: [{ relation: 'gates', entityType: 'approval_step', entityId: step.id }],
-    newState: { approvalStepId: step.id, annualisedCost: annualised, newTermEnd: input.newTermEnd },
-    reason: { reasonCode: 'renewal_proposed' },
-    impact: { domains: [IT_DOMAIN] },
-  });
-
-  if (approver?.partyId) {
-    await notify({
-      recipientPartyId: approver.partyId,
-      priority: 'N3_HIGH',
-      title: `Renewal approval required: ${licence.recordCode ?? id}`,
-      body: `${licence.application.name} — annualised cost ${annualised} ${licence.currency}. Proposed by the requester; the Self-Dealing Bar means they cannot decide it.`,
-      severity: 'S2_WARNING',
-      subjectType: 'approval_step',
-      subjectId: step.id,
-      drillPath: `/it/licences/${id}`,
+      before: { pendingRenewalApprovalStepId: null },
+      after: { pendingRenewalApprovalStepId: step.id },
+      tx,
     });
-  } else {
-    await raiseException({
-      code: 'EX-GOV-001',
-      label: 'Nobody could be found to approve this licence renewal',
-      severity: 'S3_HIGH_RISK',
-      subjectType: 'approval_step',
-      subjectId: step.id,
-      subjectLabel: licence.recordCode ?? id,
-      domain: IT_DOMAIN,
-      detail: `No active Finance Head or chairman affiliation could be resolved to decide ${licence.recordCode ?? id}'s renewal.`,
-      reasonCode: 'approver_unresolved',
+    await emit({
+      name: EVENTS.IT_LICENCE_RENEWAL_PROPOSED,
+      subject: { entityType: 'it_licence', entityId: id, recordCode: licence.recordCode },
+      related: [{ relation: 'gates', entityType: 'approval_step', entityId: step.id }],
+      newState: { approvalStepId: step.id, annualisedCost: annualised, newTermEnd: input.newTermEnd },
+      reason: { reasonCode: 'renewal_proposed' },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
     });
-  }
+    // The approver is told, or the renewal is flagged as unresolvable, in the same
+    // transaction as the approval step. Outside it, a failed notification left a
+    // pending renewal the approver had not been told about.
+    if (approver?.partyId) {
+      await notify(
+        {
+          recipientPartyId: approver.partyId,
+          priority: 'N3_HIGH',
+          title: `Renewal approval required: ${licence.recordCode ?? id}`,
+          body: `${licence.application.name} — annualised cost ${annualised} ${licence.currency}. Proposed by the requester; the Self-Dealing Bar means they cannot decide it.`,
+          severity: 'S2_WARNING',
+          subjectType: 'approval_step',
+          subjectId: step.id,
+          drillPath: `/it/licences/${id}`,
+        },
+        tx,
+      );
+    } else {
+      await raiseException(
+        {
+          code: 'EX-GOV-001',
+          label: 'Nobody could be found to approve this licence renewal',
+          severity: 'S3_HIGH_RISK',
+          subjectType: 'approval_step',
+          subjectId: step.id,
+          subjectLabel: licence.recordCode ?? id,
+          domain: IT_DOMAIN,
+          detail: `No active Finance Head or chairman affiliation could be resolved to decide ${licence.recordCode ?? id}'s renewal.`,
+          reasonCode: 'approver_unresolved',
+        },
+        tx,
+      );
+    }
+    return { step, updated };
+  });
 
   return {
     applied: false,
@@ -693,31 +729,35 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
   const decided = await decideApprovalStep(licence.pendingRenewalApprovalStepId, approve, note);
 
   if (!approve) {
-    const cleared = await prisma.itLicence.update({
-      where: { id },
-      data: {
-        pendingRenewalApprovalStepId: null,
-        pendingRenewalProposedById: null,
-        pendingRenewalTermEnd: null,
-        pendingRenewalCostPerPeriod: null,
-        pendingRenewalNote: null,
-      },
-    });
-    await prisma.itLicenceEvent.create({
-      data: {
-        tenantId: auth.tenantId,
-        licenceId: id,
-        kind: 'renewal_declined',
-        actorPartyId: auth.partyId,
-        note: note || null,
-      },
-    });
-    await auditWrite({
-      action: 'update',
-      subjectType: 'it_licence',
-      subjectId: id,
-      before: { status: licence.status },
-      after: { renewalDeclined: true },
+    const cleared = await prisma.$transaction(async (tx) => {
+      const cleared = await tx.itLicence.update({
+        where: { id },
+        data: {
+          pendingRenewalApprovalStepId: null,
+          pendingRenewalProposedById: null,
+          pendingRenewalTermEnd: null,
+          pendingRenewalCostPerPeriod: null,
+          pendingRenewalNote: null,
+        },
+      });
+      await tx.itLicenceEvent.create({
+        data: {
+          tenantId: auth.tenantId,
+          licenceId: id,
+          kind: 'renewal_declined',
+          actorPartyId: auth.partyId,
+          note: note || null,
+        },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'it_licence',
+        subjectId: id,
+        before: { status: licence.status },
+        after: { renewalDeclined: true },
+        tx,
+      });
+      return cleared;
     });
     return {
       applied: false,
@@ -728,46 +768,51 @@ export async function approveRenewal(id: string, approve: boolean, note = ''): P
     };
   }
 
-  const updated = await prisma.itLicence.update({
-    where: { id },
-    data: {
-      status: 'active',
-      termEnd: licence.pendingRenewalTermEnd ?? licence.termEnd,
-      renewalDate: licence.pendingRenewalTermEnd ?? licence.renewalDate,
-      costPerPeriod: licence.pendingRenewalCostPerPeriod ?? licence.costPerPeriod,
-      renewalNotifiedRungs: [],
-      pendingRenewalApprovalStepId: null,
-      pendingRenewalProposedById: null,
-      pendingRenewalTermEnd: null,
-      pendingRenewalCostPerPeriod: null,
-      pendingRenewalNote: null,
-    },
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itLicence.update({
+      where: { id },
+      data: {
+        status: 'active',
+        termEnd: licence.pendingRenewalTermEnd ?? licence.termEnd,
+        renewalDate: licence.pendingRenewalTermEnd ?? licence.renewalDate,
+        costPerPeriod: licence.pendingRenewalCostPerPeriod ?? licence.costPerPeriod,
+        renewalNotifiedRungs: [],
+        pendingRenewalApprovalStepId: null,
+        pendingRenewalProposedById: null,
+        pendingRenewalTermEnd: null,
+        pendingRenewalCostPerPeriod: null,
+        pendingRenewalNote: null,
+      },
+    });
 
-  await prisma.itLicenceEvent.create({
-    data: {
-      tenantId: auth.tenantId,
-      licenceId: id,
-      kind: 'renewal_approved',
-      actorPartyId: auth.partyId,
-      note: note || null,
-      detail: { termEnd: updated.termEnd, costPerPeriod: num(updated.costPerPeriod) },
-    },
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_licence',
-    subjectId: id,
-    before: { status: licence.status },
-    after: { status: 'active', termEnd: updated.termEnd },
-  });
-  await emit({
-    name: EVENTS.IT_LICENCE_RENEWED,
-    subject: { entityType: 'it_licence', entityId: id, recordCode: licence.recordCode },
-    previousState: { termEnd: licence.termEnd },
-    newState: { termEnd: updated.termEnd, costPerPeriod: num(updated.costPerPeriod) },
-    owner: { partyId: licence.application.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await tx.itLicenceEvent.create({
+      data: {
+        tenantId: auth.tenantId,
+        licenceId: id,
+        kind: 'renewal_approved',
+        actorPartyId: auth.partyId,
+        note: note || null,
+        detail: { termEnd: updated.termEnd, costPerPeriod: num(updated.costPerPeriod) },
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_licence',
+      subjectId: id,
+      before: { status: licence.status },
+      after: { status: 'active', termEnd: updated.termEnd },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_LICENCE_RENEWED,
+      subject: { entityType: 'it_licence', entityId: id, recordCode: licence.recordCode },
+      previousState: { termEnd: licence.termEnd },
+      newState: { termEnd: updated.termEnd, costPerPeriod: num(updated.costPerPeriod) },
+      owner: { partyId: licence.application.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return {
@@ -792,37 +837,42 @@ export async function cancelLicence(id: string, reason: string) {
   if (!trimmed) throw ApiError.badRequest('Cancelling a licence needs a reason — it is a decision, not a shrug.');
   if (licence.status === 'cancelled') throw ApiError.conflict(`${licence.recordCode ?? id} is already cancelled.`);
 
-  const updated = await prisma.itLicence.update({
-    where: { id },
-    data: {
-      status: 'cancelled',
-      cancelledAt: new Date(),
-      cancelledReason: trimmed,
-      pendingRenewalApprovalStepId: null,
-      pendingRenewalProposedById: null,
-      pendingRenewalTermEnd: null,
-      pendingRenewalCostPerPeriod: null,
-      pendingRenewalNote: null,
-    },
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itLicence.update({
+      where: { id },
+      data: {
+        status: 'cancelled',
+        cancelledAt: new Date(),
+        cancelledReason: trimmed,
+        pendingRenewalApprovalStepId: null,
+        pendingRenewalProposedById: null,
+        pendingRenewalTermEnd: null,
+        pendingRenewalCostPerPeriod: null,
+        pendingRenewalNote: null,
+      },
+    });
 
-  await prisma.itLicenceEvent.create({
-    data: { tenantId: auth.tenantId, licenceId: id, kind: 'cancelled', actorPartyId: auth.partyId, note: trimmed },
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_licence',
-    subjectId: id,
-    before: { status: licence.status },
-    after: { status: 'cancelled', reason: trimmed },
-  });
-  await emit({
-    name: EVENTS.IT_LICENCE_CANCELLED,
-    subject: { entityType: 'it_licence', entityId: id, recordCode: licence.recordCode },
-    previousState: { status: licence.status },
-    newState: { status: 'cancelled', reason: trimmed },
-    owner: { partyId: licence.application.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await tx.itLicenceEvent.create({
+      data: { tenantId: auth.tenantId, licenceId: id, kind: 'cancelled', actorPartyId: auth.partyId, note: trimmed },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_licence',
+      subjectId: id,
+      before: { status: licence.status },
+      after: { status: 'cancelled', reason: trimmed },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_LICENCE_CANCELLED,
+      subject: { entityType: 'it_licence', entityId: id, recordCode: licence.recordCode },
+      previousState: { status: licence.status },
+      newState: { status: 'cancelled', reason: trimmed },
+      owner: { partyId: licence.application.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;

@@ -111,46 +111,51 @@ export async function createPlan(input: CreatePlanInput) {
       : defaultTestCadenceDays(input.applicationTier);
   const recordCode = await nextRecordCode('DRP');
 
-  const plan = await prisma.itContinuityPlan.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      applicationId: input.applicationId.trim(),
-      applicationName: input.applicationName.trim(),
-      applicationTier: input.applicationTier,
-      rtoMinutes: input.rtoMinutes,
-      rpoMinutes: input.rpoMinutes,
-      backupMethod: input.backupMethod.trim(),
-      backupFrequency: input.backupFrequency.trim(),
-      restoreProcedureDocumentId: input.restoreProcedureDocumentId ?? null,
-      ownerPartyId: input.ownerPartyId ?? null,
-      testCadenceDays: cadence,
-      status: 'draft',
-      note: input.note ?? null,
-    },
-  });
+  const plan = await prisma.$transaction(async (tx) => {
+    const plan = await tx.itContinuityPlan.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        applicationId: input.applicationId.trim(),
+        applicationName: input.applicationName.trim(),
+        applicationTier: input.applicationTier,
+        rtoMinutes: input.rtoMinutes,
+        rpoMinutes: input.rpoMinutes,
+        backupMethod: input.backupMethod.trim(),
+        backupFrequency: input.backupFrequency.trim(),
+        restoreProcedureDocumentId: input.restoreProcedureDocumentId ?? null,
+        ownerPartyId: input.ownerPartyId ?? null,
+        testCadenceDays: cadence,
+        status: 'draft',
+        note: input.note ?? null,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_continuity_plan',
-    subjectId: plan.id,
-    after: {
-      recordCode,
-      applicationId: plan.applicationId,
-      applicationTier: plan.applicationTier,
-      status: plan.status,
-    },
-  });
-  await emit({
-    name: EVENTS.IT_CONTINUITY_PLAN_SET,
-    subject: { entityType: 'it_continuity_plan', entityId: plan.id, recordCode },
-    newState: {
-      status: plan.status,
-      applicationId: plan.applicationId,
-      rtoMinutes: plan.rtoMinutes,
-      rpoMinutes: plan.rpoMinutes,
-    },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_continuity_plan',
+      subjectId: plan.id,
+      after: {
+        recordCode,
+        applicationId: plan.applicationId,
+        applicationTier: plan.applicationTier,
+        status: plan.status,
+      },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_CONTINUITY_PLAN_SET,
+      subject: { entityType: 'it_continuity_plan', entityId: plan.id, recordCode },
+      newState: {
+        status: plan.status,
+        applicationId: plan.applicationId,
+        rtoMinutes: plan.rtoMinutes,
+        rpoMinutes: plan.rpoMinutes,
+      },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return plan;
   });
 
   return plan;
@@ -180,34 +185,39 @@ export async function updatePlan(id: string, input: UpdatePlanInput) {
     throw ApiError.badRequest('rpoMinutes must be a positive number of minutes.');
   }
 
-  const updated = await prisma.itContinuityPlan.update({
-    where: { id },
-    data: {
-      ...(input.rtoMinutes !== undefined ? { rtoMinutes: input.rtoMinutes } : {}),
-      ...(input.rpoMinutes !== undefined ? { rpoMinutes: input.rpoMinutes } : {}),
-      ...(input.backupMethod !== undefined ? { backupMethod: input.backupMethod } : {}),
-      ...(input.backupFrequency !== undefined ? { backupFrequency: input.backupFrequency } : {}),
-      ...(input.restoreProcedureDocumentId !== undefined
-        ? { restoreProcedureDocumentId: input.restoreProcedureDocumentId }
-        : {}),
-      ...(input.ownerPartyId !== undefined ? { ownerPartyId: input.ownerPartyId } : {}),
-      ...(input.testCadenceDays !== undefined ? { testCadenceDays: input.testCadenceDays } : {}),
-      ...(input.note !== undefined ? { note: input.note } : {}),
-    },
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itContinuityPlan.update({
+      where: { id },
+      data: {
+        ...(input.rtoMinutes !== undefined ? { rtoMinutes: input.rtoMinutes } : {}),
+        ...(input.rpoMinutes !== undefined ? { rpoMinutes: input.rpoMinutes } : {}),
+        ...(input.backupMethod !== undefined ? { backupMethod: input.backupMethod } : {}),
+        ...(input.backupFrequency !== undefined ? { backupFrequency: input.backupFrequency } : {}),
+        ...(input.restoreProcedureDocumentId !== undefined
+          ? { restoreProcedureDocumentId: input.restoreProcedureDocumentId }
+          : {}),
+        ...(input.ownerPartyId !== undefined ? { ownerPartyId: input.ownerPartyId } : {}),
+        ...(input.testCadenceDays !== undefined ? { testCadenceDays: input.testCadenceDays } : {}),
+        ...(input.note !== undefined ? { note: input.note } : {}),
+      },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_continuity_plan',
-    subjectId: id,
-    before: plan,
-    after: updated,
-  });
-  await emit({
-    name: EVENTS.IT_CONTINUITY_PLAN_SET,
-    subject: { entityType: 'it_continuity_plan', entityId: id, recordCode: plan.recordCode },
-    newState: { status: updated.status, rtoMinutes: updated.rtoMinutes, rpoMinutes: updated.rpoMinutes },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_continuity_plan',
+      subjectId: id,
+      before: plan,
+      after: updated,
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_CONTINUITY_PLAN_SET,
+      subject: { entityType: 'it_continuity_plan', entityId: id, recordCode: plan.recordCode },
+      newState: { status: updated.status, rtoMinutes: updated.rtoMinutes, rpoMinutes: updated.rpoMinutes },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;
@@ -320,59 +330,69 @@ export async function recordTest(planId: string, input: RecordTestInput) {
   const testedAt = input.testedAt ?? new Date();
   const recordCode = await nextRecordCode('DRT');
 
-  const test = await prisma.itContinuityTest.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      planId: plan.id,
-      testedAt,
-      kind: input.kind,
-      outcome: input.outcome,
-      actualRecoveryMinutes: input.actualRecoveryMinutes ?? null,
-      actualDataLossMinutes: input.actualDataLossMinutes ?? null,
-      notes: input.notes ?? null,
-      evidenceDocumentId: input.evidenceDocumentId ?? null,
-      recordedById: auth.partyId ?? null,
-    },
-  });
+  const test = await prisma.$transaction(async (tx) => {
+    const test = await tx.itContinuityTest.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        planId: plan.id,
+        testedAt,
+        kind: input.kind,
+        outcome: input.outcome,
+        actualRecoveryMinutes: input.actualRecoveryMinutes ?? null,
+        actualDataLossMinutes: input.actualDataLossMinutes ?? null,
+        notes: input.notes ?? null,
+        evidenceDocumentId: input.evidenceDocumentId ?? null,
+        recordedById: auth.partyId ?? null,
+      },
+    });
 
-  // A new test restarts the overdue clock, whatever it found.
-  await prisma.itContinuityPlan.update({
-    where: { id: plan.id },
-    data: { lastTestedAt: testedAt, testOverdueNotifiedRungs: [] },
-  });
+    // A new test restarts the overdue clock, whatever it found.
+    await tx.itContinuityPlan.update({
+      where: { id: plan.id },
+      data: { lastTestedAt: testedAt, testOverdueNotifiedRungs: [] },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_continuity_test',
-    subjectId: test.id,
-    after: { recordCode, planId: plan.id, kind: test.kind, outcome: test.outcome },
-  });
-  await emit({
-    name: EVENTS.IT_CONTINUITY_TESTED,
-    subject: { entityType: 'it_continuity_test', entityId: test.id, recordCode },
-    related: [{ relation: 'plan', entityType: 'it_continuity_plan', entityId: plan.id }],
-    newState: { kind: test.kind, outcome: test.outcome, actualRecoveryMinutes: test.actualRecoveryMinutes },
-    impact: { domains: [IT_DOMAIN] },
-  });
-
-  if (rtoBreached(test, plan)) {
-    await raiseException({
-      code: 'IT_DR_RTO_EXCEEDED',
-      label: `${plan.applicationName} DR test exceeded its RTO/RPO`,
-      severity: 'S3_HIGH_RISK',
+    await auditWrite({
+      action: 'create',
       subjectType: 'it_continuity_test',
       subjectId: test.id,
-      subjectLabel: recordCode,
-      domain: IT_DOMAIN,
-      detail:
-        `${plan.recordCode} promises RTO ${plan.rtoMinutes}m / RPO ${plan.rpoMinutes}m for ${plan.applicationName}. ` +
-        `The ${test.kind} test on ${testedAt.toISOString().slice(0, 10)} recorded ` +
-        `${test.actualRecoveryMinutes ?? '—'}m recovery and ${test.actualDataLossMinutes ?? '—'}m of data loss.`,
-      ownerPartyId: plan.ownerPartyId,
-      triggerFingerprint: 'it_continuity_test_rto_exceeded',
+      after: { recordCode, planId: plan.id, kind: test.kind, outcome: test.outcome },
+      tx,
     });
-  }
+    await emit({
+      name: EVENTS.IT_CONTINUITY_TESTED,
+      subject: { entityType: 'it_continuity_test', entityId: test.id, recordCode },
+      related: [{ relation: 'plan', entityType: 'it_continuity_plan', entityId: plan.id }],
+      newState: { kind: test.kind, outcome: test.outcome, actualRecoveryMinutes: test.actualRecoveryMinutes },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    // A breached RTO is a consequence of this test, so its exception commits or rolls
+    // back with the row. Raised after the commit, a failed raise left a breached test
+    // with nothing to act on.
+    if (rtoBreached(test, plan)) {
+      await raiseException(
+        {
+          code: 'IT_DR_RTO_EXCEEDED',
+          label: `${plan.applicationName} DR test exceeded its RTO/RPO`,
+          severity: 'S3_HIGH_RISK',
+          subjectType: 'it_continuity_test',
+          subjectId: test.id,
+          subjectLabel: recordCode,
+          domain: IT_DOMAIN,
+          detail:
+            `${plan.recordCode} promises RTO ${plan.rtoMinutes}m / RPO ${plan.rpoMinutes}m for ${plan.applicationName}. ` +
+            `The ${test.kind} test on ${testedAt.toISOString().slice(0, 10)} recorded ` +
+            `${test.actualRecoveryMinutes ?? '—'}m recovery and ${test.actualDataLossMinutes ?? '—'}m of data loss.`,
+          ownerPartyId: plan.ownerPartyId,
+          triggerFingerprint: 'it_continuity_test_rto_exceeded',
+        },
+        tx,
+      );
+    }
+    return test;
+  });
 
   return test;
 }
@@ -427,24 +447,29 @@ export async function recordAvailabilityReading(input: RecordAvailabilityInput) 
     note: input.note ?? null,
   };
 
-  const reading = existing
-    ? await prisma.itAvailabilityReading.update({ where: { id: existing.id }, data })
-    : await prisma.itAvailabilityReading.create({
-        data: { tenantId: auth.tenantId, applicationId: input.applicationId.trim(), period: input.period, ...data },
-      });
+  const reading = await prisma.$transaction(async (tx) => {
+    const reading = existing
+      ? await tx.itAvailabilityReading.update({ where: { id: existing.id }, data })
+      : await tx.itAvailabilityReading.create({
+          data: { tenantId: auth.tenantId, applicationId: input.applicationId.trim(), period: input.period, ...data },
+        });
 
-  await auditWrite({
-    action: existing ? 'update' : 'create',
-    subjectType: 'it_availability_reading',
-    subjectId: reading.id,
-    before: existing ?? undefined,
-    after: reading,
-  });
-  await emit({
-    name: EVENTS.IT_AVAILABILITY_RECORDED,
-    subject: { entityType: 'it_availability_reading', entityId: reading.id, recordCode: null },
-    newState: { applicationId: reading.applicationId, period: reading.period, minutesDown: reading.minutesDown },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: existing ? 'update' : 'create',
+      subjectType: 'it_availability_reading',
+      subjectId: reading.id,
+      before: existing ?? undefined,
+      after: reading,
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_AVAILABILITY_RECORDED,
+      subject: { entityType: 'it_availability_reading', entityId: reading.id, recordCode: null },
+      newState: { applicationId: reading.applicationId, period: reading.period, minutesDown: reading.minutesDown },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return reading;
   });
 
   return reading;
@@ -496,31 +521,36 @@ export async function createMaintenanceWindow(input: CreateMaintenanceWindowInpu
   if (input.endsAt <= input.startsAt) throw ApiError.badRequest('endsAt must be after startsAt.');
 
   const recordCode = await nextRecordCode('MWN');
-  const window = await prisma.itMaintenanceWindow.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      applicationId: input.applicationId.trim(),
-      applicationName: input.applicationName.trim(),
-      startsAt: input.startsAt,
-      endsAt: input.endsAt,
-      reason: input.reason.trim(),
-      changeId: input.changeId ?? null,
-      status: 'planned',
-    },
-  });
+  const window = await prisma.$transaction(async (tx) => {
+    const window = await tx.itMaintenanceWindow.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        applicationId: input.applicationId.trim(),
+        applicationName: input.applicationName.trim(),
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        reason: input.reason.trim(),
+        changeId: input.changeId ?? null,
+        status: 'planned',
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_maintenance_window',
-    subjectId: window.id,
-    after: { recordCode, applicationId: window.applicationId, startsAt: window.startsAt, endsAt: window.endsAt },
-  });
-  await emit({
-    name: EVENTS.IT_MAINTENANCE_SCHEDULED,
-    subject: { entityType: 'it_maintenance_window', entityId: window.id, recordCode },
-    newState: { status: window.status, startsAt: window.startsAt, endsAt: window.endsAt },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_maintenance_window',
+      subjectId: window.id,
+      after: { recordCode, applicationId: window.applicationId, startsAt: window.startsAt, endsAt: window.endsAt },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_MAINTENANCE_SCHEDULED,
+      subject: { entityType: 'it_maintenance_window', entityId: window.id, recordCode },
+      newState: { status: window.status, startsAt: window.startsAt, endsAt: window.endsAt },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return window;
   });
 
   return window;
@@ -569,27 +599,32 @@ export async function cancelMaintenanceWindow(id: string, reason: string) {
     throw ApiError.conflict(`${window.recordCode} is already ${window.status} and cannot be cancelled.`);
   }
 
-  const updated = await prisma.itMaintenanceWindow.update({
-    where: { id },
-    data: { status: 'cancelled', cancelReason: trimmed },
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itMaintenanceWindow.update({
+      where: { id },
+      data: { status: 'cancelled', cancelReason: trimmed },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_maintenance_window',
-    subjectId: id,
-    before: { status: window.status },
-    after: { status: 'cancelled', cancelReason: trimmed },
-  });
-  // No dedicated "cancelled" event is declared for workstream H — reusing
-  // IT_MAINTENANCE_SCHEDULED for every state change on the window, per the
-  // brief's "emit an existing close one and note it".
-  await emit({
-    name: EVENTS.IT_MAINTENANCE_SCHEDULED,
-    subject: { entityType: 'it_maintenance_window', entityId: id, recordCode: window.recordCode },
-    previousState: { status: window.status },
-    newState: { status: 'cancelled', reason: trimmed },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_maintenance_window',
+      subjectId: id,
+      before: { status: window.status },
+      after: { status: 'cancelled', cancelReason: trimmed },
+      tx,
+    });
+    // No dedicated "cancelled" event is declared for workstream H — reusing
+    // IT_MAINTENANCE_SCHEDULED for every state change on the window, per the
+    // brief's "emit an existing close one and note it".
+    await emit({
+      name: EVENTS.IT_MAINTENANCE_SCHEDULED,
+      subject: { entityType: 'it_maintenance_window', entityId: id, recordCode: window.recordCode },
+      previousState: { status: window.status },
+      newState: { status: 'cancelled', reason: trimmed },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;

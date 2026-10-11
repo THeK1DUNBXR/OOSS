@@ -77,6 +77,8 @@ export async function runGratuityAccrual(): Promise<JobResult> {
 export const JOBS: JobDefinition[] = [
   {
     name: 'runGratuityAccrualJob',
+    sideEffects: 'internal',
+    idempotent: false,
     label: 'Gratuity accrual (monthly, 1st)',
     automationClass: 'scheduled_computation',
     cron: '0 3 1 * *',

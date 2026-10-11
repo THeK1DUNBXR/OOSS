@@ -17,6 +17,7 @@
 import { EVENTS, type SeverityCode } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { emit } from '../../platform/eventBus.js';
 import { currentPolicy } from '../../domains/it/itsm.js';
@@ -148,13 +149,29 @@ export async function runChangeWindowMissedJob(): Promise<JobResult> {
         ownerPartyId: chg.requesterPartyId,
         triggerFingerprint: 'it_change_window_missed',
       });
-      await prisma.itChange.update({ where: { id: chg.id }, data: { windowMissedNotifiedAt: new Date() } });
-      await emit({
-        name: EVENTS.IT_CHANGE_TRANSITIONED,
-        subject: { entityType: 'it_change', entityId: chg.id, recordCode: chg.recordCode },
-        newState: { status: chg.status, windowMissed: true },
-        owner: { partyId: chg.requesterPartyId },
-        impact: { domains: ['it'], severity: 'S2_WARNING' },
+      // The stamp that stops the job re-raising, its audit row and its event
+      // commit together: a stamp without the event would silence the job for
+      // a change nobody was told about.
+      await prisma.$transaction(async (tx) => {
+        const stampedAt = new Date();
+        await tx.itChange.update({ where: { id: chg.id }, data: { windowMissedNotifiedAt: stampedAt } });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'it_change',
+          subjectId: chg.id,
+          before: { windowMissedNotifiedAt: chg.windowMissedNotifiedAt },
+          after: { windowMissedNotifiedAt: stampedAt },
+          meta: { job: 'it_change_window_missed' },
+          tx,
+        });
+        await emit({
+          name: EVENTS.IT_CHANGE_TRANSITIONED,
+          subject: { entityType: 'it_change', entityId: chg.id, recordCode: chg.recordCode },
+          newState: { status: chg.status, windowMissed: true },
+          owner: { partyId: chg.requesterPartyId },
+          impact: { domains: ['it'], severity: 'S2_WARNING' },
+          tx,
+        });
       });
       notified += 1;
     } catch (err) {
@@ -168,6 +185,8 @@ export async function runChangeWindowMissedJob(): Promise<JobResult> {
 export const JOBS: JobDefinition[] = [
   {
     name: 'runItsmStaleIncidentJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'ITSM: stale sev1/sev2 incident with no recent update',
     automationClass: 'threshold_response',
     cron: '*/15 * * * *',
@@ -175,6 +194,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runItsmReviewOverdueJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'ITSM: sev1/sev2 resolved without a published review',
     automationClass: 'threshold_response',
     cron: '0 7 * * *',
@@ -182,6 +203,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runItsmChangeWindowMissedJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'ITSM: change window passed without implementation',
     automationClass: 'threshold_response',
     cron: '0 * * * *',

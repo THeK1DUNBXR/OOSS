@@ -18,6 +18,7 @@ import {
 } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -29,6 +30,10 @@ import type { ChannelKey } from './adapters/types.js';
 // ---------------------------------------------------------------------------
 // Assets
 // ---------------------------------------------------------------------------
+
+// Registered here, not in the audit module: auditWrite refuses an unregistered
+// subject, and these are the owning module's entities.
+registerGovernedEntities('mkt', ['marketing_asset', 'social_post']);
 
 export interface AssetInput {
   name: string;
@@ -52,30 +57,42 @@ export async function createAsset(input: AssetInput) {
     if (!campaign) throw ApiError.notFound('Campaign');
   }
 
-  const recordCode = await nextRecordCode('AST');
-  const asset = await prisma.marketingAsset.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name,
-      kind: input.kind,
-      url: input.url ?? null,
-      storageRef: input.storageRef ?? null,
-      campaignId: input.campaignId ?? null,
-      usageRights: input.usageRights ?? null,
-      expiresAt: input.expiresAt ?? null,
-      tags: input.tags ?? [],
-      createdById: auth.partyId,
-    },
-  });
+  // The sequence bump is inside the transaction too: a rolled-back asset must
+  // not burn an AST number.
+  return prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('AST', new Date(), tx);
+    const asset = await tx.marketingAsset.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name,
+        kind: input.kind,
+        url: input.url ?? null,
+        storageRef: input.storageRef ?? null,
+        campaignId: input.campaignId ?? null,
+        usageRights: input.usageRights ?? null,
+        expiresAt: input.expiresAt ?? null,
+        tags: input.tags ?? [],
+        createdById: auth.partyId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.MKT_ASSET_CREATED,
-    subject: { entityType: 'marketing_asset', entityId: asset.id, recordCode },
-    newState: { status: asset.status, name: asset.name },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_asset',
+      subjectId: asset.id,
+      after: { recordCode, name: asset.name, kind: asset.kind },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_ASSET_CREATED,
+      subject: { entityType: 'marketing_asset', entityId: asset.id, recordCode },
+      newState: { status: asset.status, name: asset.name },
+      tx,
+    });
 
-  return asset;
+    return asset;
+  });
 }
 
 export interface AssetListFilters {
@@ -141,31 +158,41 @@ export async function updateAsset(id: string, patch: Partial<AssetInput>) {
   if (asset.status === 'retired') throw ApiError.conflict('A retired asset cannot be edited.');
 
   if (asset.status === 'approved') {
-    const recordCode = await nextRecordCode('AST');
-    const nextVersion = await prisma.marketingAsset.create({
-      data: {
-        tenantId: auth.tenantId,
-        recordCode,
-        name: patch.name ?? asset.name,
-        kind: patch.kind ?? asset.kind,
-        url: patch.url !== undefined ? patch.url : asset.url,
-        storageRef: patch.storageRef !== undefined ? patch.storageRef : asset.storageRef,
-        version: asset.version + 1,
-        status: 'draft',
-        campaignId: patch.campaignId !== undefined ? patch.campaignId : asset.campaignId,
-        usageRights: patch.usageRights !== undefined ? patch.usageRights : asset.usageRights,
-        expiresAt: patch.expiresAt !== undefined ? patch.expiresAt : asset.expiresAt,
-        tags: patch.tags ?? asset.tags,
-        createdById: auth.partyId,
-      },
+    return prisma.$transaction(async (tx) => {
+      const recordCode = await nextRecordCode('AST', new Date(), tx);
+      const nextVersion = await tx.marketingAsset.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode,
+          name: patch.name ?? asset.name,
+          kind: patch.kind ?? asset.kind,
+          url: patch.url !== undefined ? patch.url : asset.url,
+          storageRef: patch.storageRef !== undefined ? patch.storageRef : asset.storageRef,
+          version: asset.version + 1,
+          status: 'draft',
+          campaignId: patch.campaignId !== undefined ? patch.campaignId : asset.campaignId,
+          usageRights: patch.usageRights !== undefined ? patch.usageRights : asset.usageRights,
+          expiresAt: patch.expiresAt !== undefined ? patch.expiresAt : asset.expiresAt,
+          tags: patch.tags ?? asset.tags,
+          createdById: auth.partyId,
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'marketing_asset',
+        subjectId: nextVersion.id,
+        after: { recordCode, version: nextVersion.version, newVersionOf: asset.id },
+        tx,
+      });
+      await emit({
+        name: EVENTS.MKT_ASSET_CREATED,
+        subject: { entityType: 'marketing_asset', entityId: nextVersion.id, recordCode },
+        related: [{ relation: 'new_version_of', entityType: 'marketing_asset', entityId: asset.id }],
+        newState: { status: 'draft', version: nextVersion.version },
+        tx,
+      });
+      return nextVersion;
     });
-    await emit({
-      name: EVENTS.MKT_ASSET_CREATED,
-      subject: { entityType: 'marketing_asset', entityId: nextVersion.id, recordCode },
-      related: [{ relation: 'new_version_of', entityType: 'marketing_asset', entityId: asset.id }],
-      newState: { status: 'draft', version: nextVersion.version },
-    });
-    return nextVersion;
   }
 
   const updated = await prisma.marketingAsset.update({
@@ -192,15 +219,27 @@ async function transitionAsset(id: string, to: AssetStatus, eventName: string) {
   const from = asset.status as AssetStatus;
   const allowed = ASSET_TRANSITIONS[from] ?? [];
   if (!allowed.includes(to)) throw ApiError.unprocessable(`Cannot move a ${from} asset to ${to}.`);
-  const updated = await prisma.marketingAsset.update({
-    where: { id },
-    data: { status: to, ...(to === 'approved' ? { approvedById: auth.partyId } : {}), updatedById: auth.partyId },
-  });
-  await emit({
-    name: eventName,
-    subject: { entityType: 'marketing_asset', entityId: id, recordCode: asset.recordCode },
-    previousState: { status: from },
-    newState: { status: to },
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingAsset.update({
+      where: { id },
+      data: { status: to, ...(to === 'approved' ? { approvedById: auth.partyId } : {}), updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_asset',
+      subjectId: id,
+      before: { status: from },
+      after: { status: to },
+      tx,
+    });
+    await emit({
+      name: eventName,
+      subject: { entityType: 'marketing_asset', entityId: id, recordCode: asset.recordCode },
+      previousState: { status: from },
+      newState: { status: to },
+      tx,
+    });
+    return row;
   });
   return { asset, updated };
 }
@@ -233,18 +272,30 @@ export async function rejectAsset(id: string, reason: string) {
   if (!asset) throw ApiError.notFound('Asset');
   if (asset.status !== 'in_review')
     throw ApiError.conflict(`Only an in-review asset can be rejected (currently ${asset.status}).`);
-  const updated = await prisma.marketingAsset.update({
-    where: { id },
-    data: { status: 'draft', updatedById: auth.partyId },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingAsset.update({
+      where: { id },
+      data: { status: 'draft', updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_asset',
+      subjectId: id,
+      before: { status: 'in_review' },
+      after: { status: 'draft' },
+      meta: { reason: 'rejected' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_ASSET_SUBMITTED,
+      subject: { entityType: 'marketing_asset', entityId: id, recordCode: asset.recordCode },
+      previousState: { status: 'in_review' },
+      newState: { status: 'draft' },
+      reason: { reasonCode: 'rejected', note: reason },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: EVENTS.MKT_ASSET_SUBMITTED,
-    subject: { entityType: 'marketing_asset', entityId: id, recordCode: asset.recordCode },
-    previousState: { status: 'in_review' },
-    newState: { status: 'draft' },
-    reason: { reasonCode: 'rejected', note: reason },
-  });
-  return updated;
 }
 
 export async function retireAsset(id: string) {
@@ -414,13 +465,24 @@ export async function scheduleSocialPost(id: string) {
   if (!post) throw ApiError.notFound('Social post');
   const allowed = SOCIAL_TRANSITIONS[post.status as SocialPostStatus] ?? [];
   if (!allowed.includes('scheduled')) throw ApiError.unprocessable(`Cannot schedule a ${post.status} social post.`);
-  const updated = await prisma.marketingSocialPost.update({ where: { id }, data: { status: 'scheduled' } });
-  await emit({
-    name: EVENTS.MKT_SOCIAL_POST_SCHEDULED,
-    subject: { entityType: 'social_post', entityId: id, recordCode: post.recordCode },
-    newState: { status: 'scheduled' },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingSocialPost.update({ where: { id }, data: { status: 'scheduled' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'social_post',
+      subjectId: id,
+      before: { status: post.status },
+      after: { status: 'scheduled' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SOCIAL_POST_SCHEDULED,
+      subject: { entityType: 'social_post', entityId: id, recordCode: post.recordCode },
+      newState: { status: 'scheduled' },
+      tx,
+    });
+    return updated;
   });
-  return updated;
 }
 
 export interface PublishSocialPostInput {
@@ -459,20 +521,31 @@ export async function publishSocialPost(id: string, input: PublishSocialPostInpu
       : {}),
   };
 
-  const updated = await prisma.marketingSocialPost.update({
-    where: { id },
-    data: {
-      status: 'published',
-      publishedAt: new Date(),
-      externalUrl: input.externalUrl ?? post.externalUrl,
-      metrics,
-    },
-  });
-
-  await emit({
-    name: EVENTS.MKT_SOCIAL_POST_PUBLISHED,
-    subject: { entityType: 'social_post', entityId: id, recordCode: post.recordCode },
-    newState: { status: 'published', publishMode },
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingSocialPost.update({
+      where: { id },
+      data: {
+        status: 'published',
+        publishedAt: new Date(),
+        externalUrl: input.externalUrl ?? post.externalUrl,
+        metrics,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'social_post',
+      subjectId: id,
+      before: { status: post.status },
+      after: { status: 'published', publishMode },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SOCIAL_POST_PUBLISHED,
+      subject: { entityType: 'social_post', entityId: id, recordCode: post.recordCode },
+      newState: { status: 'published', publishMode },
+      tx,
+    });
+    return row;
   });
 
   return { ...updated, publishMode };

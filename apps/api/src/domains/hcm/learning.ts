@@ -31,6 +31,8 @@ import {
   type TrainingProgramKind,
 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
+import { governedWrite } from '../../platform/governedWrite.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
@@ -40,6 +42,14 @@ import { nextRecordCode } from '../../platform/recordCode.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { claimFromLearningCompletion } from '../capability.js';
 import type { JobResult } from '../../jobs/scheduler.js';
+
+registerGovernedEntities('hcm_learning', [
+  'training_program',
+  'training_session',
+  'training_enrollment',
+  'certification',
+  'individual_development_plan',
+]);
 
 function asApiError(err: unknown): never {
   if (err instanceof HrRuleViolationError) throw ApiError.unprocessable(err.message);
@@ -121,27 +131,37 @@ export async function createProgram(input: {
     );
   }
 
-  const program = await prisma.trainingProgram.create({
-    data: {
-      tenantId: auth.tenantId,
-      title: input.title,
-      kind: input.kind,
-      provider: input.provider ?? null,
-      durationHours: input.durationHours ?? null,
-      cost: input.cost ?? 0,
-      skillIds: input.skillIds ?? [],
-      validityMonths: input.validityMonths ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const program = await tx.trainingProgram.create({
+      data: {
+        tenantId: auth.tenantId,
+        title: input.title,
+        kind: input.kind,
+        provider: input.provider ?? null,
+        durationHours: input.durationHours ?? null,
+        cost: input.cost ?? 0,
+        skillIds: input.skillIds ?? [],
+        validityMonths: input.validityMonths ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.TRAINING_PROGRAM_CREATED,
-    subject: { entityType: 'training_program', entityId: program.id },
-    newState: { title: program.title, kind: program.kind },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'training_program',
+      subjectId: program.id,
+      after: program as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.TRAINING_PROGRAM_CREATED,
+      subject: { entityType: 'training_program', entityId: program.id },
+      newState: { title: program.title, kind: program.kind },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return program;
+    return program;
+  });
 }
 
 export async function setProgramActive(id: string, isActive: boolean) {
@@ -185,28 +205,38 @@ export async function createSession(input: {
     throw ApiError.badRequest('A session must end after it starts.');
   }
 
-  const session = await prisma.trainingSession.create({
-    data: {
-      tenantId: auth.tenantId,
-      programId: input.programId,
-      startsAt: input.startsAt,
-      endsAt: input.endsAt,
-      trainer: input.trainer ?? null,
-      seats: input.seats ?? 0,
-      location: input.location ?? null,
-      link: input.link ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const session = await tx.trainingSession.create({
+      data: {
+        tenantId: auth.tenantId,
+        programId: input.programId,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        trainer: input.trainer ?? null,
+        seats: input.seats ?? 0,
+        location: input.location ?? null,
+        link: input.link ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.TRAINING_SESSION_SCHEDULED,
-    subject: { entityType: 'training_session', entityId: session.id },
-    related: [{ relation: 'instance_of', entityType: 'training_program', entityId: program.id }],
-    newState: { startsAt: session.startsAt, programTitle: program.title },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'training_session',
+      subjectId: session.id,
+      after: session as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.TRAINING_SESSION_SCHEDULED,
+      subject: { entityType: 'training_session', entityId: session.id },
+      related: [{ relation: 'instance_of', entityType: 'training_program', entityId: program.id }],
+      newState: { startsAt: session.startsAt, programTitle: program.title },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return session;
+    return session;
+  });
 }
 
 export async function setSessionStatus(id: string, status: 'completed' | 'cancelled') {
@@ -271,25 +301,35 @@ export async function nominate(input: { sessionId: string; employmentRelationshi
     throw ApiError.forbidden('You may only nominate yourself for a session.');
   }
 
-  const enrollment = await prisma.trainingEnrollment.create({
-    data: {
-      tenantId: auth.tenantId,
-      sessionId: input.sessionId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      nominatedById: auth.partyId,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const enrollment = await tx.trainingEnrollment.create({
+      data: {
+        tenantId: auth.tenantId,
+        sessionId: input.sessionId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        nominatedById: auth.partyId,
+      },
+    });
 
-  await emit({
-    name: 'kz.hr.training_enrollment.nominated',
-    subject: { entityType: 'training_enrollment', entityId: enrollment.id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { status: 'nominated', sessionId: input.sessionId },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'training_enrollment',
+      subjectId: enrollment.id,
+      after: enrollment as never,
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.training_enrollment.nominated',
+      subject: { entityType: 'training_enrollment', entityId: enrollment.id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+      newState: { status: 'nominated', sessionId: input.sessionId },
+      owner: { partyId: employment.personId },
+      tx,
+      impact: { domains: ['hr'] },
+    });
 
-  return enrollment;
+    return enrollment;
+  });
 }
 
 async function loadEnrollment(id: string) {
@@ -332,21 +372,32 @@ export async function approveEnrollment(id: string) {
     asApiError(err);
   }
 
-  const updated = await prisma.trainingEnrollment.update({
-    where: { id },
-    data: { status: 'approved', approvedById: auth.partyId, approvedAt: new Date() },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.trainingEnrollment.update({
+      where: { id },
+      data: { status: 'approved', approvedById: auth.partyId, approvedAt: new Date() },
+    });
 
-  await emit({
-    name: 'kz.hr.training_enrollment.approved',
-    subject: { entityType: 'training_enrollment', entityId: id },
-    previousState: { status: enrollment.status },
-    newState: { status: 'approved' },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'training_enrollment',
+      subjectId: id,
+      before: { status: enrollment.status },
+      after: { status: 'approved' },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.training_enrollment.approved',
+      subject: { entityType: 'training_enrollment', entityId: id },
+      previousState: { status: enrollment.status },
+      newState: { status: 'approved' },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export async function rejectEnrollment(id: string, note?: string) {
@@ -359,16 +410,27 @@ export async function rejectEnrollment(id: string, note?: string) {
   } catch (err) {
     asApiError(err);
   }
-  const updated = await prisma.trainingEnrollment.update({ where: { id }, data: { status: 'rejected' } });
-  await emit({
-    name: 'kz.hr.training_enrollment.rejected',
-    subject: { entityType: 'training_enrollment', entityId: id },
-    previousState: { status: enrollment.status },
-    newState: { status: 'rejected' },
-    reason: note ? { reasonCode: 'declined', note } : null,
-    impact: { domains: ['hr'] },
+  return governedWrite(async (tx) => {
+    const updated = await tx.trainingEnrollment.update({ where: { id }, data: { status: 'rejected' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'training_enrollment',
+      subjectId: id,
+      before: { status: enrollment.status },
+      after: { status: 'rejected' },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.training_enrollment.rejected',
+      subject: { entityType: 'training_enrollment', entityId: id },
+      previousState: { status: enrollment.status },
+      newState: { status: 'rejected' },
+      reason: note ? { reasonCode: 'declined', note } : null,
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
-  return updated;
 }
 
 export async function markAttendance(id: string, attended: boolean) {
@@ -419,18 +481,32 @@ export async function completeEnrollment(id: string, input: { score?: number | n
   if (!employment) throw ApiError.notFound('Employment relationship');
 
   const completedAt = new Date();
-  const updated = await prisma.trainingEnrollment.update({
-    where: { id },
-    data: { status: 'completed', completedAt, score: input.score ?? null, feedback: input.feedback ?? null },
-  });
-
-  await emit({
-    name: EVENTS.TRAINING_ENROLLMENT_COMPLETED,
-    subject: { entityType: 'training_enrollment', entityId: id },
-    previousState: { status: enrollment.status },
-    newState: { status: 'completed', programTitle: enrollment.session.program.title },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
+  // The write, its audit row and its event commit together. The skill claims
+  // and certification issue below are nested service calls that write through
+  // the scoped client, so they stay after commit, as before.
+  const updated = await governedWrite(async (tx) => {
+    const row = await tx.trainingEnrollment.update({
+      where: { id },
+      data: { status: 'completed', completedAt, score: input.score ?? null, feedback: input.feedback ?? null },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'training_enrollment',
+      subjectId: id,
+      before: { status: enrollment.status },
+      after: { status: 'completed' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.TRAINING_ENROLLMENT_COMPLETED,
+      subject: { entityType: 'training_enrollment', entityId: id },
+      previousState: { status: enrollment.status },
+      newState: { status: 'completed', programTitle: enrollment.session.program.title },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
 
   const program = enrollment.session.program;
@@ -489,28 +565,40 @@ async function issueCertificationFromEnrollment(input: {
 }) {
   const auth = currentAuth();
   const expiresOn = certificationExpiryFrom(input.issuedOn, input.validityMonths);
-  const cert = await prisma.certification.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('CERT'),
-      employmentRelationshipId: input.employmentRelationshipId,
-      name: input.programTitle,
-      issuer: input.provider,
-      issuedOn: input.issuedOn,
-      expiresOn,
-      sourceEnrollmentId: input.sourceEnrollmentId,
-    },
-  });
+  // Numbered before the transaction: nextRecordCode reads through the scoped client.
+  const recordCode = await nextRecordCode('CERT');
+  return governedWrite(async (tx) => {
+    const cert = await tx.certification.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        employmentRelationshipId: input.employmentRelationshipId,
+        name: input.programTitle,
+        issuer: input.provider,
+        issuedOn: input.issuedOn,
+        expiresOn,
+        sourceEnrollmentId: input.sourceEnrollmentId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.CERTIFICATION_ISSUED,
-    subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { name: cert.name, expiresOn: cert.expiresOn },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'certification',
+      subjectId: cert.id,
+      after: cert as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.CERTIFICATION_ISSUED,
+      subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+      newState: { name: cert.name, expiresOn: cert.expiresOn },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return cert;
+    return cert;
+  });
 }
 
 /** A certification entered directly — one the person already held, or one from outside this platform's training catalogue. */
@@ -529,28 +617,33 @@ export async function addCertification(input: {
     record: { ownerPartyId: (await employmentOrThrow(input.employmentRelationshipId)).personId },
   });
 
-  const cert = await prisma.certification.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('CERT'),
-      employmentRelationshipId: input.employmentRelationshipId,
-      name: input.name,
-      issuer: input.issuer ?? null,
-      issuedOn: input.issuedOn,
-      expiresOn: input.expiresOn ?? null,
-      documentRef: input.documentRef ?? null,
-    },
-  });
+  const recordCode = await nextRecordCode('CERT');
+  return governedWrite(async (tx) => {
+    const cert = await tx.certification.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        employmentRelationshipId: input.employmentRelationshipId,
+        name: input.name,
+        issuer: input.issuer ?? null,
+        issuedOn: input.issuedOn,
+        expiresOn: input.expiresOn ?? null,
+        documentRef: input.documentRef ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.CERTIFICATION_ISSUED,
-    subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { name: cert.name, expiresOn: cert.expiresOn },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({ action: 'create', subjectType: 'certification', subjectId: cert.id, after: cert as never, tx });
+    await emit({
+      name: EVENTS.CERTIFICATION_ISSUED,
+      subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+      newState: { name: cert.name, expiresOn: cert.expiresOn },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return cert;
+    return cert;
+  });
 }
 
 /** Verification — deliberately gated the same way as everything else that turns a claim into a fact: not by the holder. */
@@ -575,20 +668,31 @@ export async function verifyCertification(id: string) {
     asApiError(err);
   }
 
-  const updated = await prisma.certification.update({
-    where: { id },
-    data: { verified: true, verifiedById: auth.partyId, verifiedAt: new Date() },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.certification.update({
+      where: { id },
+      data: { verified: true, verifiedById: auth.partyId, verifiedAt: new Date() },
+    });
 
-  await emit({
-    name: 'kz.hr.certification.verified',
-    subject: { entityType: 'certification', entityId: id, recordCode: cert.recordCode },
-    newState: { verified: true },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'certification',
+      subjectId: id,
+      before: { verified: cert.verified },
+      after: { verified: true },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.certification.verified',
+      subject: { entityType: 'certification', entityId: id, recordCode: cert.recordCode },
+      newState: { verified: true },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 /** The 90/30/7 expiry ladder job. Idempotent per rung via `lastExpiryRungDays`. */
@@ -638,13 +742,24 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
         triggerFingerprint: 'expired',
         ladderRung: 0,
       });
-      await prisma.certification.update({ where: { id: cert.id }, data: { lastExpiryRungDays: 0 } });
-      await emit({
-        name: EVENTS.CERTIFICATION_EXPIRED,
-        subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
-        newState: { expiresOn: cert.expiresOn },
-        owner: { partyId: personIdByEmployment.get(cert.employmentRelationshipId) ?? null },
-        impact: { domains: ['hr'] },
+      await governedWrite(async (tx) => {
+        await tx.certification.update({ where: { id: cert.id }, data: { lastExpiryRungDays: 0 } });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'certification',
+          subjectId: cert.id,
+          before: { lastExpiryRungDays: cert.lastExpiryRungDays },
+          after: { lastExpiryRungDays: 0 },
+          tx,
+        });
+        await emit({
+          name: EVENTS.CERTIFICATION_EXPIRED,
+          subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
+          newState: { expiresOn: cert.expiresOn },
+          owner: { partyId: personIdByEmployment.get(cert.employmentRelationshipId) ?? null },
+          impact: { domains: ['hr'] },
+          tx,
+        });
       });
       notified += 1;
       continue;
@@ -670,13 +785,24 @@ export async function runCertificationExpiryLadder(): Promise<JobResult> {
       triggerFingerprint: 'expiring',
       ladderRung: rung.days,
     });
-    await prisma.certification.update({ where: { id: cert.id }, data: { lastExpiryRungDays: rung.days } });
-    await emit({
-      name: EVENTS.CERTIFICATION_EXPIRING,
-      subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
-      newState: { expiresOn: cert.expiresOn, rungDays: rung.days },
-      owner: { partyId: personIdByEmployment.get(cert.employmentRelationshipId) ?? null },
-      impact: { domains: ['hr'] },
+    await governedWrite(async (tx) => {
+      await tx.certification.update({ where: { id: cert.id }, data: { lastExpiryRungDays: rung.days } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'certification',
+        subjectId: cert.id,
+        before: { lastExpiryRungDays: cert.lastExpiryRungDays },
+        after: { lastExpiryRungDays: rung.days },
+        tx,
+      });
+      await emit({
+        name: EVENTS.CERTIFICATION_EXPIRING,
+        subject: { entityType: 'certification', entityId: cert.id, recordCode: cert.recordCode },
+        newState: { expiresOn: cert.expiresOn, rungDays: rung.days },
+        owner: { partyId: personIdByEmployment.get(cert.employmentRelationshipId) ?? null },
+        impact: { domains: ['hr'] },
+        tx,
+      });
     });
     notified += 1;
   }
@@ -854,26 +980,36 @@ export async function createIdp(input: {
   const employment = await employmentOrThrow(input.employmentRelationshipId);
   await assertCan({ resource: 'idps', verb: 'create', record: { ownerPartyId: employment.personId } });
 
-  const idp = await prisma.individualDevelopmentPlan.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      goals: input.goals as never,
-      mentorId: input.mentorId ?? null,
-      reviewDate: input.reviewDate ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const idp = await tx.individualDevelopmentPlan.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        goals: input.goals as never,
+        mentorId: input.mentorId ?? null,
+        reviewDate: input.reviewDate ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.IDP_UPDATED,
-    subject: { entityType: 'idp', entityId: idp.id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { status: 'active' },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'individual_development_plan',
+      subjectId: idp.id,
+      after: idp as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.IDP_UPDATED,
+      subject: { entityType: 'idp', entityId: idp.id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+      newState: { status: 'active' },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return idp;
+    return idp;
+  });
 }
 
 export async function updateIdp(
@@ -899,25 +1035,36 @@ export async function updateIdp(
     }
   }
 
-  const updated = await prisma.individualDevelopmentPlan.update({
-    where: { id },
-    data: {
-      ...(input.goals !== undefined ? { goals: input.goals as never } : {}),
-      ...(input.mentorId !== undefined ? { mentorId: input.mentorId } : {}),
-      ...(input.reviewDate !== undefined ? { reviewDate: input.reviewDate } : {}),
-      ...(input.status !== undefined ? { status: input.status } : {}),
-    },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.individualDevelopmentPlan.update({
+      where: { id },
+      data: {
+        ...(input.goals !== undefined ? { goals: input.goals as never } : {}),
+        ...(input.mentorId !== undefined ? { mentorId: input.mentorId } : {}),
+        ...(input.reviewDate !== undefined ? { reviewDate: input.reviewDate } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+      },
+    });
 
-  await emit({
-    name: EVENTS.IDP_UPDATED,
-    subject: { entityType: 'idp', entityId: id },
-    previousState: { status: idp.status },
-    newState: { status: updated.status },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'individual_development_plan',
+      subjectId: id,
+      before: { status: idp.status },
+      after: { status: updated.status },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IDP_UPDATED,
+      subject: { entityType: 'idp', entityId: id },
+      previousState: { status: idp.status },
+      newState: { status: updated.status },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 // ---------------------------------------------------------------------------

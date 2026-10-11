@@ -1,0 +1,13 @@
+-- Race guard for entity snapshot history (JOB-IDEMPOTENCY.md rows #18, #19).
+--
+-- Two publishes of the same content can both read the old latest row and both
+-- insert. This key makes the second insert fail, and publishEntitySnapshot
+-- treats that failure as "already recorded".
+--
+-- Not partial: Postgres already treats NULLs as distinct in a unique index, so
+-- rows written before contentHash existed (NULL) never collide. A WHERE clause
+-- would also be invisible to Prisma's schema and show up as drift.
+--
+-- Consequence: one history row per distinct payload per source. A payload that
+-- returns to an earlier state (A -> B -> A) is not recorded a second time.
+CREATE UNIQUE INDEX "entity_snapshot_history_tenantId_sourceTenantId_contentHash_key" ON "entity_snapshot_history"("tenantId", "sourceTenantId", "contentHash");

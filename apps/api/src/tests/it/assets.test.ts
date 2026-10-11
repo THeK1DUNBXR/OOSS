@@ -11,7 +11,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import { assetBookValue, itAssetMachine, warrantyRung, daysInRepair, daysUntil } from '@kaizen/shared';
-import { asUser, expectReject, tenantId, unscopedPrisma, withFixtureRole } from '../helpers.js';
+import { asPrincipal, asUser, authFor, expectReject, tenantId, unscopedPrisma, withFixtureRole } from '../helpers.js';
 import {
   createAsset,
   listAssets,
@@ -490,5 +490,26 @@ describe('assets — permissions', () => {
 
     await asUser('operations@kaizen.co.in', () => returnAsset(mine.id));
     await asUser('operations@kaizen.co.in', () => returnAsset(other.id));
+  });
+});
+
+describe('an agent with an own-scope asset grant gets an empty summary, not a database error', () => {
+  // An agent has no party, so the own-scope count fell back to a NUL-bearing
+  // sentinel ('\0no-party'). Postgres rejects it (22021) and the summary 500'd.
+  it('NUL-SENTINEL-003: summary() for an agent holding it_assets:view@own counts zero holdings', async () => {
+    await withFixtureRole(
+      { slug: 'nul_asset_agent', grants: [{ resource: 'it_assets', verbs: ['view'], scope: 'own' }] },
+      async (fixture) => {
+        const agent = {
+          ...authFor(fixture),
+          principalType: 'agent' as const,
+          partyId: null,
+          agentId: `agt-nul-${stamp()}`,
+        };
+        const s = await asPrincipal(agent, () => summary());
+        expect(s.total).toBe(0);
+        expect(s.topHolders).toEqual([]);
+      },
+    );
   });
 });

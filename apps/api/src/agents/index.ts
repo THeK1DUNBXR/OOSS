@@ -17,6 +17,7 @@ import {
   AI_TOUCHPOINTS,
   EVENTS,
   HARD_PROHIBITIONS,
+  formatMinor,
   isProhibitedForAgent,
   type AiTierCode,
 } from '@kaizen/shared';
@@ -24,9 +25,10 @@ import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
+import { assertCan, resolveAuthorityCeilingPaise } from '../platform/permissions.js';
 import { notify } from '../platform/exceptions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 
 // Without this registration auditWrite silently skips agent_action, which is
 // how a human accepting an AI proposal left no trace.
@@ -53,7 +55,8 @@ export interface ProposeInput {
   proposal: Record<string, unknown>;
   rationale: string;
   /** For actions with a magnitude, checked against the agent's own ceiling. */
-  magnitude?: { authorityClass: string; value: number } | null;
+  /** Paise (bigint). A JavaScript number is refused: the ceiling comparison is exact only in paise. */
+  magnitude?: { authorityClass: string; value: bigint } | null;
   onBehalfOfPartyId?: string | null;
 }
 
@@ -127,7 +130,10 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
   // HOW MUCH: the agent's own ceiling, resolved from its own AUTHORITY_GRANT —
   // never inherited from a human's.
   if (input.magnitude) {
-    const ceiling = await resolveAuthorityCeiling(
+    if (typeof input.magnitude.value !== 'bigint') {
+      throw ApiError.badRequest('A magnitude is bigint paise; a JavaScript number is refused (FX-32).');
+    }
+    const ceiling = await resolveAuthorityCeilingPaise(
       { ...auth, agentId: agent.id, partyId: null },
       input.magnitude.authorityClass,
     );
@@ -138,8 +144,8 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
         newState: {
           agentKey: input.agentKey,
           authorityClass: input.magnitude.authorityClass,
-          ceiling,
-          attempted: input.magnitude.value,
+          ceiling: ceiling === null ? null : formatMinor(ceiling),
+          attempted: formatMinor(input.magnitude.value),
         },
         impact: { domains: ['agt', 'gov'], severity: 'S2_WARNING' },
       });
@@ -147,7 +153,7 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
         agent.id,
         input,
         tier,
-        `Authority shortfall: ${input.magnitude.value} exceeds the agent's ${input.magnitude.authorityClass} ceiling${ceiling === null ? ' (none held)' : ` of ${ceiling}`}.`,
+        `Authority shortfall: ${formatMinor(input.magnitude.value)} exceeds the agent's ${input.magnitude.authorityClass} ceiling${ceiling === null ? ' (none held)' : ` of ${formatMinor(ceiling)}`}.`,
       );
     }
   }
@@ -187,43 +193,74 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
     }
   }
 
-  const action = await prisma.agentAction.create({
-    data: {
-      tenantId: auth.tenantId,
-      agentId: agent.id,
-      tool: input.tool,
-      action: input.action,
-      tier,
-      subjectType: input.subjectType,
-      subjectId: input.subjectId,
-      proposal: input.proposal as never,
-      rationale: input.rationale,
-      state: 'proposed',
-      onBehalfOfPartyId: input.onBehalfOfPartyId ?? null,
-    },
-  });
+  // The proposal row, its audit row and its event commit together: a proposal
+  // that no one has an audit record of, or that never announced itself, is the
+  // failure this guards against (see governedWrite.ts).
+  const action = await governedWrite(async (tx) => {
+    const created = await tx.agentAction.create({
+      data: {
+        tenantId: auth.tenantId,
+        agentId: agent.id,
+        tool: input.tool,
+        action: input.action,
+        tier,
+        subjectType: input.subjectType,
+        subjectId: input.subjectId,
+        proposal: input.proposal as never,
+        rationale: input.rationale,
+        state: 'proposed',
+        onBehalfOfPartyId: input.onBehalfOfPartyId ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.AGENT_ACTION_PROPOSED,
-    subject: { entityType: 'agent_action', entityId: action.id },
-    related: [{ relation: 'proposes_on', entityType: input.subjectType, entityId: input.subjectId }],
-    newState: { tool: input.tool, action: input.action, tier },
-    impact: { domains: ['agt'] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'agent_action',
+      subjectId: created.id,
+      after: { tool: input.tool, action: input.action, tier, state: 'proposed' },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.AGENT_ACTION_PROPOSED,
+      subject: { entityType: 'agent_action', entityId: created.id },
+      related: [{ relation: 'proposes_on', entityType: input.subjectType, entityId: input.subjectId }],
+      newState: { tool: input.tool, action: input.action, tier },
+      impact: { domains: ['agt'] },
+      tx,
+    });
+
+    return created;
   });
 
   // AUTONOMOUS_WITHIN_POLICY is the only tier that may act without a
   // per-instance approval, and only within its AUTHORITY_GRANT and a
   // pre-approved policy.
   if (tier === 'AUTONOMOUS_WITHIN_POLICY') {
-    const executed = await prisma.agentAction.update({
-      where: { id: action.id },
-      data: { state: 'executed', decidedAt: new Date() },
-    });
-    await emit({
-      name: EVENTS.AGENT_ACTION_EXECUTED,
-      subject: { entityType: 'agent_action', entityId: action.id },
-      newState: { tier, autoExecuted: true },
-      impact: { domains: ['agt'] },
+    const executed = await governedWrite(async (tx) => {
+      const row = await tx.agentAction.update({
+        where: { id: action.id },
+        data: { state: 'executed', decidedAt: new Date() },
+      });
+
+      await auditWrite({
+        action: 'update',
+        subjectType: 'agent_action',
+        subjectId: action.id,
+        before: { state: 'proposed' },
+        after: { state: 'executed', autoExecuted: true },
+        tx,
+      });
+
+      await emit({
+        name: EVENTS.AGENT_ACTION_EXECUTED,
+        subject: { entityType: 'agent_action', entityId: action.id },
+        newState: { tier, autoExecuted: true },
+        impact: { domains: ['agt'] },
+        tx,
+      });
+
+      return row;
     });
     return { actionId: executed.id, tier, state: 'executed', blockedReason: null, autoExecuted: true };
   }
@@ -246,29 +283,42 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
 
 async function blocked(agentId: string, input: ProposeInput, tier: AiTierCode, reason: string): Promise<ProposeResult> {
   const auth = currentAuth();
-  const action = await prisma.agentAction.create({
-    data: {
-      tenantId: auth.tenantId,
-      agentId,
-      tool: input.tool,
-      action: input.action,
-      tier,
-      subjectType: input.subjectType,
-      subjectId: input.subjectId,
-      proposal: input.proposal as never,
-      rationale: input.rationale,
-      state: 'blocked',
-      blockedReason: reason,
-      onBehalfOfPartyId: input.onBehalfOfPartyId ?? null,
-    },
-  });
+  const action = await governedWrite(async (tx) => {
+    const created = await tx.agentAction.create({
+      data: {
+        tenantId: auth.tenantId,
+        agentId,
+        tool: input.tool,
+        action: input.action,
+        tier,
+        subjectType: input.subjectType,
+        subjectId: input.subjectId,
+        proposal: input.proposal as never,
+        rationale: input.rationale,
+        state: 'blocked',
+        blockedReason: reason,
+        onBehalfOfPartyId: input.onBehalfOfPartyId ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.AGENT_ACTION_REJECTED,
-    subject: { entityType: 'agent_action', entityId: action.id },
-    newState: { tool: input.tool, action: input.action, tier, blockedReason: reason },
-    reason: { reasonCode: 'agent_blocked', note: reason },
-    impact: { domains: ['agt', 'gov'], severity: 'S1_ATTENTION' },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'agent_action',
+      subjectId: created.id,
+      after: { tool: input.tool, action: input.action, tier, state: 'blocked', blockedReason: reason },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.AGENT_ACTION_REJECTED,
+      subject: { entityType: 'agent_action', entityId: created.id },
+      newState: { tool: input.tool, action: input.action, tier, blockedReason: reason },
+      reason: { reasonCode: 'agent_blocked', note: reason },
+      impact: { domains: ['agt', 'gov'], severity: 'S1_ATTENTION' },
+      tx,
+    });
+
+    return created;
   });
 
   return { actionId: action.id, tier, state: 'blocked', blockedReason: reason, autoExecuted: false };
@@ -295,35 +345,42 @@ export async function decideAgentAction(actionId: string, accept: boolean, note?
   // Same guard as decideApprovalStep: the state read above is not enough on its
   // own, or two reviewers both execute the same proposal and the humanActorId
   // of record is whoever wrote last.
-  const { count } = await prisma.agentAction.updateMany({
-    where: { id: actionId, state: 'proposed' },
-    data: {
-      state: accept ? 'executed' : 'rejected',
-      humanActorId: auth.partyId,
-      decidedAt: new Date(),
-      blockedReason: accept ? null : (note ?? 'Rejected by a human reviewer.'),
-    },
-  });
-  if (count !== 1) throw ApiError.conflict('Action was decided by someone else while you were deciding it.');
-  const updated = await prisma.agentAction.findFirstOrThrow({ where: { id: actionId } });
+  // The decision, its audit row and its event commit together (governedWrite):
+  // an accepted proposal with no record of who accepted it is the failure this
+  // guards against.
+  return governedWrite(async (tx) => {
+    const { count } = await tx.agentAction.updateMany({
+      where: { id: actionId, state: 'proposed' },
+      data: {
+        state: accept ? 'executed' : 'rejected',
+        humanActorId: auth.partyId,
+        decidedAt: new Date(),
+        blockedReason: accept ? null : (note ?? 'Rejected by a human reviewer.'),
+      },
+    });
+    if (count !== 1) throw ApiError.conflict('Action was decided by someone else while you were deciding it.');
+    const updated = await tx.agentAction.findFirstOrThrow({ where: { id: actionId } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'agent_action',
-    subjectId: actionId,
-    before: { state: 'proposed' },
-    after: { state: updated.state, humanActorId: auth.partyId },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'agent_action',
+      subjectId: actionId,
+      before: { state: 'proposed' },
+      after: { state: updated.state, humanActorId: auth.partyId },
+      tx,
+    });
 
-  await emit({
-    name: accept ? EVENTS.AGENT_ACTION_EXECUTED : EVENTS.AGENT_ACTION_REJECTED,
-    subject: { entityType: 'agent_action', entityId: actionId },
-    previousState: { state: 'proposed' },
-    newState: { state: updated.state, humanActorId: auth.partyId },
-    reason: { reasonCode: accept ? 'human_accepted' : 'human_rejected', note: note ?? null },
-  });
+    await emit({
+      name: accept ? EVENTS.AGENT_ACTION_EXECUTED : EVENTS.AGENT_ACTION_REJECTED,
+      subject: { entityType: 'agent_action', entityId: actionId },
+      previousState: { state: 'proposed' },
+      newState: { state: updated.state, humanActorId: auth.partyId },
+      reason: { reasonCode: accept ? 'human_accepted' : 'human_rejected', note: note ?? null },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 function windowStartFor(window: string): Date {
@@ -396,27 +453,35 @@ export async function revokeAuthority(grantId: string, reason: string) {
     select: { name: true, agentKey: true },
   });
 
-  const revoked = await prisma.authorityGrant.update({
-    where: { id: grantId },
-    data: { status: 'revoked', revokedAt: new Date(), revokedReason: reason },
-  });
+  // The revocation, its audit row and its event commit together. A revoked
+  // grant that nobody has an audit record of is the failure to avoid here.
+  const revoked = await governedWrite(async (tx) => {
+    const row = await tx.authorityGrant.update({
+      where: { id: grantId },
+      data: { status: 'revoked', revokedAt: new Date(), revokedReason: reason },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'authority_grant',
-    subjectId: grantId,
-    before: { status: grant.status },
-    after: { status: 'revoked', revokedReason: reason, actorPartyId: auth.partyId },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'authority_grant',
+      subjectId: grantId,
+      before: { status: grant.status },
+      after: { status: 'revoked', revokedReason: reason, actorPartyId: auth.partyId },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.GRANT_CHANGED,
-    subject: { entityType: 'authority_grant', entityId: grantId },
-    previousState: { status: grant.status, ceilingValue: num(grant.ceilingValue) },
-    newState: { status: 'revoked' },
-    reason: { reasonCode: 'authority_revoked', note: reason },
-    impact: { domains: ['gov', 'agt'], severity: 'S2_WARNING' },
-    confidentiality: 'restricted',
+    await emit({
+      name: EVENTS.GRANT_CHANGED,
+      subject: { entityType: 'authority_grant', entityId: grantId },
+      previousState: { status: grant.status, ceilingValue: num(grant.ceilingValue) },
+      newState: { status: 'revoked' },
+      reason: { reasonCode: 'authority_revoked', note: reason },
+      impact: { domains: ['gov', 'agt'], severity: 'S2_WARNING' },
+      confidentiality: 'restricted',
+      tx,
+    });
+
+    return row;
   });
 
   return { revoked, wentDark: dependents.map((d) => d.name) };
@@ -433,28 +498,32 @@ export async function pauseAgent(agentId: string, paused: boolean) {
   const existing = await prisma.agentPrincipal.findFirst({ where: { id: agentId } });
   if (!existing) throw ApiError.notFound('Agent');
 
-  const updated = await prisma.agentPrincipal.update({
-    where: { id: agentId },
-    data: { status: paused ? 'paused' : 'active' },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.agentPrincipal.update({
+      where: { id: agentId },
+      data: { status: paused ? 'paused' : 'active' },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'agent_principal',
-    subjectId: agentId,
-    before: { status: existing.status },
-    after: { status: updated.status, actorPartyId: auth.partyId },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'agent_principal',
+      subjectId: agentId,
+      before: { status: existing.status },
+      after: { status: updated.status, actorPartyId: auth.partyId },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.AGENT_PRINCIPAL_STATUS_CHANGED,
-    subject: { entityType: 'agent_principal', entityId: agentId },
-    previousState: { status: existing.status },
-    newState: { status: updated.status },
-    reason: { reasonCode: paused ? 'agent_paused' : 'agent_resumed' },
-  });
+    await emit({
+      name: EVENTS.AGENT_PRINCIPAL_STATUS_CHANGED,
+      subject: { entityType: 'agent_principal', entityId: agentId },
+      previousState: { status: existing.status },
+      newState: { status: updated.status },
+      reason: { reasonCode: paused ? 'agent_paused' : 'agent_resumed' },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export { AI_TOUCHPOINTS, HARD_PROHIBITIONS };

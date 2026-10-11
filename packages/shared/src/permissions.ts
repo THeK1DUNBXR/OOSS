@@ -352,6 +352,15 @@ export const RESOURCES = [
   'hr_requests',
   'hr_request_types',
   'authority_delegations', // WS13 workflow
+  // Wave 6 (OP:115). A commitment is a promise a named person owns; view and
+  // edit are the only verbs, because confirmation is a human act checked in the
+  // domain, not a permission an agent could be granted.
+  'commitments',
+  // Wave 6 (OP:116). A customer, learner or complaint case. Visibility within the
+  // resource is the WHAT axis: a case's tier is a SensitivityClass the caller's
+  // ceiling must clear, so a non-founder without the tier sees neither the row
+  // nor its existence.
+  'cases',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

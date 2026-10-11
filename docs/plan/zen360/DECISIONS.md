@@ -545,7 +545,9 @@ Consequences and open points:
 - The domain specs `ceo-office.md`, `cio.md`, `compliance.md`, `equity-portal.md`, `hcm.md`, `marketing.md` and `ceo-office-asbuilt/` are not phase files and are not moved. Code comments and the zen360 reference docs cite them. Whether they are superseded, and by what, is **open for owner decision**. The `docs/plan/ceo-office-asbuilt/phase-0.md` file also uses the word "Phase 0" for a CEO-office build record, which is not the owner Phase 0.
 - Old phase labels without a file path (for example "phase-0 0.4" in the zen360 reference docs) are not rewritten in this round. They are read as old item references into the archive.
 
-## Owner answers, round 18 (recorded 2026-10-10, during Wave 0 and Wave 1 implementation)
+## Owner answers, round 18a (recorded 2026-10-10, during Wave 0 and Wave 1 implementation)
+
+_renamed from round 18 to remove a numbering collision (2026-10-11)_
 
 - **(a) IT-policy self-dealing approvals go to the chairman.** FX-01 now requires the approver to hold `it_policies:approve`, and only the chairman holds it (`docs/plan/cio.md:144`). So the self-dealing publish step routes to the chairman, not to `finance_head`. Implication: tenants seeded before this change still carry the old approval chain, so a new policy version is needed. Open.
 - **(b) No role means no access.** An affiliation with no access role grants nothing. It used to fall back to `sales`. Before deploy, `report:roleless` lists the people affected.
@@ -553,18 +555,20 @@ Consequences and open points:
 - **(d) Creating a new hire prompts the onboarding owner to run the stakeholder-mapping questionnaire.** Owner words: "creating a new hire will automatically prompt HR to go through the questionnaire for stakeholder mapping." This is built in Wave 6 with the onboarding state machine. Until it is confirmed, the hire holds the Staff default duties (round 15) and nothing more.
 - **(e) Wave 0 goes up as a PR** (THeK1DUNBXR/OOSS#32). Wave 1 lands after Wave 0's CI is green.
 
-Still open after round 18:
+Still open after round 18a:
 
 - Who receives the new-hire prompt. Round 13 says "the founder or the onboarding owner". The owner said "HR". Is HR the onboarding owner by default?
 - The function and vertical list, and the role template for each (telecalling, training, and others).
 - Whether an interim hire-time role, before Wave 6, matches the Staff baseline. This is under check against the existing `employee` role.
 - Whether `sysadmin@` should hold the chairman role in the seed. The FX-01 tests routed a chairman step to it.
 
-## Owner answers, round 19 (recorded 2026-10-10, access-model plan review)
+## Owner answers, round 19a (recorded 2026-10-10, access-model plan review)
+
+_renamed from round 19 to remove a numbering collision (2026-10-11)_
 
 Context: the access-model plan draft (`docs/plan/zen360/ACCESS-MODEL-PLAN.md`, DRAFT v2) and the owner's corrections given during its drafting.
 
-- **(a) HR runs employee onboarding.** HR answers the stakeholder-mapping questionnaire and owns the onboarding case. This resolves round 13 (D:428, "founder or onboarding owner") against round 18 (d), in favour of HR.
+- **(a) HR runs employee onboarding.** HR answers the stakeholder-mapping questionnaire and owns the onboarding case. This resolves round 13 (D:428, "founder or onboarding owner") against round 18a (d), in favour of HR.
 - **(b) Nothing is set up by hardcode.** No employees or roles are set up through hardcode; they are set up only during onboarding. Levels, verticals and every person's access become tenant data. The seeded role matrix (`apps/api/src/seed/grants.ts`) stops being the source of access. Open: whether an unassigned, editable starter template may ship, given round 10's "template ships with the app".
 - **(c) Statutory sign-off is a guided in-app setup.** It runs after the application is set up: the accountant logs in, and a guided setup takes her through approving the statutory rules. Onboarding and access mapping no longer wait on statutory sign-off. Features that depend on statutory rules stay gated until the accountant approves those rules. This reverses the BLOCKED-BY on P7 in ORDERED-PLAN (OP:125) (owner answer to plan question 6: "yes").
 - **(d) The access model is level × vertical, not a job-role model.** A vertical (with units) decides which records a person reaches. A level decides how far that reach goes and how much the person may approve. Telecalling versus training, and every similar case, comes from the vertical or unit, never from a job title.
@@ -574,7 +578,7 @@ Context: the access-model plan draft (`docs/plan/zen360/ACCESS-MODEL-PLAN.md`, D
 
 ## Owner answers, round 20 (recorded 2026-10-10, vertical taxonomy)
 
-Context: the vertical taxonomy proposal (`docs/plan/zen360/VERTICAL-TAXONOMY.md`), which answers round 19 (e). The owner approved all five decisions ("yes to all 5").
+Context: the vertical taxonomy proposal (`docs/plan/zen360/VERTICAL-TAXONOMY.md`), which answers round 19a (e). The owner approved all five decisions ("yes to all 5").
 
 - **(a) Five business lines.** SKL Skill Development, EDU Education, CLR Corporate Learning, TEC Technology Services and WFS Workforce Solutions. Media & Marketing stays a shared function until it earns external revenue; the five-question test in the taxonomy decides when it graduates.
 - **(b) The registry is group-level.** `BusinessLine` IDs are immutable and shared across the group's legal entities. A split or merge creates successors through a dated mapping. History stays as it was booked, never rewritten.
@@ -583,3 +587,242 @@ Context: the vertical taxonomy proposal (`docs/plan/zen360/VERTICAL-TAXONOMY.md`
 - **(e) Five things are not lines.** Research is a cost centre. Partnerships is a channel. Telecalling is a unit or channel. Ventures are legal entities. The Foundation is a separate Section 8 entity.
 
 Consequence for the plan: the registry and its foreign keys land in Waves 2–3, before the ledger, so `JournalLine` carries `lineId` and `costCentreId` from its first posting.
+
+## Owner answers, round 18b (recorded 2026-10-11)
+
+_renamed from round 18 to remove a numbering collision (2026-10-11)_
+
+Owner answers given after round 17. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, except where this round says it supersedes or provisionally holds an earlier answer. This round supersedes the round 17 "Still open" list. Where no answer is recorded here, the earlier rounds and the drafts stand.
+
+Numbering note: an earlier section is also titled "Owner answers, round 18a (recorded 2026-10-10, during Wave 0 and Wave 1 implementation)". Both are round 18. This section is the one recorded 2026-10-11, and the markers in the plan files say so.
+
+1. **Tenancy work is deferred until commercialisation (owner answer, item 1).** The company runs as one tenant for now. Deferred:
+   - FX-51, RLS on every table;
+   - the second-tenant tenant-leakage fuzzer;
+   - the tenant-isolation CI gate (G7);
+   - per-tenant webhook HMAC. FX-50 becomes a single webhook secret;
+   - per-tenant encryption keys (round 5, item 6);
+   - separate subsidiary tenants and the holding-company link (D-01);
+   - per-tenant editing of access-level templates.
+     Existing tenant scoping in the code stays untouched.
+2. **PgBouncer is not a blocker (owner answer, item 2).** This supersedes the ORDERED-PLAN item 1.2 blocker that named PgBouncer in transaction mode. Revisit only if connections run short.
+3. **All hosting decisions are deferred until after Phase 1 (owner answer, item 3).** The owner will separately consider how to host efficiently and which caching and routing to use. This covers:
+   - server operations (ORDERED-PLAN Wave 4);
+   - the reverse proxy (round 7: Caddy);
+   - backups tooling. The owner named Databasus as the backup setup. It is a PostgreSQL backup tool, not a connection pooler, and it does not make the app faster. Claude has not read its documentation, and nothing in these docs evaluates it;
+   - monitoring, TLS renewal, static IP and redundancy notes;
+   - the round 6 and round 7 own-server decisions, which become provisional history.
+4. **LiveKit: configurable server address only in Phase 1 (owner answer, item 4).** The code needs only a configurable server address for LiveKit voice and video (ORDERED-PLAN Phase 1 Wave 6). Where the server runs is a hosting decision for after Phase 1. Development and tests use a local setup. Owner words: "the server will obviously run when the app is hosted". This supersedes the round 6 note that LiveKit runs on the own server in Phase 1.
+5. **The non-owner database role stays in the build waves (owner answer, item 5).** It is a dev and CI database setting, needed for the ledger immutability test (ORDERED-PLAN item 1.2). It is not a hosting item.
+
+Implications (label):
+
+- (a) CLAUDE.md rule 6 still binds new code. This answer stops new tenancy work. Existing scoping is not removed.
+- (b) The ledger `entityId` (D-01, round 2) is kept, because it is cheap now and expensive to retrofit, unless the owner says otherwise.
+- (c) Round 4's FX-51 addition, round 5 item 6 (per-tenant key), round 6 operations wave and round 7 infrastructure answers are superseded or provisional, and are kept as history.
+- (d) The onboarding state machine, per-state packs and the guided level-mapping flow stay in Phase 0 Wave 6 as recorded. Whether they are also commercialisation-only is OPEN.
+- (e) The Resend data-hosting and chat-retention legal checks are unaffected.
+- (f) The CLAUDE.md line "the API is served from the company's own server in India" reflects round 6 and is now provisional. It is not edited here.
+- (g) The RLS that the existing ledger migration sets on the ledger tables (CI-GATES-DRAFT G7, "exists today"), and the RLS and `set_config` items in ORDERED-PLAN 1.2, stay because rule 6 binds new code. Only the every-table sweep (FX-51) is deferred. Owner to confirm.
+- (h) The Wave 0 "Hosting" item (remove the Cloudflare Worker, serve from the own server behind Caddy) is a hosting decision, so it is deferred with the rest. The CURRENT.md status note records the Worker as removed on the branch. Whether that stands is for the owner to confirm.
+
+Still open after round 18b (recorded 2026-10-11, supersedes the round 17 list):
+
+- Hosting, caching and routing (after Phase 1).
+- Whether onboarding and level mapping stay in Phase 0 (implication (d)).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.
+- E2EE in LiveKit stays UNVERIFIED. Per-tenant LiveKit isolation is deferred with tenancy (item 1). This bullet is drafted from the ORDERED-PLAN Wave 6 marker, not an owner answer.
+
+## Owner answers, round 19b (recorded 2026-10-11)
+
+_renamed from round 19 to remove a numbering collision (2026-10-11)_
+
+Owner answers given after round 18b (recorded 2026-10-11). Each item is an owner answer unless it is marked as a note or an implication. This round answers round 18b implications (f), (g) and (h), and clarifies what "defer FX-51" meant in round 18b item 1.
+
+Numbering note: this section is titled round 19 by the owner's request. An earlier section, "Owner answers, round 19a (recorded 2026-10-10, access-model plan review)", already has that title. Two sections are titled round 18 (see the round 18 numbering note). Read the date to tell them apart.
+
+1. **Row-level security stays (owner answer, item a).** The tenant_rls migration, the app running as a role bound by the security rules, and the test that requires every new tenant table to set up the same security are KEPT. They were merged to main in PR #33. They cost nothing now, and CLAUDE.md rule 6 still requires them for new code. Only the extra proof work stays deferred: the tenant-leakage fuzzer, gate G7, per-tenant keys and HMAC, and subsidiary tenants. Removing RLS later would be a new migration, not a revert.
+   - Clarification of round 18b implication (g): FX-51's substance is merged and stays. The "defer FX-51" wording in round 18b item 1 means no further tenancy work beyond what is merged.
+   - Note (not an owner answer): Claude checked through the GitHub API that PR #33 is closed and merged into main on 2026-10-11, and that the FX-51 RLS commits are in main's history. Claude did not read the full PR diff, so the exact scope of PR #33 comes from the owner's message.
+2. **The Cloudflare Worker removal stands (owner answer, item b).** The Worker that served the built client and proxied `/api` stays removed. Only the hosting choices that replace it (reverse proxy, caching, routing) wait until after Phase 1. This answers round 18b implication (h).
+3. **CLAUDE.md says hosting is undecided until after Phase 1 (owner answer, item c).** The CLAUDE.md hosting sentence now says that hosting (server, reverse proxy, caching, routing) is undecided until after Phase 1. The sentence that named the company's own server and Caddy is removed. This answers round 18b implication (f), which had left that line unedited.
+
+Still open after round 19b (recorded 2026-10-11, supersedes the round 18b list):
+
+- Hosting, caching and routing (after Phase 1).
+- Whether onboarding and level mapping stay in Phase 0 (round 18b implication (d)).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.
+- E2EE in LiveKit stays UNVERIFIED. Per-tenant LiveKit isolation is deferred with tenancy (round 18b item 1).
+- Round numbering: two sections titled round 18 exist, and a round 19 section dated 2026-10-10 exists above this one.
+
+## Owner answers, round 20 (recorded 2026-10-11)
+
+Owner answers given after round 19b (recorded 2026-10-11). Each item is an owner answer.
+
+1. **Gate G7 stays DEFERRED as a whole (owner answer, item 1).** The check that every new tenant table sets up RLS is not split out as a named CI gate. The merged test from PR #33 stays in the test suite; it is not a named gate. This answers the round 19b question on G7 in CI-GATES-DRAFT.md.
+2. **The README.md hosting section is LEFT AS IS (owner answer, item 2).** The section (README.md lines ~330-354, own server behind Caddy) stays as the provisional round 6/7 answer. CLAUDE.md says hosting is undecided until after Phase 1, so the two differ knowingly. Neither is edited to match the other in this round.
+
+Still open after round 20 (recorded 2026-10-11, supersedes the round 19b list):
+
+- Hosting, caching and routing (after Phase 1).
+- Whether onboarding and level mapping stay in Phase 0 (round 18b implication (d)).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.
+
+## Owner answers, round 21 (recorded 2026-10-11)
+
+Owner answers given after round 20 (recorded 2026-10-11). Items 1 to 4 are owner answers. The implications (a) to (g) are Claude's reading of them, not owner statements, and none of them has been researched.
+
+1. **Each employee gets a company mailbox created and hosted by the app, plus an inbox in the app (owner answer, item 1).** This is not a connection to an existing provider, and it is not internal-only messages.
+2. **The company has no email service today (owner answer, item 2).** Employees have no company email yet.
+3. **Placement: Phase 1, communication wave, alongside COM-02, COM-13 and COM-15 (owner answer, item 3).**
+4. **The inbox both sends and reads employees' mail, linked to customers (owner answer, item 4).** This pulls the Z3 communications-capture idea, previously deferred, into this scope for employee mail.
+
+Implications (labelled as implications, not owner statements; Claude has not researched these):
+
+- (a) This is new large scope with no CAP row, spec or phase item. It supersedes round 5's "transactional email only via Resend" only for employee mail. Resend stays for system notifications. Company mailboxes need an SMTP/IMAP (or equivalent) mail service, domain DNS records (MX, SPF, DKIM, DMARC), IP reputation and deliverability, spam and virus filtering, storage and backups, and mailbox quotas.
+- (b) It conflicts with "all hosting decisions deferred until after Phase 1" (rounds 18b and 19b). Mailboxes need a host, a stable public IP and reverse DNS. Either email hosting is decided as an exception, or the mail service runs as a configurable external service in development.
+- (c) "Read and link to customers" needs permission rules for who can see whose mail (access levels, rounds 9 to 14). It also needs retention and legal-hold rules (legal hold was deferred, warn-only), DPDP considerations for personal data in mail, and audit rows per CLAUDE.md rule 5.
+- (d) Round 5 (D-04) says build natively and read open-source code to learn, never copy. A full mail server is a very large build. Building natively versus running an open-source mail server as a service (as with LiveKit) is an OPEN decision. Licences of candidate mail servers are UNVERIFIED.
+- (e) CLAUDE.md prohibits any agent from emailing a customer without human approval. This stays.
+- (f) The Resend data-hosting check and the chat-retention legal checks are unaffected.
+- (g) Effort is not estimated. Phase 1 now has a very large item.
+
+Still open after round 21 (recorded 2026-10-11, supersedes the round 20 list for mail items; the round 20 items are carried below):
+
+- Build versus run an open-source mail server as a service (research needed, licences unverified).
+- Email hosting versus the "hosting after Phase 1" deferral.
+- Domain name and DNS ownership for company email.
+- Mailbox limits and retention.
+- Access rules for reading other people's mail.
+- Whether this is sequenced late in Phase 1.
+- Hosting, caching and routing (after Phase 1).
+- Whether onboarding and level mapping stay in Phase 0 (round 18b implication (d)).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.
+
+## Owner answers, round 21b (recorded 2026-10-11)
+
+Renamed from "round 21" on origin/main. The round 21 label is already used for the mail answers above, so this block takes the suffix b. Its items repeat the round 22 items a to d below on the same points; both are kept as recorded.
+
+Owner answers given after round 20 (recorded 2026-10-11). Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged. This round supersedes the round 20 "Still open" list. Where no answer is recorded here, the earlier rounds and the drafts stand.
+
+1. **The customer Case record stays in Phase 0 Wave 6 (owner answer, item 1).** This resolves the conflict between the Wave 6 list in `docs/plan/zen360/ORDERED-PLAN.md`, which names the Case record, and the ROADMAP row "Customer Case model (Z2)", which said out of Phase 0. The "Z2: customer case out" entry in the "Phase 0, out or undecided" list under "Owner phase definitions and scope" (recorded 2026-10-10) is superseded by this item and kept as history.
+2. **Delegation and the 24-hour absence test are owned by Phase 1A approvals (owner answer, item 2).** They are not Phase 0 Wave 6 items. The 1A item in ORDERED-PLAN.md holds the delegation record with its expiry, the named alternate and the escalation after 24 hours of absence. ROADMAP.md no longer lists the 24-hour founder-absence scenario in the Wave 6 exit.
+3. **Onboarding and level mapping stay in Phase 0 (owner answer, item 3).** The P7 onboarding state machine, the per-state packs and the guided level-mapping flow stay in Phase 0 Wave 6. This closes round 18b implication (d), which was OPEN.
+4. **Item 3.1 sign-off is not a blocker for the P7 onboarding state machine (owner answer, item 4).** This matches round 19a (c). The "BLOCKED-BY 3.1 sign-off" lines in ORDERED-PLAN.md Wave 6 are struck, and the related note in ROADMAP.md Wave 1 is marked.
+
+Implications (label):
+
+- (a) Phase 0 scope does not grow. The Case record was already in the ORDERED-PLAN Wave 6 list, so the change is to the ROADMAP row and the Wave 6 summary wording.
+- (b) Item 2 says who owns the 24-hour absence test, not what its rule is. The D-09 open item for the 24-hour absence test stays open until the Phase 1A design settles it.
+- (c) Item 4 removes a build-order block only. It does not unlock any statutory-dependent feature. Those stay gated until the accountant approves the rules (round 19a (c)), and the values stay DRAFT (round 10).
+
+Still open after round 21b (recorded 2026-10-11, supersedes the round 20 list):
+
+- Hosting, caching and routing (after Phase 1).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.
+
+## Owner answers, round 22 (recorded 2026-10-11)
+
+Owner answers given after round 21 (recorded 2026-10-11). Items a to f are owner answers. The caveats and the feature list in the mail items are Claude's research notes, not decisions, unless marked as the owner's.
+
+a. **Customer case record stays in Phase 0 Wave 6 (owner answer, item a).** ROADMAP.md previously said it was out of Phase 0. Fixed in round 22.
+
+b. **Delegation and the 24-hour absence test are owned by Phase 1A (owner answer, item b).** Removed from the Phase 0 Wave 6 exit in ROADMAP.md. Listed as an exit test for 1A in ORDERED-PLAN.md and ROADMAP.md.
+
+c. **Onboarding and level mapping stay in Phase 0 Wave 6 (owner answer, item c).** They do not wait for commercialisation. This answers the open question "whether onboarding and level mapping stay in Phase 0" (round 18b implication (d)), which is closed.
+
+d. **Statutory sign-off is not an onboarding blocker (owner answer, item d).** Round 19a(c) lifted it. Reconciliation applied in round 22: the BLOCKED-BY on P7 onboarding was removed, and the BLOCKED-BY on item 3.1 itself was removed too, because 3.1 is the DRAFT table that onboarding depends on (see ACCESS-MODEL-PLAN.md section on 3.1). Statutory-dependent features stay gated until the accountant approves the rule. Statutory values stay DRAFT.
+
+e. **Account recovery goes through the founder or the IT admin (owner answer, item e).** SMS to employees' phones is NOT a recovery method. The owner chose this over SMS. Reason noted by the owner: SIM-swap risk on a finance system. Implication, not an owner statement: the IT admin is a level assignment (round 10), so the recovery path depends on that assignment being made at onboarding.
+
+f. **Mail server: the owner decided to FORK Stalwart Mail Server and adapt it to Zen 360 (owner decision, item f).** The owner said commercialisation is not a concern now ("our team will take care of it later"). Recorded as the owner's decision. The points below are unresearched caveats, not decisions. Each needs checking before any code is taken.
+
+Caveats (UNVERIFIED unless stated):
+
+- Stalwart is AGPL-3.0. A modified version used over a network means offering its source to its users. Changing the licence later is not possible without the paid Enterprise Licence v2. The terms of that licence have not been read.
+- Enterprise-licensed features may not be in the forked code. Not verified.
+- Version 0.16 replaced the REST API with JMAP. The 0.15 to 0.16 migration is irreversible without a backup.
+- Releases are weekly. Upstream security fixes must be merged by us.
+- Not verified: JMAP authentication and impersonation, webhook event names, DNS requirements, backup and restore, resource needs, export format.
+- Hosting still conflicts with "hosting after Phase 1" (round 18b, 19b): MX, SPF, DKIM, DMARC, PTR, port 25 and a static IP. The domain and DNS owner is still open.
+- Conflict with the ORDERED-PLAN "read and learn only" rule (open-source use). Recorded in ORDERED-PLAN.md as an exception needing review.
+
+Survey notes (Claude's research summary, not decisions):
+
+- Mailflare is ruled out: Cloudflare lock-in, and no IMAP.
+- Mailcow was the runner-up.
+- Open-source features and the public feature lists of paid products were surveyed.
+- Reverse engineering of proprietary software is NOT part of the plan. Only public documentation is used.
+
+Phased inbox feature list (proposal for the owner to confirm; not estimated):
+
+- MVP: mailboxes; send and read; threading; customer linking; founder or IT-admin access, with every access logged; an approval queue for agent-drafted mail (CLAUDE.md rule 5 and the rule that no agent emails a customer without approval); audit via assertCan, then write, then auditWrite, then emit.
+- v2: shared inboxes; assignment; internal comments; undo send; rules; out-of-office; search.
+- Later: legal hold; retention per tenant; DLP; scheduled send.
+
+DPDP duties for employee mail (personal data in mail, retention, access, erasure against the 8-year retention in D-14): UNVERIFIED. Needs counsel. Not checked here.
+
+Still open after round 22 (recorded 2026-10-11, supersedes the round 21 list for the items below):
+
+- Mail: build versus fork. The owner has decided to fork Stalwart. The caveats above are open. Whether the fork is compatible with the "read and learn only" open-source rule is open.
+- Mail: email hosting versus the "hosting after Phase 1" deferral. Still open.
+- Mail: domain name and DNS owner for company email. Still open.
+- Mail: mailbox limits and retention. Still open.
+- Mail: access rules for reading other people's mail. Still open.
+- Mail: whether it is sequenced late in Phase 1. Still open.
+- Mail: DPDP duties. Unverified, needs counsel.
+
+### Round 22 clarification (recorded 2026-10-12)
+
+Owner clarification of item f. "Fork" in the round 22 answer does NOT mean a literal GitHub fork of Stalwart Mail Server, and does NOT mean running a modified Stalwart. It means: copy code from Stalwart's repository and/or other open-source or public solutions wherever relevant into Zen 360's own mail component.
+
+This supersedes, for the mail component only:
+
+- the round 22 wording "fork Stalwart Mail Server and adapt it" (item f above, ORDERED-PLAN.md and ROADMAP.md 1E);
+- the "read and learn only, never copy" open-source rule (D-04 round 5, DECISIONS.md:214; ORDERED-PLAN.md "Open-source use").
+
+The rule stays in force for every other part of the app.
+
+Consequences, stated plainly. These are not decisions; the owner has accepted them and defers the detail to their team.
+
+i. **Licence effect of copying.** Copying AGPL-3.0 code (Stalwart, SnappyMail, SuiteCRM, EspoCRM), GPL-3.0 code (Mailcow, Maddy, Roundcube) or EUPL code into our code makes that part a derivative work. It must then be offered under the same licence to the users of the product, and it may reach the rest of the application it is combined with. MIT-licensed code (Mox, Haraka, Postal) needs only its copyright and licence notice kept. The licences above are as listed in the owner's brief; they are not checked against the upstream LICENSE files.
+ii. **Language.** Stalwart is Rust and Zen 360 is TypeScript. Most of what would be taken is a port or a rewrite, not a copy. Whether a close port counts as a derivative work is a legal question for counsel. It is not answered here.
+iii. **Owner position.** The owner accepts the consequences in (i) and (ii) and defers the decision on them to the owner's team, including on commercialisation.
+iv. **Mitigation to adopt.** Keep a provenance log at `docs/plan/zen360/MAIL-PROVENANCE.md` with one row for each copied or ported file: our file, upstream project, upstream path and commit, licence, date copied, and who approved it. This lets the team later rewrite the code or change its licence. Copied code keeps the upstream licence header and notices.
+v. **Limit on proprietary products.** Paid or proprietary products are not copied and not reverse-engineered. Only their public feature lists are used.
+vi. **Still applies to copied code.** Copied code must follow CLAUDE.md: tenant scope (rule 6), audit and governed entities (rule 5), no mocks in the API test suite, and money and dates per rules 1 and 3. Hosting and DNS conflicts (round 18b, 19b and round 22) remain open.
+
+Still open, unchanged by this clarification: email hosting against the "hosting after Phase 1" deferral; the domain and DNS owner; mailbox limits and retention; access rules for reading other people's mail; DPDP duties (needs counsel).
+
+### Round 22 second clarification (recorded 2026-10-12)
+
+Owner statement: the app is for personal use for now. Licence and legal concerns about copying open-source mail code are out of scope. The owner's team handles them later.
+
+This supersedes, for the mail component only, the licence consequences listed in the first clarification above:
+
+- item i (licence effect of copying: copyleft, derivative work, licence reach into the rest of the app);
+- item ii (whether a close port is a derivative work, for counsel);
+- item iii (owner position on the licence consequences);
+- item iv, in part (copied code keeps the upstream licence header and notices);
+- the Stalwart licence caveats in item f: AGPL-3.0 and Enterprise Licence v2 terms.
+
+This removes the licence caveats only. Nothing else changes. CLAUDE.md still applies in full, including rule 6 (tenant scope), rule 5 (audit and governed entities), DPDP and personal-data handling (no personal data to an inference API without `applyFieldVisibility`, and India residency where a tenant requires it), and human approval before any agent emails a customer. This clarification did not change those rules.
+
+`MAIL-PROVENANCE.md` stays as a plain engineering record of what was copied from where. It is not a legal control.
+
+Still open, unchanged: mail hosting against the "hosting after Phase 1" deferral; the domain and DNS owner; mailbox limits and retention; access rules for reading other people's mail; DPDP duties (needs counsel). The mail item stays OPEN and not estimated.

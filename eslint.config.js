@@ -94,6 +94,47 @@ export default tseslint.config(
     rules: { '@typescript-eslint/no-explicit-any': 'warn' },
   },
 
+  // The journal has one writer: platform/ledger.ts (CLAUDE.md rule 2).
+  //
+  // A Prisma accessor write and a raw INSERT/UPDATE/DELETE on a journal table
+  // are both refused everywhere else. Reads stay allowed: reports and balances
+  // are the journal's readers. Tests are not exempt from the Prisma rule, and
+  // the raw-SQL rule is relaxed for them only because the L1 to L3 gates prove
+  // the database refuses a write that bypasses post(), and that proof is raw SQL.
+  // ---------------------------------------------------------------------
+  {
+    files: ['apps/api/src/**/*.ts'],
+    ignores: ['apps/api/src/platform/ledger.ts', 'apps/api/src/tests/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'MemberExpression[object.property.name=/^(journalEntry|journalLine|journalReversal)$/][property.name=/^(create|createMany|createManyAndReturn|update|updateMany|upsert|delete|deleteMany)$/]',
+          message: 'Only platform/ledger.ts writes journal rows. Post through post() (CLAUDE.md rule 2).',
+        },
+        {
+          selector:
+            'TemplateElement[value.raw=/(INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)[^;]*journal_(entries|lines|reversals)/i]',
+          message: 'Only platform/ledger.ts writes journal rows. Post through post() (CLAUDE.md rule 2).',
+        },
+      ],
+    },
+  },
+  {
+    files: ['apps/api/src/tests/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'MemberExpression[object.property.name=/^(journalEntry|journalLine|journalReversal)$/][property.name=/^(create|createMany|createManyAndReturn|update|updateMany|upsert|delete|deleteMany)$/]',
+          message: 'Tests post through post(); a raw journal write is a test of the database, in raw SQL.',
+        },
+      ],
+    },
+  },
+
   // Tests say what they mean; the strictness that helps production code gets
   // in the way of a fixture.
   {

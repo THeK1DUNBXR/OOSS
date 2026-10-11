@@ -35,6 +35,7 @@ import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, scopeFor } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { notify } from '../../platform/exceptions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
 import { transitionEmployment, transitionOffboarding } from '../employment.js';
@@ -254,44 +255,54 @@ export async function submitResignation(input: {
   const recordCode = await nextRecordCode('RSG');
   const submittedOn = new Date();
 
-  const row = await prisma.resignation.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      employmentRelationshipId: input.employmentRelationshipId,
-      submittedOn,
-      requestedLastDay: input.requestedLastDay,
-      noticeDays,
-      reasonCategory: input.reasonCategory,
-      reasonNote: input.reasonNote ?? null,
-      status: 'submitted',
-      createdById: auth.partyId,
-    },
-  });
-
-  await emit({
-    name: EVENTS.RESIGNATION_SUBMITTED,
-    subject: { entityType: 'resignation', entityId: row.id, recordCode },
-    related: [
-      { relation: 'resigns_from', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-    ],
-    newState: { status: 'submitted', requestedLastDay: input.requestedLastDay, reasonCategory: input.reasonCategory },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
-
+  // The filing had no audit row before this; the write, its audit row and its
+  // event now commit together, and the notification goes out after commit.
+  // A read, so it runs before the transaction: the resolver uses the scoped client.
   const hrOwner = await hrOpsOwnerId(auth.tenantId);
-  if (hrOwner) {
-    await notify({
-      recipientPartyId: hrOwner,
-      priority: 'N2_NORMAL',
-      title: `Resignation filed: ${employment.person.fullName}`,
-      body: `Requested last day ${input.requestedLastDay.toISOString().slice(0, 10)}, ${noticeDays} days' notice.`,
-      subjectType: 'resignation',
-      subjectId: row.id,
-      drillPath: `/people/separations`,
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.resignation.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        employmentRelationshipId: input.employmentRelationshipId,
+        submittedOn,
+        requestedLastDay: input.requestedLastDay,
+        noticeDays,
+        reasonCategory: input.reasonCategory,
+        reasonNote: input.reasonNote ?? null,
+        status: 'submitted',
+        createdById: auth.partyId,
+      },
     });
-  }
+    await auditWrite({ action: 'create', subjectType: 'resignation', subjectId: created.id, after: created, tx });
+    await emit({
+      name: EVENTS.RESIGNATION_SUBMITTED,
+      subject: { entityType: 'resignation', entityId: created.id, recordCode },
+      related: [
+        { relation: 'resigns_from', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+      ],
+      newState: { status: 'submitted', requestedLastDay: input.requestedLastDay, reasonCategory: input.reasonCategory },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    // The HR notice is part of the filing: it commits or rolls back with the resignation.
+    if (hrOwner) {
+      await notify(
+        {
+          recipientPartyId: hrOwner,
+          priority: 'N2_NORMAL',
+          title: `Resignation filed: ${employment.person.fullName}`,
+          body: `Requested last day ${input.requestedLastDay.toISOString().slice(0, 10)}, ${noticeDays} days' notice.`,
+          subjectType: 'resignation',
+          subjectId: created.id,
+          drillPath: `/people/separations`,
+        },
+        tx,
+      );
+    }
+    return created;
+  });
 
   return row;
 }
@@ -380,21 +391,23 @@ export async function rejectResignation(id: string, reason: string) {
   }
   if (!reason?.trim()) throw ApiError.badRequest('A rejection needs a reason.');
 
-  const updated = await prisma.resignation.update({
-    where: { id },
-    data: { status: 'rejected', rejectedReason: reason },
+  return governedWrite(async (tx) => {
+    const updated = await tx.resignation.update({
+      where: { id },
+      data: { status: 'rejected', rejectedReason: reason },
+    });
+    await auditWrite({ action: 'update', subjectType: 'resignation', subjectId: id, before: row, after: updated, tx });
+    await emit({
+      name: EVENTS.RESIGNATION_REJECTED,
+      subject: { entityType: 'resignation', entityId: id, recordCode: row.recordCode },
+      previousState: { status: 'submitted' },
+      newState: { status: 'rejected', reason },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
-
-  await emit({
-    name: EVENTS.RESIGNATION_REJECTED,
-    subject: { entityType: 'resignation', entityId: id, recordCode: row.recordCode },
-    previousState: { status: 'submitted' },
-    newState: { status: 'rejected', reason },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
-
-  return updated;
 }
 
 /** Withdrawing your own resignation while it is still pending — the one mutation `resignations:create @own` is asked to carry, since a withdrawal is the requester's own act on their own not-yet-decided request. */
@@ -408,21 +421,23 @@ export async function withdrawResignation(id: string) {
   await assertCan({ resource: 'resignations', verb: 'create', record: { ownerPartyId: employment.personId } });
   assertResignationTransition(row.status as ResignationState, 'withdrawn');
 
-  const updated = await prisma.resignation.update({
-    where: { id },
-    data: { status: 'withdrawn', withdrawnAt: new Date() },
+  return governedWrite(async (tx) => {
+    const updated = await tx.resignation.update({
+      where: { id },
+      data: { status: 'withdrawn', withdrawnAt: new Date() },
+    });
+    await auditWrite({ action: 'update', subjectType: 'resignation', subjectId: id, before: row, after: updated, tx });
+    await emit({
+      name: EVENTS.RESIGNATION_WITHDRAWN,
+      subject: { entityType: 'resignation', entityId: id, recordCode: row.recordCode },
+      previousState: { status: 'submitted' },
+      newState: { status: 'withdrawn' },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return updated;
   });
-
-  await emit({
-    name: EVENTS.RESIGNATION_WITHDRAWN,
-    subject: { entityType: 'resignation', entityId: id, recordCode: row.recordCode },
-    previousState: { status: 'submitted' },
-    newState: { status: 'withdrawn' },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
-
-  return updated;
 }
 
 /** Days short of full notice, for the screen that shows what a buyout would cover — pure arithmetic, exported so a payroll ad-hoc line can call it without re-deriving. */
@@ -618,31 +633,33 @@ export async function issueNoDues(offboardingId: string) {
     );
   }
 
-  const row = await prisma.noDuesCertificate.create({
-    data: {
-      tenantId: auth.tenantId,
-      offboardingId,
-      employmentRelationshipId: offboarding.employmentRelationshipId,
-      issuedById: auth.partyId ?? 'system',
-      clearanceSnapshot: rows.map((r) => ({
-        department: r.department,
-        status: r.status,
-        clearedById: r.clearedById,
-        clearedAt: r.clearedAt,
-      })) as never,
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.noDuesCertificate.create({
+      data: {
+        tenantId: auth.tenantId,
+        offboardingId,
+        employmentRelationshipId: offboarding.employmentRelationshipId,
+        issuedById: auth.partyId ?? 'system',
+        clearanceSnapshot: rows.map((r) => ({
+          department: r.department,
+          status: r.status,
+          clearedById: r.clearedById,
+          clearedAt: r.clearedAt,
+        })) as never,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'no_dues_certificate', subjectId: row.id, after: row, tx });
+    await emit({
+      name: EVENTS.NO_DUES_ISSUED,
+      subject: { entityType: 'no_dues_certificate', entityId: row.id },
+      related: [{ relation: 'for', entityType: 'offboarding', entityId: offboardingId }],
+      newState: { issuedOn: row.issuedOn },
+      owner: { partyId: offboarding.employmentRelationship.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-
-  await emit({
-    name: EVENTS.NO_DUES_ISSUED,
-    subject: { entityType: 'no_dues_certificate', entityId: row.id },
-    related: [{ relation: 'for', entityType: 'offboarding', entityId: offboardingId }],
-    newState: { issuedOn: row.issuedOn },
-    owner: { partyId: offboarding.employmentRelationship.personId },
-    impact: { domains: ['hr'] },
-  });
-
-  return row;
 }
 
 /**

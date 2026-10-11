@@ -790,6 +790,9 @@ export const RECORD_TYPE_CODES = [
   'JPST',
   'CERT',
   'SREV',
+  // A commitment (Wave 6, OP:115): a promise a named person owns, referred to
+  // by its number in a review, so it needs one of its own.
+  'CMT',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 
@@ -942,6 +945,18 @@ export const EXCEPTION_CODES = {
   // penalty is per day, so a return nobody has looked at is an exposure rather
   // than a task.
   EX_FIN_006: { code: 'EX-FIN-006', label: 'GST return not filed for a closed month', severity: 'S3_HIGH_RISK' },
+  // Money arrived on a date whose accounting period is closed. It is recorded in
+  // the open period, with the arrival date kept, because refusing money that has
+  // reached the bank is worse than a dated entry the accountant must look at.
+  // Interim policy, pending the accountant's confirmation of the treatment.
+  EX_FIN_007: { code: 'EX-FIN-007', label: 'Payment received for a closed period', severity: 'S2_WARNING' },
+  // Money that has left the bank on a date in a closed period. Recorded with the
+  // real paid date and booked in the open period; the same interim policy as
+  // EX-FIN-007, pending the accountant's confirmation.
+  EX_FIN_008: { code: 'EX-FIN-008', label: 'Payment made for a closed period', severity: 'S2_WARNING' },
+  // A receipt settled an invoice while the current month was closed, so the final
+  // invoice is dated in the open period. Interim policy, as EX-FIN-007.
+  EX_FIN_009: { code: 'EX-FIN-009', label: 'Invoice settled for a closed period', severity: 'S2_WARNING' },
   // A student's complaint. Held at the same rung as an absence breach because
   // the thing that makes it serious is the same: a clock is running and somebody
   // outside the company is waiting.
@@ -992,6 +1007,14 @@ export const EXCEPTION_CODES = {
     severity: 'S2_WARNING',
   },
   EX_MKT_015: { code: 'EX-MKT-015', label: 'Journey run stuck (nextAt overdue by 2 days)', severity: 'S1_ATTENTION' },
+  // Raised when a dispatch claim expired with no outcome recorded. The
+  // provider may have accepted the message, so an operator must check the
+  // delivery log before anything is sent again.
+  EX_MKT_016: {
+    code: 'EX-MKT-016',
+    label: 'Send recipient delivery outcome unknown (claim expired)',
+    severity: 'S1_ATTENTION',
+  },
 } as const;
 
 export const EXCEPTION_STATES = ['open', 'acknowledged', 'resolved', 'escalated', 'suppressed'] as const;

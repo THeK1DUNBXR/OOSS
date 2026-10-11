@@ -35,7 +35,8 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { istEndOfDay, istYearMonth } from '@kaizen/shared';
+import { istEndOfDay, istYearMonth, SENSITIVITY_RANK } from '@kaizen/shared';
+import { governedWrite } from '../platform/governedWrite.js';
 import { raiseException, resolveException } from '../platform/exceptions.js';
 import { companyProfile } from './companyProfile.js';
 import { effectiveBalance, holderView, outgoingCount } from './equity.js';
@@ -512,7 +513,7 @@ async function mgt1RowsForClass(shareClassId: string): Promise<Mgt1Row[]> {
       holderName: view.displayName,
       address: holder.address ?? '',
       email,
-      panOrCin: holder.panNumber ?? '',
+      panOrCin: view.panNumber ?? '',
       guardianOrSpouseName: holder.guardianOrSpouseName ?? '',
       occupation: holder.occupation ?? '',
       nationality: holder.nationality ?? (holder.residency === 'non_resident' ? 'Not recorded' : 'Indian'),
@@ -607,7 +608,23 @@ function mgt1SheetRows(rows: Mgt1Row[]): unknown[][] {
   ]);
 }
 
+/**
+ * A statutory file is only worth filing with every PAN in it. Below the
+ * regulated ceiling the PAN column comes back masked, and a masked identifier
+ * is not a valid filing, so the caller is refused the file rather than handed
+ * one that looks complete. The JSON registers still show the masked value for
+ * review; only a file carrying a PAN needs the ceiling.
+ */
+function assertStatutoryPanReadable(): void {
+  if (SENSITIVITY_RANK[currentAuth().classificationCeiling] >= SENSITIVITY_RANK.regulated) return;
+  throw ApiError.forbidden(
+    'Generating this statutory file needs the regulated-data ceiling, because the PANs of its holders cannot be masked.',
+  );
+}
+
 export async function mgt1Export(shareClassId?: string): Promise<Buffer> {
+  await assertCan({ resource: 'compliance', verb: 'view' });
+  assertStatutoryPanReadable();
   const groups = await mgt1Register(shareClassId);
   const book = XLSX.utils.book_new();
   if (groups.length === 0) {
@@ -625,6 +642,8 @@ export async function mgt1Export(shareClassId?: string): Promise<Buffer> {
 }
 
 export async function mgt2Export(): Promise<Buffer> {
+  await assertCan({ resource: 'compliance', verb: 'view' });
+  assertStatutoryPanReadable();
   const groups = await mgt2Register();
   const book = XLSX.utils.book_new();
   if (groups.length === 0) {
@@ -673,7 +692,7 @@ export async function pas3AllotteeList(roundId: string): Promise<{ round: Record
     rows.push({
       holderName: view.displayName,
       address: holder.address ?? '',
-      pan: holder.panNumber ?? '',
+      pan: view.panNumber ?? '',
       nationality: holder.nationality ?? (holder.residency === 'non_resident' ? 'Not recorded' : 'Indian'),
       shareClassName: shareClass.name,
       count,
@@ -725,6 +744,8 @@ async function capitalAsOf(asOf: Date): Promise<number> {
 }
 
 export async function pas3Export(roundId: string): Promise<Buffer> {
+  await assertCan({ resource: 'compliance', verb: 'view' });
+  assertStatutoryPanReadable();
   const { round, rows } = await pas3AllotteeList(roundId);
   const header = [
     'Name',
@@ -866,28 +887,35 @@ export async function recordFiling(input: RecordFilingInput) {
   if (!FILING_FORMS.includes(input.form))
     throw ApiError.badRequest(`"${input.form}" is not a form this platform files.`);
 
-  const row = await prisma.filing.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('FIL'),
-      form: input.form,
-      relatedType: input.relatedType ?? null,
-      relatedId: input.relatedId ?? null,
-      periodOrEvent: input.periodOrEvent,
-      srn: input.srn ?? null,
-      filedOn: input.filedOn ? new Date(input.filedOn) : null,
-      dueOn: input.dueOn ? new Date(input.dueOn) : null,
-      status: input.status,
-      note: input.note ?? null,
-      recordedByPartyId: auth.partyId ?? 'system',
-    },
-  });
+  // The filing log entry, its audit row and its event commit together: a
+  // statutory filing with no record of who logged it is what this prevents.
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.filing.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('FIL', undefined, tx),
+        form: input.form,
+        relatedType: input.relatedType ?? null,
+        relatedId: input.relatedId ?? null,
+        periodOrEvent: input.periodOrEvent,
+        srn: input.srn ?? null,
+        filedOn: input.filedOn ? new Date(input.filedOn) : null,
+        dueOn: input.dueOn ? new Date(input.dueOn) : null,
+        status: input.status,
+        note: input.note ?? null,
+        recordedByPartyId: auth.partyId ?? 'system',
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'filing', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.FILING_RECORDED,
-    subject: { entityType: 'filing', entityId: row.id, recordCode: row.recordCode },
-    newState: { form: row.form, status: row.status },
+    await auditWrite({ action: 'create', subjectType: 'filing', subjectId: created.id, after: created as never, tx });
+    await emit({
+      name: EVENTS.FILING_RECORDED,
+      subject: { entityType: 'filing', entityId: created.id, recordCode: created.recordCode },
+      newState: { form: created.form, status: created.status },
+      tx,
+    });
+
+    return created;
   });
 
   if (input.status === 'filed') {

@@ -50,6 +50,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan, can, canSeeMoney, assertScopeAll, scopeFor } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
@@ -140,28 +141,33 @@ export async function createPosition(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'positions', verb: 'create' });
 
-  const recordCode = await nextRecordCode('POS');
-  const position = await prisma.position.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      orgUnitId: input.orgUnitId,
-      jobId: input.jobId,
-      location: input.location ?? 'Head Office',
-      reportingPositionId: input.reportingPositionId ?? null,
-      isLeadPosition: input.isLeadPosition ?? false,
-      budgetLineId: input.budgetLineId ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('POS', undefined, tx);
+    const position = await tx.position.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        orgUnitId: input.orgUnitId,
+        jobId: input.jobId,
+        location: input.location ?? 'Head Office',
+        reportingPositionId: input.reportingPositionId ?? null,
+        isLeadPosition: input.isLeadPosition ?? false,
+        budgetLineId: input.budgetLineId ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.POSITION_CREATED,
-    subject: { entityType: 'position', entityId: position.id, recordCode },
-    newState: { status: position.status, orgUnitId: input.orgUnitId, jobId: input.jobId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({ action: 'create', subjectType: 'position', subjectId: position.id, after: position, tx });
 
-  return position;
+    await emit({
+      name: EVENTS.POSITION_CREATED,
+      subject: { entityType: 'position', entityId: position.id, recordCode },
+      newState: { status: position.status, orgUnitId: input.orgUnitId, jobId: input.jobId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return position;
+  });
 }
 
 export async function transitionPosition(id: string, event: PositionEvent, note?: string) {
@@ -355,9 +361,11 @@ export async function hire(input: {
     );
   }
 
-  const recordCode = await nextRecordCode('EMP');
-
-  const employment = await prisma.$transaction(async (tx) => {
+  // The employment, its hire assignment, onboarding and affiliation, and the
+  // audit and events announcing them, commit together. An employee with no
+  // record that they were hired is not a state to leave behind.
+  const employment = await governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('EMP', undefined, tx);
     const created = await tx.employmentRelationship.create({
       data: {
         tenantId: auth.tenantId,
@@ -402,27 +410,37 @@ export async function hire(input: {
       },
     });
 
+    await auditWrite({
+      action: 'create',
+      subjectType: 'employment_relationship',
+      subjectId: created.id,
+      after: { recordCode, personId: input.personId, positionId: input.positionId, legalEntity },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.EMPLOYMENT_RELATIONSHIP_CREATED,
+      subject: { entityType: 'employment_relationship', entityId: created.id, recordCode },
+      related: [
+        { relation: 'employs', entityType: 'person', entityId: input.personId },
+        { relation: 'fills', entityType: 'position', entityId: input.positionId },
+      ],
+      newState: { status: created.status, hireEffectiveDate: input.hireEffectiveDate, legalEntity },
+      owner: { partyId: input.personId },
+      impact: { domains: ['hr', 'idn'] },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.ONBOARDING_INITIATED,
+      subject: { entityType: 'onboarding', entityId: created.id },
+      related: [{ relation: 'onboards', entityType: 'employment_relationship', entityId: created.id }],
+      newState: { status: 'Initiated' },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
     return created;
-  });
-
-  await emit({
-    name: EVENTS.EMPLOYMENT_RELATIONSHIP_CREATED,
-    subject: { entityType: 'employment_relationship', entityId: employment.id, recordCode },
-    related: [
-      { relation: 'employs', entityType: 'person', entityId: input.personId },
-      { relation: 'fills', entityType: 'position', entityId: input.positionId },
-    ],
-    newState: { status: employment.status, hireEffectiveDate: input.hireEffectiveDate, legalEntity },
-    owner: { partyId: input.personId },
-    impact: { domains: ['hr', 'idn'] },
-  });
-
-  await emit({
-    name: EVENTS.ONBOARDING_INITIATED,
-    subject: { entityType: 'onboarding', entityId: employment.id },
-    related: [{ relation: 'onboards', entityType: 'employment_relationship', entityId: employment.id }],
-    newState: { status: 'Initiated' },
-    impact: { domains: ['hr'] },
   });
 
   return employment;
@@ -499,8 +517,15 @@ export async function transitionEmployment(id: string, event: EmploymentEvent, i
     if (event === 'SUBMIT_RESIGNATION') {
       const existing = await tx.offboarding.findUnique({ where: { employmentRelationshipId: id } });
       if (!existing) {
-        await tx.offboarding.create({
+        const offboarding = await tx.offboarding.create({
           data: { tenantId: auth.tenantId, employmentRelationshipId: id, status: 'NoticePeriodActive' },
+        });
+        await auditWrite({
+          action: 'create',
+          subjectType: 'offboarding',
+          subjectId: offboarding.id,
+          after: { employmentRelationshipId: id, status: 'NoticePeriodActive' },
+          tx,
         });
       }
     }
@@ -514,18 +539,19 @@ export async function transitionEmployment(id: string, event: EmploymentEvent, i
       });
     }
 
+    if (event === 'SUBMIT_RESIGNATION') {
+      await emit({
+        name: EVENTS.OFFBOARDING_INITIATED,
+        subject: { entityType: 'offboarding', entityId: id },
+        related: [{ relation: 'offboards', entityType: 'employment_relationship', entityId: id }],
+        newState: { status: 'NoticePeriodActive', noticePeriodDays: employment.noticePeriodDays },
+        impact: { domains: ['hr'] },
+        tx,
+      });
+    }
+
     return row;
   });
-
-  if (event === 'SUBMIT_RESIGNATION') {
-    await emit({
-      name: EVENTS.OFFBOARDING_INITIATED,
-      subject: { entityType: 'offboarding', entityId: id },
-      related: [{ relation: 'offboards', entityType: 'employment_relationship', entityId: id }],
-      newState: { status: 'NoticePeriodActive', noticePeriodDays: employment.noticePeriodDays },
-      impact: { domains: ['hr'] },
-    });
-  }
 
   // An absence breach is a fact the company has to act on within a window, so
   // it is raised as an exception rather than left as a status somebody might
@@ -557,22 +583,34 @@ export async function setConfirmationState(id: string, state: string, note?: str
   const employment = await prisma.employmentRelationship.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!employment) throw ApiError.notFound('Employment relationship');
 
-  const updated = await prisma.employmentRelationship.update({
-    where: { id },
-    data: { confirmationState: state },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.employmentRelationship.update({
+      where: { id },
+      data: { confirmationState: state },
+    });
 
-  await emit({
-    name: EVENTS.EMPLOYMENT_CONFIRMATION_CHANGED,
-    subject: { entityType: 'employment_relationship', entityId: id, recordCode: employment.recordCode },
-    previousState: { confirmationState: employment.confirmationState },
-    newState: { confirmationState: state },
-    reason: note ? { reasonCode: 'confirmation_change', note } : null,
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'employment_relationship',
+      subjectId: id,
+      before: { confirmationState: employment.confirmationState },
+      after: { confirmationState: state },
+      tx,
+    });
 
-  return updated;
+    await emit({
+      name: EVENTS.EMPLOYMENT_CONFIRMATION_CHANGED,
+      subject: { entityType: 'employment_relationship', entityId: id, recordCode: employment.recordCode },
+      previousState: { confirmationState: employment.confirmationState },
+      newState: { confirmationState: state },
+      reason: note ? { reasonCode: 'confirmation_change', note } : null,
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return updated;
+  });
 }
 
 export interface EmployeeProfileInput {
@@ -858,33 +896,48 @@ export async function proposeAssignment(input: {
   });
   if (!employment) throw ApiError.notFound('Employment relationship');
 
-  const assignment = await prisma.assignment.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      positionId: input.positionId,
-      managerPositionId: input.managerPositionId ?? null,
-      reasonCode: input.reasonCode,
-      requestStatus: 'Draft',
-      rowStatus: 'Effective',
-      effectiveFrom: input.effectiveFrom,
-      correlationId: input.correlationId ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const assignment = await tx.assignment.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        positionId: input.positionId,
+        managerPositionId: input.managerPositionId ?? null,
+        reasonCode: input.reasonCode,
+        requestStatus: 'Draft',
+        rowStatus: 'Effective',
+        effectiveFrom: input.effectiveFrom,
+        correlationId: input.correlationId ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.ASSIGNMENT_CREATED,
-    subject: { entityType: 'assignment', entityId: assignment.id },
-    related: [
-      { relation: 'assigns', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-      { relation: 'to', entityType: 'position', entityId: input.positionId },
-    ],
-    newState: { status: 'Draft', reasonCode: input.reasonCode, effectiveFrom: input.effectiveFrom },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'assignment',
+      subjectId: assignment.id,
+      after: {
+        employmentRelationshipId: input.employmentRelationshipId,
+        positionId: input.positionId,
+        requestStatus: 'Draft',
+      },
+      tx,
+    });
 
-  return assignment;
+    await emit({
+      name: EVENTS.ASSIGNMENT_CREATED,
+      subject: { entityType: 'assignment', entityId: assignment.id },
+      related: [
+        { relation: 'assigns', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+        { relation: 'to', entityType: 'position', entityId: input.positionId },
+      ],
+      newState: { status: 'Draft', reasonCode: input.reasonCode, effectiveFrom: input.effectiveFrom },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return assignment;
+  });
 }
 
 /**
@@ -979,36 +1032,53 @@ export async function proposeCompensation(input: {
     }
   }
 
-  const record = await prisma.compensationRecord.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      revisionReason: input.revisionReason,
-      amount: input.amount,
-      basicPay: input.basicPay ?? null,
-      currency: input.currency ?? 'INR',
-      effectiveFrom: input.effectiveFrom,
-      linkedAssignmentId: input.linkedAssignmentId ?? null,
-      correlationId,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const record = await tx.compensationRecord.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        revisionReason: input.revisionReason,
+        amount: input.amount,
+        basicPay: input.basicPay ?? null,
+        currency: input.currency ?? 'INR',
+        effectiveFrom: input.effectiveFrom,
+        linkedAssignmentId: input.linkedAssignmentId ?? null,
+        correlationId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.COMPENSATION_RECORD_CREATED,
-    subject: { entityType: 'compensation_record', entityId: record.id },
-    related: [
-      { relation: 'pays', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-      ...(input.linkedAssignmentId
-        ? [{ relation: 'promotes_via', entityType: 'assignment', entityId: input.linkedAssignmentId }]
-        : []),
-    ],
-    newState: { status: 'Proposed', revisionReason: input.revisionReason, effectiveFrom: input.effectiveFrom },
-    owner: { partyId: employment.personId },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr', 'fin'] },
-  });
+    // Compensation is the money a payslip is computed from: the proposal that
+    // sets it must have an audit row of who proposed it, committed with it.
+    await auditWrite({
+      action: 'create',
+      subjectType: 'compensation_record',
+      subjectId: record.id,
+      after: {
+        employmentRelationshipId: input.employmentRelationshipId,
+        revisionReason: input.revisionReason,
+        effectiveFrom: input.effectiveFrom,
+      },
+      tx,
+    });
 
-  return record;
+    await emit({
+      name: EVENTS.COMPENSATION_RECORD_CREATED,
+      subject: { entityType: 'compensation_record', entityId: record.id },
+      related: [
+        { relation: 'pays', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+        ...(input.linkedAssignmentId
+          ? [{ relation: 'promotes_via', entityType: 'assignment', entityId: input.linkedAssignmentId }]
+          : []),
+      ],
+      newState: { status: 'Proposed', revisionReason: input.revisionReason, effectiveFrom: input.effectiveFrom },
+      owner: { partyId: employment.personId },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr', 'fin'] },
+      tx,
+    });
+
+    return record;
+  });
 }
 
 export async function transitionCompensation(id: string, event: CompensationEvent, note?: string) {

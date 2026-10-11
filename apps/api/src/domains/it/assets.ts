@@ -39,7 +39,7 @@ import { emit } from '../../platform/eventBus.js';
 import { availableTransitions } from '../../platform/lifecycle.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
-import { assertCan, assertScopeAll, visibilityWhere } from '../../platform/permissions.js';
+import { assertCan, assertScopeAll, matchNothing, visibilityWhere } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
 
@@ -120,40 +120,45 @@ export async function createAsset(input: CreateAssetInput) {
   if (existing) throw ApiError.conflict(`An asset already carries the tag '${tag}' (${existing.recordCode}).`);
 
   const recordCode = await nextRecordCode('ITA');
-  const asset = await prisma.itAsset.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      tag,
-      kind: input.kind,
-      make: input.make ?? null,
-      model: input.model ?? null,
-      serial: input.serial ?? null,
-      purchaseDate: input.purchaseDate ?? null,
-      purchaseCost: input.purchaseCost ?? null,
-      warrantyEnd: input.warrantyEnd ?? null,
-      supplierName: input.supplierName ?? null,
-      vendorId: input.vendorId ?? null,
-      location: input.location ?? null,
-      division: input.division ?? null,
-      fixedAssetId: input.fixedAssetId ?? null,
-      condition: input.condition ?? null,
-      notes: input.notes ?? null,
-      status: 'in_stock',
-    },
-  });
+  const asset = await prisma.$transaction(async (tx) => {
+    const asset = await tx.itAsset.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        tag,
+        kind: input.kind,
+        make: input.make ?? null,
+        model: input.model ?? null,
+        serial: input.serial ?? null,
+        purchaseDate: input.purchaseDate ?? null,
+        purchaseCost: input.purchaseCost ?? null,
+        warrantyEnd: input.warrantyEnd ?? null,
+        supplierName: input.supplierName ?? null,
+        vendorId: input.vendorId ?? null,
+        location: input.location ?? null,
+        division: input.division ?? null,
+        fixedAssetId: input.fixedAssetId ?? null,
+        condition: input.condition ?? null,
+        notes: input.notes ?? null,
+        status: 'in_stock',
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_asset',
-    subjectId: asset.id,
-    after: { recordCode, tag, kind: input.kind },
-  });
-  await emit({
-    name: EVENTS.IT_ASSET_CREATED,
-    subject: { entityType: 'it_asset', entityId: asset.id, recordCode },
-    newState: { status: asset.status, tag, kind: input.kind },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_asset',
+      subjectId: asset.id,
+      after: { recordCode, tag, kind: input.kind },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_ASSET_CREATED,
+      subject: { entityType: 'it_asset', entityId: asset.id, recordCode },
+      newState: { status: asset.status, tag, kind: input.kind },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return asset;
   });
 
   return withTransitions(asset);
@@ -381,8 +386,8 @@ export async function assignAsset(id: string, input: AssignAssetInput) {
   await assertCan({ resource: RESOURCE, verb: 'assign', record: { ownerPartyId: asset.holderPartyId } });
   const to = applyTransition(asset.status as ItAssetStatus, 'ASSIGN');
 
-  const [, , updated] = await prisma.$transaction([
-    prisma.itAssetAssignment.create({
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.itAssetAssignment.create({
       data: {
         tenantId: auth.tenantId,
         assetId: id,
@@ -391,8 +396,8 @@ export async function assignAsset(id: string, input: AssignAssetInput) {
         conditionOut: input.conditionOut ?? asset.condition ?? null,
         note: input.note ?? null,
       },
-    }),
-    prisma.itAssetEvent.create({
+    });
+    await tx.itAssetEvent.create({
       data: {
         tenantId: auth.tenantId,
         assetId: id,
@@ -400,27 +405,30 @@ export async function assignAsset(id: string, input: AssignAssetInput) {
         detail: `Assigned to ${input.partyId}.${input.note ? ` ${input.note}` : ''}`,
         actorPartyId: auth.partyId,
       },
-    }),
-    prisma.itAsset.update({
+    });
+    const updated = await tx.itAsset.update({
       where: { id },
       data: { status: to, holderPartyId: input.partyId, condition: input.conditionOut ?? asset.condition },
-    }),
-  ]);
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_asset',
-    subjectId: id,
-    before: { status: asset.status },
-    after: { status: to, holderPartyId: input.partyId },
-  });
-  await emit({
-    name: EVENTS.IT_ASSET_ASSIGNED,
-    subject: { entityType: 'it_asset', entityId: id, recordCode: asset.recordCode },
-    previousState: { status: asset.status },
-    newState: { status: to, holderPartyId: input.partyId },
-    owner: { partyId: input.partyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_asset',
+      subjectId: id,
+      before: { status: asset.status },
+      after: { status: to, holderPartyId: input.partyId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_ASSET_ASSIGNED,
+      subject: { entityType: 'it_asset', entityId: id, recordCode: asset.recordCode },
+      previousState: { status: asset.status },
+      newState: { status: to, holderPartyId: input.partyId },
+      owner: { partyId: input.partyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return withTransitions(updated);
@@ -456,8 +464,8 @@ export async function returnAsset(id: string, input: ReturnAssetInput = {}) {
   const to = applyTransition(asset.status as ItAssetStatus, 'RETURN');
   const now = new Date();
 
-  const [, , updated] = await prisma.$transaction([
-    prisma.itAssetAssignment.update({
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.itAssetAssignment.update({
       where: { id: open.id },
       data: {
         returnedAt: now,
@@ -465,8 +473,8 @@ export async function returnAsset(id: string, input: ReturnAssetInput = {}) {
         acknowledgedAt: input.acknowledged === false ? null : now,
         ...(input.note ? { note: [open.note, input.note].filter(Boolean).join(' | ') } : {}),
       },
-    }),
-    prisma.itAssetEvent.create({
+    });
+    await tx.itAssetEvent.create({
       data: {
         tenantId: auth.tenantId,
         assetId: id,
@@ -474,26 +482,29 @@ export async function returnAsset(id: string, input: ReturnAssetInput = {}) {
         detail: `Returned by ${open.partyId}.${input.note ? ` ${input.note}` : ''}`,
         actorPartyId: auth.partyId,
       },
-    }),
-    prisma.itAsset.update({
+    });
+    const updated = await tx.itAsset.update({
       where: { id },
       data: { status: to, holderPartyId: null, condition: input.conditionIn ?? asset.condition },
-    }),
-  ]);
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_asset',
-    subjectId: id,
-    before: { status: asset.status, holderPartyId: asset.holderPartyId },
-    after: { status: to, holderPartyId: null },
-  });
-  await emit({
-    name: EVENTS.IT_ASSET_RETURNED,
-    subject: { entityType: 'it_asset', entityId: id, recordCode: asset.recordCode },
-    previousState: { status: asset.status, holderPartyId: asset.holderPartyId },
-    newState: { status: to, holderPartyId: null },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_asset',
+      subjectId: id,
+      before: { status: asset.status, holderPartyId: asset.holderPartyId },
+      after: { status: to, holderPartyId: null },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_ASSET_RETURNED,
+      subject: { entityType: 'it_asset', entityId: id, recordCode: asset.recordCode },
+      previousState: { status: asset.status, holderPartyId: asset.holderPartyId },
+      newState: { status: to, holderPartyId: null },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return withTransitions(updated);
@@ -533,42 +544,47 @@ export async function transitionAsset(id: string, event: ItAssetLifecycleEvent, 
   const from = asset.status as ItAssetStatus;
   const to = applyTransition(from, event);
 
-  const updated = await prisma.itAsset.update({
-    where: { id },
-    data: {
-      status: to,
-      inRepairSince:
-        event === 'SEND_TO_REPAIR' ? new Date() : event === 'BACK_FROM_REPAIR' ? null : asset.inRepairSince,
-      ...(event === 'RETIRE' || event === 'DISPOSE' ? { inRepairSince: null } : {}),
-    },
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itAsset.update({
+      where: { id },
+      data: {
+        status: to,
+        inRepairSince:
+          event === 'SEND_TO_REPAIR' ? new Date() : event === 'BACK_FROM_REPAIR' ? null : asset.inRepairSince,
+        ...(event === 'RETIRE' || event === 'DISPOSE' ? { inRepairSince: null } : {}),
+      },
+    });
 
-  await prisma.itAssetEvent.create({
-    data: {
-      tenantId: auth.tenantId,
-      assetId: id,
-      kind: 'transition',
-      detail: `${IT_ASSET_EVENT_VERB[event]}.${note ? ` ${note}` : ''}`,
-      actorPartyId: auth.partyId,
-    },
-  });
+    await tx.itAssetEvent.create({
+      data: {
+        tenantId: auth.tenantId,
+        assetId: id,
+        kind: 'transition',
+        detail: `${IT_ASSET_EVENT_VERB[event]}.${note ? ` ${note}` : ''}`,
+        actorPartyId: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_asset',
-    subjectId: id,
-    before: { status: from },
-    after: { status: to },
-    meta: { transition: event },
-  });
-  await emit({
-    name: EVENTS.IT_ASSET_TRANSITIONED,
-    subject: { entityType: 'it_asset', entityId: id, recordCode: asset.recordCode },
-    previousState: { status: from },
-    newState: { status: to },
-    reason: note ? { reasonCode: event, note } : null,
-    owner: { partyId: asset.holderPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_asset',
+      subjectId: id,
+      before: { status: from },
+      after: { status: to },
+      meta: { transition: event },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_ASSET_TRANSITIONED,
+      subject: { entityType: 'it_asset', entityId: id, recordCode: asset.recordCode },
+      previousState: { status: from },
+      newState: { status: to },
+      reason: note ? { reasonCode: event, note } : null,
+      owner: { partyId: asset.holderPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return withTransitions(updated);
@@ -804,7 +820,7 @@ export async function summary() {
   }
 
   const where = ownOnly
-    ? { tenantId: auth.tenantId, holderPartyId: auth.partyId ?? ' no-party' }
+    ? { tenantId: auth.tenantId, ...(auth.partyId ? { holderPartyId: auth.partyId } : matchNothing('holderPartyId')) }
     : { tenantId: auth.tenantId };
 
   const total = await prisma.itAsset.count({ where });

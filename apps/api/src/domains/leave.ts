@@ -33,7 +33,8 @@ import { assertCan } from '../platform/permissions.js';
 import { transition } from '../platform/lifecycle.js';
 import { raiseException } from '../platform/exceptions.js';
 import { assertEmploymentVisible, employmentVisibilityWhere } from '../platform/recordScope.js';
-import { registerGovernedEntities } from '../platform/audit.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 
 // ---------------------------------------------------------------------------
 // Leave types and balances
@@ -294,33 +295,44 @@ export async function createLeaveRequest(input: {
     );
   }
 
-  const recordCode = await nextRecordCode('LVR');
   const days = input.days ?? (await dayCount(input.startDate, input.endDate));
-  const request = await prisma.leaveRequest.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      employmentRelationshipId: input.employmentRelationshipId,
-      leaveTypeId: input.leaveTypeId,
-      startDate: input.startDate,
-      endDate: input.endDate,
-      days,
-      reason: input.reason ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('LVR', undefined, tx);
+    const request = await tx.leaveRequest.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        employmentRelationshipId: input.employmentRelationshipId,
+        leaveTypeId: input.leaveTypeId,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        days,
+        reason: input.reason ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.LEAVE_REQUEST_CREATED,
-    subject: { entityType: 'leave_request', entityId: request.id, recordCode },
-    related: [
-      { relation: 'requested_by', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-    ],
-    newState: { status: 'Draft', startDate: input.startDate, endDate: input.endDate, days: num(request.days) },
-    owner: { partyId: employment.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'leave_request',
+      subjectId: request.id,
+      after: { recordCode, status: 'Draft', days },
+      tx,
+    });
 
-  return request;
+    await emit({
+      name: EVENTS.LEAVE_REQUEST_CREATED,
+      subject: { entityType: 'leave_request', entityId: request.id, recordCode },
+      related: [
+        { relation: 'requested_by', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+      ],
+      newState: { status: 'Draft', startDate: input.startDate, endDate: input.endDate, days: num(request.days) },
+      owner: { partyId: employment.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return request;
+  });
 }
 
 /**
@@ -402,57 +414,73 @@ export async function transitionLeaveRequest(id: string, event: LeaveRequestEven
       });
     }
 
+    await auditWrite({
+      action: 'update',
+      subjectType: 'leave_request',
+      subjectId: id,
+      before: { status: request.status },
+      after: { status: result.to },
+      tx,
+    });
+
+    if (posting) {
+      await emit({
+        name: EVENTS.LEAVE_BALANCE_POSTED,
+        subject: { entityType: 'leave_request', entityId: id, recordCode: request.recordCode },
+        newState: { posting, days, leaveType: request.leaveType.code },
+        owner: { partyId: request.employmentRelationship.personId },
+        impact: { domains: ['hr'] },
+        tx,
+      });
+    }
+
+    // Leave that affects employment state moves the relationship too, so the
+    // two never disagree about whether somebody is at work.
+    if (request.leaveType.employmentStateAffecting) {
+      if (event === 'START' && request.employmentRelationship.status === 'Active') {
+        await tx.employmentRelationship.update({
+          where: { id: request.employmentRelationshipId },
+          data: { status: 'OnLeave' },
+        });
+      }
+      if (event === 'COMPLETE' && request.employmentRelationship.status === 'OnLeave') {
+        await tx.employmentRelationship.update({
+          where: { id: request.employmentRelationshipId },
+          data: { status: 'Active' },
+        });
+      }
+    }
+
+    // The exception is the consequence of this approval: the hold is posted and the
+    // request approved in one transaction, so the exception commits or rolls back
+    // with them. Raised after the commit, a failed raise left an approved request
+    // with a hold and nothing to act on.
+    // Taking leave the employee does not have is not blocked — sometimes it is
+    // granted deliberately — but it is never silent.
+    if (posting === 'deduction' || posting === 'hold') {
+      const balance = await tx.leaveBalance.findFirst({
+        where: { employmentRelationshipId: request.employmentRelationshipId, leaveTypeId: request.leaveTypeId },
+      });
+      if (balance && (num(balance.balanceDays) ?? 0) < 0) {
+        await raiseException(
+          {
+            code: 'EX-HR-004',
+            label: 'Leave taken beyond entitlement',
+            severity: 'S2_WARNING',
+            subjectType: 'leave_request',
+            subjectId: id,
+            subjectLabel: request.recordCode,
+            detail: `${request.leaveType.name} balance is now ${num(balance.balanceDays)} days. The request was allowed; the shortfall needs a decision.`,
+            ownerPartyId: request.employmentRelationship.personId,
+            triggerFingerprint: `leave_negative:${request.employmentRelationshipId}:${request.leaveTypeId}`,
+            ladderRung: 1,
+          },
+          tx,
+        );
+      }
+    }
     return row;
   });
-
-  if (posting) {
-    await emit({
-      name: EVENTS.LEAVE_BALANCE_POSTED,
-      subject: { entityType: 'leave_request', entityId: id, recordCode: request.recordCode },
-      newState: { posting, days, leaveType: request.leaveType.code },
-      owner: { partyId: request.employmentRelationship.personId },
-      impact: { domains: ['hr'] },
-    });
-  }
-
-  // Taking leave the employee does not have is not blocked — sometimes it is
-  // granted deliberately — but it is never silent.
-  if (posting === 'deduction' || posting === 'hold') {
-    const balance = await prisma.leaveBalance.findFirst({
-      where: { employmentRelationshipId: request.employmentRelationshipId, leaveTypeId: request.leaveTypeId },
-    });
-    if (balance && (num(balance.balanceDays) ?? 0) < 0) {
-      await raiseException({
-        code: 'EX-HR-004',
-        label: 'Leave taken beyond entitlement',
-        severity: 'S2_WARNING',
-        subjectType: 'leave_request',
-        subjectId: id,
-        subjectLabel: request.recordCode,
-        detail: `${request.leaveType.name} balance is now ${num(balance.balanceDays)} days. The request was allowed; the shortfall needs a decision.`,
-        ownerPartyId: request.employmentRelationship.personId,
-        triggerFingerprint: `leave_negative:${request.employmentRelationshipId}:${request.leaveTypeId}`,
-        ladderRung: 1,
-      });
-    }
-  }
-
-  // Leave that affects employment state moves the relationship too, so the
-  // two never disagree about whether somebody is at work.
-  if (request.leaveType.employmentStateAffecting) {
-    if (event === 'START' && request.employmentRelationship.status === 'Active') {
-      await prisma.employmentRelationship.update({
-        where: { id: request.employmentRelationshipId },
-        data: { status: 'OnLeave' },
-      });
-    }
-    if (event === 'COMPLETE' && request.employmentRelationship.status === 'OnLeave') {
-      await prisma.employmentRelationship.update({
-        where: { id: request.employmentRelationshipId },
-        data: { status: 'Active' },
-      });
-    }
-  }
 
   return updated;
 }
@@ -491,38 +519,52 @@ export async function recordAttendance(input: {
     );
   }
 
-  const row = await prisma.workAttendance.upsert({
-    where: {
+  return governedWrite(async (tx) => {
+    const key = {
       employmentRelationshipId_workDate: { employmentRelationshipId: input.employmentRelationshipId, workDate: day },
-    },
-    create: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      workDate: day,
-      workedMinutes: input.workedMinutes,
-      overtimeMinutes: input.overtimeMinutes ?? 0,
-      missingPunch: input.missingPunch ?? false,
-      note: input.note ?? null,
-    },
-    update: {
-      workedMinutes: input.workedMinutes,
-      overtimeMinutes: input.overtimeMinutes ?? 0,
-      missingPunch: input.missingPunch ?? false,
-      note: input.note ?? null,
-    },
-  });
+    };
+    const existing = await tx.workAttendance.findUnique({ where: key });
+    const row = await tx.workAttendance.upsert({
+      where: key,
+      create: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        workDate: day,
+        workedMinutes: input.workedMinutes,
+        overtimeMinutes: input.overtimeMinutes ?? 0,
+        missingPunch: input.missingPunch ?? false,
+        note: input.note ?? null,
+      },
+      update: {
+        workedMinutes: input.workedMinutes,
+        overtimeMinutes: input.overtimeMinutes ?? 0,
+        missingPunch: input.missingPunch ?? false,
+        note: input.note ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.WORK_ATTENDANCE_RECORDED,
-    subject: { entityType: 'work_attendance', entityId: row.id },
-    related: [
-      { relation: 'worked_by', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
-    ],
-    newState: { workDate: day, workedMinutes: input.workedMinutes, missingPunch: row.missingPunch },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: existing ? 'update' : 'create',
+      subjectType: 'work_attendance',
+      subjectId: row.id,
+      before: existing ? { workedMinutes: existing.workedMinutes, missingPunch: existing.missingPunch } : null,
+      after: { workDate: day, workedMinutes: input.workedMinutes, missingPunch: row.missingPunch },
+      tx,
+    });
 
-  return row;
+    await emit({
+      name: EVENTS.WORK_ATTENDANCE_RECORDED,
+      subject: { entityType: 'work_attendance', entityId: row.id },
+      related: [
+        { relation: 'worked_by', entityType: 'employment_relationship', entityId: input.employmentRelationshipId },
+      ],
+      newState: { workDate: day, workedMinutes: input.workedMinutes, missingPunch: row.missingPunch },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return row;
+  });
 }
 
 export async function transitionAttendance(id: string, event: WorkAttendanceEvent, note?: string) {

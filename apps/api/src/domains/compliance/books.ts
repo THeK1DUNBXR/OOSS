@@ -13,9 +13,11 @@
  * everything else.
  */
 
-import { istFinancialYearStart } from '@kaizen/shared';
+import { istDateKey, istFinancialYearStart } from '@kaizen/shared';
+import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import {
+  EVENTS,
   round2,
   monthKey,
   financialYearOf,
@@ -37,9 +39,15 @@ import { ApiError } from '../../platform/errors.js';
 import { assertCan, assertScopeAll, canSeeMoney } from '../../platform/permissions.js';
 import { auditWrite, auditExport, verifyAuditChain, chainUnhashedAuditRecords } from '../../platform/audit.js';
 import { registerHook } from '../../platform/hooks.js';
+import { registerGovernedEntities } from '../../platform/audit.js';
+import { emit } from '../../platform/eventBus.js';
 import { raiseException } from '../../platform/exceptions.js';
 
 export { verifyAuditChain };
+
+// The subjects this module writes that no other module registers. Registered here, at
+// load, so auditWrite accepts them before any of the writes below runs.
+registerGovernedEntities('cmp_books', ['retention_review', 'bank_statement_line']);
 
 // ---------------------------------------------------------------------------
 // Accounting periods
@@ -82,10 +90,25 @@ async function ensurePeriod(period: string): Promise<{ id: string; status: strin
   const [year, month] = period.split('-').map(Number);
   const existing = await prisma.accountingPeriod.findFirst({ where: { tenantId: auth.tenantId, period } });
   if (existing) return existing;
-  const fyStartYear = month >= 4 ? year : year - 1;
-  return prisma.accountingPeriod.create({
+  const created = await prisma.accountingPeriod.create({
     data: { tenantId: auth.tenantId, period, fy: fyOf(new Date(Date.UTC(year, month - 1, 1))), status: 'open' },
   });
+  // Opening a period is itself a books write: it is the row a close is later
+  // requested against, so its creation is a fact the chain should carry.
+  await emit({
+    name: EVENTS.ACCOUNTING_PERIOD_OPENED,
+    subject: { entityType: 'accounting_period', entityId: created.id },
+    newState: { period, status: 'open' },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'accounting_period',
+    subjectId: created.id,
+    after: { period, status: 'open' },
+  });
+  return created;
 }
 
 /** Whether `date`'s month is closed to new or edited entries. Read by the write-path hook below. */
@@ -94,6 +117,20 @@ export async function periodStatus(date: Date): Promise<string> {
   const period = periodKeyOf(date);
   const row = await prisma.accountingPeriod.findFirst({ where: { tenantId: auth.tenantId, period } });
   return row?.status ?? 'open';
+}
+
+/**
+ * The first instant, from `now` onwards, that falls in an open accounting period.
+ * `now` itself when its month is open; otherwise the IST start of the next month
+ * that is open. Used only for money that has already arrived.
+ */
+export async function openAccountingDate(now: Date): Promise<Date> {
+  let date = now;
+  for (let i = 0; i < 24; i++) {
+    if ((await periodStatus(date)) !== 'closed') return date;
+    date = monthRange(monthKey(date)).to;
+  }
+  throw ApiError.unprocessable('No open accounting period in the next two years to record this payment in.');
 }
 
 /** Step one of the two-party close: any accounting_periods `edit` holder asks for a period to be closed. */
@@ -114,6 +151,13 @@ export async function requestClosePeriod(period: string) {
     subjectId: row.id,
     before: { status: row.status },
     after: { status: 'closing', requestedById: auth.partyId },
+  });
+  await emit({
+    name: EVENTS.ACCOUNTING_PERIOD_CLOSE_REQUESTED,
+    subject: { entityType: 'accounting_period', entityId: row.id },
+    newState: { period, status: 'closing' },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
   });
   return updated;
 }
@@ -140,12 +184,32 @@ export async function closePeriod(period: string) {
   // The last instant of the IST month. Taking Date.UTC(y, m, 1) - 1ms here
   // (23:59:59.999 UTC on the last day, i.e. 05:29 IST on the 1st) put the
   // first five and a half hours of the next month into the closed snapshot.
+  // The snapshot is the legacy cashbook trial balance, which reads `Transaction`
+  // and not the journal, so a posting cannot change it. It is taken before the
+  // lock for that reason. When 1.5 makes the snapshot a journal balance it must
+  // move inside the lock below, or a posting that commits between the two
+  // would be missing from the closed period's figures.
   const { to } = monthRange(period);
   const snapshot = await trialBalance(new Date(to.getTime() - 1));
 
-  const updated = await prisma.accountingPeriod.update({
-    where: { id: row.id },
-    data: { status: 'closed', closedById: auth.partyId, closedAt: new Date(), snapshot: snapshot as never },
+  // FOR UPDATE rather than the status read above: a posting holds FOR SHARE on
+  // this row while it writes (platform/ledger.ts lockPostablePeriod). Taking
+  // the lock here means no posting can start until the status has moved, and
+  // any posting already in flight has committed first. The status is re-read
+  // under the lock because it may have changed while this call waited.
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${auth.tenantId}, true)`;
+    const [locked] = await tx.$queryRaw<Array<{ status: string }>>`
+      SELECT "status" FROM "cmp_accounting_periods"
+      WHERE "id" = ${row.id}
+      FOR UPDATE`;
+    if (locked?.status !== 'closing') {
+      throw ApiError.unprocessable(`${period} changed while this close waited; it is no longer closing.`);
+    }
+    return tx.accountingPeriod.update({
+      where: { id: row.id },
+      data: { status: 'closed', closedById: auth.partyId, closedAt: new Date(), snapshot: snapshot as never },
+    });
   });
   await auditWrite({
     action: 'update',
@@ -153,6 +217,13 @@ export async function closePeriod(period: string) {
     subjectId: row.id,
     before: { status: 'closing' },
     after: { status: 'closed', closedById: auth.partyId },
+  });
+  await emit({
+    name: EVENTS.ACCOUNTING_PERIOD_CLOSED,
+    subject: { entityType: 'accounting_period', entityId: row.id },
+    newState: { period, status: 'closed' },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
   });
   return updated;
 }
@@ -176,25 +247,42 @@ export async function reopenPeriod(period: string, reason: string) {
     before: { status: 'closed' },
     after: { status: 'reopened', reopenReason: reason },
   });
+  await emit({
+    name: EVENTS.ACCOUNTING_PERIOD_REOPENED,
+    subject: { entityType: 'accounting_period', entityId: row.id },
+    newState: { status: 'reopened' },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return updated;
 }
 
 /**
- * The write-path veto (CMP-AUD-003): a transaction dated inside a closed
- * period cannot be recorded, independent of GST's own filing-based lock.
- * `reverseTransaction` never backdates its reversal row — it always stamps
- * `new Date()` — so a closed period's entry is still reversible, only ever as
- * of today.
+ * The write-path veto (CMP-AUD-003): a dated write inside a closed accounting
+ * period is refused, independent of GST's own filing-based lock. The period is
+ * the IST civil month of the date (`monthKey`), so 00:30 IST on the 1st belongs
+ * to the new month even though it is still the last day of the old one in UTC.
+ *
+ * Registered under two hook points so every dated write in the books, and the
+ * invoice and receipt writes that move the same figures, is vetoed the same way.
+ * `reverseTransaction` stamps `new Date()` on its reversal, so it is refused
+ * when today's month is closed and never backdates into a closed one.
  */
-registerHook('transaction.before_record', 'compliance.books.period_lock', async (payload) => {
-  const txnDate = payload.txnDate as Date;
-  const status = await periodStatus(txnDate);
+async function refuseClosedPeriod(date: Date, what: string): Promise<void> {
+  const status = await periodStatus(date);
   if (status === 'closed') {
     throw ApiError.unprocessable(
-      `${periodKeyOf(txnDate)} is a closed accounting period. Reopen it first, with a reason, before recording or editing an entry dated inside it.`,
-      { period: periodKeyOf(txnDate), reasonCode: 'accounting_period_closed' },
+      `${what} is dated ${periodKeyOf(date)}, which is a closed accounting period. Reopen it first, with a reason, before recording or editing anything dated inside it.`,
+      { period: periodKeyOf(date), reasonCode: 'accounting_period_closed' },
     );
   }
+}
+
+registerHook('transaction.before_record', 'compliance.books.period_lock', async (payload) => {
+  await refuseClosedPeriod(payload.txnDate as Date, 'This entry');
+});
+registerHook('accounting_document.before_write', 'compliance.books.period_lock', async (payload) => {
+  await refuseClosedPeriod(payload.date as Date, payload.what as string);
 });
 
 // ---------------------------------------------------------------------------
@@ -243,7 +331,7 @@ export async function sweepRetention(): Promise<number> {
         where: { tenantId: auth.tenantId, entityType: spec.entityType, entityId: row.id as string },
       });
       if (existing) continue;
-      await prisma.retentionReview.create({
+      const review = await prisma.retentionReview.create({
         data: {
           tenantId: auth.tenantId,
           entityType: spec.entityType,
@@ -252,6 +340,18 @@ export async function sweepRetention(): Promise<number> {
           dueAt: retentionDueDate(recordDate, policy.years),
           status: 'flagged',
         },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'retention_review',
+        subjectId: review.id,
+        after: { entityType: spec.entityType, entityId: row.id as string, status: 'flagged' },
+      });
+      await emit({
+        name: EVENTS.RETENTION_REVIEW_RECORDED,
+        subject: { entityType: 'retention_review', entityId: review.id },
+        newState: { entityType: spec.entityType, entityId: row.id as string, status: 'flagged' },
+        impact: { domains: ['fin'] },
       });
       flagged += 1;
     }
@@ -755,7 +855,33 @@ export interface BankLineInput {
   narration?: string | null;
 }
 
-export async function importBankStatement(accountId: string, lines: BankLineInput[]): Promise<{ imported: number }> {
+/**
+ * What makes a statement line the same line on a re-import. The day is the IST
+ * day, so a line dated 00:30 IST is the day it names.
+ */
+function statementLineContent(line: BankLineInput): string {
+  return [
+    istDateKey(line.date),
+    Number(line.amount).toFixed(2),
+    line.direction,
+    (line.reference ?? '').trim(),
+    (line.narration ?? '').trim(),
+  ].join('|');
+}
+
+/**
+ * The key a statement line is stored under. The occurrence counts identical lines
+ * within one file, so two real identical charges are two lines and a re-import
+ * of the same file gives each of them the same key again.
+ */
+function statementLineKey(accountId: string, content: string, occurrence: number): string {
+  return createHash('sha256').update(`${accountId}|${content}|${occurrence}`).digest('hex');
+}
+
+export async function importBankStatement(
+  accountId: string,
+  lines: BankLineInput[],
+): Promise<{ imported: number; skipped: number }> {
   const auth = currentAuth();
   await assertCan({ resource: 'transactions', verb: 'edit' });
   const account = await prisma.ledgerAccount.findFirst({
@@ -763,21 +889,74 @@ export async function importBankStatement(accountId: string, lines: BankLineInpu
   });
   if (!account) throw ApiError.notFound('Account');
 
-  for (const line of lines) {
-    await prisma.bankStatementLine.create({
-      data: {
-        tenantId: auth.tenantId,
+  const seenInFile = new Map<string, number>();
+  const keyed = lines.map((line) => {
+    const content = statementLineContent(line);
+    const occurrence = seenInFile.get(content) ?? 0;
+    seenInFile.set(content, occurrence + 1);
+    return { line, key: statementLineKey(accountId, content, occurrence) };
+  });
+  const known = new Set(
+    (
+      await prisma.bankStatementLine.findMany({
+        where: { tenantId: auth.tenantId, accountId, fingerprint: { in: keyed.map((k) => k.key) } },
+        select: { fingerprint: true },
+      })
+    ).map((r) => r.fingerprint),
+  );
+
+  let imported = 0;
+  let skipped = 0;
+  for (const { line, key } of keyed) {
+    if (known.has(key)) {
+      skipped += 1;
+      continue;
+    }
+    let row;
+    try {
+      row = await prisma.bankStatementLine.create({
+        data: {
+          tenantId: auth.tenantId,
+          accountId,
+          date: line.date,
+          amount: line.amount,
+          direction: line.direction,
+          reference: line.reference ?? null,
+          narration: line.narration ?? null,
+          fingerprint: key,
+        },
+      });
+    } catch (err) {
+      // A line from a concurrent import of the same statement got there first.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        skipped += 1;
+        continue;
+      }
+      throw err;
+    }
+    imported += 1;
+    await auditWrite({
+      action: 'create',
+      subjectType: 'bank_statement_line',
+      subjectId: row.id,
+      after: {
         accountId,
         date: line.date,
         amount: line.amount,
         direction: line.direction,
         reference: line.reference ?? null,
-        narration: line.narration ?? null,
       },
     });
   }
-  await auditExport('bank_statement_line', `import:${accountId}`, lines.length);
-  return { imported: lines.length };
+  await auditExport('bank_statement_line', `import:${accountId}`, imported);
+  await emit({
+    name: EVENTS.BANK_STATEMENT_IMPORTED,
+    subject: { entityType: 'ledger_account', entityId: accountId },
+    newState: { lines: imported, skipped },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
+  return { imported, skipped };
 }
 
 /**
@@ -797,9 +976,10 @@ export async function matchBankLines(accountId: string) {
 
   const usedTxnIds = new Set<string>();
   let matched = 0;
+  let ambiguous = 0;
 
   for (const line of bankLines) {
-    const candidate = transactions.find((t) => {
+    const fits = transactions.filter((t) => {
       if (usedTxnIds.has(t.id)) return false;
       return isLikelyMatch({
         bankAmount: num(line.amount) ?? 0,
@@ -812,7 +992,12 @@ export async function matchBankLines(accountId: string) {
         txnReference: t.reference,
       });
     });
-    if (!candidate) continue;
+    // Two entries that fit one line are a question for a person. Committing the
+    // first would be a guess, and the other entry would then look unreconciled
+    // for no reason the books can show.
+    if (fits.length > 1) ambiguous += 1;
+    if (fits.length !== 1) continue;
+    const candidate = fits[0]!;
 
     usedTxnIds.add(candidate.id);
     const now = new Date();
@@ -820,13 +1005,43 @@ export async function matchBankLines(accountId: string) {
       where: { id: line.id },
       data: { matchedTransactionId: candidate.id, matchedAt: now },
     });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'bank_statement_line',
+      subjectId: line.id,
+      before: { matchedTransactionId: null, matchedAt: null },
+      after: { matchedTransactionId: candidate.id, matchedAt: now },
+    });
     await prisma.transaction.update({ where: { id: candidate.id }, data: { reconciledAt: now } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'transaction',
+      subjectId: candidate.id,
+      before: { reconciledAt: null },
+      after: { reconciledAt: now },
+    });
+    await emit({
+      name: EVENTS.BANK_STATEMENT_LINE_MATCHED,
+      subject: { entityType: 'bank_statement_line', entityId: line.id },
+      related: [{ relation: 'matched_to', entityType: 'transaction', entityId: candidate.id }],
+      newState: { matchedAt: now },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+    });
+    await emit({
+      name: EVENTS.TRANSACTION_RECONCILED,
+      subject: { entityType: 'transaction', entityId: candidate.id },
+      related: [{ relation: 'matched_by', entityType: 'bank_statement_line', entityId: line.id }],
+      newState: { reconciledAt: now },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+    });
     matched += 1;
   }
 
   const unmatchedBank = bankLines.length - matched;
   const unmatchedLedger = transactions.filter((t) => !usedTxnIds.has(t.id)).length;
-  return { matched, unmatchedBank, unmatchedLedger };
+  return { matched, unmatchedBank, unmatchedLedger, ambiguous };
 }
 
 export async function reconciliationReport(accountId: string) {

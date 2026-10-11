@@ -974,7 +974,10 @@ export interface GroupFinancialsView {
   totalLabel: typeof GROUP_LABELS.totalBeforeEliminations;
   totalCash: number | null;
   totalPnlMonth: { income: number; expense: number; net: number } | null;
-  intercompanyTotal: { in: number; out: number } | null;
+  /** `paired` is false when the two sides of inter-company disagree in total. */
+  intercompanyTotal: { in: number; out: number; paired: boolean } | null;
+  /** Why the totals are withheld, when they are; null when they are added. */
+  totalsWithheldReason: string | null;
 }
 
 export interface GroupComplianceRowView {

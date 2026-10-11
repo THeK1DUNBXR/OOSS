@@ -32,7 +32,7 @@ import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
-import { registerHook } from '../../platform/hooks.js';
+import { registerHook, runHooks } from '../../platform/hooks.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../../platform/documentNumber.js';
 import { companyProfile, documentNumbering } from '../companyProfile.js';
@@ -315,6 +315,7 @@ export async function applyReverseCharge(billId: string, input: RcmInput) {
 
   const bill = await prisma.vendorBill.findFirst({ where: { id: billId, tenantId: auth.tenantId } });
   if (!bill) throw ApiError.notFound('Vendor bill');
+  await runHooks('accounting_document.before_write', { date: bill.billDate, what: 'This bill' });
 
   const taxableValue = round2(input.taxableValue ?? num(bill.subtotal) ?? 0);
   const profile = await companyProfile();
@@ -412,6 +413,7 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
     );
   }
   if (!(input.amount > 0)) throw ApiError.badRequest('A debit note has to raise the invoice by a positive amount.');
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This debit note' });
 
   const invoice = await prisma.invoice.findFirst({ where: { id: invoiceId, tenantId: auth.tenantId } });
   if (!invoice) throw ApiError.notFound('Invoice');
@@ -420,23 +422,28 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
   }
 
   const numbering = await documentNumbering();
-  const recordCode = await nextDocumentNumber(
-    DOCUMENT_SERIES.debitNote,
-    numbering.prefix,
-    new Date(),
-    numbering.yearFormat,
-  );
-
-  const note = await prisma.debitNote.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      invoiceId,
-      amount: round2(input.amount),
-      reasonCode: input.reasonCode,
-      note: input.note ?? null,
-      issuedById: auth.partyId,
-    },
+  // The number and the row it names commit together. Taken on the global client it
+  // stayed taken when this write was refused, and the series had a hole in it.
+  const { recordCode, note } = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextDocumentNumber(
+      tx,
+      DOCUMENT_SERIES.debitNote,
+      numbering.prefix,
+      new Date(),
+      numbering.yearFormat,
+    );
+    const note = await tx.debitNote.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        invoiceId,
+        amount: round2(input.amount),
+        reasonCode: input.reasonCode,
+        note: input.note ?? null,
+        issuedById: auth.partyId,
+      },
+    });
+    return { recordCode, note };
   });
 
   await auditWrite({

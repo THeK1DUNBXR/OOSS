@@ -47,15 +47,19 @@ import {
   type GroupBenChainLink,
   round2,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma, num } from '../platform/db.js';
+import { prisma, unscopedPrisma, num, type DbTx } from '../platform/db.js';
 import { currentAuth, asSystem } from '../platform/context.js';
 import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { governedWrite } from '../platform/governedWrite.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { istYearMonth } from '@kaizen/shared';
+import { formatMinor, parseMinor } from '@kaizen/shared';
 import { raiseException } from '../platform/exceptions.js';
 import { capTable, listShareClasses, listValuations } from './equity.js';
+import { decryptField } from './compliance/privacy.js';
 import { companyProfile } from './companyProfile.js';
 import { headcountByDivision } from './employment.js';
 import { profitAndLoss, cashPosition } from './books.js';
@@ -93,7 +97,10 @@ async function buildHolderKeyIndex(): Promise<Map<string, HolderKeyMeta>> {
   const out = new Map<string, HolderKeyMeta>();
   for (const h of holders) {
     const email = h.kind === 'person' && h.personId ? (emailByPersonId.get(h.personId) ?? null) : null;
-    const { key, matchedBy } = holderKeyFor({ email, panHash: h.panNumber ? panHash(h.panNumber) : null });
+    // The hash is taken over the plaintext PAN. Sealing is randomised, so hashing the
+    // stored value would give every holder a different key and no two tenants would match.
+    const pan = h.panNumber ? decryptField(h.panNumber) : null;
+    const { key, matchedBy } = holderKeyFor({ email, panHash: pan ? panHash(pan) : null });
     out.set(h.id, {
       holderId: h.id,
       kind: h.kind,
@@ -131,14 +138,28 @@ function fiscalYearToDatePeriods(cutoffPeriod: string): string[] {
   return periods;
 }
 
+/**
+ * Entity figures are rupees to two places, read from a snapshot or the ledger.
+ * They are summed as paise, so a group total is exact however many entities add
+ * up (FX-30): a float sum of 0.1 and 0.2 is not 0.3, and a total that is off by a
+ * paisa is a figure someone will chase.
+ */
+function paiseSum(values: Array<number | null | undefined>): bigint {
+  return values.reduce<bigint>((total, v) => (v == null ? total : total + parseMinor(v.toFixed(2))), 0n);
+}
+
+function rupees(paise: bigint): number {
+  return Number(formatMinor(paise));
+}
+
 function sumPnl(rows: Array<{ income: number; expense: number; net: number }>): {
   income: number;
   expense: number;
   net: number;
 } {
-  const income = round2(rows.reduce((s, r) => s + r.income, 0));
-  const expense = round2(rows.reduce((s, r) => s + r.expense, 0));
-  return { income, expense, net: round2(income - expense) };
+  const income = paiseSum(rows.map((r) => r.income));
+  const expense = paiseSum(rows.map((r) => r.expense));
+  return { income: rupees(income), expense: rupees(expense), net: rupees(income - expense) };
 }
 
 async function intercompanyTotals(): Promise<{ in: number; out: number }> {
@@ -300,6 +321,52 @@ export async function buildEntitySnapshot(sourceTenantId: string): Promise<Built
 }
 
 /**
+ * A section's JSON without its own clock. `capTable()` stamps `asOf: new
+ * Date()` at the top of its section, so two builds of unchanged data differ
+ * by that stamp alone. Only a section's direct `asOf` is dropped: a clock
+ * nested deeper stays in the hash, so the failure mode is one extra history
+ * row, never a lost one.
+ */
+function contentOf(section: unknown): string {
+  return JSON.stringify(section, function (this: unknown, key: string, value: unknown) {
+    return key === 'asOf' && this === section ? undefined : value;
+  });
+}
+
+/**
+ * Appends the payload as the next history row for this source, unless it equals
+ * the latest row's payload, inside the publish transaction. The unique key on
+ * (tenant, source, seq) is what catches a concurrent writer from another
+ * process; that fails this transaction, and publishEntitySnapshot runs it again
+ * from the top. The retry cannot sit here: after a failed statement an
+ * interactive transaction accepts no further statements.
+ */
+async function appendHistory(
+  tx: DbTx,
+  tenantId: string,
+  sourceTenantId: string,
+  shared: Record<string, unknown>,
+  contentHash: string,
+): Promise<void> {
+  const latest = await tx.entitySnapshotHistory.findFirst({
+    where: { tenantId, sourceTenantId },
+    orderBy: { seq: 'desc' },
+    select: { seq: true, contentHash: true },
+  });
+  if (latest?.contentHash === contentHash) return;
+  await tx.entitySnapshotHistory.create({
+    // The Json columns in `shared` are cast on write, as in publishEntitySnapshotOnce.
+    data: {
+      tenantId,
+      recordCode: await nextRecordCode('ESN', undefined, tx),
+      ...shared,
+      contentHash,
+      seq: (latest?.seq ?? 0) + 1,
+    } as never,
+  });
+}
+
+/**
  * Builds, then writes into the parent (skipping silently when the tenant has
  * no parent — most tenants never publish) and emits `kz.eqt.snapshot.
  * published` in both tenants. Kept idempotent per `sourceTenantId`
@@ -308,7 +375,31 @@ export async function buildEntitySnapshot(sourceTenantId: string): Promise<Built
  * accumulating duplicates; the full history survives regardless, in
  * `EntitySnapshotHistory`.
  */
+// Publishes for one source run one after another within this process. The
+// check-then-create on the current snapshot and the history row raced when a
+// scheduled tick and a manual publish overlapped; the unique keys still catch
+// a race across processes, and the losing write then reads the winner's row.
+const publishQueue = new Map<string, Promise<unknown>>();
+
+// The parent's copy of a subsidiary's snapshot. Without this registration the
+// audit write below is refused, which is the point: a snapshot the group relies
+// on for consolidated figures must not be published unrecorded.
+registerGovernedEntities('group', ['entity_snapshot']);
+
 export async function publishEntitySnapshot(
+  sourceTenantId: string,
+): Promise<{ published: boolean; parentTenantId: string | null }> {
+  const previous = publishQueue.get(sourceTenantId) ?? Promise.resolve();
+  const run = previous.catch(() => {}).then(() => publishEntitySnapshotOnce(sourceTenantId));
+  publishQueue.set(sourceTenantId, run);
+  try {
+    return await run;
+  } finally {
+    if (publishQueue.get(sourceTenantId) === run) publishQueue.delete(sourceTenantId);
+  }
+}
+
+async function publishEntitySnapshotOnce(
   sourceTenantId: string,
 ): Promise<{ published: boolean; parentTenantId: string | null }> {
   const source = await unscopedPrisma.tenant.findFirst({ where: { id: sourceTenantId } });
@@ -318,40 +409,75 @@ export async function publishEntitySnapshot(
 
   const built = await buildEntitySnapshot(sourceTenantId);
 
-  await asSystem(parentTenantId, async () => {
-    const existing = await prisma.entitySnapshot.findFirst({ where: { tenantId: parentTenantId, sourceTenantId } });
-    const shared = {
-      sourceTenantId: built.sourceTenantId,
-      sourceSlug: built.sourceSlug,
-      sourceName: built.sourceName,
-      originDivision: built.originDivision,
-      asOf: built.asOf,
-      sourceEventHash: built.sourceEventHash,
-      capTable: built.capTable as never,
-      shareClasses: built.shareClasses as never,
-      board: built.board as never,
-      financial: built.financial as never,
-      compliance: built.compliance as never,
-      valuation: (built.valuation ?? undefined) as never,
-      publishedAt: new Date(),
-    };
+  // Two publishes from different processes can both miss the parent's row and
+  // both create it, or both take the same history seq. The loser's transaction
+  // aborts on the unique key, so it runs again and sees the winner's row: the
+  // row is updated and history appends after the winner's seq. The in-process
+  // queue above removes most of these races; this covers the rest.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await asSystem(parentTenantId, () =>
+        governedWrite(async (tx) => {
+          const existing = await tx.entitySnapshot.findFirst({ where: { tenantId: parentTenantId, sourceTenantId } });
+          const shared = {
+            sourceTenantId: built.sourceTenantId,
+            sourceSlug: built.sourceSlug,
+            sourceName: built.sourceName,
+            originDivision: built.originDivision,
+            asOf: built.asOf,
+            sourceEventHash: built.sourceEventHash,
+            capTable: built.capTable as never,
+            shareClasses: built.shareClasses as never,
+            board: built.board as never,
+            financial: built.financial as never,
+            compliance: built.compliance as never,
+            valuation: (built.valuation ?? undefined) as never,
+            publishedAt: new Date(),
+          };
+          const row = existing
+            ? await tx.entitySnapshot.update({ where: { id: existing.id }, data: shared })
+            : await tx.entitySnapshot.create({
+                data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN', undefined, tx), ...shared },
+              });
 
-    const row = existing
-      ? await prisma.entitySnapshot.update({ where: { id: existing.id }, data: shared })
-      : await prisma.entitySnapshot.create({
-          data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
-        });
+          // History records what changed. `asOf` and `publishedAt` are excluded from
+          // the hash: they move on every run by definition. A payload is skipped only
+          // when it equals the latest row's; a return to an earlier payload (A -> B
+          // -> A) is a change and is recorded.
+          const contentHash = createHash('sha256')
+            .update(
+              JSON.stringify({
+                capTable: contentOf(built.capTable),
+                shareClasses: contentOf(built.shareClasses),
+                board: contentOf(built.board),
+                financial: contentOf(built.financial),
+                compliance: contentOf(built.compliance),
+                valuation: contentOf(built.valuation ?? null),
+              }),
+            )
+            .digest('hex');
+          await appendHistory(tx, parentTenantId, sourceTenantId, shared, contentHash);
 
-    await prisma.entitySnapshotHistory.create({
-      data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
-    });
-
-    await emit({
-      name: EVENTS.SNAPSHOT_PUBLISHED,
-      subject: { entityType: 'entity_snapshot', entityId: row.id, recordCode: row.recordCode },
-      newState: { sourceTenantId, asOf: built.asOf.toISOString() },
-    });
-  });
+          await auditWrite({
+            action: existing ? 'update' : 'create',
+            subjectType: 'entity_snapshot',
+            subjectId: row.id,
+            after: { sourceTenantId, asOf: built.asOf.toISOString() },
+            tx,
+          });
+          await emit({
+            name: EVENTS.SNAPSHOT_PUBLISHED,
+            subject: { entityType: 'entity_snapshot', entityId: row.id, recordCode: row.recordCode },
+            newState: { sourceTenantId, asOf: built.asOf.toISOString() },
+            tx,
+          });
+        }),
+      );
+      break;
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'P2002' || attempt >= 3) throw err;
+    }
+  }
 
   await asSystem(sourceTenantId, async () => {
     await emit({
@@ -661,15 +787,20 @@ export async function groupFinancials() {
     },
   ];
 
+  // Every entity this group view adds is in one currency, or the totals are withheld.
+  // The ledger is rupee-only in v1; a snapshot that says otherwise says so itself.
+  const currencies = new Set<string>(['INR']);
   for (const snap of snapshots) {
     const fin = snap.financial as unknown as {
       period: string;
+      currency?: string | null;
       cash: number | null;
       pnlMonth: { income: number; expense: number; net: number } | null;
       pnlFyToDate: { income: number; expense: number; net: number } | null;
       headcount: Array<{ headcount: number }>;
       intercompany: { in: number; out: number } | null;
     };
+    currencies.add(fin.currency ?? 'INR');
     entities.push({
       tenantId: snap.sourceTenantId,
       name: snap.sourceName,
@@ -684,14 +815,31 @@ export async function groupFinancials() {
     });
   }
 
-  const totalCash = entities.every((e) => e.cash != null)
-    ? round2(entities.reduce((s, e) => s + (e.cash ?? 0), 0))
-    : null;
-  const totalPnlMonth = entities.every((e) => e.pnlMonth) ? sumPnl(entities.map((e) => e.pnlMonth!)) : null;
-  const intercompanyTotal = {
-    in: round2(entities.reduce((s, e) => s + (e.intercompanyIn ?? 0), 0)),
-    out: round2(entities.reduce((s, e) => s + (e.intercompanyOut ?? 0), 0)),
-  };
+  // A total adds figures only when they are in one currency. A subsidiary that
+  // reports in dollars would otherwise be dollars added into the rupee total, and
+  // nothing on the page would say so (FX-30). The rows still show.
+  const totalsWithheldReason =
+    currencies.size > 1
+      ? `The entities report in more than one currency (${[...currencies].join(', ')}), so group totals are withheld rather than added across currencies.`
+      : null;
+
+  const totalCash =
+    totalsWithheldReason === null && entities.every((e) => e.cash != null)
+      ? rupees(paiseSum(entities.map((e) => e.cash)))
+      : null;
+  const totalPnlMonth =
+    totalsWithheldReason === null && entities.every((e) => e.pnlMonth)
+      ? sumPnl(entities.map((e) => e.pnlMonth!))
+      : null;
+
+  // Inter-company is shown as recorded on each side. `paired` says whether the two
+  // sides agree in total; a group total of one side alone is a one-sided figure, and
+  // is marked so (FX-30). Pairing by counterparty needs per-counterparty figures the
+  // snapshot does not carry, which is listed as open in the Wave 3 report.
+  const inPaise = paiseSum(entities.map((e) => e.intercompanyIn));
+  const outPaise = paiseSum(entities.map((e) => e.intercompanyOut));
+  const intercompanyTotal =
+    totalsWithheldReason === null ? { in: rupees(inPaise), out: rupees(outPaise), paired: inPaise === outPaise } : null;
 
   return {
     entities,
@@ -699,6 +847,7 @@ export async function groupFinancials() {
     totalCash,
     totalPnlMonth,
     intercompanyTotal,
+    totalsWithheldReason,
   };
 }
 

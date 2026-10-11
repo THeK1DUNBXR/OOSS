@@ -42,6 +42,27 @@ export function istDateKey(date: Date): string {
 }
 
 /**
+ * The IST civil date of an instant, stored the way a `@db.Date` column and the
+ * journal's entry_date hold it: UTC midnight of that calendar date. Comparing a
+ * date column with the raw instant reads 00:00 to 05:30 IST on a day as the
+ * day before, which moves an entry into the previous period.
+ */
+export function istCivilDay(date: Date): Date {
+  return new Date(`${istDateKey(date)}T00:00:00.000Z`);
+}
+
+/**
+ * Minutes since IST midnight for an instant: the wall-clock reading a punch
+ * or a shift's HH:MM is compared against. IST has no DST, so a fixed offset
+ * is exact; the double modulo keeps pre-epoch instants in range.
+ */
+export function istMinuteOfDay(date: Date): number {
+  const dayMs = 86_400_000;
+  const msIntoIstDay = (((date.getTime() + IST_OFFSET_MS) % dayMs) + dayMs) % dayMs;
+  return Math.floor(msIntoIstDay / 60_000);
+}
+
+/**
  * The calendar year a financial year starts in: 2026 for FY2026-27. Starts on
  * 1 April IST, so 00:30 IST on 1 April is already the new year.
  */
@@ -57,6 +78,16 @@ export function istFinancialYearStart(date: Date): number {
  */
 export function istMidnight(year: number, month1: number, day: number): Date {
   return new Date(Date.UTC(year, month1 - 1, day) - IST_OFFSET_MS);
+}
+
+/**
+ * The instant the IST civil day containing `date` begins. A daily bucket is
+ * keyed by this, so a run at 19:00Z on 11 October is the 12 October bucket:
+ * 00:30 IST on the 12th, and its midnight is 18:30Z on the 11th.
+ */
+export function istDayStart(date: Date): Date {
+  const { year, month, day } = istParts(date);
+  return istMidnight(year, month, day);
 }
 
 /** The last millisecond of an IST civil date, for inclusive "on or before" deadlines. */

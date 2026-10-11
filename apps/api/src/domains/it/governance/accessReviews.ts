@@ -59,19 +59,6 @@ export async function openCampaign(input: OpenCampaignInput) {
   if (!input.dueAt) throw ApiError.badRequest('A campaign needs a due date.');
 
   const recordCode = await nextRecordCode('ACR');
-  const campaign = await prisma.itAccessReview.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name,
-      scope: input.scope,
-      scopeRef: input.scopeRef ?? null,
-      dueAt: input.dueAt,
-      status: 'open',
-      openedById: auth.partyId ?? 'system',
-    },
-  });
-
   // Materialise one item per active affiliation in scope. `application` scope
   // has no per-application access grant in `main.prisma` to enumerate, so it
   // reviews the same population as `all`, tagged with the application id
@@ -85,30 +72,51 @@ export async function openCampaign(input: OpenCampaignInput) {
     },
   });
 
-  if (affiliations.length) {
-    await prisma.itAccessReviewItem.createMany({
-      data: affiliations.map((a) => ({
+  // A campaign whose items were not materialised would show a population of
+  // zero to its reviewers, so the campaign, its items, its audit row and its
+  // opened event commit together.
+  const campaign = await prisma.$transaction(async (tx) => {
+    const campaign = await tx.itAccessReview.create({
+      data: {
         tenantId: auth.tenantId,
-        reviewId: campaign.id,
-        partyId: a.partyId,
-        affiliationId: a.id,
-        roleSlug: a.roleSlug,
-        applicationId: input.scope === 'application' ? input.scopeRef : null,
-      })),
+        recordCode,
+        name,
+        scope: input.scope,
+        scopeRef: input.scopeRef ?? null,
+        dueAt: input.dueAt,
+        status: 'open',
+        openedById: auth.partyId ?? 'system',
+      },
     });
-  }
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_access_review',
-    subjectId: campaign.id,
-    after: { recordCode, scope: input.scope, items: affiliations.length },
-  });
-  await emit({
-    name: EVENTS.IT_ACCESS_REVIEW_OPENED,
-    subject: { entityType: 'it_access_review', entityId: campaign.id, recordCode },
-    newState: { scope: input.scope, itemCount: affiliations.length },
-    impact: { domains: [IT_DOMAIN] },
+    if (affiliations.length) {
+      await tx.itAccessReviewItem.createMany({
+        data: affiliations.map((a) => ({
+          tenantId: auth.tenantId,
+          reviewId: campaign.id,
+          partyId: a.partyId,
+          affiliationId: a.id,
+          roleSlug: a.roleSlug,
+          applicationId: input.scope === 'application' ? input.scopeRef : null,
+        })),
+      });
+    }
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_access_review',
+      subjectId: campaign.id,
+      after: { recordCode, scope: input.scope, items: affiliations.length },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_ACCESS_REVIEW_OPENED,
+      subject: { entityType: 'it_access_review', entityId: campaign.id, recordCode },
+      newState: { scope: input.scope, itemCount: affiliations.length },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return campaign;
   });
 
   return withTransitions({ ...campaign, itemCount: affiliations.length });
@@ -206,57 +214,79 @@ export async function decideItem(reviewId: string, itemId: string, input: Decide
     );
   }
 
-  const decided = await prisma.itAccessReviewItem.update({
-    where: { id: itemId },
-    data: { decision: input.decision, decidedAt: new Date(), reviewerPartyId: auth.partyId, note: input.note ?? null },
-  });
+  // The decision, the campaign's move into progress and the decided event
+  // commit together. The campaign's audit row sits before the emit: every
+  // governed write takes the audit lock before the event lock (governedWrite.ts),
+  // and an emit ahead of a later audit in the same transaction would reverse that.
+  // Read before the transaction: the resolver reads through the scoped client, which
+  // refuses to run inside one.
+  const opsHead = input.decision === 'revoke' ? await resolveOpsHeadPartyId() : null;
+  const decided = await prisma.$transaction(async (tx) => {
+    const decided = await tx.itAccessReviewItem.update({
+      where: { id: itemId },
+      data: {
+        decision: input.decision,
+        decidedAt: new Date(),
+        reviewerPartyId: auth.partyId,
+        note: input.note ?? null,
+      },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_access_review_item',
-    subjectId: itemId,
-    before: { decision: item.decision },
-    after: { decision: input.decision },
-  });
-  await emit({
-    name: EVENTS.IT_ACCESS_REVIEW_DECIDED,
-    subject: { entityType: 'it_access_review_item', entityId: itemId },
-    related: [{ relation: 'belongs_to', entityType: 'it_access_review', entityId: reviewId }],
-    newState: { decision: input.decision },
-    owner: { partyId: item.partyId },
-    impact: { domains: [IT_DOMAIN] },
-  });
-
-  if (campaign.status === 'open') {
-    const to = accessReviewMachine.apply('open', 'START_PROGRESS');
-    await prisma.itAccessReview.update({ where: { id: reviewId }, data: { status: to } });
     await auditWrite({
       action: 'update',
-      subjectType: 'it_access_review',
-      subjectId: reviewId,
-      before: { status: 'open' },
-      after: { status: to },
-      meta: { transition: 'START_PROGRESS' },
-    });
-  }
-
-  // A `revoke` decision is a finding for the desk to act on, not a write this
-  // workstream makes to `Affiliation` — that model lives outside these files.
-  if (input.decision === 'revoke') {
-    const opsHead = await resolveOpsHeadPartyId();
-    await raiseException({
-      code: 'IT_ACR_REVOKE_REQUESTED',
-      label: `Access review: revoke ${item.roleSlug ?? 'access'} for ${item.partyId}`,
-      severity: 'S2_WARNING',
       subjectType: 'it_access_review_item',
       subjectId: itemId,
-      subjectLabel: campaign.recordCode,
-      domain: IT_DOMAIN,
-      detail: `${campaign.name} (${campaign.recordCode}) recommends revoking access for party ${item.partyId}${item.roleSlug ? ` (role ${item.roleSlug})` : ''}. The affiliation itself is not changed automatically — this needs a deliberate offboarding action.`,
-      ownerPartyId: opsHead,
-      triggerFingerprint: `it_access_review_revoke_${itemId}`,
+      before: { decision: item.decision },
+      after: { decision: input.decision },
+      tx,
     });
-  }
+
+    if (campaign.status === 'open') {
+      const to = accessReviewMachine.apply('open', 'START_PROGRESS');
+      await tx.itAccessReview.update({ where: { id: reviewId }, data: { status: to } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'it_access_review',
+        subjectId: reviewId,
+        before: { status: 'open' },
+        after: { status: to },
+        meta: { transition: 'START_PROGRESS' },
+        tx,
+      });
+    }
+
+    await emit({
+      name: EVENTS.IT_ACCESS_REVIEW_DECIDED,
+      subject: { entityType: 'it_access_review_item', entityId: itemId },
+      related: [{ relation: 'belongs_to', entityType: 'it_access_review', entityId: reviewId }],
+      newState: { decision: input.decision },
+      owner: { partyId: item.partyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    // A `revoke` decision is a finding for the desk to act on, not a write this
+    // workstream makes to `Affiliation` — that model lives outside these files. The
+    // finding is the consequence of the decision, so it commits or rolls back with it;
+    // raised after the commit, a failed raise left a revoke with no finding for the desk.
+    if (input.decision === 'revoke') {
+      await raiseException(
+        {
+          code: 'IT_ACR_REVOKE_REQUESTED',
+          label: `Access review: revoke ${item.roleSlug ?? 'access'} for ${item.partyId}`,
+          severity: 'S2_WARNING',
+          subjectType: 'it_access_review_item',
+          subjectId: itemId,
+          subjectLabel: campaign.recordCode,
+          domain: IT_DOMAIN,
+          detail: `${campaign.name} (${campaign.recordCode}) recommends revoking access for party ${item.partyId}${item.roleSlug ? ` (role ${item.roleSlug})` : ''}. The affiliation itself is not changed automatically — this needs a deliberate offboarding action.`,
+          ownerPartyId: opsHead,
+          triggerFingerprint: `it_access_review_revoke_${itemId}`,
+        },
+        tx,
+      );
+    }
+    return decided;
+  });
 
   return decided;
 }
@@ -288,21 +318,26 @@ export async function closeCampaign(id: string) {
   }
   const to = accessReviewMachine.apply(from, 'CLOSE');
 
-  const updated = await prisma.itAccessReview.update({ where: { id }, data: { status: to, closedAt: new Date() } });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_access_review',
-    subjectId: id,
-    before: { status: from },
-    after: { status: to },
-    meta: { transition: 'CLOSE' },
-  });
-  await emit({
-    name: EVENTS.IT_ACCESS_REVIEW_CLOSED,
-    subject: { entityType: 'it_access_review', entityId: id, recordCode: campaign.recordCode },
-    previousState: { status: from },
-    newState: { status: to },
-    impact: { domains: [IT_DOMAIN] },
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itAccessReview.update({ where: { id }, data: { status: to, closedAt: new Date() } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_access_review',
+      subjectId: id,
+      before: { status: from },
+      after: { status: to },
+      meta: { transition: 'CLOSE' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_ACCESS_REVIEW_CLOSED,
+      subject: { entityType: 'it_access_review', entityId: id, recordCode: campaign.recordCode },
+      previousState: { status: from },
+      newState: { status: to },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return withTransitions(updated);

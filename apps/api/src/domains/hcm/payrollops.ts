@@ -30,7 +30,9 @@ import {
   isEncryptedFieldValue,
   type NeftBeneficiary,
 } from '@kaizen/shared';
+import { Prisma } from '@prisma/client';
 import { prisma, unscopedPrisma, num } from '../../platform/db.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
@@ -215,27 +217,31 @@ async function decideAdHocPayLine(id: string, approve: boolean, note?: string) {
     ]);
   }
 
-  const row = await prisma.adHocPayLine.update({
-    where: { id },
-    data: { status: approve ? 'Approved' : 'Rejected', approvedById: auth.partyId, approvedAt: new Date() },
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'adhoc_pay_line',
-    subjectId: id,
-    before: before as never,
-    after: row as never,
-  });
-  if (approve) {
-    await emit({
-      name: EVENTS.ADHOC_PAY_APPROVED,
-      subject: { entityType: 'adhoc_pay_line', entityId: row.id },
-      newState: { payPeriod: row.payPeriod, amount: num(row.amount), reason: note ?? row.reason },
-      confidentiality: 'confidential',
-      impact: { domains: ['hr', 'fin'] },
+  return governedWrite(async (tx) => {
+    const row = await tx.adHocPayLine.update({
+      where: { id },
+      data: { status: approve ? 'Approved' : 'Rejected', approvedById: auth.partyId, approvedAt: new Date() },
     });
-  }
-  return row;
+    await auditWrite({
+      action: 'update',
+      subjectType: 'adhoc_pay_line',
+      subjectId: id,
+      before: before as never,
+      after: row as never,
+      tx,
+    });
+    if (approve) {
+      await emit({
+        name: EVENTS.ADHOC_PAY_APPROVED,
+        subject: { entityType: 'adhoc_pay_line', entityId: row.id },
+        newState: { payPeriod: row.payPeriod, amount: num(row.amount), reason: note ?? row.reason },
+        confidentiality: 'confidential',
+        impact: { domains: ['hr', 'fin'] },
+        tx,
+      });
+    }
+    return row;
+  });
 }
 
 export const approveAdHocPayLine = (id: string, note?: string) => decideAdHocPayLine(id, true, note);
@@ -306,27 +312,31 @@ async function decideArrear(id: string, approve: boolean) {
     ]);
   }
 
-  const row = await prisma.arrear.update({
-    where: { id },
-    data: { status: approve ? 'Approved' : 'Rejected', approvedById: auth.partyId, approvedAt: new Date() },
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'arrear',
-    subjectId: id,
-    before: before as never,
-    after: row as never,
-  });
-  if (approve) {
-    await emit({
-      name: EVENTS.ARREAR_APPROVED,
-      subject: { entityType: 'arrear', entityId: row.id },
-      newState: { fromPeriod: row.fromPeriod, amount: num(row.amount) },
-      confidentiality: 'confidential',
-      impact: { domains: ['hr', 'fin'] },
+  return governedWrite(async (tx) => {
+    const row = await tx.arrear.update({
+      where: { id },
+      data: { status: approve ? 'Approved' : 'Rejected', approvedById: auth.partyId, approvedAt: new Date() },
     });
-  }
-  return row;
+    await auditWrite({
+      action: 'update',
+      subjectType: 'arrear',
+      subjectId: id,
+      before: before as never,
+      after: row as never,
+      tx,
+    });
+    if (approve) {
+      await emit({
+        name: EVENTS.ARREAR_APPROVED,
+        subject: { entityType: 'arrear', entityId: row.id },
+        newState: { fromPeriod: row.fromPeriod, amount: num(row.amount) },
+        confidentiality: 'confidential',
+        impact: { domains: ['hr', 'fin'] },
+        tx,
+      });
+    }
+    return row;
+  });
 }
 
 export const approveArrear = (id: string) => decideArrear(id, true);
@@ -666,6 +676,18 @@ export async function generateBankAdvice(payrollRunId: string) {
     );
   }
 
+  // One advice per run. A bank may already have acted on the first file, and a
+  // second NEFT file for the same pay is how a payment goes out twice (FX-35).
+  const existing = await prisma.bankAdvice.findFirst({
+    where: { tenantId: auth.tenantId, payrollRunId },
+    select: { id: true, version: true },
+  });
+  if (existing) {
+    throw ApiError.conflict(
+      `A bank advice (version ${existing.version}) already exists for this run. A bank may have acted on it; a replacement needs a supersede, not a second generate.`,
+    );
+  }
+
   const instructions = await prisma.payrollInstruction.findMany({ where: { tenantId: auth.tenantId, payrollRunId } });
   const rows: NeftBeneficiary[] = [];
   for (const instr of instructions) {
@@ -708,19 +730,28 @@ export async function generateBankAdvice(payrollRunId: string) {
   // The file and the rows are both sealed: a stored advice is a record of bank
   // details, readable only through `downloadBankAdvice` and the masked view.
 
-  const row = await prisma.bankAdvice.create({
-    data: {
-      tenantId: auth.tenantId,
-      payrollRunId,
-      payPeriod: run.payPeriod,
-      format: 'NEFT_CSV',
-      fileText: encryptField(fileText),
-      rows: sealBeneficiaries(rows) as never,
-      count: rows.length,
-      total,
-      generatedById: auth.partyId,
-    },
-  });
+  // Two generates that both passed the check above meet the unique index on
+  // (tenant, run, version); the loser is refused the same way, not left to 500.
+  const row = await prisma.bankAdvice
+    .create({
+      data: {
+        tenantId: auth.tenantId,
+        payrollRunId,
+        payPeriod: run.payPeriod,
+        format: 'NEFT_CSV',
+        fileText: encryptField(fileText),
+        rows: sealBeneficiaries(rows) as never,
+        count: rows.length,
+        total,
+        generatedById: auth.partyId,
+      },
+    })
+    .catch((err: unknown) => {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw ApiError.conflict('A bank advice already exists for this run.');
+      }
+      throw err;
+    });
   await auditWrite({
     action: 'create',
     subjectType: 'bank_advice',
@@ -1014,26 +1045,29 @@ export async function createPayrollQuery(input: PayrollQueryInput) {
     if (!payslip) throw ApiError.notFound('Payslip');
   }
 
-  const row = await prisma.payrollQuery.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      payslipId: input.payslipId ?? null,
-      payPeriod: input.payPeriod,
-      subject: input.subject,
-      message: input.message,
-      status: 'Open',
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.payrollQuery.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        payslipId: input.payslipId ?? null,
+        payPeriod: input.payPeriod,
+        subject: input.subject,
+        message: input.message,
+        status: 'Open',
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'payroll_query', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: EVENTS.PAYROLL_QUERY_RAISED,
+      subject: { entityType: 'payroll_query', entityId: row.id },
+      newState: { payPeriod: row.payPeriod, subject: row.subject },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await auditWrite({ action: 'create', subjectType: 'payroll_query', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.PAYROLL_QUERY_RAISED,
-    subject: { entityType: 'payroll_query', entityId: row.id },
-    newState: { payPeriod: row.payPeriod, subject: row.subject },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 export async function respondToPayrollQuery(id: string, response: string, close = false) {
@@ -1043,30 +1077,34 @@ export async function respondToPayrollQuery(id: string, response: string, close 
   if (!before) throw ApiError.notFound('Payroll query');
   if (before.status === 'Closed') throw ApiError.conflict('This query is already closed.');
 
-  const row = await prisma.payrollQuery.update({
-    where: { id },
-    data: {
-      response,
-      respondedById: auth.partyId,
-      respondedAt: new Date(),
-      status: close ? 'Closed' : 'Responded',
-    },
+  return governedWrite(async (tx) => {
+    const row = await tx.payrollQuery.update({
+      where: { id },
+      data: {
+        response,
+        respondedById: auth.partyId,
+        respondedAt: new Date(),
+        status: close ? 'Closed' : 'Responded',
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'payroll_query',
+      subjectId: id,
+      before: before as never,
+      after: row as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.PAYROLL_QUERY_RESOLVED,
+      subject: { entityType: 'payroll_query', entityId: row.id },
+      newState: { status: row.status },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'payroll_query',
-    subjectId: id,
-    before: before as never,
-    after: row as never,
-  });
-  await emit({
-    name: EVENTS.PAYROLL_QUERY_RESOLVED,
-    subject: { entityType: 'payroll_query', entityId: row.id },
-    newState: { status: row.status },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 export async function closePayrollQuery(id: string) {

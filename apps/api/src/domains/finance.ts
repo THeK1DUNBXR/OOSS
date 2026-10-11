@@ -24,7 +24,7 @@
  * pointing one way is what stops the two files becoming one.
  */
 
-import { EVENTS, round2 } from '@kaizen/shared';
+import { EVENTS } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -33,7 +33,23 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
-import { invoiceLabel, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
+import { runHooks } from '../platform/hooks.js';
+import { openAccountingDate, periodStatus as accountingPeriodStatus } from './compliance/books.js';
+import { invoiceLabel, paymentWire, receiptWire, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
+import { withMinor } from '../platform/wire.js';
+import { governedWrite } from '../platform/governedWrite.js';
+import {
+  assertFits,
+  clampZero,
+  lockAndLoadFeeInstalment,
+  lockAndLoadInvoice,
+  lockPayment,
+  outstandingOfInstalment,
+  paiseOf,
+  paiseOfInput,
+  poundsOf,
+  positionOfInvoice,
+} from './allocation.js';
 
 /**
  * Raising an invoice, editing a draft, collecting at a counter and printing the
@@ -113,7 +129,21 @@ export async function recordPayment(input: {
   const existing = await prisma.payment.findFirst({
     where: { tenantId: auth.tenantId, gatewayReference: input.gatewayReference },
   });
-  if (existing) return existing;
+  if (existing) return paymentWire(existing);
+
+  // Interim policy, pending the accountant's confirmation: money that has
+  // arrived is never refused. A caller with no human behind it (a gateway
+  // webhook, `partyId` null, as `Payment.recordedById` describes) whose money
+  // date falls in a closed period is recorded in the current open period, and
+  // the arrival date is kept as `valueDate`. A member of staff entering the same
+  // payment is still refused by the hook below. Nothing is written into the
+  // closed period either way; only the accounting date moves.
+  const arrivedAt = input.receivedAt ?? new Date();
+  const movedFromClosed = auth.partyId === null && (await accountingPeriodStatus(arrivedAt)) === 'closed';
+  if (!movedFromClosed) {
+    await runHooks('accounting_document.before_write', { date: arrivedAt, what: 'This payment' });
+  }
+  const accountingDate = movedFromClosed ? await openAccountingDate(new Date()) : arrivedAt;
 
   const recordCode = await nextRecordCode('PAY');
   const payment = await prisma.payment.create({
@@ -123,7 +153,8 @@ export async function recordPayment(input: {
       amount: input.amount,
       currency: input.currency ?? 'INR',
       gatewayReference: input.gatewayReference,
-      receivedAt: input.receivedAt ?? new Date(),
+      receivedAt: accountingDate,
+      valueDate: movedFromClosed ? arrivedAt : null,
       status: 'received',
       method: input.method ?? 'bank_transfer',
       payerOrganizationId: input.payerOrganizationId ?? null,
@@ -140,8 +171,26 @@ export async function recordPayment(input: {
     action: 'create',
     subjectType: 'payment',
     subjectId: payment.id,
-    after: { recordCode, amount: input.amount },
+    after: {
+      recordCode,
+      amount: input.amount,
+      receivedAt: accountingDate,
+      valueDate: movedFromClosed ? arrivedAt : null,
+    },
   });
+  if (movedFromClosed) {
+    await raiseException({
+      code: 'EX-FIN-007',
+      label: 'Payment received for a closed period',
+      severity: 'S2_WARNING',
+      subjectType: 'payment',
+      subjectId: payment.id,
+      subjectLabel: recordCode,
+      detail: `₹${input.amount.toFixed(2)} arrived on ${arrivedAt.toISOString().slice(0, 10)}, in a closed period. It is recorded in the open period from ${accountingDate.toISOString().slice(0, 10)}; the arrival date is kept. Confirm the treatment with the accountant.`,
+      triggerFingerprint: `payment_received_closed:${payment.id}`,
+      ladderRung: 1,
+    });
+  }
   await emit({
     name: EVENTS.PAYMENT_RECEIVED,
     subject: { entityType: 'payment', entityId: payment.id, recordCode },
@@ -153,7 +202,7 @@ export async function recordPayment(input: {
     confidentiality: 'confidential',
   });
 
-  return payment;
+  return paymentWire(payment);
 }
 
 /**
@@ -174,6 +223,7 @@ export async function reversePayment(paymentId: string, reason: string) {
   if (original.reversalOfPaymentId) {
     throw ApiError.unprocessable('This payment is itself a reversal. Reversing it would restore the original error.');
   }
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This reversal' });
 
   const recordCode = await nextRecordCode('PAY');
   const reversal = await prisma.payment.create({
@@ -232,95 +282,137 @@ export async function allocatePayment(input: {
   if (!input.invoiceId && !input.feeInstalmentId) {
     throw ApiError.badRequest('A receipt must allocate to an invoice or a fee instalment.');
   }
+  const amountPaise = paiseOfInput(input.amount);
+  if (amountPaise <= 0n) throw ApiError.badRequest('An allocation has to be for something.');
 
-  const payment = await prisma.payment.findFirst({
-    where: { id: input.paymentId },
-    include: { receipts: true },
-  });
-  if (!payment) throw ApiError.notFound('Payment');
-
-  const alreadyAllocated = payment.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0);
-  const available = (num(payment.amount) ?? 0) - alreadyAllocated;
-  if (input.amount > available + 0.001) {
-    throw ApiError.unprocessable(
-      `Cannot allocate ${input.amount}: only ${available.toFixed(2)} of this payment is unallocated.`,
-      { available },
-    );
-  }
-
-  // The position this allocation leaves the subject in, snapshotted onto the
-  // receipt. A receipt is a document as well as a join row, and the document has
-  // to keep saying what was owed when it was written — so the figures are stored
-  // here rather than recomputed at print time.
-  const subject = input.invoiceId
-    ? await prisma.invoice.findFirst({
-        where: { id: input.invoiceId },
-        include: { lines: true, receipts: true },
-      })
-    : null;
-  const subjectTotals = subject ? totalsOf(subject) : null;
-  const subjectTotal = subjectTotals?.payable ?? 0;
-  const balanceAfter = subjectTotals
-    ? round2(Math.max(subjectTotal - subjectTotals.allocated - input.amount - subjectTotals.creditNoted, 0))
-    : 0;
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This receipt' });
 
   // The company's own receipt series, the same one the counter path uses: a
   // customer holding two receipts from one company should not find them numbered
-  // by two different schemes.
+  // by two different schemes. Read before the transaction, which refuses the
+  // global client.
   const { documentNumbering } = await import('./companyProfile.js');
   const { DOCUMENT_SERIES, nextDocumentNumber } = await import('../platform/documentNumber.js');
   const numbering = await documentNumbering();
-  const recordCode = await nextDocumentNumber(
-    DOCUMENT_SERIES.receipt,
-    numbering.prefix,
-    new Date(),
-    numbering.yearFormat,
-  );
-  const receipt = await prisma.receipt.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      paymentId: input.paymentId,
-      invoiceId: input.invoiceId ?? null,
-      feeInstalmentId: input.feeInstalmentId ?? null,
-      allocatedAmount: input.amount,
-      allocatedById: auth.partyId,
-      subjectTotal,
-      balanceAfter,
-      paymentMode: payment.method,
-      paymentReference: payment.gatewayReference,
-    },
-  });
 
-  await emit({
-    name: EVENTS.RECEIPT_ISSUED,
-    subject: { entityType: 'receipt', entityId: receipt.id, recordCode },
-    related: [
-      { relation: 'from', entityType: 'payment', entityId: input.paymentId },
-      ...(input.invoiceId ? [{ relation: 'against', entityType: 'invoice', entityId: input.invoiceId }] : []),
-    ],
-    newState: { amount: input.amount, subjectTotal, balanceAfter },
-    impact: { domains: ['fin'] },
-    confidentiality: 'confidential',
-  });
+  const receipt = await governedWrite(async (tx) => {
+    // Payment first, then invoice: the order every allocation takes them in, so
+    // two allocations of one payment queue on the payment (allocation.ts).
+    await lockPayment(tx, auth.tenantId, input.paymentId);
+    const payment = await tx.payment.findFirst({
+      where: { id: input.paymentId, tenantId: auth.tenantId },
+      include: { receipts: true },
+    });
+    if (!payment) throw ApiError.notFound('Payment');
 
-  await emit({
-    name: EVENTS.RECEIPT_ALLOCATED,
-    subject: { entityType: 'receipt', entityId: receipt.id, recordCode },
-    related: [
-      { relation: 'from', entityType: 'payment', entityId: input.paymentId },
-      ...(input.invoiceId ? [{ relation: 'against', entityType: 'invoice', entityId: input.invoiceId }] : []),
-      ...(input.feeInstalmentId
-        ? [{ relation: 'against', entityType: 'fee_instalment', entityId: input.feeInstalmentId }]
-        : []),
-    ],
-    newState: { allocatedAmount: input.amount },
-    impact: { domains: ['fin'] },
-    confidentiality: 'confidential',
+    const allocatedFromPayment = payment.receipts.reduce((s, r) => s + paiseOf(r.allocatedAmount), 0n);
+    assertFits(amountPaise, paiseOf(payment.amount) - allocatedFromPayment, (left) =>
+      ApiError.unprocessable(`Cannot allocate ${input.amount}: only ${left} of this payment is unallocated.`, {
+        available: Number(left),
+      }),
+    );
+
+    // The position this allocation leaves the subject in, snapshotted onto the
+    // receipt. A receipt is a document as well as a join row, and the document has
+    // to keep saying what was owed when it was written, so the figures are stored
+    // here rather than recomputed at print time. Read under the invoice lock, for
+    // the same reason as collectInvoicePayment.
+    let subjectTotal = 0;
+    let balanceAfter = 0;
+    if (input.invoiceId) {
+      const invoice = await lockAndLoadInvoice(tx, { tenantId: auth.tenantId, invoiceId: input.invoiceId });
+      const position = positionOfInvoice(invoice);
+      assertFits(amountPaise, position.outstanding, (left) =>
+        ApiError.unprocessable(
+          `Cannot allocate ${input.amount} to ${invoiceLabel(invoice)}: only ₹${left} is outstanding on it.`,
+          { outstanding: Number(left), offered: input.amount },
+        ),
+      );
+      subjectTotal = poundsOf(position.payable);
+      balanceAfter = poundsOf(clampZero(position.outstanding - amountPaise));
+    } else if (input.feeInstalmentId) {
+      // Payment, then invoice, then instalment: the one order every path takes
+      // them in (allocation.ts). A fee instalment is a receivable like an invoice
+      // and had no check at all, so parallel allocations could take more than it is for.
+      const instalment = await lockAndLoadFeeInstalment(tx, {
+        tenantId: auth.tenantId,
+        feeInstalmentId: input.feeInstalmentId,
+      });
+      const position = outstandingOfInstalment(instalment);
+      assertFits(amountPaise, position.outstanding, (left) =>
+        ApiError.unprocessable(
+          `Cannot allocate ${input.amount} to this fee instalment: only ₹${left} of it is outstanding.`,
+          { outstanding: Number(left), offered: input.amount },
+        ),
+      );
+      subjectTotal = poundsOf(position.amount);
+      balanceAfter = poundsOf(clampZero(position.outstanding - amountPaise));
+    }
+
+    const recordCode = await nextDocumentNumber(
+      tx,
+      DOCUMENT_SERIES.receipt,
+      numbering.prefix,
+      new Date(),
+      numbering.yearFormat,
+    );
+    const receipt = await tx.receipt.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        paymentId: input.paymentId,
+        invoiceId: input.invoiceId ?? null,
+        feeInstalmentId: input.feeInstalmentId ?? null,
+        allocatedAmount: input.amount,
+        allocatedById: auth.partyId,
+        subjectTotal,
+        balanceAfter,
+        paymentMode: payment.method,
+        paymentReference: payment.gatewayReference,
+      },
+    });
+
+    await auditWrite({
+      tx,
+      action: 'create',
+      subjectType: 'receipt',
+      subjectId: receipt.id,
+      after: { recordCode, amount: input.amount, balanceAfter },
+    });
+    await emit({
+      tx,
+      name: EVENTS.RECEIPT_ISSUED,
+      subject: { entityType: 'receipt', entityId: receipt.id, recordCode },
+      related: [
+        { relation: 'from', entityType: 'payment', entityId: input.paymentId },
+        ...(input.invoiceId ? [{ relation: 'against', entityType: 'invoice', entityId: input.invoiceId }] : []),
+      ],
+      newState: { amount: input.amount, subjectTotal, balanceAfter },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+    });
+
+    await emit({
+      tx,
+      name: EVENTS.RECEIPT_ALLOCATED,
+      subject: { entityType: 'receipt', entityId: receipt.id, recordCode },
+      related: [
+        { relation: 'from', entityType: 'payment', entityId: input.paymentId },
+        ...(input.invoiceId ? [{ relation: 'against', entityType: 'invoice', entityId: input.invoiceId }] : []),
+        ...(input.feeInstalmentId
+          ? [{ relation: 'against', entityType: 'fee_instalment', entityId: input.feeInstalmentId }]
+          : []),
+      ],
+      newState: { allocatedAmount: input.amount },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+    });
+
+    return receipt;
   });
 
   await settleIfFullyPaid(input.invoiceId ?? null, input.feeInstalmentId ?? null);
-  return receipt;
+  return receiptWire(receipt);
 }
 
 async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: string | null) {
@@ -379,6 +471,7 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
 export async function issueCreditNote(invoiceId: string, amount: number, reason: string, reasonCode?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'edit' });
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This credit note' });
 
   // The company's own document series ('C'), not the generic record-code
   // sequence: a credit note is a final document a customer holds, and its
@@ -386,21 +479,27 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
   const { documentNumbering } = await import('./companyProfile.js');
   const { DOCUMENT_SERIES, nextDocumentNumber } = await import('../platform/documentNumber.js');
   const numbering = await documentNumbering();
-  const recordCode = await nextDocumentNumber(
-    DOCUMENT_SERIES.creditNote,
-    numbering.prefix,
-    new Date(),
-    numbering.yearFormat,
-  );
-  const note = await prisma.creditNote.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      invoiceId,
-      amount,
-      reason,
-      issuedById: auth.partyId,
-    },
+  // The number and the row it names commit together. Taken on the global client it
+  // stayed taken when this write was refused, and the series had a hole in it.
+  const { recordCode, note } = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextDocumentNumber(
+      tx,
+      DOCUMENT_SERIES.creditNote,
+      numbering.prefix,
+      new Date(),
+      numbering.yearFormat,
+    );
+    const note = await tx.creditNote.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        invoiceId,
+        amount,
+        reason,
+        issuedById: auth.partyId,
+      },
+    });
+    return { recordCode, note };
   });
 
   if (reasonCode) {
@@ -424,7 +523,7 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
     confidentiality: 'confidential',
   });
 
-  return note;
+  return withMinor(note, ['amount'] as const);
 }
 
 // ---------------------------------------------------------------------------

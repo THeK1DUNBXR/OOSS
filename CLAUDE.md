@@ -2,7 +2,7 @@
 
 Zen 360 (formerly KaiERP) — Kaizen Infinities' operating platform. CRM, HRM, Finance, Education, Command Centre. Multi-tenant, Indian statutory, internal first; commercialisation is a later product phase, not the current aim.
 
-TypeScript pnpm monorepo: `apps/api` (Express + Prisma + Postgres), `apps/web` (React + Vite + Tailwind + TanStack Query), `packages/shared` (vocabulary both tiers import), everything is served from the company's own server in India: Caddy (`deploy/Caddyfile`) terminates TLS and proxies to the API, which also serves the built client when `WEB_DIST_DIR` is set. The Cloudflare Worker is gone. Schema changes go through `apps/api/prisma/migrations` (never `db push`); `db:drift` gates them in CI.
+TypeScript pnpm monorepo: `apps/api` (Express + Prisma + Postgres), `apps/web` (React + Vite + Tailwind + TanStack Query), `packages/shared` (vocabulary both tiers import), hosting (server, reverse proxy, caching, routing) is undecided until after Phase 1; the Cloudflare Worker that served the built client has been removed. Schema changes go through `apps/api/prisma/migrations` (never `db push`); `db:drift` gates them in CI.
 
 Plan: start at `docs/plan/CURRENT.md` and `docs/plan/zen360/ORDERED-PLAN.md` (owner Phase 0 and Phase 1; the source of truth). Old specs are in `docs/plan/archive/`, where item numbers such as `1.6` remain valid references and old `P0`–`P8` labels are retired. **Read only the one item spec you need.**
 

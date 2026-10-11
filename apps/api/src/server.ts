@@ -22,6 +22,7 @@ import { reconcileTenantKinds } from './platform/tenantKind.js';
 import { reconcileMarketingDefaultsForAllTenants } from './platform/marketingSync.js';
 import { reconcileApprovalGatePoliciesForAllTenants } from './platform/approvalPolicySync.js';
 import { assertProductionSecrets } from './lib/auth.js';
+import { bigintReplacer } from './platform/wire.js';
 
 /** `CORS_ORIGINS` is comma-separated; an empty entry is a typo, not an origin. */
 export function parseCorsOrigins(raw: string | undefined): string[] {
@@ -64,6 +65,10 @@ export function createApp({
   // marketing/capture.ts and compliance/corporate/rateLimit.ts count the whole
   // internet as one client.
   app.set('trust proxy', 'loopback');
+  // Every res.json goes through this. A BigInt column that reaches a response
+  // without an explicit mapping would otherwise throw inside the handler and
+  // come back as a 500 with no hint of which column it was.
+  app.set('json replacer', bigintReplacer);
 
   // HSTS is deliberately not set here: Caddy sends it on every response
   // (deploy/Caddyfile), and two copies that disagree about max-age are worse

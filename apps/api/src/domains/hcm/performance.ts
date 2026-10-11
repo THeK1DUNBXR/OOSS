@@ -45,6 +45,7 @@ import {
   type PotentialLevel,
 } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { ApiError } from '../../platform/errors.js';
@@ -59,6 +60,7 @@ registerGovernedEntities('hcm_performance', ['succession_plan', 'final_rating'])
 // ---------------------------------------------------------------------------
 
 registerGovernedEntities('hcm_performance', ['review_cycle', 'review_assignment', 'calibration_session']);
+registerGovernedEntities('hcm_performance', ['feedback', 'one_on_one', 'pip']);
 
 async function employmentOrThrow(employmentRelationshipId: string): Promise<{ id: string; personId: string }> {
   const auth = currentAuth();
@@ -122,27 +124,31 @@ export async function createReviewCycle(input: {
   }
 
   const recordCode = await nextRecordCode('RVW');
-  const cycle = await prisma.reviewCycle.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name,
-      kind: input.kind,
-      periodLabel: input.periodLabel,
-      startsOn: input.startsOn,
-      endsOn: input.endsOn,
-      phase: 'self',
-    },
-  });
+  return governedWrite(async (tx) => {
+    const cycle = await tx.reviewCycle.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name,
+        kind: input.kind,
+        periodLabel: input.periodLabel,
+        startsOn: input.startsOn,
+        endsOn: input.endsOn,
+        phase: 'self',
+      },
+    });
 
-  await emit({
-    name: EVENTS.REVIEW_CYCLE_OPENED,
-    subject: { entityType: 'review_cycle', entityId: cycle.id, recordCode },
-    newState: { phase: cycle.phase, kind: cycle.kind, periodLabel: cycle.periodLabel },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({ action: 'create', subjectType: 'review_cycle', subjectId: cycle.id, after: cycle as never, tx });
+    await emit({
+      name: EVENTS.REVIEW_CYCLE_OPENED,
+      subject: { entityType: 'review_cycle', entityId: cycle.id, recordCode },
+      newState: { phase: cycle.phase, kind: cycle.kind, periodLabel: cycle.periodLabel },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return cycle;
+    return cycle;
+  });
 }
 
 /**
@@ -183,27 +189,30 @@ export async function advanceReviewCyclePhase(id: string, to: ReviewCyclePhase) 
     }
   }
 
-  const updated = await prisma.reviewCycle.update({ where: { id }, data: { phase: to } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.reviewCycle.update({ where: { id }, data: { phase: to } });
 
-  if (to === 'closed') {
-    await emit({
-      name: EVENTS.REVIEW_CYCLE_CLOSED,
-      subject: { entityType: 'review_cycle', entityId: id, recordCode: cycle.recordCode },
-      previousState: { phase: from },
-      newState: { phase: to },
-      impact: { domains: ['hr'] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'review_cycle',
+      subjectId: id,
+      before: { phase: from },
+      after: { phase: to },
+      tx,
     });
-  }
+    if (to === 'closed') {
+      await emit({
+        name: EVENTS.REVIEW_CYCLE_CLOSED,
+        subject: { entityType: 'review_cycle', entityId: id, recordCode: cycle.recordCode },
+        previousState: { phase: from },
+        newState: { phase: to },
+        impact: { domains: ['hr'] },
+        tx,
+      });
+    }
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'review_cycle',
-    subjectId: id,
-    before: { phase: from },
-    after: { phase: to },
+    return updated;
   });
-
-  return updated;
 }
 
 // ---------------------------------------------------------------------------
@@ -378,7 +387,7 @@ export async function submitReviewResponse(
     throw ApiError.unprocessable('This review cycle is closed. Responses can no longer be filed against it.');
   }
 
-  const response = await prisma.$transaction(async (tx) => {
+  return governedWrite(async (tx) => {
     const created = await tx.reviewResponse.create({
       data: {
         tenantId: auth.tenantId,
@@ -388,21 +397,29 @@ export async function submitReviewResponse(
       },
     });
     await tx.reviewAssignment.update({ where: { id: assignmentId }, data: { status: 'submitted' } });
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'review_assignment',
+      subjectId: assignmentId,
+      before: { status: assignment.status },
+      after: { status: 'submitted' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.REVIEW_SUBMITTED,
+      subject: { entityType: 'review_assignment', entityId: assignmentId },
+      related: [
+        { relation: 'about', entityType: 'employment_relationship', entityId: assignment.employmentRelationshipId },
+      ],
+      newState: { status: 'submitted', kind: assignment.kind },
+      owner: { partyId: assignment.reviewerPartyId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
     return created;
   });
-
-  await emit({
-    name: EVENTS.REVIEW_SUBMITTED,
-    subject: { entityType: 'review_assignment', entityId: assignmentId },
-    related: [
-      { relation: 'about', entityType: 'employment_relationship', entityId: assignment.employmentRelationshipId },
-    ],
-    newState: { status: 'submitted', kind: assignment.kind },
-    owner: { partyId: assignment.reviewerPartyId },
-    impact: { domains: ['hr'] },
-  });
-
-  return response;
 }
 
 // ---------------------------------------------------------------------------
@@ -500,7 +517,7 @@ export async function closeCalibrationSession(id: string) {
     throw ApiError.unprocessable('There are no decisions recorded. Record at least one before closing the session.');
   }
 
-  await prisma.$transaction(async (tx) => {
+  await governedWrite(async (tx) => {
     for (const d of decisions) {
       const employment = await tx.employmentRelationship.findFirst({
         where: { id: d.employmentRelationshipId, tenantId: auth.tenantId },
@@ -536,14 +553,22 @@ export async function closeCalibrationSession(id: string) {
       });
     }
     await tx.calibrationSession.update({ where: { id }, data: { status: 'closed', closedAt: new Date() } });
-  });
-
-  await emit({
-    name: EVENTS.CALIBRATION_CLOSED,
-    subject: { entityType: 'calibration_session', entityId: id },
-    related: [{ relation: 'for', entityType: 'review_cycle', entityId: session.cycleId }],
-    newState: { status: 'closed', decisionCount: decisions.length },
-    impact: { domains: ['hr'] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'calibration_session',
+      subjectId: id,
+      before: { status: session.status },
+      after: { status: 'closed' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.CALIBRATION_CLOSED,
+      subject: { entityType: 'calibration_session', entityId: id },
+      related: [{ relation: 'for', entityType: 'review_cycle', entityId: session.cycleId }],
+      newState: { status: 'closed', decisionCount: decisions.length },
+      impact: { domains: ['hr'] },
+      tx,
+    });
   });
 
   return prisma.calibrationSession.findUniqueOrThrow({ where: { id } });
@@ -617,21 +642,34 @@ export async function releaseFinalRating(id: string) {
     throw ApiError.forbidden('The Self-Dealing Bar is unconditional: nobody may release their own rating.');
   }
 
-  const updated = await prisma.finalRating.update({
-    where: { id },
-    data: { released: true, releasedAt: new Date(), releasedById: auth.partyId },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.finalRating.update({
+      where: { id },
+      data: { released: true, releasedAt: new Date(), releasedById: auth.partyId },
+    });
 
-  await emit({
-    name: EVENTS.FINAL_RATING_RELEASED,
-    subject: { entityType: 'final_rating', entityId: id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: rating.employmentRelationshipId }],
-    newState: { rating: rating.rating, band: rating.band, released: true },
-    owner: { partyId: rating.subjectPartyId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'final_rating',
+      subjectId: id,
+      before: { released: false },
+      after: { released: true },
+      tx,
+    });
+    await emit({
+      name: EVENTS.FINAL_RATING_RELEASED,
+      subject: { entityType: 'final_rating', entityId: id },
+      related: [
+        { relation: 'about', entityType: 'employment_relationship', entityId: rating.employmentRelationshipId },
+      ],
+      newState: { rating: rating.rating, band: rating.band, released: true },
+      owner: { partyId: rating.subjectPartyId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 /** The 9-box grid for a cycle: one cell per rated employment. HR-only — a
@@ -704,29 +742,35 @@ export async function giveFeedback(input: {
     throw ApiError.forbidden('Feedback is given as yourself: the "from" employment must be your own.');
   }
 
-  const row = await prisma.feedback.create({
-    data: {
-      tenantId: auth.tenantId,
-      fromEmploymentRelationshipId: input.fromEmploymentRelationshipId,
-      fromPartyId: from.personId,
-      toEmploymentRelationshipId: input.toEmploymentRelationshipId,
-      toPartyId: to.personId,
-      kind: input.kind,
-      message: input.message,
-      visibility,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const row = await tx.feedback.create({
+      data: {
+        tenantId: auth.tenantId,
+        fromEmploymentRelationshipId: input.fromEmploymentRelationshipId,
+        fromPartyId: from.personId,
+        toEmploymentRelationshipId: input.toEmploymentRelationshipId,
+        toPartyId: to.personId,
+        kind: input.kind,
+        message: input.message,
+        visibility,
+      },
+    });
 
-  await emit({
-    name: EVENTS.FEEDBACK_GIVEN,
-    subject: { entityType: 'feedback', entityId: row.id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.toEmploymentRelationshipId }],
-    newState: { kind: input.kind, visibility },
-    owner: { partyId: to.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({ action: 'create', subjectType: 'feedback', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: EVENTS.FEEDBACK_GIVEN,
+      subject: { entityType: 'feedback', entityId: row.id },
+      related: [
+        { relation: 'about', entityType: 'employment_relationship', entityId: input.toEmploymentRelationshipId },
+      ],
+      newState: { kind: input.kind, visibility },
+      owner: { partyId: to.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return row;
+    return row;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -771,30 +815,34 @@ export async function scheduleOneOnOne(input: {
     );
   }
 
-  const row = await prisma.oneOnOne.create({
-    data: {
-      tenantId: auth.tenantId,
-      managerEmploymentRelationshipId: input.managerEmploymentRelationshipId,
-      managerPartyId: manager.personId,
-      reportEmploymentRelationshipId: input.reportEmploymentRelationshipId,
-      reportPartyId: report.personId,
-      scheduledAt: input.scheduledAt,
-      agenda: (input.agenda ?? null) as never,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const row = await tx.oneOnOne.create({
+      data: {
+        tenantId: auth.tenantId,
+        managerEmploymentRelationshipId: input.managerEmploymentRelationshipId,
+        managerPartyId: manager.personId,
+        reportEmploymentRelationshipId: input.reportEmploymentRelationshipId,
+        reportPartyId: report.personId,
+        scheduledAt: input.scheduledAt,
+        agenda: (input.agenda ?? null) as never,
+      },
+    });
 
-  await emit({
-    name: EVENTS.ONE_ON_ONE_SCHEDULED,
-    subject: { entityType: 'one_on_one', entityId: row.id },
-    related: [
-      { relation: 'with', entityType: 'employment_relationship', entityId: input.reportEmploymentRelationshipId },
-    ],
-    newState: { scheduledAt: row.scheduledAt.toISOString(), status: row.status },
-    owner: { partyId: report.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({ action: 'create', subjectType: 'one_on_one', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: EVENTS.ONE_ON_ONE_SCHEDULED,
+      subject: { entityType: 'one_on_one', entityId: row.id },
+      related: [
+        { relation: 'with', entityType: 'employment_relationship', entityId: input.reportEmploymentRelationshipId },
+      ],
+      newState: { scheduledAt: row.scheduledAt.toISOString(), status: row.status },
+      owner: { partyId: report.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return row;
+    return row;
+  });
 }
 
 export async function updateOneOnOne(
@@ -855,29 +903,33 @@ export async function openPip(input: {
     ? await employmentOrThrow(input.managerEmploymentRelationshipId)
     : null;
 
-  const row = await prisma.pip.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      subjectPartyId: subject.personId,
-      managerEmploymentRelationshipId: input.managerEmploymentRelationshipId ?? null,
-      managerPartyId: manager?.personId ?? null,
-      startsOn: input.startsOn,
-      endsOn: input.endsOn,
-      objectives: input.objectives as never,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const row = await tx.pip.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        subjectPartyId: subject.personId,
+        managerEmploymentRelationshipId: input.managerEmploymentRelationshipId ?? null,
+        managerPartyId: manager?.personId ?? null,
+        startsOn: input.startsOn,
+        endsOn: input.endsOn,
+        objectives: input.objectives as never,
+      },
+    });
 
-  await emit({
-    name: EVENTS.PIP_OPENED,
-    subject: { entityType: 'pip', entityId: row.id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
-    newState: { outcome: row.outcome, startsOn: row.startsOn.toISOString(), endsOn: row.endsOn.toISOString() },
-    owner: { partyId: subject.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({ action: 'create', subjectType: 'pip', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: EVENTS.PIP_OPENED,
+      subject: { entityType: 'pip', entityId: row.id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: input.employmentRelationshipId }],
+      newState: { outcome: row.outcome, startsOn: row.startsOn.toISOString(), endsOn: row.endsOn.toISOString() },
+      owner: { partyId: subject.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return row;
+    return row;
+  });
 }
 
 export async function addPipCheckpoint(id: string, checkpoint: { note: string; onTrack: boolean }) {
@@ -911,23 +963,34 @@ export async function closePip(id: string, outcome: PipOutcome, note?: string) {
     throw ApiError.forbidden('The Self-Dealing Bar is unconditional: nobody may close their own PIP.');
   }
 
-  const updated = await prisma.pip.update({
-    where: { id },
-    data: { outcome, closedAt: new Date(), closedById: auth.partyId },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.pip.update({
+      where: { id },
+      data: { outcome, closedAt: new Date(), closedById: auth.partyId },
+    });
 
-  await emit({
-    name: EVENTS.PIP_CLOSED,
-    subject: { entityType: 'pip', entityId: id },
-    related: [{ relation: 'about', entityType: 'employment_relationship', entityId: pip.employmentRelationshipId }],
-    previousState: { outcome: 'open' },
-    newState: { outcome },
-    reason: note ? { reasonCode: outcome, note } : null,
-    owner: { partyId: pip.subjectPartyId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'pip',
+      subjectId: id,
+      before: { outcome: 'open' },
+      after: { outcome },
+      tx,
+    });
+    await emit({
+      name: EVENTS.PIP_CLOSED,
+      subject: { entityType: 'pip', entityId: id },
+      related: [{ relation: 'about', entityType: 'employment_relationship', entityId: pip.employmentRelationshipId }],
+      previousState: { outcome: 'open' },
+      newState: { outcome },
+      reason: note ? { reasonCode: outcome, note } : null,
+      owner: { partyId: pip.subjectPartyId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -963,24 +1026,28 @@ export async function createSuccessionPlan(input: {
     await employmentOrThrow(s.employmentRelationshipId);
   }
 
-  const row = await prisma.successionPlan.create({
-    data: {
-      tenantId: auth.tenantId,
-      positionTitle: input.positionTitle,
-      positionId: input.positionId ?? null,
-      successors: (input.successors ?? []) as never,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const row = await tx.successionPlan.create({
+      data: {
+        tenantId: auth.tenantId,
+        positionTitle: input.positionTitle,
+        positionId: input.positionId ?? null,
+        successors: (input.successors ?? []) as never,
+      },
+    });
 
-  await emit({
-    name: EVENTS.SUCCESSION_PLAN_UPDATED,
-    subject: { entityType: 'succession_plan', entityId: row.id },
-    newState: { positionTitle: row.positionTitle, successorCount: (input.successors ?? []).length },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({ action: 'create', subjectType: 'succession_plan', subjectId: row.id, after: row as never, tx });
+    await emit({
+      name: EVENTS.SUCCESSION_PLAN_UPDATED,
+      subject: { entityType: 'succession_plan', entityId: row.id },
+      newState: { positionTitle: row.positionTitle, successorCount: (input.successors ?? []).length },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return row;
+    return row;
+  });
 }
 
 export async function updateSuccessionPlan(id: string, successors: SuccessorInput[]) {
@@ -999,15 +1066,26 @@ export async function updateSuccessionPlan(id: string, successors: SuccessorInpu
     await employmentOrThrow(s.employmentRelationshipId);
   }
 
-  const updated = await prisma.successionPlan.update({ where: { id }, data: { successors: successors as never } });
+  return governedWrite(async (tx) => {
+    const updated = await tx.successionPlan.update({ where: { id }, data: { successors: successors as never } });
 
-  await emit({
-    name: EVENTS.SUCCESSION_PLAN_UPDATED,
-    subject: { entityType: 'succession_plan', entityId: id },
-    newState: { successorCount: successors.length },
-    confidentiality: 'confidential',
-    impact: { domains: ['hr'] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'succession_plan',
+      subjectId: id,
+      before: { successors: plan.successors } as never,
+      after: { successors: successors as never },
+      tx,
+    });
+    await emit({
+      name: EVENTS.SUCCESSION_PLAN_UPDATED,
+      subject: { entityType: 'succession_plan', entityId: id },
+      newState: { successorCount: successors.length },
+      confidentiality: 'confidential',
+      impact: { domains: ['hr'] },
+      tx,
+    });
+
+    return updated;
   });
-
-  return updated;
 }

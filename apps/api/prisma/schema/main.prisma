@@ -289,6 +289,19 @@ model Person {
   marketingReferralsAsReferrer MarketingReferral[]          @relation("MarketingReferralReferrer")
   marketingReferralsAsReferred MarketingReferral[]          @relation("MarketingReferralReferred")
 
+  commitmentsOwned     Commitment[]      @relation("CommitmentOwner")
+  commitmentsBackedUp  Commitment[]      @relation("CommitmentBackup")
+  commitmentsConfirmed Commitment[]      @relation("CommitmentConfirmer")
+  commitmentEvents     CommitmentEvent[] @relation("CommitmentEventActor")
+
+  casesOwned        Case[]      @relation("CaseOwner")
+  casesBackedUp     Case[]      @relation("CaseBackup")
+  casesAcknowledged Case[]      @relation("CaseAcknowledger")
+  caseEvents        CaseEvent[] @relation("CaseEventActor")
+
+  /// The composite key the commitment tables reference, so an owner, backup or
+  /// actor is always a person of the same tenant (CLAUDE.md rule 6).
+  @@unique([tenantId, id])
   @@unique([tenantId, recordCode])
   @@index([tenantId, primaryPhoneNormalised])
   @@index([tenantId, primaryEmailNormalised])
@@ -991,8 +1004,11 @@ model EventRecord {
 
   /// The hash-chain linkage that makes the log tamper-evident and replayable.
   /// A chain-continuity failure alerts per tenant, never merely logs.
-  prevHash String?
-  hash     String
+  /// Which hash algorithm wrote `hash`. Rows before version 2 are 1 and keep
+  /// their original hashes; the verifier dispatches on this field.
+  hashVersion Int    @default(2)
+  prevHash    String?
+  hash        String
 
   /// Set during the dual-publish migration window so both names are
   /// recognisable as the same fact.
@@ -1010,10 +1026,12 @@ model EventRecord {
   /// permanently broken with no way back. Tamper-evidence was the entire point
   /// of the design and it did not survive two requests arriving together.
   ///
-  /// This is the real fix: the second writer's insert fails loudly and retries
+  /// This is the backstop: the second writer's insert fails loudly and retries
   /// against the new head instead of silently forking. NULL is exempt in
-  /// Postgres, so the genesis event of a tenant is not covered — that is one
-  /// row, written once, and the serializable transaction covers it.
+  /// Postgres, so the genesis is covered by a hand-written partial unique index
+  /// (`event_records_tenantId_genesis_key`, migration 20261011100000) that
+  /// Prisma cannot express. The append itself is serialised by an advisory lock
+  /// in platform/eventBus.ts, not by a serializable transaction.
   @@unique([tenantId, prevHash])
   @@index([tenantId, recordedAt])
   @@index([tenantId, eventName, occurredAt])
@@ -1079,13 +1097,24 @@ model JobClaim {
   /// two instances ticking a second apart must compute the same value.
   scheduledFor DateTime
 
-  status      String    @default("claimed") // claimed | completed | failed | dead
+  /// claimed | running | completed | failed | timed_out | dead. `failed` and
+  /// `timed_out` are retriable once `runAfter` has passed; `dead` is terminal.
+  status      String    @default("claimed")
+  /// The fence token. Every write an attempt makes is conditional on this
+  /// still being the attempt that holds the claim, together with `workerId`.
   attempt     Int       @default(1)
   claimedAt   DateTime  @default(now())
-  /// Extended by the heartbeat while the job runs; a claim past this with no
-  /// finish is abandoned and may be retaken.
+  /// The lease. Proves the holder is alive and nothing more: the heartbeat
+  /// renews it, and a claim past it with no finish is abandoned. It is not the
+  /// job timeout and it is never the retry gate; that is `runAfter`.
   leaseUntil  DateTime
   heartbeatAt DateTime?
+  /// Which worker holds the current attempt. A finish or heartbeat from any
+  /// other worker, or from an older attempt, matches no rows.
+  workerId    String?
+  /// The backoff gate. A failed or timed-out claim is not retried before this.
+  /// Separate from `leaseUntil` so a backoff cannot be read as a live lease.
+  runAfter    DateTime?
   finishedAt  DateTime?
   durationMs  Int?
   lastError   String?
@@ -1096,6 +1125,7 @@ model JobClaim {
 
   @@unique([tenantId, jobName, scheduledFor])
   @@index([tenantId, status, scheduledFor])
+  @@index([status, leaseUntil])
   @@map("job_claims")
 }
 
@@ -1135,6 +1165,15 @@ model AuditRecord {
 
   timestamp DateTime @default(now())
 
+  /// Chain order. The append head and the verifier read by this, never by
+  /// `timestamp`, which is ambiguous when rows share a millisecond. Backfilled
+  /// in migration 20261011130000 by walking prevHash from each genesis.
+  seq BigInt @default(autoincrement())
+
+  /// A predecessor is chained at most once: the database refuses a fork.
+  /// The genesis is partial and hand-written (see the migration).
+  @@unique([tenantId, prevHash])
+  @@unique([tenantId, seq])
   @@index([tenantId, subjectType, subjectId, timestamp])
   @@index([tenantId, actorId, timestamp])
   @@index([tenantId, timestamp])
@@ -2143,27 +2182,52 @@ model Task {
 
 /// File metadata only — binaries live in object storage, never in the database.
 /// A re-upload creates a new row with an incremented version under the same
-/// documentGroupId; it never overwrites the storage object.
+/// documentGroupId; it never overwrites the storage object. Each version is
+/// therefore its own row (the version chain is previousVersionId), and the
+/// content fields of a recorded row are immutable (trigger documents_content_immutable).
+/// Writes go through domains/documents.ts; nothing here is deleted, only archived.
 model Document {
   id         String @id @default(cuid())
   tenantId   String
   recordCode String
 
   filename   String
+  /// Tenant-prefixed object key: tenants/{tenantId}/documents/{uuid}. The
+  /// storage layer refuses a key that is not under the tenant it is asked for.
   storageKey String
   mimeType   String
   size       Int
+  /// SHA-256 of the stored bytes, lowercase hex. Checked against the bytes on
+  /// write and recomputed on read, so a changed object is a finding, not a silent value.
+  contentSha256 String
 
   attachedToType String
   attachedToId   String
 
-  version         Int    @default(1)
-  documentGroupId String
+  version           Int    @default(1)
+  documentGroupId   String
+  /// The version this one succeeded. Null on version 1. Tenant-composite, so a
+  /// link cannot name another tenant's row.
+  previousVersionId String?
 
   /// Drives per-kind signed-URL TTL, replacing the fixed 300-second constant.
   documentKind     String  @default("file_artefact")
   label            String?
   sensitivityClass String  @default("internal")
+
+  /// The person the document belongs to. The record-scope check reads it, as it
+  /// reads any owned record. Null only for a row with no owning person.
+  ownerPartyId String?
+  /// upload | import | generated: where the bytes came from. Not a verb: a
+  /// generated document is not an upload and is checked differently.
+  sourceType   String  @default("upload")
+  /// draft | active | superseded | archived. Moves only along the table in
+  /// domains/documents.ts. At most one active version per group (partial unique
+  /// index documents_one_active_per_group).
+  lifecycleStatus String  @default("draft")
+  /// A documentKind of DocumentRetentionRule. The years are read from that
+  /// dated rule, never stored on the document (CLAUDE.md rule 4).
+  retentionClass  String?
 
   uploadedById    String?
   deletedAt       DateTime?
@@ -2178,9 +2242,16 @@ model Document {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  previousVersion Document?  @relation("DocumentVersionChain", fields: [tenantId, previousVersionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  nextVersions    Document[] @relation("DocumentVersionChain")
+
   @@unique([tenantId, recordCode])
+  // Tenant-composite target for previousVersionId.
+  @@unique([tenantId, id])
+  // Two rows with one version number in one group is a fork; the database refuses it.
+  @@unique([tenantId, documentGroupId, version])
   @@index([tenantId, attachedToType, attachedToId])
-  @@index([tenantId, documentGroupId, version])
+  @@index([tenantId, ownerPartyId, lifecycleStatus])
   @@map("documents")
 }
 
@@ -2699,6 +2770,8 @@ model EntitySnapshotHistory {
   originDivision  String?
   asOf            DateTime
   sourceEventHash String?
+  /// SHA-256 of the published payload, minus `asOf` and `publishedAt`. A publish whose payload matches the latest row for its source adds no row.
+  contentHash     String?
   capTable        Json
   shareClasses    Json
   board           Json
@@ -2710,6 +2783,9 @@ model EntitySnapshotHistory {
   createdAt DateTime @default(now())
 
   @@index([tenantId, sourceTenantId, publishedAt])
+  /// Next number per (tenant, source), assigned by `publishEntitySnapshot`. The unique key is the race guard: a loser of a concurrent insert re-reads the latest row.
+  seq Int
+  @@unique([tenantId, sourceTenantId, seq])
   @@map("entity_snapshot_history")
 }
 
@@ -3144,7 +3220,13 @@ model Payment {
   amount           Decimal  @db.Decimal(18, 2)
   currency         String   @default("INR")
   gatewayReference String
+  /// The accounting date: the date the books record this payment in. Equal to
+  /// the money's date unless that date fell in a closed period, in which case
+  /// the money is recorded in the open period and `valueDate` keeps the date it
+  /// arrived (interim policy, pending the accountant; see EX-FIN-007).
   receivedAt       DateTime
+  /// The date the money actually arrived, when it differs from `receivedAt`.
+  valueDate        DateTime?
   status           String   @default("received")
   method           String   @default("bank_transfer")
 
@@ -3759,6 +3841,11 @@ model Project {
 /// A record in an actionable bad state. An accountable owner is always resolved
 /// BEFORE any notification fires. Escalation is bounded to exactly four named
 /// triggers.
+/// At most one open row per (tenantId, subjectType, subjectId, code): a partial
+/// unique index, exception_records_open_natural_key, in the migration. Prisma
+/// cannot express its WHERE predicate, so it is not in this file. A resolved row
+/// releases the key. raiseException joins the open row on a unique violation
+/// rather than creating a second one.
 model ExceptionRecord {
   id         String @id @default(cuid())
   tenantId   String
@@ -3802,6 +3889,11 @@ model ExceptionRecord {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  caseExceptionLink CaseExceptionLink?
+
+  /// The composite key a case's exception link references, so the link is always
+  /// an exception of the same tenant (CLAUDE.md rule 6).
+  @@unique([tenantId, id])
   @@unique([tenantId, recordCode])
   @@index([tenantId, state, severity, raisedAt])
   @@index([tenantId, ownerPartyId, state])
@@ -4021,7 +4113,8 @@ model DailyMetric {
   /// Set on the two retired metrics so a reader knows the formula was defective.
   retired Boolean @default(false)
 
-  @@index([tenantId, date, metric])
+  /// One row per metric per IST day. A rerun updates this row; it never adds one.
+  @@unique([tenantId, date, metric])
   @@map("daily_metrics")
 }
 
@@ -4230,6 +4323,13 @@ model OrgUnit {
 
   headPositionId String?
 
+  /// A line unit delivers one business line; a function unit delivers none.
+  /// Null `kind` is a unit not yet classified, which is neither. The CHECK in
+  /// the business-lines migration holds the three cases apart (Opus decision E/H).
+  kind           String?
+  businessLineId String?
+  businessLine   BusinessLine? @relation(fields: [tenantId, businessLineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -4237,6 +4337,7 @@ model OrgUnit {
   positions Position[]
 
   @@index([tenantId, parentId])
+  @@index([tenantId, businessLineId])
   @@map("org_units")
 }
 
@@ -4931,7 +5032,9 @@ model LedgerAccount {
 
   transactions Transaction[]
   journalLines JournalLine[]
+  balanceSnapshots AccountBalanceSnapshot[]
 
+  @@unique([tenantId, id])
   @@unique([tenantId, name])
   @@index([tenantId, active])
   @@map("ledger_accounts")
@@ -4970,15 +5073,18 @@ model LedgerCategory {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  transactions   Transaction[]
-  budgetLines    BudgetLine[]
-  recurringRules RecurringRule[]
+  transactions      Transaction[]
+  budgetLines       BudgetLine[]
+  recurringRules    RecurringRule[]
+  lineDistributions LineDistribution[]
 
   /// Names the spin-out batch that created this category in a subsidiary
   /// (equity-portal plan §6b), for `--revert`.
   spinOutBatchId String?
 
   @@unique([tenantId, name])
+  /// Target of the composite key from LineDistribution (business-lines.prisma).
+  @@unique([tenantId, id])
   @@index([tenantId, kind])
   @@map("ledger_categories")
 }
@@ -5046,7 +5152,11 @@ model Transaction {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
+  lineDistributions LineDistribution[]
+
   @@unique([tenantId, recordCode])
+  /// Target of the composite key from LineDistribution (business-lines.prisma).
+  @@unique([tenantId, id])
   @@index([tenantId, txnDate])
   @@index([tenantId, categoryId, txnDate])
   @@index([tenantId, division, txnDate])

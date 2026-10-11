@@ -232,25 +232,28 @@ export async function createClaim(input: { text: string; evidenceRef?: string | 
   await assertCan({ resource: 'marketing_assets', verb: 'create' });
   if (!input.text.trim()) throw ApiError.badRequest('A claim needs text.');
 
-  const recordCode = await nextRecordCode('CPG');
-  const claim = await prisma.marketingClaim.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      text: input.text,
-      evidenceRef: input.evidenceRef ?? null,
-      assetIds: input.assetIds ?? [],
-      status: 'proposed',
-      createdById: auth.partyId,
-    },
+  return prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('CPG', new Date(), tx);
+    const claim = await tx.marketingClaim.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        text: input.text,
+        evidenceRef: input.evidenceRef ?? null,
+        assetIds: input.assetIds ?? [],
+        status: 'proposed',
+        createdById: auth.partyId,
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'claim', subjectId: claim.id, after: { text: claim.text }, tx });
+    await emit({
+      name: EVENTS.MKT_CLAIM_PROPOSED,
+      subject: { entityType: 'claim', entityId: claim.id, recordCode },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return claim;
   });
-  await auditWrite({ action: 'create', subjectType: 'claim', subjectId: claim.id, after: { text: claim.text } });
-  await emit({
-    name: EVENTS.MKT_CLAIM_PROPOSED,
-    subject: { entityType: 'claim', entityId: claim.id, recordCode },
-    impact: { domains: ['mkt'] },
-  });
-  return claim;
 }
 
 export async function listClaims(filter: { status?: string } = {}) {
@@ -279,23 +282,27 @@ export async function approveClaim(id: string) {
     throw ApiError.forbidden('The Self-Dealing Bar is unconditional: a proposer may never approve their own claim.');
   }
 
-  const updated = await prisma.marketingClaim.update({
-    where: { id },
-    data: { status: 'approved', approvedById: auth.partyId },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingClaim.update({
+      where: { id },
+      data: { status: 'approved', approvedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'claim',
+      subjectId: id,
+      before: { status: 'proposed' },
+      after: { status: 'approved' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_CLAIM_APPROVED,
+      subject: { entityType: 'claim', entityId: id, recordCode: claim.recordCode },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return updated;
   });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'claim',
-    subjectId: id,
-    before: { status: 'proposed' },
-    after: { status: 'approved' },
-  });
-  await emit({
-    name: EVENTS.MKT_CLAIM_APPROVED,
-    subject: { entityType: 'claim', entityId: id, recordCode: claim.recordCode },
-    impact: { domains: ['mkt'] },
-  });
-  return updated;
 }
 
 export async function rejectClaim(id: string, reason: string) {
@@ -304,19 +311,24 @@ export async function rejectClaim(id: string, reason: string) {
   const claim = await getClaimOr404(id);
   if (claim.status !== 'proposed') throw ApiError.unprocessable(`A claim at '${claim.status}' cannot be rejected.`);
 
-  const updated = await prisma.marketingClaim.update({ where: { id }, data: { status: 'rejected' } });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'claim',
-    subjectId: id,
-    before: { status: 'proposed' },
-    after: { status: 'rejected', reason },
-  });
-  await emit({
-    name: EVENTS.MKT_CLAIM_REJECTED,
-    subject: { entityType: 'claim', entityId: id, recordCode: claim.recordCode },
-    reason: { reasonCode: 'rejected', note: reason },
-    impact: { domains: ['mkt'] },
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.marketingClaim.update({ where: { id }, data: { status: 'rejected' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'claim',
+      subjectId: id,
+      before: { status: 'proposed' },
+      after: { status: 'rejected', reason },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_CLAIM_REJECTED,
+      subject: { entityType: 'claim', entityId: id, recordCode: claim.recordCode },
+      reason: { reasonCode: 'rejected', note: reason },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return row;
   });
   void auth;
   return updated;

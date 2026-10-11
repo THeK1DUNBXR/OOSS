@@ -125,6 +125,8 @@ export async function runBudgetBurnJob(): Promise<JobResult> {
 export const JOBS: JobDefinition[] = [
   {
     name: 'runStaleInitiativeJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Portfolio: stale in-flight initiatives (IT_INITIATIVE_STALE)',
     automationClass: 'threshold_response',
     cron: '0 7 * * *',
@@ -132,6 +134,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runBudgetBurnJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Portfolio: budget burn ahead of the FY elapsed fraction (IT_BUDGET_BURN)',
     automationClass: 'threshold_response',
     cron: '30 7 * * *',

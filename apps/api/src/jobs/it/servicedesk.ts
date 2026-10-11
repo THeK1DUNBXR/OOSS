@@ -162,6 +162,8 @@ async function raiseBreach(
 export const JOBS: JobDefinition[] = [
   {
     name: 'runServicedeskJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'Service desk: SLA breach detector (response/resolution) and waiting nudge',
     automationClass: 'threshold_response',
     cron: '*/15 * * * *',

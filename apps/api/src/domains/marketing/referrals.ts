@@ -11,6 +11,7 @@
 import { EVENTS, REFERRAL_TRANSITIONS, type ReferralStatus } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -18,6 +19,8 @@ import { assertCan } from '../../platform/permissions.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { findOrCreatePerson, type PersonInput } from '../identity.js';
 import { createLead } from '../leads.js';
+
+registerGovernedEntities('mkt', ['marketing_referral']);
 
 // ---------------------------------------------------------------------------
 // Programs
@@ -158,26 +161,36 @@ export async function issueReferral(input: IssueReferralInput) {
   }
   if (!code) throw ApiError.internal('Could not allocate a unique referral code after 10 attempts.');
 
-  const recordCode = await nextRecordCode('REF');
-  const referral = await prisma.marketingReferral.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      programId: program.id,
-      referrerPersonId: input.referrerPersonId ?? null,
-      referrerOrganizationId: input.referrerOrganizationId ?? null,
-      code,
-      createdById: auth.partyId,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('REF', new Date(), tx);
+    const referral = await tx.marketingReferral.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        programId: program.id,
+        referrerPersonId: input.referrerPersonId ?? null,
+        referrerOrganizationId: input.referrerOrganizationId ?? null,
+        code,
+        createdById: auth.partyId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.MKT_REFERRAL_ISSUED,
-    subject: { entityType: 'referral', entityId: referral.id, recordCode },
-    newState: { status: referral.status, code },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_referral',
+      subjectId: referral.id,
+      after: { programId: program.id, code },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_REFERRAL_ISSUED,
+      subject: { entityType: 'referral', entityId: referral.id, recordCode },
+      newState: { status: referral.status, code },
+      tx,
+    });
 
-  return referral;
+    return referral;
+  });
 }
 
 export async function listReferrals(filters: { programId?: string; status?: string } = {}) {
@@ -235,39 +248,62 @@ export async function redeemReferral(input: RedeemReferralInput) {
     source: 'referral',
     sourceDetail: referral.code,
   });
-  // A referral lead is never campaign-attributed — the referral itself is the
-  // channel, independent of any live campaign that happened to be running.
-  await prisma.lead.update({ where: { id: lead.id }, data: { campaignId: null, channelKey: 'referral' } });
+  // createLead (CRM) keeps its own writes and event, so it runs before this
+  // transaction. The referral's own writes and its event commit together.
+  const updated = await prisma.$transaction(async (tx) => {
+    // A referral lead is never campaign-attributed — the referral itself is the
+    // channel, independent of any live campaign that happened to be running.
+    await tx.lead.update({ where: { id: lead.id }, data: { campaignId: null, channelKey: 'referral' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'lead',
+      subjectId: lead.id,
+      meta: { source: 'marketing_referral' },
+      after: { campaignId: null, channelKey: 'referral' },
+      tx,
+    });
 
-  const touchpointRecordCode = await nextRecordCode('REF');
-  await prisma.marketingTouchpoint.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: touchpointRecordCode,
-      personId: referredPersonId,
-      leadId: lead.id,
-      channelKey: 'referral',
-      touchKind: 'referral',
-      occurredAt: new Date(),
-      utm: {},
-      sourceRef: referral.code,
-    },
-  });
+    const touchpointRecordCode = await nextRecordCode('REF', new Date(), tx);
+    await tx.marketingTouchpoint.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: touchpointRecordCode,
+        personId: referredPersonId,
+        leadId: lead.id,
+        channelKey: 'referral',
+        touchKind: 'referral',
+        occurredAt: new Date(),
+        utm: {},
+        sourceRef: referral.code,
+      },
+    });
 
-  const updated = await prisma.marketingReferral.update({
-    where: { id: referral.id },
-    data: { status: 'used', referredPersonId, leadId: lead.id },
-  });
+    const row = await tx.marketingReferral.update({
+      where: { id: referral.id },
+      data: { status: 'used', referredPersonId, leadId: lead.id },
+    });
 
-  await emit({
-    name: EVENTS.MKT_REFERRAL_USED,
-    subject: { entityType: 'referral', entityId: referral.id, recordCode: referral.recordCode },
-    related: [
-      { relation: 'referred', entityType: 'person', entityId: referredPersonId },
-      { relation: 'created_lead', entityType: 'lead', entityId: lead.id },
-    ],
-    previousState: { status: 'issued' },
-    newState: { status: 'used' },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_referral',
+      subjectId: referral.id,
+      before: { status: 'issued' },
+      after: { status: 'used', leadId: lead.id },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_REFERRAL_USED,
+      subject: { entityType: 'referral', entityId: referral.id, recordCode: referral.recordCode },
+      related: [
+        { relation: 'referred', entityType: 'person', entityId: referredPersonId },
+        { relation: 'created_lead', entityType: 'lead', entityId: lead.id },
+      ],
+      previousState: { status: 'issued' },
+      newState: { status: 'used' },
+      tx,
+    });
+
+    return row;
   });
 
   return updated;
@@ -289,14 +325,25 @@ async function transitionReferral(id: string, to: ReferralStatus) {
 export async function qualifyReferral(id: string) {
   await assertCan({ resource: 'marketing_referrals', verb: 'edit' });
   const { referral, from } = await transitionReferral(id, 'qualified');
-  const updated = await prisma.marketingReferral.update({ where: { id }, data: { status: 'qualified' } });
-  await emit({
-    name: EVENTS.MKT_REFERRAL_QUALIFIED,
-    subject: { entityType: 'referral', entityId: id, recordCode: referral.recordCode },
-    previousState: { status: from },
-    newState: { status: 'qualified' },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingReferral.update({ where: { id }, data: { status: 'qualified' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_referral',
+      subjectId: id,
+      before: { status: from },
+      after: { status: 'qualified' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_REFERRAL_QUALIFIED,
+      subject: { entityType: 'referral', entityId: id, recordCode: referral.recordCode },
+      previousState: { status: from },
+      newState: { status: 'qualified' },
+      tx,
+    });
+    return updated;
   });
-  return updated;
 }
 
 export async function rewardReferral(id: string, rewardTransactionRef?: string) {
@@ -309,35 +356,57 @@ export async function rewardReferral(id: string, rewardTransactionRef?: string) 
     throw ApiError.conflict('This referral program carries no reward — nothing to record.');
   }
 
-  const updated = await prisma.marketingReferral.update({
-    where: { id },
-    data: { status: 'rewarded', rewardTransactionRef: rewardTransactionRef ?? null, updatedById: auth.partyId },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingReferral.update({
+      where: { id },
+      data: { status: 'rewarded', rewardTransactionRef: rewardTransactionRef ?? null, updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_referral',
+      subjectId: id,
+      before: { status: from },
+      after: { status: 'rewarded', rewardTransactionRef: rewardTransactionRef ?? null },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_REFERRAL_REWARDED,
+      subject: { entityType: 'referral', entityId: id, recordCode: referral.recordCode },
+      previousState: { status: from },
+      newState: { status: 'rewarded', rewardTransactionRef: rewardTransactionRef ?? null },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: EVENTS.MKT_REFERRAL_REWARDED,
-    subject: { entityType: 'referral', entityId: id, recordCode: referral.recordCode },
-    previousState: { status: from },
-    newState: { status: 'rewarded', rewardTransactionRef: rewardTransactionRef ?? null },
-  });
-  return updated;
 }
 
 export async function voidReferral(id: string, reason: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'marketing_referrals', verb: 'edit' });
   const { referral, from } = await transitionReferral(id, 'void');
-  const updated = await prisma.marketingReferral.update({
-    where: { id },
-    data: { status: 'void', updatedById: auth.partyId },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingReferral.update({
+      where: { id },
+      data: { status: 'void', updatedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_referral',
+      subjectId: id,
+      before: { status: from },
+      after: { status: 'void' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_REFERRAL_VOIDED,
+      subject: { entityType: 'referral', entityId: id, recordCode: referral.recordCode },
+      previousState: { status: from },
+      newState: { status: 'void' },
+      reason: { reasonCode: 'voided', note: reason },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: EVENTS.MKT_REFERRAL_VOIDED,
-    subject: { entityType: 'referral', entityId: id, recordCode: referral.recordCode },
-    previousState: { status: from },
-    newState: { status: 'void' },
-    reason: { reasonCode: 'voided', note: reason },
-  });
-  return updated;
 }
 
 export interface LeaderboardRow {

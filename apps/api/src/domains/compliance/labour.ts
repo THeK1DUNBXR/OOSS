@@ -27,9 +27,10 @@ import {
   type IccMemberFact,
 } from '@kaizen/shared';
 import { financialYearOf, istYearMonth } from '@kaizen/shared';
-import { prisma, num, unscopedPrisma, type DbTx } from '../../platform/db.js';
+import { prisma, num, unscopedPrisma, Prisma, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan, assertScopeAll } from '../../platform/permissions.js';
 import { assertEmploymentVisible } from '../../platform/recordScope.js';
@@ -179,55 +180,91 @@ async function recomputeLeaveBalance(tx: DbTx, leaveBalanceId: string) {
  */
 export async function runLeaveYearClose(): Promise<JobResult> {
   const auth = currentAuth();
+  // Financial year in IST: the close runs at 00:00 on 1 April IST, which is
+  // still 31 March in UTC, so a UTC year would close the wrong year.
   const fy = financialYearOf(new Date());
   const types = await prisma.leaveType.findMany({
     where: { tenantId: auth.tenantId, carryForwardCapDays: { not: null } },
   });
 
   let processed = 0;
+  let skippedIdempotent = 0;
+  const errors: string[] = [];
   for (const type of types) {
-    const already = await prisma.leaveYearClose.findUnique({
-      where: { tenantId_leaveTypeId_fy: { tenantId: auth.tenantId, leaveTypeId: type.id, fy } },
-    });
-    if (already) continue;
-
     const cap = num(type.carryForwardCapDays) ?? 0;
-    const balances = await prisma.leaveBalance.findMany({ where: { tenantId: auth.tenantId, leaveTypeId: type.id } });
+    let closedBalances: { id: string; balanceDays: unknown }[];
+    try {
+      // The claim is the first write in the transaction. Two overlapping runs
+      // race on its unique key: exactly one inserts it, and the other fails
+      // here having written nothing, because the rollback takes its claim
+      // attempt with it. A run that crashes mid-type rolls back the claim too,
+      // so the next run closes the type rather than finding a half-closed year.
+      closedBalances = await prisma.$transaction(
+        async (tx) => {
+          const claim = await tx.leaveYearClose.create({
+            data: { tenantId: auth.tenantId, leaveTypeId: type.id, fy, balancesClosed: 0 },
+          });
+          const balances = await tx.leaveBalance.findMany({
+            where: { tenantId: auth.tenantId, leaveTypeId: type.id },
+          });
+          for (const balance of balances) {
+            const current = num(balance.balanceDays) ?? 0;
+            const { lapsed } = carryForwardSplit(current, cap);
 
-    let closed = 0;
-    for (const balance of balances) {
-      const current = num(balance.balanceDays) ?? 0;
-      const { lapsed } = carryForwardSplit(current, cap);
-
-      await prisma.leaveTransaction.create({
-        data: {
-          tenantId: auth.tenantId,
-          leaveBalanceId: balance.id,
-          txnType: lapsed > 0 ? 'lapse' : 'carry_forward',
-          amountDays: lapsed > 0 ? -lapsed : 0,
-          note:
-            lapsed > 0
-              ? `FY close ${fy}: ${current} days trimmed to the ${cap}-day carry-forward cap for ${type.name}.`
-              : `FY close ${fy}: ${current} days carried forward in full for ${type.name}.`,
+            await tx.leaveTransaction.create({
+              data: {
+                tenantId: auth.tenantId,
+                leaveBalanceId: balance.id,
+                txnType: lapsed > 0 ? 'lapse' : 'carry_forward',
+                amountDays: lapsed > 0 ? -lapsed : 0,
+                note:
+                  lapsed > 0
+                    ? `FY close ${fy}: ${current} days trimmed to the ${cap}-day carry-forward cap for ${type.name}.`
+                    : `FY close ${fy}: ${current} days carried forward in full for ${type.name}.`,
+              },
+            });
+            await recomputeLeaveBalance(tx, balance.id);
+          }
+          await tx.leaveYearClose.update({
+            where: { tenantId_leaveTypeId_fy: { tenantId: auth.tenantId, leaveTypeId: type.id, fy } },
+            data: { balancesClosed: balances.length },
+          });
+          // Audit and event sit inside the claim's transaction: a type is closed in
+          // full with its audit row and event, or not at all, and the claim rolls
+          // back with them so the next run retries the type.
+          await auditWrite({
+            action: 'update',
+            subjectType: 'leave_year_close',
+            subjectId: claim.id,
+            before: { balancesClosed: 0 },
+            after: { balancesClosed: balances.length },
+            tx,
+          });
+          await emit({
+            name: 'kz.hr.leave_year_close.closed',
+            subject: { entityType: 'leave_year_close', entityId: type.id, recordCode: `${type.code}-${fy}` },
+            newState: { leaveTypeId: type.id, fy, balancesClosed: balances.length },
+            impact: { domains: ['hr'] },
+            tx,
+          });
+          return balances;
         },
-      });
-      await recomputeLeaveBalance(prisma, balance.id);
-      closed += 1;
+        // Interactive transactions default to 5 seconds, which a tenant with a
+        // large balance table would exceed partway through a type.
+        { timeout: 60_000 },
+      );
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        skippedIdempotent += 1; // another run holds this type's claim for the FY
+        continue;
+      }
+      errors.push(`${type.code}: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
     }
-
-    await prisma.leaveYearClose.create({
-      data: { tenantId: auth.tenantId, leaveTypeId: type.id, fy, balancesClosed: closed },
-    });
-    await emit({
-      name: 'kz.hr.leave_year_close.closed',
-      subject: { entityType: 'leave_year_close', entityId: type.id, recordCode: `${type.code}-${fy}` },
-      newState: { leaveTypeId: type.id, fy, balancesClosed: closed },
-      impact: { domains: ['hr'] },
-    });
-    processed += closed;
+    processed += closedBalances.length;
   }
 
-  return { processed, notified: 0, skippedIdempotent: types.length - processed ? 0 : 0, errors: [] };
+  return { processed, notified: 0, skippedIdempotent, errors };
 }
 
 /** POST /compliance/labour/leave/:employmentId/encash. */
@@ -263,7 +300,7 @@ export async function encashLeave(employmentRelationshipId: string, input: { lea
   const basicPay = await basicPayFor(employmentRelationshipId);
   const amount = encashmentAmount(basicPay, input.days);
 
-  const [txn, encashment] = await prisma.$transaction(async (tx) => {
+  const [txn, encashment] = await governedWrite(async (tx) => {
     const t = await tx.leaveTransaction.create({
       data: {
         tenantId: auth.tenantId,
@@ -286,20 +323,22 @@ export async function encashLeave(employmentRelationshipId: string, input: { lea
         createdById: auth.partyId,
       },
     });
-    return [t, e];
-  });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'leave_encashment',
-    subjectId: encashment.id,
-    after: encashment as never,
-  });
-  await emit({
-    name: 'kz.hr.leave_encashment.recorded',
-    subject: { entityType: 'leave_encashment', entityId: encashment.id },
-    newState: { days: input.days, amount, leaveTypeId: input.leaveTypeId },
-    impact: { domains: ['hr'], materiality: { measure: 'leave_encashment', value: amount, currency: 'INR' } },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'leave_encashment',
+      subjectId: e.id,
+      after: e as never,
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.leave_encashment.recorded',
+      subject: { entityType: 'leave_encashment', entityId: e.id },
+      newState: { days: input.days, amount, leaveTypeId: input.leaveTypeId },
+      impact: { domains: ['hr'], materiality: { measure: 'leave_encashment', value: amount, currency: 'INR' } },
+      tx,
+    });
+    return [t, e] as const;
   });
 
   return { transaction: txn, encashment };
@@ -632,10 +671,10 @@ export async function validateCommittee() {
 // POSH — Complaints
 // ---------------------------------------------------------------------------
 
-async function nextLabourNumber(entity: string): Promise<string> {
+async function nextLabourNumber(entity: string, db: DbTx = prisma as unknown as DbTx): Promise<string> {
   const auth = currentAuth();
   const year = istYearMonth(new Date()).year;
-  const row = await prisma.recordSequence.upsert({
+  const row = await db.recordSequence.upsert({
     where: { tenantId_entityType_year: { tenantId: auth.tenantId, entityType: `LAB:${entity}`, year } },
     create: { tenantId: auth.tenantId, entityType: `LAB:${entity}`, year, nextSequence: 2 },
     update: { nextSequence: { increment: 1 } },
@@ -661,33 +700,37 @@ export async function createPoshComplaint(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'posh_cases', verb: 'create' });
-  const number = await nextLabourNumber('POSH');
-  const row = await prisma.poshComplaint.create({
-    data: {
-      tenantId: auth.tenantId,
-      number,
-      complainantPersonId: input.complainantPersonId ?? null,
-      complainantText: input.complainantText ?? null,
-      respondentPersonId: input.respondentPersonId ?? null,
-      respondentText: input.respondentText ?? null,
-      receivedOn: input.receivedOn,
-      inquiryDueAt: computeInquiryDueAt(input.receivedOn),
-    },
+  return governedWrite(async (tx) => {
+    const number = await nextLabourNumber('POSH', tx);
+    const row = await tx.poshComplaint.create({
+      data: {
+        tenantId: auth.tenantId,
+        number,
+        complainantPersonId: input.complainantPersonId ?? null,
+        complainantText: input.complainantText ?? null,
+        respondentPersonId: input.respondentPersonId ?? null,
+        respondentText: input.respondentText ?? null,
+        receivedOn: input.receivedOn,
+        inquiryDueAt: computeInquiryDueAt(input.receivedOn),
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'posh_complaint',
+      subjectId: row.id,
+      after: { number, status: row.status },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.posh_complaint.received',
+      subject: { entityType: 'posh_complaint', entityId: row.id, recordCode: number },
+      newState: { status: 'received' },
+      confidentiality: 'restricted',
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
   });
-  await auditWrite({
-    action: 'create',
-    subjectType: 'posh_complaint',
-    subjectId: row.id,
-    after: { number, status: row.status },
-  });
-  await emit({
-    name: 'kz.hr.posh_complaint.received',
-    subject: { entityType: 'posh_complaint', entityId: row.id, recordCode: number },
-    newState: { status: 'received' },
-    confidentiality: 'restricted',
-    impact: { domains: ['hr'] },
-  });
-  return row;
 }
 
 const POSH_STATUSES = ['received', 'inquiry', 'report_submitted', 'closed', 'withdrawn'] as const;
@@ -890,15 +933,38 @@ export async function openDisciplinaryCase(input: {
   if (!employment) throw ApiError.notFound('Employment relationship');
 
   const showCauseIssuedAt = input.showCauseIssuedAt ?? new Date();
-  const row = await prisma.disciplinaryCase.create({
-    data: {
-      tenantId: auth.tenantId,
-      employmentRelationshipId: input.employmentRelationshipId,
-      showCauseIssuedAt,
-      replyDueAt: computeReplyDueAt(showCauseIssuedAt),
-    },
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.disciplinaryCase.create({
+      data: {
+        tenantId: auth.tenantId,
+        employmentRelationshipId: input.employmentRelationshipId,
+        showCauseIssuedAt,
+        replyDueAt: computeReplyDueAt(showCauseIssuedAt),
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'disciplinary_case',
+      subjectId: created.id,
+      after: { status: created.status },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.disciplinary_case.opened',
+      subject: { entityType: 'disciplinary_case', entityId: created.id },
+      newState: { status: 'show_cause' },
+      owner: { partyId: employment.personId },
+      confidentiality: 'restricted',
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return created;
   });
 
+  // The corrective note is recorded after the case commits: recordEvidence is
+  // its own governed write and is not transaction-aware yet, so it cannot sit
+  // inside this one. It refers to the case by id, which only exists once the
+  // case has been written.
   const { recordEvidence } = await import('../performance.js');
   await recordEvidence({
     employmentRelationshipId: input.employmentRelationshipId,
@@ -906,21 +972,6 @@ export async function openDisciplinaryCase(input: {
     description: input.note,
     caseScoped: true,
     caseRef: row.id,
-  });
-
-  await auditWrite({
-    action: 'create',
-    subjectType: 'disciplinary_case',
-    subjectId: row.id,
-    after: { status: row.status },
-  });
-  await emit({
-    name: 'kz.hr.disciplinary_case.opened',
-    subject: { entityType: 'disciplinary_case', entityId: row.id },
-    newState: { status: 'show_cause' },
-    owner: { partyId: employment.personId },
-    confidentiality: 'restricted',
-    impact: { domains: ['hr'] },
   });
   return row;
 }
@@ -1033,47 +1084,61 @@ interface IssueLetterInput {
 }
 
 /** Issues a letter as a final document — a correction is a new letter referencing the old, never an edit. */
-export async function issueLetter(input: IssueLetterInput) {
+/**
+ * `db` is the caller's transaction when the letter is part of a larger governed
+ * write; the sequence number, the letter, its audit row and its event then commit
+ * or roll back together. Omitted, it writes on its own, as before.
+ */
+export async function issueLetter(input: IssueLetterInput, db: DbTx = prisma as unknown as DbTx) {
   const auth = currentAuth();
-  const number = await nextLabourNumber('LTR');
-  const issuedOn = new Date().toISOString().slice(0, 10);
-  const facts = {
-    employeeName: input.employeeName,
-    designation: input.designation ?? null,
-    legalEntity: input.legalEntity,
-    hireEffectiveDate: input.hireEffectiveDate ? input.hireEffectiveDate.toISOString().slice(0, 10) : null,
-    lastWorkingDay: input.lastWorkingDay ? input.lastWorkingDay.toISOString().slice(0, 10) : null,
-    separationType: input.separationType ?? null,
-    issuedOn,
-    number,
-  };
-  const body = buildLetterBody(input.kind, facts);
-
-  const row = await prisma.hrLetter.create({
-    data: {
-      tenantId: auth.tenantId,
-      kind: input.kind,
-      employmentRelationshipId: input.employmentRelationshipId ?? null,
-      applicationId: input.applicationId ?? null,
+  // The letter, its audit row and its event are one fact and must commit together.
+  // A caller's transaction is used as it is; without one, governedWrite opens its own.
+  // Passing the scoped client through would run the audit chain outside the transaction.
+  const run = async (tx: DbTx) => {
+    const number = await nextLabourNumber('LTR', tx);
+    const issuedOn = new Date().toISOString().slice(0, 10);
+    const facts = {
+      employeeName: input.employeeName,
+      designation: input.designation ?? null,
+      legalEntity: input.legalEntity,
+      hireEffectiveDate: input.hireEffectiveDate ? input.hireEffectiveDate.toISOString().slice(0, 10) : null,
+      lastWorkingDay: input.lastWorkingDay ? input.lastWorkingDay.toISOString().slice(0, 10) : null,
+      separationType: input.separationType ?? null,
+      issuedOn,
       number,
-      snapshot: { ...facts, body } as never,
-      issuedById: auth.partyId,
-    },
-  });
+    };
+    const body = buildLetterBody(input.kind, facts);
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'hr_letter',
-    subjectId: row.id,
-    after: { kind: input.kind, number },
-  });
-  await emit({
-    name: 'kz.hr.hr_letter.issued',
-    subject: { entityType: 'hr_letter', entityId: row.id, recordCode: number },
-    newState: { kind: input.kind },
-    impact: { domains: ['hr'] },
-  });
-  return row;
+    const row = await tx.hrLetter.create({
+      data: {
+        tenantId: auth.tenantId,
+        kind: input.kind,
+        employmentRelationshipId: input.employmentRelationshipId ?? null,
+        applicationId: input.applicationId ?? null,
+        number,
+        snapshot: { ...facts, body } as never,
+        issuedById: auth.partyId,
+      },
+    });
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'hr_letter',
+      subjectId: row.id,
+      after: { kind: input.kind, number },
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.hr_letter.issued',
+      subject: { entityType: 'hr_letter', entityId: row.id, recordCode: number },
+      newState: { kind: input.kind },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return row;
+  };
+  if ((db as unknown) !== prisma) return run(db);
+  return governedWrite(run);
 }
 
 export async function listLetters(filter: { employmentRelationshipId?: string; applicationId?: string } = {}) {

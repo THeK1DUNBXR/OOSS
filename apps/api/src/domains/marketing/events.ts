@@ -22,8 +22,9 @@ import {
   type RegistrationStatus,
   type Vertical,
 } from '@kaizen/shared';
-import { prisma, num } from '../../platform/db.js';
+import { prisma, num, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -38,6 +39,10 @@ import { createLead } from '../leads.js';
 // vocabulary as a CRM `Vertical` — leads always need the latter. This is the
 // one declared mapping between the two; nothing else in this file re-derives it.
 // ---------------------------------------------------------------------------
+// marketing_touchpoint is registered in attribution.ts too; this module writes touchpoints
+// itself (recordTouchpointRow), so it must register what it writes rather than rely on import order.
+registerGovernedEntities('mkt', ['marketing_event', 'marketing_event_registration', 'marketing_touchpoint']);
+
 const DIVISION_TO_VERTICAL: Record<string, Vertical> = {
   education: 'education',
   skill: 'corporate_training',
@@ -81,33 +86,43 @@ export async function createEvent(input: EventInput) {
   if (input.institutionId) await assertInstitution(input.institutionId, auth.tenantId);
   if (input.campaignId) await assertCampaign(input.campaignId, auth.tenantId);
 
-  const recordCode = await nextRecordCode('EVT');
-  const event = await prisma.marketingEvent.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name,
-      kind: input.kind,
-      campaignId: input.campaignId ?? null,
-      institutionId: input.institutionId ?? null,
-      venue: input.venue ?? null,
-      isOnline: input.isOnline ?? false,
-      startAt: input.startAt,
-      endAt: input.endAt ?? null,
-      capacity: input.capacity ?? null,
-      costPlanned: input.costPlanned ?? 0,
-      division: input.division ?? 'education',
-      createdById: auth.partyId,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('EVT', new Date(), tx);
+    const event = await tx.marketingEvent.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name,
+        kind: input.kind,
+        campaignId: input.campaignId ?? null,
+        institutionId: input.institutionId ?? null,
+        venue: input.venue ?? null,
+        isOnline: input.isOnline ?? false,
+        startAt: input.startAt,
+        endAt: input.endAt ?? null,
+        capacity: input.capacity ?? null,
+        costPlanned: input.costPlanned ?? 0,
+        division: input.division ?? 'education',
+        createdById: auth.partyId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.MKT_EVENT_CREATED,
-    subject: { entityType: 'marketing_event', entityId: event.id, recordCode },
-    newState: { status: event.status, name: event.name },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_event',
+      subjectId: event.id,
+      after: { name: event.name, kind: event.kind, startAt: event.startAt.toISOString() },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_EVENT_CREATED,
+      subject: { entityType: 'marketing_event', entityId: event.id, recordCode },
+      newState: { status: event.status, name: event.name },
+      tx,
+    });
 
-  return event;
+    return event;
+  });
 }
 
 export interface EventListFilters {
@@ -254,23 +269,34 @@ async function transitionEvent(id: string, to: MarketingEventStatus, eventName: 
     throw ApiError.unprocessable(`Cannot move a ${from} event to ${to}. Allowed: ${allowed.join(', ') || 'none'}.`);
   }
 
-  const updated = await prisma.marketingEvent.update({
-    where: { id },
-    data: { status: to, updatedById: auth.partyId },
-  });
-
-  // No canonical kz.mkt.event.live exists in the fixed vocabulary — closed→live
-  // is a real, permitted transition that simply carries no dedicated event.
-  if (eventName) {
-    await emit({
-      name: eventName,
-      subject: { entityType: 'marketing_event', entityId: id, recordCode: event.recordCode },
-      previousState: { status: from },
-      newState: { status: to },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingEvent.update({
+      where: { id },
+      data: { status: to, updatedById: auth.partyId },
     });
-  }
 
-  return updated;
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_event',
+      subjectId: id,
+      before: { status: from },
+      after: { status: to },
+      tx,
+    });
+    // No canonical kz.mkt.event.live exists in the fixed vocabulary — closed→live
+    // is a real, permitted transition that simply carries no dedicated event.
+    if (eventName) {
+      await emit({
+        name: eventName,
+        subject: { entityType: 'marketing_event', entityId: id, recordCode: event.recordCode },
+        previousState: { status: from },
+        newState: { status: to },
+        tx,
+      });
+    }
+
+    return updated;
+  });
 }
 
 export const openEvent = (id: string) => transitionEvent(id, 'open', EVENTS.MKT_EVENT_OPENED);
@@ -290,20 +316,31 @@ export async function cancelEvent(id: string, reason: string) {
     throw ApiError.unprocessable(`A ${from} event cannot be cancelled.`);
   }
 
-  const updated = await prisma.marketingEvent.update({
-    where: { id },
-    data: { status: 'cancelled', updatedById: auth.partyId },
-  });
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingEvent.update({
+      where: { id },
+      data: { status: 'cancelled', updatedById: auth.partyId },
+    });
 
-  await emit({
-    name: EVENTS.MKT_EVENT_CANCELLED,
-    subject: { entityType: 'marketing_event', entityId: id, recordCode: event.recordCode },
-    previousState: { status: from },
-    newState: { status: 'cancelled' },
-    reason: { reasonCode: 'cancelled', note: reason },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_event',
+      subjectId: id,
+      before: { status: from },
+      after: { status: 'cancelled' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_EVENT_CANCELLED,
+      subject: { entityType: 'marketing_event', entityId: id, recordCode: event.recordCode },
+      previousState: { status: from },
+      newState: { status: 'cancelled' },
+      reason: { reasonCode: 'cancelled', note: reason },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -316,23 +353,27 @@ export interface RegisterInput {
   source?: string;
 }
 
-async function recordTouchpointRow(input: {
-  personId: string;
-  leadId?: string | null;
-  campaignId?: string | null;
-  channelKey: string;
-  touchKind: string;
-  sourceRef?: string | null;
-}) {
+/** `tx` is the registration's transaction: the touchpoint commits with the registration it records. */
+async function recordTouchpointRow(
+  tx: DbTx,
+  input: {
+    personId: string;
+    leadId?: string | null;
+    campaignId?: string | null;
+    channelKey: string;
+    touchKind: string;
+    sourceRef?: string | null;
+  },
+) {
   const auth = currentAuth();
   // Touchpoints are deliberately left off RECORD_TYPE_CODES — no human-facing
   // code — but the row still needs one to satisfy the shared recordCode
   // convention, so it borrows the owning entity's own code the same way
   // MarketingAudienceMember borrows 'AUD' from its parent audience.
-  const recordCode = await nextRecordCode('EVT');
+  const recordCode = await nextRecordCode('EVT', new Date(), tx);
   // Touchpoints are immutable, append-only rows — no update path exists for
   // one once written, by design (MKT-CAP-004).
-  return prisma.marketingTouchpoint.create({
+  const touchpoint = await tx.marketingTouchpoint.create({
     data: {
       tenantId: auth.tenantId,
       recordCode,
@@ -346,6 +387,14 @@ async function recordTouchpointRow(input: {
       sourceRef: input.sourceRef ?? null,
     },
   });
+  await auditWrite({
+    action: 'create',
+    subjectType: 'marketing_touchpoint',
+    subjectId: touchpoint.id,
+    after: { channelKey: input.channelKey, touchKind: input.touchKind },
+    tx,
+  });
+  return touchpoint;
 }
 
 export async function registerForEvent(eventId: string, input: RegisterInput) {
@@ -381,37 +430,47 @@ export async function registerForEvent(eventId: string, input: RegisterInput) {
     }
   }
 
-  const recordCode = await nextRecordCode('EVT');
-  const registration = await prisma.marketingEventRegistration.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      eventId,
+  return prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('EVT', new Date(), tx);
+    const registration = await tx.marketingEventRegistration.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        eventId,
+        personId,
+        source: input.source ?? 'manual',
+        createdById: auth.partyId,
+      },
+    });
+
+    await recordTouchpointRow(tx, {
       personId,
-      source: input.source ?? 'manual',
-      createdById: auth.partyId,
-    },
-  });
+      campaignId: event.campaignId,
+      channelKey: 'event',
+      touchKind: 'visit',
+      sourceRef: event.recordCode,
+    });
 
-  await recordTouchpointRow({
-    personId,
-    campaignId: event.campaignId,
-    channelKey: 'event',
-    touchKind: 'visit',
-    sourceRef: event.recordCode,
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_event_registration',
+      subjectId: registration.id,
+      after: { eventId, personId, status: registration.status },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_EVENT_REGISTERED,
+      subject: { entityType: 'marketing_event_registration', entityId: registration.id, recordCode },
+      related: [
+        { relation: 'event', entityType: 'marketing_event', entityId: eventId },
+        { relation: 'registrant', entityType: 'person', entityId: personId },
+      ],
+      newState: { status: registration.status },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.MKT_EVENT_REGISTERED,
-    subject: { entityType: 'marketing_event_registration', entityId: registration.id, recordCode },
-    related: [
-      { relation: 'event', entityType: 'marketing_event', entityId: eventId },
-      { relation: 'registrant', entityType: 'person', entityId: personId },
-    ],
-    newState: { status: registration.status },
+    return registration;
   });
-
-  return registration;
 }
 
 export async function listEventRegistrations(eventId: string, status?: string) {
@@ -459,70 +518,104 @@ export async function confirmRegistration(registrationId: string) {
 
 export async function checkInRegistration(registrationId: string) {
   const { registration } = await transitionRegistration(registrationId, 'attended');
-  const updated = await prisma.marketingEventRegistration.update({
-    where: { id: registration.id },
-    data: { status: 'attended', checkedInAt: new Date() },
-  });
-
   const event = await prisma.marketingEvent.findFirst({ where: { id: registration.eventId } });
-  await recordTouchpointRow({
-    personId: registration.personId,
-    leadId: registration.leadId,
-    campaignId: event?.campaignId ?? null,
-    channelKey: 'event',
-    touchKind: 'event_attend',
-    sourceRef: event?.recordCode ?? null,
-  });
 
-  await emit({
-    name: EVENTS.MKT_EVENT_ATTENDED,
-    subject: {
-      entityType: 'marketing_event_registration',
-      entityId: registration.id,
-      recordCode: registration.recordCode,
-    },
-    related: [{ relation: 'registrant', entityType: 'person', entityId: registration.personId }],
-    newState: { status: 'attended', checkedInAt: updated.checkedInAt },
-  });
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingEventRegistration.update({
+      where: { id: registration.id },
+      data: { status: 'attended', checkedInAt: new Date() },
+    });
 
-  return updated;
+    await recordTouchpointRow(tx, {
+      personId: registration.personId,
+      leadId: registration.leadId,
+      campaignId: event?.campaignId ?? null,
+      channelKey: 'event',
+      touchKind: 'event_attend',
+      sourceRef: event?.recordCode ?? null,
+    });
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_event_registration',
+      subjectId: registration.id,
+      before: { status: registration.status },
+      after: { status: 'attended' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_EVENT_ATTENDED,
+      subject: {
+        entityType: 'marketing_event_registration',
+        entityId: registration.id,
+        recordCode: registration.recordCode,
+      },
+      related: [{ relation: 'registrant', entityType: 'person', entityId: registration.personId }],
+      newState: { status: 'attended', checkedInAt: updated.checkedInAt },
+      tx,
+    });
+
+    return updated;
+  });
 }
 
 export async function markNoShow(registrationId: string) {
   const { registration } = await transitionRegistration(registrationId, 'no_show');
-  const updated = await prisma.marketingEventRegistration.update({
-    where: { id: registration.id },
-    data: { status: 'no_show' },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingEventRegistration.update({
+      where: { id: registration.id },
+      data: { status: 'no_show' },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_event_registration',
+      subjectId: registration.id,
+      before: { status: registration.status },
+      after: { status: 'no_show' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_EVENT_NO_SHOW,
+      subject: {
+        entityType: 'marketing_event_registration',
+        entityId: registration.id,
+        recordCode: registration.recordCode,
+      },
+      newState: { status: 'no_show' },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: EVENTS.MKT_EVENT_NO_SHOW,
-    subject: {
-      entityType: 'marketing_event_registration',
-      entityId: registration.id,
-      recordCode: registration.recordCode,
-    },
-    newState: { status: 'no_show' },
-  });
-  return updated;
 }
 
 export async function cancelRegistration(registrationId: string) {
   const { registration, from } = await transitionRegistration(registrationId, 'cancelled');
-  const updated = await prisma.marketingEventRegistration.update({
-    where: { id: registration.id },
-    data: { status: 'cancelled' },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingEventRegistration.update({
+      where: { id: registration.id },
+      data: { status: 'cancelled' },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_event_registration',
+      subjectId: registration.id,
+      before: { status: from },
+      after: { status: 'cancelled' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_EVENT_CANCELLED,
+      subject: {
+        entityType: 'marketing_event_registration',
+        entityId: registration.id,
+        recordCode: registration.recordCode,
+      },
+      previousState: { status: from },
+      newState: { status: 'cancelled' },
+      tx,
+    });
+    return updated;
   });
-  await emit({
-    name: EVENTS.MKT_EVENT_CANCELLED,
-    subject: {
-      entityType: 'marketing_event_registration',
-      entityId: registration.id,
-      recordCode: registration.recordCode,
-    },
-    previousState: { status: from },
-    newState: { status: 'cancelled' },
-  });
-  return updated;
 }
 
 export async function followUpRegistration(registrationId: string, done: boolean, note?: string) {
@@ -587,23 +680,27 @@ export async function convertAttendees(eventId: string): Promise<{ created: numb
       sourceDetail: event.recordCode,
     });
 
-    await prisma.lead.update({
-      where: { id: lead.id },
-      data: { campaignId: event.campaignId ?? null, channelKey: 'event' },
-    });
+    // The lead's campaign columns, the registration's link and the touchpoint
+    // belong to one attendee: they commit together, or the attendee is retried whole.
+    await prisma.$transaction(async (tx) => {
+      await tx.lead.update({
+        where: { id: lead.id },
+        data: { campaignId: event.campaignId ?? null, channelKey: 'event' },
+      });
 
-    await prisma.marketingEventRegistration.update({
-      where: { id: registration.id },
-      data: { leadId: lead.id },
-    });
+      await tx.marketingEventRegistration.update({
+        where: { id: registration.id },
+        data: { leadId: lead.id },
+      });
 
-    await recordTouchpointRow({
-      personId: registration.personId,
-      leadId: lead.id,
-      campaignId: event.campaignId,
-      channelKey: 'event',
-      touchKind: 'event_attend',
-      sourceRef: event.recordCode,
+      await recordTouchpointRow(tx, {
+        personId: registration.personId,
+        leadId: lead.id,
+        campaignId: event.campaignId,
+        channelKey: 'event',
+        touchKind: 'event_attend',
+        sourceRef: event.recordCode,
+      });
     });
 
     created += 1;

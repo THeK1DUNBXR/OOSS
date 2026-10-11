@@ -174,12 +174,13 @@ describe('HCM-TIME-003 — nightly attendance derivation from clock events', () 
       await recordClockEvent({
         employmentRelationshipId: divya.employmentRelationshipId,
         kind: 'in',
-        occurredAt: new Date(day.getTime() + 9 * 3_600_000),
+        // 09:00 and 17:00 IST, which is 03:30Z and 11:30Z on the day (IST is UTC+5:30).
+        occurredAt: new Date(day.getTime() + 3.5 * 3_600_000),
       });
       await recordClockEvent({
         employmentRelationshipId: divya.employmentRelationshipId,
         kind: 'out',
-        occurredAt: new Date(day.getTime() + 17 * 3_600_000),
+        occurredAt: new Date(day.getTime() + 11.5 * 3_600_000),
       });
     });
 
@@ -460,5 +461,101 @@ describe('HCM-TIME-013 — an own-scoped principal cannot delete a colleague’s
 
     // The entry is untouched — HR, which holds `timesheets:edit` at all scope, can still remove it.
     await asUser('hr@kaizen.co.in', () => removeTimesheetEntry(entry.id));
+  });
+});
+
+describe('HCM-TIME-013 — the attendance deriver reads punches on the IST wall clock', () => {
+  // `fixtureDay(n)` is UTC midnight of the IST civil date, which is 05:30 IST.
+  // IST 09:15 is therefore 03:45Z on that date, and IST 00:30 the day before
+  // in UTC — the two instants a UTC-based derivation gets wrong.
+  it('HCM-TIME-013a: a 09:15 IST clock-in is late against a 09:00 shift, though its UTC hour reads 03', async () => {
+    const stamp = Date.now();
+    const divya = await employmentFor('divya@kaizen.co.in');
+    const day = fixtureDay(40);
+
+    await asUser('hr@kaizen.co.in', async () => {
+      const shift = await createShift({
+        code: `SH13-${stamp}`,
+        name: 'Early 9',
+        startTime: '09:00',
+        endTime: '18:00',
+        graceMinutes: 0,
+        breakMinutes: 0,
+      });
+      await assignRoster({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        shiftId: shift.id,
+        effectiveFrom: day,
+        weeklyOffDays: [0],
+      });
+    });
+
+    await asUser('divya@kaizen.co.in', async () => {
+      await recordClockEvent({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        kind: 'in',
+        occurredAt: new Date(day.getTime() + 3.75 * 3_600_000),
+        source: 'web',
+      });
+      await recordClockEvent({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        kind: 'out',
+        occurredAt: new Date(day.getTime() + 12.5 * 3_600_000),
+        source: 'web',
+      });
+    });
+
+    await asUser('hr@kaizen.co.in', () => deriveAttendanceFromClockEvents(day));
+
+    const row = await asUser('hr@kaizen.co.in', () =>
+      prisma.workAttendance.findUnique({
+        where: {
+          employmentRelationshipId_workDate: {
+            employmentRelationshipId: divya.employmentRelationshipId,
+            workDate: day,
+          },
+        },
+      }),
+    );
+    expect(row?.note).toBe('Derived from clock events: late.');
+    expect(row?.workedMinutes).toBe(525);
+  });
+
+  // 00:30 IST on the day under test is 19:00Z the day before. A UTC day window
+  // files that punch under the previous day and drops it, leaving this day
+  // with a lone clock-out and marked absent.
+  it('HCM-TIME-013b: a clock-in at 00:30 IST belongs to that IST day, not to the UTC day before', async () => {
+    const divya = await employmentFor('divya@kaizen.co.in');
+    const day = fixtureDay(41);
+
+    await asUser('divya@kaizen.co.in', async () => {
+      await recordClockEvent({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        kind: 'in',
+        occurredAt: new Date(day.getTime() - 5 * 3_600_000),
+        source: 'web',
+      });
+      await recordClockEvent({
+        employmentRelationshipId: divya.employmentRelationshipId,
+        kind: 'out',
+        occurredAt: new Date(day.getTime() + 12.5 * 3_600_000),
+        source: 'web',
+      });
+    });
+
+    await asUser('hr@kaizen.co.in', () => deriveAttendanceFromClockEvents(day));
+
+    const row = await asUser('hr@kaizen.co.in', () =>
+      prisma.workAttendance.findUnique({
+        where: {
+          employmentRelationshipId_workDate: {
+            employmentRelationshipId: divya.employmentRelationshipId,
+            workDate: day,
+          },
+        },
+      }),
+    );
+    expect(row?.missingPunch).toBe(false);
+    expect(row?.workedMinutes).toBe(1050);
   });
 });

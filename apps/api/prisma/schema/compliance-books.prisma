@@ -20,6 +20,7 @@ model AccountingPeriod {
   // migration (20260901000000_baseline) carries the same RESTRICT.
   entity   LedgerEntity?  @relation(fields: [entityId], references: [id], onDelete: Restrict)
   entries  JournalEntry[]
+  balanceSnapshots AccountBalanceSnapshot[]
 
   /// "2025-26" (Apr-Mar).
   fy     String
@@ -48,8 +49,36 @@ model AccountingPeriod {
 
   @@unique([tenantId, period])
   @@unique([tenantId, entityId, startsOn])
+  @@unique([tenantId, id])
   @@index([tenantId, status])
   @@map("cmp_accounting_periods")
+}
+
+/// The period-end balance of one account as the journal derived it when the
+/// period was closed. A cache for the nightly drift check, never a source of
+/// truth: balanceOf still sums journal_lines. A mismatch between a row and the
+/// journal is raised, not corrected. Rows are insert-only for the application
+/// role (no UPDATE or DELETE); a period closed again after a reopen gets a new
+/// version, so an old row is never compared with a balance it did not describe.
+model AccountBalanceSnapshot {
+  id           String           @id @default(cuid())
+  tenantId     String
+  accountId    String
+  periodId     String
+  version      Int
+  /// The last IST day of the period: the balance is as of this day.
+  asOf         DateTime         @db.Date
+  balanceMinor BigInt
+  /// When the journal was summed for this row. The drift check trusts a row only
+  /// if it was derived after the period's latest close.
+  derivedAt    DateTime
+  createdAt    DateTime         @default(now())
+  /// Composite with tenantId: a snapshot can only name an account and a period of its own tenant.
+  account      LedgerAccount    @relation(fields: [tenantId, accountId], references: [tenantId, id])
+  period       AccountingPeriod @relation(fields: [tenantId, periodId], references: [tenantId, id])
+
+  @@unique([tenantId, accountId, periodId, version])
+  @@map("account_balance_snapshots")
 }
 
 /// A registered legal entity. It is explicit even for single-entity tenants so
@@ -72,26 +101,32 @@ model LedgerEntity {
 }
 
 model JournalEntry {
-  id             String           @id @default(cuid())
+  id             String            @id @default(cuid())
   tenantId       String
   entityId       String
   periodId       String
   entryNumber    String
-  entryDate      DateTime         @db.Date
+  entryDate      DateTime          @db.Date
   postedAt       DateTime?
-  status         String           @default("posted")
+  status         String            @default("posted")
   narration      String
   sourceType     String
   sourceId       String?
   reversalOfId   String?
   reversedById   String?
   idempotencyKey String?
-  entity         LedgerEntity     @relation(fields: [entityId], references: [id])
-  period         AccountingPeriod @relation(fields: [periodId], references: [id])
+  entity         LedgerEntity      @relation(fields: [entityId], references: [id])
+  period         AccountingPeriod  @relation(fields: [periodId], references: [id])
   lines          JournalLine[]
+  /// Reversal state is the presence of a link row, never a status UPDATE
+  /// (MONEY-LEDGER-CONTRACT decision 7). `status` and `reversedById` are the
+  /// pre-link history of entries reversed before journal_reversals existed.
+  reversedBy     JournalReversal[] @relation("ReversedEntry")
+  reversalOf     JournalReversal[] @relation("ReversalEntry")
 
   @@unique([tenantId, entityId, entryNumber])
   @@unique([tenantId, idempotencyKey])
+  @@unique([tenantId, id])
   @@index([tenantId, entityId, entryDate])
   @@map("journal_entries")
 }
@@ -100,7 +135,8 @@ model JournalLine {
   id              String        @id @default(cuid())
   tenantId        String
   entryId         String
-  entry           JournalEntry  @relation(fields: [entryId], references: [id])
+  /// Composite with tenantId: a line can only name an entry of its own tenant.
+  entry           JournalEntry  @relation(fields: [tenantId, entryId], references: [tenantId, id])
   lineNo          Int
   accountId       String
   account         LedgerAccount @relation(fields: [accountId], references: [id])
@@ -114,10 +150,36 @@ model JournalLine {
   partyId         String?
   taxCodeId       String?
   memo            String?
+  /// The business line this line is earned or spent under. Required by post()
+  /// on income and expense accounts; nullable on balance-sheet lines.
+  lineId          String?
+  businessLine    BusinessLine? @relation(fields: [tenantId, lineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([tenantId, accountId, entryId])
   @@index([tenantId, partyId])
+  @@index([tenantId, lineId])
   @@map("journal_lines")
+}
+
+/// The link from a reversed entry to the entry that reverses it. Insert-only
+/// (the app role has no UPDATE or DELETE, and a trigger refuses both for every
+/// role). A reversal entry cannot itself be reversed: the database refuses it
+/// in journal_reversal_guard, and post() refuses it first with a 409.
+model JournalReversal {
+  id              String       @id @default(cuid())
+  tenantId        String
+  reversedEntryId String
+  reversalEntryId String
+  reason          String
+  createdAt       DateTime     @default(now())
+  /// Party that posted the reversal. Null only for backfilled legacy rows.
+  createdById     String?
+  reversedEntry   JournalEntry @relation("ReversedEntry", fields: [tenantId, reversedEntryId], references: [tenantId, id])
+  reversalEntry   JournalEntry @relation("ReversalEntry", fields: [tenantId, reversalEntryId], references: [tenantId, id])
+
+  @@unique([tenantId, reversedEntryId])
+  @@unique([tenantId, reversalEntryId])
+  @@map("journal_reversals")
 }
 
 /// How long a class of record must be kept, and under what statute. Dated data
@@ -231,8 +293,14 @@ model BankStatementLine {
   matchedTransactionId String?
   matchedAt            DateTime?
 
+  /// Identifies the line across re-imports of the same statement (books.ts
+  /// statementLineKey). Null on lines imported before it existed, which the
+  /// unique index allows to repeat.
+  fingerprint String?
+
   createdAt DateTime @default(now())
 
+  @@unique([tenantId, accountId, fingerprint])
   @@index([tenantId, accountId, date])
   @@index([tenantId, matchedAt])
   @@map("cmp_bank_statement_lines")

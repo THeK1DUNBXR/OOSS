@@ -8,7 +8,7 @@
  * reason `EQT-IDN-001` bootstraps a subsidiary instead of reusing `kaizen`.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   addBoardMember,
   callMeeting,
@@ -33,7 +33,6 @@ import type { AuthContext } from '../platform/context.js';
 const DAY_MS = 86_400_000;
 
 let HOLDING: string;
-const cleanupTenantSlugs: string[] = [];
 let tenantCounter = 0;
 
 /** A synthetic auth context for a board role — no real User/Affiliation row
@@ -56,7 +55,6 @@ function boardAuth(tid: string, roleSlug: string, partyId = `test-party-${roleSl
 async function newTenant(label: string): Promise<string> {
   tenantCounter += 1;
   const slug = `board-test-${label}-${Date.now()}-${tenantCounter}`;
-  cleanupTenantSlugs.push(slug);
   const { tenantId: id } = await seedBootstrap({ tenantSlug: slug, tenantName: `Board Test ${label}` });
   return id;
 }
@@ -90,13 +88,9 @@ beforeAll(async () => {
   HOLDING = await tenantId();
 });
 
-afterAll(async () => {
-  const tenants = await unscopedPrisma.tenant.findMany({ where: { slug: { in: cleanupTenantSlugs } } });
-  for (const t of tenants) {
-    await unscopedPrisma.exceptionRecord.deleteMany({ where: { tenantId: t.id } }).catch(() => {});
-    await unscopedPrisma.tenant.delete({ where: { id: t.id } }).catch(() => {});
-  }
-});
+// No teardown: tenants are not hard-deleted (their cascade reaches the
+// immutable event_records). Slugs carry Date.now() and a counter, so a rerun
+// on the same database never reuses one.
 
 describe('EQT-BRD-001 — a meeting called on short notice is refused unless consent with a reason is recorded', () => {
   it('two days notice is refused; the same call with recorded consent and a reason succeeds', async () => {

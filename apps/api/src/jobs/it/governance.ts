@@ -150,6 +150,8 @@ export async function runPolicyReacknowledgementJob(): Promise<JobResult> {
 export const JOBS: JobDefinition[] = [
   {
     name: 'runRiskReviewJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'IT governance: risk review overdue ladder (IT-RSK)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -157,6 +159,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runFindingOverdueJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'IT governance: security finding remediation overdue ladder (IT-FND)',
     automationClass: 'threshold_response',
     cron: '0 6 * * *',
@@ -164,6 +168,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runControlTestOverdueJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'IT governance: control test overdue (IT-CTL)',
     automationClass: 'threshold_response',
     cron: '15 6 * * *',
@@ -171,6 +177,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runPolicyReacknowledgementJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'IT governance: policy re-acknowledgement due (IT-POL)',
     automationClass: 'threshold_response',
     cron: '30 6 * * *',
@@ -178,6 +186,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runAccessReviewOverdueJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'IT governance: access-review campaign overdue (IT-ACR)',
     automationClass: 'threshold_response',
     cron: '45 6 * * *',

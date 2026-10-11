@@ -8,10 +8,10 @@
  * `jobs/hcm/index.ts` exporting `HCM_JOBS` the same way, then spreading that
  * into `ALL_JOBS` — see docs/hcm/leavepolicy.md "Wanted from the scaffold".
  */
-import type { JobDefinition } from '../scheduler.js';
+import type { PendingJobDefinition } from '../scheduler.js';
 import { runMonthlyAccrual } from '../../domains/hcm/leavepolicy.js';
 
-export const JOBS: JobDefinition[] = [
+export const JOBS: PendingJobDefinition[] = [
   {
     name: 'runLeaveAccrualJob',
     label: 'Monthly leave accrual (HCM-LVP-005)',

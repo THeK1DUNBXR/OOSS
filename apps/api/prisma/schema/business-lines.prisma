@@ -1,0 +1,163 @@
+// Business lines (docs/plan/zen360/VERTICAL-TAXONOMY.md s.6; ACCESS-MODEL-PLAN s.10).
+//
+// The registry is an ordinary tenant-scoped table. A tenant is the group: its
+// legal entities share one registry, so nothing here is keyed by group.
+// Dates are `@db.Date` IST calendar days stored as UTC midnight (CLAUDE.md
+// rule 3). The rules Prisma cannot express (immutable keys, exclusion on
+// overlapping dates, basis points totalling 10,000 at commit, exactly one
+// subject) are raw SQL in migration 20261010235800_business_lines, and the
+// tests in src/tests/businessLines.test.ts are the check that they hold.
+
+model BusinessLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Immutable. Never reused, never edited: a trigger refuses the update.
+  code         String
+  /// The only editable label. A rename changes this and nothing else.
+  name         String
+  /// Short descriptor stating the answer to the line test (taxonomy s.4.1).
+  payerKind    String
+  revenueModel String
+
+  effectiveFrom DateTime  @db.Date
+  /// Exclusive. From this IST day the line takes no new writes; history stays readable.
+  effectiveTo   DateTime? @db.Date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  successorsFrom    BusinessLineSuccessor[] @relation("SuccessorFrom")
+  successorsTo      BusinessLineSuccessor[] @relation("SuccessorTo")
+  distributionLines LineDistributionLine[]
+  orgUnits          OrgUnit[]
+  units             Unit[]
+  journalLines      JournalLine[]
+  cases             Case[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@map("business_lines")
+}
+
+/// A unit is a dated row that belongs to a business line, or to none (a support
+/// unit). One code names every row of one unit: a move closes the row it has and
+/// opens another under the same code, so the code is the identity across history
+/// and each row is one version of it. `OrgUnit` is the existing reporting
+/// hierarchy and is not changed by this table (SPINE-CONTRACT s.1.0, Opus
+/// decision 12). Dates are IST calendar days stored as UTC midnight (CLAUDE.md
+/// rule 3). The rules Prisma cannot express are in migration
+/// 20261013110000_business_line_units: lineId, parentUnitId, code, tenantId and
+/// effectiveFrom are immutable at the database, rows of one code do not overlap,
+/// and the status agrees with the end date.
+model Unit {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// Immutable. Names the unit across every row it has had.
+  code String
+  name String
+  /// `closed` exactly when `effectiveTo` is set (CHECK in the migration).
+  status String @default("active")
+
+  /// Immutable on a row. The line the unit delivers from this row's day; a move
+  /// closes this row and opens one with the new line.
+  lineId       String?
+  /// Immutable on a row, for the same reason. Cycles are refused in the domain.
+  parentUnitId String?
+
+  effectiveFrom DateTime  @db.Date
+  /// Exclusive, as on BusinessLine: from this IST day the row is no longer in force.
+  effectiveTo   DateTime? @db.Date
+
+  line     BusinessLine? @relation(fields: [tenantId, lineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  parent   Unit?         @relation("UnitTree", fields: [tenantId, parentUnitId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  children Unit[]        @relation("UnitTree")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, id])
+  @@index([tenantId, code])
+  @@index([tenantId, lineId])
+  @@index([tenantId, parentUnitId])
+  @@map("units")
+}
+
+/// A dated split or merge: `fromLineId` hands `effectiveFrom` onward to
+/// `toLineId`. One split is one set of rows sharing (from, effectiveFrom), and
+/// its shares are all stated (summing to 10,000) or all absent (no stated rule).
+model BusinessLineSuccessor {
+  id       String @id @default(cuid())
+  tenantId String
+
+  fromLineId String
+  toLineId   String
+
+  effectiveFrom    DateTime @db.Date
+  shareBasisPoints Int?
+  recordedById     String
+
+  from BusinessLine @relation("SuccessorFrom", fields: [tenantId, fromLineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  to   BusinessLine @relation("SuccessorTo", fields: [tenantId, toLineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, fromLineId, toLineId, effectiveFrom])
+  @@index([tenantId, toLineId])
+  @@map("business_line_successors")
+}
+
+/// How a shared cost, a cost centre's default or a ledger category's default is
+/// split across lines, from a date. Exactly one subject column is set; the
+/// shares are `LineDistributionLine` rows that must total 10,000 basis points.
+/// A change supersedes the prior row by closing its `effectiveTo`, never by
+/// editing its shares, so old postings keep the split they were posted with.
+model LineDistribution {
+  id       String @id @default(cuid())
+  tenantId String
+
+  costCentreId     String?
+  ledgerCategoryId String?
+  transactionId    String?
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+  recordedById  String
+
+  costCentre     CostCentre?     @relation(fields: [tenantId, costCentreId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  ledgerCategory LedgerCategory? @relation(fields: [tenantId, ledgerCategoryId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  transaction    Transaction?    @relation(fields: [tenantId, transactionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  lines LineDistributionLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, id])
+  @@index([tenantId, costCentreId])
+  @@index([tenantId, ledgerCategoryId])
+  @@index([tenantId, transactionId])
+  @@map("line_distributions")
+}
+
+model LineDistributionLine {
+  id       String @id @default(cuid())
+  tenantId String
+
+  distributionId String
+  lineId         String
+  /// 1..10,000. The sum per distribution is checked at commit, not per row.
+  basisPoints    Int
+
+  distribution LineDistribution @relation(fields: [tenantId, distributionId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  line         BusinessLine     @relation(fields: [tenantId, lineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([distributionId, lineId])
+  @@index([tenantId, lineId])
+  @@map("line_distribution_lines")
+}

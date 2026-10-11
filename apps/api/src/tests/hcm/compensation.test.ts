@@ -622,3 +622,27 @@ describe("scope axis: an own-scope employee cannot reach a colleague's data", ()
     expect(err.message).toMatch(/all-scope grant/);
   });
 });
+
+describe('a caller with no employment relationship gets an empty list, not a database error', () => {
+  // The own-scope filter fell back to a NUL-bearing sentinel ('\0no-own-employment'),
+  // which Postgres rejects (22021), so the list 500'd instead of returning nothing.
+  it('NUL-SENTINEL-001: listLoans returns [] for an own-scope caller with no employment', async () => {
+    await withFixtureRole(
+      { slug: 'nul_loans_own', grants: [{ resource: 'employee_loans', verbs: ['view'], scope: 'own' }] },
+      async (fixture) => {
+        const rows = await asPrincipal(authFor(fixture), () => listLoans());
+        expect(rows).toEqual([]);
+      },
+    );
+  });
+
+  it('NUL-SENTINEL-002: listExpenseClaims returns [] for an own-scope caller with no employment', async () => {
+    await withFixtureRole(
+      { slug: 'nul_claims_own', grants: [{ resource: 'expense_claims', verbs: ['view'], scope: 'own' }] },
+      async (fixture) => {
+        const rows = await asPrincipal(authFor(fixture), () => listExpenseClaims());
+        expect(rows).toEqual([]);
+      },
+    );
+  });
+});

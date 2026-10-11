@@ -115,6 +115,15 @@ export const envSchema = z
     WEB_DIST_DIR: z.string().min(1).optional(),
 
     /**
+     * Where document bytes are kept (objectStorage.ts). A local directory until
+     * hosting is chosen: the provider, and whether it sits in an India region for
+     * tenants that require one, is a hosting decision made after Phase 1
+     * (DECISIONS D:599-615). Unset, the store refuses uploads rather than
+     * writing to a default place.
+     */
+    DOCUMENT_STORAGE_DIR: z.string().min(1).optional(),
+
+    /**
      * Where the browser client is served from. Read by the CORS allowlist; a
      * comma-separated list so one deployment can serve a staging and a preview
      * origin without a code change.

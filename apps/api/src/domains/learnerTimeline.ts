@@ -37,6 +37,7 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan } from '../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { raiseException } from '../platform/exceptions.js';
+import { governedWrite } from '../platform/governedWrite.js';
 
 // daily_progress is written only here; registered at module load so this module
 // alone is enough for the write to be audited (see corporate/board.ts).
@@ -190,34 +191,38 @@ export async function resolveLearnerLog(
   const status = input.status ?? 'resolved';
   if (log.status === 'resolved' && status === 'resolved') return log;
 
-  const updated = await prisma.learnerLog.update({
-    where: { id: logId },
-    data: {
-      status,
-      resolutionNote: input.resolutionNote ?? log.resolutionNote,
-      ...(status === 'resolved'
-        ? { resolvedAt: new Date(), resolvedById: auth.partyId }
-        : { resolvedAt: null, resolvedById: null }),
-    },
-  });
-
-  await auditWrite({
-    action: 'update',
-    subjectType: 'learner_log',
-    subjectId: logId,
-    before: { status: log.status },
-    after: { status, resolutionNote: updated.resolutionNote },
-  });
-  if (status === 'resolved') {
-    await emit({
-      name: EVENTS.LEARNER_LOG_RESOLVED,
-      subject: { entityType: 'learner_log', entityId: logId },
-      related: [{ relation: 'about', entityType: 'enrollment', entityId: log.enrollmentId }],
-      newState: { kind: log.kind, status },
-      impact: { domains: ['edu'] },
+  return governedWrite(async (tx) => {
+    const updated = await tx.learnerLog.update({
+      where: { id: logId },
+      data: {
+        status,
+        resolutionNote: input.resolutionNote ?? log.resolutionNote,
+        ...(status === 'resolved'
+          ? { resolvedAt: new Date(), resolvedById: auth.partyId }
+          : { resolvedAt: null, resolvedById: null }),
+      },
     });
-  }
-  return updated;
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'learner_log',
+      subjectId: logId,
+      before: { status: log.status },
+      after: { status, resolutionNote: updated.resolutionNote },
+      tx,
+    });
+    if (status === 'resolved') {
+      await emit({
+        name: EVENTS.LEARNER_LOG_RESOLVED,
+        subject: { entityType: 'learner_log', entityId: logId },
+        related: [{ relation: 'about', entityType: 'enrollment', entityId: log.enrollmentId }],
+        newState: { kind: log.kind, status },
+        impact: { domains: ['edu'] },
+        tx,
+      });
+    }
+    return updated;
+  });
 }
 
 /**
@@ -242,66 +247,71 @@ export async function recordDailyProgress(
     }
   }
 
-  const existing = await prisma.dailyProgress.findFirst({
-    where: { tenantId: auth.tenantId, enrollmentId, progressDate },
-  });
-
-  const row = existing
-    ? await prisma.dailyProgress.update({
-        where: { id: existing.id },
-        data: {
-          score: input.score ?? existing.score,
-          note: input.note ?? existing.note,
-          recordedById: auth.partyId,
-        },
-      })
-    : await prisma.dailyProgress.create({
-        data: {
-          tenantId: auth.tenantId,
-          enrollmentId,
-          progressDate,
-          score: input.score ?? null,
-          note: input.note ?? null,
-          recordedById: auth.partyId,
-        },
-      });
-  await auditWrite({
-    action: existing ? 'update' : 'create',
-    subjectType: 'daily_progress',
-    subjectId: row.id,
-    before: existing,
-    after: row,
-  });
-
-  // The enrolment's headline progress is the mean of the scores recorded, never
-  // a field somebody keeps up to date by hand — the same rule attendance already
-  // follows, for the same reason.
-  const scored = await prisma.dailyProgress.findMany({
-    where: { tenantId: auth.tenantId, enrollmentId, score: { not: null } },
-    select: { score: true },
-  });
-  if (scored.length) {
-    const mean = Math.round(scored.reduce((s, r) => s + (r.score ?? 0), 0) / scored.length);
-    await prisma.enrollment.update({ where: { id: enrollmentId }, data: { progressPct: mean } });
-    await auditWrite({
-      action: 'update',
-      subjectType: 'enrollment',
-      subjectId: enrollmentId,
-      before: { progressPct: enrollment.progressPct },
-      after: { progressPct: mean },
+  return governedWrite(async (tx) => {
+    const existing = await tx.dailyProgress.findFirst({
+      where: { tenantId: auth.tenantId, enrollmentId, progressDate },
     });
-  }
 
-  await emit({
-    name: EVENTS.PROGRESS_RECORDED,
-    subject: { entityType: 'daily_progress', entityId: row.id },
-    related: [{ relation: 'for', entityType: 'enrollment', entityId: enrollmentId }],
-    newState: { score: row.score, progressDate: istDateKey(progressDate) },
-    owner: { partyId: enrollment.personId },
-    impact: { domains: ['edu'] },
+    const row = existing
+      ? await tx.dailyProgress.update({
+          where: { id: existing.id },
+          data: {
+            score: input.score ?? existing.score,
+            note: input.note ?? existing.note,
+            recordedById: auth.partyId,
+          },
+        })
+      : await tx.dailyProgress.create({
+          data: {
+            tenantId: auth.tenantId,
+            enrollmentId,
+            progressDate,
+            score: input.score ?? null,
+            note: input.note ?? null,
+            recordedById: auth.partyId,
+          },
+        });
+    await auditWrite({
+      action: existing ? 'update' : 'create',
+      subjectType: 'daily_progress',
+      subjectId: row.id,
+      before: existing,
+      after: row,
+      tx,
+    });
+
+    // The enrolment's headline progress is the mean of the scores recorded, never
+    // a field somebody keeps up to date by hand — the same rule attendance already
+    // follows, for the same reason.
+    const scored = await tx.dailyProgress.findMany({
+      where: { tenantId: auth.tenantId, enrollmentId, score: { not: null } },
+      select: { score: true },
+    });
+    if (scored.length) {
+      const mean = Math.round(scored.reduce((s, r) => s + (r.score ?? 0), 0) / scored.length);
+      await tx.enrollment.update({ where: { id: enrollmentId }, data: { progressPct: mean } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'enrollment',
+        subjectId: enrollmentId,
+        before: { progressPct: enrollment.progressPct },
+        after: { progressPct: mean },
+        tx,
+      });
+    }
+
+    await emit({
+      name: EVENTS.PROGRESS_RECORDED,
+      subject: { entityType: 'daily_progress', entityId: row.id },
+      related: [{ relation: 'for', entityType: 'enrollment', entityId: enrollmentId }],
+      newState: { score: row.score, progressDate: istDateKey(progressDate) },
+      owner: { partyId: enrollment.personId },
+      impact: { domains: ['edu'] },
+      tx,
+    });
+
+    return row;
   });
-
-  return row;
 }
 
 /**
