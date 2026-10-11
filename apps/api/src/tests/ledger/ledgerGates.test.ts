@@ -292,6 +292,32 @@ describe('L3: a period admits postings only while it is open or reopened', () =>
   });
 });
 
+describe("tenant scope: a journal reference cannot name another tenant's entry", () => {
+  it("refuses a line whose tenantId differs from its entry's, as the application role", async () => {
+    const entry = await postSale();
+    // The session is the other tenant, so RLS admits the rows; only the
+    // reference to an entry of a different tenant is wrong.
+    await expect(
+      app.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.tenant_id', ${otherTid}, true)`;
+        await tx.$executeRaw`INSERT INTO "journal_lines" ("id","tenantId","entryId","lineNo","accountId","amountMinor","currency","baseAmountMinor") VALUES (${randomUUID()}, ${otherTid}, ${entry.id}, 1, ${bankId}, ${100n}, 'INR', ${100n})`;
+        await tx.$executeRaw`INSERT INTO "journal_lines" ("id","tenantId","entryId","lineNo","accountId","amountMinor","currency","baseAmountMinor") VALUES (${randomUUID()}, ${otherTid}, ${entry.id}, 2, ${salesId}, ${-100n}, 'INR', ${-100n})`;
+      }),
+    ).rejects.toThrow(/foreign key|journal_lines_tenantId_entryId/);
+  });
+
+  it('refuses a reversal link whose tenantId differs from the entries it names', async () => {
+    const original = await postSale();
+    const other = await postSale();
+    await expect(
+      app.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.tenant_id', ${otherTid}, true)`;
+        await tx.$executeRaw`INSERT INTO "journal_reversals" ("id","tenantId","reversedEntryId","reversalEntryId","reason") VALUES (${randomUUID()}, ${otherTid}, ${original.id}, ${other.id}, 'cross tenant')`;
+      }),
+    ).rejects.toThrow(/foreign key|journal_reversals_tenantId/);
+  });
+});
+
 describe('idempotency: the same key is the same entry', () => {
   it('returns the existing entry on a repeat, and writes it once', async () => {
     const key = `repeat:${randomUUID()}`;
