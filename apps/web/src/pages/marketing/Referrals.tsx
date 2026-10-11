@@ -17,6 +17,7 @@ import {
   type ReferralProgramKind,
   type ReferralProgramView,
   type ReferralStatus,
+  type ReferralView,
   type RewardKind,
 } from '@kaizen/shared';
 import { titleCase } from '../../lib/api.js';
@@ -32,8 +33,10 @@ import {
   useRewardReferral,
   useVoidReferral,
   useReferralLeaderboard,
+  type ReferralLeaderboardRow,
 } from '../../lib/marketingApi.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { CreateModal, Row, SelectInput, TextInput, messageOf, NewButton } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 
@@ -219,6 +222,93 @@ function ReferralsTab({ programId, onProgramChange }: { programId: string; onPro
   if (referrals.error) return <ErrorBox error={referrals.error} />;
   const items = referrals.data?.items ?? [];
 
+  // The row actions depend on the referral's current status and close over the mutations.
+  const referralColumns: ReadonlyArray<DataTableColumn<ReferralView>> = [
+    {
+      id: 'code',
+      header: 'Code',
+      cell: (r) => r.code,
+      cellClassName: 'mono text-xs text-ink-100',
+      sortValue: (r) => r.code,
+    },
+    {
+      id: 'programme',
+      header: 'Programme',
+      cell: (r) => r.programName,
+      cellClassName: 'text-xs text-ink-300',
+      sortValue: (r) => r.programName,
+    },
+    {
+      id: 'referrer',
+      header: 'Referrer',
+      cell: (r) => r.referrerName ?? r.referrerOrganizationName ?? '—',
+      cellClassName: 'text-xs text-ink-200',
+      sortValue: (r) => r.referrerName ?? r.referrerOrganizationName,
+    },
+    {
+      id: 'referred',
+      header: 'Referred',
+      cell: (r) => r.referredName ?? '—',
+      cellClassName: 'text-xs text-ink-200',
+      sortValue: (r) => r.referredName,
+    },
+    {
+      id: 'lead',
+      header: 'Lead',
+      cell: (r) => r.leadRecordCode ?? '—',
+      cellClassName: 'mono text-2xs text-ink-400',
+      sortValue: (r) => r.leadRecordCode,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (r) => (
+        <StatusChip
+          status={r.status}
+          tone={r.status === 'rewarded' ? 'good' : r.status === 'void' ? 'bad' : 'neutral'}
+        />
+      ),
+      sortValue: (r) => r.status,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (r) => {
+        const next = REFERRAL_TRANSITIONS[r.status] ?? [];
+        return (
+          can('marketing_referrals:E') && (
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {next.includes('qualified') && (
+                <button
+                  className="btn-quiet btn-sm"
+                  onClick={() => qualify.mutate(r.id, { onError: (e) => setError(messageOf(e)) })}
+                >
+                  Qualify
+                </button>
+              )}
+              {next.includes('rewarded') && (
+                <button className="btn-quiet btn-sm" onClick={() => setRewarding(r.id)}>
+                  Reward
+                </button>
+              )}
+              {next.includes('void') && (
+                <button
+                  className="btn-quiet btn-sm"
+                  onClick={() => {
+                    const reason = prompt('Reason for voiding this referral?');
+                    if (reason) voidRef.mutate({ id: r.id, reason }, { onError: (e) => setError(messageOf(e)) });
+                  }}
+                >
+                  Void
+                </button>
+              )}
+            </div>
+          )
+        );
+      },
+    },
+  ];
+
   return (
     <div>
       <Row>
@@ -244,78 +334,15 @@ function ReferralsTab({ programId, onProgramChange }: { programId: string; onPro
         </p>
       )}
 
-      {items.length === 0 ? (
-        <Card className="mt-4">
-          <EmptyState message="No referrals match." />
-        </Card>
-      ) : (
-        <Card className="mt-4" bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Programme</th>
-                <th>Referrer</th>
-                <th>Referred</th>
-                <th>Lead</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((r) => {
-                const next = REFERRAL_TRANSITIONS[r.status] ?? [];
-                return (
-                  <tr key={r.id}>
-                    <td className="mono text-xs text-ink-100">{r.code}</td>
-                    <td className="text-xs text-ink-300">{r.programName}</td>
-                    <td className="text-xs text-ink-200">{r.referrerName ?? r.referrerOrganizationName ?? '—'}</td>
-                    <td className="text-xs text-ink-200">{r.referredName ?? '—'}</td>
-                    <td className="mono text-2xs text-ink-400">{r.leadRecordCode ?? '—'}</td>
-                    <td>
-                      <StatusChip
-                        status={r.status}
-                        tone={r.status === 'rewarded' ? 'good' : r.status === 'void' ? 'bad' : 'neutral'}
-                      />
-                    </td>
-                    <td>
-                      {can('marketing_referrals:E') && (
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          {next.includes('qualified') && (
-                            <button
-                              className="btn-quiet btn-sm"
-                              onClick={() => qualify.mutate(r.id, { onError: (e) => setError(messageOf(e)) })}
-                            >
-                              Qualify
-                            </button>
-                          )}
-                          {next.includes('rewarded') && (
-                            <button className="btn-quiet btn-sm" onClick={() => setRewarding(r.id)}>
-                              Reward
-                            </button>
-                          )}
-                          {next.includes('void') && (
-                            <button
-                              className="btn-quiet btn-sm"
-                              onClick={() => {
-                                const reason = prompt('Reason for voiding this referral?');
-                                if (reason)
-                                  voidRef.mutate({ id: r.id, reason }, { onError: (e) => setError(messageOf(e)) });
-                              }}
-                            >
-                              Void
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card className="mt-4" bodyClassName="p-0">
+        <DataTable
+          caption="Referrals"
+          columns={referralColumns}
+          rows={items}
+          rowKey={(r) => r.id}
+          emptyMessage="No referrals match."
+        />
+      </Card>
 
       {rewarding && <RewardModal id={rewarding} onClose={() => setRewarding(null)} />}
     </div>
@@ -454,6 +481,48 @@ function RedeemModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   );
 }
 
+const LEADERBOARD_COLUMNS: ReadonlyArray<DataTableColumn<ReferralLeaderboardRow>> = [
+  {
+    id: 'referrer',
+    header: 'Referrer',
+    cell: (r) => r.referrerLabel,
+    cellClassName: 'text-xs text-ink-100',
+    sortValue: (r) => r.referrerLabel,
+  },
+  {
+    id: 'issued',
+    header: 'Issued',
+    align: 'right',
+    cell: (r) => r.issued,
+    cellClassName: 'text-xs',
+    sortValue: (r) => r.issued,
+  },
+  {
+    id: 'used',
+    header: 'Used',
+    align: 'right',
+    cell: (r) => r.used,
+    cellClassName: 'text-xs',
+    sortValue: (r) => r.used,
+  },
+  {
+    id: 'qualified',
+    header: 'Qualified',
+    align: 'right',
+    cell: (r) => r.qualified,
+    cellClassName: 'text-xs',
+    sortValue: (r) => r.qualified,
+  },
+  {
+    id: 'rewarded',
+    header: 'Rewarded',
+    align: 'right',
+    cell: (r) => r.rewarded,
+    cellClassName: 'text-xs',
+    sortValue: (r) => r.rewarded,
+  },
+];
+
 function LeaderboardTab({ programId, onProgramChange }: { programId: string; onProgramChange: (v: string) => void }) {
   const programs = useReferralPrograms();
   const leaderboard = useReferralLeaderboard(programId || undefined);
@@ -476,34 +545,15 @@ function LeaderboardTab({ programId, onProgramChange }: { programId: string; onP
         <Loading />
       ) : leaderboard.error ? (
         <ErrorBox error={leaderboard.error} />
-      ) : !leaderboard.data?.length ? (
-        <Card className="mt-4">
-          <EmptyState message="No referrers yet under this programme." />
-        </Card>
       ) : (
-        <Card className="mt-4" bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Referrer</th>
-                <th className="text-right">Issued</th>
-                <th className="text-right">Used</th>
-                <th className="text-right">Qualified</th>
-                <th className="text-right">Rewarded</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leaderboard.data.map((row, i) => (
-                <tr key={i}>
-                  <td className="text-xs text-ink-100">{row.referrerLabel}</td>
-                  <td className="text-right tabular-nums text-xs">{row.issued}</td>
-                  <td className="text-right tabular-nums text-xs">{row.used}</td>
-                  <td className="text-right tabular-nums text-xs">{row.qualified}</td>
-                  <td className="text-right tabular-nums text-xs">{row.rewarded}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <Card className="mt-4" bodyClassName="p-0">
+          <DataTable
+            caption="Referral leaderboard"
+            columns={LEADERBOARD_COLUMNS}
+            rows={leaderboard.data ?? []}
+            rowKey={(_, index) => String(index)}
+            emptyMessage="No referrers yet under this programme."
+          />
         </Card>
       )}
     </div>

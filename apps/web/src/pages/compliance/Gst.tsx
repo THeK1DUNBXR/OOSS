@@ -538,10 +538,26 @@ function Gstr2bTab() {
 
       {summary.data && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Metric label="Eligible ITC (2B)" value={money(summary.data.eligibleItc)} />
-          <Metric label="Claimed in books" value={money(summary.data.claimedInBooks)} />
-          <Metric label="Difference" value={money(summary.data.difference)} />
-          <Metric label="Matched" value={String(summary.data.counts?.matched ?? 0)} />
+          <Metric
+            label="Eligible ITC (2B)"
+            value={money(summary.data.eligibleItc)}
+            noActionReason="Total of the 2B matches listed in the table below this summary"
+          />
+          <Metric
+            label="Claimed in books"
+            value={money(summary.data.claimedInBooks)}
+            noActionReason="Total of the same matches, from the ledger side; the rows are in the table below"
+          />
+          <Metric
+            label="Difference"
+            value={money(summary.data.difference)}
+            noActionReason="Eligible ITC less claimed in books; each mismatched row is in the table below"
+          />
+          <Metric
+            label="Matched"
+            value={String(summary.data.counts?.matched ?? 0)}
+            noActionReason="Count of rows in the table below with status matched"
+          />
         </div>
       )}
 

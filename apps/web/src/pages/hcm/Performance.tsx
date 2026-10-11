@@ -9,7 +9,17 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, date, titleCase } from '../../lib/api.js';
+import { date, titleCase } from '../../lib/api.js';
+import {
+  hcmApi,
+  type CalibrationDecision,
+  type HrEmployeeRow,
+  type OneOnOne,
+  type PipRow,
+  type ReviewAssignment,
+  type ReviewCycle,
+} from '../../lib/hcmApi.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip, Tabs } from '../../components/ui.js';
 import { CreateModal, messageOf, NewButton, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 
@@ -26,15 +36,10 @@ const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'succession', label: 'Succession' },
 ];
 
-interface EmploymentOption {
-  id: string;
-  person: { fullName: string };
-}
-
 function useEmployments() {
   return useQuery({
     queryKey: ['performance-employments'],
-    queryFn: () => api.get<EmploymentOption[]>('/hr/employments?status=Active'),
+    queryFn: () => hcmApi.hr.employees('Active'),
   });
 }
 
@@ -47,7 +52,7 @@ function EmploymentSelect({
   label: string;
   value: string;
   onChange: (v: string) => void;
-  options: EmploymentOption[];
+  options: HrEmployeeRow[];
 }) {
   return (
     <SelectInput
@@ -55,7 +60,7 @@ function EmploymentSelect({
       value={value as never}
       onChange={onChange as never}
       placeholder="Choose a person…"
-      options={options.map((o) => ({ value: o.id, label: o.person.fullName }))}
+      options={options.map((o) => ({ value: o.id, label: o.fullName }))}
       required
     />
   );
@@ -86,17 +91,6 @@ export function Performance() {
 // Cycles
 // ---------------------------------------------------------------------------
 
-interface ReviewCycle {
-  id: string;
-  recordCode: string;
-  name: string;
-  kind: string;
-  periodLabel: string;
-  phase: string;
-  startsOn: string;
-  endsOn: string;
-}
-
 const PHASE_TONE: Record<string, 'neutral' | 'warn' | 'good'> = {
   self: 'neutral',
   manager: 'neutral',
@@ -118,14 +112,60 @@ function CyclesTab() {
 
   const cycles = useQuery({
     queryKey: ['performance-cycles'],
-    queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles'),
+    queryFn: () => hcmApi.performance.cycles.list(),
   });
 
   const advance = useMutation({
-    mutationFn: ({ id, phase }: { id: string; phase: string }) =>
-      api.post(`/hcm/performance/review-cycles/${id}/phase`, { phase }),
+    mutationFn: ({ id, phase }: { id: string; phase: string }) => hcmApi.performance.cycles.advance(id, phase),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['performance-cycles'] }),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<ReviewCycle>> = [
+    {
+      id: 'cycle',
+      header: 'Cycle',
+      sortValue: (c) => c.name,
+      cell: (c) => (
+        <>
+          {c.name}
+          <p className="mono text-2xs text-ink-500">{c.recordCode}</p>
+        </>
+      ),
+    },
+    { id: 'kind', header: 'Kind', sortValue: (c) => c.kind, cell: (c) => titleCase(c.kind) },
+    { id: 'period', header: 'Period', sortValue: (c) => c.periodLabel, cell: (c) => c.periodLabel },
+    {
+      id: 'phase',
+      header: 'Phase',
+      sortValue: (c) => c.phase,
+      cell: (c) => <StatusChip status={c.phase} tone={PHASE_TONE[c.phase] ?? 'neutral'} />,
+    },
+    {
+      id: 'dates',
+      header: 'Dates',
+      sortValue: (c) => c.startsOn,
+      cell: (c) => (
+        <span className="text-2xs text-ink-400">
+          {date(c.startsOn)} – {date(c.endsOn)}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (c) =>
+        NEXT_PHASE[c.phase] && (
+          <button
+            className="btn text-2xs"
+            disabled={advance.isPending}
+            onClick={() => advance.mutate({ id: c.id, phase: NEXT_PHASE[c.phase]! })}
+          >
+            Advance to {NEXT_PHASE[c.phase]}
+          </button>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -133,54 +173,16 @@ function CyclesTab() {
       subtitle="Each cycle moves self -> manager -> calibration -> closed, one phase at a time. Calibration only opens once every assignment for the cycle has been submitted."
       actions={<NewButton label="New cycle" onClick={() => setOpen(true)} />}
     >
-      {cycles.isLoading && <Loading />}
-      {cycles.error && <ErrorBox error={cycles.error} />}
-      {cycles.data && cycles.data.length === 0 && (
-        <EmptyState message="No review cycles yet." hint="Open one to start collecting self and manager reviews." />
-      )}
-      {cycles.data && cycles.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Cycle</th>
-              <th>Kind</th>
-              <th>Period</th>
-              <th>Phase</th>
-              <th>Dates</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {cycles.data.map((c) => (
-              <tr key={c.id}>
-                <td>
-                  {c.name}
-                  <p className="mono text-2xs text-ink-500">{c.recordCode}</p>
-                </td>
-                <td>{titleCase(c.kind)}</td>
-                <td>{c.periodLabel}</td>
-                <td>
-                  <StatusChip status={c.phase} tone={PHASE_TONE[c.phase] ?? 'neutral'} />
-                </td>
-                <td className="text-2xs text-ink-400">
-                  {date(c.startsOn)} – {date(c.endsOn)}
-                </td>
-                <td className="text-right">
-                  {NEXT_PHASE[c.phase] && (
-                    <button
-                      className="btn text-2xs"
-                      disabled={advance.isPending}
-                      onClick={() => advance.mutate({ id: c.id, phase: NEXT_PHASE[c.phase]! })}
-                    >
-                      Advance to {NEXT_PHASE[c.phase]}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Review cycles"
+        columns={columns}
+        rows={cycles.data ?? []}
+        rowKey={(c) => c.id}
+        loading={cycles.isLoading}
+        error={cycles.error}
+        emptyMessage="No review cycles yet."
+        emptyHint="Open one to start collecting self and manager reviews."
+      />
       {advance.error && <ErrorBox error={advance.error} />}
 
       <CreateModal
@@ -189,7 +191,7 @@ function CyclesTab() {
         onClose={() => setOpen(false)}
         invalidate={[['performance-cycles']]}
         onSubmit={() =>
-          api.post('/hcm/performance/review-cycles', {
+          hcmApi.performance.cycles.create({
             name: form.name,
             kind: form.kind,
             periodLabel: form.periodLabel,
@@ -245,23 +247,12 @@ function CyclesTab() {
 // Assignments
 // ---------------------------------------------------------------------------
 
-interface ReviewAssignment {
-  id: string;
-  cycleId: string;
-  employmentRelationshipId: string;
-  reviewerEmploymentRelationshipId: string;
-  kind: string;
-  status: string;
-  response: { comments: string | null } | null;
-}
-
 function AssignmentsTab() {
-  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const employments = useEmployments();
   const cycles = useQuery({
     queryKey: ['performance-cycles'],
-    queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles'),
+    queryFn: () => hcmApi.performance.cycles.list(),
   });
   const [form, setForm] = useState({
     cycleId: '',
@@ -272,13 +263,32 @@ function AssignmentsTab() {
 
   const assignments = useQuery({
     queryKey: ['performance-assignments', form.cycleId],
-    queryFn: () =>
-      api.get<ReviewAssignment[]>(
-        `/hcm/performance/review-assignments${form.cycleId ? `?cycleId=${form.cycleId}` : ''}`,
-      ),
+    queryFn: () => hcmApi.performance.assignments.list(form.cycleId),
   });
 
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
+
+  const columns: ReadonlyArray<DataTableColumn<ReviewAssignment>> = [
+    {
+      id: 'subject',
+      header: 'Subject',
+      sortValue: (a) => byId.get(a.employmentRelationshipId),
+      cell: (a) => byId.get(a.employmentRelationshipId) ?? a.employmentRelationshipId,
+    },
+    {
+      id: 'reviewer',
+      header: 'Reviewer',
+      sortValue: (a) => byId.get(a.reviewerEmploymentRelationshipId),
+      cell: (a) => byId.get(a.reviewerEmploymentRelationshipId) ?? a.reviewerEmploymentRelationshipId,
+    },
+    { id: 'kind', header: 'Kind', sortValue: (a) => a.kind, cell: (a) => <StatusChip status={a.kind} /> },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (a) => a.status,
+      cell: (a) => <StatusChip status={a.status} tone={a.status === 'submitted' ? 'good' : 'neutral'} />,
+    },
+  ];
 
   return (
     <Card
@@ -295,35 +305,15 @@ function AssignmentsTab() {
           options={(cycles.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
         />
       </div>
-      {assignments.isLoading && <Loading />}
-      {assignments.error && <ErrorBox error={assignments.error} />}
-      {assignments.data && assignments.data.length === 0 && <EmptyState message="No review assignments yet." />}
-      {assignments.data && assignments.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Subject</th>
-              <th>Reviewer</th>
-              <th>Kind</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {assignments.data.map((a) => (
-              <tr key={a.id}>
-                <td>{byId.get(a.employmentRelationshipId) ?? a.employmentRelationshipId}</td>
-                <td>{byId.get(a.reviewerEmploymentRelationshipId) ?? a.reviewerEmploymentRelationshipId}</td>
-                <td>
-                  <StatusChip status={a.kind} />
-                </td>
-                <td>
-                  <StatusChip status={a.status} tone={a.status === 'submitted' ? 'good' : 'neutral'} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Review assignments"
+        columns={columns}
+        rows={assignments.data ?? []}
+        rowKey={(a) => a.id}
+        loading={assignments.isLoading}
+        error={assignments.error}
+        emptyMessage="No review assignments yet."
+      />
 
       <CreateModal
         open={open}
@@ -331,7 +321,7 @@ function AssignmentsTab() {
         onClose={() => setOpen(false)}
         invalidate={[['performance-assignments', form.cycleId]]}
         onSubmit={() =>
-          api.post('/hcm/performance/review-assignments', {
+          hcmApi.performance.assignments.create({
             cycleId: form.cycleId,
             employmentRelationshipId: form.employmentRelationshipId,
             reviewerEmploymentRelationshipId: form.reviewerEmploymentRelationshipId,
@@ -385,24 +375,12 @@ function AssignmentsTab() {
 // Calibration
 // ---------------------------------------------------------------------------
 
-interface CalibrationSession {
-  id: string;
-  cycleId: string;
-  status: string;
-  decisions: Array<{
-    employmentRelationshipId: string;
-    rating: string;
-    potential: string;
-    promotionRecommended?: boolean;
-  }> | null;
-}
-
 function CalibrationTab() {
   const qc = useQueryClient();
   const employments = useEmployments();
   const cycles = useQuery({
     queryKey: ['performance-cycles'],
-    queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles'),
+    queryFn: () => hcmApi.performance.cycles.list(),
   });
   const [cycleId, setCycleId] = useState('');
   const [openForm, setOpenForm] = useState(false);
@@ -416,15 +394,14 @@ function CalibrationTab() {
 
   const sessions = useQuery({
     queryKey: ['performance-calibrations', cycleId],
-    queryFn: () =>
-      api.get<CalibrationSession[]>(`/hcm/performance/calibrations${cycleId ? `?cycleId=${cycleId}` : ''}`),
+    queryFn: () => hcmApi.performance.calibrations.list(cycleId),
   });
 
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   const openSession = useMutation({
     mutationFn: () =>
-      api.post('/hcm/performance/calibrations', {
+      hcmApi.performance.calibrations.open({
         cycleId,
         participants: [{ employmentRelationshipId: participantId }],
       }),
@@ -436,23 +413,38 @@ function CalibrationTab() {
 
   const recordDecision = useMutation({
     mutationFn: (sessionId: string) =>
-      api.patch(`/hcm/performance/calibrations/${sessionId}`, {
-        decisions: [
-          {
-            employmentRelationshipId: decisionEmp,
-            rating: decisionForm.rating,
-            potential: decisionForm.potential,
-            promotionRecommended: decisionForm.promotionRecommended,
-          },
-        ],
-      }),
+      hcmApi.performance.calibrations.recordDecisions(sessionId, [
+        {
+          employmentRelationshipId: decisionEmp,
+          rating: decisionForm.rating,
+          potential: decisionForm.potential,
+          promotionRecommended: decisionForm.promotionRecommended,
+        },
+      ]),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['performance-calibrations', cycleId] }),
   });
 
   const close = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/performance/calibrations/${id}/close`),
+    mutationFn: (id: string) => hcmApi.performance.calibrations.close(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['performance-calibrations', cycleId] }),
   });
+
+  const decisionColumns: ReadonlyArray<DataTableColumn<CalibrationDecision>> = [
+    {
+      id: 'person',
+      header: 'Person',
+      sortValue: (d) => byId.get(d.employmentRelationshipId),
+      cell: (d) => byId.get(d.employmentRelationshipId) ?? d.employmentRelationshipId,
+    },
+    { id: 'rating', header: 'Rating', sortValue: (d) => d.rating, cell: (d) => d.rating },
+    { id: 'potential', header: 'Potential', sortValue: (d) => d.potential, cell: (d) => titleCase(d.potential) },
+    {
+      id: 'promotion',
+      header: 'Promotion',
+      sortValue: (d) => d.promotionRecommended ?? false,
+      cell: (d) => (d.promotionRecommended ? 'Yes' : '—'),
+    },
+  ];
 
   return (
     <Card
@@ -486,26 +478,13 @@ function CalibrationTab() {
             )}
           </div>
           {s.decisions && s.decisions.length > 0 && (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Person</th>
-                  <th>Rating</th>
-                  <th>Potential</th>
-                  <th>Promotion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {s.decisions.map((d) => (
-                  <tr key={d.employmentRelationshipId}>
-                    <td>{byId.get(d.employmentRelationshipId) ?? d.employmentRelationshipId}</td>
-                    <td>{d.rating}</td>
-                    <td>{titleCase(d.potential)}</td>
-                    <td>{d.promotionRecommended ? 'Yes' : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <DataTable
+              caption="Calibration decisions for this session"
+              columns={decisionColumns}
+              rows={s.decisions}
+              rowKey={(d) => d.employmentRelationshipId}
+              emptyMessage="No decisions recorded."
+            />
           )}
           {s.status === 'open' && employments.data && (
             <div className="mt-3 flex flex-wrap items-end gap-2">
@@ -580,15 +559,6 @@ function CalibrationTab() {
 // 9-box
 // ---------------------------------------------------------------------------
 
-interface NineBoxCell {
-  employmentRelationshipId: string;
-  rating: string;
-  potential: string;
-  row: number;
-  col: number;
-  label: string;
-}
-
 const NINE_BOX_ROWS = ['High potential', 'Medium potential', 'Low potential'];
 const NINE_BOX_COLS = ['Low performance', 'Medium performance', 'High performance'];
 
@@ -596,17 +566,17 @@ function NineBoxTab() {
   const employments = useEmployments();
   const cycles = useQuery({
     queryKey: ['performance-cycles'],
-    queryFn: () => api.get<ReviewCycle[]>('/hcm/performance/review-cycles'),
+    queryFn: () => hcmApi.performance.cycles.list(),
   });
   const [cycleId, setCycleId] = useState('');
 
   const grid = useQuery({
     queryKey: ['performance-ninebox', cycleId],
-    queryFn: () => api.get<NineBoxCell[]>(`/hcm/performance/nine-box?cycleId=${cycleId}`),
+    queryFn: () => hcmApi.performance.nineBox(cycleId),
     enabled: !!cycleId,
   });
 
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   return (
     <Card
@@ -660,18 +630,7 @@ function NineBoxTab() {
 // Feedback
 // ---------------------------------------------------------------------------
 
-interface FeedbackRow {
-  id: string;
-  fromEmploymentRelationshipId: string;
-  toEmploymentRelationshipId: string;
-  kind: string;
-  message: string;
-  visibility: string;
-  createdAt: string;
-}
-
 function FeedbackTab() {
-  const qc = useQueryClient();
   const employments = useEmployments();
   const [open, setOpen] = useState(false);
   const [employmentRelationshipId, setEmploymentRelationshipId] = useState('');
@@ -685,13 +644,10 @@ function FeedbackTab() {
 
   const feedback = useQuery({
     queryKey: ['performance-feedback', employmentRelationshipId],
-    queryFn: () =>
-      api.get<FeedbackRow[]>(
-        `/hcm/performance/feedback${employmentRelationshipId ? `?employmentRelationshipId=${employmentRelationshipId}` : ''}`,
-      ),
+    queryFn: () => hcmApi.performance.feedback.list(employmentRelationshipId),
   });
 
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   return (
     <Card
@@ -737,7 +693,7 @@ function FeedbackTab() {
         title="Give feedback"
         onClose={() => setOpen(false)}
         invalidate={[['performance-feedback', employmentRelationshipId]]}
-        onSubmit={() => api.post('/hcm/performance/feedback', form)}
+        onSubmit={() => hcmApi.performance.feedback.give(form)}
       >
         {employments.data && (
           <>
@@ -788,14 +744,6 @@ function FeedbackTab() {
 // 1:1s
 // ---------------------------------------------------------------------------
 
-interface OneOnOne {
-  id: string;
-  managerEmploymentRelationshipId: string;
-  reportEmploymentRelationshipId: string;
-  scheduledAt: string;
-  status: string;
-}
-
 function OneOnOnesTab() {
   const qc = useQueryClient();
   const employments = useEmployments();
@@ -809,15 +757,47 @@ function OneOnOnesTab() {
 
   const oneOnOnes = useQuery({
     queryKey: ['performance-1on1s', reportId],
-    queryFn: () =>
-      api.get<OneOnOne[]>(`/hcm/performance/one-on-ones${reportId ? `?employmentRelationshipId=${reportId}` : ''}`),
+    queryFn: () => hcmApi.performance.oneOnOnes.list(reportId),
   });
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   const complete = useMutation({
-    mutationFn: (id: string) => api.patch(`/hcm/performance/one-on-ones/${id}`, { status: 'completed' }),
+    mutationFn: (id: string) => hcmApi.performance.oneOnOnes.complete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['performance-1on1s', reportId] }),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<OneOnOne>> = [
+    {
+      id: 'manager',
+      header: 'Manager',
+      sortValue: (o) => byId.get(o.managerEmploymentRelationshipId),
+      cell: (o) => byId.get(o.managerEmploymentRelationshipId) ?? o.managerEmploymentRelationshipId,
+    },
+    {
+      id: 'report',
+      header: 'Report',
+      sortValue: (o) => byId.get(o.reportEmploymentRelationshipId),
+      cell: (o) => byId.get(o.reportEmploymentRelationshipId) ?? o.reportEmploymentRelationshipId,
+    },
+    { id: 'when', header: 'When', sortValue: (o) => o.scheduledAt, cell: (o) => date(o.scheduledAt) },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (o) => o.status,
+      cell: (o) => <StatusChip status={o.status} tone={o.status === 'completed' ? 'good' : 'neutral'} />,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (o) =>
+        o.status === 'scheduled' && (
+          <button className="btn text-2xs" onClick={() => complete.mutate(o.id)}>
+            Mark completed
+          </button>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -830,48 +810,22 @@ function OneOnOnesTab() {
           <EmploymentSelect label="Report" value={reportId} onChange={setReportId} options={employments.data} />
         )}
       </div>
-      {oneOnOnes.isLoading && <Loading />}
-      {oneOnOnes.error && <ErrorBox error={oneOnOnes.error} />}
-      {oneOnOnes.data && oneOnOnes.data.length === 0 && <EmptyState message="No 1:1s scheduled yet." />}
-      {oneOnOnes.data && oneOnOnes.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Manager</th>
-              <th>Report</th>
-              <th>When</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {oneOnOnes.data.map((o) => (
-              <tr key={o.id}>
-                <td>{byId.get(o.managerEmploymentRelationshipId) ?? o.managerEmploymentRelationshipId}</td>
-                <td>{byId.get(o.reportEmploymentRelationshipId) ?? o.reportEmploymentRelationshipId}</td>
-                <td>{date(o.scheduledAt)}</td>
-                <td>
-                  <StatusChip status={o.status} tone={o.status === 'completed' ? 'good' : 'neutral'} />
-                </td>
-                <td className="text-right">
-                  {o.status === 'scheduled' && (
-                    <button className="btn text-2xs" onClick={() => complete.mutate(o.id)}>
-                      Mark completed
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="One-on-one meetings"
+        columns={columns}
+        rows={oneOnOnes.data ?? []}
+        rowKey={(o) => o.id}
+        loading={oneOnOnes.isLoading}
+        error={oneOnOnes.error}
+        emptyMessage="No one-on-ones scheduled."
+      />
 
       <CreateModal
         open={open}
         title="Schedule a 1:1"
         onClose={() => setOpen(false)}
         invalidate={[['performance-1on1s', reportId]]}
-        onSubmit={() => api.post('/hcm/performance/one-on-ones', form)}
+        onSubmit={() => hcmApi.performance.oneOnOnes.schedule(form)}
       >
         {employments.data && (
           <>
@@ -905,14 +859,6 @@ function OneOnOnesTab() {
 // PIPs
 // ---------------------------------------------------------------------------
 
-interface PipRow {
-  id: string;
-  employmentRelationshipId: string;
-  startsOn: string;
-  endsOn: string;
-  outcome: string;
-}
-
 const PIP_TONE: Record<string, 'neutral' | 'good' | 'bad' | 'warn'> = {
   open: 'warn',
   successful: 'good',
@@ -932,15 +878,58 @@ function PipsTab() {
     objective: '',
   });
 
-  const pips = useQuery({ queryKey: ['performance-pips'], queryFn: () => api.get<PipRow[]>('/hcm/performance/pips') });
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const pips = useQuery({ queryKey: ['performance-pips'], queryFn: () => hcmApi.performance.pips.list() });
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   const close = useMutation({
-    mutationFn: ({ id, outcome }: { id: string; outcome: string }) =>
-      api.post(`/hcm/performance/pips/${id}/close`, { outcome }),
+    mutationFn: ({ id, outcome }: { id: string; outcome: string }) => hcmApi.performance.pips.close(id, outcome),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['performance-pips'] }),
     onError: (e: unknown) => alert(messageOf(e)),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<PipRow>> = [
+    {
+      id: 'person',
+      header: 'Person',
+      sortValue: (p) => byId.get(p.employmentRelationshipId),
+      cell: (p) => byId.get(p.employmentRelationshipId) ?? p.employmentRelationshipId,
+    },
+    {
+      id: 'window',
+      header: 'Window',
+      sortValue: (p) => p.startsOn,
+      cell: (p) => (
+        <span className="text-2xs text-ink-400">
+          {date(p.startsOn)} – {date(p.endsOn)}
+        </span>
+      ),
+    },
+    {
+      id: 'outcome',
+      header: 'Outcome',
+      sortValue: (p) => p.outcome,
+      cell: (p) => <StatusChip status={p.outcome} tone={PIP_TONE[p.outcome]} />,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (p) =>
+        p.outcome === 'open' && (
+          <div className="flex justify-end gap-1">
+            <button className="btn text-2xs" onClick={() => close.mutate({ id: p.id, outcome: 'successful' })}>
+              Successful
+            </button>
+            <button className="btn text-2xs" onClick={() => close.mutate({ id: p.id, outcome: 'extended' })}>
+              Extend
+            </button>
+            <button className="btn text-2xs" onClick={() => close.mutate({ id: p.id, outcome: 'exited' })}>
+              Exit
+            </button>
+          </div>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -948,54 +937,16 @@ function PipsTab() {
       subtitle="Performance Improvement Plans. Closing one needs a decider who is not the person it is about."
       actions={<NewButton label="Open a PIP" onClick={() => setOpen(true)} />}
     >
-      {pips.isLoading && <Loading />}
-      {pips.error && <ErrorBox error={pips.error} />}
-      {pips.data && pips.data.length === 0 && (
-        <EmptyState message="No PIPs open." hint="A true and reassuring state, not a gap." />
-      )}
-      {pips.data && pips.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Person</th>
-              <th>Window</th>
-              <th>Outcome</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {pips.data.map((p) => (
-              <tr key={p.id}>
-                <td>{byId.get(p.employmentRelationshipId) ?? p.employmentRelationshipId}</td>
-                <td className="text-2xs text-ink-400">
-                  {date(p.startsOn)} – {date(p.endsOn)}
-                </td>
-                <td>
-                  <StatusChip status={p.outcome} tone={PIP_TONE[p.outcome]} />
-                </td>
-                <td className="text-right">
-                  {p.outcome === 'open' && (
-                    <div className="flex justify-end gap-1">
-                      <button
-                        className="btn text-2xs"
-                        onClick={() => close.mutate({ id: p.id, outcome: 'successful' })}
-                      >
-                        Successful
-                      </button>
-                      <button className="btn text-2xs" onClick={() => close.mutate({ id: p.id, outcome: 'extended' })}>
-                        Extend
-                      </button>
-                      <button className="btn text-2xs" onClick={() => close.mutate({ id: p.id, outcome: 'exited' })}>
-                        Exit
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Performance improvement plans"
+        columns={columns}
+        rows={pips.data ?? []}
+        rowKey={(p) => p.id}
+        loading={pips.isLoading}
+        error={pips.error}
+        emptyMessage="No PIPs open."
+        emptyHint="A true and reassuring state, not a gap."
+      />
 
       <CreateModal
         open={open}
@@ -1003,7 +954,7 @@ function PipsTab() {
         onClose={() => setOpen(false)}
         invalidate={[['performance-pips']]}
         onSubmit={() =>
-          api.post('/hcm/performance/pips', {
+          hcmApi.performance.pips.open({
             employmentRelationshipId: form.employmentRelationshipId,
             managerEmploymentRelationshipId: form.managerEmploymentRelationshipId || undefined,
             startsOn: form.startsOn,
@@ -1059,23 +1010,16 @@ function PipsTab() {
 // Succession
 // ---------------------------------------------------------------------------
 
-interface SuccessionPlan {
-  id: string;
-  positionTitle: string;
-  successors: Array<{ employmentRelationshipId: string; readiness: string }>;
-}
-
 function SuccessionTab() {
-  const qc = useQueryClient();
   const employments = useEmployments();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ positionTitle: '', employmentRelationshipId: '', readiness: 'now' as string });
 
   const plans = useQuery({
     queryKey: ['performance-succession'],
-    queryFn: () => api.get<SuccessionPlan[]>('/hcm/performance/succession-plans'),
+    queryFn: () => hcmApi.performance.succession.list(),
   });
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   return (
     <Card
@@ -1109,7 +1053,7 @@ function SuccessionTab() {
         onClose={() => setOpen(false)}
         invalidate={[['performance-succession']]}
         onSubmit={() =>
-          api.post('/hcm/performance/succession-plans', {
+          hcmApi.performance.succession.create({
             positionTitle: form.positionTitle,
             successors: [{ employmentRelationshipId: form.employmentRelationshipId, readiness: form.readiness }],
           })

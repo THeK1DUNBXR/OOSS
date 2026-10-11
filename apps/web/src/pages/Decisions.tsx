@@ -20,6 +20,7 @@ import {
   PageHeader,
   StatusChip,
 } from '../components/ui.js';
+import { NOT_MEASURED } from '../lib/words.js';
 import { NewButton } from '../components/forms.js';
 import { NewDecision } from '../components/createForms.js';
 
@@ -74,7 +75,7 @@ export function Decisions() {
         />
         <Metric
           label="Calibration sample"
-          value={calibration?.sampleSize ?? 0}
+          value={calibration ? calibration.sampleSize : NOT_MEASURED}
           sub="Decisions with both a stated confidence and a realised outcome"
           drillTo="/command/decisions"
         />

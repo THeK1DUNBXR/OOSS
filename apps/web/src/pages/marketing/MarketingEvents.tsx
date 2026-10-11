@@ -16,8 +16,11 @@ import {
   REGISTRATION_STATUS_LABELS,
   type MarketingEventKind,
   type MarketingEventStatus,
+  type MarketingEventView,
+  type RegistrationView,
 } from '@kaizen/shared';
 import { api, date, dateTime, money, titleCase } from '../../lib/api.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import {
   useMarketingEvents,
   useMarketingEvent,
@@ -39,7 +42,6 @@ import {
 } from '../../lib/marketingApi.js';
 import {
   Card,
-  EmptyState,
   ErrorBox,
   Field,
   Loading,
@@ -59,6 +61,71 @@ const DIVISIONS = [
   { value: 'shared', label: 'Shared' },
 ];
 
+// The name cell keeps its own link to the detail page, so the list needs no row action: a button
+// around a link would nest interactive content.
+const EVENT_COLUMNS: ReadonlyArray<DataTableColumn<MarketingEventView>> = [
+  {
+    id: 'event',
+    header: 'Event',
+    cell: (e) => (
+      <>
+        <Link to={`/marketing/events/${e.id}`} className="text-xs font-medium text-ink-100 hover:text-accent-soft">
+          {e.name}
+        </Link>
+        <p className="text-2xs text-ink-500">
+          <RecordCode code={e.recordCode} />
+        </p>
+      </>
+    ),
+    sortValue: (e) => e.name,
+  },
+  {
+    id: 'kind',
+    header: 'Kind',
+    cell: (e) => MARKETING_EVENT_KIND_LABELS[e.kind] ?? titleCase(e.kind),
+    cellClassName: 'text-xs text-ink-300',
+    sortValue: (e) => MARKETING_EVENT_KIND_LABELS[e.kind] ?? titleCase(e.kind),
+  },
+  {
+    id: 'division',
+    header: 'Division',
+    cell: (e) => (
+      <span className={`chip border-div-${e.division}/40 text-div-${e.division}`}>{titleCase(e.division)}</span>
+    ),
+    sortValue: (e) => titleCase(e.division),
+  },
+  {
+    id: 'when',
+    header: 'When',
+    cell: (e) => date(e.startAt),
+    cellClassName: 'text-2xs text-ink-400',
+    sortValue: (e) => e.startAt,
+  },
+  {
+    id: 'registered',
+    header: 'Registered / attended',
+    align: 'right',
+    cell: (e) => (
+      <>
+        {e.registeredCount}
+        {e.capacity ? ` / ${e.capacity}` : ''} · {e.attendedCount} attended
+      </>
+    ),
+    sortValue: (e) => e.registeredCount,
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (e) => (
+      <StatusChip
+        status={e.status}
+        tone={e.status === 'completed' ? 'good' : e.status === 'cancelled' ? 'bad' : 'neutral'}
+      />
+    ),
+    sortValue: (e) => e.status,
+  },
+];
+
 export function MarketingEvents() {
   const { can } = useSession();
   const [creating, setCreating] = useState(false);
@@ -76,63 +143,16 @@ export function MarketingEvents() {
         actions={can('marketing_events:C') && <NewButton label="New event" onClick={() => setCreating(true)} />}
       />
 
-      {items.length === 0 ? (
-        <Card>
-          <EmptyState
-            message="No events yet."
-            hint="An event's registrations feed straight into leads on completion."
-          />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Event</th>
-                <th>Kind</th>
-                <th>Division</th>
-                <th>When</th>
-                <th className="text-right">Registered / attended</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((e) => (
-                <tr key={e.id}>
-                  <td>
-                    <Link
-                      to={`/marketing/events/${e.id}`}
-                      className="text-xs font-medium text-ink-100 hover:text-accent-soft"
-                    >
-                      {e.name}
-                    </Link>
-                    <p className="text-2xs text-ink-500">
-                      <RecordCode code={e.recordCode} />
-                    </p>
-                  </td>
-                  <td className="text-xs text-ink-300">{MARKETING_EVENT_KIND_LABELS[e.kind] ?? titleCase(e.kind)}</td>
-                  <td>
-                    <span className={`chip border-div-${e.division}/40 text-div-${e.division}`}>
-                      {titleCase(e.division)}
-                    </span>
-                  </td>
-                  <td className="text-2xs text-ink-400">{date(e.startAt)}</td>
-                  <td className="text-right tabular-nums text-xs">
-                    {e.registeredCount}
-                    {e.capacity ? ` / ${e.capacity}` : ''} · {e.attendedCount} attended
-                  </td>
-                  <td>
-                    <StatusChip
-                      status={e.status}
-                      tone={e.status === 'completed' ? 'good' : e.status === 'cancelled' ? 'bad' : 'neutral'}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card bodyClassName="p-0">
+        <DataTable
+          caption="Events"
+          columns={EVENT_COLUMNS}
+          rows={items}
+          rowKey={(e) => e.id}
+          emptyMessage="No events yet."
+          emptyHint="An event's registrations feed straight into leads on completion."
+        />
+      </Card>
 
       <CreateEventModal open={creating} onClose={() => setCreating(false)} />
     </div>
@@ -268,6 +288,94 @@ export function MarketingEventDetail() {
   const items = registrations.data?.items ?? [];
   const pct = e.capacity ? Math.min(100, Math.round((e.registeredCount / e.capacity) * 100)) : null;
 
+  // The row actions close over the mutations, so these columns are built inside the component.
+  const registrationColumns: ReadonlyArray<DataTableColumn<RegistrationView>> = [
+    {
+      id: 'person',
+      header: 'Person',
+      cell: (r) => (
+        <>
+          {r.personName}
+          {r.leadRecordCode && <span className="ml-1.5 mono text-2xs text-ink-500">{r.leadRecordCode}</span>}
+        </>
+      ),
+      cellClassName: 'text-xs text-ink-100',
+      sortValue: (r) => r.personName,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (r) => (
+        <StatusChip
+          status={r.status}
+          tone={
+            r.status === 'attended' ? 'good' : r.status === 'no_show' || r.status === 'cancelled' ? 'bad' : 'neutral'
+          }
+        />
+      ),
+      sortValue: (r) => r.status,
+    },
+    {
+      id: 'followUp',
+      header: 'Follow-up',
+      cell: (r) => (
+        <label className="flex items-center gap-1.5 text-2xs text-ink-400">
+          <input
+            type="checkbox"
+            checked={r.followUpDone}
+            onChange={(ev) => {
+              const note = ev.target.checked ? (prompt('Follow-up note (optional)') ?? undefined) : undefined;
+              followUp.mutate(
+                { id: r.id, done: ev.target.checked, note },
+                { onError: (err) => setError(messageOf(err)) },
+              );
+            }}
+          />
+          done
+        </label>
+      ),
+      sortValue: (r) => r.followUpDone,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (r) => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          {r.status === 'registered' && (
+            <button
+              className="btn-quiet btn-sm"
+              onClick={() => confirm.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
+            >
+              Confirm
+            </button>
+          )}
+          {(r.status === 'registered' || r.status === 'confirmed') && (
+            <>
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => checkIn.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
+              >
+                Check in
+              </button>
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => noShow.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
+              >
+                No-show
+              </button>
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => cancelReg.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div>
       <PageHeader
@@ -339,15 +447,19 @@ export function MarketingEventDetail() {
         <Metric
           label="Status"
           value={<StatusChip status={e.status} tone={e.status === 'completed' ? 'good' : 'neutral'} />}
-          noActionReason="the state machine drives this"
+          noActionReason="A workflow state rather than a count, so there is no list behind it"
         />
         <Metric
           label="Registered"
           value={e.registeredCount}
           sub={e.capacity ? `of ${e.capacity} seats` : 'no capacity limit'}
-          noActionReason="see the table below"
+          noActionReason="Counted from the registrations listed below"
         />
-        <Metric label="Attended" value={e.attendedCount} noActionReason="see the table below" />
+        <Metric
+          label="Attended"
+          value={e.attendedCount}
+          noActionReason="Counted from the registrations listed below, by attendance"
+        />
         <Metric
           label="Cost per attendee"
           value={e.costPerAttendee === null ? '—' : money(e.costPerAttendee)}
@@ -390,96 +502,13 @@ export function MarketingEventDetail() {
               )
             }
           >
-            {items.length === 0 ? (
-              <EmptyState message="Nobody has registered yet." />
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Person</th>
-                    <th>Status</th>
-                    <th>Follow-up</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((r) => (
-                    <tr key={r.id}>
-                      <td className="text-xs text-ink-100">
-                        {r.personName}
-                        {r.leadRecordCode && (
-                          <span className="ml-1.5 mono text-2xs text-ink-500">{r.leadRecordCode}</span>
-                        )}
-                      </td>
-                      <td>
-                        <StatusChip
-                          status={r.status}
-                          tone={
-                            r.status === 'attended'
-                              ? 'good'
-                              : r.status === 'no_show' || r.status === 'cancelled'
-                                ? 'bad'
-                                : 'neutral'
-                          }
-                        />
-                      </td>
-                      <td>
-                        <label className="flex items-center gap-1.5 text-2xs text-ink-400">
-                          <input
-                            type="checkbox"
-                            checked={r.followUpDone}
-                            onChange={(ev) => {
-                              const note = ev.target.checked
-                                ? (prompt('Follow-up note (optional)') ?? undefined)
-                                : undefined;
-                              followUp.mutate(
-                                { id: r.id, done: ev.target.checked, note },
-                                { onError: (err) => setError(messageOf(err)) },
-                              );
-                            }}
-                          />
-                          done
-                        </label>
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          {r.status === 'registered' && (
-                            <button
-                              className="btn-quiet btn-sm"
-                              onClick={() => confirm.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
-                            >
-                              Confirm
-                            </button>
-                          )}
-                          {(r.status === 'registered' || r.status === 'confirmed') && (
-                            <>
-                              <button
-                                className="btn-quiet btn-sm"
-                                onClick={() => checkIn.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
-                              >
-                                Check in
-                              </button>
-                              <button
-                                className="btn-quiet btn-sm"
-                                onClick={() => noShow.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
-                              >
-                                No-show
-                              </button>
-                              <button
-                                className="btn-quiet btn-sm"
-                                onClick={() => cancelReg.mutate(r.id, { onError: (err) => setError(messageOf(err)) })}
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            <DataTable
+              caption="Event registrations"
+              columns={registrationColumns}
+              rows={items}
+              rowKey={(r) => r.id}
+              emptyMessage="Nobody has registered yet."
+            />
           </Card>
         </div>
 

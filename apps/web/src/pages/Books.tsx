@@ -28,6 +28,7 @@ import {
   StatusChip,
   Withheld,
 } from '../components/ui.js';
+import { NOT_MEASURED } from '../lib/words.js';
 import { NewButton } from '../components/forms.js';
 import {
   NewAsset,
@@ -176,6 +177,7 @@ export function Ledger() {
               value={a.balance === null ? <Withheld reason="no_permission" /> : money(a.balance)}
               sub={`${titleCase(a.accountType)}${a.displayReference ? ` · ${a.displayReference}` : ''}`}
               tone={(a.balance ?? 0) < 0 ? 'bad' : 'neutral'}
+              noActionReason="The postings that move this balance are in the transaction table below"
             />
           ))}
         </div>
@@ -389,16 +391,12 @@ export function Payables() {
       />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Metric
-          label="Open bills"
-          value={open.length}
-          noActionReason="Review the bill list below to decide which payments to schedule."
-        />
+        <Metric label="Open bills" value={open.length} noActionReason="Counted from the supplier bills listed below" />
         <Metric
           label="Outstanding"
           value={amountsVisible ? money(outstanding) : <Withheld reason="no_permission" />}
           tone={outstanding > 0 ? 'warn' : 'good'}
-          noActionReason="Review the ledger and payment queue before approving more vendor actions."
+          noActionReason="Summed from the supplier bills listed below, less what has been paid"
         />
         <Metric
           label="Overdue"
@@ -589,20 +587,36 @@ export function Budget() {
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric
           label="Planned"
-          value={data?.budgetTotal === null ? <Withheld reason="no_permission" /> : money(data?.budgetTotal ?? 0)}
-          noActionReason="Check the budget line list to adjust the planned amount before the next period."
+          value={
+            !data ? (
+              NOT_MEASURED
+            ) : data.budgetTotal === null ? (
+              <Withheld reason="no_permission" />
+            ) : (
+              money(data.budgetTotal ?? 0)
+            )
+          }
+          noActionReason="Summed from the budget lines listed below"
         />
         <Metric
           label="Spent"
-          value={data?.actualTotal === null ? <Withheld reason="no_permission" /> : money(data?.actualTotal ?? 0)}
-          noActionReason="Review the line variance table to explain or correct the spend."
+          value={
+            !data ? (
+              NOT_MEASURED
+            ) : data.actualTotal === null ? (
+              <Withheld reason="no_permission" />
+            ) : (
+              money(data.actualTotal ?? 0)
+            )
+          }
+          noActionReason="Summed from the actuals on the budget lines listed below"
         />
         <Metric
           label="Lines over plan"
           value={over.length}
           tone={over.length > 0 ? 'warn' : 'good'}
           sub={over.length ? 'Including anything spent with no line to sit against' : undefined}
-          noActionReason="Review the over-plan lines below to decide whether to rebalance or approve exceptions."
+          noActionReason="The budget lines listed below whose spend is over plan"
         />
       </div>
 
@@ -724,19 +738,19 @@ export function Assets() {
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric
           label="Assets"
-          value={assets.data?.length ?? 0}
-          noActionReason="Use the asset table below to review the full portfolio and follow up on any actions."
+          value={assets.data ? assets.data.length : NOT_MEASURED}
+          noActionReason="Counted from the asset table below"
         />
         <Metric
           label="Carrying value"
           value={visible ? money(bookValue) : <Withheld reason="no_permission" />}
-          noActionReason="Review the asset register below to confirm valuation and upkeep decisions."
+          noActionReason="Summed from the asset register below"
         />
         <Metric
           label="Still owed"
           value={loans.data?.every((l) => l.outstanding !== null) ? money(owed) : <Withheld reason="no_permission" />}
           tone={owed > 0 ? 'warn' : 'good'}
-          noActionReason="Review the borrowing schedule to decide whether refinancing or repayment is needed."
+          noActionReason="Summed from the loans in the schedule below"
         />
       </div>
 

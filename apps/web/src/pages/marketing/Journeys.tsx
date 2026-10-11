@@ -24,8 +24,9 @@ import {
   type JourneyStatus,
   type JourneyStep,
   type JourneyTriggerKind,
+  type JourneyView,
 } from '@kaizen/shared';
-import { api, dateTime } from '../../lib/api.js';
+import { dateTime } from '../../lib/api.js';
 import {
   Card,
   EmptyState,
@@ -37,8 +38,10 @@ import {
   RecordCode,
   StatusChip,
 } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { CreateModal, messageOf, Row, SelectInput, TextInput } from '../../components/forms.js';
 import {
+  crmSearch,
   useActivateJourney,
   useAudiences,
   useCreateJourney,
@@ -66,6 +69,42 @@ const RUN_TONE: Record<JourneyRunStatus, 'neutral' | 'good' | 'accent'> = {
   exited: 'neutral',
 };
 
+const JOURNEY_COLUMNS: ReadonlyArray<DataTableColumn<JourneyView>> = [
+  { id: 'code', header: 'Code', cell: (j) => <RecordCode code={j.recordCode} />, sortValue: (j) => j.recordCode },
+  {
+    id: 'name',
+    header: 'Name',
+    cell: (j) => <span className="text-xs font-medium text-ink-100">{j.name}</span>,
+    sortValue: (j) => j.name,
+  },
+  {
+    id: 'trigger',
+    header: 'Trigger',
+    cell: (j) => <span className="text-xs text-ink-300">{JOURNEY_TRIGGER_KIND_LABELS[j.triggerKind]}</span>,
+    sortValue: (j) => JOURNEY_TRIGGER_KIND_LABELS[j.triggerKind],
+  },
+  {
+    id: 'steps',
+    header: 'Steps',
+    align: 'right',
+    cell: (j) => <span className="text-xs">{j.steps.length}</span>,
+    sortValue: (j) => j.steps.length,
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (j) => <StatusChip status={JOURNEY_STATUS_LABELS[j.status]} tone={STATUS_TONE[j.status]} />,
+    sortValue: (j) => JOURNEY_STATUS_LABELS[j.status],
+  },
+  {
+    id: 'activeRuns',
+    header: 'Active runs',
+    align: 'right',
+    cell: (j) => <span className="text-xs">{j.activeRunCount}</span>,
+    sortValue: (j) => j.activeRunCount,
+  },
+];
+
 export function Journeys() {
   const { can } = useSession();
   const [createOpen, setCreateOpen] = useState(false);
@@ -88,44 +127,18 @@ export function Journeys() {
         }
       />
 
-      {isLoading ? (
-        <Loading />
-      ) : !data?.items.length ? (
-        <Card>
-          <EmptyState message="No journeys yet." hint="A journey enrols on a trigger and sends its steps in order." />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Trigger</th>
-                <th className="text-right">Steps</th>
-                <th>Status</th>
-                <th className="text-right">Active runs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items.map((j) => (
-                <tr key={j.id} className="cursor-pointer" onClick={() => setOpenId(j.id)}>
-                  <td>
-                    <RecordCode code={j.recordCode} />
-                  </td>
-                  <td className="text-xs font-medium text-ink-100">{j.name}</td>
-                  <td className="text-xs text-ink-300">{JOURNEY_TRIGGER_KIND_LABELS[j.triggerKind]}</td>
-                  <td className="text-right tabular-nums text-xs">{j.steps.length}</td>
-                  <td>
-                    <StatusChip status={JOURNEY_STATUS_LABELS[j.status]} tone={STATUS_TONE[j.status]} />
-                  </td>
-                  <td className="text-right tabular-nums text-xs">{j.activeRunCount}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card bodyClassName="p-0">
+        <DataTable
+          caption="Journeys"
+          columns={JOURNEY_COLUMNS}
+          rows={data?.items ?? []}
+          rowKey={(j) => j.id}
+          loading={isLoading}
+          emptyMessage="No journeys yet."
+          emptyHint="A journey enrols on a trigger and sends its steps in order."
+          rowAction={{ label: (j) => `Open journey ${j.name}`, onActivate: (j) => setOpenId(j.id) }}
+        />
+      </Card>
 
       <NewJourney open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(id) => setOpenId(id)} />
       {openId && <JourneyDrawer id={openId} onClose={() => setOpenId(null)} />}
@@ -402,10 +415,7 @@ function JourneyDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
   const { data: personSearch, isFetching: searchingPeople } = useQuery({
     queryKey: ['mkt', 'journey-enrol-search', enrolQuery],
-    queryFn: () =>
-      api.get<{ items: Array<{ id: string; recordCode: string; fullName: string }> }>(
-        `/crm/people?q=${encodeURIComponent(enrolQuery)}&pageSize=10`,
-      ),
+    queryFn: () => crmSearch.people(enrolQuery),
     enabled: enrolQuery.length >= 2,
   });
 

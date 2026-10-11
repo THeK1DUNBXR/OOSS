@@ -80,30 +80,45 @@ const NO_REFRESH_PATHS = new Set([...AUTH_PATHS, '/auth/refresh', '/auth/logout'
  * the first tab has already rotated, rather than racing it (the server's grace
  * window covers the case where no lock is available).
  */
-let refreshing: Promise<boolean> | null = null;
+let refreshing: Promise<RefreshOutcome> | null = null;
 
-async function refreshOnce(): Promise<boolean> {
+/**
+ * `ended` means the server rejected the refresh cookie: the session is over
+ * and the user must sign in. `unavailable` means the renewal did not complete
+ * for a reason that says nothing about the cookie (a dropped connection, a
+ * 5xx while the database is down). Only `ended` may sign the user out; the
+ * old code collapsed both into `false`, so a blip signed people out.
+ */
+export type RefreshOutcome = 'renewed' | 'ended' | 'unavailable';
+
+async function refreshOnce(): Promise<RefreshOutcome> {
+  let res: Response;
   try {
     // The cookie is sent by the browser; the body carries nothing the server reads.
-    const res = await fetch('/api/auth/refresh', {
+    res = await fetch('/api/auth/refresh', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     });
-    if (!res.ok) return false;
+  } catch {
+    return 'unavailable';
+  }
+  if (res.status === 401) return 'ended';
+  if (!res.ok) return 'unavailable';
+  try {
     const issued = (await res.json()) as SessionIssued;
     setToken(issued.token);
-    return true;
+    return 'renewed';
   } catch {
-    return false;
+    return 'unavailable';
   }
 }
 
-function refreshAccessToken(): Promise<boolean> {
+function refreshAccessToken(): Promise<RefreshOutcome> {
   if (refreshing) return refreshing;
   const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
-  const viaLock = async (): Promise<boolean> =>
+  const viaLock = async (): Promise<RefreshOutcome> =>
     locks ? await locks.request('kz-refresh', refreshOnce) : await refreshOnce();
   const pending = viaLock();
   refreshing = pending.finally(() => {
@@ -112,8 +127,27 @@ function refreshAccessToken(): Promise<boolean> {
   return refreshing;
 }
 
+/**
+ * The one place a session is ended from a 401. The token is dropped and the
+ * app returns to sign-in with one line. Renewal failures that are not a
+ * rejected cookie never reach here.
+ */
+function endSession() {
+  setToken(null);
+  unauthorizedListener?.();
+}
+
+/** Returned when the cookie may still be valid but the server could not be asked. */
+function renewalUnavailable(): ApiClientError {
+  return new ApiClientError({
+    status: 503,
+    code: 'SESSION_RENEWAL_UNAVAILABLE',
+    message: 'Could not reach the server to renew your session. Try again.',
+  });
+}
+
 /** Renews the access token from the refresh cookie, for a page load that has none in memory. */
-export function restoreSession(): Promise<boolean> {
+export function restoreSession(): Promise<RefreshOutcome> {
   return refreshAccessToken();
 }
 
@@ -125,8 +159,35 @@ export function restoreSession(): Promise<boolean> {
 export async function fetchWithRenewal(path: string, build: () => RequestInit): Promise<Response> {
   const first = await fetch(`/api${path}`, build());
   if (first.status !== 401 || NO_REFRESH_PATHS.has(path)) return first;
-  if (!(await refreshAccessToken())) return first;
-  return fetch(`/api${path}`, build());
+  const outcome = await refreshAccessToken();
+  if (outcome === 'unavailable') {
+    const { status, code, message } = renewalUnavailable();
+    return new Response(JSON.stringify({ error: { code, message } }), { status });
+  }
+  if (outcome === 'ended') {
+    endSession();
+    return first;
+  }
+  const second = await fetch(`/api${path}`, build());
+  // A 401 after a successful renewal means the token itself is refused; the
+  // request() path already treats that as the end of the session.
+  if (second.status === 401) endSession();
+  return second;
+}
+
+/**
+ * Whether TanStack Query should resend a failed query. A 401 is never resent:
+ * request() has already tried the refresh cookie, and a second query attempt
+ * would present it again and fire the sign-out a second time. Only failures
+ * that can succeed on a second try are retried: a dropped connection, a 5xx,
+ * 408 and 429.
+ */
+export function shouldRetryQuery(failureCount: number, error: unknown): boolean {
+  if (failureCount >= 1) return false;
+  if (error instanceof ApiClientError) {
+    return error.status >= 500 || error.status === 408 || error.status === 429;
+  }
+  return true;
 }
 
 async function request<T>(path: string, init?: RequestInit, tokenOverride?: string, retried = false): Promise<T> {
@@ -149,12 +210,11 @@ async function request<T>(path: string, init?: RequestInit, tokenOverride?: stri
     // The access token lives fifteen minutes. An expired one is renewed once
     // and the request retried, so the user sees a slow page at most, not a sign-in.
     if (res.status === 401 && !retried && tokenOverride === undefined && !NO_REFRESH_PATHS.has(path)) {
-      if (await refreshAccessToken()) return request<T>(path, init, undefined, true);
+      const outcome = await refreshAccessToken();
+      if (outcome === 'renewed') return request<T>(path, init, undefined, true);
+      if (outcome === 'unavailable') throw renewalUnavailable();
     }
-    if (res.status === 401 && !AUTH_PATHS.has(path)) {
-      setToken(null);
-      unauthorizedListener?.();
-    }
+    if (res.status === 401 && !AUTH_PATHS.has(path)) endSession();
     const err = body?.error ?? {};
     throw new ApiClientError({
       status: res.status,

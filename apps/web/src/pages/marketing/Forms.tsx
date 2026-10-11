@@ -26,10 +26,13 @@ import {
   type AudienceRuleOp,
   type ChannelKey,
   type FormSubmissionStatus,
+  type FormSubmissionView,
   type FormView,
+  type ShortLinkView,
+  type TouchpointView,
   type Vertical,
 } from '@kaizen/shared';
-import { date, dateTime, titleCase } from '../../lib/api.js';
+import { date, dateTime, money, titleCase } from '../../lib/api.js';
 import {
   useForms,
   useForm,
@@ -54,6 +57,7 @@ import {
   useCreateLink,
   useCampaigns,
   mk,
+  type ScoreRuleView,
 } from '../../lib/marketingApi.js';
 import {
   Card,
@@ -78,6 +82,7 @@ import {
   NewButton,
 } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 
 type FormTab = 'forms' | 'submissions' | 'touchpoints' | 'scoreRules' | 'links';
 
@@ -156,6 +161,94 @@ function FormsTab({ onEdit, onEmbed }: { onEdit: (f: FormView) => void; onEmbed:
   if (forms.error) return <ErrorBox error={forms.error} />;
   const items = forms.data?.items ?? [];
 
+  // The row actions close over the mutations and the viewer's permissions, so the columns live here.
+  const formColumns: ReadonlyArray<DataTableColumn<FormView>> = [
+    {
+      id: 'name',
+      header: 'Name',
+      cell: (f) => f.name,
+      cellClassName: 'text-xs font-medium text-ink-100',
+      sortValue: (f) => f.name,
+    },
+    {
+      id: 'slug',
+      header: 'Slug',
+      cell: (f) => f.slug,
+      cellClassName: 'mono text-2xs text-ink-400',
+      sortValue: (f) => f.slug,
+    },
+    {
+      id: 'vertical',
+      header: 'Vertical',
+      cell: (f) => titleCase(f.vertical),
+      cellClassName: 'text-xs text-ink-300',
+      sortValue: (f) => titleCase(f.vertical),
+    },
+    {
+      id: 'submissions',
+      header: 'Submissions',
+      align: 'right',
+      cell: (f) => f.submissionCount,
+      cellClassName: 'text-xs',
+      sortValue: (f) => f.submissionCount,
+    },
+    // Conversion is not yet computed per form: a dash is the honest value here, not a zero.
+    { id: 'conversion', header: 'Conversion', align: 'right', cell: () => '—', cellClassName: 'text-xs' },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (f) => <StatusChip status={f.active ? 'published' : 'unpublished'} tone={f.active ? 'good' : 'neutral'} />,
+      sortValue: (f) => f.active,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (f) => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          {can('marketing_forms:E') && (
+            <button className="btn-quiet btn-sm" onClick={() => onEdit(f)}>
+              Edit
+            </button>
+          )}
+          <button className="btn-quiet btn-sm" onClick={() => onEmbed(f)}>
+            Embed
+          </button>
+          {can('marketing_forms:E') &&
+            (f.active ? (
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => unpublish.mutate(f.id, { onError: (e) => setError(messageOf(e)) })}
+                disabled={unpublish.isPending}
+              >
+                Unpublish
+              </button>
+            ) : (
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => publish.mutate(f.id, { onError: (e) => setError(messageOf(e)) })}
+                disabled={publish.isPending}
+              >
+                Publish
+              </button>
+            ))}
+          {can('marketing_forms:E') && (
+            <button
+              className="btn-quiet btn-sm"
+              onClick={() => {
+                if (confirm("Rotate this form's public token? The old embed URL stops working immediately.")) {
+                  rotate.mutate(f.id, { onError: (e) => setError(messageOf(e)) });
+                }
+              }}
+              disabled={rotate.isPending}
+            >
+              Rotate token
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <Card bodyClassName={items.length ? 'p-0 overflow-x-auto' : 'p-4'}>
       {error && (
@@ -163,82 +256,14 @@ function FormsTab({ onEdit, onEmbed }: { onEdit: (f: FormView) => void; onEmbed:
           {error}
         </p>
       )}
-      {items.length === 0 ? (
-        <EmptyState message="No forms yet." hint="A form captures a submission, which becomes a lead once converted." />
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Slug</th>
-              <th>Vertical</th>
-              <th className="text-right">Submissions</th>
-              <th className="text-right">Conversion</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((f) => (
-              <tr key={f.id}>
-                <td className="text-xs font-medium text-ink-100">{f.name}</td>
-                <td className="mono text-2xs text-ink-400">{f.slug}</td>
-                <td className="text-xs text-ink-300">{titleCase(f.vertical)}</td>
-                <td className="text-right tabular-nums text-xs">{f.submissionCount}</td>
-                <td className="text-right tabular-nums text-xs">—</td>
-                <td>
-                  <StatusChip status={f.active ? 'published' : 'unpublished'} tone={f.active ? 'good' : 'neutral'} />
-                </td>
-                <td>
-                  <div className="flex flex-wrap justify-end gap-1.5">
-                    {can('marketing_forms:E') && (
-                      <button className="btn-quiet btn-sm" onClick={() => onEdit(f)}>
-                        Edit
-                      </button>
-                    )}
-                    <button className="btn-quiet btn-sm" onClick={() => onEmbed(f)}>
-                      Embed
-                    </button>
-                    {can('marketing_forms:E') &&
-                      (f.active ? (
-                        <button
-                          className="btn-quiet btn-sm"
-                          onClick={() => unpublish.mutate(f.id, { onError: (e) => setError(messageOf(e)) })}
-                          disabled={unpublish.isPending}
-                        >
-                          Unpublish
-                        </button>
-                      ) : (
-                        <button
-                          className="btn-quiet btn-sm"
-                          onClick={() => publish.mutate(f.id, { onError: (e) => setError(messageOf(e)) })}
-                          disabled={publish.isPending}
-                        >
-                          Publish
-                        </button>
-                      ))}
-                    {can('marketing_forms:E') && (
-                      <button
-                        className="btn-quiet btn-sm"
-                        onClick={() => {
-                          if (
-                            confirm("Rotate this form's public token? The old embed URL stops working immediately.")
-                          ) {
-                            rotate.mutate(f.id, { onError: (e) => setError(messageOf(e)) });
-                          }
-                        }}
-                        disabled={rotate.isPending}
-                      >
-                        Rotate token
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Forms"
+        columns={formColumns}
+        rows={items}
+        rowKey={(f) => f.id}
+        emptyMessage="No forms yet."
+        emptyHint="A form captures a submission, which becomes a lead once converted."
+      />
     </Card>
   );
 }
@@ -504,6 +529,78 @@ function SubmissionsTab() {
   const converted = items.filter((s) => s.status === 'converted').length;
   const conversionRate = items.length ? Math.round((converted / items.length) * 100) : null;
 
+  const submissionColumns: ReadonlyArray<DataTableColumn<FormSubmissionView>> = [
+    {
+      id: 'received',
+      header: 'Received',
+      cell: (s) => dateTime(s.receivedAt),
+      cellClassName: 'text-2xs text-ink-400',
+      sortValue: (s) => s.receivedAt,
+    },
+    {
+      id: 'person',
+      header: 'Person',
+      cell: (s) => s.personName ?? '—',
+      cellClassName: 'text-xs text-ink-200',
+      sortValue: (s) => s.personName,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (s) => (
+        <StatusChip
+          status={s.status}
+          tone={s.status === 'converted' ? 'good' : s.status === 'spam' || s.status === 'rejected' ? 'bad' : 'neutral'}
+        />
+      ),
+      sortValue: (s) => s.status,
+    },
+    {
+      id: 'lead',
+      header: 'Lead',
+      cell: (s) => s.leadRecordCode ?? '—',
+      cellClassName: 'mono text-2xs text-ink-400',
+      sortValue: (s) => s.leadRecordCode,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (s) => (
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <button className="btn-quiet btn-sm" onClick={() => setViewing(s.payload as Record<string, unknown>)}>
+            Payload
+          </button>
+          {can('marketing_forms:E') && s.status === 'received' && (
+            <>
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => convert.mutate(s.id, { onError: (e) => setError(messageOf(e)) })}
+                disabled={convert.isPending}
+              >
+                Convert
+              </button>
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => {
+                  const reason = prompt('Reason for rejecting this submission?');
+                  if (reason) reject.mutate({ id: s.id, reason }, { onError: (e) => setError(messageOf(e)) });
+                }}
+              >
+                Reject
+              </button>
+              <button
+                className="btn-quiet btn-sm"
+                onClick={() => spam.mutate(s.id, { onError: (e) => setError(messageOf(e)) })}
+              >
+                Spam
+              </button>
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div>
       <Row>
@@ -543,86 +640,20 @@ function SubmissionsTab() {
         <Loading />
       ) : submissions.error ? (
         <ErrorBox error={submissions.error} />
-      ) : items.length === 0 ? (
-        <Card>
-          <EmptyState message="No submissions match." />
-        </Card>
       ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
+        <Card bodyClassName="p-0">
           {error && (
             <p className="m-3 rounded border-l-2 border-band-critical bg-band-critical/10 px-3 py-2 text-sm text-band-critical">
               {error}
             </p>
           )}
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Received</th>
-                <th>Person</th>
-                <th>Status</th>
-                <th>Lead</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((s) => (
-                <tr key={s.id}>
-                  <td className="text-2xs text-ink-400">{dateTime(s.receivedAt)}</td>
-                  <td className="text-xs text-ink-200">{s.personName ?? '—'}</td>
-                  <td>
-                    <StatusChip
-                      status={s.status}
-                      tone={
-                        s.status === 'converted'
-                          ? 'good'
-                          : s.status === 'spam' || s.status === 'rejected'
-                            ? 'bad'
-                            : 'neutral'
-                      }
-                    />
-                  </td>
-                  <td className="mono text-2xs text-ink-400">{s.leadRecordCode ?? '—'}</td>
-                  <td>
-                    <div className="flex flex-wrap justify-end gap-1.5">
-                      <button
-                        className="btn-quiet btn-sm"
-                        onClick={() => setViewing(s.payload as Record<string, unknown>)}
-                      >
-                        Payload
-                      </button>
-                      {can('marketing_forms:E') && s.status === 'received' && (
-                        <>
-                          <button
-                            className="btn-quiet btn-sm"
-                            onClick={() => convert.mutate(s.id, { onError: (e) => setError(messageOf(e)) })}
-                            disabled={convert.isPending}
-                          >
-                            Convert
-                          </button>
-                          <button
-                            className="btn-quiet btn-sm"
-                            onClick={() => {
-                              const reason = prompt('Reason for rejecting this submission?');
-                              if (reason)
-                                reject.mutate({ id: s.id, reason }, { onError: (e) => setError(messageOf(e)) });
-                            }}
-                          >
-                            Reject
-                          </button>
-                          <button
-                            className="btn-quiet btn-sm"
-                            onClick={() => spam.mutate(s.id, { onError: (e) => setError(messageOf(e)) })}
-                          >
-                            Spam
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            caption="Form submissions"
+            columns={submissionColumns}
+            rows={items}
+            rowKey={(s) => s.id}
+            emptyMessage="No submissions match."
+          />
         </Card>
       )}
 
@@ -647,6 +678,53 @@ function SubmissionsTab() {
 // ---------------------------------------------------------------------------
 // Touchpoints
 // ---------------------------------------------------------------------------
+
+const TOUCHPOINT_COLUMNS: ReadonlyArray<DataTableColumn<TouchpointView>> = [
+  {
+    id: 'when',
+    header: 'When',
+    cell: (t) => dateTime(t.occurredAt),
+    cellClassName: 'text-2xs text-ink-400',
+    sortValue: (t) => t.occurredAt,
+  },
+  {
+    id: 'who',
+    header: 'Who',
+    cell: (t) => t.personName ?? t.organizationName ?? t.leadRecordCode ?? '—',
+    cellClassName: 'text-xs text-ink-200',
+    sortValue: (t) => t.personName ?? t.organizationName ?? t.leadRecordCode,
+  },
+  {
+    id: 'campaign',
+    header: 'Campaign',
+    cell: (t) => t.campaignName ?? '—',
+    cellClassName: 'text-xs text-ink-300',
+    sortValue: (t) => t.campaignName,
+  },
+  {
+    id: 'channel',
+    header: 'Channel',
+    cell: (t) => CHANNEL_KEY_LABELS[t.channelKey] ?? t.channelKey,
+    cellClassName: 'text-2xs text-ink-400',
+    sortValue: (t) => CHANNEL_KEY_LABELS[t.channelKey] ?? t.channelKey,
+  },
+  {
+    id: 'kind',
+    header: 'Kind',
+    cell: (t) => (
+      <span className="chip border-ink-700 text-ink-400">{TOUCH_KIND_LABELS[t.touchKind] ?? t.touchKind}</span>
+    ),
+    sortValue: (t) => TOUCH_KIND_LABELS[t.touchKind] ?? t.touchKind,
+  },
+  {
+    id: 'cost',
+    header: 'Cost',
+    align: 'right',
+    cell: (t) => money(t.cost),
+    cellClassName: 'text-xs',
+    sortValue: (t) => t.cost,
+  },
+];
 
 function TouchpointsTab() {
   const [personId, setPersonId] = useState('');
@@ -691,45 +769,16 @@ function TouchpointsTab() {
         <Loading />
       ) : touchpoints.error ? (
         <ErrorBox error={touchpoints.error} />
-      ) : items.length === 0 ? (
-        <Card>
-          <EmptyState
-            message="No touchpoints match these filters."
-            hint="Every click, form, call and walk-in is logged here, immutably."
-          />
-        </Card>
       ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Who</th>
-                <th>Campaign</th>
-                <th>Channel</th>
-                <th>Kind</th>
-                <th className="text-right">Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((t) => (
-                <tr key={t.id}>
-                  <td className="text-2xs text-ink-400">{dateTime(t.occurredAt)}</td>
-                  <td className="text-xs text-ink-200">
-                    {t.personName ?? t.organizationName ?? t.leadRecordCode ?? '—'}
-                  </td>
-                  <td className="text-xs text-ink-300">{t.campaignName ?? '—'}</td>
-                  <td className="text-2xs text-ink-400">{CHANNEL_KEY_LABELS[t.channelKey] ?? t.channelKey}</td>
-                  <td>
-                    <span className="chip border-ink-700 text-ink-400">
-                      {TOUCH_KIND_LABELS[t.touchKind] ?? t.touchKind}
-                    </span>
-                  </td>
-                  <td className="text-right tabular-nums text-xs">{t.cost ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <Card bodyClassName="p-0">
+          <DataTable
+            caption="Touchpoints"
+            columns={TOUCHPOINT_COLUMNS}
+            rows={items}
+            rowKey={(t) => t.id}
+            emptyMessage="No touchpoints match these filters."
+            emptyHint="Every click, form, call and walk-in is logged here, immutably."
+          />
         </Card>
       )}
     </div>
@@ -765,6 +814,66 @@ function ScoreRulesTab() {
   if (rules.isLoading) return <Loading />;
   if (rules.error) return <ErrorBox error={rules.error} />;
   const items = rules.data ?? [];
+
+  const ruleColumns: ReadonlyArray<DataTableColumn<ScoreRuleView>> = [
+    {
+      id: 'order',
+      header: 'Order',
+      cell: (r) => r.order,
+      cellClassName: 'tabular-nums text-xs',
+      sortValue: (r) => r.order,
+    },
+    {
+      id: 'name',
+      header: 'Name',
+      cell: (r) => r.name,
+      cellClassName: 'text-xs text-ink-100',
+      sortValue: (r) => r.name,
+    },
+    {
+      id: 'condition',
+      header: 'Condition',
+      cell: (r) => JSON.stringify(r.condition),
+      cellClassName: 'mono text-2xs text-ink-400',
+    },
+    {
+      id: 'points',
+      header: 'Points',
+      align: 'right',
+      cell: (r) => r.points,
+      cellClassName: 'text-xs',
+      sortValue: (r) => r.points,
+    },
+    {
+      id: 'active',
+      header: 'Active',
+      cell: (r) => <StatusChip status={r.active ? 'active' : 'inactive'} tone={r.active ? 'good' : 'neutral'} />,
+      sortValue: (r) => r.active,
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (r) =>
+        can('marketing_forms:D') && (
+          <div className="flex justify-end gap-1.5">
+            <button
+              className="btn-quiet btn-sm"
+              onClick={() => toggle.mutate({ id: r.id, active: !r.active }, { onError: (e) => setError(messageOf(e)) })}
+            >
+              {r.active ? 'Deactivate' : 'Activate'}
+            </button>
+            <button
+              className="btn-quiet btn-sm"
+              onClick={() => {
+                if (confirm(`Delete rule "${r.name}"?`)) del.mutate(r.id, { onError: (e) => setError(messageOf(e)) });
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        ),
+    },
+  ];
 
   return (
     <div>
@@ -820,65 +929,14 @@ function ScoreRulesTab() {
         </Card>
       )}
 
-      {items.length === 0 ? (
-        <Card>
-          <EmptyState
-            message="No score rules yet."
-            hint="The default set (form submitted, event attended, referral, and so on) seeds on first use."
-          />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Name</th>
-                <th>Condition</th>
-                <th className="text-right">Points</th>
-                <th>Active</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((r) => (
-                <tr key={r.id}>
-                  <td className="tabular-nums text-xs">{r.order}</td>
-                  <td className="text-xs text-ink-100">{r.name}</td>
-                  <td className="mono text-2xs text-ink-400">{JSON.stringify(r.condition)}</td>
-                  <td className="text-right tabular-nums text-xs">{r.points}</td>
-                  <td>
-                    <StatusChip status={r.active ? 'active' : 'inactive'} tone={r.active ? 'good' : 'neutral'} />
-                  </td>
-                  <td>
-                    {can('marketing_forms:D') && (
-                      <div className="flex justify-end gap-1.5">
-                        <button
-                          className="btn-quiet btn-sm"
-                          onClick={() =>
-                            toggle.mutate({ id: r.id, active: !r.active }, { onError: (e) => setError(messageOf(e)) })
-                          }
-                        >
-                          {r.active ? 'Deactivate' : 'Activate'}
-                        </button>
-                        <button
-                          className="btn-quiet btn-sm"
-                          onClick={() => {
-                            if (confirm(`Delete rule "${r.name}"?`))
-                              del.mutate(r.id, { onError: (e) => setError(messageOf(e)) });
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <DataTable
+        caption="Score rules"
+        columns={ruleColumns}
+        rows={items}
+        rowKey={(r) => r.id}
+        emptyMessage="No score rules yet."
+        emptyHint="The default set (form submitted, event attended, referral, and so on) seeds on first use."
+      />
 
       <CreateModal
         open={creating}
@@ -912,6 +970,57 @@ function ScoreRulesTab() {
 // Short links
 // ---------------------------------------------------------------------------
 
+const LINK_COLUMNS: ReadonlyArray<DataTableColumn<ShortLinkView>> = [
+  {
+    id: 'slug',
+    header: 'Slug',
+    cell: (l) => `/l/${l.slug}`,
+    cellClassName: 'mono text-xs text-ink-100',
+    sortValue: (l) => l.slug,
+  },
+  {
+    id: 'target',
+    header: 'Target',
+    cell: (l) => l.targetUrl,
+    cellClassName: 'max-w-xs truncate text-2xs text-ink-400',
+    sortValue: (l) => l.targetUrl,
+  },
+  {
+    id: 'campaign',
+    header: 'Campaign',
+    cell: (l) => l.campaignName ?? '—',
+    cellClassName: 'text-xs text-ink-300',
+    sortValue: (l) => l.campaignName,
+  },
+  {
+    id: 'channel',
+    header: 'Channel',
+    cell: (l) => (l.channelKey ? CHANNEL_KEY_LABELS[l.channelKey] : '—'),
+    cellClassName: 'text-2xs text-ink-400',
+    sortValue: (l) => (l.channelKey ? CHANNEL_KEY_LABELS[l.channelKey] : null),
+  },
+  {
+    id: 'clicks',
+    header: 'Clicks',
+    align: 'right',
+    cell: (l) => l.clickCount,
+    cellClassName: 'text-xs',
+    sortValue: (l) => l.clickCount,
+  },
+  {
+    id: 'actions',
+    header: <span className="sr-only">Actions</span>,
+    cell: (l) => (
+      <button
+        className="btn-quiet btn-sm"
+        onClick={() => copyToClipboard(`${location.origin}/api/marketing/public/l/${l.slug}`)}
+      >
+        Copy
+      </button>
+    ),
+  },
+];
+
 function LinksTab() {
   const { can } = useSession();
   const links = useLinks();
@@ -933,45 +1042,13 @@ function LinksTab() {
       <div className="mb-4 flex justify-end">
         {can('marketing_forms:C') && <NewButton label="New short link" onClick={() => setCreating(true)} />}
       </div>
-      {items.length === 0 ? (
-        <Card>
-          <EmptyState message="No short links yet." />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Slug</th>
-                <th>Target</th>
-                <th>Campaign</th>
-                <th>Channel</th>
-                <th className="text-right">Clicks</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((l) => (
-                <tr key={l.id}>
-                  <td className="mono text-xs text-ink-100">/l/{l.slug}</td>
-                  <td className="max-w-xs truncate text-2xs text-ink-400">{l.targetUrl}</td>
-                  <td className="text-xs text-ink-300">{l.campaignName ?? '—'}</td>
-                  <td className="text-2xs text-ink-400">{l.channelKey ? CHANNEL_KEY_LABELS[l.channelKey] : '—'}</td>
-                  <td className="text-right tabular-nums text-xs">{l.clickCount}</td>
-                  <td>
-                    <button
-                      className="btn-quiet btn-sm"
-                      onClick={() => copyToClipboard(`${location.origin}/api/marketing/public/l/${l.slug}`)}
-                    >
-                      Copy
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <DataTable
+        caption="Short links"
+        columns={LINK_COLUMNS}
+        rows={items}
+        rowKey={(l) => l.id}
+        emptyMessage="No short links yet."
+      />
 
       <CreateModal
         open={creating}

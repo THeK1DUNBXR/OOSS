@@ -218,3 +218,20 @@ export interface ItVendorContractSummary extends ItSummaryBase {
   expiringIn90Days: number;
   awaitingApproval: number;
 }
+
+/**
+ * Answer to a contract status change. `applied: false` means the approval gate
+ * held it and `reason` says who has to approve; the contract is returned either
+ * way so the screen can show where it stands. The API declares the same shape
+ * in `apps/api/src/domains/it/vendors.ts` (`ContractTransitionResult`) with
+ * `contract` typed loosely; this is the type the web client holds it to.
+ */
+export interface ItVendorContractTransitionResult {
+  applied: boolean;
+  contract: ItVendorContractView;
+  approvalStepId: string | null;
+  resolvedApproverRole: string | null;
+  resolutionTier: number;
+  selfDealingBarTripped: boolean;
+  reason: string;
+}

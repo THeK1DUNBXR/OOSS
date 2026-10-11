@@ -16,6 +16,9 @@ import {
   CHANNEL_KEYS,
   type CampaignStatus,
   type ChannelKey,
+  type MarketingEventView,
+  type SendView,
+  type SpendView,
 } from '@kaizen/shared';
 import {
   Card,
@@ -28,6 +31,7 @@ import {
   StatusChip,
   Tabs,
 } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { CreateModal, Row, SelectInput, TextArea, TextInput } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
 import { date, dateTime, money, titleCase } from '../../lib/api.js';
@@ -50,6 +54,7 @@ import {
   useSends,
   useSpends,
   useSubmitCampaign,
+  type CampaignApprovalView,
 } from '../../lib/marketingApi.js';
 
 type DetailTab = 'summary' | 'timeline' | 'spend' | 'leads' | 'events' | 'sends' | 'approvals';
@@ -349,6 +354,61 @@ function SpendTab({ campaignId, currency, canEdit }: { campaignId: string; curre
   if (error) return <ErrorBox error={error} />;
   const items = data?.items ?? [];
 
+  const spendColumns: ReadonlyArray<DataTableColumn<SpendView>> = [
+    {
+      id: 'date',
+      header: 'Date',
+      cell: (s) => date(s.spendDate),
+      cellClassName: 'text-xs',
+      sortValue: (s) => s.spendDate,
+    },
+    {
+      id: 'channel',
+      header: 'Channel',
+      cell: (s) => CHANNEL_KEY_LABELS[s.channelKey],
+      cellClassName: 'text-xs',
+      sortValue: (s) => CHANNEL_KEY_LABELS[s.channelKey],
+    },
+    {
+      id: 'vendor',
+      header: 'Vendor',
+      cell: (s) => s.vendorName ?? '—',
+      cellClassName: 'text-xs',
+      sortValue: (s) => s.vendorName,
+    },
+    {
+      id: 'amount',
+      header: 'Amount',
+      align: 'right',
+      cell: (s) => money(s.amount, currency),
+      cellClassName: 'text-xs',
+      sortValue: (s) => s.amount,
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      cell: (s) => (
+        <>
+          <StatusChip status={s.status} tone={s.status === 'reconciled' ? 'good' : 'neutral'} />
+          {s.status === 'recorded' && canEdit && (
+            <button
+              className="ml-2 text-2xs text-accent-soft hover:underline"
+              onClick={() => reconcile.mutate({ id: s.id, body: { transactionId: s.transactionId ?? undefined } })}
+            >
+              Reconcile
+            </button>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'description',
+      header: 'Description',
+      cell: (s) => <span title={s.description}>{s.description}</span>,
+      cellClassName: 'max-w-xs truncate text-xs text-ink-400',
+    },
+  ];
+
   return (
     <div>
       {canEdit && (
@@ -358,52 +418,15 @@ function SpendTab({ campaignId, currency, canEdit }: { campaignId: string; curre
           </button>
         </div>
       )}
-      {items.length === 0 ? (
-        <Card>
-          <EmptyState message="No spend recorded against this campaign yet." />
-        </Card>
-      ) : (
-        <Card bodyClassName="p-0 overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Channel</th>
-                <th>Vendor</th>
-                <th className="text-right">Amount</th>
-                <th>Status</th>
-                <th>Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((s) => (
-                <tr key={s.id}>
-                  <td className="text-xs">{date(s.spendDate)}</td>
-                  <td className="text-xs">{CHANNEL_KEY_LABELS[s.channelKey]}</td>
-                  <td className="text-xs">{s.vendorName ?? '—'}</td>
-                  <td className="text-right tabular-nums text-xs">{money(s.amount, currency)}</td>
-                  <td>
-                    <StatusChip status={s.status} tone={s.status === 'reconciled' ? 'good' : 'neutral'} />
-                    {s.status === 'recorded' && canEdit && (
-                      <button
-                        className="ml-2 text-2xs text-accent-soft hover:underline"
-                        onClick={() =>
-                          reconcile.mutate({ id: s.id, body: { transactionId: s.transactionId ?? undefined } })
-                        }
-                      >
-                        Reconcile
-                      </button>
-                    )}
-                  </td>
-                  <td className="max-w-xs truncate text-xs text-ink-400" title={s.description}>
-                    {s.description}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      <Card bodyClassName="p-0">
+        <DataTable
+          caption="Campaign spend"
+          columns={spendColumns}
+          rows={items}
+          rowKey={(s) => s.id}
+          emptyMessage="No spend recorded against this campaign yet."
+        />
+      </Card>
       <RecordSpendModal open={recordOpen} onClose={() => setRecordOpen(false)} campaignId={campaignId} />
     </div>
   );
@@ -458,129 +481,162 @@ function RecordSpendModal({ open, onClose, campaignId }: { open: boolean; onClos
   );
 }
 
+const EVENT_COLUMNS: ReadonlyArray<DataTableColumn<MarketingEventView>> = [
+  {
+    id: 'name',
+    header: 'Event',
+    cell: (e) => e.name,
+    cellClassName: 'text-xs font-medium text-ink-200',
+    sortValue: (e) => e.name,
+  },
+  { id: 'status', header: 'Status', cell: (e) => <StatusChip status={e.status} />, sortValue: (e) => e.status },
+  {
+    id: 'when',
+    header: 'When',
+    cell: (e) => dateTime(e.startAt),
+    cellClassName: 'text-xs text-ink-400',
+    sortValue: (e) => e.startAt,
+  },
+  {
+    id: 'registered',
+    header: 'Registered',
+    align: 'right',
+    cell: (e) => e.registeredCount,
+    cellClassName: 'text-xs',
+    sortValue: (e) => e.registeredCount,
+  },
+];
+
 function EventsTab({ campaignId }: { campaignId: string }) {
   const { data, isLoading, error } = useMarketingEvents({ campaignId });
   if (isLoading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   const items = data?.items ?? [];
-  if (items.length === 0) {
-    return (
-      <Card>
-        <EmptyState message="No events are linked to this campaign." />
-      </Card>
-    );
-  }
   return (
-    <Card bodyClassName="p-0 overflow-x-auto">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Event</th>
-            <th>Status</th>
-            <th>When</th>
-            <th className="text-right">Registered</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((e) => (
-            <tr key={e.id}>
-              <td className="text-xs font-medium text-ink-200">{e.name}</td>
-              <td>
-                <StatusChip status={e.status} />
-              </td>
-              <td className="text-xs text-ink-400">{dateTime(e.startAt)}</td>
-              <td className="text-right tabular-nums text-xs">{e.registeredCount}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <Card bodyClassName="p-0">
+      <DataTable
+        caption="Campaign events"
+        columns={EVENT_COLUMNS}
+        rows={items}
+        rowKey={(e) => e.id}
+        emptyMessage="No events are linked to this campaign."
+      />
     </Card>
   );
 }
+
+const SEND_COLUMNS: ReadonlyArray<DataTableColumn<SendView>> = [
+  {
+    id: 'channel',
+    header: 'Channel',
+    cell: (s) => CHANNEL_KEY_LABELS[s.channelKey],
+    cellClassName: 'text-xs',
+    sortValue: (s) => CHANNEL_KEY_LABELS[s.channelKey],
+  },
+  { id: 'status', header: 'Status', cell: (s) => <StatusChip status={s.status} />, sortValue: (s) => s.status },
+  {
+    id: 'recipients',
+    header: 'Recipients',
+    align: 'right',
+    cell: (s) => s.recipientCount,
+    cellClassName: 'text-xs',
+    sortValue: (s) => s.recipientCount,
+  },
+  {
+    id: 'bounce',
+    header: 'Bounce rate',
+    align: 'right',
+    cell: (s) => `${(s.bounceRate * 100).toFixed(1)}%`,
+    cellClassName: 'text-xs',
+    sortValue: (s) => s.bounceRate,
+  },
+  {
+    id: 'sent',
+    header: 'Sent',
+    cell: (s) => (s.sentAt ? dateTime(s.sentAt) : '—'),
+    cellClassName: 'text-xs text-ink-400',
+    sortValue: (s) => s.sentAt,
+  },
+];
 
 function SendsTab({ campaignId }: { campaignId: string }) {
   const { data, isLoading, error } = useSends({ campaignId });
   if (isLoading) return <Loading />;
   if (error) return <ErrorBox error={error} />;
   const items = data?.items ?? [];
-  if (items.length === 0) {
-    return (
-      <Card>
-        <EmptyState message="No sends have gone out from this campaign." />
-      </Card>
-    );
-  }
   return (
-    <Card bodyClassName="p-0 overflow-x-auto">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Channel</th>
-            <th>Status</th>
-            <th className="text-right">Recipients</th>
-            <th className="text-right">Bounce rate</th>
-            <th>Sent</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((s) => (
-            <tr key={s.id}>
-              <td className="text-xs">{CHANNEL_KEY_LABELS[s.channelKey]}</td>
-              <td>
-                <StatusChip status={s.status} />
-              </td>
-              <td className="text-right tabular-nums text-xs">{s.recipientCount}</td>
-              <td className="text-right tabular-nums text-xs">{(s.bounceRate * 100).toFixed(1)}%</td>
-              <td className="text-xs text-ink-400">{s.sentAt ? dateTime(s.sentAt) : '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <Card bodyClassName="p-0">
+      <DataTable
+        caption="Campaign sends"
+        columns={SEND_COLUMNS}
+        rows={items}
+        rowKey={(s) => s.id}
+        emptyMessage="No sends have gone out from this campaign."
+      />
     </Card>
   );
 }
 
+const APPROVAL_COLUMNS: ReadonlyArray<DataTableColumn<CampaignApprovalView>> = [
+  {
+    id: 'requestedBy',
+    header: 'Requested by',
+    cell: (a) => a.requestedByName,
+    cellClassName: 'text-xs',
+    sortValue: (a) => a.requestedByName,
+  },
+  {
+    id: 'decision',
+    header: 'Decision',
+    cell: (a) => (
+      <StatusChip
+        status={a.decision}
+        tone={a.decision === 'approved' ? 'good' : a.decision === 'rejected' ? 'bad' : 'warn'}
+      />
+    ),
+    sortValue: (a) => a.decision,
+  },
+  {
+    id: 'decidedBy',
+    header: 'Decided by',
+    cell: (a) => a.decidedByName ?? '—',
+    cellClassName: 'text-xs',
+    sortValue: (a) => a.decidedByName,
+  },
+  {
+    id: 'threshold',
+    header: 'Threshold',
+    align: 'right',
+    cell: (a) => money(a.thresholdAmount),
+    cellClassName: 'text-xs',
+    sortValue: (a) => a.thresholdAmount,
+  },
+  {
+    id: 'reason',
+    header: 'Reason',
+    cell: (a) => <span title={a.reason ?? ''}>{a.reason ?? '—'}</span>,
+    cellClassName: 'max-w-xs truncate text-xs text-ink-400',
+    sortValue: (a) => a.reason,
+  },
+  {
+    id: 'when',
+    header: 'When',
+    cell: (a) => dateTime(a.createdAt),
+    cellClassName: 'text-xs text-ink-400',
+    sortValue: (a) => a.createdAt,
+  },
+];
+
 function ApprovalsTab({ approvals }: { approvals: import('../../lib/marketingApi.js').CampaignApprovalView[] }) {
-  if (approvals.length === 0) {
-    return (
-      <Card>
-        <EmptyState message="No approval has been requested for this campaign." />
-      </Card>
-    );
-  }
   return (
-    <Card bodyClassName="p-0 overflow-x-auto">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Requested by</th>
-            <th>Decision</th>
-            <th>Decided by</th>
-            <th className="text-right">Threshold</th>
-            <th>Reason</th>
-            <th>When</th>
-          </tr>
-        </thead>
-        <tbody>
-          {approvals.map((a) => (
-            <tr key={a.id}>
-              <td className="text-xs">{a.requestedByName}</td>
-              <td>
-                <StatusChip
-                  status={a.decision}
-                  tone={a.decision === 'approved' ? 'good' : a.decision === 'rejected' ? 'bad' : 'warn'}
-                />
-              </td>
-              <td className="text-xs">{a.decidedByName ?? '—'}</td>
-              <td className="text-right tabular-nums text-xs">{money(a.thresholdAmount)}</td>
-              <td className="max-w-xs truncate text-xs text-ink-400" title={a.reason ?? ''}>
-                {a.reason ?? '—'}
-              </td>
-              <td className="text-xs text-ink-400">{dateTime(a.createdAt)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <Card bodyClassName="p-0">
+      <DataTable
+        caption="Campaign approvals"
+        columns={APPROVAL_COLUMNS}
+        rows={approvals}
+        rowKey={(a) => a.id}
+        emptyMessage="No approval has been requested for this campaign."
+      />
     </Card>
   );
 }

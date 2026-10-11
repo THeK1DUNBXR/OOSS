@@ -20,6 +20,7 @@ import {
 } from '@kaizen/shared';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader, RecordCode, StatusChip, Tabs } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import { SelectInput, TextInput } from '../../components/forms.js';
 import { messageOf } from '../../components/forms.js';
 import { useSession } from '../../lib/session.js';
@@ -35,6 +36,7 @@ import {
   type AttributionRow,
   type CampaignPerfRow,
   type ChannelPerfRow,
+  type CohortRow,
 } from '../../lib/marketingApi.js';
 import { MarketingHealthCard } from './MarketingHealthCard.js';
 
@@ -224,6 +226,76 @@ function FunnelTab({ from, to, division }: { from: string; to: string; division:
 // Channels
 // ---------------------------------------------------------------------------
 
+const CHANNEL_COLUMNS: ReadonlyArray<DataTableColumn<ChannelPerfRow>> = [
+  {
+    id: 'channel',
+    header: 'Channel',
+    cell: (r) => (
+      <span className="inline-flex items-center gap-2">
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colourFor(r.channelKey) }} />
+        {CHANNEL_KEY_LABELS[r.channelKey] ?? r.label}
+        {!r.measured && (
+          <span
+            className="chip border-ink-700 bg-ink-850 text-ink-500"
+            title="Not enough activity on this channel yet to trust the derived figures."
+          >
+            {NOT_MEASURED}
+          </span>
+        )}
+      </span>
+    ),
+    sortValue: (r) => CHANNEL_KEY_LABELS[r.channelKey] ?? r.label,
+  },
+  {
+    id: 'touchpoints',
+    header: 'Touchpoints',
+    align: 'right',
+    cell: (r) => r.touchpoints.toLocaleString('en-IN'),
+    sortValue: (r) => r.touchpoints,
+  },
+  {
+    id: 'leads',
+    header: 'Leads',
+    align: 'right',
+    cell: (r) => r.leads.toLocaleString('en-IN'),
+    sortValue: (r) => r.leads,
+  },
+  {
+    id: 'opportunities',
+    header: 'Opportunities',
+    align: 'right',
+    cell: (r) => r.opportunities.toLocaleString('en-IN'),
+    sortValue: (r) => r.opportunities,
+  },
+  { id: 'won', header: 'Won', align: 'right', cell: (r) => r.won.toLocaleString('en-IN'), sortValue: (r) => r.won },
+  { id: 'spend', header: 'Spend', align: 'right', cell: (r) => money(r.spend), sortValue: (r) => r.spend },
+  {
+    id: 'costPerLead',
+    header: 'Cost per lead',
+    align: 'right',
+    // An unmeasured channel's cost is not a zero to sort as one: it goes last with the other missing values.
+    cell: (r) =>
+      r.measured && r.costPerLead !== null ? (
+        money(r.costPerLead)
+      ) : (
+        <span className="italic text-ink-500">{NOT_MEASURED}</span>
+      ),
+    sortValue: (r) => (r.measured ? r.costPerLead : null),
+  },
+  {
+    id: 'roi',
+    header: 'ROI',
+    align: 'right',
+    cell: (r) =>
+      r.measured && r.roi !== null ? (
+        `${(r.roi * 100).toFixed(0)}%`
+      ) : (
+        <span className="italic text-ink-500">{NOT_MEASURED}</span>
+      ),
+    sortValue: (r) => (r.measured ? r.roi : null),
+  },
+];
+
 function ChannelsTab({ from, to, division }: { from: string; to: string; division: string }) {
   const { data = [], isLoading, error } = useChannelPerformance({ from: from || undefined, to: to || undefined });
 
@@ -287,66 +359,13 @@ function ChannelsTab({ from, to, division }: { from: string; to: string; divisio
       </Card>
 
       <Card title="Channel performance" bodyClassName="p-0 overflow-x-auto">
-        {rows.length === 0 ? (
-          <EmptyState message="Nothing to show yet." />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Channel</th>
-                <th className="num">Touchpoints</th>
-                <th className="num">Leads</th>
-                <th className="num">Opportunities</th>
-                <th className="num">Won</th>
-                <th className="num">Spend</th>
-                <th className="num">Cost per lead</th>
-                <th className="num">ROI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.channelKey}>
-                  <td>
-                    <span className="inline-flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ background: colourFor(r.channelKey) }}
-                      />
-                      {CHANNEL_KEY_LABELS[r.channelKey] ?? r.label}
-                      {!r.measured && (
-                        <span
-                          className="chip border-ink-700 bg-ink-850 text-ink-500"
-                          title="Not enough activity on this channel yet to trust the derived figures."
-                        >
-                          {NOT_MEASURED}
-                        </span>
-                      )}
-                    </span>
-                  </td>
-                  <td className="num">{r.touchpoints.toLocaleString('en-IN')}</td>
-                  <td className="num">{r.leads.toLocaleString('en-IN')}</td>
-                  <td className="num">{r.opportunities.toLocaleString('en-IN')}</td>
-                  <td className="num">{r.won.toLocaleString('en-IN')}</td>
-                  <td className="num">{money(r.spend)}</td>
-                  <td className="num">
-                    {r.measured && r.costPerLead !== null ? (
-                      money(r.costPerLead)
-                    ) : (
-                      <span className="italic text-ink-500">{NOT_MEASURED}</span>
-                    )}
-                  </td>
-                  <td className="num">
-                    {r.measured && r.roi !== null ? (
-                      `${(r.roi * 100).toFixed(0)}%`
-                    ) : (
-                      <span className="italic text-ink-500">{NOT_MEASURED}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Channel performance"
+          columns={CHANNEL_COLUMNS}
+          rows={rows}
+          rowKey={(r) => r.channelKey}
+          emptyMessage="Nothing to show yet."
+        />
       </Card>
     </div>
   );
@@ -356,45 +375,89 @@ function ChannelsTab({ from, to, division }: { from: string; to: string; divisio
 // Campaigns
 // ---------------------------------------------------------------------------
 
-type CampaignSortKey =
-  | 'name'
-  | 'leads'
-  | 'opportunities'
-  | 'won'
-  | 'enrolments'
-  | 'pipelineValue'
-  | 'spend'
-  | 'budgetPlanned'
-  | 'costPerLead'
-  | 'romi';
+const CAMPAIGN_COLUMNS: ReadonlyArray<DataTableColumn<CampaignPerfRow>> = [
+  {
+    id: 'name',
+    header: 'Campaign',
+    cell: (c) => (
+      <>
+        <RecordCode code={c.recordCode} to={`/marketing/campaigns/${c.campaignId}`} />
+        <p className="mt-0.5 text-2xs text-ink-400">{c.name}</p>
+      </>
+    ),
+    sortValue: (c) => c.name,
+  },
+  { id: 'status', header: 'Status', cell: (c) => <StatusChip status={c.status} /> },
+  {
+    id: 'division',
+    header: 'Division',
+    cell: (c) => DIVISION_LABELS[c.division as keyof typeof DIVISION_LABELS] ?? titleCase(c.division),
+    cellClassName: 'text-2xs text-ink-400',
+  },
+  {
+    id: 'leads',
+    header: 'Leads',
+    align: 'right',
+    cell: (c) => c.leads.toLocaleString('en-IN'),
+    sortValue: (c) => c.leads,
+  },
+  {
+    id: 'opportunities',
+    header: 'Opportunities',
+    align: 'right',
+    cell: (c) => c.opportunities.toLocaleString('en-IN'),
+    sortValue: (c) => c.opportunities,
+  },
+  { id: 'won', header: 'Won', align: 'right', cell: (c) => c.won.toLocaleString('en-IN'), sortValue: (c) => c.won },
+  {
+    id: 'enrolments',
+    header: 'Enrolments',
+    align: 'right',
+    cell: (c) => c.enrolments.toLocaleString('en-IN'),
+    sortValue: (c) => c.enrolments,
+  },
+  {
+    id: 'pipelineValue',
+    header: 'Pipeline value',
+    align: 'right',
+    cell: (c) => money(c.pipelineValue),
+    sortValue: (c) => c.pipelineValue,
+  },
+  {
+    id: 'spend',
+    header: 'Spend / budget',
+    align: 'right',
+    cell: (c) => (
+      <>
+        {money(c.spend)} <span className="text-ink-600">/ {money(c.budgetPlanned)}</span>
+      </>
+    ),
+    sortValue: (c) => c.spend,
+  },
+  {
+    id: 'costPerLead',
+    header: 'Cost per lead',
+    align: 'right',
+    cell: (c) =>
+      c.costPerLead !== null ? money(c.costPerLead) : <span className="italic text-ink-500">{NOT_MEASURED}</span>,
+    sortValue: (c) => c.costPerLead,
+  },
+  {
+    id: 'romi',
+    header: 'ROMI',
+    align: 'right',
+    cell: (c) =>
+      c.romi !== null ? `${(c.romi * 100).toFixed(0)}%` : <span className="italic text-ink-500">{NOT_MEASURED}</span>,
+    sortValue: (c) => c.romi,
+  },
+];
 
 function CampaignsTab({ from, to, division }: { from: string; to: string; division: string }) {
   const { data = [], isLoading, error } = useCampaignPerformance({ from: from || undefined, to: to || undefined });
-  const [sortKey, setSortKey] = useState<CampaignSortKey>('spend');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   if (error) return <ErrorBox error={error} />;
 
   const rows = (data as CampaignPerfRow[]).filter((r) => (division ? r.division === division : true));
-
-  const sorted = [...rows].sort((a, b) => {
-    const av = sortKey === 'name' ? a.name : (a[sortKey] ?? -Infinity);
-    const bv = sortKey === 'name' ? b.name : (b[sortKey] ?? -Infinity);
-    const cmp = typeof av === 'string' ? av.localeCompare(String(bv)) : Number(av) - Number(bv);
-    return sortDir === 'asc' ? cmp : -cmp;
-  });
-
-  const sortButton = (key: CampaignSortKey, label: string) => (
-    <button
-      className={`inline-flex items-center gap-1 hover:text-ink-100 ${sortKey === key ? 'text-ink-100' : ''}`}
-      onClick={() =>
-        sortKey === key ? setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')) : (setSortKey(key), setSortDir('desc'))
-      }
-    >
-      {label}
-      {sortKey === key && <span aria-hidden>{sortDir === 'asc' ? '▲' : '▼'}</span>}
-    </button>
-  );
 
   return (
     <Card
@@ -402,67 +465,15 @@ function CampaignsTab({ from, to, division }: { from: string; to: string; divisi
       subtitle="Targets are what the campaign was set up to hit; actuals are what has happened so far."
       bodyClassName="p-0 overflow-x-auto"
     >
-      {isLoading ? (
-        <Loading />
-      ) : sorted.length === 0 ? (
-        <EmptyState message="No campaigns in this range." />
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{sortButton('name', 'Campaign')}</th>
-              <th>Status</th>
-              <th>Division</th>
-              <th className="num">{sortButton('leads', 'Leads')}</th>
-              <th className="num">{sortButton('opportunities', 'Opportunities')}</th>
-              <th className="num">{sortButton('won', 'Won')}</th>
-              <th className="num">{sortButton('enrolments', 'Enrolments')}</th>
-              <th className="num">{sortButton('pipelineValue', 'Pipeline value')}</th>
-              <th className="num">{sortButton('spend', 'Spend / budget')}</th>
-              <th className="num">{sortButton('costPerLead', 'Cost per lead')}</th>
-              <th className="num">{sortButton('romi', 'ROMI')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((c) => (
-              <tr key={c.campaignId}>
-                <td>
-                  <RecordCode code={c.recordCode} to={`/marketing/campaigns/${c.campaignId}`} />
-                  <p className="mt-0.5 text-2xs text-ink-400">{c.name}</p>
-                </td>
-                <td>
-                  <StatusChip status={c.status} />
-                </td>
-                <td className="text-2xs text-ink-400">
-                  {DIVISION_LABELS[c.division as keyof typeof DIVISION_LABELS] ?? titleCase(c.division)}
-                </td>
-                <td className="num">{c.leads.toLocaleString('en-IN')}</td>
-                <td className="num">{c.opportunities.toLocaleString('en-IN')}</td>
-                <td className="num">{c.won.toLocaleString('en-IN')}</td>
-                <td className="num">{c.enrolments.toLocaleString('en-IN')}</td>
-                <td className="num">{money(c.pipelineValue)}</td>
-                <td className="num">
-                  {money(c.spend)} <span className="text-ink-600">/ {money(c.budgetPlanned)}</span>
-                </td>
-                <td className="num">
-                  {c.costPerLead !== null ? (
-                    money(c.costPerLead)
-                  ) : (
-                    <span className="italic text-ink-500">{NOT_MEASURED}</span>
-                  )}
-                </td>
-                <td className="num">
-                  {c.romi !== null ? (
-                    `${(c.romi * 100).toFixed(0)}%`
-                  ) : (
-                    <span className="italic text-ink-500">{NOT_MEASURED}</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Campaign performance"
+        columns={CAMPAIGN_COLUMNS}
+        rows={rows}
+        rowKey={(c) => c.campaignId}
+        loading={isLoading}
+        emptyMessage="No campaigns in this range."
+        defaultSort={{ columnId: 'spend', direction: 'desc' }}
+      />
     </Card>
   );
 }
@@ -470,6 +481,48 @@ function CampaignsTab({ from, to, division }: { from: string; to: string; divisi
 // ---------------------------------------------------------------------------
 // Attribution
 // ---------------------------------------------------------------------------
+
+const ATTRIBUTION_COLUMNS: ReadonlyArray<DataTableColumn<AttributionRow>> = [
+  {
+    id: 'campaign',
+    header: 'Campaign',
+    cell: (r) =>
+      r.campaignId ? (
+        <RecordCode code={r.campaignName} to={`/marketing/campaigns/${r.campaignId}`} />
+      ) : (
+        <span className="italic text-ink-500">{r.campaignName}</span>
+      ),
+    sortValue: (r) => r.campaignName,
+  },
+  {
+    id: 'channel',
+    header: 'Channel',
+    cell: (r) => (r.channelKey ? (CHANNEL_KEY_LABELS[r.channelKey] ?? r.channelKey) : '—'),
+    cellClassName: 'text-2xs text-ink-400',
+    sortValue: (r) => (r.channelKey ? (CHANNEL_KEY_LABELS[r.channelKey] ?? r.channelKey) : null),
+  },
+  {
+    id: 'weightedLeads',
+    header: 'Weighted leads',
+    align: 'right',
+    cell: (r) => num(r.weightedLeads),
+    sortValue: (r) => r.weightedLeads,
+  },
+  {
+    id: 'weightedWon',
+    header: 'Weighted won',
+    align: 'right',
+    cell: (r) => num(r.weightedWon),
+    sortValue: (r) => r.weightedWon,
+  },
+  {
+    id: 'weightedValue',
+    header: 'Weighted value',
+    align: 'right',
+    cell: (r) => money(r.weightedValue),
+    sortValue: (r) => r.weightedValue,
+  },
+];
 
 function AttributionTab({ from, to }: { from: string; to: string }) {
   const [model, setModel] = useState<AttributionModel>('last_touch');
@@ -553,40 +606,13 @@ function AttributionTab({ from, to }: { from: string; to: string }) {
         subtitle="Every lead that could not be tied to a campaign lands in Unattributed — it is never dropped from the total."
         bodyClassName="p-0 overflow-x-auto"
       >
-        {rows.length === 0 ? (
-          <EmptyState message="Nothing to show yet." />
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Campaign</th>
-                <th>Channel</th>
-                <th className="num">Weighted leads</th>
-                <th className="num">Weighted won</th>
-                <th className="num">Weighted value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={`${r.campaignId ?? 'unattributed'}-${r.channelKey ?? 'any'}-${i}`}>
-                  <td className={r.campaignId ? undefined : 'italic text-ink-500'}>
-                    {r.campaignId ? (
-                      <RecordCode code={r.campaignName} to={`/marketing/campaigns/${r.campaignId}`} />
-                    ) : (
-                      r.campaignName
-                    )}
-                  </td>
-                  <td className="text-2xs text-ink-400">
-                    {r.channelKey ? (CHANNEL_KEY_LABELS[r.channelKey] ?? r.channelKey) : '—'}
-                  </td>
-                  <td className="num">{num(r.weightedLeads)}</td>
-                  <td className="num">{num(r.weightedWon)}</td>
-                  <td className="num">{money(r.weightedValue)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Attribution detail"
+          columns={ATTRIBUTION_COLUMNS}
+          rows={rows}
+          rowKey={(r) => `${r.campaignId ?? 'none'}:${r.channelKey ?? 'none'}`}
+          emptyMessage="Nothing to show yet."
+        />
       </Card>
     </div>
   );
@@ -595,6 +621,38 @@ function AttributionTab({ from, to }: { from: string; to: string }) {
 // ---------------------------------------------------------------------------
 // Cohorts
 // ---------------------------------------------------------------------------
+
+const COHORT_COLUMNS: ReadonlyArray<DataTableColumn<CohortRow>> = [
+  { id: 'cohort', header: 'Cohort', cell: (c) => c.cohort, sortValue: (c) => c.cohort },
+  {
+    id: 'leads',
+    header: 'Leads',
+    align: 'right',
+    cell: (c) => c.leads.toLocaleString('en-IN'),
+    sortValue: (c) => c.leads,
+  },
+  {
+    id: 'converted',
+    header: 'Converted',
+    align: 'right',
+    cell: (c) => c.converted.toLocaleString('en-IN'),
+    sortValue: (c) => c.converted,
+  },
+  {
+    id: 'enrolled',
+    header: 'Enrolled',
+    align: 'right',
+    cell: (c) => c.enrolled.toLocaleString('en-IN'),
+    sortValue: (c) => c.enrolled,
+  },
+  {
+    id: 'rate',
+    header: 'Conversion rate',
+    align: 'right',
+    cell: (c) => (c.rate !== null ? pct(c.rate) : <span className="italic text-ink-500">{NOT_MEASURED}</span>),
+    sortValue: (c) => c.rate,
+  },
+];
 
 function CohortsTab() {
   const { data = [], isLoading, error } = useCohorts({ by: 'month' });
@@ -607,36 +665,15 @@ function CohortsTab() {
       subtitle="Everyone whose first touch fell in a given month, and how far they have gone since."
       bodyClassName="p-0 overflow-x-auto"
     >
-      {isLoading ? (
-        <Loading />
-      ) : data.length === 0 ? (
-        <EmptyState message="No cohorts to show yet." hint="A cohort appears once a month has at least one lead." />
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Cohort</th>
-              <th className="num">Leads</th>
-              <th className="num">Converted</th>
-              <th className="num">Enrolled</th>
-              <th className="num">Conversion rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((c) => (
-              <tr key={c.cohort}>
-                <td>{c.cohort}</td>
-                <td className="num">{c.leads.toLocaleString('en-IN')}</td>
-                <td className="num">{c.converted.toLocaleString('en-IN')}</td>
-                <td className="num">{c.enrolled.toLocaleString('en-IN')}</td>
-                <td className="num">
-                  {c.rate !== null ? pct(c.rate) : <span className="italic text-ink-500">{NOT_MEASURED}</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Month cohorts"
+        columns={COHORT_COLUMNS}
+        rows={data}
+        rowKey={(c) => c.cohort}
+        loading={isLoading}
+        emptyMessage="No cohorts to show yet."
+        emptyHint="A cohort appears once a month has at least one lead."
+      />
     </Card>
   );
 }

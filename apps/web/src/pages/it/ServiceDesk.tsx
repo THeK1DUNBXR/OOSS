@@ -28,6 +28,7 @@ import {
   Tabs,
 } from '../../components/ui.js';
 import { CreateModal, SelectInput, TextArea, TextInput, messageOf } from '../../components/forms.js';
+import { DataTable } from '../../components/DataTable.js';
 
 // ---------------------------------------------------------------------------
 // Types (mirrors apps/api/src/domains/it/servicedesk.ts)
@@ -166,7 +167,6 @@ function isNotFound(error: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 export function ItTickets() {
-  const navigate = useNavigate();
   const { can } = useSession();
   const [tab, setTab] = useState<Tab>('open');
   const [newOpen, setNewOpen] = useState(false);
@@ -267,45 +267,59 @@ export function ItTickets() {
         ) : (tickets.data ?? []).length === 0 ? (
           <EmptyState message="Nothing in this view." hint="Try another tab, or raise a ticket." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-ink-800 text-2xs uppercase tracking-wide text-ink-500">
-                  <th className="py-2 pr-3">Priority</th>
-                  <th className="py-2 pr-3">Ticket</th>
-                  <th className="py-2 pr-3">Requester</th>
-                  <th className="py-2 pr-3">Assignee</th>
-                  <th className="py-2 pr-3">Status</th>
-                  <th className="py-2 pr-3">Raised</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(tickets.data ?? []).map((t) => (
-                  <tr
-                    key={t.id}
-                    className="cursor-pointer border-b border-ink-850/60 hover:bg-ink-900/60"
-                    onClick={() => navigate(`/it/tickets/${t.id}`)}
-                  >
-                    <td className="py-2 pr-3">
-                      <PriorityChip priority={t.priority} />
-                    </td>
-                    <td className="py-2 pr-3">
-                      <div className="text-ink-100">{t.subject}</div>
-                      <div className="text-2xs text-ink-500">
-                        <RecordCode code={t.recordCode} /> · {CATEGORY_LABEL[t.category]}
-                      </div>
-                    </td>
-                    <td className="py-2 pr-3 text-ink-300">{t.requesterName ?? t.requesterPartyId}</td>
-                    <td className="py-2 pr-3 text-ink-300">{t.assigneeName ?? '—'}</td>
-                    <td className="py-2 pr-3">
-                      <StatusChip status={t.status} tone={STATUS_TONE[t.status]} />
-                    </td>
-                    <td className="whitespace-nowrap py-2 pr-3 tabular-nums text-ink-400">{dateTime(t.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption="Service desk tickets"
+            rows={tickets.data ?? []}
+            rowKey={(t) => t.id}
+            emptyMessage="Nothing in this view."
+            columns={[
+              {
+                id: 'priority',
+                header: 'Priority',
+                sortValue: (t) => t.priority,
+                cell: (t) => <PriorityChip priority={t.priority} />,
+              },
+              {
+                id: 'ticket',
+                header: 'Ticket',
+                sortValue: (t) => t.subject,
+                cell: (t) => (
+                  <>
+                    <Link to={`/it/tickets/${t.id}`} className="text-ink-100 hover:text-accent">
+                      {t.subject}
+                    </Link>
+                    <div className="text-2xs text-ink-500">
+                      <RecordCode code={t.recordCode} /> · {CATEGORY_LABEL[t.category]}
+                    </div>
+                  </>
+                ),
+              },
+              {
+                id: 'requester',
+                header: 'Requester',
+                sortValue: (t) => t.requesterName ?? t.requesterPartyId,
+                cell: (t) => <span className="text-ink-300">{t.requesterName ?? t.requesterPartyId}</span>,
+              },
+              {
+                id: 'assignee',
+                header: 'Assignee',
+                sortValue: (t) => t.assigneeName,
+                cell: (t) => <span className="text-ink-300">{t.assigneeName ?? '—'}</span>,
+              },
+              {
+                id: 'status',
+                header: 'Status',
+                sortValue: (t) => t.status,
+                cell: (t) => <StatusChip status={t.status} tone={STATUS_TONE[t.status]} />,
+              },
+              {
+                id: 'raised',
+                header: 'Raised',
+                sortValue: (t) => t.createdAt,
+                cell: (t) => <span className="tabular-nums text-ink-400">{dateTime(t.createdAt)}</span>,
+              },
+            ]}
+          />
         )}
       </Card>
 

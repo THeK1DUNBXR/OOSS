@@ -6,17 +6,9 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { api } from '../../lib/api.js';
+import type { OrgChartNode } from '@kaizen/shared';
+import { hcmApi } from '../../lib/hcmApi.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader } from '../../components/ui.js';
-
-interface OrgChartNode {
-  employmentRelationshipId: string;
-  fullName: string;
-  title: string | null;
-  orgUnitName: string | null;
-  directReportCount: number;
-  reports: OrgChartNode[];
-}
 
 function Node({ node, depth }: { node: OrgChartNode; depth: number }) {
   return (
@@ -44,7 +36,7 @@ function Node({ node, depth }: { node: OrgChartNode; depth: number }) {
 export function OrgChart() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['hcm-workforce-org-chart'],
-    queryFn: () => api.get<OrgChartNode[]>('/hcm/workforce/org-chart'),
+    queryFn: () => hcmApi.workforce.orgChart(),
   });
 
   return (

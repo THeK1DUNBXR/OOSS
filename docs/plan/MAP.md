@@ -504,7 +504,7 @@
 
 **`packages/shared/src/it/software.ts`** (197 lines) — IT_APPLICATION_HOSTING:22 · ItApplicationHosting:23 · IT_DATA_CLASSIFICATIONS:25 · ItDataClassification:26 · IT_LICENCE_KINDS:28 · ItLicenceKind:29 · IT_BILLING_CYCLES:31 · ItBillingCycle:32 · IT_LICENCE_STATUSES:34 · ItLicenceStatus:35 · IT_LICENCE_EVENT_KINDS:37 · ItLicenceEventKind:44 · ItApplicationStatus:50 · ItApplicationEvent:52 · IT_APPLICATION_EVENT_VERB:55 · itApplicationMachine:68 · annualisedCost:95 · SeatUtilisation:104 · seatUtilisation:112 · isUnderUsed:124 · DEFAULT_IT_LICENCE_RENEWAL_RUNGS:141 · renewalRung:150 · daysUntilLicenceDate:161 · totalAnnualisedSpend:171 · ItApplicationsSummary:179 · ItLicencesSummary:187
 
-**`packages/shared/src/it/vendors.ts`** (221 lines) — VENDOR_RISK_RATINGS:18 · VendorRiskRating:19 · VENDOR_ASSESSMENT_STATUSES:21 · VendorAssessmentStatus:22 · VENDOR_ASSESSMENT_OUTCOMES:24 · VendorAssessmentOutcome:25 · VENDOR_STATUSES:27 · VendorStatus:28 · VENDOR_CONTRACT_STATUSES:30 · VendorContractStatus:39 · VendorEvent:45 · vendorStatusMachine:47 · VENDOR_EVENT_VERBS:56 · VENDOR_CONTRACT_USER_TRANSITIONS:69 · VENDOR_CONTRACT_PRIVILEGED_STATUSES:80 · VENDOR_ASSESSMENT_CADENCE_MONTHS:91 · addMonths:98 · VENDOR_LADDER_RUNGS:108 · noticeDate:112 · noticeRung:124 · VENDOR_CONTRACT_VALUE_STATUSES:136 · contractValueUnderManagement:144 · ItVendorView:154 · ItVendorContractView:175 · ItVendorSummary:205 · ItVendorContractSummary:213
+**`packages/shared/src/it/vendors.ts`** (238 lines) — VENDOR_RISK_RATINGS:18 · VendorRiskRating:19 · VENDOR_ASSESSMENT_STATUSES:21 · VendorAssessmentStatus:22 · VENDOR_ASSESSMENT_OUTCOMES:24 · VendorAssessmentOutcome:25 · VENDOR_STATUSES:27 · VendorStatus:28 · VENDOR_CONTRACT_STATUSES:30 · VendorContractStatus:39 · VendorEvent:45 · vendorStatusMachine:47 · VENDOR_EVENT_VERBS:56 · VENDOR_CONTRACT_USER_TRANSITIONS:69 · VENDOR_CONTRACT_PRIVILEGED_STATUSES:80 · VENDOR_ASSESSMENT_CADENCE_MONTHS:91 · addMonths:98 · VENDOR_LADDER_RUNGS:108 · noticeDate:112 · noticeRung:124 · VENDOR_CONTRACT_VALUE_STATUSES:136 · contractValueUnderManagement:144 · ItVendorView:154 · ItVendorContractView:175 · ItVendorSummary:205 · ItVendorContractSummary:213 · ItVendorContractTransitionResult:229
 
 **`packages/shared/src/marketing.ts`** (1280 lines) — CAMPAIGN_STATUSES:21 · CampaignStatus:31 · CAMPAIGN_STATUS_LABELS:33 · CAMPAIGN_TRANSITIONS:49 · CAMPAIGN_OBJECTIVES:60 · CampaignObjective:69 · CAMPAIGN_OBJECTIVE_LABELS:71 · CHANNEL_KEYS:85 · ChannelKey:102 · CHANNEL_KEY_LABELS:104 · CHANNEL_KINDS:122 · ChannelKind:123 · CHANNEL_KIND_LABELS:125 · AUDIENCE_KINDS:136 · AudienceKind:137 · AUDIENCE_KIND_LABELS:139 · AUDIENCE_ENTITY_TYPES:145 · AudienceEntityType:146 · AUDIENCE_RULE_OPS:154 · AudienceRuleOp:167 · AudienceCondition:169 · AudienceRule:175 · AUDIENCE_MEMBER_SOURCES:180 · AudienceMemberSource:181 · PREFERENCE_CHANGE_SOURCES:188 · PreferenceChangeSource:189 · TEMPLATE_STATUSES:195 · TemplateStatus:196 · TEMPLATE_STATUS_LABELS:198 · TEMPLATE_TRANSITIONS:205 · SEND_STATUSES:216 · SendStatus:217 · SEND_STATUS_LABELS:219 · SEND_TRANSITIONS:228 · RECIPIENT_STATUSES:237 · RecipientStatus:251 · RECIPIENT_STATUS_LABELS:253 · BOUNCE_RATE_ALARM_THRESHOLD:273 · UNSUBSCRIBE_RATE_ALARM_THRESHOLD:274 · JOURNEY_STATUSES:280 · JourneyStatus:281 · JOURNEY_STATUS_LABELS:283 · JOURNEY_TRANSITIONS:290 · JOURNEY_TRIGGER_KINDS:297 · JourneyTriggerKind:305 · JOURNEY_TRIGGER_KIND_LABELS:307 · JourneyStep:317 · JOURNEY_RUN_STATUSES:324 · JourneyRunStatus:325 · JOURNEY_RUN_STATUS_LABELS:327 · FORM_SUBMISSION_STATUSES:337 · FormSubmissionStatus:338 · FORM_SUBMISSION_STATUS_LABELS:340 · TOUCH_KINDS:352 · TouchKind:363 · TOUCH_KIND_LABELS:365 · ATTRIBUTION_MODELS:377 · AttributionModel:378 · ATTRIBUTION_MODEL_LABELS:380 · LeadScoreRuleSeed:393 · DEFAULT_LEAD_SCORE_RULES:400 · MARKETING_EVENT_KINDS:428 · MarketingEventKind:438 · MARKETING_EVENT_KIND_LABELS:440 · MARKETING_EVENT_STATUSES:451 · MarketingEventStatus:452 · MARKETING_EVENT_STATUS_LABELS:454 · MARKETING_EVENT_TRANSITIONS:463 · REGISTRATION_STATUSES:472 · RegistrationStatus:473 · REGISTRATION_STATUS_LABELS:475 · ASSET_KINDS:487 · AssetKind:499 · ASSET_KIND_LABELS:501 · ASSET_STATUSES:514 · AssetStatus:515 · ASSET_STATUS_LABELS:517 · ASSET_TRANSITIONS:524 · SOCIAL_POST_STATUSES:531 · SocialPostStatus:532 · SOCIAL_POST_STATUS_LABELS:534 · REFERRAL_PROGRAM_KINDS:546 · ReferralProgramKind:547 · REFERRAL_PROGRAM_KIND_LABELS:549 · REWARD_KINDS:556 · RewardKind:557 · REWARD_KIND_LABELS:559 · REFERRAL_STATUSES:566 · ReferralStatus:567 · REFERRAL_STATUS_LABELS:569 · REFERRAL_TRANSITIONS:577 · SPEND_STATUSES:589 · SpendStatus:590 · SPEND_STATUS_LABELS:592 · SPEND_TRANSITIONS:597 · CLAIM_STATUSES:602 · ClaimStatus:603 · CLAIM_STATUS_LABELS:605 · CLAIM_TRANSITIONS:612 · MARKETING_PLAN_STATUSES:619 · MarketingPlanStatus:620 · MARKETING_PLAN_STATUS_LABELS:622 · MARKETING_PLAN_TRANSITIONS:629 · CampaignView:641 · CampaignApprovalView:678 · CampaignDetailView:695 · AudienceView:703 · TemplateView:716 · SendView:734 · JourneyView:762 · FormView:775 · FormSubmissionView:791 · TouchpointView:807 · AttributionView:825 · MarketingEventView:840 · RegistrationView:863 · AssetView:877 · SocialPostView:897 · ShortLinkView:911 · ReferralProgramView:922 · ReferralView:933 · BudgetView:952 · BudgetVarianceRow:971 · MarketingCalendarItem:984 · SpendView:994 · VendorView:1011 · ClaimView:1021 · PlanView:1032 · ChannelView:1043 · PreferenceView:1056 · MarketingKpiTile:1069 · MarketingFunnelStage:1079 · MarketingFunnelView:1086 · ChannelPerformanceView:1091 · MarketingOverviewView:1101 · MarketingRequirement:1116 · MARKETING_REQUIREMENTS:1121
 
@@ -526,27 +526,27 @@
 
 ## Web pages
 
-**`apps/web/src/pages/Admin.tsx`** (1104 lines) — PipelineAdmin:36 · TerritoryAdmin:166 · Governance:297 · Agents:496 · Events:720 · Jobs:816 · Audit:922 · PlatformModel:1036
+**`apps/web/src/pages/Admin.tsx`** (1105 lines) — PipelineAdmin:37 · TerritoryAdmin:167 · Governance:298 · Agents:497 · Events:721 · Jobs:817 · Audit:923 · PlatformModel:1037
 
-**`apps/web/src/pages/Books.tsx`** (843 lines) — Ledger:97 · Payables:341 · Budget:549 · Assets:688
+**`apps/web/src/pages/Books.tsx`** (857 lines) — Ledger:98 · Payables:343 · Budget:547 · Assets:702
 
 **`apps/web/src/pages/CommandCenter.tsx`** (803 lines) — CommandCenter:30
 
 **`apps/web/src/pages/Commercial.tsx`** (966 lines) — Offerings:35 · Quotes:220 · Proposals:335 · Agreements:448 · Approvals:638 · WinLoss:735
 
-**`apps/web/src/pages/Courses.tsx`** (582 lines) — Courses:45 · AssignCourse:453
+**`apps/web/src/pages/Courses.tsx`** (587 lines) — Courses:46 · AssignCourse:457
 
-**`apps/web/src/pages/Decisions.tsx`** (197 lines) — Decisions:37
+**`apps/web/src/pages/Decisions.tsx`** (198 lines) — Decisions:38
 
-**`apps/web/src/pages/Education.tsx`** (378 lines) — Cohorts:34 · Enrollments:114 · Projects:284
+**`apps/web/src/pages/Education.tsx`** (420 lines) — Cohorts:36 · Enrollments:116 · Projects:313
 
 **`apps/web/src/pages/Executive.tsx`** (854 lines) — Executive:283
 
-**`apps/web/src/pages/FinalInvoiceDocument.tsx`** (296 lines) — FinalInvoiceDocument:43 · FinalInvoices:201
+**`apps/web/src/pages/FinalInvoiceDocument.tsx`** (302 lines) — FinalInvoiceDocument:43 · FinalInvoices:201
 
-**`apps/web/src/pages/Finance.tsx`** (683 lines) — Invoices:60 · Payments:441 · Receivables:618
+**`apps/web/src/pages/Finance.tsx`** (688 lines) — Invoices:60 · Payments:446 · Receivables:623
 
-**`apps/web/src/pages/GstReturns.tsx`** (1078 lines) — GstReturns:71 · CompanyDetails:693
+**`apps/web/src/pages/GstReturns.tsx`** (1107 lines) — GstReturns:71 · CompanyDetails:722
 
 **`apps/web/src/pages/Import.tsx`** (811 lines) — ImportPage:115
 
@@ -558,25 +558,25 @@
 
 **`apps/web/src/pages/MyOptions.tsx`** (7 lines) — MyOptions:4
 
-**`apps/web/src/pages/Opportunities.tsx`** (656 lines) — Opportunities:43 · OpportunityDetail:155 · Forecast:546
+**`apps/web/src/pages/Opportunities.tsx`** (656 lines) — Opportunities:44 · OpportunityDetail:156 · Forecast:546
 
 **`apps/web/src/pages/Parties.tsx`** (553 lines) — Institutions:261 · Organizations:276 · BodyDetail:298
 
-**`apps/web/src/pages/People.tsx`** (517 lines) — People:68 · PersonDetail:323 · Interactions:448
+**`apps/web/src/pages/People.tsx`** (508 lines) — People:59 · PersonDetail:314 · Interactions:439
 
-**`apps/web/src/pages/PeopleOps.tsx`** (1728 lines) — Employees:225 · EmployeeDetail:486 · Leave:874 · Attendance:1006 · Payroll:1176 · Hiring:1400 · Skills:1631
+**`apps/web/src/pages/PeopleOps.tsx`** (1770 lines) — Employees:225 · EmployeeDetail:497 · Leave:885 · Attendance:1027 · Payroll:1207 · Hiring:1442 · Skills:1673
 
 **`apps/web/src/pages/Pipeline.tsx`** (305 lines) — Pipeline:67
 
-**`apps/web/src/pages/ReceiptDocument.tsx`** (260 lines) — ReceiptDocument:42 · Receipts:169
+**`apps/web/src/pages/ReceiptDocument.tsx`** (261 lines) — ReceiptDocument:42 · Receipts:169
 
 **`apps/web/src/pages/Start.tsx`** (337 lines) — Start:46 · SetupBanner:312
 
-**`apps/web/src/pages/StudentTimeline.tsx`** (625 lines) — StudentTimeline:75 · LearnerQueue:517
+**`apps/web/src/pages/StudentTimeline.tsx`** (707 lines) — StudentTimeline:77 · LearnerQueue:551
 
-**`apps/web/src/pages/Students.tsx`** (363 lines) — Students:90 · StudentDetail:210
+**`apps/web/src/pages/Students.tsx`** (328 lines) — Students:69 · StudentDetail:185
 
-**`apps/web/src/pages/Workspace.tsx`** (414 lines) — Workspace:31 · Exceptions:248
+**`apps/web/src/pages/Workspace.tsx`** (415 lines) — Workspace:32 · Exceptions:249
 
 **`apps/web/src/pages/board/Board.tsx`** (317 lines) — Board:34
 
@@ -626,13 +626,13 @@
 
 **`apps/web/src/pages/ceo/TimeAudit.tsx`** (18 lines) — TimeAudit:8
 
-**`apps/web/src/pages/compliance/Books.tsx`** (695 lines) — ComplianceBooks:48
+**`apps/web/src/pages/compliance/Books.tsx`** (701 lines) — ComplianceBooks:48
 
 **`apps/web/src/pages/compliance/Calendar.tsx`** (429 lines) — ComplianceCalendar:96
 
 **`apps/web/src/pages/compliance/Corporate.tsx`** (800 lines) — ComplianceCorporate:42
 
-**`apps/web/src/pages/compliance/Gst.tsx`** (651 lines) — ComplianceGst:34
+**`apps/web/src/pages/compliance/Gst.tsx`** (667 lines) — ComplianceGst:34
 
 **`apps/web/src/pages/compliance/Labour.tsx`** (819 lines) — ComplianceLabour:31
 
@@ -674,55 +674,55 @@
 
 **`apps/web/src/pages/equity/Valuations.tsx`** (162 lines) — Valuations:89
 
-**`apps/web/src/pages/hcm/Analytics.tsx`** (649 lines) — Analytics:323
+**`apps/web/src/pages/hcm/Analytics.tsx`** (661 lines) — Analytics:323
 
-**`apps/web/src/pages/hcm/Approvals.tsx`** (174 lines) — Approvals:162
+**`apps/web/src/pages/hcm/Approvals.tsx`** (173 lines) — Approvals:161
 
-**`apps/web/src/pages/hcm/Assets.tsx`** (732 lines) — Assets:48
+**`apps/web/src/pages/hcm/Assets.tsx`** (737 lines) — Assets:62
 
 **`apps/web/src/pages/hcm/Compensation.tsx`** (1053 lines) — Compensation:31
 
-**`apps/web/src/pages/hcm/Directory.tsx`** (87 lines) — Directory:22
+**`apps/web/src/pages/hcm/Directory.tsx`** (78 lines) — Directory:43
 
 **`apps/web/src/pages/hcm/Employee360.tsx`** (876 lines) — Employee360:129
 
-**`apps/web/src/pages/hcm/Engagement.tsx`** (813 lines) — Engagement:26
+**`apps/web/src/pages/hcm/Engagement.tsx`** (774 lines) — Engagement:35
 
-**`apps/web/src/pages/hcm/Learning.tsx`** (1006 lines) — Learning:37
+**`apps/web/src/pages/hcm/Learning.tsx`** (958 lines) — Learning:50
 
-**`apps/web/src/pages/hcm/LeaveCalendar.tsx`** (172 lines) — LeaveCalendar:49
+**`apps/web/src/pages/hcm/LeaveCalendar.tsx`** (145 lines) — LeaveCalendar:39
 
-**`apps/web/src/pages/hcm/LeavePolicies.tsx`** (603 lines) — LeavePolicies:23
+**`apps/web/src/pages/hcm/LeavePolicies.tsx`** (564 lines) — LeavePolicies:25
 
-**`apps/web/src/pages/hcm/OrgChart.tsx`** (73 lines) — OrgChart:44
+**`apps/web/src/pages/hcm/OrgChart.tsx`** (65 lines) — OrgChart:36
 
 **`apps/web/src/pages/hcm/PayrollOps.tsx`** (1245 lines) — PayrollOps:41
 
-**`apps/web/src/pages/hcm/Performance.tsx`** (1147 lines) — Performance:64
+**`apps/web/src/pages/hcm/Performance.tsx`** (1091 lines) — Performance:69
 
-**`apps/web/src/pages/hcm/Recruiting.tsx`** (1436 lines) — Recruiting:40
+**`apps/web/src/pages/hcm/Recruiting.tsx`** (1360 lines) — Recruiting:54
 
-**`apps/web/src/pages/hcm/Separations.tsx`** (687 lines) — Separations:26
+**`apps/web/src/pages/hcm/Separations.tsx`** (704 lines) — Separations:34
 
-**`apps/web/src/pages/hcm/Time.tsx`** (892 lines) — Time:62
+**`apps/web/src/pages/hcm/Time.tsx`** (855 lines) — Time:68
 
-**`apps/web/src/pages/it/Assets.tsx`** (832 lines) — ItAssets:155 · ItAssetDetail:417
+**`apps/web/src/pages/it/Assets.tsx`** (851 lines) — ItAssets:156 · ItAssetDetail:436
 
-**`apps/web/src/pages/it/Continuity.tsx`** (1129 lines) — ItContinuity:142 · ItAvailability:687 · ItMaintenance:875
+**`apps/web/src/pages/it/Continuity.tsx`** (1212 lines) — ItContinuity:143 · ItAvailability:730 · ItMaintenance:939
 
-**`apps/web/src/pages/it/Governance.tsx`** (1794 lines) — ItRisks:95 · ItRiskDetail:371 · ItPolicies:568 · ItPolicyDetail:757 · ItControls:955 · ItAccessReviews:1207 · ItAccessReviewDetail:1345 · ItFindings:1565
+**`apps/web/src/pages/it/Governance.tsx`** (1892 lines) — ItRisks:96 · ItRiskDetail:392 · ItPolicies:589 · ItPolicyDetail:792 · ItControls:990 · ItAccessReviews:1261 · ItAccessReviewDetail:1417 · ItFindings:1648
 
-**`apps/web/src/pages/it/Itsm.tsx`** (1183 lines) — ItIncidents:164 · ItIncidentDetail:353 · ItProblems:528 · ItProblemDetail:608 · ItChanges:697 · ItChangeDetail:1024
+**`apps/web/src/pages/it/Itsm.tsx`** (1181 lines) — ItIncidents:164 · ItIncidentDetail:354 · ItProblems:529 · ItProblemDetail:609 · ItChanges:698 · ItChangeDetail:1022
 
 **`apps/web/src/pages/it/Overview.tsx`** (391 lines) — ItOverview:160
 
 **`apps/web/src/pages/it/Portfolio.tsx`** (1259 lines) — ItPortfolio:134 · ItInitiativeDetail:345 · ItRoadmap:601 · ItBudget:811 · ItTechDebt:1060
 
-**`apps/web/src/pages/it/ServiceDesk.tsx`** (996 lines) — ItTickets:168 · ItTicketDetail:362 · ItKnowledge:718 · ItKnowledgeDetail:808 · MyIt:885
+**`apps/web/src/pages/it/ServiceDesk.tsx`** (1010 lines) — ItTickets:169 · ItTicketDetail:376 · ItKnowledge:732 · ItKnowledgeDetail:822 · MyIt:899
 
-**`apps/web/src/pages/it/Software.tsx`** (1268 lines) — ItApplications:185 · ItApplicationDetail:444 · ItLicences:658 · ItLicenceDetail:921
+**`apps/web/src/pages/it/Software.tsx`** (1333 lines) — ItApplications:186 · ItApplicationDetail:467 · ItLicences:702 · ItLicenceDetail:986
 
-**`apps/web/src/pages/it/Vendors.tsx`** (1015 lines) — ItVendors:42 · ItVendorDetail:264 · ItVendorContracts:532 · ItVendorContractDetail:752
+**`apps/web/src/pages/it/Vendors.tsx`** (1045 lines) — ItVendors:51 · ItVendorDetail:274 · ItVendorContracts:544 · ItVendorContractDetail:782
 
 **`apps/web/src/pages/kaizenInvoice/FeeMasterCatalog.tsx`** (122 lines) — FeeMasterCatalog:22
 
@@ -736,45 +736,45 @@
 
 **`apps/web/src/pages/kaizenInvoice/PrintPortal.tsx`** (49 lines) — PrintPortal:32
 
-**`apps/web/src/pages/marketing/Analytics.tsx`** (703 lines) — Analytics:100
+**`apps/web/src/pages/marketing/Analytics.tsx`** (740 lines) — Analytics:102
 
-**`apps/web/src/pages/marketing/Assets.tsx`** (401 lines) — Assets:37
+**`apps/web/src/pages/marketing/Assets.tsx`** (419 lines) — Assets:45
 
-**`apps/web/src/pages/marketing/Audiences.tsx`** (747 lines) — Audiences:68
+**`apps/web/src/pages/marketing/Audiences.tsx`** (770 lines) — Audiences:126
 
-**`apps/web/src/pages/marketing/Budget.tsx`** (460 lines) — Budget:35
+**`apps/web/src/pages/marketing/Budget.tsx`** (544 lines) — Budget:46
 
 **`apps/web/src/pages/marketing/Calendar.tsx`** (176 lines) — Calendar:54
 
-**`apps/web/src/pages/marketing/CampaignDetail.tsx`** (635 lines) — CampaignDetail:68
+**`apps/web/src/pages/marketing/CampaignDetail.tsx`** (691 lines) — CampaignDetail:73
 
-**`apps/web/src/pages/marketing/Campaigns.tsx`** (319 lines) — Campaigns:49
+**`apps/web/src/pages/marketing/Campaigns.tsx`** (356 lines) — Campaigns:51
 
-**`apps/web/src/pages/marketing/Consent.tsx`** (396 lines) — Consent:55
+**`apps/web/src/pages/marketing/Consent.tsx`** (389 lines) — Consent:48
 
-**`apps/web/src/pages/marketing/Forms.tsx`** (1013 lines) — Forms:98
+**`apps/web/src/pages/marketing/Forms.tsx`** (1090 lines) — Forms:103
 
-**`apps/web/src/pages/marketing/Journeys.tsx`** (597 lines) — Journeys:69
+**`apps/web/src/pages/marketing/Journeys.tsx`** (607 lines) — Journeys:108
 
-**`apps/web/src/pages/marketing/MarketingEvents.tsx`** (559 lines) — MarketingEvents:62 · MarketingEventDetail:237
+**`apps/web/src/pages/marketing/MarketingEvents.tsx`** (588 lines) — MarketingEvents:129 · MarketingEventDetail:257
 
-**`apps/web/src/pages/marketing/MarketingHealthCard.tsx`** (92 lines) — MarketingHealthCard:18
+**`apps/web/src/pages/marketing/MarketingHealthCard.tsx`** (91 lines) — MarketingHealthCard:17
 
-**`apps/web/src/pages/marketing/MarketingOverview.tsx`** (206 lines) — MarketingOverview:51
+**`apps/web/src/pages/marketing/MarketingOverview.tsx`** (219 lines) — MarketingOverview:102
 
-**`apps/web/src/pages/marketing/MarketingSettings.tsx`** (726 lines) — MarketingSettings:82
+**`apps/web/src/pages/marketing/MarketingSettings.tsx`** (778 lines) — MarketingSettings:84
 
 **`apps/web/src/pages/marketing/MarketingShell.tsx`** (66 lines) — MarketingShell:38
 
-**`apps/web/src/pages/marketing/Plans.tsx`** (142 lines) — Plans:26
+**`apps/web/src/pages/marketing/Plans.tsx`** (160 lines) — Plans:28
 
-**`apps/web/src/pages/marketing/Referrals.tsx`** (512 lines) — Referrals:42
+**`apps/web/src/pages/marketing/Referrals.tsx`** (562 lines) — Referrals:45
 
-**`apps/web/src/pages/marketing/Sends.tsx`** (643 lines) — Sends:93 · SendDetail:374
+**`apps/web/src/pages/marketing/Sends.tsx`** (672 lines) — Sends:147 · SendDetail:401
 
-**`apps/web/src/pages/marketing/Social.tsx`** (289 lines) — Social:37
+**`apps/web/src/pages/marketing/Social.tsx`** (310 lines) — Social:38
 
-**`apps/web/src/pages/marketing/Templates.tsx`** (474 lines) — Templates:66
+**`apps/web/src/pages/marketing/Templates.tsx`** (475 lines) — Templates:96
 
 **`apps/web/src/pages/me/Attendance.tsx`** (506 lines) — Attendance:86
 
