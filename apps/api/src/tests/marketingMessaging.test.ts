@@ -10,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asUser, expectReject, prisma, tenantId, unscopedPrisma } from './helpers.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { grantConsent, publishNotice } from '../domains/compliance/privacy.js';
-import { PURPOSE_CODES } from '@kaizen/shared';
+import { EVENTS, PURPOSE_CODES, RECIPIENT_STATUSES } from '@kaizen/shared';
+import { MARKETING_JOBS } from '../jobs/marketing.js';
 import { resetAdapterCacheForTests } from '../domains/marketing/adapters/registry.js';
 import {
   createTemplate,
@@ -523,5 +524,132 @@ describe('MKT-MSG-008a — a journey step is claimed before it is sent', () => {
     expect(sentTo.get(person.id) ?? 0).toBe(1);
     const after = await unscopedPrisma.marketingJourneyRun.findFirst({ where: { id: run.id } });
     expect(after?.currentStep).toBe(1);
+  });
+});
+
+/** A send whose recipient was claimed by a worker that died `ageMs` ago. */
+async function sendWithStaleClaim(ageMs: number, sendStatus: 'queued' | 'sending') {
+  const person = await makePerson('Expired Claim', `expired-${Date.now()}-${ageMs}@example.com`, null);
+  await grantMarketingConsent(person.id);
+  const template = await makeApprovedTemplate('email');
+  const send = await asUser(CREATOR, () =>
+    createSend({ templateId: template.id, channelKey: 'email', personIds: [person.id] } as never),
+  );
+  await asUser(CREATOR, () => requestSend(send.id));
+  await unscopedPrisma.marketingSend.update({ where: { id: send.id }, data: { status: sendStatus } });
+  const recipient = await unscopedPrisma.marketingSendRecipient.findFirst({ where: { sendId: send.id } });
+  await unscopedPrisma.marketingSendRecipient.update({
+    where: { id: recipient!.id },
+    data: { status: 'sending', claimedAt: new Date(Date.now() - ageMs) } as never,
+  });
+  return { send, person, recipientId: recipient!.id };
+}
+
+describe('MKT-MSG-005b — an expired claim is an unknown delivery an operator can see', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('dispatch turns an expired sending claim into unknown_delivery, raises EX-MKT-016, and does not resend', async () => {
+    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    resetAdapterCacheForTests();
+    const { send, person } = await sendWithStaleClaim(6 * 60 * 60_000, 'queued');
+    const sentTo = countAdapterSends();
+
+    await asUser(CREATOR, () => dispatchSend(send.id));
+
+    expect(sentTo.get(person.id) ?? 0).toBe(0);
+    const [after] = await asUser(CREATOR, () => listSendRecipients(send.id));
+    expect(after.status).toBe('unknown_delivery');
+    const exception = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { tenantId: await tenantId(), code: 'EX-MKT-016', subjectId: send.id },
+    });
+    expect(exception).toBeTruthy();
+  });
+
+  it('the scheduled dispatch job sweeps expired claims even when no send is queued', async () => {
+    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    resetAdapterCacheForTests();
+    const { send, person } = await sendWithStaleClaim(6 * 60 * 60_000, 'sending');
+    const sentTo = countAdapterSends();
+
+    const job = MARKETING_JOBS.find((j) => j.name === 'marketing.sends.dispatch');
+    await asUser(CREATOR, () => job!.run());
+
+    expect(sentTo.get(person.id) ?? 0).toBe(0);
+    const [after] = await asUser(CREATOR, () => listSendRecipients(send.id));
+    expect(after.status).toBe('unknown_delivery');
+    const exception = await unscopedPrisma.exceptionRecord.findFirst({
+      where: { tenantId: await tenantId(), code: 'EX-MKT-016', subjectId: send.id },
+    });
+    expect(exception).toBeTruthy();
+  });
+
+  it('the recipient status vocabulary includes sending and unknown_delivery, so the Sends filter can select them', () => {
+    expect(RECIPIENT_STATUSES).toEqual(expect.arrayContaining(['sending', 'unknown_delivery']));
+  });
+});
+
+describe('MKT-MSG-008b — a journey exit is claimed like a step, so an overlapping tick exits once', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function exitEvents(runId: string) {
+    return unscopedPrisma.eventRecord.count({
+      where: { tenantId: await tenantId(), eventName: EVENTS.MKT_JOURNEY_RUN_EXITED, subjectEntityId: runId },
+    });
+  }
+
+  it('two overlapping ticks exit a run whose step condition is no longer met, with one exit event', async () => {
+    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    resetAdapterCacheForTests();
+    const person = await makePerson('Condition Exit', `cond-exit-${Date.now()}@example.com`, null);
+    await grantMarketingConsent(person.id);
+    const template = await makeApprovedTemplate('email');
+    const journey = await asUser(CREATOR, () =>
+      createJourney({
+        name: `Condition exit ${Date.now()}`,
+        triggerKind: 'manual',
+        steps: [
+          {
+            delayDays: 0,
+            templateId: template.id,
+            channelKey: 'email',
+            condition: { all: [{ field: 'primaryEmail', op: 'eq', value: 'not-this-person@example.com' }] },
+          },
+        ],
+      } as never),
+    );
+    await asUser(CREATOR, () => activateJourney(journey.id));
+    const run = await asUser(CREATOR, () => enrolPerson(journey.id, person.id));
+
+    await Promise.all([asUser(CREATOR, () => tick()), asUser(CREATOR, () => tick())]);
+
+    const after = await unscopedPrisma.marketingJourneyRun.findFirst({ where: { id: run.id } });
+    expect(after?.exitedReason).toBe('condition_not_met');
+    expect(await exitEvents(run.id)).toBe(1);
+  });
+
+  it('two overlapping ticks exit a run with no consent once, with one exit event', async () => {
+    process.env.MARKETING_EMAIL_ADAPTER = 'console';
+    resetAdapterCacheForTests();
+    const person = await makePerson('No Consent Exit', `no-consent-${Date.now()}@example.com`, null);
+    const template = await makeApprovedTemplate('email');
+    const journey = await asUser(CREATOR, () =>
+      createJourney({
+        name: `No consent ${Date.now()}`,
+        triggerKind: 'manual',
+        steps: [{ delayDays: 0, templateId: template.id, channelKey: 'email' }],
+      }),
+    );
+    await asUser(CREATOR, () => activateJourney(journey.id));
+    const run = await asUser(CREATOR, () => enrolPerson(journey.id, person.id));
+
+    await Promise.all([asUser(CREATOR, () => tick()), asUser(CREATOR, () => tick())]);
+
+    const after = await unscopedPrisma.marketingJourneyRun.findFirst({ where: { id: run.id } });
+    expect(after?.exitedReason).toBe('no_consent');
+    expect(await exitEvents(run.id)).toBe(1);
   });
 });
