@@ -4,8 +4,35 @@
  * follows it in this branch.
  */
 
-import { describe, expect, it } from 'vitest';
-import { amountInWords, depreciationSchedule } from '@kaizen/shared';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { amountInWords, computePaymentSchedule, depreciationSchedule } from '@kaizen/shared';
+
+describe('instalment dates do not depend on the host timezone (finance.ts computePaymentSchedule)', () => {
+  // Dates are built as local midnight and read back as UTC, so on an IST host
+  // every date moves a day early, and the 1st of the month comes out as the
+  // last day of the month before. The student is told "due 22 January" for a
+  // payment that falls due on the 23rd, and the run of instalments starts on
+  // 28 February. Node picks up a TZ change made at runtime, so the test sets it.
+  const savedTz = process.env.TZ;
+  beforeEach(() => {
+    process.env.TZ = 'Asia/Kolkata';
+  });
+  afterEach(() => {
+    if (savedTz === undefined) delete process.env.TZ;
+    else process.env.TZ = savedTz;
+  });
+
+  it('states the same dates on an IST host as on UTC', () => {
+    expect(computePaymentSchedule('2026-01-20')).toEqual({
+      firstPaymentDue: '2026-01-23',
+      subsequentFrom: '2026-03-01',
+    });
+    expect(computePaymentSchedule('2026-01-10')).toEqual({
+      firstPaymentDue: '2026-01-13',
+      subsequentFrom: '2026-02-01',
+    });
+  });
+});
 
 describe('straight-line depreciation writes off the whole cost (finance.ts depreciationSchedule)', () => {
   // A ₹100.00 asset over three months charges 33.33 a month, which leaves 0.01
