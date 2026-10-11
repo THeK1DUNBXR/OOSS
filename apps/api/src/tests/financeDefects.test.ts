@@ -30,8 +30,10 @@ describe('amount in words above 99 crore (finance.ts amountInWords)', () => {
   // crore prints "undefined Crore" in the words that settle a dispute.
   it('spells a crore count of 100 or more', () => {
     expect(amountInWords(1_000_000_000)).toBe('Rupees One Hundred Crore Only');
-    expect(amountInWords(1_240_000_000)).toBe('Rupees One Hundred Twenty Four Crore Only');
-    expect(amountInWords(1_234_000_000)).toBe('Rupees One Hundred Twenty Three Crore Forty Lakh Only');
+    // "and" before the last two-digit group, as the rest of the words do:
+    // "One Thousand Two Hundred and Thirty Four".
+    expect(amountInWords(1_240_000_000)).toBe('Rupees One Hundred and Twenty Four Crore Only');
+    expect(amountInWords(1_234_000_000)).toBe('Rupees One Hundred and Twenty Three Crore Forty Lakh Only');
     expect(amountInWords(120_000_000_000)).toBe('Rupees Twelve Thousand Crore Only');
   });
 });

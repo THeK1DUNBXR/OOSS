@@ -500,12 +500,27 @@ export function amountInWords(value: number): string {
   const rupees = Math.floor(rounded);
   const paise = Math.round((rounded - rupees) * 100);
 
+  const sign = value < 0 ? 'Minus ' : '';
+  const whole = rupees > 0 ? wholeRupeesInWords(rupees) : 'Zero';
+  const paisePart = paise > 0 ? ` and ${twoDigits(paise)} Paise` : '';
+  return `${sign}Rupees ${whole}${paisePart} Only`;
+}
+
+/**
+ * A whole number of rupees in Indian words, for a positive integer.
+ *
+ * The crore count is written in the same words, recursively. Indexing a
+ * two-digit table with it printed "undefined Crore" from 100 crore up, on the
+ * invoice meant to settle a dispute about its figure.
+ */
+function wholeRupeesInWords(rupees: number): string {
   const parts: string[] = [];
   const push = (n: number, label: string) => {
     if (n > 0) parts.push(`${twoDigits(n)} ${label}`);
   };
 
-  push(Math.floor(rupees / 10_000_000), 'Crore');
+  const crore = Math.floor(rupees / 10_000_000);
+  if (crore > 0) parts.push(`${wholeRupeesInWords(crore)} Crore`);
   push(Math.floor((rupees % 10_000_000) / 100_000), 'Lakh');
   push(Math.floor((rupees % 100_000) / 1_000), 'Thousand');
   push(Math.floor((rupees % 1_000) / 100), 'Hundred');
@@ -515,11 +530,7 @@ export function amountInWords(value: number): string {
     if (parts.length > 0) parts.push('and');
     parts.push(twoDigits(last));
   }
-
-  const sign = value < 0 ? 'Minus ' : '';
-  const whole = parts.length ? parts.join(' ') : 'Zero';
-  const paisePart = paise > 0 ? ` and ${twoDigits(paise)} Paise` : '';
-  return `${sign}Rupees ${whole}${paisePart} Only`;
+  return parts.join(' ');
 }
 
 // ---------------------------------------------------------------------------
@@ -622,9 +633,13 @@ export function depreciationSchedule(input: DepreciationInput): DepreciationPeri
     }
 
     // Never write below the salvage value, and let the final period absorb the
-    // rounding rather than leaving a few paise stranded forever.
+    // rounding rather than leaving a few paise stranded forever. Only the
+    // straight-line schedule has a rounding remainder to absorb: a written-down
+    // balance is meant to decline geometrically, and forcing its last month to
+    // salvage would write off the whole balance in one period.
     const floor = input.salvageValue;
-    if (opening - charge < floor) charge = round2(opening - floor);
+    const finalStraightLine = input.method !== 'wdv' && i === input.usefulLifeMonths - 1;
+    if (finalStraightLine || opening - charge < floor) charge = round2(opening - floor);
     if (charge < 0) charge = 0;
 
     carrying = round2(opening - charge);
