@@ -4,7 +4,7 @@ Drafted by Claude; approved by owner 2026-10-10 (see Status). 00-BRIEF.md sectio
 
 Status: Approved by owner 2026-10-10 with the decisions below; still uses UNVERIFIED markers where flagged. Decisions: DECISIONS.md "Owner answers, round 9 (recorded 2026-10-10)" and "Owner answers, round 10 (recorded 2026-10-10)". Approval covers gates G1 to G12 (G11 and G12 added in round 9). Round 10 approves the ledger gate tests L1 to L3 as the required ledger gate, requires both governed-write checks (G8 checks a and b), and places the CI migration baseline in Wave 0 (G3); see section 5. Adding a gate to `.github/workflows/ci.yml`, `eslint.config.js` or the test suite is still a separate change, made in its own pull request.
 
-Round 18 (DECISIONS.md, 2026-10-11, item 1): G7, including the leakage fuzzer, is DEFERRED until commercialisation. Mandatory gates now: G1 to G6, G8 to G12 and ledger tests L1 to L3. Wave C (operations) is moved after Phase 1 (round 18, item 3). The CI migration baseline (G3) and the non-owner application role (round 18, item 5) are not hosting items and stay.
+Round 18b (DECISIONS.md, 2026-10-11, item 1): G7, including the leakage fuzzer, is DEFERRED until commercialisation. Mandatory gates now: G1 to G6, G8 to G12 and ledger tests L1 to L3. Wave C (operations) is moved after Phase 1 (round 18b, item 3). The CI migration baseline (G3) and the non-owner application role (round 18b, item 5) are not hosting items and stay.
 
 Scope: the ten CI gates that DECISIONS.md "Owner answers, round 5" asked Claude to define fresh, plus the three ledger gate tests named in `docs/plan/archive/phase-1-ledger.md` (gate line) and `docs/plan/archive/phase-8-proof.md`. The round 5 answer is: "The ten CI gates and the ledger gate tests are to be defined fresh. Claude will draft them for owner approval."
 
@@ -18,7 +18,7 @@ Waves used in section 3 (the docs give no sequence within a wave; round 9 answer
 
 - **Wave A** = owner's Phase 0 fix items (DECISIONS.md, "Phase 0, fix items (all kept)").
 - **Wave B** = owner's Phase 0 new or replace items (DECISIONS.md, "Phase 0, new or replace items chosen").
-- **Wave C** = owner's Phase 0 operations wave (DECISIONS.md, round 6, "Operations wave in Phase 0"). Moved after Phase 1 by round 18, item 3.
+- **Wave C** = owner's Phase 0 operations wave (DECISIONS.md, round 6, "Operations wave in Phase 0"). Moved after Phase 1 by round 18b, item 3.
 - **Phase 1** = owner's Phase 1 scope (DECISIONS.md, "Phase 1 scope chosen"). This is the owner's Phase 1 (developer work-from-home), not the plan's `docs/plan/archive/phase-1-ledger.md`.
 
 ---
@@ -81,9 +81,9 @@ What exists in the repository today is noted per gate, so the owner can see how 
 - **Exists today:** no.
 - **First mandatory:** Wave A.
 
-### G7. Tenant isolation and row-level security negative tests (DEFERRED, round 18)
+### G7. Tenant isolation and row-level security negative tests (DEFERRED, round 18b)
 
-- **Status (round 18, 2026-10-11): DEFERRED.** Owner answer, item 1. Both checks (a) and (b) wait for commercialisation. Not mandatory in any wave. The ledger-table RLS already in the migration and the existing tenant scoping stay. CLAUDE.md rule 6 still binds new code.
+- **Status (round 18b, 2026-10-11): DEFERRED.** Owner answer, item 1. Both checks (a) and (b) wait for commercialisation. Not mandatory in any wave. The ledger-table RLS already in the migration and the existing tenant scoping stay. CLAUDE.md rule 6 still binds new code.
 
 - **Checks (a), RLS negative tests run as the non-owner application role:**
   - a query under tenant B's context returns zero rows owned by tenant A, for every tenant-scoped table;
@@ -94,8 +94,8 @@ What exists in the repository today is noted per gate, so the owner can see how 
 - **Fails the build:** any leaked row; any tenant-scoped table without forced RLS; any route that accepts a tenant id from the body, query or claim.
 - **Protects:** CLAUDE.md rule 6 and "Never"; docs/plan/archive/phase-1-ledger.md 1.2 item 5 (a migration test that runs each invariant as the application role and asserts failure); FX-51 (round 4 Phase 0 item; FX-51 says RLS exists only on ledger tables, cited from FIXES.md); D-07 (round 3).
 - **Exists today:** the ledger migration sets `FORCE ROW LEVEL SECURITY` on `ledger_entities`, `cmp_accounting_periods`, `journal_entries` and `journal_lines`, and creates policies from a loop (`20260920173000_ledger_invariants/migration.sql`, lines 165 and 173). The loop's table list was not read in full, so the catalogue coverage is UNVERIFIED. Expected to fail on today's main for tables other than the four above, until FX-51 lands. That failure is the point of the gate.
-- **Dependency:** the runtime RLS checks need the non-owner application role. Round 18, item 5: that role stays as a dev and CI database setting, not a hosting item. The runtime RLS checks themselves are deferred with G7.
-- **First mandatory:** ~~Wave A for the RLS checks (FX-51). Wave B for the fuzzer.~~ DEFERRED (round 18).
+- **Dependency:** the runtime RLS checks need the non-owner application role. Round 18b, item 5: that role stays as a dev and CI database setting, not a hosting item. The runtime RLS checks themselves are deferred with G7.
+- **First mandatory:** ~~Wave A for the RLS checks (FX-51). Wave B for the fuzzer.~~ DEFERRED (round 18b).
 
 ### G8. Governed writes: assertCan, auditWrite, emit, through the registry
 
@@ -266,7 +266,7 @@ Runs in the concurrency suite, not the serial suite. Latency budget is an owner 
 | G4 Real Postgres, no mocks               | from A (test job exists; mock scan new)        | carried                                                                    | carried                                        | carried                                           |
 | G5 Boot refusal for secrets              | from A (0.1, FX-60)                            | carried                                                                    | carried; CI must supply `FIELD_ENCRYPTION_KEY` | carried                                           |
 | G6 Failing-test-first for FX fixes       | from A                                         | carried                                                                    | carried                                        | carried                                           |
-| G7 Tenant isolation and RLS | DEFERRED (round 18) | DEFERRED (round 18) | DEFERRED (round 18) | DEFERRED (round 18) |
+| G7 Tenant isolation and RLS | DEFERRED (round 18b) | DEFERRED (round 18b) | DEFERRED (round 18b) | DEFERRED (round 18b) |
 | G8 Governed writes                       | from A (FX-01 to FX-05, FX-20 to FX-22)        | carried                                                                    | carried                                        | carried; applies to approvals and expense posting |
 | G9 Money, period, ledger-write lint      | from A (IST rule part 2)                       | from B (money part 1, ledger-write part 3, with 1.3 and 1.6)               | carried                                        | carried; expense claims post only via `post()`    |
 | G10 Statutory rows only (structure only) | n/a                                            | from B (with 3.1)                                                          | carried                                        | carried                                           |
@@ -276,7 +276,7 @@ Runs in the concurrency suite, not the serial suite. Latency budget is an owner 
 | L2 Migration equivalence                 | n/a                                            | from B, blocked until mapping is signed and Kaizen figures confirmed (1.5) | carried                                        | required at the 1 April cutover (round 7)         |
 | L3 200 concurrent allocations            | from A (0.6 payment allocation fix)            | carried                                                                    | carried                                        | carried                                           |
 
-Mandatory after round 18: G1 to G6, G8 to G12 and L1 to L3. G7 is deferred (round 18). Wave C entries still apply in the moved operations section; the move drops no gate.
+Mandatory after round 18b: G1 to G6, G8 to G12 and L1 to L3. G7 is deferred (round 18b). Wave C entries still apply in the moved operations section; the move drops no gate.
 
 Drift to note: `ci.yml` header says the suite is "382-test"; `docs/plan/archive/phase-8-proof.md` says "370"; `docs/plan/archive/phase-0-stabilise.md` says "372". The count needs one source of truth before any "all tests pass" gate can state a number.
 
@@ -307,7 +307,7 @@ Status after round 10 (owner answers recorded in DECISIONS.md, "Owner answers, r
 10. **Statutory gate (G10).** RESOLVED: G10 checks structure only and fails on hard-coded rates. It never checks values. Values, sign-off and ownership stay with the internal finance head (DECISIONS round 3, D-02). Statutory sign-off still needs a real qualified person, even when the duty is held by a level.
 11. **CI database approach (G3).** RESOLVED (round 10, item 2): the CI migration baseline sits in Wave 0, and the G3 row in section 3 and the G3 section now say Wave 0 (previously "from B"). Still open: who owns the baseline; the owner did not name an owner in round 10.
 12. **Fast-check.** RESOLVED: fast-check (MIT) approved as a test-only dependency.
-13. **Tenancy gate G7 and the leakage fuzzer.** DEFERRED by owner answer, round 18, item 1. Recorded here, not re-opened.
+13. **Tenancy gate G7 and the leakage fuzzer.** DEFERRED by owner answer, round 18b, item 1. Recorded here, not re-opened.
 
 ---
 
