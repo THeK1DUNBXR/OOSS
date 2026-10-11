@@ -9,6 +9,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { EntitySelectionResponse, NavNodeView, SessionUser, Verb } from '@kaizen/shared';
 import {
+  ApiClientError,
   api,
   chooseEntity as apiChooseEntity,
   getToken,
@@ -77,17 +78,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     // A page load has no token in memory; the refresh cookie is the way back in.
-    if (!getToken() && !(await restoreSession())) {
-      setUser(null);
-      setLoading(false);
-      return;
+    if (!getToken()) {
+      const outcome = await restoreSession();
+      if (outcome !== 'renewed') {
+        setUser(null);
+        // An unreachable server is not a signed-out user: say so rather than
+        // presenting the form as if the cookie had been refused.
+        if (outcome === 'unavailable') setError('Could not reach the server. Check your connection and reload.');
+        setLoading(false);
+        return;
+      }
     }
     try {
       const me = await api.get<SessionUser>('/auth/me');
       setUser(me);
       await loadNav();
-    } catch {
-      setToken(null);
+    } catch (err) {
+      // Only a refused token ends the session. A dropped connection or a 5xx on
+      // /auth/me used to clear the token here, signing the user out for a blip.
+      if (!(err instanceof ApiClientError && err.status === 401)) {
+        setError('Could not reach the server. Check your connection and reload.');
+      } else {
+        setToken(null);
+      }
       setUser(null);
     } finally {
       setLoading(false);

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
+import { shouldRetryQuery } from './lib/api.js';
 import { SessionProvider, useSession } from './lib/session.js';
 import { useSurface } from './lib/surface.js';
 import { Shell } from './components/Shell.js';
@@ -261,7 +262,8 @@ const MeExit = lazy(() => import('./pages/me/Exit.js').then((m) => ({ default: m
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 15_000 },
+    // 401s are never retried; see shouldRetryQuery for why.
+    queries: { retry: shouldRetryQuery, refetchOnWindowFocus: false, staleTime: 15_000 },
   },
 });
 
