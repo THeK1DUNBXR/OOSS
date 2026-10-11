@@ -20,6 +20,7 @@ model AccountingPeriod {
   // migration (20260901000000_baseline) carries the same RESTRICT.
   entity   LedgerEntity?  @relation(fields: [entityId], references: [id], onDelete: Restrict)
   entries  JournalEntry[]
+  balanceSnapshots AccountBalanceSnapshot[]
 
   /// "2025-26" (Apr-Mar).
   fy     String
@@ -48,8 +49,36 @@ model AccountingPeriod {
 
   @@unique([tenantId, period])
   @@unique([tenantId, entityId, startsOn])
+  @@unique([tenantId, id])
   @@index([tenantId, status])
   @@map("cmp_accounting_periods")
+}
+
+/// The period-end balance of one account as the journal derived it when the
+/// period was closed. A cache for the nightly drift check, never a source of
+/// truth: balanceOf still sums journal_lines. A mismatch between a row and the
+/// journal is raised, not corrected. Rows are insert-only for the application
+/// role (no UPDATE or DELETE); a period closed again after a reopen gets a new
+/// version, so an old row is never compared with a balance it did not describe.
+model AccountBalanceSnapshot {
+  id           String           @id @default(cuid())
+  tenantId     String
+  accountId    String
+  periodId     String
+  version      Int
+  /// The last IST day of the period: the balance is as of this day.
+  asOf         DateTime         @db.Date
+  balanceMinor BigInt
+  /// When the journal was summed for this row. The drift check trusts a row only
+  /// if it was derived after the period's latest close.
+  derivedAt    DateTime
+  createdAt    DateTime         @default(now())
+  /// Composite with tenantId: a snapshot can only name an account and a period of its own tenant.
+  account      LedgerAccount    @relation(fields: [tenantId, accountId], references: [tenantId, id])
+  period       AccountingPeriod @relation(fields: [tenantId, periodId], references: [tenantId, id])
+
+  @@unique([tenantId, accountId, periodId, version])
+  @@map("account_balance_snapshots")
 }
 
 /// A registered legal entity. It is explicit even for single-entity tenants so
@@ -264,8 +293,14 @@ model BankStatementLine {
   matchedTransactionId String?
   matchedAt            DateTime?
 
+  /// Identifies the line across re-imports of the same statement (books.ts
+  /// statementLineKey). Null on lines imported before it existed, which the
+  /// unique index allows to repeat.
+  fingerprint String?
+
   createdAt DateTime @default(now())
 
+  @@unique([tenantId, accountId, fingerprint])
   @@index([tenantId, accountId, date])
   @@index([tenantId, matchedAt])
   @@map("cmp_bank_statement_lines")

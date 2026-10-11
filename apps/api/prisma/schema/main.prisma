@@ -4990,7 +4990,9 @@ model LedgerAccount {
 
   transactions Transaction[]
   journalLines JournalLine[]
+  balanceSnapshots AccountBalanceSnapshot[]
 
+  @@unique([tenantId, id])
   @@unique([tenantId, name])
   @@index([tenantId, active])
   @@map("ledger_accounts")

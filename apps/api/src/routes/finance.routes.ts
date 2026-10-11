@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { DIVISIONS, PAYMENT_MODES, type Division, type PaymentMode } from '@kaizen/shared';
+import { DIVISIONS, PAYMENT_MODES, parseMinor, type Division, type PaymentMode } from '@kaizen/shared';
 import { handler, str, numeric, bool } from '../lib/http.js';
 import { prisma, num } from '../platform/db.js';
+import { minorOf, paiseSum, wireInt } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, canSeeMoney, visibilityWhere } from '../platform/permissions.js';
@@ -23,6 +24,8 @@ import {
   invoiceDocument,
   invoiceSummary,
   totalsOf,
+  totalsMinorOf,
+  invoiceWire,
 } from '../domains/invoicing.js';
 import {
   listReceipts,
@@ -146,6 +149,7 @@ router.get(
 
     return rows.map((inv) => {
       const totals = totalsOf(inv);
+      const minor = totalsMinorOf(inv);
       const daysOverdue =
         inv.dueDate && inv.dueDate < new Date() && totals.outstanding > 0
           ? Math.floor((Date.now() - inv.dueDate.getTime()) / 86_400_000)
@@ -171,16 +175,22 @@ router.get(
         issuedDate: inv.issuedDate?.toISOString() ?? null,
         dueDate: inv.dueDate?.toISOString() ?? null,
         total: money ? totals.payable : null,
+        totalMinor: money ? minor.payableMinor : null,
         taxableValue: money ? (num(inv.taxableValue) ?? 0) : null,
+        taxableValueMinor: money ? minorOf(inv.taxableValue) : null,
         taxAmount: money ? (num(inv.cgstAmount) ?? 0) + (num(inv.sgstAmount) ?? 0) + (num(inv.igstAmount) ?? 0) : null,
+        taxAmountMinor: money ? wireInt(paiseSum([inv.cgstAmount, inv.sgstAmount, inv.igstAmount])) : null,
         allocated: money ? totals.allocated : null,
+        allocatedMinor: money ? minor.allocatedMinor : null,
         outstanding: money ? totals.outstanding : null,
+        outstandingMinor: money ? minor.outstandingMinor : null,
         daysOverdue,
         // What the document says about payment, which is a different fact from
         // `status`: the status follows the receipts, and this is the declaration
         // the customer was handed.
         paymentType: inv.paymentType,
         amountPayableNow: money ? (num(inv.amountPayableNow) ?? 0) : null,
+        amountPayableNowMinor: money ? minorOf(inv.amountPayableNow) : null,
         paymentMode: inv.paymentMode,
         paymentReference: inv.paymentReference,
         interState: inv.interState,
@@ -203,11 +213,15 @@ router.get(
           description: l.description,
           quantity: l.quantity,
           unitPrice: money ? num(l.unitPrice) : null,
+          unitPriceMinor: money ? minorOf(l.unitPrice) : null,
           amount: money ? num(l.amount) : null,
+          amountMinor: money ? minorOf(l.amount) : null,
           discountAmount: money ? num(l.discountAmount) : null,
+          discountAmountMinor: money ? minorOf(l.discountAmount) : null,
           discountPercent: money ? num(l.discountPercent) : null,
           gstRate: num(l.gstRate),
           taxAmount: money ? num(l.taxAmount) : null,
+          taxAmountMinor: money ? minorOf(l.taxAmount) : null,
           hsnSac: l.hsnSac,
           // Derived from the offering's default treatment — never asked of sales.
           revenueMethod: l.revenueMethod,
@@ -288,13 +302,15 @@ router.patch(
   '/invoices/:id',
   handler(async (req) => {
     const body = invoiceBodySchema.partial({ lines: true }).parse(req.body);
-    return updateInvoice(req.params.id, {
-      ...body,
-      lines: body.lines,
-      issuedDate: body.issuedDate ? new Date(body.issuedDate) : undefined,
-      dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
-      enrollmentDate: body.enrollmentDate ? new Date(body.enrollmentDate) : undefined,
-    });
+    return invoiceWire(
+      await updateInvoice(req.params.id, {
+        ...body,
+        lines: body.lines,
+        issuedDate: body.issuedDate ? new Date(body.issuedDate) : undefined,
+        dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
+        enrollmentDate: body.enrollmentDate ? new Date(body.enrollmentDate) : undefined,
+      }),
+    );
   }),
 );
 
@@ -395,7 +411,7 @@ router.post(
   '/invoices/:id/void',
   handler(async (req) => {
     const body = z.object({ reason: z.string().min(1) }).parse(req.body);
-    return voidInvoice(req.params.id, body.reason);
+    return invoiceWire(await voidInvoice(req.params.id, body.reason));
   }),
 );
 
@@ -434,10 +450,13 @@ router.get(
     return rows.map((p) => {
       const allocated = p.receipts.reduce((s, r) => s + (num(r.allocatedAmount) ?? 0), 0);
       const amount = num(p.amount) ?? 0;
+      const amountPaise = parseMinor(p.amount.toFixed(2));
+      const allocatedPaise = paiseSum(p.receipts.map((r) => r.allocatedAmount));
       return {
         id: p.id,
         recordCode: p.recordCode,
         amount: money ? amount : null,
+        amountMinor: money ? wireInt(amountPaise) : null,
         currency: p.currency,
         gatewayReference: p.gatewayReference,
         receivedAt: p.receivedAt.toISOString(),
@@ -445,17 +464,21 @@ router.get(
         method: p.method,
         recordedById: p.recordedById,
         allocated: money ? allocated : null,
+        allocatedMinor: money ? wireInt(allocatedPaise) : null,
         // A payment may exist before its resolving obligation is even issued —
         // an explicitly representable unallocated state.
         unallocated: money ? amount - allocated : null,
+        unallocatedMinor: money ? wireInt(amountPaise - allocatedPaise) : null,
         receipts: p.receipts.map((r) => ({
           id: r.id,
           recordCode: r.recordCode,
           invoiceId: r.invoiceId,
           feeInstalmentId: r.feeInstalmentId,
           allocatedAmount: money ? num(r.allocatedAmount) : null,
+          allocatedAmountMinor: money ? minorOf(r.allocatedAmount) : null,
           allocatedAt: r.allocatedAt.toISOString(),
           balanceAfter: money ? num(r.balanceAfter) : null,
+          balanceAfterMinor: money ? minorOf(r.balanceAfter) : null,
         })),
         // bankAccountReference is regulated: structurally excluded from this
         // projection entirely, not merely nulled.

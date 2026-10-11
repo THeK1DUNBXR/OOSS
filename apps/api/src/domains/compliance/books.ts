@@ -13,7 +13,8 @@
  * everything else.
  */
 
-import { istFinancialYearStart } from '@kaizen/shared';
+import { istDateKey, istFinancialYearStart } from '@kaizen/shared';
+import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import {
   EVENTS,
@@ -854,7 +855,33 @@ export interface BankLineInput {
   narration?: string | null;
 }
 
-export async function importBankStatement(accountId: string, lines: BankLineInput[]): Promise<{ imported: number }> {
+/**
+ * What makes a statement line the same line on a re-import. The day is the IST
+ * day, so a line dated 00:30 IST is the day it names.
+ */
+function statementLineContent(line: BankLineInput): string {
+  return [
+    istDateKey(line.date),
+    Number(line.amount).toFixed(2),
+    line.direction,
+    (line.reference ?? '').trim(),
+    (line.narration ?? '').trim(),
+  ].join('|');
+}
+
+/**
+ * The key a statement line is stored under. The occurrence counts identical lines
+ * within one file, so two real identical charges are two lines and a re-import
+ * of the same file gives each of them the same key again.
+ */
+function statementLineKey(accountId: string, content: string, occurrence: number): string {
+  return createHash('sha256').update(`${accountId}|${content}|${occurrence}`).digest('hex');
+}
+
+export async function importBankStatement(
+  accountId: string,
+  lines: BankLineInput[],
+): Promise<{ imported: number; skipped: number }> {
   const auth = currentAuth();
   await assertCan({ resource: 'transactions', verb: 'edit' });
   const account = await prisma.ledgerAccount.findFirst({
@@ -862,18 +889,52 @@ export async function importBankStatement(accountId: string, lines: BankLineInpu
   });
   if (!account) throw ApiError.notFound('Account');
 
-  for (const line of lines) {
-    const row = await prisma.bankStatementLine.create({
-      data: {
-        tenantId: auth.tenantId,
-        accountId,
-        date: line.date,
-        amount: line.amount,
-        direction: line.direction,
-        reference: line.reference ?? null,
-        narration: line.narration ?? null,
-      },
-    });
+  const seenInFile = new Map<string, number>();
+  const keyed = lines.map((line) => {
+    const content = statementLineContent(line);
+    const occurrence = seenInFile.get(content) ?? 0;
+    seenInFile.set(content, occurrence + 1);
+    return { line, key: statementLineKey(accountId, content, occurrence) };
+  });
+  const known = new Set(
+    (
+      await prisma.bankStatementLine.findMany({
+        where: { tenantId: auth.tenantId, accountId, fingerprint: { in: keyed.map((k) => k.key) } },
+        select: { fingerprint: true },
+      })
+    ).map((r) => r.fingerprint),
+  );
+
+  let imported = 0;
+  let skipped = 0;
+  for (const { line, key } of keyed) {
+    if (known.has(key)) {
+      skipped += 1;
+      continue;
+    }
+    let row;
+    try {
+      row = await prisma.bankStatementLine.create({
+        data: {
+          tenantId: auth.tenantId,
+          accountId,
+          date: line.date,
+          amount: line.amount,
+          direction: line.direction,
+          reference: line.reference ?? null,
+          narration: line.narration ?? null,
+          fingerprint: key,
+        },
+      });
+    } catch (err) {
+      // A line from a concurrent import of the same statement got there first.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        skipped += 1;
+        continue;
+      }
+      throw err;
+    }
+    imported += 1;
     await auditWrite({
       action: 'create',
       subjectType: 'bank_statement_line',
@@ -887,15 +948,15 @@ export async function importBankStatement(accountId: string, lines: BankLineInpu
       },
     });
   }
-  await auditExport('bank_statement_line', `import:${accountId}`, lines.length);
+  await auditExport('bank_statement_line', `import:${accountId}`, imported);
   await emit({
     name: EVENTS.BANK_STATEMENT_IMPORTED,
     subject: { entityType: 'ledger_account', entityId: accountId },
-    newState: { lines: lines.length },
+    newState: { lines: imported, skipped },
     impact: { domains: ['fin'] },
     confidentiality: 'confidential',
   });
-  return { imported: lines.length };
+  return { imported, skipped };
 }
 
 /**
@@ -915,9 +976,10 @@ export async function matchBankLines(accountId: string) {
 
   const usedTxnIds = new Set<string>();
   let matched = 0;
+  let ambiguous = 0;
 
   for (const line of bankLines) {
-    const candidate = transactions.find((t) => {
+    const fits = transactions.filter((t) => {
       if (usedTxnIds.has(t.id)) return false;
       return isLikelyMatch({
         bankAmount: num(line.amount) ?? 0,
@@ -930,7 +992,12 @@ export async function matchBankLines(accountId: string) {
         txnReference: t.reference,
       });
     });
-    if (!candidate) continue;
+    // Two entries that fit one line are a question for a person. Committing the
+    // first would be a guess, and the other entry would then look unreconciled
+    // for no reason the books can show.
+    if (fits.length > 1) ambiguous += 1;
+    if (fits.length !== 1) continue;
+    const candidate = fits[0]!;
 
     usedTxnIds.add(candidate.id);
     const now = new Date();
@@ -974,7 +1041,7 @@ export async function matchBankLines(accountId: string) {
 
   const unmatchedBank = bankLines.length - matched;
   const unmatchedLedger = transactions.filter((t) => !usedTxnIds.has(t.id)).length;
-  return { matched, unmatchedBank, unmatchedLedger };
+  return { matched, unmatchedBank, unmatchedLedger, ambiguous };
 }
 
 export async function reconciliationReport(accountId: string) {

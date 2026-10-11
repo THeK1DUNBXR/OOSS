@@ -20,7 +20,7 @@ import { auditWrite, registerGovernedEntities } from '../../../platform/audit.js
 import { assertStepUpForApprove } from './security.js';
 import { documentPrefix } from '../../companyProfile.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../../../platform/documentNumber.js';
-import { recordTransaction } from '../../books.js';
+import { checkTransactionAllowed, writeTransaction } from '../../books.js';
 
 // Registered beside the writer for the reason given in corporate/board.ts.
 registerGovernedEntities('cmp_corporate', ['refund', 'refund_policy']);
@@ -113,7 +113,8 @@ export async function approveRefund(id: string) {
 
 /**
  * Books the outward movement. Never touches the original invoice/receipt —
- * `recordTransaction` writes a new row, direction `out`, source `refund`.
+ * `writeTransaction` writes a new row, direction `out`, source `refund`, inside the
+ * payment's own transaction.
  */
 export async function payRefund(id: string, input: { accountId: string; method?: string; reference?: string | null }) {
   await assertStepUpForApprove('Paying a refund');
@@ -127,29 +128,51 @@ export async function payRefund(id: string, input: { accountId: string; method?:
     );
   }
 
-  const txn = await recordTransaction({
-    txnDate: new Date(),
-    direction: 'out',
-    amount: Number(refund.amount.toString()),
-    accountId: input.accountId,
-    method: input.method ?? 'bank_transfer',
-    reference: input.reference ?? refund.recordCode,
-    note: `Refund ${refund.recordCode} — ${refund.reason}`,
-    source: 'refund',
-  });
+  await checkTransactionAllowed({ txnDate: new Date(), source: 'refund' });
 
-  const updated = await prisma.refund.update({
-    where: { id },
-    data: { status: 'paid', paidPaymentId: txn.id, paidAt: new Date() },
+  // One transaction, so the outward movement and the refund's own move to paid
+  // commit together or not at all. The row lock is the idempotency guard: a second
+  // payment waits on it, then reads 'paid' and is refused, so a retry after a
+  // failed update books one payment, not two (FX-33).
+  return prisma.$transaction(async (tx) => {
+    const [locked] = await tx.$queryRaw<Array<{ status: string }>>`
+      SELECT "status" FROM "compliance_refunds"
+      WHERE "id" = ${id} AND "tenantId" = ${auth.tenantId}
+      FOR UPDATE`;
+    if (locked?.status !== 'approved') {
+      throw ApiError.unprocessable(
+        `This refund is '${locked?.status ?? 'missing'}', not 'approved'. Only an approved refund can be paid.`,
+      );
+    }
+
+    const txn = await writeTransaction(
+      {
+        txnDate: new Date(),
+        direction: 'out',
+        amount: Number(refund.amount.toString()),
+        accountId: input.accountId,
+        method: input.method ?? 'bank_transfer',
+        reference: input.reference ?? refund.recordCode,
+        note: `Refund ${refund.recordCode} — ${refund.reason}`,
+        source: 'refund',
+      },
+      tx,
+    );
+
+    const updated = await tx.refund.update({
+      where: { id },
+      data: { status: 'paid', paidPaymentId: txn.id, paidAt: new Date() },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'refund',
+      subjectId: id,
+      before: { status: 'approved' },
+      after: { status: 'paid', paidPaymentId: txn.id },
+      tx,
+    });
+    return updated;
   });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'refund',
-    subjectId: id,
-    before: { status: 'approved' },
-    after: { status: 'paid', paidPaymentId: txn.id },
-  });
-  return updated;
 }
 
 // ---------------------------------------------------------------------------
