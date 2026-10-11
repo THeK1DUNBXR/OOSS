@@ -45,9 +45,13 @@ const NAME = 'kz.crm.outboxreplay.created';
 const stamp = () => `${Date.now()}${Math.floor(Math.random() * 100000)}`;
 let seen: string[];
 
-beforeEach(() => {
+beforeEach(async () => {
+  // A row left pending by an earlier test would be drained into this one's
+  // `seen` list, so the probe name starts each test with no outbox rows.
   clearSubscribers();
   seen = [];
+  await unscopedPrisma.outboxEvent.deleteMany({ where: { tenantId: TENANT, eventName: NAME } });
+  await unscopedPrisma.eventDeadLetter.deleteMany({ where: { tenantId: TENANT, eventName: NAME } });
 });
 
 /** A row the dispatcher already gave up on, written the way a dead letter is left behind. */

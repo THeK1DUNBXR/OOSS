@@ -16,11 +16,14 @@
  */
 
 import { Prisma } from '@prisma/client';
-import { isCanonicalEventName, type EventEnvelope } from '@kaizen/shared';
+import { EVENTS, isCanonicalEventName, type EventEnvelope } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from './db.js';
-import { asSystem, getContext, maybeTenantId } from './context.js';
-import { subscribersFor, type Registration } from './eventBus.js';
+import { asSystem, currentAuth, getContext, maybeTenantId } from './context.js';
+import { subscribersFor, emit, type Registration } from './eventBus.js';
 import { logger } from './logger.js';
+import { assertCan } from './permissions.js';
+import { auditWrite, registerGovernedEntities } from './audit.js';
+import { ApiError } from './errors.js';
 
 /**
  * Deliveries attempted before a row is dead-lettered. With backoff from 30s to
@@ -232,6 +235,75 @@ export async function dispatchDueOutbox(now: Date = new Date()): Promise<void> {
       logger.error({ component: 'outbox', tenantId, err }, 'outbox drain failed for tenant');
     }
   }
+}
+
+/**
+ * Registered beside the write that changes it: auditWrite refuses a subject
+ * type nobody registered, and this is the only place a dead letter is written.
+ */
+registerGovernedEntities('platform', ['event_dead_letter']);
+
+/**
+ * Puts a dead-lettered event back in line for delivery. It is a governed write
+ * like any other: `events:edit` to replay, the change audited, and a past-tense
+ * fact emitted, so the replay leaves the same trail as the event it retries.
+ *
+ * The outbox row is reset to pending with attempts cleared and due now, and
+ * `deliveredTo` is kept, so a subscriber that already succeeded on this event
+ * is not fired again. The delivery itself happens on the next drain, not here.
+ *
+ * An event name that fails the grammar is refused with 409 rather than queued:
+ * the dispatcher dead-letters it on the first claim, so a replay would only
+ * repeat the failure.
+ */
+export async function replayDeadLetter(deadLetterId: string): Promise<{ outboxEventId: string }> {
+  await assertCan({ resource: 'events', verb: 'edit' });
+  const auth = currentAuth();
+
+  const letter = await prisma.eventDeadLetter.findFirst({ where: { id: deadLetterId, tenantId: auth.tenantId } });
+  if (!letter) throw ApiError.notFound('Dead letter');
+  if (letter.state !== 'dead') {
+    throw ApiError.conflict(`This dead letter is ${letter.state}, so there is nothing to replay.`);
+  }
+  if (!isCanonicalEventName(letter.eventName)) {
+    throw ApiError.conflict(
+      `Event name '${letter.eventName}' does not match the kz.<domain>.<entity>.<verb> grammar, so it cannot be replayed.`,
+    );
+  }
+  const outbox = await prisma.outboxEvent.findFirst({
+    where: { tenantId: auth.tenantId, eventRecordId: letter.eventRecordId, state: 'dead' },
+  });
+  if (!outbox) throw ApiError.conflict('No dead outbox row is held for this event, so there is nothing to requeue.');
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    // The state guard makes two replays of one letter race safely: the loser
+    // finds the row no longer dead and is refused, rather than resetting it twice.
+    const reset = await tx.outboxEvent.updateMany({
+      where: { id: outbox.id, tenantId: auth.tenantId, state: 'dead' },
+      data: { state: 'pending', attempts: 0, nextAttemptAt: now },
+    });
+    if (reset.count !== 1) throw ApiError.conflict('This event was replayed by another request first.');
+    await tx.eventDeadLetter.updateMany({
+      where: { tenantId: auth.tenantId, eventRecordId: letter.eventRecordId, state: 'dead' },
+      data: { state: 'replayed', replayedAt: now },
+    });
+  });
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'event_dead_letter',
+    subjectId: letter.id,
+    before: { state: 'dead' },
+    after: { state: 'replayed', outboxEventId: outbox.id },
+  });
+  await emit({
+    name: EVENTS.OUTBOX_DEAD_LETTER_REPLAYED,
+    subject: { entityType: 'event_dead_letter', entityId: letter.id },
+    previousState: { state: 'dead' },
+    newState: { state: 'replayed' },
+  });
+  return { outboxEventId: outbox.id };
 }
 
 let dispatcher: ReturnType<typeof setInterval> | null = null;

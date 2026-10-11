@@ -203,6 +203,9 @@ export const EVENTS = {
   /// `reconcileTenantKinds` flipped a tenant's `kind` for the first time —
   /// the moment s.2(85) ends small-company status for it (§1a.1).
   TENANT_KIND_CHANGED: 'kz.sys.tenant.kind_changed',
+  // A dead-lettered outbox event put back in line for delivery. Replaying is a
+  // governed act of its own, so it leaves a fact as well as the audit row.
+  OUTBOX_DEAD_LETTER_REPLAYED: 'kz.sys.outbox_dead_letter.replayed',
 
   // --- Spin-out: a division carved out into its own subsidiary tenant
   // (equity-portal plan §6b) — emitted in both the holding and the

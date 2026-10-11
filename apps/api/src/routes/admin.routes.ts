@@ -24,6 +24,7 @@ import { wireInt } from '../platform/wire.js';
 import { assertCanWriteGrant } from '../platform/roleAssignment.js';
 import { agentRoster, decideAgentAction, pauseAgent, revokeAuthority, propose } from '../agents/index.js';
 import { ALL_JOBS, runManualJobs } from '../jobs/scheduler.js';
+import { replayDeadLetter } from '../platform/outbox.js';
 
 const router = Router();
 
@@ -304,6 +305,12 @@ router.get(
       take: 100,
     });
   }),
+);
+
+/** Puts a dead letter back in line for delivery. Refused with 409 when its name fails the grammar. */
+router.post(
+  '/events/dead-letters/:id/replay',
+  handler(async (req) => replayDeadLetter(String(req.params.id))),
 );
 
 // ---------------------------------------------------------------------------
