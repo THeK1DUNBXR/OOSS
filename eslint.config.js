@@ -88,7 +88,6 @@ export default tseslint.config(
       'apps/web/src/pages/Workspace.tsx',
       'apps/web/src/pages/Commercial.tsx',
       'apps/web/src/pages/Parties.tsx',
-      'apps/web/src/pages/People.tsx',
       'apps/web/src/pages/Courses.tsx',
       'apps/web/src/pages/Pipeline.tsx',
       'apps/web/src/pages/Education.tsx',

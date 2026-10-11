@@ -8,28 +8,18 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, date } from '../../lib/api.js';
+import { date } from '../../lib/api.js';
 import { Card, EmptyState, ErrorBox, Loading, PageHeader } from '../../components/ui.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
+import { hcmApi, type TeamCalendarEntry } from '../../lib/hcmApi.js';
 
-interface OrgUnitOption {
-  id: string;
-  name: string;
-}
-
-interface TeamCalendarEntry {
-  employmentRelationshipId: string;
-  fullName: string;
-  leaveTypeName: string;
-  startDate: string;
-  endDate: string;
-  status: string;
-}
-
-interface TeamCalendarResult {
-  month: string;
-  entries: TeamCalendarEntry[];
-  holidays: Array<{ date: string; name: string; kind: string }>;
-}
+const LEAVE_COLUMNS: ReadonlyArray<DataTableColumn<TeamCalendarEntry>> = [
+  { id: 'who', header: 'Who', sortValue: (e) => e.fullName, cell: (e) => e.fullName },
+  { id: 'type', header: 'Type', sortValue: (e) => e.leaveTypeName, cell: (e) => e.leaveTypeName },
+  { id: 'from', header: 'From', sortValue: (e) => e.startDate, cell: (e) => date(e.startDate), cellClassName: 'num' },
+  { id: 'to', header: 'To', sortValue: (e) => e.endDate, cell: (e) => date(e.endDate), cellClassName: 'num' },
+  { id: 'status', header: 'Status', sortValue: (e) => e.status, cell: (e) => e.status },
+];
 
 function monthLabel(month: string): string {
   const [y, m] = month.split('-').map(Number);
@@ -52,15 +42,12 @@ export function LeaveCalendar() {
 
   const { data: orgUnits = [] } = useQuery({
     queryKey: ['org-units'],
-    queryFn: () => api.get<OrgUnitOption[]>('/hr/org-units'),
+    queryFn: () => hcmApi.orgUnits.list(),
   });
 
   const result = useQuery({
     queryKey: ['leavepolicy-team-calendar', month, orgUnitId],
-    queryFn: () =>
-      api.get<TeamCalendarResult>(
-        `/hcm/leavepolicy/team-calendar?month=${month}${orgUnitId ? `&orgUnitId=${orgUnitId}` : ''}`,
-      ),
+    queryFn: () => hcmApi.leave.teamCalendar(month, orgUnitId),
   });
 
   const byDay = new Map<string, TeamCalendarEntry[]>();
@@ -142,28 +129,14 @@ export function LeaveCalendar() {
 
       {result.data && result.data.entries.length > 0 && (
         <Card title="Leave this month" className="mt-4" bodyClassName="p-0">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Who</th>
-                <th>Type</th>
-                <th>From</th>
-                <th>To</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.data.entries.map((e, idx) => (
-                <tr key={idx}>
-                  <td>{e.fullName}</td>
-                  <td>{e.leaveTypeName}</td>
-                  <td className="num">{date(e.startDate)}</td>
-                  <td className="num">{date(e.endDate)}</td>
-                  <td>{e.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            caption={`Approved leave for ${monthLabel(month)}`}
+            columns={LEAVE_COLUMNS}
+            rows={result.data.entries}
+            rowKey={(e) => `${e.employmentRelationshipId}:${e.leaveTypeName}:${e.startDate}`}
+            emptyMessage="No leave in this window."
+            defaultSort={{ columnId: 'from', direction: 'asc' }}
+          />
         </Card>
       )}
     </div>

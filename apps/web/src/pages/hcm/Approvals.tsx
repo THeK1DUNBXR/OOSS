@@ -8,23 +8,48 @@
 
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, date } from '../../lib/api.js';
-import { Card, EmptyState, ErrorBox, Loading, PageHeader, StatusChip } from '../../components/ui.js';
+import { date } from '../../lib/api.js';
+import { Card, PageHeader, StatusChip } from '../../components/ui.js';
 import { messageOf, NewButton, Row, TextArea, TextInput } from '../../components/forms.js';
 import { RequestInbox } from '../../components/hcm/RequestInbox.js';
-
-interface Delegation {
-  id: string;
-  fromPartyId: string;
-  toPartyId: string;
-  fromDate: string;
-  toDate: string;
-  scope: string;
-  note: string | null;
-  revokedAt: string | null;
-}
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
+import { hcmApi, type DelegationRow } from '../../lib/hcmApi.js';
 
 const DELEGATIONS_KEY = ['hcm-workflow-delegations'];
+
+/** Built inside the card so the Revoke button can reach its mutation. */
+function delegationColumns(
+  onRevoke: (id: string) => void,
+  revoking: boolean,
+): ReadonlyArray<DataTableColumn<DelegationRow>> {
+  return [
+    {
+      id: 'delegate',
+      header: 'Delegate',
+      cellClassName: 'mono',
+      sortValue: (d) => d.toPartyId,
+      cell: (d) => d.toPartyId,
+    },
+    {
+      id: 'scope',
+      header: 'Scope',
+      sortValue: (d) => d.scope,
+      cell: (d) => <StatusChip status={d.scope} tone="neutral" />,
+    },
+    { id: 'from', header: 'From', sortValue: (d) => d.fromDate, cell: (d) => date(d.fromDate) },
+    { id: 'to', header: 'To', sortValue: (d) => d.toDate, cell: (d) => date(d.toDate) },
+    { id: 'note', header: 'Note', cellClassName: 'text-ink-400', cell: (d) => d.note ?? '—' },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      cell: (d) => (
+        <button className="btn-xs" onClick={() => onRevoke(d.id)} disabled={revoking}>
+          Revoke
+        </button>
+      ),
+    },
+  ];
+}
 
 function DelegationsCard() {
   const qc = useQueryClient();
@@ -34,12 +59,12 @@ function DelegationsCard() {
 
   const delegations = useQuery({
     queryKey: DELEGATIONS_KEY,
-    queryFn: () => api.get<Delegation[]>('/hcm/workflow/delegations'),
+    queryFn: () => hcmApi.delegations.list(),
   });
 
   const create = useMutation({
     mutationFn: () =>
-      api.post('/hcm/workflow/delegations', {
+      hcmApi.delegations.create({
         toPartyId: form.toPartyId,
         fromDate: form.fromDate,
         toDate: form.toDate,
@@ -55,7 +80,7 @@ function DelegationsCard() {
   });
 
   const revoke = useMutation({
-    mutationFn: (id: string) => api.post(`/hcm/workflow/delegations/${id}/revoke`),
+    mutationFn: (id: string) => hcmApi.delegations.revoke(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: DELEGATIONS_KEY }),
   });
 
@@ -118,43 +143,17 @@ function DelegationsCard() {
         </form>
       )}
 
-      {delegations.isLoading && <Loading />}
-      {delegations.error && <ErrorBox error={delegations.error} />}
-      {delegations.data && delegations.data.length === 0 && (
-        <EmptyState message="No delegations recorded." hint="Nothing routes away from you today." />
-      )}
-      {delegations.data && delegations.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Delegate</th>
-              <th>Scope</th>
-              <th>From</th>
-              <th>To</th>
-              <th>Note</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {delegations.data.map((d) => (
-              <tr key={d.id}>
-                <td className="mono">{d.toPartyId}</td>
-                <td>
-                  <StatusChip status={d.scope} tone="neutral" />
-                </td>
-                <td>{date(d.fromDate)}</td>
-                <td>{date(d.toDate)}</td>
-                <td className="text-ink-400">{d.note ?? '—'}</td>
-                <td>
-                  <button className="btn-xs" onClick={() => revoke.mutate(d.id)} disabled={revoke.isPending}>
-                    Revoke
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Delegations you have raised"
+        columns={delegationColumns((id) => revoke.mutate(id), revoke.isPending)}
+        rows={delegations.data ?? []}
+        rowKey={(d) => d.id}
+        loading={delegations.isLoading}
+        error={delegations.error}
+        defaultSort={{ columnId: 'from', direction: 'desc' }}
+        emptyMessage="No delegations recorded."
+        emptyHint="Nothing routes away from you today."
+      />
     </Card>
   );
 }
