@@ -11,7 +11,7 @@ Work in this order.
 2. **0.1 Config and secrets.** `platform/config.ts` with Zod validation at load. Remove the fallback at `auth.ts:31` and `TENANT_ENFORCE_MODE` at `context.ts:94`. Add the FX-60 boot refusal at `privacy.ts:944-954`.
 3. **Time helpers.** `packages/shared/src/time.ts`. Used for FX-40, FX-41 and FX-42 (see ORDERED-PLAN for the file lines).
 4. **0.8 CI.** ESLint and Prettier. Remove the dead classes at `Start.tsx:100,109` and `People.tsx:56`. Build identity. Replace `db push` with a migration baseline.
-Not active: **hosting** is DEFERRED until after Phase 1 (DECISIONS.md, round 18, item 3). The Cloudflare Worker removal and Caddy serving are not Wave 0 work. See [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), "After Phase 1: hosting and operations (deferred)".
+   Not active: the Cloudflare Worker removal is done and stands (DECISIONS.md, round 19b, item 2). **Hosting** (server, reverse proxy, caching, routing) is undecided until after Phase 1 (round 18b, item 3). See [`zen360/ORDERED-PLAN.md`](zen360/ORDERED-PLAN.md), "After Phase 1: hosting and operations (deferred)".
 
 ## Status (2026-10-10)
 
@@ -20,8 +20,8 @@ Implemented on `claude/laughing-maxwell-kmxu5l`, pending CI on the PR:
 - 0.7: schema split, genmap and scoped tests were already done. Added `db:validate` and the `db:drift` no-drift check.
 - 0.1: `FIELD_ENCRYPTION_KEY` is required in production (FX-60). The marketing unsubscribe secret has no literal fallback. `TENANT_ENFORCE_MODE` and the `auth.ts` fallback were already gone (the file is `lib/auth.ts`).
 - Time: FX-40, FX-41 and FX-42 are fixed, plus about 20 further UTC-derived periods. Month and FY bounds and the period-close snapshot now start at IST midnight.
-- 0.8: the dead classes and the build identity were already fixed. A migration baseline replaces `db push`. The three earlier hand-written migrations had never been applied anywhere, because `db push` ignores them. Their ledger and audit immutability triggers are now live. Their RLS block was a syntax error and never live; FX-51 replaced it with `prisma/migrations/20261010235900_tenant_rls`, which covers every tenant table. FX-51 is DEFERRED (round 18); this migration is not extended.
-- Hosting (provisional; deferred until after Phase 1, round 18): the Worker is removed on this branch. See `deploy/Caddyfile` and `WEB_DIST_DIR`. Not active work.
+- 0.8: the dead classes and the build identity were already fixed. A migration baseline replaces `db push`. The three earlier hand-written migrations had never been applied anywhere, because `db push` ignores them. Their ledger and audit immutability triggers are now live. Their RLS block was a syntax error and never live; FX-51 replaced it with `prisma/migrations/20261010235900_tenant_rls`, which covers every tenant table. FX-51 is merged (#33); extra proof deferred (round 19b, item 1); this migration is not extended.
+- Hosting (undecided until after Phase 1, round 18b): the Worker removal stands (round 19b, item 2). See `deploy/Caddyfile` and `WEB_DIST_DIR`. Not active work.
 - Deferred to the end of Wave 1: a Prettier reformat of 555 files and a `format:check` step in CI. Reformatting now would conflict with every in-flight branch.
 
 ## Exit criteria (Wave 0)
@@ -41,7 +41,7 @@ Implemented on `claude/laughing-maxwell-kmxu5l`, pending CI on the PR:
 
 ## Not in scope
 
-Wave 0 does not include Wave 1 onwards (authority, audit, sessions, statutory master pack, scheduler, money, ledger, interface, onboarding, proof). It also excludes everything in the deferred table in [`zen360/ROADMAP.md`](zen360/ROADMAP.md) section 2, and the items in the "Tbd during onboard" section 3. Tenancy and hosting items (round 18) are not in scope, even where the status note above mentions them.
+Wave 0 does not include Wave 1 onwards (authority, audit, sessions, statutory master pack, scheduler, money, ledger, interface, onboarding, proof). It also excludes everything in the deferred table in [`zen360/ROADMAP.md`](zen360/ROADMAP.md) section 2, and the items in the "Tbd during onboard" section 3. Tenancy and hosting items (round 18b) are not in scope, even where the status note above mentions them.
 
 ## Updating this file
 

@@ -545,7 +545,9 @@ Consequences and open points:
 - The domain specs `ceo-office.md`, `cio.md`, `compliance.md`, `equity-portal.md`, `hcm.md`, `marketing.md` and `ceo-office-asbuilt/` are not phase files and are not moved. Code comments and the zen360 reference docs cite them. Whether they are superseded, and by what, is **open for owner decision**. The `docs/plan/ceo-office-asbuilt/phase-0.md` file also uses the word "Phase 0" for a CEO-office build record, which is not the owner Phase 0.
 - Old phase labels without a file path (for example "phase-0 0.4" in the zen360 reference docs) are not rewritten in this round. They are read as old item references into the archive.
 
-## Owner answers, round 18 (recorded 2026-10-10, during Wave 0 and Wave 1 implementation)
+## Owner answers, round 18a (recorded 2026-10-10, during Wave 0 and Wave 1 implementation)
+
+_renamed from round 18 to remove a numbering collision (2026-10-11)_
 
 - **(a) IT-policy self-dealing approvals go to the chairman.** FX-01 now requires the approver to hold `it_policies:approve`, and only the chairman holds it (`docs/plan/cio.md:144`). So the self-dealing publish step routes to the chairman, not to `finance_head`. Implication: tenants seeded before this change still carry the old approval chain, so a new policy version is needed. Open.
 - **(b) No role means no access.** An affiliation with no access role grants nothing. It used to fall back to `sales`. Before deploy, `report:roleless` lists the people affected.
@@ -553,18 +555,20 @@ Consequences and open points:
 - **(d) Creating a new hire prompts the onboarding owner to run the stakeholder-mapping questionnaire.** Owner words: "creating a new hire will automatically prompt HR to go through the questionnaire for stakeholder mapping." This is built in Wave 6 with the onboarding state machine. Until it is confirmed, the hire holds the Staff default duties (round 15) and nothing more.
 - **(e) Wave 0 goes up as a PR** (THeK1DUNBXR/OOSS#32). Wave 1 lands after Wave 0's CI is green.
 
-Still open after round 18:
+Still open after round 18a:
 
 - Who receives the new-hire prompt. Round 13 says "the founder or the onboarding owner". The owner said "HR". Is HR the onboarding owner by default?
 - The function and vertical list, and the role template for each (telecalling, training, and others).
 - Whether an interim hire-time role, before Wave 6, matches the Staff baseline. This is under check against the existing `employee` role.
 - Whether `sysadmin@` should hold the chairman role in the seed. The FX-01 tests routed a chairman step to it.
 
-## Owner answers, round 19 (recorded 2026-10-10, access-model plan review)
+## Owner answers, round 19a (recorded 2026-10-10, access-model plan review)
+
+_renamed from round 19 to remove a numbering collision (2026-10-11)_
 
 Context: the access-model plan draft (`docs/plan/zen360/ACCESS-MODEL-PLAN.md`, DRAFT v2) and the owner's corrections given during its drafting.
 
-- **(a) HR runs employee onboarding.** HR answers the stakeholder-mapping questionnaire and owns the onboarding case. This resolves round 13 (D:428, "founder or onboarding owner") against round 18 (d), in favour of HR.
+- **(a) HR runs employee onboarding.** HR answers the stakeholder-mapping questionnaire and owns the onboarding case. This resolves round 13 (D:428, "founder or onboarding owner") against round 18a (d), in favour of HR.
 - **(b) Nothing is set up by hardcode.** No employees or roles are set up through hardcode; they are set up only during onboarding. Levels, verticals and every person's access become tenant data. The seeded role matrix (`apps/api/src/seed/grants.ts`) stops being the source of access. Open: whether an unassigned, editable starter template may ship, given round 10's "template ships with the app".
 - **(c) Statutory sign-off is a guided in-app setup.** It runs after the application is set up: the accountant logs in, and a guided setup takes her through approving the statutory rules. Onboarding and access mapping no longer wait on statutory sign-off. Features that depend on statutory rules stay gated until the accountant approves those rules. This reverses the BLOCKED-BY on P7 in ORDERED-PLAN (OP:125) (owner answer to plan question 6: "yes").
 - **(d) The access model is level × vertical, not a job-role model.** A vertical (with units) decides which records a person reaches. A level decides how far that reach goes and how much the person may approve. Telecalling versus training, and every similar case, comes from the vertical or unit, never from a job title.
@@ -574,7 +578,7 @@ Context: the access-model plan draft (`docs/plan/zen360/ACCESS-MODEL-PLAN.md`, D
 
 ## Owner answers, round 20 (recorded 2026-10-10, vertical taxonomy)
 
-Context: the vertical taxonomy proposal (`docs/plan/zen360/VERTICAL-TAXONOMY.md`), which answers round 19 (e). The owner approved all five decisions ("yes to all 5").
+Context: the vertical taxonomy proposal (`docs/plan/zen360/VERTICAL-TAXONOMY.md`), which answers round 19a (e). The owner approved all five decisions ("yes to all 5").
 
 - **(a) Five business lines.** SKL Skill Development, EDU Education, CLR Corporate Learning, TEC Technology Services and WFS Workforce Solutions. Media & Marketing stays a shared function until it earns external revenue; the five-question test in the taxonomy decides when it graduates.
 - **(b) The registry is group-level.** `BusinessLine` IDs are immutable and shared across the group's legal entities. A split or merge creates successors through a dated mapping. History stays as it was booked, never rewritten.
@@ -584,11 +588,13 @@ Context: the vertical taxonomy proposal (`docs/plan/zen360/VERTICAL-TAXONOMY.md`
 
 Consequence for the plan: the registry and its foreign keys land in Waves 2–3, before the ledger, so `JournalLine` carries `lineId` and `costCentreId` from its first posting.
 
-## Owner answers, round 18 (recorded 2026-10-11)
+## Owner answers, round 18b (recorded 2026-10-11)
+
+_renamed from round 18 to remove a numbering collision (2026-10-11)_
 
 Owner answers given after round 17. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, except where this round says it supersedes or provisionally holds an earlier answer. This round supersedes the round 17 "Still open" list. Where no answer is recorded here, the earlier rounds and the drafts stand.
 
-Numbering note: an earlier section is also titled "Owner answers, round 18 (recorded 2026-10-10, during Wave 0 and Wave 1 implementation)". Both are round 18. This section is the one recorded 2026-10-11, and the markers in the plan files say so.
+Numbering note: an earlier section is also titled "Owner answers, round 18a (recorded 2026-10-10, during Wave 0 and Wave 1 implementation)". Both are round 18. This section is the one recorded 2026-10-11, and the markers in the plan files say so.
 
 1. **Tenancy work is deferred until commercialisation (owner answer, item 1).** The company runs as one tenant for now. Deferred:
    - FX-51, RLS on every table;
@@ -598,7 +604,7 @@ Numbering note: an earlier section is also titled "Owner answers, round 18 (reco
    - per-tenant encryption keys (round 5, item 6);
    - separate subsidiary tenants and the holding-company link (D-01);
    - per-tenant editing of access-level templates.
-   Existing tenant scoping in the code stays untouched.
+     Existing tenant scoping in the code stays untouched.
 2. **PgBouncer is not a blocker (owner answer, item 2).** This supersedes the ORDERED-PLAN item 1.2 blocker that named PgBouncer in transaction mode. Revisit only if connections run short.
 3. **All hosting decisions are deferred until after Phase 1 (owner answer, item 3).** The owner will separately consider how to host efficiently and which caching and routing to use. This covers:
    - server operations (ORDERED-PLAN Wave 4);
@@ -620,7 +626,7 @@ Implications (label):
 - (g) The RLS that the existing ledger migration sets on the ledger tables (CI-GATES-DRAFT G7, "exists today"), and the RLS and `set_config` items in ORDERED-PLAN 1.2, stay because rule 6 binds new code. Only the every-table sweep (FX-51) is deferred. Owner to confirm.
 - (h) The Wave 0 "Hosting" item (remove the Cloudflare Worker, serve from the own server behind Caddy) is a hosting decision, so it is deferred with the rest. The CURRENT.md status note records the Worker as removed on the branch. Whether that stands is for the owner to confirm.
 
-Still open after round 18 (recorded 2026-10-11, supersedes the round 17 list):
+Still open after round 18b (recorded 2026-10-11, supersedes the round 17 list):
 
 - Hosting, caching and routing (after Phase 1).
 - Whether onboarding and level mapping stay in Phase 0 (implication (d)).
@@ -629,3 +635,44 @@ Still open after round 18 (recorded 2026-10-11, supersedes the round 17 list):
 - D-11 numbers.
 - Resend data-hosting and chat-retention legal checks.
 - E2EE in LiveKit stays UNVERIFIED. Per-tenant LiveKit isolation is deferred with tenancy (item 1). This bullet is drafted from the ORDERED-PLAN Wave 6 marker, not an owner answer.
+
+## Owner answers, round 19b (recorded 2026-10-11)
+
+_renamed from round 19 to remove a numbering collision (2026-10-11)_
+
+Owner answers given after round 18b (recorded 2026-10-11). Each item is an owner answer unless it is marked as a note or an implication. This round answers round 18b implications (f), (g) and (h), and clarifies what "defer FX-51" meant in round 18b item 1.
+
+Numbering note: this section is titled round 19 by the owner's request. An earlier section, "Owner answers, round 19a (recorded 2026-10-10, access-model plan review)", already has that title. Two sections are titled round 18 (see the round 18 numbering note). Read the date to tell them apart.
+
+1. **Row-level security stays (owner answer, item a).** The tenant_rls migration, the app running as a role bound by the security rules, and the test that requires every new tenant table to set up the same security are KEPT. They were merged to main in PR #33. They cost nothing now, and CLAUDE.md rule 6 still requires them for new code. Only the extra proof work stays deferred: the tenant-leakage fuzzer, gate G7, per-tenant keys and HMAC, and subsidiary tenants. Removing RLS later would be a new migration, not a revert.
+   - Clarification of round 18b implication (g): FX-51's substance is merged and stays. The "defer FX-51" wording in round 18b item 1 means no further tenancy work beyond what is merged.
+   - Note (not an owner answer): Claude checked through the GitHub API that PR #33 is closed and merged into main on 2026-10-11, and that the FX-51 RLS commits are in main's history. Claude did not read the full PR diff, so the exact scope of PR #33 comes from the owner's message.
+2. **The Cloudflare Worker removal stands (owner answer, item b).** The Worker that served the built client and proxied `/api` stays removed. Only the hosting choices that replace it (reverse proxy, caching, routing) wait until after Phase 1. This answers round 18b implication (h).
+3. **CLAUDE.md says hosting is undecided until after Phase 1 (owner answer, item c).** The CLAUDE.md hosting sentence now says that hosting (server, reverse proxy, caching, routing) is undecided until after Phase 1. The sentence that named the company's own server and Caddy is removed. This answers round 18b implication (f), which had left that line unedited.
+
+Still open after round 19b (recorded 2026-10-11, supersedes the round 18b list):
+
+- Hosting, caching and routing (after Phase 1).
+- Whether onboarding and level mapping stay in Phase 0 (round 18b implication (d)).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.
+- E2EE in LiveKit stays UNVERIFIED. Per-tenant LiveKit isolation is deferred with tenancy (round 18b item 1).
+- Round numbering: two sections titled round 18 exist, and a round 19 section dated 2026-10-10 exists above this one.
+
+## Owner answers, round 20 (recorded 2026-10-11)
+
+Owner answers given after round 19b (recorded 2026-10-11). Each item is an owner answer.
+
+1. **Gate G7 stays DEFERRED as a whole (owner answer, item 1).** The check that every new tenant table sets up RLS is not split out as a named CI gate. The merged test from PR #33 stays in the test suite; it is not a named gate. This answers the round 19b question on G7 in CI-GATES-DRAFT.md.
+2. **The README.md hosting section is LEFT AS IS (owner answer, item 2).** The section (README.md lines ~330-354, own server behind Caddy) stays as the provisional round 6/7 answer. CLAUDE.md says hosting is undecided until after Phase 1, so the two differ knowingly. Neither is edited to match the other in this round.
+
+Still open after round 20 (recorded 2026-10-11, supersedes the round 19b list):
+
+- Hosting, caching and routing (after Phase 1).
+- Whether onboarding and level mapping stay in Phase 0 (round 18b implication (d)).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.
