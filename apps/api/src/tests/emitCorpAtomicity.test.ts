@@ -13,6 +13,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { EVENTS } from '@kaizen/shared';
 import { createShareClass } from '../domains/equity.js';
+import { cancelRound, createRound } from '../domains/rounds.js';
+import { raiseBreach, transitionBreach } from '../domains/compliance/privacy.js';
 import { asUser, tenantId, unscopedPrisma } from './helpers.js';
 
 const INJECTED = 'injected audit failure';
@@ -72,5 +74,45 @@ describe('register writes commit with their audit row and event, or not at all',
     expect(
       await unscopedPrisma.outboxEvent.count({ where: { tenantId: tid, eventName: EVENTS.SHARE_CLASS_CREATED } }),
     ).toBe(beforeEvents + 1);
+  });
+
+  it('round cancellation: an audit failure leaves the round draft and writes no outbox event', async () => {
+    const tid = await tenantId();
+    const round = await asUser('chairman@kaizen.co.in', () =>
+      createRound({ name: `EMIT-CORP-RND-${Date.now()}`, kind: 'rights_issue' }),
+    );
+    const beforeEvents = await unscopedPrisma.outboxEvent.count({
+      where: { tenantId: tid, eventName: EVENTS.ROUND_CANCELLED },
+    });
+
+    await refuseAuditInserts();
+    await expect(asUser('chairman@kaizen.co.in', () => cancelRound(round.id))).rejects.toThrow(INJECTED);
+    await restoreAuditInserts();
+
+    expect((await unscopedPrisma.fundingRound.findFirstOrThrow({ where: { id: round.id } })).status).toBe('draft');
+    expect(
+      await unscopedPrisma.outboxEvent.count({ where: { tenantId: tid, eventName: EVENTS.ROUND_CANCELLED } }),
+    ).toBe(beforeEvents);
+  });
+
+  it('breach transition: an audit failure leaves the breach open and writes no outbox event', async () => {
+    const tid = await tenantId();
+    const breach = await asUser('chairman@kaizen.co.in', () =>
+      raiseBreach({ detectedAt: new Date(), description: 'Atomicity probe', severity: 'high' }),
+    );
+    const beforeEvents = await unscopedPrisma.outboxEvent.count({
+      where: { tenantId: tid, eventName: 'kz.cmp.breach.transitioned' },
+    });
+
+    await refuseAuditInserts();
+    await expect(
+      asUser('chairman@kaizen.co.in', () => transitionBreach(breach.id, 'contained', 'probe')),
+    ).rejects.toThrow(INJECTED);
+    await restoreAuditInserts();
+
+    expect((await unscopedPrisma.dataBreach.findFirstOrThrow({ where: { id: breach.id } })).status).toBe('open');
+    expect(
+      await unscopedPrisma.outboxEvent.count({ where: { tenantId: tid, eventName: 'kz.cmp.breach.transitioned' } }),
+    ).toBe(beforeEvents);
   });
 });
