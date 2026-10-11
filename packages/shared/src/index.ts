@@ -15,3 +15,4 @@ export * from './it/index.js';
 export * from './ceo.js';
 export * from './marketing.js';
 export * from './hcm/index.js';
+export * from './money.js';

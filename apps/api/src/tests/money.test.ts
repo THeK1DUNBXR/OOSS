@@ -234,7 +234,10 @@ describe('property tests (seeded, no new dependency)', () => {
     }
   });
 
-  it('allocate permuted weights permute the results (no hidden sorting)', () => {
+  it('allocate does not sort: reversing the weights moves only the leftover paisa, and every line stays within one paisa of its earlier value', () => {
+    // Input order decides who takes a leftover paisa, so reversal is not an exact
+    // mirror of the original split. What must hold is that the total is still exact
+    // and no line moves by more than a paisa.
     const rng = prng(SEED + 1);
     for (let i = 0; i < 500; i++) {
       const ctx = `seed=${SEED + 1} iteration=${i}`;
@@ -242,8 +245,13 @@ describe('property tests (seeded, no new dependency)', () => {
       const k = rng.int(2, 12);
       const weights: bigint[] = Array.from({ length: k }, () => BigInt(rng.int(1, 100)));
       const parts = allocate(total, weights);
-      const reversed = [...weights].reverse();
-      expect(allocate(total, reversed), `${ctx}: reversing weights did not reverse results`).toEqual([...parts].reverse());
+      const reversedParts = allocate(total, [...weights].reverse()).reverse();
+      const sum = reversedParts.reduce((a, b) => a + b, 0n);
+      expect(sum === total, `${ctx}: reversed split does not sum to the total`).toBe(true);
+      for (let j = 0; j < k; j++) {
+        const moved = abs(reversedParts[j]! - parts[j]!);
+        expect(moved <= 1n, `${ctx}: line ${j} moved by ${moved} paise on reversal`).toBe(true);
+      }
     }
   });
 
