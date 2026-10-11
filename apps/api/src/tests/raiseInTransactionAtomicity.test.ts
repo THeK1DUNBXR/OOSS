@@ -22,6 +22,7 @@ import { closeRound, createRound } from '../domains/rounds.js';
 import { accrueEntitlement, createLeaveRequest, transitionLeaveRequest, leaveBalances } from '../domains/leave.js';
 import { hire, transitionEmployment } from '../domains/employment.js';
 import { createPartnerAgreement } from '../domains/agreements.js';
+import { createApplication, createLicence, proposeRenewal } from '../domains/it/software.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
@@ -49,7 +50,26 @@ async function restoreExceptionAudit(): Promise<void> {
   await unscopedPrisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS w2_refuse_exception_audit()`);
 }
 
-afterEach(restoreExceptionAudit);
+async function refuseNotificationInserts(): Promise<void> {
+  await unscopedPrisma.$executeRawUnsafe(
+    `CREATE OR REPLACE FUNCTION w2_refuse_notification_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+     BEGIN RAISE EXCEPTION '${INJECTED}'; END; $$`,
+  );
+  await unscopedPrisma.$executeRawUnsafe(
+    `CREATE TRIGGER w2_refuse_notification_insert BEFORE INSERT ON notifications
+     FOR EACH ROW EXECUTE FUNCTION w2_refuse_notification_insert()`,
+  );
+}
+
+async function restoreNotificationInserts(): Promise<void> {
+  await unscopedPrisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS w2_refuse_notification_insert ON notifications`);
+  await unscopedPrisma.$executeRawUnsafe(`DROP FUNCTION IF EXISTS w2_refuse_notification_insert()`);
+}
+
+afterEach(async () => {
+  await restoreExceptionAudit();
+  await restoreNotificationInserts();
+});
 
 beforeAll(async () => {
   TENANT = await tenantId();
@@ -207,6 +227,38 @@ describe('a partner agreement that duplicates an active channel raises EX-CRM-01
     expect(
       await unscopedPrisma.exceptionRecord.count({
         where: { tenantId: TENANT, code: 'EX-CRM-013', subjectLabel: { startsWith: title } },
+      }),
+    ).toBe(0);
+  });
+});
+
+describe('proposing an IT licence renewal notifies the approver in the same transaction', () => {
+  it('when the notification cannot be recorded, no renewal approval step is written and the licence is unchanged', async () => {
+    const OPS = 'operations@kaizen.co.in';
+    const app = await asUser(OPS, () =>
+      createApplication({ name: unique('W2-ATOMIC-APP'), category: 'productivity', hosting: 'saas' }),
+    );
+    const licence = await asUser(OPS, () =>
+      createLicence({
+        applicationId: app.id,
+        kind: 'per_seat',
+        seatsPurchased: 5,
+        seatsInUse: 2,
+        costPerPeriod: 10000,
+        billingCycle: 'monthly',
+      }),
+    );
+    const newTermEnd = new Date();
+    newTermEnd.setUTCFullYear(newTermEnd.getUTCFullYear() + 1);
+
+    await refuseNotificationInserts();
+    await expectReject(() => asUser(OPS, () => proposeRenewal(licence.id, { newTermEnd })));
+
+    const after = await unscopedPrisma.itLicence.findUniqueOrThrow({ where: { id: licence.id } });
+    expect(after.pendingRenewalApprovalStepId).toBeNull();
+    expect(
+      await unscopedPrisma.approvalStep.count({
+        where: { tenantId: TENANT, subjectType: 'it_licence', subjectId: licence.id },
       }),
     ).toBe(0);
   });
