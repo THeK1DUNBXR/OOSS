@@ -453,20 +453,24 @@ export async function changeForecastCategory(input: ForecastChangeInput) {
       tx,
     });
 
+    // The owner's notice is part of the demotion: it commits or rolls back with it.
+    if (!isPromotion && opportunity.ownerPartyId) {
+      await notify(
+        {
+          recipientPartyId: opportunity.ownerPartyId,
+          priority: 'N2_NORMAL',
+          title: `Forecast demoted: ${opportunity.title}`,
+          body: input.reason ?? 'Demoted.',
+          subjectType: 'opportunity',
+          subjectId: input.opportunityId,
+          drillPath: `/crm/opportunities/${input.opportunityId}`,
+        },
+        tx,
+      );
+    }
+
     return row;
   });
-
-  if (!isPromotion && opportunity.ownerPartyId) {
-    await notify({
-      recipientPartyId: opportunity.ownerPartyId,
-      priority: 'N2_NORMAL',
-      title: `Forecast demoted: ${opportunity.title}`,
-      body: input.reason ?? 'Demoted.',
-      subjectType: 'opportunity',
-      subjectId: input.opportunityId,
-      drillPath: `/crm/opportunities/${input.opportunityId}`,
-    });
-  }
 
   return updated;
 }
