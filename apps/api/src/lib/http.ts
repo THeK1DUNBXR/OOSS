@@ -22,6 +22,14 @@ declare global {
 }
 
 /**
+ * The only routes a sign-in with a pending password change may reach: the
+ * change itself, and logout, so the employee can always end a session. Matched
+ * on the full path, because this middleware runs before any router mounts.
+ */
+const PASSWORD_CHANGE_EXEMPT = new Set(['/api/auth/change-password', '/api/auth/logout']);
+const isPasswordChangeExempt = (req: Request): boolean => PASSWORD_CHANGE_EXEMPT.has(req.originalUrl.split('?')[0]!);
+
+/**
  * The classification ceiling a roleSlug confers. A slug that names no defined
  * role (neither a tenant role nor a built-in one) is treated as no role: the
  * lowest ceiling. Falling back to `internal` gave an undefined role more than
@@ -55,7 +63,13 @@ export async function contextMiddleware(req: Request, res: Response, next: NextF
       const user = session
         ? await unscopedPrisma.user.findFirst({
             where: { id: payload.userId, status: 'active' },
-            select: { id: true, personId: true, tenantId: true, branch: true },
+            select: {
+              id: true,
+              personId: true,
+              tenantId: true,
+              branch: true,
+              principal: { select: { mustChangePassword: true } },
+            },
           })
         : null;
       if (session && user) {
@@ -64,7 +78,13 @@ export async function contextMiddleware(req: Request, res: Response, next: NextF
         });
         // A revoked affiliation goes dark on the very next query — no
         // deprovisioning job, no session-invalidation step.
-        if (affiliation) {
+        if (affiliation && user.principal?.mustChangePassword && !isPasswordChangeExempt(req)) {
+          // A recovered one-time password is good for changing the password and
+          // nothing else. No auth context is set, so a route that does not
+          // require one sees a stranger, never this tenant. requireAuth turns
+          // the flag into 403 PASSWORD_CHANGE_REQUIRED for the routes that do.
+          ctx.passwordChangeRequired = true;
+        } else if (affiliation) {
           // A missing role is no role, never a default one. Defaulting it to
           // 'sales' gave the sales seat to every affiliation whose role was
           // never set, so the holder could read what sales can read. With no
@@ -97,6 +117,9 @@ export async function contextMiddleware(req: Request, res: Response, next: NextF
 }
 
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {
+  if (!req.ctx?.auth && req.ctx?.passwordChangeRequired) {
+    return next(new ApiError(403, 'PASSWORD_CHANGE_REQUIRED', 'Change your password before you continue.'));
+  }
   if (!req.ctx?.auth) return next(ApiError.unauthorized());
   next();
 }

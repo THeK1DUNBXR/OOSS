@@ -620,7 +620,7 @@ export async function changePassword(userId: string, currentPassword: string, ne
   assertPasswordAllowed(newPassword, principal.email);
   await unscopedPrisma.principal.update({
     where: { id: principal.id },
-    data: { passwordHash: await hashPassword(newPassword) },
+    data: { passwordHash: await hashPassword(newPassword), mustChangePassword: false },
   });
   // The credential is one thing across entities, so the "last changed" stamp
   // lands on every user of the principal, not only the one that asked.
@@ -660,8 +660,8 @@ export async function principalHoldsOtherEntities(principalId: string, tenantId:
  * so that a selection token or MFA challenge minted earlier is refused too
  * (`credentialChangedSince`).
  *
- * `mustChangePassword` is not written: no such flag exists on `User` or
- * `Principal`, and adding one needs a migration this change does not make.
+ * Sets `Principal.mustChangePassword`, so the one-time password opens nothing but
+ * change-password until it is replaced (lib/http.ts, `contextMiddleware`).
  */
 export async function recoverSignIn(
   tx: DbTx,
@@ -672,7 +672,7 @@ export async function recoverSignIn(
   const password = randomBytes(12).toString('base64url');
   await tx.principal.update({
     where: { id: args.principalId },
-    data: { passwordHash: await hashPassword(password) },
+    data: { passwordHash: await hashPassword(password), mustChangePassword: true },
   });
   await tx.user.update({
     where: { id: args.userId },
