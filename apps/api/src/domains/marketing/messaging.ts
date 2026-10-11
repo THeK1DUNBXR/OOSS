@@ -125,6 +125,38 @@ export type SendInput = z.infer<typeof SendInputSchema>;
 
 const DISPATCH_BATCH_SIZE = 100;
 
+/**
+ * How long a `sending` claim is trusted. Past this the claimer is presumed
+ * dead and the recipient becomes `unknown_delivery`. It is never sent again
+ * automatically: the provider may already have accepted the message, and a
+ * second send is a duplicate the customer sees. No marketing adapter sets a
+ * request timeout, so this is a judgement about how long one hand-off may
+ * take, not a bound derived from one.
+ */
+const DISPATCH_CLAIM_LEASE_MS = 15 * 60_000;
+
+/** Statuses that mean the provider accepted the message at some point. */
+const REACHED_PROVIDER_STATUSES = ['sent', 'delivered', 'opened', 'clicked', 'bounced', 'unsubscribed'];
+
+/**
+ * Moves `sending` claims older than the lease to `unknown_delivery`. Surfaced
+ * on the recipient row, where an operator can see it, rather than as an
+ * exception: no EX code exists yet for "delivery outcome unknown" (see
+ * packages/shared/src/domain.ts, EX-MKT-001..015).
+ */
+async function surfaceExpiredClaims(sendId: string, tenantId: string): Promise<number> {
+  const { count } = await prisma.marketingSendRecipient.updateMany({
+    where: {
+      sendId,
+      tenantId,
+      status: 'sending',
+      claimedAt: { lt: new Date(Date.now() - DISPATCH_CLAIM_LEASE_MS) },
+    },
+    data: { status: 'unknown_delivery', reason: 'claim_expired_outcome_unknown' },
+  });
+  return count;
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -899,8 +931,7 @@ export async function dispatchSend(id: string): Promise<SendView> {
     await prisma.marketingSend.update({ where: { id: send.id }, data: { status: 'sending' } });
   }
 
-  let anySent = false;
-  let anyFailed = false;
+  await surfaceExpiredClaims(send.id, send.tenantId);
 
   for (;;) {
     const batch = await prisma.marketingSendRecipient.findMany({
@@ -910,6 +941,15 @@ export async function dispatchSend(id: string): Promise<SendView> {
     if (batch.length === 0) break;
 
     for (const recipient of batch) {
+      // Claim before anything that can reach the provider. An overlapping run
+      // (or a scheduler retry) that finds the row already claimed skips it, so
+      // a recipient is handed to the adapter by exactly one run.
+      const { count: claimed } = await prisma.marketingSendRecipient.updateMany({
+        where: { id: recipient.id, tenantId: send.tenantId, status: 'queued' },
+        data: { status: 'sending', claimedAt: new Date() },
+      });
+      if (claimed === 0) continue;
+
       const person = await prisma.person.findFirst({ where: { id: recipient.personId, tenantId: send.tenantId } });
       const address = send.channelKey === 'email' ? (person?.primaryEmail ?? null) : (person?.primaryPhone ?? null);
 
@@ -918,7 +958,6 @@ export async function dispatchSend(id: string): Promise<SendView> {
           where: { id: recipient.id },
           data: { status: 'failed', reason: 'no_contact_address_for_channel' },
         });
-        anyFailed = true;
         continue;
       }
 
@@ -932,10 +971,13 @@ export async function dispatchSend(id: string): Promise<SendView> {
         dltTemplateId: template.dltTemplateId ?? undefined,
         waTemplateName: template.waTemplateName ?? undefined,
       };
+      // A throw here is not a provider refusal. The adapter may have handed the
+      // message over before failing, so the row stays `sending` and is left to
+      // the claim lease rather than returned to `queued`, where a retry would
+      // send it again. Handled refusals come back as `result.status === 'failed'`.
       const result = await adapter.send(message);
 
       if (result.status === 'sent') {
-        anySent = true;
         await markRecipientDispatched(recipient.id, result.providerMessageId ?? null);
 
         const openLead = await prisma.lead.findFirst({
@@ -953,7 +995,6 @@ export async function dispatchSend(id: string): Promise<SendView> {
           ],
         });
       } else {
-        anyFailed = true;
         await prisma.marketingSendRecipient.update({
           where: { id: recipient.id },
           data: { status: 'failed', reason: result.error ?? 'send_failed' },
@@ -962,7 +1003,18 @@ export async function dispatchSend(id: string): Promise<SendView> {
     }
   }
 
-  const finalStatus: SendStatus = anySent ? 'sent' : anyFailed ? 'failed' : 'sent';
+  // Read from the rows, not from this run's flags: an overlapping run may have
+  // sent or failed recipients this run never touched, and the send's outcome is
+  // the whole send's.
+  const reachedProvider = await prisma.marketingSendRecipient.count({
+    where: { sendId: send.id, tenantId: send.tenantId, status: { in: REACHED_PROVIDER_STATUSES } },
+  });
+  const anyFailed =
+    reachedProvider === 0 &&
+    (await prisma.marketingSendRecipient.count({
+      where: { sendId: send.id, tenantId: send.tenantId, status: 'failed' },
+    })) > 0;
+  const finalStatus: SendStatus = anyFailed ? 'failed' : 'sent';
   const updated = await prisma.marketingSend.update({
     where: { id: send.id },
     data: { status: finalStatus, sentAt: new Date() },
@@ -986,15 +1038,21 @@ export async function dispatchSend(id: string): Promise<SendView> {
  */
 const RECIPIENT_STATUS_RANK: Record<string, number> = {
   queued: 0,
-  sent: 1,
-  delivered: 2,
-  opened: 3,
-  clicked: 4,
-  bounced: 5,
-  failed: 5,
-  unsubscribed: 5,
+  // `sending` is a claim: one dispatch run owns the send and the provider
+  // call is in flight. `unknown_delivery` is a claim that expired without a
+  // mark. Both rank as "not yet sent", so the claimer's mark (or a late
+  // provider callback) can still move them on.
+  sending: 1,
+  unknown_delivery: 1,
+  sent: 2,
+  delivered: 3,
+  opened: 4,
+  clicked: 5,
+  bounced: 6,
+  failed: 6,
+  unsubscribed: 6,
 };
-const TERMINAL_RECIPIENT_RANK = 5;
+const TERMINAL_RECIPIENT_RANK = 6;
 
 export function advancesRecipientStatus(current: string, next: string): boolean {
   const to = RECIPIENT_STATUS_RANK[next];
@@ -1005,10 +1063,11 @@ export function advancesRecipientStatus(current: string, next: string): boolean 
 }
 
 /**
- * Records a successful provider hand-off. Only a queued recipient can move to
- * sent: a second dispatch pass that read the row before it was delivered must
- * not regress it, and must not replace the providerMessageId the delivery
- * webhooks match on (FX-50 follow-up).
+ * Records a successful provider hand-off. Only a row the run still holds (or
+ * one that expired into unknown_delivery while the provider call was running)
+ * can move to sent. A row already past sent is never regressed, and the
+ * providerMessageId the delivery webhooks match on is never replaced (FX-50
+ * follow-up).
  */
 export async function markRecipientDispatched(recipientId: string, providerMessageId: string | null): Promise<void> {
   const statusesBeforeSent = Object.keys(RECIPIENT_STATUS_RANK).filter((s) => advancesRecipientStatus(s, 'sent'));

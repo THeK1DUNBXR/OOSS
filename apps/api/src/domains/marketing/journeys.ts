@@ -435,6 +435,21 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
       continue;
     }
 
+    // Advance the run past this step before sending, and only if no other tick
+    // has done so. Advancing after the send let a retry, or an overlapping tick,
+    // read the same step as due and send it again. The trade-off is explicit:
+    // a crash between this claim and the send skips the step rather than
+    // duplicating it, because a repeated customer message is the worse failure.
+    const nextStep = steps[run.currentStep + 1];
+    const nextAt = nextStep ? new Date(Date.now() + nextStep.delayDays * 86_400_000) : null;
+    const nextStatus = nextStep ? 'active' : 'completed';
+
+    const { count: claimed } = await prisma.marketingJourneyRun.updateMany({
+      where: { id: run.id, tenantId: auth.tenantId, status: 'active', currentStep: run.currentStep },
+      data: { currentStep: run.currentStep + 1, nextAt, status: nextStatus },
+    });
+    if (claimed === 0) continue;
+
     try {
       const send = await createSend({
         templateId: step.templateId,
@@ -466,14 +481,6 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
       continue;
     }
 
-    const nextStep = steps[run.currentStep + 1];
-    const nextAt = nextStep ? new Date(Date.now() + nextStep.delayDays * 86_400_000) : null;
-    const nextStatus = nextStep ? 'active' : 'completed';
-
-    await prisma.marketingJourneyRun.update({
-      where: { id: run.id },
-      data: { currentStep: run.currentStep + 1, nextAt, status: nextStatus },
-    });
     await emit({
       name: nextStep ? EVENTS.MKT_JOURNEY_RUN_ADVANCED : EVENTS.MKT_JOURNEY_RUN_COMPLETED,
       subject: { entityType: 'marketing_journey_run', entityId: run.id },
