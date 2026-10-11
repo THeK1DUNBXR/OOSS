@@ -11,16 +11,19 @@
  * translucency for (DESIGN.md, "The Functional Glass Rule").
  */
 
-import { NavLink, Outlet } from 'react-router-dom';
+import { Suspense } from 'react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import type { NavNodeView } from '@kaizen/shared';
 import { useSession } from '../lib/session.js';
 import { words } from '../lib/words.js';
 import { BuildFootnote } from '../components/BuildFootnote.js';
 import { EntitySwitcher } from '../components/EntitySwitcher.js';
-import { EmptyState } from '../components/ui.js';
+import { EmptyState, Loading } from '../components/ui.js';
+import { ErrorBoundary } from '../components/ErrorBoundary.js';
 
 export function PortalShell() {
   const { user, nav, signOut } = useSession();
+  const location = useLocation();
   if (!user) return null;
 
   const sections: NavNodeView[] = nav.filter((n) => n.group === 'portal');
@@ -72,7 +75,11 @@ export function PortalShell() {
             hint="Open the workspace instead."
           />
         ) : (
-          <Outlet />
+          <ErrorBoundary key={location.pathname} scope="route">
+            <Suspense fallback={<Loading label="Opening this screen" />}>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
         )}
         <BuildFootnote />
       </main>

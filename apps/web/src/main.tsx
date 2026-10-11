@@ -1,4 +1,4 @@
-import { Component, StrictMode, Suspense, lazy, type ReactNode } from 'react';
+import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -7,197 +7,263 @@ import { SessionProvider, useSession } from './lib/session.js';
 import { useSurface } from './lib/surface.js';
 import { Shell } from './components/Shell.js';
 import { Loading } from './components/ui.js';
-import { Login } from './pages/Login.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
+const Login = lazy(() => import('./pages/Login.js').then((m) => ({ default: m.Login })));
 import { PortalShell } from './portal/PortalShell.js';
-import { Holdings } from './portal/pages/Holdings.js';
-import { Certificates } from './portal/pages/Certificates.js';
-import { Documents } from './portal/pages/Documents.js';
-import { Board } from './portal/pages/Board.js';
-import { Entities as PortalEntities } from './portal/pages/Entities.js';
-import { Options as PortalOptions } from './portal/pages/Options.js';
-import { CapTable } from './pages/equity/CapTable.js';
-import { Register } from './pages/equity/Register.js';
-import { Holders, HolderDetail } from './pages/equity/Holders.js';
-import { ShareClasses } from './pages/equity/ShareClasses.js';
-import { Valuations } from './pages/equity/Valuations.js';
-import { Documents as EquityDocuments } from './pages/equity/Documents.js';
-import { CertificateDocument } from './pages/equity/CertificateDocument.js';
-import { Group } from './pages/equity/Group.js';
-import { GroupEntity } from './pages/equity/GroupEntity.js';
-import { Rounds } from './pages/equity/Rounds.js';
-import { Scenarios } from './pages/equity/Scenarios.js';
-import { Esop } from './pages/equity/Esop.js';
-import { Filings } from './pages/equity/Filings.js';
-import { Sh4Sheet } from './pages/equity/Sh4Sheet.js';
-import { MyOptions } from './pages/MyOptions.js';
-import { CommandCenter } from './pages/CommandCenter.js';
-import { Workspace, Exceptions } from './pages/Workspace.js';
-import { Pipeline } from './pages/Pipeline.js';
-import { Leads, LeadDetail } from './pages/Leads.js';
-import { Opportunities, OpportunityDetail, Forecast } from './pages/Opportunities.js';
-import { Institutions, Organizations, BodyDetail } from './pages/Parties.js';
-import { Students, StudentDetail } from './pages/Students.js';
-import { People, PersonDetail, Interactions } from './pages/People.js';
-import { Offerings, Quotes, Proposals, Agreements, Approvals, WinLoss } from './pages/Commercial.js';
-import { Invoices, Payments, Receivables } from './pages/Finance.js';
-import { InvoiceDocument } from './pages/InvoiceDocument.js';
-import { NewInvoice } from './pages/kaizenInvoice/NewInvoice.js';
-import { InvoiceHistory } from './pages/kaizenInvoice/InvoiceHistory.js';
-import { ReceiptDocument, Receipts } from './pages/ReceiptDocument.js';
-import { FinalInvoiceDocument, FinalInvoices } from './pages/FinalInvoiceDocument.js';
-import { CompanyDetails, GstReturns } from './pages/GstReturns.js';
-import { Cohorts, Enrollments, Projects } from './pages/Education.js';
-import { Courses } from './pages/Courses.js';
-import { LearnerQueue, StudentTimeline } from './pages/StudentTimeline.js';
-import {
-  PipelineAdmin,
-  TerritoryAdmin,
-  Governance,
-  Agents,
-  Events,
-  Jobs,
-  Audit,
-  PlatformModel,
-} from './pages/Admin.js';
-import { Decisions } from './pages/Decisions.js';
-import { Employees, EmployeeDetail, Leave, Attendance, Payroll, Hiring, Skills } from './pages/PeopleOps.js';
-import { Executive } from './pages/Executive.js';
+const Holdings = lazy(() => import('./portal/pages/Holdings.js').then((m) => ({ default: m.Holdings })));
+const Certificates = lazy(() => import('./portal/pages/Certificates.js').then((m) => ({ default: m.Certificates })));
+const Documents = lazy(() => import('./portal/pages/Documents.js').then((m) => ({ default: m.Documents })));
+const Board = lazy(() => import('./portal/pages/Board.js').then((m) => ({ default: m.Board })));
+const PortalEntities = lazy(() => import('./portal/pages/Entities.js').then((m) => ({ default: m.Entities })));
+const PortalOptions = lazy(() => import('./portal/pages/Options.js').then((m) => ({ default: m.Options })));
+const CapTable = lazy(() => import('./pages/equity/CapTable.js').then((m) => ({ default: m.CapTable })));
+const Register = lazy(() => import('./pages/equity/Register.js').then((m) => ({ default: m.Register })));
+const Holders = lazy(() => import('./pages/equity/Holders.js').then((m) => ({ default: m.Holders })));
+const HolderDetail = lazy(() => import('./pages/equity/Holders.js').then((m) => ({ default: m.HolderDetail })));
+const ShareClasses = lazy(() => import('./pages/equity/ShareClasses.js').then((m) => ({ default: m.ShareClasses })));
+const Valuations = lazy(() => import('./pages/equity/Valuations.js').then((m) => ({ default: m.Valuations })));
+const EquityDocuments = lazy(() => import('./pages/equity/Documents.js').then((m) => ({ default: m.Documents })));
+const CertificateDocument = lazy(() =>
+  import('./pages/equity/CertificateDocument.js').then((m) => ({ default: m.CertificateDocument })),
+);
+const Group = lazy(() => import('./pages/equity/Group.js').then((m) => ({ default: m.Group })));
+const GroupEntity = lazy(() => import('./pages/equity/GroupEntity.js').then((m) => ({ default: m.GroupEntity })));
+const Rounds = lazy(() => import('./pages/equity/Rounds.js').then((m) => ({ default: m.Rounds })));
+const Scenarios = lazy(() => import('./pages/equity/Scenarios.js').then((m) => ({ default: m.Scenarios })));
+const Esop = lazy(() => import('./pages/equity/Esop.js').then((m) => ({ default: m.Esop })));
+const Filings = lazy(() => import('./pages/equity/Filings.js').then((m) => ({ default: m.Filings })));
+const Sh4Sheet = lazy(() => import('./pages/equity/Sh4Sheet.js').then((m) => ({ default: m.Sh4Sheet })));
+const MyOptions = lazy(() => import('./pages/MyOptions.js').then((m) => ({ default: m.MyOptions })));
+const CommandCenter = lazy(() => import('./pages/CommandCenter.js').then((m) => ({ default: m.CommandCenter })));
+const Workspace = lazy(() => import('./pages/Workspace.js').then((m) => ({ default: m.Workspace })));
+const Exceptions = lazy(() => import('./pages/Workspace.js').then((m) => ({ default: m.Exceptions })));
+const Pipeline = lazy(() => import('./pages/Pipeline.js').then((m) => ({ default: m.Pipeline })));
+const Leads = lazy(() => import('./pages/Leads.js').then((m) => ({ default: m.Leads })));
+const LeadDetail = lazy(() => import('./pages/Leads.js').then((m) => ({ default: m.LeadDetail })));
+const Opportunities = lazy(() => import('./pages/Opportunities.js').then((m) => ({ default: m.Opportunities })));
+const OpportunityDetail = lazy(() =>
+  import('./pages/Opportunities.js').then((m) => ({ default: m.OpportunityDetail })),
+);
+const Forecast = lazy(() => import('./pages/Opportunities.js').then((m) => ({ default: m.Forecast })));
+const Institutions = lazy(() => import('./pages/Parties.js').then((m) => ({ default: m.Institutions })));
+const Organizations = lazy(() => import('./pages/Parties.js').then((m) => ({ default: m.Organizations })));
+const BodyDetail = lazy(() => import('./pages/Parties.js').then((m) => ({ default: m.BodyDetail })));
+const Students = lazy(() => import('./pages/Students.js').then((m) => ({ default: m.Students })));
+const StudentDetail = lazy(() => import('./pages/Students.js').then((m) => ({ default: m.StudentDetail })));
+const People = lazy(() => import('./pages/People.js').then((m) => ({ default: m.People })));
+const PersonDetail = lazy(() => import('./pages/People.js').then((m) => ({ default: m.PersonDetail })));
+const Interactions = lazy(() => import('./pages/People.js').then((m) => ({ default: m.Interactions })));
+const Offerings = lazy(() => import('./pages/Commercial.js').then((m) => ({ default: m.Offerings })));
+const Quotes = lazy(() => import('./pages/Commercial.js').then((m) => ({ default: m.Quotes })));
+const Proposals = lazy(() => import('./pages/Commercial.js').then((m) => ({ default: m.Proposals })));
+const Agreements = lazy(() => import('./pages/Commercial.js').then((m) => ({ default: m.Agreements })));
+const Approvals = lazy(() => import('./pages/Commercial.js').then((m) => ({ default: m.Approvals })));
+const WinLoss = lazy(() => import('./pages/Commercial.js').then((m) => ({ default: m.WinLoss })));
+const Invoices = lazy(() => import('./pages/Finance.js').then((m) => ({ default: m.Invoices })));
+const Payments = lazy(() => import('./pages/Finance.js').then((m) => ({ default: m.Payments })));
+const Receivables = lazy(() => import('./pages/Finance.js').then((m) => ({ default: m.Receivables })));
+const InvoiceDocument = lazy(() => import('./pages/InvoiceDocument.js').then((m) => ({ default: m.InvoiceDocument })));
+const NewInvoice = lazy(() => import('./pages/kaizenInvoice/NewInvoice.js').then((m) => ({ default: m.NewInvoice })));
+const InvoiceHistory = lazy(() =>
+  import('./pages/kaizenInvoice/InvoiceHistory.js').then((m) => ({ default: m.InvoiceHistory })),
+);
+const ReceiptDocument = lazy(() => import('./pages/ReceiptDocument.js').then((m) => ({ default: m.ReceiptDocument })));
+const Receipts = lazy(() => import('./pages/ReceiptDocument.js').then((m) => ({ default: m.Receipts })));
+const FinalInvoiceDocument = lazy(() =>
+  import('./pages/FinalInvoiceDocument.js').then((m) => ({ default: m.FinalInvoiceDocument })),
+);
+const FinalInvoices = lazy(() => import('./pages/FinalInvoiceDocument.js').then((m) => ({ default: m.FinalInvoices })));
+const CompanyDetails = lazy(() => import('./pages/GstReturns.js').then((m) => ({ default: m.CompanyDetails })));
+const GstReturns = lazy(() => import('./pages/GstReturns.js').then((m) => ({ default: m.GstReturns })));
+const Cohorts = lazy(() => import('./pages/Education.js').then((m) => ({ default: m.Cohorts })));
+const Enrollments = lazy(() => import('./pages/Education.js').then((m) => ({ default: m.Enrollments })));
+const Projects = lazy(() => import('./pages/Education.js').then((m) => ({ default: m.Projects })));
+const Courses = lazy(() => import('./pages/Courses.js').then((m) => ({ default: m.Courses })));
+const LearnerQueue = lazy(() => import('./pages/StudentTimeline.js').then((m) => ({ default: m.LearnerQueue })));
+const StudentTimeline = lazy(() => import('./pages/StudentTimeline.js').then((m) => ({ default: m.StudentTimeline })));
+const PipelineAdmin = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.PipelineAdmin })));
+const TerritoryAdmin = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.TerritoryAdmin })));
+const Governance = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Governance })));
+const Agents = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Agents })));
+const Events = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Events })));
+const Jobs = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Jobs })));
+const Audit = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Audit })));
+const PlatformModel = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.PlatformModel })));
+const Decisions = lazy(() => import('./pages/Decisions.js').then((m) => ({ default: m.Decisions })));
+const Employees = lazy(() => import('./pages/PeopleOps.js').then((m) => ({ default: m.Employees })));
+const EmployeeDetail = lazy(() => import('./pages/PeopleOps.js').then((m) => ({ default: m.EmployeeDetail })));
+const Leave = lazy(() => import('./pages/PeopleOps.js').then((m) => ({ default: m.Leave })));
+const Attendance = lazy(() => import('./pages/PeopleOps.js').then((m) => ({ default: m.Attendance })));
+const Payroll = lazy(() => import('./pages/PeopleOps.js').then((m) => ({ default: m.Payroll })));
+const Hiring = lazy(() => import('./pages/PeopleOps.js').then((m) => ({ default: m.Hiring })));
+const Skills = lazy(() => import('./pages/PeopleOps.js').then((m) => ({ default: m.Skills })));
+const Executive = lazy(() => import('./pages/Executive.js').then((m) => ({ default: m.Executive })));
 import ImportPage from './pages/Import.js';
 import Start from './pages/Start.js';
-import { Ledger, Payables, Budget, Assets } from './pages/Books.js';
-import { Board as EquityBoard } from './pages/board/Board.js';
-import { MeetingDetail } from './pages/board/MeetingDetail.js';
-import { Resolutions, ResolutionDetail } from './pages/board/Resolutions.js';
-import { Compliance as EquityCompliance } from './pages/board/Compliance.js';
-import { ComplianceCalendar } from './pages/compliance/Calendar.js';
-import { ComplianceGst } from './pages/compliance/Gst.js';
-import { ComplianceTax } from './pages/compliance/Tax.js';
-import { ComplianceBooks } from './pages/compliance/Books.js';
-import { CompliancePayroll } from './pages/compliance/Payroll.js';
-import { ComplianceLabour } from './pages/compliance/Labour.js';
-import { CompliancePrivacy } from './pages/compliance/Privacy.js';
-import { ComplianceCorporate } from './pages/compliance/Corporate.js';
+const Ledger = lazy(() => import('./pages/Books.js').then((m) => ({ default: m.Ledger })));
+const Payables = lazy(() => import('./pages/Books.js').then((m) => ({ default: m.Payables })));
+const Budget = lazy(() => import('./pages/Books.js').then((m) => ({ default: m.Budget })));
+const Assets = lazy(() => import('./pages/Books.js').then((m) => ({ default: m.Assets })));
+const EquityBoard = lazy(() => import('./pages/board/Board.js').then((m) => ({ default: m.Board })));
+const MeetingDetail = lazy(() => import('./pages/board/MeetingDetail.js').then((m) => ({ default: m.MeetingDetail })));
+const Resolutions = lazy(() => import('./pages/board/Resolutions.js').then((m) => ({ default: m.Resolutions })));
+const ResolutionDetail = lazy(() =>
+  import('./pages/board/Resolutions.js').then((m) => ({ default: m.ResolutionDetail })),
+);
+const EquityCompliance = lazy(() => import('./pages/board/Compliance.js').then((m) => ({ default: m.Compliance })));
+const ComplianceCalendar = lazy(() =>
+  import('./pages/compliance/Calendar.js').then((m) => ({ default: m.ComplianceCalendar })),
+);
+const ComplianceGst = lazy(() => import('./pages/compliance/Gst.js').then((m) => ({ default: m.ComplianceGst })));
+const ComplianceTax = lazy(() => import('./pages/compliance/Tax.js').then((m) => ({ default: m.ComplianceTax })));
+const ComplianceBooks = lazy(() => import('./pages/compliance/Books.js').then((m) => ({ default: m.ComplianceBooks })));
+const CompliancePayroll = lazy(() =>
+  import('./pages/compliance/Payroll.js').then((m) => ({ default: m.CompliancePayroll })),
+);
+const ComplianceLabour = lazy(() =>
+  import('./pages/compliance/Labour.js').then((m) => ({ default: m.ComplianceLabour })),
+);
+const CompliancePrivacy = lazy(() =>
+  import('./pages/compliance/Privacy.js').then((m) => ({ default: m.CompliancePrivacy })),
+);
+const ComplianceCorporate = lazy(() =>
+  import('./pages/compliance/Corporate.js').then((m) => ({ default: m.ComplianceCorporate })),
+);
 // Technology (docs/plan/cio.md), one file per workstream.
-import { ItOverview } from './pages/it/Overview.js';
-import { ItAssets, ItAssetDetail } from './pages/it/Assets.js';
-import { ItApplications, ItApplicationDetail, ItLicences, ItLicenceDetail } from './pages/it/Software.js';
-import { ItVendors, ItVendorDetail, ItVendorContracts, ItVendorContractDetail } from './pages/it/Vendors.js';
-import { ItTickets, ItTicketDetail, ItKnowledge, ItKnowledgeDetail, MyIt } from './pages/it/ServiceDesk.js';
-import {
-  ItIncidents,
-  ItIncidentDetail,
-  ItProblems,
-  ItProblemDetail,
-  ItChanges,
-  ItChangeDetail,
-} from './pages/it/Itsm.js';
-import {
-  ItRisks,
-  ItRiskDetail,
-  ItPolicies,
-  ItPolicyDetail,
-  ItControls,
-  ItAccessReviews,
-  ItAccessReviewDetail,
-  ItFindings,
-} from './pages/it/Governance.js';
-import { ItPortfolio, ItInitiativeDetail, ItRoadmap, ItBudget, ItTechDebt } from './pages/it/Portfolio.js';
-import { ItContinuity, ItAvailability, ItMaintenance } from './pages/it/Continuity.js';
-import { Cockpit as CeoCockpit } from './pages/ceo/Cockpit.js';
-import { KpiLibrary as CeoKpiLibrary } from './pages/ceo/KpiLibrary.js';
-import { Strategy as CeoStrategy } from './pages/ceo/Strategy.js';
-import { Okrs as CeoOkrs } from './pages/ceo/Okrs.js';
-import { Initiatives as CeoInitiatives } from './pages/ceo/Initiatives.js';
-import { Rhythm as CeoRhythm } from './pages/ceo/Rhythm.js';
-import { Doa as CeoDoa } from './pages/ceo/Doa.js';
-import { Approvals as CeoApprovals } from './pages/ceo/Approvals.js';
-import { BoardPack as CeoBoardPack } from './pages/ceo/BoardPack.js';
-import { InvestorUpdates as CeoInvestorUpdates } from './pages/ceo/InvestorUpdates.js';
-import { Stakeholders as CeoStakeholders } from './pages/ceo/Stakeholders.js';
-import { Risk as CeoRisk } from './pages/ceo/Risk.js';
-import { Policies as CeoPolicies } from './pages/ceo/Policies.js';
-import { Governance as CeoGovernance } from './pages/ceo/Governance.js';
-import { FinancialPlan as CeoFinancialPlan } from './pages/ceo/FinancialPlan.js';
-import { Headcount as CeoHeadcount } from './pages/ceo/Headcount.js';
-import { Leadership as CeoLeadership } from './pages/ceo/Leadership.js';
-import { OneOnOnes as CeoOneOnOnes } from './pages/ceo/OneOnOnes.js';
-import { Succession as CeoSuccession } from './pages/ceo/Succession.js';
-import { TimeAudit as CeoTimeAudit } from './pages/ceo/TimeAudit.js';
-import { MarketingShell } from './pages/marketing/MarketingShell.js';
-import { MarketingOverview } from './pages/marketing/MarketingOverview.js';
-import { Campaigns as MarketingCampaigns } from './pages/marketing/Campaigns.js';
-import { CampaignDetail as MarketingCampaignDetail } from './pages/marketing/CampaignDetail.js';
-import { Calendar as MarketingCalendar } from './pages/marketing/Calendar.js';
-import { Budget as MarketingBudget } from './pages/marketing/Budget.js';
-import { Plans as MarketingPlans } from './pages/marketing/Plans.js';
-import { Analytics as MarketingAnalytics } from './pages/marketing/Analytics.js';
-import { MarketingSettings } from './pages/marketing/MarketingSettings.js';
-import { Forms as MarketingForms } from './pages/marketing/Forms.js';
-import { MarketingEvents, MarketingEventDetail } from './pages/marketing/MarketingEvents.js';
-import { Assets as MarketingAssets } from './pages/marketing/Assets.js';
-import { Social as MarketingSocial } from './pages/marketing/Social.js';
-import { Referrals as MarketingReferrals } from './pages/marketing/Referrals.js';
-import { Audiences as MarketingAudiences } from './pages/marketing/Audiences.js';
-import { Consent as MarketingConsent } from './pages/marketing/Consent.js';
-import { Templates as MarketingTemplates } from './pages/marketing/Templates.js';
-import { Sends as MarketingSends, SendDetail as MarketingSendDetail } from './pages/marketing/Sends.js';
-import { Journeys as MarketingJourneys } from './pages/marketing/Journeys.js';
-import { OrgChart } from './pages/hcm/OrgChart.js';
-import { Directory } from './pages/hcm/Directory.js';
-import { Employee360 } from './pages/hcm/Employee360.js';
-import { Time as HcmTime } from './pages/hcm/Time.js';
-import { LeavePolicies } from './pages/hcm/LeavePolicies.js';
-import { LeaveCalendar } from './pages/hcm/LeaveCalendar.js';
-import { Recruiting } from './pages/hcm/Recruiting.js';
-import { Performance as HcmPerformance } from './pages/hcm/Performance.js';
-import { Learning as HcmLearning } from './pages/hcm/Learning.js';
-import { Compensation } from './pages/hcm/Compensation.js';
-import { PayrollOps } from './pages/hcm/PayrollOps.js';
-import { Engagement } from './pages/hcm/Engagement.js';
-import { Separations } from './pages/hcm/Separations.js';
-import { Assets as HcmAssets } from './pages/hcm/Assets.js';
-import { Analytics as HcmAnalytics } from './pages/hcm/Analytics.js';
-import { Approvals as HcmApprovals } from './pages/hcm/Approvals.js';
-import { Home as MeHome } from './pages/me/Home.js';
-import { Leave as MeLeave } from './pages/me/Leave.js';
-import { Attendance as MeAttendance } from './pages/me/Attendance.js';
-import { Payslips as MePayslips } from './pages/me/Payslips.js';
-import { Performance as MePerformance } from './pages/me/Performance.js';
-import { Learning as MeLearning } from './pages/me/Learning.js';
-import { Money as MeMoney } from './pages/me/Money.js';
-import { Requests as MeRequests } from './pages/me/Requests.js';
-import { Exit as MeExit } from './pages/me/Exit.js';
+const ItOverview = lazy(() => import('./pages/it/Overview.js').then((m) => ({ default: m.ItOverview })));
+const ItAssets = lazy(() => import('./pages/it/Assets.js').then((m) => ({ default: m.ItAssets })));
+const ItAssetDetail = lazy(() => import('./pages/it/Assets.js').then((m) => ({ default: m.ItAssetDetail })));
+const ItApplications = lazy(() => import('./pages/it/Software.js').then((m) => ({ default: m.ItApplications })));
+const ItApplicationDetail = lazy(() =>
+  import('./pages/it/Software.js').then((m) => ({ default: m.ItApplicationDetail })),
+);
+const ItLicences = lazy(() => import('./pages/it/Software.js').then((m) => ({ default: m.ItLicences })));
+const ItLicenceDetail = lazy(() => import('./pages/it/Software.js').then((m) => ({ default: m.ItLicenceDetail })));
+const ItVendors = lazy(() => import('./pages/it/Vendors.js').then((m) => ({ default: m.ItVendors })));
+const ItVendorDetail = lazy(() => import('./pages/it/Vendors.js').then((m) => ({ default: m.ItVendorDetail })));
+const ItVendorContracts = lazy(() => import('./pages/it/Vendors.js').then((m) => ({ default: m.ItVendorContracts })));
+const ItVendorContractDetail = lazy(() =>
+  import('./pages/it/Vendors.js').then((m) => ({ default: m.ItVendorContractDetail })),
+);
+const ItTickets = lazy(() => import('./pages/it/ServiceDesk.js').then((m) => ({ default: m.ItTickets })));
+const ItTicketDetail = lazy(() => import('./pages/it/ServiceDesk.js').then((m) => ({ default: m.ItTicketDetail })));
+const ItKnowledge = lazy(() => import('./pages/it/ServiceDesk.js').then((m) => ({ default: m.ItKnowledge })));
+const ItKnowledgeDetail = lazy(() =>
+  import('./pages/it/ServiceDesk.js').then((m) => ({ default: m.ItKnowledgeDetail })),
+);
+const MyIt = lazy(() => import('./pages/it/ServiceDesk.js').then((m) => ({ default: m.MyIt })));
+const ItIncidents = lazy(() => import('./pages/it/Itsm.js').then((m) => ({ default: m.ItIncidents })));
+const ItIncidentDetail = lazy(() => import('./pages/it/Itsm.js').then((m) => ({ default: m.ItIncidentDetail })));
+const ItProblems = lazy(() => import('./pages/it/Itsm.js').then((m) => ({ default: m.ItProblems })));
+const ItProblemDetail = lazy(() => import('./pages/it/Itsm.js').then((m) => ({ default: m.ItProblemDetail })));
+const ItChanges = lazy(() => import('./pages/it/Itsm.js').then((m) => ({ default: m.ItChanges })));
+const ItChangeDetail = lazy(() => import('./pages/it/Itsm.js').then((m) => ({ default: m.ItChangeDetail })));
+const ItRisks = lazy(() => import('./pages/it/Governance.js').then((m) => ({ default: m.ItRisks })));
+const ItRiskDetail = lazy(() => import('./pages/it/Governance.js').then((m) => ({ default: m.ItRiskDetail })));
+const ItPolicies = lazy(() => import('./pages/it/Governance.js').then((m) => ({ default: m.ItPolicies })));
+const ItPolicyDetail = lazy(() => import('./pages/it/Governance.js').then((m) => ({ default: m.ItPolicyDetail })));
+const ItControls = lazy(() => import('./pages/it/Governance.js').then((m) => ({ default: m.ItControls })));
+const ItAccessReviews = lazy(() => import('./pages/it/Governance.js').then((m) => ({ default: m.ItAccessReviews })));
+const ItAccessReviewDetail = lazy(() =>
+  import('./pages/it/Governance.js').then((m) => ({ default: m.ItAccessReviewDetail })),
+);
+const ItFindings = lazy(() => import('./pages/it/Governance.js').then((m) => ({ default: m.ItFindings })));
+const ItPortfolio = lazy(() => import('./pages/it/Portfolio.js').then((m) => ({ default: m.ItPortfolio })));
+const ItInitiativeDetail = lazy(() =>
+  import('./pages/it/Portfolio.js').then((m) => ({ default: m.ItInitiativeDetail })),
+);
+const ItRoadmap = lazy(() => import('./pages/it/Portfolio.js').then((m) => ({ default: m.ItRoadmap })));
+const ItBudget = lazy(() => import('./pages/it/Portfolio.js').then((m) => ({ default: m.ItBudget })));
+const ItTechDebt = lazy(() => import('./pages/it/Portfolio.js').then((m) => ({ default: m.ItTechDebt })));
+const ItContinuity = lazy(() => import('./pages/it/Continuity.js').then((m) => ({ default: m.ItContinuity })));
+const ItAvailability = lazy(() => import('./pages/it/Continuity.js').then((m) => ({ default: m.ItAvailability })));
+const ItMaintenance = lazy(() => import('./pages/it/Continuity.js').then((m) => ({ default: m.ItMaintenance })));
+const CeoCockpit = lazy(() => import('./pages/ceo/Cockpit.js').then((m) => ({ default: m.Cockpit })));
+const CeoKpiLibrary = lazy(() => import('./pages/ceo/KpiLibrary.js').then((m) => ({ default: m.KpiLibrary })));
+const CeoStrategy = lazy(() => import('./pages/ceo/Strategy.js').then((m) => ({ default: m.Strategy })));
+const CeoOkrs = lazy(() => import('./pages/ceo/Okrs.js').then((m) => ({ default: m.Okrs })));
+const CeoInitiatives = lazy(() => import('./pages/ceo/Initiatives.js').then((m) => ({ default: m.Initiatives })));
+const CeoRhythm = lazy(() => import('./pages/ceo/Rhythm.js').then((m) => ({ default: m.Rhythm })));
+const CeoDoa = lazy(() => import('./pages/ceo/Doa.js').then((m) => ({ default: m.Doa })));
+const CeoApprovals = lazy(() => import('./pages/ceo/Approvals.js').then((m) => ({ default: m.Approvals })));
+const CeoBoardPack = lazy(() => import('./pages/ceo/BoardPack.js').then((m) => ({ default: m.BoardPack })));
+const CeoInvestorUpdates = lazy(() =>
+  import('./pages/ceo/InvestorUpdates.js').then((m) => ({ default: m.InvestorUpdates })),
+);
+const CeoStakeholders = lazy(() => import('./pages/ceo/Stakeholders.js').then((m) => ({ default: m.Stakeholders })));
+const CeoRisk = lazy(() => import('./pages/ceo/Risk.js').then((m) => ({ default: m.Risk })));
+const CeoPolicies = lazy(() => import('./pages/ceo/Policies.js').then((m) => ({ default: m.Policies })));
+const CeoGovernance = lazy(() => import('./pages/ceo/Governance.js').then((m) => ({ default: m.Governance })));
+const CeoFinancialPlan = lazy(() => import('./pages/ceo/FinancialPlan.js').then((m) => ({ default: m.FinancialPlan })));
+const CeoHeadcount = lazy(() => import('./pages/ceo/Headcount.js').then((m) => ({ default: m.Headcount })));
+const CeoLeadership = lazy(() => import('./pages/ceo/Leadership.js').then((m) => ({ default: m.Leadership })));
+const CeoOneOnOnes = lazy(() => import('./pages/ceo/OneOnOnes.js').then((m) => ({ default: m.OneOnOnes })));
+const CeoSuccession = lazy(() => import('./pages/ceo/Succession.js').then((m) => ({ default: m.Succession })));
+const CeoTimeAudit = lazy(() => import('./pages/ceo/TimeAudit.js').then((m) => ({ default: m.TimeAudit })));
+const MarketingShell = lazy(() =>
+  import('./pages/marketing/MarketingShell.js').then((m) => ({ default: m.MarketingShell })),
+);
+const MarketingOverview = lazy(() =>
+  import('./pages/marketing/MarketingOverview.js').then((m) => ({ default: m.MarketingOverview })),
+);
+const MarketingCampaigns = lazy(() => import('./pages/marketing/Campaigns.js').then((m) => ({ default: m.Campaigns })));
+const MarketingCampaignDetail = lazy(() =>
+  import('./pages/marketing/CampaignDetail.js').then((m) => ({ default: m.CampaignDetail })),
+);
+const MarketingCalendar = lazy(() => import('./pages/marketing/Calendar.js').then((m) => ({ default: m.Calendar })));
+const MarketingBudget = lazy(() => import('./pages/marketing/Budget.js').then((m) => ({ default: m.Budget })));
+const MarketingPlans = lazy(() => import('./pages/marketing/Plans.js').then((m) => ({ default: m.Plans })));
+const MarketingAnalytics = lazy(() => import('./pages/marketing/Analytics.js').then((m) => ({ default: m.Analytics })));
+const MarketingSettings = lazy(() =>
+  import('./pages/marketing/MarketingSettings.js').then((m) => ({ default: m.MarketingSettings })),
+);
+const MarketingForms = lazy(() => import('./pages/marketing/Forms.js').then((m) => ({ default: m.Forms })));
+const MarketingEvents = lazy(() =>
+  import('./pages/marketing/MarketingEvents.js').then((m) => ({ default: m.MarketingEvents })),
+);
+const MarketingEventDetail = lazy(() =>
+  import('./pages/marketing/MarketingEvents.js').then((m) => ({ default: m.MarketingEventDetail })),
+);
+const MarketingAssets = lazy(() => import('./pages/marketing/Assets.js').then((m) => ({ default: m.Assets })));
+const MarketingSocial = lazy(() => import('./pages/marketing/Social.js').then((m) => ({ default: m.Social })));
+const MarketingReferrals = lazy(() => import('./pages/marketing/Referrals.js').then((m) => ({ default: m.Referrals })));
+const MarketingAudiences = lazy(() => import('./pages/marketing/Audiences.js').then((m) => ({ default: m.Audiences })));
+const MarketingConsent = lazy(() => import('./pages/marketing/Consent.js').then((m) => ({ default: m.Consent })));
+const MarketingTemplates = lazy(() => import('./pages/marketing/Templates.js').then((m) => ({ default: m.Templates })));
+const MarketingSends = lazy(() => import('./pages/marketing/Sends.js').then((m) => ({ default: m.Sends })));
+const MarketingSendDetail = lazy(() => import('./pages/marketing/Sends.js').then((m) => ({ default: m.SendDetail })));
+const MarketingJourneys = lazy(() => import('./pages/marketing/Journeys.js').then((m) => ({ default: m.Journeys })));
+const OrgChart = lazy(() => import('./pages/hcm/OrgChart.js').then((m) => ({ default: m.OrgChart })));
+const Directory = lazy(() => import('./pages/hcm/Directory.js').then((m) => ({ default: m.Directory })));
+const Employee360 = lazy(() => import('./pages/hcm/Employee360.js').then((m) => ({ default: m.Employee360 })));
+const HcmTime = lazy(() => import('./pages/hcm/Time.js').then((m) => ({ default: m.Time })));
+const LeavePolicies = lazy(() => import('./pages/hcm/LeavePolicies.js').then((m) => ({ default: m.LeavePolicies })));
+const LeaveCalendar = lazy(() => import('./pages/hcm/LeaveCalendar.js').then((m) => ({ default: m.LeaveCalendar })));
+const Recruiting = lazy(() => import('./pages/hcm/Recruiting.js').then((m) => ({ default: m.Recruiting })));
+const HcmPerformance = lazy(() => import('./pages/hcm/Performance.js').then((m) => ({ default: m.Performance })));
+const HcmLearning = lazy(() => import('./pages/hcm/Learning.js').then((m) => ({ default: m.Learning })));
+const Compensation = lazy(() => import('./pages/hcm/Compensation.js').then((m) => ({ default: m.Compensation })));
+const PayrollOps = lazy(() => import('./pages/hcm/PayrollOps.js').then((m) => ({ default: m.PayrollOps })));
+const Engagement = lazy(() => import('./pages/hcm/Engagement.js').then((m) => ({ default: m.Engagement })));
+const Separations = lazy(() => import('./pages/hcm/Separations.js').then((m) => ({ default: m.Separations })));
+const HcmAssets = lazy(() => import('./pages/hcm/Assets.js').then((m) => ({ default: m.Assets })));
+const HcmAnalytics = lazy(() => import('./pages/hcm/Analytics.js').then((m) => ({ default: m.Analytics })));
+const HcmApprovals = lazy(() => import('./pages/hcm/Approvals.js').then((m) => ({ default: m.Approvals })));
+const MeHome = lazy(() => import('./pages/me/Home.js').then((m) => ({ default: m.Home })));
+const MeLeave = lazy(() => import('./pages/me/Leave.js').then((m) => ({ default: m.Leave })));
+const MeAttendance = lazy(() => import('./pages/me/Attendance.js').then((m) => ({ default: m.Attendance })));
+const MePayslips = lazy(() => import('./pages/me/Payslips.js').then((m) => ({ default: m.Payslips })));
+const MePerformance = lazy(() => import('./pages/me/Performance.js').then((m) => ({ default: m.Performance })));
+const MeLearning = lazy(() => import('./pages/me/Learning.js').then((m) => ({ default: m.Learning })));
+const MeMoney = lazy(() => import('./pages/me/Money.js').then((m) => ({ default: m.Money })));
+const MeRequests = lazy(() => import('./pages/me/Requests.js').then((m) => ({ default: m.Requests })));
+const MeExit = lazy(() => import('./pages/me/Exit.js').then((m) => ({ default: m.Exit })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 15_000 },
   },
 });
-
-class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-ink-950 p-6 text-center">
-          <div className="max-w-md rounded-lg border border-band-critical/40 bg-band-critical/5 p-6">
-            <p className="text-lg font-semibold text-band-critical">Something went wrong.</p>
-            <p className="mt-2 text-sm text-ink-400">Refresh the page or return to the app shell.</p>
-          </div>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-const LoginRoute = lazy(() => import('./pages/Login.js').then((module) => ({ default: module.Login })));
 
 /**
  * An old `/crm/accounts/:id` link. The record is the same row, so it resolves to
@@ -249,7 +315,7 @@ function Routed() {
   if (!user)
     return (
       <Suspense fallback={<Loading label="Opening sign-in" />}>
-        <LoginRoute />
+        <Login />
       </Suspense>
     );
   if (surface === 'portal') return <PortalRouted />;
@@ -523,7 +589,7 @@ function Routed() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AppErrorBoundary>
+    <ErrorBoundary scope="app">
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <SessionProvider>
@@ -531,6 +597,6 @@ createRoot(document.getElementById('root')!).render(
           </SessionProvider>
         </BrowserRouter>
       </QueryClientProvider>
-    </AppErrorBoundary>
+    </ErrorBoundary>
   </StrictMode>,
 );

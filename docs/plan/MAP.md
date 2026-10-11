@@ -500,13 +500,13 @@
 
 **`apps/web/src/pages/Admin.tsx`** (1104 lines) — PipelineAdmin:36 · TerritoryAdmin:166 · Governance:297 · Agents:496 · Events:720 · Jobs:816 · Audit:922 · PlatformModel:1036
 
-**`apps/web/src/pages/Books.tsx`** (843 lines) — Ledger:97 · Payables:341 · Budget:549 · Assets:688
+**`apps/web/src/pages/Books.tsx`** (844 lines) — Ledger:97 · Payables:342 · Budget:550 · Assets:689
 
 **`apps/web/src/pages/CommandCenter.tsx`** (803 lines) — CommandCenter:30
 
 **`apps/web/src/pages/Commercial.tsx`** (966 lines) — Offerings:35 · Quotes:220 · Proposals:335 · Agreements:448 · Approvals:638 · WinLoss:735
 
-**`apps/web/src/pages/Courses.tsx`** (582 lines) — Courses:45 · AssignCourse:453
+**`apps/web/src/pages/Courses.tsx`** (587 lines) — Courses:45 · AssignCourse:458
 
 **`apps/web/src/pages/Decisions.tsx`** (197 lines) — Decisions:37
 
@@ -514,11 +514,11 @@
 
 **`apps/web/src/pages/Executive.tsx`** (854 lines) — Executive:283
 
-**`apps/web/src/pages/FinalInvoiceDocument.tsx`** (296 lines) — FinalInvoiceDocument:43 · FinalInvoices:201
+**`apps/web/src/pages/FinalInvoiceDocument.tsx`** (302 lines) — FinalInvoiceDocument:43 · FinalInvoices:201
 
-**`apps/web/src/pages/Finance.tsx`** (683 lines) — Invoices:60 · Payments:441 · Receivables:618
+**`apps/web/src/pages/Finance.tsx`** (688 lines) — Invoices:60 · Payments:446 · Receivables:623
 
-**`apps/web/src/pages/GstReturns.tsx`** (1078 lines) — GstReturns:71 · CompanyDetails:693
+**`apps/web/src/pages/GstReturns.tsx`** (1083 lines) — GstReturns:71 · CompanyDetails:698
 
 **`apps/web/src/pages/Import.tsx`** (811 lines) — ImportPage:115
 
@@ -530,21 +530,21 @@
 
 **`apps/web/src/pages/MyOptions.tsx`** (7 lines) — MyOptions:4
 
-**`apps/web/src/pages/Opportunities.tsx`** (656 lines) — Opportunities:43 · OpportunityDetail:155 · Forecast:546
+**`apps/web/src/pages/Opportunities.tsx`** (655 lines) — Opportunities:43 · OpportunityDetail:155 · Forecast:545
 
 **`apps/web/src/pages/Parties.tsx`** (553 lines) — Institutions:261 · Organizations:276 · BodyDetail:298
 
 **`apps/web/src/pages/People.tsx`** (517 lines) — People:68 · PersonDetail:323 · Interactions:448
 
-**`apps/web/src/pages/PeopleOps.tsx`** (1728 lines) — Employees:225 · EmployeeDetail:486 · Leave:874 · Attendance:1006 · Payroll:1176 · Hiring:1400 · Skills:1631
+**`apps/web/src/pages/PeopleOps.tsx`** (1770 lines) — Employees:225 · EmployeeDetail:497 · Leave:885 · Attendance:1027 · Payroll:1207 · Hiring:1442 · Skills:1673
 
 **`apps/web/src/pages/Pipeline.tsx`** (305 lines) — Pipeline:67
 
-**`apps/web/src/pages/ReceiptDocument.tsx`** (260 lines) — ReceiptDocument:42 · Receipts:169
+**`apps/web/src/pages/ReceiptDocument.tsx`** (261 lines) — ReceiptDocument:42 · Receipts:169
 
 **`apps/web/src/pages/Start.tsx`** (337 lines) — Start:46 · SetupBanner:312
 
-**`apps/web/src/pages/StudentTimeline.tsx`** (625 lines) — StudentTimeline:75 · LearnerQueue:517
+**`apps/web/src/pages/StudentTimeline.tsx`** (649 lines) — StudentTimeline:75 · LearnerQueue:526
 
 **`apps/web/src/pages/Students.tsx`** (363 lines) — Students:90 · StudentDetail:210
 
@@ -598,13 +598,13 @@
 
 **`apps/web/src/pages/ceo/TimeAudit.tsx`** (18 lines) — TimeAudit:8
 
-**`apps/web/src/pages/compliance/Books.tsx`** (695 lines) — ComplianceBooks:48
+**`apps/web/src/pages/compliance/Books.tsx`** (701 lines) — ComplianceBooks:48
 
 **`apps/web/src/pages/compliance/Calendar.tsx`** (429 lines) — ComplianceCalendar:96
 
 **`apps/web/src/pages/compliance/Corporate.tsx`** (800 lines) — ComplianceCorporate:42
 
-**`apps/web/src/pages/compliance/Gst.tsx`** (651 lines) — ComplianceGst:34
+**`apps/web/src/pages/compliance/Gst.tsx`** (667 lines) — ComplianceGst:34
 
 **`apps/web/src/pages/compliance/Labour.tsx`** (819 lines) — ComplianceLabour:31
 
@@ -672,7 +672,7 @@
 
 **`apps/web/src/pages/hcm/Performance.tsx`** (1147 lines) — Performance:64
 
-**`apps/web/src/pages/hcm/Recruiting.tsx`** (1436 lines) — Recruiting:40
+**`apps/web/src/pages/hcm/Recruiting.tsx`** (1438 lines) — Recruiting:40
 
 **`apps/web/src/pages/hcm/Separations.tsx`** (687 lines) — Separations:26
 
@@ -684,7 +684,7 @@
 
 **`apps/web/src/pages/it/Governance.tsx`** (1794 lines) — ItRisks:95 · ItRiskDetail:371 · ItPolicies:568 · ItPolicyDetail:757 · ItControls:955 · ItAccessReviews:1207 · ItAccessReviewDetail:1345 · ItFindings:1565
 
-**`apps/web/src/pages/it/Itsm.tsx`** (1183 lines) — ItIncidents:164 · ItIncidentDetail:353 · ItProblems:528 · ItProblemDetail:608 · ItChanges:697 · ItChangeDetail:1024
+**`apps/web/src/pages/it/Itsm.tsx`** (1181 lines) — ItIncidents:164 · ItIncidentDetail:354 · ItProblems:529 · ItProblemDetail:609 · ItChanges:698 · ItChangeDetail:1022
 
 **`apps/web/src/pages/it/Overview.tsx`** (391 lines) — ItOverview:160
 
@@ -692,7 +692,7 @@
 
 **`apps/web/src/pages/it/ServiceDesk.tsx`** (996 lines) — ItTickets:168 · ItTicketDetail:362 · ItKnowledge:718 · ItKnowledgeDetail:808 · MyIt:885
 
-**`apps/web/src/pages/it/Software.tsx`** (1268 lines) — ItApplications:185 · ItApplicationDetail:444 · ItLicences:658 · ItLicenceDetail:921
+**`apps/web/src/pages/it/Software.tsx`** (1269 lines) — ItApplications:185 · ItApplicationDetail:445 · ItLicences:659 · ItLicenceDetail:922
 
 **`apps/web/src/pages/it/Vendors.tsx`** (1015 lines) — ItVendors:42 · ItVendorDetail:264 · ItVendorContracts:532 · ItVendorContractDetail:752
 

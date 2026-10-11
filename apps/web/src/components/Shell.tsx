@@ -7,10 +7,12 @@
  * a permission leak.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { NavNodeView, NotificationView } from '@kaizen/shared';
+import { ErrorBoundary } from './ErrorBoundary.js';
+import { Loading } from './ui.js';
 import {
   Activity,
   AlertTriangle,
@@ -323,7 +325,14 @@ export function Shell() {
               the orientation, at more length and without a dialog to dismiss. */}
           {location.pathname !== '/start' && <FirstRun />}
           {location.pathname !== '/start' && <SetupBanner />}
-          <Outlet />
+          {/* Inside the shell, not around it: a screen that throws, or a page
+              chunk that is still loading, must not take the navigation with it.
+              Keyed by pathname so the error clears when the user moves on. */}
+          <ErrorBoundary key={location.pathname} scope="route">
+            <Suspense fallback={<Loading label="Opening this screen" />}>
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
           {/* Under everything, on every screen: which build this is, which the
               server is, and how old the seeded data is. Small enough to ignore
               and there when somebody is trying to work out why a change they
