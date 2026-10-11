@@ -654,6 +654,8 @@ export async function runVesting(): Promise<number> {
 
   let vestedCount = 0;
   for (const ve of due) {
+    // These reads only skip work that is clearly not due. The transaction in
+    // vestTranche repeats both checks under the grant's row lock.
     const grantRow = await prisma.optionGrant.findFirst({ where: { id: ve.grantId, tenantId: auth.tenantId } });
     if (!grantRow || !['granted', 'partly_vested'].includes(grantRow.status)) continue;
 
@@ -662,23 +664,80 @@ export async function runVesting(): Promise<number> {
     });
     if (!employment || !isEmployed(employment.status as EmploymentState)) continue;
 
-    await prisma.vestingEvent.update({ where: { id: ve.id }, data: { status: 'vested', vestedOn: new Date() } });
-    const newVested = (num(grantRow.vested) ?? 0) + (num(ve.count) ?? 0);
-    const count = num(grantRow.count) ?? 0;
-    const updated = await prisma.optionGrant.update({
-      where: { id: grantRow.id },
-      data: { vested: dec(newVested)!, status: nextGrantStatus(count, newVested, num(grantRow.exercised) ?? 0) },
-    });
-
-    await emit({
-      name: EVENTS.OPTION_VESTED,
-      subject: { entityType: 'option_grant', entityId: grantRow.id, recordCode: grantRow.recordCode },
-      newState: { vested: newVested, status: updated.status, tranche: num(ve.count) },
-    });
-    vestedCount += 1;
+    if (await vestTranche(ve.id, grantRow.id, num(ve.count) ?? 0)) vestedCount += 1;
   }
   return vestedCount;
 }
+
+/**
+ * Vests one tranche, or does nothing. Returns false when another run already
+ * vested it or the grant has since stopped accepting vesting.
+ *
+ * The order matters. The tranche is claimed first, so two overlapping runs
+ * queue on that row and only one moves it out of `scheduled`. The grant is
+ * then locked, and the vested total is summed from the vested tranches
+ * inside the lock. The `vested` column on the grant is a cache of that sum,
+ * not a counter carried forward between runs: a counter read before the lock
+ * is how a tranche was once counted twice.
+ */
+async function vestTranche(trancheId: string, grantId: string, trancheCount: number): Promise<boolean> {
+  const auth = currentAuth();
+  try {
+    await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const claimed = await tx.vestingEvent.updateMany({
+        where: { id: trancheId, tenantId: auth.tenantId, status: 'scheduled' },
+        data: { status: 'vested', vestedOn: now },
+      });
+      if (claimed.count !== 1) throw new AlreadyApplied();
+
+      const locked = await tx.optionGrant.updateMany({
+        where: { id: grantId, tenantId: auth.tenantId, status: { in: ['granted', 'partly_vested'] } },
+        data: { updatedAt: now },
+      });
+      if (locked.count !== 1) throw new AlreadyApplied();
+
+      const grantNow = await tx.optionGrant.findFirst({ where: { id: grantId, tenantId: auth.tenantId } });
+      if (!grantNow) throw new AlreadyApplied();
+
+      const tranches = await tx.vestingEvent.aggregate({
+        where: { tenantId: auth.tenantId, grantId, status: 'vested' },
+        _sum: { count: true },
+      });
+      const vested = num(tranches._sum.count) ?? 0;
+      const status = nextGrantStatus(num(grantNow.count) ?? 0, vested, num(grantNow.exercised) ?? 0);
+
+      await tx.optionGrant.update({ where: { id: grantId }, data: { vested: dec(vested)!, status } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'option_grant',
+        subjectId: grantId,
+        before: { vested: num(grantNow.vested) ?? 0, status: grantNow.status },
+        after: { vested, status },
+        meta: { tranche: trancheId, trancheCount },
+        tx,
+      });
+      await emit({
+        name: EVENTS.OPTION_VESTED,
+        subject: { entityType: 'option_grant', entityId: grantId, recordCode: grantNow.recordCode },
+        newState: { vested, status, tranche: trancheCount },
+        tx,
+      });
+    });
+    return true;
+  } catch (err) {
+    if (err instanceof AlreadyApplied) return false;
+    throw err;
+  }
+}
+
+/**
+ * Raised inside a job's transaction to roll back a write that another run
+ * has already made. The caller treats it as "nothing to do", not as a failure.
+ */
+class AlreadyApplied extends Error {}
+
+const OPEN_FOR_LAPSE = ['granted', 'partly_vested', 'fully_vested'];
 
 /** The daily check that lapses a vested-unexercised balance once its post-exit exercise window has passed. */
 export async function runExpiredExerciseWindows(): Promise<number> {
@@ -686,34 +745,77 @@ export async function runExpiredExerciseWindows(): Promise<number> {
   const candidates = await prisma.optionGrant.findMany({
     where: {
       tenantId: auth.tenantId,
-      status: { in: ['granted', 'partly_vested', 'fully_vested'] },
+      status: { in: OPEN_FOR_LAPSE },
       exerciseWindowEndsOn: { not: null, lte: new Date() },
     },
+    select: { id: true },
   });
 
   let lapsedCount = 0;
   for (const g of candidates) {
-    const remaining = (num(g.vested) ?? 0) - (num(g.exercised) ?? 0) - 0;
-    if (remaining <= 0) continue;
-
-    const updated = await prisma.optionGrant.update({
-      where: { id: g.id },
-      data: {
-        lapsed: dec((num(g.lapsed) ?? 0) + remaining)!,
-        status: 'lapsed',
-        lapsedOn: new Date(),
-        lapseReason: g.lapseReason ?? 'The post-exit exercise window closed with a vested balance unexercised.',
-      },
-    });
-    await emit({
-      name: EVENTS.OPTION_LAPSED,
-      subject: { entityType: 'option_grant', entityId: g.id, recordCode: g.recordCode },
-      newState: { status: 'lapsed', count: remaining, reason: 'exercise_window_expired' },
-    });
-    void updated;
-    lapsedCount += 1;
+    if (await lapseAfterWindow(g.id)) lapsedCount += 1;
   }
   return lapsedCount;
+}
+
+/**
+ * Lapses one grant whose exercise window has closed, or does nothing. The
+ * window test is repeated under the row lock: an overlapping run that lost
+ * the race finds the grant already `lapsed` and writes nothing.
+ */
+async function lapseAfterWindow(grantId: string): Promise<boolean> {
+  const auth = currentAuth();
+  try {
+    await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const locked = await tx.optionGrant.updateMany({
+        where: {
+          id: grantId,
+          tenantId: auth.tenantId,
+          status: { in: OPEN_FOR_LAPSE },
+          exerciseWindowEndsOn: { not: null, lte: now },
+        },
+        data: { updatedAt: now },
+      });
+      if (locked.count !== 1) throw new AlreadyApplied();
+
+      const g = await tx.optionGrant.findFirst({ where: { id: grantId, tenantId: auth.tenantId } });
+      if (!g) throw new AlreadyApplied();
+      const remaining = (num(g.vested) ?? 0) - (num(g.exercised) ?? 0);
+      if (remaining <= 0) throw new AlreadyApplied();
+
+      const lapsedBefore = num(g.lapsed) ?? 0;
+      const lapsedAfter = lapsedBefore + remaining;
+      await tx.optionGrant.update({
+        where: { id: grantId },
+        data: {
+          lapsed: dec(lapsedAfter)!,
+          status: 'lapsed',
+          lapsedOn: now,
+          lapseReason: g.lapseReason ?? 'The post-exit exercise window closed with a vested balance unexercised.',
+        },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'option_grant',
+        subjectId: grantId,
+        before: { status: g.status, lapsed: lapsedBefore },
+        after: { status: 'lapsed', lapsed: lapsedAfter },
+        meta: { reason: 'exercise_window_expired' },
+        tx,
+      });
+      await emit({
+        name: EVENTS.OPTION_LAPSED,
+        subject: { entityType: 'option_grant', entityId: grantId, recordCode: g.recordCode },
+        newState: { status: 'lapsed', count: remaining, reason: 'exercise_window_expired' },
+        tx,
+      });
+    });
+    return true;
+  } catch (err) {
+    if (err instanceof AlreadyApplied) return false;
+    throw err;
+  }
 }
 
 /**
