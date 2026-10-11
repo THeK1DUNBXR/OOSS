@@ -62,6 +62,36 @@ export function passesFourPropertyTest(input: RaiseExceptionInput): boolean {
   return owned && actionable;
 }
 
+/**
+ * The states that still count as "open" for the natural key. Must match the
+ * WHERE predicate of exception_records_open_natural_key in the migration; a
+ * resolved row releases the key so the same problem can be raised again.
+ */
+const OPEN_STATES = ['open', 'acknowledged', 'escalated'] as const;
+
+async function findOpenException(input: RaiseExceptionInput) {
+  return prisma.exceptionRecord.findFirst({
+    where: {
+      tenantId: currentAuth().tenantId,
+      subjectType: input.subjectType,
+      subjectId: input.subjectId,
+      code: input.code,
+      state: { in: [...OPEN_STATES] },
+    },
+  });
+}
+
+function absorbIntoOpen(open: { id: string; severity: string; escalationRung: number }, input: RaiseExceptionInput) {
+  if (SEVERITY_RANK[input.severity] > SEVERITY_RANK[open.severity as SeverityCode]) {
+    return escalateException(open.id, 'severity_increase', input.severity, undefined, open.escalationRung);
+  }
+  return open;
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+}
+
 export async function raiseException(input: RaiseExceptionInput) {
   const auth = currentAuth();
 
@@ -82,49 +112,57 @@ export async function raiseException(input: RaiseExceptionInput) {
 
   // An open exception of the same code on the same subject escalates rather
   // than duplicating — severity increase is one of the four escalation triggers.
-  const open = await prisma.exceptionRecord.findFirst({
-    where: {
-      tenantId: auth.tenantId,
-      subjectType: input.subjectType,
-      subjectId: input.subjectId,
-      code: input.code,
-      state: { in: ['open', 'acknowledged', 'escalated'] },
-    },
-  });
-
-  if (open) {
-    if (SEVERITY_RANK[input.severity] > SEVERITY_RANK[open.severity as SeverityCode]) {
-      return escalateException(open.id, 'severity_increase', input.severity);
-    }
-    return open;
-  }
+  const open = await findOpenException(input);
+  if (open) return absorbIntoOpen(open, input);
 
   const recordCode = await nextRecordCode('EXC');
   const ownerUnresolved = !input.ownerPartyId && !input.accountablePositionId;
 
-  const record = await prisma.exceptionRecord.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      code: input.code,
-      label: input.label,
-      severity: input.severity,
-      subjectType: input.subjectType,
-      subjectId: input.subjectId,
-      subjectLabel: input.subjectLabel ?? null,
-      domain: input.domain ?? 'crm',
-      detail: input.detail ?? null,
-      reasonCode: input.reasonCode ?? null,
-      ownerPartyId: input.ownerPartyId ?? null,
-      accountablePositionId: input.accountablePositionId ?? null,
-      // An exception failing to resolve an owner is itself a first-class,
-      // measured category feeding H_OPS — never something discovered by
-      // noticing a blank assignee field.
-      ownerUnresolved,
-      slaDueAt: input.slaDueAt ?? null,
-      triggerFingerprint: input.triggerFingerprint ?? null,
-      ladderRung: input.ladderRung ?? null,
-    },
+  let record;
+  try {
+    record = await prisma.exceptionRecord.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        code: input.code,
+        label: input.label,
+        severity: input.severity,
+        subjectType: input.subjectType,
+        subjectId: input.subjectId,
+        subjectLabel: input.subjectLabel ?? null,
+        domain: input.domain ?? 'crm',
+        detail: input.detail ?? null,
+        reasonCode: input.reasonCode ?? null,
+        ownerPartyId: input.ownerPartyId ?? null,
+        accountablePositionId: input.accountablePositionId ?? null,
+        // An exception failing to resolve an owner is itself a first-class,
+        // measured category feeding H_OPS — never something discovered by
+        // noticing a blank assignee field.
+        ownerUnresolved,
+        slaDueAt: input.slaDueAt ?? null,
+        triggerFingerprint: input.triggerFingerprint ?? null,
+        ladderRung: input.ladderRung ?? null,
+      },
+    });
+  } catch (err) {
+    // The findFirst above is a read, not a claim: an overlapping run can pass
+    // it at the same moment and insert first. The partial unique index
+    // (exception_records_open_natural_key, migration 20261011120000) lets
+    // exactly one of the two inserts win. The loser lands here and joins the
+    // winner's row instead of creating a second open exception and a second
+    // owner notification. A unique violation with no open row to join is not
+    // this race, so it is rethrown.
+    if (!isUniqueViolation(err)) throw err;
+    const winner = await findOpenException(input);
+    if (!winner) throw err;
+    return absorbIntoOpen(winner, input);
+  }
+
+  await auditWrite({
+    action: 'create',
+    subjectType: 'exception',
+    subjectId: record.id,
+    after: { recordCode, code: input.code, severity: input.severity, state: 'open' },
   });
 
   await emit({
@@ -233,25 +271,53 @@ export async function resolveException(id: string, note: string) {
   );
 }
 
-/** Escalation is bounded to the four named triggers — nothing escalates by default outside them. */
+/**
+ * Escalation is bounded to the four named triggers — nothing escalates by default outside them.
+ *
+ * The bump is a conditional UPDATE on `observedRung`, the rung the caller saw
+ * when it decided to escalate, and an open state. Two overlapping SLA sweeps
+ * that both observed rung N: only the first UPDATE matches, so only that call
+ * moves the row to N+1, emits and notifies. The second returns the row as it
+ * now stands. The rung is the caller's observation, not a read taken here: a
+ * read inside this function would see the first sweep's commit and bump again,
+ * which is the double-escalation this guard exists to stop. Omitted, it falls
+ * back to the rung read here, which is correct only for a single caller.
+ * Deliberately not retried: a retry would bump again and undo the guard.
+ */
 export async function escalateException(
   id: string,
   trigger: EscalationTrigger,
   newSeverity?: SeverityCode,
   escalateToPartyId?: string | null,
+  observedRung?: number,
 ) {
   const existing = await prisma.exceptionRecord.findFirst({ where: { id } });
   if (!existing) return null;
 
-  const record = await prisma.exceptionRecord.update({
-    where: { id },
+  const { count } = await prisma.exceptionRecord.updateMany({
+    where: { id, state: { in: [...OPEN_STATES] }, escalationRung: observedRung ?? existing.escalationRung },
     data: {
       state: 'escalated',
       severity: newSeverity ?? existing.severity,
       escalatedAt: new Date(),
-      escalationRung: existing.escalationRung + 1,
+      escalationRung: (observedRung ?? existing.escalationRung) + 1,
       escalationTrigger: trigger,
       escalatedToPartyId: escalateToPartyId ?? existing.escalatedToPartyId,
+    },
+  });
+  const record = await prisma.exceptionRecord.findFirstOrThrow({ where: { id } });
+  if (count !== 1) return record;
+
+  await auditWrite({
+    action: 'update',
+    subjectType: 'exception',
+    subjectId: id,
+    before: { state: existing.state, severity: existing.severity, escalationRung: existing.escalationRung },
+    after: {
+      state: 'escalated',
+      severity: record.severity,
+      escalationRung: record.escalationRung,
+      escalationTrigger: trigger,
     },
   });
 

@@ -3773,6 +3773,11 @@ model Project {
 /// A record in an actionable bad state. An accountable owner is always resolved
 /// BEFORE any notification fires. Escalation is bounded to exactly four named
 /// triggers.
+/// At most one open row per (tenantId, subjectType, subjectId, code): a partial
+/// unique index, exception_records_open_natural_key, in the migration. Prisma
+/// cannot express its WHERE predicate, so it is not in this file. A resolved row
+/// releases the key. raiseException joins the open row on a unique violation
+/// rather than creating a second one.
 model ExceptionRecord {
   id         String @id @default(cuid())
   tenantId   String
