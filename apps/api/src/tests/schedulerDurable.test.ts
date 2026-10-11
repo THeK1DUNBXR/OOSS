@@ -28,6 +28,7 @@ import {
   heartbeatAttempt,
   runAllTenants,
   runClaimedOccurrence,
+  runManualJobs,
   tickOnce,
   type JobDefinition,
   type JobResult,
@@ -43,7 +44,11 @@ let kaizen = '';
 let seq = 0;
 const probeNames: string[] = [];
 
-function probe(cron: string, body: (signal: AbortSignal) => Promise<JobResult> = async () => ok) {
+function probe(
+  cron: string,
+  body: (signal: AbortSignal) => Promise<JobResult> = async () => ok,
+  shape: Pick<JobDefinition, 'sideEffects' | 'idempotent'> = {},
+) {
   const name = `probe.job${++seq}.${randomUUID().slice(0, 8)}`;
   probeNames.push(name);
   const calls: Array<{ tenantId: string; signal: AbortSignal }> = [];
@@ -52,6 +57,7 @@ function probe(cron: string, body: (signal: AbortSignal) => Promise<JobResult> =
     label: name,
     automationClass: 'probe',
     cron,
+    ...shape,
     run: async (signal) => {
       calls.push({ tenantId: currentAuth().tenantId, signal });
       return body(signal);
@@ -248,7 +254,72 @@ describe('failure, timeout and dead-letter', () => {
   });
 });
 
+describe('side effects decide how often a body may run', () => {
+  const boom = async (): Promise<JobResult> => {
+    throw new Error('gateway 503');
+  };
+
+  it('an external job that is not idempotent is dead-lettered on its first failure', async () => {
+    const { job, calls } = probe('* * * * *', boom, { sideEffects: 'external', idempotent: false });
+    const occurrence = new Date('2026-09-12T00:40:00.000Z');
+
+    expect((await runClaimedOccurrence(kaizen, job, occurrence)).status).toBe('dead');
+    expect(await rowFor(job.name, occurrence)).toMatchObject({ status: 'dead', attempt: 1 });
+    expect((await runClaimedOccurrence(kaizen, job, occurrence)).status).toBe('skipped');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('an external job that is not idempotent is not re-run after a timeout either', async () => {
+    const { job, calls } = probe('* * * * *', () => new Promise<JobResult>((r) => setTimeout(() => r(ok), 400)), {
+      sideEffects: 'external',
+      idempotent: false,
+    });
+    const occurrence = new Date('2026-09-12T00:41:00.000Z');
+
+    expect((await runClaimedOccurrence(kaizen, job, occurrence, { timeoutMs: 100 })).status).toBe('dead');
+    await sleep(500);
+    expect((await runClaimedOccurrence(kaizen, job, occurrence)).status).toBe('skipped');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('an external job that declares itself idempotent keeps the retry ladder', async () => {
+    const { job } = probe('* * * * *', boom, { sideEffects: 'external', idempotent: true });
+    expect((await runClaimedOccurrence(kaizen, job, new Date('2026-09-12T00:42:00.000Z'))).status).toBe('failed');
+  });
+
+  it('an internal job keeps the retry ladder after a failure', async () => {
+    const { job } = probe('* * * * *', boom, { sideEffects: 'internal', idempotent: false });
+    expect((await runClaimedOccurrence(kaizen, job, new Date('2026-09-12T00:43:00.000Z'))).status).toBe('failed');
+  });
+
+  it('a crashed external attempt is dead-lettered by the sweep rather than taken over', async () => {
+    const { job, calls } = probe('* * * * *', undefined, { sideEffects: 'external', idempotent: false });
+    const occurrence = new Date('2026-09-12T00:44:00.000Z');
+    const a = await claimAttempt(kaizen, job.name, occurrence, 'worker-a');
+    await unscopedPrisma.jobClaim.update({ where: { id: a!.id }, data: { leaseUntil: new Date(Date.now() - 1000) } });
+
+    await tickOnce(occurrence, { jobs: [job], tenantIds: [kaizen] });
+
+    expect(calls).toHaveLength(0);
+    expect(await rowFor(job.name, occurrence)).toMatchObject({ status: 'dead', attempt: 1 });
+  });
+});
+
 describe('manual runs and the registry', () => {
+  it('two concurrent manual runs of one job for one instant run it once', async () => {
+    const { job, calls } = probe(SIX_AM_IST, async () => {
+      await sleep(150);
+      return ok;
+    });
+    const at = new Date('2026-09-12T10:05:00.000Z');
+    const [a, b] = await Promise.all([
+      runManualJobs(kaizen, { jobs: [job], at }),
+      runManualJobs(kaizen, { jobs: [job], at }),
+    ]);
+    expect(calls).toHaveLength(1);
+    expect([a, b].filter((r) => r[job.name] !== undefined)).toHaveLength(1);
+  });
+
   it('a manual run claims its instant, so a repeat of the same instant is skipped', async () => {
     const { job, calls } = probe(SIX_AM_IST);
     const at = new Date('2026-09-12T10:00:00.000Z');
