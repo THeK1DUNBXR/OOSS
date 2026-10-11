@@ -15,10 +15,11 @@
  * goes to the screen.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import {
   destinationOf,
   onboardingState,
+  test,
   pathOf,
   signIn,
   type OnboardingState,
@@ -30,8 +31,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('the getting-started checklist', () => {
-  test('every step button points where its own label says', async ({ page, request }) => {
-    const state = await onboardingState(request);
+  test('every step button points where its own label says', async ({ page }) => {
+    const state = await onboardingState(page);
     test.skip(state.steps.length === 0, 'this account has no setup steps of its own');
 
     await page.goto('/start');
@@ -47,8 +48,8 @@ test.describe('the getting-started checklist', () => {
     }
   });
 
-  test('every step button arrives at a real screen', async ({ page, request }) => {
-    const state = await onboardingState(request);
+  test('every step button arrives at a real screen', async ({ page }) => {
+    const state = await onboardingState(page);
     test.skip(state.steps.length === 0, 'this account has no setup steps of its own');
 
     await page.goto('/start');
@@ -109,15 +110,15 @@ test.describe('the setup banner', () => {
     });
   }
 
-  async function nextStep(request: import('@playwright/test').APIRequestContext, key: string): Promise<OnboardingStep> {
-    const state = await onboardingState(request);
+  async function nextStep(page: Page, key: string): Promise<OnboardingStep> {
+    const state = await onboardingState(page);
     const step = state.steps.find((s) => s.key === key);
     expect(step, `no "${key}" step for this account`).toBeTruthy();
     return { ...step!, done: false };
   }
 
-  test('the words lead to the checklist and the button does the job', async ({ page, request }) => {
-    const step = await nextStep(request, 'students');
+  test('the words lead to the checklist and the button does the job', async ({ page }) => {
+    const step = await nextStep(page, 'students');
     await withUnfinishedSetup(page, 'students');
     await page.goto('/command');
 

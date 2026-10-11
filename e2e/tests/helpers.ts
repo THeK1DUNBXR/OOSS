@@ -3,7 +3,7 @@
  * the checklist the app is being asked about.
  */
 
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { devices, expect, test as base, type BrowserContext, type Page } from '@playwright/test';
 
 export const API_URL = process.env.E2E_API_URL ?? 'http://127.0.0.1:4000';
 
@@ -41,6 +41,35 @@ export function destinationOf(step: OnboardingStep): string {
   return step.done ? step.path : (step.doPath ?? step.path);
 }
 
+/**
+ * One browser context for the whole worker, and a fresh page per test in it.
+ *
+ * The session lives in the httpOnly refresh cookie, and the API rotates that
+ * cookie on every use. A context per test would need a new sign-in per test,
+ * and the login route allows five a minute per email (`rateLimit.ts`), which
+ * the suite passes in under a minute. Sharing the context means one sign-in
+ * per account, and the browser's own cookie jar carries the rotated cookie from
+ * one test to the next, as it would for a person who keeps the tab open.
+ */
+export const test = base.extend<object, { sharedContext: BrowserContext }>({
+  sharedContext: [
+    async ({ browser }, use, workerInfo) => {
+      const context = await browser.newContext({
+        ...devices['Desktop Chrome'],
+        baseURL: workerInfo.project.use.baseURL,
+      });
+      await use(context);
+      await context.close();
+    },
+    { scope: 'worker' },
+  ],
+  page: async ({ sharedContext }, use) => {
+    const page = await sharedContext.newPage();
+    await use(page);
+    await page.close();
+  },
+});
+
 function credentials(): { email: string; password: string } {
   const email = process.env.E2E_EMAIL ?? process.env.OWNER_EMAIL;
   const password = process.env.E2E_PASSWORD ?? process.env.OWNER_PASSWORD;
@@ -55,10 +84,71 @@ function credentials(): { email: string; password: string } {
   return { email, password };
 }
 
-/** Sign in through the form, the way a person does. */
+/** Sign in as the default test account, the way a person does. */
 export async function signIn(page: Page): Promise<void> {
   const { email, password } = credentials();
-  await useSessionToken(page, await sessionToken(page.request, email, password));
+  await signInAs(page, email, password);
+}
+
+/** The account the shared context is signed in as, if any. */
+let signedInAs: string | null = null;
+
+/** The account each page was signed in as, for the API calls a test makes on its behalf. */
+const accountOf = new WeakMap<Page, string>();
+
+/**
+ * Signs the shared browser context in the way the app itself does, then opens
+ * the page at `/` and lets the app restore the session.
+ *
+ * Since 0.2 the access token lives only in the page's memory, and the session
+ * is carried by the httpOnly `kz_refresh` cookie that `/api/auth/login` sets.
+ * `page.request` shares its cookie jar with the page's browser context, so the
+ * login below leaves the cookie where `restoreSession()` finds it when the app
+ * loads. Nothing is written to localStorage: the app clears any token stored
+ * there, so a test that put one there would be testing a session the app does
+ * not have.
+ *
+ * A second sign-in as the same account in the same run reuses that session
+ * rather than logging in again (see `test` above). Switching accounts clears
+ * the cookie first, so the new session cannot be mistaken for the old one.
+ */
+export async function signInAs(page: Page, email: string, password: string): Promise<void> {
+  accountOf.set(page, email);
+
+  // The one-off orientation modal, dismissed as a user would dismiss it once.
+  // A per-browser convenience flag, not part of the session.
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem('kaizen.seenIntro', '1');
+    } catch {
+      /* a browser without storage shows the modal; nothing to do */
+    }
+  });
+
+  if (signedInAs === email) {
+    await page.goto('/');
+    if (await shellShows(page)) return;
+    // The cookie this browser holds no longer restores. A renewal can be lost
+    // when the page that made it is closed before the response is stored, and
+    // the server has rotated past the cookie the browser kept. Sign in again,
+    // which is what a person would do at the sign-in screen.
+  }
+
+  await page.context().clearCookies();
+  const login = await page.request.post(`${API_URL}/api/auth/login`, { data: { email, password } });
+  const body = await login.text();
+  if (!login.ok()) {
+    throw new Error(`signing in as ${email} at ${API_URL} failed: ${login.status()} ${body}`);
+  }
+  const json = JSON.parse(body) as { token?: string; mfaRequired?: boolean };
+  if (json.mfaRequired || !json.token) {
+    throw new Error(
+      `signing in as ${email} did not start a session (` +
+        (json.mfaRequired ? 'a second factor is required' : 'no access token in the response') +
+        '). The e2e accounts must have no MFA enrolled and must belong to exactly one entity.',
+    );
+  }
+  signedInAs = email;
 
   await page.goto('/');
 
@@ -67,41 +157,15 @@ export async function signIn(page: Page): Promise<void> {
   await expect(page.getByRole('link', { name: 'Getting Started' })).toBeVisible();
 }
 
-const sessionTokens = new Map<string, string>();
-
-/**
- * One API sign-in per account per run, shared by every test that needs it.
- *
- * Signing in through the form in every test used up the API's sign-in budget
- * (five a minute per address, `rateLimit.ts`) partway through the suite, and the
- * next test to sign in failed on a 429 that looked like a broken sidebar. The
- * session is the token the app itself keeps, so handing it over is the same
- * session a form sign-in would have produced.
- */
-export async function sessionToken(request: APIRequestContext, email: string, password: string): Promise<string> {
-  const cached = sessionTokens.get(email);
-  if (cached) return cached;
-  const login = await request.post(`${API_URL}/api/auth/login`, { data: { email, password } });
-  expect(login.ok(), `signing in to ${API_URL} failed: ${login.status()}`).toBe(true);
-  const { token } = (await login.json()) as { token: string };
-  sessionTokens.set(email, token);
-  return token;
-}
-
-/**
- * Puts a session token where the app reads it on load, before any page script
- * runs. The one-off orientation modal is dismissed here too, as a real user
- * would dismiss it once.
- */
-export async function useSessionToken(page: Page, token: string): Promise<void> {
-  await page.addInitScript((t: string) => {
-    try {
-      window.localStorage.setItem('kaizen.seenIntro', '1');
-      window.localStorage.setItem('kaizen.token', t);
-    } catch {
-      /* a browser without storage shows the modal and signs out; nothing to do */
-    }
-  }, token);
+/** Whether the signed-in shell appears, within a few seconds of the page loading. */
+async function shellShows(page: Page): Promise<boolean> {
+  return page
+    .getByRole('link', { name: 'Getting Started' })
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(
+      () => true,
+      () => false,
+    );
 }
 
 /**
@@ -109,17 +173,29 @@ export async function useSessionToken(page: Page, token: string): Promise<void> 
  *
  * Not scraped off the page: these tests exist to compare what the screen does
  * against what the server said, and a screen cannot be both the question and
- * the answer.
+ * the answer. The page must have been signed in with `signIn` or `signInAs`.
+ *
+ * The API wants a bearer token, and the page's own token is in memory where a
+ * test cannot read it. The refresh route issues one from the same cookie the
+ * app uses, and the rotated cookie lands in the shared jar for the next load.
  */
-export async function onboardingState(request: APIRequestContext): Promise<OnboardingState> {
-  const { email, password } = credentials();
-  const token = await sessionToken(request, email, password);
+export async function onboardingState(page: Page): Promise<OnboardingState> {
+  if (!accountOf.has(page)) {
+    throw new Error('onboardingState needs a page that was signed in with signIn or signInAs first');
+  }
 
-  const res = await request.get(`${API_URL}/api/auth/onboarding`, {
+  const refreshed = await page.request.post(`${API_URL}/api/auth/refresh`);
+  const refreshBody = await refreshed.text();
+  if (!refreshed.ok()) throw new Error(`renewing the session failed: ${refreshed.status()} ${refreshBody}`);
+  const { token } = JSON.parse(refreshBody) as { token?: string };
+  if (!token) throw new Error(`renewing the session returned no access token: ${refreshBody}`);
+
+  const res = await page.request.get(`${API_URL}/api/auth/onboarding`, {
     headers: { authorization: `Bearer ${token}` },
   });
-  expect(res.ok(), `reading the checklist failed: ${res.status()}`).toBe(true);
-  return (await res.json()) as OnboardingState;
+  const body = await res.text();
+  if (!res.ok()) throw new Error(`reading the checklist failed: ${res.status()} ${body}`);
+  return JSON.parse(body) as OnboardingState;
 }
 
 /** The path part of a URL, which is what a navigation assertion is actually about. */

@@ -10,8 +10,8 @@
  * link inside it.
  */
 
-import { expect, test, type Page } from '@playwright/test';
-import { sessionToken, useSessionToken } from './helpers.js';
+import { expect, type Page } from '@playwright/test';
+import { signInAs, test } from './helpers.js';
 
 /**
  * Web fonts are decoration with a fallback stack behind them, and a stack
@@ -52,14 +52,6 @@ const TECHNOLOGY_NAV_LABELS = [
   'Technical Debt',
   'Continuity',
 ];
-
-async function signInAs(page: Page, email: string, password: string): Promise<void> {
-  // A shared session token rather than the form: see `sessionToken` in helpers.ts
-  // for why every test signing in through the form exhausts the API's budget.
-  await useSessionToken(page, await sessionToken(page.request, email, password));
-  await page.goto('/');
-  await expect(page.getByRole('link', { name: 'Getting Started' })).toBeVisible();
-}
 
 function chairmanCredentials(): { email: string; password: string } {
   const email = process.env.E2E_EMAIL ?? process.env.OWNER_EMAIL;
@@ -131,6 +123,11 @@ test.describe('the Technology group, signed in as the chairman', () => {
       // `ErrorBox` (apps/web/src/components/ui.tsx) always wears this class,
       // whatever the error message says, so this is sturdier than matching text.
       await expect(page.locator('[class*="border-band-critical"]'), `${path} rendered an error box`).toHaveCount(0);
+      // Let the page finish restoring its session before the next load. Each load
+      // renews the refresh cookie, and a load that starts while the last renewal
+      // is still in flight can lose the new cookie, after which the next renewal
+      // is refused. A person does not click through seven screens in a second.
+      await expect(page.getByRole('link', { name: 'Getting Started' })).toBeVisible();
     }
   });
 });
