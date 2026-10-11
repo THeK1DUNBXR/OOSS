@@ -24,11 +24,12 @@ import {
   transitionApplication,
   transitionRequisition,
 } from '../domains/hiring.js';
-import { createCandidate } from '../domains/hcm/recruiting.js';
+import { createCandidate, createOffer, transitionOffer } from '../domains/hcm/recruiting.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 
 const HR = 'hr@kaizen.co.in';
 const OPS = 'operations@kaizen.co.in';
+const FINANCE = 'finance@kaizen.co.in';
 const INJECTED = 'injected audit refusal';
 
 let TENANT: string;
@@ -121,8 +122,8 @@ async function activeEmployee(label: string) {
   });
 }
 
-/** An application taken to OfferExtended, against a requisition published for it. */
-async function offerExtendedApplication(label: string) {
+/** An application taken to Selected, against a requisition published for it. */
+async function selectedApplication(label: string) {
   seq += 1;
   const stamp = `${Date.now()}-${seq}-${Math.floor(Math.random() * 1e6)}`;
   return asUser(OPS, async () => {
@@ -151,8 +152,30 @@ async function offerExtendedApplication(label: string) {
     await transitionApplication(application.id, 'ADVANCE'); // Screening
     await transitionApplication(application.id, 'ADVANCE'); // Interviewing
     await transitionApplication(application.id, 'ADVANCE'); // Selected
-    return transitionApplication(application.id, 'EXTEND_OFFER'); // OfferExtended
+    return application;
   });
+}
+
+async function offerExtendedApplication(label: string) {
+  const application = await selectedApplication(label);
+  return asUser(OPS, () => transitionApplication(application.id, 'EXTEND_OFFER'));
+}
+
+/** An offer in Sent, against a Selected application (sending it moves the application to OfferExtended). */
+async function sentOffer(label: string) {
+  const application = await selectedApplication(label);
+  const offer = await asUser(OPS, async () => {
+    const created = await createOffer({
+      applicationId: application.id,
+      ctc: 1_100_000,
+      joiningDate: new Date(Date.now() + 20 * 86_400_000),
+      validUntil: new Date(Date.now() + 14 * 86_400_000),
+    });
+    return transitionOffer(created.id, 'SUBMIT');
+  });
+  await asUser(FINANCE, () => transitionOffer(offer.id, 'APPROVE'));
+  await asUser(OPS, () => transitionOffer(offer.id, 'SEND'));
+  return { offerId: offer.id, applicationId: application.id };
 }
 
 describe('an absence breach: the status change, its audit row, its event and EX-HR-001 commit together', () => {
@@ -269,5 +292,25 @@ describe('rejecting a letter request records its decision in the same transactio
     const after = await unscopedPrisma.letterRequest.findUniqueOrThrow({ where: { id: request.id } });
     expect(after.status).toBe('requested');
     expect(await footprint('letter_request', request.id)).toEqual(before);
+  });
+});
+
+describe('accepting an offer moves its application in the same transaction as the offer', () => {
+  it('when the appointment letter cannot be recorded, the offer stays Sent and the application stays OfferExtended', async () => {
+    const { offerId, applicationId } = await sentOffer('offer-accept');
+    const offerBefore = await footprint('offer_letter', offerId);
+    const applicationBefore = await footprint('application', applicationId);
+
+    await refuseAuditFor('hr_letter');
+    await expectReject(() => asUser(OPS, () => transitionOffer(offerId, 'ACCEPT')));
+
+    const offer = await unscopedPrisma.offerLetter.findUniqueOrThrow({ where: { id: offerId } });
+    expect(offer.status).toBe('Sent');
+    expect(await footprint('offer_letter', offerId)).toEqual(offerBefore);
+
+    const application = await unscopedPrisma.application.findUniqueOrThrow({ where: { id: applicationId } });
+    expect(application.status).toBe('OfferExtended');
+    expect(await footprint('application', applicationId)).toEqual(applicationBefore);
+    expect(await unscopedPrisma.hrLetter.count({ where: { tenantId: TENANT, applicationId } })).toBe(0);
   });
 });
