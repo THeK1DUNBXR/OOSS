@@ -183,12 +183,32 @@ export async function closePeriod(period: string) {
   // The last instant of the IST month. Taking Date.UTC(y, m, 1) - 1ms here
   // (23:59:59.999 UTC on the last day, i.e. 05:29 IST on the 1st) put the
   // first five and a half hours of the next month into the closed snapshot.
+  // The snapshot is the legacy cashbook trial balance, which reads `Transaction`
+  // and not the journal, so a posting cannot change it. It is taken before the
+  // lock for that reason. When 1.5 makes the snapshot a journal balance it must
+  // move inside the lock below, or a posting that commits between the two
+  // would be missing from the closed period's figures.
   const { to } = monthRange(period);
   const snapshot = await trialBalance(new Date(to.getTime() - 1));
 
-  const updated = await prisma.accountingPeriod.update({
-    where: { id: row.id },
-    data: { status: 'closed', closedById: auth.partyId, closedAt: new Date(), snapshot: snapshot as never },
+  // FOR UPDATE rather than the status read above: a posting holds FOR SHARE on
+  // this row while it writes (platform/ledger.ts lockPostablePeriod). Taking
+  // the lock here means no posting can start until the status has moved, and
+  // any posting already in flight has committed first. The status is re-read
+  // under the lock because it may have changed while this call waited.
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.tenant_id', ${auth.tenantId}, true)`;
+    const [locked] = await tx.$queryRaw<Array<{ status: string }>>`
+      SELECT "status" FROM "cmp_accounting_periods"
+      WHERE "id" = ${row.id}
+      FOR UPDATE`;
+    if (locked?.status !== 'closing') {
+      throw ApiError.unprocessable(`${period} changed while this close waited; it is no longer closing.`);
+    }
+    return tx.accountingPeriod.update({
+      where: { id: row.id },
+      data: { status: 'closed', closedById: auth.partyId, closedAt: new Date(), snapshot: snapshot as never },
+    });
   });
   await auditWrite({
     action: 'update',
