@@ -234,7 +234,14 @@ export async function createChainedAuditRecord(
     // reads that string back. Hashing the live object would make every row
     // carrying a Decimal look tampered the moment it was re-read.
     const rawDiff = (data as { diff?: unknown }).diff;
-    const storedDiff = rawDiff === undefined || rawDiff === null ? rawDiff : JSON.parse(JSON.stringify(rawDiff));
+    // A bigint (a sequence, a paise amount) has no JSON form, so it is stored as
+    // its decimal string, which is how a reader gets it back. Only bigint values
+    // change: every other diff serialises to the bytes it always did, so rows
+    // already hashed still verify.
+    const storedDiff =
+      rawDiff === undefined || rawDiff === null
+        ? rawDiff
+        : JSON.parse(JSON.stringify(rawDiff, (_key, value: unknown) => (typeof value === 'bigint' ? value.toString() : value)));
     const hash = computeAuditHash(
       hashPayloadOf({
         tenantId,
