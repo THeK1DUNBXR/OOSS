@@ -1076,8 +1076,9 @@ async function decideRegularisation(
     await asSystem(auth.tenantId, () => transitionAttendance(row.workAttendanceId, 'REGULARISE', note ?? undefined));
   }
 
-  // The WorkAttendance transition above and the exception below stay outside
-  // this transaction: both are nested service calls on the scoped client.
+  // The WorkAttendance transition above stays outside this transaction: it is a
+  // nested service call that opens its own. The decline's exception is not nested;
+  // it commits or rolls back with the decision it records.
   const updated = await governedWrite(async (tx) => {
     const decided = await tx.attendanceRegularisation.update({
       where: { id },
@@ -1106,23 +1107,25 @@ async function decideRegularisation(
       impact: { domains: ['hr'] },
       tx,
     });
+    if (!approve) {
+      await raiseException(
+        {
+          code: 'EX-HR-006',
+          label: 'Attendance regularisation declined; the day stays disputed',
+          severity: 'S1_ATTENTION',
+          subjectType: 'work_attendance',
+          subjectId: row.workAttendanceId,
+          subjectLabel: ymd(row.date),
+          domain: 'hr',
+          detail: `The regularisation request for ${ymd(row.date)} was declined (${note ?? 'no reason given'}). The attendance day is still Disputed and needs a fresh request or a manual resolution before the pay period can lock cleanly.`,
+          ownerPartyId: employment?.personId ?? null,
+          reasonCode: 'regularisation_declined',
+        },
+        tx,
+      );
+    }
     return decided;
   });
-
-  if (!approve) {
-    await raiseException({
-      code: 'EX-HR-006',
-      label: 'Attendance regularisation declined; the day stays disputed',
-      severity: 'S1_ATTENTION',
-      subjectType: 'work_attendance',
-      subjectId: row.workAttendanceId,
-      subjectLabel: ymd(row.date),
-      domain: 'hr',
-      detail: `The regularisation request for ${ymd(row.date)} was declined (${note ?? 'no reason given'}). The attendance day is still Disputed and needs a fresh request or a manual resolution before the pay period can lock cleanly.`,
-      ownerPartyId: employment?.personId ?? null,
-      reasonCode: 'regularisation_declined',
-    });
-  }
 
   return updated;
 }
