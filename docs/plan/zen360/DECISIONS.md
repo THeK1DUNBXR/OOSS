@@ -676,3 +676,37 @@ Still open after round 20 (recorded 2026-10-11, supersedes the round 19b list):
 - Statutory sign-off holder and IT owner (tbd during onboard).
 - D-11 numbers.
 - Resend data-hosting and chat-retention legal checks.
+
+## Owner answers, round 21 (recorded 2026-10-11)
+
+Owner answers given after round 20 (recorded 2026-10-11). Items 1 to 4 are owner answers. The implications (a) to (g) are Claude's reading of them, not owner statements, and none of them has been researched.
+
+1. **Each employee gets a company mailbox created and hosted by the app, plus an inbox in the app (owner answer, item 1).** This is not a connection to an existing provider, and it is not internal-only messages.
+2. **The company has no email service today (owner answer, item 2).** Employees have no company email yet.
+3. **Placement: Phase 1, communication wave, alongside COM-02, COM-13 and COM-15 (owner answer, item 3).**
+4. **The inbox both sends and reads employees' mail, linked to customers (owner answer, item 4).** This pulls the Z3 communications-capture idea, previously deferred, into this scope for employee mail.
+
+Implications (labelled as implications, not owner statements; Claude has not researched these):
+
+- (a) This is new large scope with no CAP row, spec or phase item. It supersedes round 5's "transactional email only via Resend" only for employee mail. Resend stays for system notifications. Company mailboxes need an SMTP/IMAP (or equivalent) mail service, domain DNS records (MX, SPF, DKIM, DMARC), IP reputation and deliverability, spam and virus filtering, storage and backups, and mailbox quotas.
+- (b) It conflicts with "all hosting decisions deferred until after Phase 1" (rounds 18b and 19b). Mailboxes need a host, a stable public IP and reverse DNS. Either email hosting is decided as an exception, or the mail service runs as a configurable external service in development.
+- (c) "Read and link to customers" needs permission rules for who can see whose mail (access levels, rounds 9 to 14). It also needs retention and legal-hold rules (legal hold was deferred, warn-only), DPDP considerations for personal data in mail, and audit rows per CLAUDE.md rule 5.
+- (d) Round 5 (D-04) says build natively and read open-source code to learn, never copy. A full mail server is a very large build. Building natively versus running an open-source mail server as a service (as with LiveKit) is an OPEN decision. Licences of candidate mail servers are UNVERIFIED.
+- (e) CLAUDE.md prohibits any agent from emailing a customer without human approval. This stays.
+- (f) The Resend data-hosting check and the chat-retention legal checks are unaffected.
+- (g) Effort is not estimated. Phase 1 now has a very large item.
+
+Still open after round 21 (recorded 2026-10-11, supersedes the round 20 list for mail items; the round 20 items are carried below):
+
+- Build versus run an open-source mail server as a service (research needed, licences unverified).
+- Email hosting versus the "hosting after Phase 1" deferral.
+- Domain name and DNS ownership for company email.
+- Mailbox limits and retention.
+- Access rules for reading other people's mail.
+- Whether this is sequenced late in Phase 1.
+- Hosting, caching and routing (after Phase 1).
+- Whether onboarding and level mapping stay in Phase 0 (round 18b implication (d)).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.

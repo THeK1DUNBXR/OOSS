@@ -176,6 +176,7 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
 - COM-15: notifications in-app and by email via Resend.
   - BLOCKED-BY the Resend data-hosting check, before the first outside user.
 - COM-02: internal-only shared inbox.
+- Employee company mailboxes and in-app inbox (round 21, OPEN, new large scope, not estimated). Owner answers: the app creates and hosts each employee's mailbox; the inbox sends and reads mail and links it to customers (Z3 capture pulled in for employee mail only). Open: mail service build versus run, hosting exception, access rules, retention. No CAP row or spec yet. See DECISIONS.md round 21.
 - COM-11: meetings and minutes, typed by people. No recordings.
 - Standups are dropped.
 
