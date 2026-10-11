@@ -10,7 +10,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { istFinancialYear, istMonthKey, istPeriodOf } from '@kaizen/shared';
+import { istFinancialYear, istMinuteOfDay, istMonthKey, istPeriodOf } from '@kaizen/shared';
+import { yesterdayIst } from '../domains/hcm/time.js';
+import { currentAccrualPeriod } from '../domains/hcm/leavepolicy.js';
 import { fyOf } from '../domains/compliance/tax.js';
 import { filingPeriodOf } from '../domains/invoicing.js';
 import { financialYearStart } from '../platform/documentNumber.js';
@@ -58,5 +60,25 @@ describe('invoice period lock (FX-42)', () => {
 
   it('checks March 2026 for an invoice dated 23:30 IST on 31 March', () => {
     expect(filingPeriodOf(MARCH_31_2330_IST)).toBe('2026-03');
+  });
+});
+
+describe('HCM civil defaults (CLAUDE.md rule 3)', () => {
+  // 21:45Z is 03:15 IST on the 12th: the UTC date is still the 11th, so a
+  // "yesterday" derived from UTC getters lands on the 10th.
+  it('derives attendance for yesterday in IST at 03:15 IST on 12 October', () => {
+    expect(yesterdayIst(new Date('2026-10-11T21:45:00Z')).toISOString()).toBe('2026-10-11T00:00:00.000Z');
+  });
+
+  // 20:45Z on the 31st is 02:15 IST on 1 November: monthly accrual runs for
+  // the month that has just begun in IST, not the one UTC still shows.
+  it('accrues for November at 02:15 IST on 1 November, not October', () => {
+    expect(currentAccrualPeriod(new Date('2026-10-31T20:45:00Z'))).toBe('2026-11');
+  });
+
+  // 03:45Z is 09:15 IST: the roster's HH:MM is IST wall-clock, so a punch
+  // must be read in IST before it is compared with the shift.
+  it('reads a punch at 03:45Z as 09:15 IST minutes-of-day', () => {
+    expect(istMinuteOfDay(new Date('2026-10-11T03:45:00Z'))).toBe(9 * 60 + 15);
   });
 });
