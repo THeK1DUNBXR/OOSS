@@ -799,6 +799,7 @@ export const EVENTS = {
   IT_RISK_CREATED: 'kz.it.risk.created',
   IT_RISK_TRANSITIONED: 'kz.it.risk.transitioned',
   IT_POLICY_PUBLISHED: 'kz.it.policy.published',
+  IT_POLICY_RETIRED: 'kz.it.policy.retired',
   IT_POLICY_ACKNOWLEDGED: 'kz.it.policy.acknowledged',
   IT_CONTROL_TESTED: 'kz.it.control.tested',
   IT_ACCESS_REVIEW_OPENED: 'kz.it.access_review.opened',

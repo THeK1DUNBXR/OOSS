@@ -378,7 +378,7 @@ export async function retirePolicy(id: string) {
       tx,
     });
     await emit({
-      name: EVENTS.IT_POLICY_PUBLISHED,
+      name: EVENTS.IT_POLICY_RETIRED,
       subject: { entityType: 'it_policy_document', entityId: id, recordCode: policy.recordCode },
       previousState: { status: policy.status },
       newState: { status: to },
