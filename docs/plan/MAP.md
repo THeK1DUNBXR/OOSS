@@ -258,7 +258,7 @@
 
 **`apps/api/src/platform/approvals.ts`** (458 lines) — ApprovalPolicyContent:37 · DEFAULT_APPROVAL_POLICY:53 · GateSubject:66 · GateResult:99 · evaluateApprovalGate:128 · decideApprovalStep:330
 
-**`apps/api/src/platform/audit.ts`** (513 lines) — AUDIT_ACTIONS:20 · AuditAction:34 · registerGovernedEntities:43 · governedEntities:49 · isGoverned:55 · diffForAudit:134 · computeAuditHash:177 · hashPayloadOf:185 · createChainedAuditRecord:216 · AuditChainVerification:274 · verifyAuditChain:294 · chainUnhashedAuditRecords:363 · AuditWriteInput:391 · auditWrite:406 · auditRegulatedRead:446 · auditExport:473 · auditBulkOperation:491
+**`apps/api/src/platform/audit.ts`** (520 lines) — AUDIT_ACTIONS:20 · AuditAction:34 · registerGovernedEntities:43 · governedEntities:49 · isGoverned:55 · diffForAudit:134 · computeAuditHash:177 · hashPayloadOf:185 · createChainedAuditRecord:216 · AuditChainVerification:281 · verifyAuditChain:301 · chainUnhashedAuditRecords:370 · AuditWriteInput:398 · auditWrite:413 · auditRegulatedRead:453 · auditExport:480 · auditBulkOperation:498
 
 **`apps/api/src/platform/build.ts`** (120 lines) — BuildStamp:27 · BUILD:96 · STARTED_AT:99 · buildsBehind:109 · buildLabel:116
 

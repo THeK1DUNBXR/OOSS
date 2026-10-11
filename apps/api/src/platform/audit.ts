@@ -241,7 +241,9 @@ export async function createChainedAuditRecord(
     const storedDiff =
       rawDiff === undefined || rawDiff === null
         ? rawDiff
-        : JSON.parse(JSON.stringify(rawDiff, (_key, value: unknown) => (typeof value === 'bigint' ? value.toString() : value)));
+        : JSON.parse(
+            JSON.stringify(rawDiff, (_key, value: unknown) => (typeof value === 'bigint' ? value.toString() : value)),
+          );
     const hash = computeAuditHash(
       hashPayloadOf({
         tenantId,
