@@ -904,7 +904,7 @@ async function domainOwner(domainCode: string): Promise<string | null> {
 
 export async function computeAndPersistAll(): Promise<ComputeResult[]> {
   const auth = currentAuth();
-  const asOf = startOfDay(new Date());
+  const asOf = healthAsOfDay(new Date());
   const results: ComputeResult[] = [];
 
   for (const domain of HEALTH_DOMAINS) {
@@ -1065,6 +1065,10 @@ export async function latestPulse(): Promise<PulseEntry[]> {
 
 function daysAgo(n: number): Date {
   return new Date(Date.now() - n * 86_400_000);
+}
+
+export function healthAsOfDay(now: Date): Date {
+  return startOfDay(now);
 }
 
 function startOfDay(d: Date): Date {

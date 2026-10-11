@@ -138,7 +138,8 @@ export async function runBackup(tenantId: string): Promise<BackupOutcome> {
     if (!databaseUrl) throw new Error('DATABASE_URL is not set.');
 
     await new Promise<void>((resolve, reject) => {
-      const dump = spawn('pg_dump', [databaseUrl], { stdio: ['ignore', 'pipe', 'pipe'] });
+      // `PG_DUMP_BIN` is the seam the tests use to inject a dump failure without a live pg_dump.
+      const dump = spawn(process.env.PG_DUMP_BIN ?? 'pg_dump', [databaseUrl], { stdio: ['ignore', 'pipe', 'pipe'] });
       let stderr = '';
       dump.stderr.on('data', (chunk: Buffer) => {
         stderr += chunk.toString();

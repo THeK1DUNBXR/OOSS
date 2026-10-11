@@ -502,9 +502,9 @@ export async function escalateApprovalStep(step: {
  * incompatible stage semantics. Their replacement lives in HEALTH_SCORE.
  * Historical rows are retained, never deleted, as a point-in-time record.
  */
-async function computeDailyMetrics(): Promise<number> {
+export async function computeDailyMetrics(now: Date = new Date()): Promise<number> {
   const auth = currentAuth();
-  const date = new Date();
+  const date = new Date(now);
   date.setUTCHours(0, 0, 0, 0);
   const dayStart = new Date(date);
 
