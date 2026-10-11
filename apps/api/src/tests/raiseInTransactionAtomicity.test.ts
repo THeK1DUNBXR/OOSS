@@ -19,6 +19,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
 import { markChallanPaid } from '../domains/compliance/tax.js';
 import { closeRound, createRound } from '../domains/rounds.js';
+import { createLeaveRequest, transitionLeaveRequest, leaveBalances } from '../domains/leave.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
 const CLOSED = '2017-10';
@@ -109,6 +110,49 @@ describe('closing a funding round raises the PAS-3 return exception in the same 
     expect(
       await unscopedPrisma.exceptionRecord.count({
         where: { tenantId: TENANT, code: 'EX-EQT-003', subjectId: round.id },
+      }),
+    ).toBe(0);
+  });
+});
+
+describe('approving leave taken beyond entitlement raises EX-HR-004 in the same transaction', () => {
+  it('when the raise cannot be recorded, the request is not approved and no hold is posted', async () => {
+    const HR = 'hr@kaizen.co.in';
+    const user = await unscopedPrisma.user.findFirstOrThrow({ where: { email: 'kavitha@kaizen.co.in' } });
+    const employment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
+      where: { personId: user.personId },
+    });
+    const leaveType = await unscopedPrisma.leaveType.findFirstOrThrow({ where: { tenantId: TENANT, code: 'CL' } });
+
+    // Far more days than any balance, so the approval's hold takes the balance negative.
+    const request = await asUser(HR, () =>
+      createLeaveRequest({
+        employmentRelationshipId: employment.id,
+        leaveTypeId: leaveType.id,
+        startDate: new Date(Date.now() + 90 * 86_400_000),
+        endDate: new Date(Date.now() + 900 * 86_400_000),
+        days: 500,
+      }),
+    );
+    await asUser(HR, async () => {
+      await transitionLeaveRequest(request.id, 'SUBMIT');
+      await transitionLeaveRequest(request.id, 'ROUTE_FOR_APPROVAL');
+    });
+    const before = await unscopedPrisma.leaveRequest.findUniqueOrThrow({ where: { id: request.id } });
+    const balanceBefore = await asUser(HR, () => leaveBalances(employment.id));
+
+    await refuseExceptionAudit();
+    await expectReject(() => asUser(HR, () => transitionLeaveRequest(request.id, 'APPROVE')));
+
+    const after = await unscopedPrisma.leaveRequest.findUniqueOrThrow({ where: { id: request.id } });
+    expect(after.status).toBe(before.status);
+    const balanceAfter = await asUser(HR, () => leaveBalances(employment.id));
+    const balanceOf = (rows: { leaveTypeId: string; balanceDays: unknown }[]) =>
+      Number(rows.find((b) => b.leaveTypeId === leaveType.id)?.balanceDays ?? 0);
+    expect(balanceOf(balanceAfter)).toBe(balanceOf(balanceBefore));
+    expect(
+      await unscopedPrisma.exceptionRecord.count({
+        where: { tenantId: TENANT, code: 'EX-HR-004', subjectId: request.id },
       }),
     ).toBe(0);
   });
