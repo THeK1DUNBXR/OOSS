@@ -8,6 +8,7 @@ import { useSurface } from './lib/surface.js';
 import { Shell } from './components/Shell.js';
 import { Loading } from './components/ui.js';
 import { Login } from './pages/Login.js';
+import { ChangePassword } from './pages/ChangePassword.js';
 import { PortalShell } from './portal/PortalShell.js';
 import { Holdings } from './portal/pages/Holdings.js';
 import { Certificates } from './portal/pages/Certificates.js';
@@ -242,10 +243,13 @@ function PortalRouted() {
 }
 
 function Routed() {
-  const { user, loading } = useSession();
+  const { user, loading, passwordChangeRequired } = useSession();
   const surface = useSurface(user);
 
   if (loading) return <Loading label="Resolving your session" />;
+  // Before the shell and before sign-in: a recovered one-time password opens
+  // nothing else, and the token it holds is kept for the change to use.
+  if (passwordChangeRequired) return <ChangePassword />;
   if (!user)
     return (
       <Suspense fallback={<Loading label="Opening sign-in" />}>

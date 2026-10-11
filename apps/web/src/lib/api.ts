@@ -70,8 +70,31 @@ export function onUnauthorized(listener: (() => void) | null) {
 /** Paths where a 401 is an expected outcome, not an expired session. */
 const AUTH_PATHS = new Set(['/auth/login', '/auth/switch-entity']);
 
+/**
+ * Paths where a 401 means the typed credential was wrong, and the session
+ * behind the call is still fine. The change-password screen is the case that
+ * matters: its wrong-current-password 401 must read as a wrong password, not as
+ * the session ending and the browser being sent back to sign-in.
+ */
+const CREDENTIAL_CHECK_PATHS = new Set(['/auth/change-password']);
+
 /** Paths that must never trigger a refresh: refreshing to end a session would loop, and a sign-in has no session to refresh. */
 const NO_REFRESH_PATHS = new Set([...AUTH_PATHS, '/auth/refresh', '/auth/logout', '/auth/mfa/verify']);
+
+/**
+ * Called when the server answers 403 PASSWORD_CHANGE_REQUIRED: a recovered
+ * one-time password is signed in, and every route but change-password is shut
+ * until it is replaced. The token stays. The change needs it, and dropping it
+ * here would look like a sign-out to the employee.
+ */
+let passwordChangeListener: (() => void) | null = null;
+export function onPasswordChangeRequired(listener: (() => void) | null) {
+  passwordChangeListener = listener;
+}
+
+function noteCredentialGate(status: number, code: string) {
+  if (status === 403 && code === 'PASSWORD_CHANGE_REQUIRED') passwordChangeListener?.();
+}
 
 /**
  * One refresh in flight at a time. Five requests failing together on an expired
@@ -151,11 +174,12 @@ async function request<T>(path: string, init?: RequestInit, tokenOverride?: stri
     if (res.status === 401 && !retried && tokenOverride === undefined && !NO_REFRESH_PATHS.has(path)) {
       if (await refreshAccessToken()) return request<T>(path, init, undefined, true);
     }
-    if (res.status === 401 && !AUTH_PATHS.has(path)) {
+    if (res.status === 401 && !AUTH_PATHS.has(path) && !CREDENTIAL_CHECK_PATHS.has(path)) {
       setToken(null);
       unauthorizedListener?.();
     }
     const err = body?.error ?? {};
+    noteCredentialGate(res.status, err.code ?? '');
     throw new ApiClientError({
       status: res.status,
       code: err.code ?? 'UNKNOWN',
@@ -200,6 +224,7 @@ export const api = {
       const text = await res.text();
       const body = text ? JSON.parse(text) : null;
       const err = body?.error ?? {};
+      noteCredentialGate(res.status, err.code ?? '');
       throw new ApiClientError({
         status: res.status,
         code: err.code ?? 'UNKNOWN',
@@ -250,6 +275,7 @@ export const api = {
     const body = text ? JSON.parse(text) : null;
     if (!res.ok) {
       const err = body?.error ?? {};
+      noteCredentialGate(res.status, err.code ?? '');
       throw new ApiClientError({
         status: res.status,
         code: err.code ?? 'UNKNOWN',
@@ -319,6 +345,16 @@ export async function switchContext(affiliationId: string, stepUpPassword?: stri
   });
   setToken(res.token);
   return res;
+}
+
+/**
+ * The self-service change a recovered sign-in must make before anything else.
+ * The server checks the current password and the policy (lib/auth.ts,
+ * `changePassword`); a refusal arrives as an ApiClientError whose message is
+ * the server's own wording, shown as it is.
+ */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await api.post<{ ok: true }>('/auth/change-password', { currentPassword, newPassword });
 }
 
 /**
