@@ -38,6 +38,7 @@ import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, can } from '../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 
 registerGovernedEntities('capability', ['capability_claim', 'skill', 'evidence']);
 
@@ -367,7 +368,12 @@ export async function verifyClaim(
   }
   if (input.secondVerifierPartyId) await assertSecondVerifierQualified(input.secondVerifierPartyId);
 
-  const updated = await prisma.$transaction(async (tx) => {
+  // The verification row, the claim's new tier, the audit row and the event
+  // commit together. Audit still comes before emit, so a subscriber never acts
+  // on a verification the register does not show; both now sit inside the
+  // transaction, so a failed audit leaves the claim unverified, not verified
+  // with no record.
+  return governedWrite(async (tx) => {
     await tx.verificationEvent.create({
       data: {
         tenantId: auth.tenantId,
@@ -378,7 +384,7 @@ export async function verifyClaim(
       },
     });
 
-    return tx.capabilityClaim.update({
+    const updated = await tx.capabilityClaim.update({
       where: { id: claimId },
       data: {
         tier: 'verified',
@@ -388,32 +394,30 @@ export async function verifyClaim(
         lastEvidencedAt: new Date(),
       },
     });
-  });
 
-  // Audit before emit, so an event subscriber never acts on a verification the
-  // register does not yet show. The write has already committed above, so a
-  // failed audit here leaves a verified claim with no row: the two belong in
-  // one transaction, which is a platform change rather than this function's.
-  await auditWrite({
-    action: 'update',
-    subjectType: 'capability_claim',
-    subjectId: claimId,
-    before: { tier: claim.tier },
-    after: { tier: 'verified' },
-    meta: { verifierPartyId: auth.partyId, secondVerifierPartyId: input.secondVerifierPartyId ?? null },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'capability_claim',
+      subjectId: claimId,
+      before: { tier: claim.tier },
+      after: { tier: 'verified' },
+      meta: { verifierPartyId: auth.partyId, secondVerifierPartyId: input.secondVerifierPartyId ?? null },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.CAPABILITY_CLAIM_VERIFIED,
-    subject: { entityType: 'capability_claim', entityId: claimId },
-    related: [{ relation: 'about', entityType: 'person', entityId: claim.partyId }],
-    previousState: { tier: claim.tier },
-    newState: { tier: 'verified', twoPerson: Boolean(input.secondVerifierPartyId) },
-    owner: { partyId: claim.partyId },
-    impact: { domains: ['hr'] },
-  });
+    await emit({
+      name: EVENTS.CAPABILITY_CLAIM_VERIFIED,
+      subject: { entityType: 'capability_claim', entityId: claimId },
+      related: [{ relation: 'about', entityType: 'person', entityId: claim.partyId }],
+      previousState: { tier: claim.tier },
+      newState: { tier: 'verified', twoPerson: Boolean(input.secondVerifierPartyId) },
+      owner: { partyId: claim.partyId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 /**

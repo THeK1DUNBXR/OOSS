@@ -12,7 +12,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { prisma, unscopedPrisma } from './db.js';
+import { prisma, unscopedPrisma, type DbTx } from './db.js';
 import { currentAuth, getContext } from './context.js';
 import { assertCan } from './permissions.js';
 
@@ -228,12 +228,18 @@ function hashPayloadOf(row: {
  * tenant with a session-level advisory lock inside the transaction — two
  * concurrent writes for the same tenant queue rather than race for "the
  * latest hash".
+ *
+ * With the caller's `tx` the row joins that transaction. It must not open one
+ * of its own: a second connection would wait on the first transaction's lock
+ * for the same tenant, and the domain write it is meant to record would be
+ * committed or rolled back apart from it.
  */
 export async function createChainedAuditRecord(
   data: Omit<Parameters<typeof prisma.auditRecord.create>[0]['data'], 'hash' | 'prevHash' | 'timestamp'>,
+  callerTx?: DbTx,
 ): Promise<void> {
   const tenantId = (data as { tenantId: string }).tenantId;
-  await prisma.$transaction(async (tx) => {
+  const run = async (tx: DbTx): Promise<void> => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
     const last = await tx.auditRecord.findFirst({
       where: { tenantId, hash: { not: null } },
@@ -270,7 +276,10 @@ export async function createChainedAuditRecord(
         retentionClass: (data as { retentionClass?: string }).retentionClass ?? 'audit_record',
       } as never,
     });
-  });
+  };
+
+  if (callerTx) return run(callerTx);
+  await prisma.$transaction(run);
 }
 
 /**
@@ -356,6 +365,12 @@ export interface AuditWriteInput {
   before?: Record<string, unknown> | null;
   after?: Record<string, unknown> | null;
   meta?: Record<string, unknown>;
+  /**
+   * The caller's transaction (see `emit`'s `tx`). A write that passes it commits
+   * or rolls back with the domain write it records; without it the audit row
+   * commits on its own, after the write, which is the gap FX-24 describes.
+   */
+  tx?: DbTx;
 }
 
 export async function auditWrite(input: AuditWriteInput): Promise<void> {
@@ -372,18 +387,21 @@ export async function auditWrite(input: AuditWriteInput): Promise<void> {
   const auth = currentAuth();
   const diff = input.action === 'update' ? diffForAudit(input.before ?? null, input.after ?? null) : null;
 
-  await createChainedAuditRecord({
-    tenantId: auth.tenantId,
-    action: input.action,
-    subjectType: input.subjectType,
-    subjectId: input.subjectId,
-    actorType: auth.principalType,
-    actorId: auth.partyId,
-    actorLabel: auth.roleSlug,
-    actorAgentId: auth.agentId,
-    diff: (diff ?? input.after ?? undefined) as never,
-    meta: (input.meta ?? undefined) as never,
-  });
+  await createChainedAuditRecord(
+    {
+      tenantId: auth.tenantId,
+      action: input.action,
+      subjectType: input.subjectType,
+      subjectId: input.subjectId,
+      actorType: auth.principalType,
+      actorId: auth.partyId,
+      actorLabel: auth.roleSlug,
+      actorAgentId: auth.agentId,
+      diff: (diff ?? input.after ?? undefined) as never,
+      meta: (input.meta ?? undefined) as never,
+    },
+    input.tx,
+  );
 }
 
 /**

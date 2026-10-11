@@ -27,6 +27,7 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
 import { notify } from '../platform/exceptions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 
 // Without this registration auditWrite silently skips agent_action, which is
 // how a human accepting an AI proposal left no trace.
@@ -295,35 +296,42 @@ export async function decideAgentAction(actionId: string, accept: boolean, note?
   // Same guard as decideApprovalStep: the state read above is not enough on its
   // own, or two reviewers both execute the same proposal and the humanActorId
   // of record is whoever wrote last.
-  const { count } = await prisma.agentAction.updateMany({
-    where: { id: actionId, state: 'proposed' },
-    data: {
-      state: accept ? 'executed' : 'rejected',
-      humanActorId: auth.partyId,
-      decidedAt: new Date(),
-      blockedReason: accept ? null : (note ?? 'Rejected by a human reviewer.'),
-    },
-  });
-  if (count !== 1) throw ApiError.conflict('Action was decided by someone else while you were deciding it.');
-  const updated = await prisma.agentAction.findFirstOrThrow({ where: { id: actionId } });
+  // The decision, its audit row and its event commit together (governedWrite):
+  // an accepted proposal with no record of who accepted it is the failure this
+  // guards against.
+  return governedWrite(async (tx) => {
+    const { count } = await tx.agentAction.updateMany({
+      where: { id: actionId, state: 'proposed' },
+      data: {
+        state: accept ? 'executed' : 'rejected',
+        humanActorId: auth.partyId,
+        decidedAt: new Date(),
+        blockedReason: accept ? null : (note ?? 'Rejected by a human reviewer.'),
+      },
+    });
+    if (count !== 1) throw ApiError.conflict('Action was decided by someone else while you were deciding it.');
+    const updated = await tx.agentAction.findFirstOrThrow({ where: { id: actionId } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'agent_action',
-    subjectId: actionId,
-    before: { state: 'proposed' },
-    after: { state: updated.state, humanActorId: auth.partyId },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'agent_action',
+      subjectId: actionId,
+      before: { state: 'proposed' },
+      after: { state: updated.state, humanActorId: auth.partyId },
+      tx,
+    });
 
-  await emit({
-    name: accept ? EVENTS.AGENT_ACTION_EXECUTED : EVENTS.AGENT_ACTION_REJECTED,
-    subject: { entityType: 'agent_action', entityId: actionId },
-    previousState: { state: 'proposed' },
-    newState: { state: updated.state, humanActorId: auth.partyId },
-    reason: { reasonCode: accept ? 'human_accepted' : 'human_rejected', note: note ?? null },
-  });
+    await emit({
+      name: accept ? EVENTS.AGENT_ACTION_EXECUTED : EVENTS.AGENT_ACTION_REJECTED,
+      subject: { entityType: 'agent_action', entityId: actionId },
+      previousState: { state: 'proposed' },
+      newState: { state: updated.state, humanActorId: auth.partyId },
+      reason: { reasonCode: accept ? 'human_accepted' : 'human_rejected', note: note ?? null },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 function windowStartFor(window: string): Date {

@@ -27,6 +27,7 @@ import { assertCan, evaluate, resolveAuthorityCeiling } from './permissions.js';
 import { ApiError } from './errors.js';
 import { notify, raiseException } from './exceptions.js';
 import { auditWrite, registerGovernedEntities } from './audit.js';
+import { governedWrite } from './governedWrite.js';
 
 // Registered here, not in audit.ts, because the step is the record the gate
 // opens: auditWrite silently skips unregistered types, so a decision would
@@ -383,41 +384,48 @@ export async function decideApprovalStep(stepId: string, approve: boolean, note:
 
   // The state check above reads the row; two approvers can both pass it. The
   // guard lives in the UPDATE's WHERE, so only one transition can land, and the
-  // loser is refused before it writes an audit row or emits an event.
-  const { count } = await prisma.approvalStep.updateMany({
-    where: { id: stepId, state: { in: ['open', 'escalated'] } },
-    data: {
-      state: approve ? 'approved' : 'declined',
-      decidedById: auth.partyId,
-      decidedAt: new Date(),
-      decisionNote: note,
-    },
-  });
-  if (count !== 1) {
-    throw ApiError.conflict('Approval step was decided by someone else while you were deciding it.');
-  }
-  const updated = await prisma.approvalStep.findFirstOrThrow({ where: { id: stepId } });
+  // loser is refused before it writes an audit row or emits an event. The
+  // transition, its audit row and its event share one transaction: an audit or
+  // emit failure must not leave the step decided with nothing on the record.
+  const updated = await governedWrite(async (tx) => {
+    const { count } = await tx.approvalStep.updateMany({
+      where: { id: stepId, state: { in: ['open', 'escalated'] } },
+      data: {
+        state: approve ? 'approved' : 'declined',
+        decidedById: auth.partyId,
+        decidedAt: new Date(),
+        decisionNote: note,
+      },
+    });
+    if (count !== 1) {
+      throw ApiError.conflict('Approval step was decided by someone else while you were deciding it.');
+    }
+    const decided = await tx.approvalStep.findFirstOrThrow({ where: { id: stepId } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'approval_step',
-    subjectId: stepId,
-    before: { state: step.state },
-    after: { state: updated.state, decidedById: updated.decidedById, decisionNote: note },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'approval_step',
+      subjectId: stepId,
+      before: { state: step.state },
+      after: { state: decided.state, decidedById: decided.decidedById, decisionNote: note },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.APPROVAL_STEP_DECIDED,
-    subject: { entityType: 'approval_step', entityId: stepId },
-    related: [{ relation: 'gates', entityType: step.subjectType, entityId: step.subjectId }],
-    previousState: { state: step.state },
-    newState: { state: updated.state, note },
-    reason: {
-      reasonCode: approve ? 'approved' : 'declined',
-      policyId: step.policyId,
-      policyVersion: step.policyVersion,
-    },
-    confidentiality: 'confidential',
+    await emit({
+      name: EVENTS.APPROVAL_STEP_DECIDED,
+      subject: { entityType: 'approval_step', entityId: stepId },
+      related: [{ relation: 'gates', entityType: step.subjectType, entityId: step.subjectId }],
+      previousState: { state: step.state },
+      newState: { state: decided.state, note },
+      reason: {
+        reasonCode: approve ? 'approved' : 'declined',
+        policyId: step.policyId,
+        policyVersion: step.policyVersion,
+      },
+      confidentiality: 'confidential',
+      tx,
+    });
+    return decided;
   });
 
   if (step.requestedById) {

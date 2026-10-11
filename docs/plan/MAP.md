@@ -18,7 +18,7 @@
 
 **`apps/api/src/domains/books.ts`** (1454 lines) — listAccounts:86 · createAccount:95 · listCategories:130 · createCategory:139 · accountBalances:174 · TransactionInput:218 · groupCounterpartyOptions:245 · recordTransaction:278 · reverseTransaction:382 · listTransactions:464 · listVendorBills:500 · recordVendorBill:514 · payVendorBill:577 · payablesAgeing:632 · detectOverdueBills:663 · priceInvoiceGst:706 · gstSummary:766 · setBudgetLine:814 · budgetVariance:871 · listAssets:941 · createAsset:974 · assetSchedule:1034 · listLoans:1051 · createLoan:1085 · loanSchedule:1120 · generateRecurring:1147 · ProfitAndLoss:1207 · profitAndLoss:1223 · monthlyTrend:1289 · cashPosition:1322 · cashForecast:1351 · postPayrollToBooks:1396
 
-**`apps/api/src/domains/capability.ts`** (582 lines) — listSkills:50 · createSkill:56 · CapabilityView:82 · capabilitiesForParty:104 · assertClaim:151 · addEvidence:211 · verifyClaim:334 · recordContradiction:427 · changeClaimState:483 · claimFromLearningCompletion:526 · findCapableParties:552
+**`apps/api/src/domains/capability.ts`** (586 lines) — listSkills:51 · createSkill:57 · CapabilityView:83 · capabilitiesForParty:105 · assertClaim:152 · addEvidence:212 · verifyClaim:335 · recordContradiction:431 · changeClaimState:487 · claimFromLearningCompletion:530 · findCapableParties:556
 
 **`apps/api/src/domains/ceo/board.detectors.ts`** (11 lines) — detectors:10
 
@@ -240,23 +240,23 @@
 
 **`apps/api/src/domains/spinOutPreview.ts`** (71 lines) — spinOutPreview:22 · SpinOutDivisionSummary:33 · SpinOutDivisionsView:40 · spinOutDivisionsSummary:46
 
-**`apps/api/src/domains/statutory.ts`** (243 lines) — StatutoryRuleInput:12 · listStatutoryRules:22 · createStatutoryRule:37 · StatutoryRuleNotFoundError:66 · ruleAt:87 · approveStatutoryRule:124 · holdStatutoryRule:211
+**`apps/api/src/domains/statutory.ts`** (245 lines) — StatutoryRuleInput:13 · listStatutoryRules:23 · createStatutoryRule:38 · StatutoryRuleNotFoundError:67 · ruleAt:88 · approveStatutoryRule:125 · holdStatutoryRule:210
 
 **`apps/api/src/domains/students.ts`** (562 lines) — STUDENT_STATUSES:48 · StudentStatus:49 · StudentInput:51 · StudentView:82 · createStudent:201 · attachStudentProfile:234 · updateStudent:336 · StudentQuery:410 · listStudents:422 · loadStudent:468 · studentOf:479 · isBillable:517
 
 **`apps/api/src/domains/surfaces.ts`** (299 lines) — navigationFor:33 · surfaceCompositionFor:88 · universalSearch:167
 
-**`apps/api/src/domains/tasks.ts`** (63 lines) — completeTask:15
+**`apps/api/src/domains/tasks.ts`** (70 lines) — completeTask:16
 
 **`apps/api/src/domains/winLoss.ts`** (207 lines) — ensureWinLossReview:37 · WinLossInput:94 · completeWinLossReview:103 · detectOverdueReviews:164
 
 ## API platform
 
-**`apps/api/src/platform/approvalPolicySync.ts`** (169 lines) — LADDER_CONVERGENCES:46 · ApprovalPolicySyncResult:56 · reconcileApprovalGatePolicies:64 · reconcileApprovalGatePoliciesForAllTenants:148
+**`apps/api/src/platform/approvalPolicySync.ts`** (175 lines) — LADDER_CONVERGENCES:47 · ApprovalPolicySyncResult:57 · reconcileApprovalGatePolicies:65 · reconcileApprovalGatePoliciesForAllTenants:154
 
-**`apps/api/src/platform/approvals.ts`** (450 lines) — ApprovalPolicyContent:36 · DEFAULT_APPROVAL_POLICY:52 · GateSubject:65 · GateResult:98 · evaluateApprovalGate:127 · decideApprovalStep:329
+**`apps/api/src/platform/approvals.ts`** (458 lines) — ApprovalPolicyContent:37 · DEFAULT_APPROVAL_POLICY:53 · GateSubject:66 · GateResult:99 · evaluateApprovalGate:128 · decideApprovalStep:330
 
-**`apps/api/src/platform/audit.ts`** (447 lines) — AUDIT_ACTIONS:19 · AuditAction:33 · registerGovernedEntities:42 · governedEntities:48 · isGoverned:54 · diffForAudit:133 · computeAuditHash:198 · createChainedAuditRecord:232 · verifyAuditChain:284 · chainUnhashedAuditRecords:330 · AuditWriteInput:352 · auditWrite:361 · auditRegulatedRead:395 · auditExport:414 · auditBulkOperation:429
+**`apps/api/src/platform/audit.ts`** (465 lines) — AUDIT_ACTIONS:19 · AuditAction:33 · registerGovernedEntities:42 · governedEntities:48 · isGoverned:54 · diffForAudit:133 · computeAuditHash:198 · createChainedAuditRecord:237 · verifyAuditChain:293 · chainUnhashedAuditRecords:339 · AuditWriteInput:361 · auditWrite:376 · auditRegulatedRead:413 · auditExport:432 · auditBulkOperation:447
 
 **`apps/api/src/platform/build.ts`** (120 lines) — BuildStamp:27 · BUILD:96 · STARTED_AT:99 · buildsBehind:109 · buildLabel:116
 
@@ -273,6 +273,8 @@
 **`apps/api/src/platform/eventBus.ts`** (478 lines) — EmitInput:33 · Subscriber:59 · Registration:61 · emittedEvents:70 · setEventCapture:73 · subscribe:78 · subscribersFor:92 · subscriberCount:96 · clearSubscribers:100 · computeHash:109 · emit:251 · wouldLoop:426 · verifyChain:446
 
 **`apps/api/src/platform/exceptions.ts`** (334 lines) — RaiseExceptionInput:33 · passesFourPropertyTest:59 · raiseException:65 · acknowledgeException:206 · resolveException:221 · escalateException:237 · severityToPriority:289 · NotifyInput:304 · notify:316
+
+**`apps/api/src/platform/governedWrite.ts`** (29 lines) — governedWrite:26
 
 **`apps/api/src/platform/grantSync.ts`** (127 lines) — GrantAddition:41 · addMissingGrants:56 · addMissingGrantsForAllTenants:118
 
@@ -334,7 +336,7 @@
 
 ## API jobs / events / agents
 
-**`apps/api/src/agents/index.ts`** (461 lines) — ProposeInput:47 · ProposeResult:60 · propose:78 · decideAgentAction:278 · agentRoster:338 · revokeAuthority:385 · pauseAgent:430
+**`apps/api/src/agents/index.ts`** (469 lines) — ProposeInput:48 · ProposeResult:61 · propose:79 · decideAgentAction:279 · agentRoster:346 · revokeAuthority:393 · pauseAgent:438
 
 **`apps/api/src/events/handlers.ts`** (271 lines) — instalmentPlan:49 · registerSubscribers:63
 

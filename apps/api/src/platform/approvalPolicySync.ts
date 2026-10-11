@@ -31,6 +31,7 @@ import { asSystem } from './context.js';
 import { assertCan } from './permissions.js';
 import { auditWrite } from './audit.js';
 import { emit } from './eventBus.js';
+import { governedWrite } from './governedWrite.js';
 import { logger } from './logger.js';
 
 interface LadderConvergence {
@@ -83,14 +84,17 @@ export async function reconcileApprovalGatePolicies(tenantId: string): Promise<A
         // ever move it, so the skip repairs it here.
         if (policy.currentVersionId !== current.id) {
           await assertCan({ resource: 'policies', verb: 'edit' });
-          await prisma.policy.update({ where: { id: policy.id }, data: { currentVersionId: current.id } });
-          await auditWrite({
-            action: 'update',
-            subjectType: 'policy',
-            subjectId: policy.id,
-            before: { currentVersionId: policy.currentVersionId },
-            after: { currentVersionId: current.id },
-            meta: { policyCode: c.policyCode, reason: 'pointer repaired to latest version' },
+          await governedWrite(async (tx) => {
+            await tx.policy.update({ where: { id: policy.id }, data: { currentVersionId: current.id } });
+            await auditWrite({
+              action: 'update',
+              subjectType: 'policy',
+              subjectId: policy.id,
+              before: { currentVersionId: policy.currentVersionId },
+              after: { currentVersionId: current.id },
+              meta: { policyCode: c.policyCode, reason: 'pointer repaired to latest version' },
+              tx,
+            });
           });
         }
         continue;
@@ -102,9 +106,10 @@ export async function reconcileApprovalGatePolicies(tenantId: string): Promise<A
 
       await assertCan({ resource: 'policies', verb: 'edit' });
 
-      // One transaction: the version and the pointer to it land together, so a
-      // crash cannot leave the pointer on v1 (the skip above repairs that too).
-      const next = await prisma.$transaction(async (tx) => {
+      // One transaction: the version, the pointer to it, the audit row and the
+      // event land together, so a crash cannot leave the pointer on v1 (the
+      // skip above repairs that too) or a published version nobody recorded.
+      await governedWrite(async (tx) => {
         const created = await tx.policyVersion.create({
           data: {
             tenantId,
@@ -114,23 +119,24 @@ export async function reconcileApprovalGatePolicies(tenantId: string): Promise<A
           },
         });
         await tx.policy.update({ where: { id: policy.id }, data: { currentVersionId: created.id } });
+        await auditWrite({
+          action: 'create',
+          subjectType: 'policy_version',
+          subjectId: created.id,
+          before: { version: current.version, approverResolution: ladder },
+          after: { version: created.version, approverResolution: c.to },
+          meta: { policyCode: c.policyCode, reason: c.reason },
+          tx,
+        });
+        await emit({
+          name: EVENTS.POLICY_VERSION_PUBLISHED,
+          subject: { entityType: 'policy_version', entityId: created.id, recordCode: c.policyCode },
+          previousState: { version: current.version, approverResolution: ladder },
+          newState: { version: created.version, approverResolution: c.to },
+          impact: { domains: ['gov'] },
+          tx,
+        });
         return created;
-      });
-
-      await auditWrite({
-        action: 'create',
-        subjectType: 'policy_version',
-        subjectId: next.id,
-        before: { version: current.version, approverResolution: ladder },
-        after: { version: next.version, approverResolution: c.to },
-        meta: { policyCode: c.policyCode, reason: c.reason },
-      });
-      await emit({
-        name: EVENTS.POLICY_VERSION_PUBLISHED,
-        subject: { entityType: 'policy_version', entityId: next.id, recordCode: c.policyCode },
-        previousState: { version: current.version, approverResolution: ladder },
-        newState: { version: next.version, approverResolution: c.to },
-        impact: { domains: ['gov'] },
       });
 
       result.published.push(c.policyCode);
