@@ -32,6 +32,7 @@ model BusinessLine {
   distributionLines LineDistributionLine[]
   orgUnits          OrgUnit[]
   journalLines      JournalLine[]
+  cases             Case[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
