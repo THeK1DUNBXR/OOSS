@@ -128,8 +128,10 @@ describe('#29 runComplianceBackupJob — a failed rerun never touches an earlier
     });
     const startedAfter = new Date();
 
-    const first = await asSystem(KAIZEN, () => job.run());
-    const second = await asSystem(KAIZEN, () => job.run());
+    // run() takes the attempt's abort signal (8789ff0); the scheduler passes its
+    // own. A fresh, never-aborted signal is what a single unhurried run gets.
+    const first = await asSystem(KAIZEN, () => job.run(new AbortController().signal));
+    const second = await asSystem(KAIZEN, () => job.run(new AbortController().signal));
 
     const runs = await unscopedPrisma.backupRun.findMany({ where: { startedAt: { gte: startedAfter } } });
     backupRunIds.push(...runs.map((r) => r.id));
