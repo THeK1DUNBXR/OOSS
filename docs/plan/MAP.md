@@ -122,7 +122,7 @@
 
 **`apps/api/src/domains/hcm/performance.ts`** (1092 lines) — myEmploymentContext:76 · listReviewCycles:94 · getReviewCycle:100 · createReviewCycle:108 · advanceReviewCyclePhase:159 · listReviewTemplates:222 · createReviewTemplate:228 · listReviewAssignments:251 · createReviewAssignment:276 · getReviewAssignment:346 · submitReviewResponse:366 · CalibrationDecisionInput:429 · listCalibrationSessions:439 · openCalibrationSession:448 · updateCalibrationDecisions:481 · closeCalibrationSession:507 · listFinalRatings:581 · releaseFinalRating:611 · nineBoxForCycle:677 · listFeedback:699 · giveFeedback:716 · listOneOnOnes:780 · scheduleOneOnOne:792 · updateOneOnOne:848 · listPips:872 · openPip:884 · addPipCheckpoint:935 · closePip:950 · SuccessorInput:1000 · listSuccessionPlans:1006 · createSuccessionPlan:1012 · updateSuccessionPlan:1053
 
-**`apps/api/src/domains/hcm/recruiting.ts`** (1062 lines) — listJobPostings:63 · createJobPosting:76 · transitionJobPosting:124 · listCandidates:162 · createCandidate:189 · listInterviewRounds:254 · scheduleInterview:277 · completeInterview:331 · submitScorecard:370 · listScorecards:430 · listOffers:460 · createOffer:475 · transitionOffer:506 · joinAndOnboard:641 · listReferrals:659 · createReferral:692 · updateReferralStatus:762 · listBackgroundVerifications:783 · createBackgroundVerification:796 · updateBackgroundVerification:821 · listOnboardingTemplates:871 · createOnboardingTemplate:880 · instantiateOnboardingTasks:899 · listOnboardingTasks:930 · completeOnboardingTask:952 · recruitingFunnel:1012
+**`apps/api/src/domains/hcm/recruiting.ts`** (1080 lines) — listJobPostings:68 · createJobPosting:81 · transitionJobPosting:129 · listCandidates:167 · createCandidate:194 · listInterviewRounds:259 · scheduleInterview:282 · completeInterview:336 · submitScorecard:375 · listScorecards:435 · listOffers:465 · createOffer:480 · transitionOffer:511 · joinAndOnboard:659 · listReferrals:677 · createReferral:710 · updateReferralStatus:780 · listBackgroundVerifications:801 · createBackgroundVerification:814 · updateBackgroundVerification:839 · listOnboardingTemplates:889 · createOnboardingTemplate:898 · instantiateOnboardingTasks:917 · listOnboardingTasks:948 · completeOnboardingTask:970 · recruitingFunnel:1030
 
 **`apps/api/src/domains/hcm/separations.ts`** (808 lines) — myEmploymentId:97 · listNoticePolicies:118 · createNoticePolicy:124 · setNoticePolicyActive:157 · noticeDaysFor:171 · listResignations:197 · getResignation:214 · submitResignation:227 · acceptResignation:322 · rejectResignation:376 · withdrawResignation:414 · resignationNoticeShortfall:444 · listExitClearances:468 · initiateClearance:483 · clearDepartment:547 · blockDepartment:578 · getNoDues:603 · issueNoDues:615 · assetsPendingCount:672 · listAlumni:684 · recordAlumni:697 · getOffboardingForEmployment:756 · myResignations:782 · mySubmitResignation:787 · myOffboarding:796 · myNoticeDays:801 · OFFBOARDING_STATE_MACHINE:806
 
@@ -134,7 +134,7 @@
 
 **`apps/api/src/domains/health.ts`** (1113 lines) — FactorResult:65 · ComputeResult:78 · computeCommercialHealth:92 · computeDomainHealth:233 · applyFalsifiabilityCheck:840 · computeAndPersistAll:912 · PulseEntry:1006 · latestPulse:1022 · healthAsOfDay:1098
 
-**`apps/api/src/domains/hiring.ts`** (370 lines) — listRequisitions:39 · createRequisition:57 · transitionRequisition:105 · listApplications:132 · createApplication:155 · transitionApplication:225 · joinFromApplication:311 · hiringFunnel:353
+**`apps/api/src/domains/hiring.ts`** (421 lines) — listRequisitions:45 · createRequisition:63 · transitionRequisition:111 · listApplications:138 · createApplication:161 · ApplicationTransitionInput:231 · PreparedApplicationTransition:241 · prepareApplicationTransition:252 · applyApplicationTransition:304 · transitionApplication:344 · joinFromApplication:362 · hiringFunnel:404
 
 **`apps/api/src/domains/identity.ts`** (687 lines) — normalisePhone:32 · normaliseEmail:40 · maskPhone:46 · maskEmail:51 · ResolutionScope:65 · crmResolutionScope:72 · PersonInput:76 · findDedupCandidates:91 · ResolveResult:168 · findOrCreatePerson:179 · sanctionedCreatePerson:318 · mergePersons:349 · personIdChain:397 · resolveMergeCandidate:411 · sweepStaleMergeCandidates:561 · AffiliationInput:592 · createAffiliation:606 · endAffiliation:663
 
@@ -288,7 +288,7 @@
 
 **`apps/api/src/platform/ledger.ts`** (368 lines) — SourceType:10 · JournalLineInput:23 · PostInput:38 · reversalLinkFor:101 · post:288 · reverse:308 · balanceOf:348
 
-**`apps/api/src/platform/lifecycle.ts`** (206 lines) — TransitionInput:27 · TransitionResult:60 · transition:76 · transitionInTx:112 · availableTransitions:192 · assertNotTerminal:197
+**`apps/api/src/platform/lifecycle.ts`** (226 lines) — TransitionInput:27 · TransitionResult:60 · transition:76 · transitionInTx:112 · applyDecided:131 · decide:149 · availableTransitions:212 · assertNotTerminal:217
 
 **`apps/api/src/platform/llm.ts`** (319 lines) — LlmRegion:11 · LlmTask:12 · ApprovalClassification:13 · PERSONAL_DATA_FIELDS:22 · ModelGatewayConfig:69 · ModelGatewayCall:90 · ModelGatewayResult:97 · BriefingMetricSpec:106 · normalizeAction:112 · classifyAction:116 · assertActionAllowed:131 · isIndiaRegionRequired:142 · allowInferenceRegion:148 · redactPersonalFields:159 · sanitizeForModel:184 · ModelGateway:202 · createGateway:292 · safeBriefingComposition:296 · assertAllowedSemanticQuery:309
 
@@ -390,7 +390,7 @@
 
 **`apps/api/src/jobs/it/software.ts`** (78 lines) — runItSoftwareJob:20 · runItSoftwareJobForTenant:62 · JOBS:66
 
-**`apps/api/src/jobs/it/vendors.ts`** (292 lines) — runVendorContractNoticeLadder:42 · runVendorAssessmentOverdueJob:166 · runVendorDpaMissingJob:227 · JOBS:263
+**`apps/api/src/jobs/it/vendors.ts`** (305 lines) — runVendorContractNoticeLadder:42 · runVendorAssessmentOverdueJob:179 · runVendorDpaMissingJob:240 · JOBS:276
 
 **`apps/api/src/jobs/marketing.ts`** (253 lines) — MARKETING_JOBS:186
 
