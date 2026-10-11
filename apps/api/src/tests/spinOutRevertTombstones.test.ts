@@ -43,6 +43,8 @@ interface Pair {
   legacyNetBeforeCommit: number;
   /** The holding course's code, when the fixture carries one. */
   courseCode: string | null;
+  /** The share class name the first commit used; a redo that repeats it is the normal redo path. */
+  className: string;
 }
 
 async function principalIn(tid: string): Promise<TestPrincipal> {
@@ -196,11 +198,12 @@ async function spinOutPair(label: string, options: { withCourse?: boolean } = {}
   });
 
   const legacyNetBeforeCommit = await legacyNet(sub.tenantId);
+  const className = `Equity ${label} ${suffix}`;
   const batch = await commitSpinOut({
     holdingTenantId: hold.tenantId,
     division: 'education',
     faceValue: 10,
-    className: `Equity ${label} ${suffix}`,
+    className,
   });
   return {
     hold: hold.tenantId,
@@ -208,6 +211,7 @@ async function spinOutPair(label: string, options: { withCourse?: boolean } = {}
     batchId: batch.batchId,
     legacyNetBeforeCommit,
     courseCode,
+    className,
   };
 }
 
@@ -510,5 +514,71 @@ describe('FX-71b — a revert releases the keys it marks, so a redo of the same 
     expect(await legacyNet(G.sub)).toBe(750);
     await assertJournalBalances(G.hold);
     await assertJournalBalances(G.sub);
+  });
+});
+
+describe('FX-71b — a redo that repeats a reverted share class name is refused before any write', () => {
+  let S: Pair;
+  let classBefore: { name: string; updatedAt: Date; spinOutRevertedAt: Date | null } | null = null;
+  let countsBefore: Record<string, number> = {};
+
+  /** Row counts in the subsidiary across every table a commit writes, so a refusal that wrote anything shows. */
+  async function subsidiaryRowCounts(tid: string): Promise<Record<string, number>> {
+    return {
+      holder: await unscopedPrisma.holder.count({ where: { tenantId: tid } }),
+      shareClass: await unscopedPrisma.shareClass.count({ where: { tenantId: tid } }),
+      shareCertificate: await unscopedPrisma.shareCertificate.count({ where: { tenantId: tid } }),
+      shareTransaction: await unscopedPrisma.shareTransaction.count({ where: { tenantId: tid } }),
+      transaction: await unscopedPrisma.transaction.count({ where: { tenantId: tid } }),
+      ledgerAccount: await unscopedPrisma.ledgerAccount.count({ where: { tenantId: tid } }),
+      ledgerCategory: await unscopedPrisma.ledgerCategory.count({ where: { tenantId: tid } }),
+      course: await unscopedPrisma.course.count({ where: { tenantId: tid } }),
+      auditRecord: await unscopedPrisma.auditRecord.count({ where: { tenantId: tid } }),
+      eventRecord: await unscopedPrisma.eventRecord.count({ where: { tenantId: tid } }),
+    };
+  }
+
+  beforeAll(async () => {
+    S = await spinOutPair('e');
+    await revertSpinOut(revertInput(S, 'reversed before the redo'));
+    await assertJournalBalances(S.hold);
+    await assertJournalBalances(S.sub);
+
+    const cls = await unscopedPrisma.shareClass.findFirstOrThrow({
+      where: { tenantId: S.sub, spinOutBatchId: S.batchId },
+    });
+    classBefore = { name: cls.name, updatedAt: cls.updatedAt, spinOutRevertedAt: cls.spinOutRevertedAt };
+    countsBefore = await subsidiaryRowCounts(S.sub);
+  }, 120_000);
+
+  it('the reverted class stays on the register, marked, under the name the redo would take', () => {
+    expect(classBefore).not.toBeNull();
+    expect(classBefore!.name).toBe(S.className);
+    expect(classBefore!.spinOutRevertedAt).not.toBeNull();
+  });
+
+  it('refuses the redo up front, naming the batch that still holds the class name', async () => {
+    const rejection = await expectReject(() =>
+      commitSpinOut({ holdingTenantId: S.hold, division: 'education', faceValue: 10, className: S.className }),
+    );
+    expect(rejection.message).toContain(
+      `The class name "${S.className}" is still on the statutory register from reverted batch ${S.batchId}, so choose a different className.`,
+    );
+  });
+
+  it('writes no rows, and leaves the reverted class row untouched', async () => {
+    expect(await subsidiaryRowCounts(S.sub)).toEqual(countsBefore);
+
+    const cls = await unscopedPrisma.shareClass.findFirstOrThrow({
+      where: { tenantId: S.sub, spinOutBatchId: S.batchId },
+    });
+    expect(cls.name).toBe(classBefore!.name);
+    expect(cls.updatedAt.getTime()).toBe(classBefore!.updatedAt.getTime());
+    expect(cls.spinOutRevertedAt?.getTime()).toBe(classBefore!.spinOutRevertedAt?.getTime());
+  });
+
+  it('keeps both sides of the books in balance', async () => {
+    await assertJournalBalances(S.hold);
+    await assertJournalBalances(S.sub);
   });
 });
