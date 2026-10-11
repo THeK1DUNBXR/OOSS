@@ -114,7 +114,10 @@ afterAll(async () => {
   await unscopedPrisma.person.deleteMany({ where: { tenantId: TENANT_ID } });
   await unscopedPrisma.pipelineStage.deleteMany({ where: { tenantId: TENANT_ID } });
   await unscopedPrisma.pipelineDefinition.deleteMany({ where: { tenantId: TENANT_ID } });
-  await unscopedPrisma.tenant.delete({ where: { id: TENANT_ID } });
+  // The tenant row is left in place. Deleting it cascades to event_records, and
+  // the event_record_immutable trigger (migration 20261011120000) refuses that
+  // delete by design, so the afterAll hook threw after every test had passed.
+  // The slug is timestamped, so a leftover tenant cannot collide with a later run.
 });
 
 /** Rows for the seeded lead, reduced to the fields that define an attribution result. */
