@@ -678,11 +678,11 @@
 
 **`apps/web/src/pages/hcm/Time.tsx`** (892 lines) — Time:62
 
-**`apps/web/src/pages/it/Assets.tsx`** (832 lines) — ItAssets:155 · ItAssetDetail:417
+**`apps/web/src/pages/it/Assets.tsx`** (851 lines) — ItAssets:156 · ItAssetDetail:436
 
-**`apps/web/src/pages/it/Continuity.tsx`** (1129 lines) — ItContinuity:142 · ItAvailability:687 · ItMaintenance:875
+**`apps/web/src/pages/it/Continuity.tsx`** (1212 lines) — ItContinuity:143 · ItAvailability:730 · ItMaintenance:939
 
-**`apps/web/src/pages/it/Governance.tsx`** (1794 lines) — ItRisks:95 · ItRiskDetail:371 · ItPolicies:568 · ItPolicyDetail:757 · ItControls:955 · ItAccessReviews:1207 · ItAccessReviewDetail:1345 · ItFindings:1565
+**`apps/web/src/pages/it/Governance.tsx`** (1892 lines) — ItRisks:96 · ItRiskDetail:392 · ItPolicies:589 · ItPolicyDetail:792 · ItControls:990 · ItAccessReviews:1261 · ItAccessReviewDetail:1417 · ItFindings:1648
 
 **`apps/web/src/pages/it/Itsm.tsx`** (1181 lines) — ItIncidents:164 · ItIncidentDetail:354 · ItProblems:529 · ItProblemDetail:609 · ItChanges:698 · ItChangeDetail:1022
 
@@ -690,11 +690,11 @@
 
 **`apps/web/src/pages/it/Portfolio.tsx`** (1259 lines) — ItPortfolio:134 · ItInitiativeDetail:345 · ItRoadmap:601 · ItBudget:811 · ItTechDebt:1060
 
-**`apps/web/src/pages/it/ServiceDesk.tsx`** (996 lines) — ItTickets:168 · ItTicketDetail:362 · ItKnowledge:718 · ItKnowledgeDetail:808 · MyIt:885
+**`apps/web/src/pages/it/ServiceDesk.tsx`** (1010 lines) — ItTickets:169 · ItTicketDetail:376 · ItKnowledge:732 · ItKnowledgeDetail:822 · MyIt:899
 
-**`apps/web/src/pages/it/Software.tsx`** (1270 lines) — ItApplications:185 · ItApplicationDetail:446 · ItLicences:660 · ItLicenceDetail:923
+**`apps/web/src/pages/it/Software.tsx`** (1333 lines) — ItApplications:186 · ItApplicationDetail:467 · ItLicences:702 · ItLicenceDetail:986
 
-**`apps/web/src/pages/it/Vendors.tsx`** (1028 lines) — ItVendors:50 · ItVendorDetail:273 · ItVendorContracts:543 · ItVendorContractDetail:765
+**`apps/web/src/pages/it/Vendors.tsx`** (1045 lines) — ItVendors:51 · ItVendorDetail:274 · ItVendorContracts:544 · ItVendorContractDetail:782
 
 **`apps/web/src/pages/kaizenInvoice/FeeMasterCatalog.tsx`** (122 lines) — FeeMasterCatalog:22
 
