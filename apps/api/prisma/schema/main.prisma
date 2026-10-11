@@ -1084,13 +1084,24 @@ model JobClaim {
   /// two instances ticking a second apart must compute the same value.
   scheduledFor DateTime
 
-  status      String    @default("claimed") // claimed | completed | failed | dead
+  /// claimed | running | completed | failed | timed_out | dead. `failed` and
+  /// `timed_out` are retriable once `runAfter` has passed; `dead` is terminal.
+  status      String    @default("claimed")
+  /// The fence token. Every write an attempt makes is conditional on this
+  /// still being the attempt that holds the claim, together with `workerId`.
   attempt     Int       @default(1)
   claimedAt   DateTime  @default(now())
-  /// Extended by the heartbeat while the job runs; a claim past this with no
-  /// finish is abandoned and may be retaken.
+  /// The lease. Proves the holder is alive and nothing more: the heartbeat
+  /// renews it, and a claim past it with no finish is abandoned. It is not the
+  /// job timeout and it is never the retry gate; that is `runAfter`.
   leaseUntil  DateTime
   heartbeatAt DateTime?
+  /// Which worker holds the current attempt. A finish or heartbeat from any
+  /// other worker, or from an older attempt, matches no rows.
+  workerId    String?
+  /// The backoff gate. A failed or timed-out claim is not retried before this.
+  /// Separate from `leaseUntil` so a backoff cannot be read as a live lease.
+  runAfter    DateTime?
   finishedAt  DateTime?
   durationMs  Int?
   lastError   String?
@@ -1101,6 +1112,7 @@ model JobClaim {
 
   @@unique([tenantId, jobName, scheduledFor])
   @@index([tenantId, status, scheduledFor])
+  @@index([status, leaseUntil])
   @@map("job_claims")
 }
 
