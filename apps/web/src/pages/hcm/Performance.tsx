@@ -13,7 +13,7 @@ import { date, titleCase } from '../../lib/api.js';
 import {
   hcmApi,
   type CalibrationDecision,
-  type EmploymentOption,
+  type HrEmployeeRow,
   type OneOnOne,
   type PipRow,
   type ReviewAssignment,
@@ -39,7 +39,7 @@ const TABS: Array<{ key: Tab; label: string }> = [
 function useEmployments() {
   return useQuery({
     queryKey: ['performance-employments'],
-    queryFn: () => hcmApi.hr.employments(),
+    queryFn: () => hcmApi.hr.employees('Active'),
   });
 }
 
@@ -52,7 +52,7 @@ function EmploymentSelect({
   label: string;
   value: string;
   onChange: (v: string) => void;
-  options: EmploymentOption[];
+  options: HrEmployeeRow[];
 }) {
   return (
     <SelectInput
@@ -60,7 +60,7 @@ function EmploymentSelect({
       value={value as never}
       onChange={onChange as never}
       placeholder="Choose a person…"
-      options={options.map((o) => ({ value: o.id, label: o.person.fullName }))}
+      options={options.map((o) => ({ value: o.id, label: o.fullName }))}
       required
     />
   );
@@ -266,7 +266,7 @@ function AssignmentsTab() {
     queryFn: () => hcmApi.performance.assignments.list(form.cycleId),
   });
 
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   const columns: ReadonlyArray<DataTableColumn<ReviewAssignment>> = [
     {
@@ -397,7 +397,7 @@ function CalibrationTab() {
     queryFn: () => hcmApi.performance.calibrations.list(cycleId),
   });
 
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   const openSession = useMutation({
     mutationFn: () =>
@@ -576,7 +576,7 @@ function NineBoxTab() {
     enabled: !!cycleId,
   });
 
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   return (
     <Card
@@ -647,7 +647,7 @@ function FeedbackTab() {
     queryFn: () => hcmApi.performance.feedback.list(employmentRelationshipId),
   });
 
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   return (
     <Card
@@ -759,7 +759,7 @@ function OneOnOnesTab() {
     queryKey: ['performance-1on1s', reportId],
     queryFn: () => hcmApi.performance.oneOnOnes.list(reportId),
   });
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   const complete = useMutation({
     mutationFn: (id: string) => hcmApi.performance.oneOnOnes.complete(id),
@@ -879,7 +879,7 @@ function PipsTab() {
   });
 
   const pips = useQuery({ queryKey: ['performance-pips'], queryFn: () => hcmApi.performance.pips.list() });
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   const close = useMutation({
     mutationFn: ({ id, outcome }: { id: string; outcome: string }) => hcmApi.performance.pips.close(id, outcome),
@@ -1019,7 +1019,7 @@ function SuccessionTab() {
     queryKey: ['performance-succession'],
     queryFn: () => hcmApi.performance.succession.list(),
   });
-  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.person.fullName]));
+  const byId = new Map((employments.data ?? []).map((e) => [e.id, e.fullName]));
 
   return (
     <Card

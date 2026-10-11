@@ -161,16 +161,20 @@ export interface MergeCandidateRow {
 // Shared reads from the HR module, used by the HCM pickers and pipeline boards
 // ---------------------------------------------------------------------------
 
-/** `GET /hr/employments?status=Active` (the employment picker). Only the person's name is read. */
-export interface EmploymentOption {
+/**
+ * One row of `GET /hr/employees` (routes/hr.routes.ts:245). The person's name
+ * is flattened onto the employment row; there is no nested `person` object.
+ * `id` is the employment relationship id, which is what HCM routes take.
+ */
+export interface HrEmployeeRow {
   id: string;
-  person: { fullName: string };
-}
-
-/** `GET /hr/employees` (the employee picker): one row per person with an employment. */
-export interface EmployeeOption {
-  id: string;
-  person: { fullName: string; recordCode?: string };
+  recordCode: string;
+  personId: string;
+  fullName: string;
+  primaryEmail: string | null;
+  status: string;
+  jobTitle: string | null;
+  orgUnit: string | null;
 }
 
 /** `GET /hr/requisitions` (domains/hiring.ts): read here for the posting and pipeline screens. */
@@ -595,8 +599,8 @@ export interface CreateSuccessionPlanBody {
 
 export const hcmApi = {
   hr: {
-    employments: () => api.get<EmploymentOption[]>('/hr/employments?status=Active'),
-    employees: () => api.get<EmployeeOption[]>('/hr/employees'),
+    employees: (status = '') =>
+      api.get<HrEmployeeRow[]>(`/hr/employees${status ? `?status=${encodeURIComponent(status)}` : ''}`),
     requisitions: () => api.get<RequisitionRow[]>('/hr/requisitions'),
     applications: () => api.get<ApplicationRow[]>('/hr/applications'),
   },
