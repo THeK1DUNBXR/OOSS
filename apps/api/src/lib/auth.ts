@@ -848,6 +848,12 @@ export async function refreshSession(refreshCookie: string): Promise<SessionRefr
     return recoverLostRefresh(session, presented, user.id, user.tenantId, user.personId, active);
   }
 
+  // The rotated-in secret a lost-response recovery dropped unused. Only a holder
+  // of a copy the session did not hand to the victim can present it.
+  if (session.abandonedRefreshTokenHash && presented === session.abandonedRefreshTokenHash) {
+    throw await refuseReuse(session.id, user.tenantId, user.personId, active.roleSlug, 'abandoned_secret_presented');
+  }
+
   // A secret the session rotated away from two or more times ago. The newer one
   // was used since, so this presenter holds a copy the session has moved past.
   if (session.olderRefreshTokenHash && presented === session.olderRefreshTokenHash) {
@@ -862,8 +868,16 @@ export async function refreshSession(refreshCookie: string): Promise<SessionRefr
 /**
  * Recovers a refresh whose response was lost. Rotates to a fresh secret, keeps
  * the presented one in the previous slot so that a further lost response can
- * be recovered the same way, and drops the unused rotated-in secret entirely.
- * Bounded by the session's own lifetime, which the caller has already checked.
+ * be recovered the same way, and drops the unused rotated-in secret into the
+ * abandoned slot. Bounded by the session's own lifetime, which the caller has
+ * already checked.
+ *
+ * Residual risk, accepted: if a thief presents the replaced secret before the
+ * victim has used the rotated-in one, this is indistinguishable from a lost
+ * response. The thief keeps the session until the victim presents the abandoned
+ * secret, which revokes it (refreshSession). Until the victim returns, the
+ * thief's session is live. Only the most recent abandoned secret is kept, so a
+ * second recovery before the victim returns overwrites the first.
  */
 async function recoverLostRefresh(
   session: { id: string; refreshTokenHash: string; expiresAt: Date; stepUpAt: Date | null },
@@ -888,6 +902,8 @@ async function recoverLostRefresh(
       refreshTokenHash: hashRefreshSecret(nextSecret),
       previousRefreshTokenHash: presented,
       olderRefreshTokenHash: null,
+      abandonedRefreshTokenHash: session.refreshTokenHash,
+      abandonedAt: new Date(),
       rotatedAt: new Date(),
       jti,
     },
@@ -934,14 +950,25 @@ export async function logoutWithRefreshCookie(refreshCookie: string): Promise<vo
 }
 
 /** Revokes the session on a reused refresh secret, audits and emits it, and returns the error to throw. */
-async function refuseReuse(sessionId: string, tenantId: string, personId: string, roleSlug: string | null) {
+async function refuseReuse(
+  sessionId: string,
+  tenantId: string,
+  personId: string,
+  roleSlug: string | null,
+  reason?: string,
+) {
   const revoked = await unscopedPrisma.session.updateMany({
     where: { id: sessionId, revokedAt: null },
     data: { revokedAt: new Date() },
   });
   if (revoked.count === 1) {
     await runWithContext(actingAs(tenantId, personId, roleSlug), async () => {
-      await auditWrite({ action: 'refresh_reuse', subjectType: 'session', subjectId: sessionId });
+      await auditWrite({
+        action: 'refresh_reuse',
+        subjectType: 'session',
+        subjectId: sessionId,
+        meta: reason ? { reason } : undefined,
+      });
       await emit({ name: EVENTS.SESSION_REFRESH_REUSED, subject: { entityType: 'session', entityId: sessionId } });
     });
   }

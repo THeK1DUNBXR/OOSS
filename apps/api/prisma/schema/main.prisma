@@ -1253,6 +1253,12 @@ model Session {
   /// secret sits in.
   olderRefreshTokenHash String?
 
+  /// SHA-256 of the rotated-in secret that a lost-response recovery dropped
+  /// unused (lib/auth.ts recoverLostRefresh). The victim never saw it used, so
+  /// presenting it later means someone else recovered the session in its place.
+  abandonedRefreshTokenHash String?
+  abandonedAt               DateTime?
+
   /// When the secret was last rotated. A replay of `previousRefreshTokenHash`
   /// inside a short grace is a second tab, not a thief (lib/auth.ts refreshSession).
   rotatedAt DateTime?
