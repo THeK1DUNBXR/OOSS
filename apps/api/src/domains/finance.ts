@@ -24,7 +24,7 @@
  * pointing one way is what stops the two files becoming one.
  */
 
-import { EVENTS, monthKey, monthRange, round2 } from '@kaizen/shared';
+import { EVENTS, round2 } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';

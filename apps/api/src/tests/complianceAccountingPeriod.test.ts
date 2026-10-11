@@ -18,12 +18,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { monthKey } from '@kaizen/shared';
 import { asUser, expectReject, tenantId, unscopedPrisma } from './helpers.js';
 import { applyReverseCharge, issueDebitNote } from '../domains/compliance/gst.js';
-import {
-  computeVendorTds,
-  waiveVendorTds,
-  markChallanPaid,
-  recordAdvanceTaxPayment,
-} from '../domains/compliance/tax.js';
+import { computeVendorTds, waiveVendorTds } from '../domains/compliance/tax.js';
 import { raiseFinalInvoice, finalizeCourseFeeInvoice } from '../domains/receipts.js';
 import { requestClosePeriod, closePeriod, reopenPeriod } from '../domains/compliance/books.js';
 
