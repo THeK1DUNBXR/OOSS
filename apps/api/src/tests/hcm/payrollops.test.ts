@@ -519,6 +519,48 @@ describe('bank advice', () => {
     expect(csv).not.toContain('enc:v1:');
   });
 
+  it('FX-35: a second generate for the same run is refused, and the first file stands', async () => {
+    const a = await makeEmployee('bank-dup');
+    await asUser('chairman@kaizen.co.in', () =>
+      prisma.employmentRelationship.update({
+        where: { id: a.employment.id },
+        data: { bankAccountNumber: '000555666777', bankIfsc: 'HDFC0000555' },
+      }),
+    );
+    const run = await makeRun('2033-01', [
+      { employmentRelationshipId: a.employment.id, division: 'software', gross: 40_000, net: 36_000 },
+    ]);
+
+    const first = await asUser('operations@kaizen.co.in', () => generateBankAdvice(run.id));
+    const second = await asUser('operations@kaizen.co.in', () => expectReject(() => generateBankAdvice(run.id)));
+    expect(second.status).toBe(409);
+
+    const advices = await unscopedPrisma.bankAdvice.findMany({ where: { payrollRunId: run.id } });
+    expect(advices.map((x) => x.id)).toEqual([first.id]);
+  });
+
+  it('FX-35: the database refuses a second bank advice of the same version for a run', async () => {
+    const a = await makeEmployee('bank-uniq');
+    const run = await makeRun('2033-02', [
+      { employmentRelationshipId: a.employment.id, division: 'software', gross: 40_000, net: 36_000 },
+    ]);
+    const advice = await asUser('operations@kaizen.co.in', () => generateBankAdvice(run.id));
+    const stored = await unscopedPrisma.bankAdvice.findFirstOrThrow({ where: { id: advice.id } });
+    await expect(
+      unscopedPrisma.bankAdvice.create({
+        data: {
+          tenantId: stored.tenantId,
+          payrollRunId: run.id,
+          payPeriod: stored.payPeriod,
+          fileText: 'duplicate',
+          rows: [] as never,
+          count: 0,
+          total: 0,
+        },
+      }),
+    ).rejects.toThrow(/Unique constraint|unique/i);
+  });
+
   it('an employee holds no grant on bank advices', async () => {
     const err = await expectReject(() => asUser('ravi@kaizen.co.in', () => generateBankAdvice('whatever')));
     expect(err.status).toBe(403);

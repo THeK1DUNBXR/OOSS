@@ -163,6 +163,11 @@ model BankAdvice {
   generatedById String?
   generatedAt   DateTime @default(now())
 
+  /// One file per run and version. A run's first advice is version 1; a later
+  /// one needs a supersede path, and generateBankAdvice refuses it until that exists.
+  version Int @default(1)
+
+  @@unique([tenantId, payrollRunId, version])
   @@index([tenantId, payrollRunId])
   @@map("hcm_bank_advices")
 }

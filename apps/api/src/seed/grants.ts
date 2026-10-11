@@ -348,6 +348,7 @@ export const ALL_RESOURCES = [
   'hr_requests',
   'hr_request_types',
   'authority_delegations', // WS13 workflow
+  'commitments', // Wave 6 (OP:115); kept in lockstep with RESOURCES in shared/permissions.ts
 ] as const;
 
 /** Everything, at every scope, with no exceptions. */

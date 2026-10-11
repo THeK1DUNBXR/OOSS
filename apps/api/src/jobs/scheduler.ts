@@ -48,9 +48,11 @@ import { computeAndPersistAll } from '../domains/health.js';
 import { runBoardComplianceJob } from '../domains/board.js';
 import { runCeoDetectors } from '../domains/ceo/detectors.js';
 import { raiseException, escalateException } from '../platform/exceptions.js';
+import { checkAccountBalanceSnapshots } from '../platform/balances.js';
 import { COMPLIANCE_JOBS } from './compliance/index.js';
 import { IT_JOBS } from './it/index.js';
 import { MARKETING_JOBS } from './marketing.js';
+import { JOBS as COMMITMENT_JOBS } from './commitments.js';
 
 export interface JobResult {
   processed: number;
@@ -349,6 +351,26 @@ export const ALL_JOBS: JobDefinition[] = [
     run: async () => counted(await runBoardComplianceJob()),
   },
   {
+    // Nightly drift canary (MONEY-LEDGER-CONTRACT section 3). Idempotent: a rerun
+    // with nothing changed inserts no snapshot row and raises nothing new, and a
+    // standing disagreement reuses its open exception.
+    name: 'runAccountBalanceDriftJob',
+    sideEffects: 'internal',
+    idempotent: true,
+    label: 'Account balance snapshots: drift check and journal trial balance',
+    automationClass: 'routine_administration',
+    cron: '30 2 * * *',
+    run: async (signal) => {
+      const report = await checkAccountBalanceSnapshots(new Date(), signal);
+      return {
+        processed: report.processed,
+        notified: report.drifted + (report.trialBalanceOk ? 0 : 1),
+        skippedIdempotent: report.matched,
+        errors: [],
+      };
+    },
+  },
+  {
     name: 'runCeoDetectorsJob',
     sideEffects: 'none',
     idempotent: true,
@@ -360,6 +382,7 @@ export const ALL_JOBS: JobDefinition[] = [
   ...COMPLIANCE_JOBS,
   ...IT_JOBS,
   ...MARKETING_JOBS,
+  ...COMMITMENT_JOBS,
 ];
 
 // ---------------------------------------------------------------------------

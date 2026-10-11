@@ -15,7 +15,7 @@
  * reopens through a bulk-import or API back door.
  */
 
-import { EVENTS, FORECAST_TRANSITIONS, type ForecastCategory, type SeverityCode } from '@kaizen/shared';
+import { EVENTS, FORECAST_TRANSITIONS, parseMinor, type ForecastCategory, type SeverityCode } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../platform/db.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { currentAuth } from '../platform/context.js';
@@ -406,11 +406,15 @@ export async function changeForecastCategory(input: ForecastChangeInput) {
       // A tenant may additionally require manager-level grant for commit above
       // a value threshold — configurable per pipeline, not a fixed rule.
       const threshold = opportunity.pipeline.commitApprovalThreshold;
-      if (threshold && opportunity.expectedValue && num(opportunity.expectedValue)! > Number(threshold.toString())) {
+      if (
+        threshold &&
+        opportunity.expectedValue &&
+        parseMinor(opportunity.expectedValue.toFixed(2)) > parseMinor(threshold.toFixed(2))
+      ) {
         await assertCan({
           resource: 'opportunities',
           verb: 'approve',
-          magnitude: { authorityClass: 'commit_approval', value: num(opportunity.expectedValue)! },
+          magnitude: { authorityClass: 'commit_approval', value: parseMinor(opportunity.expectedValue.toFixed(2)) },
         });
       }
     }

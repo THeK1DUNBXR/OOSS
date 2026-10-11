@@ -790,6 +790,9 @@ export const RECORD_TYPE_CODES = [
   'JPST',
   'CERT',
   'SREV',
+  // A commitment (Wave 6, OP:115): a promise a named person owns, referred to
+  // by its number in a review, so it needs one of its own.
+  'CMT',
 ] as const;
 export type RecordTypeCode = (typeof RECORD_TYPE_CODES)[number];
 

@@ -35,7 +35,8 @@ import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
 import { runHooks } from '../platform/hooks.js';
 import { openAccountingDate, periodStatus as accountingPeriodStatus } from './compliance/books.js';
-import { invoiceLabel, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
+import { invoiceLabel, paymentWire, receiptWire, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
+import { withMinor } from '../platform/wire.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import {
   assertFits,
@@ -128,7 +129,7 @@ export async function recordPayment(input: {
   const existing = await prisma.payment.findFirst({
     where: { tenantId: auth.tenantId, gatewayReference: input.gatewayReference },
   });
-  if (existing) return existing;
+  if (existing) return paymentWire(existing);
 
   // Interim policy, pending the accountant's confirmation: money that has
   // arrived is never refused. A caller with no human behind it (a gateway
@@ -201,7 +202,7 @@ export async function recordPayment(input: {
     confidentiality: 'confidential',
   });
 
-  return payment;
+  return paymentWire(payment);
 }
 
 /**
@@ -411,7 +412,7 @@ export async function allocatePayment(input: {
   });
 
   await settleIfFullyPaid(input.invoiceId ?? null, input.feeInstalmentId ?? null);
-  return receipt;
+  return receiptWire(receipt);
 }
 
 async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: string | null) {
@@ -522,7 +523,7 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
     confidentiality: 'confidential',
   });
 
-  return note;
+  return withMinor(note, ['amount'] as const);
 }
 
 // ---------------------------------------------------------------------------

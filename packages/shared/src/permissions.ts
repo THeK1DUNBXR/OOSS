@@ -352,6 +352,10 @@ export const RESOURCES = [
   'hr_requests',
   'hr_request_types',
   'authority_delegations', // WS13 workflow
+  // Wave 6 (OP:115). A commitment is a promise a named person owns; view and
+  // edit are the only verbs, because confirmation is a human act checked in the
+  // domain, not a permission an agent could be granted.
+  'commitments',
 ] as const;
 
 export type Resource = (typeof RESOURCES)[number];

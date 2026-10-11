@@ -19,6 +19,7 @@ import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan, invalidateGrantCache } from '../platform/permissions.js';
 import { verifyChain } from '../platform/eventBus.js';
+import { paiseOfInput } from '../domains/allocation.js';
 import { governedEntities } from '../platform/audit.js';
 import { wireInt } from '../platform/wire.js';
 import { assertCanWriteGrant } from '../platform/roleAssignment.js';
@@ -505,7 +506,11 @@ router.post(
       subjectId: input.subjectId,
       proposal: input.proposal ?? {},
       rationale: input.rationale,
-      magnitude: input.magnitude ?? null,
+      // The wire carries rupees; the check runs in paise. paiseOfInput refuses a
+      // third decimal instead of rounding it, so the boundary is never a guess.
+      magnitude: input.magnitude
+        ? { authorityClass: input.magnitude.authorityClass, value: paiseOfInput(input.magnitude.value) }
+        : null,
       onBehalfOfPartyId: currentAuth().partyId,
     });
   }),

@@ -22,6 +22,8 @@ import {
   type SensitivityClass,
   type Verb,
   type WithholdReason,
+  formatMinor,
+  parseMinor,
 } from '@kaizen/shared';
 import { prisma } from './db.js';
 import { currentAuth, type AuthContext } from './context.js';
@@ -116,8 +118,8 @@ export interface EvaluateInput {
   record?: ScopedRecord | null;
   /** The classification of the specific field or record being requested. */
   classification?: SensitivityClass;
-  /** The magnitude of the action, for the HOW MUCH axis. */
-  magnitude?: { authorityClass: string; value: number; currency?: string } | null;
+  /** The magnitude of the action, for the HOW MUCH axis. `value` is paise (bigint), compared exactly with the ceiling. */
+  magnitude?: { authorityClass: string; value: bigint; currency?: string } | null;
   /** The purpose this access is bound to, for the WHY axis. */
   requiredPurpose?: string | null;
   requiredConsent?: string[];
@@ -204,7 +206,7 @@ export async function evaluate(input: EvaluateInput): Promise<PermissionDecision
 
   // ---- HOW MUCH ------------------------------------------------------------
   if (input.magnitude) {
-    const ceiling = await resolveAuthorityCeiling(auth, input.magnitude.authorityClass);
+    const ceiling = await resolveAuthorityCeilingPaise(auth, input.magnitude.authorityClass);
     if (ceiling === null) {
       // A principal with no resolvable AUTHORITY_GRANT defaults to "no elevated
       // authority" — fail-closed, not fail-open.
@@ -219,11 +221,15 @@ export async function evaluate(input: EvaluateInput): Promise<PermissionDecision
       axes.push({
         axis: 'HOW_MUCH',
         passed: false,
-        reason: `Value ${input.magnitude.value} exceeds ceiling ${ceiling}`,
+        reason: `Value ${formatMinor(input.magnitude.value)} exceeds ceiling ${formatMinor(ceiling)}`,
       });
       return deny(axes, 'HOW_MUCH', 'authority_insufficient');
     }
-    axes.push({ axis: 'HOW_MUCH', passed: true, reason: `${input.magnitude.value} <= ${ceiling}` });
+    axes.push({
+      axis: 'HOW_MUCH',
+      passed: true,
+      reason: `${formatMinor(input.magnitude.value)} <= ${formatMinor(ceiling)}`,
+    });
   } else {
     axes.push({ axis: 'HOW_MUCH', passed: true, reason: 'no magnitude on this action' });
   }
@@ -298,7 +304,7 @@ function checkScope(grant: ResolvedGrant, record: ScopedRecord, auth: AuthContex
   return owner === auth.partyId;
 }
 
-export async function resolveAuthorityCeiling(auth: AuthContext, authorityClass: string): Promise<number | null> {
+async function activeCeilingGrant(auth: AuthContext, authorityClass: string) {
   const principalId = auth.agentId ?? auth.partyId;
   if (!principalId) return null;
   const now = new Date();
@@ -313,7 +319,24 @@ export async function resolveAuthorityCeiling(auth: AuthContext, authorityClass:
     orderBy: { ceilingValue: 'desc' },
   });
   if (!grant || (grant.effectiveTo && grant.effectiveTo <= now)) return null;
+  return grant;
+}
+
+export async function resolveAuthorityCeiling(auth: AuthContext, authorityClass: string): Promise<number | null> {
+  const grant = await activeCeilingGrant(auth, authorityClass);
+  if (!grant) return null;
   return grant.ceilingValue ? Number(grant.ceilingValue.toString()) : 0;
+}
+
+/**
+ * The ceiling in paise, read from the grant's Decimal column without a float.
+ * A magnitude is compared with this, so a boundary is decided at paise precision
+ * (FX-32). Null when the principal holds no active grant for the class.
+ */
+export async function resolveAuthorityCeilingPaise(auth: AuthContext, authorityClass: string): Promise<bigint | null> {
+  const grant = await activeCeilingGrant(auth, authorityClass);
+  if (!grant) return null;
+  return grant.ceilingValue ? parseMinor(grant.ceilingValue.toFixed(2)) : 0n;
 }
 
 // ---------------------------------------------------------------------------
