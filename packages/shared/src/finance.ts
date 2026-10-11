@@ -617,22 +617,27 @@ function wholeRupeesInWords(rupees: number): string {
 // monthly instalments starts a month later instead.
 // ---------------------------------------------------------------------------
 
+// These are calendar dates, not instants. Local-midnight parsing with UTC
+// read-back moved every date a day early on an IST host, so the arithmetic
+// runs in UTC from start to finish and the host's zone never enters it.
+function calendarDateUtc(iso: string): Date {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(Date.UTC(year!, month! - 1, day!));
+}
+
 function addDaysIso(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00`);
-  d.setDate(d.getDate() + days);
+  const d = calendarDateUtc(iso);
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
 function firstOfMonthAheadIso(iso: string, monthsAhead: number): string {
-  const d = new Date(`${iso}T00:00:00`);
-  const nd = new Date(d.getFullYear(), d.getMonth() + monthsAhead, 1);
-  return nd.toISOString().slice(0, 10);
+  const d = calendarDateUtc(iso);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + monthsAhead, 1)).toISOString().slice(0, 10);
 }
 
 function daysBetweenIso(a: string, b: string): number {
-  const da = new Date(`${a}T00:00:00`).getTime();
-  const db = new Date(`${b}T00:00:00`).getTime();
-  return Math.round((db - da) / 86_400_000);
+  return Math.round((calendarDateUtc(b).getTime() - calendarDateUtc(a).getTime()) / 86_400_000);
 }
 
 export interface PaymentSchedule {
