@@ -96,7 +96,7 @@
 
 **`apps/api/src/domains/esop.ts`** (1291 lines) — EsopPlanInput:48 · createPlan:57 · ActivatePlanInput:107 · activatePlan:114 · listPlans:201 · plan:211 · ProposeGrantInput:276 · proposeGrant:287 · approveGrant:428 · cancelGrant:478 · lapseGrant:514 · listGrants:606 · grant:618 · runVesting:649 · runExpiredExerciseWindows:753 · handleEmploymentExit:841 · RequestExerciseInput:952 · requestExercise:958 · rejectExercise:1030 · approveExercise:1063 · listExercises:1178 · myGrants:1192 · sh6Register:1221 · sh6Export:1257
 
-**`apps/api/src/domains/filings.ts`** (972 lines) — assertDematCompliant:59 · assertFemaPricingFloor:98 · handleAllotmentEffectiveForFema:155 · handleTransferEffectiveForFema:181 · runFlaReturn:224 · checkDematRequirements:320 · latestHalfYearEnd:381 · runPas6HalfYearly:390 · pas6:425 · mgt1Register:533 · mgt2Register:555 · mgt1Export:610 · mgt2Export:627 · pas3AllotteeList:647 · pas3Export:727 · sh4Data:778 · RecordFilingInput:850 · recordFiling:862 · listFilings:931
+**`apps/api/src/domains/filings.ts`** (992 lines) — assertDematCompliant:59 · assertFemaPricingFloor:98 · handleAllotmentEffectiveForFema:155 · handleTransferEffectiveForFema:181 · runFlaReturn:224 · checkDematRequirements:320 · latestHalfYearEnd:381 · runPas6HalfYearly:390 · pas6:425 · mgt1Register:533 · mgt2Register:555 · mgt1Export:624 · mgt2Export:643 · pas3AllotteeList:665 · pas3Export:745 · sh4Data:798 · RecordFilingInput:870 · recordFiling:882 · listFilings:951
 
 **`apps/api/src/domains/finance.ts`** (528 lines) — issueFeeInstalments:64 · recordPayment:101 · reversePayment:203 · allocatePayment:259 · issueCreditNote:416 · rehydrateReceivables:473 · detectOverduePayments:481
 
@@ -108,7 +108,7 @@
 
 **`apps/api/src/domains/hcm/assets.ts`** (781 lines) — listAssets:109 · createAsset:120 · transitionAsset:162 · listAssetAssignments:186 · assignAsset:203 · returnAsset:256 · listTravelRequests:299 · createTravelRequest:316 · decideTravelRequest:372 · settleTravelRequest:413 · listLetterRequests:449 · createLetterRequest:464 · fulfilLetterRequest:510 · rejectLetterRequest:603 · listIssuedHrLetters:639 · listIdCards:660 · issueIdCard:672 · reportIdCardLost:686 · returnIdCard:716 · myEmployment:739 · assetsPendingCount:756 · assetsPendingForEmployment:774
 
-**`apps/api/src/domains/hcm/compensation.ts`** (1162 lines) — myEmploymentId:61 · listPayGrades:108 · PayGradeInput:114 · createPayGrade:124 · updatePayGrade:146 · compaRatioFor:168 · listRevisionCycles:203 · getRevisionCycle:212 · RevisionCycleInput:232 · createRevisionCycle:238 · RevisionLineInput:263 · addRevisionLine:273 · listRevisionLines:325 · proposeCycle:348 · approveRevisionLine:366 · rejectRevisionLine:406 · approveCycle:436 · applyCycle:485 · myRevisionLines:558 · VariablePayPlanInput:571 · listVariablePayPlans:578 · createVariablePayPlan:584 · computePayout:603 · listVariablePayouts:642 · approvePayout:666 · markPayoutPaid:703 · BenefitPlanInput:724 · listBenefitPlans:734 · createBenefitPlan:743 · enrolInBenefit:761 · cancelBenefitEnrollment:792 · listBenefitEnrollments:801 · listMyBenefitEnrollments:816 · LoanRequestInput:829 · scheduleFor:836 · requestLoan:840 · listLoans:869 · approveLoan:902 · rejectLoan:933 · disburseLoan:956 · recordLoanRepayment:977 · ExpenseClaimInput:1005 · submitExpenseClaim:1013 · listExpenseClaims:1043 · approveExpenseClaim:1073 · rejectExpenseClaim:1103 · reimburseExpenseClaim:1139
+**`apps/api/src/domains/hcm/compensation.ts`** (1161 lines) — myEmploymentId:61 · listPayGrades:107 · PayGradeInput:113 · createPayGrade:123 · updatePayGrade:145 · compaRatioFor:167 · listRevisionCycles:202 · getRevisionCycle:211 · RevisionCycleInput:231 · createRevisionCycle:237 · RevisionLineInput:262 · addRevisionLine:272 · listRevisionLines:324 · proposeCycle:347 · approveRevisionLine:365 · rejectRevisionLine:405 · approveCycle:435 · applyCycle:484 · myRevisionLines:557 · VariablePayPlanInput:570 · listVariablePayPlans:577 · createVariablePayPlan:583 · computePayout:602 · listVariablePayouts:641 · approvePayout:665 · markPayoutPaid:702 · BenefitPlanInput:723 · listBenefitPlans:733 · createBenefitPlan:742 · enrolInBenefit:760 · cancelBenefitEnrollment:791 · listBenefitEnrollments:800 · listMyBenefitEnrollments:815 · LoanRequestInput:828 · scheduleFor:835 · requestLoan:839 · listLoans:868 · approveLoan:901 · rejectLoan:932 · disburseLoan:955 · recordLoanRepayment:976 · ExpenseClaimInput:1004 · submitExpenseClaim:1012 · listExpenseClaims:1042 · approveExpenseClaim:1072 · rejectExpenseClaim:1102 · reimburseExpenseClaim:1138
 
 **`apps/api/src/domains/hcm/engagement.ts`** (1080 lines) — AnnouncementInput:113 · createAnnouncement:127 · publishAnnouncement:172 · withdrawAnnouncement:193 · listAnnouncements:210 · acknowledgeAnnouncement:230 · announcementAcks:245 · RecognitionInput:258 · giveRecognition:266 · listRecognitions:299 · recognitionLeaderboard:314 · PulseSurveyInput:332 · createPulseSurvey:344 · openPulseSurvey:385 · closePulseSurvey:396 · listPulseSurveys:418 · submitSurveyResponse:456 · pulseSurveyResults:527 · pendingSurveysForMe:566 · HR_CASE_STATUSES:608 · HrCaseInput:618 · createHrCase:626 · listHrCases:680 · listConfidentialHrCases:701 · getHrCase:724 · addHrCaseMessage:733 · assignHrCase:743 · transitionHrCase:762 · runHrCaseSlaCheck:801 · PolicyDocumentInput:838 · createPolicyDocument:846 · publishPolicyDocument:881 · listPolicyDocuments:903 · acknowledgePolicyDocument:913 · policyAckStatus:935 · pendingPolicyAcksForMe:947 · ExitInterviewInput:966 · createExitInterview:973 · listExitInterviews:1005 · exitInterviewThemeSummary:1012 · myEngagementHome:1029
 
@@ -134,7 +134,7 @@
 
 **`apps/api/src/domains/hiring.ts`** (336 lines) — listRequisitions:38 · createRequisition:56 · transitionRequisition:93 · listApplications:120 · createApplication:143 · transitionApplication:202 · joinFromApplication:277 · hiringFunnel:319
 
-**`apps/api/src/domains/identity.ts`** (641 lines) — normalisePhone:31 · normaliseEmail:39 · maskPhone:45 · maskEmail:50 · ResolutionScope:64 · crmResolutionScope:71 · PersonInput:75 · findDedupCandidates:90 · ResolveResult:167 · findOrCreatePerson:178 · sanctionedCreatePerson:300 · mergePersons:331 · personIdChain:373 · resolveMergeCandidate:387 · sweepStaleMergeCandidates:530 · AffiliationInput:561 · createAffiliation:575 · endAffiliation:628
+**`apps/api/src/domains/identity.ts`** (644 lines) — normalisePhone:31 · normaliseEmail:39 · maskPhone:45 · maskEmail:50 · ResolutionScope:64 · crmResolutionScope:71 · PersonInput:75 · findDedupCandidates:90 · ResolveResult:167 · findOrCreatePerson:178 · sanctionedCreatePerson:303 · mergePersons:334 · personIdChain:376 · resolveMergeCandidate:390 · sweepStaleMergeCandidates:533 · AffiliationInput:564 · createAffiliation:578 · endAffiliation:631
 
 **`apps/api/src/domains/interactions.ts`** (454 lines) — RelatedReference:33 · classificationFor:55 · computeSensitivity:72 · InteractionInput:93 · logInteraction:108 · VisibleInteraction:261 · timelineFor:291 · recentInteractions:414
 
@@ -268,7 +268,7 @@
 
 **`apps/api/src/platform/context.ts`** (159 lines) — PrincipalType:13 · AuthContext:15 · RequestContext:38 · runWithContext:55 · getContext:59 · requireContext:63 · currentAuth:74 · currentTenantId:80 · maybeTenantId:85 · newRequestContext:89 · systemContext:106 · agentContext:127 · asSystem:156
 
-**`apps/api/src/platform/db.ts`** (305 lines) — TenantScopeError:75 · prisma:239 · Db:267 · DbTx:277 · unscopedPrisma:288 · num:296 · dec:301
+**`apps/api/src/platform/db.ts`** (311 lines) — TenantScopeError:75 · prisma:239 · Db:267 · DbTx:283 · unscopedPrisma:294 · num:302 · dec:307
 
 **`apps/api/src/platform/documentNumber.ts`** (228 lines) — DOCUMENT_SERIES:35 · DocumentSeries:59 · SERIES_LABELS:61 · YearFormat:74 · financialYearLabel:84 · MAX_INVOICE_NUMBER_LENGTH:90 · financialYearStart:97 · prefixFrom:108 · nextDocumentNumber:133 · peekNextNumbers:163 · setNextNumber:203
 
@@ -298,11 +298,11 @@
 
 **`apps/api/src/platform/outbox.ts`** (340 lines) — OUTBOX_MAX_ATTEMPTS:33 · DrainOptions:46 · DrainResult:55 · drainOutbox:82 · backoffMs:105 · dispatchDueOutbox:227 · replayDeadLetter:259 · startOutboxDispatcher:318 · stopOutboxDispatcher:336
 
-**`apps/api/src/platform/permissions.ts`** (557 lines) — ResolvedGrant:36 · invalidateGrantCache:50 · resolveGrants:54 · ScopedRecord:100 · EvaluateInput:113 · evaluate:131 · resolveAuthorityCeiling:301 · assertCan:323 · can:333 · holdsScopeResolver:347 · scopeFor:359 · scopeWhere:380 · assertScopeAll:409 · visibilityWhere:436 · FilterResult:454 · FilterOptions:459 · FIELD_PURPOSES:480 · applyFieldVisibility:501 · canSeeMoney:552
+**`apps/api/src/platform/permissions.ts`** (557 lines) — ResolvedGrant:36 · invalidateGrantCache:50 · resolveGrants:54 · ScopedRecord:100 · EvaluateInput:113 · evaluate:131 · resolveAuthorityCeiling:301 · assertCan:323 · can:333 · holdsScopeResolver:347 · scopeFor:359 · matchNothing:372 · scopeWhere:380 · assertScopeAll:409 · visibilityWhere:436 · FilterResult:454 · FilterOptions:459 · FIELD_PURPOSES:480 · applyFieldVisibility:501 · canSeeMoney:552
 
 **`apps/api/src/platform/rateLimitStore.ts`** (108 lines) — purgeExpiredRateLimitBuckets:37 · PostgresRateLimitStore:45
 
-**`apps/api/src/platform/recordCode.ts`** (98 lines) — SequenceExhaustedError:18 · recordCodeYear:37 · nextRecordCode:46 · nextRecordCodes:66 · rejectRecordCodeEdit:91
+**`apps/api/src/platform/recordCode.ts`** (105 lines) — SequenceExhaustedError:18 · recordCodeYear:37 · nextRecordCode:49 · nextRecordCodes:73 · rejectRecordCodeEdit:98
 
 **`apps/api/src/platform/recordScope.ts`** (74 lines) — assertEmploymentVisible:36 · employmentVisibilityWhere:65
 
@@ -326,7 +326,7 @@
 
 **`apps/api/src/imports/detect.ts`** (320 lines) — ImportKind:18 · Detection:47 · findHeaderRow:73 · detectGrid:106 · detectWorkbook:236 · isTallyLedgerSheet:286 · countLedgers:290 · detectSourceFormat:303
 
-**`apps/api/src/imports/extract.ts`** (1150 lines) — StagedRow:17 · Extraction:26 · extractTallyLedger:77 · extractTrialBalance:297 · extractBankStatement:348 · extractEmployees:510 · extractSalary:567 · extractAttendance:624 · extractStudentRegister:748 · extractTemplate:1034
+**`apps/api/src/imports/extract.ts`** (1153 lines) — StagedRow:17 · Extraction:26 · extractTallyLedger:80 · extractTrialBalance:300 · extractBankStatement:351 · extractEmployees:513 · extractSalary:570 · extractAttendance:627 · extractStudentRegister:751 · extractTemplate:1037
 
 **`apps/api/src/imports/matchName.ts`** (108 lines) — Candidate:16 · MatchResult:21 · normaliseName:42 · matchPerson:79 · matchFailure:102
 
