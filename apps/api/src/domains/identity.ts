@@ -16,6 +16,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { raiseException } from '../platform/exceptions.js';
 import { assertCan } from '../platform/permissions.js';
 import { assertCanAssignRole } from '../platform/roleAssignment.js';
@@ -211,23 +212,36 @@ export async function findOrCreatePerson(
     const reason = statutory.length > 0 ? 'statutory_retention_floor' : 'ambiguous';
     const top = candidates.reduce((a, b) => (b.confidence > a.confidence ? b : a));
 
-    const mc = await prisma.mergeCandidate.create({
-      data: {
-        tenantId: auth.tenantId,
-        incomingPayload: input as never,
-        candidatePersonId: top.personId,
-        confidence: top.confidence,
-        matchedOn: top.matchedOn,
-        raisedReason: reason,
-      },
-    });
+    // The candidate, its audit row and its event commit together: the queue
+    // entry a reviewer will act on must have a record of its raising.
+    await governedWrite(async (tx) => {
+      const mc = await tx.mergeCandidate.create({
+        data: {
+          tenantId: auth.tenantId,
+          incomingPayload: input as never,
+          candidatePersonId: top.personId,
+          confidence: top.confidence,
+          matchedOn: top.matchedOn,
+          raisedReason: reason,
+        },
+      });
 
-    await emit({
-      name: EVENTS.MERGE_CANDIDATE_RAISED,
-      subject: { entityType: 'merge_candidate', entityId: mc.id },
-      related: [{ relation: 'candidate', entityType: 'person', entityId: top.personId }],
-      newState: { reason, confidence: top.confidence },
-      impact: { domains: ['idn'], severity: 'S1_ATTENTION' },
+      await auditWrite({
+        action: 'create',
+        subjectType: 'merge_candidate',
+        subjectId: mc.id,
+        after: { raisedReason: reason, confidence: top.confidence, candidatePersonId: top.personId },
+        tx,
+      });
+
+      await emit({
+        name: EVENTS.MERGE_CANDIDATE_RAISED,
+        subject: { entityType: 'merge_candidate', entityId: mc.id },
+        related: [{ relation: 'candidate', entityType: 'person', entityId: top.personId }],
+        newState: { reason, confidence: top.confidence },
+        impact: { domains: ['idn'], severity: 'S1_ATTENTION' },
+        tx,
+      });
     });
 
     throw ApiError.duplicate(
@@ -244,24 +258,28 @@ export async function findOrCreatePerson(
 
 /** Creates without a dedup check. Reachable only through findOrCreatePerson. */
 async function createPerson(input: PersonInput, overrideReason?: string) {
-  const { person, recordCode } = await insertPersonRow(prisma, input);
+  return governedWrite(async (tx) => {
+    const { person, recordCode } = await insertPersonRow(tx, input);
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'person',
-    subjectId: person.id,
-    after: { fullName: person.fullName, recordCode },
-    meta: overrideReason ? { forceCreateReason: overrideReason } : undefined,
+    await auditWrite({
+      action: 'create',
+      subjectType: 'person',
+      subjectId: person.id,
+      after: { fullName: person.fullName, recordCode },
+      meta: overrideReason ? { forceCreateReason: overrideReason } : undefined,
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.PERSON_CREATED,
+      subject: { entityType: 'person', entityId: person.id, recordCode },
+      newState: { fullName: person.fullName },
+      reason: overrideReason ? { reasonCode: 'force_create_override', note: overrideReason } : null,
+      tx,
+    });
+
+    return person;
   });
-
-  await emit({
-    name: EVENTS.PERSON_CREATED,
-    subject: { entityType: 'person', entityId: person.id, recordCode },
-    newState: { fullName: person.fullName },
-    reason: overrideReason ? { reasonCode: 'force_create_override', note: overrideReason } : null,
-  });
-
-  return person;
 }
 
 /**
@@ -345,25 +363,31 @@ export async function mergePersons(sourceId: string, targetId: string, note: str
     throw ApiError.forbidden('No AI principal may perform a merge, at any AUTHORITY_GRANT size.');
   }
 
-  const { source, target, updated } = await prisma.$transaction((tx) => applyPersonMerge(tx, sourceId, targetId));
+  const { updated } = await prisma.$transaction(async (tx) => {
+    const merged = await applyPersonMerge(tx, sourceId, targetId);
 
-  await auditWrite({
-    action: 'merge',
-    subjectType: 'person',
-    subjectId: sourceId,
-    before: { dedupeStatus: source.dedupeStatus },
-    after: { dedupeStatus: 'merged', mergedIntoId: targetId },
-    meta: { note, targetRecordCode: target.recordCode },
-  });
+    await auditWrite({
+      action: 'merge',
+      subjectType: 'person',
+      subjectId: sourceId,
+      before: { dedupeStatus: merged.source.dedupeStatus },
+      after: { dedupeStatus: 'merged', mergedIntoId: targetId },
+      meta: { note, targetRecordCode: merged.target.recordCode },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.PERSON_MERGED,
-    subject: { entityType: 'person', entityId: sourceId, recordCode: source.recordCode },
-    related: [{ relation: 'merged_into', entityType: 'person', entityId: targetId }],
-    previousState: { dedupeStatus: source.dedupeStatus },
-    newState: { dedupeStatus: 'merged', mergedIntoId: targetId },
-    reason: { reasonCode: 'merge_confirmed', note },
-    confidentiality: 'restricted',
+    await emit({
+      name: EVENTS.PERSON_MERGED,
+      subject: { entityType: 'person', entityId: sourceId, recordCode: merged.source.recordCode },
+      related: [{ relation: 'merged_into', entityType: 'person', entityId: targetId }],
+      previousState: { dedupeStatus: merged.source.dedupeStatus },
+      newState: { dedupeStatus: 'merged', mergedIntoId: targetId },
+      reason: { reasonCode: 'merge_confirmed', note },
+      confidentiality: 'restricted',
+      tx,
+    });
+
+    return merged;
   });
 
   return updated;
@@ -406,33 +430,37 @@ export async function resolveMergeCandidate(id: string, disposition: 'confirm' |
   // cannot both pass the state check above.
   const state = disposition === 'reject' ? 'rejected' : 'deferred';
   const now = new Date();
-  const { count } = await prisma.mergeCandidate.updateMany({
-    where: { id, state: 'open' },
-    data:
-      disposition === 'reject'
-        ? { state, resolvedById: auth.partyId, resolvedAt: now, resolutionNote: note }
-        : { state, resolutionNote: note },
-  });
-  if (count !== 1) throw ApiError.conflict('Merge candidate was resolved by someone else.');
-
-  await auditWrite({
-    action: 'update',
-    subjectType: 'merge_candidate',
-    subjectId: id,
-    before: { state: 'open' },
-    after: { state },
-    meta: { note },
-  });
-
-  if (disposition === 'reject') {
-    await emit({
-      name: EVENTS.MERGE_CANDIDATE_REJECTED,
-      subject: { entityType: 'merge_candidate', entityId: id },
-      related: [{ relation: 'candidate', entityType: 'person', entityId: mc.candidatePersonId }],
-      newState: { state },
-      reason: { reasonCode: disposition, note },
+  await governedWrite(async (tx) => {
+    const { count } = await tx.mergeCandidate.updateMany({
+      where: { id, state: 'open' },
+      data:
+        disposition === 'reject'
+          ? { state, resolvedById: auth.partyId, resolvedAt: now, resolutionNote: note }
+          : { state, resolutionNote: note },
     });
-  }
+    if (count !== 1) throw ApiError.conflict('Merge candidate was resolved by someone else.');
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'merge_candidate',
+      subjectId: id,
+      before: { state: 'open' },
+      after: { state },
+      meta: { note },
+      tx,
+    });
+
+    if (disposition === 'reject') {
+      await emit({
+        name: EVENTS.MERGE_CANDIDATE_REJECTED,
+        subject: { entityType: 'merge_candidate', entityId: id },
+        related: [{ relation: 'candidate', entityType: 'person', entityId: mc.candidatePersonId }],
+        newState: { state },
+        reason: { reasonCode: disposition, note },
+        tx,
+      });
+    }
+  });
 
   return prisma.mergeCandidate.findFirstOrThrow({ where: { id } });
 }
@@ -454,7 +482,7 @@ async function confirmMergeCandidate(
   const auth = currentAuth();
   const now = new Date();
 
-  const outcome = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const { count } = await tx.mergeCandidate.updateMany({
       where: { id: mc.id, state: 'open' },
       data: { state: 'confirmed', resolvedById: auth.partyId, resolvedAt: now, resolutionNote: note },
@@ -462,7 +490,7 @@ async function confirmMergeCandidate(
     if (count !== 1) throw ApiError.conflict('Merge candidate was resolved by someone else.');
 
     const { person: incoming, recordCode } = await insertPersonRow(tx, mc.incomingPayload as PersonInput);
-    const { source, target, updated } = await applyPersonMerge(tx, incoming.id, mc.candidatePersonId);
+    const { source, target } = await applyPersonMerge(tx, incoming.id, mc.candidatePersonId);
 
     // Audited before the commit, so the audit write cannot be lost to a commit
     // that succeeded without it. auditWrite takes its own chain lock; it does
@@ -491,32 +519,35 @@ async function confirmMergeCandidate(
       meta: { note },
     });
 
-    return { incoming, recordCode, source, target, updated };
-  });
+    // Every audit row above precedes these events (governedWrite.ts), so the
+    // events are emitted inside the same transaction once the audits are written.
+    await emit({
+      name: EVENTS.PERSON_CREATED,
+      subject: { entityType: 'person', entityId: incoming.id, recordCode },
+      newState: { fullName: incoming.fullName },
+      reason: { reasonCode: 'merge_candidate_confirmed', note },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.PERSON_CREATED,
-    subject: { entityType: 'person', entityId: outcome.incoming.id, recordCode: outcome.recordCode },
-    newState: { fullName: outcome.incoming.fullName },
-    reason: { reasonCode: 'merge_candidate_confirmed', note },
-  });
+    await emit({
+      name: EVENTS.PERSON_MERGED,
+      subject: { entityType: 'person', entityId: incoming.id, recordCode },
+      related: [{ relation: 'merged_into', entityType: 'person', entityId: target.id }],
+      previousState: { dedupeStatus: source.dedupeStatus },
+      newState: { dedupeStatus: 'merged', mergedIntoId: target.id },
+      reason: { reasonCode: 'merge_confirmed', note },
+      confidentiality: 'restricted',
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.PERSON_MERGED,
-    subject: { entityType: 'person', entityId: outcome.incoming.id, recordCode: outcome.recordCode },
-    related: [{ relation: 'merged_into', entityType: 'person', entityId: outcome.target.id }],
-    previousState: { dedupeStatus: outcome.source.dedupeStatus },
-    newState: { dedupeStatus: 'merged', mergedIntoId: outcome.target.id },
-    reason: { reasonCode: 'merge_confirmed', note },
-    confidentiality: 'restricted',
-  });
-
-  await emit({
-    name: EVENTS.MERGE_CANDIDATE_CONFIRMED,
-    subject: { entityType: 'merge_candidate', entityId: mc.id },
-    related: [{ relation: 'candidate', entityType: 'person', entityId: mc.candidatePersonId }],
-    newState: { state: 'confirmed' },
-    reason: { reasonCode: 'confirm', note },
+    await emit({
+      name: EVENTS.MERGE_CANDIDATE_CONFIRMED,
+      subject: { entityType: 'merge_candidate', entityId: mc.id },
+      related: [{ relation: 'candidate', entityType: 'person', entityId: mc.candidatePersonId }],
+      newState: { state: 'confirmed' },
+      reason: { reasonCode: 'confirm', note },
+      tx,
+    });
   });
 
   return prisma.mergeCandidate.findFirstOrThrow({ where: { id: mc.id } });
@@ -585,39 +616,43 @@ export async function createAffiliation(input: AffiliationInput) {
     await assertCan({ resource: 'people', verb: 'assign' });
     await assertCanAssignRole({ roleSlug: input.roleSlug, targetPartyId: input.partyId });
   }
-  const affiliation = await prisma.affiliation.create({
-    data: {
-      tenantId: auth.tenantId,
-      partyId: input.partyId,
-      affiliationType: input.affiliationType,
-      counterpartyId: input.counterpartyId ?? null,
-      counterpartyName: input.counterpartyName ?? null,
-      roleSlug: input.roleSlug ?? null,
-      primaryFlag: input.primaryFlag ?? false,
-      branch: input.branch ?? null,
-      orgUnitId: input.orgUnitId ?? null,
-      positionId: input.positionId ?? null,
-      effectiveFrom: input.effectiveFrom ?? new Date(),
-      effectiveTo: input.effectiveTo ?? null,
-      statutoryRetentionFloor: STATUTORY_RETENTION_AFFILIATIONS.includes(input.affiliationType),
-    },
-  });
+  return governedWrite(async (tx) => {
+    const affiliation = await tx.affiliation.create({
+      data: {
+        tenantId: auth.tenantId,
+        partyId: input.partyId,
+        affiliationType: input.affiliationType,
+        counterpartyId: input.counterpartyId ?? null,
+        counterpartyName: input.counterpartyName ?? null,
+        roleSlug: input.roleSlug ?? null,
+        primaryFlag: input.primaryFlag ?? false,
+        branch: input.branch ?? null,
+        orgUnitId: input.orgUnitId ?? null,
+        positionId: input.positionId ?? null,
+        effectiveFrom: input.effectiveFrom ?? new Date(),
+        effectiveTo: input.effectiveTo ?? null,
+        statutoryRetentionFloor: STATUTORY_RETENTION_AFFILIATIONS.includes(input.affiliationType),
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'affiliation',
-    subjectId: affiliation.id,
-    after: { affiliationType: input.affiliationType, roleSlug: input.roleSlug ?? null },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'affiliation',
+      subjectId: affiliation.id,
+      after: { affiliationType: input.affiliationType, roleSlug: input.roleSlug ?? null },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.AFFILIATION_CREATED,
-    subject: { entityType: 'affiliation', entityId: affiliation.id },
-    related: [{ relation: 'held_by', entityType: 'person', entityId: input.partyId }],
-    newState: { affiliationType: input.affiliationType, roleSlug: input.roleSlug ?? null },
-  });
+    await emit({
+      name: EVENTS.AFFILIATION_CREATED,
+      subject: { entityType: 'affiliation', entityId: affiliation.id },
+      related: [{ relation: 'held_by', entityType: 'person', entityId: input.partyId }],
+      newState: { affiliationType: input.affiliationType, roleSlug: input.roleSlug ?? null },
+      tx,
+    });
 
-  return affiliation;
+    return affiliation;
+  });
 }
 
 /**
@@ -626,15 +661,26 @@ export async function createAffiliation(input: AffiliationInput) {
  * permission is evaluated at query time from live affiliation state.
  */
 export async function endAffiliation(id: string, reason: string) {
-  const affiliation = await prisma.affiliation.update({
-    where: { id },
-    data: { status: 'ended', effectiveTo: new Date() },
+  return governedWrite(async (tx) => {
+    const affiliation = await tx.affiliation.update({
+      where: { id },
+      data: { status: 'ended', effectiveTo: new Date() },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'affiliation',
+      subjectId: id,
+      after: { status: 'ended', effectiveTo: affiliation.effectiveTo },
+      meta: { reason },
+      tx,
+    });
+    await emit({
+      name: EVENTS.AFFILIATION_ENDED,
+      subject: { entityType: 'affiliation', entityId: id },
+      newState: { status: 'ended' },
+      reason: { reasonCode: 'affiliation_ended', note: reason },
+      tx,
+    });
+    return affiliation;
   });
-  await emit({
-    name: EVENTS.AFFILIATION_ENDED,
-    subject: { entityType: 'affiliation', entityId: id },
-    newState: { status: 'ended' },
-    reason: { reasonCode: 'affiliation_ended', note: reason },
-  });
-  return affiliation;
 }

@@ -53,6 +53,8 @@ import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { governedWrite } from '../platform/governedWrite.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { istYearMonth } from '@kaizen/shared';
 import { raiseException } from '../platform/exceptions.js';
 import { capTable, listShareClasses, listValuations } from './equity.js';
@@ -308,6 +310,11 @@ export async function buildEntitySnapshot(sourceTenantId: string): Promise<Built
  * accumulating duplicates; the full history survives regardless, in
  * `EntitySnapshotHistory`.
  */
+// The parent's copy of a subsidiary's snapshot. Without this registration the
+// audit write below is refused, which is the point: a snapshot the group relies
+// on for consolidated figures must not be published unrecorded.
+registerGovernedEntities('group', ['entity_snapshot']);
+
 export async function publishEntitySnapshot(
   sourceTenantId: string,
 ): Promise<{ published: boolean; parentTenantId: string | null }> {
@@ -318,40 +325,50 @@ export async function publishEntitySnapshot(
 
   const built = await buildEntitySnapshot(sourceTenantId);
 
-  await asSystem(parentTenantId, async () => {
-    const existing = await prisma.entitySnapshot.findFirst({ where: { tenantId: parentTenantId, sourceTenantId } });
-    const shared = {
-      sourceTenantId: built.sourceTenantId,
-      sourceSlug: built.sourceSlug,
-      sourceName: built.sourceName,
-      originDivision: built.originDivision,
-      asOf: built.asOf,
-      sourceEventHash: built.sourceEventHash,
-      capTable: built.capTable as never,
-      shareClasses: built.shareClasses as never,
-      board: built.board as never,
-      financial: built.financial as never,
-      compliance: built.compliance as never,
-      valuation: (built.valuation ?? undefined) as never,
-      publishedAt: new Date(),
-    };
+  await asSystem(parentTenantId, () =>
+    governedWrite(async (tx) => {
+      const existing = await tx.entitySnapshot.findFirst({ where: { tenantId: parentTenantId, sourceTenantId } });
+      const shared = {
+        sourceTenantId: built.sourceTenantId,
+        sourceSlug: built.sourceSlug,
+        sourceName: built.sourceName,
+        originDivision: built.originDivision,
+        asOf: built.asOf,
+        sourceEventHash: built.sourceEventHash,
+        capTable: built.capTable as never,
+        shareClasses: built.shareClasses as never,
+        board: built.board as never,
+        financial: built.financial as never,
+        compliance: built.compliance as never,
+        valuation: (built.valuation ?? undefined) as never,
+        publishedAt: new Date(),
+      };
 
-    const row = existing
-      ? await prisma.entitySnapshot.update({ where: { id: existing.id }, data: shared })
-      : await prisma.entitySnapshot.create({
-          data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
-        });
+      const row = existing
+        ? await tx.entitySnapshot.update({ where: { id: existing.id }, data: shared })
+        : await tx.entitySnapshot.create({
+            data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN', undefined, tx), ...shared },
+          });
 
-    await prisma.entitySnapshotHistory.create({
-      data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
-    });
+      await tx.entitySnapshotHistory.create({
+        data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN', undefined, tx), ...shared },
+      });
 
-    await emit({
-      name: EVENTS.SNAPSHOT_PUBLISHED,
-      subject: { entityType: 'entity_snapshot', entityId: row.id, recordCode: row.recordCode },
-      newState: { sourceTenantId, asOf: built.asOf.toISOString() },
-    });
-  });
+      await auditWrite({
+        action: existing ? 'update' : 'create',
+        subjectType: 'entity_snapshot',
+        subjectId: row.id,
+        after: { sourceTenantId, asOf: built.asOf.toISOString() },
+        tx,
+      });
+      await emit({
+        name: EVENTS.SNAPSHOT_PUBLISHED,
+        subject: { entityType: 'entity_snapshot', entityId: row.id, recordCode: row.recordCode },
+        newState: { sourceTenantId, asOf: built.asOf.toISOString() },
+        tx,
+      });
+    }),
+  );
 
   await asSystem(sourceTenantId, async () => {
     await emit({

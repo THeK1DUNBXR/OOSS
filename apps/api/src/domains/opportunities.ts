@@ -16,7 +16,8 @@
  */
 
 import { EVENTS, FORECAST_TRANSITIONS, type ForecastCategory, type SeverityCode } from '@kaizen/shared';
-import { prisma, num } from '../platform/db.js';
+import { prisma, num, type DbTx } from '../platform/db.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -50,58 +51,62 @@ export async function createOpportunity(input: OpportunityInput) {
     : await (await import('./pipelines.js')).pipelineForVertical(input.vertical);
 
   const stage = await entryStage(pipeline.id);
-  const recordCode = await nextRecordCode('OPP');
 
-  const opportunity = await prisma.opportunity.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title,
-      organizationId: input.organizationId ?? null,
-      primaryContactPersonId: input.primaryContactPersonId ?? null,
-      vertical: input.vertical,
-      offeringId: input.offeringId ?? null,
-      pipelineId: pipeline.id,
-      stageKey: stage.stageKey,
-      stageEnteredAt: new Date(),
-      expectedValue: input.expectedValue ?? undefined,
-      currency: input.currency ?? 'INR',
-      expectedCloseDate: input.expectedCloseDate ?? null,
-      ownerPartyId: input.ownerPartyId ?? auth.partyId,
-      strategicValue: input.strategicValue ?? null,
-      parentContractId: input.parentContractId ?? null,
-      forecastCategory: 'pipeline',
-      createdById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('OPP', undefined, tx);
+    const opportunity = await tx.opportunity.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title,
+        organizationId: input.organizationId ?? null,
+        primaryContactPersonId: input.primaryContactPersonId ?? null,
+        vertical: input.vertical,
+        offeringId: input.offeringId ?? null,
+        pipelineId: pipeline.id,
+        stageKey: stage.stageKey,
+        stageEnteredAt: new Date(),
+        expectedValue: input.expectedValue ?? undefined,
+        currency: input.currency ?? 'INR',
+        expectedCloseDate: input.expectedCloseDate ?? null,
+        ownerPartyId: input.ownerPartyId ?? auth.partyId,
+        strategicValue: input.strategicValue ?? null,
+        parentContractId: input.parentContractId ?? null,
+        forecastCategory: 'pipeline',
+        createdById: auth.partyId,
+      },
+    });
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'opportunity',
+      subjectId: opportunity.id,
+      after: { title: opportunity.title, recordCode },
+      tx,
+    });
+
+    await emit({
+      name: input.parentContractId ? EVENTS.OPPORTUNITY_RENEWAL_OPENED : EVENTS.OPPORTUNITY_CREATED,
+      subject: { entityType: 'opportunity', entityId: opportunity.id, recordCode },
+      related: [
+        ...(input.organizationId
+          ? [{ relation: 'account', entityType: 'organization', entityId: input.organizationId }]
+          : []),
+        ...(input.parentContractId
+          ? [{ relation: 'renews', entityType: 'contract', entityId: input.parentContractId }]
+          : []),
+      ],
+      newState: {
+        stageKey: stage.stageKey,
+        pipelinePosition: stage.pipelinePosition,
+        pipelineCode: pipeline.pipelineCode,
+      },
+      owner: { partyId: opportunity.ownerPartyId },
+      tx,
+    });
+
+    return opportunity;
   });
-
-  await auditWrite({
-    action: 'create',
-    subjectType: 'opportunity',
-    subjectId: opportunity.id,
-    after: { title: opportunity.title, recordCode },
-  });
-
-  await emit({
-    name: input.parentContractId ? EVENTS.OPPORTUNITY_RENEWAL_OPENED : EVENTS.OPPORTUNITY_CREATED,
-    subject: { entityType: 'opportunity', entityId: opportunity.id, recordCode },
-    related: [
-      ...(input.organizationId
-        ? [{ relation: 'account', entityType: 'organization', entityId: input.organizationId }]
-        : []),
-      ...(input.parentContractId
-        ? [{ relation: 'renews', entityType: 'contract', entityId: input.parentContractId }]
-        : []),
-    ],
-    newState: {
-      stageKey: stage.stageKey,
-      pipelinePosition: stage.pipelinePosition,
-      pipelineCode: pipeline.pipelineCode,
-    },
-    owner: { partyId: opportunity.ownerPartyId },
-  });
-
-  return opportunity;
 }
 
 /**
@@ -179,68 +184,93 @@ export async function advanceStage(
     }
   }
 
-  const updated = await prisma.opportunity.update({
-    where: { id: opportunityId },
-    data: {
-      stageKey: toStageKey,
-      stageEnteredAt: new Date(),
-      stageAgeNotifiedAt: null,
-      ...(target.pipelinePosition === 90
-        ? { outcome: 'won', closedAt: new Date(), forecastCategory: 'closed_won' }
-        : {}),
-      ...(target.pipelinePosition === 0
-        ? { outcome: 'lost', closedAt: new Date(), forecastCategory: 'closed_lost' }
-        : {}),
-    },
-  });
+  // The stage change, the handoff it triggers on a win, and their events commit
+  // together. Every audit row is written before the first event (governedWrite.ts),
+  // so the handoff's project is created and audited before any event is emitted.
+  const updated = await governedWrite(async (tx) => {
+    const row = await tx.opportunity.update({
+      where: { id: opportunityId },
+      data: {
+        stageKey: toStageKey,
+        stageEnteredAt: new Date(),
+        stageAgeNotifiedAt: null,
+        ...(target.pipelinePosition === 90
+          ? { outcome: 'won', closedAt: new Date(), forecastCategory: 'closed_won' }
+          : {}),
+        ...(target.pipelinePosition === 0
+          ? { outcome: 'lost', closedAt: new Date(), forecastCategory: 'closed_lost' }
+          : {}),
+      },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'opportunity',
-    subjectId: opportunityId,
-    before: { stageKey: opportunity.stageKey },
-    after: { stageKey: toStageKey },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'opportunity',
+      subjectId: opportunityId,
+      before: { stageKey: opportunity.stageKey },
+      after: { stageKey: toStageKey },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.OPPORTUNITY_STAGE_CHANGED,
-    subject: { entityType: 'opportunity', entityId: opportunityId, recordCode: opportunity.recordCode },
-    previousState: { stageKey: opportunity.stageKey, pipelinePosition: fromStage.pipelinePosition },
-    newState: { stageKey: toStageKey, pipelinePosition: target.pipelinePosition },
-    // A downstream consumer can distinguish a proposal-driven change from a
-    // rep-initiated one.
-    reason: opts.reasonCode ? { reasonCode: opts.reasonCode, note: opts.note ?? null } : null,
-    owner: { partyId: opportunity.ownerPartyId },
-    impact: {
-      domains: ['crm'],
-      materiality: opportunity.expectedValue
-        ? { measure: 'expected_value', value: num(opportunity.expectedValue)!, currency: opportunity.currency }
-        : null,
-    },
-  });
+    const project = target.pipelinePosition === 90 ? await createHandoffProject(row, tx) : null;
 
-  if (target.pipelinePosition === 90) {
     await emit({
-      name: EVENTS.OPPORTUNITY_WON,
+      name: EVENTS.OPPORTUNITY_STAGE_CHANGED,
       subject: { entityType: 'opportunity', entityId: opportunityId, recordCode: opportunity.recordCode },
-      newState: { contractId: opportunity.contractId, mouId: opportunity.mouId },
+      previousState: { stageKey: opportunity.stageKey, pipelinePosition: fromStage.pipelinePosition },
+      newState: { stageKey: toStageKey, pipelinePosition: target.pipelinePosition },
+      // A downstream consumer can distinguish a proposal-driven change from a
+      // rep-initiated one.
+      reason: opts.reasonCode ? { reasonCode: opts.reasonCode, note: opts.note ?? null } : null,
+      owner: { partyId: opportunity.ownerPartyId },
       impact: {
-        domains: ['crm', 'fin', 'prj'],
+        domains: ['crm'],
         materiality: opportunity.expectedValue
           ? { measure: 'expected_value', value: num(opportunity.expectedValue)!, currency: opportunity.currency }
           : null,
       },
-      confidentiality: 'confidential',
+      tx,
     });
-    await handoffOnWin(updated);
-  }
 
+    if (target.pipelinePosition === 90) {
+      await emit({
+        name: EVENTS.OPPORTUNITY_WON,
+        subject: { entityType: 'opportunity', entityId: opportunityId, recordCode: opportunity.recordCode },
+        newState: { contractId: opportunity.contractId, mouId: opportunity.mouId },
+        impact: {
+          domains: ['crm', 'fin', 'prj'],
+          materiality: opportunity.expectedValue
+            ? { measure: 'expected_value', value: num(opportunity.expectedValue)!, currency: opportunity.currency }
+            : null,
+        },
+        confidentiality: 'confidential',
+        tx,
+      });
+      await emit({
+        name: EVENTS.OPPORTUNITY_HANDED_OFF,
+        subject: { entityType: 'opportunity', entityId: row.id, recordCode: row.recordCode },
+        related: [{ relation: 'delivered_by', entityType: 'project', entityId: project!.id }],
+        newState: { projectId: project!.id },
+        impact: { domains: ['crm', 'prj'] },
+        tx,
+      });
+    }
+
+    if (target.pipelinePosition === 0) {
+      await emit({
+        name: EVENTS.OPPORTUNITY_LOST,
+        subject: { entityType: 'opportunity', entityId: opportunityId, recordCode: opportunity.recordCode },
+        newState: { lostReason: opportunity.lostReason },
+        tx,
+      });
+    }
+
+    return row;
+  });
+
+  // The loss review opens after the stage change commits: it is a separate
+  // governed write with its own record, and a failure there must not undo the loss.
   if (target.pipelinePosition === 0) {
-    await emit({
-      name: EVENTS.OPPORTUNITY_LOST,
-      subject: { entityType: 'opportunity', entityId: opportunityId, recordCode: opportunity.recordCode },
-      newState: { lostReason: opportunity.lostReason },
-    });
     await (await import('./winLoss.js')).ensureWinLossReview('opportunity', opportunityId);
   }
 
@@ -256,19 +286,27 @@ registerGovernedEntities('prj', ['project']);
  * where all further delivery tracking happens. Post-award state lives entirely
  * outside the sales pipeline.
  */
-async function handoffOnWin(opportunity: {
-  id: string;
-  tenantId: string;
-  title: string;
-  organizationId: string | null;
-  contractId: string | null;
-  ownerPartyId: string | null;
-  recordCode: string;
-}) {
+/**
+ * The project record a won opportunity hands off to. Written and audited here;
+ * the caller emits the handoff event once every audit row in its transaction is
+ * written (see advanceStage).
+ */
+async function createHandoffProject(
+  opportunity: {
+    id: string;
+    tenantId: string;
+    title: string;
+    organizationId: string | null;
+    contractId: string | null;
+    ownerPartyId: string | null;
+    recordCode: string;
+  },
+  db: DbTx,
+) {
   const auth = currentAuth();
-  const recordCode = await nextRecordCode('PRJ');
+  const recordCode = await nextRecordCode('PRJ', undefined, db);
 
-  const project = await prisma.project.create({
+  const project = await db.project.create({
     data: {
       tenantId: auth.tenantId,
       recordCode,
@@ -283,15 +321,7 @@ async function handoffOnWin(opportunity: {
 
   // The handoff creates the project; the education routes that later edit it
   // are the other writer, and each registers `project` at module load.
-  await auditWrite({ action: 'create', subjectType: 'project', subjectId: project.id, after: project });
-
-  await emit({
-    name: EVENTS.OPPORTUNITY_HANDED_OFF,
-    subject: { entityType: 'opportunity', entityId: opportunity.id, recordCode: opportunity.recordCode },
-    related: [{ relation: 'delivered_by', entityType: 'project', entityId: project.id }],
-    newState: { projectId: project.id },
-    impact: { domains: ['crm', 'prj'] },
-  });
+  await auditWrite({ action: 'create', subjectType: 'project', subjectId: project.id, after: project, tx: db });
 
   return project;
 }
@@ -391,25 +421,39 @@ export async function changeForecastCategory(input: ForecastChangeInput) {
     if (!input.reason) throw ApiError.badRequest('A demotion requires a reason.');
   }
 
-  const updated = await prisma.opportunity.update({
-    where: { id: input.opportunityId },
-    data: {
-      forecastCategory: input.to,
-      forecastCategoryChangedAt: new Date(),
-      forecastCategoryChangeReason: input.reason ?? null,
-    },
-  });
+  const updated = await governedWrite(async (tx) => {
+    const row = await tx.opportunity.update({
+      where: { id: input.opportunityId },
+      data: {
+        forecastCategory: input.to,
+        forecastCategoryChangedAt: new Date(),
+        forecastCategoryChangeReason: input.reason ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.OPPORTUNITY_FORECAST_CATEGORY_CHANGED,
-    subject: { entityType: 'opportunity', entityId: input.opportunityId, recordCode: opportunity.recordCode },
-    previousState: { forecastCategory: from },
-    newState: { forecastCategory: input.to },
-    reason: {
-      reasonCode: input.systemActor ?? (isPromotion ? 'manual_promotion' : 'manual_demotion'),
-      note: input.reason ?? null,
-    },
-    owner: { partyId: opportunity.ownerPartyId },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'opportunity',
+      subjectId: input.opportunityId,
+      before: { forecastCategory: from },
+      after: { forecastCategory: input.to },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.OPPORTUNITY_FORECAST_CATEGORY_CHANGED,
+      subject: { entityType: 'opportunity', entityId: input.opportunityId, recordCode: opportunity.recordCode },
+      previousState: { forecastCategory: from },
+      newState: { forecastCategory: input.to },
+      reason: {
+        reasonCode: input.systemActor ?? (isPromotion ? 'manual_promotion' : 'manual_demotion'),
+        note: input.reason ?? null,
+      },
+      owner: { partyId: opportunity.ownerPartyId },
+      tx,
+    });
+
+    return row;
   });
 
   if (!isPromotion && opportunity.ownerPartyId) {

@@ -25,6 +25,7 @@ import { prisma } from '../platform/db.js';
 import { currentAuth, type AuthContext } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite, auditRegulatedRead } from '../platform/audit.js';
 import { assertCan, can, holdsScopeResolver } from '../platform/permissions.js';
@@ -149,86 +150,106 @@ export async function logInteraction(input: InteractionInput) {
     });
   }
 
-  const recordCode = await nextRecordCode('INT');
-  const interaction = await prisma.interaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      interactionType: input.interactionType,
-      direction: input.direction ?? 'outbound',
-      occurredAt: input.occurredAt,
-      actorPartyId: input.actorPartyId ?? auth.partyId,
-      participantPartyIds: input.participantPartyIds ?? [],
-      durationMinutes: input.durationMinutes ?? null,
-      subject: input.subject ?? null,
-      notes: input.notes ?? null,
-      outcome: input.outcome ?? null,
-      relatedReferences: input.relatedReferences as never,
-      // Persisted denormalised for indexing and reporting only — never
-      // authoritative for a permission decision, which recomputes at read.
-      sensitivityClass,
-      nextAction: input.nextAction ?? null,
-      nextActionDue: input.nextActionDue ?? null,
-      createdById: auth.partyId,
-    },
-  });
-
-  // next_action still auto-creates a Task, now linked via relatedInteractionId.
-  if (input.nextAction) {
-    const taskCode = await nextRecordCode('TSK');
-    await prisma.task.create({
+  // The interaction, its follow-up task, the lead's marker and the events that
+  // announce them commit together. Every audit row is written before the first
+  // event (governedWrite.ts): the interaction and its task are both audited, then
+  // both announced.
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('INT', undefined, tx);
+    const interaction = await tx.interaction.create({
       data: {
         tenantId: auth.tenantId,
-        recordCode: taskCode,
-        title: input.nextAction,
-        assigneePartyId: input.actorPartyId ?? auth.partyId,
-        ownerPartyId: input.actorPartyId ?? auth.partyId,
-        dueAt: input.nextActionDue ?? null,
-        relatedInteractionId: interaction.id,
-        relatedType: input.relatedReferences[0].entityType,
-        relatedId: input.relatedReferences[0].entityId,
+        recordCode,
+        interactionType: input.interactionType,
+        direction: input.direction ?? 'outbound',
+        occurredAt: input.occurredAt,
+        actorPartyId: input.actorPartyId ?? auth.partyId,
+        participantPartyIds: input.participantPartyIds ?? [],
+        durationMinutes: input.durationMinutes ?? null,
+        subject: input.subject ?? null,
+        notes: input.notes ?? null,
+        outcome: input.outcome ?? null,
+        relatedReferences: input.relatedReferences as never,
+        // Persisted denormalised for indexing and reporting only — never
+        // authoritative for a permission decision, which recomputes at read.
+        sensitivityClass,
+        nextAction: input.nextAction ?? null,
+        nextActionDue: input.nextActionDue ?? null,
         createdById: auth.partyId,
       },
     });
+
+    // Interaction joins GOVERNED_ENTITIES from creation, unlike the Activity it
+    // replaces, whose writes were unaudited.
+    await auditWrite({
+      action: 'create',
+      subjectType: 'interaction',
+      subjectId: interaction.id,
+      after: { interactionType: input.interactionType, sensitivityClass },
+      tx,
+    });
+
+    // next_action still auto-creates a Task, now linked via relatedInteractionId.
+    let taskCode: string | null = null;
+    if (input.nextAction) {
+      taskCode = await nextRecordCode('TSK', undefined, tx);
+      const task = await tx.task.create({
+        data: {
+          tenantId: auth.tenantId,
+          recordCode: taskCode,
+          title: input.nextAction,
+          assigneePartyId: input.actorPartyId ?? auth.partyId,
+          ownerPartyId: input.actorPartyId ?? auth.partyId,
+          dueAt: input.nextActionDue ?? null,
+          relatedInteractionId: interaction.id,
+          relatedType: input.relatedReferences[0].entityType,
+          relatedId: input.relatedReferences[0].entityId,
+          createdById: auth.partyId,
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'task',
+        subjectId: task.id,
+        after: { recordCode: taskCode, title: input.nextAction },
+        tx,
+      });
+    }
+
+    // Touch the lead's last-interaction marker so the untouched detector is
+    // driven by real interaction facts.
+    const leadRef = input.relatedReferences.find((r) => r.entityType === 'lead');
+    if (leadRef) {
+      await tx.lead.updateMany({
+        where: { id: leadRef.entityId },
+        data: { lastInteractionAt: input.occurredAt, untouchedNotifiedAt: null },
+      });
+    }
+
+    if (input.nextAction) {
+      await emit({
+        name: EVENTS.TASK_CREATED,
+        subject: { entityType: 'task', entityId: interaction.id, recordCode: taskCode! },
+        newState: { title: input.nextAction, dueAt: input.nextActionDue },
+        tx,
+      });
+    }
+
     await emit({
-      name: EVENTS.TASK_CREATED,
-      subject: { entityType: 'task', entityId: interaction.id, recordCode: taskCode },
-      newState: { title: input.nextAction, dueAt: input.nextActionDue },
+      name: EVENTS.INTERACTION_LOGGED,
+      subject: { entityType: 'interaction', entityId: interaction.id, recordCode },
+      related: input.relatedReferences.map((r) => ({
+        relation: 'about',
+        entityType: r.entityType,
+        entityId: r.entityId,
+      })),
+      newState: { interactionType: input.interactionType, outcome: input.outcome ?? null },
+      confidentiality: sensitivityClass,
+      tx,
     });
-  }
 
-  // Interaction joins GOVERNED_ENTITIES from creation, unlike the Activity it
-  // replaces, whose writes were unaudited.
-  await auditWrite({
-    action: 'create',
-    subjectType: 'interaction',
-    subjectId: interaction.id,
-    after: { interactionType: input.interactionType, sensitivityClass },
+    return interaction;
   });
-
-  // Touch the lead's last-interaction marker so the untouched detector is
-  // driven by real interaction facts.
-  const leadRef = input.relatedReferences.find((r) => r.entityType === 'lead');
-  if (leadRef) {
-    await prisma.lead.updateMany({
-      where: { id: leadRef.entityId },
-      data: { lastInteractionAt: input.occurredAt, untouchedNotifiedAt: null },
-    });
-  }
-
-  await emit({
-    name: EVENTS.INTERACTION_LOGGED,
-    subject: { entityType: 'interaction', entityId: interaction.id, recordCode },
-    related: input.relatedReferences.map((r) => ({
-      relation: 'about',
-      entityType: r.entityType,
-      entityId: r.entityId,
-    })),
-    newState: { interactionType: input.interactionType, outcome: input.outcome ?? null },
-    confidentiality: sensitivityClass,
-  });
-
-  return interaction;
 }
 
 async function referenceResolvesInTenant(ref: RelatedReference, tenantId: string): Promise<boolean> {

@@ -47,14 +47,14 @@ async function agentActionCount(): Promise<number> {
 
 describe('agent governed writes commit with their audit row and event, or not at all', () => {
   it('propose: an audit failure leaves no proposal row and writes no outbox event', async () => {
-    const opportunity = await prisma.opportunity.findFirstOrThrow({});
     const actionsBefore = await agentActionCount();
     const outboxBefore = await outboxCount(EVENTS.AGENT_ACTION_PROPOSED);
 
     await refuseAuditInserts();
     await expect(
-      asUser('chairman@kaizen.co.in', () =>
-        propose({
+      asUser('chairman@kaizen.co.in', async () => {
+        const opportunity = await prisma.opportunity.findFirstOrThrow({});
+        return propose({
           agentKey: 'agent.forecast',
           tool: 'tool.crm.suggest_forecast_category',
           action: 'opportunity.suggest_forecast',
@@ -62,8 +62,8 @@ describe('agent governed writes commit with their audit row and event, or not at
           subjectId: opportunity.id,
           proposal: { to: 'commit' },
           rationale: 'Atomicity probe.',
-        }),
-      ),
+        });
+      }),
     ).rejects.toThrow(INJECTED);
     await restoreAuditInserts();
 

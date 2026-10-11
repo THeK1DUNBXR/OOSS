@@ -38,6 +38,8 @@ import {
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { raiseException } from '../platform/exceptions.js';
 
 /**
@@ -902,6 +904,10 @@ async function domainOwner(domainCode: string): Promise<string | null> {
   return null;
 }
 
+// A score is a number the Command Centre and the board act on, so the row that
+// records it is governed like any other write.
+registerGovernedEntities('health', ['health_score']);
+
 export async function computeAndPersistAll(): Promise<ComputeResult[]> {
   const auth = currentAuth();
   const asOf = startOfDay(new Date());
@@ -916,37 +922,53 @@ export async function computeAndPersistAll(): Promise<ComputeResult[]> {
       orderBy: { asOf: 'desc' },
     });
 
-    await prisma.healthScore.upsert({
-      where: { tenantId_domainCode_asOf: { tenantId: auth.tenantId, domainCode: domain.code, asOf } },
-      create: {
-        tenantId: auth.tenantId,
-        domainCode: domain.code,
-        asOf,
-        score: result.score,
-        band: result.band,
-        factors: factors as never,
-        state: result.state,
-      },
-      update: { score: result.score, band: result.band, factors: factors as never, state: result.state },
-    });
-
-    await emit({
-      name: EVENTS.HEALTH_SCORE_COMPUTED,
-      subject: { entityType: 'health_score', entityId: `${domain.code}:${asOf.toISOString().slice(0, 10)}` },
-      newState: { domainCode: domain.code, score: result.score, band: result.band, state: result.state },
-      impact: { domains: ['xdm', domain.module] },
-    });
-
-    // Only a band transition reaches the Command Center — never a raw reading.
-    if (previous?.band && result.band && previous.band !== result.band) {
-      await emit({
-        name: EVENTS.HEALTH_BAND_CHANGED,
-        subject: { entityType: 'health_score', entityId: `${domain.code}:${asOf.toISOString().slice(0, 10)}` },
-        previousState: { band: previous.band, score: previous.score },
-        newState: { band: result.band, score: result.score },
-        impact: { domains: ['xdm'], severity: HEALTH_BAND_SEVERITY_FLOOR[result.band] as never },
+    const scoreId = `${domain.code}:${asOf.toISOString().slice(0, 10)}`;
+    // The score row, its audit row and the events announcing it commit together:
+    // the Command Centre must never see a band change for a score nobody recorded.
+    await governedWrite(async (tx) => {
+      await tx.healthScore.upsert({
+        where: { tenantId_domainCode_asOf: { tenantId: auth.tenantId, domainCode: domain.code, asOf } },
+        create: {
+          tenantId: auth.tenantId,
+          domainCode: domain.code,
+          asOf,
+          score: result.score,
+          band: result.band,
+          factors: factors as never,
+          state: result.state,
+        },
+        update: { score: result.score, band: result.band, factors: factors as never, state: result.state },
       });
-    }
+
+      await auditWrite({
+        action: previous ? 'update' : 'create',
+        subjectType: 'health_score',
+        subjectId: scoreId,
+        before: previous ? { band: previous.band, score: previous.score } : null,
+        after: { band: result.band, score: result.score, state: result.state },
+        tx,
+      });
+
+      await emit({
+        name: EVENTS.HEALTH_SCORE_COMPUTED,
+        subject: { entityType: 'health_score', entityId: scoreId },
+        newState: { domainCode: domain.code, score: result.score, band: result.band, state: result.state },
+        impact: { domains: ['xdm', domain.module] },
+        tx,
+      });
+
+      // Only a band transition reaches the Command Center — never a raw reading.
+      if (previous?.band && result.band && previous.band !== result.band) {
+        await emit({
+          name: EVENTS.HEALTH_BAND_CHANGED,
+          subject: { entityType: 'health_score', entityId: scoreId },
+          previousState: { band: previous.band, score: previous.score },
+          newState: { band: result.band, score: result.score },
+          impact: { domains: ['xdm'], severity: HEALTH_BAND_SEVERITY_FLOOR[result.band] as never },
+          tx,
+        });
+      }
+    });
 
     // Factors raise exceptions; composites raise attention. A factor crossing
     // its own threshold fires regardless of the parent composite's comfortable

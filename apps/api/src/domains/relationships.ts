@@ -13,12 +13,14 @@
  * speculatively.
  */
 
+import type { Relationship } from '@prisma/client';
 import { EVENTS, type RelationshipStrength, type RelationshipType } from '@kaizen/shared';
-import { prisma } from '../platform/db.js';
+import { prisma, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { personIdChain } from './identity.js';
 
 export interface RelationshipInput {
@@ -34,9 +36,15 @@ export interface RelationshipInput {
   notes?: string | null;
 }
 
-export async function createRelationship(input: RelationshipInput) {
+/**
+ * `db` is the caller's transaction when it is already inside one (the supersede
+ * path does); without it the relationship, its audit row and its event commit
+ * in a transaction of their own.
+ */
+export async function createRelationship(input: RelationshipInput, db?: DbTx): Promise<Relationship> {
+  if (!db) return governedWrite((tx) => createRelationship(input, tx));
   const auth = currentAuth();
-  const rel = await prisma.relationship.create({
+  const rel = await db.relationship.create({
     data: {
       tenantId: auth.tenantId,
       fromType: input.fromType,
@@ -57,6 +65,7 @@ export async function createRelationship(input: RelationshipInput) {
     subjectType: 'relationship',
     subjectId: rel.id,
     after: { relationshipType: rel.relationshipType, fromId: rel.fromId, toId: rel.toId },
+    tx: db,
   });
 
   await emit({
@@ -67,6 +76,7 @@ export async function createRelationship(input: RelationshipInput) {
       { relation: 'to', entityType: input.toType, entityId: input.toId },
     ],
     newState: { relationshipType: input.relationshipType, strength: rel.strength },
+    tx: db,
   });
 
   return rel;
@@ -123,32 +133,45 @@ export async function refineRelationship(id: string, changes: { status?: string;
   const existing = await prisma.relationship.findFirst({ where: { id } });
   if (!existing) throw ApiError.notFound('Relationship');
 
-  const updated = await prisma.relationship.update({
-    where: { id },
-    data: {
-      ...(changes.status ? { status: changes.status } : {}),
-      ...(changes.strength ? { strength: changes.strength } : {}),
-    },
+  return governedWrite(async (tx) => {
+    const updated = await tx.relationship.update({
+      where: { id },
+      data: {
+        ...(changes.status ? { status: changes.status } : {}),
+        ...(changes.strength ? { strength: changes.strength } : {}),
+      },
+    });
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'relationship',
+      subjectId: id,
+      before: { status: existing.status, strength: existing.strength },
+      after: { status: updated.status, strength: updated.strength },
+      tx,
+    });
+
+    if (changes.status && changes.status !== existing.status) {
+      await emit({
+        name: EVENTS.RELATIONSHIP_STATUS_CHANGED,
+        subject: { entityType: 'relationship', entityId: id },
+        previousState: { status: existing.status },
+        newState: { status: changes.status },
+        tx,
+      });
+    }
+    if (changes.strength && changes.strength !== existing.strength) {
+      await emit({
+        name: EVENTS.RELATIONSHIP_STRENGTH_CHANGED,
+        subject: { entityType: 'relationship', entityId: id },
+        previousState: { strength: existing.strength },
+        newState: { strength: changes.strength },
+        tx,
+      });
+    }
+
+    return updated;
   });
-
-  if (changes.status && changes.status !== existing.status) {
-    await emit({
-      name: EVENTS.RELATIONSHIP_STATUS_CHANGED,
-      subject: { entityType: 'relationship', entityId: id },
-      previousState: { status: existing.status },
-      newState: { status: changes.status },
-    });
-  }
-  if (changes.strength && changes.strength !== existing.strength) {
-    await emit({
-      name: EVENTS.RELATIONSHIP_STRENGTH_CHANGED,
-      subject: { entityType: 'relationship', entityId: id },
-      previousState: { strength: existing.strength },
-      newState: { strength: changes.strength },
-    });
-  }
-
-  return updated;
 }
 
 /**

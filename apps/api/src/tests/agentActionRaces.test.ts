@@ -47,8 +47,9 @@ describe('concurrent decisions on one agent action', () => {
       expect(row.state).toBe(won[0].state);
       expect(row.humanActorId).toBe(chairman.partyId);
 
+      // The proposal's own create row is also on this subject; the race is over the decision row.
       const audits = await unscopedPrisma.auditRecord.findMany({
-        where: { subjectType: 'agent_action', subjectId: actionIds[k] },
+        where: { subjectType: 'agent_action', subjectId: actionIds[k], action: 'update' },
       });
       expect(audits).toHaveLength(1);
       expect(audits[0].actorId).toBe(chairman.partyId);

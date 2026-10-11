@@ -32,6 +32,7 @@ import { currentAuth } from '../platform/context.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan } from '../platform/permissions.js';
 import { auditWrite } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { emit } from '../platform/eventBus.js';
 
 export interface CompanyProfileInput {
@@ -173,76 +174,80 @@ export async function updateCompanyProfile(input: CompanyProfileInput) {
     throw ApiError.unprocessable(panCheck.message!, { reasonCode: panCheck.reasonCode });
   }
 
-  const updated = await prisma.companyProfile.update({
-    where: { id: current.id },
-    data: {
-      ...(input.legalName !== undefined ? { legalName: input.legalName } : {}),
-      ...(input.tradeName !== undefined ? { tradeName: input.tradeName } : {}),
-      ...(input.gstin !== undefined ? { gstin: input.gstin } : {}),
-      ...(input.stateCode !== undefined ? { stateCode: input.stateCode } : {}),
-      ...(stateCode ? { stateName: stateNameFor(stateCode) } : {}),
-      ...(input.pan !== undefined ? { pan: input.pan } : {}),
-      ...(input.cin !== undefined ? { cin: input.cin } : {}),
-      ...(input.addressLine1 !== undefined ? { addressLine1: input.addressLine1 } : {}),
-      ...(input.addressLine2 !== undefined ? { addressLine2: input.addressLine2 } : {}),
-      ...(input.city !== undefined ? { city: input.city } : {}),
-      ...(input.pincode !== undefined ? { pincode: input.pincode } : {}),
-      ...(input.email !== undefined ? { email: input.email } : {}),
-      ...(input.phone !== undefined ? { phone: input.phone } : {}),
-      ...(input.website !== undefined ? { website: input.website } : {}),
-      ...(input.bankName !== undefined ? { bankName: input.bankName } : {}),
-      ...(input.bankAccountName !== undefined ? { bankAccountName: input.bankAccountName } : {}),
-      ...(input.bankAccountNumber !== undefined ? { bankAccountNumber: input.bankAccountNumber } : {}),
-      ...(input.bankIfsc !== undefined ? { bankIfsc: input.bankIfsc } : {}),
-      ...(input.bankBranch !== undefined ? { bankBranch: input.bankBranch } : {}),
-      ...(input.upiId !== undefined ? { upiId: input.upiId } : {}),
-      ...(input.invoiceTerms !== undefined ? { invoiceTerms: input.invoiceTerms } : {}),
-      ...(input.invoiceNotes !== undefined ? { invoiceNotes: input.invoiceNotes } : {}),
-      ...(input.defaultDueDays !== undefined ? { defaultDueDays: input.defaultDueDays } : {}),
-      ...(input.documentPrefix !== undefined
-        ? { documentPrefix: input.documentPrefix?.trim().toUpperCase() || null }
-        : {}),
-      ...(input.documentYearFormat !== undefined ? { documentYearFormat: input.documentYearFormat } : {}),
-      ...(input.incorporatedOn !== undefined
-        ? { incorporatedOn: input.incorporatedOn ? new Date(input.incorporatedOn) : null }
-        : {}),
-      ...(input.financialYearEndMonth !== undefined ? { financialYearEndMonth: input.financialYearEndMonth } : {}),
-      ...(input.isSmallCompany !== undefined ? { isSmallCompany: input.isSmallCompany } : {}),
-      ...(input.dematStatus !== undefined ? { dematStatus: input.dematStatus } : {}),
-      ...(input.isin !== undefined ? { isin: input.isin } : {}),
-      ...(input.rtaName !== undefined ? { rtaName: input.rtaName } : {}),
-      ...(input.dpiitNumber !== undefined ? { dpiitNumber: input.dpiitNumber } : {}),
-      ...(input.dpiitRecognisedOn !== undefined
-        ? { dpiitRecognisedOn: input.dpiitRecognisedOn ? new Date(input.dpiitRecognisedOn) : null }
-        : {}),
-      ...(input.iac80CertificateRef !== undefined ? { iac80CertificateRef: input.iac80CertificateRef } : {}),
-      ...(input.certificateSignatories !== undefined
-        ? { certificateSignatories: input.certificateSignatories as never }
-        : {}),
-      ...(input.tan !== undefined ? { tan: input.tan } : {}),
-      ...(input.udyamNumber !== undefined ? { udyamNumber: input.udyamNumber } : {}),
-    },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.companyProfile.update({
+      where: { id: current.id },
+      data: {
+        ...(input.legalName !== undefined ? { legalName: input.legalName } : {}),
+        ...(input.tradeName !== undefined ? { tradeName: input.tradeName } : {}),
+        ...(input.gstin !== undefined ? { gstin: input.gstin } : {}),
+        ...(input.stateCode !== undefined ? { stateCode: input.stateCode } : {}),
+        ...(stateCode ? { stateName: stateNameFor(stateCode) } : {}),
+        ...(input.pan !== undefined ? { pan: input.pan } : {}),
+        ...(input.cin !== undefined ? { cin: input.cin } : {}),
+        ...(input.addressLine1 !== undefined ? { addressLine1: input.addressLine1 } : {}),
+        ...(input.addressLine2 !== undefined ? { addressLine2: input.addressLine2 } : {}),
+        ...(input.city !== undefined ? { city: input.city } : {}),
+        ...(input.pincode !== undefined ? { pincode: input.pincode } : {}),
+        ...(input.email !== undefined ? { email: input.email } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+        ...(input.website !== undefined ? { website: input.website } : {}),
+        ...(input.bankName !== undefined ? { bankName: input.bankName } : {}),
+        ...(input.bankAccountName !== undefined ? { bankAccountName: input.bankAccountName } : {}),
+        ...(input.bankAccountNumber !== undefined ? { bankAccountNumber: input.bankAccountNumber } : {}),
+        ...(input.bankIfsc !== undefined ? { bankIfsc: input.bankIfsc } : {}),
+        ...(input.bankBranch !== undefined ? { bankBranch: input.bankBranch } : {}),
+        ...(input.upiId !== undefined ? { upiId: input.upiId } : {}),
+        ...(input.invoiceTerms !== undefined ? { invoiceTerms: input.invoiceTerms } : {}),
+        ...(input.invoiceNotes !== undefined ? { invoiceNotes: input.invoiceNotes } : {}),
+        ...(input.defaultDueDays !== undefined ? { defaultDueDays: input.defaultDueDays } : {}),
+        ...(input.documentPrefix !== undefined
+          ? { documentPrefix: input.documentPrefix?.trim().toUpperCase() || null }
+          : {}),
+        ...(input.documentYearFormat !== undefined ? { documentYearFormat: input.documentYearFormat } : {}),
+        ...(input.incorporatedOn !== undefined
+          ? { incorporatedOn: input.incorporatedOn ? new Date(input.incorporatedOn) : null }
+          : {}),
+        ...(input.financialYearEndMonth !== undefined ? { financialYearEndMonth: input.financialYearEndMonth } : {}),
+        ...(input.isSmallCompany !== undefined ? { isSmallCompany: input.isSmallCompany } : {}),
+        ...(input.dematStatus !== undefined ? { dematStatus: input.dematStatus } : {}),
+        ...(input.isin !== undefined ? { isin: input.isin } : {}),
+        ...(input.rtaName !== undefined ? { rtaName: input.rtaName } : {}),
+        ...(input.dpiitNumber !== undefined ? { dpiitNumber: input.dpiitNumber } : {}),
+        ...(input.dpiitRecognisedOn !== undefined
+          ? { dpiitRecognisedOn: input.dpiitRecognisedOn ? new Date(input.dpiitRecognisedOn) : null }
+          : {}),
+        ...(input.iac80CertificateRef !== undefined ? { iac80CertificateRef: input.iac80CertificateRef } : {}),
+        ...(input.certificateSignatories !== undefined
+          ? { certificateSignatories: input.certificateSignatories as never }
+          : {}),
+        ...(input.tan !== undefined ? { tan: input.tan } : {}),
+        ...(input.udyamNumber !== undefined ? { udyamNumber: input.udyamNumber } : {}),
+      },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'company_profile',
-    subjectId: updated.id,
-    // The bank account number is not in the audit body. It is printed on
-    // invoices on purpose and it is still not something to scatter through an
-    // append-only log keyed by nothing in particular.
-    before: { gstin: current.gstin, legalName: current.legalName },
-    after: { gstin: updated.gstin, legalName: updated.legalName },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'company_profile',
+      subjectId: updated.id,
+      // The bank account number is not in the audit body. It is printed on
+      // invoices on purpose and it is still not something to scatter through an
+      // append-only log keyed by nothing in particular.
+      before: { gstin: current.gstin, legalName: current.legalName },
+      after: { gstin: updated.gstin, legalName: updated.legalName },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.COMPANY_PROFILE_UPDATED,
-    subject: { entityType: 'company_profile', entityId: updated.id },
-    newState: { gstin: updated.gstin, stateCode: updated.stateCode },
-    impact: { domains: ['fin'] },
-  });
+    await emit({
+      name: EVENTS.COMPANY_PROFILE_UPDATED,
+      subject: { entityType: 'company_profile', entityId: updated.id },
+      newState: { gstin: updated.gstin, stateCode: updated.stateCode },
+      impact: { domains: ['fin'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 /**
