@@ -33,6 +33,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
+import { runHooks } from '../platform/hooks.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan, visibilityWhere } from '../platform/permissions.js';
 import { invoiceLabel, isCourseFeeInvoice, loadInvoiceForRead, totalsOf } from './invoicing.js';
@@ -280,6 +281,9 @@ export async function receiptDocument(receiptId: string) {
 export async function raiseFinalInvoice(invoiceId: string, input: { note?: string | null } = {}) {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'create' });
+  // A final invoice is a document dated today; a closed month refuses it before
+  // a number is drawn from the series.
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This final invoice' });
 
   const invoice = await loadInvoiceForRead(invoiceId);
   if (isCourseFeeInvoice(invoice)) {
@@ -430,6 +434,9 @@ export async function raiseFinalInvoice(invoiceId: string, input: { note?: strin
 export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'settled' | 'dropout') {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'create' });
+  // A final invoice is a document dated today; a closed month refuses it before
+  // a number is drawn from the series.
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This final invoice' });
 
   const invoice = await loadInvoiceForRead(invoiceId);
   if (!isCourseFeeInvoice(invoice)) {

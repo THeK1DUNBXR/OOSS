@@ -143,12 +143,15 @@ describe('Closed period — a write stamped today is refused while the current m
     const today = monthKey(new Date());
     await asUser(FINANCE, () => requestClosePeriod(today));
     await asUser(CHAIRMAN, () => closePeriod(today));
+    const debitsBefore = await unscopedPrisma.debitNote.count({ where: { tenantId: TENANT, invoiceId: invoice.id } });
     try {
       const debit = await expectReject(() =>
         asUser(FINANCE, () => issueDebitNote(invoice.id, { amount: 100, reasonCode: 'other', note: 'W2 probe' })),
       );
       expectClosedRefusal(debit);
-      expect(await unscopedPrisma.debitNote.count({ where: { tenantId: TENANT, invoiceId: invoice.id } })).toBe(0);
+      expect(await unscopedPrisma.debitNote.count({ where: { tenantId: TENANT, invoiceId: invoice.id } })).toBe(
+        debitsBefore,
+      );
 
       const final = await expectReject(() => asUser(FINANCE, () => raiseFinalInvoice(invoice.id, {})));
       expectClosedRefusal(final);

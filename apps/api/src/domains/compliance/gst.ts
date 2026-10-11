@@ -32,7 +32,7 @@ import { currentAuth } from '../../platform/context.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
-import { registerHook } from '../../platform/hooks.js';
+import { registerHook, runHooks } from '../../platform/hooks.js';
 import { raiseException } from '../../platform/exceptions.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../../platform/documentNumber.js';
 import { companyProfile, documentNumbering } from '../companyProfile.js';
@@ -315,6 +315,7 @@ export async function applyReverseCharge(billId: string, input: RcmInput) {
 
   const bill = await prisma.vendorBill.findFirst({ where: { id: billId, tenantId: auth.tenantId } });
   if (!bill) throw ApiError.notFound('Vendor bill');
+  await runHooks('accounting_document.before_write', { date: bill.billDate, what: 'This bill' });
 
   const taxableValue = round2(input.taxableValue ?? num(bill.subtotal) ?? 0);
   const profile = await companyProfile();
@@ -412,6 +413,7 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
     );
   }
   if (!(input.amount > 0)) throw ApiError.badRequest('A debit note has to raise the invoice by a positive amount.');
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This debit note' });
 
   const invoice = await prisma.invoice.findFirst({ where: { id: invoiceId, tenantId: auth.tenantId } });
   if (!invoice) throw ApiError.notFound('Invoice');

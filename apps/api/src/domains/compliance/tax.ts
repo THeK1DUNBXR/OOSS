@@ -41,7 +41,7 @@ import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
-import { registerHook } from '../../platform/hooks.js';
+import { registerHook, runHooks } from '../../platform/hooks.js';
 
 // payroll_run is owned by domains/payroll.ts, but apply-salary-TDS (below)
 // audits an update to it from here. Registered here too, so a job importing
@@ -186,6 +186,9 @@ export async function computeVendorTds(billId: string, input: ComputeVendorTdsIn
       `${bill.recordCode} is already ${bill.status}. TDS is decided before a bill is paid, not after.`,
     );
   }
+  // Ahead of the rate lookup: a decision in a closed month is refused for that
+  // reason, whatever rate the month would have used.
+  await runHooks('accounting_document.before_write', { date: bill.billDate, what: 'This bill' });
 
   const rate = await rateFor(input.section, bill.billDate);
   const vendorKey = bill.vendorPan ?? bill.vendorName;
@@ -252,6 +255,7 @@ export async function waiveVendorTds(billId: string, reason: string) {
 
   const bill = await prisma.vendorBill.findFirst({ where: { id: billId, tenantId: auth.tenantId, deletedAt: null } });
   if (!bill) throw ApiError.notFound('Vendor bill');
+  await runHooks('accounting_document.before_write', { date: bill.billDate, what: 'This bill' });
 
   const decision = await prisma.tdsDecision.create({
     data: {
@@ -586,6 +590,7 @@ export async function markChallanPaid(id: string, input: MarkChallanPaidInput) {
     );
   }
 
+  await runHooks('accounting_document.before_write', { date: input.paidOn, what: 'This challan payment' });
   const paid = await prisma.tdsChallan.update({
     where: { id },
     data: {
@@ -934,6 +939,7 @@ export async function recordAdvanceTaxPayment(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'create' });
+  await runHooks('accounting_document.before_write', { date: input.paidOn, what: 'This advance-tax payment' });
   const row = await prisma.advanceTaxPayment.create({
     data: {
       tenantId: auth.tenantId,
