@@ -145,6 +145,7 @@ router.post(
       userId: z.string().min(1),
       reason: z.string(),
       resetMfa: z.boolean().optional(),
+      totpCode: z.string().optional(),
     });
     const input = schema.parse(req.body);
     res.setHeader('Cache-Control', 'no-store');
