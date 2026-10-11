@@ -268,7 +268,7 @@
 
 **`apps/api/src/platform/context.ts`** (159 lines) — PrincipalType:13 · AuthContext:15 · RequestContext:38 · runWithContext:55 · getContext:59 · requireContext:63 · currentAuth:74 · currentTenantId:80 · maybeTenantId:85 · newRequestContext:89 · systemContext:106 · agentContext:127 · asSystem:156
 
-**`apps/api/src/platform/db.ts`** (305 lines) — TenantScopeError:75 · prisma:239 · Db:267 · DbTx:277 · unscopedPrisma:288 · num:296 · dec:301
+**`apps/api/src/platform/db.ts`** (311 lines) — TenantScopeError:75 · prisma:239 · Db:267 · DbTx:283 · unscopedPrisma:294 · num:302 · dec:307
 
 **`apps/api/src/platform/documentNumber.ts`** (228 lines) — DOCUMENT_SERIES:35 · DocumentSeries:59 · SERIES_LABELS:61 · YearFormat:74 · financialYearLabel:84 · MAX_INVOICE_NUMBER_LENGTH:90 · financialYearStart:97 · prefixFrom:108 · nextDocumentNumber:133 · peekNextNumbers:163 · setNextNumber:203
 
@@ -302,7 +302,7 @@
 
 **`apps/api/src/platform/rateLimitStore.ts`** (108 lines) — purgeExpiredRateLimitBuckets:37 · PostgresRateLimitStore:45
 
-**`apps/api/src/platform/recordCode.ts`** (98 lines) — SequenceExhaustedError:18 · recordCodeYear:37 · nextRecordCode:46 · nextRecordCodes:66 · rejectRecordCodeEdit:91
+**`apps/api/src/platform/recordCode.ts`** (105 lines) — SequenceExhaustedError:18 · recordCodeYear:37 · nextRecordCode:49 · nextRecordCodes:73 · rejectRecordCodeEdit:98
 
 **`apps/api/src/platform/recordScope.ts`** (74 lines) — assertEmploymentVisible:36 · employmentVisibilityWhere:65
 

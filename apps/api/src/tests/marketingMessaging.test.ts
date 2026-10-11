@@ -428,7 +428,9 @@ describe('MKT-MSG-005a — a recipient is claimed before it is sent, so it is ne
     resetAdapterCacheForTests();
     const sentTo = countAdapterSends({ delayMs: 15 });
 
-    const people = [];
+    // Typed explicitly: an empty array literal here infers never[] and the
+    // pushes below fail to typecheck.
+    const people: Array<Awaited<ReturnType<typeof makePerson>>> = [];
     for (let i = 0; i < 4; i += 1) {
       const p = await makePerson(`Overlap ${i}`, `overlap-${i}-${Date.now()}@example.com`, null);
       await grantMarketingConsent(p.id);
@@ -574,7 +576,7 @@ describe('MKT-MSG-005b — an expired claim is an unknown delivery an operator c
     const sentTo = countAdapterSends();
 
     const job = MARKETING_JOBS.find((j) => j.name === 'marketing.sends.dispatch');
-    await asUser(CREATOR, () => job!.run());
+    await asUser(CREATOR, () => job!.run(new AbortController().signal));
 
     expect(sentTo.get(person.id) ?? 0).toBe(0);
     const [after] = await asUser(CREATOR, () => listSendRecipients(send.id));

@@ -43,7 +43,14 @@ export function recordCodeYear(at: Date): number {
  * is written on a connection outside that transaction, where the tenant
  * setting is not applied (db.ts) and row-level security refuses the write.
  */
-export async function nextRecordCode(type: RecordTypeCode, at: Date = new Date(), db: DbTx = prisma): Promise<string> {
+// Cast for the default, as in identity.ts: the scoped client is the same
+// object as a transaction client here, and TS cannot compare the two types
+// within its depth limit (TS2321).
+export async function nextRecordCode(
+  type: RecordTypeCode,
+  at: Date = new Date(),
+  db: DbTx = prisma as unknown as DbTx,
+): Promise<string> {
   const tenantId = currentTenantId();
   const year = recordCodeYear(at);
 
