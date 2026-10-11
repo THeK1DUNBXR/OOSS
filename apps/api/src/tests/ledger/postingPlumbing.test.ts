@@ -16,10 +16,9 @@ import { PrismaClient } from '@prisma/client';
 import {
   buildInvoiceIssueEntry,
   buildReceiptAllocationEntry,
-  invoiceIssueKey,
-  PostingRuleError,
   postingAccountKey,
-  receiptAllocationKey,
+  postingKeys,
+  PostingRuleError,
   type ResolvedPostingAccounts,
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma } from '../../platform/db.js';
@@ -571,7 +570,7 @@ describe('builders posted through postInTx, with resolved accounts; the trial ba
           narration: 'Invoice issued (fixture)',
           sourceType: 'invoice',
           sourceId: invoiceId,
-          idempotencyKey: invoiceIssueKey(invoiceId),
+          idempotencyKey: postingKeys.invoiceIssue(invoiceId),
           lines,
         });
       }),
@@ -605,7 +604,7 @@ describe('builders posted through postInTx, with resolved accounts; the trial ba
           narration: 'Receipt allocated (fixture)',
           sourceType: 'receipt',
           sourceId: receiptId,
-          idempotencyKey: receiptAllocationKey(receiptId),
+          idempotencyKey: postingKeys.receiptAllocated(receiptId),
           lines,
         });
       }),

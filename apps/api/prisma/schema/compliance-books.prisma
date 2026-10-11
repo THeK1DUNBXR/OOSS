@@ -182,6 +182,33 @@ model JournalReversal {
   @@map("journal_reversals")
 }
 
+/// Which ledger account a posting role points at, for one scope, from one IST
+/// day (contract FX-70, decision O3). The vocabulary is packages/shared
+/// postingRules.ts; the mapping is the finance head's data, never a constant.
+/// Insert-only for every role: a changed mapping is a new row with a later
+/// effectiveFrom. A row with no covering window is an unmapped role, and the
+/// resolver refuses it rather than choosing an account.
+model LedgerPostingRole {
+  id              String        @id @default(cuid())
+  tenantId        String
+  role            String
+  /// '' for an unscoped role; a business line id, a payment mode, or a category id otherwise.
+  scopeKey        String        @default("")
+  ledgerAccountId String
+  /// The first IST day the mapping applies (inclusive).
+  effectiveFrom   DateTime      @db.Date
+  /// The first IST day it no longer applies (exclusive). Null for an open-ended mapping.
+  effectiveTo     DateTime?     @db.Date
+  /// The party who entered the mapping. Required: a mapping nobody owns is the finding.
+  setById         String
+  setAt           DateTime      @default(now())
+  /// Composite with tenantId: a mapping can only name an account of its own tenant.
+  account         LedgerAccount @relation(fields: [tenantId, ledgerAccountId], references: [tenantId, id])
+
+  @@unique([tenantId, role, scopeKey, effectiveFrom])
+  @@map("ledger_posting_roles")
+}
+
 /// How long a class of record must be kept, and under what statute. Dated data
 /// rather than a constant — the Companies Act retention norm and the DPDP
 /// floor are each somebody else's decision, not this codebase's.
