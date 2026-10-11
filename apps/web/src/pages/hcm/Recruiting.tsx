@@ -10,7 +10,21 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, date, dateTime } from '../../lib/api.js';
+import { date, dateTime, money } from '../../lib/api.js';
+import {
+  decimalAmount,
+  hcmApi,
+  type BgvRow,
+  type CandidateRow,
+  type InterviewRound,
+  type JobPosting,
+  type OfferRow,
+  type OnboardingTask,
+  type OnboardingTemplate,
+  type RecruitingFunnel,
+  type ReferralRow,
+} from '../../lib/hcmApi.js';
+import { DataTable, type DataTableColumn } from '../../components/DataTable.js';
 import {
   Card,
   EmptyState,
@@ -64,27 +78,11 @@ export function Recruiting() {
 // here only for pickers and the pipeline board.
 // ---------------------------------------------------------------------------
 
-interface RequisitionRow {
-  id: string;
-  recordCode: string;
-  status: string;
-  position: { recordCode: string; job: { title: string }; orgUnit: { name: string } };
-}
-
-interface ApplicationRow {
-  id: string;
-  recordCode: string;
-  status: string;
-  funnelBucket: string;
-  candidate: { id: string; fullName: string; primaryEmail: string | null };
-  requisition: { recordCode: string; position: { job: { title: string } } };
-}
-
 function useRequisitions() {
-  return useQuery({ queryKey: ['hr-requisitions'], queryFn: () => api.get<RequisitionRow[]>('/hr/requisitions') });
+  return useQuery({ queryKey: ['hr-requisitions'], queryFn: () => hcmApi.hr.requisitions() });
 }
 function useApplications() {
-  return useQuery({ queryKey: ['hr-applications'], queryFn: () => api.get<ApplicationRow[]>('/hr/applications') });
+  return useQuery({ queryKey: ['hr-applications'], queryFn: () => hcmApi.hr.applications() });
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +100,7 @@ function PipelineTab() {
   const applications = useApplications();
   const funnel = useQuery({
     queryKey: ['recruiting-funnel'],
-    queryFn: () => api.get<RecruitingFunnel>('/hcm/recruiting/funnel'),
+    queryFn: () => hcmApi.recruiting.funnel(),
   });
 
   return (
@@ -168,55 +166,48 @@ function PipelineTab() {
 
       {funnel.data && funnel.data.sourceEffectiveness.length > 0 && (
         <Card title="Source effectiveness" subtitle="Which candidate sources actually convert to a join.">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Source</th>
-                <th className="num">Applications</th>
-                <th className="num">Hired</th>
-                <th className="num">Hire rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {funnel.data.sourceEffectiveness.map((s) => (
-                <tr key={s.source}>
-                  <td className="capitalize">{s.source.replace(/_/g, ' ')}</td>
-                  <td className="num">{s.applications}</td>
-                  <td className="num">{s.hired}</td>
-                  <td className="num">{s.hireRate != null ? `${s.hireRate}%` : 'Not measured'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            caption="Applications and hires by candidate source"
+            columns={SOURCE_COLUMNS}
+            rows={funnel.data.sourceEffectiveness}
+            rowKey={(s) => s.source}
+            emptyMessage="No candidate sources recorded yet."
+          />
         </Card>
       )}
     </div>
   );
 }
 
-interface RecruitingFunnel {
-  meanTimeToHireDays: number | null;
-  offerAcceptanceRatePct: number | null;
-  offersByStatus: Record<string, number>;
-  sourceEffectiveness: Array<{ source: string; applications: number; hired: number; hireRate: number | null }>;
-}
+type SourceRow = RecruitingFunnel['sourceEffectiveness'][number];
+
+const SOURCE_COLUMNS: ReadonlyArray<DataTableColumn<SourceRow>> = [
+  {
+    id: 'source',
+    header: 'Source',
+    sortValue: (s) => s.source,
+    cell: (s) => <span className="capitalize">{s.source.replace(/_/g, ' ')}</span>,
+  },
+  {
+    id: 'applications',
+    header: 'Applications',
+    align: 'right',
+    sortValue: (s) => s.applications,
+    cell: (s) => s.applications,
+  },
+  { id: 'hired', header: 'Hired', align: 'right', sortValue: (s) => s.hired, cell: (s) => s.hired },
+  {
+    id: 'hireRate',
+    header: 'Hire rate',
+    align: 'right',
+    sortValue: (s) => s.hireRate,
+    cell: (s) => (s.hireRate != null ? `${s.hireRate}%` : 'Not measured'),
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Postings
 // ---------------------------------------------------------------------------
-
-interface JobPosting {
-  id: string;
-  recordCode: string;
-  title: string;
-  channel: string;
-  status: string;
-  slug: string;
-  publishedAt: string | null;
-  closesAt: string | null;
-  availableTransitions: string[];
-  requisitionId: string;
-}
 
 function PostingsTab() {
   const qc = useQueryClient();
@@ -224,7 +215,7 @@ function PostingsTab() {
   const requisitions = useRequisitions();
   const postings = useQuery({
     queryKey: ['recruiting-postings'],
-    queryFn: () => api.get<JobPosting[]>('/hcm/recruiting/job-postings'),
+    queryFn: () => hcmApi.recruiting.postings.list(),
   });
   const [form, setForm] = useState({
     requisitionId: '',
@@ -234,12 +225,58 @@ function PostingsTab() {
   });
 
   const transitionMut = useMutation({
-    mutationFn: ({ id, event }: { id: string; event: string }) =>
-      api.post(`/hcm/recruiting/job-postings/${id}/transition`, { event }),
+    mutationFn: ({ id, event }: { id: string; event: string }) => hcmApi.recruiting.postings.transition(id, event),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recruiting-postings'] }),
   });
 
   const openRequisitions = requisitions.data ?? [];
+
+  const columns: ReadonlyArray<DataTableColumn<JobPosting>> = [
+    {
+      id: 'code',
+      header: 'Code',
+      sortValue: (p) => p.recordCode,
+      cell: (p) => <span className="mono">{p.recordCode}</span>,
+    },
+    { id: 'title', header: 'Title', sortValue: (p) => p.title, cell: (p) => p.title },
+    { id: 'channel', header: 'Channel', sortValue: (p) => p.channel, cell: (p) => <StatusChip status={p.channel} /> },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (p) => p.status,
+      cell: (p) => (
+        <StatusChip
+          status={p.status}
+          tone={p.status === 'Published' ? 'good' : p.status === 'Cancelled' ? 'bad' : 'neutral'}
+        />
+      ),
+    },
+    {
+      id: 'published',
+      header: 'Published',
+      sortValue: (p) => p.publishedAt,
+      cell: (p) => (p.publishedAt ? date(p.publishedAt) : '—'),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (p) => (
+        <div className="flex justify-end gap-1">
+          {p.availableTransitions.map((event) => (
+            <button
+              key={event}
+              className="btn text-2xs"
+              disabled={transitionMut.isPending}
+              onClick={() => transitionMut.mutate({ id: p.id, event })}
+            >
+              {event.toLowerCase()}
+            </button>
+          ))}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Card
@@ -247,67 +284,23 @@ function PostingsTab() {
       subtitle="A published listing against an open requisition. A requisition can be reposted more than once."
       actions={<NewButton label="New posting" onClick={() => setOpen(true)} />}
     >
-      {postings.isLoading && <Loading />}
-      {postings.error && <ErrorBox error={postings.error} />}
-      {postings.data && postings.data.length === 0 && (
-        <EmptyState
-          message="No job postings yet."
-          hint="A posting is drafted against an open requisition, then published."
-        />
-      )}
-      {postings.data && postings.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Title</th>
-              <th>Channel</th>
-              <th>Status</th>
-              <th>Published</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {postings.data.map((p) => (
-              <tr key={p.id}>
-                <td className="mono">{p.recordCode}</td>
-                <td>{p.title}</td>
-                <td>
-                  <StatusChip status={p.channel} />
-                </td>
-                <td>
-                  <StatusChip
-                    status={p.status}
-                    tone={p.status === 'Published' ? 'good' : p.status === 'Cancelled' ? 'bad' : 'neutral'}
-                  />
-                </td>
-                <td>{p.publishedAt ? date(p.publishedAt) : '—'}</td>
-                <td className="text-right">
-                  <div className="flex justify-end gap-1">
-                    {p.availableTransitions.map((event) => (
-                      <button
-                        key={event}
-                        className="btn text-2xs"
-                        disabled={transitionMut.isPending}
-                        onClick={() => transitionMut.mutate({ id: p.id, event })}
-                      >
-                        {event.toLowerCase()}
-                      </button>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Job postings"
+        columns={columns}
+        rows={postings.data ?? []}
+        rowKey={(p) => p.id}
+        loading={postings.isLoading}
+        error={postings.error}
+        emptyMessage="No job postings yet."
+        emptyHint="A posting is drafted against an open requisition, then published."
+      />
 
       <CreateModal
         open={open}
         title="Draft a job posting"
         onClose={() => setOpen(false)}
         invalidate={[['recruiting-postings']]}
-        onSubmit={() => api.post('/hcm/recruiting/job-postings', form)}
+        onSubmit={() => hcmApi.recruiting.postings.create(form)}
       >
         <SelectInput
           label="Requisition"
@@ -346,28 +339,52 @@ function PostingsTab() {
 // Candidates
 // ---------------------------------------------------------------------------
 
-interface CandidateRow {
-  id: string;
-  source: string;
-  currentCtc: number | null;
-  expectedCtc: number | null;
-  noticeDays: number | null;
-  person: {
-    id: string;
-    fullName: string;
-    primaryEmail: string | null;
-    primaryPhone: string | null;
-    recordCode: string;
-  } | null;
-}
-
 function CandidatesTab() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const candidates = useQuery({
     queryKey: ['recruiting-candidates', q],
-    queryFn: () => api.get<CandidateRow[]>(`/hcm/recruiting/candidates${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    queryFn: () => hcmApi.recruiting.candidates.list(q),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<CandidateRow>> = [
+    {
+      id: 'name',
+      header: 'Name',
+      sortValue: (c) => c.person?.fullName,
+      cell: (c) => c.person?.fullName ?? '—',
+    },
+    {
+      id: 'contact',
+      header: 'Contact',
+      cell: (c) => (
+        <span className="text-2xs text-ink-400">{c.person?.primaryEmail ?? c.person?.primaryPhone ?? '—'}</span>
+      ),
+    },
+    { id: 'source', header: 'Source', sortValue: (c) => c.source, cell: (c) => <StatusChip status={c.source} /> },
+    {
+      id: 'currentCtc',
+      header: 'Current CTC',
+      align: 'right',
+      sortValue: (c) => decimalAmount(c.currentCtc),
+      cell: (c) => (c.currentCtc != null ? money(decimalAmount(c.currentCtc)) : <Withheld reason="no_permission" />),
+    },
+    {
+      id: 'expectedCtc',
+      header: 'Expected CTC',
+      align: 'right',
+      sortValue: (c) => decimalAmount(c.expectedCtc),
+      cell: (c) => (c.expectedCtc != null ? money(decimalAmount(c.expectedCtc)) : <Withheld reason="no_permission" />),
+    },
+    {
+      id: 'notice',
+      header: 'Notice',
+      align: 'right',
+      sortValue: (c) => c.noticeDays,
+      cell: (c) => c.noticeDays ?? '—',
+    },
+  ];
+
   const [form, setForm] = useState({
     fullName: '',
     primaryPhone: '',
@@ -388,49 +405,15 @@ function CandidatesTab() {
       <div className="mb-3">
         <TextInput label="Search by name" value={q} onChange={setQ} placeholder="Search" />
       </div>
-      {candidates.isLoading && <Loading />}
-      {candidates.error && <ErrorBox error={candidates.error} />}
-      {candidates.data && candidates.data.length === 0 && <EmptyState message="No candidates recorded yet." />}
-      {candidates.data && candidates.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Contact</th>
-              <th>Source</th>
-              <th>Current CTC</th>
-              <th>Expected CTC</th>
-              <th>Notice</th>
-            </tr>
-          </thead>
-          <tbody>
-            {candidates.data.map((c) => (
-              <tr key={c.id}>
-                <td>{c.person?.fullName ?? '—'}</td>
-                <td className="text-2xs text-ink-400">{c.person?.primaryEmail ?? c.person?.primaryPhone ?? '—'}</td>
-                <td>
-                  <StatusChip status={c.source} />
-                </td>
-                <td>
-                  {c.currentCtc != null ? (
-                    `₹${c.currentCtc.toLocaleString('en-IN')}`
-                  ) : (
-                    <Withheld reason="no_permission" />
-                  )}
-                </td>
-                <td>
-                  {c.expectedCtc != null ? (
-                    `₹${c.expectedCtc.toLocaleString('en-IN')}`
-                  ) : (
-                    <Withheld reason="no_permission" />
-                  )}
-                </td>
-                <td>{c.noticeDays ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Candidates"
+        columns={columns}
+        rows={candidates.data ?? []}
+        rowKey={(c) => c.id}
+        loading={candidates.isLoading}
+        error={candidates.error}
+        emptyMessage="No candidates recorded yet."
+      />
 
       <CreateModal
         open={open}
@@ -438,7 +421,7 @@ function CandidatesTab() {
         onClose={() => setOpen(false)}
         invalidate={[['recruiting-candidates', q]]}
         onSubmit={() =>
-          api.post('/hcm/recruiting/candidates', {
+          hcmApi.recruiting.candidates.create({
             fullName: form.fullName,
             primaryPhone: form.primaryPhone || undefined,
             primaryEmail: form.primaryEmail || undefined,
@@ -509,24 +492,6 @@ function CandidatesTab() {
 // Interviews
 // ---------------------------------------------------------------------------
 
-interface InterviewRound {
-  id: string;
-  roundNo: number;
-  kind: string;
-  scheduledAt: string;
-  mode: string;
-  status: string;
-  outcome: string | null;
-  interviewerPartyIds: string[];
-}
-
-interface Scorecard {
-  id: string;
-  interviewerPartyId: string;
-  recommendation: string;
-  notes: string | null;
-}
-
 function InterviewsTab() {
   const applications = useApplications();
   const [applicationId, setApplicationId] = useState('');
@@ -550,21 +515,76 @@ function InterviewsTab() {
 
   const rounds = useQuery({
     queryKey: ['recruiting-interviews', applicationId],
-    queryFn: () => api.get<InterviewRound[]>(`/hcm/recruiting/applications/${applicationId}/interviews`),
+    queryFn: () => hcmApi.recruiting.interviews.rounds(applicationId),
     enabled: !!applicationId,
   });
 
   const scorecards = useQuery({
     queryKey: ['recruiting-scorecards', scoreFor?.id],
-    queryFn: () => api.get<Scorecard[]>(`/hcm/recruiting/interviews/${scoreFor!.id}/scorecards`),
+    queryFn: () => hcmApi.recruiting.interviews.scorecards(scoreFor!.id),
     enabled: !!scoreFor,
   });
 
   const complete = useMutation({
     mutationFn: ({ id, outcome }: { id: string; outcome: 'advance' | 'reject' | 'hold' }) =>
-      api.post(`/hcm/recruiting/interviews/${id}/complete`, { outcome }),
+      hcmApi.recruiting.interviews.complete(id, outcome),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recruiting-interviews', applicationId] }),
   });
+
+  const roundColumns: ReadonlyArray<DataTableColumn<InterviewRound>> = [
+    { id: 'round', header: 'Round', sortValue: (r) => r.roundNo, cell: (r) => r.roundNo },
+    { id: 'kind', header: 'Kind', sortValue: (r) => r.kind, cell: (r) => <StatusChip status={r.kind} /> },
+    { id: 'when', header: 'When', sortValue: (r) => r.scheduledAt, cell: (r) => dateTime(r.scheduledAt) },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (r) => r.status,
+      cell: (r) => (
+        <StatusChip
+          status={r.status}
+          tone={
+            r.status === 'Completed' ? 'good' : r.status === 'Cancelled' || r.status === 'NoShow' ? 'bad' : 'neutral'
+          }
+        />
+      ),
+    },
+    {
+      id: 'outcome',
+      header: 'Outcome',
+      sortValue: (r) => r.outcome,
+      cell: (r) =>
+        r.outcome ? (
+          <StatusChip
+            status={r.outcome}
+            tone={r.outcome === 'advance' ? 'good' : r.outcome === 'reject' ? 'bad' : 'warn'}
+          />
+        ) : (
+          '—'
+        ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (r) => (
+        <div className="flex justify-end gap-1">
+          <button className="btn text-2xs" onClick={() => setScoreFor(r)}>
+            Scorecards
+          </button>
+          {r.status === 'Scheduled' && (
+            <>
+              <button className="btn text-2xs" onClick={() => complete.mutate({ id: r.id, outcome: 'advance' })}>
+                Advance
+              </button>
+              <button className="btn text-2xs" onClick={() => complete.mutate({ id: r.id, outcome: 'reject' })}>
+                Reject
+              </button>
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-4">
@@ -586,80 +606,15 @@ function InterviewsTab() {
 
       {applicationId && (
         <Card title="Interview rounds" actions={<NewButton label="Schedule round" onClick={() => setOpen(true)} />}>
-          {rounds.isLoading && <Loading />}
-          {rounds.data && rounds.data.length === 0 && (
-            <EmptyState message="No rounds scheduled for this application yet." />
-          )}
-          {rounds.data && rounds.data.length > 0 && (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Round</th>
-                  <th>Kind</th>
-                  <th>When</th>
-                  <th>Status</th>
-                  <th>Outcome</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {rounds.data.map((r) => (
-                  <tr key={r.id}>
-                    <td>{r.roundNo}</td>
-                    <td>
-                      <StatusChip status={r.kind} />
-                    </td>
-                    <td>{dateTime(r.scheduledAt)}</td>
-                    <td>
-                      <StatusChip
-                        status={r.status}
-                        tone={
-                          r.status === 'Completed'
-                            ? 'good'
-                            : r.status === 'Cancelled' || r.status === 'NoShow'
-                              ? 'bad'
-                              : 'neutral'
-                        }
-                      />
-                    </td>
-                    <td>
-                      {r.outcome ? (
-                        <StatusChip
-                          status={r.outcome}
-                          tone={r.outcome === 'advance' ? 'good' : r.outcome === 'reject' ? 'bad' : 'warn'}
-                        />
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <button className="btn text-2xs" onClick={() => setScoreFor(r)}>
-                          Scorecards
-                        </button>
-                        {r.status === 'Scheduled' && (
-                          <>
-                            <button
-                              className="btn text-2xs"
-                              onClick={() => complete.mutate({ id: r.id, outcome: 'advance' })}
-                            >
-                              Advance
-                            </button>
-                            <button
-                              className="btn text-2xs"
-                              onClick={() => complete.mutate({ id: r.id, outcome: 'reject' })}
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <DataTable
+            caption="Interview rounds for this application"
+            columns={roundColumns}
+            rows={rounds.data ?? []}
+            rowKey={(r) => r.id}
+            loading={rounds.isLoading}
+            error={rounds.error}
+            emptyMessage="No rounds scheduled for this application yet."
+          />
 
           <CreateModal
             open={open}
@@ -667,7 +622,7 @@ function InterviewsTab() {
             onClose={() => setOpen(false)}
             invalidate={[['recruiting-interviews', applicationId]]}
             onSubmit={() =>
-              api.post('/hcm/recruiting/interviews', {
+              hcmApi.recruiting.interviews.schedule({
                 applicationId,
                 roundNo: Number(form.roundNo),
                 kind: form.kind,
@@ -773,7 +728,7 @@ function ScoreForm({
   const [error, setError] = useState<string | null>(null);
   const submit = useMutation({
     mutationFn: () =>
-      api.post(`/hcm/recruiting/interviews/${roundId}/scorecards`, {
+      hcmApi.recruiting.interviews.submitScorecard(roundId, {
         competencyScores: { overall: Number(form.score) },
         recommendation: form.recommendation,
         notes: form.notes || undefined,
@@ -819,17 +774,6 @@ function ScoreForm({
 // Offers
 // ---------------------------------------------------------------------------
 
-interface OfferRow {
-  id: string;
-  recordCode: string;
-  applicationId: string;
-  ctc: number | null;
-  joiningDate: string;
-  validUntil: string;
-  status: string;
-  availableTransitions: string[];
-}
-
 function OffersTab() {
   const qc = useQueryClient();
   const applications = useApplications();
@@ -840,14 +784,14 @@ function OffersTab() {
 
   const offers = useQuery({
     queryKey: ['recruiting-offers'],
-    queryFn: () => api.get<OfferRow[]>('/hcm/recruiting/offers'),
+    queryFn: () => hcmApi.recruiting.offers.list(),
   });
   const selectable = (applications.data ?? []).filter((a) => a.status === 'Selected');
   const byId = new Map((applications.data ?? []).map((a) => [a.id, a]));
 
   const transitionMut = useMutation({
     mutationFn: ({ id, event, declineReason }: { id: string; event: string; declineReason?: string }) =>
-      api.post(`/hcm/recruiting/offers/${id}/transition`, { event, declineReason }),
+      hcmApi.recruiting.offers.transition(id, event, declineReason),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['recruiting-offers'] });
       qc.invalidateQueries({ queryKey: ['hr-applications'] });
@@ -855,10 +799,7 @@ function OffersTab() {
   });
 
   const joinMut = useMutation({
-    mutationFn: () =>
-      api.post(`/hcm/recruiting/applications/${joining!.applicationId}/join-and-onboard`, {
-        hireEffectiveDate: joinDate,
-      }),
+    mutationFn: () => hcmApi.recruiting.offers.joinAndOnboard(joining!.applicationId, joinDate),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['hr-applications'] });
       qc.invalidateQueries({ queryKey: ['hr-requisitions'] });
@@ -866,79 +807,89 @@ function OffersTab() {
     },
   });
 
+  const columns: ReadonlyArray<DataTableColumn<OfferRow>> = [
+    {
+      id: 'code',
+      header: 'Code',
+      sortValue: (o) => o.recordCode,
+      cell: (o) => <span className="mono">{o.recordCode}</span>,
+    },
+    {
+      id: 'candidate',
+      header: 'Candidate',
+      sortValue: (o) => byId.get(o.applicationId)?.candidate.fullName,
+      cell: (o) => byId.get(o.applicationId)?.candidate.fullName ?? '—',
+    },
+    {
+      id: 'ctc',
+      header: 'CTC',
+      align: 'right',
+      sortValue: (o) => decimalAmount(o.ctc),
+      cell: (o) => (o.ctc != null ? money(decimalAmount(o.ctc)) : <Withheld reason="no_permission" />),
+    },
+    { id: 'joining', header: 'Joining', sortValue: (o) => o.joiningDate, cell: (o) => date(o.joiningDate) },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (o) => o.status,
+      cell: (o) => (
+        <StatusChip
+          status={o.status}
+          tone={
+            o.status === 'Accepted' ? 'good' : o.status === 'Declined' || o.status === 'Rescinded' ? 'bad' : 'neutral'
+          }
+        />
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (o) => (
+        <div className="flex justify-end gap-1">
+          {o.availableTransitions.map((event) => (
+            <button
+              key={event}
+              className="btn text-2xs"
+              disabled={transitionMut.isPending}
+              onClick={() => transitionMut.mutate({ id: o.id, event })}
+            >
+              {event.toLowerCase()}
+            </button>
+          ))}
+          {o.status === 'Accepted' && (
+            <button className="btn-primary text-2xs" onClick={() => setJoining(o)}>
+              Join &amp; onboard
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <Card
       title="Offers"
       subtitle="Approval needs someone other than the proposer (Self-Dealing Bar). CTC is withheld unless offers:financial is held."
       actions={<NewButton label="Draft offer" onClick={() => setOpen(true)} />}
     >
-      {offers.isLoading && <Loading />}
-      {offers.error && <ErrorBox error={offers.error} />}
-      {offers.data && offers.data.length === 0 && (
-        <EmptyState message="No offers drafted yet." hint="An offer is drafted once a candidate reaches Selected." />
-      )}
-      {offers.data && offers.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Code</th>
-              <th>Candidate</th>
-              <th>CTC</th>
-              <th>Joining</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {offers.data.map((o) => (
-              <tr key={o.id}>
-                <td className="mono">{o.recordCode}</td>
-                <td>{byId.get(o.applicationId)?.candidate.fullName ?? '—'}</td>
-                <td>{o.ctc != null ? `₹${o.ctc.toLocaleString('en-IN')}` : <Withheld reason="no_permission" />}</td>
-                <td>{date(o.joiningDate)}</td>
-                <td>
-                  <StatusChip
-                    status={o.status}
-                    tone={
-                      o.status === 'Accepted'
-                        ? 'good'
-                        : o.status === 'Declined' || o.status === 'Rescinded'
-                          ? 'bad'
-                          : 'neutral'
-                    }
-                  />
-                </td>
-                <td className="text-right">
-                  <div className="flex justify-end gap-1">
-                    {o.availableTransitions.map((event) => (
-                      <button
-                        key={event}
-                        className="btn text-2xs"
-                        disabled={transitionMut.isPending}
-                        onClick={() => transitionMut.mutate({ id: o.id, event })}
-                      >
-                        {event.toLowerCase()}
-                      </button>
-                    ))}
-                    {o.status === 'Accepted' && (
-                      <button className="btn-primary text-2xs" onClick={() => setJoining(o)}>
-                        Join &amp; onboard
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Offers"
+        columns={columns}
+        rows={offers.data ?? []}
+        rowKey={(o) => o.id}
+        loading={offers.isLoading}
+        error={offers.error}
+        emptyMessage="No offers drafted yet."
+        emptyHint="An offer is drafted once a candidate reaches Selected."
+      />
 
       <CreateModal
         open={open}
         title="Draft an offer"
         onClose={() => setOpen(false)}
         invalidate={[['recruiting-offers']]}
-        onSubmit={() => api.post('/hcm/recruiting/offers', { ...form, ctc: Number(form.ctc) })}
+        onSubmit={() => hcmApi.recruiting.offers.create({ ...form, ctc: Number(form.ctc) })}
       >
         <SelectInput
           label="Application"
@@ -992,14 +943,6 @@ function OffersTab() {
 // Referrals
 // ---------------------------------------------------------------------------
 
-interface ReferralRow {
-  id: string;
-  referrerEmploymentId: string;
-  candidatePersonId: string;
-  bonusAmount: number | null;
-  status: string;
-}
-
 const REFERRAL_NEXT: Record<string, string[]> = {
   Submitted: ['Shortlisted', 'Rejected'],
   Shortlisted: ['Hired', 'Rejected'],
@@ -1011,7 +954,7 @@ function ReferralsTab() {
   const [open, setOpen] = useState(false);
   const referrals = useQuery({
     queryKey: ['recruiting-referrals'],
-    queryFn: () => api.get<ReferralRow[]>('/hcm/recruiting/referrals'),
+    queryFn: () => hcmApi.recruiting.referrals.list(),
   });
   const [form, setForm] = useState({
     referrerEmploymentId: '',
@@ -1022,10 +965,50 @@ function ReferralsTab() {
   });
 
   const statusMut = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      api.post(`/hcm/recruiting/referrals/${id}/status`, { status }),
+    mutationFn: ({ id, status }: { id: string; status: string }) => hcmApi.recruiting.referrals.setStatus(id, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recruiting-referrals'] }),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<ReferralRow>> = [
+    {
+      id: 'referrer',
+      header: 'Referrer employment',
+      sortValue: (r) => r.referrerEmploymentId,
+      cell: (r) => <span className="mono text-2xs">{r.referrerEmploymentId}</span>,
+    },
+    {
+      id: 'bonus',
+      header: 'Bonus',
+      align: 'right',
+      sortValue: (r) => decimalAmount(r.bonusAmount),
+      cell: (r) => (r.bonusAmount != null ? money(decimalAmount(r.bonusAmount)) : <Withheld reason="no_permission" />),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (r) => r.status,
+      cell: (r) => (
+        <StatusChip
+          status={r.status}
+          tone={r.status === 'BonusPaid' ? 'good' : r.status === 'Rejected' ? 'bad' : 'neutral'}
+        />
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (r) => (
+        <div className="flex justify-end gap-1">
+          {(REFERRAL_NEXT[r.status] ?? []).map((next) => (
+            <button key={next} className="btn text-2xs" onClick={() => statusMut.mutate({ id: r.id, status: next })}>
+              {next.toLowerCase()}
+            </button>
+          ))}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <Card
@@ -1033,54 +1016,15 @@ function ReferralsTab() {
       subtitle="An employee-sourced candidate. The bonus is tracked here; payroll pays it once BonusPaid. Withheld unless referrals:financial is held."
       actions={<NewButton label="Record referral" onClick={() => setOpen(true)} />}
     >
-      {referrals.isLoading && <Loading />}
-      {referrals.error && <ErrorBox error={referrals.error} />}
-      {referrals.data && referrals.data.length === 0 && <EmptyState message="No referrals recorded yet." />}
-      {referrals.data && referrals.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Referrer employment</th>
-              <th>Bonus</th>
-              <th>Status</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {referrals.data.map((r) => (
-              <tr key={r.id}>
-                <td className="mono text-2xs">{r.referrerEmploymentId}</td>
-                <td>
-                  {r.bonusAmount != null ? (
-                    `₹${r.bonusAmount.toLocaleString('en-IN')}`
-                  ) : (
-                    <Withheld reason="no_permission" />
-                  )}
-                </td>
-                <td>
-                  <StatusChip
-                    status={r.status}
-                    tone={r.status === 'BonusPaid' ? 'good' : r.status === 'Rejected' ? 'bad' : 'neutral'}
-                  />
-                </td>
-                <td className="text-right">
-                  <div className="flex justify-end gap-1">
-                    {(REFERRAL_NEXT[r.status] ?? []).map((next) => (
-                      <button
-                        key={next}
-                        className="btn text-2xs"
-                        onClick={() => statusMut.mutate({ id: r.id, status: next })}
-                      >
-                        {next.toLowerCase()}
-                      </button>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Referrals"
+        columns={columns}
+        rows={referrals.data ?? []}
+        rowKey={(r) => r.id}
+        loading={referrals.isLoading}
+        error={referrals.error}
+        emptyMessage="No referrals recorded yet."
+      />
 
       <CreateModal
         open={open}
@@ -1088,7 +1032,7 @@ function ReferralsTab() {
         onClose={() => setOpen(false)}
         invalidate={[['recruiting-referrals']]}
         onSubmit={() =>
-          api.post('/hcm/recruiting/referrals', {
+          hcmApi.recruiting.referrals.create({
             referrerEmploymentId: form.referrerEmploymentId,
             candidate: {
               fullName: form.fullName,
@@ -1136,31 +1080,67 @@ function ReferralsTab() {
 // Background verification
 // ---------------------------------------------------------------------------
 
-interface BgvRow {
-  id: string;
-  applicationId: string | null;
-  employmentId: string | null;
-  vendor: string;
-  checks: string[];
-  status: string;
-  outcome: string | null;
-}
-
 function BgvTab() {
   const qc = useQueryClient();
   const applications = useApplications();
   const [open, setOpen] = useState(false);
   const bgvs = useQuery({
     queryKey: ['recruiting-bgv'],
-    queryFn: () => api.get<BgvRow[]>('/hcm/recruiting/background-verifications'),
+    queryFn: () => hcmApi.recruiting.bgv.list(),
   });
   const [form, setForm] = useState({ applicationId: '', vendor: '', checks: 'identity, address' });
 
   const updateMut = useMutation({
     mutationFn: ({ id, status, outcome }: { id: string; status: string; outcome?: string }) =>
-      api.patch(`/hcm/recruiting/background-verifications/${id}`, { status, outcome }),
+      hcmApi.recruiting.bgv.update(id, { status, outcome }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recruiting-bgv'] }),
   });
+
+  const columns: ReadonlyArray<DataTableColumn<BgvRow>> = [
+    { id: 'vendor', header: 'Vendor', sortValue: (b) => b.vendor, cell: (b) => b.vendor },
+    {
+      id: 'checks',
+      header: 'Checks',
+      cell: (b) => <span className="text-2xs text-ink-400">{b.checks.join(', ')}</span>,
+    },
+    { id: 'status', header: 'Status', sortValue: (b) => b.status, cell: (b) => <StatusChip status={b.status} /> },
+    {
+      id: 'outcome',
+      header: 'Outcome',
+      sortValue: (b) => b.outcome,
+      cell: (b) =>
+        b.outcome ? (
+          <StatusChip
+            status={b.outcome}
+            tone={b.outcome === 'clear' ? 'good' : b.outcome === 'adverse' ? 'bad' : 'neutral'}
+          />
+        ) : (
+          '—'
+        ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (b) =>
+        b.status !== 'Completed' && (
+          <div className="flex justify-end gap-1">
+            <button
+              className="btn text-2xs"
+              onClick={() => updateMut.mutate({ id: b.id, status: 'Completed', outcome: 'clear' })}
+            >
+              Clear
+            </button>
+            <button
+              className="btn text-2xs"
+              onClick={() => updateMut.mutate({ id: b.id, status: 'Completed', outcome: 'adverse' })}
+            >
+              Adverse
+            </button>
+          </div>
+        ),
+    },
+  ];
 
   return (
     <Card
@@ -1168,61 +1148,15 @@ function BgvTab() {
       subtitle="Run against an application before joining, or an employment just after."
       actions={<NewButton label="Start a check" onClick={() => setOpen(true)} />}
     >
-      {bgvs.isLoading && <Loading />}
-      {bgvs.error && <ErrorBox error={bgvs.error} />}
-      {bgvs.data && bgvs.data.length === 0 && <EmptyState message="No background checks started yet." />}
-      {bgvs.data && bgvs.data.length > 0 && (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Vendor</th>
-              <th>Checks</th>
-              <th>Status</th>
-              <th>Outcome</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {bgvs.data.map((b) => (
-              <tr key={b.id}>
-                <td>{b.vendor}</td>
-                <td className="text-2xs text-ink-400">{b.checks.join(', ')}</td>
-                <td>
-                  <StatusChip status={b.status} />
-                </td>
-                <td>
-                  {b.outcome ? (
-                    <StatusChip
-                      status={b.outcome}
-                      tone={b.outcome === 'clear' ? 'good' : b.outcome === 'adverse' ? 'bad' : 'neutral'}
-                    />
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td className="text-right">
-                  {b.status !== 'Completed' && (
-                    <div className="flex justify-end gap-1">
-                      <button
-                        className="btn text-2xs"
-                        onClick={() => updateMut.mutate({ id: b.id, status: 'Completed', outcome: 'clear' })}
-                      >
-                        Clear
-                      </button>
-                      <button
-                        className="btn text-2xs"
-                        onClick={() => updateMut.mutate({ id: b.id, status: 'Completed', outcome: 'adverse' })}
-                      >
-                        Adverse
-                      </button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <DataTable
+        caption="Background verification checks"
+        columns={columns}
+        rows={bgvs.data ?? []}
+        rowKey={(b) => b.id}
+        loading={bgvs.isLoading}
+        error={bgvs.error}
+        emptyMessage="No background checks started yet."
+      />
 
       <CreateModal
         open={open}
@@ -1230,7 +1164,7 @@ function BgvTab() {
         onClose={() => setOpen(false)}
         invalidate={[['recruiting-bgv']]}
         onSubmit={() =>
-          api.post('/hcm/recruiting/background-verifications', {
+          hcmApi.recruiting.bgv.create({
             applicationId: form.applicationId || undefined,
             vendor: form.vendor,
             checks: form.checks
@@ -1267,22 +1201,18 @@ function BgvTab() {
 // Onboarding
 // ---------------------------------------------------------------------------
 
-interface OnboardingTemplate {
-  id: string;
-  title: string;
-  category: string;
-  assignee: string;
-  dueOffsetDays: number;
-  active: boolean;
-}
-
-interface OnboardingTask {
-  id: string;
-  title: string;
-  assignee: string;
-  dueDate: string | null;
-  status: string;
-}
+const TEMPLATE_COLUMNS: ReadonlyArray<DataTableColumn<OnboardingTemplate>> = [
+  { id: 'title', header: 'Title', sortValue: (t) => t.title, cell: (t) => t.title },
+  { id: 'category', header: 'Category', sortValue: (t) => t.category, cell: (t) => t.category },
+  { id: 'assignee', header: 'Assignee', sortValue: (t) => t.assignee, cell: (t) => <StatusChip status={t.assignee} /> },
+  {
+    id: 'dueOffset',
+    header: 'Due offset',
+    align: 'right',
+    sortValue: (t) => t.dueOffsetDays,
+    cell: (t) => `${t.dueOffsetDays}d`,
+  },
+];
 
 function OnboardingTab() {
   const qc = useQueryClient();
@@ -1290,7 +1220,7 @@ function OnboardingTab() {
   const [employmentId, setEmploymentId] = useState('');
   const templates = useQuery({
     queryKey: ['recruiting-onboarding-templates'],
-    queryFn: () => api.get<OnboardingTemplate[]>('/hcm/recruiting/onboarding-templates'),
+    queryFn: () => hcmApi.recruiting.onboarding.templates(),
   });
   const [form, setForm] = useState({
     title: '',
@@ -1301,15 +1231,57 @@ function OnboardingTab() {
 
   const tasks = useQuery({
     queryKey: ['recruiting-onboarding-tasks', employmentId],
-    queryFn: () => api.get<OnboardingTask[]>(`/hcm/recruiting/onboarding-tasks?employmentId=${employmentId}`),
+    queryFn: () => hcmApi.recruiting.onboarding.tasks(employmentId),
     enabled: !!employmentId,
   });
 
   const complete = useMutation({
-    mutationFn: ({ id, skip }: { id: string; skip: boolean }) =>
-      api.post(`/hcm/recruiting/onboarding-tasks/${id}/complete`, { skip }),
+    mutationFn: ({ id, skip }: { id: string; skip: boolean }) => hcmApi.recruiting.onboarding.completeTask(id, skip),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recruiting-onboarding-tasks', employmentId] }),
   });
+
+  const taskColumns: ReadonlyArray<DataTableColumn<OnboardingTask>> = [
+    { id: 'task', header: 'Task', sortValue: (t) => t.title, cell: (t) => t.title },
+    {
+      id: 'assignee',
+      header: 'Assignee',
+      sortValue: (t) => t.assignee,
+      cell: (t) => <StatusChip status={t.assignee} />,
+    },
+    {
+      id: 'due',
+      header: 'Due',
+      sortValue: (t) => t.dueDate,
+      cell: (t) => (t.dueDate ? date(t.dueDate) : '—'),
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      sortValue: (t) => t.status,
+      cell: (t) => (
+        <StatusChip
+          status={t.status}
+          tone={t.status === 'Done' ? 'good' : t.status === 'Skipped' ? 'bad' : 'neutral'}
+        />
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'right',
+      cell: (t) =>
+        t.status === 'Pending' && (
+          <div className="flex justify-end gap-1">
+            <button className="btn text-2xs" onClick={() => complete.mutate({ id: t.id, skip: false })}>
+              Done
+            </button>
+            <button className="btn text-2xs" onClick={() => complete.mutate({ id: t.id, skip: true })}>
+              Skip
+            </button>
+          </div>
+        ),
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-4">
@@ -1318,32 +1290,15 @@ function OnboardingTab() {
         subtitle="Instantiated onto every new joiner's checklist when they join through Offers → Join &amp; onboard."
         actions={<NewButton label="Add template" onClick={() => setOpen(true)} />}
       >
-        {templates.isLoading && <Loading />}
-        {templates.data && templates.data.length === 0 && <EmptyState message="No onboarding task templates yet." />}
-        {templates.data && templates.data.length > 0 && (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Category</th>
-                <th>Assignee</th>
-                <th>Due offset</th>
-              </tr>
-            </thead>
-            <tbody>
-              {templates.data.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.title}</td>
-                  <td>{t.category}</td>
-                  <td>
-                    <StatusChip status={t.assignee} />
-                  </td>
-                  <td>{t.dueOffsetDays}d</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <DataTable
+          caption="Onboarding task templates"
+          columns={TEMPLATE_COLUMNS}
+          rows={templates.data ?? []}
+          rowKey={(t) => t.id}
+          loading={templates.isLoading}
+          error={templates.error}
+          emptyMessage="No onboarding task templates yet."
+        />
 
         <CreateModal
           open={open}
@@ -1351,7 +1306,7 @@ function OnboardingTab() {
           onClose={() => setOpen(false)}
           invalidate={[['recruiting-onboarding-templates']]}
           onSubmit={() =>
-            api.post('/hcm/recruiting/onboarding-templates', { ...form, dueOffsetDays: Number(form.dueOffsetDays) })
+            hcmApi.recruiting.onboarding.createTemplate({ ...form, dueOffsetDays: Number(form.dueOffsetDays) })
           }
         >
           <TextInput label="Title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} required />
@@ -1385,51 +1340,18 @@ function OnboardingTab() {
           onChange={setEmploymentId}
           placeholder="From People → Employees, or the offer you just joined"
         />
-        {employmentId && tasks.isLoading && <Loading />}
-        {employmentId && tasks.data && tasks.data.length === 0 && (
-          <EmptyState message="No onboarding tasks instantiated for this employment yet." />
-        )}
-        {employmentId && tasks.data && tasks.data.length > 0 && (
-          <table className="table mt-3">
-            <thead>
-              <tr>
-                <th>Task</th>
-                <th>Assignee</th>
-                <th>Due</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.data.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.title}</td>
-                  <td>
-                    <StatusChip status={t.assignee} />
-                  </td>
-                  <td>{t.dueDate ? date(t.dueDate) : '—'}</td>
-                  <td>
-                    <StatusChip
-                      status={t.status}
-                      tone={t.status === 'Done' ? 'good' : t.status === 'Skipped' ? 'bad' : 'neutral'}
-                    />
-                  </td>
-                  <td className="text-right">
-                    {t.status === 'Pending' && (
-                      <div className="flex justify-end gap-1">
-                        <button className="btn text-2xs" onClick={() => complete.mutate({ id: t.id, skip: false })}>
-                          Done
-                        </button>
-                        <button className="btn text-2xs" onClick={() => complete.mutate({ id: t.id, skip: true })}>
-                          Skip
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {employmentId && (
+          <div className="mt-3">
+            <DataTable
+              caption="Onboarding tasks for this employment"
+              columns={taskColumns}
+              rows={tasks.data ?? []}
+              rowKey={(t) => t.id}
+              loading={tasks.isLoading}
+              error={tasks.error}
+              emptyMessage="No onboarding tasks instantiated for this employment yet."
+            />
+          </div>
         )}
       </Card>
     </div>
