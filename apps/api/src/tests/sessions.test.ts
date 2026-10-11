@@ -342,3 +342,34 @@ describe('0.2 fix round 2: lost response and older secrets', () => {
     expect((await refreshWithCookie(s3)).status).toBe(401);
   });
 });
+
+/**
+ * Fix round 3: a lost-response recovery drops the rotated-in secret it never saw
+ * used. If the victim later presents that abandoned secret, a thief must have
+ * recovered the session in its place, so the whole session is revoked.
+ */
+describe('0.2 fix round 3: an abandoned secret proves theft', () => {
+  const ageRotation = (cookieValue: string) =>
+    unscopedPrisma.$executeRawUnsafe(
+      `UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`,
+      sessionIdOf(cookieValue),
+    );
+
+  it('a recovery by a third party is undone when the victim presents the secret it abandoned, and revokes the session', async () => {
+    const stolen = await signInCookie();
+    const victimCookie = cookieValueOf(setCookieOf(await refreshWithCookie(stolen))!);
+    await ageRotation(stolen);
+    // The thief replays the copy it stole, after the grace, before the victim has used its secret.
+    const thiefRecovery = await refreshWithCookie(stolen);
+    expect(thiefRecovery.status).toBe(200);
+    const thiefCookie = cookieValueOf(setCookieOf(thiefRecovery)!);
+
+    expect((await refreshWithCookie(victimCookie)).status).toBe(401);
+    expect((await refreshWithCookie(thiefCookie)).status).toBe(401);
+
+    const rows = await unscopedPrisma.auditRecord.findMany({
+      where: { subjectType: 'session', subjectId: sessionIdOf(stolen), action: 'refresh_reuse' },
+    });
+    expect(rows.map((r) => (r.meta as { reason?: string } | null)?.reason)).toContain('abandoned_secret_presented');
+  });
+});
