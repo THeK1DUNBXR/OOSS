@@ -666,33 +666,41 @@ export async function proposeRenewal(id: string, input: ProposeRenewalInput): Pr
       impact: { domains: [IT_DOMAIN] },
       tx,
     });
+    // The approver is told, or the renewal is flagged as unresolvable, in the same
+    // transaction as the approval step. Outside it, a failed notification left a
+    // pending renewal the approver had not been told about.
+    if (approver?.partyId) {
+      await notify(
+        {
+          recipientPartyId: approver.partyId,
+          priority: 'N3_HIGH',
+          title: `Renewal approval required: ${licence.recordCode ?? id}`,
+          body: `${licence.application.name} — annualised cost ${annualised} ${licence.currency}. Proposed by the requester; the Self-Dealing Bar means they cannot decide it.`,
+          severity: 'S2_WARNING',
+          subjectType: 'approval_step',
+          subjectId: step.id,
+          drillPath: `/it/licences/${id}`,
+        },
+        tx,
+      );
+    } else {
+      await raiseException(
+        {
+          code: 'EX-GOV-001',
+          label: 'Nobody could be found to approve this licence renewal',
+          severity: 'S3_HIGH_RISK',
+          subjectType: 'approval_step',
+          subjectId: step.id,
+          subjectLabel: licence.recordCode ?? id,
+          domain: IT_DOMAIN,
+          detail: `No active Finance Head or chairman affiliation could be resolved to decide ${licence.recordCode ?? id}'s renewal.`,
+          reasonCode: 'approver_unresolved',
+        },
+        tx,
+      );
+    }
     return { step, updated };
   });
-
-  if (approver?.partyId) {
-    await notify({
-      recipientPartyId: approver.partyId,
-      priority: 'N3_HIGH',
-      title: `Renewal approval required: ${licence.recordCode ?? id}`,
-      body: `${licence.application.name} — annualised cost ${annualised} ${licence.currency}. Proposed by the requester; the Self-Dealing Bar means they cannot decide it.`,
-      severity: 'S2_WARNING',
-      subjectType: 'approval_step',
-      subjectId: step.id,
-      drillPath: `/it/licences/${id}`,
-    });
-  } else {
-    await raiseException({
-      code: 'EX-GOV-001',
-      label: 'Nobody could be found to approve this licence renewal',
-      severity: 'S3_HIGH_RISK',
-      subjectType: 'approval_step',
-      subjectId: step.id,
-      subjectLabel: licence.recordCode ?? id,
-      domain: IT_DOMAIN,
-      detail: `No active Finance Head or chairman affiliation could be resolved to decide ${licence.recordCode ?? id}'s renewal.`,
-      reasonCode: 'approver_unresolved',
-    });
-  }
 
   return {
     applied: false,
