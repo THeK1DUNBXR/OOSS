@@ -84,6 +84,17 @@ import { assertCan } from '../platform/permissions.js';
 import { companyProfile, documentNumbering, supplyingParty } from './companyProfile.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
 import { runHooks } from '../platform/hooks.js';
+import { governedWrite } from '../platform/governedWrite.js';
+import {
+  assertFits,
+  clampZero,
+  lockAndLoadInvoice,
+  lockInvoice,
+  overdrawnRefusal,
+  paiseOf,
+  poundsOf,
+  positionOfInvoice,
+} from './allocation.js';
 
 // ---------------------------------------------------------------------------
 // Input
@@ -751,18 +762,23 @@ export async function createInvoice(input: InvoiceInput) {
   // of what was asked for, the same way `paymentType` below is derived rather
   // than trusted.
   const courseFee = isCourseFeeInvoice(input);
+  // Read before the transaction: the profile goes through the global client,
+  // which refuses inside one. The numbers are taken inside it, so a failed
+  // write gives its number back (documentNumber.ts).
   const numbering = await documentNumbering();
-  const recordCode = issue
-    ? await nextDocumentNumber(
-        courseFee ? DOCUMENT_SERIES.tempInvoice : DOCUMENT_SERIES.invoice,
-        numbering.prefix,
-        issuedDate,
-        numbering.yearFormat,
-      )
-    : null;
-  const draftReference = await nextRecordCode('DRF');
 
-  const invoice = await prisma.$transaction(async (tx) => {
+  const { invoice, recordCode, draftReference } = await prisma.$transaction(async (tx) => {
+    const recordCode = issue
+      ? await nextDocumentNumber(
+          tx,
+          courseFee ? DOCUMENT_SERIES.tempInvoice : DOCUMENT_SERIES.invoice,
+          numbering.prefix,
+          issuedDate,
+          numbering.yearFormat,
+        )
+      : null;
+    const draftReference = await nextRecordCode('DRF', undefined, tx);
+
     const created = await tx.invoice.create({
       data: {
         tenantId: auth.tenantId,
@@ -797,7 +813,7 @@ export async function createInvoice(input: InvoiceInput) {
       },
     });
     await writeLines(tx, created.id, priced);
-    return created;
+    return { invoice: created, recordCode, draftReference };
   });
 
   // GST classification rules and e-invoicing readiness attach here too
@@ -1006,6 +1022,7 @@ export async function issueInvoiceDraft(
   invoiceId: string,
   options: { issuedDate?: Date; payment?: CollectedPaymentInput | null } = {},
 ) {
+  const auth = currentAuth();
   const existing = await loadForWrite(invoiceId, 'edit');
   if (existing.status !== 'draft') {
     throw ApiError.unprocessable(`${invoiceLabel(existing)} is already ${existing.status}.`);
@@ -1025,33 +1042,51 @@ export async function issueInvoiceDraft(
   // as the status means the two cannot come apart. A course-fee draft draws
   // from the `temp` series instead — see `createInvoice`.
   const numbering = await documentNumbering();
-  const recordCode =
-    existing.recordCode ??
-    (await nextDocumentNumber(
-      isCourseFeeInvoice(existing) ? DOCUMENT_SERIES.tempInvoice : DOCUMENT_SERIES.invoice,
-      numbering.prefix,
-      issuedDate,
-      numbering.yearFormat,
-    ));
+  const issued = await governedWrite(async (tx) => {
+    // Re-read under the lock. Two issues of one draft can both pass the status
+    // check above; without this the loser takes a number and then overwrites the
+    // winner's, and the number it took is a hole in the series.
+    await lockInvoice(tx, auth.tenantId, invoiceId);
+    const current = await tx.invoice.findFirst({
+      where: { id: invoiceId, tenantId: auth.tenantId },
+      select: { status: true, recordCode: true },
+    });
+    if (current?.status !== 'draft') {
+      throw ApiError.unprocessable(`${invoiceLabel(existing)} is already ${current?.status ?? 'gone'}.`);
+    }
 
-  const issued = await prisma.invoice.update({
-    where: { id: invoiceId },
-    data: { status: 'issued', issuedDate, recordCode },
-  });
+    const recordCode =
+      current.recordCode ??
+      (await nextDocumentNumber(
+        tx,
+        isCourseFeeInvoice(existing) ? DOCUMENT_SERIES.tempInvoice : DOCUMENT_SERIES.invoice,
+        numbering.prefix,
+        issuedDate,
+        numbering.yearFormat,
+      ));
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'invoice',
-    subjectId: invoiceId,
-    before: { status: 'draft', recordCode: existing.recordCode },
-    after: { status: 'issued', issuedDate, recordCode },
-  });
-  await emit({
-    name: EVENTS.INVOICE_ISSUED,
-    subject: { entityType: 'invoice', entityId: invoiceId, recordCode },
-    newState: { total: num(issued.grandTotal), dueDate: issued.dueDate, from: existing.draftReference },
-    impact: { domains: ['fin'] },
-    confidentiality: 'confidential',
+    const updated = await tx.invoice.update({
+      where: { id: invoiceId },
+      data: { status: 'issued', issuedDate, recordCode },
+    });
+
+    await auditWrite({
+      tx,
+      action: 'update',
+      subjectType: 'invoice',
+      subjectId: invoiceId,
+      before: { status: 'draft', recordCode: existing.recordCode },
+      after: { status: 'issued', issuedDate, recordCode },
+    });
+    await emit({
+      tx,
+      name: EVENTS.INVOICE_ISSUED,
+      subject: { entityType: 'invoice', entityId: invoiceId, recordCode },
+      newState: { total: num(updated.grandTotal), dueDate: updated.dueDate, from: existing.draftReference },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+    });
+    return updated;
   });
 
   const collected =
@@ -1158,16 +1193,15 @@ export async function collectInvoicePayment(
     throw ApiError.unprocessable(`${invoiceLabel(invoice)} is void. Nothing can be collected against it.`);
   }
 
-  const totals = totalsOf(invoice);
+  // Exact paise from the Decimal columns, not totalsOf: its float sums are what
+  // this path must not round.
+  const position = positionOfInvoice(invoice);
   const amount = round2(input.amount);
   if (amount <= 0) throw ApiError.badRequest('A payment has to be for something.');
-  if (amount > totals.outstanding + 0.001) {
-    throw ApiError.unprocessable(
-      `₹${amount.toFixed(2)} is more than the ₹${totals.outstanding.toFixed(2)} still outstanding on ${invoiceLabel(invoice)}. ` +
-        'Take the balance, or record the excess as a payment on its own and allocate it to the next invoice.',
-      { outstanding: totals.outstanding, offered: amount },
-    );
-  }
+  // The early answer, from the balance as loaded. The answer that counts is the
+  // one under the invoice lock below: another collection may commit between here
+  // and the lock.
+  assertFits(paiseOf(amount), position.outstanding, overdrawnRefusal(invoiceLabel(invoice), amount));
   if (!input.mode) {
     throw ApiError.badRequest('Say how the money was taken. It is printed on the invoice.');
   }
@@ -1192,22 +1226,40 @@ export async function collectInvoicePayment(
     );
   }
 
-  const paymentCode = await nextRecordCode('PAY');
-  // The receipt is a document the customer is handed, so it is numbered in the
-  // company's series. The payment behind it is an internal fact and keeps a
-  // record code.
+  // The company's numbering profile goes through the global client, which
+  // refuses inside a transaction, so it is read here.
   const numbering = await documentNumbering();
-  const receiptCode = await nextDocumentNumber(
-    DOCUMENT_SERIES.receipt,
-    numbering.prefix,
-    receivedAt,
-    numbering.yearFormat,
-  );
-  const allocated = round2(totals.allocated + amount);
-  const balanceAfter = round2(Math.max(totals.payable - allocated - totals.creditNoted, 0));
-  const settled = allocated + totals.creditNoted >= totals.payable - 0.001;
+  const amountPaise = paiseOf(amount);
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await governedWrite(async (tx) => {
+    // The position is read after the lock is granted. Under READ COMMITTED a
+    // statement issued now sees every receipt committed before the lock, so two
+    // parallel collections cannot both pass against the same balance.
+    const locked = await lockAndLoadInvoice(tx, { tenantId: auth.tenantId, invoiceId: invoice.id });
+    if (locked.status === 'void') {
+      throw ApiError.unprocessable(`${invoiceLabel(invoice)} is void. Nothing can be collected against it.`);
+    }
+    const position = positionOfInvoice(locked);
+    assertFits(amountPaise, position.outstanding, overdrawnRefusal(invoiceLabel(invoice), amount));
+
+    // The payment keeps a record code. The receipt is the document the customer
+    // is handed, so it is numbered in the company's series. Both are taken here,
+    // so a rollback gives both numbers back.
+    const paymentCode = await nextRecordCode('PAY', undefined, tx);
+    const receiptCode = await nextDocumentNumber(
+      tx,
+      DOCUMENT_SERIES.receipt,
+      numbering.prefix,
+      receivedAt,
+      numbering.yearFormat,
+    );
+    const allocatedPaise = position.allocated + amountPaise;
+    const balanceAfterPaise = clampZero(position.payable - allocatedPaise - position.creditNoted);
+    const settled = allocatedPaise + position.creditNoted >= position.payable;
+    const allocated = poundsOf(allocatedPaise);
+    const balanceAfter = poundsOf(balanceAfterPaise);
+    const payable = poundsOf(position.payable);
+
     const payment = await tx.payment.create({
       data: {
         tenantId: auth.tenantId,
@@ -1238,7 +1290,7 @@ export async function collectInvoicePayment(
         allocatedAmount: amount,
         allocatedAt: receivedAt,
         allocatedById: auth.partyId,
-        subjectTotal: totals.payable,
+        subjectTotal: payable,
         balanceAfter,
         paymentMode: input.mode,
         paymentReference: input.reference?.trim() || null,
@@ -1257,7 +1309,7 @@ export async function collectInvoicePayment(
         // instalment's own receipt is what states it.
         ...(options.atIssue
           ? {
-              paymentType: paymentTypeFor(totals.payable, amount),
+              paymentType: paymentTypeFor(payable, amount),
               amountPayableNow: amount,
               paymentMode: input.mode,
               paymentReference: input.reference?.trim() || null,
@@ -1265,70 +1317,77 @@ export async function collectInvoicePayment(
           : {}),
       },
     });
-    return { payment, receipt, invoice: updated };
-  });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'payment',
-    subjectId: result.payment.id,
-    after: { recordCode: paymentCode, amount, mode: input.mode, against: invoiceLabel(invoice) },
-  });
-  await auditWrite({
-    action: 'create',
-    subjectType: 'receipt',
-    subjectId: result.receipt.id,
-    after: { recordCode: receiptCode, amount, against: invoiceLabel(invoice), balanceAfter },
-  });
-
-  await emit({
-    name: EVENTS.RECEIPT_ISSUED,
-    subject: { entityType: 'receipt', entityId: result.receipt.id, recordCode: receiptCode },
-    related: [
-      { relation: 'against', entityType: 'invoice', entityId: invoice.id },
-      { relation: 'from', entityType: 'payment', entityId: result.payment.id },
-    ],
-    newState: { amount, mode: input.mode, subjectTotal: totals.payable, balanceAfter, settled },
-    impact: {
-      domains: ['fin'],
-      materiality: { measure: 'payment_amount', value: amount, currency: invoice.currency },
-    },
-    confidentiality: 'confidential',
-  });
-
-  await emit({
-    name: EVENTS.INVOICE_PAYMENT_COLLECTED,
-    subject: { entityType: 'invoice', entityId: invoice.id, recordCode: invoiceLabel(invoice) },
-    related: [
-      { relation: 'paid_by', entityType: 'payment', entityId: result.payment.id },
-      { relation: 'receipted_by', entityType: 'receipt', entityId: result.receipt.id },
-    ],
-    newState: {
-      amount,
-      mode: input.mode,
-      receipt: receiptCode,
-      allocated,
-      outstanding: balanceAfter,
-      settled,
-      // The invoice itself was not restated unless this was the payment it was
-      // handed over with.
-      declarationWritten: Boolean(options.atIssue),
-    },
-    impact: {
-      domains: ['fin'],
-      materiality: { measure: 'payment_amount', value: amount, currency: invoice.currency },
-    },
-    confidentiality: 'confidential',
-  });
-
-  if (settled) {
-    await emit({
-      name: EVENTS.INVOICE_SETTLED,
-      subject: { entityType: 'invoice', entityId: invoice.id, recordCode: invoiceLabel(invoice) },
-      newState: { status: 'settled', allocated },
-      impact: { domains: ['fin'] },
+    await auditWrite({
+      tx,
+      action: 'create',
+      subjectType: 'payment',
+      subjectId: payment.id,
+      after: { recordCode: paymentCode, amount, mode: input.mode, against: invoiceLabel(invoice) },
     });
-  }
+    await auditWrite({
+      tx,
+      action: 'create',
+      subjectType: 'receipt',
+      subjectId: receipt.id,
+      after: { recordCode: receiptCode, amount, against: invoiceLabel(invoice), balanceAfter },
+    });
+
+    await emit({
+      tx,
+      name: EVENTS.RECEIPT_ISSUED,
+      subject: { entityType: 'receipt', entityId: receipt.id, recordCode: receiptCode },
+      related: [
+        { relation: 'against', entityType: 'invoice', entityId: invoice.id },
+        { relation: 'from', entityType: 'payment', entityId: payment.id },
+      ],
+      newState: { amount, mode: input.mode, subjectTotal: payable, balanceAfter, settled },
+      impact: {
+        domains: ['fin'],
+        materiality: { measure: 'payment_amount', value: amount, currency: invoice.currency },
+      },
+      confidentiality: 'confidential',
+    });
+
+    await emit({
+      tx,
+      name: EVENTS.INVOICE_PAYMENT_COLLECTED,
+      subject: { entityType: 'invoice', entityId: invoice.id, recordCode: invoiceLabel(invoice) },
+      related: [
+        { relation: 'paid_by', entityType: 'payment', entityId: payment.id },
+        { relation: 'receipted_by', entityType: 'receipt', entityId: receipt.id },
+      ],
+      newState: {
+        amount,
+        mode: input.mode,
+        receipt: receiptCode,
+        allocated,
+        outstanding: balanceAfter,
+        settled,
+        // The invoice itself was not restated unless this was the payment it was
+        // handed over with.
+        declarationWritten: Boolean(options.atIssue),
+      },
+      impact: {
+        domains: ['fin'],
+        materiality: { measure: 'payment_amount', value: amount, currency: invoice.currency },
+      },
+      confidentiality: 'confidential',
+    });
+
+    if (settled) {
+      await emit({
+        tx,
+        name: EVENTS.INVOICE_SETTLED,
+        subject: { entityType: 'invoice', entityId: invoice.id, recordCode: invoiceLabel(invoice) },
+        newState: { status: 'settled', allocated },
+        impact: { domains: ['fin'] },
+      });
+    }
+
+    return { payment, receipt, invoice: updated, allocated, balanceAfter, payable, settled };
+  });
+  const { settled } = result;
 
   await rehydrateReceivablesFor(invoice.organizationId ?? invoice.accountId);
 
@@ -1358,7 +1417,7 @@ export async function collectInvoicePayment(
     payment: result.payment,
     receipt: result.receipt,
     invoice: result.invoice,
-    totals: { payable: totals.payable, allocated, outstanding: balanceAfter },
+    totals: { payable: result.payable, allocated: result.allocated, outstanding: result.balanceAfter },
     /**
      * Whether the instalments are done. Kept alongside `finalInvoice` below
      * rather than removed: it is the fact that decided whether one was raised.

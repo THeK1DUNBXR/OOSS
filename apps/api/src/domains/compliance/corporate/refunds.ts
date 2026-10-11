@@ -51,19 +51,23 @@ export async function requestRefund(input: {
   }
 
   const prefix = await documentPrefix();
-  const recordCode = await nextDocumentNumber(DOCUMENT_SERIES.refund, prefix);
-
-  const refund = await prisma.refund.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      invoiceId: input.invoiceId ?? null,
-      receiptId: input.receiptId ?? null,
-      amount: input.amount,
-      reason: input.reason,
-      status: 'requested',
-      requestedById: auth.partyId!,
-    },
+  // The number and the row it names commit together. Taken on the global client it
+  // stayed taken when this write was refused, and the series had a hole in it.
+  const { recordCode, refund } = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextDocumentNumber(tx, DOCUMENT_SERIES.refund, prefix);
+    const refund = await tx.refund.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        invoiceId: input.invoiceId ?? null,
+        receiptId: input.receiptId ?? null,
+        amount: input.amount,
+        reason: input.reason,
+        status: 'requested',
+        requestedById: auth.partyId!,
+      },
+    });
+    return { recordCode, refund };
   });
 
   await auditWrite({

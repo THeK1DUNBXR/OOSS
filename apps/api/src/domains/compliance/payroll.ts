@@ -650,12 +650,6 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
     if (!instruction || instruction.computedFrom == null || instruction.payslipNumber) continue;
 
     const employment = instruction.employmentRelationship;
-    const number = await nextDocumentNumber(
-      DOCUMENT_SERIES.payslip,
-      numbering.prefix,
-      new Date(),
-      numbering.yearFormat,
-    );
 
     const snapshot = {
       employer: {
@@ -689,19 +683,29 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
       bankLast4: readRegulated(employment.bankAccountNumber)?.slice(-4) ?? null,
     };
 
-    const payslip = await prisma.payslip.create({
-      data: {
-        tenantId: auth.tenantId,
-        instructionId: instruction.id,
-        employmentRelationshipId: employment.id,
-        payPeriod,
-        number,
-        snapshot: snapshot as never,
-      },
-    });
-    await prisma.payrollInstruction.update({
-      where: { id: instruction.id },
-      data: { payslipNumber: number, payslipIssuedAt: payslip.issuedAt },
+    const payslip = await prisma.$transaction(async (tx) => {
+      const number = await nextDocumentNumber(
+        tx,
+        DOCUMENT_SERIES.payslip,
+        numbering.prefix,
+        new Date(),
+        numbering.yearFormat,
+      );
+      const created = await tx.payslip.create({
+        data: {
+          tenantId: auth.tenantId,
+          instructionId: instruction.id,
+          employmentRelationshipId: employment.id,
+          payPeriod,
+          number,
+          snapshot: snapshot as never,
+        },
+      });
+      await tx.payrollInstruction.update({
+        where: { id: instruction.id },
+        data: { payslipNumber: number, payslipIssuedAt: created.issuedAt },
+      });
+      return created;
     });
     await auditWrite({ action: 'create', subjectType: 'payslip', subjectId: payslip.id, after: payslip });
   }

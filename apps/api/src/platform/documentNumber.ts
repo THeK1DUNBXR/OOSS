@@ -27,7 +27,8 @@
  */
 
 import { financialYearOf, istFinancialYearStart, type RecordTypeCode } from '@kaizen/shared';
-import { prisma } from './db.js';
+import { randomUUID } from 'node:crypto';
+import { prisma, type DbTx } from './db.js';
 import { currentTenantId } from './context.js';
 import { ApiError } from './errors.js';
 
@@ -124,13 +125,26 @@ function sequenceKey(series: DocumentSeries): RecordTypeCode {
 }
 
 /**
- * Allocates the next number in a series.
+ * Allocates the next number in a series, inside the caller's transaction.
+ *
+ * The number is taken in `tx` because the document it names is written in `tx`.
+ * Taken on the global client it committed by itself, so a document whose write
+ * then failed left its number behind and the series had a hole in it: a tax
+ * invoice series with a gap is a question the return cannot answer (FX-40 and
+ * the gap policy are the accountant's, not this code's). Here the increment
+ * rolls back with the write, and the row lock it takes holds until commit, so
+ * two issuers in one series serialise rather than read the same counter.
+ *
+ * The increment is a single INSERT ... ON CONFLICT rather than a Prisma upsert:
+ * upsert reads, then inserts, and two first-ever numbers in a new year could both
+ * see no row and one would fail on the unique key.
  *
  * Takes the prefix as an argument rather than reading the profile, so that the
  * caller has already decided which company this is on behalf of and this cannot
  * quietly read a different one inside a transaction.
  */
 export async function nextDocumentNumber(
+  tx: DbTx,
   series: DocumentSeries,
   prefix: string,
   at: Date = new Date(),
@@ -139,13 +153,13 @@ export async function nextDocumentNumber(
   const tenantId = currentTenantId();
   const year = financialYearStart(at);
 
-  const row = await prisma.recordSequence.upsert({
-    where: { tenantId_entityType_year: { tenantId, entityType: sequenceKey(series), year } },
-    create: { tenantId, entityType: sequenceKey(series), year, nextSequence: 2 },
-    update: { nextSequence: { increment: 1 } },
-    select: { nextSequence: true },
-  });
-  const seq = row.nextSequence - 1;
+  const rows = await tx.$queryRaw<{ nextSequence: number }[]>`
+    INSERT INTO "record_sequences" ("id", "tenantId", "entityType", "year", "nextSequence")
+    VALUES (${randomUUID()}, ${tenantId}, ${sequenceKey(series)}, ${year}, 2)
+    ON CONFLICT ("tenantId", "entityType", "year")
+    DO UPDATE SET "nextSequence" = "record_sequences"."nextSequence" + 1
+    RETURNING "nextSequence"`;
+  const seq = rows[0]!.nextSequence - 1;
 
   // Three digits, and more when a company needs more. Padding is a convention,
   // not a limit: a company issuing its thousandth invoice gets `1000` rather
