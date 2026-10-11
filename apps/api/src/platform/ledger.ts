@@ -1,4 +1,4 @@
-import { EVENTS, formatMinor, formatRecordCode, istFinancialYear, istMonthKey } from '@kaizen/shared';
+import { EVENTS, formatMinor, formatRecordCode, istCivilDay, istFinancialYear, istMonthKey } from '@kaizen/shared';
 import { Prisma } from '@prisma/client';
 import { prisma, type DbTx } from './db.js';
 import { currentAuth } from './context.js';
@@ -345,6 +345,11 @@ export async function reverse(entryId: string, reason: string) {
   });
 }
 
+/**
+ * The balance of an account on and before an IST civil day. `asOf` may be an
+ * instant: it is read as the IST day it falls on, so 00:10 IST on 1 April
+ * includes the entries of 1 April, not those of 31 March (CLAUDE.md rule 3).
+ */
 export async function balanceOf(
   accountId: string,
   asOf: Date,
@@ -356,7 +361,7 @@ export async function balanceOf(
     where: {
       tenantId: auth.tenantId,
       accountId,
-      entry: { entryDate: { lte: asOf }, status: { in: ['posted', 'reversed'] } },
+      entry: { entryDate: { lte: istCivilDay(asOf) }, status: { in: ['posted', 'reversed'] } },
       ...(dimensions.division ? { division: dimensions.division } : {}),
       ...(dimensions.partyId ? { partyId: dimensions.partyId } : {}),
       ...(dimensions.costCentreId ? { costCentreId: dimensions.costCentreId } : {}),

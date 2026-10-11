@@ -34,7 +34,7 @@ import {
   type Division,
   type GstLineInput,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma, num } from '../platform/db.js';
+import { prisma, unscopedPrisma, num, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -292,10 +292,30 @@ export async function groupCounterpartyOptions(): Promise<Array<{ tenantId: stri
 }
 
 export async function recordTransaction(input: TransactionInput) {
-  const auth = currentAuth();
+  await checkTransactionAllowed(input);
+  return writeTransaction(input);
+}
+
+/**
+ * The permission check and the period veto for a cashbook entry, run before any
+ * transaction opens: an interactive transaction cannot call the hooks through
+ * the scoped client.
+ */
+export async function checkTransactionAllowed(input: Pick<TransactionInput, 'txnDate' | 'source'>) {
   await assertCan({ resource: 'transactions', verb: 'create' });
   // A closed accounting period vetoes the entry here (docs/plan/compliance.md, D).
   await runHooks('transaction.before_record', { txnDate: input.txnDate, source: input.source ?? 'manual' });
+}
+
+/**
+ * The write half of recordTransaction. A caller already inside an interactive
+ * transaction passes its `tx` (payRefund, FX-33): the scoped client refuses to
+ * run inside one, and the permission check and the period veto have already
+ * run outside it, so nothing here needs the outer client.
+ */
+export async function writeTransaction(input: TransactionInput, tx?: DbTx) {
+  const auth = currentAuth();
+  const db = tx ?? (prisma as unknown as DbTx);
 
   if (input.amount <= 0) {
     // The direction carries the sign, so a negative amount would be a second,
@@ -303,7 +323,7 @@ export async function recordTransaction(input: TransactionInput) {
     throw ApiError.unprocessable('An amount is always positive — `direction` says which way the money went.');
   }
 
-  const account = await prisma.ledgerAccount.findFirst({
+  const account = await db.ledgerAccount.findFirst({
     where: { id: input.accountId, tenantId: auth.tenantId, deletedAt: null },
   });
   if (!account) throw ApiError.notFound('Account');
@@ -313,7 +333,7 @@ export async function recordTransaction(input: TransactionInput) {
   // cannot be recovered from the category afterwards.
   let division = input.division ?? null;
   if (!division && input.categoryId) {
-    const category = await prisma.ledgerCategory.findFirst({
+    const category = await db.ledgerCategory.findFirst({
       where: { id: input.categoryId, tenantId: auth.tenantId },
     });
     division = category?.defaultDivision ?? null;
@@ -325,8 +345,8 @@ export async function recordTransaction(input: TransactionInput) {
     );
   }
 
-  const recordCode = await nextRecordCode('TXN');
-  const txn = await prisma.transaction.create({
+  const recordCode = await nextRecordCode('TXN', new Date(), db);
+  const txn = await db.transaction.create({
     data: {
       tenantId: auth.tenantId,
       recordCode,
@@ -363,6 +383,7 @@ export async function recordTransaction(input: TransactionInput) {
       categoryId: input.categoryId ?? null,
       txnDate: input.txnDate,
     },
+    tx,
   });
 
   await emit({
@@ -377,6 +398,7 @@ export async function recordTransaction(input: TransactionInput) {
     },
     confidentiality: 'confidential',
     impact: { domains: ['fin'] },
+    tx,
   });
 
   return txn;

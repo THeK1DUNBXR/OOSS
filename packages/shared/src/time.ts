@@ -42,6 +42,16 @@ export function istDateKey(date: Date): string {
 }
 
 /**
+ * The IST civil date of an instant, stored the way a `@db.Date` column and the
+ * journal's entry_date hold it: UTC midnight of that calendar date. Comparing a
+ * date column with the raw instant reads 00:00 to 05:30 IST on a day as the
+ * day before, which moves an entry into the previous period.
+ */
+export function istCivilDay(date: Date): Date {
+  return new Date(`${istDateKey(date)}T00:00:00.000Z`);
+}
+
+/**
  * Minutes since IST midnight for an instant: the wall-clock reading a punch
  * or a shift's HH:MM is compared against. IST has no DST, so a fixed offset
  * is exact; the double modulo keeps pre-epoch instants in range.

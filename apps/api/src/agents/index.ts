@@ -17,6 +17,7 @@ import {
   AI_TOUCHPOINTS,
   EVENTS,
   HARD_PROHIBITIONS,
+  formatMinor,
   isProhibitedForAgent,
   type AiTierCode,
 } from '@kaizen/shared';
@@ -24,7 +25,7 @@ import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
-import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
+import { assertCan, resolveAuthorityCeilingPaise } from '../platform/permissions.js';
 import { notify } from '../platform/exceptions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { governedWrite } from '../platform/governedWrite.js';
@@ -54,7 +55,8 @@ export interface ProposeInput {
   proposal: Record<string, unknown>;
   rationale: string;
   /** For actions with a magnitude, checked against the agent's own ceiling. */
-  magnitude?: { authorityClass: string; value: number } | null;
+  /** Paise (bigint). A JavaScript number is refused: the ceiling comparison is exact only in paise. */
+  magnitude?: { authorityClass: string; value: bigint } | null;
   onBehalfOfPartyId?: string | null;
 }
 
@@ -128,7 +130,10 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
   // HOW MUCH: the agent's own ceiling, resolved from its own AUTHORITY_GRANT —
   // never inherited from a human's.
   if (input.magnitude) {
-    const ceiling = await resolveAuthorityCeiling(
+    if (typeof input.magnitude.value !== 'bigint') {
+      throw ApiError.badRequest('A magnitude is bigint paise; a JavaScript number is refused (FX-32).');
+    }
+    const ceiling = await resolveAuthorityCeilingPaise(
       { ...auth, agentId: agent.id, partyId: null },
       input.magnitude.authorityClass,
     );
@@ -139,8 +144,8 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
         newState: {
           agentKey: input.agentKey,
           authorityClass: input.magnitude.authorityClass,
-          ceiling,
-          attempted: input.magnitude.value,
+          ceiling: ceiling === null ? null : formatMinor(ceiling),
+          attempted: formatMinor(input.magnitude.value),
         },
         impact: { domains: ['agt', 'gov'], severity: 'S2_WARNING' },
       });
@@ -148,7 +153,7 @@ export async function propose(input: ProposeInput): Promise<ProposeResult> {
         agent.id,
         input,
         tier,
-        `Authority shortfall: ${input.magnitude.value} exceeds the agent's ${input.magnitude.authorityClass} ceiling${ceiling === null ? ' (none held)' : ` of ${ceiling}`}.`,
+        `Authority shortfall: ${formatMinor(input.magnitude.value)} exceeds the agent's ${input.magnitude.authorityClass} ceiling${ceiling === null ? ' (none held)' : ` of ${formatMinor(ceiling)}`}.`,
       );
     }
   }

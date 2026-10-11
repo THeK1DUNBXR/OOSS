@@ -16,7 +16,7 @@
  * There is no AI disposition authority anywhere on this surface.
  */
 
-import { EVENTS, EVIDENCE_PACK_COMPONENTS, type DecisionDisposition } from '@kaizen/shared';
+import { EVENTS, EVIDENCE_PACK_COMPONENTS, parseMinor, type DecisionDisposition } from '@kaizen/shared';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
@@ -267,7 +267,7 @@ export async function disposeDecision(input: DispositionInput) {
         verb: 'approve',
         magnitude: {
           authorityClass: decision.authorityBasis,
-          value: num(decision.requiredAuthorityValue)!,
+          value: parseMinor(decision.requiredAuthorityValue.toFixed(2)),
           currency: decision.currency ?? 'INR',
         },
       });

@@ -326,7 +326,7 @@ describe('CRM-FOUND-003 — five-axis evaluation at query time', () => {
         const decision = await evaluate({
           resource: 'leads',
           verb: 'edit',
-          magnitude: { authorityClass: 'mou_approval', value: 1 },
+          magnitude: { authorityClass: 'mou_approval', value: 100n },
         });
         expect(decision.allowed).toBe(false);
         expect(decision.deniedBy).toBe('HOW_MUCH');
