@@ -113,14 +113,14 @@ Moved to "After Phase 1: hosting and operations (deferred)" below. The non-owner
 ### Wave 6: spine and onboarding
 
 - Commitment record.
-- Case record.
+- Case record. **Clarified by round 21, item 1:** the customer Case record stays in this wave. The ROADMAP row that put it out of Phase 0 is superseded.
 - One document store.
 - Typed task source.
 - Decision foreign keys.
 - Founder exception view.
 - Z3 continuity and handover gate.
 - **P7 onboarding state machine** and per-state packs.
-  - BLOCKED-BY 3.1 sign-off.
+  - ~~BLOCKED-BY 3.1 sign-off.~~ **Superseded by round 21, item 4:** 3.1 sign-off is not a blocker for the onboarding state machine, matching round 19a (c). Statutory rules stay gated until the accountant approves them.
 - Level-based access system, assigned at onboarding.
 - Thresholds, reserved matters and alternates are entered as data during onboarding ("tbd during onboard").
 - ~~A static public IP exists.~~ **DEFERRED (superseded by round 18b, item 3):** hosting.
@@ -142,7 +142,7 @@ Stop rule for each sub-phase: its items are merged and its listed tests pass. Te
 - Definition rows.
 - A pure transition function, persisted with the decision row and an audit row.
 - Requester exclusion. The founder is exempt (DECISIONS.md, round 10). The draft test "maker equals checker is refused" must exempt the founder level.
-- Delegation with an expiry and a named alternate. Escalate after 24 hours of absence.
+- Delegation with an expiry and a named alternate. Escalate after 24 hours of absence. **Owned here (round 21, item 2):** delegation and the 24-hour absence test are Phase 1A items. The 24-hour founder-absence scenario is no longer a Phase 0 Wave 6 exit criterion.
 - Typed thresholds, stored as data.
 - Prerequisites: FX-01, FX-32.
 
@@ -251,7 +251,7 @@ The level template ships with the app. ~~Editable per tenant at onboarding.~~ **
   - Expense receipt storage location.
   - D-11 numbers after the one-month measurement.
   - Legal checks before the first outside user: Resend data hosting, and chat retention (D-14).
-- Still open after round 18b (DECISIONS.md, 2026-10-11): hosting, caching and routing (after Phase 1); whether onboarding and level mapping stay in Phase 0; questionnaire approval; statutory sign-off holder and IT owner (tbd during onboard); D-11 numbers; Resend data-hosting and chat-retention legal checks.
+- Still open after round 18b (DECISIONS.md, 2026-10-11): hosting, caching and routing (after Phase 1); ~~whether onboarding and level mapping stay in Phase 0~~ **closed by round 21, item 3:** they stay in Phase 0; questionnaire approval; statutory sign-off holder and IT owner (tbd during onboard); D-11 numbers; Resend data-hosting and chat-retention legal checks.
 - Phase 0 is mostly new build, with no effort estimates.
 - Item 3.1 (statutory master pack, Wave 1) is pulled early by the owner, overriding the "do not reorder" rule.
 - The founder's exemption from maker-checker is a segregation-of-duties risk for founder-only classes (payroll run, large payments, statutory filings).
