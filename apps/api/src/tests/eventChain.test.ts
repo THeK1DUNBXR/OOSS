@@ -10,7 +10,7 @@ import { ulid } from 'ulid';
 import { EVENTS } from '@kaizen/shared';
 import { asSystem } from '../platform/context.js';
 import { prisma, unscopedPrisma } from '../platform/db.js';
-import { chainBodyOf, computeHash, emit, verifyChain, type ChainFields } from '../platform/eventBus.js';
+import { chainBodyOf, computeHash, computeHashV2, emit, verifyChain, type ChainFields } from '../platform/eventBus.js';
 
 const NAME = EVENTS.PERSON_CREATED;
 
@@ -36,8 +36,8 @@ async function headOf(tenantId: string) {
  * computed from the same `chainBodyOf` the verifier uses, so this only proves
  * the round trip through the database when the intact-chain test passes.
  */
-function fixtureRow(tenantId: string, i: number, prevHash: string | null) {
-  const row: ChainFields & { prevHash: string | null } = {
+function fixtureRow(tenantId: string, i: number, prevHash: string | null, hashVersion = 2) {
+  const row: ChainFields & { prevHash: string | null; hashVersion: number } = {
     eventId: ulid(),
     eventName: NAME,
     eventVersion: 1,
@@ -58,8 +58,23 @@ function fixtureRow(tenantId: string, i: number, prevHash: string | null) {
     correlationId: 'fixture',
     causationId: null,
     prevHash,
+    hashVersion,
   };
-  return { ...row, hash: computeHash(chainBodyOf(row), prevHash) };
+  const hash = hashVersion === 1 ? computeHash(chainBodyOf(row), prevHash) : computeHashV2(chainBodyOf(row), prevHash);
+  return { ...row, hash };
+}
+
+/**
+ * Edits a stored event record the way an attacker with database access would:
+ * with the immutability trigger disabled inside a transaction. The trigger is
+ * re-enabled by the rollback path or the commit, never left off.
+ */
+async function tamperEventRecordBypassingTrigger(tenantId: string, eventId: string, data: Record<string, unknown>) {
+  await unscopedPrisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`ALTER TABLE "event_records" DISABLE TRIGGER "event_record_immutable"`);
+    await tx.eventRecord.updateMany({ where: { tenantId, eventId }, data: data as never });
+    await tx.$executeRawUnsafe(`ALTER TABLE "event_records" ENABLE TRIGGER "event_record_immutable"`);
+  });
 }
 
 async function bulkChain(tenantId: string, n: number): Promise<{ eventId: string; hash: string }[]> {
@@ -198,12 +213,7 @@ describe('0.6 hash chain: FX-81 verifyChain', () => {
       for (let i = 0; i < 3; i++) ids.push((await emit(probe(i))).eventId);
     });
 
-    // The append path is the only writer, and the trail is not immutable at
-    // the database for this table, so an edit is a plain update here.
-    await unscopedPrisma.eventRecord.update({
-      where: { tenantId_eventId_eventName: { tenantId: tid, eventId: ids[1], eventName: NAME } },
-      data: { actorType: 'human' },
-    });
+    await tamperEventRecordBypassingTrigger(tid, ids[1], { actorType: 'human' });
 
     const result = await asSystem(tid, () => verifyChain(tid));
     expect(result.valid).toBe(false);
@@ -219,12 +229,79 @@ describe('0.6 hash chain: FX-81 verifyChain', () => {
     expect(intact).toEqual({ valid: true, checked: 5010, brokenAt: null, complete: true });
 
     const target = written[5008];
-    await unscopedPrisma.eventRecord.update({
-      where: { tenantId_eventId_eventName: { tenantId: tid, eventId: target.eventId, eventName: NAME } },
-      data: { actorType: 'human' },
-    });
+    await tamperEventRecordBypassingTrigger(tid, target.eventId, { actorType: 'human' });
     const tampered = await asSystem(tid, () => verifyChain(tid));
     expect(tampered.valid).toBe(false);
     expect(tampered.brokenAt).toBe(target.eventId);
+  });
+});
+
+describe('0.6 hash chain: hash version 2 and the immutable boundary', () => {
+  it('an edit inside nested newState is detected, because v2 hashes the full body', async () => {
+    // Under v1 the hash replacer kept only top-level keys, so nested content
+    // hashed as {} and this edit passed. The edit below changes nothing a
+    // top-level column shows.
+    const tid = await freshTenant();
+    const ids: string[] = [];
+    await asSystem(tid, async () => {
+      const first = await emit({
+        name: NAME,
+        subject: { entityType: 'person', entityId: 'nested-1' },
+        newState: { amount: 100, lines: [{ account: '4000', paise: 100 }] },
+      });
+      ids.push(first.eventId);
+      ids.push((await emit(probe(1))).eventId);
+    });
+    const stored = await unscopedPrisma.eventRecord.findFirstOrThrow({ where: { tenantId: tid, eventId: ids[0] } });
+    expect(stored.hashVersion).toBe(2);
+
+    await tamperEventRecordBypassingTrigger(tid, ids[0], {
+      newState: { amount: 1, lines: [{ account: '4000', paise: 1 }] },
+    });
+
+    const result = await asSystem(tid, () => verifyChain(tid));
+    expect(result.valid).toBe(false);
+    expect(result.brokenAt).toBe(ids[0]);
+  });
+
+  it('an intact chain that crosses from v1 rows to v2 rows verifies, and the link continues across the change', async () => {
+    // Existing rows keep their v1 hashes; they are not rewritten. New rows are
+    // v2, and the first v2 row must chain onto the last v1 row.
+    const tid = await freshTenant();
+    const rows: Record<string, unknown>[] = [];
+    let prev: string | null = null;
+    for (let i = 0; i < 3; i++) {
+      const r = fixtureRow(tid, i, prev, 1);
+      rows.push({ ...r, impactDomains: ['crm'], source: {} });
+      prev = r.hash;
+    }
+    await unscopedPrisma.eventRecord.createMany({ data: rows as never });
+
+    await asSystem(tid, async () => {
+      await emit(probe(10));
+      await emit(probe(11));
+    });
+
+    const result = await asSystem(tid, () => verifyChain(tid));
+    expect(result).toEqual({ valid: true, checked: 5, brokenAt: null, complete: true });
+    const versions = await unscopedPrisma.eventRecord.findMany({
+      where: { tenantId: tid },
+      orderBy: { seq: 'asc' },
+      select: { hashVersion: true },
+    });
+    expect(versions.map((v) => v.hashVersion)).toEqual([1, 1, 1, 2, 2]);
+  });
+
+  it('event records cannot be updated or deleted, by ORM or by a bypass that leaves the trigger on', async () => {
+    const tid = await freshTenant();
+    await asSystem(tid, () => emit(probe(0)));
+    const rec = await unscopedPrisma.eventRecord.findFirstOrThrow({ where: { tenantId: tid } });
+
+    await expect(
+      unscopedPrisma.eventRecord.update({ where: { id: rec.id }, data: { actorType: 'human' } }),
+    ).rejects.toThrow(/event records are immutable/);
+    await expect(unscopedPrisma.eventRecord.delete({ where: { id: rec.id } })).rejects.toThrow(
+      /event records are immutable/,
+    );
   });
 });
