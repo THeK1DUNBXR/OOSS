@@ -28,6 +28,7 @@ import { campaignDetail, decideItem, openCampaign } from '../domains/it/governan
 import { rejectRegularisation, submitRegularisation } from '../domains/hcm/time.js';
 import { changeForecastCategory } from '../domains/opportunities.js';
 import { decideApprovalStep } from '../platform/approvals.js';
+import { submitResignation } from '../domains/hcm/separations.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { requestClosePeriod, closePeriod } from '../domains/compliance/books.js';
 
@@ -395,5 +396,33 @@ describe('deciding an approval step notifies the requester in the same transacti
     const after = await unscopedPrisma.approvalStep.findUniqueOrThrow({ where: { id: step.id } });
     expect(after.state).toBe(step.state);
     expect(after.state).not.toBe('approved');
+  });
+});
+
+describe('submitting a resignation notifies HR ops in the same transaction', () => {
+  it('when the notification cannot be recorded, no resignation is written', async () => {
+    const DIVYA = 'divya@kaizen.co.in';
+    const user = await unscopedPrisma.user.findFirstOrThrow({ where: { email: DIVYA, tenant: { slug: 'kaizen' } } });
+    const employment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
+      where: { tenantId: TENANT, personId: user.personId },
+    });
+    const before = await unscopedPrisma.resignation.count({
+      where: { tenantId: TENANT, employmentRelationshipId: employment.id },
+    });
+
+    await refuseNotificationInserts();
+    await expectReject(() =>
+      asUser(DIVYA, () =>
+        submitResignation({
+          employmentRelationshipId: employment.id,
+          requestedLastDay: new Date(Date.now() + 30 * 86_400_000),
+          reasonCategory: 'career_growth',
+        }),
+      ),
+    );
+
+    expect(
+      await unscopedPrisma.resignation.count({ where: { tenantId: TENANT, employmentRelationshipId: employment.id } }),
+    ).toBe(before);
   });
 });
