@@ -372,26 +372,35 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
   if (current) return current;
 
   const numbering = await documentNumbering();
-  const recordCode = await prisma.$transaction((tx) =>
-    nextDocumentNumber(tx, DOCUMENT_SERIES.finalInvoice, numbering.prefix, new Date(), numbering.yearFormat),
-  );
-  const final = await prisma.finalInvoice.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      invoiceId,
-      issuedById: auth.partyId,
-      issuedAt: dating.issuedAt,
-      totalPayable: totals.payable,
-      totalReceived,
-      creditNoted: totals.creditNoted,
-      balance,
-      settled: balance <= 0.001,
-      receiptCodes: rows.map((r) => r.recordCode),
-      receiptCount: rows.length,
-      snapshot: { receipts: rows, supersedes: previous.map((p) => p.recordCode) } as never,
-      note: input.note ?? null,
-    },
+  // The number and the row it names commit together. Taken on the global client it
+  // stayed taken when this write was refused, and the series had a hole in it.
+  const { recordCode, final } = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextDocumentNumber(
+      tx,
+      DOCUMENT_SERIES.finalInvoice,
+      numbering.prefix,
+      new Date(),
+      numbering.yearFormat,
+    );
+    const final = await tx.finalInvoice.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        invoiceId,
+        issuedById: auth.partyId,
+        issuedAt: dating.issuedAt,
+        totalPayable: totals.payable,
+        totalReceived,
+        creditNoted: totals.creditNoted,
+        balance,
+        settled: balance <= 0.001,
+        receiptCodes: rows.map((r) => r.recordCode),
+        receiptCount: rows.length,
+        snapshot: { receipts: rows, supersedes: previous.map((p) => p.recordCode) } as never,
+        note: input.note ?? null,
+      },
+    });
+    return { recordCode, final };
   });
 
   for (const old of previous) {
@@ -522,32 +531,41 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
   const balance = round2(Math.max(totals.payable - totalReceived - totals.creditNoted, 0));
 
   const numbering = await documentNumbering();
-  const recordCode = await prisma.$transaction((tx) =>
-    nextDocumentNumber(tx, DOCUMENT_SERIES.finalInvoice, numbering.prefix, new Date(), numbering.yearFormat),
-  );
-  const final = await prisma.finalInvoice.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      invoiceId,
-      issuedById: auth.partyId,
-      issuedAt: dating.issuedAt,
-      totalPayable: totals.payable,
-      totalReceived,
-      creditNoted: totals.creditNoted,
-      balance,
-      settled: balance <= 0.001,
-      receiptCodes: rows.map((r) => r.recordCode),
-      receiptCount: rows.length,
-      snapshot: { receipts: rows, supersedes: [] } as never,
-      triggerReason: trigger,
-      note:
-        trigger === 'dropout'
-          ? rows.length === 0
-            ? 'The student withdrew having paid nothing against this course.'
-            : 'The student withdrew before the instalments were complete.'
-          : null,
-    },
+  // The number and the row it names commit together. Taken on the global client it
+  // stayed taken when this write was refused, and the series had a hole in it.
+  const { recordCode, final } = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextDocumentNumber(
+      tx,
+      DOCUMENT_SERIES.finalInvoice,
+      numbering.prefix,
+      new Date(),
+      numbering.yearFormat,
+    );
+    const final = await tx.finalInvoice.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        invoiceId,
+        issuedById: auth.partyId,
+        issuedAt: dating.issuedAt,
+        totalPayable: totals.payable,
+        totalReceived,
+        creditNoted: totals.creditNoted,
+        balance,
+        settled: balance <= 0.001,
+        receiptCodes: rows.map((r) => r.recordCode),
+        receiptCount: rows.length,
+        snapshot: { receipts: rows, supersedes: [] } as never,
+        triggerReason: trigger,
+        note:
+          trigger === 'dropout'
+            ? rows.length === 0
+              ? 'The student withdrew having paid nothing against this course.'
+              : 'The student withdrew before the instalments were complete.'
+            : null,
+      },
+    });
+    return { recordCode, final };
   });
 
   if (dating.moved) {

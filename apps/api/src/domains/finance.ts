@@ -39,13 +39,15 @@ import { invoiceLabel, rehydrateReceivablesFor, totalsOf } from './invoicing.js'
 import { governedWrite } from '../platform/governedWrite.js';
 import {
   assertFits,
-  balanceOf,
   clampZero,
+  lockAndLoadFeeInstalment,
   lockAndLoadInvoice,
   lockPayment,
+  outstandingOfInstalment,
   paiseOf,
   paiseOfInput,
   poundsOf,
+  positionOfInvoice,
 } from './allocation.js';
 
 /**
@@ -318,7 +320,7 @@ export async function allocatePayment(input: {
     let balanceAfter = 0;
     if (input.invoiceId) {
       const invoice = await lockAndLoadInvoice(tx, { tenantId: auth.tenantId, invoiceId: input.invoiceId });
-      const position = balanceOf(totalsOf(invoice));
+      const position = positionOfInvoice(invoice);
       assertFits(amountPaise, position.outstanding, (left) =>
         ApiError.unprocessable(
           `Cannot allocate ${input.amount} to ${invoiceLabel(invoice)}: only ₹${left} is outstanding on it.`,
@@ -326,6 +328,23 @@ export async function allocatePayment(input: {
         ),
       );
       subjectTotal = poundsOf(position.payable);
+      balanceAfter = poundsOf(clampZero(position.outstanding - amountPaise));
+    } else if (input.feeInstalmentId) {
+      // Payment, then invoice, then instalment: the one order every path takes
+      // them in (allocation.ts). A fee instalment is a receivable like an invoice
+      // and had no check at all, so parallel allocations could take more than it is for.
+      const instalment = await lockAndLoadFeeInstalment(tx, {
+        tenantId: auth.tenantId,
+        feeInstalmentId: input.feeInstalmentId,
+      });
+      const position = outstandingOfInstalment(instalment);
+      assertFits(amountPaise, position.outstanding, (left) =>
+        ApiError.unprocessable(
+          `Cannot allocate ${input.amount} to this fee instalment: only ₹${left} of it is outstanding.`,
+          { outstanding: Number(left), offered: input.amount },
+        ),
+      );
+      subjectTotal = poundsOf(position.amount);
       balanceAfter = poundsOf(clampZero(position.outstanding - amountPaise));
     }
 
@@ -459,18 +478,27 @@ export async function issueCreditNote(invoiceId: string, amount: number, reason:
   const { documentNumbering } = await import('./companyProfile.js');
   const { DOCUMENT_SERIES, nextDocumentNumber } = await import('../platform/documentNumber.js');
   const numbering = await documentNumbering();
-  const recordCode = await prisma.$transaction((tx) =>
-    nextDocumentNumber(tx, DOCUMENT_SERIES.creditNote, numbering.prefix, new Date(), numbering.yearFormat),
-  );
-  const note = await prisma.creditNote.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      invoiceId,
-      amount,
-      reason,
-      issuedById: auth.partyId,
-    },
+  // The number and the row it names commit together. Taken on the global client it
+  // stayed taken when this write was refused, and the series had a hole in it.
+  const { recordCode, note } = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextDocumentNumber(
+      tx,
+      DOCUMENT_SERIES.creditNote,
+      numbering.prefix,
+      new Date(),
+      numbering.yearFormat,
+    );
+    const note = await tx.creditNote.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        invoiceId,
+        amount,
+        reason,
+        issuedById: auth.partyId,
+      },
+    });
+    return { recordCode, note };
   });
 
   if (reasonCode) {

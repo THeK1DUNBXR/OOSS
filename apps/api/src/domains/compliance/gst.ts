@@ -422,20 +422,28 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
   }
 
   const numbering = await documentNumbering();
-  const recordCode = await prisma.$transaction((tx) =>
-    nextDocumentNumber(tx, DOCUMENT_SERIES.debitNote, numbering.prefix, new Date(), numbering.yearFormat),
-  );
-
-  const note = await prisma.debitNote.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      invoiceId,
-      amount: round2(input.amount),
-      reasonCode: input.reasonCode,
-      note: input.note ?? null,
-      issuedById: auth.partyId,
-    },
+  // The number and the row it names commit together. Taken on the global client it
+  // stayed taken when this write was refused, and the series had a hole in it.
+  const { recordCode, note } = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextDocumentNumber(
+      tx,
+      DOCUMENT_SERIES.debitNote,
+      numbering.prefix,
+      new Date(),
+      numbering.yearFormat,
+    );
+    const note = await tx.debitNote.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        invoiceId,
+        amount: round2(input.amount),
+        reasonCode: input.reasonCode,
+        note: input.note ?? null,
+        issuedById: auth.partyId,
+      },
+    });
+    return { recordCode, note };
   });
 
   await auditWrite({

@@ -63,18 +63,22 @@ export async function issueCertificate(input: {
   const prefix = await documentPrefix();
   // Its own transaction: the number is taken where the document is written, so a
   // failed write does not leave a hole. This caller has not yet moved its write in.
-  const number = await prisma.$transaction((tx) => nextDocumentNumber(tx, DOCUMENT_SERIES.certificate, prefix));
-
-  const certificate = await prisma.certificate.create({
-    data: {
-      tenantId: auth.tenantId,
-      number,
-      enrollmentId: input.enrollmentId,
-      kind: input.kind,
-      snapshot: input.snapshot as never,
-      verificationCode: verificationCode(),
-      issuedById: auth.partyId,
-    },
+  // The number and the row it names commit together. Taken on the global client it
+  // stayed taken when this write was refused, and the series had a hole in it.
+  const { number, certificate } = await prisma.$transaction(async (tx) => {
+    const number = await nextDocumentNumber(tx, DOCUMENT_SERIES.certificate, prefix);
+    const certificate = await tx.certificate.create({
+      data: {
+        tenantId: auth.tenantId,
+        number,
+        enrollmentId: input.enrollmentId,
+        kind: input.kind,
+        snapshot: input.snapshot as never,
+        verificationCode: verificationCode(),
+        issuedById: auth.partyId,
+      },
+    });
+    return { number, certificate };
   });
 
   await auditWrite({

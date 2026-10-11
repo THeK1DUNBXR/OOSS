@@ -87,13 +87,13 @@ import { runHooks } from '../platform/hooks.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import {
   assertFits,
-  balanceOf,
   clampZero,
   lockAndLoadInvoice,
   lockInvoice,
   overdrawnRefusal,
   paiseOf,
   poundsOf,
+  positionOfInvoice,
 } from './allocation.js';
 
 // ---------------------------------------------------------------------------
@@ -1193,13 +1193,15 @@ export async function collectInvoicePayment(
     throw ApiError.unprocessable(`${invoiceLabel(invoice)} is void. Nothing can be collected against it.`);
   }
 
-  const totals = totalsOf(invoice);
+  // Exact paise from the Decimal columns, not totalsOf: its float sums are what
+  // this path must not round.
+  const position = positionOfInvoice(invoice);
   const amount = round2(input.amount);
   if (amount <= 0) throw ApiError.badRequest('A payment has to be for something.');
   // The early answer, from the balance as loaded. The answer that counts is the
   // one under the invoice lock below: another collection may commit between here
   // and the lock.
-  assertFits(paiseOf(amount), balanceOf(totals).outstanding, overdrawnRefusal(invoiceLabel(invoice), amount));
+  assertFits(paiseOf(amount), position.outstanding, overdrawnRefusal(invoiceLabel(invoice), amount));
   if (!input.mode) {
     throw ApiError.badRequest('Say how the money was taken. It is printed on the invoice.');
   }
@@ -1237,7 +1239,7 @@ export async function collectInvoicePayment(
     if (locked.status === 'void') {
       throw ApiError.unprocessable(`${invoiceLabel(invoice)} is void. Nothing can be collected against it.`);
     }
-    const position = balanceOf(totalsOf(locked));
+    const position = positionOfInvoice(locked);
     assertFits(amountPaise, position.outstanding, overdrawnRefusal(invoiceLabel(invoice), amount));
 
     // The payment keeps a record code. The receipt is the document the customer
