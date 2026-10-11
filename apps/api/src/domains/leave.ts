@@ -540,6 +540,12 @@ export async function recordAttendance(input: {
         overtimeMinutes: input.overtimeMinutes ?? 0,
         missingPunch: input.missingPunch ?? false,
         note: input.note ?? null,
+        // A day someone records again is taken back from a revert's void: the
+        // unique key on employment and day is held by the voided row either way.
+        voidedAt: null,
+        voidedById: null,
+        voidReason: null,
+        voidBatchId: null,
       },
     });
 
@@ -570,7 +576,7 @@ export async function recordAttendance(input: {
 export async function transitionAttendance(id: string, event: WorkAttendanceEvent, note?: string) {
   const auth = currentAuth();
   const row = await prisma.workAttendance.findFirst({
-    where: { id, tenantId: auth.tenantId },
+    where: { id, tenantId: auth.tenantId, voidedAt: null },
     include: { employmentRelationship: true },
   });
   if (!row) throw ApiError.notFound('Attendance record');
@@ -601,7 +607,7 @@ export async function attendanceForPeriod(employmentRelationshipId: string, payP
   const to = new Date(Date.UTC(year, month, 1));
 
   return prisma.workAttendance.findMany({
-    where: { tenantId: auth.tenantId, employmentRelationshipId, workDate: { gte: from, lt: to } },
+    where: { tenantId: auth.tenantId, employmentRelationshipId, workDate: { gte: from, lt: to }, voidedAt: null },
     orderBy: { workDate: 'asc' },
   });
 }
@@ -619,7 +625,7 @@ export async function lockAttendancePeriod(payPeriod: string): Promise<{ locked:
   const to = new Date(Date.UTC(year, month, 1));
 
   const unresolved = await prisma.workAttendance.count({
-    where: { tenantId: auth.tenantId, workDate: { gte: from, lt: to }, status: 'Disputed' },
+    where: { tenantId: auth.tenantId, workDate: { gte: from, lt: to }, status: 'Disputed', voidedAt: null },
   });
 
   if (unresolved > 0) {
@@ -637,7 +643,12 @@ export async function lockAttendancePeriod(payPeriod: string): Promise<{ locked:
   }
 
   const locked = await prisma.workAttendance.updateMany({
-    where: { tenantId: auth.tenantId, workDate: { gte: from, lt: to }, status: { in: ['Recorded', 'Regularised'] } },
+    where: {
+      tenantId: auth.tenantId,
+      workDate: { gte: from, lt: to },
+      status: { in: ['Recorded', 'Regularised'] },
+      voidedAt: null,
+    },
     data: { status: 'Locked' },
   });
 

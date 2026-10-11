@@ -448,7 +448,9 @@ describe('compensation and attendance rows are tombstoned, and the readers hide 
 
   it('a voided attendance day is not in the period, and the same day can be imported again', async () => {
     const { name, employmentId } = await freshEmployee();
-    const csv = ['Name,01/08/2013,02/08/2013', `${name},P,A`].join('\n');
+    // The attendance grid reads its dates month first (extract.ts extractAttendance
+    // calls toDate with dayFirst false), so these are 1 and 2 August 2013.
+    const csv = ['Name,08/01/2013,08/02/2013', `${name},P,A`].join('\n');
     const first = await asUser(CHAIRMAN, () =>
       stageImport({
         fileName: `${uniqueTag('ATT')}.csv`,

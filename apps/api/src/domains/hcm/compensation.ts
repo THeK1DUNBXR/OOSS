@@ -172,7 +172,7 @@ export async function compaRatioFor(employmentRelationshipId: string, payGradeId
   const [grade, record] = await Promise.all([
     prisma.payGrade.findFirst({ where: { id: payGradeId, tenantId: auth.tenantId } }),
     prisma.compensationRecord.findFirst({
-      where: { tenantId: auth.tenantId, employmentRelationshipId, status: 'Effective' },
+      where: { tenantId: auth.tenantId, employmentRelationshipId, status: 'Effective', voidedAt: null },
       orderBy: { effectiveFrom: 'desc' },
     }),
   ]);
@@ -532,6 +532,7 @@ export async function applyCycle(id: string) {
           tenantId: auth.tenantId,
           employmentRelationshipId: line.employmentRelationshipId,
           status: 'Effective',
+          voidedAt: null,
         },
         data: { status: 'Superseded', effectiveTo: cycle.effectiveDate },
       });

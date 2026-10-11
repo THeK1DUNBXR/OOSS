@@ -12,7 +12,7 @@
  * sixty of them before their first import is asking them not to bother.
  */
 
-import { Prisma, type ImportRow } from '@prisma/client';
+import { Prisma, type ImportBatch, type ImportRow } from '@prisma/client';
 import { prisma, unscopedPrisma, dec, type DbTx } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { assertCan } from '../platform/permissions.js';
@@ -21,7 +21,9 @@ import { ApiError } from '../platform/errors.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { emit } from '../platform/eventBus.js';
 import { auditWrite } from '../platform/audit.js';
-import { writeTransactionMinor, assertPeriodPostableInTx } from '../domains/books.js';
+import { governedWrite } from '../platform/governedWrite.js';
+import { writeTransactionMinor, assertPeriodPostableInTx, reverseTransactionIn } from '../domains/books.js';
+import { filedReturnFor } from '../domains/invoicing.js';
 import { EVENTS, DIVISION_LABELS, DIVISIONS, parseMinor, type Division } from '@kaizen/shared';
 import { matchFailure, matchPerson } from './matchName.js';
 import { classifyLedger, divisionFor, isAccountName, JOURNAL_ACCOUNT_NAME, JOURNAL_ACCOUNT_TYPE } from './classify.js';
@@ -881,8 +883,10 @@ async function commitSalaryRow(data: Record<string, unknown>) {
     );
   }
 
+  // A pay record a revert voided is not this pay: it is not reused, and the
+  // record written below does not supersede it.
   const existing = await prisma.compensationRecord.findFirst({
-    where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, status: 'Effective' },
+    where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, status: 'Effective', voidedAt: null },
   });
   if (existing && Number(existing.amount) === amount) {
     return { entityType: 'compensationRecord', entityId: existing.id };
@@ -937,20 +941,63 @@ async function commitAttendanceRow(data: Record<string, unknown>) {
     const existing = await prisma.workAttendance.findFirst({
       where: { tenantId: auth.tenantId, employmentRelationshipId: employment.id, workDate },
     });
-    if (existing) continue;
+    if (existing && existing.voidedAt === null) continue;
     // `status` on this model is the lifecycle state — Recorded, Disputed,
     // Approved — and not whether somebody turned up. The presence mark is the
     // note, and the minutes carry it in a form payroll can add up.
-    await prisma.workAttendance.create({
-      data: {
-        tenantId: auth.tenantId,
-        employmentRelationshipId: employment.id,
-        workDate,
-        status: 'Recorded',
-        workedMinutes: day.status === 'present' ? 480 : day.status === 'half_day' ? 240 : 0,
-        note: `Imported: ${day.status}`,
-      },
-    });
+    const figures = {
+      workedMinutes: day.status === 'present' ? 480 : day.status === 'half_day' ? 240 : 0,
+      note: `Imported: ${day.status}`,
+    };
+    if (existing) {
+      // A day a revert voided is taken back under its own key. WorkAttendance
+      // is unique per employment and day, so a new row would fail on the key
+      // the voided one still holds; the audit row names the void it reverses.
+      await governedWrite(async (tx) => {
+        await tx.workAttendance.update({
+          where: { id: existing.id },
+          data: {
+            ...figures,
+            status: 'Recorded',
+            overtimeMinutes: 0,
+            missingPunch: false,
+            voidedAt: null,
+            voidedById: null,
+            voidReason: null,
+            voidBatchId: null,
+          },
+        });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'work_attendance',
+          subjectId: existing.id,
+          before: {
+            voidedAt: existing.voidedAt,
+            voidBatchId: existing.voidBatchId,
+            workedMinutes: existing.workedMinutes,
+          },
+          after: { voidedAt: null, voidBatchId: null, ...figures },
+          tx,
+        });
+        await emit({
+          name: EVENTS.WORK_ATTENDANCE_RECORDED,
+          subject: { entityType: 'work_attendance', entityId: existing.id },
+          newState: { workDate, workedMinutes: figures.workedMinutes, revivedFromVoid: true },
+          impact: { domains: ['hr'] },
+          tx,
+        });
+      });
+    } else {
+      await prisma.workAttendance.create({
+        data: {
+          tenantId: auth.tenantId,
+          employmentRelationshipId: employment.id,
+          workDate,
+          status: 'Recorded',
+          ...figures,
+        },
+      });
+    }
     written += 1;
   }
 
@@ -961,110 +1008,383 @@ async function commitAttendanceRow(data: Record<string, unknown>) {
 // ---------------------------------------------------------------------------
 
 /**
- * Undo.
+ * Undo, by reversal.
  *
- * Removes exactly what the batch created and nothing else, so a bad import is
- * a mistake somebody made for ten minutes rather than a weekend of manual
- * correction. Accounts and categories the import created are left in place:
- * they are almost always right even when the transactions are not, and
- * deleting one that a later transaction now uses would fail anyway.
+ * A recorded fact is never removed. Each row the batch wrote is undone by the
+ * means its kind allows, and the undo is itself a record:
+ *
+ *   - a Transaction gets a reversal row (books.ts reverseTransactionIn), and any
+ *     bank line matched to it is unmatched, so the statement stops claiming a
+ *     match to an entry that no longer counts;
+ *   - a share allotment is reversed and its certificate cancelled, as
+ *     reverseShareTransaction does (domains/equity.ts);
+ *   - pay and attendance rows are tombstoned (voidedAt, voidReason, voidBatchId),
+ *     and every reader leaves them out.
+ *
+ * Each row is one transaction, so a row that cannot be undone (a split across
+ * business lines, a filed GST month, a locked day, a period that is closed
+ * today) is reported with its reason and leaves the rest of the batch undone.
+ * The batch is `reverted` only when no committed row is left; `revert_partial`
+ * when some are undone and some are not.
  */
 export async function revertImport(id: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'imports', verb: 'delete' });
 
+  const exists = await prisma.importBatch.findFirst({ where: { id, tenantId: auth.tenantId }, select: { id: true } });
+  if (!exists) throw ApiError.notFound('Import');
+
+  // The same lock commit takes, so a revert cannot interleave with a commit of
+  // the batch. The status is read again under it: a commit that held the lock
+  // a moment ago may have finished, or may still be running.
+  return withBatchLock(auth.tenantId, id, () => revertUnderLock(id));
+}
+
+/** A batch a revert may start from: committed, or partly reverted by an earlier run. */
+const REVERTABLE_STATUSES = new Set(['committed', 'revert_partial']);
+
+interface RevertFailure {
+  rowNumber: number;
+  message: string;
+}
+
+interface RowRevert {
+  /** `kept` is for rows whose record a revert deliberately leaves on the books (see revertRowIn). */
+  status: 'reverted' | 'kept';
+  reversalIds: string[];
+  unmatched: number;
+  message: string | null;
+}
+
+async function revertUnderLock(id: string) {
+  const auth = currentAuth();
   const batch = await prisma.importBatch.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!batch) throw ApiError.notFound('Import');
-  if (batch.status !== 'committed') throw ApiError.conflict('Only a committed import can be reverted.');
+  if (!REVERTABLE_STATUSES.has(batch.status)) throw ApiError.conflict('Only a committed import can be reverted.');
 
   const rows = await prisma.importRow.findMany({
     where: { tenantId: auth.tenantId, batchId: id, status: 'committed' },
+    orderBy: { rowNumber: 'asc' },
   });
-
-  const removed: Record<string, number> = {};
-  for (const row of rows) {
-    if (!row.entityId || !row.entityType) continue;
-    try {
-      switch (row.entityType) {
-        case 'transaction':
-          await prisma.transaction.delete({ where: { id: row.entityId } });
-          break;
-        case 'compensationRecord':
-          await prisma.compensationRecord.delete({ where: { id: row.entityId } });
-          break;
-        case 'shareTransaction':
-          // Certificates carry a foreign key to the transaction that
-          // produced them, so they go first.
-          await prisma.shareCertificate.deleteMany({
-            where: { tenantId: auth.tenantId, issuedForTransactionId: row.entityId },
-          });
-          await prisma.shareTransaction.delete({ where: { id: row.entityId } });
-          break;
-        case 'workAttendance':
-          await prisma.workAttendance.deleteMany({
-            where: {
-              tenantId: auth.tenantId,
-              employmentRelationshipId: row.entityId,
-              note: { startsWith: 'Imported:' },
-            },
-          });
-          break;
-        case 'person':
-          // People are soft-deleted rather than removed. A person may already
-          // be referenced by a leave request or an employment record by now,
-          // and the statutory retention floor on an employee affiliation means
-          // deleting one is not the platform's call anyway.
-          await prisma.person.update({ where: { id: row.entityId }, data: { deletedAt: new Date() } });
-          break;
-        case 'enrollment':
-          // Withdrawn rather than deleted, and the person is left alone. An
-          // enrolment that has had attendance marked or a fee receipted against
-          // it is a record of something that happened; reverting the import that
-          // created it does not unhappen any of that. The student stays on file,
-          // because they may have been on file before this import ran — and
-          // their student record with them, for the same reason: it is a fact
-          // about a person, not about this batch.
-          await prisma.enrollment.update({
-            where: { id: row.entityId },
-            data: { status: 'withdrawn' },
-          });
-          break;
-        default:
-          continue;
-      }
-      removed[row.entityType] = (removed[row.entityType] ?? 0) + 1;
-      await prisma.importRow.update({
-        where: { id: row.id },
-        data: { status: 'ready', entityId: null, entityType: null },
-      });
-    } catch {
-      // A row whose record has since been edited into something else is left
-      // alone and reported, rather than cascading into records the import did
-      // not create.
-      await prisma.importRow.update({
-        where: { id: row.id },
-        data: { message: 'Could not be reverted — the record it created has since changed.' },
-      });
-    }
+  // Share rows are reversed by the share register's own rule, which needs its
+  // two grants. Asserted once for the batch, before any row is touched.
+  if (rows.some((r) => r.entityType === 'shareTransaction')) {
+    await assertCan({ resource: 'share_ledger', verb: 'create' });
+    await assertCan({ resource: 'share_ledger', verb: 'approve' });
   }
 
-  await prisma.importBatch.update({
-    where: { id },
-    data: {
-      status: 'reverted',
-      revertedAt: new Date(),
-      stats: { ...(batch.stats as object), reverted: removed } as never,
-    },
+  const removed: Record<string, number> = {};
+  const reversalIds: string[] = [];
+  const failed: RevertFailure[] = [];
+  let unmatched = 0;
+
+  try {
+    for (const row of rows) {
+      try {
+        // One transaction per row: the undo and the row's new status commit
+        // together, so a row is never reversed and still reads committed.
+        const outcome = await prisma.$transaction(
+          async (tx) => {
+            const result = await revertRowIn(tx, row, batch);
+            await tx.importRow.update({
+              where: { id: row.id },
+              data: { status: result.status, message: result.message },
+            });
+            return result;
+          },
+          { timeout: CHUNK_TIMEOUT_MS, maxWait: 10_000 },
+        );
+        if (outcome.status === 'reverted') {
+          removed[row.entityType!] = (removed[row.entityType!] ?? 0) + 1;
+        }
+        reversalIds.push(...outcome.reversalIds);
+        unmatched += outcome.unmatched;
+      } catch (error) {
+        // A database fault aborts the run (rethrown below, and the batch is
+        // settled from what is on the rows). Anything else is this row's
+        // reason, recorded on the row, and the next row carries on.
+        if (isDatabaseFault(error)) throw error;
+        const message = (error as Error).message;
+        failed.push({ rowNumber: row.rowNumber, message });
+        await prisma.importRow.update({ where: { id: row.id }, data: { message: `Not reverted: ${message}` } });
+      }
+    }
+  } finally {
+    await settleRevertedBatch(id, batch, removed, reversalIds, unmatched, failed.length);
+  }
+
+  return { removed, reversed: reversalIds.length, unmatched, failed };
+}
+
+/**
+ * Sets the batch's state from its rows and, when this run undid something,
+ * audits the change and emits IMPORT_REVERTED once for the batch.
+ */
+async function settleRevertedBatch(
+  id: string,
+  batch: ImportBatch,
+  removed: Record<string, number>,
+  reversalIds: string[],
+  unmatched: number,
+  failedCount: number,
+) {
+  const auth = currentAuth();
+  const remaining = await prisma.importRow.count({
+    where: { tenantId: auth.tenantId, batchId: id, status: 'committed' },
+  });
+  const undone = await prisma.importRow.count({
+    where: { tenantId: auth.tenantId, batchId: id, status: 'reverted' },
+  });
+  const status = remaining === 0 ? 'reverted' : undone > 0 ? 'revert_partial' : batch.status;
+  if (status === batch.status && reversalIds.length === 0) return;
+
+  const prior = (batch.stats ?? {}) as { reverted?: Record<string, number>; reversalIds?: string[] };
+  const counts: Record<string, number> = { ...(prior.reverted ?? {}) };
+  for (const [kind, n] of Object.entries(removed)) counts[kind] = (counts[kind] ?? 0) + n;
+
+  await governedWrite(async (tx) => {
+    await tx.importBatch.update({
+      where: { id },
+      data: {
+        status,
+        revertedAt: new Date(),
+        stats: {
+          ...(batch.stats as object),
+          reverted: counts,
+          reversalIds: [...(prior.reversalIds ?? []), ...reversalIds],
+        } as never,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'import_batch',
+      subjectId: id,
+      before: { status: batch.status },
+      after: { status, reversed: reversalIds.length, failed: failedCount },
+      tx,
+    });
+    // Once per batch per run, after the rows: the batch's own announcement.
+    if (reversalIds.length > 0 || status !== batch.status) {
+      await emit({
+        name: EVENTS.IMPORT_REVERTED,
+        subject: { entityType: 'import_batch', entityId: id },
+        newState: { status, removed: counts, unmatched, failed: failedCount },
+        impact: { domains: ['fin'] },
+        tx,
+      });
+    }
+  });
+}
+
+/**
+ * One row's undo, inside the transaction that will hold its status. Throws
+ * with the reason when the row cannot be undone; the caller records it.
+ */
+async function revertRowIn(tx: DbTx, row: ImportRow, batch: ImportBatch): Promise<RowRevert> {
+  const auth = currentAuth();
+  const reason = `Import ${batch.recordCode} reverted`;
+  if (!row.entityId || !row.entityType) throw new Error('This row has no record on file to undo.');
+  const reverted = (reversalIds: string[] = [], unmatched = 0): RowRevert => ({
+    status: 'reverted',
+    reversalIds,
+    unmatched,
+    message: null,
   });
 
+  switch (row.entityType) {
+    case 'transaction': {
+      const original = await tx.transaction.findFirst({
+        where: { id: row.entityId, tenantId: auth.tenantId, deletedAt: null },
+        select: { id: true, txnDate: true },
+      });
+      if (!original) throw new Error('The entry this row wrote is no longer on file.');
+      await refuseIfGstFiled(tx, original.txnDate);
+      const split = await tx.lineDistribution.count({
+        where: { tenantId: auth.tenantId, transactionId: original.id },
+      });
+      if (split > 0) {
+        throw ApiError.unprocessable(
+          'This entry is split across business lines. Remove the split before reverting the import.',
+        );
+      }
+      const reversal = await reverseTransactionIn(tx, original.id, { reason, batchId: batch.id });
+      const unmatched = await unmatchBankLinesIn(tx, original.id);
+      return reverted([reversal.id], unmatched);
+    }
+
+    case 'compensationRecord': {
+      const record = await tx.compensationRecord.findFirst({
+        where: { id: row.entityId, tenantId: auth.tenantId, voidedAt: null },
+        select: { id: true },
+      });
+      if (!record) throw new Error('The pay record this row wrote is no longer on file.');
+      await tombstoneIn(tx, 'compensation_record', record.id, reason, batch.id);
+      // Pay rows carry no unique key, so a tombstoned one does not block a later import.
+      return reverted();
+    }
+
+    case 'workAttendance': {
+      await voidAttendanceIn(tx, row, batch, reason);
+      return reverted();
+    }
+
+    case 'shareTransaction': {
+      // Imported by the opening register. Reversed by the share register's own
+      // rule, which keeps the original, cancels its certificate and writes the
+      // reversal row.
+      const { reverseShareTransactionIn } = await import('../domains/equity.js');
+      const { reversal } = await reverseShareTransactionIn(tx, row.entityId, reason);
+      return reverted([reversal.id]);
+    }
+
+    case 'person': {
+      // Soft-deleted rather than removed. A person may already be referenced by a
+      // leave request or an employment record by now, and the statutory retention
+      // floor on an employee affiliation means deleting one is not the platform's
+      // call anyway.
+      await tx.person.update({ where: { id: row.entityId }, data: { deletedAt: new Date() } });
+      return reverted();
+    }
+
+    case 'enrollment': {
+      // Withdrawn rather than deleted. An enrolment with attendance or a fee
+      // receipted against it is a record of something that happened, and
+      // reverting the import that created it does not unhappen that.
+      await tx.enrollment.update({ where: { id: row.entityId }, data: { status: 'withdrawn' } });
+      return reverted();
+    }
+
+    case 'ledgerAccount':
+    case 'ledgerCategory':
+    case 'course':
+    case 'cohort':
+    case 'organization':
+    case 'vendorBill':
+      // Kept, as this revert always has kept them: accounts and categories are
+      // almost always right even when the transactions are not, and the others
+      // are masters a later import may already use. Named on the row so the
+      // batch's state is not mistaken for a full undo.
+      return {
+        status: 'kept',
+        reversalIds: [],
+        unmatched: 0,
+        message: `Kept: a revert does not remove a ${row.entityType} record.`,
+      };
+
+    default:
+      throw new Error(`No revert path for a row written as ${row.entityType}.`);
+  }
+}
+
+/** pending A14 (owner): the GST filing lock is applied to an import revert by default, until the owner decides. */
+async function refuseIfGstFiled(tx: DbTx, txnDate: Date): Promise<void> {
+  const filed = await filedReturnFor(txnDate, tx);
+  if (!filed) return;
+  throw ApiError.unprocessable(
+    `This entry is dated ${filed.period}, and ${filed.returnType} for ${filed.period} was filed as ${filed.recordCode}. ` +
+      'Reverting it would change a month already reported, so this row is not reverted.',
+    { period: filed.period, filing: filed.recordCode, returnType: filed.returnType },
+  );
+}
+
+/** Clears the match on every bank line that points at a reversed entry, and audits each. */
+async function unmatchBankLinesIn(tx: DbTx, transactionId: string): Promise<number> {
+  const auth = currentAuth();
+  const lines = await tx.bankStatementLine.findMany({
+    where: { tenantId: auth.tenantId, matchedTransactionId: transactionId },
+    select: { id: true, matchedAt: true },
+  });
+  for (const line of lines) {
+    await tx.bankStatementLine.update({
+      where: { id: line.id },
+      data: { matchedTransactionId: null, matchedAt: null },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'bank_statement_line',
+      subjectId: line.id,
+      before: { matchedTransactionId: transactionId, matchedAt: line.matchedAt },
+      after: { matchedTransactionId: null, matchedAt: null },
+      tx,
+    });
+    await emit({
+      name: EVENTS.BANK_STATEMENT_LINE_UNMATCHED,
+      subject: { entityType: 'bank_statement_line', entityId: line.id },
+      related: [{ relation: 'was_matched_to', entityType: 'transaction', entityId: transactionId }],
+      newState: { matchedTransactionId: null },
+      impact: { domains: ['fin'] },
+      tx,
+    });
+  }
+  return lines.length;
+}
+
+/**
+ * Tombstones a pay or attendance row: the record stays, every reader leaves it
+ * out, and the void names the batch that made it.
+ */
+async function tombstoneIn(
+  tx: DbTx,
+  subjectType: 'compensation_record' | 'work_attendance',
+  id: string,
+  reason: string,
+  batchId: string,
+) {
+  const auth = currentAuth();
+  const voidedAt = new Date();
+  const data = { voidedAt, voidedById: auth.partyId, voidReason: reason, voidBatchId: batchId };
+  if (subjectType === 'compensation_record') {
+    await tx.compensationRecord.update({ where: { id }, data });
+  } else {
+    await tx.workAttendance.update({ where: { id }, data });
+  }
+  await auditWrite({
+    action: 'update',
+    subjectType,
+    subjectId: id,
+    before: { voidedAt: null },
+    after: { voidedAt, voidReason: reason, voidBatchId: batchId },
+    tx,
+  });
   await emit({
-    name: EVENTS.IMPORT_REVERTED,
-    subject: { entityType: 'import_batch', entityId: id },
-    newState: { removed },
-    impact: { domains: ['fin'] },
+    name: subjectType === 'compensation_record' ? EVENTS.COMPENSATION_RECORD_VOIDED : EVENTS.WORK_ATTENDANCE_VOIDED,
+    subject: { entityType: subjectType, entityId: id },
+    newState: { voidedAt, voidBatchId: batchId },
+    impact: { domains: ['hr'] },
+    tx,
   });
+}
 
-  return { removed };
+/**
+ * The attendance a batch wrote for one employee: the days in its own staged
+ * row, where the row still says the import wrote them. A day someone has since
+ * edited no longer says so, and is left alone rather than tombstoned as if it
+ * were the import's.
+ */
+async function voidAttendanceIn(tx: DbTx, row: ImportRow, batch: ImportBatch, reason: string) {
+  const auth = currentAuth();
+  const data = openStagedNormalised(row.normalised);
+  const days = Array.isArray(data?.days) ? (data!.days as Array<{ date: string }>) : [];
+  const workDates = days.map((d) => new Date(d.date));
+  const found = await tx.workAttendance.findMany({
+    where: {
+      tenantId: auth.tenantId,
+      employmentRelationshipId: row.entityId!,
+      workDate: { in: workDates },
+      note: { startsWith: 'Imported:' },
+      voidedAt: null,
+    },
+    select: { id: true, status: true },
+  });
+  if (found.length === 0) {
+    throw new Error('The attendance this row wrote has since been changed or is no longer on file.');
+  }
+  if (found.some((r) => r.status === 'Locked')) {
+    throw ApiError.unprocessable('Payroll has locked this attendance, so it cannot be reverted.');
+  }
+  for (const r of found) {
+    await tombstoneIn(tx, 'work_attendance', r.id, reason, batch.id);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1862,6 +2182,9 @@ async function commitOpeningRegisterRow(data: Record<string, unknown>) {
       tenantId: auth.tenantId,
       shareClassId: shareClass.id,
       status: 'effective',
+      // A reversal carries its original's range and nets it to nothing, so it
+      // does not hold the range; a reversed original is not 'effective' at all.
+      reversalOfId: null,
       distinctiveFrom: { not: null, lte: distinctiveTo },
       distinctiveTo: { not: null, gte: distinctiveFrom },
     },

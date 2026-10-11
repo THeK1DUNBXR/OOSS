@@ -1084,7 +1084,7 @@ export async function proposeCompensation(input: {
 export async function transitionCompensation(id: string, event: CompensationEvent, note?: string) {
   const auth = currentAuth();
   const record = await prisma.compensationRecord.findFirst({
-    where: { id, tenantId: auth.tenantId },
+    where: { id, tenantId: auth.tenantId, voidedAt: null },
     include: { employmentRelationship: true },
   });
   if (!record) throw ApiError.notFound('Compensation record');
@@ -1144,6 +1144,7 @@ export async function transitionCompensation(id: string, event: CompensationEven
           tenantId: auth.tenantId,
           employmentRelationshipId: record.employmentRelationshipId,
           status: 'Effective',
+          voidedAt: null,
           id: { not: id },
         },
         data: { status: 'Superseded', effectiveTo: record.effectiveFrom },
@@ -1167,6 +1168,7 @@ export async function currentCompensation(employmentRelationshipId: string, asOf
       tenantId: auth.tenantId,
       employmentRelationshipId,
       status: 'Effective',
+      voidedAt: null,
       effectiveFrom: { lte: asOf },
       OR: [{ effectiveTo: null }, { effectiveTo: { gt: asOf } }],
     },
@@ -1206,7 +1208,7 @@ export async function listCompensationForEmployment(employmentRelationshipId: st
   const isSubject = employment.personId === auth.partyId;
 
   const rows = await prisma.compensationRecord.findMany({
-    where: { tenantId: auth.tenantId, employmentRelationshipId },
+    where: { tenantId: auth.tenantId, employmentRelationshipId, voidedAt: null },
     orderBy: { effectiveFrom: 'desc' },
   });
 
@@ -1381,6 +1383,7 @@ export async function detectMissingCompensation(): Promise<number> {
         tenantId: auth.tenantId,
         employmentRelationshipId: employment.id,
         status: 'Effective',
+        voidedAt: null,
         effectiveFrom: { lte: now },
         OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
       },
@@ -1436,6 +1439,7 @@ export async function headcountByDivision(asOf = new Date()) {
           tenantId: auth.tenantId,
           employmentRelationshipId: { in: employments.map((e) => e.id) },
           status: 'Effective',
+          voidedAt: null,
           effectiveFrom: { lte: asOf },
           OR: [{ effectiveTo: null }, { effectiveTo: { gt: asOf } }],
         },
