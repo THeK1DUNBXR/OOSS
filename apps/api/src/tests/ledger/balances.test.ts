@@ -176,7 +176,7 @@ describe('1.4 journal trial balance', () => {
   });
 
   it('debits equal credits, as bigint, and the balance is the sum of the postings on the day', async () => {
-    const tb = await journalTrialBalance(new Date('2030-06-30T00:00:00.000Z'));
+    const tb = await asSystem(ledger.tid, () => journalTrialBalance(new Date('2030-06-30T00:00:00.000Z')));
     expect(typeof tb.debitsMinor).toBe('bigint');
     expect(tb.debitsMinor).toBe(10000n);
     expect(tb.creditsMinor).toBe(10000n);
@@ -184,7 +184,7 @@ describe('1.4 journal trial balance', () => {
   });
 
   it('after every posting this file made, the whole tenant nets to zero', async () => {
-    const tb = await journalTrialBalance(new Date('2099-12-31T00:00:00.000Z'));
+    const tb = await asSystem(ledger.tid, () => journalTrialBalance(new Date('2099-12-31T00:00:00.000Z')));
     expect(tb.debitsMinor).toBe(10900n);
     expect(tb.debitsMinor - tb.creditsMinor).toBe(0n);
     assertTrialBalance(tb);
