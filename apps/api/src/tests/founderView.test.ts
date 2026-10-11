@@ -274,6 +274,8 @@ describe('FV-002 — rows from each source appear, each with its drillTo', () =>
 
     expect(byId.get(ids.exception)?.sourceKind).toBe('exception');
     expect(byId.get(ids.exception)?.drillTo).toBe(`/exceptions/${ids.exception}`);
+    // A founder reads a name, not a cuid. The owner's name comes from the same tenant.
+    expect(byId.get(ids.exception)?.ownerName).toBe('Founder view party');
 
     expect(byId.get(ids.commitment)?.sourceKind).toBe('commitment');
     expect(byId.get(ids.commitment)?.drillTo).toBe('/admin/events');
