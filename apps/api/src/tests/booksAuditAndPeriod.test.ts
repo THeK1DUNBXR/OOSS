@@ -21,7 +21,9 @@ import {
   createLoan,
   generateRecurring,
   detectOverdueBills,
+  priceInvoiceGst,
 } from '../domains/books.js';
+import { createInvoice } from '../domains/invoicing.js';
 import {
   requestClosePeriod,
   closePeriod,
@@ -164,6 +166,20 @@ describe('Audit — each books write leaves one audit row for the change it made
     );
     await asUser(FINANCE, () => detectOverdueBills());
     const rows = await auditRows('vendor_bill', bill.id);
+    expect(rows.some((r) => r.action === 'update')).toBe(true);
+  });
+
+  it('pricing a draft invoice audits the tax split it stores', async () => {
+    const org = await unscopedPrisma.organization.findFirstOrThrow({ where: { tenantId: TENANT } });
+    const draft = await asUser(FINANCE, () =>
+      createInvoice({
+        organizationId: org.id,
+        issue: false,
+        lines: [{ description: unique('W2 priced draft'), unitPrice: 1000, gstRate: 18 }],
+      }),
+    );
+    await asUser(FINANCE, () => priceInvoiceGst(draft.id, { interState: true }));
+    const rows = await auditRows('invoice', draft.id);
     expect(rows.some((r) => r.action === 'update')).toBe(true);
   });
 
