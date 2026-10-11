@@ -123,19 +123,38 @@ $$;
 --    not one of the seven states, or no status at all, is a draft, which is what the
 --    old code reported for such a tenant. Re-runnable: a tenant that already has a run
 --    is left alone. No transition rows are written, because the old code kept no history.
+--
+--    The loop sets the tenant per pass, so each insert is checked against that tenant
+--    under the FORCE RLS policy above, whichever role runs the migration. A single
+--    unscoped INSERT ... SELECT would be refused for every row by a role without
+--    BYPASSRLS, and a superuser owner would hide the refusal. onboardingRun.test.ts
+--    runs this statement as the application role, so the refusal cannot hide again.
 -- BACKFILL-BEGIN
-INSERT INTO "tenant_onboarding_runs" ("id", "tenantId", "state", "revision", "createdAt", "updatedAt")
-SELECT
-  gen_random_uuid()::text,
-  t."id",
-  CASE
-    WHEN t."config" -> 'onboarding' ->> 'status' IN ('draft', 'company_profile', 'statutory_configured', 'openings_imported', 'verified', 'active', 'blocked')
-      THEN t."config" -> 'onboarding' ->> 'status'
-    ELSE 'draft'
-  END,
-  0,
-  now(),
-  now()
-FROM "tenants" t
-WHERE NOT EXISTS (SELECT 1 FROM "tenant_onboarding_runs" r WHERE r."tenantId" = t."id");
+DO $$
+DECLARE
+  tenant_row RECORD;
+BEGIN
+  FOR tenant_row IN SELECT "id" FROM "tenants" LOOP
+    PERFORM set_config('app.tenant_id', tenant_row."id", true);
+
+    INSERT INTO "tenant_onboarding_runs" ("id", "tenantId", "state", "revision", "createdAt", "updatedAt")
+    SELECT
+      gen_random_uuid()::text,
+      t."id",
+      CASE
+        WHEN t."config" -> 'onboarding' ->> 'status' IN ('draft', 'company_profile', 'statutory_configured', 'openings_imported', 'verified', 'active', 'blocked')
+          THEN t."config" -> 'onboarding' ->> 'status'
+        ELSE 'draft'
+      END,
+      0,
+      now(),
+      now()
+    FROM "tenants" t
+    WHERE t."id" = tenant_row."id"
+      AND NOT EXISTS (SELECT 1 FROM "tenant_onboarding_runs" r WHERE r."tenantId" = t."id");
+  END LOOP;
+
+  PERFORM set_config('app.tenant_id', '', true);
+END
+$$;
 -- BACKFILL-END
