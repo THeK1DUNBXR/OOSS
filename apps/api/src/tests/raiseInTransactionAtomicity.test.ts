@@ -324,9 +324,11 @@ describe('declining an attendance regularisation raises EX-HR-006 in the same tr
     const employment = await unscopedPrisma.employmentRelationship.findFirstOrThrow({
       where: { tenantId: TENANT, personId: user.personId },
     });
-    // A far-off day, each run, so a rerun does not meet the day an earlier run left disputed.
+    // A far-off day, different each run, so a rerun does not meet an exception an
+    // earlier run left open on its own day (the old code committed those).
     const d = new Date();
-    d.setUTCFullYear(d.getUTCFullYear() + 20 + Math.floor(Math.random() * 20));
+    d.setUTCFullYear(d.getUTCFullYear() + 30 + Math.floor(Math.random() * 30));
+    d.setUTCDate(d.getUTCDate() + Math.floor(Math.random() * 300));
     const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
     const request = await asUser(DIVYA, () =>
       submitRegularisation({ employmentRelationshipId: employment.id, date, reason: 'Atomicity probe.' }),
