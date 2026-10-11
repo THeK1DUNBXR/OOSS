@@ -175,13 +175,19 @@ async function assembleEvidencePack(input: RaiseDecisionInput) {
   return pack;
 }
 
+/**
+ * The states a decision is still waiting in. Shared with the founder view
+ * (OP:120), so the queue and the view never disagree about what is awaiting.
+ */
+export const OPEN_DECISION_STATES = ['Raised', 'Analysing', 'AwaitingAuthority', 'EvidenceRequested', 'Deferred'] as const;
+
 export async function decisionQueue() {
   const auth = currentAuth();
 
   const rows = await prisma.decision.findMany({
     where: {
       tenantId: auth.tenantId,
-      state: { in: ['Raised', 'Analysing', 'AwaitingAuthority', 'EvidenceRequested', 'Deferred'] },
+      state: { in: [...OPEN_DECISION_STATES] },
     },
     orderBy: [{ raisedAt: 'asc' }],
     take: 50,

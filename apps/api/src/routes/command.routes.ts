@@ -16,6 +16,7 @@ import {
   whatChanged,
 } from '../domains/commandCenter.js';
 import { latestPulse, computeAndPersistAll, computeDomainHealth } from '../domains/health.js';
+import { founderView } from '../domains/founderView.js';
 import {
   decisionQueue,
   disposeDecision,
@@ -107,6 +108,19 @@ router.get(
   handler(async (req) => {
     await assertCan({ resource: 'exceptions', verb: 'view' });
     return attentionQueue((str(req.query.minSeverity) as SeverityCode) ?? 'S3_HIGH_RISK');
+  }),
+);
+
+/**
+ * The founder's list of what needs a person (OP:120). The route asserts the
+ * resource first; each source then asserts its own view, so a refusal on one
+ * source shows as withheld in the body rather than failing the whole page.
+ */
+router.get(
+  '/founder-view',
+  handler(async () => {
+    await assertCan({ resource: 'founder_view', verb: 'view' });
+    return founderView();
   }),
 );
 
