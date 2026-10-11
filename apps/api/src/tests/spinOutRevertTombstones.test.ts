@@ -77,6 +77,35 @@ async function legacyNet(tid: string): Promise<number> {
   return Number(row!.net);
 }
 
+interface RegisterCounts {
+  holder: number;
+  shareClass: number;
+  shareCertificate: number;
+  shareTransaction: number;
+}
+
+/** Rows of the four register models the batch created, written out per model so each delegate keeps its own type. */
+async function registerRowCounts(tid: string, batchId: string): Promise<RegisterCounts> {
+  const where = { tenantId: tid, spinOutBatchId: batchId };
+  return {
+    holder: await unscopedPrisma.holder.count({ where }),
+    shareClass: await unscopedPrisma.shareClass.count({ where }),
+    shareCertificate: await unscopedPrisma.shareCertificate.count({ where }),
+    shareTransaction: await unscopedPrisma.shareTransaction.count({ where }),
+  };
+}
+
+/** The same four counts, restricted to rows the revert has not yet marked. */
+async function unmarkedRegisterRowCounts(tid: string, batchId: string): Promise<RegisterCounts> {
+  const where = { tenantId: tid, spinOutBatchId: batchId, spinOutRevertedAt: null };
+  return {
+    holder: await unscopedPrisma.holder.count({ where }),
+    shareClass: await unscopedPrisma.shareClass.count({ where }),
+    shareCertificate: await unscopedPrisma.shareCertificate.count({ where }),
+    shareTransaction: await unscopedPrisma.shareTransaction.count({ where }),
+  };
+}
+
 async function assertJournalBalances(tid: string): Promise<void> {
   assertTrialBalance(await asSystem(tid, () => journalTrialBalance(ALL_TIME)));
 }
@@ -163,7 +192,7 @@ function revertInput(p: Pair, reason: string) {
 describe('FX-71b — a spin-out revert reverses and marks; it never deletes', () => {
   let P: Pair;
   let originalIds: string[] = [];
-  const registerCountsBefore: Record<string, number> = {};
+  let registerCountsBefore: RegisterCounts = { holder: 0, shareClass: 0, shareCertificate: 0, shareTransaction: 0 };
 
   beforeAll(async () => {
     P = await spinOutPair('a');
@@ -174,11 +203,7 @@ describe('FX-71b — a spin-out revert reverses and marks; it never deletes', ()
       where: { tenantId: P.sub, spinOutBatchId: P.batchId },
     });
     originalIds = originals.map((t) => t.id);
-    for (const model of ['holder', 'shareClass', 'shareCertificate', 'shareTransaction'] as const) {
-      registerCountsBefore[model] = await unscopedPrisma[model].count({
-        where: { tenantId: P.sub, spinOutBatchId: P.batchId },
-      });
-    }
+    registerCountsBefore = await registerRowCounts(P.sub, P.batchId);
 
     await revertSpinOut(revertInput(P, 'Board reversed the carve-out'));
     await assertJournalBalances(P.hold);
@@ -199,14 +224,13 @@ describe('FX-71b — a spin-out revert reverses and marks; it never deletes', ()
   });
 
   it('keeps the register rows, marked and cancelled rather than deleted', async () => {
-    for (const model of ['holder', 'shareClass', 'shareCertificate', 'shareTransaction'] as const) {
-      const remaining = await unscopedPrisma[model].count({ where: { tenantId: P.sub, spinOutBatchId: P.batchId } });
-      expect(remaining, model).toBe(registerCountsBefore[model]);
-      const unmarked = await unscopedPrisma[model].count({
-        where: { tenantId: P.sub, spinOutBatchId: P.batchId, spinOutRevertedAt: null },
-      });
-      expect(unmarked, model).toBe(0);
-    }
+    expect(await registerRowCounts(P.sub, P.batchId)).toEqual(registerCountsBefore);
+    expect(await unmarkedRegisterRowCounts(P.sub, P.batchId)).toEqual({
+      holder: 0,
+      shareClass: 0,
+      shareCertificate: 0,
+      shareTransaction: 0,
+    });
     const certs = await unscopedPrisma.shareCertificate.findMany({
       where: { tenantId: P.sub, spinOutBatchId: P.batchId },
     });

@@ -14,7 +14,8 @@
  * nothing and names every row it would carry and every row it would refuse;
  * commit copies rows under a fresh `spinOutBatchId` and marks the sources
  * `migratedToTenantId`, never editing or deleting them, so the holding's
- * history still reads; revert removes only what the batch created.
+ * history still reads; revert reverses and marks only what the batch created,
+ * and deletes nothing (FX-71: a deleted accounting row is a lost audit trail).
  *
  * What is carried, verbatim from the phase-6b brief: transactions, employment
  * relationships, courses and enrolments, organisations owned by the division.
@@ -28,6 +29,11 @@ import { ulid } from 'ulid';
 import { EVENTS, type Division } from '@kaizen/shared';
 import { prisma, unscopedPrisma, dec } from '../platform/db.js';
 import { asSystem, currentAuth } from '../platform/context.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { assertCan } from '../platform/permissions.js';
+import { governedWrite } from '../platform/governedWrite.js';
+import { runHooks } from '../platform/hooks.js';
+import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { findOrCreatePerson } from '../domains/identity.js';
@@ -496,7 +502,9 @@ export async function previewSpinOut(
   } else if (deep) {
     const registerCount = await asSystem(
       subsidiaryTenant.id,
-      async () => await prisma.shareClass.count({ where: { tenantId: subsidiaryTenant.id } }),
+      // A reverted batch's share classes stay on the register, marked (FX-71). They
+      // are not "a life of its own", so they must not block the next spin-out.
+      async () => await prisma.shareClass.count({ where: { tenantId: subsidiaryTenant.id, spinOutRevertedAt: null } }),
     );
     if (registerCount > 0) {
       blockers.push(
@@ -959,165 +967,459 @@ export async function commitSpinOut(input: SpinOutCommitInput): Promise<SpinOutC
 // ---------------------------------------------------------------------------
 
 export interface SpinOutRevertResult {
+  /** Rows reversed, cancelled or marked in the subsidiary, by model. None was deleted (FX-71). */
   removed: Record<string, number>;
+  /** Holding rows whose `migratedToTenantId` pointer to the subsidiary was cleared. */
+  clearedOnHolding: number;
 }
 
+// Written only by the revert, so it is registered beside the code that writes it.
+registerGovernedEntities('eqt', ['spin_out_tombstone']);
+
 /**
- * Removes only what the batch created in the subsidiary, and clears
- * `migratedToTenantId` on the sources it carried. Refuses outright if the
- * subsidiary carries any transaction or register row from outside the batch
- * — reverting a spin-out is only safe while the subsidiary has done nothing
- * else yet.
+ * Reverses a spin-out batch in the subsidiary and clears the holding's pointers
+ * to it. Nothing is deleted.
+ *
+ * The revert used to hard-delete everything the batch had created. That was a
+ * lost audit trail in the accounting path: no audit row and no event for any of
+ * it, and a booked transaction that vanished from the books rather than being
+ * reversed by a second row, so the books could no longer say what had happened.
+ * Now each row the batch created stays and says what became of it:
+ *
+ * - a transaction is reversed by a second transaction, dated now (so it lands in
+ *   today's IST period, refused if that period is closed), and the original
+ *   points at the reversal through `reversedById`;
+ * - a share certificate is cancelled, and a share transaction is marked
+ *   `reversed`; the register counts only `effective` rows, so both leave the
+ *   holding without leaving the record;
+ * - every other batch row is marked with `spinOutRevertedAt`;
+ * - a ledger account or category the batch opened is soft-deleted, which the
+ *   books already read as absent;
+ * - one tombstone names who asked, when and why.
+ *
+ * A second revert of the same batch is refused with 409, under a row lock on the
+ * subsidiary's tenant row.
  */
 export async function revertSpinOut(input: {
   holdingTenantId: string;
   subsidiaryTenantId: string;
   batchId: string;
+  /** Who asked for the revert, as an operator label. Kept on the tombstone. */
+  revertedBy: string;
+  /** Why. Kept on the tombstone and on every audit row the revert writes. */
+  reason: string;
 }): Promise<SpinOutRevertResult> {
+  const { holdingTenantId, subsidiaryTenantId, batchId } = input;
+  const revertedBy = input.revertedBy.trim();
+  const reason = input.reason.trim();
+  if (!revertedBy || !reason) {
+    throw ApiError.unprocessable('A spin-out revert names who asked for it and why. Both are kept on its tombstone.');
+  }
+
+  const now = new Date();
   const removed: Record<string, number> = {};
   const bump = (k: string, n: number) => {
     if (n) removed[k] = (removed[k] ?? 0) + n;
   };
 
-  await asSystem(input.subsidiaryTenantId, async () => {
-    const [otherTxns, otherShares] = await Promise.all([
-      // `not: batchId` alone would miss a row with no `spinOutBatchId` at all —
-      // Postgres never matches NULL against `<>` — and a row outside every
-      // batch is exactly the "life of its own" case this guards against.
-      prisma.transaction.count({
+  // The period hook reads through the scoped client, which refuses to run inside
+  // a transaction (db.ts refuseOuterClientInTransaction), so it runs first, as
+  // reverseTransaction does (books.ts:420). A closed current month refuses the
+  // whole revert here, before any row is touched.
+  await asSystem(subsidiaryTenantId, async () => {
+    await assertCan({ resource: 'share_ledger', verb: 'approve' });
+    await assertCan({ resource: 'transactions', verb: 'edit' });
+    await runHooks('transaction.before_record', { txnDate: now, source: 'reversal' });
+  });
+
+  // The subsidiary side is one transaction. A transaction carries one tenant's
+  // scope (db.ts set_config), so the holding side cannot join it; that follows.
+  await asSystem(subsidiaryTenantId, () =>
+    governedWrite(async (tx) => {
+      const auth = currentAuth();
+
+      // The row lock comes first. Two reverts of one batch both pass the checks
+      // below until one of them commits, and the lock makes the second wait; the
+      // tombstone check that follows then sees the first revert's tombstone (each
+      // statement under READ COMMITTED sees what committed before it started).
+      await tx.$queryRaw`SELECT "id" FROM "tenants" WHERE "id" = ${subsidiaryTenantId} FOR UPDATE`;
+
+      const prior = await tx.spinOutTombstone.findFirst({
+        where: { tenantId: subsidiaryTenantId, batchId },
+      });
+      if (prior) {
+        throw ApiError.conflict(`Spin-out batch ${batchId} has already been reverted.`, {
+          tombstoneId: prior.id,
+          revertedAt: prior.revertedAt,
+        });
+      }
+
+      // A revert is only safe while the subsidiary has done nothing else. Keep the
+      // guard: a row outside the batch means the subsidiary has a life of its own.
+      // `not: batchId` alone would miss a row with no `spinOutBatchId` at all,
+      // because Postgres never matches NULL against `<>`.
+      const otherTxns = await tx.transaction.count({
         where: {
-          tenantId: input.subsidiaryTenantId,
-          OR: [{ spinOutBatchId: { not: input.batchId } }, { spinOutBatchId: null }],
+          tenantId: subsidiaryTenantId,
+          OR: [{ spinOutBatchId: { not: batchId } }, { spinOutBatchId: null }],
         },
-      }),
-      prisma.shareTransaction.count({
+      });
+      const otherShares = await tx.shareTransaction.count({
         where: {
-          tenantId: input.subsidiaryTenantId,
-          OR: [{ spinOutBatchId: { not: input.batchId } }, { spinOutBatchId: null }],
+          tenantId: subsidiaryTenantId,
+          OR: [{ spinOutBatchId: { not: batchId } }, { spinOutBatchId: null }],
         },
-      }),
-    ]);
-    if (otherTxns > 0 || otherShares > 0) {
-      throw new Error(
-        `"${input.subsidiaryTenantId}" has transactions or register rows this batch did not create — the spin-out cannot be reverted once the subsidiary has a life of its own.`,
+      });
+      if (otherTxns > 0 || otherShares > 0) {
+        throw new Error(
+          `"${subsidiaryTenantId}" has transactions or register rows this batch did not create — the spin-out cannot be reverted once the subsidiary has a life of its own.`,
+        );
+      }
+
+      // Transactions. The original stays; the reversal is the opposite entry and
+      // carries the batch, so the batch's rows still read as the batch's.
+      const originals = await tx.transaction.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, reversalOfId: null, reversedById: null },
+        orderBy: { recordCode: 'asc' },
+      });
+      for (const original of originals) {
+        const recordCode = await nextRecordCode('TXN', now, tx);
+        const reversal = await tx.transaction.create({
+          data: {
+            tenantId: subsidiaryTenantId,
+            recordCode,
+            txnDate: now,
+            direction: original.direction === 'in' ? 'out' : 'in',
+            // The stored decimal is copied, not computed on, so no money arithmetic happens here.
+            amount: original.amount,
+            accountId: original.accountId,
+            categoryId: original.categoryId,
+            division: original.division,
+            counterparty: original.counterparty,
+            method: original.method,
+            reference: original.reference,
+            note: `Reversal of ${original.recordCode}: spin-out ${batchId} reverted. ${reason}`,
+            source: original.source,
+            reversalOfId: original.id,
+            spinOutBatchId: batchId,
+            createdById: auth.partyId,
+          },
+        });
+        await tx.transaction.update({ where: { id: original.id }, data: { reversedById: reversal.id } });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'transaction',
+          subjectId: original.id,
+          before: { reversedById: null },
+          after: { reversedById: reversal.id, reason },
+          tx,
+        });
+        await auditWrite({
+          action: 'create',
+          subjectType: 'transaction',
+          subjectId: reversal.id,
+          after: { recordCode, reversalOfId: original.id, direction: reversal.direction, reason },
+          tx,
+        });
+        await emit({
+          name: EVENTS.TRANSACTION_REVERSED,
+          subject: { entityType: 'transaction', entityId: reversal.id, recordCode },
+          related: [{ relation: 'reverses', entityType: 'transaction', entityId: original.id }],
+          previousState: { recordCode: original.recordCode },
+          newState: { direction: reversal.direction },
+          reason: { reasonCode: 'reversal', note: reason },
+          confidentiality: 'confidential',
+          impact: { domains: ['fin'], severity: 'S1_ATTENTION' },
+          tx,
+        });
+      }
+      bump('transactions', originals.length);
+
+      // Share certificates are cancelled, as the register cancels a certificate
+      // elsewhere (equity.ts reversal path). The row stays.
+      const certs = await tx.shareCertificate.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, spinOutRevertedAt: null },
+      });
+      for (const cert of certs) {
+        await tx.shareCertificate.update({
+          where: { id: cert.id },
+          data: { status: 'cancelled', spinOutRevertedAt: now },
+        });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'share_certificate',
+          subjectId: cert.id,
+          before: { status: cert.status, spinOutRevertedAt: null },
+          after: { status: 'cancelled', spinOutRevertedAt: now.toISOString(), reason },
+          tx,
+        });
+        await emit({
+          name: EVENTS.CERTIFICATE_CANCELLED,
+          subject: { entityType: 'share_certificate', entityId: cert.id, recordCode: cert.recordCode },
+          newState: { status: 'cancelled', reason },
+          tx,
+        });
+      }
+      bump('shareCertificates', certs.length);
+
+      // Share transactions are marked `reversed`, which the register already uses
+      // for a reversed allotment (equity.ts reversal path). Only `effective` rows
+      // count towards a holding, so the holding returns to what it was before.
+      const shares = await tx.shareTransaction.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, spinOutRevertedAt: null },
+      });
+      for (const share of shares) {
+        await tx.shareTransaction.update({
+          where: { id: share.id },
+          data: { status: 'reversed', spinOutRevertedAt: now },
+        });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'share_transaction',
+          subjectId: share.id,
+          before: { status: share.status, spinOutRevertedAt: null },
+          after: { status: 'reversed', spinOutRevertedAt: now.toISOString(), reason },
+          tx,
+        });
+        await emit({
+          name: EVENTS.SHARE_TRANSACTION_REVERSED,
+          subject: { entityType: 'share_transaction', entityId: share.id, recordCode: share.recordCode },
+          newState: { status: 'reversed', reason },
+          tx,
+        });
+      }
+      bump('shareTransactions', shares.length);
+
+      // The rest of the batch's rows are marked, not removed. Each mark is audited;
+      // the batch-level event below covers their counts.
+      const markRows = async (subjectType: string, ids: string[]) => {
+        for (const id of ids) {
+          await auditWrite({
+            action: 'update',
+            subjectType,
+            subjectId: id,
+            before: { spinOutRevertedAt: null },
+            after: { spinOutRevertedAt: now.toISOString(), reason },
+            tx,
+          });
+        }
+      };
+
+      const holders = await tx.holder.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, spinOutRevertedAt: null },
+      });
+      for (const row of holders) await tx.holder.update({ where: { id: row.id }, data: { spinOutRevertedAt: now } });
+      await markRows(
+        'holder',
+        holders.map((r) => r.id),
       );
-    }
+      bump('holders', holders.length);
 
-    const certs = await prisma.shareCertificate.deleteMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    bump('shareCertificates', certs.count);
-    const shts = await prisma.shareTransaction.deleteMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    bump('shareTransactions', shts.count);
-    const holders = await prisma.holder.deleteMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    bump('holders', holders.count);
-    const classes = await prisma.shareClass.deleteMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    bump('shareClasses', classes.count);
-
-    const enrollments = await prisma.enrollment.deleteMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    bump('enrollments', enrollments.count);
-    const cohorts = await prisma.cohort.deleteMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    bump('cohorts', cohorts.count);
-    const courses = await prisma.course.deleteMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    bump('courses', courses.count);
-
-    const orgs = await prisma.organization.deleteMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    bump('organizations', orgs.count);
-
-    const emps = await prisma.employmentRelationship.deleteMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    bump('employmentRelationships', emps.count);
-
-    const txns = await prisma.transaction.deleteMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    bump('transactions', txns.count);
-
-    // Accounts/categories opened by this batch are only removed if this batch
-    // is the only thing that ever used them — otherwise a legitimate row
-    // created since would be left pointing at nothing.
-    const accounts = await prisma.ledgerAccount.findMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    for (const a of accounts) {
-      const stillUsed = await prisma.transaction.count({
-        where: { tenantId: input.subsidiaryTenantId, accountId: a.id },
+      const classes = await tx.shareClass.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, spinOutRevertedAt: null },
       });
-      if (stillUsed === 0) await prisma.ledgerAccount.delete({ where: { id: a.id } });
-    }
-    const categories = await prisma.ledgerCategory.findMany({
-      where: { tenantId: input.subsidiaryTenantId, spinOutBatchId: input.batchId },
-    });
-    for (const c of categories) {
-      const stillUsed = await prisma.transaction.count({
-        where: { tenantId: input.subsidiaryTenantId, categoryId: c.id },
+      for (const row of classes)
+        await tx.shareClass.update({ where: { id: row.id }, data: { spinOutRevertedAt: now } });
+      await markRows(
+        'share_class',
+        classes.map((r) => r.id),
+      );
+      bump('shareClasses', classes.length);
+
+      const enrollments = await tx.enrollment.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, spinOutRevertedAt: null },
       });
-      if (stillUsed === 0) await prisma.ledgerCategory.delete({ where: { id: c.id } });
-    }
+      for (const row of enrollments)
+        await tx.enrollment.update({ where: { id: row.id }, data: { spinOutRevertedAt: now } });
+      await markRows(
+        'enrollment',
+        enrollments.map((r) => r.id),
+      );
+      bump('enrollments', enrollments.length);
 
-    const tenant = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: input.subsidiaryTenantId } });
-    const config = { ...((tenant.config as Record<string, unknown>) ?? {}) };
-    delete config.spinOut;
-    await unscopedPrisma.tenant.update({ where: { id: input.subsidiaryTenantId }, data: { config: config as never } });
+      const cohorts = await tx.cohort.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, spinOutRevertedAt: null },
+      });
+      for (const row of cohorts) await tx.cohort.update({ where: { id: row.id }, data: { spinOutRevertedAt: now } });
+      await markRows(
+        'cohort',
+        cohorts.map((r) => r.id),
+      );
+      bump('cohorts', cohorts.length);
 
-    await emit({
-      name: EVENTS.TENANT_SPIN_OUT_REVERTED,
-      subject: { entityType: 'tenant', entityId: input.subsidiaryTenantId },
-      newState: { batchId: input.batchId, removed },
-      impact: { domains: ['sys'] },
-    });
-  });
+      const courses = await tx.course.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, spinOutRevertedAt: null },
+      });
+      for (const row of courses) await tx.course.update({ where: { id: row.id }, data: { spinOutRevertedAt: now } });
+      await markRows(
+        'course',
+        courses.map((r) => r.id),
+      );
+      bump('courses', courses.length);
 
-  await asSystem(input.holdingTenantId, async () => {
-    await prisma.transaction.updateMany({
-      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
-      data: { migratedToTenantId: null },
-    });
-    await prisma.employmentRelationship.updateMany({
-      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
-      data: { migratedToTenantId: null },
-    });
-    await prisma.course.updateMany({
-      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
-      data: { migratedToTenantId: null },
-    });
-    await prisma.cohort.updateMany({
-      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
-      data: { migratedToTenantId: null },
-    });
-    await prisma.enrollment.updateMany({
-      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
-      data: { migratedToTenantId: null },
-    });
-    await prisma.organization.updateMany({
-      where: { tenantId: input.holdingTenantId, migratedToTenantId: input.subsidiaryTenantId },
-      data: { migratedToTenantId: null },
-    });
+      const orgs = await tx.organization.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, spinOutRevertedAt: null },
+      });
+      for (const row of orgs) await tx.organization.update({ where: { id: row.id }, data: { spinOutRevertedAt: now } });
+      await markRows(
+        'organization',
+        orgs.map((r) => r.id),
+      );
+      bump('organizations', orgs.length);
 
-    await emit({
-      name: EVENTS.TENANT_SPIN_OUT_REVERTED,
-      subject: { entityType: 'tenant', entityId: input.holdingTenantId },
-      newState: { batchId: input.batchId, removed },
-      impact: { domains: ['sys'] },
-    });
-  });
+      const emps = await tx.employmentRelationship.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, spinOutRevertedAt: null },
+      });
+      for (const row of emps)
+        await tx.employmentRelationship.update({ where: { id: row.id }, data: { spinOutRevertedAt: now } });
+      await markRows(
+        'employment_relationship',
+        emps.map((r) => r.id),
+      );
+      bump('employmentRelationships', emps.length);
 
-  return { removed };
+      // Accounts and categories the batch opened are soft-deleted. The books read a
+      // `deletedAt` account as absent, and the reversals still point at it.
+      const accounts = await tx.ledgerAccount.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, deletedAt: null },
+      });
+      for (const account of accounts) {
+        await tx.ledgerAccount.update({ where: { id: account.id }, data: { deletedAt: now } });
+        await auditWrite({
+          action: 'delete',
+          subjectType: 'ledger_account',
+          subjectId: account.id,
+          before: { deletedAt: null },
+          after: { deletedAt: now.toISOString(), reason },
+          tx,
+        });
+      }
+      bump('ledgerAccounts', accounts.length);
+
+      const categories = await tx.ledgerCategory.findMany({
+        where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, deletedAt: null },
+      });
+      for (const category of categories) {
+        await tx.ledgerCategory.update({ where: { id: category.id }, data: { deletedAt: now } });
+        await auditWrite({
+          action: 'delete',
+          subjectType: 'ledger_category',
+          subjectId: category.id,
+          before: { deletedAt: null },
+          after: { deletedAt: now.toISOString(), reason },
+          tx,
+        });
+      }
+      bump('ledgerCategories', categories.length);
+
+      // The batch's marker on the tenant. The tenant row is not governed; the
+      // tombstone records that the config was cleared, by its existence.
+      const tenant = await tx.tenant.findFirstOrThrow({ where: { id: subsidiaryTenantId } });
+      const config = { ...((tenant.config as Record<string, unknown>) ?? {}) };
+      delete config.spinOut;
+      await tx.tenant.update({ where: { id: subsidiaryTenantId }, data: { config: config as never } });
+
+      const tombstone = await tx.spinOutTombstone.create({
+        data: {
+          tenantId: subsidiaryTenantId,
+          batchId,
+          holdingTenantId,
+          revertedById: auth.partyId,
+          revertedBy,
+          reason,
+          removed: removed as never,
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'spin_out_tombstone',
+        subjectId: tombstone.id,
+        after: { batchId, holdingTenantId, revertedBy, reason, removed },
+        tx,
+      });
+
+      await emit({
+        name: EVENTS.TENANT_SPIN_OUT_REVERTED,
+        subject: { entityType: 'tenant', entityId: subsidiaryTenantId },
+        newState: { batchId, removed, reason },
+        impact: { domains: ['sys'] },
+        tx,
+      });
+    }),
+  );
+
+  // The holding's side: clear each pointer that named the subsidiary. Each cleared
+  // row is audited, since the pointer is a fact about the holding's own history.
+  const clearedOnHolding = await asSystem(holdingTenantId, () =>
+    governedWrite(async (tx) => {
+      let cleared = 0;
+      const clear = async (subjectType: string, id: string) => {
+        await auditWrite({
+          action: 'update',
+          subjectType,
+          subjectId: id,
+          before: { migratedToTenantId: subsidiaryTenantId },
+          after: { migratedToTenantId: null, batchId, reason },
+          tx,
+        });
+        cleared += 1;
+      };
+
+      const txns = await tx.transaction.findMany({
+        where: { tenantId: holdingTenantId, migratedToTenantId: subsidiaryTenantId },
+      });
+      for (const row of txns) {
+        await tx.transaction.update({ where: { id: row.id }, data: { migratedToTenantId: null } });
+        await clear('transaction', row.id);
+      }
+      const emps = await tx.employmentRelationship.findMany({
+        where: { tenantId: holdingTenantId, migratedToTenantId: subsidiaryTenantId },
+      });
+      for (const row of emps) {
+        await tx.employmentRelationship.update({ where: { id: row.id }, data: { migratedToTenantId: null } });
+        await clear('employment_relationship', row.id);
+      }
+      const courses = await tx.course.findMany({
+        where: { tenantId: holdingTenantId, migratedToTenantId: subsidiaryTenantId },
+      });
+      for (const row of courses) {
+        await tx.course.update({ where: { id: row.id }, data: { migratedToTenantId: null } });
+        await clear('course', row.id);
+      }
+      const cohorts = await tx.cohort.findMany({
+        where: { tenantId: holdingTenantId, migratedToTenantId: subsidiaryTenantId },
+      });
+      for (const row of cohorts) {
+        await tx.cohort.update({ where: { id: row.id }, data: { migratedToTenantId: null } });
+        await clear('cohort', row.id);
+      }
+      const enrollments = await tx.enrollment.findMany({
+        where: { tenantId: holdingTenantId, migratedToTenantId: subsidiaryTenantId },
+      });
+      for (const row of enrollments) {
+        await tx.enrollment.update({ where: { id: row.id }, data: { migratedToTenantId: null } });
+        await clear('enrollment', row.id);
+      }
+      const orgs = await tx.organization.findMany({
+        where: { tenantId: holdingTenantId, migratedToTenantId: subsidiaryTenantId },
+      });
+      for (const row of orgs) {
+        await tx.organization.update({ where: { id: row.id }, data: { migratedToTenantId: null } });
+        await clear('organization', row.id);
+      }
+
+      await emit({
+        name: EVENTS.TENANT_SPIN_OUT_REVERTED,
+        subject: { entityType: 'tenant', entityId: holdingTenantId },
+        newState: { batchId, subsidiaryTenantId, clearedOnHolding: cleared },
+        impact: { domains: ['sys'] },
+        tx,
+      });
+      return cleared;
+    }),
+  );
+
+  return { removed, clearedOnHolding };
 }
 
 export { MODEL_LABEL };

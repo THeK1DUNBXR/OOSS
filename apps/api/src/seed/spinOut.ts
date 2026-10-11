@@ -24,7 +24,7 @@
  *   tsx src/seed/spinOut.ts --from kaizen --division education --to kz-edu
  *     [--yes] [--kipl-stake 7000 --face-value 10 --class "Equity"]
  *     [--other-holder "Jane Founder|jane@example.com=3000"]
- *   tsx src/seed/spinOut.ts --revert <batchId> --from kaizen --to kz-edu --yes
+ *   tsx src/seed/spinOut.ts --revert <batchId> --from kaizen --to kz-edu --by "<who>" --reason "<why>" --yes
  *
  * Without `--yes` this only previews — nothing is written, and every row it
  * would carry and every row it would refuse is printed, the same shape as
@@ -107,23 +107,32 @@ async function main() {
     const batchId = String(args.revert);
     const fromSlug = args.from ? String(args.from) : undefined;
     const toSlug = args.to ? String(args.to) : undefined;
-    if (!fromSlug || !toSlug) {
+    const by = args.by ? String(args.by) : undefined;
+    const reason = args.reason ? String(args.reason) : undefined;
+    if (!fromSlug || !toSlug || !by || !reason) {
       console.error(
-        'Usage: tsx src/seed/spinOut.ts --revert <batchId> --from <holding-slug> --to <subsidiary-slug> --yes',
+        'Usage: tsx src/seed/spinOut.ts --revert <batchId> --from <holding-slug> --to <subsidiary-slug> --by <who asked> --reason "<why>" --yes',
       );
       process.exit(1);
     }
     if (!args.yes) {
       console.error(
-        'This removes what this spin-out batch created in the subsidiary. Re-run with --yes if that is what you want.',
+        'This reverses what this spin-out batch created in the subsidiary. Nothing is deleted; the rows stay, marked. Re-run with --yes if that is what you want.',
       );
       process.exit(1);
     }
     const holding = await unscopedPrisma.tenant.findFirstOrThrow({ where: { slug: fromSlug } });
     const subsidiary = await unscopedPrisma.tenant.findFirstOrThrow({ where: { slug: toSlug } });
-    const result = await revertSpinOut({ holdingTenantId: holding.id, subsidiaryTenantId: subsidiary.id, batchId });
-    console.log('\nReverted. Removed:');
+    const result = await revertSpinOut({
+      holdingTenantId: holding.id,
+      subsidiaryTenantId: subsidiary.id,
+      batchId,
+      revertedBy: by,
+      reason,
+    });
+    console.log('\nReverted. Reversed, cancelled or marked (none deleted):');
     for (const [k, v] of Object.entries(result.removed)) console.log(`  ${k}: ${v}`);
+    console.log(`  holding pointers cleared: ${result.clearedOnHolding}`);
     console.log('');
     process.exit(0);
   }
