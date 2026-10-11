@@ -1246,6 +1246,13 @@ model Session {
   /// keep refreshing, so the whole session is revoked (lib/auth.ts refreshSession).
   previousRefreshTokenHash String?
 
+  /// SHA-256 of the secret the previous one replaced. Presenting it after the
+  /// previous secret was used is reuse. Kept as a third slot because a flag on
+  /// the current secret cannot record that it was used: presenting it rotates
+  /// it into `previousRefreshTokenHash`, so use is recorded by which slot a
+  /// secret sits in.
+  olderRefreshTokenHash String?
+
   /// When the secret was last rotated. A replay of `previousRefreshTokenHash`
   /// inside a short grace is a second tab, not a thief (lib/auth.ts refreshSession).
   rotatedAt DateTime?

@@ -25,6 +25,7 @@ export const AUDIT_ACTIONS = [
   'login',
   'logout',
   'refresh_reuse',
+  'refresh_recovered',
   'permission_change',
   'read',
 ] as const;

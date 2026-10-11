@@ -811,6 +811,7 @@ export async function refreshSession(refreshCookie: string): Promise<SessionRefr
       data: {
         refreshTokenHash: hashRefreshSecret(nextSecret),
         previousRefreshTokenHash: session.refreshTokenHash,
+        olderRefreshTokenHash: session.previousRefreshTokenHash,
         rotatedAt: new Date(),
         jti,
       },
@@ -838,13 +839,73 @@ export async function refreshSession(refreshCookie: string): Promise<SessionRefr
   }
 
   if (session.previousRefreshTokenHash && presented === session.previousRefreshTokenHash) {
+    // Inside the grace this is a second tab; no further rotation.
     if (inGrace(session)) return sameSessionAnswer(session);
+    // Past it: the replaced secret comes back only when the rotated-in secret
+    // was never presented, because presenting that one would have moved this
+    // value out of the previous slot. So the response carrying the rotated-in
+    // secret was lost, and the session is recovered rather than revoked.
+    return recoverLostRefresh(session, presented, user.id, user.tenantId, user.personId, active);
+  }
+
+  // A secret the session rotated away from two or more times ago. The newer one
+  // was used since, so this presenter holds a copy the session has moved past.
+  if (session.olderRefreshTokenHash && presented === session.olderRefreshTokenHash) {
     throw await refuseReuse(session.id, user.tenantId, user.personId, active.roleSlug);
   }
 
   // A secret this session never issued: refused, and the session is left alone,
   // because whoever sent it has learned nothing about the session.
   throw refused();
+}
+
+/**
+ * Recovers a refresh whose response was lost. Rotates to a fresh secret, keeps
+ * the presented one in the previous slot so that a further lost response can
+ * be recovered the same way, and drops the unused rotated-in secret entirely.
+ * Bounded by the session's own lifetime, which the caller has already checked.
+ */
+async function recoverLostRefresh(
+  session: { id: string; refreshTokenHash: string; expiresAt: Date; stepUpAt: Date | null },
+  presented: string,
+  userId: string,
+  tenantId: string,
+  personId: string,
+  active: { id: string; roleSlug: string | null },
+): Promise<SessionRefresh> {
+  const nextSecret = randomBytes(32).toString('base64url');
+  const jti = randomUUID();
+  // Conditional on both slots still holding what this request read, so two
+  // recoveries racing for the same lost response cannot both succeed.
+  const recovered = await unscopedPrisma.session.updateMany({
+    where: {
+      id: session.id,
+      refreshTokenHash: session.refreshTokenHash,
+      previousRefreshTokenHash: presented,
+      revokedAt: null,
+    },
+    data: {
+      refreshTokenHash: hashRefreshSecret(nextSecret),
+      previousRefreshTokenHash: presented,
+      olderRefreshTokenHash: null,
+      rotatedAt: new Date(),
+      jti,
+    },
+  });
+  if (recovered.count !== 1) throw ApiError.unauthorized('This session has ended. Sign in again.');
+
+  await runWithContext(actingAs(tenantId, personId, active.roleSlug), async () => {
+    await auditWrite({ action: 'refresh_recovered', subjectType: 'session', subjectId: session.id });
+    await emit({ name: EVENTS.SESSION_REFRESH_RECOVERED, subject: { entityType: 'session', entityId: session.id } });
+  });
+
+  const stepUpOpen = session.stepUpAt !== null && Date.now() - session.stepUpAt.getTime() < STEP_UP_WINDOW_MS;
+  return {
+    token: signToken({ userId, tenantId, affiliationId: active.id, stepUp: stepUpOpen, jti }),
+    refreshToken: `${session.id}.${nextSecret}`,
+    refreshExpiresAt: session.expiresAt,
+    user: await buildSessionUser(userId, tenantId, active.id, stepUpOpen),
+  };
 }
 
 /**

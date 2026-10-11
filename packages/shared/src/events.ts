@@ -189,6 +189,8 @@ export const EVENTS = {
   SESSION_REVOKED: 'kz.idn.session.revoked',
   /// A rotated-away refresh secret was presented again: the whole session is revoked.
   SESSION_REFRESH_REUSED: 'kz.idn.session.refresh_reused',
+  /// A refresh whose response was lost, recovered because the rotated secret was never used.
+  SESSION_REFRESH_RECOVERED: 'kz.idn.session.refresh_recovered',
   /// A sign-in created for an outsider — a shareholder or board member with no
   /// employment here (§1.10). Never fires on the founding-account seed path.
   SIGN_IN_CREATED: 'kz.idn.sign_in.created',
