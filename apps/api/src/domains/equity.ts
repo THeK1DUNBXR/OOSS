@@ -20,17 +20,21 @@
 
 import {
   EVENTS,
+  SENSITIVITY_RANK,
+  isEncryptedFieldValue,
   type CapTableInputRow,
   type ShareClassKind,
   type ShareInstrument,
   computeCapTable,
 } from '@kaizen/shared';
 import { prisma, unscopedPrisma, dec, num } from '../platform/db.js';
-import { currentAuth } from '../platform/context.js';
+import { currentAuth, getContext } from '../platform/context.js';
+import { encryptField, readRegulated } from './compliance/privacy.js';
 import { assertCan, assertScopeAll, can, canSeeMoney, scopeFor } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
-import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { auditBulkOperation, auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { nextDocumentNumber, DOCUMENT_SERIES } from '../platform/documentNumber.js';
 import { documentPrefix, companyProfile } from './companyProfile.js';
@@ -69,27 +73,40 @@ export async function createShareClass(input: ShareClassInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'share_classes', verb: 'create' });
 
-  const row = await prisma.shareClass.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('SHC'),
-      name: input.name,
-      kind: input.kind,
-      instrument: input.instrument,
-      faceValue: dec(input.faceValue)!,
-      votesPerShare: dec(input.votesPerShare ?? 1)!,
-      rights: (input.rights ?? {}) as never,
-      conversionTerms: (input.conversionTerms ?? undefined) as never,
-      redemptionTerms: (input.redemptionTerms ?? undefined) as never,
-      authorisedCount: input.authorisedCount == null ? null : dec(input.authorisedCount),
-    },
-  });
+  // The row, its audit record and its event commit together (governedWrite):
+  // a share class with no audit row is an unrecorded change to the capital
+  // structure.
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.shareClass.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('SHC', new Date(), tx),
+        name: input.name,
+        kind: input.kind,
+        instrument: input.instrument,
+        faceValue: dec(input.faceValue)!,
+        votesPerShare: dec(input.votesPerShare ?? 1)!,
+        rights: (input.rights ?? {}) as never,
+        conversionTerms: (input.conversionTerms ?? undefined) as never,
+        redemptionTerms: (input.redemptionTerms ?? undefined) as never,
+        authorisedCount: input.authorisedCount == null ? null : dec(input.authorisedCount),
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'share_class', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.SHARE_CLASS_CREATED,
-    subject: { entityType: 'share_class', entityId: row.id, recordCode: row.recordCode },
-    newState: { name: row.name, instrument: row.instrument },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'share_class',
+      subjectId: created.id,
+      after: created as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.SHARE_CLASS_CREATED,
+      subject: { entityType: 'share_class', entityId: created.id, recordCode: created.recordCode },
+      newState: { name: created.name, instrument: created.instrument },
+      tx,
+    });
+    return created;
   });
 
   return shareClassView(row);
@@ -234,6 +251,34 @@ async function assertNotHoldingsAncestor(heldByTenantId: string, thisTenantId: s
   }
 }
 
+/**
+ * Holder PAN is a regulated identifier (CMP-DPD-004), so every writer seals it
+ * before the column is touched: the register is written by the holder form,
+ * the opening-register import and the re-encrypt pass, and a writer that skips
+ * this leaves plaintext on disk. A value already sealed is passed through, so
+ * a caller that re-reads and re-writes a row cannot seal it twice.
+ */
+export function sealHolderPan(pan: string | null | undefined): string | null {
+  const trimmed = pan?.trim();
+  if (!trimmed) return null;
+  return isEncryptedFieldValue(trimmed) ? trimmed : encryptField(trimmed);
+}
+
+/**
+ * The PAN a holder read may show. Decrypted only at the regulated ceiling;
+ * below it the PAN is masked to its last four characters. A read with no
+ * principal in scope (a background job) is treated as below the ceiling, so
+ * nothing outside an authorised request ever sees the full value.
+ */
+export function holderPanFor(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  const plain = readRegulated(stored);
+  if (!plain) return null;
+  const ceiling = getContext()?.auth?.classificationCeiling ?? 'public';
+  if (SENSITIVITY_RANK[ceiling] >= SENSITIVITY_RANK.regulated) return plain;
+  return plain.length > 4 ? 'X'.repeat(plain.length - 4) + plain.slice(-4) : 'X'.repeat(plain.length);
+}
+
 export async function createHolder(input: HolderInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'holders', verb: 'create' });
@@ -277,38 +322,43 @@ export async function createHolder(input: HolderInput) {
 
   const folioNumber = await nextFolioNumber();
 
-  const row = await prisma.holder.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('HLD'),
-      kind: input.kind,
-      personId,
-      organizationId: input.organizationId ?? null,
-      heldByTenantId: input.heldByTenantId ?? null,
-      folioNumber,
-      residency: input.residency ?? 'resident',
-      investmentBasis: input.investmentBasis ?? null,
-      panNumber: input.panNumber ?? null,
-      nominee: (input.nominee ?? undefined) as never,
-      jointHolders: (input.jointHolders ?? undefined) as never,
-      address: input.address ?? null,
-      occupation: input.occupation ?? null,
-      nationality: input.nationality ?? null,
-      guardianOrSpouseName: input.guardianOrSpouseName ?? null,
-      dematAccount: (input.dematAccount ?? undefined) as never,
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.holder.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('HLD', new Date(), tx),
+        kind: input.kind,
+        personId,
+        organizationId: input.organizationId ?? null,
+        heldByTenantId: input.heldByTenantId ?? null,
+        folioNumber,
+        residency: input.residency ?? 'resident',
+        investmentBasis: input.investmentBasis ?? null,
+        panNumber: sealHolderPan(input.panNumber),
+        nominee: (input.nominee ?? undefined) as never,
+        jointHolders: (input.jointHolders ?? undefined) as never,
+        address: input.address ?? null,
+        occupation: input.occupation ?? null,
+        nationality: input.nationality ?? null,
+        guardianOrSpouseName: input.guardianOrSpouseName ?? null,
+        dematAccount: (input.dematAccount ?? undefined) as never,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'holder',
-    subjectId: row.id,
-    after: { folioNumber, kind: row.kind },
-  });
-  await emit({
-    name: EVENTS.HOLDER_CREATED,
-    subject: { entityType: 'holder', entityId: row.id, recordCode: row.recordCode },
-    newState: { kind: row.kind, folioNumber },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'holder',
+      subjectId: created.id,
+      after: { folioNumber, kind: created.kind },
+      tx,
+    });
+    await emit({
+      name: EVENTS.HOLDER_CREATED,
+      subject: { entityType: 'holder', entityId: created.id, recordCode: created.recordCode },
+      newState: { kind: created.kind, folioNumber },
+      tx,
+    });
+    return created;
   });
 
   return holderView(row);
@@ -347,7 +397,7 @@ export async function updateHolder(id: string, input: HolderUpdateInput) {
     data: {
       ...(input.residency !== undefined ? { residency: input.residency } : {}),
       ...(input.investmentBasis !== undefined ? { investmentBasis: input.investmentBasis } : {}),
-      ...(input.panNumber !== undefined ? { panNumber: input.panNumber } : {}),
+      ...(input.panNumber !== undefined ? { panNumber: sealHolderPan(input.panNumber) } : {}),
       ...(input.nominee !== undefined ? { nominee: input.nominee as never } : {}),
       ...(input.jointHolders !== undefined ? { jointHolders: input.jointHolders as never } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
@@ -430,6 +480,7 @@ export async function holderView(row: {
   nationality?: string | null;
   guardianOrSpouseName?: string | null;
   dematAccount?: unknown;
+  panNumber?: string | null;
 }) {
   let displayName = row.folioNumber;
   if (row.kind === 'person' && row.personId) {
@@ -459,7 +510,44 @@ export async function holderView(row: {
     nationality: row.nationality ?? null,
     guardianOrSpouseName: row.guardianOrSpouseName ?? null,
     dematAccount: (row.dematAccount ?? null) as Record<string, unknown> | null,
+    panNumber: holderPanFor(row.panNumber),
   };
+}
+
+/**
+ * One-off, and safe to re-run: seals each holder PAN still on disk as
+ * plaintext, for rows written before `sealHolderPan` existed. Scoped to the
+ * current tenant, so a run for one entity never reads another's rows.
+ */
+export async function encryptHolderPansAtRest(): Promise<{
+  holdersScanned: number;
+  valuesEncrypted: number;
+  alreadyEncrypted: number;
+}> {
+  const auth = currentAuth();
+  await assertCan({ resource: 'security_settings', verb: 'edit' });
+
+  const rows = await prisma.holder.findMany({
+    where: { tenantId: auth.tenantId, panNumber: { not: null } },
+    select: { id: true, panNumber: true },
+  });
+
+  let holdersScanned = 0;
+  let valuesEncrypted = 0;
+  let alreadyEncrypted = 0;
+  for (const row of rows) {
+    if (!row.panNumber) continue;
+    holdersScanned += 1;
+    if (isEncryptedFieldValue(row.panNumber)) {
+      alreadyEncrypted += 1;
+      continue;
+    }
+    await prisma.holder.update({ where: { id: row.id }, data: { panNumber: encryptField(row.panNumber) } });
+    valuesEncrypted += 1;
+  }
+
+  await auditBulkOperation('holder', 'encrypt_pan_at_rest', { holdersScanned, valuesEncrypted, alreadyEncrypted });
+  return { holdersScanned, valuesEncrypted, alreadyEncrypted };
 }
 
 /**
@@ -480,27 +568,32 @@ export async function holderForExercise(personId: string) {
   if (existing) return holderView(existing);
 
   const folioNumber = await nextFolioNumber();
-  const row = await prisma.holder.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('HLD'),
-      kind: 'person',
-      personId,
-      folioNumber,
-      residency: 'resident',
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.holder.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('HLD', new Date(), tx),
+        kind: 'person',
+        personId,
+        folioNumber,
+        residency: 'resident',
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'holder',
-    subjectId: row.id,
-    after: { folioNumber, kind: row.kind },
-  });
-  await emit({
-    name: EVENTS.HOLDER_CREATED,
-    subject: { entityType: 'holder', entityId: row.id, recordCode: row.recordCode },
-    newState: { kind: row.kind, folioNumber },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'holder',
+      subjectId: created.id,
+      after: { folioNumber, kind: created.kind },
+      tx,
+    });
+    await emit({
+      name: EVENTS.HOLDER_CREATED,
+      subject: { entityType: 'holder', entityId: created.id, recordCode: created.recordCode },
+      newState: { kind: created.kind, folioNumber },
+      tx,
+    });
+    return created;
   });
 
   return holderView(row);
@@ -537,37 +630,48 @@ export async function recordExerciseAllotment(input: ExerciseAllotmentInput) {
 
   await assertConsiderationIsEquity(input.considerationTransactionId);
 
-  const row = await prisma.shareTransaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('SHT'),
-      type: 'allotment',
-      shareClassId: input.shareClassId,
-      toHolderId: input.toHolderId,
-      count: dec(input.count)!,
-      pricePerShare: dec(input.pricePerShare),
-      effectiveOn: new Date(input.effectiveOn),
-      considerationTransactionId: input.considerationTransactionId ?? null,
-      status: 'approved',
-      proposedByPartyId: auth.partyId ?? 'system',
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.shareTransaction.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('SHT', new Date(), tx),
+        type: 'allotment',
+        shareClassId: input.shareClassId,
+        toHolderId: input.toHolderId,
+        count: dec(input.count)!,
+        pricePerShare: dec(input.pricePerShare),
+        effectiveOn: new Date(input.effectiveOn),
+        considerationTransactionId: input.considerationTransactionId ?? null,
+        status: 'approved',
+        proposedByPartyId: auth.partyId ?? 'system',
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'share_transaction', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.ALLOTMENT_PROPOSED,
-    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
-    newState: {
-      shareClassId: row.shareClassId,
-      toHolderId: row.toHolderId,
-      count: input.count,
-      source: 'esop_exercise',
-    },
-  });
-  await emit({
-    name: EVENTS.ALLOTMENT_APPROVED,
-    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
-    newState: { status: 'approved', source: 'esop_exercise' },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'share_transaction',
+      subjectId: created.id,
+      after: created as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.ALLOTMENT_PROPOSED,
+      subject: { entityType: 'share_transaction', entityId: created.id, recordCode: created.recordCode },
+      newState: {
+        shareClassId: created.shareClassId,
+        toHolderId: created.toHolderId,
+        count: input.count,
+        source: 'esop_exercise',
+      },
+      tx,
+    });
+    await emit({
+      name: EVENTS.ALLOTMENT_APPROVED,
+      subject: { entityType: 'share_transaction', entityId: created.id, recordCode: created.recordCode },
+      newState: { status: 'approved', source: 'esop_exercise' },
+      tx,
+    });
+    return created;
   });
 
   return shareTransactionView(row);
@@ -691,29 +795,44 @@ export async function proposeAllotment(input: ProposeAllotmentInput) {
     pricePerShare: input.pricePerShare,
   });
 
-  const row = await prisma.shareTransaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('SHT'),
-      type: 'allotment',
-      shareClassId: input.shareClassId,
-      toHolderId: input.toHolderId,
-      count: dec(input.count)!,
-      pricePerShare: input.pricePerShare == null ? null : dec(input.pricePerShare),
-      effectiveOn: new Date(input.effectiveOn),
-      considerationTransactionId: input.considerationTransactionId ?? null,
-      boardResolutionRef: input.boardResolutionRef ?? null,
-      roundId: input.roundId ?? null,
-      status: 'proposed',
-      proposedByPartyId: auth.partyId ?? 'system',
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.shareTransaction.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('SHT', new Date(), tx),
+        type: 'allotment',
+        shareClassId: input.shareClassId,
+        toHolderId: input.toHolderId,
+        count: dec(input.count)!,
+        pricePerShare: input.pricePerShare == null ? null : dec(input.pricePerShare),
+        effectiveOn: new Date(input.effectiveOn),
+        considerationTransactionId: input.considerationTransactionId ?? null,
+        boardResolutionRef: input.boardResolutionRef ?? null,
+        roundId: input.roundId ?? null,
+        status: 'proposed',
+        proposedByPartyId: auth.partyId ?? 'system',
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'share_transaction', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.ALLOTMENT_PROPOSED,
-    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
-    newState: { shareClassId: row.shareClassId, toHolderId: row.toHolderId, count: input.count, pendingConsideration },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'share_transaction',
+      subjectId: created.id,
+      after: created as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.ALLOTMENT_PROPOSED,
+      subject: { entityType: 'share_transaction', entityId: created.id, recordCode: created.recordCode },
+      newState: {
+        shareClassId: created.shareClassId,
+        toHolderId: created.toHolderId,
+        count: input.count,
+        pendingConsideration,
+      },
+      tx,
+    });
+    return created;
   });
 
   return { ...shareTransactionView(row), femaPricingNote };
@@ -762,33 +881,43 @@ export async function proposeTransfer(input: ProposeTransferInput) {
     pricePerShare: input.pricePerShare,
   });
 
-  const row = await prisma.shareTransaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('SHT'),
-      type: 'transfer',
-      shareClassId: input.shareClassId,
-      fromHolderId: input.fromHolderId,
-      toHolderId: input.toHolderId,
-      count: dec(input.count)!,
-      pricePerShare: input.pricePerShare == null ? null : dec(input.pricePerShare),
-      effectiveOn: new Date(input.effectiveOn),
-      considerationTransactionId: input.considerationTransactionId ?? null,
-      status: 'proposed',
-      proposedByPartyId: auth.partyId ?? 'system',
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.shareTransaction.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('SHT', new Date(), tx),
+        type: 'transfer',
+        shareClassId: input.shareClassId,
+        fromHolderId: input.fromHolderId,
+        toHolderId: input.toHolderId,
+        count: dec(input.count)!,
+        pricePerShare: input.pricePerShare == null ? null : dec(input.pricePerShare),
+        effectiveOn: new Date(input.effectiveOn),
+        considerationTransactionId: input.considerationTransactionId ?? null,
+        status: 'proposed',
+        proposedByPartyId: auth.partyId ?? 'system',
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'share_transaction', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.TRANSFER_PROPOSED,
-    subject: { entityType: 'share_transaction', entityId: row.id, recordCode: row.recordCode },
-    newState: {
-      shareClassId: row.shareClassId,
-      fromHolderId: row.fromHolderId,
-      toHolderId: row.toHolderId,
-      count: input.count,
-    },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'share_transaction',
+      subjectId: created.id,
+      after: created as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.TRANSFER_PROPOSED,
+      subject: { entityType: 'share_transaction', entityId: created.id, recordCode: created.recordCode },
+      newState: {
+        shareClassId: created.shareClassId,
+        fromHolderId: created.fromHolderId,
+        toHolderId: created.toHolderId,
+        count: input.count,
+      },
+      tx,
+    });
+    return created;
   });
 
   return { ...shareTransactionView(row), femaPricingNote };
@@ -846,22 +975,27 @@ export async function approveShareTransaction(id: string) {
     throw ApiError.forbidden(result.reason, [{ axis: 'WHO', passed: false, reason: 'self_dealing_or_authority' }]);
   }
 
-  const updated = await prisma.shareTransaction.update({
-    where: { id },
-    data: { status: 'approved', approvalDecisionId: result.approvalStepId },
-  });
+  const updated = await governedWrite(async (tx) => {
+    const next = await tx.shareTransaction.update({
+      where: { id },
+      data: { status: 'approved', approvalDecisionId: result.approvalStepId },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'share_transaction',
-    subjectId: id,
-    before: txn as never,
-    after: updated as never,
-  });
-  await emit({
-    name: APPROVED_EVENT_BY_TYPE[txn.type] ?? EVENTS.TRANSFER_APPROVED,
-    subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
-    newState: { status: 'approved' },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'share_transaction',
+      subjectId: id,
+      before: txn as never,
+      after: next as never,
+      tx,
+    });
+    await emit({
+      name: APPROVED_EVENT_BY_TYPE[txn.type] ?? EVENTS.TRANSFER_APPROVED,
+      subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
+      newState: { status: 'approved' },
+      tx,
+    });
+    return next;
   });
 
   return shareTransactionView(updated);
@@ -885,18 +1019,23 @@ export async function rejectShareTransaction(id: string, reason: string) {
   if (!txn) throw ApiError.notFound('Share transaction');
   if (txn.status !== 'proposed') throw ApiError.conflict(`This transaction is already ${txn.status}.`);
 
-  const updated = await prisma.shareTransaction.update({ where: { id }, data: { status: 'rejected', note: reason } });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'share_transaction',
-    subjectId: id,
-    before: txn as never,
-    after: updated as never,
-  });
-  await emit({
-    name: EVENTS.SHARE_TRANSACTION_REJECTED,
-    subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
-    newState: { status: 'rejected', reason },
+  const updated = await governedWrite(async (tx) => {
+    const next = await tx.shareTransaction.update({ where: { id }, data: { status: 'rejected', note: reason } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'share_transaction',
+      subjectId: id,
+      before: txn as never,
+      after: next as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.SHARE_TRANSACTION_REJECTED,
+      subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
+      newState: { status: 'rejected', reason },
+      tx,
+    });
+    return next;
   });
   return shareTransactionView(updated);
 }
@@ -939,31 +1078,54 @@ export async function issueCertificateFor(input: {
   const prefix = await documentPrefix();
   const certificateNumber = await nextDocumentNumber(DOCUMENT_SERIES.shareCertificate, prefix, input.issuedOn);
 
-  const cert = await prisma.shareCertificate.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('CRT'),
-      certificateNumber,
-      holderId: input.holderId,
-      shareClassId: input.shareClassId,
-      distinctiveFrom: input.distinctiveFrom,
-      distinctiveTo: input.distinctiveTo,
-      count: dec(input.count)!,
-      issuedOn: input.issuedOn,
-      status: 'issued',
-      issuedForTransactionId: input.issuedForTransactionId,
-      signatories: signatories as never,
-      holderNameSnapshot: view.displayName,
-    },
-  });
+  // No audit row was written here before, so a certificate could be issued
+  // with no record of it. The audit row is part of the same transaction as the
+  // certificate for that reason.
+  return governedWrite(async (tx) => {
+    const cert = await tx.shareCertificate.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('CRT', new Date(), tx),
+        certificateNumber,
+        holderId: input.holderId,
+        shareClassId: input.shareClassId,
+        distinctiveFrom: input.distinctiveFrom,
+        distinctiveTo: input.distinctiveTo,
+        count: dec(input.count)!,
+        issuedOn: input.issuedOn,
+        status: 'issued',
+        issuedForTransactionId: input.issuedForTransactionId,
+        signatories: signatories as never,
+        holderNameSnapshot: view.displayName,
+      },
+    });
 
-  await emit({
-    name: EVENTS.CERTIFICATE_ISSUED,
-    subject: { entityType: 'share_certificate', entityId: cert.id, recordCode: cert.recordCode },
-    newState: { certificateNumber, holderId: input.holderId, count: input.count },
-  });
+    // The distinctive range is BigInt, which the audit hash cannot serialise
+    // as a raw row, so the audit record carries the range as strings.
+    await auditWrite({
+      action: 'create',
+      subjectType: 'share_certificate',
+      subjectId: cert.id,
+      after: {
+        certificateNumber,
+        holderId: input.holderId,
+        shareClassId: input.shareClassId,
+        distinctiveFrom: input.distinctiveFrom.toString(),
+        distinctiveTo: input.distinctiveTo.toString(),
+        count: input.count,
+        status: 'issued',
+      },
+      tx,
+    });
+    await emit({
+      name: EVENTS.CERTIFICATE_ISSUED,
+      subject: { entityType: 'share_certificate', entityId: cert.id, recordCode: cert.recordCode },
+      newState: { certificateNumber, holderId: input.holderId, count: input.count },
+      tx,
+    });
 
-  return cert;
+    return cert;
+  });
 }
 
 /**
@@ -1313,68 +1475,80 @@ export async function reverseShareTransaction(id: string, reason: string) {
   if (!txn) throw ApiError.notFound('Share transaction');
   if (txn.status !== 'effective') throw ApiError.conflict('Only an effective transaction can be reversed.');
 
-  const reversal = await prisma.shareTransaction.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('SHT'),
-      type: txn.type,
-      shareClassId: txn.shareClassId,
-      // The opposite entry: what came in goes out and back again.
-      fromHolderId: txn.toHolderId,
-      toHolderId: txn.fromHolderId,
-      count: txn.count,
-      pricePerShare: txn.pricePerShare,
-      distinctiveFrom: txn.distinctiveFrom,
-      distinctiveTo: txn.distinctiveTo,
-      effectiveOn: new Date(),
-      status: 'effective',
-      reversalOfId: txn.id,
-      proposedByPartyId: auth.partyId ?? 'system',
-      note: reason,
-    },
-  });
-
-  await prisma.shareTransaction.update({ where: { id }, data: { status: 'reversed', reversedById: reversal.id } });
-
-  // Cancel certificates issued for the reversed transaction; restore what it
-  // superseded as new certificates rather than un-cancelling them (§6, the
-  // register never edits a certificate back into existence).
-  const issued = await prisma.shareCertificate.findMany({
-    where: { tenantId: auth.tenantId, issuedForTransactionId: txn.id },
-  });
-  for (const cert of issued) {
-    await prisma.shareCertificate.update({ where: { id: cert.id }, data: { status: 'cancelled' } });
-    await emit({
-      name: EVENTS.CERTIFICATE_CANCELLED,
-      subject: { entityType: 'share_certificate', entityId: cert.id, recordCode: cert.recordCode },
-      newState: { status: 'cancelled', reason },
+  // The reversal row, the status change, the certificate cancellations, the
+  // audit row and the events commit together. A reversal that committed
+  // without its events would leave downstream readers of the register unaware
+  // that the holding had moved back.
+  const { reversal, reversed } = await governedWrite(async (tx) => {
+    const created = await tx.shareTransaction.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('SHT', new Date(), tx),
+        type: txn.type,
+        shareClassId: txn.shareClassId,
+        // The opposite entry: what came in goes out and back again.
+        fromHolderId: txn.toHolderId,
+        toHolderId: txn.fromHolderId,
+        count: txn.count,
+        pricePerShare: txn.pricePerShare,
+        distinctiveFrom: txn.distinctiveFrom,
+        distinctiveTo: txn.distinctiveTo,
+        effectiveOn: new Date(),
+        status: 'effective',
+        reversalOfId: txn.id,
+        proposedByPartyId: auth.partyId ?? 'system',
+        note: reason,
+      },
     });
 
-    if (cert.supersededById) continue; // superseded onward already, nothing to restore
-  }
-  const superseded = await prisma.shareCertificate.findMany({
-    where: { tenantId: auth.tenantId, supersededById: { in: issued.map((c) => c.id) } },
-  });
-  for (const old of superseded) {
-    await prisma.shareCertificate.update({ where: { id: old.id }, data: { status: 'issued', supersededById: null } });
-  }
+    const next = await tx.shareTransaction.update({
+      where: { id },
+      data: { status: 'reversed', reversedById: created.id },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'share_transaction',
-    subjectId: id,
-    before: txn as never,
-    after: { status: 'reversed' },
-  });
-  await emit({
-    name: EVENTS.SHARE_TRANSACTION_REVERSED,
-    subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
-    related: [{ relation: 'reversed_by', entityType: 'share_transaction', entityId: reversal.id }],
-    newState: { status: 'reversed', reversalId: reversal.id, reason },
+    // Cancel certificates issued for the reversed transaction; restore what it
+    // superseded as new certificates rather than un-cancelling them (§6, the
+    // register never edits a certificate back into existence).
+    const issued = await tx.shareCertificate.findMany({
+      where: { tenantId: auth.tenantId, issuedForTransactionId: txn.id },
+    });
+    for (const cert of issued) {
+      await tx.shareCertificate.update({ where: { id: cert.id }, data: { status: 'cancelled' } });
+      await emit({
+        name: EVENTS.CERTIFICATE_CANCELLED,
+        subject: { entityType: 'share_certificate', entityId: cert.id, recordCode: cert.recordCode },
+        newState: { status: 'cancelled', reason },
+        tx,
+      });
+    }
+    const superseded = await tx.shareCertificate.findMany({
+      where: { tenantId: auth.tenantId, supersededById: { in: issued.map((c) => c.id) } },
+    });
+    for (const old of superseded) {
+      await tx.shareCertificate.update({ where: { id: old.id }, data: { status: 'issued', supersededById: null } });
+    }
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'share_transaction',
+      subjectId: id,
+      before: txn as never,
+      after: { status: 'reversed' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.SHARE_TRANSACTION_REVERSED,
+      subject: { entityType: 'share_transaction', entityId: id, recordCode: txn.recordCode },
+      related: [{ relation: 'reversed_by', entityType: 'share_transaction', entityId: created.id }],
+      newState: { status: 'reversed', reversalId: created.id, reason },
+      tx,
+    });
+
+    return { reversal: created, reversed: next };
   });
 
   return {
-    reversed: shareTransactionView(await prisma.shareTransaction.findFirstOrThrow({ where: { id } })),
+    reversed: shareTransactionView(reversed),
     reversal: shareTransactionView(reversal),
   };
 }
@@ -1758,28 +1932,38 @@ export async function recordValuation(input: ValuationInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'valuations', verb: 'create' });
 
-  const row = await prisma.valuation.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('VAL'),
-      asOf: new Date(input.asOf),
-      basis: input.basis,
-      valuerName: input.valuerName ?? null,
-      perShareByClass: input.perShareByClass as never,
-      equityValue: input.equityValue == null ? null : dec(input.equityValue),
-      reportRef: input.reportRef ?? null,
-      validUntil: input.validUntil ? new Date(input.validUntil) : null,
-      note: input.note ?? null,
-      roundId: input.roundId ?? null,
-      createdById: auth.partyId,
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.valuation.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('VAL', new Date(), tx),
+        asOf: new Date(input.asOf),
+        basis: input.basis,
+        valuerName: input.valuerName ?? null,
+        perShareByClass: input.perShareByClass as never,
+        equityValue: input.equityValue == null ? null : dec(input.equityValue),
+        reportRef: input.reportRef ?? null,
+        validUntil: input.validUntil ? new Date(input.validUntil) : null,
+        note: input.note ?? null,
+        roundId: input.roundId ?? null,
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({ action: 'create', subjectType: 'valuation', subjectId: row.id, after: row as never });
-  await emit({
-    name: EVENTS.VALUATION_RECORDED,
-    subject: { entityType: 'valuation', entityId: row.id, recordCode: row.recordCode },
-    newState: { basis: row.basis, asOf: row.asOf.toISOString() },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'valuation',
+      subjectId: created.id,
+      after: created as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.VALUATION_RECORDED,
+      subject: { entityType: 'valuation', entityId: created.id, recordCode: created.recordCode },
+      newState: { basis: created.basis, asOf: created.asOf.toISOString() },
+      tx,
+    });
+    return created;
   });
 
   return valuationView(row);
@@ -1851,30 +2035,35 @@ export async function publishDocument(input: EntityDocumentInput) {
   const auth = currentAuth();
   await assertCan({ resource: 'entity_documents', verb: 'create' });
 
-  const row = await prisma.entityDocument.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode: await nextRecordCode('DOC'),
-      title: input.title,
-      kind: input.kind,
-      audience: input.audience,
-      fileRef: input.fileRef,
-      uploadedByPartyId: auth.partyId ?? 'system',
-      relatedType: input.relatedType ?? null,
-      relatedId: input.relatedId ?? null,
-    },
-  });
+  const row = await governedWrite(async (tx) => {
+    const created = await tx.entityDocument.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode: await nextRecordCode('DOC', new Date(), tx),
+        title: input.title,
+        kind: input.kind,
+        audience: input.audience,
+        fileRef: input.fileRef,
+        uploadedByPartyId: auth.partyId ?? 'system',
+        relatedType: input.relatedType ?? null,
+        relatedId: input.relatedId ?? null,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'entity_document',
-    subjectId: row.id,
-    after: { title: row.title, audience: row.audience },
-  });
-  await emit({
-    name: EVENTS.ENTITY_DOCUMENT_PUBLISHED,
-    subject: { entityType: 'entity_document', entityId: row.id, recordCode: row.recordCode },
-    newState: { audience: row.audience, kind: row.kind },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'entity_document',
+      subjectId: created.id,
+      after: { title: created.title, audience: created.audience },
+      tx,
+    });
+    await emit({
+      name: EVENTS.ENTITY_DOCUMENT_PUBLISHED,
+      subject: { entityType: 'entity_document', entityId: created.id, recordCode: created.recordCode },
+      newState: { audience: created.audience, kind: created.kind },
+      tx,
+    });
+    return created;
   });
 
   return entityDocumentView(row);

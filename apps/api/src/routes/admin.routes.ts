@@ -20,9 +20,11 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, invalidateGrantCache } from '../platform/permissions.js';
 import { verifyChain } from '../platform/eventBus.js';
 import { governedEntities } from '../platform/audit.js';
+import { wireInt } from '../platform/wire.js';
 import { assertCanWriteGrant } from '../platform/roleAssignment.js';
 import { agentRoster, decideAgentAction, pauseAgent, revokeAuthority, propose } from '../agents/index.js';
-import { ALL_JOBS, runJobsForTenant } from '../jobs/scheduler.js';
+import { ALL_JOBS, runManualJobs } from '../jobs/scheduler.js';
+import { replayDeadLetter } from '../platform/outbox.js';
 
 const router = Router();
 
@@ -255,6 +257,7 @@ router.get(
 
     return rows.map((e) => ({
       id: e.id,
+      seq: wireInt(e.seq),
       eventId: e.eventId,
       eventName: e.eventName,
       eventVersion: e.eventVersion,
@@ -286,6 +289,7 @@ router.get(
   '/events/verify-chain',
   handler(async () => {
     await assertCan({ resource: 'events', verb: 'view' });
+    // Walks the whole chain in this request. A large tenant needs a background job, not this handler.
     return verifyChain(currentAuth().tenantId);
   }),
 );
@@ -301,6 +305,12 @@ router.get(
       take: 100,
     });
   }),
+);
+
+/** Puts a dead letter back in line for delivery. Refused with 409 when its name fails the grammar. */
+router.post(
+  '/events/dead-letters/:id/replay',
+  handler(async (req) => replayDeadLetter(String(req.params.id))),
 );
 
 // ---------------------------------------------------------------------------
@@ -325,6 +335,7 @@ router.get(
 
     return rows.map((r) => ({
       id: r.id,
+      seq: wireInt(r.seq),
       action: r.action,
       subjectType: r.subjectType,
       subjectId: r.subjectId,
@@ -389,7 +400,7 @@ router.post(
     const input = schema.parse(req.body ?? {});
     // Manual and scheduled execution share the same substrate and the same
     // idempotency-key store, so they can never diverge.
-    return runJobsForTenant(auth.tenantId, input);
+    return runManualJobs(auth.tenantId, input);
   }),
 );
 

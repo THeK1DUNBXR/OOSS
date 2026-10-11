@@ -49,6 +49,7 @@ import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan, assertScopeAll } from '../platform/permissions.js';
@@ -880,62 +881,84 @@ export async function prepareReturn(returnType: GstReturnType, period: string, n
     where: { tenantId: auth.tenantId, returnType, period, status: 'prepared' },
   });
 
-  const recordCode = await nextRecordCode('GST');
-  const filing = await prisma.gstFiling.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      returnType,
-      period,
-      gstin: computed.gstin,
-      status: 'prepared',
-      snapshot: computed as never,
-      taxableValue: totals.taxableValue,
-      cgstAmount: totals.cgst,
-      sgstAmount: totals.sgst,
-      igstAmount: totals.igst,
-      inputTaxCredit: totals.inputTaxCredit,
-      netPayable: totals.netPayable,
-      invoiceCount: totals.invoiceCount,
-      preparedById: auth.partyId,
-      note: note ?? null,
-    },
-  });
-
-  for (const old of superseded) {
-    await prisma.gstFiling.update({
-      where: { id: old.id },
-      data: { status: 'superseded', supersededById: filing.id },
+  // The new return, the superseding of the old ones, and the events announcing
+  // both commit together: a period must never have two prepared returns with
+  // neither marked as superseded.
+  const filing = await governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('GST', undefined, tx);
+    const created = await tx.gstFiling.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        returnType,
+        period,
+        gstin: computed.gstin,
+        status: 'prepared',
+        snapshot: computed as never,
+        taxableValue: totals.taxableValue,
+        cgstAmount: totals.cgst,
+        sgstAmount: totals.sgst,
+        igstAmount: totals.igst,
+        inputTaxCredit: totals.inputTaxCredit,
+        netPayable: totals.netPayable,
+        invoiceCount: totals.invoiceCount,
+        preparedById: auth.partyId,
+        note: note ?? null,
+      },
     });
+
+    // Every audit row precedes every event in the transaction (governedWrite.ts).
+    for (const old of superseded) {
+      await tx.gstFiling.update({
+        where: { id: old.id },
+        data: { status: 'superseded', supersededById: created.id },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'gst_filing',
+        subjectId: old.id,
+        before: { status: 'prepared' },
+        after: { status: 'superseded', supersededById: created.id },
+        tx,
+      });
+    }
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'gst_filing',
+      subjectId: created.id,
+      after: { recordCode, returnType, period, netPayable: totals.netPayable },
+      tx,
+    });
+
+    for (const old of superseded) {
+      await emit({
+        name: EVENTS.GST_RETURN_SUPERSEDED,
+        subject: { entityType: 'gst_filing', entityId: old.id, recordCode: old.recordCode },
+        newState: { supersededBy: created.recordCode },
+        impact: { domains: ['fin'] },
+        tx,
+      });
+    }
     await emit({
-      name: EVENTS.GST_RETURN_SUPERSEDED,
-      subject: { entityType: 'gst_filing', entityId: old.id, recordCode: old.recordCode },
-      newState: { supersededBy: filing.recordCode },
-      impact: { domains: ['fin'] },
+      name: EVENTS.GST_RETURN_PREPARED,
+      subject: { entityType: 'gst_filing', entityId: created.id, recordCode },
+      newState: {
+        returnType,
+        period,
+        netPayable: totals.netPayable,
+        blocking: blocking.length,
+        advisories: (computed.checks as FilingCheck[]).length - blocking.length,
+      },
+      impact: {
+        domains: ['fin'],
+        materiality: { measure: 'gst_net_payable', value: totals.netPayable, currency: 'INR' },
+      },
+      confidentiality: 'confidential',
+      tx,
     });
-  }
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'gst_filing',
-    subjectId: filing.id,
-    after: { recordCode, returnType, period, netPayable: totals.netPayable },
-  });
-  await emit({
-    name: EVENTS.GST_RETURN_PREPARED,
-    subject: { entityType: 'gst_filing', entityId: filing.id, recordCode },
-    newState: {
-      returnType,
-      period,
-      netPayable: totals.netPayable,
-      blocking: blocking.length,
-      advisories: (computed.checks as FilingCheck[]).length - blocking.length,
-    },
-    impact: {
-      domains: ['fin'],
-      materiality: { measure: 'gst_net_payable', value: totals.netPayable, currency: 'INR' },
-    },
-    confidentiality: 'confidential',
+    return created;
   });
 
   return { filing, computed, blocking };
@@ -1001,58 +1024,65 @@ export async function markReturnFiled(filingId: string, input: { arn: string; fi
     );
   }
 
-  const filed = await prisma.gstFiling.update({
-    where: { id: filingId },
-    data: {
-      status: 'filed',
-      arn,
-      filedAt: input.filedAt ?? new Date(),
-      filedById: auth.partyId,
-      ...(input.note ? { note: input.note } : {}),
-    },
-  });
-
-  // Stamping the invoices is what makes "which return was this reported in" a
-  // question the invoice itself can answer, which is the first thing asked when
-  // a customer says the credit never arrived.
-  if (filed.returnType === 'GSTR1') {
-    const { from, to } = monthRange(filed.period);
-    await prisma.invoice.updateMany({
-      where: {
-        tenantId: auth.tenantId,
-        deletedAt: null,
-        issuedDate: { gte: from, lt: to },
-        status: { notIn: ['draft'] },
+  // Filing, stamping the invoices and the event commit together. An ARN on the
+  // return with no record of the filing, or invoices stamped to a return that
+  // was never recorded as filed, are both states to avoid.
+  return governedWrite(async (tx) => {
+    const filed = await tx.gstFiling.update({
+      where: { id: filingId },
+      data: {
+        status: 'filed',
+        arn,
+        filedAt: input.filedAt ?? new Date(),
+        filedById: auth.partyId,
+        ...(input.note ? { note: input.note } : {}),
       },
-      data: { gstFilingId: filed.id },
     });
-  }
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'gst_filing',
-    subjectId: filed.id,
-    before: { status: 'prepared' },
-    after: { status: 'filed', arn, period: filed.period, returnType: filed.returnType },
-  });
-  await emit({
-    name: EVENTS.GST_RETURN_FILED,
-    subject: { entityType: 'gst_filing', entityId: filed.id, recordCode: filed.recordCode },
-    newState: {
-      returnType: filed.returnType,
-      period: filed.period,
-      arn,
-      netPayable: num(filed.netPayable),
-    },
-    impact: {
-      domains: ['fin'],
-      severity: 'S1_ATTENTION',
-      materiality: { measure: 'gst_net_payable', value: num(filed.netPayable) ?? 0, currency: 'INR' },
-    },
-    confidentiality: 'confidential',
-  });
+    // Stamping the invoices is what makes "which return was this reported in" a
+    // question the invoice itself can answer, which is the first thing asked when
+    // a customer says the credit never arrived.
+    if (filed.returnType === 'GSTR1') {
+      const { from, to } = monthRange(filed.period);
+      await tx.invoice.updateMany({
+        where: {
+          tenantId: auth.tenantId,
+          deletedAt: null,
+          issuedDate: { gte: from, lt: to },
+          status: { notIn: ['draft'] },
+        },
+        data: { gstFilingId: filed.id },
+      });
+    }
 
-  return filed;
+    await auditWrite({
+      action: 'update',
+      subjectType: 'gst_filing',
+      subjectId: filed.id,
+      before: { status: 'prepared' },
+      after: { status: 'filed', arn, period: filed.period, returnType: filed.returnType },
+      tx,
+    });
+    await emit({
+      name: EVENTS.GST_RETURN_FILED,
+      subject: { entityType: 'gst_filing', entityId: filed.id, recordCode: filed.recordCode },
+      newState: {
+        returnType: filed.returnType,
+        period: filed.period,
+        arn,
+        netPayable: num(filed.netPayable),
+      },
+      impact: {
+        domains: ['fin'],
+        severity: 'S1_ATTENTION',
+        materiality: { measure: 'gst_net_payable', value: num(filed.netPayable) ?? 0, currency: 'INR' },
+      },
+      confidentiality: 'confidential',
+      tx,
+    });
+
+    return filed;
+  });
 }
 
 export async function listFilings(filter: { returnType?: string; period?: string; status?: string } = {}) {

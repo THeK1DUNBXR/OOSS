@@ -369,7 +369,7 @@ export async function scopeFor(resource: string, verb: Verb, auth?: AuthContext)
  * A filter no row satisfies. Not a sentinel string: Postgres rejects a NUL byte
  * in text (22021), so a `'\u0000…'` value turned an empty list into a 500.
  */
-function matchNothing(ownerField: string): Record<string, unknown> {
+export function matchNothing(ownerField: string): Record<string, unknown> {
   return { [ownerField]: { in: [] } };
 }
 

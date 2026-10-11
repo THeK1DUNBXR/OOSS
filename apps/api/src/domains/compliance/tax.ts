@@ -37,11 +37,13 @@ import {
 import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { ApiError } from '../../platform/errors.js';
 import { assertCan } from '../../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { raiseException } from '../../platform/exceptions.js';
-import { registerHook } from '../../platform/hooks.js';
+import { registerHook, runHooks } from '../../platform/hooks.js';
+import { openAccountingDate, periodStatus as accountingPeriodStatus } from './books.js';
 
 // payroll_run is owned by domains/payroll.ts, but apply-salary-TDS (below)
 // audits an update to it from here. Registered here too, so a job importing
@@ -186,6 +188,9 @@ export async function computeVendorTds(billId: string, input: ComputeVendorTdsIn
       `${bill.recordCode} is already ${bill.status}. TDS is decided before a bill is paid, not after.`,
     );
   }
+  // Ahead of the rate lookup: a decision in a closed month is refused for that
+  // reason, whatever rate the month would have used.
+  await runHooks('accounting_document.before_write', { date: bill.billDate, what: 'This bill' });
 
   const rate = await rateFor(input.section, bill.billDate);
   const vendorKey = bill.vendorPan ?? bill.vendorName;
@@ -205,42 +210,46 @@ export async function computeVendorTds(billId: string, input: ComputeVendorTdsIn
     certificateRate: input.certificateRate ?? null,
   });
 
-  const updated = await prisma.vendorBill.update({
-    where: { id: bill.id },
-    data: {
-      tdsSection: input.section,
-      tdsRate: result.ratePercentApplied,
-      tdsAmount: result.tdsAmount,
-      tdsCertificateRef: input.certificateRef ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.vendorBill.update({
+      where: { id: bill.id },
+      data: {
+        tdsSection: input.section,
+        tdsRate: result.ratePercentApplied,
+        tdsAmount: result.tdsAmount,
+        tdsCertificateRef: input.certificateRef ?? null,
+      },
+    });
 
-  const decision = await prisma.tdsDecision.create({
-    data: {
-      tenantId: auth.tenantId,
-      billId: bill.id,
-      decision: input.certificateRate === 0 ? 'waived_certificate' : result.applicable ? 'applied' : 'not_applicable',
-      reason: result.reason,
-      certificateRef: input.certificateRef ?? null,
-      decidedById: auth.partyId ?? 'system',
-    },
-  });
+    const decision = await tx.tdsDecision.create({
+      data: {
+        tenantId: auth.tenantId,
+        billId: bill.id,
+        decision: input.certificateRate === 0 ? 'waived_certificate' : result.applicable ? 'applied' : 'not_applicable',
+        reason: result.reason,
+        certificateRef: input.certificateRef ?? null,
+        decidedById: auth.partyId ?? 'system',
+      },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'tds_decision',
-    subjectId: decision.id,
-    after: { billId: bill.id, section: input.section, tdsAmount: result.tdsAmount, decision: decision.decision },
-  });
-  await emit({
-    name: 'kz.fin.tds.deducted',
-    subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode: bill.recordCode },
-    newState: { section: input.section, ratePercent: result.ratePercentApplied, tdsAmount: result.tdsAmount },
-    impact: { domains: ['fin'] },
-    confidentiality: 'confidential',
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'tds_decision',
+      subjectId: decision.id,
+      after: { billId: bill.id, section: input.section, tdsAmount: result.tdsAmount, decision: decision.decision },
+      tx,
+    });
+    await emit({
+      name: 'kz.fin.tds.deducted',
+      subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode: bill.recordCode },
+      newState: { section: input.section, ratePercent: result.ratePercentApplied, tdsAmount: result.tdsAmount },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+      tx,
+    });
 
-  return { bill: updated, decision, result };
+    return { bill: updated, decision, result };
+  });
 }
 
 /** Explicitly marks TDS as not applicable on a bill, with a reason — a decision in its own right, not a default. */
@@ -252,6 +261,7 @@ export async function waiveVendorTds(billId: string, reason: string) {
 
   const bill = await prisma.vendorBill.findFirst({ where: { id: billId, tenantId: auth.tenantId, deletedAt: null } });
   if (!bill) throw ApiError.notFound('Vendor bill');
+  await runHooks('accounting_document.before_write', { date: bill.billDate, what: 'This bill' });
 
   const decision = await prisma.tdsDecision.create({
     data: {
@@ -586,43 +596,74 @@ export async function markChallanPaid(id: string, input: MarkChallanPaidInput) {
     );
   }
 
-  const paid = await prisma.tdsChallan.update({
-    where: { id },
-    data: {
-      status: 'paid',
-      bsrCode: input.bsrCode,
-      challanNo: input.challanNo,
-      paidOn: input.paidOn,
-      paidById: auth.partyId,
-    },
-  });
+  // Interim policy, pending the accountant's confirmation (EX-FIN-008): money that
+  // has left the bank is never refused by a closed month. The challan keeps its
+  // real paid date, which drives interest and the return; the books take it in
+  // the current open period and the accountant is told.
+  const paidInClosedPeriod = (await accountingPeriodStatus(input.paidOn)) === 'closed';
+  const bookedOn = paidInClosedPeriod ? await openAccountingDate(new Date()) : null;
+  const settled = await governedWrite(async (tx) => {
+    const paid = await tx.tdsChallan.update({
+      where: { id },
+      data: {
+        status: 'paid',
+        bsrCode: input.bsrCode,
+        challanNo: input.challanNo,
+        paidOn: input.paidOn,
+        bookedOn,
+        paidById: auth.partyId,
+      },
+    });
 
-  // Stamp the bills this challan covers, so a bill can answer "which challan was this deposited in".
-  const { from, to } = monthRange(challan.month);
-  await prisma.vendorBill.updateMany({
-    where: {
-      tenantId: auth.tenantId,
-      tdsSection: challan.sectionGroup,
-      tdsChallanId: null,
-      billDate: { gte: from, lt: to },
-    },
-    data: { tdsChallanId: paid.id },
-  });
+    // Stamp the bills this challan covers, so a bill can answer "which challan was this deposited in".
+    const { from, to } = monthRange(challan.month);
+    await tx.vendorBill.updateMany({
+      where: {
+        tenantId: auth.tenantId,
+        tdsSection: challan.sectionGroup,
+        tdsChallanId: null,
+        billDate: { gte: from, lt: to },
+      },
+      data: { tdsChallanId: paid.id },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'tds_challan',
-    subjectId: paid.id,
-    before: { status: 'pending' },
-    after: { status: 'paid', bsrCode: input.bsrCode, challanNo: input.challanNo },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'tds_challan',
+      subjectId: paid.id,
+      before: { status: 'pending' },
+      after: { status: 'paid', bsrCode: input.bsrCode, challanNo: input.challanNo },
+      tx,
+    });
+    await emit({
+      name: 'kz.fin.tds.deposited',
+      subject: { entityType: 'tds_challan', entityId: paid.id, recordCode: paid.recordCode },
+      newState: { status: 'paid', amount: num(paid.amount) },
+      impact: { domains: ['fin'] },
+      tx,
+    });
+    // The exception is the consequence of this payment, so it commits or rolls back
+    // with it. Raised after the commit, a failed raise left a paid challan with no
+    // EX-FIN-008 to act on.
+    if (paidInClosedPeriod) {
+      await raiseException(
+        {
+          code: 'EX-FIN-008',
+          label: 'Payment made for a closed period',
+          severity: 'S2_WARNING',
+          subjectType: 'tds_challan',
+          subjectId: challan.id,
+          subjectLabel: challan.recordCode,
+          detail: `The deposit was made on ${input.paidOn.toISOString().slice(0, 10)}, in a closed period. It is booked from ${bookedOn?.toISOString().slice(0, 10)}; the paid date is kept. Confirm the treatment with the accountant.`,
+          triggerFingerprint: `challan_paid_closed:${challan.id}`,
+          ladderRung: 1,
+        },
+        tx,
+      );
+    }
+    return paid;
   });
-  await emit({
-    name: 'kz.fin.tds.deposited',
-    subject: { entityType: 'tds_challan', entityId: paid.id, recordCode: paid.recordCode },
-    newState: { status: 'paid', amount: num(paid.amount) },
-    impact: { domains: ['fin'] },
-  });
-  return paid;
+  return settled;
 }
 
 /**
@@ -934,6 +975,9 @@ export async function recordAdvanceTaxPayment(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'tds', verb: 'create' });
+  // Interim policy, pending the accountant's confirmation (EX-FIN-008): see markChallanPaid.
+  const paidInClosedPeriod = (await accountingPeriodStatus(input.paidOn)) === 'closed';
+  const bookedOn = paidInClosedPeriod ? await openAccountingDate(new Date()) : null;
   const row = await prisma.advanceTaxPayment.create({
     data: {
       tenantId: auth.tenantId,
@@ -941,10 +985,23 @@ export async function recordAdvanceTaxPayment(input: {
       instalmentDate: input.instalmentDate,
       amount: input.amount,
       paidOn: input.paidOn,
+      bookedOn,
       reference: input.reference ?? null,
       createdById: auth.partyId,
     },
   });
+  if (paidInClosedPeriod) {
+    await raiseException({
+      code: 'EX-FIN-008',
+      label: 'Payment made for a closed period',
+      severity: 'S2_WARNING',
+      subjectType: 'advance_tax_payment',
+      subjectId: row.id,
+      detail: `The advance-tax payment was made on ${input.paidOn.toISOString().slice(0, 10)}, in a closed period. It is booked from ${bookedOn?.toISOString().slice(0, 10)}; the paid date is kept. Confirm the treatment with the accountant.`,
+      triggerFingerprint: `advance_tax_paid_closed:${row.id}`,
+      ladderRung: 1,
+    });
+  }
   await auditWrite({
     action: 'create',
     subjectType: 'advance_tax_payment',
@@ -1034,35 +1091,39 @@ export async function prepareTdsReturn(fy: string, quarter: Quarter, form: '24Q'
   const superseded = await prisma.tdsReturn.findMany({
     where: { tenantId: auth.tenantId, fy, quarter, form, status: 'prepared' },
   });
-  const row = await prisma.tdsReturn.create({
-    data: {
-      tenantId: auth.tenantId,
-      fy,
-      quarter,
-      form,
-      status: 'prepared',
-      snapshot: snapshot as never,
-      preparedById: auth.partyId,
-    },
-  });
-  for (const old of superseded) {
-    await prisma.tdsReturn.update({ where: { id: old.id }, data: { status: 'superseded', supersededById: row.id } });
-  }
+  return governedWrite(async (tx) => {
+    const row = await tx.tdsReturn.create({
+      data: {
+        tenantId: auth.tenantId,
+        fy,
+        quarter,
+        form,
+        status: 'prepared',
+        snapshot: snapshot as never,
+        preparedById: auth.partyId,
+      },
+    });
+    for (const old of superseded) {
+      await tx.tdsReturn.update({ where: { id: old.id }, data: { status: 'superseded', supersededById: row.id } });
+    }
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'tds_return',
-    subjectId: row.id,
-    after: { fy, quarter, form, totalTds },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'tds_return',
+      subjectId: row.id,
+      after: { fy, quarter, form, totalTds },
+      tx,
+    });
+    await emit({
+      name: 'kz.fin.tds_return.prepared',
+      subject: { entityType: 'tds_return', entityId: row.id },
+      newState: { fy, quarter, form, totalTds },
+      impact: { domains: ['fin'], materiality: { measure: 'tds_total', value: totalTds, currency: 'INR' } },
+      confidentiality: 'confidential',
+      tx,
+    });
+    return row;
   });
-  await emit({
-    name: 'kz.fin.tds_return.prepared',
-    subject: { entityType: 'tds_return', entityId: row.id },
-    newState: { fy, quarter, form, totalTds },
-    impact: { domains: ['fin'], materiality: { measure: 'tds_total', value: totalTds, currency: 'INR' } },
-    confidentiality: 'confidential',
-  });
-  return row;
 }
 
 /** Filing is the irreversible half — closer to `approve` than `edit`, and asks for the portal's own token/acknowledgement. */
@@ -1080,25 +1141,29 @@ export async function fileTdsReturn(id: string, ack: string) {
       'The acknowledgement token is what the portal gives back — a return with none was not filed.',
     );
 
-  const filed = await prisma.tdsReturn.update({
-    where: { id },
-    data: { status: 'filed', ack, token: ack, filedAt: new Date(), filedById: auth.partyId },
+  return governedWrite(async (tx) => {
+    const filed = await tx.tdsReturn.update({
+      where: { id },
+      data: { status: 'filed', ack, token: ack, filedAt: new Date(), filedById: auth.partyId },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'tds_return',
+      subjectId: id,
+      before: { status: 'prepared' },
+      after: { status: 'filed', ack },
+      tx,
+    });
+    await emit({
+      name: 'kz.fin.tds_return.filed',
+      subject: { entityType: 'tds_return', entityId: id },
+      newState: { status: 'filed', ack },
+      impact: { domains: ['fin'], severity: 'S1_ATTENTION' },
+      confidentiality: 'confidential',
+      tx,
+    });
+    return filed;
   });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'tds_return',
-    subjectId: id,
-    before: { status: 'prepared' },
-    after: { status: 'filed', ack },
-  });
-  await emit({
-    name: 'kz.fin.tds_return.filed',
-    subject: { entityType: 'tds_return', entityId: id },
-    newState: { status: 'filed', ack },
-    impact: { domains: ['fin'], severity: 'S1_ATTENTION' },
-    confidentiality: 'confidential',
-  });
-  return filed;
 }
 
 export async function listTdsReturns(filter: { fy?: string; form?: string } = {}) {

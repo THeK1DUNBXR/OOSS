@@ -47,15 +47,18 @@ import {
   type GroupBenChainLink,
   round2,
 } from '@kaizen/shared';
-import { prisma, unscopedPrisma, num } from '../platform/db.js';
+import { prisma, unscopedPrisma, num, type DbTx } from '../platform/db.js';
 import { currentAuth, asSystem } from '../platform/context.js';
 import { assertCan, assertScopeAll } from '../platform/permissions.js';
 import { ApiError } from '../platform/errors.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { governedWrite } from '../platform/governedWrite.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { istYearMonth } from '@kaizen/shared';
 import { raiseException } from '../platform/exceptions.js';
 import { capTable, listShareClasses, listValuations } from './equity.js';
+import { decryptField } from './compliance/privacy.js';
 import { companyProfile } from './companyProfile.js';
 import { headcountByDivision } from './employment.js';
 import { profitAndLoss, cashPosition } from './books.js';
@@ -93,7 +96,10 @@ async function buildHolderKeyIndex(): Promise<Map<string, HolderKeyMeta>> {
   const out = new Map<string, HolderKeyMeta>();
   for (const h of holders) {
     const email = h.kind === 'person' && h.personId ? (emailByPersonId.get(h.personId) ?? null) : null;
-    const { key, matchedBy } = holderKeyFor({ email, panHash: h.panNumber ? panHash(h.panNumber) : null });
+    // The hash is taken over the plaintext PAN. Sealing is randomised, so hashing the
+    // stored value would give every holder a different key and no two tenants would match.
+    const pan = h.panNumber ? decryptField(h.panNumber) : null;
+    const { key, matchedBy } = holderKeyFor({ email, panHash: pan ? panHash(pan) : null });
     out.set(h.id, {
       holderId: h.id,
       kind: h.kind,
@@ -300,6 +306,52 @@ export async function buildEntitySnapshot(sourceTenantId: string): Promise<Built
 }
 
 /**
+ * A section's JSON without its own clock. `capTable()` stamps `asOf: new
+ * Date()` at the top of its section, so two builds of unchanged data differ
+ * by that stamp alone. Only a section's direct `asOf` is dropped: a clock
+ * nested deeper stays in the hash, so the failure mode is one extra history
+ * row, never a lost one.
+ */
+function contentOf(section: unknown): string {
+  return JSON.stringify(section, function (this: unknown, key: string, value: unknown) {
+    return key === 'asOf' && this === section ? undefined : value;
+  });
+}
+
+/**
+ * Appends the payload as the next history row for this source, unless it equals
+ * the latest row's payload, inside the publish transaction. The unique key on
+ * (tenant, source, seq) is what catches a concurrent writer from another
+ * process; that fails this transaction, and publishEntitySnapshot runs it again
+ * from the top. The retry cannot sit here: after a failed statement an
+ * interactive transaction accepts no further statements.
+ */
+async function appendHistory(
+  tx: DbTx,
+  tenantId: string,
+  sourceTenantId: string,
+  shared: Record<string, unknown>,
+  contentHash: string,
+): Promise<void> {
+  const latest = await tx.entitySnapshotHistory.findFirst({
+    where: { tenantId, sourceTenantId },
+    orderBy: { seq: 'desc' },
+    select: { seq: true, contentHash: true },
+  });
+  if (latest?.contentHash === contentHash) return;
+  await tx.entitySnapshotHistory.create({
+    // The Json columns in `shared` are cast on write, as in publishEntitySnapshotOnce.
+    data: {
+      tenantId,
+      recordCode: await nextRecordCode('ESN', undefined, tx),
+      ...shared,
+      contentHash,
+      seq: (latest?.seq ?? 0) + 1,
+    } as never,
+  });
+}
+
+/**
  * Builds, then writes into the parent (skipping silently when the tenant has
  * no parent — most tenants never publish) and emits `kz.eqt.snapshot.
  * published` in both tenants. Kept idempotent per `sourceTenantId`
@@ -308,7 +360,31 @@ export async function buildEntitySnapshot(sourceTenantId: string): Promise<Built
  * accumulating duplicates; the full history survives regardless, in
  * `EntitySnapshotHistory`.
  */
+// Publishes for one source run one after another within this process. The
+// check-then-create on the current snapshot and the history row raced when a
+// scheduled tick and a manual publish overlapped; the unique keys still catch
+// a race across processes, and the losing write then reads the winner's row.
+const publishQueue = new Map<string, Promise<unknown>>();
+
+// The parent's copy of a subsidiary's snapshot. Without this registration the
+// audit write below is refused, which is the point: a snapshot the group relies
+// on for consolidated figures must not be published unrecorded.
+registerGovernedEntities('group', ['entity_snapshot']);
+
 export async function publishEntitySnapshot(
+  sourceTenantId: string,
+): Promise<{ published: boolean; parentTenantId: string | null }> {
+  const previous = publishQueue.get(sourceTenantId) ?? Promise.resolve();
+  const run = previous.catch(() => {}).then(() => publishEntitySnapshotOnce(sourceTenantId));
+  publishQueue.set(sourceTenantId, run);
+  try {
+    return await run;
+  } finally {
+    if (publishQueue.get(sourceTenantId) === run) publishQueue.delete(sourceTenantId);
+  }
+}
+
+async function publishEntitySnapshotOnce(
   sourceTenantId: string,
 ): Promise<{ published: boolean; parentTenantId: string | null }> {
   const source = await unscopedPrisma.tenant.findFirst({ where: { id: sourceTenantId } });
@@ -318,40 +394,75 @@ export async function publishEntitySnapshot(
 
   const built = await buildEntitySnapshot(sourceTenantId);
 
-  await asSystem(parentTenantId, async () => {
-    const existing = await prisma.entitySnapshot.findFirst({ where: { tenantId: parentTenantId, sourceTenantId } });
-    const shared = {
-      sourceTenantId: built.sourceTenantId,
-      sourceSlug: built.sourceSlug,
-      sourceName: built.sourceName,
-      originDivision: built.originDivision,
-      asOf: built.asOf,
-      sourceEventHash: built.sourceEventHash,
-      capTable: built.capTable as never,
-      shareClasses: built.shareClasses as never,
-      board: built.board as never,
-      financial: built.financial as never,
-      compliance: built.compliance as never,
-      valuation: (built.valuation ?? undefined) as never,
-      publishedAt: new Date(),
-    };
+  // Two publishes from different processes can both miss the parent's row and
+  // both create it, or both take the same history seq. The loser's transaction
+  // aborts on the unique key, so it runs again and sees the winner's row: the
+  // row is updated and history appends after the winner's seq. The in-process
+  // queue above removes most of these races; this covers the rest.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await asSystem(parentTenantId, () =>
+        governedWrite(async (tx) => {
+          const existing = await tx.entitySnapshot.findFirst({ where: { tenantId: parentTenantId, sourceTenantId } });
+          const shared = {
+            sourceTenantId: built.sourceTenantId,
+            sourceSlug: built.sourceSlug,
+            sourceName: built.sourceName,
+            originDivision: built.originDivision,
+            asOf: built.asOf,
+            sourceEventHash: built.sourceEventHash,
+            capTable: built.capTable as never,
+            shareClasses: built.shareClasses as never,
+            board: built.board as never,
+            financial: built.financial as never,
+            compliance: built.compliance as never,
+            valuation: (built.valuation ?? undefined) as never,
+            publishedAt: new Date(),
+          };
+          const row = existing
+            ? await tx.entitySnapshot.update({ where: { id: existing.id }, data: shared })
+            : await tx.entitySnapshot.create({
+                data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN', undefined, tx), ...shared },
+              });
 
-    const row = existing
-      ? await prisma.entitySnapshot.update({ where: { id: existing.id }, data: shared })
-      : await prisma.entitySnapshot.create({
-          data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
-        });
+          // History records what changed. `asOf` and `publishedAt` are excluded from
+          // the hash: they move on every run by definition. A payload is skipped only
+          // when it equals the latest row's; a return to an earlier payload (A -> B
+          // -> A) is a change and is recorded.
+          const contentHash = createHash('sha256')
+            .update(
+              JSON.stringify({
+                capTable: contentOf(built.capTable),
+                shareClasses: contentOf(built.shareClasses),
+                board: contentOf(built.board),
+                financial: contentOf(built.financial),
+                compliance: contentOf(built.compliance),
+                valuation: contentOf(built.valuation ?? null),
+              }),
+            )
+            .digest('hex');
+          await appendHistory(tx, parentTenantId, sourceTenantId, shared, contentHash);
 
-    await prisma.entitySnapshotHistory.create({
-      data: { tenantId: parentTenantId, recordCode: await nextRecordCode('ESN'), ...shared },
-    });
-
-    await emit({
-      name: EVENTS.SNAPSHOT_PUBLISHED,
-      subject: { entityType: 'entity_snapshot', entityId: row.id, recordCode: row.recordCode },
-      newState: { sourceTenantId, asOf: built.asOf.toISOString() },
-    });
-  });
+          await auditWrite({
+            action: existing ? 'update' : 'create',
+            subjectType: 'entity_snapshot',
+            subjectId: row.id,
+            after: { sourceTenantId, asOf: built.asOf.toISOString() },
+            tx,
+          });
+          await emit({
+            name: EVENTS.SNAPSHOT_PUBLISHED,
+            subject: { entityType: 'entity_snapshot', entityId: row.id, recordCode: row.recordCode },
+            newState: { sourceTenantId, asOf: built.asOf.toISOString() },
+            tx,
+          });
+        }),
+      );
+      break;
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'P2002' || attempt >= 3) throw err;
+    }
+  }
 
   await asSystem(sourceTenantId, async () => {
     await emit({

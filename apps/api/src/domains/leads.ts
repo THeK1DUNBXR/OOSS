@@ -15,6 +15,7 @@ import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan, scopeFor, scopeWhere } from '../platform/permissions.js';
 import { notify, raiseException } from '../platform/exceptions.js';
 import { entryStage, pipelineForVertical, stageFor, validateTransition } from './pipelines.js';
@@ -103,8 +104,6 @@ export async function createLead(input: LeadInput) {
 
   const pipeline = await pipelineForVertical(input.vertical);
   const stage = await entryStage(pipeline.id);
-  const recordCode = await nextRecordCode('LEAD');
-
   const scoring = scoreLead({
     hasEmail: Boolean(input.person?.primaryEmail),
     hasPhone: Boolean(input.person?.primaryPhone),
@@ -114,57 +113,66 @@ export async function createLead(input: LeadInput) {
     source: input.source ?? 'manual',
   });
 
-  const lead = await prisma.lead.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title,
-      personId,
-      organizationId: input.organizationId ?? null,
-      vertical: input.vertical,
-      offeringId: input.offeringId ?? null,
-      legacyProductText: input.legacyProductText ?? null,
-      pipelineId: pipeline.id,
-      stageKey: stage.stageKey,
-      stageEnteredAt: new Date(),
-      leadStatus: 'open',
-      // Nullable at creation. Written by the routing evaluation immediately
-      // after — not a creation precondition, since a lead can legitimately
-      // exist unrouted with no owner.
-      ownerPartyId: null,
-      score: scoring.score,
-      scoreReasons: scoring.reasons,
-      source: input.source ?? 'manual',
-      sourceDetail: input.sourceDetail ?? null,
-      estimatedValue: input.estimatedValue ?? undefined,
-      currency: input.currency ?? 'INR',
-      createdById: auth.partyId,
-    },
-  });
+  // The lead, its audit row and its creation event commit together; routing
+  // runs after, as its own governed writes.
+  const lead = await governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('LEAD', undefined, tx);
+    const created = await tx.lead.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title,
+        personId,
+        organizationId: input.organizationId ?? null,
+        vertical: input.vertical,
+        offeringId: input.offeringId ?? null,
+        legacyProductText: input.legacyProductText ?? null,
+        pipelineId: pipeline.id,
+        stageKey: stage.stageKey,
+        stageEnteredAt: new Date(),
+        leadStatus: 'open',
+        // Nullable at creation. Written by the routing evaluation immediately
+        // after — not a creation precondition, since a lead can legitimately
+        // exist unrouted with no owner.
+        ownerPartyId: null,
+        score: scoring.score,
+        scoreReasons: scoring.reasons,
+        source: input.source ?? 'manual',
+        sourceDetail: input.sourceDetail ?? null,
+        estimatedValue: input.estimatedValue ?? undefined,
+        currency: input.currency ?? 'INR',
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'lead',
-    subjectId: lead.id,
-    after: { title: lead.title, recordCode },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'lead',
+      subjectId: created.id,
+      after: { title: created.title, recordCode },
+      tx,
+    });
 
-  // Fired BEFORE routing, with ownerPartyId null.
-  await emit({
-    name: EVENTS.LEAD_CREATED,
-    subject: { entityType: 'lead', entityId: lead.id, recordCode },
-    related: [
-      ...(personId ? [{ relation: 'contact', entityType: 'person', entityId: personId }] : []),
-      ...(input.organizationId
-        ? [{ relation: 'account', entityType: 'organization', entityId: input.organizationId }]
-        : []),
-    ],
-    newState: {
-      stageKey: stage.stageKey,
-      pipelinePosition: stage.pipelinePosition,
-      ownerPartyId: null,
-      score: scoring.score,
-    },
+    // Fired BEFORE routing, with ownerPartyId null.
+    await emit({
+      name: EVENTS.LEAD_CREATED,
+      subject: { entityType: 'lead', entityId: created.id, recordCode },
+      related: [
+        ...(personId ? [{ relation: 'contact', entityType: 'person', entityId: personId }] : []),
+        ...(input.organizationId
+          ? [{ relation: 'account', entityType: 'organization', entityId: input.organizationId }]
+          : []),
+      ],
+      newState: {
+        stageKey: stage.stageKey,
+        pipelinePosition: stage.pipelinePosition,
+        ownerPartyId: null,
+        score: scoring.score,
+      },
+      tx,
+    });
+
+    return created;
   });
 
   // Routing runs inline, synchronously.
@@ -185,23 +193,45 @@ export async function applyRouting(leadId: string, district: string | null = nul
     accountKind: lead.organizationId ? 'organization' : 'individual',
   });
 
-  const updated = await prisma.lead.update({
-    where: { id: leadId },
-    data: {
-      ownerPartyId: outcome.winnerPartyId,
-      territoryId: outcome.territoryId,
-      unroutedReason: outcome.unroutedReason,
-      routedAt: outcome.winnerPartyId ? new Date() : null,
-    },
+  const updated = await governedWrite(async (tx) => {
+    const row = await tx.lead.update({
+      where: { id: leadId },
+      data: {
+        ownerPartyId: outcome.winnerPartyId,
+        territoryId: outcome.territoryId,
+        unroutedReason: outcome.unroutedReason,
+        routedAt: outcome.winnerPartyId ? new Date() : null,
+      },
+    });
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'lead',
+      subjectId: leadId,
+      before: { ownerPartyId: lead.ownerPartyId },
+      after: {
+        ownerPartyId: outcome.winnerPartyId,
+        territoryId: outcome.territoryId,
+        unroutedReason: outcome.unroutedReason,
+      },
+      meta: { assignedBy: 'routing_rule' },
+      tx,
+    });
+
+    if (outcome.winnerPartyId) {
+      await emit({
+        name: EVENTS.LEAD_ROUTED,
+        subject: { entityType: 'lead', entityId: leadId, recordCode: lead.recordCode },
+        newState: { ownerPartyId: outcome.winnerPartyId, territoryId: outcome.territoryId },
+        owner: { partyId: outcome.winnerPartyId },
+        tx,
+      });
+    }
+
+    return row;
   });
 
   if (outcome.winnerPartyId) {
-    await emit({
-      name: EVENTS.LEAD_ROUTED,
-      subject: { entityType: 'lead', entityId: leadId, recordCode: lead.recordCode },
-      newState: { ownerPartyId: outcome.winnerPartyId, territoryId: outcome.territoryId },
-      owner: { partyId: outcome.winnerPartyId },
-    });
     await notify({
       recipientPartyId: outcome.winnerPartyId,
       priority: 'N2_NORMAL',
@@ -228,32 +258,36 @@ export async function reassignLead(leadId: string, newOwnerPartyId: string, reas
   const lead = await prisma.lead.findFirst({ where: { id: leadId } });
   if (!lead) throw ApiError.notFound('Lead');
 
-  const updated = await prisma.lead.update({
-    where: { id: leadId },
-    data: { ownerPartyId: newOwnerPartyId, unroutedReason: null, routedAt: new Date() },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.lead.update({
+      where: { id: leadId },
+      data: { ownerPartyId: newOwnerPartyId, unroutedReason: null, routedAt: new Date() },
+    });
 
-  // A lead sitting with the wrong owner for the wrong reason (a routing bug vs.
-  // a manager's deliberate reassignment) needs different remediation, so the
-  // audit trail distinguishes the two by actor.
-  await auditWrite({
-    action: 'update',
-    subjectType: 'lead',
-    subjectId: leadId,
-    before: { ownerPartyId: lead.ownerPartyId },
-    after: { ownerPartyId: newOwnerPartyId },
-    meta: { assignedBy: 'human_override', reason, actorId: auth.partyId },
-  });
+    // A lead sitting with the wrong owner for the wrong reason (a routing bug vs.
+    // a manager's deliberate reassignment) needs different remediation, so the
+    // audit trail distinguishes the two by actor.
+    await auditWrite({
+      action: 'update',
+      subjectType: 'lead',
+      subjectId: leadId,
+      before: { ownerPartyId: lead.ownerPartyId },
+      after: { ownerPartyId: newOwnerPartyId },
+      meta: { assignedBy: 'human_override', reason, actorId: auth.partyId },
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.LEAD_REASSIGNED,
-    subject: { entityType: 'lead', entityId: leadId, recordCode: lead.recordCode },
-    previousState: { ownerPartyId: lead.ownerPartyId },
-    newState: { ownerPartyId: newOwnerPartyId },
-    reason: { reasonCode: 'manual_override', note: reason },
-  });
+    await emit({
+      name: EVENTS.LEAD_REASSIGNED,
+      subject: { entityType: 'lead', entityId: leadId, recordCode: lead.recordCode },
+      previousState: { ownerPartyId: lead.ownerPartyId },
+      newState: { ownerPartyId: newOwnerPartyId },
+      reason: { reasonCode: 'manual_override', note: reason },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export async function advanceLeadStage(leadId: string, toStageKey: string) {
@@ -267,22 +301,34 @@ export async function advanceLeadStage(leadId: string, toStageKey: string) {
 
   const fromStage = await stageFor(lead.pipelineId, lead.stageKey);
 
-  const updated = await prisma.lead.update({
-    where: { id: leadId },
-    data: { stageKey: toStageKey, stageEnteredAt: new Date(), untouchedNotifiedAt: null },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.lead.update({
+      where: { id: leadId },
+      data: { stageKey: toStageKey, stageEnteredAt: new Date(), untouchedNotifiedAt: null },
+    });
 
-  await emit({
-    name: EVENTS.LEAD_STAGE_CHANGED,
-    subject: { entityType: 'lead', entityId: leadId, recordCode: lead.recordCode },
-    previousState: { stageKey: lead.stageKey, pipelinePosition: fromStage.pipelinePosition },
-    // Every subscriber that only needs the canonical axis reads
-    // pipelinePosition and never needs to know the pipeline's local vocabulary.
-    newState: { stageKey: toStageKey, pipelinePosition: check.targetStage!.pipelinePosition },
-    owner: { partyId: lead.ownerPartyId },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'lead',
+      subjectId: leadId,
+      before: { stageKey: lead.stageKey },
+      after: { stageKey: toStageKey },
+      tx,
+    });
 
-  return updated;
+    await emit({
+      name: EVENTS.LEAD_STAGE_CHANGED,
+      subject: { entityType: 'lead', entityId: leadId, recordCode: lead.recordCode },
+      previousState: { stageKey: lead.stageKey, pipelinePosition: fromStage.pipelinePosition },
+      // Every subscriber that only needs the canonical axis reads
+      // pipelinePosition and never needs to know the pipeline's local vocabulary.
+      newState: { stageKey: toStageKey, pipelinePosition: check.targetStage!.pipelinePosition },
+      owner: { partyId: lead.ownerPartyId },
+      tx,
+    });
+
+    return updated;
+  });
 }
 
 /**
@@ -302,53 +348,76 @@ export async function convertLead(
   await assertCan({ resource: 'opportunities', verb: 'create' });
 
   const stage = await entryStage(lead.pipelineId);
-  const recordCode = await nextRecordCode('OPP');
 
-  const opportunity = await prisma.opportunity.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: lead.title,
-      organizationId: lead.organizationId,
-      primaryContactPersonId: lead.personId,
-      leadId: lead.id,
-      vertical: lead.vertical,
-      offeringId: lead.offeringId,
-      legacyProductText: lead.legacyProductText,
-      pipelineId: lead.pipelineId,
-      stageKey: stage.stageKey,
-      stageEnteredAt: new Date(),
-      expectedValue:
-        opts.expectedValue ?? (lead.estimatedValue ? Number(lead.estimatedValue.toString()) : null) ?? undefined,
-      currency: lead.currency,
-      expectedCloseDate: opts.expectedCloseDate ?? null,
-      ownerPartyId: lead.ownerPartyId,
-      forecastCategory: 'pipeline',
-      createdById: auth.partyId,
-    },
+  // The conversion is one change: the opportunity appears and the lead stops
+  // being open, or neither happens.
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('OPP', undefined, tx);
+    const opportunity = await tx.opportunity.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: lead.title,
+        organizationId: lead.organizationId,
+        primaryContactPersonId: lead.personId,
+        leadId: lead.id,
+        vertical: lead.vertical,
+        offeringId: lead.offeringId,
+        legacyProductText: lead.legacyProductText,
+        pipelineId: lead.pipelineId,
+        stageKey: stage.stageKey,
+        stageEnteredAt: new Date(),
+        expectedValue:
+          opts.expectedValue ?? (lead.estimatedValue ? Number(lead.estimatedValue.toString()) : null) ?? undefined,
+        currency: lead.currency,
+        expectedCloseDate: opts.expectedCloseDate ?? null,
+        ownerPartyId: lead.ownerPartyId,
+        forecastCategory: 'pipeline',
+        createdById: auth.partyId,
+      },
+    });
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'opportunity',
+      subjectId: opportunity.id,
+      after: { recordCode, leadId: lead.id, stageKey: stage.stageKey },
+      tx,
+    });
+
+    await tx.lead.update({
+      where: { id: leadId },
+      data: { leadStatus: 'converted', convertedOpportunityId: opportunity.id },
+    });
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'lead',
+      subjectId: leadId,
+      before: { leadStatus: lead.leadStatus },
+      after: { leadStatus: 'converted', convertedOpportunityId: opportunity.id },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.LEAD_CONVERTED,
+      subject: { entityType: 'lead', entityId: leadId, recordCode: lead.recordCode },
+      related: [{ relation: 'converted_to', entityType: 'opportunity', entityId: opportunity.id }],
+      newState: { leadStatus: 'converted', opportunityId: opportunity.id },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.OPPORTUNITY_CREATED,
+      subject: { entityType: 'opportunity', entityId: opportunity.id, recordCode },
+      related: [{ relation: 'converted_from', entityType: 'lead', entityId: leadId }],
+      newState: { stageKey: stage.stageKey, pipelinePosition: stage.pipelinePosition },
+      owner: { partyId: opportunity.ownerPartyId },
+      tx,
+    });
+
+    return opportunity;
   });
-
-  await prisma.lead.update({
-    where: { id: leadId },
-    data: { leadStatus: 'converted', convertedOpportunityId: opportunity.id },
-  });
-
-  await emit({
-    name: EVENTS.LEAD_CONVERTED,
-    subject: { entityType: 'lead', entityId: leadId, recordCode: lead.recordCode },
-    related: [{ relation: 'converted_to', entityType: 'opportunity', entityId: opportunity.id }],
-    newState: { leadStatus: 'converted', opportunityId: opportunity.id },
-  });
-
-  await emit({
-    name: EVENTS.OPPORTUNITY_CREATED,
-    subject: { entityType: 'opportunity', entityId: opportunity.id, recordCode },
-    related: [{ relation: 'converted_from', entityType: 'lead', entityId: leadId }],
-    newState: { stageKey: stage.stageKey, pipelinePosition: stage.pipelinePosition },
-    owner: { partyId: opportunity.ownerPartyId },
-  });
-
-  return opportunity;
 }
 
 export interface LeadListFilters {
@@ -443,13 +512,24 @@ export async function detectUntouchedLeads(thresholdDays = 3): Promise<number> {
       triggerFingerprint: `lead_untouched:${thresholdDays}`,
       ladderRung: 1,
     });
-    await prisma.lead.update({ where: { id: lead.id }, data: { untouchedNotifiedAt: new Date() } });
-    await emit({
-      name: EVENTS.LEAD_UNTOUCHED_DETECTED,
-      subject: { entityType: 'lead', entityId: lead.id, recordCode: lead.recordCode },
-      newState: { thresholdDays },
-      owner: { partyId: lead.ownerPartyId },
-      impact: { domains: ['crm'], severity: 'S1_ATTENTION' },
+    await governedWrite(async (tx) => {
+      await tx.lead.update({ where: { id: lead.id }, data: { untouchedNotifiedAt: new Date() } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'lead',
+        subjectId: lead.id,
+        before: { untouchedNotifiedAt: null },
+        after: { untouchedNotifiedAt: 'set' },
+        tx,
+      });
+      await emit({
+        name: EVENTS.LEAD_UNTOUCHED_DETECTED,
+        subject: { entityType: 'lead', entityId: lead.id, recordCode: lead.recordCode },
+        newState: { thresholdDays },
+        owner: { partyId: lead.ownerPartyId },
+        impact: { domains: ['crm'], severity: 'S1_ATTENTION' },
+        tx,
+      });
     });
   }
 

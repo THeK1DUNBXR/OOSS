@@ -35,6 +35,7 @@ import { prisma, unscopedPrisma, num } from '../../platform/db.js';
 import { config } from '../../platform/config.js';
 import { currentAuth, type AuthContext } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
 import { auditWrite, auditExport, auditBulkOperation, registerGovernedEntities } from '../../platform/audit.js';
@@ -88,36 +89,44 @@ export async function publishNotice(input: { effectiveFrom: Date; body: string; 
   });
   const version = (previous?.version ?? 0) + 1;
 
-  const notice = await prisma.privacyNotice.create({
-    data: {
-      tenantId: auth.tenantId,
-      version,
-      effectiveFrom: input.effectiveFrom,
-      body: input.body,
-      purposes: input.purposes as never,
-      status: 'current',
-      publishedById: auth.partyId,
-    },
-  });
-
-  if (previous) {
-    await prisma.privacyNotice.update({
-      where: { id: previous.id },
-      data: { status: 'superseded', supersededById: notice.id },
+  // The new notice, the one it supersedes, the audit row and the event commit
+  // together: a notice that is current with no record of its publication, or
+  // with its predecessor still current, would give two notices in force.
+  const notice = await governedWrite(async (tx) => {
+    const created = await tx.privacyNotice.create({
+      data: {
+        tenantId: auth.tenantId,
+        version,
+        effectiveFrom: input.effectiveFrom,
+        body: input.body,
+        purposes: input.purposes as never,
+        status: 'current',
+        publishedById: auth.partyId,
+      },
     });
-  }
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'privacy_notice',
-    subjectId: notice.id,
-    after: { version, effectiveFrom: input.effectiveFrom },
-  });
-  await emit({
-    name: 'kz.cmp.privacy_notice.published',
-    subject: { entityType: 'privacy_notice', entityId: notice.id, recordCode: `NOTICE-v${version}` },
-    newState: { version, purposeCount: input.purposes.length },
-    impact: { domains: ['cmp'] },
+    if (previous) {
+      await tx.privacyNotice.update({
+        where: { id: previous.id },
+        data: { status: 'superseded', supersededById: created.id },
+      });
+    }
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'privacy_notice',
+      subjectId: created.id,
+      after: { version, effectiveFrom: input.effectiveFrom },
+      tx,
+    });
+    await emit({
+      name: 'kz.cmp.privacy_notice.published',
+      subject: { entityType: 'privacy_notice', entityId: created.id, recordCode: `NOTICE-v${version}` },
+      newState: { version, purposeCount: input.purposes.length },
+      impact: { domains: ['cmp'] },
+      tx,
+    });
+    return created;
   });
   noticePurposeCache.delete(auth.tenantId);
 
@@ -202,56 +211,64 @@ export async function grantConsent(input: {
     );
   }
 
-  const consent = await prisma.consent.create({
-    data: {
-      tenantId: auth.tenantId,
-      personId: input.personId,
-      purposeCode: input.purposeCode,
-      noticeVersion: (await getCurrentNotice()).version,
-      status: 'granted',
-      grantedAt: new Date(),
-      channel: input.channel,
-      evidence: (input.evidence ?? {}) as never,
-      guardianOfPersonId: input.guardianOfPersonId ?? null,
-      expiresAt: input.expiresAt ?? null,
-    },
-  });
+  // Read before the transaction opens: the scoped client cannot run inside it.
+  const noticeVersion = (await getCurrentNotice()).version;
 
-  await prisma.consentLedger.create({
-    data: {
-      tenantId: auth.tenantId,
-      dataPrincipalId: input.personId,
-      consentId: consent.id,
-      purpose: input.purposeCode,
-      noticeVersion: consent.noticeVersion,
-      channel: input.channel,
-      event: 'granted',
-      givenAt: consent.grantedAt,
-      evidence: (input.evidence ?? {}) as never,
-    },
-  });
-  await auditWrite({
-    action: 'create',
-    subjectType: 'consent_ledger',
-    subjectId: consent.id,
-    after: { event: 'granted', purpose: input.purposeCode },
-  });
-  await auditWrite({
-    action: 'create',
-    subjectType: 'consent',
-    subjectId: consent.id,
-    after: { purposeCode: input.purposeCode, status: 'granted' },
-  });
-  await emit({
-    name: 'kz.cmp.consent.granted',
-    subject: { entityType: 'consent', entityId: consent.id },
-    related: [{ relation: 'consent_of', entityType: 'person', entityId: input.personId }],
-    newState: { purposeCode: input.purposeCode, guardian: Boolean(input.guardianOfPersonId) },
-    owner: { partyId: input.personId },
-    impact: { domains: ['cmp'] },
-  });
+  return governedWrite(async (tx) => {
+    const consent = await tx.consent.create({
+      data: {
+        tenantId: auth.tenantId,
+        personId: input.personId,
+        purposeCode: input.purposeCode,
+        noticeVersion,
+        status: 'granted',
+        grantedAt: new Date(),
+        channel: input.channel,
+        evidence: (input.evidence ?? {}) as never,
+        guardianOfPersonId: input.guardianOfPersonId ?? null,
+        expiresAt: input.expiresAt ?? null,
+      },
+    });
 
-  return consent;
+    await tx.consentLedger.create({
+      data: {
+        tenantId: auth.tenantId,
+        dataPrincipalId: input.personId,
+        consentId: consent.id,
+        purpose: input.purposeCode,
+        noticeVersion: consent.noticeVersion,
+        channel: input.channel,
+        event: 'granted',
+        givenAt: consent.grantedAt,
+        evidence: (input.evidence ?? {}) as never,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'consent_ledger',
+      subjectId: consent.id,
+      after: { event: 'granted', purpose: input.purposeCode },
+      tx,
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'consent',
+      subjectId: consent.id,
+      after: { purposeCode: input.purposeCode, status: 'granted' },
+      tx,
+    });
+    await emit({
+      name: 'kz.cmp.consent.granted',
+      subject: { entityType: 'consent', entityId: consent.id },
+      related: [{ relation: 'consent_of', entityType: 'person', entityId: input.personId }],
+      newState: { purposeCode: input.purposeCode, guardian: Boolean(input.guardianOfPersonId) },
+      owner: { partyId: input.personId },
+      impact: { domains: ['cmp'] },
+      tx,
+    });
+
+    return consent;
+  });
 }
 
 export async function withdrawConsent(id: string, reason?: string) {
@@ -262,47 +279,52 @@ export async function withdrawConsent(id: string, reason?: string) {
 
   if (existing.status === 'withdrawn') return existing;
 
-  const updated = await prisma.consent.update({
-    where: { id },
-    data: { status: 'withdrawn', withdrawnAt: new Date() },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.consent.update({
+      where: { id },
+      data: { status: 'withdrawn', withdrawnAt: new Date() },
+    });
 
-  await prisma.consentLedger.create({
-    data: {
-      tenantId: auth.tenantId,
-      dataPrincipalId: existing.personId,
-      consentId: existing.id,
-      purpose: existing.purposeCode,
-      noticeVersion: existing.noticeVersion,
-      channel: existing.channel,
-      event: 'withdrawn',
-      withdrawnAt: updated.withdrawnAt,
-      evidence: { reason: reason ?? null } as never,
-    },
-  });
-  await auditWrite({
-    action: 'create',
-    subjectType: 'consent_ledger',
-    subjectId: existing.id,
-    after: { event: 'withdrawn', purpose: existing.purposeCode },
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'consent',
-    subjectId: id,
-    before: { status: existing.status },
-    after: { status: 'withdrawn', reason: reason ?? null },
-  });
-  await emit({
-    name: 'kz.cmp.consent.withdrawn',
-    subject: { entityType: 'consent', entityId: id },
-    related: [{ relation: 'consent_of', entityType: 'person', entityId: existing.personId }],
-    newState: { purposeCode: existing.purposeCode },
-    owner: { partyId: existing.personId },
-    impact: { domains: ['cmp'] },
-  });
+    await tx.consentLedger.create({
+      data: {
+        tenantId: auth.tenantId,
+        dataPrincipalId: existing.personId,
+        consentId: existing.id,
+        purpose: existing.purposeCode,
+        noticeVersion: existing.noticeVersion,
+        channel: existing.channel,
+        event: 'withdrawn',
+        withdrawnAt: updated.withdrawnAt,
+        evidence: { reason: reason ?? null } as never,
+      },
+    });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'consent_ledger',
+      subjectId: existing.id,
+      after: { event: 'withdrawn', purpose: existing.purposeCode },
+      tx,
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'consent',
+      subjectId: id,
+      before: { status: existing.status },
+      after: { status: 'withdrawn', reason: reason ?? null },
+      tx,
+    });
+    await emit({
+      name: 'kz.cmp.consent.withdrawn',
+      subject: { entityType: 'consent', entityId: id },
+      related: [{ relation: 'consent_of', entityType: 'person', entityId: existing.personId }],
+      newState: { purposeCode: existing.purposeCode },
+      owner: { partyId: existing.personId },
+      impact: { domains: ['cmp'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export async function listConsentsForPerson(personId: string) {
@@ -499,36 +521,40 @@ export async function raiseDataRequest(input: { personId: string; kind: string; 
   await assertCan({ resource: 'data_requests', verb: 'create', record: { ownerPartyId: input.personId } });
 
   const receivedAt = new Date();
-  const recordCode = await nextRecordCode('DPR');
-  const request = await prisma.dataPrincipalRequest.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      personId: input.personId,
-      kind: input.kind,
-      status: 'received',
-      receivedAt,
-      dueAt: requestDueAt(receivedAt, DATA_REQUEST_DUE_DAYS),
-      requestDetail: input.note ? ({ note: input.note } as never) : undefined,
-      raisedById: auth.partyId,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('DPR', new Date(), tx);
+    const request = await tx.dataPrincipalRequest.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        personId: input.personId,
+        kind: input.kind,
+        status: 'received',
+        receivedAt,
+        dueAt: requestDueAt(receivedAt, DATA_REQUEST_DUE_DAYS),
+        requestDetail: input.note ? ({ note: input.note } as never) : undefined,
+        raisedById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'data_principal_request',
-    subjectId: request.id,
-    after: { kind: input.kind, personId: input.personId },
-  });
-  await emit({
-    name: 'kz.cmp.data_request.raised',
-    subject: { entityType: 'data_principal_request', entityId: request.id, recordCode },
-    newState: { kind: input.kind, dueAt: request.dueAt },
-    owner: { partyId: input.personId },
-    impact: { domains: ['cmp'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'data_principal_request',
+      subjectId: request.id,
+      after: { kind: input.kind, personId: input.personId },
+      tx,
+    });
+    await emit({
+      name: 'kz.cmp.data_request.raised',
+      subject: { entityType: 'data_principal_request', entityId: request.id, recordCode },
+      newState: { kind: input.kind, dueAt: request.dueAt },
+      owner: { partyId: input.personId },
+      impact: { domains: ['cmp'] },
+      tx,
+    });
 
-  return request;
+    return request;
+  });
 }
 
 export async function listDataRequests(filter: { status?: string; personId?: string } = {}) {
@@ -969,7 +995,7 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
   // writes bypass the tenant extension (CLAUDE.md rule 6), so each dependent
   // write names the tenant itself. Rows are blanked, never deleted: the
   // enrolment and funding history is not personal data and must survive.
-  const dependents = await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     await tx.person.update({
       where: { id: request.personId },
       data: {
@@ -1019,51 +1045,58 @@ export async function fulfilDataRequest(id: string, input: { correction?: Record
       where: { tenantId: auth.tenantId, id: { in: consentIds } },
       data: { evidence: {} as never },
     });
-    return { enrollmentIds, consentIds };
-  });
-  const updated = await prisma.dataPrincipalRequest.update({
-    where: { id },
-    data: { status: 'fulfilled', fulfilledAt: new Date(), response: { erased: true, token } as never },
-  });
-  // Audited per dependent row, without the values: the audit log is kept
-  // longer than the record and must not become the place the value survives.
-  for (const enrollmentId of dependents.enrollmentIds) {
+    const dependents = { enrollmentIds, consentIds };
+    const updated = await tx.dataPrincipalRequest.update({
+      where: { id },
+      data: { status: 'fulfilled', fulfilledAt: new Date(), response: { erased: true, token } as never },
+    });
+    // Audited per dependent row, without the values: the audit log is kept
+    // longer than the record and must not become the place the value survives.
+    // The erasure, these rows and the event commit together: an erasure whose
+    // audit trail is missing is not one the register can later prove.
+    for (const enrollmentId of dependents.enrollmentIds) {
+      await auditWrite({
+        action: 'update',
+        subjectType: 'enrollment',
+        subjectId: enrollmentId,
+        after: { guardianContactErased: true },
+        tx,
+      });
+    }
+    for (const consentId of dependents.consentIds) {
+      await auditWrite({
+        action: 'update',
+        subjectType: 'consent',
+        subjectId: consentId,
+        after: { evidenceErased: true },
+        tx,
+      });
+    }
+    await auditWrite({
+      action: 'delete',
+      subjectType: 'person',
+      subjectId: request.personId,
+      after: { erased: true, dependents: ['student_profile', 'enrollment', 'consent'] },
+      tx,
+    });
     await auditWrite({
       action: 'update',
-      subjectType: 'enrollment',
-      subjectId: enrollmentId,
-      after: { guardianContactErased: true },
+      subjectType: 'data_principal_request',
+      subjectId: id,
+      before: { status: request.status },
+      after: { status: 'fulfilled' },
+      tx,
     });
-  }
-  for (const consentId of dependents.consentIds) {
-    await auditWrite({
-      action: 'update',
-      subjectType: 'consent',
-      subjectId: consentId,
-      after: { evidenceErased: true },
+    await emit({
+      name: 'kz.cmp.data_request.fulfilled',
+      subject: { entityType: 'data_principal_request', entityId: id, recordCode: request.recordCode },
+      newState: { kind: request.kind, status: 'fulfilled' },
+      impact: { domains: ['cmp'] },
+      tx,
     });
-  }
-  await auditWrite({
-    action: 'delete',
-    subjectType: 'person',
-    subjectId: request.personId,
-    after: { erased: true, dependents: ['student_profile', 'enrollment', 'consent'] },
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'data_principal_request',
-    subjectId: id,
-    before: { status: request.status },
-    after: { status: 'fulfilled' },
-  });
-  await emit({
-    name: 'kz.cmp.data_request.fulfilled',
-    subject: { entityType: 'data_principal_request', entityId: id, recordCode: request.recordCode },
-    newState: { kind: request.kind, status: 'fulfilled' },
-    impact: { domains: ['cmp'] },
-  });
 
-  return updated;
+    return updated;
+  });
 }
 
 export async function refuseDataRequest(id: string, reason: string) {
@@ -1125,35 +1158,39 @@ export async function raiseBreach(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'breaches', verb: 'create' });
 
-  const recordCode = await nextRecordCode('BRC');
-  const breach = await prisma.dataBreach.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      detectedAt: input.detectedAt,
-      description: input.description,
-      categories: input.categories ?? [],
-      principalsAffected: input.principalsAffected ?? 0,
-      severity: input.severity,
-      status: 'open',
-      raisedById: auth.partyId,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('BRC', new Date(), tx);
+    const breach = await tx.dataBreach.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        detectedAt: input.detectedAt,
+        description: input.description,
+        categories: input.categories ?? [],
+        principalsAffected: input.principalsAffected ?? 0,
+        severity: input.severity,
+        status: 'open',
+        raisedById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'data_breach',
-    subjectId: breach.id,
-    after: { detectedAt: input.detectedAt, severity: input.severity },
-  });
-  await emit({
-    name: 'kz.cmp.breach.raised',
-    subject: { entityType: 'data_breach', entityId: breach.id, recordCode },
-    newState: { severity: input.severity, principalsAffected: breach.principalsAffected },
-    impact: { domains: ['cmp'], severity: 'S4_CRITICAL' },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'data_breach',
+      subjectId: breach.id,
+      after: { detectedAt: input.detectedAt, severity: input.severity },
+      tx,
+    });
+    await emit({
+      name: 'kz.cmp.breach.raised',
+      subject: { entityType: 'data_breach', entityId: breach.id, recordCode },
+      newState: { severity: input.severity, principalsAffected: breach.principalsAffected },
+      impact: { domains: ['cmp'], severity: 'S4_CRITICAL' },
+      tx,
+    });
 
-  return breach;
+    return breach;
+  });
 }
 
 const BREACH_TRANSITIONS: Record<string, string[]> = {
@@ -1181,23 +1218,27 @@ export async function transitionBreach(id: string, status: string, notes?: strin
   if (status === 'notified_principals') data.principalsNotifiedAt = now;
   if (status === 'closed') data.closedAt = now;
 
-  const updated = await prisma.dataBreach.update({ where: { id }, data: data as never });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'data_breach',
-    subjectId: id,
-    before: { status: breach.status },
-    after: { status },
-  });
-  await emit({
-    name: 'kz.cmp.breach.transitioned',
-    subject: { entityType: 'data_breach', entityId: id, recordCode: breach.recordCode },
-    previousState: { status: breach.status },
-    newState: { status },
-    impact: { domains: ['cmp'], severity: status === 'closed' ? 'S1_ATTENTION' : 'S4_CRITICAL' },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.dataBreach.update({ where: { id }, data: data as never });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'data_breach',
+      subjectId: id,
+      before: { status: breach.status },
+      after: { status },
+      tx,
+    });
+    await emit({
+      name: 'kz.cmp.breach.transitioned',
+      subject: { entityType: 'data_breach', entityId: id, recordCode: breach.recordCode },
+      previousState: { status: breach.status },
+      newState: { status },
+      impact: { domains: ['cmp'], severity: status === 'closed' ? 'S1_ATTENTION' : 'S4_CRITICAL' },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export async function listBreaches(filter: { status?: string } = {}) {
@@ -1418,6 +1459,7 @@ async function privacyOwnerPartyId(tenantId: string): Promise<string | null> {
 
 const DEV_ENCRYPTION_KEY = 'kaizen-dev-field-encryption-key-DO-NOT-USE-IN-PRODUCTION';
 let warnedAboutDevKey = false;
+let derivedKey: { material: string; key: Buffer } | null = null;
 
 function encryptionKey(): Buffer {
   const secret = config.FIELD_ENCRYPTION_KEY;
@@ -1438,7 +1480,13 @@ function encryptionKey(): Buffer {
       );
     }
   }
-  return scryptSync(secret ?? DEV_ENCRYPTION_KEY, 'kaizen-field-encryption-v1', 32);
+  // scrypt is deliberately slow, and a register read decrypts every holder's
+  // PAN. Deriving once per secret keeps a list read from paying that per row.
+  const material = secret ?? DEV_ENCRYPTION_KEY;
+  if (derivedKey?.material === material) return derivedKey.key;
+  const key = scryptSync(material, 'kaizen-field-encryption-v1', 32);
+  derivedKey = { material, key };
+  return key;
 }
 
 /** AES-256-GCM. The IV, the auth tag and the ciphertext travel together in the

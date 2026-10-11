@@ -34,7 +34,7 @@ import {
   type ItProblemEvent,
   type ItProblemState,
 } from '@kaizen/shared';
-import { prisma } from '../../platform/db.js';
+import { prisma, type DbTx } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
@@ -59,7 +59,7 @@ registerGovernedEntities('it_itsm', ['it_incident_update']);
  * the caller persists — audit the transition) but lets the caller emit its
  * own correctly-named `kz.it.*` event instead.
  */
-async function checkedTransition<S extends string, E extends string>(input: {
+interface TransitionInput<S extends string, E extends string> {
   machine: Machine<S, E>;
   resource: Resource;
   verb: Verb;
@@ -68,7 +68,17 @@ async function checkedTransition<S extends string, E extends string>(input: {
   ownerPartyId?: string | null;
   from: S;
   event: E;
-}): Promise<{ from: S; to: S }> {
+}
+
+/**
+ * The grant check and the machine's ruling, and nothing that writes. `assertCan`
+ * reads through the scoped client, which an interactive transaction refuses
+ * (db.ts refuseOuterClientInTransaction), so this runs before the caller opens
+ * its transaction, and `auditTransition` records the move inside it.
+ */
+async function checkedTransition<S extends string, E extends string>(
+  input: TransitionInput<S, E>,
+): Promise<{ from: S; to: S }> {
   await assertCan({ resource: input.resource, verb: input.verb, record: { ownerPartyId: input.ownerPartyId ?? null } });
 
   if (!input.machine.can(input.from, input.event)) {
@@ -79,6 +89,20 @@ async function checkedTransition<S extends string, E extends string>(input: {
   }
   const to = input.machine.apply(input.from, input.event);
 
+  return { from: input.from, to };
+}
+
+/**
+ * Records a move `checkedTransition` allowed. Called inside the caller's
+ * transaction, after its domain write, so the audit row cannot exist for a
+ * transition that did not commit (it used to be written before the write, which
+ * is the FX-24 gap in miniature).
+ */
+async function auditTransition<S extends string, E extends string>(
+  tx: DbTx,
+  input: TransitionInput<S, E>,
+  to: S,
+): Promise<void> {
   await auditWrite({
     action: 'update',
     subjectType: input.subjectType,
@@ -86,9 +110,8 @@ async function checkedTransition<S extends string, E extends string>(input: {
     before: { status: input.from },
     after: { status: to },
     meta: { transition: input.event, machine: input.machine.name },
+    tx,
   });
-
-  return { from: input.from, to };
 }
 
 // ---------------------------------------------------------------------------
@@ -139,40 +162,45 @@ export async function declareIncident(input: DeclareIncidentInput) {
   const recordCode = await nextRecordCode('INC');
   const now = new Date();
 
-  const incident = await prisma.itIncident.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title.trim(),
-      severity: input.severity,
-      status: 'declared',
-      affectedApplicationIds: input.affectedApplicationIds ?? [],
-      detectedAt: now,
-      lastActivityAt: now,
-      commanderPartyId: input.commanderPartyId ?? auth.partyId,
-      impact: input.impact ?? null,
-      customerFacing: input.customerFacing ?? false,
-      breachId: input.breachId ?? null,
-      reviewRequired,
-      createdById: auth.partyId,
-    },
-  });
+  const incident = await prisma.$transaction(async (tx) => {
+    const incident = await tx.itIncident.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title.trim(),
+        severity: input.severity,
+        status: 'declared',
+        affectedApplicationIds: input.affectedApplicationIds ?? [],
+        detectedAt: now,
+        lastActivityAt: now,
+        commanderPartyId: input.commanderPartyId ?? auth.partyId,
+        impact: input.impact ?? null,
+        customerFacing: input.customerFacing ?? false,
+        breachId: input.breachId ?? null,
+        reviewRequired,
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_incident',
-    subjectId: incident.id,
-    after: { recordCode, severity: input.severity },
-  });
-  await emit({
-    name: EVENTS.IT_INCIDENT_DECLARED,
-    subject: { entityType: 'it_incident', entityId: incident.id, recordCode },
-    newState: { status: 'declared', severity: input.severity, customerFacing: incident.customerFacing },
-    owner: { partyId: incident.commanderPartyId },
-    impact: {
-      domains: [IT_DOMAIN],
-      severity: input.severity === 'sev1' ? 'S4_CRITICAL' : input.severity === 'sev2' ? 'S3_HIGH_RISK' : 'S2_WARNING',
-    },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_incident',
+      subjectId: incident.id,
+      after: { recordCode, severity: input.severity },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_INCIDENT_DECLARED,
+      subject: { entityType: 'it_incident', entityId: incident.id, recordCode },
+      newState: { status: 'declared', severity: input.severity, customerFacing: incident.customerFacing },
+      owner: { partyId: incident.commanderPartyId },
+      impact: {
+        domains: [IT_DOMAIN],
+        severity: input.severity === 'sev1' ? 'S4_CRITICAL' : input.severity === 'sev2' ? 'S3_HIGH_RISK' : 'S2_WARNING',
+      },
+      tx,
+    });
+    return incident;
   });
 
   return incident;
@@ -251,16 +279,17 @@ export async function transitionIncident(id: string, event: ItIncidentEvent, not
     );
   }
 
-  const result = await checkedTransition({
+  const transition = {
     machine: itIncidentMachine,
-    resource: 'it_incidents',
-    verb: 'edit',
+    resource: 'it_incidents' as const,
+    verb: 'edit' as const,
     subjectType: 'it_incident',
     subjectId: id,
     ownerPartyId: incident.commanderPartyId,
     from: incident.status as ItIncidentState,
     event,
-  });
+  };
+  const result = await checkedTransition(transition);
 
   const now = new Date();
   const patch: Record<string, unknown> = { status: result.to, lastActivityAt: now, staleNotifiedAt: null };
@@ -269,16 +298,20 @@ export async function transitionIncident(id: string, event: ItIncidentEvent, not
   if (event === 'RESOLVE') patch.resolvedAt = now;
   if (event === 'CLOSE') patch.closedAt = now;
 
-  const updated = await prisma.itIncident.update({ where: { id }, data: patch });
-
-  await emit({
-    name: EVENTS.IT_INCIDENT_TRANSITIONED,
-    subject: { entityType: 'it_incident', entityId: id, recordCode: incident.recordCode },
-    previousState: { status: incident.status },
-    newState: { status: result.to },
-    reason: note ? { reasonCode: event, note } : null,
-    owner: { partyId: incident.commanderPartyId },
-    impact: { domains: [IT_DOMAIN] },
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itIncident.update({ where: { id }, data: patch });
+    await auditTransition(tx, transition, result.to);
+    await emit({
+      name: EVENTS.IT_INCIDENT_TRANSITIONED,
+      subject: { entityType: 'it_incident', entityId: id, recordCode: incident.recordCode },
+      previousState: { status: incident.status },
+      newState: { status: result.to },
+      reason: note ? { reasonCode: event, note } : null,
+      owner: { partyId: incident.commanderPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;
@@ -341,24 +374,29 @@ export async function submitIncidentReview(id: string, input: IncidentReviewInpu
     patch.reviewOverdueNotifiedAt = null;
   }
 
-  const updated = await prisma.itIncident.update({ where: { id }, data: patch });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itIncident.update({ where: { id }, data: patch });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_incident',
-    subjectId: id,
-    after: { reviewPublished: Boolean(input.publish) },
-  });
-
-  if (input.publish) {
-    await emit({
-      name: EVENTS.IT_INCIDENT_REVIEW_PUBLISHED,
-      subject: { entityType: 'it_incident', entityId: id, recordCode: incident.recordCode },
-      newState: { reviewPublishedAt: updated.reviewPublishedAt },
-      owner: { partyId: incident.commanderPartyId },
-      impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_incident',
+      subjectId: id,
+      after: { reviewPublished: Boolean(input.publish) },
+      tx,
     });
-  }
+
+    if (input.publish) {
+      await emit({
+        name: EVENTS.IT_INCIDENT_REVIEW_PUBLISHED,
+        subject: { entityType: 'it_incident', entityId: id, recordCode: incident.recordCode },
+        newState: { reviewPublishedAt: updated.reviewPublishedAt },
+        owner: { partyId: incident.commanderPartyId },
+        impact: { domains: [IT_DOMAIN] },
+        tx,
+      });
+    }
+    return updated;
+  });
 
   return updated;
 }
@@ -382,34 +420,38 @@ export async function createProblem(input: CreateProblemInput) {
   if (!input.title?.trim()) throw ApiError.badRequest('A problem needs a title.');
 
   const recordCode = await nextRecordCode('PRB');
-  const problem = await prisma.itProblem.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title.trim(),
-      rootCause: input.rootCause ?? null,
-      knownError: input.knownError ?? false,
-      workaround: input.workaround ?? null,
-      incidentIds: input.incidentIds ?? [],
-      ownerPartyId: input.ownerPartyId ?? auth.partyId,
-      createdById: auth.partyId,
-    },
-  });
-
-  if (input.incidentIds?.length) {
-    await prisma.itIncident.updateMany({
-      where: { id: { in: input.incidentIds }, tenantId: auth.tenantId },
-      data: { problemId: problem.id },
+  const problem = await prisma.$transaction(async (tx) => {
+    const problem = await tx.itProblem.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title.trim(),
+        rootCause: input.rootCause ?? null,
+        knownError: input.knownError ?? false,
+        workaround: input.workaround ?? null,
+        incidentIds: input.incidentIds ?? [],
+        ownerPartyId: input.ownerPartyId ?? auth.partyId,
+        createdById: auth.partyId,
+      },
     });
-  }
 
-  await auditWrite({ action: 'create', subjectType: 'it_problem', subjectId: problem.id, after: { recordCode } });
-  await emit({
-    name: EVENTS.IT_PROBLEM_CREATED,
-    subject: { entityType: 'it_problem', entityId: problem.id, recordCode },
-    newState: { status: 'open' },
-    owner: { partyId: problem.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    if (input.incidentIds?.length) {
+      await tx.itIncident.updateMany({
+        where: { id: { in: input.incidentIds }, tenantId: auth.tenantId },
+        data: { problemId: problem.id },
+      });
+    }
+
+    await auditWrite({ action: 'create', subjectType: 'it_problem', subjectId: problem.id, after: { recordCode }, tx });
+    await emit({
+      name: EVENTS.IT_PROBLEM_CREATED,
+      subject: { entityType: 'it_problem', entityId: problem.id, recordCode },
+      newState: { status: 'open' },
+      owner: { partyId: problem.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return problem;
   });
 
   return problem;
@@ -484,27 +526,32 @@ export async function transitionProblem(id: string, event: ItProblemEvent, note?
   const problem = await prisma.itProblem.findFirst({ where: { id, tenantId: auth.tenantId } });
   if (!problem) throw ApiError.notFound('Problem');
 
-  const result = await checkedTransition({
+  const transition = {
     machine: itProblemMachine,
-    resource: 'it_problems',
-    verb: 'edit',
+    resource: 'it_problems' as const,
+    verb: 'edit' as const,
     subjectType: 'it_problem',
     subjectId: id,
     ownerPartyId: problem.ownerPartyId,
     from: problem.status as ItProblemState,
     event,
-  });
+  };
+  const result = await checkedTransition(transition);
 
-  const updated = await prisma.itProblem.update({ where: { id }, data: { status: result.to } });
-
-  await emit({
-    name: EVENTS.IT_PROBLEM_TRANSITIONED,
-    subject: { entityType: 'it_problem', entityId: id, recordCode: problem.recordCode },
-    previousState: { status: problem.status },
-    newState: { status: result.to },
-    reason: note ? { reasonCode: event, note } : null,
-    owner: { partyId: problem.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itProblem.update({ where: { id }, data: { status: result.to } });
+    await auditTransition(tx, transition, result.to);
+    await emit({
+      name: EVENTS.IT_PROBLEM_TRANSITIONED,
+      subject: { entityType: 'it_problem', entityId: id, recordCode: problem.recordCode },
+      previousState: { status: problem.status },
+      newState: { status: result.to },
+      reason: note ? { reasonCode: event, note } : null,
+      owner: { partyId: problem.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;
@@ -535,36 +582,41 @@ export async function createChange(input: CreateChangeInput) {
   if (!(input.windowEnd > input.windowStart)) throw ApiError.badRequest('A change window must end after it starts.');
 
   const recordCode = await nextRecordCode('CHG');
-  const change = await prisma.itChange.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title.trim(),
-      kind: input.kind,
-      risk: input.risk,
-      status: 'draft',
-      affectedApplicationIds: input.affectedApplicationIds ?? [],
-      plan: input.plan,
-      rollbackPlan: input.rollbackPlan,
-      windowStart: input.windowStart,
-      windowEnd: input.windowEnd,
-      requesterPartyId: auth.partyId ?? 'unknown',
-      createdById: auth.partyId,
-    },
-  });
+  const change = await prisma.$transaction(async (tx) => {
+    const change = await tx.itChange.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title.trim(),
+        kind: input.kind,
+        risk: input.risk,
+        status: 'draft',
+        affectedApplicationIds: input.affectedApplicationIds ?? [],
+        plan: input.plan,
+        rollbackPlan: input.rollbackPlan,
+        windowStart: input.windowStart,
+        windowEnd: input.windowEnd,
+        requesterPartyId: auth.partyId ?? 'unknown',
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_change',
-    subjectId: change.id,
-    after: { recordCode, kind: input.kind },
-  });
-  await emit({
-    name: EVENTS.IT_CHANGE_CREATED,
-    subject: { entityType: 'it_change', entityId: change.id, recordCode },
-    newState: { status: 'draft', kind: input.kind, risk: input.risk },
-    owner: { partyId: change.requesterPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_change',
+      subjectId: change.id,
+      after: { recordCode, kind: input.kind },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_CHANGE_CREATED,
+      subject: { entityType: 'it_change', entityId: change.id, recordCode },
+      newState: { status: 'draft', kind: input.kind, risk: input.risk },
+      owner: { partyId: change.requesterPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return change;
   });
 
   return change;
@@ -883,26 +935,31 @@ async function autoApproveStandardChange(change: {
   }
   const to = itChangeMachine.apply(from, 'APPROVE');
 
-  const updated = await prisma.itChange.update({
-    where: { id: change.id },
-    data: { status: to, approvedById: null, approvedAt: new Date() },
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itChange.update({
+      where: { id: change.id },
+      data: { status: to, approvedById: null, approvedAt: new Date() },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_change',
-    subjectId: change.id,
-    before: { status: from },
-    after: { status: to },
-    meta: { transition: 'APPROVE', machine: itChangeMachine.name, autoApproved: true },
-  });
-  await emit({
-    name: EVENTS.IT_CHANGE_TRANSITIONED,
-    subject: { entityType: 'it_change', entityId: change.id, recordCode: change.recordCode },
-    previousState: { status: from },
-    newState: { status: to, autoApproved: true },
-    owner: { partyId: change.requesterPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_change',
+      subjectId: change.id,
+      before: { status: from },
+      after: { status: to },
+      meta: { transition: 'APPROVE', machine: itChangeMachine.name, autoApproved: true },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_CHANGE_TRANSITIONED,
+      subject: { entityType: 'it_change', entityId: change.id, recordCode: change.recordCode },
+      previousState: { status: from },
+      newState: { status: to, autoApproved: true },
+      owner: { partyId: change.requesterPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;
@@ -916,30 +973,33 @@ async function applyChangeTransition(
   verb: 'create' | 'edit' | 'approve',
 ) {
   const from = change.status as ItChangeState;
-  const result = await checkedTransition({
+  const transition = {
     machine: itChangeMachine,
-    resource: 'it_changes',
+    resource: 'it_changes' as const,
     verb,
     subjectType: 'it_change',
     subjectId: change.id,
     ownerPartyId: change.requesterPartyId,
     from,
     event,
+  };
+  const result = await checkedTransition(transition);
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.itChange.update({ where: { id: change.id }, data: { status: result.to, ...patch } });
+    await auditTransition(tx, transition, result.to);
+    await emit({
+      name: EVENTS.IT_CHANGE_TRANSITIONED,
+      subject: { entityType: 'it_change', entityId: change.id, recordCode: change.recordCode },
+      previousState: { status: from },
+      newState: { status: result.to },
+      reason: note ? { reasonCode: event, note } : null,
+      owner: { partyId: change.requesterPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
-
-  const updated = await prisma.itChange.update({ where: { id: change.id }, data: { status: result.to, ...patch } });
-
-  await emit({
-    name: EVENTS.IT_CHANGE_TRANSITIONED,
-    subject: { entityType: 'it_change', entityId: change.id, recordCode: change.recordCode },
-    previousState: { status: from },
-    newState: { status: result.to },
-    reason: note ? { reasonCode: event, note } : null,
-    owner: { partyId: change.requesterPartyId },
-    impact: { domains: [IT_DOMAIN] },
-  });
-
-  return updated;
 }
 
 export interface DeclareFreezeInput {
@@ -960,29 +1020,34 @@ export async function declareFreeze(input: DeclareFreezeInput) {
   if (!input.reason?.trim()) throw ApiError.badRequest('A freeze needs a reason.');
   if (!(input.endsAt > input.startsAt)) throw ApiError.badRequest('A freeze must end after it starts.');
 
-  const freeze = await prisma.itChangeFreeze.create({
-    data: {
-      tenantId: auth.tenantId,
-      name: input.name.trim(),
-      startsAt: input.startsAt,
-      endsAt: input.endsAt,
-      reason: input.reason.trim(),
-      allowEmergency: input.allowEmergency ?? false,
-      declaredById: auth.partyId,
-    },
-  });
+  const freeze = await prisma.$transaction(async (tx) => {
+    const freeze = await tx.itChangeFreeze.create({
+      data: {
+        tenantId: auth.tenantId,
+        name: input.name.trim(),
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
+        reason: input.reason.trim(),
+        allowEmergency: input.allowEmergency ?? false,
+        declaredById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_change_freeze',
-    subjectId: freeze.id,
-    after: { name: freeze.name },
-  });
-  await emit({
-    name: EVENTS.IT_CHANGE_FREEZE_DECLARED,
-    subject: { entityType: 'it_change_freeze', entityId: freeze.id },
-    newState: { name: freeze.name, startsAt: freeze.startsAt, endsAt: freeze.endsAt },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_change_freeze',
+      subjectId: freeze.id,
+      after: { name: freeze.name },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_CHANGE_FREEZE_DECLARED,
+      subject: { entityType: 'it_change_freeze', entityId: freeze.id },
+      newState: { name: freeze.name, startsAt: freeze.startsAt, endsAt: freeze.endsAt },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return freeze;
   });
 
   return freeze;

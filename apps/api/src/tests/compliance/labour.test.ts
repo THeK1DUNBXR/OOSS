@@ -173,6 +173,48 @@ describe('CMP-LAB-004 — leave carry-forward is idempotent against a re-run in 
       expect(Number(afterSecond.balanceDays)).toBe(5); // unchanged
     });
   });
+
+  it('two overlapping year-close runs write one claim and one set of ledger entries', async () => {
+    const { employment } = await makeEmployee('carry-forward-race');
+
+    await asUser('operations@kaizen.co.in', async () => {
+      const stamp = Date.now();
+      const leaveType = await prisma.leaveType.create({
+        data: {
+          tenantId: TENANT,
+          code: `CR${stamp}`,
+          name: `Fixture Carry-Forward Race ${stamp}`,
+          annualEntitlementDays: 20,
+          carryForwardCapDays: 5,
+        },
+      });
+      await accrueEntitlement({ employmentRelationshipId: employment.id, leaveTypeId: leaveType.id, days: 12 });
+
+      // Two runs that overlap (a scheduler tick and a manual trigger, or two
+      // instances) must not both pass the "already closed?" read and both write.
+      await Promise.all([runLeaveYearClose(), runLeaveYearClose(), runLeaveYearClose()]);
+
+      const fy = financialYearOf(new Date());
+      const claims = await prisma.leaveYearClose.findMany({
+        where: { tenantId: TENANT, leaveTypeId: leaveType.id, fy },
+      });
+      expect(claims).toHaveLength(1);
+
+      const balances = await prisma.leaveBalance.findMany({
+        where: { tenantId: TENANT, leaveTypeId: leaveType.id },
+        select: { id: true },
+      });
+      const ledger = await prisma.leaveTransaction.findMany({
+        where: {
+          tenantId: TENANT,
+          leaveBalanceId: { in: balances.map((b) => b.id) },
+          note: { startsWith: `FY close ${fy}` },
+        },
+      });
+      expect(ledger).toHaveLength(balances.length);
+      expect(claims[0]?.balancesClosed).toBe(balances.length);
+    });
+  });
 });
 
 // ===========================================================================

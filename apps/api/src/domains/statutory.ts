@@ -6,6 +6,7 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan } from '../platform/permissions.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
+import { governedWrite } from '../platform/governedWrite.js';
 
 registerGovernedEntities('cmp_statutory', ['statutory_rule', 'einvoice_submission', 'payroll_statutory_line']);
 
@@ -136,9 +137,12 @@ export async function approveStatutoryRule(id: string) {
   if (row.createdBy === auth.partyId) throw ApiError.forbidden('The author of a statutory rule cannot approve it.');
 
   const approvedAt = new Date();
-  let committed: { next: typeof row; prior: typeof row | null };
+  // One transaction for the whole approval: the rule, the supersession of the
+  // rule it replaces, their audit rows and the event. A failure in any of them
+  // must not leave an APPROVED rule with no record of who approved it.
+  let approved: typeof row;
   try {
-    committed = await prisma.$transaction(async (tx) => {
+    approved = await governedWrite(async (tx) => {
       let prior: typeof row | null = null;
       if (row.effectiveTo === null) {
         prior = await tx.statutoryRule.findFirst({
@@ -154,11 +158,27 @@ export async function approveStatutoryRule(id: string) {
         });
         if (prior) {
           await tx.statutoryRule.update({ where: { id: prior.id }, data: { effectiveTo: row.effectiveFrom } });
+          await auditWrite({
+            action: 'update',
+            subjectType: 'statutory_rule',
+            subjectId: prior.id,
+            before: { effectiveTo: prior.effectiveTo },
+            after: { effectiveTo: row.effectiveFrom },
+            tx,
+          });
         }
       }
       const next = await tx.statutoryRule.update({
         where: { id },
         data: { status: 'APPROVED', approvedBy: auth.partyId, approvedAt },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'statutory_rule',
+        subjectId: id,
+        before: { status: row.status, approvedBy: row.approvedBy, approvedAt: row.approvedAt },
+        after: { status: 'APPROVED', approvedBy: auth.partyId, approvedAt },
+        tx,
       });
       await emit({
         name: EVENTS.STATUTORY_RULE_APPROVED,
@@ -168,7 +188,7 @@ export async function approveStatutoryRule(id: string) {
         impact: { domains: ['cmp'] },
         tx,
       });
-      return { next, prior };
+      return next;
     });
   } catch (err) {
     if (/23P01|exclusion/i.test(String((err as Error)?.message ?? err))) {
@@ -176,27 +196,6 @@ export async function approveStatutoryRule(id: string) {
     }
     throw err;
   }
-  const { next: approved, prior } = committed;
-
-  // Audit runs after commit: auditWrite opens its own transaction and cannot join
-  // this one. A failure here leaves an approved row without its audit record,
-  // which is the gap to close by giving auditWrite a `tx` option.
-  if (prior) {
-    await auditWrite({
-      action: 'update',
-      subjectType: 'statutory_rule',
-      subjectId: prior.id,
-      before: { effectiveTo: prior.effectiveTo },
-      after: { effectiveTo: row.effectiveFrom },
-    });
-  }
-  await auditWrite({
-    action: 'update',
-    subjectType: 'statutory_rule',
-    subjectId: id,
-    before: { status: row.status, approvedBy: row.approvedBy, approvedAt: row.approvedAt },
-    after: { status: 'APPROVED', approvedBy: auth.partyId, approvedAt },
-  });
   return approved;
 }
 
@@ -216,10 +215,21 @@ export async function holdStatutoryRule(id: string) {
   if (!row) throw ApiError.notFound('Statutory rule');
   if (row.status !== 'APPROVED') throw ApiError.conflict('Only an APPROVED rule can be held.');
 
-  const held = await prisma.$transaction(async (tx) => {
+  // A hold that is not on the record is a payroll rule that stays in force
+  // with nobody answerable for it, so the row, its audit row and its event
+  // share one transaction.
+  return governedWrite(async (tx) => {
     const next = await tx.statutoryRule.update({
       where: { id },
       data: { status: 'HOLD', approvedBy: null, approvedAt: null },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'statutory_rule',
+      subjectId: id,
+      before: { status: 'APPROVED', approvedBy: row.approvedBy, approvedAt: row.approvedAt },
+      after: { status: 'HOLD', approvedBy: null, approvedAt: null, heldBy: auth.partyId },
+      tx,
     });
     await emit({
       name: EVENTS.STATUTORY_RULE_HELD,
@@ -231,12 +241,4 @@ export async function holdStatutoryRule(id: string) {
     });
     return next;
   });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'statutory_rule',
-    subjectId: id,
-    before: { status: 'APPROVED', approvedBy: row.approvedBy, approvedAt: row.approvedAt },
-    after: { status: 'HOLD', approvedBy: null, approvedAt: null, heldBy: auth.partyId },
-  });
-  return held;
 }

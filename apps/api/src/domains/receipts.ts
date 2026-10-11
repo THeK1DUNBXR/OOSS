@@ -28,15 +28,18 @@
  */
 
 import { EVENTS, round2, type PaymentMode } from '@kaizen/shared';
+import { raiseException } from '../platform/exceptions.js';
 import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
+import { runHooks } from '../platform/hooks.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan, visibilityWhere } from '../platform/permissions.js';
 import { invoiceLabel, isCourseFeeInvoice, loadInvoiceForRead, totalsOf } from './invoicing.js';
 import { companyProfile, documentNumbering } from './companyProfile.js';
+import { openAccountingDate, periodStatus as accountingPeriodStatus } from './compliance/books.js';
 import { DOCUMENT_SERIES, nextDocumentNumber } from '../platform/documentNumber.js';
 
 // ---------------------------------------------------------------------------
@@ -277,9 +280,33 @@ export async function receiptDocument(receiptId: string) {
  * invoice is never raised on demand, only automatically — see
  * `finalizeCourseFeeInvoice` below.
  */
+/**
+ * The on-demand final invoice a member of staff raises. A closed month refuses
+ * it: nobody may draw a new document into a closed period by hand.
+ */
 export async function raiseFinalInvoice(invoiceId: string, input: { note?: string | null } = {}) {
+  return issueFinalInvoice(invoiceId, input, false);
+}
+
+/**
+ * The final invoice raised by the receipt that settles its invoice. Money has
+ * arrived, so a closed current month does not refuse it: the statement is dated
+ * in the open period and EX-FIN-009 is raised. Interim policy, pending the
+ * accountant's confirmation.
+ */
+export async function raiseFinalInvoiceOnSettlement(invoiceId: string) {
+  return issueFinalInvoice(invoiceId, {}, true);
+}
+
+async function issueFinalInvoice(invoiceId: string, input: { note?: string | null }, settledByReceipt: boolean) {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'create' });
+  const dating = await datingFor(settledByReceipt);
+  // A final invoice is a document dated today; a closed month refuses it before
+  // a number is drawn from the series, unless money settled it (see above).
+  if (!dating.moved) {
+    await runHooks('accounting_document.before_write', { date: new Date(), what: 'This final invoice' });
+  }
 
   const invoice = await loadInvoiceForRead(invoiceId);
   if (isCourseFeeInvoice(invoice)) {
@@ -357,6 +384,7 @@ export async function raiseFinalInvoice(invoiceId: string, input: { note?: strin
       recordCode,
       invoiceId,
       issuedById: auth.partyId,
+      issuedAt: dating.issuedAt,
       totalPayable: totals.payable,
       totalReceived,
       creditNoted: totals.creditNoted,
@@ -382,6 +410,19 @@ export async function raiseFinalInvoice(invoiceId: string, input: { note?: strin
     });
   }
 
+  if (dating.moved) {
+    await raiseException({
+      code: 'EX-FIN-009',
+      label: 'Invoice settled for a closed period',
+      severity: 'S2_WARNING',
+      subjectType: 'final_invoice',
+      subjectId: final.id,
+      subjectLabel: recordCode,
+      detail: `The receipt that settled ${invoiceId} arrived while the current month was closed. The final invoice is dated ${dating.issuedAt.toISOString().slice(0, 10)}, in the open period. Confirm the treatment with the accountant.`,
+      triggerFingerprint: `final_invoice_settled_closed:${final.id}`,
+      ladderRung: 1,
+    });
+  }
   await auditWrite({
     action: 'create',
     subjectType: 'final_invoice',
@@ -427,9 +468,27 @@ export async function raiseFinalInvoice(invoiceId: string, input: { note?: strin
  * can only happen once, since there is nothing further to collect once the
  * balance is at zero.
  */
+/**
+ * Where a final invoice is dated. A final invoice raised by a receipt that
+ * settles the invoice (`settledByReceipt`) is dated in the open period when today's
+ * month is closed, because the money has arrived; any other final invoice is
+ * dated today and a closed month refuses it.
+ */
+async function datingFor(settledByReceipt: boolean): Promise<{ issuedAt: Date; moved: boolean }> {
+  const now = new Date();
+  const moved = settledByReceipt && (await accountingPeriodStatus(now)) === 'closed';
+  return { issuedAt: moved ? await openAccountingDate(now) : now, moved };
+}
+
 export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'settled' | 'dropout') {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'create' });
+  // Only a settlement is money that has arrived. A dropout is a staff withdrawal,
+  // so a closed month refuses its final invoice.
+  const dating = await datingFor(trigger === 'settled');
+  if (!dating.moved) {
+    await runHooks('accounting_document.before_write', { date: new Date(), what: 'This final invoice' });
+  }
 
   const invoice = await loadInvoiceForRead(invoiceId);
   if (!isCourseFeeInvoice(invoice)) {
@@ -478,6 +537,7 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
       recordCode,
       invoiceId,
       issuedById: auth.partyId,
+      issuedAt: dating.issuedAt,
       totalPayable: totals.payable,
       totalReceived,
       creditNoted: totals.creditNoted,
@@ -496,6 +556,19 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
     },
   });
 
+  if (dating.moved) {
+    await raiseException({
+      code: 'EX-FIN-009',
+      label: 'Invoice settled for a closed period',
+      severity: 'S2_WARNING',
+      subjectType: 'final_invoice',
+      subjectId: final.id,
+      subjectLabel: recordCode,
+      detail: `The receipt that settled ${invoiceId} arrived while the current month was closed. The final invoice is dated ${dating.issuedAt.toISOString().slice(0, 10)}, in the open period. Confirm the treatment with the accountant.`,
+      triggerFingerprint: `final_invoice_settled_closed:${final.id}`,
+      ladderRung: 1,
+    });
+  }
   await auditWrite({
     action: 'create',
     subjectType: 'final_invoice',

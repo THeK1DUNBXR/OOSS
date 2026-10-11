@@ -18,6 +18,7 @@
  *
  *   vendor_bill.before_pay        { bill }                    books
  *   transaction.before_record     { txnDate, source }         books
+ *   accounting_document.before_write { date, what }          books
  *   invoice.before_issue          { invoice, lines }          invoicing
  *   payroll_run.before_approve    { run, instructions }       payroll
  *   payroll_run.approved          { run, instructions }       payroll
@@ -28,6 +29,7 @@
 export type HookName =
   | 'vendor_bill.before_pay'
   | 'transaction.before_record'
+  | 'accounting_document.before_write'
   | 'invoice.before_issue'
   | 'payroll_run.before_approve'
   | 'payroll_run.approved'

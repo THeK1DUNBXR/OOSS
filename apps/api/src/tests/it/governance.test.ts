@@ -35,6 +35,7 @@ import {
   listPolicies,
   policyDetail,
   publishPolicy,
+  retirePolicy,
   newVersionOf,
   acknowledgePolicy,
   policiesAwaitingCaller,
@@ -344,6 +345,26 @@ describe('IT governance — domain and wiring', () => {
       where: { id: secondDraft.id },
     });
     expect(supersededOriginal.status).toBe('superseded');
+  });
+
+  it('IT-POL-003: retiring a policy publishes kz.it.policy.retired, not the published name', async () => {
+    // A draft retires directly (draft -> retired in the machine), and creating
+    // a draft emits nothing, so the subject's only outbox row is the retirement.
+    const draft = await asUser('chairman@kaizen.co.in', () =>
+      createPolicyDraft({
+        code: `IT-POL-RET-${stamp()}`,
+        title: 'Retirement probe',
+        body: 'A body long enough to acknowledge.',
+      }),
+    );
+    const retired = await asUser('chairman@kaizen.co.in', () => retirePolicy(draft.id));
+    expect(retired.status).toBe('retired');
+
+    const rows = await unscopedPrisma.outboxEvent.findMany({
+      where: { tenantId: await tenantId(), payload: { path: ['subject', 'entityId'], equals: draft.id } },
+      select: { eventName: true },
+    });
+    expect(rows.map((r) => r.eventName)).toEqual(['kz.it.policy.retired']);
   });
 
   it('the gate chain: a self-dealing publish opens a step to the chairman role, which the other chairman holder decides', async () => {

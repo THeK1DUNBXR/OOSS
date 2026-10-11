@@ -58,8 +58,8 @@ async function asTenantUser<T>(tid: string, email: string, fn: () => Promise<T>)
 }
 
 async function cleanupSnapshotsFor(sourceTenantId: string) {
-  await unscopedPrisma.entitySnapshot.deleteMany({ where: { sourceTenantId } }).catch(() => {});
-  await unscopedPrisma.entitySnapshotHistory.deleteMany({ where: { sourceTenantId } }).catch(() => {});
+  await unscopedPrisma.entitySnapshot.deleteMany({ where: { sourceTenantId } });
+  await unscopedPrisma.entitySnapshotHistory.deleteMany({ where: { sourceTenantId } });
 }
 
 beforeAll(async () => {
@@ -71,17 +71,12 @@ afterAll(async () => {
   // deleting the source tenant below does not cascade to them, so they are
   // cleaned up explicitly, or the holding's own group screen would carry
   // this file's fixtures into every other test that reads it.
+  // The source tenants themselves are not deleted: their cascade reaches
+  // event_records and audit_records, which are immutable by trigger, so a
+  // delete would fail (and was being swallowed, leaving the tenants behind
+  // anyway). Their slugs carry Date.now(), so they cannot collide on a rerun.
   const tenants = await unscopedPrisma.tenant.findMany({ where: { slug: { in: cleanupTenantSlugs } } });
   for (const t of tenants) await cleanupSnapshotsFor(t.id);
-
-  const bySlug = new Map(tenants.map((t) => [t.slug, t] as const));
-  const ordered = [...cleanupTenantSlugs].reverse(); // children (created later) before parents
-  for (const slug of ordered) {
-    const t = bySlug.get(slug);
-    if (!t) continue;
-    await unscopedPrisma.exceptionRecord.deleteMany({ where: { tenantId: t.id } }).catch(() => {});
-    await unscopedPrisma.tenant.delete({ where: { id: t.id } }).catch(() => {});
-  }
 });
 
 describe('EQT-GRP-001 — the group screen reads only snapshots: group.ts uses no unscoped client outside the publisher', () => {

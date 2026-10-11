@@ -17,7 +17,7 @@ import {
   securityPolicy,
   updateSecurityPolicy,
   listBackups,
-  runBackup,
+  runManualBackup,
   listRegisterEntries,
   createRegisterEntry,
   currentRegister,
@@ -83,7 +83,7 @@ router.post(
   '/security/backups/run',
   handler(async () => {
     const auth = currentAuth();
-    return runBackup(auth.tenantId);
+    return runManualBackup(auth.tenantId);
   }),
 );
 

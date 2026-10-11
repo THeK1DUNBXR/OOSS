@@ -111,38 +111,46 @@ export async function createRisk(input: CreateRiskInput) {
   const scored = await scoreAgainstBands(input.likelihoodInherent, input.impactInherent);
   const recordCode = await nextRecordCode('ITR');
 
-  const risk = await prisma.itRisk.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title,
-      category: input.category.trim(),
-      ownerPartyId: input.ownerPartyId,
-      likelihoodInherent: input.likelihoodInherent,
-      impactInherent: input.impactInherent,
-      scoreInherent: scored.score,
-      bandInherent: scored.band,
-      scoredUnderBandSetId: scored.setId,
-      treatment: input.treatment,
-      treatmentPlan: input.treatmentPlan ?? null,
-      reviewDueAt: input.reviewDueAt ?? null,
-      controlIds: input.controlIds ?? [],
-      status: 'open',
-    },
-  });
+  // The row, its audit record and its created event commit together (CLAUDE.md
+  // rule 5): an event that outlived a rolled-back risk would tell subscribers
+  // about a risk that does not exist.
+  const risk = await prisma.$transaction(async (tx) => {
+    const risk = await tx.itRisk.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title,
+        category: input.category.trim(),
+        ownerPartyId: input.ownerPartyId,
+        likelihoodInherent: input.likelihoodInherent,
+        impactInherent: input.impactInherent,
+        scoreInherent: scored.score,
+        bandInherent: scored.band,
+        scoredUnderBandSetId: scored.setId,
+        treatment: input.treatment,
+        treatmentPlan: input.treatmentPlan ?? null,
+        reviewDueAt: input.reviewDueAt ?? null,
+        controlIds: input.controlIds ?? [],
+        status: 'open',
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_risk',
-    subjectId: risk.id,
-    after: { recordCode, title, scoreInherent: scored.score, bandInherent: scored.band },
-  });
-  await emit({
-    name: EVENTS.IT_RISK_CREATED,
-    subject: { entityType: 'it_risk', entityId: risk.id, recordCode },
-    newState: { status: risk.status, bandInherent: scored.band },
-    owner: { partyId: input.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_risk',
+      subjectId: risk.id,
+      after: { recordCode, title, scoreInherent: scored.score, bandInherent: scored.band },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_RISK_CREATED,
+      subject: { entityType: 'it_risk', entityId: risk.id, recordCode },
+      newState: { status: risk.status, bandInherent: scored.band },
+      owner: { partyId: input.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return risk;
   });
 
   return withTransitions(risk);
@@ -280,24 +288,29 @@ export async function transitionRisk(id: string, event: RiskEvent, note?: string
   }
   const to = riskMachine.apply(from, event);
 
-  const updated = await prisma.itRisk.update({ where: { id }, data: { status: to } });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itRisk.update({ where: { id }, data: { status: to } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_risk',
-    subjectId: id,
-    before: { status: from },
-    after: { status: to },
-    meta: { transition: event },
-  });
-  await emit({
-    name: EVENTS.IT_RISK_TRANSITIONED,
-    subject: { entityType: 'it_risk', entityId: id, recordCode: risk.recordCode },
-    previousState: { status: from },
-    newState: { status: to },
-    reason: note ? { reasonCode: event, note } : null,
-    owner: { partyId: risk.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_risk',
+      subjectId: id,
+      before: { status: from },
+      after: { status: to },
+      meta: { transition: event },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_RISK_TRANSITIONED,
+      subject: { entityType: 'it_risk', entityId: id, recordCode: risk.recordCode },
+      previousState: { status: from },
+      newState: { status: to },
+      reason: note ? { reasonCode: event, note } : null,
+      owner: { partyId: risk.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return withTransitions(updated);

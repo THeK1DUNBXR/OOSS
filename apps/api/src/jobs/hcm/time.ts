@@ -8,10 +8,10 @@
  * (`deriveAttendanceFromClockEvents`, `runCompOffExpiry` from
  * `../domains/hcm/time.js`) or re-export this file's `JOBS` const.
  */
-import type { JobDefinition } from '../scheduler.js';
+import type { PendingJobDefinition } from '../scheduler.js';
 import { deriveAttendanceFromClockEvents, runCompOffExpiry } from '../../domains/hcm/time.js';
 
-export const JOBS: JobDefinition[] = [
+export const JOBS: PendingJobDefinition[] = [
   {
     name: 'runDeriveAttendanceFromClockEventsJob',
     label: 'Derive yesterday’s attendance from clock events against the roster (HCM-TIME)',

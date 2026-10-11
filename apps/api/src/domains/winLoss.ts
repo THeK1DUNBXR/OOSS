@@ -18,6 +18,13 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { ApiError } from '../platform/errors.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
+import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+
+// The lesson a completed review feeds into Company Memory. decisions.ts registers
+// the same subject, but this module writes it, so it registers it too: an
+// unregistered subject makes auditWrite refuse the write.
+registerGovernedEntities('gov', ['lesson']);
+import { governedWrite } from '../platform/governedWrite.js';
 
 const DEFAULT_VALUE_THRESHOLD = 500_000;
 const GRACE_PERIOD_DAYS = 10;
@@ -114,50 +121,69 @@ export async function completeWinLossReview(id: string, input: WinLossInput) {
     throw ApiError.unprocessable('This review needs a lesson recorded.');
   }
 
-  const updated = await prisma.winLossReview.update({
-    where: { id },
-    data: {
-      competitorName: input.competitorName ?? null,
-      decisionMakerPersonId: input.decisionMakerPersonId ?? null,
-      realLostStage: input.realLostStage ?? null,
-      lostReason: input.lostReason ?? review.lostReason,
-      lostReasonOtherText: input.lostReasonOtherText ?? null,
-      lesson: input.lesson ?? null,
-      completedById: auth.partyId,
-      completedAt: new Date(),
-    },
-  });
-
-  // Feeds Company Memory's LESSON entity.
-  if (input.lesson) {
-    await prisma.lesson.create({
+  return governedWrite(async (tx) => {
+    const updated = await tx.winLossReview.update({
+      where: { id },
       data: {
-        tenantId: auth.tenantId,
-        sourceType: 'win_loss_review',
-        sourceId: id,
-        title: `${updated.outcome === 'won' ? 'Won' : 'Lost'}: ${review.subjectLabel ?? review.subjectId}`,
-        body: input.lesson,
-        domain: 'crm',
-        tags: [updated.outcome, input.lostReason ?? 'n/a', input.competitorName ?? 'no_competitor'].filter(Boolean),
-        createdById: auth.partyId,
+        competitorName: input.competitorName ?? null,
+        decisionMakerPersonId: input.decisionMakerPersonId ?? null,
+        realLostStage: input.realLostStage ?? null,
+        lostReason: input.lostReason ?? review.lostReason,
+        lostReasonOtherText: input.lostReasonOtherText ?? null,
+        lesson: input.lesson ?? null,
+        completedById: auth.partyId,
+        completedAt: new Date(),
       },
     });
-  }
 
-  await emit({
-    name: EVENTS.WIN_LOSS_REVIEW_RECORDED,
-    subject: { entityType: 'win_loss_review', entityId: id, recordCode: review.recordCode },
-    related: [{ relation: 'reviews', entityType: review.subjectType, entityId: review.subjectId }],
-    newState: {
-      outcome: updated.outcome,
-      competitorName: updated.competitorName,
-      lostReason: updated.lostReason,
-      realLostStage: updated.realLostStage,
-    },
-    impact: { domains: ['crm', 'mem'] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'win_loss_review',
+      subjectId: id,
+      before: { completedAt: review.completedAt },
+      after: { outcome: updated.outcome, lostReason: updated.lostReason, completedAt: updated.completedAt },
+      tx,
+    });
+
+    // Feeds Company Memory's LESSON entity.
+    if (input.lesson) {
+      const lesson = await tx.lesson.create({
+        data: {
+          tenantId: auth.tenantId,
+          sourceType: 'win_loss_review',
+          sourceId: id,
+          title: `${updated.outcome === 'won' ? 'Won' : 'Lost'}: ${review.subjectLabel ?? review.subjectId}`,
+          body: input.lesson,
+          domain: 'crm',
+          tags: [updated.outcome, input.lostReason ?? 'n/a', input.competitorName ?? 'no_competitor'].filter(Boolean),
+          createdById: auth.partyId,
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'lesson',
+        subjectId: lesson.id,
+        after: { sourceType: 'win_loss_review', sourceId: id },
+        tx,
+      });
+    }
+
+    await emit({
+      name: EVENTS.WIN_LOSS_REVIEW_RECORDED,
+      subject: { entityType: 'win_loss_review', entityId: id, recordCode: review.recordCode },
+      related: [{ relation: 'reviews', entityType: review.subjectType, entityId: review.subjectId }],
+      newState: {
+        outcome: updated.outcome,
+        competitorName: updated.competitorName,
+        lostReason: updated.lostReason,
+        realLostStage: updated.realLostStage,
+      },
+      impact: { domains: ['crm', 'mem'] },
+      tx,
+    });
+
+    return updated;
   });
-
-  return updated;
 }
 
 /** A mandatory review past its grace period is an exception, not a quiet omission. */
@@ -193,12 +219,23 @@ export async function detectOverdueReviews(): Promise<number> {
       ladderRung: 1,
     });
 
-    await prisma.winLossReview.update({ where: { id: review.id }, data: { overdueNotifiedAt: new Date() } });
-    await emit({
-      name: EVENTS.WIN_LOSS_REVIEW_OVERDUE,
-      subject: { entityType: 'win_loss_review', entityId: review.id, recordCode: review.recordCode },
-      newState: { dueAt: review.dueAt },
-      impact: { domains: ['crm'], severity: 'S1_ATTENTION' },
+    await governedWrite(async (tx) => {
+      await tx.winLossReview.update({ where: { id: review.id }, data: { overdueNotifiedAt: new Date() } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'win_loss_review',
+        subjectId: review.id,
+        before: { overdueNotifiedAt: null },
+        after: { overdueNotifiedAt: 'set' },
+        tx,
+      });
+      await emit({
+        name: EVENTS.WIN_LOSS_REVIEW_OVERDUE,
+        subject: { entityType: 'win_loss_review', entityId: review.id, recordCode: review.recordCode },
+        newState: { dueAt: review.dueAt },
+        impact: { domains: ['crm'], severity: 'S1_ATTENTION' },
+        tx,
+      });
     });
   }
 

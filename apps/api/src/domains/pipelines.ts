@@ -20,6 +20,7 @@ import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { assertCan } from '../platform/permissions.js';
 
 export interface StageInput {
@@ -60,44 +61,49 @@ export async function createPipeline(input: PipelineInput) {
     });
   }
 
-  // Exactly one PIPELINE_DEFINITION per tenant may be is_default = true at any
-  // effective date.
-  if (input.isDefault) {
-    await prisma.pipelineDefinition.updateMany({
-      where: { tenantId: auth.tenantId, isDefault: true },
-      data: { isDefault: false },
+  return governedWrite(async (tx) => {
+    // Exactly one PIPELINE_DEFINITION per tenant may be is_default = true at any
+    // effective date. The demotion and the new default commit together, or the
+    // tenant has two defaults or none.
+    if (input.isDefault) {
+      await tx.pipelineDefinition.updateMany({
+        where: { tenantId: auth.tenantId, isDefault: true },
+        data: { isDefault: false },
+      });
+    }
+
+    const pipeline = await tx.pipelineDefinition.create({
+      data: {
+        tenantId: auth.tenantId,
+        pipelineCode: input.pipelineCode,
+        name: input.name,
+        commercialMotion: input.commercialMotion,
+        appliesToVerticals: input.appliesToVerticals,
+        appliesToAccountKind: input.appliesToAccountKind ?? 'any',
+        defaultForecastMethod: input.defaultForecastMethod ?? 'weighted_stage',
+        requiresAwardArtefact: input.requiresAwardArtefact ?? 'none',
+        isDefault: input.isDefault ?? false,
+        commitApprovalThreshold: input.commitApprovalThreshold ?? undefined,
+        createdById: auth.partyId,
+      },
     });
-  }
 
-  const pipeline = await prisma.pipelineDefinition.create({
-    data: {
-      tenantId: auth.tenantId,
-      pipelineCode: input.pipelineCode,
-      name: input.name,
-      commercialMotion: input.commercialMotion,
-      appliesToVerticals: input.appliesToVerticals,
-      appliesToAccountKind: input.appliesToAccountKind ?? 'any',
-      defaultForecastMethod: input.defaultForecastMethod ?? 'weighted_stage',
-      requiresAwardArtefact: input.requiresAwardArtefact ?? 'none',
-      isDefault: input.isDefault ?? false,
-      commitApprovalThreshold: input.commitApprovalThreshold ?? undefined,
-      createdById: auth.partyId,
-    },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'pipeline_definition',
+      subjectId: pipeline.id,
+      after: { pipelineCode: pipeline.pipelineCode },
+      tx,
+    });
+    await emit({
+      name: EVENTS.PIPELINE_DEFINITION_CREATED,
+      subject: { entityType: 'pipeline_definition', entityId: pipeline.id, recordCode: pipeline.pipelineCode },
+      newState: { commercialMotion: pipeline.commercialMotion },
+      tx,
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'pipeline_definition',
-    subjectId: pipeline.id,
-    after: { pipelineCode: pipeline.pipelineCode },
+    return pipeline;
   });
-  await emit({
-    name: EVENTS.PIPELINE_DEFINITION_CREATED,
-    subject: { entityType: 'pipeline_definition', entityId: pipeline.id, recordCode: pipeline.pipelineCode },
-    newState: { commercialMotion: pipeline.commercialMotion },
-  });
-
-  return pipeline;
 }
 
 export async function addStage(pipelineId: string, input: StageInput) {
@@ -112,31 +118,41 @@ export async function addStage(pipelineId: string, input: StageInput) {
     );
   }
 
-  const stage = await prisma.pipelineStage.create({
-    data: {
-      tenantId: auth.tenantId,
-      pipelineId,
-      stageKey: input.stageKey,
-      label: input.label,
-      sequence: input.sequence,
-      defaultProbability: input.defaultProbability,
-      pipelinePosition: input.pipelinePosition,
-      isOpen: input.isOpen ?? (input.pipelinePosition !== 0 && input.pipelinePosition !== 90),
-      isTerminal: input.isTerminal ?? (input.pipelinePosition === 0 || input.pipelinePosition === 90),
-      postAward: input.postAward ?? false,
-      stageAgeBudgetDays: input.stageAgeBudgetDays ?? null,
-      requiredFields: input.requiredFields ?? [],
-    },
-  });
+  return governedWrite(async (tx) => {
+    const stage = await tx.pipelineStage.create({
+      data: {
+        tenantId: auth.tenantId,
+        pipelineId,
+        stageKey: input.stageKey,
+        label: input.label,
+        sequence: input.sequence,
+        defaultProbability: input.defaultProbability,
+        pipelinePosition: input.pipelinePosition,
+        isOpen: input.isOpen ?? (input.pipelinePosition !== 0 && input.pipelinePosition !== 90),
+        isTerminal: input.isTerminal ?? (input.pipelinePosition === 0 || input.pipelinePosition === 90),
+        postAward: input.postAward ?? false,
+        stageAgeBudgetDays: input.stageAgeBudgetDays ?? null,
+        requiredFields: input.requiredFields ?? [],
+      },
+    });
 
-  await emit({
-    name: EVENTS.PIPELINE_STAGE_CREATED,
-    subject: { entityType: 'pipeline_stage', entityId: stage.id, recordCode: stage.stageKey },
-    related: [{ relation: 'belongs_to', entityType: 'pipeline_definition', entityId: pipelineId }],
-    newState: { stageKey: stage.stageKey, pipelinePosition: stage.pipelinePosition },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'pipeline_stage',
+      subjectId: stage.id,
+      after: { stageKey: stage.stageKey, pipelineId, pipelinePosition: stage.pipelinePosition },
+      tx,
+    });
+    await emit({
+      name: EVENTS.PIPELINE_STAGE_CREATED,
+      subject: { entityType: 'pipeline_stage', entityId: stage.id, recordCode: stage.stageKey },
+      related: [{ relation: 'belongs_to', entityType: 'pipeline_definition', entityId: pipelineId }],
+      newState: { stageKey: stage.stageKey, pipelinePosition: stage.pipelinePosition },
+      tx,
+    });
 
-  return stage;
+    return stage;
+  });
 }
 
 export async function addTransition(
@@ -177,18 +193,21 @@ export async function updateStage(stageId: string, input: Record<string, unknown
   const before = await prisma.pipelineStage.findFirst({ where: { id: stageId } });
   if (!before) throw ApiError.notFound('Pipeline stage');
 
-  const after = await prisma.pipelineStage.update({ where: { id: stageId }, data: input as never });
-  await auditWrite({ action: 'update', subjectType: 'pipeline_stage', subjectId: stageId, before, after });
-  await emit({
-    name: EVENTS.PIPELINE_STAGE_UPDATED,
-    subject: { entityType: 'pipeline_stage', entityId: stageId, recordCode: after.stageKey },
-    newState: {
-      label: after.label,
-      stageAgeBudgetDays: after.stageAgeBudgetDays,
-      defaultProbability: after.defaultProbability,
-    },
+  return governedWrite(async (tx) => {
+    const after = await tx.pipelineStage.update({ where: { id: stageId }, data: input as never });
+    await auditWrite({ action: 'update', subjectType: 'pipeline_stage', subjectId: stageId, before, after, tx });
+    await emit({
+      name: EVENTS.PIPELINE_STAGE_UPDATED,
+      subject: { entityType: 'pipeline_stage', entityId: stageId, recordCode: after.stageKey },
+      newState: {
+        label: after.label,
+        stageAgeBudgetDays: after.stageAgeBudgetDays,
+        defaultProbability: after.defaultProbability,
+      },
+      tx,
+    });
+    return after;
   });
-  return after;
 }
 
 /**
@@ -204,18 +223,22 @@ export async function deleteTransition(transitionId: string) {
   const before = await prisma.pipelineTransition.findFirst({ where: { id: transitionId } });
   if (!before) throw ApiError.notFound('Pipeline transition');
 
-  await prisma.pipelineTransition.delete({ where: { id: transitionId } });
-  await auditWrite({
-    action: 'delete',
-    subjectType: 'pipeline_transition',
-    subjectId: transitionId,
-    after: { pipelineId: before.pipelineId, fromStageKey: before.fromStageKey, toStageKey: before.toStageKey },
-  });
-  await emit({
-    name: EVENTS.PIPELINE_TRANSITION_DELETED,
-    subject: { entityType: 'pipeline_transition', entityId: transitionId, recordCode: before.toStageKey },
-    related: [{ relation: 'belongs_to', entityType: 'pipeline_definition', entityId: before.pipelineId }],
-    newState: { fromStageKey: before.fromStageKey, toStageKey: before.toStageKey },
+  await governedWrite(async (tx) => {
+    await tx.pipelineTransition.delete({ where: { id: transitionId } });
+    await auditWrite({
+      action: 'delete',
+      subjectType: 'pipeline_transition',
+      subjectId: transitionId,
+      after: { pipelineId: before.pipelineId, fromStageKey: before.fromStageKey, toStageKey: before.toStageKey },
+      tx,
+    });
+    await emit({
+      name: EVENTS.PIPELINE_TRANSITION_DELETED,
+      subject: { entityType: 'pipeline_transition', entityId: transitionId, recordCode: before.toStageKey },
+      related: [{ relation: 'belongs_to', entityType: 'pipeline_definition', entityId: before.pipelineId }],
+      newState: { fromStageKey: before.fromStageKey, toStageKey: before.toStageKey },
+      tx,
+    });
   });
   return { ok: true };
 }
@@ -402,13 +425,24 @@ export async function retireStage(stageId: string) {
     );
   }
 
-  const retired = await prisma.pipelineStage.update({ where: { id: stageId }, data: { retiredAt: new Date() } });
-  await emit({
-    name: EVENTS.PIPELINE_STAGE_RETIRED,
-    subject: { entityType: 'pipeline_stage', entityId: stageId, recordCode: stage.stageKey },
-    newState: { retiredAt: retired.retiredAt },
+  return governedWrite(async (tx) => {
+    const retired = await tx.pipelineStage.update({ where: { id: stageId }, data: { retiredAt: new Date() } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'pipeline_stage',
+      subjectId: stageId,
+      before: { retiredAt: stage.retiredAt },
+      after: { retiredAt: retired.retiredAt },
+      tx,
+    });
+    await emit({
+      name: EVENTS.PIPELINE_STAGE_RETIRED,
+      subject: { entityType: 'pipeline_stage', entityId: stageId, recordCode: stage.stageKey },
+      newState: { retiredAt: retired.retiredAt },
+      tx,
+    });
+    return retired;
   });
-  return retired;
 }
 
 /** Resolves the pipeline a vertical maps to, falling back to the default pipeline. */

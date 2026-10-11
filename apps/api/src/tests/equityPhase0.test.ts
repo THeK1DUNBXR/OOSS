@@ -34,7 +34,6 @@ const NEW_RESOURCES = [
 ] as const;
 
 let HOLDING: string;
-const cleanupTenantSlugs: string[] = [];
 const cleanupPersonIds: string[] = [];
 
 beforeAll(async () => {
@@ -42,36 +41,22 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Best-effort: a person/affiliation carries no FK to Tenant in this schema,
-  // so only the tenants themselves (and, through them, their Users by
-  // cascade) need explicit cleanup — child before parent, because
-  // `parentTenantId` is `onDelete: Restrict`.
+  // Persons and affiliations carry no FK to Tenant, so they are removed here.
+  // The tenants are not: a tenant delete cascades into event_records and
+  // audit_records, which are immutable by trigger. The swallowed deletes that
+  // used to sit here left the tenants behind while hiding the error. The slugs
+  // carry Date.now(), so leftovers from a run cannot collide with the next.
   for (const id of cleanupPersonIds) {
-    await unscopedPrisma.affiliation.deleteMany({ where: { partyId: id } }).catch(() => {});
-    await unscopedPrisma.person.deleteMany({ where: { id } }).catch(() => {});
+    await unscopedPrisma.affiliation.deleteMany({ where: { partyId: id } });
+    await unscopedPrisma.person.deleteMany({ where: { id } });
   }
-  const tenants = await unscopedPrisma.tenant.findMany({ where: { slug: { in: cleanupTenantSlugs } } });
-  const bySlug = new Map(tenants.map((t) => [t.slug, t] as const));
-  // Children first.
-  for (const t of tenants) {
-    if (t.parentTenantId) {
-      await unscopedPrisma.exceptionRecord.deleteMany({ where: { tenantId: t.id } }).catch(() => {});
-      await unscopedPrisma.tenant.delete({ where: { id: t.id } }).catch(() => {});
-    }
-  }
-  for (const t of tenants) {
-    if (!t.parentTenantId) {
-      await unscopedPrisma.exceptionRecord.deleteMany({ where: { tenantId: t.id } }).catch(() => {});
-      await unscopedPrisma.tenant.delete({ where: { id: t.id } }).catch(() => {});
-    }
-  }
-  void bySlug;
 });
 
 describe('EQT-IDN-001 — one principal, two tenants, two users, one password', () => {
   it('a principal with an active affiliation in two tenants logs in with one password and sees both entities', async () => {
-    const subSlug = `kaizen-sub-test`;
-    cleanupTenantSlugs.push(subSlug);
+    // Not a fixed slug: the tenant is left in place, so a second run on the
+    // same database would collide with the first run's subsidiary.
+    const subSlug = `kaizen-sub-test-${Date.now()}`;
 
     // A shareholder sign-in, created in the holding tenant, is the principal
     // this test then gives a second entity to.
@@ -155,7 +140,6 @@ describe('EQT-IDN-001 — one principal, two tenants, two users, one password', 
 describe('EQT-IDN-002 — switch-entity is refused with 404 where the principal holds no active affiliation', () => {
   it('a tenant the principal has no active affiliation in is a 404, never a 403', async () => {
     const otherSlug = `eqt-002-other-${Date.now()}`;
-    cleanupTenantSlugs.push(otherSlug);
     const other = await unscopedPrisma.tenant.create({ data: { slug: otherSlug, name: 'Other', status: 'active' } });
 
     const email = `eqt-idn-002-${Date.now()}@example.test`;
@@ -169,7 +153,6 @@ describe('EQT-IDN-002 — switch-entity is refused with 404 where the principal 
 describe('EQT-IDN-003 — ending the director affiliation makes the next request in that tenant fail', () => {
   it('switch-entity refuses the tenant the instant the affiliation ends, with no deprovisioning step in between', async () => {
     const subSlug = `eqt-003-sub-${Date.now()}`;
-    cleanupTenantSlugs.push(subSlug);
     const { tenantId: subTenantId } = await seedBootstrap({
       tenantSlug: subSlug,
       tenantName: 'EQT 003 Sub',
@@ -340,7 +323,6 @@ describe('EQT-IDN-008 — a tenant that gains a subsidiary becomes a holding and
   it('reconcileTenantKinds flips both tenants and raises EX-EQT-001 exactly once each', async () => {
     const parentSlug = `eqt-008-parent-${Date.now()}`;
     const childSlug = `eqt-008-child-${Date.now()}`;
-    cleanupTenantSlugs.push(childSlug, parentSlug);
 
     const { tenantId: parentId } = await seedBootstrap({ tenantSlug: parentSlug, tenantName: 'EQT 008 Parent' });
     const parentBefore = await unscopedPrisma.tenant.findFirstOrThrow({ where: { id: parentId } });

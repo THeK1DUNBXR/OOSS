@@ -24,6 +24,7 @@ import {
   monthKey,
   monthRange,
   monthsBack,
+  istYearMonth,
   depreciationSchedule,
   amortisationSchedule,
   bookValueAt,
@@ -55,6 +56,7 @@ registerGovernedEntities('fin', [
   'ledger_account',
   'ledger_category',
   'budget_line',
+  'recurring_rule',
 ]);
 
 /**
@@ -124,6 +126,13 @@ export async function createAccount(input: {
       openingBalance: num(account.openingBalance),
     },
   });
+  await emit({
+    name: EVENTS.LEDGER_ACCOUNT_CREATED,
+    subject: { entityType: 'ledger_account', entityId: account.id },
+    newState: { name: account.name, accountType: account.accountType, ledgerGroup: account.ledgerGroup },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return account;
 }
 
@@ -162,6 +171,13 @@ export async function createCategory(input: {
     subjectType: 'ledger_category',
     subjectId: category.id,
     after: { name: category.name, kind: category.kind, parentId: category.parentId },
+  });
+  await emit({
+    name: EVENTS.LEDGER_CATEGORY_CREATED,
+    subject: { entityType: 'ledger_category', entityId: category.id },
+    newState: { name: category.name, kind: category.kind },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
   });
   return category;
 }
@@ -363,12 +379,6 @@ export async function recordTransaction(input: TransactionInput) {
     impact: { domains: ['fin'] },
   });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'transaction',
-    subjectId: txn.id,
-    after: { recordCode: txn.recordCode, amount: input.amount, direction: input.direction, accountId: input.accountId },
-  });
   return txn;
 }
 
@@ -382,6 +392,10 @@ export async function recordTransaction(input: TransactionInput) {
 export async function reverseTransaction(id: string, reason: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'transactions', verb: 'edit' });
+  // The reversal is stamped now, so it lands in today's period, not the
+  // original's. A closed current month refuses it here, where the entry would
+  // otherwise be written into a closed month.
+  await runHooks('transaction.before_record', { txnDate: new Date(), source: 'reversal' });
 
   const original = await prisma.transaction.findFirst({
     where: { id, tenantId: auth.tenantId, deletedAt: null },
@@ -525,6 +539,7 @@ export async function recordVendorBill(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'vendor_bills', verb: 'create' });
+  await runHooks('accounting_document.before_write', { date: input.billDate, what: 'This bill' });
 
   const taxAmount = input.taxAmount ?? 0;
   const total = round2(input.subtotal + taxAmount);
@@ -625,6 +640,13 @@ export async function payVendorBill(
     after: { paidAmount: paid, status },
   });
 
+  await emit({
+    name: EVENTS.VENDOR_BILL_PAID,
+    subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode: bill.recordCode },
+    newState: { amount: input.amount, paidAmount: paid, status },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return { bill: updated, transaction: txn };
 }
 
@@ -686,9 +708,26 @@ export async function detectOverdueBills(): Promise<number> {
       triggerFingerprint: `bill_overdue:${bill.id}`,
       ladderRung: 1,
     });
-    await prisma.vendorBill.update({ where: { id: bill.id }, data: { overdueNotifiedAt: new Date() } });
+    const notifiedAt = new Date();
+    await prisma.vendorBill.update({ where: { id: bill.id }, data: { overdueNotifiedAt: notifiedAt } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'vendor_bill',
+      subjectId: bill.id,
+      before: { overdueNotifiedAt: null },
+      after: { overdueNotifiedAt: notifiedAt },
+    });
   }
 
+  for (const bill of overdue) {
+    await emit({
+      name: EVENTS.VENDOR_BILL_OVERDUE_FLAGGED,
+      subject: { entityType: 'vendor_bill', entityId: bill.id, recordCode: bill.recordCode },
+      newState: { dueDate: bill.dueDate },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+    });
+  }
   return overdue.length;
 }
 
@@ -758,7 +797,21 @@ export async function priceInvoiceGst(
       },
     });
   });
+  await auditWrite({
+    action: 'update',
+    subjectType: 'invoice',
+    subjectId: invoiceId,
+    before: { interState: invoice.interState, grandTotal: num(invoice.grandTotal) },
+    after: { interState: input.interState, placeOfSupply: input.placeOfSupply ?? null, grandTotal: gst.grandTotal },
+  });
 
+  await emit({
+    name: EVENTS.INVOICE_TAX_PRICED,
+    subject: { entityType: 'invoice', entityId: invoiceId, recordCode: invoice.recordCode },
+    newState: { interState: input.interState, grandTotal: gst.grandTotal },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return { invoice: updated, gst };
 }
 
@@ -858,6 +911,12 @@ export async function setBudgetLine(input: {
     after: { period: input.period, categoryId: input.categoryId, amount: input.amount },
   });
 
+  await emit({
+    name: EVENTS.BUDGET_LINE_SET,
+    subject: { entityType: 'budget_line', entityId: line.id },
+    newState: { period: input.period, categoryId: input.categoryId, amount: input.amount },
+    impact: { domains: ['fin'] },
+  });
   return line;
 }
 
@@ -986,6 +1045,9 @@ export async function createAsset(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'assets', verb: 'create' });
+  // Before the asset row: the ledger veto below comes after it, and a refused
+  // purchase must not leave an asset behind.
+  await runHooks('accounting_document.before_write', { date: input.purchaseDate, what: 'This asset purchase' });
 
   const recordCode = await nextRecordCode('FA');
   const asset = await prisma.fixedAsset.create({
@@ -1028,6 +1090,13 @@ export async function createAsset(input: {
     after: { recordCode, name: input.name, cost: input.cost, purchaseDate: input.purchaseDate, method: asset.method },
   });
 
+  await emit({
+    name: EVENTS.FIXED_ASSET_RECORDED,
+    subject: { entityType: 'fixed_asset', entityId: asset.id, recordCode },
+    newState: { cost: input.cost, purchaseDate: input.purchaseDate, usefulLifeMonths: input.usefulLifeMonths },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
+  });
   return asset;
 }
 
@@ -1093,6 +1162,7 @@ export async function createLoan(input: {
 }) {
   const auth = currentAuth();
   await assertCan({ resource: 'assets', verb: 'create' });
+  await runHooks('accounting_document.before_write', { date: input.startDate, what: 'This loan' });
 
   const recordCode = await nextRecordCode('LN');
   const loan = await prisma.loan.create({
@@ -1113,6 +1183,13 @@ export async function createLoan(input: {
     subjectType: 'loan',
     subjectId: loan.id,
     after: { recordCode, lender: input.lender, principal: input.principal, startDate: input.startDate },
+  });
+  await emit({
+    name: EVENTS.LOAN_RECORDED,
+    subject: { entityType: 'loan', entityId: loan.id, recordCode },
+    newState: { principal: input.principal, annualRate: input.annualRate, tenureMonths: input.tenureMonths },
+    impact: { domains: ['fin'] },
+    confidentiality: 'confidential',
   });
   return loan;
 }
@@ -1148,9 +1225,13 @@ export async function generateRecurring(period: string): Promise<{ created: numb
   const auth = currentAuth();
   await assertCan({ resource: 'transactions', verb: 'create' });
 
-  const { from } = monthRange(period);
+  const { from, to } = monthRange(period);
+  const { year: fromYear, month: fromMonth } = istYearMonth(from);
+  // A rule dated on the 1st is stored as UTC midnight, which is 05:30 IST on
+  // that day, after the period's IST midnight. Comparing with `lte from` left
+  // such a rule out of its own first month; the period's end is the right bound.
   const rules = await prisma.recurringRule.findMany({
-    where: { tenantId: auth.tenantId, active: true, startDate: { lte: from } },
+    where: { tenantId: auth.tenantId, active: true, startDate: { lt: to } },
   });
 
   let created = 0;
@@ -1169,9 +1250,8 @@ export async function generateRecurring(period: string): Promise<{ created: numb
     // the month it started rather than from January.
     if (rule.cadence !== 'monthly') {
       const step = rule.cadence === 'quarterly' ? 3 : 12;
-      const monthsSinceStart =
-        (from.getUTCFullYear() - rule.startDate.getUTCFullYear()) * 12 +
-        (from.getUTCMonth() - rule.startDate.getUTCMonth());
+      const start = istYearMonth(rule.startDate);
+      const monthsSinceStart = (fromYear - start.year) * 12 + (fromMonth - start.month);
       if (monthsSinceStart % step !== 0) {
         skipped += 1;
         continue;
@@ -1194,6 +1274,20 @@ export async function generateRecurring(period: string): Promise<{ created: numb
     });
 
     await prisma.recurringRule.update({ where: { id: rule.id }, data: { lastGeneratedPeriod: period } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'recurring_rule',
+      subjectId: rule.id,
+      before: { lastGeneratedPeriod: rule.lastGeneratedPeriod },
+      after: { lastGeneratedPeriod: period },
+    });
+    await emit({
+      name: EVENTS.RECURRING_GENERATED,
+      subject: { entityType: 'recurring_rule', entityId: rule.id },
+      newState: { period, amount: num(rule.amount) ?? 0, direction: rule.direction },
+      impact: { domains: ['fin'] },
+      confidentiality: 'confidential',
+    });
     created += 1;
   }
 

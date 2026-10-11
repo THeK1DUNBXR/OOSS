@@ -48,10 +48,17 @@ export const ticketMachine: Machine<ItTicketStatus, ItTicketEvent> = createMachi
   },
 );
 
+/**
+ * The past-tense verb each ticket event publishes under `kz.it.ticket.<verb>`.
+ * `WAIT` is `moved_to_waiting`, not `waiting`: the event names the transition,
+ * and `waiting` is the state it lands in, which fails the past-tense rule.
+ * The old name `kz.hr.ticket.waiting` is grandfathered in events.ts because it
+ * is stored in event history and must not be renamed in place.
+ */
 export const TICKET_EVENT_VERB: Record<ItTicketEvent, string> = {
   TRIAGE: 'triaged',
   START: 'started',
-  WAIT: 'waiting',
+  WAIT: 'moved_to_waiting',
   RESUME: 'resumed',
   RESOLVE: 'resolved',
   CLOSE: 'closed',

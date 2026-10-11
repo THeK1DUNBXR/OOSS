@@ -14,7 +14,7 @@
  * would run, against rows that exist.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { agentContext } from '../platform/context.js';
 import { applyFieldVisibility, evaluate, scopeWhere } from '../platform/permissions.js';
 import type { AuthContext } from '../platform/context.js';
@@ -53,13 +53,8 @@ beforeAll(async () => {
   unownedPlanId = unowned.id;
 });
 
-afterAll(async () => {
-  // Grants reference roles, so they go first; the tenant is last.
-  await unscopedPrisma.grant.deleteMany({ where: { tenantId } });
-  await unscopedPrisma.accessRole.deleteMany({ where: { tenantId } });
-  await unscopedPrisma.itContinuityPlan.deleteMany({ where: { tenantId } });
-  await unscopedPrisma.tenant.deleteMany({ where: { id: tenantId } });
-});
+// No teardown: a tenant delete cascades into the immutable event_records, so
+// the tenant is left in place. TENANT_SLUG carries a per-run stamp.
 
 async function listPlanIds(where: Record<string, unknown>): Promise<string[]> {
   const rows = await unscopedPrisma.itContinuityPlan.findMany({ where: { tenantId, ...where }, select: { id: true } });

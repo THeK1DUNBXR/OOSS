@@ -14,12 +14,14 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  CATCH_UP_MS,
+  HEARTBEAT_MS,
+  LEASE_MS,
   MAX_ATTEMPTS,
   TICK_MS,
   backoffMs,
   dueOccurrence,
   isValidCron,
-  leaseFor,
   nextFireAfter,
   occurrencesBetween,
 } from '../jobs/schedule.js';
@@ -118,10 +120,14 @@ describe('retry and lease arithmetic', () => {
     expect(backoffMs(99)).toBeLessThanOrEqual(30 * 60_000);
   });
 
-  it('holds a lease past the job timeout, so a slow run is not stolen from', () => {
-    const now = new Date('2026-09-12T00:30:00.000Z');
-    const timeout = 5 * 60_000;
-    expect(leaseFor(now, timeout).getTime()).toBeGreaterThan(now.getTime() + timeout);
+  it('renews the lease well inside its period, so a live holder is never taken over', () => {
+    // The lease is a liveness signal, not the job timeout. Three missed beats
+    // before expiry means one transient database error does not cost a claim.
+    expect(LEASE_MS).toBeGreaterThanOrEqual(3 * HEARTBEAT_MS);
+  });
+
+  it('catches up across a six-hour window, not a single tick', () => {
+    expect(CATCH_UP_MS).toBe(6 * 60 * 60_000);
   });
 
   it('gives up after MAX_ATTEMPTS rather than retrying for ever', () => {

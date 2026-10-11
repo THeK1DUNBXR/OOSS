@@ -25,6 +25,7 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, resolveAuthorityCeiling } from '../platform/permissions.js';
 import { drillPathFor } from './commandCenter.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
+import { governedWrite } from '../platform/governedWrite.js';
 
 // A lesson is what closes the decision loop (see reviewDecision). Without a
 // registration here its create would be silently unaudited, leaving a review
@@ -51,39 +52,42 @@ export async function raiseDecision(input: RaiseDecisionInput) {
 
   const evidencePack = await assembleEvidencePack(input);
 
-  const decision = await prisma.decision.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      question: input.question,
-      // An incomplete pack is visibly not decidable, with a clock — never
-      // silently blocked.
-      state: evidencePack.complete ? 'AwaitingAuthority' : 'Analysing',
-      subjectType: input.subjectType,
-      subjectId: input.subjectId,
-      subjectLabel: input.subjectLabel ?? input.subjectId,
-      authorityBasis: input.authorityBasis,
-      requiredAuthorityValue: input.requiredAuthorityValue ?? undefined,
-      currency: input.currency ?? 'INR',
-      routedToRole: input.routedToRole ?? 'chairman',
-      evidencePack: evidencePack as never,
-      evidenceComplete: evidencePack.complete,
-      pointOfNoReturn: input.pointOfNoReturn ?? null,
-      slaDueAt: new Date(Date.now() + 3 * 86_400_000),
-    },
-  });
-  await auditWrite({ action: 'create', subjectType: 'decision', subjectId: decision.id, after: decision });
+  return governedWrite(async (tx) => {
+    const decision = await tx.decision.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        question: input.question,
+        // An incomplete pack is visibly not decidable, with a clock — never
+        // silently blocked.
+        state: evidencePack.complete ? 'AwaitingAuthority' : 'Analysing',
+        subjectType: input.subjectType,
+        subjectId: input.subjectId,
+        subjectLabel: input.subjectLabel ?? input.subjectId,
+        authorityBasis: input.authorityBasis,
+        requiredAuthorityValue: input.requiredAuthorityValue ?? undefined,
+        currency: input.currency ?? 'INR',
+        routedToRole: input.routedToRole ?? 'chairman',
+        evidencePack: evidencePack as never,
+        evidenceComplete: evidencePack.complete,
+        pointOfNoReturn: input.pointOfNoReturn ?? null,
+        slaDueAt: new Date(Date.now() + 3 * 86_400_000),
+      },
+    });
+    await auditWrite({ action: 'create', subjectType: 'decision', subjectId: decision.id, after: decision, tx });
 
-  await emit({
-    name: EVENTS.DECISION_RAISED,
-    subject: { entityType: 'decision', entityId: decision.id, recordCode },
-    related: [{ relation: 'decides_on', entityType: input.subjectType, entityId: input.subjectId }],
-    newState: { question: input.question, state: decision.state, evidenceComplete: evidencePack.complete },
-    impact: { domains: ['gov'], severity: 'S2_WARNING' },
-    confidentiality: 'confidential',
-  });
+    await emit({
+      name: EVENTS.DECISION_RAISED,
+      subject: { entityType: 'decision', entityId: decision.id, recordCode },
+      related: [{ relation: 'decides_on', entityType: input.subjectType, entityId: input.subjectId }],
+      newState: { question: input.question, state: decision.state, evidenceComplete: evidencePack.complete },
+      impact: { domains: ['gov'], severity: 'S2_WARNING' },
+      confidentiality: 'confidential',
+      tx,
+    });
 
-  return decision;
+    return decision;
+  });
 }
 
 /**
@@ -269,82 +273,103 @@ export async function disposeDecision(input: DispositionInput) {
       });
     }
 
-    const updated = await prisma.decision.update({
-      where: { id: input.decisionId },
-      data: {
-        state: 'Implemented',
-        chosenOption: input.chosenOption,
-        rationale: input.rationale,
-        rationaleAudioRef: input.rationaleAudioRef ?? null,
-        confidence: input.confidence ?? null,
-        decidedById: auth.partyId,
-        decidedAt: new Date(),
-        // A decision does not close at disposition: review_due_on is mandatory
-        // and armed on Decided.
-        reviewDueOn: new Date(Date.now() + 30 * 86_400_000),
-      },
-    });
-    await auditWrite({
-      action: 'update',
-      subjectType: 'decision',
-      subjectId: input.decisionId,
-      before: decision,
-      after: updated,
-    });
+    return governedWrite(async (tx) => {
+      const updated = await tx.decision.update({
+        where: { id: input.decisionId },
+        data: {
+          state: 'Implemented',
+          chosenOption: input.chosenOption,
+          rationale: input.rationale,
+          rationaleAudioRef: input.rationaleAudioRef ?? null,
+          confidence: input.confidence ?? null,
+          decidedById: auth.partyId,
+          decidedAt: new Date(),
+          // A decision does not close at disposition: review_due_on is mandatory
+          // and armed on Decided.
+          reviewDueOn: new Date(Date.now() + 30 * 86_400_000),
+        },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'decision',
+        subjectId: input.decisionId,
+        before: decision,
+        after: updated,
+        tx,
+      });
 
-    await emit({
-      name: EVENTS.DECISION_DECIDED,
-      subject: { entityType: 'decision', entityId: input.decisionId, recordCode: decision.recordCode },
-      previousState: { state: decision.state },
-      newState: { state: 'Implemented', chosenOption: input.chosenOption, reviewDueOn: updated.reviewDueOn },
-      reason: { reasonCode: 'decided', note: input.rationale },
-      confidentiality: 'confidential',
-    });
+      await emit({
+        name: EVENTS.DECISION_DECIDED,
+        subject: { entityType: 'decision', entityId: input.decisionId, recordCode: decision.recordCode },
+        previousState: { state: decision.state },
+        newState: { state: 'Implemented', chosenOption: input.chosenOption, reviewDueOn: updated.reviewDueOn },
+        reason: { reasonCode: 'decided', note: input.rationale },
+        confidentiality: 'confidential',
+        tx,
+      });
 
-    return updated;
+      return updated;
+    });
   }
 
   if (input.disposition === 'delegate') {
     if (!input.delegateToPartyId) throw ApiError.badRequest('Delegate requires a target principal.');
     if (!input.returnDueOn) throw ApiError.badRequest('Delegate requires a mandatory return date.');
 
-    const delegation = await prisma.delegation.create({
-      data: {
-        tenantId: auth.tenantId,
-        decisionId: input.decisionId,
-        fromPartyId: auth.partyId ?? 'system',
-        toPartyId: input.delegateToPartyId,
-        scope: decision.authorityBasis,
-        reason: input.rationale,
-        returnDueOn: input.returnDueOn,
-      },
-    });
-    await auditWrite({ action: 'create', subjectType: 'delegation', subjectId: delegation.id, after: delegation });
+    // Narrowed once here, as in the defer branch: the narrowing does not survive
+    // into the transaction callback.
+    const delegateToPartyId = input.delegateToPartyId;
+    const returnDueOn = input.returnDueOn;
+    return governedWrite(async (tx) => {
+      const delegation = await tx.delegation.create({
+        data: {
+          tenantId: auth.tenantId,
+          decisionId: input.decisionId,
+          fromPartyId: auth.partyId ?? 'system',
+          toPartyId: delegateToPartyId,
+          scope: decision.authorityBasis,
+          reason: input.rationale,
+          returnDueOn,
+        },
+      });
+      await auditWrite({
+        action: 'create',
+        subjectType: 'delegation',
+        subjectId: delegation.id,
+        after: delegation,
+        tx,
+      });
 
-    const updated = await prisma.decision.update({
-      where: { id: input.decisionId },
-      data: { state: 'Delegated', routedToPartyId: input.delegateToPartyId, rationale: input.rationale },
-    });
-    await auditWrite({
-      action: 'update',
-      subjectType: 'decision',
-      subjectId: input.decisionId,
-      before: decision,
-      after: updated,
-    });
+      const updated = await tx.decision.update({
+        where: { id: input.decisionId },
+        data: { state: 'Delegated', routedToPartyId: input.delegateToPartyId, rationale: input.rationale },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'decision',
+        subjectId: input.decisionId,
+        before: decision,
+        after: updated,
+        tx,
+      });
 
-    await emit({
-      name: EVENTS.DECISION_DELEGATED,
-      subject: { entityType: 'decision', entityId: input.decisionId, recordCode: decision.recordCode },
-      newState: { state: 'Delegated', toPartyId: input.delegateToPartyId, returnDueOn: input.returnDueOn },
-      reason: { reasonCode: 'delegated', note: input.rationale },
-    });
+      await emit({
+        name: EVENTS.DECISION_DELEGATED,
+        subject: { entityType: 'decision', entityId: input.decisionId, recordCode: decision.recordCode },
+        newState: { state: 'Delegated', toPartyId: input.delegateToPartyId, returnDueOn: input.returnDueOn },
+        reason: { reasonCode: 'delegated', note: input.rationale },
+        tx,
+      });
 
-    return updated;
+      return updated;
+    });
   }
 
   if (input.disposition === 'defer') {
     if (!input.deferUntil) throw ApiError.badRequest('Defer requires a date.');
+    // Narrowed once here: the narrowing on `input.deferUntil` does not survive
+    // into the transaction callback below.
+    const deferUntil = input.deferUntil;
 
     // Refused outright, not merely warned, if the deferral would fall after the
     // decision's point of no return.
@@ -355,9 +380,43 @@ export async function disposeDecision(input: DispositionInput) {
       );
     }
 
-    const updated = await prisma.decision.update({
+    return governedWrite(async (tx) => {
+      const updated = await tx.decision.update({
+        where: { id: input.decisionId },
+        data: {
+          state: 'Deferred',
+          deferUntil,
+          rationale: input.rationale,
+          slaDueAt: deferUntil,
+        },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'decision',
+        subjectId: input.decisionId,
+        before: decision,
+        after: updated,
+        tx,
+      });
+
+      await emit({
+        name: EVENTS.DECISION_DEFERRED,
+        subject: { entityType: 'decision', entityId: input.decisionId, recordCode: decision.recordCode },
+        newState: { state: 'Deferred', deferUntil: input.deferUntil },
+        reason: { reasonCode: 'deferred', note: input.rationale },
+        tx,
+      });
+
+      return updated;
+    });
+  }
+
+  // Request more evidence: holds the item's queue position AND its clock,
+  // rather than silently dropping it to a parking lot.
+  return governedWrite(async (tx) => {
+    const updated = await tx.decision.update({
       where: { id: input.decisionId },
-      data: { state: 'Deferred', deferUntil: input.deferUntil, rationale: input.rationale, slaDueAt: input.deferUntil },
+      data: { state: 'EvidenceRequested', rationale: input.rationale },
     });
     await auditWrite({
       action: 'update',
@@ -365,40 +424,19 @@ export async function disposeDecision(input: DispositionInput) {
       subjectId: input.decisionId,
       before: decision,
       after: updated,
+      tx,
     });
 
     await emit({
-      name: EVENTS.DECISION_DEFERRED,
+      name: EVENTS.DECISION_EVIDENCE_REQUESTED,
       subject: { entityType: 'decision', entityId: input.decisionId, recordCode: decision.recordCode },
-      newState: { state: 'Deferred', deferUntil: input.deferUntil },
-      reason: { reasonCode: 'deferred', note: input.rationale },
+      newState: { state: 'EvidenceRequested' },
+      reason: { reasonCode: 'evidence_requested', note: input.rationale },
+      tx,
     });
 
     return updated;
-  }
-
-  // Request more evidence: holds the item's queue position AND its clock,
-  // rather than silently dropping it to a parking lot.
-  const updated = await prisma.decision.update({
-    where: { id: input.decisionId },
-    data: { state: 'EvidenceRequested', rationale: input.rationale },
   });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'decision',
-    subjectId: input.decisionId,
-    before: decision,
-    after: updated,
-  });
-
-  await emit({
-    name: EVENTS.DECISION_EVIDENCE_REQUESTED,
-    subject: { entityType: 'decision', entityId: input.decisionId, recordCode: decision.recordCode },
-    newState: { state: 'EvidenceRequested' },
-    reason: { reasonCode: 'evidence_requested', note: input.rationale },
-  });
-
-  return updated;
 }
 
 /**

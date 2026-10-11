@@ -706,3 +706,147 @@ describe('listPlans', () => {
     expect(rows[0].pool).toBeDefined();
   });
 });
+
+describe('EQT-ESP-011 — overlapping or repeated ESOP jobs never vest or lapse twice', () => {
+  const VESTED_EVENT = 'kz.eqt.option.vested';
+  const LAPSED_EVENT = 'kz.eqt.option.lapsed';
+
+  async function auditCount(grantId: string): Promise<number> {
+    return unscopedPrisma.auditRecord.count({
+      where: { tenantId: HOLDING, subjectType: 'option_grant', subjectId: grantId },
+    });
+  }
+
+  async function eventCount(eventName: string, grantId: string): Promise<number> {
+    return unscopedPrisma.eventRecord.count({
+      where: { tenantId: HOLDING, eventName, subjectEntityId: grantId },
+    });
+  }
+
+  it('two vesting runs for the same day vest each due tranche once, and the grant total equals the vested tranches', async () => {
+    const p = await newPlan('011a');
+    const emp = await makeEmployee('esp011a');
+    const g = await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(25),
+        count: 24,
+        vestingOverride: { cliffMonths: 12, totalMonths: 24, frequency: 'annual' },
+        resolutionRef: 'SR-TEST',
+      }),
+    );
+    await asUser('finance@kaizen.co.in', () => approveGrant(g.id));
+
+    const dueBefore = await unscopedPrisma.vestingEvent.count({
+      where: { grantId: g.id, status: 'scheduled', on: { lte: new Date() } },
+    });
+    expect(dueBefore).toBe(2);
+    const auditBefore = await auditCount(g.id);
+
+    await Promise.all([
+      asUser('finance@kaizen.co.in', () => runVesting()),
+      asUser('finance@kaizen.co.in', () => runVesting()),
+    ]);
+
+    const tranches = await unscopedPrisma.vestingEvent.findMany({ where: { grantId: g.id } });
+    const vestedTranches = tranches.filter((t) => t.status === 'vested');
+    expect(vestedTranches).toHaveLength(2);
+    const vestedSum = vestedTranches.reduce((sum, t) => sum + Number(t.count), 0);
+
+    const after = await asUser('finance@kaizen.co.in', () => grant(g.id));
+    expect(after.vested).toBe(vestedSum);
+    expect(after.vested).toBe(24);
+    expect(await eventCount(VESTED_EVENT, g.id)).toBe(2);
+    expect(await auditCount(g.id)).toBe(auditBefore + 2);
+
+    // The next day's run finds nothing due and changes nothing.
+    await asUser('finance@kaizen.co.in', () => runVesting());
+    const nextDay = await asUser('finance@kaizen.co.in', () => grant(g.id));
+    expect(nextDay.vested).toBe(24);
+    expect(await eventCount(VESTED_EVENT, g.id)).toBe(2);
+    expect(await auditCount(g.id)).toBe(auditBefore + 2);
+  });
+
+  it('two exercise-window lapse runs lapse the grant once, and a later run does nothing', async () => {
+    const p = await newPlan('011b');
+    const emp = await makeEmployee('esp011b');
+    const g = await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(25),
+        count: 24,
+        vestingOverride: { cliffMonths: 12, totalMonths: 24, frequency: 'annual' },
+        resolutionRef: 'SR-TEST',
+      }),
+    );
+    await asUser('finance@kaizen.co.in', () => approveGrant(g.id));
+    await asUser('finance@kaizen.co.in', () => runVesting());
+    await asUser('hr@kaizen.co.in', () => handleEmploymentExit(emp.employment.id, new Date()));
+    await asUser('finance@kaizen.co.in', () =>
+      scopedPrisma.optionGrant.update({
+        where: { id: g.id },
+        data: { exerciseWindowEndsOn: new Date(Date.now() - 86_400_000) },
+      }),
+    );
+
+    const auditBefore = await auditCount(g.id);
+    const lapsedEventsBefore = await eventCount(LAPSED_EVENT, g.id);
+
+    await Promise.all([
+      asUser('finance@kaizen.co.in', () => runExpiredExerciseWindows()),
+      asUser('finance@kaizen.co.in', () => runExpiredExerciseWindows()),
+    ]);
+
+    const afterOverlap = await asUser('finance@kaizen.co.in', () => grant(g.id));
+    expect(afterOverlap.status).toBe('lapsed');
+    expect(afterOverlap.lapsed).toBe(24);
+    expect(await eventCount(LAPSED_EVENT, g.id)).toBe(lapsedEventsBefore + 1);
+    expect(await auditCount(g.id)).toBe(auditBefore + 1);
+
+    // A rerun on a later day finds the grant already lapsed.
+    await asUser('finance@kaizen.co.in', () => runExpiredExerciseWindows());
+    const nextDay = await asUser('finance@kaizen.co.in', () => grant(g.id));
+    expect(nextDay.lapsed).toBe(24);
+    expect(await eventCount(LAPSED_EVENT, g.id)).toBe(lapsedEventsBefore + 1);
+    expect(await auditCount(g.id)).toBe(auditBefore + 1);
+  });
+});
+
+describe('EQT-ESP-012 — a redelivered employment exit applies once', () => {
+  it('handling the same exit event twice changes the grant once and writes one audit row', async () => {
+    const p = await newPlan('012');
+    const emp = await makeEmployee('esp012');
+    const g = await asUser('hr@kaizen.co.in', () =>
+      proposeGrant({
+        planId: p.id,
+        employmentId: emp.employment.id,
+        grantedOn: monthsAgo(25),
+        count: 36,
+        vestingOverride: { cliffMonths: 12, totalMonths: 36, frequency: 'annual' },
+        resolutionRef: 'SR-TEST',
+      }),
+    );
+    await asUser('finance@kaizen.co.in', () => approveGrant(g.id));
+    await asUser('finance@kaizen.co.in', () => runVesting());
+    const beforeExit = await asUser('finance@kaizen.co.in', () => grant(g.id));
+    expect(beforeExit.vested).toBe(24);
+
+    const auditBefore = await unscopedPrisma.auditRecord.count({
+      where: { tenantId: HOLDING, subjectType: 'option_grant', subjectId: g.id },
+    });
+    const exitDate = new Date();
+    await asUser('hr@kaizen.co.in', () => handleEmploymentExit(emp.employment.id, exitDate));
+    await asUser('hr@kaizen.co.in', () => handleEmploymentExit(emp.employment.id, exitDate));
+
+    const after = await asUser('finance@kaizen.co.in', () => grant(g.id));
+    expect(after.lapsed).toBe(12);
+    expect(after.vested).toBe(24);
+    expect(after.status).toBe('partly_vested');
+    const auditAfter = await unscopedPrisma.auditRecord.count({
+      where: { tenantId: HOLDING, subjectType: 'option_grant', subjectId: g.id },
+    });
+    expect(auditAfter).toBe(auditBefore + 1);
+  });
+});

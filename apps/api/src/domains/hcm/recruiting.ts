@@ -27,6 +27,7 @@ import {
   type OfferEvent,
 } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
+import { governedWrite } from '../../platform/governedWrite.js';
 import { currentAuth } from '../../platform/context.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
@@ -37,7 +38,16 @@ import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { findOrCreatePerson, type PersonInput } from '../identity.js';
 import { joinFromApplication, transitionApplication } from '../hiring.js';
 
-registerGovernedEntities('hcm_recruiting', ['job_posting', 'offer_letter', 'referral']);
+registerGovernedEntities('hcm_recruiting', [
+  'job_posting',
+  'offer_letter',
+  'referral',
+  'candidate',
+  'interview_round',
+  'interview_scorecard',
+  'background_verification',
+  'onboarding_task',
+]);
 
 function slugify(title: string, stamp: string): string {
   return `${title
@@ -78,27 +88,37 @@ export async function createJobPosting(input: {
   if (!requisition) throw ApiError.notFound('Requisition');
 
   const recordCode = await nextRecordCode('JPST');
-  const posting = await prisma.jobPosting.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      requisitionId: input.requisitionId,
-      title: input.title,
-      description: input.description,
-      channel: input.channel ?? 'internal',
-      slug: slugify(input.title, recordCode.toLowerCase()),
-    },
-  });
+  return governedWrite(async (tx) => {
+    const posting = await tx.jobPosting.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        requisitionId: input.requisitionId,
+        title: input.title,
+        description: input.description,
+        channel: input.channel ?? 'internal',
+        slug: slugify(input.title, recordCode.toLowerCase()),
+      },
+    });
 
-  await emit({
-    name: 'kz.hr.job_posting.created',
-    subject: { entityType: 'job_posting', entityId: posting.id, recordCode },
-    related: [{ relation: 'against', entityType: 'requisition', entityId: input.requisitionId }],
-    newState: { status: 'Draft', title: input.title, channel: posting.channel },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'job_posting',
+      subjectId: posting.id,
+      after: posting as never,
+      tx,
+    });
+    await emit({
+      name: 'kz.hr.job_posting.created',
+      subject: { entityType: 'job_posting', entityId: posting.id, recordCode },
+      related: [{ relation: 'against', entityType: 'requisition', entityId: input.requisitionId }],
+      newState: { status: 'Draft', title: input.title, channel: posting.channel },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return posting;
+    return posting;
+  });
 }
 
 export async function transitionJobPosting(id: string, event: JobPostingEvent, note?: string) {
@@ -189,25 +209,39 @@ export async function createCandidate(
   const existing = await prisma.candidateProfile.findFirst({ where: { tenantId: auth.tenantId, personId: person.id } });
   if (existing) return { ...existing, person };
 
-  const profile = await prisma.candidateProfile.create({
-    data: {
-      tenantId: auth.tenantId,
-      personId: person.id,
-      source: input.source ?? 'direct',
-      resumeText: input.resumeText ?? null,
-      currentCtc: input.currentCtc ?? null,
-      expectedCtc: input.expectedCtc ?? null,
-      noticeDays: input.noticeDays ?? null,
-      tags: input.tags ?? [],
-    },
-  });
+  // findOrCreatePerson (identity.ts:178) writes the person and its own events
+  // before this point, outside this transaction. Only the candidate profile,
+  // its audit row and its event are one unit here.
+  const profile = await governedWrite(async (tx) => {
+    const created = await tx.candidateProfile.create({
+      data: {
+        tenantId: auth.tenantId,
+        personId: person.id,
+        source: input.source ?? 'direct',
+        resumeText: input.resumeText ?? null,
+        currentCtc: input.currentCtc ?? null,
+        expectedCtc: input.expectedCtc ?? null,
+        noticeDays: input.noticeDays ?? null,
+        tags: input.tags ?? [],
+      },
+    });
 
-  await emit({
-    name: EVENTS.CANDIDATE_CREATED,
-    subject: { entityType: 'candidate', entityId: profile.id, recordCode: person.recordCode },
-    related: [{ relation: 'is', entityType: 'person', entityId: person.id }],
-    newState: { source: profile.source },
-    impact: { domains: ['hr'] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'candidate',
+      subjectId: created.id,
+      after: created as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.CANDIDATE_CREATED,
+      subject: { entityType: 'candidate', entityId: created.id, recordCode: person.recordCode },
+      related: [{ relation: 'is', entityType: 'person', entityId: person.id }],
+      newState: { source: created.source },
+      impact: { domains: ['hr'] },
+      tx,
+    });
+    return created;
   });
 
   return { ...profile, person };
@@ -261,27 +295,37 @@ export async function scheduleInterview(input: {
     );
   }
 
-  const round = await prisma.interviewRound.create({
-    data: {
-      tenantId: auth.tenantId,
-      applicationId: input.applicationId,
-      roundNo: input.roundNo,
-      kind: input.kind,
-      scheduledAt: input.scheduledAt,
-      interviewerPartyIds: input.interviewerPartyIds,
-      mode: input.mode ?? 'video',
-    },
-  });
+  return governedWrite(async (tx) => {
+    const round = await tx.interviewRound.create({
+      data: {
+        tenantId: auth.tenantId,
+        applicationId: input.applicationId,
+        roundNo: input.roundNo,
+        kind: input.kind,
+        scheduledAt: input.scheduledAt,
+        interviewerPartyIds: input.interviewerPartyIds,
+        mode: input.mode ?? 'video',
+      },
+    });
 
-  await emit({
-    name: EVENTS.INTERVIEW_SCHEDULED,
-    subject: { entityType: 'interview_round', entityId: round.id },
-    related: [{ relation: 'for', entityType: 'application', entityId: input.applicationId }],
-    newState: { roundNo: input.roundNo, kind: input.kind, scheduledAt: input.scheduledAt.toISOString() },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'interview_round',
+      subjectId: round.id,
+      after: round as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.INTERVIEW_SCHEDULED,
+      subject: { entityType: 'interview_round', entityId: round.id },
+      related: [{ relation: 'for', entityType: 'application', entityId: input.applicationId }],
+      newState: { roundNo: input.roundNo, kind: input.kind, scheduledAt: input.scheduledAt.toISOString() },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return round;
+    return round;
+  });
 }
 
 export async function completeInterview(
@@ -295,21 +339,32 @@ export async function completeInterview(
   if (!round) throw ApiError.notFound('Interview round');
   if (round.status !== 'Scheduled') throw ApiError.conflict(`This round is already ${round.status}.`);
 
-  const updated = await prisma.interviewRound.update({
-    where: { id: roundId },
-    data: { status: input.status ?? 'Completed', outcome: input.outcome },
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.interviewRound.update({
+      where: { id: roundId },
+      data: { status: input.status ?? 'Completed', outcome: input.outcome },
+    });
 
-  await emit({
-    name: EVENTS.INTERVIEW_COMPLETED,
-    subject: { entityType: 'interview_round', entityId: roundId },
-    related: [{ relation: 'for', entityType: 'application', entityId: round.applicationId }],
-    previousState: { status: round.status },
-    newState: { status: updated.status, outcome: input.outcome },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'interview_round',
+      subjectId: roundId,
+      before: round as never,
+      after: updated as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.INTERVIEW_COMPLETED,
+      subject: { entityType: 'interview_round', entityId: roundId },
+      related: [{ relation: 'for', entityType: 'application', entityId: round.applicationId }],
+      previousState: { status: round.status },
+      newState: { status: updated.status, outcome: input.outcome },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 export async function submitScorecard(input: {
@@ -321,6 +376,7 @@ export async function submitScorecard(input: {
   const auth = currentAuth();
   await assertCan({ resource: 'scorecards', verb: 'create' });
   if (!auth.partyId) throw ApiError.forbidden('Only a named person may submit interview feedback.');
+  const interviewerPartyId = auth.partyId;
 
   const round = await prisma.interviewRound.findFirst({ where: { id: input.roundId, tenantId: auth.tenantId } });
   if (!round) throw ApiError.notFound('Interview round');
@@ -338,27 +394,37 @@ export async function submitScorecard(input: {
       'You have already scored this round. A correction is a new round, not an edit of a recorded scorecard.',
     );
 
-  const scorecard = await prisma.interviewScorecard.create({
-    data: {
-      tenantId: auth.tenantId,
-      roundId: input.roundId,
-      interviewerPartyId: auth.partyId,
-      competencyScores: input.competencyScores,
-      recommendation: input.recommendation,
-      notes: input.notes ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const scorecard = await tx.interviewScorecard.create({
+      data: {
+        tenantId: auth.tenantId,
+        roundId: input.roundId,
+        interviewerPartyId,
+        competencyScores: input.competencyScores,
+        recommendation: input.recommendation,
+        notes: input.notes ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.SCORECARD_SUBMITTED,
-    subject: { entityType: 'interview_scorecard', entityId: scorecard.id },
-    related: [{ relation: 'for', entityType: 'interview_round', entityId: input.roundId }],
-    newState: { recommendation: input.recommendation },
-    owner: { partyId: auth.partyId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'interview_scorecard',
+      subjectId: scorecard.id,
+      after: scorecard as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.SCORECARD_SUBMITTED,
+      subject: { entityType: 'interview_scorecard', entityId: scorecard.id },
+      related: [{ relation: 'for', entityType: 'interview_round', entityId: input.roundId }],
+      newState: { recommendation: input.recommendation },
+      owner: { partyId: auth.partyId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return scorecard;
+    return scorecard;
+  });
 }
 
 export async function listScorecards(roundId: string) {
@@ -522,35 +588,51 @@ export async function transitionOffer(
     }
   }
 
-  const updated = await prisma.offerLetter.update({
-    where: { id },
-    data: {
-      status: result.to,
-      ...(event === 'APPROVE' ? { approvedByPartyId: auth.partyId, approvedAt: new Date() } : {}),
-      ...(event === 'SEND' ? { sentAt: new Date() } : {}),
-      ...(event === 'ACCEPT' || event === 'DECLINE' ? { decidedAt: new Date() } : {}),
-      ...(event === 'DECLINE' ? { declineReason: input.declineReason } : {}),
-    },
-  });
-
-  // The named events the scaffold registered, emitted alongside the generic
-  // lifecycle event `transition()` already wrote, so a subscriber keyed to
-  // `EVENTS.OFFER_ACCEPTED` etc. does not have to know the transition grammar.
-  const named: Partial<Record<OfferEvent, string>> = {
-    APPROVE: EVENTS.OFFER_APPROVED,
-    SEND: EVENTS.OFFER_SENT,
-    ACCEPT: EVENTS.OFFER_ACCEPTED,
-    DECLINE: EVENTS.OFFER_DECLINED,
-  };
-  if (named[event]) {
-    await emit({
-      name: named[event]!,
-      subject: { entityType: 'offer_letter', entityId: id, recordCode: offer.recordCode },
-      related: [{ relation: 'for', entityType: 'application', entityId: offer.applicationId }],
-      newState: { status: updated.status },
-      impact: { domains: ['hr'] },
+  // The status write, its audit row and the named event commit together. The
+  // generic transition() and the transitionApplication() call above run outside
+  // this transaction: transition() is not tx-aware, and transitionApplication
+  // is a nested service call that writes through the scoped client.
+  const updated = await governedWrite(async (tx) => {
+    const row = await tx.offerLetter.update({
+      where: { id },
+      data: {
+        status: result.to,
+        ...(event === 'APPROVE' ? { approvedByPartyId: auth.partyId, approvedAt: new Date() } : {}),
+        ...(event === 'SEND' ? { sentAt: new Date() } : {}),
+        ...(event === 'ACCEPT' || event === 'DECLINE' ? { decidedAt: new Date() } : {}),
+        ...(event === 'DECLINE' ? { declineReason: input.declineReason } : {}),
+      },
     });
-  }
+    await auditWrite({
+      action: 'update',
+      subjectType: 'offer_letter',
+      subjectId: id,
+      before: { status: offer.status } as never,
+      after: { status: row.status } as never,
+      tx,
+    });
+
+    // The named events the scaffold registered, emitted alongside the generic
+    // lifecycle event `transition()` already wrote, so a subscriber keyed to
+    // `EVENTS.OFFER_ACCEPTED` etc. does not have to know the transition grammar.
+    const named: Partial<Record<OfferEvent, string>> = {
+      APPROVE: EVENTS.OFFER_APPROVED,
+      SEND: EVENTS.OFFER_SENT,
+      ACCEPT: EVENTS.OFFER_ACCEPTED,
+      DECLINE: EVENTS.OFFER_DECLINED,
+    };
+    if (named[event]) {
+      await emit({
+        name: named[event]!,
+        subject: { entityType: 'offer_letter', entityId: id, recordCode: offer.recordCode },
+        related: [{ relation: 'for', entityType: 'application', entityId: offer.applicationId }],
+        newState: { status: row.status },
+        impact: { domains: ['hr'] },
+        tx,
+      });
+    }
+    return row;
+  });
 
   return updated;
 }
@@ -635,28 +717,38 @@ export async function createReferral(input: {
     throw ApiError.badRequest('The referrer and the candidate cannot be the same person.');
   }
 
-  const referral = await prisma.referral.create({
-    data: {
-      tenantId: auth.tenantId,
-      referrerEmploymentId: input.referrerEmploymentId,
-      candidatePersonId: person.id,
-      applicationId: input.applicationId ?? null,
-      bonusAmount: input.bonusAmount ?? null,
-    },
-  });
+  return governedWrite(async (tx) => {
+    const referral = await tx.referral.create({
+      data: {
+        tenantId: auth.tenantId,
+        referrerEmploymentId: input.referrerEmploymentId,
+        candidatePersonId: person.id,
+        applicationId: input.applicationId ?? null,
+        bonusAmount: input.bonusAmount ?? null,
+      },
+    });
 
-  await emit({
-    name: EVENTS.REFERRAL_SUBMITTED,
-    subject: { entityType: 'referral', entityId: referral.id, recordCode: person.recordCode },
-    related: [
-      { relation: 'by', entityType: 'employment', entityId: input.referrerEmploymentId },
-      { relation: 'for', entityType: 'person', entityId: person.id },
-    ],
-    owner: { partyId: referrer.personId },
-    impact: { domains: ['hr'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'referral',
+      subjectId: referral.id,
+      after: referral as never,
+      tx,
+    });
+    await emit({
+      name: EVENTS.REFERRAL_SUBMITTED,
+      subject: { entityType: 'referral', entityId: referral.id, recordCode: person.recordCode },
+      related: [
+        { relation: 'by', entityType: 'employment', entityId: input.referrerEmploymentId },
+        { relation: 'for', entityType: 'person', entityId: person.id },
+      ],
+      owner: { partyId: referrer.personId },
+      impact: { domains: ['hr'] },
+      tx,
+    });
 
-  return referral;
+    return referral;
+  });
 }
 
 const REFERRAL_TRANSITIONS: Record<string, string[]> = {
@@ -740,25 +832,36 @@ export async function updateBackgroundVerification(
     );
   }
 
-  const updated = await prisma.backgroundVerification.update({
-    where: { id },
-    data: {
-      status: input.status ?? bgv.status,
-      outcome: input.outcome ?? bgv.outcome,
-      ...(input.status === 'Completed' ? { completedAt: new Date() } : {}),
-    },
-  });
-
-  if (input.status === 'Completed') {
-    await emit({
-      name: EVENTS.BACKGROUND_VERIFICATION_COMPLETED,
-      subject: { entityType: 'background_verification', entityId: id },
-      newState: { outcome: updated.outcome },
-      impact: { domains: ['hr'] },
+  return governedWrite(async (tx) => {
+    const updated = await tx.backgroundVerification.update({
+      where: { id },
+      data: {
+        status: input.status ?? bgv.status,
+        outcome: input.outcome ?? bgv.outcome,
+        ...(input.status === 'Completed' ? { completedAt: new Date() } : {}),
+      },
     });
-  }
 
-  return updated;
+    await auditWrite({
+      action: 'update',
+      subjectType: 'background_verification',
+      subjectId: id,
+      before: bgv as never,
+      after: updated as never,
+      tx,
+    });
+    if (input.status === 'Completed') {
+      await emit({
+        name: EVENTS.BACKGROUND_VERIFICATION_COMPLETED,
+        subject: { entityType: 'background_verification', entityId: id },
+        newState: { outcome: updated.outcome },
+        impact: { domains: ['hr'] },
+        tx,
+      });
+    }
+
+    return updated;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -868,27 +971,38 @@ export async function completeOnboardingTask(id: string, skip = false) {
 
   if (task.status !== 'Pending') throw ApiError.conflict(`This task is already ${task.status}.`);
 
-  const updated = await prisma.onboardingTask.update({
-    where: { id },
-    data: {
-      status: skip ? 'Skipped' : 'Done',
-      completedAt: new Date(),
-      completedByPartyId: auth.partyId,
-    },
-  });
-
-  if (!skip) {
-    await emit({
-      name: EVENTS.ONBOARDING_TASK_COMPLETED,
-      subject: { entityType: 'onboarding_task', entityId: id },
-      related: [{ relation: 'for', entityType: 'employment', entityId: task.employmentId }],
-      newState: { status: 'Done' },
-      owner: { partyId: auth.partyId },
-      impact: { domains: ['hr'] },
+  return governedWrite(async (tx) => {
+    const updated = await tx.onboardingTask.update({
+      where: { id },
+      data: {
+        status: skip ? 'Skipped' : 'Done',
+        completedAt: new Date(),
+        completedByPartyId: auth.partyId,
+      },
     });
-  }
 
-  return updated;
+    await auditWrite({
+      action: 'update',
+      subjectType: 'onboarding_task',
+      subjectId: id,
+      before: task as never,
+      after: updated as never,
+      tx,
+    });
+    if (!skip) {
+      await emit({
+        name: EVENTS.ONBOARDING_TASK_COMPLETED,
+        subject: { entityType: 'onboarding_task', entityId: id },
+        related: [{ relation: 'for', entityType: 'employment', entityId: task.employmentId }],
+        newState: { status: 'Done' },
+        owner: { partyId: auth.partyId },
+        impact: { domains: ['hr'] },
+        tx,
+      });
+    }
+
+    return updated;
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -321,6 +321,10 @@ model MarketingSendRecipient {
   status            String  @default("queued")
   reason            String?
   providerMessageId String?
+  /// When a dispatch run claimed this recipient (queued -> sending). A
+  /// `sending` row older than the claim lease is an unknown delivery, not a
+  /// retry candidate: the provider may already have accepted it.
+  claimedAt         DateTime?
   /// Raw provider callback events, appended as they arrive.
   events            Json    @default("[]")
 

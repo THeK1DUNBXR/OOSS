@@ -33,6 +33,8 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite } from '../platform/audit.js';
 import { assertCan } from '../platform/permissions.js';
 import { raiseException } from '../platform/exceptions.js';
+import { runHooks } from '../platform/hooks.js';
+import { openAccountingDate, periodStatus as accountingPeriodStatus } from './compliance/books.js';
 import { invoiceLabel, rehydrateReceivablesFor, totalsOf } from './invoicing.js';
 
 /**
@@ -115,6 +117,20 @@ export async function recordPayment(input: {
   });
   if (existing) return existing;
 
+  // Interim policy, pending the accountant's confirmation: money that has
+  // arrived is never refused. A caller with no human behind it (a gateway
+  // webhook, `partyId` null, as `Payment.recordedById` describes) whose money
+  // date falls in a closed period is recorded in the current open period, and
+  // the arrival date is kept as `valueDate`. A member of staff entering the same
+  // payment is still refused by the hook below. Nothing is written into the
+  // closed period either way; only the accounting date moves.
+  const arrivedAt = input.receivedAt ?? new Date();
+  const movedFromClosed = auth.partyId === null && (await accountingPeriodStatus(arrivedAt)) === 'closed';
+  if (!movedFromClosed) {
+    await runHooks('accounting_document.before_write', { date: arrivedAt, what: 'This payment' });
+  }
+  const accountingDate = movedFromClosed ? await openAccountingDate(new Date()) : arrivedAt;
+
   const recordCode = await nextRecordCode('PAY');
   const payment = await prisma.payment.create({
     data: {
@@ -123,7 +139,8 @@ export async function recordPayment(input: {
       amount: input.amount,
       currency: input.currency ?? 'INR',
       gatewayReference: input.gatewayReference,
-      receivedAt: input.receivedAt ?? new Date(),
+      receivedAt: accountingDate,
+      valueDate: movedFromClosed ? arrivedAt : null,
       status: 'received',
       method: input.method ?? 'bank_transfer',
       payerOrganizationId: input.payerOrganizationId ?? null,
@@ -140,8 +157,26 @@ export async function recordPayment(input: {
     action: 'create',
     subjectType: 'payment',
     subjectId: payment.id,
-    after: { recordCode, amount: input.amount },
+    after: {
+      recordCode,
+      amount: input.amount,
+      receivedAt: accountingDate,
+      valueDate: movedFromClosed ? arrivedAt : null,
+    },
   });
+  if (movedFromClosed) {
+    await raiseException({
+      code: 'EX-FIN-007',
+      label: 'Payment received for a closed period',
+      severity: 'S2_WARNING',
+      subjectType: 'payment',
+      subjectId: payment.id,
+      subjectLabel: recordCode,
+      detail: `₹${input.amount.toFixed(2)} arrived on ${arrivedAt.toISOString().slice(0, 10)}, in a closed period. It is recorded in the open period from ${accountingDate.toISOString().slice(0, 10)}; the arrival date is kept. Confirm the treatment with the accountant.`,
+      triggerFingerprint: `payment_received_closed:${payment.id}`,
+      ladderRung: 1,
+    });
+  }
   await emit({
     name: EVENTS.PAYMENT_RECEIVED,
     subject: { entityType: 'payment', entityId: payment.id, recordCode },
@@ -174,6 +209,7 @@ export async function reversePayment(paymentId: string, reason: string) {
   if (original.reversalOfPaymentId) {
     throw ApiError.unprocessable('This payment is itself a reversal. Reversing it would restore the original error.');
   }
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This reversal' });
 
   const recordCode = await nextRecordCode('PAY');
   const reversal = await prisma.payment.create({
@@ -247,6 +283,7 @@ export async function allocatePayment(input: {
       { available },
     );
   }
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This receipt' });
 
   // The position this allocation leaves the subject in, snapshotted onto the
   // receipt. A receipt is a document as well as a join row, and the document has
@@ -379,6 +416,7 @@ async function settleIfFullyPaid(invoiceId: string | null, feeInstalmentId: stri
 export async function issueCreditNote(invoiceId: string, amount: number, reason: string, reasonCode?: string) {
   const auth = currentAuth();
   await assertCan({ resource: 'invoices', verb: 'edit' });
+  await runHooks('accounting_document.before_write', { date: new Date(), what: 'This credit note' });
 
   // The company's own document series ('C'), not the generic record-code
   // sequence: a credit note is a final document a customer holds, and its

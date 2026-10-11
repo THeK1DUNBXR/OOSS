@@ -28,6 +28,7 @@ import {
 } from '@kaizen/shared';
 import { prisma, num } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite, registerGovernedEntities } from '../../platform/audit.js';
 import { emit } from '../../platform/eventBus.js';
 import { nextRecordCode } from '../../platform/recordCode.js';
 import { ApiError } from '../../platform/errors.js';
@@ -38,6 +39,8 @@ import { recomputeCampaignActual } from './campaigns.js';
 // ---------------------------------------------------------------------------
 // Budgets
 // ---------------------------------------------------------------------------
+
+registerGovernedEntities('mkt', ['marketing_budget', 'marketing_spend']);
 
 export interface BudgetInput {
   period: string;
@@ -173,26 +176,37 @@ export async function createBudget(input: BudgetInput): Promise<BudgetView> {
   await assertCan({ resource: 'marketing_budgets', verb: 'create' });
   if (input.planned < 0) throw ApiError.badRequest('planned cannot be negative.');
 
-  const recordCode = await nextRecordCode('BDG');
-  const row = await prisma.marketingBudget.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      period: input.period,
-      division: input.division,
-      channelKey: input.channelKey ?? null,
-      campaignId: input.campaignId ?? null,
-      planned: input.planned,
-      note: input.note ?? null,
-      createdById: auth.partyId,
-    },
-  });
+  const row = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('BDG', new Date(), tx);
+    const created = await tx.marketingBudget.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        period: input.period,
+        division: input.division,
+        channelKey: input.channelKey ?? null,
+        campaignId: input.campaignId ?? null,
+        planned: input.planned,
+        note: input.note ?? null,
+        createdById: auth.partyId,
+      },
+    });
 
-  await emit({
-    name: EVENTS.MKT_BUDGET_SET,
-    subject: { entityType: 'marketing_budget', entityId: row.id, recordCode },
-    newState: { period: row.period, division: row.division, planned: input.planned },
-    impact: { domains: ['mkt'] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_budget',
+      subjectId: created.id,
+      after: { period: created.period, division: created.division, planned: input.planned },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_BUDGET_SET,
+      subject: { entityType: 'marketing_budget', entityId: created.id, recordCode },
+      newState: { period: created.period, division: created.division, planned: input.planned },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return created;
   });
 
   return toBudgetView(row);
@@ -204,26 +218,39 @@ export async function updateBudget(id: string, patch: Partial<BudgetInput>): Pro
   const existing = await prisma.marketingBudget.findFirst({ where: { id, tenantId: auth.tenantId, deletedAt: null } });
   if (!existing) throw ApiError.notFound('Budget');
 
-  const row = await prisma.marketingBudget.update({
-    where: { id },
-    data: {
-      ...(patch.period !== undefined ? { period: patch.period } : {}),
-      ...(patch.division !== undefined ? { division: patch.division } : {}),
-      ...(patch.channelKey !== undefined ? { channelKey: patch.channelKey } : {}),
-      ...(patch.campaignId !== undefined ? { campaignId: patch.campaignId } : {}),
-      ...(patch.planned !== undefined ? { planned: patch.planned } : {}),
-      ...(patch.note !== undefined ? { note: patch.note } : {}),
-      updatedById: auth.partyId,
-    },
-  });
+  const row = await prisma.$transaction(async (tx) => {
+    const updated = await tx.marketingBudget.update({
+      where: { id },
+      data: {
+        ...(patch.period !== undefined ? { period: patch.period } : {}),
+        ...(patch.division !== undefined ? { division: patch.division } : {}),
+        ...(patch.channelKey !== undefined ? { channelKey: patch.channelKey } : {}),
+        ...(patch.campaignId !== undefined ? { campaignId: patch.campaignId } : {}),
+        ...(patch.planned !== undefined ? { planned: patch.planned } : {}),
+        ...(patch.note !== undefined ? { note: patch.note } : {}),
+        updatedById: auth.partyId,
+      },
+    });
 
-  // An edit invalidates a standing approval (see isBudgetApproved) — recorded
-  // as another `.set`, never silently keeping the old approval alive.
-  await emit({
-    name: EVENTS.MKT_BUDGET_SET,
-    subject: { entityType: 'marketing_budget', entityId: row.id, recordCode: row.recordCode },
-    newState: { period: row.period, division: row.division, planned: num(row.planned) },
-    impact: { domains: ['mkt'] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_budget',
+      subjectId: id,
+      // Decimal, not num(): the audit diff stays exact, as the stored column is.
+      before: { period: existing.period, division: existing.division, planned: String(existing.planned) },
+      after: { period: updated.period, division: updated.division, planned: String(updated.planned) },
+      tx,
+    });
+    // An edit invalidates a standing approval (see isBudgetApproved) — recorded
+    // as another `.set`, never silently keeping the old approval alive.
+    await emit({
+      name: EVENTS.MKT_BUDGET_SET,
+      subject: { entityType: 'marketing_budget', entityId: updated.id, recordCode: updated.recordCode },
+      newState: { period: updated.period, division: updated.division, planned: num(updated.planned) },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return updated;
   });
 
   return toBudgetView(row);
@@ -356,37 +383,50 @@ export async function recordSpend(input: SpendInput): Promise<SpendView> {
     if (!campaign) throw ApiError.badRequest('campaignId does not resolve to a campaign in this tenant.');
   }
 
-  const recordCode = await nextRecordCode('SPN');
-  const row = await prisma.marketingSpend.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      campaignId: input.campaignId ?? null,
-      channelKey: input.channelKey,
-      division: input.division,
-      amount: input.amount,
-      spendDate: input.spendDate,
-      vendorOrganizationId: input.vendorOrganizationId ?? null,
-      description: input.description,
-      transactionId: input.transactionId ?? null,
-      vendorBillId: input.vendorBillId ?? null,
-      status: 'recorded',
-      createdById: auth.partyId,
-    },
-  });
+  const row = await prisma.$transaction(async (tx) => {
+    const recordCode = await nextRecordCode('SPN', new Date(), tx);
+    const created = await tx.marketingSpend.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        campaignId: input.campaignId ?? null,
+        channelKey: input.channelKey,
+        division: input.division,
+        amount: input.amount,
+        spendDate: input.spendDate,
+        vendorOrganizationId: input.vendorOrganizationId ?? null,
+        description: input.description,
+        transactionId: input.transactionId ?? null,
+        vendorBillId: input.vendorBillId ?? null,
+        status: 'recorded',
+        createdById: auth.partyId,
+      },
+    });
 
-  if (input.campaignId) await recomputeCampaignActual(input.campaignId);
+    // The campaign's actual is derived from its spend, so it moves in the same
+    // transaction: a spend that rolls back must not leave the total counting it.
+    if (input.campaignId) await recomputeCampaignActual(input.campaignId, tx);
 
-  await emit({
-    name: EVENTS.MKT_SPEND_RECORDED,
-    subject: { entityType: 'marketing_spend', entityId: row.id, recordCode },
-    newState: {
-      amount: input.amount,
-      division: input.division,
-      channelKey: input.channelKey,
-      campaignId: input.campaignId ?? null,
-    },
-    impact: { domains: ['mkt'] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'marketing_spend',
+      subjectId: created.id,
+      after: { amount: input.amount, division: input.division, channelKey: input.channelKey },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SPEND_RECORDED,
+      subject: { entityType: 'marketing_spend', entityId: created.id, recordCode },
+      newState: {
+        amount: input.amount,
+        division: input.division,
+        channelKey: input.channelKey,
+        campaignId: input.campaignId ?? null,
+      },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return created;
   });
 
   return toSpendView(row);
@@ -437,22 +477,33 @@ export async function reconcileSpend(
     if (!bill) throw ApiError.badRequest('vendorBillId does not resolve to a VendorBill in this tenant.');
   }
 
-  const updated = await prisma.marketingSpend.update({
-    where: { id },
-    data: {
-      transactionId: ref.transactionId ?? row.transactionId,
-      vendorBillId: ref.vendorBillId ?? row.vendorBillId,
-      status: 'reconciled',
-      updatedById: auth.partyId,
-    },
-  });
-
-  await emit({
-    name: EVENTS.MKT_SPEND_RECONCILED,
-    subject: { entityType: 'marketing_spend', entityId: id, recordCode: row.recordCode },
-    previousState: { status: 'recorded' },
-    newState: { status: 'reconciled', transactionId: updated.transactionId, vendorBillId: updated.vendorBillId },
-    impact: { domains: ['mkt'] },
+  const updated = await prisma.$transaction(async (tx) => {
+    const next = await tx.marketingSpend.update({
+      where: { id },
+      data: {
+        transactionId: ref.transactionId ?? row.transactionId,
+        vendorBillId: ref.vendorBillId ?? row.vendorBillId,
+        status: 'reconciled',
+        updatedById: auth.partyId,
+      },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'marketing_spend',
+      subjectId: id,
+      before: { status: 'recorded' },
+      after: { status: 'reconciled', transactionId: next.transactionId, vendorBillId: next.vendorBillId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.MKT_SPEND_RECONCILED,
+      subject: { entityType: 'marketing_spend', entityId: id, recordCode: row.recordCode },
+      previousState: { status: 'recorded' },
+      newState: { status: 'reconciled', transactionId: next.transactionId, vendorBillId: next.vendorBillId },
+      impact: { domains: ['mkt'] },
+      tx,
+    });
+    return next;
   });
 
   return toSpendView(updated);

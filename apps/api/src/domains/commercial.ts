@@ -19,6 +19,7 @@ import { prisma, num } from '../platform/db.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
+import { governedWrite } from '../platform/governedWrite.js';
 import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 
@@ -81,63 +82,89 @@ export async function createOffering(input: OfferingInput) {
     throw ApiError.duplicate(`An offering with code ${input.offeringCode} already exists.`, [existing]);
   }
 
-  const recordCode = await nextRecordCode('OFF');
-  const offering = await prisma.offering.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      offeringCode: input.offeringCode,
-      name: input.name,
-      description: input.description ?? null,
-      vertical: input.vertical,
-      deliveryModel: input.deliveryModel,
-      defaultRevenueTreatment: input.defaultRevenueTreatment ?? suggestRevenueTreatment(input.deliveryModel),
-      status: 'draft',
-      owningBusinessUnit: input.owningBusinessUnit ?? null,
-      createdById: auth.partyId,
-    },
-  });
+  // The record code is drawn from a sequence row inside the same transaction, so
+  // a rolled-back offering does not burn a code.
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('OFF', undefined, tx);
+    const offering = await tx.offering.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        offeringCode: input.offeringCode,
+        name: input.name,
+        description: input.description ?? null,
+        vertical: input.vertical,
+        deliveryModel: input.deliveryModel,
+        defaultRevenueTreatment: input.defaultRevenueTreatment ?? suggestRevenueTreatment(input.deliveryModel),
+        status: 'draft',
+        owningBusinessUnit: input.owningBusinessUnit ?? null,
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'offering',
-    subjectId: offering.id,
-    after: { offeringCode: offering.offeringCode },
-  });
-  await emit({
-    name: EVENTS.OFFERING_CREATED,
-    subject: { entityType: 'offering', entityId: offering.id, recordCode: offering.offeringCode },
-    newState: { name: offering.name, vertical: offering.vertical },
-    impact: { domains: ['crm', 'pct', 'fin'] },
-  });
+    await auditWrite({
+      action: 'create',
+      subjectType: 'offering',
+      subjectId: offering.id,
+      after: { offeringCode: offering.offeringCode },
+      tx,
+    });
+    await emit({
+      name: EVENTS.OFFERING_CREATED,
+      subject: { entityType: 'offering', entityId: offering.id, recordCode: offering.offeringCode },
+      newState: { name: offering.name, vertical: offering.vertical },
+      impact: { domains: ['crm', 'pct', 'fin'] },
+      tx,
+    });
 
-  return offering;
+    return offering;
+  });
 }
 
 export async function publishOffering(offeringId: string) {
   await assertCan({ resource: 'offerings', verb: 'edit' });
-  const offering = await prisma.offering.update({ where: { id: offeringId }, data: { status: 'active' } });
-  await emit({
-    name: EVENTS.OFFERING_UPDATED,
-    subject: { entityType: 'offering', entityId: offeringId, recordCode: offering.offeringCode },
-    newState: { status: 'active' },
+  return governedWrite(async (tx) => {
+    const offering = await tx.offering.update({ where: { id: offeringId }, data: { status: 'active' } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'offering',
+      subjectId: offeringId,
+      after: { status: 'active' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.OFFERING_UPDATED,
+      subject: { entityType: 'offering', entityId: offeringId, recordCode: offering.offeringCode },
+      newState: { status: 'active' },
+      tx,
+    });
+    return offering;
   });
-  return offering;
 }
 
 /** Retirement, never hard delete. Existing FK references stay valid and display a retired badge. */
 export async function retireOffering(offeringId: string) {
   await assertCan({ resource: 'offerings', verb: 'edit' });
-  const offering = await prisma.offering.update({
-    where: { id: offeringId },
-    data: { status: 'retired', effectiveTo: new Date() },
+  return governedWrite(async (tx) => {
+    const offering = await tx.offering.update({
+      where: { id: offeringId },
+      data: { status: 'retired', effectiveTo: new Date() },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'offering',
+      subjectId: offeringId,
+      after: { status: 'retired' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.OFFERING_RETIRED,
+      subject: { entityType: 'offering', entityId: offeringId, recordCode: offering.offeringCode },
+      newState: { status: 'retired' },
+      tx,
+    });
+    return offering;
   });
-  await emit({
-    name: EVENTS.OFFERING_RETIRED,
-    subject: { entityType: 'offering', entityId: offeringId, recordCode: offering.offeringCode },
-    newState: { status: 'retired' },
-  });
-  return offering;
 }
 
 /**
@@ -218,52 +245,73 @@ export async function publishPrice(input: PriceInput) {
 
   const version = (current?.version ?? 0) + 1;
 
-  const entry = await prisma.priceBookEntry.create({
-    data: {
-      tenantId: auth.tenantId,
-      offeringId: input.offeringId,
-      priceBookId,
-      priceBookName: input.priceBookName ?? (priceBookId === 'standard' ? 'Standard List' : priceBookId),
-      currency: input.currency,
-      unitPrice: input.unitPrice,
-      billingFrequency: input.billingFrequency,
-      minQuantity: input.minQuantity ?? 1,
-      maxDiscountPct: input.maxDiscountPct,
-      status: 'active',
-      version,
-      createdById: auth.partyId,
-    },
-  });
+  // The superseded entry and the new one are one change to the price list: a
+  // customer must never see two active prices, or none, because the write
+  // stopped between them.
+  return governedWrite(async (tx) => {
+    // Audit rows precede events within a transaction (governedWrite.ts): every
+    // audit is written before the first emit.
+    if (current) {
+      await tx.priceBookEntry.update({
+        where: { id: current.id },
+        data: { status: 'superseded', effectiveTo: new Date() },
+      });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'price_book_entry',
+        subjectId: current.id,
+        before: { status: 'active' },
+        after: { status: 'superseded' },
+        tx,
+      });
+    }
 
-  if (current) {
-    await prisma.priceBookEntry.update({
-      where: { id: current.id },
-      data: { status: 'superseded', effectiveTo: new Date() },
+    const entry = await tx.priceBookEntry.create({
+      data: {
+        tenantId: auth.tenantId,
+        offeringId: input.offeringId,
+        priceBookId,
+        priceBookName: input.priceBookName ?? (priceBookId === 'standard' ? 'Standard List' : priceBookId),
+        currency: input.currency,
+        unitPrice: input.unitPrice,
+        billingFrequency: input.billingFrequency,
+        minQuantity: input.minQuantity ?? 1,
+        maxDiscountPct: input.maxDiscountPct,
+        status: 'active',
+        version,
+        createdById: auth.partyId,
+      },
     });
+
+    await auditWrite({
+      action: 'create',
+      subjectType: 'price_book_entry',
+      subjectId: entry.id,
+      after: { version, unitPrice: input.unitPrice, maxDiscountPct: input.maxDiscountPct },
+      tx,
+    });
+
+    if (current) {
+      await emit({
+        name: EVENTS.PRICE_BOOK_ENTRY_SUPERSEDED,
+        subject: { entityType: 'price_book_entry', entityId: current.id },
+        previousState: { status: 'active', version: current.version },
+        newState: { status: 'superseded' },
+        tx,
+      });
+    }
     await emit({
-      name: EVENTS.PRICE_BOOK_ENTRY_SUPERSEDED,
-      subject: { entityType: 'price_book_entry', entityId: current.id },
-      previousState: { status: 'active', version: current.version },
-      newState: { status: 'superseded' },
+      name: EVENTS.PRICE_BOOK_ENTRY_PUBLISHED,
+      subject: { entityType: 'price_book_entry', entityId: entry.id },
+      related: [{ relation: 'prices', entityType: 'offering', entityId: input.offeringId }],
+      newState: { version, unitPrice: input.unitPrice, currency: input.currency },
+      impact: { domains: ['crm', 'pct'] },
+      confidentiality: 'restricted',
+      tx,
     });
-  }
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'price_book_entry',
-    subjectId: entry.id,
-    after: { version, unitPrice: input.unitPrice, maxDiscountPct: input.maxDiscountPct },
+    return entry;
   });
-  await emit({
-    name: EVENTS.PRICE_BOOK_ENTRY_PUBLISHED,
-    subject: { entityType: 'price_book_entry', entityId: entry.id },
-    related: [{ relation: 'prices', entityType: 'offering', entityId: input.offeringId }],
-    newState: { version, unitPrice: input.unitPrice, currency: input.currency },
-    impact: { domains: ['crm', 'pct'] },
-    confidentiality: 'restricted',
-  });
-
-  return entry;
 }
 
 // ---------------------------------------------------------------------------
@@ -284,43 +332,47 @@ export async function createProposal(input: {
   const opportunity = await prisma.opportunity.findFirst({ where: { id: input.opportunityId } });
   if (!opportunity) throw ApiError.notFound('Opportunity');
 
-  const recordCode = await nextRecordCode('PRO');
-  const proposal = await prisma.proposal.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      opportunityId: input.opportunityId,
-      quoteId: input.quoteId ?? null,
-      title: input.title,
-      totalValue: input.totalValue ?? undefined,
-      currency: input.currency ?? opportunity.currency,
-      validUntil: input.validUntil ?? null,
-      ownerPartyId: opportunity.ownerPartyId,
-      createdById: auth.partyId,
-    },
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('PRO', undefined, tx);
+    const proposal = await tx.proposal.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        opportunityId: input.opportunityId,
+        quoteId: input.quoteId ?? null,
+        title: input.title,
+        totalValue: input.totalValue ?? undefined,
+        currency: input.currency ?? opportunity.currency,
+        validUntil: input.validUntil ?? null,
+        ownerPartyId: opportunity.ownerPartyId,
+        createdById: auth.partyId,
+      },
+    });
+
+    await auditWrite({ action: 'create', subjectType: 'proposal', subjectId: proposal.id, after: proposal, tx });
+
+    // CRM holds a single FK into PCT's entity. Every other proposal fact is read
+    // from the referenced record, never duplicated as parallel fields.
+    await tx.opportunity.update({ where: { id: input.opportunityId }, data: { proposalId: proposal.id } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'opportunity',
+      subjectId: input.opportunityId,
+      before: { proposalId: opportunity.proposalId },
+      after: { proposalId: proposal.id },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.PROPOSAL_CREATED,
+      subject: { entityType: 'proposal', entityId: proposal.id, recordCode },
+      related: [{ relation: 'proposes_for', entityType: 'opportunity', entityId: input.opportunityId }],
+      newState: { totalValue: input.totalValue ?? null },
+      tx,
+    });
+
+    return proposal;
   });
-
-  await auditWrite({ action: 'create', subjectType: 'proposal', subjectId: proposal.id, after: proposal });
-
-  // CRM holds a single FK into PCT's entity. Every other proposal fact is read
-  // from the referenced record, never duplicated as parallel fields.
-  await prisma.opportunity.update({ where: { id: input.opportunityId }, data: { proposalId: proposal.id } });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'opportunity',
-    subjectId: input.opportunityId,
-    before: { proposalId: opportunity.proposalId },
-    after: { proposalId: proposal.id },
-  });
-
-  await emit({
-    name: EVENTS.PROPOSAL_CREATED,
-    subject: { entityType: 'proposal', entityId: proposal.id, recordCode },
-    related: [{ relation: 'proposes_for', entityType: 'opportunity', entityId: input.opportunityId }],
-    newState: { totalValue: input.totalValue ?? null },
-  });
-
-  return proposal;
 }
 
 export async function sendProposal(proposalId: string) {
@@ -329,41 +381,46 @@ export async function sendProposal(proposalId: string) {
   if (!proposal) throw ApiError.notFound('Proposal');
 
   const sentAt = new Date();
-  const updated = await prisma.proposal.update({
-    where: { id: proposalId },
-    data: { sentAt, response: 'pending' },
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'proposal',
-    subjectId: proposalId,
-    before: proposal,
-    after: updated,
-  });
+  return governedWrite(async (tx) => {
+    const updated = await tx.proposal.update({
+      where: { id: proposalId },
+      data: { sentAt, response: 'pending' },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'proposal',
+      subjectId: proposalId,
+      before: proposal,
+      after: updated,
+      tx,
+    });
 
-  // CRM's read-model mirror is hydrated from the PCT event, never written
-  // directly by CRM service code. This IS the event handler path.
-  const opportunityBefore = await prisma.opportunity.findFirst({ where: { id: proposal.opportunityId } });
-  const opportunityAfter = await prisma.opportunity.update({
-    where: { id: proposal.opportunityId },
-    data: { proposalSentAt: sentAt, proposalPendingNotifiedAt: null },
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'opportunity',
-    subjectId: proposal.opportunityId,
-    before: opportunityBefore ?? undefined,
-    after: opportunityAfter,
-  });
+    // CRM's read-model mirror is hydrated from the PCT event, never written
+    // directly by CRM service code. This IS the event handler path.
+    const opportunityBefore = await tx.opportunity.findFirst({ where: { id: proposal.opportunityId } });
+    const opportunityAfter = await tx.opportunity.update({
+      where: { id: proposal.opportunityId },
+      data: { proposalSentAt: sentAt, proposalPendingNotifiedAt: null },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'opportunity',
+      subjectId: proposal.opportunityId,
+      before: opportunityBefore ?? undefined,
+      after: opportunityAfter,
+      tx,
+    });
 
-  await emit({
-    name: EVENTS.PROPOSAL_SENT,
-    subject: { entityType: 'proposal', entityId: proposalId, recordCode: proposal.recordCode },
-    related: [{ relation: 'proposes_for', entityType: 'opportunity', entityId: proposal.opportunityId }],
-    newState: { sentAt: sentAt.toISOString(), validUntil: proposal.validUntil },
-  });
+    await emit({
+      name: EVENTS.PROPOSAL_SENT,
+      subject: { entityType: 'proposal', entityId: proposalId, recordCode: proposal.recordCode },
+      related: [{ relation: 'proposes_for', entityType: 'opportunity', entityId: proposal.opportunityId }],
+      newState: { sentAt: sentAt.toISOString(), validUntil: proposal.validUntil },
+      tx,
+    });
 
-  return updated;
+    return updated;
+  });
 }
 
 /**
@@ -375,18 +432,34 @@ export async function respondToProposal(proposalId: string, response: 'accepted'
   const proposal = await prisma.proposal.findFirst({ where: { id: proposalId } });
   if (!proposal) throw ApiError.notFound('Proposal');
 
-  const updated = await prisma.proposal.update({
-    where: { id: proposalId },
-    data: { response, respondedAt: new Date() },
+  const updated = await governedWrite(async (tx) => {
+    const row = await tx.proposal.update({
+      where: { id: proposalId },
+      data: { response, respondedAt: new Date() },
+    });
+
+    await auditWrite({
+      action: 'update',
+      subjectType: 'proposal',
+      subjectId: proposalId,
+      before: { response: proposal.response },
+      after: { response },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.PROPOSAL_RESPONDED,
+      subject: { entityType: 'proposal', entityId: proposalId, recordCode: proposal.recordCode },
+      related: [{ relation: 'proposes_for', entityType: 'opportunity', entityId: proposal.opportunityId }],
+      newState: { response },
+      tx,
+    });
+
+    return row;
   });
 
-  await emit({
-    name: EVENTS.PROPOSAL_RESPONDED,
-    subject: { entityType: 'proposal', entityId: proposalId, recordCode: proposal.recordCode },
-    related: [{ relation: 'proposes_for', entityType: 'opportunity', entityId: proposal.opportunityId }],
-    newState: { response },
-  });
-
+  // Stage advancement runs after the response commits: it is a separate governed
+  // write with its own checks, and a blocked transition must not undo the response.
   const opportunity = await prisma.opportunity.findFirst({
     where: { id: proposal.opportunityId },
     include: { pipeline: { include: { stages: { where: { retiredAt: null } } } } },
@@ -439,12 +512,23 @@ export async function detectStalledProposals(businessDays = 5): Promise<number> 
       triggerFingerprint: `proposal_stalled:${businessDays}`,
       ladderRung: 1,
     });
-    await prisma.proposal.update({ where: { id: proposal.id }, data: { stalledNotifiedAt: new Date() } });
-    await emit({
-      name: EVENTS.PROPOSAL_STALLED_DETECTED,
-      subject: { entityType: 'proposal', entityId: proposal.id, recordCode: proposal.recordCode },
-      newState: { businessDaysSinceSent: businessDays },
-      impact: { domains: ['crm', 'pct'], severity: 'S2_WARNING' },
+    await governedWrite(async (tx) => {
+      await tx.proposal.update({ where: { id: proposal.id }, data: { stalledNotifiedAt: new Date() } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'proposal',
+        subjectId: proposal.id,
+        before: { stalledNotifiedAt: proposal.stalledNotifiedAt },
+        after: { stalledNotifiedAt: 'set' },
+        tx,
+      });
+      await emit({
+        name: EVENTS.PROPOSAL_STALLED_DETECTED,
+        subject: { entityType: 'proposal', entityId: proposal.id, recordCode: proposal.recordCode },
+        newState: { businessDaysSinceSent: businessDays },
+        impact: { domains: ['crm', 'pct'], severity: 'S2_WARNING' },
+        tx,
+      });
     });
   }
   return stalled.length;
@@ -495,75 +579,79 @@ export async function createQuote(opportunityId: string, lines: QuoteLineInput[]
   }
 
   const priorVersions = await prisma.quote.count({ where: { tenantId: auth.tenantId, opportunityId } });
-  const recordCode = await nextRecordCode('QUO');
+  return governedWrite(async (tx) => {
+    const recordCode = await nextRecordCode('QUO', undefined, tx);
 
-  const quote = await prisma.quote.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      opportunityId,
-      version: priorVersions + 1,
-      status: 'draft',
-      currency: entries[0]?.currency ?? opportunity.currency,
-      ownerPartyId: opportunity.ownerPartyId,
-      createdById: auth.partyId,
-    },
-  });
-  await auditWrite({ action: 'create', subjectType: 'quote', subjectId: quote.id, after: quote });
-
-  let subtotal = 0;
-  let discountTotal = 0;
-
-  for (const line of lines) {
-    const entry = byId.get(line.priceBookEntryId);
-    if (!entry) throw ApiError.unprocessable(`Price book entry ${line.priceBookEntryId} does not resolve.`);
-
-    const listUnitPrice = num(entry.unitPrice)!;
-    const gross = listUnitPrice * line.quantity;
-    const discountAmount = (gross * line.discountPct) / 100;
-    const lineTotal = gross - discountAmount;
-
-    await prisma.quoteLine.create({
+    const quote = await tx.quote.create({
       data: {
         tenantId: auth.tenantId,
-        quoteId: quote.id,
-        priceBookEntryId: entry.id,
-        // Always the resolved version, never "the current price for this
-        // offering" — this is what makes a quote reproducible six months later.
-        priceBookEntryVersion: entry.version,
-        quantity: line.quantity,
-        listUnitPrice,
-        discountPct: line.discountPct,
-        discountAmount,
-        lineTotal,
+        recordCode,
+        opportunityId,
+        version: priorVersions + 1,
+        status: 'draft',
+        currency: entries[0]?.currency ?? opportunity.currency,
+        ownerPartyId: opportunity.ownerPartyId,
+        createdById: auth.partyId,
       },
     });
+    await auditWrite({ action: 'create', subjectType: 'quote', subjectId: quote.id, after: quote, tx });
 
-    subtotal += gross;
-    discountTotal += discountAmount;
-  }
+    let subtotal = 0;
+    let discountTotal = 0;
 
-  const updated = await prisma.quote.update({
-    where: { id: quote.id },
-    data: { subtotal, discountTotal, grandTotal: subtotal - discountTotal },
+    for (const line of lines) {
+      const entry = byId.get(line.priceBookEntryId);
+      if (!entry) throw ApiError.unprocessable(`Price book entry ${line.priceBookEntryId} does not resolve.`);
+
+      const listUnitPrice = num(entry.unitPrice)!;
+      const gross = listUnitPrice * line.quantity;
+      const discountAmount = (gross * line.discountPct) / 100;
+      const lineTotal = gross - discountAmount;
+
+      await tx.quoteLine.create({
+        data: {
+          tenantId: auth.tenantId,
+          quoteId: quote.id,
+          priceBookEntryId: entry.id,
+          // Always the resolved version, never "the current price for this
+          // offering" — this is what makes a quote reproducible six months later.
+          priceBookEntryVersion: entry.version,
+          quantity: line.quantity,
+          listUnitPrice,
+          discountPct: line.discountPct,
+          discountAmount,
+          lineTotal,
+        },
+      });
+
+      subtotal += gross;
+      discountTotal += discountAmount;
+    }
+
+    const updated = await tx.quote.update({
+      where: { id: quote.id },
+      data: { subtotal, discountTotal, grandTotal: subtotal - discountTotal },
+    });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'quote',
+      subjectId: quote.id,
+      before: { subtotal: quote.subtotal, discountTotal: quote.discountTotal, grandTotal: quote.grandTotal },
+      after: { subtotal, discountTotal, grandTotal: subtotal - discountTotal },
+      tx,
+    });
+
+    await emit({
+      name: EVENTS.QUOTE_CREATED,
+      subject: { entityType: 'quote', entityId: quote.id, recordCode },
+      related: [{ relation: 'quotes_for', entityType: 'opportunity', entityId: opportunityId }],
+      newState: { version: quote.version, grandTotal: subtotal - discountTotal },
+      confidentiality: 'confidential',
+      tx,
+    });
+
+    return updated;
   });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'quote',
-    subjectId: quote.id,
-    before: { subtotal: quote.subtotal, discountTotal: quote.discountTotal, grandTotal: quote.grandTotal },
-    after: { subtotal, discountTotal, grandTotal: subtotal - discountTotal },
-  });
-
-  await emit({
-    name: EVENTS.QUOTE_CREATED,
-    subject: { entityType: 'quote', entityId: quote.id, recordCode },
-    related: [{ relation: 'quotes_for', entityType: 'opportunity', entityId: opportunityId }],
-    newState: { version: quote.version, grandTotal: subtotal - discountTotal },
-    confidentiality: 'confidential',
-  });
-
-  return updated;
 }
 
 /**
@@ -642,35 +730,93 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
       orderBy: { createdAt: 'asc' },
     });
 
-    const step = await prisma.approvalStep.create({
-      data: {
-        tenantId: auth.tenantId,
+    // The approval step, the block on the quote and the event that announces
+    // it commit together: a blocked quote with no approval to decide is the
+    // state this avoids.
+    const blocked = await governedWrite(async (tx) => {
+      const step = await tx.approvalStep.create({
+        data: {
+          tenantId: auth.tenantId,
+          subjectType: 'quote',
+          subjectId: quoteId,
+          subjectLabel: quote.recordCode,
+          action: 'quote.issue',
+          // The grant the decide path checks `approve` against. The discount is
+          // approved on the quote, which `quotes:approve` covers (seed/grants.ts).
+          resource: 'quotes',
+          requestedById: auth.partyId ?? 'system',
+          requestedValue: quote.grandTotal ?? undefined,
+          currency: quote.currency,
+          resolvedApproverId: approver?.partyId ?? null,
+          resolvedApproverRole: 'finance_head',
+          resolutionTier: 0,
+          slaDueAt: new Date(Date.now() + 3 * 86_400_000),
+        },
+      });
+      await auditWrite({ action: 'create', subjectType: 'approval_step', subjectId: step.id, after: step, tx });
+
+      const row = await tx.quote.update({
+        where: { id: quoteId },
+        data: {
+          status: 'blocked',
+          blockedReason: blockedLines
+            .map((b) => `${b.offering}: ${b.discountPct}% exceeds the ${b.ceiling}% ceiling`)
+            .join('; '),
+          approvalStepId: step.id,
+        },
+      });
+      await auditWrite({
+        action: 'update',
         subjectType: 'quote',
         subjectId: quoteId,
-        subjectLabel: quote.recordCode,
-        action: 'quote.issue',
-        // The grant the decide path checks `approve` against. The discount is
-        // approved on the quote, which `quotes:approve` covers (seed/grants.ts).
-        resource: 'quotes',
-        requestedById: auth.partyId ?? 'system',
-        requestedValue: quote.grandTotal ?? undefined,
-        currency: quote.currency,
-        resolvedApproverId: approver?.partyId ?? null,
-        resolvedApproverRole: 'finance_head',
-        resolutionTier: 0,
-        slaDueAt: new Date(Date.now() + 3 * 86_400_000),
-      },
-    });
-    await auditWrite({ action: 'create', subjectType: 'approval_step', subjectId: step.id, after: step });
+        before: quoteState(quote),
+        after: quoteState(row),
+        tx,
+      });
 
-    const blocked = await prisma.quote.update({
+      await emit({
+        name: EVENTS.QUOTE_DISCOUNT_BLOCKED,
+        subject: { entityType: 'quote', entityId: quoteId, recordCode: quote.recordCode },
+        related: [{ relation: 'blocks_for', entityType: 'opportunity', entityId: quote.opportunityId }],
+        newState: { blockedLines, grandTotal, requesterCeiling: ceiling },
+        reason: { reasonCode: 'discount_over_ceiling' },
+        impact: { domains: ['crm', 'pct'], severity: 'S2_WARNING' },
+        confidentiality: 'confidential',
+        tx,
+      });
+
+      // The approver's notice is part of the block: it commits or rolls back with it.
+      if (approver?.partyId) {
+        await notify(
+          {
+            recipientPartyId: approver.partyId,
+            priority: 'N3_HIGH',
+            title: `Discount approval required: ${quote.recordCode}`,
+            body: row.blockedReason ?? 'A quote line exceeds its discount ceiling.',
+            severity: 'S2_WARNING',
+            subjectType: 'quote',
+            subjectId: quoteId,
+            drillPath: `/commercial/quotes/${quoteId}`,
+          },
+          tx,
+        );
+      }
+
+      return { row, stepId: step.id };
+    });
+    const { row: blockedQuote, stepId } = blocked;
+
+    return { issued: false, quote: blockedQuote, blockedLines, approvalStepId: stepId };
+  }
+
+  const issued = await governedWrite(async (tx) => {
+    const row = await tx.quote.update({
       where: { id: quoteId },
       data: {
-        status: 'blocked',
-        blockedReason: blockedLines
-          .map((b) => `${b.offering}: ${b.discountPct}% exceeds the ${b.ceiling}% ceiling`)
-          .join('; '),
-        approvalStepId: step.id,
+        status: 'issued',
+        issuedAt: new Date(),
+        validUntil: validUntil ?? new Date(Date.now() + 30 * 86_400_000),
+        blockedReason: null,
       },
     });
     await auditWrite({
@@ -678,68 +824,31 @@ export async function issueQuote(quoteId: string, validUntil?: Date): Promise<Qu
       subjectType: 'quote',
       subjectId: quoteId,
       before: quoteState(quote),
-      after: quoteState(blocked),
+      after: quoteState(row),
+      tx,
+    });
+
+    const opportunityBefore = await tx.opportunity.findFirst({ where: { id: quote.opportunityId } });
+    const opportunityAfter = await tx.opportunity.update({ where: { id: quote.opportunityId }, data: { quoteId } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'opportunity',
+      subjectId: quote.opportunityId,
+      before: { quoteId: opportunityBefore?.quoteId ?? null },
+      after: { quoteId: opportunityAfter.quoteId },
+      tx,
     });
 
     await emit({
-      name: EVENTS.QUOTE_DISCOUNT_BLOCKED,
+      name: EVENTS.QUOTE_ISSUED,
       subject: { entityType: 'quote', entityId: quoteId, recordCode: quote.recordCode },
-      related: [{ relation: 'blocks_for', entityType: 'opportunity', entityId: quote.opportunityId }],
-      newState: { blockedLines, grandTotal, requesterCeiling: ceiling },
-      reason: { reasonCode: 'discount_over_ceiling' },
-      impact: { domains: ['crm', 'pct'], severity: 'S2_WARNING' },
+      related: [{ relation: 'quotes_for', entityType: 'opportunity', entityId: quote.opportunityId }],
+      newState: { grandTotal: num(row.grandTotal), validUntil: row.validUntil },
       confidentiality: 'confidential',
+      tx,
     });
 
-    if (approver?.partyId) {
-      await notify({
-        recipientPartyId: approver.partyId,
-        priority: 'N3_HIGH',
-        title: `Discount approval required: ${quote.recordCode}`,
-        body: blocked.blockedReason ?? 'A quote line exceeds its discount ceiling.',
-        severity: 'S2_WARNING',
-        subjectType: 'quote',
-        subjectId: quoteId,
-        drillPath: `/commercial/quotes/${quoteId}`,
-      });
-    }
-
-    return { issued: false, quote: blocked, blockedLines, approvalStepId: step.id };
-  }
-
-  const issued = await prisma.quote.update({
-    where: { id: quoteId },
-    data: {
-      status: 'issued',
-      issuedAt: new Date(),
-      validUntil: validUntil ?? new Date(Date.now() + 30 * 86_400_000),
-      blockedReason: null,
-    },
-  });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'quote',
-    subjectId: quoteId,
-    before: quoteState(quote),
-    after: quoteState(issued),
-  });
-
-  const opportunityBefore = await prisma.opportunity.findFirst({ where: { id: quote.opportunityId } });
-  const opportunityAfter = await prisma.opportunity.update({ where: { id: quote.opportunityId }, data: { quoteId } });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'opportunity',
-    subjectId: quote.opportunityId,
-    before: { quoteId: opportunityBefore?.quoteId ?? null },
-    after: { quoteId: opportunityAfter.quoteId },
-  });
-
-  await emit({
-    name: EVENTS.QUOTE_ISSUED,
-    subject: { entityType: 'quote', entityId: quoteId, recordCode: quote.recordCode },
-    related: [{ relation: 'quotes_for', entityType: 'opportunity', entityId: quote.opportunityId }],
-    newState: { grandTotal: num(issued.grandTotal), validUntil: issued.validUntil },
-    confidentiality: 'confidential',
+    return row;
   });
 
   return { issued: true, quote: issued, blockedLines: [], approvalStepId: null };

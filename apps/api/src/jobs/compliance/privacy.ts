@@ -13,6 +13,8 @@ const counted = (n: number) => ({ processed: n, notified: n, skippedIdempotent: 
 export const JOBS: JobDefinition[] = [
   {
     name: 'runPrivacyMajorityTransitionJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'CMP-DPD: students who turned 18 (consent basis changes)',
     automationClass: 'data_maintenance',
     cron: '0 4 1 * *',
@@ -20,6 +22,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runPrivacyDataRequestOverdueJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'CMP_DPD_REQUEST_OVERDUE: data-principal requests past their due date',
     automationClass: 'escalation_routing',
     cron: '0 5 * * *',
@@ -27,6 +31,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runPrivacyBreachLadderJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'CMP_DPD_BREACH_72H: 24/48/72h breach-notification ladder',
     automationClass: 'threshold_response',
     cron: '0 * * * *',
@@ -34,6 +40,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runPrivacyRetentionReportJob',
+    sideEffects: 'none',
+    idempotent: true,
     label: 'Retention report — reads EventRecord.retentionClass, reports only',
     automationClass: 'data_maintenance',
     cron: '0 3 1 * *',
@@ -44,6 +52,8 @@ export const JOBS: JobDefinition[] = [
   },
   {
     name: 'runPrivacyAccessReviewJob',
+    sideEffects: 'external',
+    idempotent: false,
     label: 'CMP_DPD_STALE_ACCESS: weekly access review',
     automationClass: 'routine_administration',
     cron: '0 6 * * 1',
