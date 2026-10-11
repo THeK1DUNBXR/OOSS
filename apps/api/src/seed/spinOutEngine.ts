@@ -982,6 +982,27 @@ export interface SpinOutRevertResult {
 registerGovernedEntities('eqt', ['spin_out_tombstone']);
 
 /**
+ * The released form of a tenant-unique key a reverted row no longer holds (FX-71b).
+ * A redo of the division copies the original value from the holding again, so the
+ * reverted row must stop holding it. Deterministic per batch, and idempotent: a
+ * value already released for this batch comes back unchanged, so a retried revert
+ * cannot suffix it twice.
+ */
+function releasedKey(value: string, batchId: string): string {
+  const suffix = `~reverted~${batchId}`;
+  return value.endsWith(suffix) ? value : `${value}${suffix}`;
+}
+
+/** One key released by a revert: the row, the field, and the value it held before. */
+interface ReleasedKey {
+  model: string;
+  id: string;
+  field: 'code' | 'name';
+  from: string;
+  to: string;
+}
+
+/**
  * Reverses a spin-out batch in the subsidiary and clears the holding's pointers
  * to it. Nothing is deleted. Safe to call again after a failure.
  *
@@ -1034,6 +1055,9 @@ export async function revertSpinOut(input: {
 
   const now = new Date();
   const removed: Record<string, number> = {};
+  // Filled inside the subsidiary transaction and read only after it commits, so the
+  // tombstone describes rows that were actually released.
+  const releasedKeys: ReleasedKey[] = [];
   const bump = (k: string, n: number) => {
     if (n) removed[k] = (removed[k] ?? 0) + n;
   };
@@ -1267,14 +1291,24 @@ export async function revertSpinOut(input: {
         );
         bump('cohorts', cohorts.length);
 
+        // A course's code is unique on the tenant, and a redo of the division copies
+        // it again from the holding. The reverted row releases it (FX-71b).
         const courses = await tx.course.findMany({
           where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, spinOutRevertedAt: null },
         });
-        for (const row of courses) await tx.course.update({ where: { id: row.id }, data: { spinOutRevertedAt: now } });
-        await markRows(
-          'course',
-          courses.map((r) => r.id),
-        );
+        for (const row of courses) {
+          const to = releasedKey(row.code, batchId);
+          await tx.course.update({ where: { id: row.id }, data: { code: to, spinOutRevertedAt: now } });
+          await auditWrite({
+            action: 'update',
+            subjectType: 'course',
+            subjectId: row.id,
+            before: { code: row.code, spinOutRevertedAt: null },
+            after: { code: to, spinOutRevertedAt: now.toISOString(), reason },
+            tx,
+          });
+          releasedKeys.push({ model: 'course', id: row.id, field: 'code', from: row.code, to });
+        }
         bump('courses', courses.length);
 
         const orgs = await tx.organization.findMany({
@@ -1299,21 +1333,24 @@ export async function revertSpinOut(input: {
         );
         bump('employmentRelationships', emps.length);
 
-        // Accounts and categories the batch opened are soft-deleted. The books read a
-        // `deletedAt` account as absent, and the reversals still point at it.
+        // Accounts and categories the batch opened are soft-deleted, and their names
+        // released: the books read a `deletedAt` row as absent, the reversals still
+        // point at it, and a redo copies the names again (FX-71b).
         const accounts = await tx.ledgerAccount.findMany({
           where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, deletedAt: null },
         });
         for (const account of accounts) {
-          await tx.ledgerAccount.update({ where: { id: account.id }, data: { deletedAt: now } });
+          const to = releasedKey(account.name, batchId);
+          await tx.ledgerAccount.update({ where: { id: account.id }, data: { name: to, deletedAt: now } });
           await auditWrite({
             action: 'delete',
             subjectType: 'ledger_account',
             subjectId: account.id,
-            before: { deletedAt: null },
-            after: { deletedAt: now.toISOString(), reason },
+            before: { name: account.name, deletedAt: null },
+            after: { name: to, deletedAt: now.toISOString(), reason },
             tx,
           });
+          releasedKeys.push({ model: 'ledger_account', id: account.id, field: 'name', from: account.name, to });
         }
         bump('ledgerAccounts', accounts.length);
 
@@ -1321,15 +1358,17 @@ export async function revertSpinOut(input: {
           where: { tenantId: subsidiaryTenantId, spinOutBatchId: batchId, deletedAt: null },
         });
         for (const category of categories) {
-          await tx.ledgerCategory.update({ where: { id: category.id }, data: { deletedAt: now } });
+          const to = releasedKey(category.name, batchId);
+          await tx.ledgerCategory.update({ where: { id: category.id }, data: { name: to, deletedAt: now } });
           await auditWrite({
             action: 'delete',
             subjectType: 'ledger_category',
             subjectId: category.id,
-            before: { deletedAt: null },
-            after: { deletedAt: now.toISOString(), reason },
+            before: { name: category.name, deletedAt: null },
+            after: { name: to, deletedAt: now.toISOString(), reason },
             tx,
           });
+          releasedKeys.push({ model: 'ledger_category', id: category.id, field: 'name', from: category.name, to });
         }
         bump('ledgerCategories', categories.length);
 
@@ -1348,7 +1387,9 @@ export async function revertSpinOut(input: {
             revertedById: auth.partyId,
             revertedBy,
             reason,
-            removed: removed as never,
+            // The original values of every released key, so the tombstone can say what
+            // a redo would have had to take (FX-71b).
+            removed: { ...removed, releasedKeys } as never,
           },
         });
         await auditWrite({
