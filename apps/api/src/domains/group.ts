@@ -56,6 +56,7 @@ import { nextRecordCode } from '../platform/recordCode.js';
 import { governedWrite } from '../platform/governedWrite.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { istYearMonth } from '@kaizen/shared';
+import { formatMinor, parseMinor } from '@kaizen/shared';
 import { raiseException } from '../platform/exceptions.js';
 import { capTable, listShareClasses, listValuations } from './equity.js';
 import { decryptField } from './compliance/privacy.js';
@@ -137,14 +138,28 @@ function fiscalYearToDatePeriods(cutoffPeriod: string): string[] {
   return periods;
 }
 
+/**
+ * Entity figures are rupees to two places, read from a snapshot or the ledger.
+ * They are summed as paise, so a group total is exact however many entities add
+ * up (FX-30): a float sum of 0.1 and 0.2 is not 0.3, and a total that is off by a
+ * paisa is a figure someone will chase.
+ */
+function paiseSum(values: Array<number | null | undefined>): bigint {
+  return values.reduce<bigint>((total, v) => (v == null ? total : total + parseMinor(v.toFixed(2))), 0n);
+}
+
+function rupees(paise: bigint): number {
+  return Number(formatMinor(paise));
+}
+
 function sumPnl(rows: Array<{ income: number; expense: number; net: number }>): {
   income: number;
   expense: number;
   net: number;
 } {
-  const income = round2(rows.reduce((s, r) => s + r.income, 0));
-  const expense = round2(rows.reduce((s, r) => s + r.expense, 0));
-  return { income, expense, net: round2(income - expense) };
+  const income = paiseSum(rows.map((r) => r.income));
+  const expense = paiseSum(rows.map((r) => r.expense));
+  return { income: rupees(income), expense: rupees(expense), net: rupees(income - expense) };
 }
 
 async function intercompanyTotals(): Promise<{ in: number; out: number }> {
@@ -772,15 +787,20 @@ export async function groupFinancials() {
     },
   ];
 
+  // Every entity this group view adds is in one currency, or the totals are withheld.
+  // The ledger is rupee-only in v1; a snapshot that says otherwise says so itself.
+  const currencies = new Set<string>(['INR']);
   for (const snap of snapshots) {
     const fin = snap.financial as unknown as {
       period: string;
+      currency?: string | null;
       cash: number | null;
       pnlMonth: { income: number; expense: number; net: number } | null;
       pnlFyToDate: { income: number; expense: number; net: number } | null;
       headcount: Array<{ headcount: number }>;
       intercompany: { in: number; out: number } | null;
     };
+    currencies.add(fin.currency ?? 'INR');
     entities.push({
       tenantId: snap.sourceTenantId,
       name: snap.sourceName,
@@ -795,14 +815,33 @@ export async function groupFinancials() {
     });
   }
 
-  const totalCash = entities.every((e) => e.cash != null)
-    ? round2(entities.reduce((s, e) => s + (e.cash ?? 0), 0))
-    : null;
-  const totalPnlMonth = entities.every((e) => e.pnlMonth) ? sumPnl(entities.map((e) => e.pnlMonth!)) : null;
-  const intercompanyTotal = {
-    in: round2(entities.reduce((s, e) => s + (e.intercompanyIn ?? 0), 0)),
-    out: round2(entities.reduce((s, e) => s + (e.intercompanyOut ?? 0), 0)),
-  };
+  // A total adds figures only when they are in one currency. A subsidiary that
+  // reports in dollars would otherwise be dollars added into the rupee total, and
+  // nothing on the page would say so (FX-30). The rows still show.
+  const totalsWithheldReason =
+    currencies.size > 1
+      ? `The entities report in more than one currency (${[...currencies].join(', ')}), so group totals are withheld rather than added across currencies.`
+      : null;
+
+  const totalCash =
+    totalsWithheldReason === null && entities.every((e) => e.cash != null)
+      ? rupees(paiseSum(entities.map((e) => e.cash)))
+      : null;
+  const totalPnlMonth =
+    totalsWithheldReason === null && entities.every((e) => e.pnlMonth)
+      ? sumPnl(entities.map((e) => e.pnlMonth!))
+      : null;
+
+  // Inter-company is shown as recorded on each side. `paired` says whether the two
+  // sides agree in total; a group total of one side alone is a one-sided figure, and
+  // is marked so (FX-30). Pairing by counterparty needs per-counterparty figures the
+  // snapshot does not carry, which is listed as open in the Wave 3 report.
+  const inPaise = paiseSum(entities.map((e) => e.intercompanyIn));
+  const outPaise = paiseSum(entities.map((e) => e.intercompanyOut));
+  const intercompanyTotal =
+    totalsWithheldReason === null
+      ? { in: rupees(inPaise), out: rupees(outPaise), paired: inPaise === outPaise }
+      : null;
 
   return {
     entities,
@@ -810,6 +849,7 @@ export async function groupFinancials() {
     totalCash,
     totalPnlMonth,
     intercompanyTotal,
+    totalsWithheldReason,
   };
 }
 
