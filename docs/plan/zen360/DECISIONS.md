@@ -583,3 +583,49 @@ Context: the vertical taxonomy proposal (`docs/plan/zen360/VERTICAL-TAXONOMY.md`
 - **(e) Five things are not lines.** Research is a cost centre. Partnerships is a channel. Telecalling is a unit or channel. Ventures are legal entities. The Foundation is a separate Section 8 entity.
 
 Consequence for the plan: the registry and its foreign keys land in Waves 2–3, before the ledger, so `JournalLine` carries `lineId` and `costCentreId` from its first posting.
+
+## Owner answers, round 18 (recorded 2026-10-11)
+
+Owner answers given after round 17. Each item is an owner answer unless it is marked as an implication. Existing rows and the earlier answers above are unchanged, except where this round says it supersedes or provisionally holds an earlier answer. This round supersedes the round 17 "Still open" list. Where no answer is recorded here, the earlier rounds and the drafts stand.
+
+Numbering note: an earlier section is also titled "Owner answers, round 18 (recorded 2026-10-10, during Wave 0 and Wave 1 implementation)". Both are round 18. This section is the one recorded 2026-10-11, and the markers in the plan files say so.
+
+1. **Tenancy work is deferred until commercialisation (owner answer, item 1).** The company runs as one tenant for now. Deferred:
+   - FX-51, RLS on every table;
+   - the second-tenant tenant-leakage fuzzer;
+   - the tenant-isolation CI gate (G7);
+   - per-tenant webhook HMAC. FX-50 becomes a single webhook secret;
+   - per-tenant encryption keys (round 5, item 6);
+   - separate subsidiary tenants and the holding-company link (D-01);
+   - per-tenant editing of access-level templates.
+   Existing tenant scoping in the code stays untouched.
+2. **PgBouncer is not a blocker (owner answer, item 2).** This supersedes the ORDERED-PLAN item 1.2 blocker that named PgBouncer in transaction mode. Revisit only if connections run short.
+3. **All hosting decisions are deferred until after Phase 1 (owner answer, item 3).** The owner will separately consider how to host efficiently and which caching and routing to use. This covers:
+   - server operations (ORDERED-PLAN Wave 4);
+   - the reverse proxy (round 7: Caddy);
+   - backups tooling. The owner named Databasus as the backup setup. It is a PostgreSQL backup tool, not a connection pooler, and it does not make the app faster. Claude has not read its documentation, and nothing in these docs evaluates it;
+   - monitoring, TLS renewal, static IP and redundancy notes;
+   - the round 6 and round 7 own-server decisions, which become provisional history.
+4. **LiveKit: configurable server address only in Phase 1 (owner answer, item 4).** The code needs only a configurable server address for LiveKit voice and video (ORDERED-PLAN Phase 1 Wave 6). Where the server runs is a hosting decision for after Phase 1. Development and tests use a local setup. Owner words: "the server will obviously run when the app is hosted". This supersedes the round 6 note that LiveKit runs on the own server in Phase 1.
+5. **The non-owner database role stays in the build waves (owner answer, item 5).** It is a dev and CI database setting, needed for the ledger immutability test (ORDERED-PLAN item 1.2). It is not a hosting item.
+
+Implications (label):
+
+- (a) CLAUDE.md rule 6 still binds new code. This answer stops new tenancy work. Existing scoping is not removed.
+- (b) The ledger `entityId` (D-01, round 2) is kept, because it is cheap now and expensive to retrofit, unless the owner says otherwise.
+- (c) Round 4's FX-51 addition, round 5 item 6 (per-tenant key), round 6 operations wave and round 7 infrastructure answers are superseded or provisional, and are kept as history.
+- (d) The onboarding state machine, per-state packs and the guided level-mapping flow stay in Phase 0 Wave 6 as recorded. Whether they are also commercialisation-only is OPEN.
+- (e) The Resend data-hosting and chat-retention legal checks are unaffected.
+- (f) The CLAUDE.md line "the API is served from the company's own server in India" reflects round 6 and is now provisional. It is not edited here.
+- (g) The RLS that the existing ledger migration sets on the ledger tables (CI-GATES-DRAFT G7, "exists today"), and the RLS and `set_config` items in ORDERED-PLAN 1.2, stay because rule 6 binds new code. Only the every-table sweep (FX-51) is deferred. Owner to confirm.
+- (h) The Wave 0 "Hosting" item (remove the Cloudflare Worker, serve from the own server behind Caddy) is a hosting decision, so it is deferred with the rest. The CURRENT.md status note records the Worker as removed on the branch. Whether that stands is for the owner to confirm.
+
+Still open after round 18 (recorded 2026-10-11, supersedes the round 17 list):
+
+- Hosting, caching and routing (after Phase 1).
+- Whether onboarding and level mapping stay in Phase 0 (implication (d)).
+- Questionnaire approval.
+- Statutory sign-off holder and IT owner (tbd during onboard).
+- D-11 numbers.
+- Resend data-hosting and chat-retention legal checks.
+- E2EE in LiveKit stays UNVERIFIED. Per-tenant LiveKit isolation is deferred with tenancy (item 1). This bullet is drafted from the ORDERED-PLAN Wave 6 marker, not an owner answer.
