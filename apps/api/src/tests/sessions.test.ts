@@ -300,3 +300,51 @@ describe('0.2 fix round 1: cookie, grace and step-up', () => {
     expect((await refreshWithCookie(cookie)).status).toBe(401);
   });
 });
+
+/**
+ * Fix round 2: a page load abandoned mid-refresh never stores the rotated
+ * cookie, so the browser presents the secret it replaced, long after the grace.
+ * That is a lost response, not theft, and must not end the session. Theft shows
+ * up as an older secret, presented after the secret that replaced it was used.
+ */
+describe('0.2 fix round 2: lost response and older secrets', () => {
+  const ageRotation = (cookieValue: string) =>
+    unscopedPrisma.$executeRawUnsafe(
+      `UPDATE sessions SET "rotatedAt" = now() - interval '11 seconds' WHERE id = $1`,
+      sessionIdOf(cookieValue),
+    );
+
+  it('a lost response: the replaced secret after the grace recovers the session when the rotated secret was never used', async () => {
+    const first = await signInCookie();
+    const rotated = await refreshWithCookie(first);
+    expect(rotated.status).toBe(200); // the response carrying it is lost: never stored
+    await ageRotation(first);
+
+    const recovered = await refreshWithCookie(first);
+    expect(recovered.status).toBe(200);
+    const next = setCookieOf(recovered);
+    expect(next).toBeTruthy();
+    expect((await refreshWithCookie(cookieValueOf(next!))).status).toBe(200);
+  });
+
+  it('a recovered refresh is audited against the session', async () => {
+    const first = await signInCookie();
+    await refreshWithCookie(first);
+    await ageRotation(first);
+    expect((await refreshWithCookie(first)).status).toBe(200);
+
+    const rows = await unscopedPrisma.auditRecord.findMany({
+      where: { subjectType: 'session', subjectId: sessionIdOf(first), action: 'refresh_recovered' },
+    });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('an older secret presented after the newer one was used revokes the session', async () => {
+    const s1 = await signInCookie();
+    const s2 = cookieValueOf(setCookieOf((await refreshWithCookie(s1)))!);
+    const s3 = cookieValueOf(setCookieOf((await refreshWithCookie(s2)))!);
+
+    expect((await refreshWithCookie(s1)).status).toBe(401);
+    expect((await refreshWithCookie(s3)).status).toBe(401);
+  });
+});
