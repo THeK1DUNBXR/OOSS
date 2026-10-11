@@ -650,7 +650,7 @@
 
 **`apps/web/src/pages/hcm/Approvals.tsx`** (173 lines) — Approvals:161
 
-**`apps/web/src/pages/hcm/Assets.tsx`** (732 lines) — Assets:48
+**`apps/web/src/pages/hcm/Assets.tsx`** (737 lines) — Assets:62
 
 **`apps/web/src/pages/hcm/Compensation.tsx`** (1053 lines) — Compensation:31
 
@@ -658,25 +658,25 @@
 
 **`apps/web/src/pages/hcm/Employee360.tsx`** (876 lines) — Employee360:129
 
-**`apps/web/src/pages/hcm/Engagement.tsx`** (813 lines) — Engagement:26
+**`apps/web/src/pages/hcm/Engagement.tsx`** (774 lines) — Engagement:35
 
-**`apps/web/src/pages/hcm/Learning.tsx`** (1006 lines) — Learning:37
+**`apps/web/src/pages/hcm/Learning.tsx`** (958 lines) — Learning:50
 
 **`apps/web/src/pages/hcm/LeaveCalendar.tsx`** (145 lines) — LeaveCalendar:39
 
-**`apps/web/src/pages/hcm/LeavePolicies.tsx`** (603 lines) — LeavePolicies:23
+**`apps/web/src/pages/hcm/LeavePolicies.tsx`** (564 lines) — LeavePolicies:25
 
 **`apps/web/src/pages/hcm/OrgChart.tsx`** (65 lines) — OrgChart:36
 
 **`apps/web/src/pages/hcm/PayrollOps.tsx`** (1245 lines) — PayrollOps:41
 
-**`apps/web/src/pages/hcm/Performance.tsx`** (1147 lines) — Performance:64
+**`apps/web/src/pages/hcm/Performance.tsx`** (1091 lines) — Performance:69
 
-**`apps/web/src/pages/hcm/Recruiting.tsx`** (1438 lines) — Recruiting:40
+**`apps/web/src/pages/hcm/Recruiting.tsx`** (1360 lines) — Recruiting:54
 
-**`apps/web/src/pages/hcm/Separations.tsx`** (687 lines) — Separations:26
+**`apps/web/src/pages/hcm/Separations.tsx`** (704 lines) — Separations:34
 
-**`apps/web/src/pages/hcm/Time.tsx`** (892 lines) — Time:62
+**`apps/web/src/pages/hcm/Time.tsx`** (855 lines) — Time:68
 
 **`apps/web/src/pages/it/Assets.tsx`** (851 lines) — ItAssets:156 · ItAssetDetail:436
 
