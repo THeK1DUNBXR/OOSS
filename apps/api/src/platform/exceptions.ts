@@ -18,7 +18,7 @@ import {
   type SeverityCode,
 } from '@kaizen/shared';
 import { Prisma } from '@prisma/client';
-import { prisma } from './db.js';
+import { prisma, type DbTx } from './db.js';
 import { currentAuth } from './context.js';
 import { emit } from './eventBus.js';
 import { nextRecordCode } from './recordCode.js';
@@ -69,8 +69,18 @@ export function passesFourPropertyTest(input: RaiseExceptionInput): boolean {
  */
 const OPEN_STATES = ['open', 'acknowledged', 'escalated'] as const;
 
-async function findOpenException(input: RaiseExceptionInput) {
-  return prisma.exceptionRecord.findFirst({
+/**
+ * Audit and event writes take the caller's transaction only when there is one.
+ * Passing the outer scoped client instead would run the audit chain write on a
+ * connection of its own, where the per-tenant advisory lock that orders the
+ * chain is released after each statement rather than at commit.
+ */
+function txOf(db: DbTx): DbTx | undefined {
+  return db === prisma ? undefined : db;
+}
+
+async function findOpenException(input: RaiseExceptionInput, db: DbTx = prisma) {
+  return db.exceptionRecord.findFirst({
     where: {
       tenantId: currentAuth().tenantId,
       subjectType: input.subjectType,
@@ -81,9 +91,13 @@ async function findOpenException(input: RaiseExceptionInput) {
   });
 }
 
-function absorbIntoOpen(open: { id: string; severity: string; escalationRung: number }, input: RaiseExceptionInput) {
+function absorbIntoOpen(
+  open: { id: string; severity: string; escalationRung: number },
+  input: RaiseExceptionInput,
+  db: DbTx = prisma,
+) {
   if (SEVERITY_RANK[input.severity] > SEVERITY_RANK[open.severity as SeverityCode]) {
-    return escalateException(open.id, 'severity_increase', input.severity, undefined, open.escalationRung);
+    return escalateException(open.id, 'severity_increase', input.severity, undefined, open.escalationRung, db);
   }
   return open;
 }
@@ -92,12 +106,27 @@ function isUniqueViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 }
 
-export async function raiseException(input: RaiseExceptionInput) {
+/**
+ * `db` is the caller's transaction when the raise is part of a governed write:
+ * the exception, its audit row, its event and its owner notification then commit
+ * or roll back with that write. Omitted, it writes on its own, as before.
+ */
+export async function raiseException(input: RaiseExceptionInput, db: DbTx = prisma) {
   const auth = currentAuth();
+  const tx = txOf(db);
+
+  // Inside a transaction the overlap guard below cannot rely on the unique index
+  // alone: a unique violation aborts the whole transaction, so there is no
+  // "join the winner" recovery to run. A transaction-scoped advisory lock on the
+  // natural key makes overlapping raises queue instead, and the second one then
+  // sees the first one's row.
+  if (tx) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`exception:${auth.tenantId}:${input.subjectType}:${input.subjectId}:${input.code}`}))`;
+  }
 
   // Idempotency: the same rung of the same ladder on the same subject fires once.
   if (input.triggerFingerprint) {
-    const existing = await prisma.exceptionRecord.findFirst({
+    const existing = await db.exceptionRecord.findFirst({
       where: {
         tenantId: auth.tenantId,
         subjectType: input.subjectType,
@@ -112,15 +141,15 @@ export async function raiseException(input: RaiseExceptionInput) {
 
   // An open exception of the same code on the same subject escalates rather
   // than duplicating — severity increase is one of the four escalation triggers.
-  const open = await findOpenException(input);
-  if (open) return absorbIntoOpen(open, input);
+  const open = await findOpenException(input, db);
+  if (open) return absorbIntoOpen(open, input, db);
 
-  const recordCode = await nextRecordCode('EXC');
+  const recordCode = await nextRecordCode('EXC', new Date(), db);
   const ownerUnresolved = !input.ownerPartyId && !input.accountablePositionId;
 
   let record;
   try {
-    record = await prisma.exceptionRecord.create({
+    record = await db.exceptionRecord.create({
       data: {
         tenantId: auth.tenantId,
         recordCode,
@@ -152,7 +181,10 @@ export async function raiseException(input: RaiseExceptionInput) {
     // winner's row instead of creating a second open exception and a second
     // owner notification. A unique violation with no open row to join is not
     // this race, so it is rethrown.
-    if (!isUniqueViolation(err)) throw err;
+    // Inside a transaction the violation has already aborted it, so the winner
+    // cannot be read back here. The advisory lock above is what keeps overlapping
+    // transaction-scoped raises from reaching this point.
+    if (!isUniqueViolation(err) || tx) throw err;
     const winner = await findOpenException(input);
     if (!winner) throw err;
     return absorbIntoOpen(winner, input);
@@ -163,6 +195,7 @@ export async function raiseException(input: RaiseExceptionInput) {
     subjectType: 'exception',
     subjectId: record.id,
     after: { recordCode, code: input.code, severity: input.severity, state: 'open' },
+    tx,
   });
 
   await emit({
@@ -173,20 +206,25 @@ export async function raiseException(input: RaiseExceptionInput) {
     severity: input.severity,
     owner: { partyId: input.ownerPartyId ?? null, positionId: input.accountablePositionId ?? null },
     impact: { domains: [input.domain ?? 'crm'], severity: input.severity },
+    tx,
   });
 
-  // Ownership precedes notification, always.
+  // Ownership precedes notification, always. The notification is an in-app row;
+  // nothing here leaves the system, so it can sit inside the transaction.
   if (input.notify !== false && input.ownerPartyId) {
-    await notify({
-      recipientPartyId: input.ownerPartyId,
-      priority: input.notificationPriority ?? severityToPriority(input.severity),
-      title: input.label,
-      body: input.detail ?? `${input.code} raised on ${input.subjectLabel ?? input.subjectId}`,
-      severity: input.severity,
-      subjectType: 'exception',
-      subjectId: record.id,
-      drillPath: `/exceptions/${record.id}`,
-    });
+    await notify(
+      {
+        recipientPartyId: input.ownerPartyId,
+        priority: input.notificationPriority ?? severityToPriority(input.severity),
+        title: input.label,
+        body: input.detail ?? `${input.code} raised on ${input.subjectLabel ?? input.subjectId}`,
+        severity: input.severity,
+        subjectType: 'exception',
+        subjectId: record.id,
+        drillPath: `/exceptions/${record.id}`,
+      },
+      db,
+    );
   }
 
   return record;
@@ -290,11 +328,13 @@ export async function escalateException(
   newSeverity?: SeverityCode,
   escalateToPartyId?: string | null,
   observedRung?: number,
+  db: DbTx = prisma,
 ) {
-  const existing = await prisma.exceptionRecord.findFirst({ where: { id } });
+  const tx = txOf(db);
+  const existing = await db.exceptionRecord.findFirst({ where: { id } });
   if (!existing) return null;
 
-  const { count } = await prisma.exceptionRecord.updateMany({
+  const { count } = await db.exceptionRecord.updateMany({
     where: { id, state: { in: [...OPEN_STATES] }, escalationRung: observedRung ?? existing.escalationRung },
     data: {
       state: 'escalated',
@@ -305,7 +345,7 @@ export async function escalateException(
       escalatedToPartyId: escalateToPartyId ?? existing.escalatedToPartyId,
     },
   });
-  const record = await prisma.exceptionRecord.findFirstOrThrow({ where: { id } });
+  const record = await db.exceptionRecord.findFirstOrThrow({ where: { id } });
   if (count !== 1) return record;
 
   await auditWrite({
@@ -319,6 +359,7 @@ export async function escalateException(
       escalationRung: record.escalationRung,
       escalationTrigger: trigger,
     },
+    tx,
   });
 
   await emit({
@@ -328,19 +369,23 @@ export async function escalateException(
     newState: { severity: record.severity, rung: record.escalationRung, trigger },
     reason: { reasonCode: trigger },
     severity: record.severity as SeverityCode,
+    tx,
   });
 
   if (record.escalatedToPartyId) {
-    await notify({
-      recipientPartyId: record.escalatedToPartyId,
-      priority: severityToPriority(record.severity as SeverityCode),
-      title: `Escalated: ${record.label}`,
-      body: `${record.code} escalated to rung ${record.escalationRung} (${trigger}).`,
-      severity: record.severity as SeverityCode,
-      subjectType: 'exception',
-      subjectId: id,
-      drillPath: `/exceptions/${id}`,
-    });
+    await notify(
+      {
+        recipientPartyId: record.escalatedToPartyId,
+        priority: severityToPriority(record.severity as SeverityCode),
+        title: `Escalated: ${record.label}`,
+        body: `${record.code} escalated to rung ${record.escalationRung} (${trigger}).`,
+        severity: record.severity as SeverityCode,
+        subjectType: 'exception',
+        subjectId: id,
+        drillPath: `/exceptions/${id}`,
+      },
+      db,
+    );
   }
 
   return record;
@@ -379,9 +424,9 @@ export interface NotifyInput {
   drillPath?: string;
 }
 
-export async function notify(input: NotifyInput) {
+export async function notify(input: NotifyInput, db: DbTx = prisma) {
   const auth = currentAuth();
-  return prisma.notification.create({
+  return db.notification.create({
     data: {
       tenantId: auth.tenantId,
       recipientPartyId: input.recipientPartyId,

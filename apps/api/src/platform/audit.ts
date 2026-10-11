@@ -440,37 +440,51 @@ export async function auditWrite(input: AuditWriteInput): Promise<void> {
  * projection that excludes the regulated field from its output produces no
  * record — the hook inspects the outgoing response shape, not the schema.
  */
-export async function auditRegulatedRead(subjectType: string, subjectId: string, fieldsRead: string[]): Promise<void> {
+// The optional `tx` on each of these is the caller's transaction, as on
+// auditWrite: the row then commits or rolls back with the work it records.
+
+export async function auditRegulatedRead(
+  subjectType: string,
+  subjectId: string,
+  fieldsRead: string[],
+  tx?: DbTx,
+): Promise<void> {
   if (fieldsRead.length === 0) return;
   const auth = currentAuth();
-  await createChainedAuditRecord({
-    tenantId: auth.tenantId,
-    action: 'read',
-    subjectType,
-    subjectId,
-    actorType: auth.principalType,
-    actorId: auth.partyId,
-    actorLabel: auth.roleSlug,
-    // An AI agent's read of a regulated field is read-audited exactly as a
-    // human's would be — no special-casing for AI principals.
-    actorAgentId: auth.agentId,
-    fieldsRead,
-  });
+  await createChainedAuditRecord(
+    {
+      tenantId: auth.tenantId,
+      action: 'read',
+      subjectType,
+      subjectId,
+      actorType: auth.principalType,
+      actorId: auth.partyId,
+      actorLabel: auth.roleSlug,
+      // An AI agent's read of a regulated field is read-audited exactly as a
+      // human's would be — no special-casing for AI principals.
+      actorAgentId: auth.agentId,
+      fieldsRead,
+    },
+    tx,
+  );
 }
 
 /** Bulk export is the one read that has always been audited. */
-export async function auditExport(subjectType: string, scope: string, recordCount: number): Promise<void> {
+export async function auditExport(subjectType: string, scope: string, recordCount: number, tx?: DbTx): Promise<void> {
   const auth = currentAuth();
-  await createChainedAuditRecord({
-    tenantId: auth.tenantId,
-    action: 'export',
-    subjectType,
-    subjectId: 'bulk',
-    actorType: auth.principalType,
-    actorId: auth.partyId,
-    actorLabel: auth.roleSlug,
-    meta: { scope, recordCount } as never,
-  });
+  await createChainedAuditRecord(
+    {
+      tenantId: auth.tenantId,
+      action: 'export',
+      subjectType,
+      subjectId: 'bulk',
+      actorType: auth.principalType,
+      actorId: auth.partyId,
+      actorLabel: auth.roleSlug,
+      meta: { scope, recordCount } as never,
+    },
+    tx,
+  );
 }
 
 /** A bulk operation (a migration batch, a backfill) is audited as one traceable event. */
@@ -478,17 +492,21 @@ export async function auditBulkOperation(
   subjectType: string,
   operation: string,
   meta: Record<string, unknown>,
+  tx?: DbTx,
 ): Promise<void> {
   const auth = currentAuth();
   const ctx = getContext();
-  await createChainedAuditRecord({
-    tenantId: auth.tenantId,
-    action: 'update',
-    subjectType,
-    subjectId: `bulk:${operation}`,
-    actorType: auth.principalType,
-    actorId: auth.partyId,
-    actorLabel: auth.roleSlug,
-    meta: { ...meta, operation, requestId: ctx?.requestId } as never,
-  });
+  await createChainedAuditRecord(
+    {
+      tenantId: auth.tenantId,
+      action: 'update',
+      subjectType,
+      subjectId: `bulk:${operation}`,
+      actorType: auth.principalType,
+      actorId: auth.partyId,
+      actorLabel: auth.roleSlug,
+      meta: { ...meta, operation, requestId: ctx?.requestId } as never,
+    },
+    tx,
+  );
 }

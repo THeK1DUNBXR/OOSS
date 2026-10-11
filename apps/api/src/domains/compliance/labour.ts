@@ -1084,9 +1084,17 @@ interface IssueLetterInput {
 }
 
 /** Issues a letter as a final document — a correction is a new letter referencing the old, never an edit. */
-export async function issueLetter(input: IssueLetterInput) {
+/**
+ * `db` is the caller's transaction when the letter is part of a larger governed
+ * write; the sequence number, the letter, its audit row and its event then commit
+ * or roll back together. Omitted, it writes on its own, as before.
+ */
+export async function issueLetter(input: IssueLetterInput, db: DbTx = prisma) {
   const auth = currentAuth();
-  return governedWrite(async (tx) => {
+  // The letter, its audit row and its event are one fact and must commit together.
+  // A caller's transaction is used as it is; without one, governedWrite opens its own.
+  // Passing the scoped client through would run the audit chain outside the transaction.
+  const run = async (tx: DbTx) => {
     const number = await nextLabourNumber('LTR', tx);
     const issuedOn = new Date().toISOString().slice(0, 10);
     const facts = {
@@ -1128,7 +1136,9 @@ export async function issueLetter(input: IssueLetterInput) {
       tx,
     });
     return row;
-  });
+  };
+  if (db !== prisma) return run(db);
+  return governedWrite(run);
 }
 
 export async function listLetters(filter: { employmentRelationshipId?: string; applicationId?: string } = {}) {
