@@ -597,12 +597,399 @@ export interface CreateSuccessionPlanBody {
   successors: Array<{ employmentRelationshipId: string; readiness: string }>;
 }
 
+// ---------------------------------------------------------------------------
+// Engagement: announcements, recognition, pulse surveys, HR helpdesk, policies
+// ---------------------------------------------------------------------------
+
+/** One row of `GET /hcm/engagement/announcements` (domains/hcm/engagement.ts listAnnouncements). */
+export interface Announcement {
+  id: string;
+  recordCode: string;
+  title: string;
+  body: string;
+  status: string;
+  pinned: boolean;
+  acknowledgementRequired: boolean;
+  publishAt: string;
+  expiresAt: string | null;
+}
+
+/** One row of `GET /hcm/engagement/recognitions` (listRecognitions). */
+export interface Recognition {
+  id: string;
+  recordCode: string;
+  fromPartyId: string;
+  toPartyId: string;
+  badge: string;
+  message: string;
+  points: number;
+  createdAt: string;
+}
+
+/** One row of `GET /hcm/engagement/recognitions/leaderboard` (recognitionLeaderboard). */
+export interface RecognitionLeaderboardRow {
+  toPartyId: string;
+  totalPoints: number;
+  count: number;
+}
+
+/** One row of `GET /hcm/engagement/surveys` (listPulseSurveys). */
+export interface PulseSurvey {
+  id: string;
+  recordCode: string;
+  title: string;
+  anonymous: boolean;
+  status: string;
+  opensAt: string;
+  closesAt: string;
+}
+
+/**
+ * One question's aggregate in `GET /hcm/engagement/surveys/:id/results`
+ * (pulseSurveyResults). Which fields are present depends on the question type:
+ * eNPS carries the promoter/passive/detractor split, scale an average, text the answers.
+ */
+export interface SurveyQuestionResult {
+  questionId: string;
+  text: string;
+  type: string;
+  responses?: number;
+  average?: number | null;
+  answers?: string[];
+  promoters?: number;
+  passives?: number;
+  detractors?: number;
+  score?: number | null;
+}
+
+export interface SurveyResults {
+  survey: PulseSurvey;
+  totalResponses: number;
+  questions: SurveyQuestionResult[];
+}
+
+/** One row of `GET /hcm/engagement/hr-cases` and `/confidential` (listHrCases, listConfidentialHrCases). */
+export interface HrCase {
+  id: string;
+  recordCode: string;
+  category: string;
+  priority: string;
+  status: string;
+  subject: string;
+  confidential: boolean;
+  slaDueAt: string;
+  raisedByPartyId: string;
+  assigneePartyId: string | null;
+}
+
+/** One row of `GET /hcm/engagement/policies` (listPolicyDocuments). */
+export interface PolicyDocument {
+  id: string;
+  recordCode: string;
+  title: string;
+  version: string;
+  status: string;
+  effectiveFrom: string;
+  acknowledgementRequired: boolean;
+}
+
+/** `GET /hcm/engagement/policies/:id/status` (policyAckStatus). */
+export interface PolicyAckStatus {
+  policy: PolicyDocument;
+  ackCount: number;
+}
+
+export interface CreateAnnouncementBody {
+  title: string;
+  body: string;
+  pinned: boolean;
+  acknowledgementRequired: boolean;
+  publishNow: boolean;
+}
+
+export interface GiveRecognitionBody {
+  toPartyId: string;
+  badge: string;
+  message: string;
+  points: number;
+}
+
+export interface CreateSurveyBody {
+  title: string;
+  anonymous: boolean;
+  questions: Array<{ id: string; type: string; text: string }>;
+  opensAt: string;
+  closesAt: string;
+}
+
+export interface CreateHrCaseBody {
+  category: string;
+  priority: string;
+  subject: string;
+  body: string;
+}
+
+export interface CreatePolicyDocumentBody {
+  title: string;
+  version: string;
+  body: string;
+  acknowledgementRequired: boolean;
+  effectiveFrom: string;
+}
+
+// ---------------------------------------------------------------------------
+// Learning: programs, sessions, enrollments, certifications, mandatory training, IDPs, budgets
+// ---------------------------------------------------------------------------
+
+/**
+ * One row of `GET /hcm/learning/programs` (listPrograms). `cost` is a Prisma
+ * Decimal, so it arrives as a JSON string (see decimalAmount above).
+ */
+export interface TrainingProgram {
+  id: string;
+  title: string;
+  kind: string;
+  provider: string | null;
+  durationHours: number | null;
+  cost: string;
+  skillIds: string[];
+  validityMonths: number | null;
+  isActive: boolean;
+}
+
+/** One row of `GET /hcm/learning/sessions` (listSessions), with the program it runs. */
+export interface TrainingSession {
+  id: string;
+  programId: string;
+  startsAt: string;
+  endsAt: string;
+  trainer: string | null;
+  seats: number;
+  location: string | null;
+  status: string;
+  program: { title: string; kind: string; cost: string };
+}
+
+/** One row of `GET /hcm/learning/enrollments` (listEnrollments), with its session. */
+export interface TrainingEnrollment {
+  id: string;
+  sessionId: string;
+  employmentRelationshipId: string;
+  status: string;
+  score: number | null;
+  session: { startsAt: string; program: { title: string; kind: string } };
+}
+
+/** One row of `GET /hcm/learning/certifications` (listCertifications). */
+export interface TrainingCertification {
+  id: string;
+  recordCode: string;
+  employmentRelationshipId: string;
+  name: string;
+  issuer: string | null;
+  issuedOn: string;
+  expiresOn: string | null;
+  verified: boolean;
+}
+
+/** One row of `GET /hcm/learning/mandatory-rules` (listMandatoryRules). */
+export interface MandatoryTrainingRule {
+  id: string;
+  programId: string;
+  dueWithinDaysOfJoin: number | null;
+  recurrenceMonths: number | null;
+  program: { title: string };
+}
+
+/** One row of `GET /hcm/learning/mandatory-status` (mandatoryComplianceStatus). */
+export interface MandatoryTrainingRow {
+  ruleId: string;
+  programId: string;
+  programTitle: string;
+  employmentRelationshipId: string;
+  dueDate: string | null;
+  overdue: boolean;
+}
+
+/** One row of `GET /hcm/learning/idps` (listIdps). `goals` is a JSON column the create form fills as `{ items }`. */
+export interface IndividualDevelopmentPlan {
+  id: string;
+  employmentRelationshipId: string;
+  goals: { items?: string[] } | null;
+  mentorId: string | null;
+  reviewDate: string | null;
+  status: string;
+}
+
+/** One row of `GET /hcm/learning/budgets` (listBudgets). `amount` is a Decimal string; `spent` and utilisation are computed. */
+export interface TrainingBudget {
+  id: string;
+  fy: string;
+  division: string | null;
+  amount: string;
+  spent: number;
+  utilisationPercent: number | null;
+}
+
+export interface CreateTrainingProgramBody {
+  title: string;
+  kind: 'classroom' | 'online' | 'certification' | 'mandatory';
+  provider?: string;
+  cost: number;
+  validityMonths?: number;
+}
+
+export interface CreateTrainingSessionBody {
+  programId: string;
+  startsAt: string;
+  endsAt: string;
+  trainer?: string;
+  seats: number;
+  location?: string;
+}
+
+export interface NominateBody {
+  sessionId: string;
+  employmentRelationshipId: string;
+}
+
+export interface CreateCertificationBody {
+  employmentRelationshipId: string;
+  name: string;
+  issuer?: string;
+  issuedOn: string;
+  expiresOn?: string;
+}
+
+export interface CreateMandatoryRuleBody {
+  programId: string;
+  dueWithinDaysOfJoin?: number;
+  recurrenceMonths?: number;
+}
+
+export interface CreateIdpBody {
+  employmentRelationshipId: string;
+  goals: { items: string[] };
+  reviewDate?: string;
+}
+
+export interface CreateTrainingBudgetBody {
+  fy: string;
+  division?: string;
+  amount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Leave policy: policies and rules, accrual runs, approval chains
+// ---------------------------------------------------------------------------
+
+/** One row of `GET /hr/leave-types` (routes/hr.routes.ts:592). */
+export interface LeaveTypeOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/**
+ * One rule under a policy, as `GET /hcm/leavepolicy/policies` returns it
+ * (listLeavePolicies). Decimal columns (accrual days, balances, caps) are JSON
+ * strings, so they are typed as such.
+ */
+export interface LeavePolicyRule {
+  id: string;
+  leaveTypeId: string;
+  accrualFrequency: string;
+  accrualDays: string | number;
+  prorateOnJoin: boolean;
+  maxBalanceDays: string | number | null;
+  carryForwardCapDays: string | number | null;
+  negativeAllowed: boolean;
+  minNoticeDays: number;
+  maxConsecutiveDays: number | null;
+  sandwichRule: boolean;
+  requiresDocumentAfterDays: number | null;
+  applicableGender: string | null;
+}
+
+export interface LeavePolicy {
+  id: string;
+  name: string;
+  description: string | null;
+  engagementTypes: string[];
+  orgUnitIds: string[];
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  status: string;
+  rules: LeavePolicyRule[];
+}
+
+/** One row of `GET /hcm/leavepolicy/accrual-runs` (listAccrualRuns). */
+export interface AccrualRunRow {
+  id: string;
+  leavePolicyRuleId: string;
+  leaveTypeId: string;
+  period: string;
+  status: string;
+  employeesProcessed: number;
+  totalDaysAccrued: string | number;
+  runAt: string;
+}
+
+export interface ApprovalChainLevel {
+  level: number;
+  kind: 'manager' | 'hr' | 'custom_grant';
+  approverPartyId?: string | null;
+}
+
+/** One row of `GET /hcm/leavepolicy/approval-chains` (listApprovalChains). */
+export interface ApprovalChain {
+  id: string;
+  name: string;
+  leavePolicyId: string | null;
+  levels: ApprovalChainLevel[];
+  isDefault: boolean;
+}
+
+export interface CreateLeavePolicyBody {
+  name: string;
+  description: string | null;
+  engagementTypes: string[];
+  effectiveFrom: string;
+}
+
+export interface CreateLeavePolicyRuleBody {
+  leaveTypeId: string;
+  accrualFrequency: string;
+  accrualDays: number;
+  prorateOnJoin: boolean;
+  maxBalanceDays: number | null;
+  carryForwardCapDays: number | null;
+  negativeAllowed: boolean;
+  minNoticeDays: number;
+  maxConsecutiveDays: number | null;
+  sandwichRule: boolean;
+  requiresDocumentAfterDays: number | null;
+  applicableGender: string | null;
+}
+
+export interface RunAccrualBody {
+  leavePolicyRuleId: string | undefined;
+  period: string;
+}
+
+export interface CreateApprovalChainBody {
+  name: string;
+  isDefault: boolean;
+  levels: ApprovalChainLevel[];
+}
+
 export const hcmApi = {
   hr: {
     employees: (status = '') =>
       api.get<HrEmployeeRow[]>(`/hr/employees${status ? `?status=${encodeURIComponent(status)}` : ''}`),
     requisitions: () => api.get<RequisitionRow[]>('/hr/requisitions'),
     applications: () => api.get<ApplicationRow[]>('/hr/applications'),
+    leaveTypes: () => api.get<LeaveTypeOption[]>('/hr/leave-types'),
   },
   separations: {
     resignations: {
@@ -726,6 +1113,95 @@ export const hcmApi = {
     succession: {
       list: () => api.get<SuccessionPlan[]>('/hcm/performance/succession-plans'),
       create: (body: CreateSuccessionPlanBody) => api.post('/hcm/performance/succession-plans', body),
+    },
+  },
+  engagement: {
+    announcements: {
+      list: () => api.get<Announcement[]>('/hcm/engagement/announcements'),
+      create: (body: CreateAnnouncementBody) => api.post('/hcm/engagement/announcements', body),
+      withdraw: (id: string) => api.post(`/hcm/engagement/announcements/${id}/withdraw`),
+    },
+    recognitions: {
+      list: () => api.get<Recognition[]>('/hcm/engagement/recognitions'),
+      leaderboard: () => api.get<RecognitionLeaderboardRow[]>('/hcm/engagement/recognitions/leaderboard'),
+      give: (body: GiveRecognitionBody) => api.post('/hcm/engagement/recognitions', body),
+    },
+    surveys: {
+      list: () => api.get<PulseSurvey[]>('/hcm/engagement/surveys'),
+      create: (body: CreateSurveyBody) => api.post('/hcm/engagement/surveys', body),
+      open: (id: string) => api.post(`/hcm/engagement/surveys/${id}/open`),
+      close: (id: string) => api.post(`/hcm/engagement/surveys/${id}/close`),
+      results: (id: string) => api.get<SurveyResults>(`/hcm/engagement/surveys/${id}/results`),
+    },
+    hrCases: {
+      list: () => api.get<HrCase[]>('/hcm/engagement/hr-cases'),
+      confidential: () => api.get<HrCase[]>('/hcm/engagement/hr-cases/confidential'),
+      create: (body: CreateHrCaseBody) => api.post('/hcm/engagement/hr-cases', body),
+      resolve: (id: string) => api.post(`/hcm/engagement/hr-cases/${id}/transition`, { status: 'resolved' }),
+    },
+    policies: {
+      list: () => api.get<PolicyDocument[]>('/hcm/engagement/policies'),
+      status: (id: string) => api.get<PolicyAckStatus>(`/hcm/engagement/policies/${id}/status`),
+      create: (body: CreatePolicyDocumentBody) => api.post('/hcm/engagement/policies', body),
+      publish: (id: string) => api.post(`/hcm/engagement/policies/${id}/publish`),
+    },
+  },
+  learning: {
+    programs: {
+      list: () => api.get<TrainingProgram[]>('/hcm/learning/programs'),
+      create: (body: CreateTrainingProgramBody) => api.post('/hcm/learning/programs', body),
+      setActive: (id: string, isActive: boolean) => api.patch(`/hcm/learning/programs/${id}`, { isActive }),
+    },
+    sessions: {
+      list: () => api.get<TrainingSession[]>('/hcm/learning/sessions'),
+      create: (body: CreateTrainingSessionBody) => api.post('/hcm/learning/sessions', body),
+      setStatus: (id: string, status: 'completed' | 'cancelled') =>
+        api.post(`/hcm/learning/sessions/${id}/status`, { status }),
+    },
+    enrollments: {
+      list: () => api.get<TrainingEnrollment[]>('/hcm/learning/enrollments'),
+      nominate: (body: NominateBody) => api.post('/hcm/learning/enrollments', body),
+      approve: (id: string) => api.post(`/hcm/learning/enrollments/${id}/approve`),
+      reject: (id: string) => api.post(`/hcm/learning/enrollments/${id}/reject`, {}),
+      attend: (id: string, attended: boolean) => api.post(`/hcm/learning/enrollments/${id}/attendance`, { attended }),
+      complete: (id: string) => api.post(`/hcm/learning/enrollments/${id}/complete`, {}),
+    },
+    certifications: {
+      list: () => api.get<TrainingCertification[]>('/hcm/learning/certifications'),
+      create: (body: CreateCertificationBody) => api.post('/hcm/learning/certifications', body),
+      verify: (id: string) => api.post(`/hcm/learning/certifications/${id}/verify`),
+      runExpiryCheck: () => api.post('/hcm/learning/certifications/expiry-check'),
+    },
+    mandatory: {
+      rules: () => api.get<MandatoryTrainingRule[]>('/hcm/learning/mandatory-rules'),
+      createRule: (body: CreateMandatoryRuleBody) => api.post('/hcm/learning/mandatory-rules', body),
+      status: () => api.get<MandatoryTrainingRow[]>('/hcm/learning/mandatory-status'),
+    },
+    idps: {
+      list: () => api.get<IndividualDevelopmentPlan[]>('/hcm/learning/idps'),
+      create: (body: CreateIdpBody) => api.post('/hcm/learning/idps', body),
+      close: (id: string) => api.patch(`/hcm/learning/idps/${id}`, { status: 'closed' }),
+    },
+    budgets: {
+      list: () => api.get<TrainingBudget[]>('/hcm/learning/budgets'),
+      create: (body: CreateTrainingBudgetBody) => api.post('/hcm/learning/budgets', body),
+    },
+  },
+  leavePolicy: {
+    policies: {
+      list: () => api.get<LeavePolicy[]>('/hcm/leavepolicy/policies'),
+      create: (body: CreateLeavePolicyBody) => api.post('/hcm/leavepolicy/policies', body),
+      createRule: (policyId: string, body: CreateLeavePolicyRuleBody) =>
+        api.post(`/hcm/leavepolicy/policies/${policyId}/rules`, body),
+    },
+    accrualRuns: {
+      list: () => api.get<AccrualRunRow[]>('/hcm/leavepolicy/accrual-runs'),
+      run: (body: RunAccrualBody) => api.post('/hcm/leavepolicy/accrual-runs', body),
+    },
+    approvalChains: {
+      list: () => api.get<ApprovalChain[]>('/hcm/leavepolicy/approval-chains'),
+      create: (body: CreateApprovalChainBody) => api.post('/hcm/leavepolicy/approval-chains', body),
+      remove: (id: string) => api.del(`/hcm/leavepolicy/approval-chains/${id}`),
     },
   },
   workforce: {
