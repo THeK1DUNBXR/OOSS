@@ -15,15 +15,17 @@
  */
 
 import { createHash } from 'node:crypto';
+import type { Server } from 'node:http';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { isCanonicalEventName } from '@kaizen/shared';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { unscopedPrisma } from '../platform/db.js';
 import { isGoverned } from '../platform/audit.js';
+import { createApp } from '../server.js';
 import * as documents from '../domains/documents.js';
-import { asUser, expectReject, principalFor, tenantId } from './helpers.js';
+import { asUser, expectReject, principalFor, sessionToken, tenantId } from './helpers.js';
 
 const CHAIRMAN = 'chairman@kaizen.co.in';
 const EMPLOYEE = 'employee@kaizen.co.in';
@@ -42,8 +44,13 @@ function sha256Hex(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+/**
+ * The same label gives the same bytes. A call that builds the bytes and their
+ * hash from two calls must get the same answer both times, or the hash check
+ * fails for a reason the test made up.
+ */
 function bodyOf(label: string): Buffer {
-  return Buffer.from(`document body ${label} ${suffix()}`);
+  return Buffer.from(`document body ${label}`);
 }
 
 function uploadInput(overrides: Partial<documents.RegisterUploadInput> = {}): documents.RegisterUploadInput {
@@ -352,9 +359,9 @@ describe('document store: version chain', () => {
     await expect(
       unscopedPrisma.document.update({ where: { id: v1.id }, data: { contentSha256: sha256Hex(Buffer.from('x')) } }),
     ).rejects.toThrow(/immutable/);
-    await expect(unscopedPrisma.document.update({ where: { id: v1.id }, data: { storageKey: 'elsewhere' } })).rejects.toThrow(
-      /immutable/,
-    );
+    await expect(
+      unscopedPrisma.document.update({ where: { id: v1.id }, data: { storageKey: 'elsewhere' } }),
+    ).rejects.toThrow(/immutable/);
   });
 });
 
@@ -397,11 +404,15 @@ describe('document store: lifecycle', () => {
   it('a superseded version cannot be activated again, and the writer refuses it', async () => {
     await setup();
     const v1 = await asUser(CHAIRMAN, () => documents.registerUpload(uploadInput()));
-    await asUser(CHAIRMAN, () => documents.changeLifecycleStatus({ documentId: v1.id, to: 'active', reason: 'Filed.' }));
+    await asUser(CHAIRMAN, () =>
+      documents.changeLifecycleStatus({ documentId: v1.id, to: 'active', reason: 'Filed.' }),
+    );
     const v2 = await asUser(CHAIRMAN, () =>
       documents.addVersion({ documentId: v1.id, bytes: bodyOf('v2'), contentSha256: sha256Hex(bodyOf('v2')) }),
     );
-    await asUser(CHAIRMAN, () => documents.changeLifecycleStatus({ documentId: v2.id, to: 'active', reason: 'Amended.' }));
+    await asUser(CHAIRMAN, () =>
+      documents.changeLifecycleStatus({ documentId: v2.id, to: 'active', reason: 'Amended.' }),
+    );
     const v1Now = await unscopedPrisma.document.findUniqueOrThrow({ where: { id: v1.id } });
     expect(v1Now.lifecycleStatus).toBe('superseded');
     const err = await asUser(CHAIRMAN, () =>
@@ -413,12 +424,16 @@ describe('document store: lifecycle', () => {
   it('activating a version supersedes the active one in the same step, with an audit row and an event for it', async () => {
     await setup();
     const v1 = await asUser(CHAIRMAN, () => documents.registerUpload(uploadInput()));
-    await asUser(CHAIRMAN, () => documents.changeLifecycleStatus({ documentId: v1.id, to: 'active', reason: 'Filed.' }));
+    await asUser(CHAIRMAN, () =>
+      documents.changeLifecycleStatus({ documentId: v1.id, to: 'active', reason: 'Filed.' }),
+    );
     const v2 = await asUser(CHAIRMAN, () =>
       documents.addVersion({ documentId: v1.id, bytes: bodyOf('v2'), contentSha256: sha256Hex(bodyOf('v2')) }),
     );
     const supersededBefore = await countEvents(documents.DOCUMENT_EVENTS.SUPERSEDED);
-    await asUser(CHAIRMAN, () => documents.changeLifecycleStatus({ documentId: v2.id, to: 'active', reason: 'Amended.' }));
+    await asUser(CHAIRMAN, () =>
+      documents.changeLifecycleStatus({ documentId: v2.id, to: 'active', reason: 'Amended.' }),
+    );
     expect(await countEvents(documents.DOCUMENT_EVENTS.SUPERSEDED)).toBe(supersededBefore + 1);
     const audit = await unscopedPrisma.auditRecord.findFirst({
       where: { tenantId: TID, subjectType: 'document', subjectId: v1.id, action: 'update' },
@@ -458,7 +473,13 @@ describe('document store: retention class', () => {
     );
     expect(none.status).toBe(409);
     await unscopedPrisma.documentRetentionRule.create({
-      data: { tenantId: TID, documentKind: kind, anchor: 'after_expiry', years: 8, effectiveFrom: new Date('2020-04-01T00:00:00.000Z') },
+      data: {
+        tenantId: TID,
+        documentKind: kind,
+        anchor: 'after_expiry',
+        years: 8,
+        effectiveFrom: new Date('2020-04-01T00:00:00.000Z'),
+      },
     });
     const set = await asUser(CHAIRMAN, () =>
       documents.setRetentionClass({ documentId: doc.id, retentionClass: kind, reason: 'Keep it.' }),
@@ -551,9 +572,7 @@ describe('document store: audit and event commit with the row', () => {
     const eventsBefore = await countEvents(documents.DOCUMENT_EVENTS.UPLOADED);
     const objectsBefore = storedObjects().length;
     await refuseDocumentAudit();
-    const err = await asUser(CHAIRMAN, () =>
-      expectReject(() => documents.registerUpload(uploadInput({ filename }))),
-    );
+    const err = await asUser(CHAIRMAN, () => expectReject(() => documents.registerUpload(uploadInput({ filename }))));
     expect(err.message).toMatch(INJECTED);
     expect(await countDocuments({ filename })).toBe(0);
     expect(await countEvents(documents.DOCUMENT_EVENTS.UPLOADED)).toBe(eventsBefore);
@@ -565,9 +584,7 @@ describe('document store: audit and event commit with the row', () => {
     const filename = `event-fail-${suffix()}.pdf`;
     const auditBefore = await countAudit('document');
     await refuseDocumentEvent();
-    const err = await asUser(CHAIRMAN, () =>
-      expectReject(() => documents.registerUpload(uploadInput({ filename }))),
-    );
+    const err = await asUser(CHAIRMAN, () => expectReject(() => documents.registerUpload(uploadInput({ filename }))));
     expect(err.message).toMatch(INJECTED);
     expect(await countDocuments({ filename })).toBe(0);
     expect(await countAudit('document')).toBe(auditBefore);
@@ -578,5 +595,130 @@ describe('document store: audit and event commit with the row', () => {
       expect(isCanonicalEventName(name), name).toBe(true);
     }
     expect(isGoverned('document')).toBe(true);
+  });
+});
+
+describe('document store: HTTP surface', () => {
+  let server: Server;
+  let base: string;
+  let chairmanToken: string;
+  let employeeToken: string;
+
+  beforeAll(async () => {
+    await setup();
+    server = createApp().listen(0);
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    base = `http://127.0.0.1:${port}/api`;
+    const c = await principalFor(CHAIRMAN);
+    chairmanToken = await sessionToken({
+      userId: c.userId,
+      tenantId: c.tenantId,
+      affiliationId: c.affiliationId,
+      stepUp: true,
+    });
+    const e = await principalFor(EMPLOYEE);
+    employeeToken = await sessionToken({
+      userId: e.userId,
+      tenantId: e.tenantId,
+      affiliationId: e.affiliationId,
+      stepUp: true,
+    });
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  /** The metadata header the upload route reads: base64url JSON. */
+  function metaHeader(meta: Record<string, unknown>): string {
+    return Buffer.from(JSON.stringify(meta), 'utf8').toString('base64url');
+  }
+
+  function uploadMeta(bytes: Buffer, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      filename: `http-${suffix()}.pdf`,
+      mimeType: 'application/pdf',
+      contentSha256: sha256Hex(bytes),
+      attachedToType: 'contract',
+      attachedToId: `ctr-${suffix()}`,
+      ...overrides,
+    };
+  }
+
+  async function postUpload(token: string, bytes: Buffer, meta: Record<string, unknown> | null): Promise<Response> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      'content-type': 'application/octet-stream',
+    };
+    if (meta) headers['x-document-meta'] = metaHeader(meta);
+    return fetch(`${base}/documents`, { method: 'POST', headers, body: bytes });
+  }
+
+  it('uploads from the raw body with the metadata in the header, and returns the row with its hash', async () => {
+    const bytes = bodyOf('http upload');
+    const res = await postUpload(chairmanToken, bytes, uploadMeta(bytes));
+    expect(res.status).toBe(200);
+    const doc = (await res.json()) as { id: string; contentSha256: string; storageKey: string; version: number };
+    expect(doc.contentSha256).toBe(sha256Hex(bytes));
+    expect(doc.version).toBe(1);
+    expect(doc.storageKey.startsWith(`tenants/${TID}/documents/`)).toBe(true);
+    expect(existsSync(join(STORAGE_ROOT, doc.storageKey))).toBe(true);
+  });
+
+  it('refuses an upload with no metadata header, and with a hash that does not match, storing nothing', async () => {
+    const bytes = bodyOf('http refused');
+    const missing = await postUpload(chairmanToken, bytes, null);
+    expect(missing.status).toBe(400);
+    const wrong = await postUpload(
+      chairmanToken,
+      bytes,
+      uploadMeta(bytes, { contentSha256: sha256Hex(Buffer.from('other')) }),
+    );
+    expect(wrong.status).toBe(422);
+  });
+
+  it('refuses an upload by a principal that does not own the document it names', async () => {
+    const bytes = bodyOf('http owner');
+    const chairman = await principalFor(CHAIRMAN);
+    const res = await postUpload(employeeToken, bytes, uploadMeta(bytes, { ownerPartyId: chairman.partyId }));
+    expect(res.status).toBe(403);
+  });
+
+  it('reads a document by id, and refuses a read of one owned by somebody else', async () => {
+    const doc = await asUser(CHAIRMAN, () => documents.registerUpload(uploadInput()));
+    const ok = await fetch(`${base}/documents/${doc.id}`, { headers: { Authorization: `Bearer ${chairmanToken}` } });
+    expect(ok.status).toBe(200);
+    const denied = await fetch(`${base}/documents/${doc.id}`, {
+      headers: { Authorization: `Bearer ${employeeToken}` },
+    });
+    expect(denied.status).toBe(403);
+  });
+
+  it('moves a lifecycle over HTTP, and refuses an illegal move with 409', async () => {
+    const doc = await asUser(CHAIRMAN, () => documents.registerUpload(uploadInput()));
+    const json = { 'content-type': 'application/json', Authorization: `Bearer ${chairmanToken}` };
+    const active = await fetch(`${base}/documents/${doc.id}/lifecycle`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ to: 'active', reason: 'Signed and filed.' }),
+    });
+    expect(active.status).toBe(200);
+    const illegal = await fetch(`${base}/documents/${doc.id}/lifecycle`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ to: 'draft', reason: 'Back to draft.' }),
+    });
+    expect(illegal.status).toBe(409);
+  });
+
+  it('has no DELETE route: the request is not found, and the row remains', async () => {
+    const doc = await asUser(CHAIRMAN, () => documents.registerUpload(uploadInput()));
+    const res = await fetch(`${base}/documents/${doc.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${chairmanToken}` },
+    });
+    expect(res.status).toBe(404);
+    expect(await countDocuments({ id: doc.id })).toBe(1);
   });
 });
