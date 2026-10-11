@@ -534,7 +534,7 @@
 
 **`apps/web/src/pages/Parties.tsx`** (553 lines) — Institutions:261 · Organizations:276 · BodyDetail:298
 
-**`apps/web/src/pages/People.tsx`** (517 lines) — People:68 · PersonDetail:323 · Interactions:448
+**`apps/web/src/pages/People.tsx`** (508 lines) — People:59 · PersonDetail:314 · Interactions:439
 
 **`apps/web/src/pages/PeopleOps.tsx`** (1770 lines) — Employees:225 · EmployeeDetail:497 · Leave:885 · Attendance:1027 · Payroll:1207 · Hiring:1442 · Skills:1673
 
@@ -648,13 +648,13 @@
 
 **`apps/web/src/pages/hcm/Analytics.tsx`** (661 lines) — Analytics:323
 
-**`apps/web/src/pages/hcm/Approvals.tsx`** (174 lines) — Approvals:162
+**`apps/web/src/pages/hcm/Approvals.tsx`** (173 lines) — Approvals:161
 
 **`apps/web/src/pages/hcm/Assets.tsx`** (732 lines) — Assets:48
 
 **`apps/web/src/pages/hcm/Compensation.tsx`** (1053 lines) — Compensation:31
 
-**`apps/web/src/pages/hcm/Directory.tsx`** (87 lines) — Directory:22
+**`apps/web/src/pages/hcm/Directory.tsx`** (78 lines) — Directory:43
 
 **`apps/web/src/pages/hcm/Employee360.tsx`** (876 lines) — Employee360:129
 
@@ -662,11 +662,11 @@
 
 **`apps/web/src/pages/hcm/Learning.tsx`** (1006 lines) — Learning:37
 
-**`apps/web/src/pages/hcm/LeaveCalendar.tsx`** (172 lines) — LeaveCalendar:49
+**`apps/web/src/pages/hcm/LeaveCalendar.tsx`** (145 lines) — LeaveCalendar:39
 
 **`apps/web/src/pages/hcm/LeavePolicies.tsx`** (603 lines) — LeavePolicies:23
 
-**`apps/web/src/pages/hcm/OrgChart.tsx`** (73 lines) — OrgChart:44
+**`apps/web/src/pages/hcm/OrgChart.tsx`** (65 lines) — OrgChart:36
 
 **`apps/web/src/pages/hcm/PayrollOps.tsx`** (1245 lines) — PayrollOps:41
 
