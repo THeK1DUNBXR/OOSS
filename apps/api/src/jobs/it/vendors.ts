@@ -20,6 +20,11 @@
 import { EVENTS, VENDOR_LADDER_RUNGS, noticeDate, noticeRung, type SeverityCode } from '@kaizen/shared';
 import { prisma } from '../../platform/db.js';
 import { currentAuth } from '../../platform/context.js';
+import { auditWrite } from '../../platform/audit.js';
+// Loads the module that registers it_vendor_contract as governed: auditWrite
+// refuses an unregistered subject, and this job may run before any route has
+// imported the domain.
+import '../../domains/it/vendors.js';
 import { emit } from '../../platform/eventBus.js';
 import { raiseException } from '../../platform/exceptions.js';
 import type { JobDefinition, JobResult } from '../scheduler.js';
@@ -54,15 +59,30 @@ export async function runVendorContractNoticeLadder(): Promise<JobResult> {
     // notice ladder had or had not fired.
     if (endDate < now) {
       if (row.status !== 'expired') {
-        await prisma.itVendorContract.update({ where: { id: row.id }, data: { status: 'expired' } });
-        statusFlips += 1;
-        await emit({
-          name: EVENTS.IT_VENDOR_CONTRACT_TRANSITIONED,
-          subject: { entityType: 'it_vendor_contract', entityId: row.id, recordCode: row.recordCode },
-          previousState: { status: row.status },
-          newState: { status: 'expired' },
-          impact: { domains: ['it'], severity: 'S3_HIGH_RISK' },
+        // The status flip, its audit row and its event commit together: a
+        // contract shown as expired with no event would never reach the
+        // subscribers that act on expiry.
+        await prisma.$transaction(async (tx) => {
+          await tx.itVendorContract.update({ where: { id: row.id }, data: { status: 'expired' } });
+          await auditWrite({
+            action: 'update',
+            subjectType: 'it_vendor_contract',
+            subjectId: row.id,
+            before: { status: row.status },
+            after: { status: 'expired' },
+            meta: { job: 'it_vendor_contract_notice_ladder' },
+            tx,
+          });
+          await emit({
+            name: EVENTS.IT_VENDOR_CONTRACT_TRANSITIONED,
+            subject: { entityType: 'it_vendor_contract', entityId: row.id, recordCode: row.recordCode },
+            previousState: { status: row.status },
+            newState: { status: 'expired' },
+            impact: { domains: ['it'], severity: 'S3_HIGH_RISK' },
+            tx,
+          });
         });
+        statusFlips += 1;
       }
       continue;
     }
@@ -77,15 +97,27 @@ export async function runVendorContractNoticeLadder(): Promise<JobResult> {
 
     if (row.status !== 'expiring') {
       const previousStatus = row.status;
-      await prisma.itVendorContract.update({ where: { id: row.id }, data: { status: 'expiring' } });
-      statusFlips += 1;
-      await emit({
-        name: EVENTS.IT_VENDOR_CONTRACT_EXPIRING,
-        subject: { entityType: 'it_vendor_contract', entityId: row.id, recordCode: row.recordCode },
-        previousState: { status: previousStatus },
-        newState: { status: 'expiring', daysToNotice, rung },
-        impact: { domains: ['it'], severity: severityForRung(rung) },
+      await prisma.$transaction(async (tx) => {
+        await tx.itVendorContract.update({ where: { id: row.id }, data: { status: 'expiring' } });
+        await auditWrite({
+          action: 'update',
+          subjectType: 'it_vendor_contract',
+          subjectId: row.id,
+          before: { status: previousStatus },
+          after: { status: 'expiring' },
+          meta: { job: 'it_vendor_contract_notice_ladder' },
+          tx,
+        });
+        await emit({
+          name: EVENTS.IT_VENDOR_CONTRACT_EXPIRING,
+          subject: { entityType: 'it_vendor_contract', entityId: row.id, recordCode: row.recordCode },
+          previousState: { status: previousStatus },
+          newState: { status: 'expiring', daysToNotice, rung },
+          impact: { domains: ['it'], severity: severityForRung(rung) },
+          tx,
+        });
       });
+      statusFlips += 1;
     }
 
     if (already.includes(rung)) continue;

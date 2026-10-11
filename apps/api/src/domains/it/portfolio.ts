@@ -145,40 +145,45 @@ export async function createInitiative(input: CreateInitiativeInput) {
     throw ApiError.badRequest('An initiative needs an owner — the person accountable for delivering it.');
 
   const recordCode = await nextRecordCode('ITI');
-  const initiative = await prisma.itInitiative.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title.trim(),
-      theme: input.theme,
-      sponsorPartyId: input.sponsorPartyId,
-      ownerPartyId: input.ownerPartyId,
-      businessCase: input.businessCase ?? null,
-      expectedBenefit: input.expectedBenefit ?? null,
-      budget: input.budget,
-      currency: input.currency ?? 'INR',
-      stage: 'idea',
-      rag: 'green',
-      ragReason: 'Newly proposed.',
-      ragSetAt: new Date(),
-      targetQuarter: input.targetQuarter ?? null,
-      projectId: input.projectId ?? null,
-      createdById: auth.partyId,
-    },
-  });
+  const initiative = await prisma.$transaction(async (tx) => {
+    const initiative = await tx.itInitiative.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title.trim(),
+        theme: input.theme,
+        sponsorPartyId: input.sponsorPartyId,
+        ownerPartyId: input.ownerPartyId,
+        businessCase: input.businessCase ?? null,
+        expectedBenefit: input.expectedBenefit ?? null,
+        budget: input.budget,
+        currency: input.currency ?? 'INR',
+        stage: 'idea',
+        rag: 'green',
+        ragReason: 'Newly proposed.',
+        ragSetAt: new Date(),
+        targetQuarter: input.targetQuarter ?? null,
+        projectId: input.projectId ?? null,
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_initiative',
-    subjectId: initiative.id,
-    after: { recordCode, title: initiative.title },
-  });
-  await emit({
-    name: EVENTS.IT_INITIATIVE_CREATED,
-    subject: { entityType: 'it_initiative', entityId: initiative.id, recordCode },
-    newState: { stage: 'idea', theme: initiative.theme, budget: input.budget },
-    owner: { partyId: initiative.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_initiative',
+      subjectId: initiative.id,
+      after: { recordCode, title: initiative.title },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_INITIATIVE_CREATED,
+      subject: { entityType: 'it_initiative', entityId: initiative.id, recordCode },
+      newState: { stage: 'idea', theme: initiative.theme, budget: input.budget },
+      owner: { partyId: initiative.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return initiative;
   });
 
   return initiative;
@@ -300,24 +305,29 @@ export async function transitionInitiative(
     await assertCan({ resource: 'it_initiatives', verb: 'edit', record: { ownerPartyId: initiative.ownerPartyId } });
   }
 
-  const updated = await prisma.itInitiative.update({ where: { id }, data: { stage: to } });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itInitiative.update({ where: { id }, data: { stage: to } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_initiative',
-    subjectId: id,
-    before: { stage: from },
-    after: { stage: to },
-    meta: { transition: event, note },
-  });
-  await emit({
-    name: EVENTS.IT_INITIATIVE_TRANSITIONED,
-    subject: { entityType: 'it_initiative', entityId: id, recordCode: initiative.recordCode },
-    previousState: { stage: from },
-    newState: { stage: to },
-    reason: note ? { reasonCode: event, note } : { reasonCode: event },
-    owner: { partyId: initiative.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_initiative',
+      subjectId: id,
+      before: { stage: from },
+      after: { stage: to },
+      meta: { transition: event, note },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_INITIATIVE_TRANSITIONED,
+      subject: { entityType: 'it_initiative', entityId: id, recordCode: initiative.recordCode },
+      previousState: { stage: from },
+      newState: { stage: to },
+      reason: note ? { reasonCode: event, note } : { reasonCode: event },
+      owner: { partyId: initiative.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return { applied: true, initiative: updated, approvalStepId: null, reason: null };
@@ -342,33 +352,41 @@ export async function postInitiativeUpdate(initiativeId: string, input: PostUpda
     throw ApiError.badRequest(`'${input.rag}' is not a RAG status. Choose one of: ${IT_RAG_STATUSES.join(', ')}.`);
   }
 
-  const update = await prisma.itInitiativeUpdate.create({
-    data: {
-      tenantId: auth.tenantId,
-      initiativeId,
-      body: input.body.trim(),
-      rag: input.rag,
-      authorPartyId: auth.partyId,
-    },
-  });
+  // The status report and the live RAG band it refreshes move together: a report
+  // that did not reach the band would leave the portfolio showing a stale colour
+  // under a fresh comment.
+  const update = await prisma.$transaction(async (tx) => {
+    const update = await tx.itInitiativeUpdate.create({
+      data: {
+        tenantId: auth.tenantId,
+        initiativeId,
+        body: input.body.trim(),
+        rag: input.rag,
+        authorPartyId: auth.partyId,
+      },
+    });
 
-  await prisma.itInitiative.update({
-    where: { id: initiativeId },
-    data: { rag: input.rag, ragReason: input.body.trim(), ragSetAt: update.at, staleNotifiedAt: null },
-  });
+    await tx.itInitiative.update({
+      where: { id: initiativeId },
+      data: { rag: input.rag, ragReason: input.body.trim(), ragSetAt: update.at, staleNotifiedAt: null },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_initiative_update',
-    subjectId: update.id,
-    after: { initiativeId, rag: input.rag },
-  });
-  await emit({
-    name: EVENTS.IT_INITIATIVE_UPDATED,
-    subject: { entityType: 'it_initiative', entityId: initiativeId, recordCode: initiative.recordCode },
-    newState: { rag: input.rag },
-    owner: { partyId: initiative.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_initiative_update',
+      subjectId: update.id,
+      after: { initiativeId, rag: input.rag },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_INITIATIVE_UPDATED,
+      subject: { entityType: 'it_initiative', entityId: initiativeId, recordCode: initiative.recordCode },
+      newState: { rag: input.rag },
+      owner: { partyId: initiative.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return update;
   });
 
   return update;
@@ -525,32 +543,37 @@ export async function createBudgetLine(input: CreateBudgetLineInput) {
   assertKind(input.kind);
   if (!(input.planned >= 0)) throw ApiError.badRequest('Planned amount cannot be negative.');
 
-  const line = await prisma.itBudgetLine.create({
-    data: {
-      tenantId: auth.tenantId,
-      fy: input.fy,
-      category: input.category,
-      division: input.division ?? null,
-      kind: input.kind,
-      planned: input.planned,
-      currency: input.currency ?? 'INR',
-      bookCategoryIds: input.bookCategoryIds ?? [],
-      status: 'draft',
-      createdById: auth.partyId,
-    },
-  });
+  const line = await prisma.$transaction(async (tx) => {
+    const line = await tx.itBudgetLine.create({
+      data: {
+        tenantId: auth.tenantId,
+        fy: input.fy,
+        category: input.category,
+        division: input.division ?? null,
+        kind: input.kind,
+        planned: input.planned,
+        currency: input.currency ?? 'INR',
+        bookCategoryIds: input.bookCategoryIds ?? [],
+        status: 'draft',
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_budget_line',
-    subjectId: line.id,
-    after: { fy: line.fy, category: line.category, planned: input.planned },
-  });
-  await emit({
-    name: EVENTS.IT_BUDGET_LINE_SET,
-    subject: { entityType: 'it_budget_line', entityId: line.id },
-    newState: { fy: line.fy, category: line.category, kind: line.kind, planned: input.planned, status: 'draft' },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_budget_line',
+      subjectId: line.id,
+      after: { fy: line.fy, category: line.category, planned: input.planned },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_BUDGET_LINE_SET,
+      subject: { entityType: 'it_budget_line', entityId: line.id },
+      newState: { fy: line.fy, category: line.category, kind: line.kind, planned: input.planned, status: 'draft' },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return line;
   });
 
   return line;
@@ -610,23 +633,28 @@ export async function approveBudgetLine(id: string) {
     );
   }
 
-  const updated = await prisma.itBudgetLine.update({
-    where: { id },
-    data: { status: 'approved', approvedById: auth.partyId, approvedAt: new Date() },
-  });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itBudgetLine.update({
+      where: { id },
+      data: { status: 'approved', approvedById: auth.partyId, approvedAt: new Date() },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_budget_line',
-    subjectId: id,
-    before: { status: 'draft' },
-    after: { status: 'approved' },
-  });
-  await emit({
-    name: EVENTS.IT_BUDGET_LINE_SET,
-    subject: { entityType: 'it_budget_line', entityId: id },
-    newState: { status: 'approved' },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_budget_line',
+      subjectId: id,
+      before: { status: 'draft' },
+      after: { status: 'approved' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_BUDGET_LINE_SET,
+      subject: { entityType: 'it_budget_line', entityId: id },
+      newState: { status: 'approved' },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;
@@ -860,32 +888,37 @@ export async function createTechDebtItem(input: CreateTechDebtInput) {
   if (!input.title.trim()) throw ApiError.badRequest('A technical-debt item needs a title.');
 
   const recordCode = await nextRecordCode('TDB');
-  const item = await prisma.itTechDebtItem.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title: input.title.trim(),
-      applicationId: input.applicationId ?? null,
-      severity: input.severity,
-      effortDays: input.effortDays ?? null,
-      interest: input.interest ?? null,
-      initiativeId: input.initiativeId ?? null,
-      status: 'open',
-      createdById: auth.partyId,
-    },
-  });
+  const item = await prisma.$transaction(async (tx) => {
+    const item = await tx.itTechDebtItem.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title: input.title.trim(),
+        applicationId: input.applicationId ?? null,
+        severity: input.severity,
+        effortDays: input.effortDays ?? null,
+        interest: input.interest ?? null,
+        initiativeId: input.initiativeId ?? null,
+        status: 'open',
+        createdById: auth.partyId,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_tech_debt_item',
-    subjectId: item.id,
-    after: { recordCode, severity: item.severity },
-  });
-  await emit({
-    name: EVENTS.IT_TECH_DEBT_CREATED,
-    subject: { entityType: 'it_tech_debt_item', entityId: item.id, recordCode },
-    newState: { status: 'open', severity: item.severity },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_tech_debt_item',
+      subjectId: item.id,
+      after: { recordCode, severity: item.severity },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_TECH_DEBT_CREATED,
+      subject: { entityType: 'it_tech_debt_item', entityId: item.id, recordCode },
+      newState: { status: 'open', severity: item.severity },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return item;
   });
 
   return item;
@@ -935,23 +968,28 @@ export async function transitionTechDebt(id: string, event: ItTechDebtEvent, not
   }
   const to = itTechDebtMachine.apply(from, event);
 
-  const updated = await prisma.itTechDebtItem.update({ where: { id }, data: { status: to } });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itTechDebtItem.update({ where: { id }, data: { status: to } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_tech_debt_item',
-    subjectId: id,
-    before: { status: from },
-    after: { status: to },
-    meta: { transition: event, note },
-  });
-  await emit({
-    name: EVENTS.IT_TECH_DEBT_TRANSITIONED,
-    subject: { entityType: 'it_tech_debt_item', entityId: id, recordCode: item.recordCode },
-    previousState: { status: from },
-    newState: { status: to },
-    reason: note ? { reasonCode: event, note } : { reasonCode: event },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_tech_debt_item',
+      subjectId: id,
+      before: { status: from },
+      after: { status: to },
+      meta: { transition: event, note },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_TECH_DEBT_TRANSITIONED,
+      subject: { entityType: 'it_tech_debt_item', entityId: id, recordCode: item.recordCode },
+      previousState: { status: from },
+      newState: { status: to },
+      reason: note ? { reasonCode: event, note } : { reasonCode: event },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;

@@ -97,38 +97,43 @@ export async function createVendor(input: CreateVendorInput) {
   const now = new Date();
 
   const recordCode = await nextRecordCode('ITV');
-  const vendor = await prisma.itVendor.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      name: input.name.trim(),
-      organizationId: input.organizationId ?? null,
-      category: input.category,
-      tier,
-      riskRating: input.riskRating ?? 'medium',
-      riskRatedAt: input.riskRating ? now : null,
-      assessmentStatus: 'not_assessed',
-      assessmentDueAt: addMonths(now, cadence),
-      dpaSigned: input.dpaSigned ?? false,
-      dpaSignedAt: input.dpaSigned ? now : null,
-      contactName: input.contactName ?? null,
-      contactEmail: input.contactEmail ?? null,
-      status: 'active',
-      notes: input.notes ?? null,
-    },
-  });
+  const vendor = await prisma.$transaction(async (tx) => {
+    const vendor = await tx.itVendor.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        name: input.name.trim(),
+        organizationId: input.organizationId ?? null,
+        category: input.category,
+        tier,
+        riskRating: input.riskRating ?? 'medium',
+        riskRatedAt: input.riskRating ? now : null,
+        assessmentStatus: 'not_assessed',
+        assessmentDueAt: addMonths(now, cadence),
+        dpaSigned: input.dpaSigned ?? false,
+        dpaSignedAt: input.dpaSigned ? now : null,
+        contactName: input.contactName ?? null,
+        contactEmail: input.contactEmail ?? null,
+        status: 'active',
+        notes: input.notes ?? null,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_vendor',
-    subjectId: vendor.id,
-    after: { recordCode, name: vendor.name, tier },
-  });
-  await emit({
-    name: EVENTS.IT_VENDOR_CREATED,
-    subject: { entityType: 'it_vendor', entityId: vendor.id, recordCode },
-    newState: { name: vendor.name, tier, riskRating: vendor.riskRating },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_vendor',
+      subjectId: vendor.id,
+      after: { recordCode, name: vendor.name, tier },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_VENDOR_CREATED,
+      subject: { entityType: 'it_vendor', entityId: vendor.id, recordCode },
+      newState: { name: vendor.name, tier, riskRating: vendor.riskRating },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return vendor;
   });
 
   return vendor;
@@ -206,31 +211,36 @@ export async function transitionVendor(id: string, input: TransitionVendorInput)
   }
   const to = vendorStatusMachine.apply(from, input.event);
 
-  const updated = await prisma.itVendor.update({ where: { id }, data: { status: to } });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itVendor.update({ where: { id }, data: { status: to } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_vendor',
-    subjectId: id,
-    before: { status: from },
-    after: { status: to },
-    meta: { transition: input.event, note: input.note ?? null },
-  });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_vendor',
+      subjectId: id,
+      before: { status: from },
+      after: { status: to },
+      meta: { transition: input.event, note: input.note ?? null },
+      tx,
+    });
 
-  // No dedicated "vendor transitioned" event exists in the shared IT event
-  // block (docs/plan/cio.md, workstream C only names created/assessed/
-  // contract_* names) — reusing IT_VENDOR_ASSESSED would misdescribe this as
-  // an assessment, so the closest honest choice is IT_VENDOR_CONTRACT_
-  // TRANSITIONED's sibling shape reused at the vendor subject: the envelope's
-  // `subject.entityType` (`it_vendor`) still disambiguates it from a contract
-  // transition for any subscriber. Noted in docs/it/vendors.md.
-  await emit({
-    name: EVENTS.IT_VENDOR_CONTRACT_TRANSITIONED,
-    subject: { entityType: 'it_vendor', entityId: id, recordCode: vendor.recordCode },
-    previousState: { status: from },
-    newState: { status: to },
-    reason: { reasonCode: VENDOR_EVENT_VERBS[input.event], note: input.note ?? null },
-    impact: { domains: [IT_DOMAIN] },
+    // No dedicated "vendor transitioned" event exists in the shared IT event
+    // block (docs/plan/cio.md, workstream C only names created/assessed/
+    // contract_* names) — reusing IT_VENDOR_ASSESSED would misdescribe this as
+    // an assessment, so the closest honest choice is IT_VENDOR_CONTRACT_
+    // TRANSITIONED's sibling shape reused at the vendor subject: the envelope's
+    // `subject.entityType` (`it_vendor`) still disambiguates it from a contract
+    // transition for any subscriber. Noted in docs/it/vendors.md.
+    await emit({
+      name: EVENTS.IT_VENDOR_CONTRACT_TRANSITIONED,
+      subject: { entityType: 'it_vendor', entityId: id, recordCode: vendor.recordCode },
+      previousState: { status: from },
+      newState: { status: to },
+      reason: { reasonCode: VENDOR_EVENT_VERBS[input.event], note: input.note ?? null },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return updated;
@@ -263,41 +273,46 @@ export async function recordAssessment(vendorId: string, input: RecordAssessment
   const assessedAt = input.assessedAt ?? new Date();
   const cadence = await cadenceMonthsForTier(vendor.tier);
 
-  const assessment = await prisma.itVendorRiskAssessment.create({
-    data: {
-      tenantId: auth.tenantId,
-      vendorId,
-      assessedAt,
-      assessorPartyId: input.assessor,
-      score: input.score ?? null,
-      outcome: input.outcome,
-      questionnaire: (input.questionnaire ?? undefined) as never,
-      notes: input.notes ?? null,
-      evidenceDocumentId: input.evidenceDocumentId ?? null,
-    },
-  });
+  const { assessment, updated } = await prisma.$transaction(async (tx) => {
+    const assessment = await tx.itVendorRiskAssessment.create({
+      data: {
+        tenantId: auth.tenantId,
+        vendorId,
+        assessedAt,
+        assessorPartyId: input.assessor,
+        score: input.score ?? null,
+        outcome: input.outcome,
+        questionnaire: (input.questionnaire ?? undefined) as never,
+        notes: input.notes ?? null,
+        evidenceDocumentId: input.evidenceDocumentId ?? null,
+      },
+    });
 
-  const updated = await prisma.itVendor.update({
-    where: { id: vendorId },
-    data: {
-      assessmentStatus: input.outcome,
-      assessmentDueAt: addMonths(assessedAt, cadence),
-      assessmentNotifiedRungs: [],
-      ...(input.riskRating ? { riskRating: input.riskRating, riskRatedAt: new Date() } : {}),
-    },
-  });
+    const updated = await tx.itVendor.update({
+      where: { id: vendorId },
+      data: {
+        assessmentStatus: input.outcome,
+        assessmentDueAt: addMonths(assessedAt, cadence),
+        assessmentNotifiedRungs: [],
+        ...(input.riskRating ? { riskRating: input.riskRating, riskRatedAt: new Date() } : {}),
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_vendor_risk_assessment',
-    subjectId: assessment.id,
-    after: { vendorId, outcome: input.outcome, score: input.score ?? null },
-  });
-  await emit({
-    name: EVENTS.IT_VENDOR_ASSESSED,
-    subject: { entityType: 'it_vendor', entityId: vendorId, recordCode: vendor.recordCode },
-    newState: { outcome: input.outcome, assessmentDueAt: updated.assessmentDueAt, riskRating: updated.riskRating },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_vendor_risk_assessment',
+      subjectId: assessment.id,
+      after: { vendorId, outcome: input.outcome, score: input.score ?? null },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_VENDOR_ASSESSED,
+      subject: { entityType: 'it_vendor', entityId: vendorId, recordCode: vendor.recordCode },
+      newState: { outcome: input.outcome, assessmentDueAt: updated.assessmentDueAt, riskRating: updated.riskRating },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return { assessment, updated };
   });
 
   return { assessment, vendor: updated };
@@ -332,44 +347,49 @@ export async function createVendorContract(input: CreateContractInput) {
   if (!(input.value > 0)) throw ApiError.unprocessable('A vendor contract must carry a value greater than zero.');
 
   const recordCode = await nextRecordCode('VCT');
-  const contract = await prisma.itVendorContract.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      vendorId: input.vendorId,
-      title: input.title.trim(),
-      value: dec(input.value)!,
-      currency: input.currency ?? 'INR',
-      termMonths: input.termMonths ?? null,
-      startDate: input.startDate ?? null,
-      endDate: input.endDate ?? null,
-      noticeDays: input.noticeDays ?? 30,
-      autoRenew: input.autoRenew ?? false,
-      slaText: input.slaText ?? null,
-      documentId: input.documentId ?? null,
-      ownerPartyId: auth.partyId ?? 'system',
-      createdById: auth.partyId ?? 'system',
-      status: 'draft',
-      renewedFromId: input.renewedFromId ?? null,
-    },
-  });
+  const contract = await prisma.$transaction(async (tx) => {
+    const contract = await tx.itVendorContract.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        vendorId: input.vendorId,
+        title: input.title.trim(),
+        value: dec(input.value)!,
+        currency: input.currency ?? 'INR',
+        termMonths: input.termMonths ?? null,
+        startDate: input.startDate ?? null,
+        endDate: input.endDate ?? null,
+        noticeDays: input.noticeDays ?? 30,
+        autoRenew: input.autoRenew ?? false,
+        slaText: input.slaText ?? null,
+        documentId: input.documentId ?? null,
+        ownerPartyId: auth.partyId ?? 'system',
+        createdById: auth.partyId ?? 'system',
+        status: 'draft',
+        renewedFromId: input.renewedFromId ?? null,
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_vendor_contract',
-    subjectId: contract.id,
-    after: { recordCode, title: contract.title, value: input.value },
-  });
-  await emit({
-    name: EVENTS.IT_VENDOR_CONTRACT_CREATED,
-    subject: { entityType: 'it_vendor_contract', entityId: contract.id, recordCode },
-    related: [{ relation: 'with', entityType: 'it_vendor', entityId: input.vendorId }],
-    newState: { status: 'draft', value: input.value, currency: contract.currency },
-    impact: {
-      domains: [IT_DOMAIN],
-      materiality: { measure: 'it_vendor_contract_value', value: input.value, currency: contract.currency },
-    },
-    confidentiality: 'confidential',
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_vendor_contract',
+      subjectId: contract.id,
+      after: { recordCode, title: contract.title, value: input.value },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_VENDOR_CONTRACT_CREATED,
+      subject: { entityType: 'it_vendor_contract', entityId: contract.id, recordCode },
+      related: [{ relation: 'with', entityType: 'it_vendor', entityId: input.vendorId }],
+      newState: { status: 'draft', value: input.value, currency: contract.currency },
+      impact: {
+        domains: [IT_DOMAIN],
+        materiality: { measure: 'it_vendor_contract_value', value: input.value, currency: contract.currency },
+      },
+      confidentiality: 'confidential',
+      tx,
+    });
+    return contract;
   });
 
   const seesMoney = await canSeeMoney('it_vendor_contracts');
@@ -529,24 +549,29 @@ export async function transitionVendorContract(
     patch.terminationReason = reason;
   }
 
-  const updated = await prisma.itVendorContract.update({ where: { id }, data: patch });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itVendorContract.update({ where: { id }, data: patch });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_vendor_contract',
-    subjectId: id,
-    before: { status: from },
-    after: { status: toStatus },
-    meta: { note },
-  });
-  await emit({
-    name: EVENTS.IT_VENDOR_CONTRACT_TRANSITIONED,
-    subject: { entityType: 'it_vendor_contract', entityId: id, recordCode: contract.recordCode },
-    previousState: { status: from },
-    newState: { status: toStatus },
-    reason: { reasonCode: `it_vendor_contract_${toStatus}`, note },
-    impact: { domains: [IT_DOMAIN] },
-    confidentiality: 'confidential',
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_vendor_contract',
+      subjectId: id,
+      before: { status: from },
+      after: { status: toStatus },
+      meta: { note },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_VENDOR_CONTRACT_TRANSITIONED,
+      subject: { entityType: 'it_vendor_contract', entityId: id, recordCode: contract.recordCode },
+      previousState: { status: from },
+      newState: { status: toStatus },
+      reason: { reasonCode: `it_vendor_contract_${toStatus}`, note },
+      impact: { domains: [IT_DOMAIN] },
+      confidentiality: 'confidential',
+      tx,
+    });
+    return updated;
   });
 
   const seesMoney = await canSeeMoney('it_vendor_contracts');

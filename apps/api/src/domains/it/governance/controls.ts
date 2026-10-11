@@ -143,35 +143,43 @@ export async function recordTest(id: string, input: RecordTestInput) {
   if (!RESULTS.includes(input.result)) throw ApiError.badRequest(`Result must be one of: ${RESULTS.join(', ')}.`);
 
   const now = new Date();
-  const test = await prisma.itControlTest.create({
-    data: {
-      tenantId: auth.tenantId,
-      controlId: id,
-      testedAt: now,
-      result: input.result,
-      testerPartyId: auth.partyId ?? 'system',
-      notes: input.notes ?? null,
-      evidenceDocumentId: input.evidenceDocumentId ?? null,
-    },
-  });
+  // The test row, the control's projection of it and the event commit together:
+  // a crash between them would leave lastResult naming a test that was never
+  // recorded, or a test with no event for the subscribers.
+  const { test, updated } = await prisma.$transaction(async (tx) => {
+    const test = await tx.itControlTest.create({
+      data: {
+        tenantId: auth.tenantId,
+        controlId: id,
+        testedAt: now,
+        result: input.result,
+        testerPartyId: auth.partyId ?? 'system',
+        notes: input.notes ?? null,
+        evidenceDocumentId: input.evidenceDocumentId ?? null,
+      },
+    });
 
-  const updated = await prisma.itControl.update({
-    where: { id },
-    data: { lastTestedAt: now, lastResult: input.result, testOverdueNotifiedAt: null },
-  });
+    const updated = await tx.itControl.update({
+      where: { id },
+      data: { lastTestedAt: now, lastResult: input.result, testOverdueNotifiedAt: null },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_control_test',
-    subjectId: test.id,
-    after: { controlId: id, result: input.result },
-  });
-  await emit({
-    name: EVENTS.IT_CONTROL_TESTED,
-    subject: { entityType: 'it_control', entityId: id, recordCode: control.recordCode },
-    newState: { lastResult: input.result, lastTestedAt: now },
-    owner: { partyId: control.ownerPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_control_test',
+      subjectId: test.id,
+      after: { controlId: id, result: input.result },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_CONTROL_TESTED,
+      subject: { entityType: 'it_control', entityId: id, recordCode: control.recordCode },
+      newState: { lastResult: input.result, lastTestedAt: now },
+      owner: { partyId: control.ownerPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return { test, updated };
   });
 
   return { ...updated, tests: [test] };

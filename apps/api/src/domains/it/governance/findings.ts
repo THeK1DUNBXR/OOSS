@@ -76,33 +76,40 @@ export async function createFinding(input: CreateFindingInput) {
   }
 
   const recordCode = await nextRecordCode('FND');
-  const finding = await prisma.itSecurityFinding.create({
-    data: {
-      tenantId: auth.tenantId,
-      recordCode,
-      title,
-      source: input.source,
-      severity: input.severity,
-      cvss: input.cvss ?? null,
-      description: input.description ?? null,
-      applicationId: input.applicationId ?? null,
-      assetId: input.assetId ?? null,
-      dueAt,
-      status: 'open',
-    },
-  });
+  // A finding without its audit row or its raised event is a gap the overdue
+  // ladder and the audit trail cannot see, so all three commit together.
+  const finding = await prisma.$transaction(async (tx) => {
+    const finding = await tx.itSecurityFinding.create({
+      data: {
+        tenantId: auth.tenantId,
+        recordCode,
+        title,
+        source: input.source,
+        severity: input.severity,
+        cvss: input.cvss ?? null,
+        description: input.description ?? null,
+        applicationId: input.applicationId ?? null,
+        assetId: input.assetId ?? null,
+        dueAt,
+        status: 'open',
+      },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_security_finding',
-    subjectId: finding.id,
-    after: { recordCode, severity: input.severity, dueAt },
-  });
-  await emit({
-    name: EVENTS.IT_FINDING_RAISED,
-    subject: { entityType: 'it_security_finding', entityId: finding.id, recordCode },
-    newState: { status: finding.status, severity: input.severity, dueAt },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_security_finding',
+      subjectId: finding.id,
+      after: { recordCode, severity: input.severity, dueAt },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_FINDING_RAISED,
+      subject: { entityType: 'it_security_finding', entityId: finding.id, recordCode },
+      newState: { status: finding.status, severity: input.severity, dueAt },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return finding;
   });
 
   return withTransitions(finding);
@@ -187,23 +194,28 @@ export async function transitionFinding(id: string, event: FindingEvent, note?: 
   }
   const to = findingMachine.apply(from, event);
 
-  const updated = await prisma.itSecurityFinding.update({ where: { id }, data: { status: to } });
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itSecurityFinding.update({ where: { id }, data: { status: to } });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_security_finding',
-    subjectId: id,
-    before: { status: from },
-    after: { status: to },
-    meta: { transition: event },
-  });
-  await emit({
-    name: EVENTS.IT_FINDING_TRANSITIONED,
-    subject: { entityType: 'it_security_finding', entityId: id, recordCode: finding.recordCode },
-    previousState: { status: from },
-    newState: { status: to },
-    reason: note ? { reasonCode: event, note } : null,
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_security_finding',
+      subjectId: id,
+      before: { status: from },
+      after: { status: to },
+      meta: { transition: event },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_FINDING_TRANSITIONED,
+      subject: { entityType: 'it_security_finding', entityId: id, recordCode: finding.recordCode },
+      previousState: { status: from },
+      newState: { status: to },
+      reason: note ? { reasonCode: event, note } : null,
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
 
   return withTransitions(updated);

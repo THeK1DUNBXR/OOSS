@@ -261,28 +261,48 @@ export async function publishPolicy(id: string) {
   }
 
   const now = new Date();
-  if (policy.supersedesId) {
-    await prisma.itPolicyDocument.update({ where: { id: policy.supersedesId }, data: { status: 'superseded' } });
-  }
-  const published = await prisma.itPolicyDocument.update({
-    where: { id },
-    data: { status: 'published', publishedAt: now, publishedById: auth.partyId },
-  });
+  // Retiring the predecessor, publishing this version and the event commit
+  // together: a published version whose predecessor is still live would show
+  // two current versions of one policy to every employee who acknowledges it.
+  const published = await prisma.$transaction(async (tx) => {
+    if (policy.supersedesId) {
+      const prior = await tx.itPolicyDocument.findFirst({
+        where: { id: policy.supersedesId, tenantId: auth.tenantId },
+      });
+      await tx.itPolicyDocument.update({ where: { id: policy.supersedesId }, data: { status: 'superseded' } });
+      await auditWrite({
+        action: 'update',
+        subjectType: 'it_policy_document',
+        subjectId: policy.supersedesId,
+        before: { status: prior?.status ?? null },
+        after: { status: 'superseded' },
+        meta: { supersededBy: id },
+        tx,
+      });
+    }
+    const published = await tx.itPolicyDocument.update({
+      where: { id },
+      data: { status: 'published', publishedAt: now, publishedById: auth.partyId },
+    });
 
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_policy_document',
-    subjectId: id,
-    before: { status: 'draft' },
-    after: { status: 'published' },
-  });
-  await emit({
-    name: EVENTS.IT_POLICY_PUBLISHED,
-    subject: { entityType: 'it_policy_document', entityId: id, recordCode: policy.recordCode },
-    previousState: { status: 'draft' },
-    newState: { status: 'published', version: policy.version },
-    owner: { partyId: policy.drafterPartyId },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_policy_document',
+      subjectId: id,
+      before: { status: 'draft' },
+      after: { status: 'published' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_POLICY_PUBLISHED,
+      subject: { entityType: 'it_policy_document', entityId: id, recordCode: policy.recordCode },
+      previousState: { status: 'draft' },
+      newState: { status: 'published', version: policy.version },
+      owner: { partyId: policy.drafterPartyId },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return published;
   });
 
   return { applied: true, policy: withTransitions(published), approvalStepId: null, reason: gate.reason };
@@ -346,21 +366,26 @@ export async function retirePolicy(id: string) {
     throw ApiError.unprocessable(`${policy.recordCode} is ${policy.status}; retire is not one of its transitions.`);
   }
   const to = policyMachine.apply(policy.status as PolicyState, 'RETIRE');
-  const updated = await prisma.itPolicyDocument.update({ where: { id }, data: { status: to } });
-  await auditWrite({
-    action: 'update',
-    subjectType: 'it_policy_document',
-    subjectId: id,
-    before: { status: policy.status },
-    after: { status: to },
-    meta: { transition: 'RETIRE' },
-  });
-  await emit({
-    name: EVENTS.IT_POLICY_PUBLISHED,
-    subject: { entityType: 'it_policy_document', entityId: id, recordCode: policy.recordCode },
-    previousState: { status: policy.status },
-    newState: { status: to },
-    impact: { domains: [IT_DOMAIN] },
+  const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.itPolicyDocument.update({ where: { id }, data: { status: to } });
+    await auditWrite({
+      action: 'update',
+      subjectType: 'it_policy_document',
+      subjectId: id,
+      before: { status: policy.status },
+      after: { status: to },
+      meta: { transition: 'RETIRE' },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_POLICY_PUBLISHED,
+      subject: { entityType: 'it_policy_document', entityId: id, recordCode: policy.recordCode },
+      previousState: { status: policy.status },
+      newState: { status: to },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return updated;
   });
   return withTransitions(updated);
 }
@@ -387,22 +412,31 @@ export async function acknowledgePolicy(id: string) {
   });
   if (existing) return existing;
 
-  const ack = await prisma.itPolicyAcknowledgement.create({
-    data: { tenantId: auth.tenantId, policyId: id, version: policy.version, partyId: auth.partyId },
-  });
+  // The acknowledgement is the evidence a policy was read at a version; it must
+  // not exist without its audit record or its event.
+  // Narrowed once here: the guard above does not carry into the callback.
+  const partyId: string = auth.partyId;
+  const ack = await prisma.$transaction(async (tx) => {
+    const ack = await tx.itPolicyAcknowledgement.create({
+      data: { tenantId: auth.tenantId, policyId: id, version: policy.version, partyId },
+    });
 
-  await auditWrite({
-    action: 'create',
-    subjectType: 'it_policy_acknowledgement',
-    subjectId: ack.id,
-    after: { policyId: id, version: policy.version, partyId: auth.partyId },
-  });
-  await emit({
-    name: EVENTS.IT_POLICY_ACKNOWLEDGED,
-    subject: { entityType: 'it_policy_acknowledgement', entityId: ack.id },
-    related: [{ relation: 'acknowledges', entityType: 'it_policy_document', entityId: id }],
-    newState: { partyId: auth.partyId, version: policy.version },
-    impact: { domains: [IT_DOMAIN] },
+    await auditWrite({
+      action: 'create',
+      subjectType: 'it_policy_acknowledgement',
+      subjectId: ack.id,
+      after: { policyId: id, version: policy.version, partyId },
+      tx,
+    });
+    await emit({
+      name: EVENTS.IT_POLICY_ACKNOWLEDGED,
+      subject: { entityType: 'it_policy_acknowledgement', entityId: ack.id },
+      related: [{ relation: 'acknowledges', entityType: 'it_policy_document', entityId: id }],
+      newState: { partyId, version: policy.version },
+      impact: { domains: [IT_DOMAIN] },
+      tx,
+    });
+    return ack;
   });
 
   return ack;
