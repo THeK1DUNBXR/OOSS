@@ -872,10 +872,15 @@ export interface InvoiceView {
   issuedDate: string | null;
   dueDate: string | null;
   total: number | null;
+  totalMinor: string | null;
   taxableValue: number | null;
+  taxableValueMinor: string | null;
   taxAmount: number | null;
+  taxAmountMinor: string | null;
   allocated: number | null;
+  allocatedMinor: string | null;
   outstanding: number | null;
+  outstandingMinor: string | null;
   daysOverdue: number | null;
   /**
    * What the document says about payment, which is a different fact from
@@ -884,6 +889,7 @@ export interface InvoiceView {
    */
   paymentType: string;
   amountPayableNow: number | null;
+  amountPayableNowMinor: string | null;
   paymentMode: string | null;
   paymentReference: string | null;
   interState: boolean;
@@ -911,11 +917,15 @@ export interface InvoiceLineView {
   description: string;
   quantity: number;
   unitPrice: number | null;
+  unitPriceMinor: string | null;
   amount: number | null;
+  amountMinor: string | null;
   discountAmount: number | null;
+  discountAmountMinor: string | null;
   discountPercent: number | null;
   gstRate: number | null;
   taxAmount: number | null;
+  taxAmountMinor: string | null;
   hsnSac: string | null;
   revenueMethod: string;
 }
@@ -1127,9 +1137,12 @@ export interface ReceiptView {
   feeInstalmentId: string | null;
   customerName: string | null;
   amount: number;
+  amountMinor: string;
   currency: string;
   subjectTotal: number;
+  subjectTotalMinor: string;
   balanceAfter: number;
+  balanceAfterMinor: string;
   paymentMode: string | null;
   paymentReference: string | null;
   paymentCode: string;
@@ -1487,6 +1500,7 @@ export interface PaymentView {
   id: string;
   recordCode: string;
   amount: number | null;
+  amountMinor: string | null;
   currency: string;
   gatewayReference: string;
   receivedAt: string;
@@ -1495,15 +1509,19 @@ export interface PaymentView {
   /** Who took the money. Null for a gateway webhook, which has no human behind it. */
   recordedById: string | null;
   allocated: number | null;
+  allocatedMinor: string | null;
   unallocated: number | null;
+  unallocatedMinor: string | null;
   receipts: {
     id: string;
     recordCode: string;
     invoiceId: string | null;
     feeInstalmentId: string | null;
     allocatedAmount: number | null;
+    allocatedAmountMinor: string | null;
     allocatedAt: string;
     balanceAfter: number | null;
+    balanceAfterMinor: string | null;
   }[];
 }
 

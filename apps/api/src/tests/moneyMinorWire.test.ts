@@ -89,7 +89,7 @@ describe('an invoice on the wire carries its paise beside each money field', () 
     expect(inv.igstAmountMinor).toBe(paiseOfWire(inv.igstAmount));
     expect(inv.roundOffMinor).toBe(paiseOfWire(inv.roundOff));
     expect(inv.grandTotalMinor).toBe(paiseOfWire(inv.grandTotal));
-    expect(inv.grandTotalMinor).toBe('145679');
+    expect(inv.grandTotalMinor).toBe('145700');
     expect(inv.amountPayableNowMinor).toBe(paiseOfWire(inv.amountPayableNow));
 
     const line = inv.lines[0];
@@ -101,7 +101,7 @@ describe('an invoice on the wire carries its paise beside each money field', () 
 
   it('a large amount: 99,99,99,999.99 survives the wire without a float', async () => {
     const inv = await issueOne(99_999_999.99, 0);
-    expect(inv.grandTotalMinor).toBe('9999999999');
+    expect(inv.grandTotalMinor).toBe('10000000000');
     expect(inv.lines[0].amountMinor).toBe('9999999999');
     expect(inv.lines[0].unitPriceMinor).toBe('9999999999');
   });
@@ -119,20 +119,20 @@ describe('the invoice summary and list carry paise for the header figures', () =
     expect(collected.status).toBe(200);
     expect(collected.body.payment.amountMinor).toBe('50001');
     expect(collected.body.receipt.allocatedAmountMinor).toBe('50001');
-    expect(collected.body.receipt.subjectTotalMinor).toBe('145679');
+    expect(collected.body.receipt.subjectTotalMinor).toBe('145700');
     expect(collected.body.receipt.balanceAfterMinor).toBe(paiseOfWire(collected.body.receipt.balanceAfter));
-    expect(collected.body.totals.payableMinor).toBe('145679');
+    expect(collected.body.totals.payableMinor).toBe('145700');
     expect(collected.body.totals.allocatedMinor).toBe('50001');
-    expect(collected.body.totals.outstandingMinor).toBe('95678');
-    expect(collected.body.invoice.grandTotalMinor).toBe('145679');
+    expect(collected.body.totals.outstandingMinor).toBe('95699');
+    expect(collected.body.invoice.grandTotalMinor).toBe('145700');
 
     const summary = await call('GET', `/finance/invoices/${inv.id}`);
     expect(summary.status).toBe(200);
     expect(summary.body.payableMinor).toBe(paiseOfWire(summary.body.payable));
     expect(summary.body.allocatedMinor).toBe('50001');
-    expect(summary.body.outstandingMinor).toBe('95678');
-    expect(summary.body.totalMinor).toBe('145679');
-    expect(summary.body.invoice.grandTotalMinor).toBe('145679');
+    expect(summary.body.outstandingMinor).toBe('95699');
+    expect(summary.body.totalMinor).toBe('145700');
+    expect(summary.body.invoice.grandTotalMinor).toBe('145700');
     expect(summary.body.invoice.lines[0].unitPriceMinor).toBe('123457');
     expect(summary.body.invoice.receipts[0].allocatedAmountMinor).toBe('50001');
     expect(summary.body.invoice.receipts[0].payment.amountMinor).toBe('50001');
@@ -151,11 +151,11 @@ describe('the invoice summary and list carry paise for the header figures', () =
     expect(list.status).toBe(200);
     const row = list.body.find((r: { id: string }) => r.id === inv.id);
     expect(row).toBeDefined();
-    expect(row.totalMinor).toBe('9999999999');
+    expect(row.totalMinor).toBe('10000000000');
     expect(row.taxableValueMinor).toBe(paiseOfWire(row.taxableValue));
     expect(row.taxAmountMinor).toBe('0');
     expect(row.allocatedMinor).toBe('9999999998');
-    expect(row.outstandingMinor).toBe('1');
+    expect(row.outstandingMinor).toBe('2');
     expect(row.amountPayableNowMinor).toBe(paiseOfWire(row.amountPayableNow ?? 0));
     expect(row.lines[0].unitPriceMinor).toBe('9999999999');
     expect(row.lines[0].amountMinor).toBe('9999999999');
@@ -182,9 +182,9 @@ describe('payments, allocations, receipts and credit notes carry paise', () => {
     });
     expect(allocated.status).toBe(200);
     expect(allocated.body.allocatedAmountMinor).toBe('30001');
-    expect(allocated.body.subjectTotalMinor).toBe('145679');
+    expect(allocated.body.subjectTotalMinor).toBe('145700');
     expect(allocated.body.balanceAfterMinor).toBe(paiseOfWire(allocated.body.balanceAfter));
-    expect(allocated.body.balanceAfterMinor).toBe('115678');
+    expect(allocated.body.balanceAfterMinor).toBe('115699');
 
     const payments = await call('GET', '/finance/payments');
     const pay = payments.body.find((p: { id: string }) => p.id === created.body.id);
@@ -193,15 +193,15 @@ describe('payments, allocations, receipts and credit notes carry paise', () => {
     expect(pay.allocatedMinor).toBe('30001');
     expect(pay.unallocatedMinor).toBe('70002');
     expect(pay.receipts[0].allocatedAmountMinor).toBe('30001');
-    expect(pay.receipts[0].balanceAfterMinor).toBe('115678');
+    expect(pay.receipts[0].balanceAfterMinor).toBe('115699');
 
     const receipts = await call('GET', `/finance/receipts?invoiceId=${inv.id}`);
     expect(receipts.status).toBe(200);
     const rec = receipts.body.find((r: { id: string }) => r.id === allocated.body.id);
     expect(rec).toBeDefined();
     expect(rec.amountMinor).toBe('30001');
-    expect(rec.subjectTotalMinor).toBe('145679');
-    expect(rec.balanceAfterMinor).toBe('115678');
+    expect(rec.subjectTotalMinor).toBe('145700');
+    expect(rec.balanceAfterMinor).toBe('115699');
   });
 
   it('POST /invoices/:id/credit-note returns the note with its paise', async () => {

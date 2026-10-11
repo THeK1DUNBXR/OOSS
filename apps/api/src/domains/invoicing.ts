@@ -76,6 +76,7 @@ import {
 } from '@kaizen/shared';
 import { istDateKey } from '@kaizen/shared';
 import { prisma, num, type DbTx } from '../platform/db.js';
+import { withMinor, wireInt, type DecimalLike } from '../platform/wire.js';
 import { currentAuth } from '../platform/context.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
@@ -256,6 +257,75 @@ export function totalsOf(invoice: {
     allocated,
     creditNoted,
     outstanding: round2(Math.max(payable - allocated - creditNoted, 0)),
+  };
+}
+
+/**
+ * The same header figures as {@link totalsOf}, in exact paise on the wire.
+ *
+ * totalsOf sums floats and rounds the result. That is fine for a number a screen
+ * shows and wrong for a field a client may add or compare to the paisa.
+ * positionOfInvoice is the paise path the payment lock already trusts, so the
+ * wire takes its figures from there rather than from a second arithmetic.
+ */
+export function totalsMinorOf(invoice: Parameters<typeof positionOfInvoice>[0]) {
+  const p = positionOfInvoice(invoice);
+  return {
+    payableMinor: wireInt(p.payable),
+    allocatedMinor: wireInt(p.allocated),
+    creditNotedMinor: wireInt(p.creditNoted),
+    outstandingMinor: wireInt(p.outstanding),
+  };
+}
+
+// The money columns on each row, as the wire names them. Listed once so a route
+// that returns a raw row and a route that maps one cannot disagree about which
+// fields carry paise. Rates (gstRate, discountPercent) are percentages, not money,
+// and are deliberately absent.
+const INVOICE_MONEY = [
+  'taxableValue',
+  'cgstAmount',
+  'sgstAmount',
+  'igstAmount',
+  'roundOff',
+  'grandTotal',
+  'amountPayableNow',
+] as const;
+const LINE_MONEY = ['unitPrice', 'amount', 'discountAmount', 'taxAmount'] as const;
+const RECEIPT_MONEY = ['allocatedAmount', 'subjectTotal', 'balanceAfter'] as const;
+const PAYMENT_MONEY = ['amount', 'foreignAmount'] as const;
+
+export function paymentWire<T extends { amount: DecimalLike; foreignAmount: DecimalLike | null }>(payment: T) {
+  return withMinor(payment, PAYMENT_MONEY);
+}
+
+interface ReceiptWireRow {
+  allocatedAmount: DecimalLike;
+  subjectTotal: DecimalLike;
+  balanceAfter: DecimalLike;
+  payment?: { amount: DecimalLike; foreignAmount: DecimalLike | null };
+}
+
+export function receiptWire<T extends ReceiptWireRow>(receipt: T) {
+  const out = withMinor(receipt, RECEIPT_MONEY);
+  return receipt.payment ? { ...out, payment: paymentWire(receipt.payment) } : out;
+}
+
+/**
+ * An invoice row as the wire carries it: the header money, each line's money and
+ * each receipt's money, with a Minor sibling for each. Lines and receipts are
+ * only mapped when the row loaded them, because some callers return the bare row.
+ */
+export function invoiceWire<
+  T extends Record<(typeof INVOICE_MONEY)[number], DecimalLike> & {
+    lines?: Array<Record<(typeof LINE_MONEY)[number], DecimalLike>>;
+    receipts?: ReceiptWireRow[];
+  },
+>(invoice: T) {
+  return {
+    ...withMinor(invoice, INVOICE_MONEY),
+    ...(invoice.lines ? { lines: invoice.lines.map((l) => withMinor(l, LINE_MONEY)) } : {}),
+    ...(invoice.receipts ? { receipts: invoice.receipts.map((r) => receiptWire(r)) } : {}),
   };
 }
 
@@ -867,7 +937,7 @@ export async function createInvoice(input: InvoiceInput) {
     include: { lines: { orderBy: { position: 'asc' } }, receipts: true },
   });
   return {
-    ...row,
+    ...invoiceWire(row),
     /** The receipt issued for the payment taken at creation, if any. */
     receipt: collected ? { id: collected.receipt.id, recordCode: collected.receipt.recordCode } : null,
     /** Set when that payment happened to settle the invoice on the spot. */
@@ -1101,7 +1171,7 @@ export async function issueInvoiceDraft(
     include: { lines: { orderBy: { position: 'asc' } }, receipts: true },
   });
   return {
-    ...row,
+    ...invoiceWire(row),
     receipt: collected ? { id: collected.receipt.id, recordCode: collected.receipt.recordCode } : null,
     finalInvoice: collected?.finalInvoice ?? null,
   };
@@ -1390,7 +1460,18 @@ export async function collectInvoicePayment(
       });
     }
 
-    return { payment, receipt, invoice: updated, allocated, balanceAfter, payable, settled };
+    return {
+      payment,
+      receipt,
+      invoice: updated,
+      allocated,
+      balanceAfter,
+      payable,
+      settled,
+      payableMinor: wireInt(position.payable),
+      allocatedMinor: wireInt(allocatedPaise),
+      balanceAfterMinor: wireInt(balanceAfterPaise),
+    };
   });
   const { settled } = result;
 
@@ -1419,10 +1500,17 @@ export async function collectInvoicePayment(
   }
 
   return {
-    payment: result.payment,
-    receipt: result.receipt,
-    invoice: result.invoice,
-    totals: { payable: result.payable, allocated: result.allocated, outstanding: result.balanceAfter },
+    payment: paymentWire(result.payment),
+    receipt: receiptWire(result.receipt),
+    invoice: invoiceWire(result.invoice),
+    totals: {
+      payable: result.payable,
+      allocated: result.allocated,
+      outstanding: result.balanceAfter,
+      payableMinor: result.payableMinor,
+      allocatedMinor: result.allocatedMinor,
+      outstandingMinor: result.balanceAfterMinor,
+    },
     /**
      * Whether the instalments are done. Kept alongside `finalInvoice` below
      * rather than removed: it is the fact that decided whether one was raised.
@@ -1539,7 +1627,8 @@ export async function invoiceSummary(invoiceId: string) {
   const invoice = await loadInvoiceForRead(invoiceId);
   const creditNotes = await prisma.creditNote.findMany({ where: { invoiceId } });
   const totals = totalsOf({ ...invoice, creditNotes });
-  return { invoice, ...totals, total: totals.payable };
+  const minor = totalsMinorOf({ ...invoice, creditNotes });
+  return { invoice: invoiceWire(invoice), ...totals, ...minor, total: totals.payable, totalMinor: minor.payableMinor };
 }
 
 /**
