@@ -116,6 +116,37 @@ function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2002';
 }
 
+/** What one distribution write produced: the new header, its shares, and the rows it closed. */
+interface WrittenDistribution {
+  header: LineDistribution;
+  shares: LineDistributionLine[];
+  superseded: { before: LineDistribution; after: LineDistribution }[];
+}
+
+/**
+ * Another writer reached the same subject, line or day first, and the
+ * database settled it rather than the read above. That is a loss for this
+ * caller, not a fault, so it answers 409 and the caller re-reads and retries.
+ * Covered: the exclusion constraint (23P01), a serialization failure (40001),
+ * a deadlock (40P01), Prisma's transaction write conflict (P2034), and the
+ * deferred share total (raised by line_distributions_check_total when the
+ * shares of a header are changed by a racing transaction).
+ */
+const RACE_CODES = new Set(['23P01', '40001', '40P01', 'P2034']);
+const RACE_MESSAGE =
+  /exclusion constraint|could not serialize|deadlock detected|must total 10000 basis points|basis points must total/;
+
+function isRaceLoss(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; meta?: { code?: unknown }; message?: unknown };
+  if (typeof e.code === 'string' && RACE_CODES.has(e.code)) return true;
+  if (typeof e.meta?.code === 'string' && RACE_CODES.has(e.meta.code)) return true;
+  return typeof e.message === 'string' && RACE_MESSAGE.test(e.message);
+}
+
+const RACE_MESSAGE_TEXT =
+  'Another change to this subject, line or day landed first. Read the current state and try again.';
+
 /** A split states its shares on every successor or on none, and the stated ones total 10,000. */
 function checkSuccessorShares(shares: (number | null)[]): void {
   const stated = shares.filter((s): s is number => s !== null);
@@ -316,6 +347,7 @@ export async function recordSuccession(input: RecordSuccessionInput) {
     rows = await createSuccessorRows(auth.tenantId, recorderOf(auth.partyId), from.id, day, input.successors);
   } catch (err) {
     if (isUniqueViolation(err)) throw ApiError.conflict('This succession is already recorded for that day.');
+    if (isRaceLoss(err)) throw ApiError.conflict(RACE_MESSAGE_TEXT);
     throw err;
   }
   for (const row of rows) {
@@ -349,7 +381,7 @@ async function createSuccessorRows(
   fromLineId: string,
   effectiveFrom: Date,
   successors: SuccessorInput[],
-) {
+): Promise<BusinessLineSuccessor[]> {
   return prisma.$transaction(async (tx) => {
     const out: BusinessLineSuccessor[] = [];
     for (const s of successors) {
@@ -447,6 +479,7 @@ export async function setLineDistribution(input: SetLineDistributionInput) {
     result = await writeDistribution(auth.tenantId, recorderOf(auth.partyId), subject, day, input.shares);
   } catch (err) {
     if (isUniqueViolation(err)) throw ApiError.conflict('This distribution is already recorded for that day.');
+    if (isRaceLoss(err)) throw ApiError.conflict(RACE_MESSAGE_TEXT);
     throw err;
   }
   const { header, shares, superseded } = result;
@@ -497,7 +530,7 @@ async function writeDistribution(
   subject: SubjectRef,
   day: Date,
   shares: DistributionShare[],
-) {
+): Promise<WrittenDistribution> {
   return prisma.$transaction(async (tx) => {
     const superseded: { before: LineDistribution; after: LineDistribution }[] = [];
     const current = await tx.lineDistribution.findMany({

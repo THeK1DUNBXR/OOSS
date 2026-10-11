@@ -18,7 +18,7 @@
 
 **`apps/api/src/domains/books.ts`** (1548 lines) — listAccounts:88 · createAccount:97 · listCategories:139 · createCategory:148 · accountBalances:190 · TransactionInput:234 · groupCounterpartyOptions:261 · recordTransaction:294 · reverseTransaction:392 · listTransactions:478 · listVendorBills:514 · recordVendorBill:528 · payVendorBill:592 · payablesAgeing:654 · detectOverdueBills:685 · priceInvoiceGst:745 · gstSummary:819 · setBudgetLine:867 · budgetVariance:930 · listAssets:1000 · createAsset:1033 · assetSchedule:1103 · listLoans:1120 · createLoan:1154 · loanSchedule:1197 · generateRecurring:1224 · ProfitAndLoss:1301 · profitAndLoss:1317 · monthlyTrend:1383 · cashPosition:1416 · cashForecast:1445 · postPayrollToBooks:1490
 
-**`apps/api/src/domains/businessLines.ts`** (533 lines) — CreateBusinessLineInput:152 · createBusinessLine:162 · renameBusinessLine:205 · retireBusinessLine:237 · SuccessorInput:277 · RecordSuccessionInput:282 · recordSuccession:294 · DistributionSubject:377 · DistributionShare:383 · SetLineDistributionInput:388 · setLineDistribution:432
+**`apps/api/src/domains/businessLines.ts`** (566 lines) — CreateBusinessLineInput:183 · createBusinessLine:193 · renameBusinessLine:236 · retireBusinessLine:268 · SuccessorInput:308 · RecordSuccessionInput:313 · recordSuccession:325 · DistributionSubject:409 · DistributionShare:415 · SetLineDistributionInput:420 · setLineDistribution:464
 
 **`apps/api/src/domains/capability.ts`** (586 lines) — listSkills:51 · createSkill:57 · CapabilityView:83 · capabilitiesForParty:105 · assertClaim:152 · addEvidence:212 · verifyClaim:335 · recordContradiction:431 · changeClaimState:487 · claimFromLearningCompletion:530 · findCapableParties:556
 
