@@ -11,7 +11,7 @@
  */
 
 import { expect, type Page } from '@playwright/test';
-import { signInAs, test } from './helpers.js';
+import { settleSession, signInAs, test } from './helpers.js';
 
 /**
  * Web fonts are decoration with a fallback stack behind them, and a stack
@@ -123,11 +123,11 @@ test.describe('the Technology group, signed in as the chairman', () => {
       // `ErrorBox` (apps/web/src/components/ui.tsx) always wears this class,
       // whatever the error message says, so this is sturdier than matching text.
       await expect(page.locator('[class*="border-band-critical"]'), `${path} rendered an error box`).toHaveCount(0);
-      // Let the page finish restoring its session before the next load. Each load
-      // renews the refresh cookie, and a load that starts while the last renewal
-      // is still in flight can lose the new cookie, after which the next renewal
-      // is refused. A person does not click through seven screens in a second.
+      // Each load renews the refresh cookie. Navigating away while a renewal is
+      // still in flight can lose the new cookie (see `settleSession`), so the
+      // next load waits for the renewals to land.
       await expect(page.getByRole('link', { name: 'Getting Started' })).toBeVisible();
+      await settleSession(page);
     }
   });
 });

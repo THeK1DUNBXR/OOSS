@@ -3,7 +3,7 @@
  * the checklist the app is being asked about.
  */
 
-import { devices, expect, test as base, type BrowserContext, type Page } from '@playwright/test';
+import { devices, expect, test as base, type BrowserContext, type Page, type Request } from '@playwright/test';
 
 export const API_URL = process.env.E2E_API_URL ?? 'http://127.0.0.1:4000';
 
@@ -96,6 +96,38 @@ let signedInAs: string | null = null;
 /** The account each page was signed in as, for the API calls a test makes on its behalf. */
 const accountOf = new WeakMap<Page, string>();
 
+/** The session renewals each page has in flight. See `settleSession`. */
+const renewalsInFlight = new WeakMap<Page, Set<Request>>();
+
+/** Records a page's session renewals while they are in flight. */
+function trackRenewals(page: Page): void {
+  const inFlight = new Set<Request>();
+  renewalsInFlight.set(page, inFlight);
+  const isRenewal = (r: Request) => r.url().includes('/api/auth/refresh');
+  page.on('request', (r) => {
+    if (isRenewal(r)) inFlight.add(r);
+  });
+  const finished = (r: Request) => inFlight.delete(r);
+  page.on('requestfinished', finished);
+  page.on('requestfailed', finished);
+}
+
+/**
+ * Waits until the page has no session renewal in flight.
+ *
+ * A renewal rotates the refresh cookie on the server before its response
+ * reaches the browser. If the page navigates away first, the response is
+ * dropped with the page, and the browser keeps the old cookie. The server
+ * accepts that old cookie only for its grace window, so the next renewal after
+ * that is refused and the app shows the sign-in screen. A person does not
+ * navigate while the app is still renewing, so the test does not either.
+ */
+export async function settleSession(page: Page): Promise<void> {
+  const inFlight = renewalsInFlight.get(page);
+  if (!inFlight) return;
+  await expect.poll(() => inFlight.size, { message: 'a session renewal never finished' }).toBe(0);
+}
+
 /**
  * Signs the shared browser context in the way the app itself does, then opens
  * the page at `/` and lets the app restore the session.
@@ -114,6 +146,7 @@ const accountOf = new WeakMap<Page, string>();
  */
 export async function signInAs(page: Page, email: string, password: string): Promise<void> {
   accountOf.set(page, email);
+  trackRenewals(page);
 
   // The one-off orientation modal, dismissed as a user would dismiss it once.
   // A per-browser convenience flag, not part of the session.
@@ -127,7 +160,10 @@ export async function signInAs(page: Page, email: string, password: string): Pro
 
   if (signedInAs === email) {
     await page.goto('/');
-    if (await shellShows(page)) return;
+    if (await shellShows(page)) {
+      await settleSession(page);
+      return;
+    }
     // The cookie this browser holds no longer restores. A renewal can be lost
     // when the page that made it is closed before the response is stored, and
     // the server has rotated past the cookie the browser kept. Sign in again,
@@ -155,6 +191,7 @@ export async function signInAs(page: Page, email: string, password: string): Pro
   // The landing screen depends on the role, so wait for the shell rather than
   // for a path: every signed-in person has the sidebar and nobody else does.
   await expect(page.getByRole('link', { name: 'Getting Started' })).toBeVisible();
+  await settleSession(page);
 }
 
 /** Whether the signed-in shell appears, within a few seconds of the page loading. */
