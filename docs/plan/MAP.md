@@ -546,7 +546,7 @@
 
 **`apps/web/src/pages/StudentTimeline.tsx`** (707 lines) — StudentTimeline:77 · LearnerQueue:551
 
-**`apps/web/src/pages/Students.tsx`** (363 lines) — Students:90 · StudentDetail:210
+**`apps/web/src/pages/Students.tsx`** (328 lines) — Students:69 · StudentDetail:185
 
 **`apps/web/src/pages/Workspace.tsx`** (415 lines) — Workspace:32 · Exceptions:249
 
@@ -708,45 +708,45 @@
 
 **`apps/web/src/pages/kaizenInvoice/PrintPortal.tsx`** (49 lines) — PrintPortal:32
 
-**`apps/web/src/pages/marketing/Analytics.tsx`** (703 lines) — Analytics:100
+**`apps/web/src/pages/marketing/Analytics.tsx`** (740 lines) — Analytics:102
 
-**`apps/web/src/pages/marketing/Assets.tsx`** (401 lines) — Assets:37
+**`apps/web/src/pages/marketing/Assets.tsx`** (419 lines) — Assets:45
 
-**`apps/web/src/pages/marketing/Audiences.tsx`** (755 lines) — Audiences:70
+**`apps/web/src/pages/marketing/Audiences.tsx`** (770 lines) — Audiences:126
 
-**`apps/web/src/pages/marketing/Budget.tsx`** (460 lines) — Budget:35
+**`apps/web/src/pages/marketing/Budget.tsx`** (544 lines) — Budget:46
 
 **`apps/web/src/pages/marketing/Calendar.tsx`** (176 lines) — Calendar:54
 
-**`apps/web/src/pages/marketing/CampaignDetail.tsx`** (635 lines) — CampaignDetail:68
+**`apps/web/src/pages/marketing/CampaignDetail.tsx`** (691 lines) — CampaignDetail:73
 
 **`apps/web/src/pages/marketing/Campaigns.tsx`** (356 lines) — Campaigns:51
 
 **`apps/web/src/pages/marketing/Consent.tsx`** (389 lines) — Consent:48
 
-**`apps/web/src/pages/marketing/Forms.tsx`** (1013 lines) — Forms:98
+**`apps/web/src/pages/marketing/Forms.tsx`** (1090 lines) — Forms:103
 
-**`apps/web/src/pages/marketing/Journeys.tsx`** (595 lines) — Journeys:70
+**`apps/web/src/pages/marketing/Journeys.tsx`** (607 lines) — Journeys:108
 
-**`apps/web/src/pages/marketing/MarketingEvents.tsx`** (563 lines) — MarketingEvents:62 · MarketingEventDetail:237
+**`apps/web/src/pages/marketing/MarketingEvents.tsx`** (588 lines) — MarketingEvents:129 · MarketingEventDetail:257
 
 **`apps/web/src/pages/marketing/MarketingHealthCard.tsx`** (91 lines) — MarketingHealthCard:17
 
-**`apps/web/src/pages/marketing/MarketingOverview.tsx`** (206 lines) — MarketingOverview:51
+**`apps/web/src/pages/marketing/MarketingOverview.tsx`** (219 lines) — MarketingOverview:102
 
-**`apps/web/src/pages/marketing/MarketingSettings.tsx`** (726 lines) — MarketingSettings:82
+**`apps/web/src/pages/marketing/MarketingSettings.tsx`** (778 lines) — MarketingSettings:84
 
 **`apps/web/src/pages/marketing/MarketingShell.tsx`** (66 lines) — MarketingShell:38
 
 **`apps/web/src/pages/marketing/Plans.tsx`** (160 lines) — Plans:28
 
-**`apps/web/src/pages/marketing/Referrals.tsx`** (512 lines) — Referrals:42
+**`apps/web/src/pages/marketing/Referrals.tsx`** (562 lines) — Referrals:45
 
-**`apps/web/src/pages/marketing/Sends.tsx`** (645 lines) — Sends:94 · SendDetail:376
+**`apps/web/src/pages/marketing/Sends.tsx`** (672 lines) — Sends:147 · SendDetail:401
 
-**`apps/web/src/pages/marketing/Social.tsx`** (289 lines) — Social:37
+**`apps/web/src/pages/marketing/Social.tsx`** (310 lines) — Social:38
 
-**`apps/web/src/pages/marketing/Templates.tsx`** (474 lines) — Templates:66
+**`apps/web/src/pages/marketing/Templates.tsx`** (475 lines) — Templates:96
 
 **`apps/web/src/pages/me/Attendance.tsx`** (506 lines) — Attendance:86
 
