@@ -422,11 +422,8 @@ export async function issueDebitNote(invoiceId: string, input: DebitNoteInput) {
   }
 
   const numbering = await documentNumbering();
-  const recordCode = await nextDocumentNumber(
-    DOCUMENT_SERIES.debitNote,
-    numbering.prefix,
-    new Date(),
-    numbering.yearFormat,
+  const recordCode = await prisma.$transaction((tx) =>
+    nextDocumentNumber(tx, DOCUMENT_SERIES.debitNote, numbering.prefix, new Date(), numbering.yearFormat),
   );
 
   const note = await prisma.debitNote.create({

@@ -51,7 +51,7 @@ export async function requestRefund(input: {
   }
 
   const prefix = await documentPrefix();
-  const recordCode = await nextDocumentNumber(DOCUMENT_SERIES.refund, prefix);
+  const recordCode = await prisma.$transaction((tx) => nextDocumentNumber(tx, DOCUMENT_SERIES.refund, prefix));
 
   const refund = await prisma.refund.create({
     data: {

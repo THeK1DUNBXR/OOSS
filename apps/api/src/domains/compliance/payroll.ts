@@ -650,11 +650,8 @@ async function issuePayslipsForRun(payrollRunId: string, payPeriod: string, inst
     if (!instruction || instruction.computedFrom == null || instruction.payslipNumber) continue;
 
     const employment = instruction.employmentRelationship;
-    const number = await nextDocumentNumber(
-      DOCUMENT_SERIES.payslip,
-      numbering.prefix,
-      new Date(),
-      numbering.yearFormat,
+    const number = await prisma.$transaction((tx) =>
+      nextDocumentNumber(tx, DOCUMENT_SERIES.payslip, numbering.prefix, new Date(), numbering.yearFormat),
     );
 
     const snapshot = {

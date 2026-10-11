@@ -372,11 +372,8 @@ async function issueFinalInvoice(invoiceId: string, input: { note?: string | nul
   if (current) return current;
 
   const numbering = await documentNumbering();
-  const recordCode = await nextDocumentNumber(
-    DOCUMENT_SERIES.finalInvoice,
-    numbering.prefix,
-    new Date(),
-    numbering.yearFormat,
+  const recordCode = await prisma.$transaction((tx) =>
+    nextDocumentNumber(tx, DOCUMENT_SERIES.finalInvoice, numbering.prefix, new Date(), numbering.yearFormat),
   );
   const final = await prisma.finalInvoice.create({
     data: {
@@ -525,11 +522,8 @@ export async function finalizeCourseFeeInvoice(invoiceId: string, trigger: 'sett
   const balance = round2(Math.max(totals.payable - totalReceived - totals.creditNoted, 0));
 
   const numbering = await documentNumbering();
-  const recordCode = await nextDocumentNumber(
-    DOCUMENT_SERIES.finalInvoice,
-    numbering.prefix,
-    new Date(),
-    numbering.yearFormat,
+  const recordCode = await prisma.$transaction((tx) =>
+    nextDocumentNumber(tx, DOCUMENT_SERIES.finalInvoice, numbering.prefix, new Date(), numbering.yearFormat),
   );
   const final = await prisma.finalInvoice.create({
     data: {

@@ -61,7 +61,9 @@ export async function issueCertificate(input: {
   }
 
   const prefix = await documentPrefix();
-  const number = await nextDocumentNumber(DOCUMENT_SERIES.certificate, prefix);
+  // Its own transaction: the number is taken where the document is written, so a
+  // failed write does not leave a hole. This caller has not yet moved its write in.
+  const number = await prisma.$transaction((tx) => nextDocumentNumber(tx, DOCUMENT_SERIES.certificate, prefix));
 
   const certificate = await prisma.certificate.create({
     data: {

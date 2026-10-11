@@ -1076,7 +1076,9 @@ export async function issueCertificateFor(input: {
   const holder = await prisma.holder.findFirstOrThrow({ where: { id: input.holderId } });
   const view = await holderView(holder);
   const prefix = await documentPrefix();
-  const certificateNumber = await nextDocumentNumber(DOCUMENT_SERIES.shareCertificate, prefix, input.issuedOn);
+  const certificateNumber = await prisma.$transaction((tx) =>
+    nextDocumentNumber(tx, DOCUMENT_SERIES.shareCertificate, prefix, input.issuedOn),
+  );
 
   // No audit row was written here before, so a certificate could be issued
   // with no record of it. The audit row is part of the same transaction as the
