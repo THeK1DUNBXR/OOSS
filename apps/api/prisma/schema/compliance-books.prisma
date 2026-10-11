@@ -72,23 +72,28 @@ model LedgerEntity {
 }
 
 model JournalEntry {
-  id             String           @id @default(cuid())
+  id             String            @id @default(cuid())
   tenantId       String
   entityId       String
   periodId       String
   entryNumber    String
-  entryDate      DateTime         @db.Date
+  entryDate      DateTime          @db.Date
   postedAt       DateTime?
-  status         String           @default("posted")
+  status         String            @default("posted")
   narration      String
   sourceType     String
   sourceId       String?
   reversalOfId   String?
   reversedById   String?
   idempotencyKey String?
-  entity         LedgerEntity     @relation(fields: [entityId], references: [id])
-  period         AccountingPeriod @relation(fields: [periodId], references: [id])
+  entity         LedgerEntity      @relation(fields: [entityId], references: [id])
+  period         AccountingPeriod  @relation(fields: [periodId], references: [id])
   lines          JournalLine[]
+  /// Reversal state is the presence of a link row, never a status UPDATE
+  /// (MONEY-LEDGER-CONTRACT decision 7). `status` and `reversedById` are the
+  /// pre-link history of entries reversed before journal_reversals existed.
+  reversedBy     JournalReversal[] @relation("ReversedEntry")
+  reversalOf     JournalReversal[] @relation("ReversalEntry")
 
   @@unique([tenantId, entityId, entryNumber])
   @@unique([tenantId, idempotencyKey])
@@ -114,10 +119,36 @@ model JournalLine {
   partyId         String?
   taxCodeId       String?
   memo            String?
+  /// The business line this line is earned or spent under. Required by post()
+  /// on income and expense accounts; nullable on balance-sheet lines.
+  lineId          String?
+  businessLine    BusinessLine? @relation(fields: [tenantId, lineId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([tenantId, accountId, entryId])
   @@index([tenantId, partyId])
+  @@index([tenantId, lineId])
   @@map("journal_lines")
+}
+
+/// The link from a reversed entry to the entry that reverses it. Insert-only
+/// (the app role has no UPDATE or DELETE, and a trigger refuses both for every
+/// role). A reversal entry cannot itself be reversed: the database refuses it
+/// in journal_reversal_guard, and post() refuses it first with a 409.
+model JournalReversal {
+  id              String       @id @default(cuid())
+  tenantId        String
+  reversedEntryId String
+  reversalEntryId String
+  reason          String
+  createdAt       DateTime     @default(now())
+  /// Party that posted the reversal. Null only for backfilled legacy rows.
+  createdById     String?
+  reversedEntry   JournalEntry @relation("ReversedEntry", fields: [reversedEntryId], references: [id])
+  reversalEntry   JournalEntry @relation("ReversalEntry", fields: [reversalEntryId], references: [id])
+
+  @@unique([tenantId, reversedEntryId])
+  @@unique([tenantId, reversalEntryId])
+  @@map("journal_reversals")
 }
 
 /// How long a class of record must be kept, and under what statute. Dated data

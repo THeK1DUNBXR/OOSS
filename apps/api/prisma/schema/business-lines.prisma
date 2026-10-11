@@ -31,6 +31,7 @@ model BusinessLine {
   successorsTo      BusinessLineSuccessor[] @relation("SuccessorTo")
   distributionLines LineDistributionLine[]
   orgUnits          OrgUnit[]
+  journalLines      JournalLine[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, id])
