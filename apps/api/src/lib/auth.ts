@@ -1089,7 +1089,7 @@ export async function buildSessionUser(
 ): Promise<SessionUser> {
   const user = await unscopedPrisma.user.findFirstOrThrow({
     where: { id: userId },
-    include: { tenant: true, person: true },
+    include: { tenant: true, person: true, principal: { select: { mustChangePassword: true } } },
   });
 
   const affiliations = await unscopedPrisma.affiliation.findMany({
@@ -1159,6 +1159,7 @@ export async function buildSessionUser(
       riskClassCeiling: g.riskClassCeiling,
     })),
     branch: user.branch,
+    mustChangePassword: user.principal?.mustChangePassword ?? false,
   };
 }
 
