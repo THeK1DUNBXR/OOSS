@@ -20,6 +20,7 @@ import { ApiError } from '../platform/errors.js';
 import { assertCan, invalidateGrantCache } from '../platform/permissions.js';
 import { verifyChain } from '../platform/eventBus.js';
 import { governedEntities } from '../platform/audit.js';
+import { wireInt } from '../platform/wire.js';
 import { assertCanWriteGrant } from '../platform/roleAssignment.js';
 import { agentRoster, decideAgentAction, pauseAgent, revokeAuthority, propose } from '../agents/index.js';
 import { ALL_JOBS, runJobsForTenant } from '../jobs/scheduler.js';
@@ -255,6 +256,7 @@ router.get(
 
     return rows.map((e) => ({
       id: e.id,
+      seq: wireInt(e.seq),
       eventId: e.eventId,
       eventName: e.eventName,
       eventVersion: e.eventVersion,
@@ -326,6 +328,7 @@ router.get(
 
     return rows.map((r) => ({
       id: r.id,
+      seq: wireInt(r.seq),
       action: r.action,
       subjectType: r.subjectType,
       subjectId: r.subjectId,

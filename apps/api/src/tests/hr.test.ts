@@ -42,6 +42,7 @@ import { capabilitiesForParty, assertClaim, verifyClaim } from '../domains/capab
 import { recordEvidence, listEvidence } from '../domains/performance.js';
 import { openPayrollRun, transitionPayrollRun, payrollCostByDivision } from '../domains/payroll.js';
 import { emittedEvents, setEventCapture } from '../platform/eventBus.js';
+import { bigintReplacer } from '../platform/wire.js';
 
 let TENANT: string;
 
@@ -419,7 +420,8 @@ describe('updateEmployeeProfile corrects what a staff-list import writes on the 
       (r.meta as { fieldsChanged?: string[] } | null)?.fieldsChanged?.includes('bloodGroup'),
     );
     expect(bloodGroupRecord).toBeTruthy();
-    expect(JSON.stringify(bloodGroupRecord)).not.toContain('B+');
+    // A raw row carries `seq`, a BigInt, which plain JSON.stringify refuses.
+    expect(JSON.stringify(bloodGroupRecord, bigintReplacer)).not.toContain('B+');
   });
 
   it('keeps employment-side fields — dates, engagement type, PAN, bank details — HR-only, even at `all` view', async () => {

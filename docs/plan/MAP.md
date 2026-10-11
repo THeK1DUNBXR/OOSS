@@ -312,6 +312,8 @@
 
 **`apps/api/src/platform/tenantPolicy.ts`** (167 lines) — DEFAULT_TENANT_TIER:20 · resolveTenantTier:69 · getTenantFeatureGate:74 · assertAllowedInferenceRegion:83 · TenantRuntimePolicy:105 · resolveTenantRuntimePolicy:113 · syncTenantPolicy:132
 
+**`apps/api/src/platform/wire.ts`** (21 lines) — wireInt:9 · bigintReplacer:18
+
 ## API imports
 
 **`apps/api/src/imports/chart.ts`** (150 lines) — LedgerChart:23 · buildChart:87 · UNSTATED_LEDGER_KIND:149
