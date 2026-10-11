@@ -139,22 +139,65 @@ const DISPATCH_CLAIM_LEASE_MS = 15 * 60_000;
 const REACHED_PROVIDER_STATUSES = ['sent', 'delivered', 'opened', 'clicked', 'bounced', 'unsubscribed'];
 
 /**
- * Moves `sending` claims older than the lease to `unknown_delivery`. Surfaced
- * on the recipient row, where an operator can see it, rather than as an
- * exception: no EX code exists yet for "delivery outcome unknown" (see
- * packages/shared/src/domain.ts, EX-MKT-001..015).
+ * Moves a send's `sending` claims older than the lease to `unknown_delivery`
+ * and raises EX-MKT-016 so an operator checks the provider's log. Never
+ * resends: the provider may already have accepted the message.
  */
 async function surfaceExpiredClaims(sendId: string, tenantId: string): Promise<number> {
+  const cutoff = new Date(Date.now() - DISPATCH_CLAIM_LEASE_MS);
+  const expired = await prisma.marketingSendRecipient.findMany({
+    where: { sendId, tenantId, status: 'sending', claimedAt: { lt: cutoff } },
+    select: { id: true },
+  });
+  if (expired.length === 0) return 0;
+
+  // Conditional on status: a claimer that finished while this sweep ran has
+  // already moved its row on, and must not be relabelled as unknown.
   const { count } = await prisma.marketingSendRecipient.updateMany({
+    where: { id: { in: expired.map((r) => r.id) }, tenantId, status: 'sending' },
+    data: { status: 'unknown_delivery', reason: 'claim_expired_outcome_unknown' },
+  });
+  if (count === 0) return 0;
+
+  const auth = currentAuth();
+  const send = await prisma.marketingSend.findFirst({ where: { id: sendId, tenantId } });
+  await raiseException({
+    code: 'EX-MKT-016',
+    label: 'Send recipient delivery outcome unknown (claim expired)',
+    severity: 'S1_ATTENTION',
+    subjectType: 'marketing_send',
+    subjectId: sendId,
+    subjectLabel: send?.recordCode ?? sendId,
+    detail: `${count} recipient(s) were claimed by a dispatch run that did not finish within ${DISPATCH_CLAIM_LEASE_MS / 60_000} minutes. Whether the provider accepted them is unknown; they have not been resent. Check the provider's delivery log before resending.`,
+    ownerPartyId: auth.partyId,
+    triggerFingerprint: `mkt_unknown_delivery:${sendId}:${expired
+      .map((r) => r.id)
+      .sort()
+      .join(',')}`,
+  });
+  return count;
+}
+
+/**
+ * The scheduled dispatch job calls this first. It only surfaces expired
+ * claims; it never sends. Returns the number of recipients moved to
+ * unknown_delivery.
+ */
+export async function sweepExpiredClaims(): Promise<number> {
+  const auth = currentAuth();
+  const sends = await prisma.marketingSendRecipient.findMany({
     where: {
-      sendId,
-      tenantId,
+      tenantId: auth.tenantId,
       status: 'sending',
       claimedAt: { lt: new Date(Date.now() - DISPATCH_CLAIM_LEASE_MS) },
     },
-    data: { status: 'unknown_delivery', reason: 'claim_expired_outcome_unknown' },
+    select: { sendId: true },
+    distinct: ['sendId'],
+    take: 500,
   });
-  return count;
+  let total = 0;
+  for (const { sendId } of sends) total += await surfaceExpiredClaims(sendId, auth.tenantId);
+  return total;
 }
 
 // ============================================================================

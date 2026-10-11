@@ -101,10 +101,15 @@ async function tickJourneys(): Promise<JobResult> {
 }
 
 async function dispatchQueuedSends(): Promise<JobResult> {
+  // Expired claims are surfaced before anything else runs. A send whose
+  // dispatch crashed is left `sending`, which the queued-only query below never
+  // picks up, so this sweep is the only thing that reports those recipients.
+  const swept = await callDetector('messaging', 'sweepExpiredClaims');
+
   // Prefer a bulk dispatcher if the messaging module exposes one; fall back to
   // dispatching each queued send individually through `dispatchSend`.
   const bulk = await callDetector('messaging', 'dispatchQueuedSends');
-  if (bulk.error === null || !bulk.error.includes('not exported')) return summarise([bulk]);
+  if (bulk.error === null || !bulk.error.includes('not exported')) return summarise([swept, bulk]);
 
   const auth = currentAuth();
   const queued = await prisma.marketingSend.findMany({
@@ -113,7 +118,7 @@ async function dispatchQueuedSends(): Promise<JobResult> {
     take: 200,
   });
   const results = await Promise.all(queued.map((s) => callDetector('messaging', 'dispatchSend', s.id)));
-  return summarise(results);
+  return summarise([swept, ...results]);
 }
 
 async function reevaluateDynamicAudiences(): Promise<JobResult> {

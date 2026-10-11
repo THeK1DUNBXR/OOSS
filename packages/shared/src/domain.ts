@@ -1004,6 +1004,14 @@ export const EXCEPTION_CODES = {
     severity: 'S2_WARNING',
   },
   EX_MKT_015: { code: 'EX-MKT-015', label: 'Journey run stuck (nextAt overdue by 2 days)', severity: 'S1_ATTENTION' },
+  // Raised when a dispatch claim expired with no outcome recorded. The
+  // provider may have accepted the message, so an operator must check the
+  // delivery log before anything is sent again.
+  EX_MKT_016: {
+    code: 'EX-MKT-016',
+    label: 'Send recipient delivery outcome unknown (claim expired)',
+    severity: 'S1_ATTENTION',
+  },
 } as const;
 
 export const EXCEPTION_STATES = ['open', 'acknowledged', 'resolved', 'escalated', 'suppressed'] as const;

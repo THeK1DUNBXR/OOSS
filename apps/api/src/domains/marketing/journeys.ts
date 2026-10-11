@@ -367,6 +367,24 @@ export async function exitRun(runId: string, reason: string): Promise<JourneyRun
   return toRunView(updated);
 }
 
+/**
+ * Ends a run at its current step, but only if no other tick has moved or ended
+ * it first. The guard is the same as the step claim in `tick`: an overlapping
+ * tick that read the run before this one ended it matches nothing and emits
+ * nothing, so each exit or completion event is written once.
+ */
+async function claimRunEnd(
+  run: { id: string; currentStep: number },
+  tenantId: string,
+  data: { status: 'completed' } | { status: 'exited'; exitedReason: string },
+): Promise<boolean> {
+  const { count } = await prisma.marketingJourneyRun.updateMany({
+    where: { id: run.id, tenantId, status: 'active', currentStep: run.currentStep },
+    data: { ...data, nextAt: null },
+  });
+  return count > 0;
+}
+
 /** Advances every due run. What the scheduled job calls. */
 export async function tick(): Promise<{ advanced: number; completed: number; exited: number }> {
   const auth = currentAuth();
@@ -388,7 +406,7 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
     const steps = (journey.steps as unknown as JourneyStep[]) ?? [];
     const step = steps[run.currentStep];
     if (!step) {
-      await prisma.marketingJourneyRun.update({ where: { id: run.id }, data: { status: 'completed', nextAt: null } });
+      if (!(await claimRunEnd(run, auth.tenantId, { status: 'completed' }))) continue;
       await emit({
         name: EVENTS.MKT_JOURNEY_RUN_COMPLETED,
         subject: { entityType: 'marketing_journey_run', entityId: run.id },
@@ -406,10 +424,7 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
       });
       const entity: Record<string, unknown> = { ...(person ?? {}), ...(lead ?? {}) };
       if (!evaluateCondition(entity, step.condition)) {
-        await prisma.marketingJourneyRun.update({
-          where: { id: run.id },
-          data: { status: 'exited', exitedReason: 'condition_not_met', nextAt: null },
-        });
+        if (!(await claimRunEnd(run, auth.tenantId, { status: 'exited', exitedReason: 'condition_not_met' }))) continue;
         await emit({
           name: EVENTS.MKT_JOURNEY_RUN_EXITED,
           subject: { entityType: 'marketing_journey_run', entityId: run.id },
@@ -422,10 +437,7 @@ export async function tick(): Promise<{ advanced: number; completed: number; exi
 
     const { eligible } = await eligibleForChannel([run.personId], step.channelKey);
     if (eligible.length === 0) {
-      await prisma.marketingJourneyRun.update({
-        where: { id: run.id },
-        data: { status: 'exited', exitedReason: 'no_consent', nextAt: null },
-      });
+      if (!(await claimRunEnd(run, auth.tenantId, { status: 'exited', exitedReason: 'no_consent' }))) continue;
       await emit({
         name: EVENTS.MKT_JOURNEY_RUN_EXITED,
         subject: { entityType: 'marketing_journey_run', entityId: run.id },

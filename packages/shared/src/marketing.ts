@@ -236,6 +236,8 @@ export const SEND_TRANSITIONS: Record<SendStatus, SendStatus[]> = {
 
 export const RECIPIENT_STATUSES = [
   'queued',
+  'sending',
+  'unknown_delivery',
   'skipped_no_consent',
   'skipped_dnc',
   'sent',
@@ -250,6 +252,8 @@ export type RecipientStatus = (typeof RECIPIENT_STATUSES)[number];
 
 export const RECIPIENT_STATUS_LABELS: Record<RecipientStatus, string> = {
   queued: 'Queued',
+  sending: 'Sending',
+  unknown_delivery: 'Delivery unknown — check before resending',
   skipped_no_consent: 'Skipped — no consent',
   skipped_dnc: 'Skipped — do not contact',
   sent: 'Sent',
