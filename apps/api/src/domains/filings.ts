@@ -35,7 +35,7 @@ import { ApiError } from '../platform/errors.js';
 import { auditWrite, registerGovernedEntities } from '../platform/audit.js';
 import { emit } from '../platform/eventBus.js';
 import { nextRecordCode } from '../platform/recordCode.js';
-import { istEndOfDay, istYearMonth } from '@kaizen/shared';
+import { istEndOfDay, istYearMonth, SENSITIVITY_RANK } from '@kaizen/shared';
 import { raiseException, resolveException } from '../platform/exceptions.js';
 import { companyProfile } from './companyProfile.js';
 import { effectiveBalance, holderView, outgoingCount } from './equity.js';
@@ -607,7 +607,23 @@ function mgt1SheetRows(rows: Mgt1Row[]): unknown[][] {
   ]);
 }
 
+/**
+ * A statutory file is only worth filing with every PAN in it. Below the
+ * regulated ceiling the PAN column comes back masked, and a masked identifier
+ * is not a valid filing, so the caller is refused the file rather than handed
+ * one that looks complete. The JSON registers still show the masked value for
+ * review; only a file carrying a PAN needs the ceiling.
+ */
+function assertStatutoryPanReadable(): void {
+  if (SENSITIVITY_RANK[currentAuth().classificationCeiling] >= SENSITIVITY_RANK.regulated) return;
+  throw ApiError.forbidden(
+    'Generating this statutory file needs the regulated-data ceiling, because the PANs of its holders cannot be masked.',
+  );
+}
+
 export async function mgt1Export(shareClassId?: string): Promise<Buffer> {
+  await assertCan({ resource: 'compliance', verb: 'view' });
+  assertStatutoryPanReadable();
   const groups = await mgt1Register(shareClassId);
   const book = XLSX.utils.book_new();
   if (groups.length === 0) {
@@ -625,6 +641,8 @@ export async function mgt1Export(shareClassId?: string): Promise<Buffer> {
 }
 
 export async function mgt2Export(): Promise<Buffer> {
+  await assertCan({ resource: 'compliance', verb: 'view' });
+  assertStatutoryPanReadable();
   const groups = await mgt2Register();
   const book = XLSX.utils.book_new();
   if (groups.length === 0) {
@@ -725,6 +743,8 @@ async function capitalAsOf(asOf: Date): Promise<number> {
 }
 
 export async function pas3Export(roundId: string): Promise<Buffer> {
+  await assertCan({ resource: 'compliance', verb: 'view' });
+  assertStatutoryPanReadable();
   const { round, rows } = await pas3AllotteeList(roundId);
   const header = [
     'Name',
