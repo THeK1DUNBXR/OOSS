@@ -245,10 +245,9 @@ export async function createPartnerAgreement(input: {
     },
   });
 
-  // The agreement, its audit row and its event commit together. The EX-CRM-013
-  // exception is raised after that commit: it is not transaction-aware yet
-  // (platform/exceptions.ts), and a conflict record that outlives a rolled-back
-  // agreement would point at nothing.
+  // The agreement, its audit row, its event and the EX-CRM-013 conflict commit
+  // together. A conflict record that outlived a rolled-back agreement would point
+  // at nothing.
   const agreement = await governedWrite(async (tx) => {
     const recordCode = await nextRecordCode('PA', new Date(), tx);
     const created = await tx.partnerAgreement.create({
@@ -288,22 +287,24 @@ export async function createPartnerAgreement(input: {
       confidentiality: 'confidential',
       tx,
     });
+    if (existing) {
+      await raiseException(
+        {
+          code: 'EX-CRM-013',
+          label: 'Two partners are chasing the same customer',
+          severity: 'S2_WARNING',
+          subjectType: 'partner_agreement',
+          subjectId: created.id,
+          subjectLabel: `${recordCode} — ${input.title}`,
+          detail: `An active ${input.agreementType} agreement (${existing.recordCode}) already covers this partner. Two channels for the same motion conflict on attribution.`,
+          ownerPartyId: auth.partyId,
+          reasonCode: 'dual_channel_conflict',
+        },
+        tx,
+      );
+    }
     return created;
   });
-
-  if (existing) {
-    await raiseException({
-      code: 'EX-CRM-013',
-      label: 'Two partners are chasing the same customer',
-      severity: 'S2_WARNING',
-      subjectType: 'partner_agreement',
-      subjectId: agreement.id,
-      subjectLabel: `${agreement.recordCode} — ${input.title}`,
-      detail: `An active ${input.agreementType} agreement (${existing.recordCode}) already covers this partner. Two channels for the same motion conflict on attribution.`,
-      ownerPartyId: auth.partyId,
-      reasonCode: 'dual_channel_conflict',
-    });
-  }
 
   return agreement;
 }
