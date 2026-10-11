@@ -28,11 +28,11 @@ import {
 } from '@kaizen/shared';
 
 /** The object segment each `transition({ eventObject })` call site passes, with its verb map. */
-const LIFECYCLE_SITES: Array<{ object: string; verbs: Record<string, string> }> = [
+const LIFECYCLE_SITES: Array<{ object: string; verbs: Record<string, string>; prefix?: string }> = [
   { object: 'leave', verbs: LEAVE_REQUEST_EVENT_VERB },
   { object: 'work_attendance', verbs: WORK_ATTENDANCE_EVENT_VERB },
   { object: 'payroll_run', verbs: PAYROLL_EVENT_VERB },
-  { object: 'ticket', verbs: TICKET_EVENT_VERB },
+  { object: 'ticket', prefix: 'kz.it', verbs: TICKET_EVENT_VERB },
   { object: 'compensation', verbs: COMPENSATION_EVENT_VERB },
   { object: 'position', verbs: POSITION_EVENT_VERB },
   { object: 'employment', verbs: EMPLOYMENT_EVENT_VERB },
@@ -49,7 +49,10 @@ const LIFECYCLE_SITES: Array<{ object: string; verbs: Record<string, string> }> 
 describe('event grammar — every lifecycle name a transition can emit', () => {
   it.each(LIFECYCLE_SITES.map((s) => [s.object, s] as const))('%s: every verb is canonical', (_object, site) => {
     const refused = Object.entries(site.verbs)
-      .map(([event, verb]) => ({ event, name: hrTransitionEvent(site.object, verb) }))
+      .map(([event, verb]) => ({
+        event,
+        name: site.prefix ? `${site.prefix}.${site.object}.${verb}` : hrTransitionEvent(site.object, verb),
+      }))
       .filter(({ name }) => !isCanonicalEventName(name));
     expect(refused.map((r) => `${r.event} -> ${r.name}`)).toEqual([]);
   });
